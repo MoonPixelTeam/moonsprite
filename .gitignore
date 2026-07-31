@@ -1,7 +1,7 @@
 node_modules/
 .pnpm-store/
 out/
-release/
+/release/
 coverage/
 .vite/
 *.tsbuildinfo
