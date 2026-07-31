@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:tauri": "node scripts/tauri-smoke.mjs",
     "bench:selection": "vitest bench src/renderer/src/core/selection-performance.bench.ts --run",
+    "check:maintenance": "node scripts/check-maintenance-contract.mjs",
     "package": "tauri build && pnpm package:prepare && pnpm package:size",
     "package:prepare": "node scripts/prepare-release.mjs",
     "package:size": "node scripts/check-package-size.mjs",

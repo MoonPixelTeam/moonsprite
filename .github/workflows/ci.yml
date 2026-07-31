@@ -28,6 +28,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:maintenance
       - run: pnpm typecheck
       - run: pnpm test
       - run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
