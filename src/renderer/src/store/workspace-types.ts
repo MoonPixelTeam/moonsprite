@@ -9,6 +9,7 @@ import type {
   FillKind,
   FillMode,
   GradientDither,
+  GradientStop,
   GradientType,
   ImageBrush,
   LayerMask,
@@ -25,6 +26,7 @@ import type {
   SelectionKind,
   SelectionMask,
   SelectionMode,
+  SelectionQuad,
   SelectionRect,
   ShapeKind,
   ShapeRatio,
@@ -110,6 +112,7 @@ export interface FloatingPaste {
   transformTarget?: SelectionRect
   transformAngle?: number
   transformShear?: SelectionShearTransform
+  transformQuad?: SelectionQuad
   previewEdit: PixelEdit | null
   translationPreview: SelectionTranslationPreview | null
   previewDeferred?: boolean
@@ -212,8 +215,18 @@ export interface DocumentSession {
   gradientContiguous: boolean
   gradientType: GradientType
   gradientDither: GradientDither
+  gradientFreeform?: boolean
+  gradientStops?: GradientStop[]
   moveAutoSelect: boolean
   selection: SelectionMask | null
+  /** View-only flag set when the user clicks an existing selection to edit its properties. */
+  selectionPropertiesActive?: boolean
+  /** Rotation displayed and edited by the selection properties bar. */
+  selectionAngle?: number
+  /** View-only mode that exposes only the four corner transform handles. */
+  freeTransformActive?: boolean
+  /** Current free-transform frame, kept after a committed corner drag. */
+  freeTransformQuad?: SelectionQuad | null
   /** View-only custom transform pivot. Null uses the current transformed selection center. */
   selectionPivot?: SelectionPivot | null
   selectionKind: SelectionKind
@@ -249,6 +262,7 @@ export interface DocumentSession {
   selectedLayerIds: string[]
   activeLayerMaskId: string | null
   layerMaskIsolatedView: boolean
+  layerMaskColorMemory?: { primary: RgbaColor; secondary: RgbaColor }
   layerSelectionAnchorId: string | null
   collapsedGroupIds: string[]
   animationPlaying: boolean

@@ -20,6 +20,8 @@ import type { QuickCommandSettingsTarget } from '@/components/app/quick-command-
 import { TOOL_DEFINITIONS } from '@/components/app/editor-tools'
 import { publishCanvasResizePreview } from '@/core/canvas-resize-preview'
 import { detectDocumentPixelScale } from '@/core/image-scale-detection'
+import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
+import { zoomViewAroundViewportPoint } from '@/core/view-geometry'
 import { appCoordinatorRenderKey } from '@/components/app/app-render-keys'
 import { detachDocumentPaneWorkspace, documentPaneContains, documentPaneLeafIds, moveDocumentPane, removeDocumentPane, splitDocumentPaneFromTab, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPanePlacement } from '@/core/document-pane-layout'
 import { NewDocumentDialog } from '@/components/NewDocumentDialog'
@@ -74,6 +76,8 @@ import type { FloatingPosition } from '@/core/panel-preferences'
 import { applyCursorPreferences } from '@/platform/cursor-theme'
 import { applyAppWindowLayout, initializeAppWindow, readAppWindowLayout, showAppWindow } from '@/platform/app-window'
 import { applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
+import { openRuntimeDiagnosticLogs } from '@/platform/runtime-diagnostics'
+import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { ACTIVE_WORKSPACE_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_STORAGE_KEY, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, constrainBottomDockHeight, constrainInspectorWidth, constrainLeftDockWidth, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO, DEFAULT_INSPECTOR_WIDTH_RATIO, DEFAULT_LEFT_DOCK_WIDTH_RATIO, DEFAULT_PANEL_DOCKS, dockSizeRatio, FLOATING_PANEL_STORAGE_KEYS, INSPECTOR_LAYOUT_STORAGE_KEY, INSPECTOR_WIDTH_RATIO_STORAGE_KEY, INSPECTOR_WIDTH_STORAGE_KEY, LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, LEFT_DOCK_WIDTH_STORAGE_KEY, PANEL_DOCKS_STORAGE_KEY, resolveDockSizeRatio, TOOL_RAIL_SIDE_STORAGE_KEY, loadBottomDockHeight, loadInspectorWidth, loadLeftDockWidth, loadMainWindowState, loadPanelDocks, loadPanelVisibility, loadToolRailSide, normalizeWorkspaceLayout, readLayoutStorage, saveMainWindowState, savePanelDocks, savePanelVisibility, toolRailDockTargetAtPointer, workspaceDockSizesForParent, workspacePanelDockPresence, writeLayoutStorage } from '@/core/workspace-layout-preferences'
 import { type ExportOptions, type SaveAsOptions, type TextCelPreview, type TextLayerDraftTarget, useWorkspace } from '@/store/workspace'
 import { closeLuaScriptClientSession, dispatchLuaScriptDialogForActiveDocument, luaScriptTargetIsActive, runLuaScriptForActiveDocument, type LuaScriptClientSession } from '@/store/lua-script-service'
@@ -188,6 +192,7 @@ const persistMainWindowState = async (notifyWorkspaceLayout = true): Promise<voi
   saveMainWindowState(current)
   if (notifyWorkspaceLayout) window.dispatchEvent(new Event('moonsprite-workspace-layout-change'))
 }
+
 export default function App() {
   const { locale, t } = useI18n()
   const builtInDefaultWorkspace = useMemo(() => createBuiltInDefaultWorkspace(t('app.workspace.default')), [t])
@@ -293,6 +298,7 @@ export default function App() {
   const workspaceAutoSaveQueue = useRef<Promise<void>>(Promise.resolve())
   const commandScopeRef = useRef<EditorCommandScope>('canvas')
   const commandSurfaceRef = useRef<HTMLElement | null>(null)
+  const pointerPositionRef = useRef<{ x: number; y: number } | null>(null)
   const selectionCommandOverrideRef = useRef(false)
   const [workspaceLayoutChange, setWorkspaceLayoutChange] = useState(0)
   const workAreaRef = useRef<HTMLElement>(null)
@@ -300,6 +306,8 @@ export default function App() {
   const preferredInspectorWidthRef = useRef(inspectorWidth)
   const inspectorWidthRatioRef = useRef(dockSizeRatio(inspectorWidth, initialDockParentSize.width, DEFAULT_INSPECTOR_WIDTH_RATIO))
   const closeInProgress = useRef(false)
+  const saveActiveOperationRef = useRef<Promise<boolean> | null>(null)
+  const exportActiveOperationRef = useRef<Promise<boolean> | null>(null)
   const luaScriptSessionRef = useRef<LuaScriptClientSession | null>(null)
   const luaScriptRunningRef = useRef(false)
   const session = workspace.sessions.find((item) => item.document.id === workspace.activeId) ?? null
@@ -307,6 +315,26 @@ export default function App() {
   const spriteSheetExportSession = spriteSheetExportSourceId
     ? workspace.sessions.find((item) => item.document.id === spriteSheetExportSourceId) ?? null
     : null
+  const runSaveActive = useCallback((saveAs = false, options?: SaveAsOptions): Promise<boolean> => {
+    if (saveActiveOperationRef.current) return saveActiveOperationRef.current
+    const operation = workspace.saveActive(saveAs, options)
+    saveActiveOperationRef.current = operation
+    void operation.then(
+      () => { if (saveActiveOperationRef.current === operation) saveActiveOperationRef.current = null },
+      () => { if (saveActiveOperationRef.current === operation) saveActiveOperationRef.current = null }
+    )
+    return operation
+  }, [workspace])
+  const runExportActive = useCallback((options: ExportOptions): Promise<boolean> => {
+    if (exportActiveOperationRef.current) return exportActiveOperationRef.current
+    const operation = workspace.exportActive(options)
+    exportActiveOperationRef.current = operation
+    void operation.then(
+      () => { if (exportActiveOperationRef.current === operation) exportActiveOperationRef.current = null },
+      () => { if (exportActiveOperationRef.current === operation) exportActiveOperationRef.current = null }
+    )
+    return operation
+  }, [workspace])
   const floatingDocumentIds = useMemo(() => floatingDocuments.map((item) => item.documentId), [floatingDocuments])
   const hiddenDocumentIds = useMemo(() => [...new Set([...paneOnlyDocumentIds, ...floatingDocumentIds])], [floatingDocumentIds, paneOnlyDocumentIds])
 
@@ -591,7 +619,11 @@ export default function App() {
   }, [runtimePreferences.toolIconScale])
   useEffect(() => {
     const rememberCommandScope = (event: Event): void => {
-      if (event.type === 'pointerdown') selectionCommandOverrideRef.current = false
+      if (event.type === 'pointerdown') {
+        selectionCommandOverrideRef.current = false
+        const pointer = event as PointerEvent
+        pointerPositionRef.current = { x: pointer.clientX, y: pointer.clientY }
+      }
       const surface = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-command-scope], .stage-surface')
       const scope = surface?.classList.contains('stage-surface') ? 'canvas' : surface?.dataset.commandScope
       if (scope === 'canvas' || scope === 'layers' || scope === 'palette' || scope === 'tileset' || scope === 'brushes') {
@@ -608,11 +640,16 @@ export default function App() {
       }
       selectionCommandOverrideRef.current = detail?.preferSelection === true
     }
+    const rememberPointerPosition = (event: PointerEvent): void => {
+      pointerPositionRef.current = { x: event.clientX, y: event.clientY }
+    }
     window.addEventListener('pointerdown', rememberCommandScope, true)
+    window.addEventListener('pointermove', rememberPointerPosition, true)
     window.addEventListener('focusin', rememberCommandScope, true)
     window.addEventListener(COMMAND_SCOPE_EVENT, applyCommandScope)
     return () => {
       window.removeEventListener('pointerdown', rememberCommandScope, true)
+      window.removeEventListener('pointermove', rememberPointerPosition, true)
       window.removeEventListener('focusin', rememberCommandScope, true)
       window.removeEventListener(COMMAND_SCOPE_EVENT, applyCommandScope)
     }
@@ -944,6 +981,7 @@ export default function App() {
     else if (format === 'gif' && target === 'frames') target = 'document'
     else if (target === 'frames' && requestedTarget !== 'frames' && frameCount <= 1) target = 'document'
     else if (target === 'slices' && !session.document.slices?.length) target = 'document'
+    else if (target === 'selection' && !session.selection) target = 'document'
     const sliceId = target === 'slices' && remembered?.sliceId && session.document.slices?.some((slice) => slice.id === remembered.sliceId)
       ? remembered.sliceId
       : undefined
@@ -1522,6 +1560,21 @@ export default function App() {
       }
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return
       const keyboardSurfaceBlocked = event.defaultPrevented || Boolean(document.querySelector('.modal-backdrop')) || Boolean(openMenu)
+      const activeTextLayer = session?.tool === 'text' && session.selectedGroupIds.length === 0
+        ? session.document.layers.find((layer) => layer.id === session.document.activeLayerId && layer.kind === 'text')
+        : null
+      const textNudgeKey = key === 'arrowleft' ? { x: -1, y: 0 }
+        : key === 'arrowright' ? { x: 1, y: 0 }
+          : key === 'arrowup' ? { x: 0, y: -1 }
+            : key === 'arrowdown' ? { x: 0, y: 1 }
+              : null
+      const textNudgeBlocked = Boolean(target?.closest('[contenteditable="true"], .modal-backdrop, .themed-select'))
+      if (activeTextLayer && textNudgeKey && !textNudgeBlocked && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        workspace.moveLayerBy(activeTextLayer.id, textNudgeKey.x, textNudgeKey.y)
+        return
+      }
       if (!keyboardSurfaceBlocked && session && !session.selection
         && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey
         && (key === 'arrowup' || key === 'arrowdown')) {
@@ -1544,6 +1597,44 @@ export default function App() {
         event.stopPropagation()
         if (allowRepeat || !event.repeat) command()
         return true
+      }
+      const viewZoomShortcut = ([
+        ['viewZoom100', 1],
+        ['viewZoom200', 2],
+        ['viewZoom400', 4],
+        ['viewZoom800', 8],
+        ['viewZoom3200', 32]
+      ] as const).find(([id]) => matches(id))
+      if (viewZoomShortcut) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!event.repeat && session) {
+          const pointer = pointerPositionRef.current
+          const pointerTarget = pointer
+            ? document.elementFromPoint(pointer.x, pointer.y)
+            : event.target instanceof Element ? event.target : null
+          const previewPanel = pointerTarget?.closest('.preview-panel')
+          if (previewPanel) {
+            previewPanel.dispatchEvent(new CustomEvent<PreviewZoomShortcutDetail>(PREVIEW_ZOOM_SHORTCUT_EVENT, { bubbles: true, detail: { zoom: viewZoomShortcut[1], pointer: pointer ?? undefined } }))
+          } else {
+            const stage = pointerTarget?.closest('.stage-surface')
+            const stageBounds = stage?.getBoundingClientRect()
+            if (stageBounds && pointer && stageBounds.width > 0 && stageBounds.height > 0) {
+              const nextView = zoomViewAroundViewportPoint(
+                session.view,
+                viewZoomShortcut[1],
+                { x: pointer.x - stageBounds.left, y: pointer.y - stageBounds.top },
+                stageBounds.width,
+                stageBounds.height,
+                session.document.width,
+                session.document.height,
+                runtimePreferences.rotationIndicatorPosition
+              )
+              workspace.setView({ zoom: nextView.zoom, panX: nextView.panX, panY: nextView.panY })
+            } else workspace.setView({ zoom: viewZoomShortcut[1] })
+          }
+        }
+        return
       }
       if (runCommand('saveAs', () => { if (session && !homeOpen) openSaveAs() })) return
       if (session && (matches('flipVertical') || matches('flipHorizontal'))) {
@@ -1851,29 +1942,35 @@ export default function App() {
       if (matchingToolShortcuts.length > 0) {
         event.preventDefault()
         event.stopPropagation()
+        if (isCanvasToolGestureLocked()) return
         if (!event.repeat) {
-          const activeToolShortcut: (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | null = !session ? null
-            : session.tool === 'selection'
-              ? session.selectionKind === 'ellipse' ? 'tool.selection.ellipse'
-                : session.selectionKind === 'lasso' ? 'lasso'
-                  : session.selectionKind === 'polygon-lasso' ? 'polygonLasso'
-                    : session.selectionKind === 'magic' ? 'magic'
+          // Tool shortcuts may arrive while the canvas is in a pointer
+          // gesture, before React has rendered the Store update. Use the
+          // Store's current session when resolving the cycling position.
+          const currentWorkspace = useWorkspace.getState()
+          const currentSession = currentWorkspace.sessions.find((item) => item.document.id === currentWorkspace.activeId) ?? session
+          const activeToolShortcut: (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | null = !currentSession ? null
+            : currentSession.tool === 'selection'
+              ? currentSession.selectionKind === 'ellipse' ? 'tool.selection.ellipse'
+                : currentSession.selectionKind === 'lasso' ? 'lasso'
+                  : currentSession.selectionKind === 'polygon-lasso' ? 'polygonLasso'
+                    : currentSession.selectionKind === 'magic' ? 'magic'
                       : 'tool.selection'
-              : session.tool === 'fill'
-                ? session.fillKind === 'gradient' ? 'tool.fill.gradient' : 'tool.fill'
-                : session.tool === 'shape'
-                  ? session.shapeKind === 'rectangle-outline' ? 'tool.shape.rectangleOutline'
-                    : session.shapeKind === 'rectangle' ? 'tool.shape.rectangle'
-                      : session.shapeKind === 'ellipse-outline' ? 'tool.shape.ellipseOutline'
-                        : session.shapeKind === 'ellipse' ? 'tool.shape.ellipse'
-                          : session.shapeKind === 'freeform' ? 'tool.shape.freeform'
-                            : session.shapeKind === 'polygon' ? 'tool.shape.polygon'
+              : currentSession.tool === 'fill'
+                ? currentSession.fillKind === 'gradient' ? 'tool.fill.gradient' : 'tool.fill'
+                : currentSession.tool === 'shape'
+                  ? currentSession.shapeKind === 'rectangle-outline' ? 'tool.shape.rectangleOutline'
+                    : currentSession.shapeKind === 'rectangle' ? 'tool.shape.rectangle'
+                      : currentSession.shapeKind === 'ellipse-outline' ? 'tool.shape.ellipseOutline'
+                        : currentSession.shapeKind === 'ellipse' ? 'tool.shape.ellipse'
+                          : currentSession.shapeKind === 'freeform' ? 'tool.shape.freeform'
+                            : currentSession.shapeKind === 'polygon' ? 'tool.shape.polygon'
                               : 'tool.shape'
-                  : session.tool === 'line'
-                    ? session.lineKind === 'curve' ? 'tool.curve' : 'tool.line'
-                    : session.tool === 'move' && session.moveKind === 'slice'
+                  : currentSession.tool === 'line'
+                    ? currentSession.lineKind === 'curve' ? 'tool.curve' : 'tool.line'
+                    : currentSession.tool === 'move' && currentSession.moveKind === 'slice'
                       ? 'tool.slice'
-                      : TOOL_DEFINITIONS.find((tool) => tool.id === session.tool)?.shortcutId as (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | undefined ?? null
+                      : TOOL_DEFINITIONS.find((tool) => tool.id === currentSession.tool)?.shortcutId as (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | undefined ?? null
           const signature = `${shortcutText(event).toLowerCase()}:${matchingToolShortcuts.join('|')}`
           const previous = shortcutToolCycleRef.current
           const activeIndex = activeToolShortcut ? matchingToolShortcuts.indexOf(activeToolShortcut) : -1
@@ -2328,7 +2425,7 @@ export default function App() {
   const submitExport = async (openFolderAfterExport: boolean): Promise<void> => {
     const directory = exportForm.directory?.trim() || defaultFileDirectories.exportDirectory
     const selectedPresetName = presets.some((preset) => preset.presetName === presetName) ? presetName : undefined
-    const exported = await workspace.exportActive({
+    const exported = await runExportActive({
       ...exportForm,
       directory,
       target: exportTarget,
@@ -2347,7 +2444,7 @@ export default function App() {
   return <main className={`app-shell ${session?.view.showPixelGrid ? 'pixel-grid-on' : ''} ${editorOnly ? 'advanced-mode' : ''} ${advancedMode === 'tool-options' ? 'advanced-tool-options' : ''} ${advancedMode === 'canvas-only' ? 'advanced-canvas-only' : ''}`}>
     <AppWindowTitleBar />
     <BrushDynamicsTelemetryCapture documentId={session?.document.id ?? null} />
-    {saveAsOpen && session && <SaveAsDialog initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|psd)$/i, '') || 'MoonSprite-project'} initialFormat={saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY))} initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory} onClose={() => setSaveAsOpen(false)} onSave={(options) => workspace.saveActive(true, options)} />}
+    {saveAsOpen && session && <SaveAsDialog initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|psd)$/i, '') || 'MoonSprite-project'} initialFormat={saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY))} initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory} onClose={() => setSaveAsOpen(false)} onSave={(options) => runSaveActive(true, options)} />}
     {spriteSheetExportOpen && spriteSheetExportSession && <SpriteSheetExportDialog key={spriteSheetExportSession.document.id} session={spriteSheetExportSession} defaultDirectory={runtimePreferences.exportDirectory || defaultFileDirectories.exportDirectory} onClose={() => setSpriteSheetExportSourceId(null)} onClosePreview={workspace.closeSpriteSheetPreview} onExport={(options) => workspace.exportSpriteSheet(options, spriteSheetExportSession.document.id)} onPreview={workspace.previewSpriteSheet} />}
     <AppMenuBar
       openMenu={openMenu}
@@ -2375,6 +2472,7 @@ export default function App() {
       onNew={() => setNewOpen(true)}
       onOpen={() => { void openFilesAndShowDocument() }}
       onOpenRecent={(filePath) => { void openGalleryProject(filePath) }}
+      onSave={() => { void runSaveActive() }}
       onSaveAs={openSaveAs}
       onExport={() => openExport()}
       onExportAllFrames={() => openExport('frames')}
@@ -2403,6 +2501,7 @@ export default function App() {
       onCycleAdvancedMode={cycleAdvancedMode}
       onOpenComponentLibrary={() => setComponentLibraryOpen(true)}
       onOpenLatestRelease={() => setLatestReleaseOpen(true)}
+      onOpenDiagnostics={() => { void openRuntimeDiagnosticLogs().catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error))) }}
       onOpenAbout={() => setAboutOpen(true)}
     />
 
@@ -2489,8 +2588,8 @@ export default function App() {
             </div>
           </FormField>
           <div className="export-primary-fields">
-            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm({ ...exportForm, name: withExportFileExtension(exportForm.name, format), format, target: format === 'psd' || format === 'gif' && exportForm.target === 'frames' ? 'document' : exportForm.target, scalePercent: format === 'svg' ? 100 : exportForm.scalePercent })} /></FormField>
-            <FormField label={t('app.export.target')}><ThemedSelect<NonNullable<ExportOptions['target']>> value={exportTarget} groups={[{ label: t('app.export.target'), options: [{ value: 'document', label: t('app.export.targetDocument') }, ...((session?.document.animation?.frames.length ?? 1) > 1 && exportForm.format !== 'gif' && exportForm.format !== 'psd' ? [{ value: 'frames' as const, label: t('app.export.targetFrames') }] : []), ...(exportSlices.length && exportForm.format !== 'psd' ? [{ value: 'slices' as const, label: t('app.export.targetSlices') }] : [])] }]} label={t('app.export.target')} onChange={(target) => setExportForm({ ...exportForm, target, sliceId: target === 'slices' ? selectedExportSliceId || undefined : undefined })} /></FormField>
+            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm((current) => ({ ...current, name: withExportFileExtension(current.name, format), format, target: format === 'psd' || format === 'gif' && current.target === 'frames' ? 'document' : current.target, scalePercent: format === 'svg' ? 100 : current.scalePercent }))} /></FormField>
+            <FormField label={t('app.export.target')}><ThemedSelect<NonNullable<ExportOptions['target']>> value={exportForm.target ?? 'document'} groups={[{ label: t('app.export.target'), options: [{ value: 'document', label: t('app.export.targetDocument') }, ...(exportForm.format !== 'psd' ? [{ value: 'selection' as const, label: t('app.export.targetSelection') }] : []), ...((session?.document.animation?.frames.length ?? 1) > 1 && exportForm.format !== 'gif' && exportForm.format !== 'psd' ? [{ value: 'frames' as const, label: t('app.export.targetFrames') }] : []), ...(exportSlices.length && exportForm.format !== 'psd' ? [{ value: 'slices' as const, label: t('app.export.targetSlices') }] : [])] }]} label={t('app.export.target')} onChange={(target) => setExportForm((current) => ({ ...current, target, sliceId: target === 'slices' ? selectedExportSliceId || undefined : undefined }))} /></FormField>
             {exportTarget === 'slices' && <FormField className="export-slice-field" label={t('app.export.sliceSelection')}><ThemedSelect value={selectedExportSliceId} groups={[{ label: t('app.export.sliceSelection'), options: [{ value: '', label: t('app.export.allSlices') }, ...exportSlices.map((slice) => ({ value: slice.id, label: slice.name, description: `${slice.width} × ${slice.height} · ${slice.x}, ${slice.y}` }))] }]} label={t('app.export.sliceSelection')} onChange={(sliceId) => setExportForm({ ...exportForm, sliceId: sliceId || undefined })} /></FormField>}
           </div>
           {exportForm.format === 'gif' && <section className="gif-export-options">

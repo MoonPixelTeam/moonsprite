@@ -84,6 +84,7 @@ const normalizeLayerMask = (value: unknown, ownerId: string, ownerKind: LayerMas
     pixels: candidate.pixels,
     ownerKind,
     ownerId,
+    moveWithOwner: candidate.moveWithOwner !== false,
     ...(typeof candidate.linkedMaskId === 'string' ? { linkedMaskId: candidate.linkedMaskId } : {})
   }
 }

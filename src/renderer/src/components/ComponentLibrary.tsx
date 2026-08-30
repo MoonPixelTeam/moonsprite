@@ -28,6 +28,7 @@ import { OutlineStrokeControls } from './OutlineStrokeControls'
 import { TilesetTileThumbnail } from './TilesetTileThumbnail'
 import { BrushDynamicsSettingsPanel } from './app/EditorToolOptions'
 import { FILL_KIND_ICONS, GRADIENT_TYPE_ICONS, SELECTION_KIND_ICONS, fillKindDefinitions, lineKindDefinitions, normalEditorToolIconFor, selectionKindDefinitions, shapeKindDefinitions, toolDefinitions } from './app/editor-tools'
+import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
 import { CURSOR_ICON_LIBRARY } from '@/platform/cursor-theme'
 import { translate, type AppLocale, type TranslationKey, type TranslationParams } from '@/core/localization'
 import { outlineDirectionsForKernel } from '@/core/outline-settings'
@@ -138,7 +139,7 @@ const toolLibraryItems = (locale: AppLocale) => {
     ...fillKindDefinitions(locale).map((item) => ({ id: `tool.fill.${item.id}`, name: item.label, largeSource: FILL_KIND_ICONS[item.id] }))
   ]
   const toolItems = items.flatMap((item) => {
-    const normalSource = normalEditorToolIconFor(item.largeSource)
+    const normalSource = ('normalSource' in item ? item.normalSource : undefined) ?? normalEditorToolIconFor(item.largeSource)
     return normalSource ? [{ ...item, normalSource }] : []
   })
   const gradientModeItems = [
@@ -334,11 +335,11 @@ function PanelHeaderPreview({ locale }: { locale: AppLocale }) {
   return <div className="panel component-panel-preview"><header><strong>{componentText(locale, 'componentLibrary.preview.panel')}</strong><div className="panel-actions"><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.show')}><PixelUtilityIcon kind="eye" /></button><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.settings')}><PixelUtilityIcon kind="properties" /></button></div></header><div className="component-panel-content"><Layers2 size={18} /><span>{componentText(locale, 'componentLibrary.preview.draggablePanel')}</span></div></div>
 }
 
-function PixelUtilityIconPreview() {
+function PixelUtilityIconPreview({ locale }: { locale: AppLocale }) {
   const [locked, setLocked] = useState(true)
   const [visible, setVisible] = useState(true)
-  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
-  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button></div>
+  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
+  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button></div>
 }
 
 function ToolIconPreview({ locale }: { locale: AppLocale }) {
@@ -455,11 +456,12 @@ function PressureOptionsPreview({ locale }: { locale: AppLocale }) {
   const [perfectPixels, setPerfectPixels] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [settings, setSettings] = useState<BrushDynamicsSettings>({
-    version: 4,
+    version: 5,
     effects: {
       size: { sensor: null, outputMin: 20, outputMax: 100, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' },
       strength: { sensor: null, outputMin: 25, outputMax: 100, inputMin: 50, inputMax: 2400, curve: 'linear', direction: 'inverse' },
-      gradient: { sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' }
+      gradient: { sensor: 'pressure', outputMin: 0, outputMax: 100, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' },
+      angle: { sensor: null, outputMin: -180, outputMax: 180, inputMin: 0, inputMax: 70, curve: 'hard', direction: 'direct' }
     },
     gradientDither: 'bayer-4'
   })
@@ -471,7 +473,8 @@ function PressureOptionsPreview({ locale }: { locale: AppLocale }) {
       effects: {
         size: { ...current.effects.size, sensor: nextMode === 'off' ? null : 'pressure', inputMin: 0, inputMax: 70, curve: 'hard' },
         strength: { ...current.effects.strength, sensor: nextMode === 'off' ? null : 'speed', inputMin: 50, inputMax: 2400, curve: 'linear' },
-        gradient: { ...current.effects.gradient, sensor: nextMode === 'off' ? null : 'pressure', inputMin: 0, inputMax: 70, curve: 'hard' }
+        gradient: { ...current.effects.gradient, sensor: nextMode === 'off' ? null : 'pressure', inputMin: 0, inputMax: 70, curve: 'hard' },
+        angle: { ...current.effects.angle, sensor: null }
       }
     }))
   }
@@ -487,7 +490,7 @@ function PressureOptionsPreview({ locale }: { locale: AppLocale }) {
     <div className="component-pressure-toolbar">
       <strong>{componentText(locale, tool === 'pencil' ? 'componentLibrary.preview.brush' : 'componentLibrary.preview.eraser')}</strong>
       <CheckboxField className="tool-checkbox" checked={perfectPixels} label={componentText(locale, 'componentLibrary.preview.perfectPixels')} onChange={setPerfectPixels} />
-      <button className={`pressure-trigger ${settings.effects.size.sensor || settings.effects.strength.sensor || settings.effects.gradient.sensor ? 'selected' : ''}`} type="button" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>{componentText(locale, 'toolOptions.brushDynamics')}<ChevronDown size={14} /></button>
+      <button className={`pressure-trigger ${settings.effects.size.sensor || settings.effects.strength.sensor || settings.effects.gradient.sensor || settings.effects.angle.sensor ? 'selected' : ''}`} type="button" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>{componentText(locale, 'toolOptions.brushDynamics')}<ChevronDown size={14} /></button>
     </div>
     {panelOpen && <div className="component-pressure-panel"><BrushDynamicsSettingsPanel settings={settings} tool={tool} intrinsicSize={mode === 'intrinsic'} brushSize={16} documentId="component-library-brush-dynamics" primaryColor={{ r: 248, g: 91, b: 74, a: 255 }} secondaryColor={{ r: 38, g: 44, b: 58, a: 255 }} telemetryPreview={{ documentId: 'component-library-brush-dynamics', pressure: 46, speed: 1380, pointerType: 'pen', active: true }} onChange={updateMapping} onGradientDitherChange={(gradientDither) => setSettings((current) => ({ ...current, gradientDither }))} /></div>}
   </div>

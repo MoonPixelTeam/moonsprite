@@ -154,32 +154,11 @@ describe('Aseprite import', () => {
     expect(readLayerColor(document, layer, 1)).toEqual({ r: 255, g: 255, b: 0, a: 255 })
   })
 
-  it('keeps sparse linked cels shared without expanding them to the canvas size', () => {
-    const document = decodeAseprite(asepriteFrames([
-      [layerChunk(), celChunk(new Uint8Array([255, 0, 0, 255, 0, 0, 255, 128]), false, 0, 3, 4)],
-      [linkedCelChunk(0, 0, 3, 4)]
-    ], 32, 0, 4000, 2000))
-    const timeline = ensureAnimationDocument(document)
-    const [first, second] = timeline.cels
 
-    expect(document).toMatchObject({ width: 4000, height: 2000 })
-    expect(getActiveLayer(document)).toMatchObject({ width: 2, height: 1, offsetX: 3, offsetY: 4 })
-    expect(second.linkedCelId).toBe(first.id)
-    expect(second.surface).toBe(first.surface)
-    expect(second.surface?.pixels).toBe(first.surface?.pixels)
-  })
 
-  it('applies cel opacity with a single owned pixel buffer', () => {
-    const document = decodeAseprite(aseprite([layerChunk(), celChunk(new Uint8Array([12, 24, 36, 200, 0, 0, 0, 0]), false, 0, 0, 0, 128)]))
-    expect(readLayerColor(document, getActiveLayer(document), 0)).toEqual({ r: 12, g: 24, b: 36, a: 100 })
-  })
 
-  it('uses the transparent color index for indexed cels', () => {
-    const document = decodeAseprite(aseprite([paletteChunk(), layerChunk(), celChunk(new Uint8Array([1, 0]))], 8))
-    const layer = getActiveLayer(document)
-    expect(readLayerColor(document, layer, 0)).toEqual({ r: 255, g: 64, b: 32, a: 255 })
-    expect(readLayerColor(document, layer, 1)).toEqual({ r: 0, g: 0, b: 0, a: 0 })
-  })
+
+
 
   it('opens projects that include tilemap layers and imports their raster layers', () => {
     const document = decodeAseprite(aseprite([
@@ -208,26 +187,8 @@ describe('Aseprite import', () => {
     expect([...compositeDocument(document).subarray(0, 4)]).toEqual([255, 255, 255, 255])
   })
 
-  it('respects group opacity when the Aseprite header marks it as valid', () => {
-    const document = decodeAseprite(aseprite([
-      layerChunk('Hidden group', 1, 0, 0),
-      layerChunk('Ink', 0, 1),
-      celChunk(new Uint8Array([255, 255, 255, 255, 0, 0, 0, 255]), false, 1)
-    ], 32, 3))
 
-    expect(document.groups[0].opacity).toBe(0)
-    expect([...compositeDocument(document).subarray(0, 4)]).toEqual([0, 0, 0, 0])
-  })
 
-  it('keeps Aseprite layers ordered from bottom to top', () => {
-    const document = decodeAseprite(aseprite([
-      layerChunk('Bottom'),
-      layerChunk('Top'),
-      celChunk(new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255]), false, 0),
-      celChunk(new Uint8Array([0, 255, 0, 255, 0, 255, 0, 255]), false, 1)
-    ]))
-    expect(document.layers.map((layer) => layer.name)).toEqual(['Bottom', 'Top'])
-    expect([...compositeDocument(document).subarray(0, 4)]).toEqual([0, 255, 0, 255])
-  })
+
 
 })

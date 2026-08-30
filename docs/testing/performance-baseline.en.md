@@ -8,7 +8,7 @@ Record every updated result in the canonical [performance history](performance-h
 
 ## Performance Impact Levels
 
-P0-P4 select the performance suite. Ordinary requests still do not run benchmarks. Every `dev.X` or stable release performs at least one P3 audit; use P4 for critical dependency upgrades, large refactors, or an explicit user request. `pnpm check:performance -- <relevant files...>` selects scenarios automatically. Releases use `pnpm check:release-performance -- <relevant files...>` to enforce at least P3. Raise the level manually when a change affects a larger scope, loop complexity, memory allocation, or high-frequency subscriptions.
+P0-P4 select the performance suite. Ordinary requests still do not run benchmarks. Every `dev.X` or stable release performs at least one P3 audit; use P4 for critical dependency upgrades, large refactors, or an explicit user request. `pnpm check:performance -- <relevant files...>` selects scenarios automatically; targeted P3 runs only the lightweight representative suite for the declared files and never expands to the full matrix. Releases use `pnpm check:performance:release -- <relevant files...>` to enforce at least P3 and run the complete release matrix; explicit `--all` also permits the repository-wide P4 matrix. Omitting files fails immediately. Report, analysis, acceptance, and credential scripts use script tests only and do not trigger Canvas benchmarks. Raise the level manually when a change affects a larger scope, loop complexity, memory allocation, or high-frequency subscriptions.
 
 | Level | Typical scope | Required validation | Performance history |
 | --- | --- | --- | --- |

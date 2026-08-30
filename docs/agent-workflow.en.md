@@ -15,7 +15,7 @@ MoonSprite uses a complete `dev.X` as its development unit. Continuous developme
 | Risk | Typical scope | Minimum development validation |
 | --- | --- | --- |
 | D0 | Documentation, wording, CSS, visual-only layout | No application check; user acceptance |
-| D1 | Ordinary components, menus, dialogs, low-frequency interactions | Type check and targeted module-boundary validation for changed files |
+| D1 | Ordinary components, menus, dialogs, low-frequency interactions | User acceptance; no application check by default |
 | D2 | General Store, shared state, shortcuts, Core/Shared debugging | Type check; explicitly include related tests only when useful |
 | D3 | Coordinates, selections, undo, file formats, persistence, platform security, shared core algorithms, recurring or hard-to-detect bugs | `--risk=high` with targeted regression tests; Rust changes also run the matching `cargo check` |
 
@@ -34,7 +34,7 @@ pnpm check:dev -- <files-actually-changed-by-this-task...>
 Development mode requires an explicit file list. It fails instead of scanning a worktree that may contain unrelated changes. D3 work uses:
 
 ```powershell
-pnpm check:dev -- --risk=high <source-files...> <related-test-files...>
+pnpm check:dev -- --risk=high <source-files...> <focused-test-files...>
 ```
 
 4. `check:dev` behavior:
@@ -43,7 +43,7 @@ pnpm check:dev -- --risk=high <source-files...> <related-test-files...>
 - CSS-only changes do not trigger tests.
 - TypeScript changes trigger type checking.
 - Ordinary Core, Store, and Shared debugging does not require tests merely because of directory location. When tests are listed explicitly, only those tests run; `vitest related` does not expand the scope.
-- `--risk=high` must include at least one related test file or the check fails.
+- JavaScript/TypeScript D3 paths must include at least one `.test`, `.spec`, or `.bench` file. Rust D3 paths run the matching `cargo check` and do not require an unrelated JavaScript test.
 - Renderer changes receive targeted static import checks only for explicitly listed changed files. Full Renderer boundary scanning runs only for releases, architecture audits, or an explicit `pnpm check:boundaries` call without `--files`.
 - Rust and thumbnail changes run only the matching `cargo check`, not an installer build.
 
@@ -72,7 +72,7 @@ When the user explicitly requests “release dev.X,” “prepare a release,” 
 3. Every `dev.X` and formal release begins with one bounded performance audit:
 
 ```powershell
-pnpm check:release-performance -- <cycle-related-files...>
+pnpm check:performance:release -- <cycle-related-files...>
 ```
 
 The auditor selects a suite and produces one stable candidate. Low-risk repeated computation, allocation, subscription, and refresh-scope changes in a concrete React area may be attempted automatically. Pixel, coordinate, undo, selection, format, mutable-cache, and architecture-responsibility changes must pause for confirmation. Each candidate gets at most two rounds. After correctness tests, run:
@@ -112,7 +112,7 @@ Ordinary requests and continuous debugging do not run performance tests. Every `
 - An observed slowdown, long task, or memory anomaly.
 - An explicit user request.
 
-When auditing, `pnpm check:performance -- <related-files...>` classifies the scope and selects targeted scenarios. Releases use `pnpm check:release-performance -- <related-files...>` and enforce at least P3, including `128/512/1024` standard canvases, `800/2048/4000` multi-content large canvases, a `1024` complex animation project, and a small React profiling sentinel. Production-runtime metrics and React profiling metrics use separate production builds and separate suites. Never update baselines from the Vite development server. Matrix scans discover candidates and enforce absolute budgets; a Canvas regression requires at least three samples from both the current run and the accepted baseline. Each scenario initializes independently, and complex undo prepares and verifies its own history depth. Canvas candidates use the median of three samples; algorithm benchmarks use their own statistical error. Select one candidate at a time for at most two rounds. Only a final accepted result updates the baseline, release credential, and one performance-history entry. The GitHub performance workflow is manual-only, uploads reports, and does not write to the repository.
+When auditing, `pnpm check:performance -- <related-files...>` classifies the scope and selects targeted scenarios. Targeted P3 runs only the lightweight representative suite for the declared files; the complete standard, complex, large-canvas, and desktop matrices run only for a release audit or explicit `--all`. Report, analysis, acceptance, and credential scripts use the fast script-test path and do not trigger Canvas benchmarks. Releases use `pnpm check:performance:release -- <related-files...>` and enforce at least P3, including `128/512/1024` standard canvases, `800/2048/4000` multi-content large canvases, a `1024` complex animation project, and a small React profiling sentinel. Use `pnpm check:performance:receipt` only for the final release-credential check. Production-runtime metrics and React profiling metrics use separate production builds and separate suites. Never update baselines from the Vite development server. Matrix scans discover candidates and enforce absolute budgets; a Canvas regression requires at least three samples from both the current run and the accepted baseline. Each scenario initializes independently, and complex undo prepares and verifies its own history depth. Canvas candidates use the median of three samples; algorithm benchmarks use their own statistical error. Select one candidate at a time for at most two rounds. Only a final accepted result updates the baseline, release credential, and one performance-history entry. The GitHub performance workflow is manual-only, uploads reports, and does not write to the repository.
 
 ## 6. Security and Architecture Protection
 
@@ -129,4 +129,4 @@ When auditing, `pnpm check:performance -- <related-files...>` classifies the sco
 
 ## 7. Context Recovery
 
-After context compaction, a model change, or a delayed continuation, read this file, `AGENTS.en.md`, the current branch, `git status`, and the latest release baseline. Continue in `dev.X` development mode by default. A context change does not automatically enter release validation.
+After context compaction, a model change, or a delayed continuation, use the existing summary and read the Chinese `AGENTS.md` plus only the directly needed contract. Do not reread this English mirror or rescan the repository unless the user explicitly requests English-document maintenance or a new fact is missing.

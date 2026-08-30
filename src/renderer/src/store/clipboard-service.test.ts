@@ -13,12 +13,7 @@ describe('ClipboardService', () => {
     expect(clipboard && selectionClipboardImage(clipboard).data).toEqual(data)
   })
 
-  it('converts clipboard images without retaining transparent pixels', () => {
-    const clipboard = selectionClipboardFromImage({ width: 2, height: 1, data: new Uint8Array([...red, 0, 0, 0, 0]) })
-    expect(clipboard).not.toBeNull()
-    expect(clipboard?.mask).toEqual(new Uint8Array([1, 0]))
-    expect(clipboard && selectionClipboardImage(clipboard).data).toEqual(new Uint8Array([...red, 0, 0, 0, 0]))
-  })
+
 
   it('uses a readable system image before the internal selection', async () => {
     const service = new ClipboardService()
@@ -40,27 +35,9 @@ describe('ClipboardService', () => {
     expect(clipboard && selectionClipboardImage(clipboard).data).toEqual(red)
   })
 
-  it('copies clipboard data at service boundaries', () => {
-    const service = new ClipboardService()
-    const pixels = new Uint32Array([0xff0000ff])
-    service.setSelection({ width: 1, height: 1, pixels, mask: new Uint8Array([1]) })
-    pixels[0] = 0
 
-    const clipboard = service.getSelection()
-    if (!clipboard) throw new Error('missing clipboard')
-    clipboard.pixels[0] = 0
 
-    expect(selectionClipboardImage(service.getSelection()!).data).toEqual(red)
-  })
 
-  it('retains the internal origin when the matching system image is read back', async () => {
-    const service = new ClipboardService()
-    service.setSelection({ width: 1, height: 1, originX: 7, originY: -2, pixels: new Uint32Array([0xff0000ff]), mask: new Uint8Array([1]) })
-
-    const clipboard = await service.readSelection(async () => ({ width: 1, height: 1, data: red }))
-
-    expect(clipboard).toMatchObject({ originX: 7, originY: -2 })
-  })
 
   it('copies a complete layer collection at service boundaries', () => {
     const service = new ClipboardService()

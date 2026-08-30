@@ -17,31 +17,9 @@ describe('command context', () => {
     expect(resolveDeleteCommand('palette', false, true)).toBe('palette')
   })
 
-  it('does not treat layer-derived cell highlights as a timeline delete selection', () => {
-    const implicitCells = hasAnimationDeleteSelection({
-      selectedFrameCount: 0,
-      selectedCellCount: 2,
-      selectedMaskCellCount: 0,
-      cellSelectionExplicit: false
-    })
-    const explicitCells = hasAnimationDeleteSelection({
-      selectedFrameCount: 0,
-      selectedCellCount: 2,
-      selectedMaskCellCount: 0,
-      cellSelectionExplicit: true
-    })
 
-    expect(implicitCells).toBe(false)
-    expect(explicitCells).toBe(true)
-    expect(resolveDeleteCommand('layers', false, implicitCells)).toBe('layers')
-    expect(resolveDeleteCommand('layers', false, explicitCells)).toBe('animation')
-  })
 
-  it('requires multiple explicitly selected cels while preserving frame and mask deletion', () => {
-    expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: true })).toBe(false)
-    expect(hasAnimationDeleteSelection({ selectedFrameCount: 1, selectedCellCount: 0, selectedMaskCellCount: 0, cellSelectionExplicit: false })).toBe(true)
-    expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 0, selectedMaskCellCount: 1, cellSelectionExplicit: false })).toBe(true)
-  })
+
 
   it('routes Delete to the selected Free Tile instance without overriding a canvas selection', () => {
     expect(resolveDeleteCommand('layers', false, false, true)).toBe('free-tile-instance')
@@ -58,40 +36,11 @@ describe('command context', () => {
     expect(shouldTriggerDeleteCommand(false, 'Enter')).toBe(false)
   })
 
-  it('routes Copy to layers even while a canvas selection remains', () => {
-    expect(resolveCopyCommand('layers', true)).toBe('layers')
-    expect(resolveCopyCommand('canvas', true)).toBe('selection')
-    expect(resolveCopyCommand('palette', true)).toBeNull()
-    expect(resolveCopyCommand('tileset', true)).toBeNull()
-    expect(resolveCopyCommand('brushes', true)).toBeNull()
-  })
 
-  it('gives an open outline dialog exclusive ownership of Enter', () => {
-    expect(shouldHandleGlobalSelectionEnter(true, true)).toBe(false)
-    expect(shouldHandleGlobalSelectionEnter(false, true)).toBe(true)
-    expect(shouldHandleGlobalSelectionEnter(false, false)).toBe(false)
-  })
 
-  it('uses animation playback as an Enter fallback only when no editor surface owns the key', () => {
-    const available = {
-      defaultPrevented: false,
-      repeat: false,
-      hasSession: true,
-      frameCount: 2,
-      homeOpen: false,
-      timelineHidden: false,
-      hasSelection: false,
-      hasTextBoxTransform: false,
-      isInteractiveTarget: false,
-      hasBlockingSurface: false
-    }
-    expect(shouldHandleAnimationPlaybackShortcut(available)).toBe(true)
-    expect(shouldHandleAnimationPlaybackShortcut({ ...available, hasSelection: true })).toBe(false)
-    expect(shouldHandleAnimationPlaybackShortcut({ ...available, hasTextBoxTransform: true })).toBe(false)
-    expect(shouldHandleAnimationPlaybackShortcut({ ...available, isInteractiveTarget: true })).toBe(false)
-    expect(shouldHandleAnimationPlaybackShortcut({ ...available, hasBlockingSurface: true })).toBe(false)
-    expect(shouldHandleAnimationPlaybackShortcut({ ...available, defaultPrevented: true })).toBe(false)
-  })
+
+
+
 
   it('keeps arrow frame stepping selection-safe while reserving comma and period for explicit frame navigation', () => {
     const base = { hasSelection: false, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false }

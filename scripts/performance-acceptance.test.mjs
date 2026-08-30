@@ -14,6 +14,7 @@ const audit = {
   id: 'audit-1', releaseLabel: 'DEV.3', metrics: [candidate],
   scope: { level: 'P3', suites: [{ id: 'canvas-full' }] },
   analysis: { candidate },
+  releaseAudit: true,
   sourceFingerprint: initialFingerprint,
   attempts: [{ sourceFingerprint: fingerprint, afterMetrics: [{ ...candidate, value: 9 }], comparison: { status: 'accepted', accepted: true, improvementPercent: 10, requiredImprovementPercent: 5, reason: 'accepted' } }],
 }
@@ -38,15 +39,19 @@ test('显式接受生成基线、发布凭证和唯一历史条目', () => {
   })
   assert.equal(result.baseline.metrics[0].value, 9)
   assert.equal(result.receipt.status, 'complete')
+  assert.equal(result.receipt.scopeLevel, 'P3')
+  assert.equal(result.receipt.releaseAudit, true)
   assert.match(result.history, /DEV\.3 自动性能审计/)
   assert.equal(insertPerformanceHistory(result.history, result.history.match(/## 2026-08-08[\s\S]*?(?=## 2026-08-07)/)[0]), result.history)
 })
 
 test('发布凭证必须匹配当前版本和源码指纹', () => {
-  const receipt = { schemaVersion: 1, status: 'complete', releaseLabel: 'DEV.3', auditId: 'audit-1', outcome: 'not-adopted', sourceFingerprint: fingerprint }
+  const receipt = { schemaVersion: 1, status: 'complete', releaseLabel: 'DEV.3', auditId: 'audit-1', outcome: 'not-adopted', scopeLevel: 'P3', releaseAudit: true, sourceFingerprint: fingerprint }
   assert.deepEqual(validatePerformanceReceipt(receipt, { releaseLabel: 'DEV.3', sourceFingerprint: fingerprint }), [])
   assert.match(validatePerformanceReceipt(receipt, { releaseLabel: 'DEV.4', sourceFingerprint: fingerprint })[0], /DEV\.3/)
   assert.match(validatePerformanceReceipt(receipt, { releaseLabel: 'DEV.3', sourceFingerprint: { ...fingerprint, value: 'changed' } }).at(-1), /重新审计/)
+  assert.match(validatePerformanceReceipt({ ...receipt, releaseAudit: false }, { releaseLabel: 'DEV.3', sourceFingerprint: fingerprint })[0], /发布审计/)
+  assert.match(validatePerformanceReceipt({ ...receipt, scopeLevel: 'P1' }, { releaseLabel: 'DEV.3', sourceFingerprint: fingerprint })[0], /至少为 P3/)
 })
 
 test('已发布的历史版本允许在机制启用前通过，不伪造性能结果', () => {

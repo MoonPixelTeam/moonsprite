@@ -156,6 +156,8 @@ interface DrawSelectionOptions {
   showOutline?: boolean
   showHandles?: boolean
   handlePoints?: Array<{ x: number; y: number }>
+  /** Optional exact transform frame, in the same viewport coordinates as the context. */
+  framePoints?: Array<{ x: number; y: number }>
 }
 
 export function drawSelectionOutline({
@@ -171,7 +173,8 @@ export function drawSelectionOutline({
   outlineLight,
   showOutline = true,
   showHandles = true,
-  handlePoints
+  handlePoints,
+  framePoints
 }: DrawSelectionOptions): SelectionBoundaryCache {
   const phase = Math.floor(performance.now() / SELECTION_DASH_STEP_MS) % SELECTION_DASH_CYCLE_CSS
   let nextCache = cache
@@ -231,7 +234,25 @@ export function drawSelectionOutline({
     context.save()
     context.lineCap = 'butt'
     context.lineJoin = 'miter'
-    if (outlineDark === outlineLight) {
+    if (framePoints && framePoints.length === 4) {
+      context.beginPath()
+      context.moveTo(framePoints[0].x, framePoints[0].y)
+      context.lineTo(framePoints[1].x, framePoints[1].y)
+      context.lineTo(framePoints[2].x, framePoints[2].y)
+      context.lineTo(framePoints[3].x, framePoints[3].y)
+      context.closePath()
+      context.lineWidth = outlineDark === outlineLight ? SELECTION_SOLID_OUTLINE_WIDTH_CSS : SELECTION_OUTLINE_WIDTH_CSS
+      context.setLineDash([])
+      context.lineDashOffset = 0
+      context.strokeStyle = outlineLight
+      context.stroke()
+      if (outlineDark !== outlineLight) {
+        context.setLineDash([SELECTION_DASH_LENGTH_CSS, SELECTION_DASH_LENGTH_CSS])
+        context.strokeStyle = outlineDark
+        context.lineDashOffset = -phase
+        context.stroke()
+      }
+    } else if (outlineDark === outlineLight) {
       context.translate(Math.round(box.x) + 0.5, Math.round(box.y) + 0.5)
       context.lineWidth = SELECTION_SOLID_OUTLINE_WIDTH_CSS
       context.setLineDash([])

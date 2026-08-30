@@ -276,6 +276,9 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     if (!grid) return
     const ids = [...session.selectedPaletteIds]
     const baseSlots = [...paletteSlots]
+    // A box selection is a temporary gesture; once dragging starts, the outline
+    // must be derived from the moving preview slots so it follows the colors.
+    setPaletteBoxSelection(null)
     dragRef.current = { ids, baseSlots, previewSlots: baseSlots, columns: paletteColumns, clickedId, pointerId: event.pointerId, element: grid, startX: event.clientX, startY: event.clientY, moved: false, targetSlot: null }
     grid.setPointerCapture?.(event.pointerId)
     setSelectionOutlineHovered(true)
@@ -706,11 +709,13 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
         const entry = id === null ? null : paletteById.get(id) ?? null
         const roles = entry ? paletteColorRoles(entry.color, session.primaryColor, session.secondaryColor) : { primary: false, secondary: false }
         const selected = Boolean(entry && displayedSelectedIds.includes(entry.id))
+        const hasOccupiedRight = entry !== null && slotIndex % paletteColumns < paletteColumns - 1 && displayedSlots[slotIndex + 1] !== null
+        const hasOccupiedBottom = entry !== null && slotIndex + paletteColumns < displayedSlots.length && displayedSlots[slotIndex + paletteColumns] !== null
         const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
         const label = entry
           ? `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`
           : t('palette.emptySlot', { index: slotIndex + 1 })
-        return <span key={slotIndex} className="palette-swatch-wrap"><button
+        return <span key={slotIndex} className={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''} ${hasOccupiedRight ? 'palette-swatch-has-right' : ''} ${hasOccupiedBottom ? 'palette-swatch-has-bottom' : ''}`.trim()}><button
           data-palette-slot={slotIndex}
           data-palette-id={entry?.id}
           className={`swatch palette-slot ${entry ? 'occupied' : 'empty'} ${focusedSlot === slotIndex ? 'focused' : ''} ${selected ? 'selected' : ''} ${roles.primary ? 'primary' : ''} ${roles.secondary ? 'secondary' : ''} ${entry?.color.a === 0 ? 'transparent' : ''} ${entry && draggingIds.includes(entry.id) ? 'dragging' : ''} ${dropTargetSlot === slotIndex ? 'drop-target' : ''}`}

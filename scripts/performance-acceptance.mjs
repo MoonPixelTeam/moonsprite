@@ -1,4 +1,5 @@
 const acceptedOutcomes = new Set(['adopted', 'not-adopted', 'approved-no-change'])
+const performanceLevelRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4 }
 
 export function validateAcceptance(audit, { outcome, reason, userApproved, sourceFingerprint }) {
   const errors = []
@@ -73,6 +74,8 @@ export function buildAcceptedPerformanceState({ audit, outcome, reason, accepted
     auditId: audit.id,
     outcome,
     acceptedAt,
+    scopeLevel: audit.scope.level,
+    releaseAudit: audit.releaseAudit === true || audit.allFiles === true,
     sourceFingerprint,
   }
   return {
@@ -82,7 +85,7 @@ export function buildAcceptedPerformanceState({ audit, outcome, reason, accepted
   }
 }
 
-export function validatePerformanceReceipt(receipt, { releaseLabel, sourceFingerprint }) {
+export function validatePerformanceReceipt(receipt, { releaseLabel, sourceFingerprint, minimumLevel = 'P3' }) {
   const errors = []
   if (receipt?.status === 'legacy') {
     if (receipt.releaseLabel !== releaseLabel) errors.push(`历史性能凭证属于 ${receipt?.releaseLabel ?? '未知版本'}，当前目标是 ${releaseLabel}。`)
@@ -93,6 +96,12 @@ export function validatePerformanceReceipt(receipt, { releaseLabel, sourceFinger
   if (receipt?.releaseLabel !== releaseLabel) errors.push(`性能凭证属于 ${receipt?.releaseLabel ?? '未知版本'}，当前目标是 ${releaseLabel}。`)
   if (!acceptedOutcomes.has(receipt?.outcome)) errors.push('性能凭证缺少有效的审计结果。')
   if (!receipt?.auditId) errors.push('性能凭证缺少审计编号。')
+  if (receipt?.releaseAudit !== true) errors.push('性能发布凭证必须来自发布审计或显式 --all 审计。')
+  if (!Object.hasOwn(performanceLevelRank, receipt?.scopeLevel)) {
+    errors.push('性能发布凭证缺少有效的性能等级。')
+  } else if (!Object.hasOwn(performanceLevelRank, minimumLevel) || performanceLevelRank[receipt.scopeLevel] < performanceLevelRank[minimumLevel]) {
+    errors.push(`性能发布凭证等级必须至少为 ${minimumLevel}。`)
+  }
   if (receipt?.sourceFingerprint?.value !== sourceFingerprint.value) errors.push('性能审计后性能相关源码发生了变化，需要重新审计。')
   return errors
 }

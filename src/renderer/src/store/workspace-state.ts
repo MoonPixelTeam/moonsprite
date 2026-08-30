@@ -15,6 +15,7 @@ import type {
   FreeTileInstance,
   FreeTileSourceLayer,
   GradientDither,
+  GradientStop,
   GradientType,
   ImageBrush,
   ImageBrushSettings,
@@ -31,6 +32,7 @@ import type {
   SelectionKind,
   SelectionMask,
   SelectionMode,
+  SelectionQuad,
   SelectionRect,
   ShapeKind,
   ShapeRatio,
@@ -178,6 +180,8 @@ export interface WorkspaceToolCommands {
   setGradientContiguous(contiguous: boolean): void
   setGradientType(type: GradientType): void
   setGradientDither(dither: GradientDither): void
+  setGradientFreeform(enabled: boolean): void
+  setGradientStops(stops: GradientStop[]): void
   setMoveAutoSelect(enabled: boolean): void
   setPerfectPixels(enabled: boolean): void
   setSymmetryAxis(axis: keyof SymmetryAxes, enabled: boolean): void
@@ -217,10 +221,14 @@ export interface WorkspaceViewSelectionCommands {
   setViewportSizeForDocument(documentId: string, size: { width: number; height: number }): void
   setTileRepeatMode(mode: TileRepeatMode): void
   setSelection(selection: SelectionMask | null): void
+  setSelectionPropertiesActive(active: boolean): void
+  updateSelectionProperties(patch: Partial<SelectionRect> & { angle?: number; shearAngle?: number }): void
+  shrinkSelectionToContent(): void
   setSelectionPivot(pivot: SelectionPivot | null): void
   invertSelection(): void
   toggleSelectionOutline(): void
   beginLayerTransform(): void
+  beginFreeTransform(): void
   beginSelectedTextBoxTransform(): void
   previewTextBoxTransform(bounds: SelectionRect): void
   commitTextBoxTransform(bounds: SelectionRect): void
@@ -243,7 +251,7 @@ export interface WorkspaceViewSelectionCommands {
   fillForeground(): void
   setOutlinePreview(preview: OutlinePreview | null): void
   outlineActiveSelection(settings: OutlineSettings): boolean
-  beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[]): void
+  beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   beginFreeTileFloatingSelectionTransform(options: {
     sourceId: string
     instanceId: string
@@ -259,11 +267,13 @@ export interface WorkspaceViewSelectionCommands {
     transformTarget?: SelectionRect
     transformAngle?: number
     transformShear?: SelectionShearTransform
+    transformQuad?: SelectionQuad
   }): void
   commitFloatingPaste(deselectLabel?: string): void
   cancelFloatingPaste(): void
-  updateFloatingPastePreview(edit: PixelEdit | null, target: SelectionMask, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, layers?: SelectionTransformLayerState[]): void
+  updateFloatingPastePreview(edit: PixelEdit | null, target: SelectionMask, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   moveActiveSelection(deltaX: number, deltaY: number): void
+  centerActiveContent(axis: 'both' | 'horizontal' | 'vertical'): void
   moveActiveSelectionWithSelectionHistory(deltaX: number, deltaY: number): void
   flipActiveSelection(axis: 'horizontal' | 'vertical'): void
   transformActiveSelection(before: SelectionMask, after: SelectionMask, angle?: number): void
@@ -468,6 +478,8 @@ export interface WorkspaceLayerCommands {
   selectGroupMask(groupId: string, frameId: string, additive?: boolean): void
   toggleLayerMaskVisibility(celId: string): void
   toggleGroupMaskVisibility(groupId: string, frameId: string): void
+  setLayerMaskMoveWithOwner(celId: string, enabled: boolean): void
+  setGroupMaskMoveWithOwner(groupId: string, frameId: string, enabled: boolean): void
   createLayerMask(celIdOrLayerId: string, frameId?: string): void
   createLayerMasksForLayer(layerId: string): void
   createGroupMask(groupId: string, frameId?: string): void

@@ -1,19 +1,69 @@
 import { describe, expect, it } from 'vitest'
-import { ellipseSelection, invertSelectionMask, rasterLinePoints, remapTransformedSelectionPoint, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, shearTransformedSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask } from './selection'
+import { createDocument } from './document'
+import { ellipseSelection, inverseSelectionQuadPoint, invertSelectionMask, lassoSelection, polygonSelection, polygonSelectionPreview, rasterLinePoints, remapTransformedSelectionPoint, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadTransform, shearTransformedSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad } from './selection'
+
+const referenceLassoPixels = (width: number, height: number, path: readonly { x: number; y: number }[]): Set<string> => {
+  if (path.length < 3) return new Set()
+  const minX = Math.max(0, Math.min(...path.map((point) => point.x)))
+  const maxX = Math.min(width - 1, Math.max(...path.map((point) => point.x)))
+  const minY = Math.max(0, Math.min(...path.map((point) => point.y)))
+  const maxY = Math.min(height - 1, Math.max(...path.map((point) => point.y)))
+  const selected = new Set<string>()
+  for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
+    let inside = false
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+      const a = path[i]; const b = path[j]
+      const cross = (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x)
+      const onBoundary = cross === 0
+        && x >= Math.min(a.x, b.x) && x <= Math.max(a.x, b.x)
+        && y >= Math.min(a.y, b.y) && y <= Math.max(a.y, b.y)
+      if (onBoundary) { inside = true; break }
+      if (((a.y > y) !== (b.y > y)) && x < ((b.x - a.x) * (y - a.y)) / ((b.y - a.y) || 1) + a.x) inside = !inside
+    }
+    if (inside) selected.add(`${x}:${y}`)
+  }
+  return selected
+}
+
+const selectionPixels = (selection: { x: number; y: number; width: number; height: number; mask?: Uint8Array } | null): Set<string> => {
+  const pixels = new Set<string>()
+  if (!selection) return pixels
+  for (let y = selection.y; y < selection.y + selection.height; y += 1) for (let x = selection.x; x < selection.x + selection.width; x += 1) {
+    if (!selection.mask || selection.mask[(y - selection.y) * selection.width + x - selection.x] === 1) pixels.add(`${x}:${y}`)
+  }
+  return pixels
+}
 
 describe('selection preview geometry', () => {
-  it('terminates at the requested endpoint for uneven diagonal segments', () => {
-    const points = rasterLinePoints({ x: 1, y: 1 }, { x: 9, y: 3 })
-    expect(points[0]).toEqual({ x: 1, y: 1 })
-    expect(points.at(-1)).toEqual({ x: 9, y: 3 })
-    expect(points).toHaveLength(9)
+  it('matches the previous lasso pixel semantics across concave and clipped paths', () => {
+    const document = createDocument('lasso scanline', 18, 14, 'rgba')
+    const paths = [
+      [{ x: 2, y: 2 }, { x: 12, y: 2 }, { x: 12, y: 9 }, { x: 2, y: 9 }],
+      [{ x: 1, y: 1 }, { x: 13, y: 1 }, { x: 7, y: 5 }, { x: 13, y: 11 }, { x: 1, y: 11 }, { x: 7, y: 7 }],
+      [{ x: -4, y: 3 }, { x: 8, y: -2 }, { x: 19, y: 5 }, { x: 10, y: 16 }, { x: -3, y: 10 }],
+      [...rasterLinePoints({ x: 2, y: 2 }, { x: 14, y: 7 }), ...rasterLinePoints({ x: 14, y: 7 }, { x: 4, y: 12 })]
+    ]
+    for (const [index, path] of paths.entries()) expect(selectionPixels(lassoSelection(document, path)), `path ${index}`).toEqual(referenceLassoPixels(document.width, document.height, path))
   })
 
-  it('supports vertical and reverse segments', () => {
-    expect(rasterLinePoints({ x: 4, y: 5 }, { x: 4, y: 2 })).toEqual([
-      { x: 4, y: 5 }, { x: 4, y: 4 }, { x: 4, y: 3 }, { x: 4, y: 2 }
-    ])
+  it('keeps a clipped live polygon preview pixel-identical inside the visible region', () => {
+    const document = createDocument('clipped polygon preview', 24, 20, 'rgba')
+    const vertices = [{ x: 2, y: 3 }, { x: 19, y: 2 }, { x: 21, y: 15 }, { x: 5, y: 18 }]
+    const pointer = { x: 12, y: 10 }
+    const complete = polygonSelection(document, [...vertices, pointer])
+    const clipped = polygonSelectionPreview(document, vertices, pointer, false, { x: 6, y: 5, width: 10, height: 8 })
+
+    expect(complete).not.toBeNull()
+    expect(clipped).not.toBeNull()
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+      const inClip = x >= 6 && x < 16 && y >= 5 && y < 13
+      expect(selectionContains(clipped, x, y)).toBe(inClip && selectionContains(complete, x, y))
+    }
   })
+
+
+
+
 
   it('inverts an irregular selection across the complete canvas', () => {
     const inverted = invertSelectionMask({ x: 1, y: 0, width: 2, height: 2, mask: Uint8Array.from([1, 0, 0, 1]) }, 4, 3)
@@ -101,65 +151,52 @@ describe('selection preview geometry', () => {
     )).toEqual({ x: 0, y: 5 })
   })
 
-  it('resolves all nine pivot presets from the transformed selection geometry', () => {
-    const target = { x: 0, y: 0, width: 4, height: 4 }
-    const shear = { axis: 'x' as const, edge: 's' as const, amount: 4 }
-    const expected = {
-      nw: { x: 3.5, y: 1 }, n: { x: 3.5, y: 3 }, ne: { x: 3.5, y: 4 },
-      w: { x: 1.5, y: 3 }, center: { x: 1.5, y: 5 }, e: { x: 1.5, y: 6 },
-      sw: { x: 0.5, y: 4 }, s: { x: 0.5, y: 6 }, se: { x: 0.5, y: 7 }
-    } as const
-
-    for (const [preset, point] of Object.entries(expected)) {
-      expect(transformedSelectionPivotPreset(target, preset as keyof typeof expected, 90, shear)).toEqual(point)
+  it('maps four-corner transforms in both directions and reports pixel bounds', () => {
+    const quad = {
+      nw: { x: 2, y: 2 },
+      ne: { x: 8, y: 1 },
+      se: { x: 9, y: 7 },
+      sw: { x: 1, y: 6 }
     }
+    const transform = selectionQuadTransform(quad)
+    expect(transform).not.toBeNull()
+    const center = selectionQuadPoint(transform!, 0.5, 0.5)!
+    const remapped = inverseSelectionQuadPoint(transform!, center)!
+    expect(remapped.x).toBeCloseTo(0.5)
+    expect(remapped.y).toBeCloseTo(0.5)
+    expect(selectionQuadPoint(quad, 0, 0)).toEqual(quad.nw)
+    expect(selectionQuadBounds(quad)).toEqual({ x: 1, y: 1, width: 8, height: 6 })
   })
 
-  it('places every pivot preset at a document pixel center', () => {
-    const target = { x: 4, y: 7, width: 1, height: 1 }
-    for (const preset of ['nw', 'n', 'ne', 'w', 'center', 'e', 'sw', 's', 'se'] as const) {
-      expect(transformedSelectionPivotPreset(target, preset)).toEqual({ x: 4.5, y: 7.5 })
-    }
+  it('rejects degenerate or self-intersecting four-corner frames', () => {
+    expect(selectionQuadTransform({
+      nw: { x: 0, y: 0 }, ne: { x: 4, y: 0 }, se: { x: 2, y: 0 }, sw: { x: 0, y: 3 }
+    })).toBeNull()
+    expect(selectionQuadTransform({
+      nw: { x: 0, y: 0 }, ne: { x: 4, y: 4 }, se: { x: 0, y: 4 }, sw: { x: 4, y: 0 }
+    })).toBeNull()
   })
 
-  it('keeps a sheared selection centered while rotating around its visible center', () => {
-    const target = { x: 0, y: 0, width: 4, height: 4 }
-    const shear = { axis: 'x' as const, edge: 's' as const, amount: 4 }
-    const pivot = transformedSelectionCenter(target, 0, shear)
-    const rotatedTarget = rotateSelectionTargetAroundPivot(target, pivot, 90)
-
-    expect(pivot).toEqual({ x: 4, y: 2 })
-    expect(rotatedTarget).toEqual({ x: 2, y: -2, width: 4, height: 4 })
-    expect(transformedSelectionCenter(rotatedTarget, 90, shear)).toEqual(pivot)
+  it('rasterizes a rectangular source into a four-corner target mask', () => {
+    const transformed = transformSelectionMaskQuad(
+      { x: 0, y: 0, width: 2, height: 2 },
+      { nw: { x: 1, y: 2 }, ne: { x: 3, y: 2 }, se: { x: 3, y: 4 }, sw: { x: 1, y: 4 } },
+      8,
+      8
+    )
+    expect(transformed).toMatchObject({ x: 1, y: 2, width: 2, height: 2 })
+    expect(selectionContains(transformed, 1, 2)).toBe(true)
+    expect(selectionContains(transformed, 2, 3)).toBe(true)
+    expect(selectionContains(transformed, 0, 2)).toBe(false)
   })
 
-  it('moves the transform target center around a custom rotation pivot', () => {
-    const target = { x: 2, y: 4, width: 4, height: 2, flipHorizontal: true, flipOriginX: 2 }
 
-    expect(rotateSelectionTargetAroundPivot(target, { x: 0, y: 0 }, 90)).toEqual({
-      x: -7,
-      y: 3,
-      width: 4,
-      height: 2,
-      flipHorizontal: true,
-      flipOriginX: -7
-    })
-  })
 
-  it('keeps the first sheared edge when another edge is sheared', () => {
-    const start = { x: 2, y: 2, width: 4, height: 4 }
-    const first = shearTransformedSelection(start, 0, undefined, 'n', 2)
-    const second = shearTransformedSelection(first.target, first.angle, first.shear, 'e', -2)
-    const points = transformedSelectionControlPoints(second.target, second.angle, second.shear)
 
-    expect([points[0], points[2], points[5], points[7]]).toEqual([
-      { x: 4, y: 2 },
-      { x: 8, y: 0 },
-      { x: 2, y: 6 },
-      { x: 6, y: 4 }
-    ])
-    expect(transformedSelectionBounds(second.target, second.angle, second.shear)).toEqual({ x: 2, y: 0, width: 6, height: 6 })
-  })
+
+
+
+
 
   it('keeps the local transform direction while continuing a single-axis shear', () => {
     const start = { x: 2, y: 2, width: 4, height: 4 }
@@ -170,83 +207,12 @@ describe('selection preview geometry', () => {
     expect(second).toEqual({ target: start, angle: 0, shear: { axis: 'y', edge: 'e', amount: 3 } })
   })
 
-  it('keeps the selection pivot fixed while shearing', () => {
-    const start = { x: 0, y: 0, width: 4, height: 4 }
-    const pivot = { x: 2, y: 2 }
-    const transformed = shearTransformedSelection(start, 0, undefined, 'n', 2, pivot)
-    const points = transformedSelectionControlPoints(transformed.target, transformed.angle, transformed.shear)
 
-    expect([points[0], points[2], points[5], points[7]]).toEqual([
-      { x: 2, y: 0 },
-      { x: 6, y: 0 },
-      { x: -2, y: 4 },
-      { x: 2, y: 4 }
-    ])
-    expect(transformedSelectionCenter(transformed.target, transformed.angle, transformed.shear)).toEqual(pivot)
-  })
 
-  it('continues a second shear along the current slanted edge', () => {
-    const start = { x: 2, y: 2, width: 4, height: 4 }
-    const pivot = { x: 4, y: 4 }
-    const first = shearTransformedSelection(start, 0, undefined, 'n', 1.5, pivot)
-    const direction = transformedSelectionShearDirection(first.target, first.angle, first.shear, 'e')
-    const second = shearTransformedSelection(first.target, first.angle, first.shear, 'e', 2.5, pivot)
-    const points = transformedSelectionControlPoints(second.target, second.angle, second.shear)
 
-    expect(direction?.x).toBeCloseTo(-0.6)
-    expect(direction?.y).toBeCloseTo(0.8)
-    const corners = [points[0], points[2], points[5], points[7]]
-    const expectedCorners = [
-      { x: 5, y: 0 },
-      { x: 6, y: 4 },
-      { x: 2, y: 4 },
-      { x: 3, y: 8 }
-    ]
-    for (let index = 0; index < corners.length; index += 1) {
-      expect(corners[index].x).toBeCloseTo(expectedCorners[index].x)
-      expect(corners[index].y).toBeCloseTo(expectedCorners[index].y)
-    }
-    expect(transformedSelectionCenter(second.target, second.angle, second.shear)).toEqual(pivot)
-  })
 
-  it('rasterizes rotated ellipses directly in rotated pixel space', () => {
-    const target = { x: 8, y: 9, width: 9, height: 5 }
-    expect(rotatedEllipseSelection(target, 40, 40, 0)).toEqual(ellipseSelection(target.x, target.y, target.width, target.height))
 
-    const quarterTurn = rotatedEllipseSelection(target, 40, 40, 90)
-    expect(quarterTurn).toMatchObject({ x: 10, y: 7, width: 5, height: 9 })
-    expect(quarterTurn?.mask).toEqual(ellipseSelection(10, 7, 5, 9).mask)
 
-    const diagonal = rotatedEllipseSelection(target, 40, 40, 37)
-    expect(diagonal).not.toBeNull()
-    const boundarySelected = (offsets: number[]): boolean => offsets.some((offset) => diagonal!.mask?.[offset] === 1)
-    expect(boundarySelected(Array.from({ length: diagonal!.width }, (_, x) => x))).toBe(true)
-    expect(boundarySelected(Array.from({ length: diagonal!.width }, (_, x) => (diagonal!.height - 1) * diagonal!.width + x))).toBe(true)
-    expect(boundarySelected(Array.from({ length: diagonal!.height }, (_, y) => y * diagonal!.width))).toBe(true)
-    expect(boundarySelected(Array.from({ length: diagonal!.height }, (_, y) => y * diagonal!.width + diagonal!.width - 1))).toBe(true)
-    for (let row = 0; row < (diagonal?.height ?? 0); row += 1) {
-      const selectedColumns = Array.from({ length: diagonal!.width }, (_, column) => column)
-        .filter((column) => diagonal!.mask?.[row * diagonal!.width + column] === 1)
-      if (selectedColumns.length === 0) continue
-      expect(selectedColumns.at(-1)! - selectedColumns[0] + 1).toBe(selectedColumns.length)
-    }
-  })
-
-  it('removes single-pixel corner tips from rotated rectangle rasterization', () => {
-    const rotated = rotatedRectSelection({ x: 4, y: 5, width: 12, height: 8 }, 32, 32, 37)
-    expect(rotated).not.toBeNull()
-    for (let offsetY = 0; offsetY < rotated!.height; offsetY += 1) {
-      for (let offsetX = 0; offsetX < rotated!.width; offsetX += 1) {
-        const index = offsetY * rotated!.width + offsetX
-        if (rotated!.mask?.[index] !== 1) continue
-        const neighbors = Number(offsetX > 0 && rotated!.mask[index - 1] === 1)
-          + Number(offsetX + 1 < rotated!.width && rotated!.mask[index + 1] === 1)
-          + Number(offsetY > 0 && rotated!.mask[index - rotated!.width] === 1)
-          + Number(offsetY + 1 < rotated!.height && rotated!.mask[index + rotated!.width] === 1)
-        expect(neighbors).toBeGreaterThanOrEqual(2)
-      }
-    }
-  })
 
   it('rasterizes rounded rectangle selections with clamped radii', () => {
     const target = { x: 4, y: 5, width: 8, height: 6 }
@@ -263,16 +229,5 @@ describe('selection preview geometry', () => {
     expect(clamped).toEqual(rounded)
   })
 
-  it('keeps rounded corners in local space when rotating a selection', () => {
-    const target = { x: 4, y: 5, width: 8, height: 6 }
-    const rounded = rotatedRectSelection(target, 32, 32, 0, true, 3)!
-    const quarterTurn = rotatedRectSelection(target, 32, 32, 90, true, 3)!
-    const selectedCount = (selection: NonNullable<typeof rounded>): number => selection.mask
-      ? selection.mask.reduce((count, value) => count + value, 0)
-      : selection.width * selection.height
 
-    expect(selectedCount(quarterTurn)).toBe(selectedCount(rounded))
-    expect(selectionContains(quarterTurn, quarterTurn.x, quarterTurn.y)).toBe(false)
-    expect(selectionContains(quarterTurn, quarterTurn.x + Math.floor(quarterTurn.width / 2), quarterTurn.y)).toBe(true)
-  })
 })

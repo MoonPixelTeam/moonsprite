@@ -6,6 +6,7 @@ import { brushFolderContains, remapBrushFolderId } from '@/core/brush-folder-tre
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { translate, type TranslationKey, type TranslationParams } from '@/core/localization'
 import { createResourceInfoReader } from './resource-info-cache'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 
 const tr = (key: TranslationKey, params?: TranslationParams): string => translate(loadEditorPreferences().language, key, params)
 const dialogLanguage = (): string => loadEditorPreferences().language
@@ -258,10 +259,32 @@ export const decodeClipboardImagePayload = (payload: Uint8Array): ClipboardImage
   return { width, height, data: payload.subarray(8) }
 }
 
-const writeBinaryAtomic = (filePath: string, data: Uint8Array): Promise<void> => invoke(
-  'write_binary_atomic',
+const trackedBinaryInvoke = <T>(name: string, data: Uint8Array, task: () => Promise<T>): Promise<T> => {
+  const diagnostic = runtimeDiagnosticsActive()
+    ? beginRuntimeDiagnosticOperation(name, { bytes: data.byteLength }, 5_000)
+    : null
+  try {
+    return task().then((result) => {
+      diagnostic?.finish('ok')
+      return result
+    }, (error: unknown) => {
+      diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+      throw error
+    })
+  } catch (error) {
+    diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+    return Promise.reject(error)
+  }
+}
+
+const writeBinaryAtomic = (filePath: string, data: Uint8Array): Promise<void> => trackedBinaryInvoke(
+  'file.write',
   data,
-  { headers: { 'x-moonsprite-file-path': encodeURIComponent(filePath) } }
+  () => invoke(
+    'write_binary_atomic',
+    data,
+    { headers: { 'x-moonsprite-file-path': encodeURIComponent(filePath) } }
+  )
 )
 
 const SCALED_PNG_PROGRESS_EVENT = 'moonsprite:scaled-png-progress'
@@ -311,13 +334,30 @@ const writeScaledPngAtomic = async (filePath: string, source: Uint8Array, option
   }
 }
 
-const writeProjectIncremental = (filePath: string, sourcePath: string, data: Uint8Array): Promise<void> => invoke(
-  'write_project_incremental',
+const writeProjectIncremental = (filePath: string, sourcePath: string, data: Uint8Array): Promise<void> => trackedBinaryInvoke(
+  'project.write-incremental',
   data,
-  { headers: {
-    'x-moonsprite-file-path': encodeURIComponent(filePath),
-    'x-moonsprite-source-path': encodeURIComponent(sourcePath)
-  } }
+  () => invoke(
+    'write_project_incremental',
+    data,
+    { headers: {
+      'x-moonsprite-file-path': encodeURIComponent(filePath),
+      'x-moonsprite-source-path': encodeURIComponent(sourcePath)
+    } }
+  )
+)
+
+const writeRecovery = (id: string, name: string, data: Uint8Array): Promise<void> => trackedBinaryInvoke(
+  'recovery.write',
+  data,
+  () => invoke(
+    'write_recovery',
+    data,
+    { headers: {
+      'x-moonsprite-recovery-id': encodeURIComponent(id),
+      'x-moonsprite-recovery-name': encodeURIComponent(name)
+    } }
+  )
 )
 
 export const createTauriApi = (): MoonSpriteApi => ({
@@ -382,7 +422,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   openBackgroundPresetFolder: () => invoke('open_background_preset_folder'),
   listRecoveries: (retentionDays) => invoke('list_recoveries', { retentionDays }),
   readRecovery: (id) => invokeBytes('read_recovery', { id }),
-  writeRecovery: (id, name, data) => invoke('write_recovery', { id, name, data: Array.from(data) }),
+  writeRecovery,
   deleteRecovery: (id) => invoke('delete_recovery', { id }),
   listGalleryProjects: () => invoke('list_gallery_projects'),
   listFolderProjects: (directoryPath) => invoke('list_folder_projects', { directoryPath }),
@@ -411,8 +451,15 @@ export const createTauriApi = (): MoonSpriteApi => ({
     let removeListener: (() => void) | null = null
     void listen('app:request-close', () => { if (active) void callback() }).then((remove) => {
       removeListener = remove
-      if (!active) remove()
-    })
+      if (!active) {
+        remove()
+        return
+      }
+      // The native close request can happen before this asynchronous event
+      // listener is installed. Ask the backend to replay any still-pending
+      // request now that the listener is ready.
+      void invoke('close_listener_ready').catch(() => {})
+    }).catch(() => {})
     return () => { active = false; removeListener?.() }
   },
   cancelClose: () => { void invoke('cancel_close') },

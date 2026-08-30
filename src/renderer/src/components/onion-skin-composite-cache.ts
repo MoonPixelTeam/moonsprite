@@ -1,5 +1,6 @@
 import type { RgbaColor, SelectionRect, SpriteDocument } from '@shared/types'
 import { compositeAnimationFrameRegion, tintOnionSkinPixels, type OnionSkinFrameRef } from '@/core/onion-skin'
+import { deviceAlignedCanvasRect, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
 import type { RasterContext2D } from './canvas-selection-renderer'
 
 interface OnionSkinTile {
@@ -60,6 +61,7 @@ interface DrawOnionSkinOptions {
   revision: number
   invalidation?: OnionSkinInvalidation | null
   imageSmoothingEnabled?: boolean
+  devicePixelRatio?: CanvasDeviceScaleInput
 }
 
 const TILE_SIZE = 512
@@ -95,7 +97,7 @@ export class OnionSkinCompositeCache {
     for (const frameId of new Set(frameIds)) this.frames.delete(frameId)
   }
 
-  draw({ context, document, refs, style, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, zoom, revision, invalidation = null, imageSmoothingEnabled = false }: DrawOnionSkinOptions): void {
+  draw({ context, document, refs, style, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, zoom, revision, invalidation = null, imageSmoothingEnabled = false, devicePixelRatio = 1 }: DrawOnionSkinOptions): void {
     const namespace = `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${refs.map((ref) => `${ref.frameId}:${ref.side}:${ref.distance}`).join(',')}:${styleKey(style)}`
     if (this.namespace !== namespace) {
       this.namespace = namespace
@@ -120,14 +122,22 @@ export class OnionSkinCompositeCache {
 
     context.save()
     context.beginPath()
-    context.rect(originX, originY, canvasWidth, canvasHeight)
+    const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, devicePixelRatio)
+    context.rect(boundary.left, boundary.top, boundary.width, boundary.height)
     context.clip()
     context.imageSmoothingEnabled = imageSmoothingEnabled
     if (imageSmoothingEnabled) context.imageSmoothingQuality = 'high'
     for (const ref of refs) {
       const frame = this.frameCache(ref)
       const region = this.regionFor(document, frame, style, fromX, fromY, toX, toY, zoom, revision, imageSmoothingEnabled)
-      context.drawImage(region.canvas, originX + region.x * zoom, originY + region.y * zoom, region.width * zoom, region.height * zoom)
+      const destination = deviceAlignedCanvasRect(
+        originX + region.x * zoom,
+        originY + region.y * zoom,
+        region.width * zoom,
+        region.height * zoom,
+        devicePixelRatio
+      )
+      context.drawImage(region.canvas, destination.left, destination.top, destination.width, destination.height)
     }
     context.restore()
   }

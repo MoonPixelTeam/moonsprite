@@ -1,7 +1,7 @@
-import type { AnimationCel, MoveKind, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionRect, ShapeRatio, SpriteDocument, TilemapCell, ToolId } from '@shared/types'
+import type { AnimationCel, GradientStop, MoveKind, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, ShapeRatio, SpriteDocument, TilemapCell, ToolId } from '@shared/types'
 import { revertPixelEdit, type PixelEdit } from './history'
 import { restoreSelectionTranslationPreview, type BrushGradientSample, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from './tools'
-import { combineSelection, inverseTransformedSelectionPoint, rasterLinePoints, rectSelection, remapTransformedSelectionPoint, selectionBoundarySegments, selectionContains, transformedSelectionBounds, transformedSelectionPivotPreset, type SelectionShearTransform } from './selection'
+import { combineSelection, inverseSelectionQuadPoint, inverseTransformedSelectionPoint, rasterLinePoints, rectSelection, remapTransformedSelectionPoint, selectionBoundarySegments, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from './selection'
 import { balancedStairLinePoints } from './pixel-line'
 import { modifierShortcutHeld } from './shortcuts'
 import type { TilemapEdit, TilemapSelectionMoveSource } from './tilemap'
@@ -75,6 +75,7 @@ export interface CanvasPoint {
 export interface CanvasStrokePoint extends CanvasPoint {
   size?: number
   opacityScale?: number
+  angle?: number
   color?: RgbaColor
   gradient?: BrushGradientSample
   coverageKey?: string
@@ -396,6 +397,7 @@ export interface CanvasDragState {
   constrain?: boolean
   path?: CanvasStrokePoint[]
   pathRedo?: CanvasStrokePoint[]
+  polygonPathRasterCache?: PolygonPathRasterCache
   isoAlignedStroke?: 'pencil' | 'eraser'
   isoAlignedDirection?: IsoLineDirection
   isoAlignedRawAnchor?: CanvasPoint
@@ -419,9 +421,15 @@ export interface CanvasDragState {
   previewTarget?: SelectionRect
   previewAngle?: number
   previewShear?: SelectionShearTransform
+  /** Projective free-transform geometry. The rectangle fields remain the
+   * conservative bounds used by legacy transform code and invalidation. */
+  freeTransform?: boolean
+  transformStartQuad?: SelectionQuad
+  previewQuad?: SelectionQuad
   appliedPreviewTarget?: SelectionRect
   appliedPreviewAngle?: number
   appliedPreviewShear?: SelectionShearTransform
+  appliedPreviewQuad?: SelectionQuad
   appliedPreviewPivot?: CanvasPoint
   selectionPivotStart?: CanvasPoint
   previewPivot?: CanvasPoint
@@ -455,6 +463,7 @@ export interface CanvasDragState {
   layerOffsets?: Record<string, CanvasPoint>
   layerContentBounds?: Record<string, SelectionRect | null>
   layerPreviewOffset?: CanvasPoint
+  animationMaskOffsets?: Record<string, CanvasPoint>
   alignmentMovingBounds?: SelectionRect[]
   alignmentTargetBounds?: SelectionRect[]
   alignmentGuides?: AlignmentGuide[]
@@ -486,6 +495,7 @@ export interface CanvasDragState {
   lastBrushGradientActive?: boolean
   brushSpeed?: BrushSpeedState
   gradientEndColor?: RgbaColor
+  gradientStops?: GradientStop[]
   gradientPaintRegion?: SelectionMask | null
   gradientFromCenter?: boolean
   axisLock?: 'x' | 'y'
@@ -621,6 +631,32 @@ export const marqueePreviewTargetForDrag = (drag: CanvasDragState | null | undef
     : null
 }
 
+/** Returns the current geometry used by the canvas size readout while a
+ * rectangle/ellipse, line, or curve is being drawn. */
+export const drawingSizePreviewTargetForDrag = (
+  drag: CanvasDragState | null | undefined,
+  shapeRatio: ShapeRatio | null = null
+): SelectionRect | null => {
+  const previewDrag = canvasGestureForPreview(drag)
+  if (!previewDrag) return null
+  if (previewDrag.kind === 'marquee') return marqueePreviewTargetForDrag(previewDrag)
+  if (previewDrag.kind === 'shape') {
+    const hasMoved = previewDrag.start.x !== previewDrag.last.x || previewDrag.start.y !== previewDrag.last.y
+    if (!previewDrag.previewTarget && !hasMoved) return null
+    return previewDrag.previewTarget ?? shapeBounds(previewDrag.start, previewDrag.last, previewDrag.constrain, shapeRatio)
+  }
+  if (previewDrag.kind === 'line-shape') {
+    if (previewDrag.start.x === previewDrag.last.x && previewDrag.start.y === previewDrag.last.y) return null
+    return shapeBounds(previewDrag.start, previewDrag.last)
+  }
+  if (previewDrag.kind === 'curve-shape') {
+    const end = previewDrag.curveEnd ?? previewDrag.last
+    if (!previewDrag.curveEnd && previewDrag.start.x === end.x && previewDrag.start.y === end.y) return null
+    return shapeBounds(previewDrag.start, end)
+  }
+  return null
+}
+
 export const selectionOverlayMaskForDrag = (
   currentSelection: SelectionMask | null,
   drag: CanvasDragState | null | undefined
@@ -638,6 +674,7 @@ export interface SelectionOverlayFrame {
   target?: SelectionRect
   angle: number
   shear?: SelectionShearTransform
+  quad?: SelectionQuad
   pivot?: CanvasPoint
 }
 
@@ -670,6 +707,11 @@ export const selectionOverlayFrameForDrag = (
       ? useAppliedFreeTileFrame
         ? transformed.appliedPreviewShear
         : transformed.previewShear ?? transformed.transformStartShear
+      : undefined,
+    quad: transformed
+      ? useAppliedFreeTileFrame
+        ? transformed.appliedPreviewQuad
+        : transformed.previewQuad ?? transformed.transformStartQuad
       : undefined,
     pivot: previewDrag
       ? useAppliedFreeTileFrame
@@ -724,9 +766,12 @@ export const isPendingCanvasPathGesture = (drag: CanvasDragState | null | undefi
 export const appendCanvasPathStep = (drag: CanvasDragState, point: CanvasStrokePoint): boolean => {
   if (!isPendingCanvasPathGesture(drag)) return false
   const path = drag.path ?? []
-  const nextPath = appendPolygonLassoVertex(path, point)
-  if (nextPath.length === path.length) return false
-  drag.path = nextPath
+  const last = path.at(-1)
+  if (last?.x === point.x && last.y === point.y) return false
+  if (drag.kind === 'polygon-lasso' || drag.kind === 'polygon-shape') {
+    path.push({ ...point })
+    drag.path = path
+  } else drag.path = [...path, { ...point }]
   drag.pathRedo = undefined
   return true
 }
@@ -774,13 +819,77 @@ export const consumePendingCanvasGestureHistory = (documentId: string, direction
 export const shouldClosePolygonLasso = (path: readonly CanvasPoint[], point: CanvasPoint, clickCount: number): boolean =>
   path.length >= 3 && (clickCount >= 2 || (path[0].x === point.x && path[0].y === point.y))
 
+export interface PolygonPathRasterCache {
+  balanced: boolean
+  sourcePath: readonly CanvasPoint[]
+  sourcePathLength: number
+  committedPoints: CanvasPoint[]
+  previewPoints: CanvasPoint[]
+}
+
+export const createPolygonPathRasterCache = (): PolygonPathRasterCache => ({
+  balanced: false,
+  sourcePath: [],
+  sourcePathLength: 0,
+  committedPoints: [],
+  previewPoints: []
+})
+
+const appendPolygonLinePoints = (
+  output: CanvasPoint[],
+  from: CanvasPoint,
+  to: CanvasPoint,
+  balanced: boolean
+): void => {
+  output.push(...(balanced ? balancedStairLinePoints(from, to) : rasterLinePoints(from, to)))
+}
+
+const preparePolygonPathRasterCache = (
+  path: readonly CanvasPoint[],
+  balanced: boolean,
+  cache: PolygonPathRasterCache
+): void => {
+  if (cache.sourcePath === path && cache.sourcePathLength === path.length && cache.balanced === balanced) return
+  const previousPath = cache.sourcePath
+  const previousPathLength = cache.sourcePathLength
+  const canAppend = cache.balanced === balanced
+    && previousPathLength > 0
+    && path.length === previousPathLength + 1
+    && path[0] === previousPath[0]
+    && path[previousPathLength - 1] === previousPath[previousPathLength - 1]
+  if (canAppend) {
+    const previousPointCount = cache.committedPoints.length
+    appendPolygonLinePoints(cache.committedPoints, path[path.length - 2], path[path.length - 1], balanced)
+    cache.previewPoints.length = previousPointCount
+    for (let index = previousPointCount; index < cache.committedPoints.length; index += 1) cache.previewPoints.push(cache.committedPoints[index])
+  }
+  else {
+    cache.committedPoints.length = 0
+    for (let index = 1; index < path.length; index += 1) appendPolygonLinePoints(cache.committedPoints, path[index - 1], path[index], balanced)
+    cache.previewPoints.length = 0
+    for (const point of cache.committedPoints) cache.previewPoints.push(point)
+  }
+  cache.sourcePath = path
+  cache.sourcePathLength = path.length
+  cache.balanced = balanced
+}
+
 export const polygonLassoPreviewPoints = (
   path: readonly CanvasPoint[],
   pointer: CanvasPoint,
   closePreview: boolean,
-  balanced = false
+  balanced = false,
+  cache?: PolygonPathRasterCache
 ): CanvasPoint[] => {
   if (path.length === 0) return []
+  if (cache) {
+    preparePolygonPathRasterCache(path, balanced, cache)
+    const points = cache.previewPoints
+    points.length = cache.committedPoints.length
+    appendPolygonLinePoints(points, path.at(-1)!, pointer, balanced)
+    if (closePreview && path.length > 1) appendPolygonLinePoints(points, pointer, path[0], balanced)
+    return points
+  }
   const linePoints = balanced ? balancedStairLinePoints : rasterLinePoints
   const points: CanvasPoint[] = []
   for (let index = 1; index < path.length; index += 1) points.push(...linePoints(path[index - 1], path[index]))
@@ -789,8 +898,15 @@ export const polygonLassoPreviewPoints = (
   return points
 }
 
-export const polygonLassoClosedPathPoints = (path: readonly CanvasPoint[], balanced = false): CanvasPoint[] => {
+export const polygonLassoClosedPathPoints = (path: readonly CanvasPoint[], balanced = false, cache?: PolygonPathRasterCache): CanvasPoint[] => {
   if (path.length < 2) return path.map((point) => ({ ...point }))
+  if (cache) {
+    preparePolygonPathRasterCache(path, balanced, cache)
+    const points = cache.previewPoints
+    points.length = cache.committedPoints.length
+    appendPolygonLinePoints(points, path.at(-1)!, path[0], balanced)
+    return points
+  }
   const linePoints = balanced ? balancedStairLinePoints : rasterLinePoints
   const points: CanvasPoint[] = []
   for (let index = 1; index < path.length; index += 1) points.push(...linePoints(path[index - 1], path[index]))
@@ -1210,6 +1326,99 @@ export const selectionTransformedInteractionHit = (
   return selectionContentHit(selection, point, safeZoom)
 }
 
+/**
+ * Free transform intentionally exposes only the four corner handles. Keep the
+ * same CSS-pixel hit sizes as regular selection handles, but never let an edge
+ * midpoint, shear band, or rotation region start this interaction.
+ */
+export const selectionFreeTransformHit = (
+  target: SelectionRect | SelectionQuad,
+  angle: number,
+  shear: SelectionShearTransform | undefined,
+  point: CanvasPoint,
+  zoom: number
+): SelectionHandle | null => {
+  const safeZoom = Math.max(0.0001, zoom)
+  if ('nw' in target) {
+    // A free-transform frame can be rotated or perspective-skewed, so global
+    // x/y quadrants do not identify the corner reliably. Invert the quad first
+    // and use normalized coordinates to determine whether the pointer is on
+    // the outside side of that corner. The final distance check remains in
+    // document coordinates, keeping the hit radius stable under zoom.
+    const normalized = inverseSelectionQuadPoint(target, point)
+    const corners: Array<[SelectionHandle, { x: number; y: number }, (u: number, v: number) => boolean]> = [
+      ['nw', target.nw, (u, v) => u <= 0 && v <= 0],
+      ['ne', target.ne, (u, v) => u >= 1 && v <= 0],
+      ['sw', target.sw, (u, v) => u <= 0 && v >= 1],
+      ['se', target.se, (u, v) => u >= 1 && v >= 1]
+    ]
+    let nearest: SelectionHandle | null = null
+    let nearestDistance = Number.POSITIVE_INFINITY
+    for (const [handle, corner, isOutward] of corners) {
+      const distance = Math.hypot(point.x - corner.x, point.y - corner.y)
+      if (!Number.isFinite(distance)) continue
+      if (normalized) {
+        const inCornerQuadrant = handle === 'nw'
+          ? normalized.x < 0.5 && normalized.y < 0.5
+          : handle === 'ne'
+            ? normalized.x > 0.5 && normalized.y < 0.5
+            : handle === 'se'
+              ? normalized.x > 0.5 && normalized.y > 0.5
+              : normalized.x < 0.5 && normalized.y > 0.5
+        if (!inCornerQuadrant) continue
+      }
+      const outward = normalized ? isOutward(normalized.x, normalized.y) : false
+      const radius = (outward ? SELECTION_CORNER_OUTWARD_RESIZE_HIT_RADIUS : SELECTION_CORNER_RESIZE_HIT_RADIUS) / safeZoom
+      if (distance > radius || distance >= nearestDistance) continue
+      nearest = handle
+      nearestDistance = distance
+    }
+    return nearest
+  }
+  const localPoint = inverseTransformedSelectionPoint(target, point, angle, shear)
+  const controlPoints = transformedSelectionControlPoints(target, angle, shear)
+  const corners: Array<[SelectionHandle, { x: number; y: number }, (local: CanvasPoint) => boolean, (local: CanvasPoint) => boolean]> = [
+    ['nw', controlPoints[0], (local) => local.x < target.x + target.width / 2 && local.y < target.y + target.height / 2, (local) => local.x <= target.x && local.y <= target.y],
+    ['ne', controlPoints[2], (local) => local.x > target.x + target.width / 2 && local.y < target.y + target.height / 2, (local) => local.x >= target.x + target.width && local.y <= target.y],
+    ['sw', controlPoints[5], (local) => local.x < target.x + target.width / 2 && local.y > target.y + target.height / 2, (local) => local.x <= target.x && local.y >= target.y + target.height],
+    ['se', controlPoints[7], (local) => local.x > target.x + target.width / 2 && local.y > target.y + target.height / 2, (local) => local.x >= target.x + target.width && local.y >= target.y + target.height]
+  ]
+  if (!localPoint) return null
+  let nearest: SelectionHandle | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const [handle, corner, inCornerQuadrant, isOutward] of corners) {
+    if (!inCornerQuadrant(localPoint)) continue
+    const distance = Math.hypot(point.x - corner.x, point.y - corner.y)
+    const radius = (isOutward(localPoint) ? SELECTION_CORNER_OUTWARD_RESIZE_HIT_RADIUS : SELECTION_CORNER_RESIZE_HIT_RADIUS) / safeZoom
+    if (!Number.isFinite(distance) || distance > radius || distance >= nearestDistance) continue
+    nearest = handle
+    nearestDistance = distance
+  }
+  return nearest
+}
+
+/**
+ * Tests whether a point is inside the frame area of a free-transform
+ * frame. Corner handles are resolved separately by selectionFreeTransformHit;
+ * this helper only answers the move-content question.
+ */
+export const selectionFreeTransformContentHit = (
+  _selection: SelectionMask,
+  target: SelectionQuad,
+  point: CanvasPoint
+): boolean => {
+  const normalized = inverseSelectionQuadPoint(target, point)
+  if (!normalized || !Number.isFinite(normalized.x) || !Number.isFinite(normalized.y)) return false
+  const epsilon = 1e-7
+  // The frame, rather than the current rasterized mask, owns this hit test.
+  // A transformed mask is cropped to its non-empty pixels, so using it here
+  // makes transparent holes (and the newly exposed area after a resize) stop
+  // the move gesture. Free transform must be movable from any point inside
+  // the visible quadrilateral, including transparent pixels.
+  return normalized.x >= -epsilon && normalized.x <= 1 + epsilon
+    && normalized.y >= -epsilon && normalized.y <= 1 + epsilon
+}
+
 export const selectionTransformModifiers = (
   modifiers: { ctrlKey: boolean; metaKey?: boolean; altKey?: boolean; shiftKey: boolean }
 ): { proportional: boolean; integerScale: boolean; fromCenter: boolean; copy: false } => {
@@ -1228,6 +1437,14 @@ export const selectionTransformPreviewChanged = (drag: CanvasDragState): boolean
   if (start.x !== target.x || start.y !== target.y || start.width !== target.width || start.height !== target.height
     || start.flipHorizontal !== target.flipHorizontal || start.flipVertical !== target.flipVertical
     || start.flipOriginX !== target.flipOriginX || start.flipOriginY !== target.flipOriginY) return true
+  const startQuad = drag.transformStartQuad
+  const previewQuad = drag.previewQuad
+  if (startQuad || previewQuad) {
+    if (!startQuad || !previewQuad) return true
+    for (const corner of ['nw', 'ne', 'se', 'sw'] as const) {
+      if (startQuad[corner].x !== previewQuad[corner].x || startQuad[corner].y !== previewQuad[corner].y) return true
+    }
+  }
   const normalizeAngle = (value: number): number => ((value % 360) + 360) % 360
   if (normalizeAngle(drag.startAngle ?? 0) !== normalizeAngle(drag.previewAngle ?? drag.startAngle ?? 0)) return true
   const startShear = drag.transformStartShear?.amount === 0 ? undefined : drag.transformStartShear

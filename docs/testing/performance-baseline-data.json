@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "acceptedAt": "2026-08-26T13:22:34.656Z",
-  "releaseLabel": "1.0.0-beta.1",
+  "releaseLabel": "1.0.0-beta1",
   "auditId": "2026-08-26_12-57-05-746",
   "environment": {
     "platform": "win32 10.0.26200",

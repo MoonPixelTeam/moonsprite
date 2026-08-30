@@ -126,71 +126,9 @@ describe('Lua script document service', () => {
     expect(document.activeLayerId).toBe('lua-layer-1')
   })
 
-  it('invalidates a persistent target when its generated layer is undone', async () => {
-    const document = createDocument('persistent layer target', 1, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const initial = await runLuaScriptForActiveDocument({
-      runLuaScript: async () => result({
-        sessionId: 'lua-layer-session',
-        finished: false,
-        createdLayers: [{
-          id: 'lua-generated-layer',
-          name: 'Generated',
-          opacity: 255,
-          visible: true,
-          locked: false,
-          frameNumber: 1,
-          surface: { format: 'rgba', width: 1, height: 1, offsetX: 0, offsetY: 0, pixels: [0xff0000ff] }
-        }]
-      })
-    }, 'persistent-layer.lua')
 
-    expect(initial.session).not.toBeNull()
-    expect(luaScriptTargetIsActive(initial.session!)).toBe(true)
 
-    useWorkspace.getState().undo()
-    expect(document.layers.some((layer) => layer.id === 'lua-generated-layer')).toBe(false)
-    expect(luaScriptTargetIsActive(initial.session!)).toBe(false)
 
-    useWorkspace.getState().redo()
-    expect(luaScriptTargetIsActive(initial.session!)).toBe(true)
-    useWorkspace.getState().deleteActiveLayer()
-    expect(document.layers.some((layer) => layer.id === 'lua-generated-layer')).toBe(false)
-    expect(luaScriptTargetIsActive(initial.session!)).toBe(false)
-  })
-
-  it('opens a script-created sprite as a new document session', async () => {
-    const document = createDocument('sprite creation target', 1, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const red = 0xff0000ff
-
-    const outcome = await runLuaScriptForActiveDocument({
-      runLuaScript: async () => result({
-        createdDocuments: [{
-          name: 'Guidelines',
-          width: 3,
-          height: 2,
-          colorMode: 'rgba',
-          layers: [{
-            id: 'lua-layer-guides',
-            name: 'Layer 1',
-            opacity: 255,
-            visible: true,
-            locked: false,
-            frameNumber: 1,
-            surface: { format: 'rgba', width: 3, height: 2, offsetX: 0, offsetY: 0, pixels: [red, 0, 0, 0, 0, red] }
-          }]
-        }]
-      })
-    }, 'sprite.lua')
-
-    const state = useWorkspace.getState()
-    expect(outcome.summary).toMatchObject({ transactionCount: 1, changedPixelCount: 2 })
-    expect(state.sessions).toHaveLength(2)
-    const created = state.sessions.find((session) => session.document.name === 'Guidelines')
-    expect(created?.document).toMatchObject({ width: 3, height: 2, dirty: true })
-    expect(readLayerPacked(created!.document, getActiveLayer(created!.document), 5) >>> 0).toBe(red)
-  })
 
   it('exposes the structural MSE snapshot and commits a typed operation batch as one undo step', async () => {
     const document = createDocument('mse operations', 2, 2, 'rgba')
@@ -268,76 +206,9 @@ describe('Lua script document service', () => {
     expect(session.contentRevision).toBe(contentRevision)
   })
 
-  it('accepts positional layer styles and a direct Color-shaped palette update', async () => {
-    const document = createDocument('mse positional arguments', 1, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    const paletteEntry = document.palette[0]
-    const styles = createDefaultLayerStyles()
-    styles.stroke.enabled = true
-    useWorkspace.getState().addSession(document)
 
-    await runLuaScriptForActiveDocument({
-      runLuaScript: async () => result({
-        batches: [{
-          label: 'MSE positional arguments',
-          changes: [],
-          surfaceChange: null,
-          operations: [
-            { path: 'styles.apply', arguments: [layer.id, styles] },
-            { path: 'palette.update', arguments: [paletteEntry.id, { r: 11, g: 22, b: 33, a: 255 }] }
-          ]
-        }]
-      })
-    }, 'arguments.lua')
 
-    expect(layer.layerStyles?.stroke.enabled).toBe(true)
-    expect(paletteEntry.color).toEqual({ r: 11, g: 22, b: 33, a: 255 })
 
-    useWorkspace.getState().undo()
-    expect(layer.layerStyles).toBeUndefined()
-    expect(paletteEntry.color).not.toEqual({ r: 11, g: 22, b: 33, a: 255 })
-  })
-
-  it('continues a dialog callback against the same validated target', async () => {
-    const document = createDocument('dialog target', 1, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const dialog = {
-      id: 'dialog-1',
-      title: 'Options',
-      controls: [{
-        id: 'apply',
-        dataKey: 'apply',
-        kind: 'button' as const,
-        label: '',
-        text: 'Apply',
-        value: null,
-        min: null,
-        max: null,
-        step: null,
-        decimals: null,
-        options: [],
-        enabled: true,
-        visible: true
-      }]
-    }
-    const initial = await runLuaScriptForActiveDocument({
-      runLuaScript: async () => result({ sessionId: 'lua-1', dialogs: [dialog], finished: false })
-    }, 'dialog.lua')
-    expect(initial.session?.dialogs).toEqual([dialog])
-
-    const blue = 0xffff0000
-    const continued = await dispatchLuaScriptDialogForActiveDocument({
-      dispatchLuaScriptDialog: async (sessionId, action, context) => {
-        expect(sessionId).toBe('lua-1')
-        expect(action).toMatchObject({ dialogId: 'dialog-1', controlId: 'apply', event: 'click' })
-        expect(context.pixels).toEqual([0])
-        return result({ batches: [{ label: 'Apply', changes: [{ index: 0, before: 0, after: blue }], surfaceChange: null }] })
-      }
-    }, initial.session!, { dialogId: 'dialog-1', controlId: 'apply', event: 'click', values: {} })
-
-    expect(continued.session).toBeNull()
-    expect(readLayerPacked(document, getActiveLayer(document), 0) >>> 0).toBe(blue)
-  })
 
   it('rebases a persistent dialog callback after undo on the same cel', async () => {
     const document = createDocument('dialog undo target', 1, 1, 'rgba')

@@ -57,14 +57,16 @@ interface AnchoredPreviewPanOptions {
   viewportSize: Size
   pointer: Point
   pan: Point
+  /** Absolute document-pixel scale. 1 means one document pixel per CSS pixel. */
   zoom: number
   nextZoom: number
 }
 
 export const anchoredPreviewPan = ({ documentSize, viewportSize, pointer, pan, zoom, nextZoom }: AnchoredPreviewPanOptions): Point => {
-  const fitScale = Math.min(viewportSize.width / documentSize.width, viewportSize.height / documentSize.height)
-  const currentScale = fitScale * zoom
-  const targetScale = fitScale * nextZoom
+  const currentScale = zoom
+  const targetScale = nextZoom
+  if (![documentSize.width, documentSize.height, viewportSize.width, viewportSize.height, pointer.x, pointer.y, pan.x, pan.y, currentScale, targetScale].every(Number.isFinite)) return pan
+  if (documentSize.width <= 0 || documentSize.height <= 0 || viewportSize.width <= 0 || viewportSize.height <= 0 || currentScale <= 0 || targetScale <= 0) return pan
   const currentOriginX = (viewportSize.width - documentSize.width * currentScale) / 2 + pan.x
   const currentOriginY = (viewportSize.height - documentSize.height * currentScale) / 2 + pan.y
   const documentX = (pointer.x - currentOriginX) / currentScale

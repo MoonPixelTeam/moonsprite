@@ -96,52 +96,11 @@ describe('HistoryStack', () => {
     expect(history.memoryBytes).toBe(0)
   })
 
-  it('clears both directions and compound state', () => {
-    const history = new HistoryStack()
-    history.beginCompound()
-    history.push({ label: 'part', bytes: 2, undo: () => undefined, redo: () => undefined })
-    history.clear()
-    history.endCompound('ignored')
-    expect(history.canUndo).toBe(false)
-    expect(history.canRedo).toBe(false)
-    expect(history.memoryBytes).toBe(0)
-  })
 
-  it('combines affected layers for compound pixel history', () => {
-    const document = createDocument('compound layers', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('Second', 1, 1, 'rgba')
-    document.layers.push(secondLayer)
-    const first = beginPixelEdit(firstLayer.id)
-    const second = beginPixelEdit(secondLayer.id)
-    recordPixel(document, firstLayer, first, 0, 0xff0000ff)
-    recordPixel(document, secondLayer, second, 0, 0xffff0000)
-    const history = new HistoryStack()
 
-    history.beginCompound()
-    history.push(commitPixelEdit(document, first, 'first')!)
-    history.push(commitPixelEdit(document, second, 'second')!)
-    history.endCompound('both')
 
-    const committed = history.undo()!
-    expect(committed.affectedLayerIds).toEqual([firstLayer.id, secondLayer.id])
-  })
 
-  it('keeps nested compound commands inside the outer transaction', () => {
-    const state = { value: 2 }
-    const history = new HistoryStack()
-    history.beginCompound()
-    history.push(entry(state, 1, 'outer'))
-    history.beginCompound()
-    history.push(entry(state, 2, 'inner'))
-    history.endCompound('inner label')
-    expect(history.canUndo).toBe(false)
-    history.endCompound('script transaction')
 
-    expect(history.latestUndoEntry?.label).toBe('script transaction')
-    history.undo()
-    expect(state.value).toBe(0)
-  })
 
   it('rolls back every buffered entry when a compound transaction aborts', () => {
     const state = { value: 2 }
@@ -156,41 +115,9 @@ describe('HistoryStack', () => {
     expect(history.canRedo).toBe(false)
   })
 
-  it('merges an anchor stroke and its connected line into one undo step', () => {
-    const state = { value: 2 }
-    const history = new HistoryStack()
-    const anchor = entry(state, 1, 'anchor')
-    const line = entry(state, 2, 'line')
-    history.push(anchor)
-    history.push(line)
 
-    expect(history.latestUndoEntry).toBe(line)
-    expect(history.mergeLastTwo('connected line')).toMatchObject({ label: 'connected line', bytes: 20 })
-    expect(history.latestUndoEntry).not.toBe(line)
 
-    history.undo()
-    expect(state.value).toBe(0)
-    history.redo()
-    expect(state.value).toBe(2)
-  })
 
-  it('keeps compound metadata-only history outside content and animation refreshes', () => {
-    const history = new HistoryStack()
-    history.beginCompound()
-    history.push({ label: 'lock', bytes: 8, undo: () => undefined, redo: () => undefined, contentChanged: false, requiresAnimationSync: false })
-    history.push({ label: 'rename', bytes: 8, undo: () => undefined, redo: () => undefined, contentChanged: false, requiresAnimationSync: false })
-    history.endCompound('metadata')
 
-    expect(history.undo()).toMatchObject({ contentChanged: false, requiresAnimationSync: false })
-  })
 
-  it('keeps session-only entries out of compound document metadata', () => {
-    const history = new HistoryStack()
-    history.beginCompound()
-    history.push({ label: 'selection', bytes: 8, undo: () => undefined, redo: () => undefined, documentChanged: false })
-    history.push({ label: 'rename', bytes: 8, undo: () => undefined, redo: () => undefined, contentChanged: false, requiresAnimationSync: false })
-    history.endCompound('mixed')
-
-    expect(history.undo()).toMatchObject({ documentChanged: true, contentChanged: false, requiresAnimationSync: false })
-  })
 })

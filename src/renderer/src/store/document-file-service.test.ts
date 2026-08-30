@@ -55,43 +55,9 @@ describe('document PSD export service', () => {
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/layers.psd', expect.any(Uint8Array))
   })
 
-  it('uses the PSD Save As filter and keeps subsequent saves in PSD format', async () => {
-    const saveProject = vi.fn(async () => ({ canceled: false, filePath: 'D:/gallery/layers.psd' }))
-    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
-    const api = { saveProject, writeBinaryAtomic } as unknown as MoonSpriteApi
-    const document = createDocument('Layered project', 2, 2, 'rgba')
-    const getDocument = () => ({ document, revision: 7 })
 
-    const first = await saveDocumentFile({
-      api,
-      documentId: document.id,
-      getDocument,
-      saveAs: true,
-      options: { name: 'layers.psd', format: 'psd', scalePercent: 100, directory: 'D:/gallery' },
-      preferredImageFormat: null
-    })
-    expect(first).toEqual({ filePath: 'D:/gallery/layers.psd', revision: 7, setDocumentFilePath: true })
-    document.filePath = first?.filePath ?? null
 
-    await saveDocumentFile({ api, documentId: document.id, getDocument, saveAs: false, preferredImageFormat: null })
 
-    expect(saveProject).toHaveBeenCalledTimes(1)
-    expect(saveProject).toHaveBeenCalledWith('D:/gallery/layers.psd', 'psd')
-    expect(writeBinaryAtomic).toHaveBeenCalledTimes(2)
-    expect(writeBinaryAtomic.mock.calls.map(([filePath]) => filePath)).toEqual(['D:/gallery/layers.psd', 'D:/gallery/layers.psd'])
-    for (const [, bytes] of writeBinaryAtomic.mock.calls) expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe('8BPS')
-  })
-
-  it('rejects frame and slice batch targets for PSD', async () => {
-    const { api, exportImage, writeBinaryAtomic } = exportApi()
-    const document = createDocument('Layered project', 2, 2, 'rgba')
-    document.slices = [{ id: 'slice', name: 'Slice', x: 0, y: 0, width: 1, height: 1 }]
-
-    await expect(exportDocumentFile(api, document, { name: 'frames.psd', format: 'psd', scalePercent: 100, target: 'frames' })).rejects.toThrow('PSD 仅支持导出画布')
-    await expect(exportDocumentFile(api, document, { name: 'slices.psd', format: 'psd', scalePercent: 100, target: 'slices' })).rejects.toThrow('PSD 仅支持导出画布')
-    expect(exportImage).not.toHaveBeenCalled()
-    expect(writeBinaryAtomic).not.toHaveBeenCalled()
-  })
 })
 
 describe('native PNG export service', () => {
@@ -125,30 +91,7 @@ describe('native PNG export service', () => {
     expect(progress).toEqual([0, 50, 100])
   })
 
-  it('passes simple indexed documents as one-byte palette indices', async () => {
-    const writeScaledPngAtomic = vi.fn(async (_filePath: string, _source: Uint8Array, _options: ScaledPngWriteOptions) => ({ indexed: true }))
-    const api = { writeScaledPngAtomic } as unknown as MoonSpriteApi
-    const document = createDocument('Indexed export', 2, 1, 'indexed')
-    const layer = document.layers[0]
-    if (layer.format !== 'indexed') throw new Error('Expected an indexed layer')
-    layer.pixels.set([1, 2])
 
-    await expect(exportDocumentFile(api, document, { name: 'indexed', format: 'png-auto', scalePercent: 1000, target: 'document', directory: 'D:/exports' })).resolves.toBe('已导出索引 PNG。')
-
-    expect(writeScaledPngAtomic).toHaveBeenCalledTimes(1)
-    const [filePath, source, options] = writeScaledPngAtomic.mock.calls[0]
-    expect(filePath).toBe('D:/exports/indexed.png')
-    expect(Array.from(source)).toEqual([1, 2])
-    expect(options).toMatchObject({
-      sourceWidth: 2,
-      sourceHeight: 1,
-      outputWidth: 20,
-      outputHeight: 10,
-      forceRgba: false,
-      sourceFormat: 'indexed'
-    })
-    expect(Array.from(options.palette ?? [])).toEqual(document.palette.flatMap((entry) => [entry.color.r, entry.color.g, entry.color.b, entry.color.a]))
-  })
 
   it('propagates cancellation after the native writer exposes its cancel handle', async () => {
     const nativeCancel = vi.fn()

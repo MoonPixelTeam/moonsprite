@@ -1,11 +1,12 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { Tooltip } from '@/components/Tooltip'
 import { useI18n } from '@/components/I18nProvider'
-import { loadEditorPreferences, saveEditorPreferences, type QuickCommandId, type QuickCommandPreference } from '@/core/file-preferences'
+import { loadEditorPreferences, saveEditorPreferences, type QuickCommandBarEdge, type QuickCommandBarPreference, type QuickCommandId } from '@/core/file-preferences'
 import { useWorkspace } from '@/store/workspace'
 import type { ShortcutId } from '@/core/shortcuts'
 import { QUICK_COMMAND_METADATA, type QuickCommandMetadata, type QuickCommandSettingsTarget } from './quick-command-registry'
+import { detectDocumentPixelScale } from '@/core/image-scale-detection'
 
 interface QuickCommandBarProps {
   documentId: string
@@ -13,6 +14,12 @@ interface QuickCommandBarProps {
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
+}
+
+interface QuickCommandBarInstanceProps extends QuickCommandBarProps {
+  bar: QuickCommandBarPreference
+  translucent: boolean
+  onBarChange: (bar: QuickCommandBarPreference) => void
 }
 
 interface QuickCommandRuntime {
@@ -25,105 +32,46 @@ type QuickCommandDefinition = QuickCommandMetadata & QuickCommandRuntime
 
 interface QuickCommandDragState {
   pointerId: number
-  startClientX: number
-  startCenterX: number
-  containerLeft: number
-  containerWidth: number
-  minCenterX: number
-  maxCenterX: number
-  positionX: number
+  edge: QuickCommandBarEdge
+  position: number
+  startEdge: QuickCommandBarEdge
+  grabOffset: number
 }
 
 const QUICK_COMMAND_EDGE_INSET = 8
 const QUICK_COMMAND_CENTER_SNAP_DISTANCE = 12
-const DEFAULT_QUICK_COMMAND_POSITION_X = 0.5
-
-const clampHorizontalCenter = (value: number, min: number, max: number): number => min <= max
-  ? Math.min(max, Math.max(min, value))
-  : (min + max) / 2
+const DEFAULT_QUICK_COMMAND_POSITION = 0.5
 
 const normalizeQuickCommandPosition = (value: number | undefined): number => Number.isFinite(value)
   ? Math.min(1, Math.max(0, value!))
-  : DEFAULT_QUICK_COMMAND_POSITION_X
+  : DEFAULT_QUICK_COMMAND_POSITION
 
 const preserveCanvasFocus = (event: ReactPointerEvent<HTMLButtonElement>): void => {
   event.preventDefault()
 }
 
-export const QuickCommandBar = memo(function QuickCommandBar({ documentId, shortcutFor, onToggleMirror, onOpenPreferences, onOpenCommandSettings }: QuickCommandBarProps) {
+const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
   const { t } = useI18n()
   const [moving, setMoving] = useState(false)
-  const [edgeOffsetX, setEdgeOffsetX] = useState(0)
+  const [dragPreview, setDragPreview] = useState<{ edge: QuickCommandBarEdge; position: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<QuickCommandDragState | null>(null)
-  const [preferences, setPreferences] = useState(() => {
-    const current = loadEditorPreferences()
-    return { enabled: current.quickCommandBarEnabled, translucent: current.quickCommandBarTranslucent, commands: current.quickCommandPreferences }
-  })
   const activeId = useWorkspace((state) => state.activeId)
-  const storedPositionX = useWorkspace((state) => normalizeQuickCommandPosition(state.sessions.find((item) => item.document.id === documentId)?.view.quickCommandBarPositionX))
-  const expanded = useWorkspace((state) => state.sessions.find((item) => item.document.id === documentId)?.view.quickCommandBarExpanded === true)
-  const visuallyExpanded = expanded && activeId === documentId
-  const [positionX, setPositionX] = useState(storedPositionX)
-  const positionXRef = useRef(storedPositionX)
+  const session = useWorkspace((state) => state.sessions.find((item) => item.document.id === documentId) ?? null)
   const renderKey = useWorkspace((state) => {
-    const session = state.sessions.find((item) => item.document.id === documentId)
-    return session
-      ? `${session.document.id}:${session.selection ? 1 : 0}:${session.view.mirrored ? 1 : 0}:${session.view.mirroredVertical ? 1 : 0}:${session.view.showPixelGrid ? 1 : 0}:${session.view.showGrid ? 1 : 0}:${session.view.showSelectionOutline === false ? 0 : 1}:${session.view.relativeLuminance ? 1 : 0}:${session.view.tileRepeatMode ?? 'off'}:${session.history.canUndo ? 1 : 0}:${session.history.canRedo ? 1 : 0}`
+    const current = state.sessions.find((item) => item.document.id === documentId)
+    return current
+      ? `${current.document.id}:${current.selection ? 1 : 0}:${current.view.mirrored ? 1 : 0}:${current.view.mirroredVertical ? 1 : 0}:${current.view.showPixelGrid ? 1 : 0}:${current.view.showGrid ? 1 : 0}:${current.view.showSelectionOutline === false ? 0 : 1}:${current.view.relativeLuminance ? 1 : 0}:${current.view.tileRepeatMode ?? 'off'}:${current.history.canUndo ? 1 : 0}:${current.history.canRedo ? 1 : 0}`
       : ''
   })
-  const updatePositionX = useCallback((value: number): void => {
-    const normalized = normalizeQuickCommandPosition(value)
-    positionXRef.current = normalized
-    setPositionX(normalized)
-  }, [])
-  useEffect(() => {
-    const syncPreferences = (): void => {
-      const current = loadEditorPreferences()
-      setPreferences({ enabled: current.quickCommandBarEnabled, translucent: current.quickCommandBarTranslucent, commands: current.quickCommandPreferences })
-    }
-    window.addEventListener('moonsprite:preferences-changed', syncPreferences)
-    return () => window.removeEventListener('moonsprite:preferences-changed', syncPreferences)
-  }, [])
-  useEffect(() => {
-    if (!preferences.enabled && expanded) useWorkspace.getState().setViewForDocument(documentId, { quickCommandBarExpanded: false })
-  }, [documentId, expanded, preferences.enabled])
-  useLayoutEffect(() => {
-    updatePositionX(storedPositionX)
-    setEdgeOffsetX(0)
-  }, [documentId, storedPositionX, updatePositionX])
-  const enabledCommandCount = preferences.commands.reduce((count, command) => count + (command.enabled ? 1 : 0), 0)
-  const keepBarInsideCanvas = useCallback((): void => {
-    const bar = barRef.current
-    const container = bar?.parentElement
-    if (!bar || !container) return
-    const barRect = bar.getBoundingClientRect()
-    const containerRect = container.getBoundingClientRect()
-    if (barRect.width <= 0 || containerRect.width <= 0) return
-    const targetCenterX = containerRect.left + positionXRef.current * containerRect.width
-    const minCenterX = containerRect.left + QUICK_COMMAND_EDGE_INSET + barRect.width / 2
-    const maxCenterX = containerRect.right - QUICK_COMMAND_EDGE_INSET - barRect.width / 2
-    const visibleCenterX = clampHorizontalCenter(targetCenterX, minCenterX, maxCenterX)
-    const nextOffset = Math.round((visibleCenterX - targetCenterX) * 1000) / 1000
-    setEdgeOffsetX((current) => current === nextOffset ? current : nextOffset)
-  }, [])
-  useLayoutEffect(() => {
-    if (preferences.enabled) keepBarInsideCanvas()
-  }, [documentId, enabledCommandCount, keepBarInsideCanvas, positionX, preferences.enabled, visuallyExpanded])
-  useEffect(() => {
-    if (!preferences.enabled || typeof ResizeObserver === 'undefined') return
-    const bar = barRef.current
-    const container = bar?.parentElement
-    if (!bar || !container) return
-    const observer = new ResizeObserver(keepBarInsideCanvas)
-    observer.observe(bar)
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [documentId, keepBarInsideCanvas, preferences.enabled])
-  const workspace = useWorkspace.getState()
-  const session = workspace.sessions.find((item) => item.document.id === documentId) ?? null
   void renderKey
-  if (!session || !preferences.enabled) return null
+  if (!session) return null
+  if (bar.edge === 'none') return null
+
+  const expanded = bar.expanded
+  const visuallyExpanded = expanded && activeId === documentId
+  const edge = dragPreview?.edge ?? bar.edge
+  const position = normalizeQuickCommandPosition(dragPreview?.position ?? bar.position)
 
   const runForDocument = (run: (state: ReturnType<typeof useWorkspace.getState>) => void): void => {
     const current = useWorkspace.getState()
@@ -137,63 +85,68 @@ export const QuickCommandBar = memo(function QuickCommandBar({ documentId, short
   }
   const toggleExpanded = (): void => {
     const state = useWorkspace.getState()
-    const wasActive = activeId === documentId
-    if (!wasActive) state.setActive(documentId)
-    const nextExpanded = wasActive ? !expanded : true
-    state.setViewForDocument(documentId, { quickCommandBarExpanded: nextExpanded })
-    const currentPreferences = loadEditorPreferences()
-    if (currentPreferences.quickCommandBarExpanded !== nextExpanded) {
-      saveEditorPreferences({ ...currentPreferences, quickCommandBarExpanded: nextExpanded })
-      window.dispatchEvent(new Event('moonsprite:preferences-changed'))
-    }
+    if (activeId !== documentId) state.setActive(documentId)
+    onBarChange({ ...bar, expanded: activeId === documentId ? !expanded : true })
   }
   const startMoving = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
-    const bar = barRef.current
-    const container = bar?.parentElement
-    if (!bar || !container) return
-    const barRect = bar.getBoundingClientRect()
-    const containerRect = container.getBoundingClientRect()
-    if (barRect.width <= 0 || containerRect.width <= 0) return
-    const minCenterX = containerRect.left + QUICK_COMMAND_EDGE_INSET + barRect.width / 2
-    const maxCenterX = containerRect.right - QUICK_COMMAND_EDGE_INSET - barRect.width / 2
-    const startCenterX = clampHorizontalCenter((barRect.left + barRect.right) / 2, minCenterX, maxCenterX)
-    const startPositionX = normalizeQuickCommandPosition((startCenterX - containerRect.left) / containerRect.width)
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startClientX: event.clientX,
-      startCenterX,
-      containerLeft: containerRect.left,
-      containerWidth: containerRect.width,
-      minCenterX,
-      maxCenterX,
-      positionX: startPositionX
-    }
-    updatePositionX(startPositionX)
-    setEdgeOffsetX(0)
+    const element = barRef.current
+    const rect = element?.getBoundingClientRect()
+    const isVertical = edge === 'left' || edge === 'right'
+    const pointerCoordinate = isVertical ? event.clientY : event.clientX
+    const barCenter = rect ? (isVertical ? (rect.top + rect.bottom) / 2 : (rect.left + rect.right) / 2) : pointerCoordinate
+    dragRef.current = { pointerId: event.pointerId, edge, position, startEdge: edge, grabOffset: pointerCoordinate - barCenter }
+    setDragPreview({ edge, position })
     event.currentTarget.setPointerCapture?.(event.pointerId)
     setMoving(true)
   }
-  const moveHorizontally = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+  const moveBar = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    const element = barRef.current
+    const container = element?.parentElement
+    if (!drag || drag.pointerId !== event.pointerId || !element || !container) return
     event.preventDefault()
-    const rawCenterX = drag.startCenterX + event.clientX - drag.startClientX
-    const canvasCenterX = drag.containerLeft + drag.containerWidth / 2
-    const snappedCenterX = Math.abs(rawCenterX - canvasCenterX) <= QUICK_COMMAND_CENTER_SNAP_DISTANCE ? canvasCenterX : rawCenterX
-    const centerX = clampHorizontalCenter(snappedCenterX, drag.minCenterX, drag.maxCenterX)
-    drag.positionX = normalizeQuickCommandPosition((centerX - drag.containerLeft) / drag.containerWidth)
-    updatePositionX(drag.positionX)
-    setEdgeOffsetX(0)
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width <= 0 || containerRect.height <= 0) return
+    const distances: Array<[QuickCommandBarEdge, number]> = [
+      ['top', Math.abs(event.clientY - containerRect.top)],
+      ['right', Math.abs(event.clientX - containerRect.right)],
+      ['bottom', Math.abs(event.clientY - containerRect.bottom)],
+      ['left', Math.abs(event.clientX - containerRect.left)]
+    ]
+    const nextEdge = distances.reduce((nearest, candidate) => candidate[1] < nearest[1] ? candidate : nearest)[0]
+    const rect = element.getBoundingClientRect()
+    const isVertical = nextEdge === 'left' || nextEdge === 'right'
+    const trackStart = isVertical ? containerRect.top : containerRect.left
+    const trackSize = isVertical ? containerRect.height : containerRect.width
+    const commandTrackSize = Math.max(1, commands.length + 2) * 28 + 5
+    const horizontalBarSize = drag.startEdge === 'top' || drag.startEdge === 'bottom' ? rect.width : commandTrackSize
+    const verticalBarSize = drag.startEdge === 'left' || drag.startEdge === 'right' ? rect.height : commandTrackSize
+    const itemSize = isVertical ? verticalBarSize : horizontalBarSize
+    const pointerCoordinate = isVertical ? event.clientY : event.clientX
+    const sameAxis = (drag.startEdge === 'top' || drag.startEdge === 'bottom') === !isVertical
+    const minCenter = trackStart + QUICK_COMMAND_EDGE_INSET + itemSize / 2
+    const maxCenter = trackStart + trackSize - QUICK_COMMAND_EDGE_INSET - itemSize / 2
+    const rawCenter = pointerCoordinate - (sameAxis ? drag.grabOffset : 0)
+    const trackCenter = trackStart + trackSize / 2
+    const snappedCenter = Math.abs(rawCenter - trackCenter) <= QUICK_COMMAND_CENTER_SNAP_DISTANCE ? trackCenter : rawCenter
+    const center = minCenter <= maxCenter
+      ? Math.min(maxCenter, Math.max(minCenter, snappedCenter))
+      : trackCenter
+    const nextPosition = trackSize > 0 ? normalizeQuickCommandPosition((center - trackStart) / trackSize) : DEFAULT_QUICK_COMMAND_POSITION
+    drag.edge = nextEdge
+    drag.position = nextPosition
+    setDragPreview({ edge: nextEdge, position: nextPosition })
   }
   const finishMoving = (): void => {
     const drag = dragRef.current
     if (!drag) return
     dragRef.current = null
     setMoving(false)
-    useWorkspace.getState().setViewForDocument(documentId, { quickCommandBarPositionX: drag.positionX })
+    setDragPreview(null)
+    onBarChange({ ...bar, edge: drag.edge, position: drag.position })
   }
   const stopMoving = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     const drag = dragRef.current
@@ -221,68 +174,63 @@ export const QuickCommandBar = memo(function QuickCommandBar({ documentId, short
       case 'tileRepeatBoth': return { pressed: session.view.tileRepeatMode === 'both', run: () => toggleTileRepeatMode('both') }
       case 'undo': return { disabled: !session.history.canUndo, run: () => runForDocument((state) => state.undo()) }
       case 'redo': return { disabled: !session.history.canRedo, run: () => runForDocument((state) => state.redo()) }
-      case 'selectAll': return { run: () => runForDocument((state) => {
-        const active = state.sessions.find((item) => item.document.id === documentId)
-        if (!active) return
-        state.commitFloatingPaste()
-        state.setTool('selection')
-        state.setSelection({ x: 0, y: 0, width: active.document.width, height: active.document.height })
-      }) }
-      case 'deselect': return { disabled: selectionUnavailable, run: () => runForDocument((state) => {
-        const active = state.sessions.find((item) => item.document.id === documentId)
-        if (!active?.selection) return
-        const label = t('app.selection.cancelHistory')
-        if (active.pendingPaste) state.commitFloatingPaste(label)
-        else state.commitSelectionChange({ ...active.selection, mask: active.selection.mask?.slice() }, null, label)
-      }) }
+      case 'selectAll': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active) return; state.commitFloatingPaste(); state.setTool('selection'); state.setSelection({ x: 0, y: 0, width: active.document.width, height: active.document.height }) }) }
+      case 'deselect': return { disabled: selectionUnavailable, run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active?.selection) return; const label = t('app.selection.cancelHistory'); if (active.pendingPaste) state.commitFloatingPaste(label); else state.commitSelectionChange({ ...active.selection, mask: active.selection.mask?.slice() }, null, label) }) }
       case 'pixelGrid': return { pressed: Boolean(session.view.showPixelGrid), run: () => runForDocument((state) => state.togglePixelGrid()) }
       case 'selectionOutline': return { disabled: selectionUnavailable, pressed: !selectionUnavailable && session.view.showSelectionOutline !== false, run: () => runForDocument((state) => state.toggleSelectionOutline()) }
-      case 'relativeLuminance': return { pressed: session.view.relativeLuminance, run: () => runForDocument((state) => {
-        const active = state.sessions.find((item) => item.document.id === documentId)
-        if (active) state.setView({ relativeLuminance: !active.view.relativeLuminance })
-      }) }
+      case 'relativeLuminance': return { pressed: session.view.relativeLuminance, run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (active) state.setView({ relativeLuminance: !active.view.relativeLuminance }) }) }
       case 'resetView': return { run: () => runForDocument((state) => state.setView({ zoom: 16, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false })) }
       case 'fillForeground': return { run: () => runForDocument((state) => state.fillForeground()) }
       case 'deleteSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.deleteSelection()) }
       case 'swapForegroundBackground': return { run: () => runForDocument((state) => state.swapPrimarySecondaryColors()) }
       case 'createBrushFromSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.createBrushFromSelection()) }
-      case 'rotateViewClockwise90': return { run: () => runForDocument((state) => {
-        const active = state.sessions.find((item) => item.document.id === documentId)
-        if (active) state.setView({ rotation: (active.view.rotation + 90) % 360 })
-      }) }
-      case 'rotateViewCounterClockwise90': return { run: () => runForDocument((state) => {
-        const active = state.sessions.find((item) => item.document.id === documentId)
-        if (active) state.setView({ rotation: (active.view.rotation + 270) % 360 })
-      }) }
+      case 'rotateViewClockwise90': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (active) state.setView({ rotation: (active.view.rotation + 90) % 360 }) }) }
+      case 'rotateViewCounterClockwise90': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (active) state.setView({ rotation: (active.view.rotation + 270) % 360 }) }) }
+      case 'detectImageScale': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active) return; const scale = detectDocumentPixelScale(active.document); if (!scale || scale <= 1) { state.setMessage(t('imageResize.scaleNotDetected')); return }; void state.resizeActiveImage(Math.max(1, Math.round(active.document.width / scale)), Math.max(1, Math.round(active.document.height / scale)), 'nearest') }) }
+      case 'centerSelectionBoth': return { run: () => runForDocument((state) => { state.commitFloatingPaste(); state.centerActiveContent('both') }) }
+      case 'centerSelectionHorizontal': return { run: () => runForDocument((state) => { state.commitFloatingPaste(); state.centerActiveContent('horizontal') }) }
+      case 'centerSelectionVertical': return { run: () => runForDocument((state) => { state.commitFloatingPaste(); state.centerActiveContent('vertical') }) }
     }
   }
-  const commands: QuickCommandDefinition[] = preferences.commands
-    .filter((item: QuickCommandPreference) => item.enabled)
-    .map((item) => ({ ...QUICK_COMMAND_METADATA[item.id], ...runtimeFor(item.id) }))
-  const positionPercent = Math.round(positionX * 100000) / 1000
+  const commands: QuickCommandDefinition[] = bar.commands.filter((item) => item.enabled).map((item) => ({ ...QUICK_COMMAND_METADATA[item.id], ...runtimeFor(item.id) }))
   const style = {
-    '--quick-command-actions-width': `${Math.max(1, commands.length + 2) * 28 + 5}px`,
-    '--quick-command-position-x': `${positionPercent}%`,
-    '--quick-command-edge-offset-x': `${edgeOffsetX}px`
+    '--quick-command-position': `${Math.round(position * 100000) / 1000}%`,
+    '--quick-command-actions-size': `${Math.max(1, commands.length + 2) * 28 + 5}px`
   } as CSSProperties
-
-  return <div ref={barRef} className={`quick-command-bar ${preferences.translucent ? 'translucent' : ''} ${visuallyExpanded ? 'expanded' : ''} ${moving ? 'moving' : ''}`.trim()} style={style} role="toolbar" aria-label={t('quickCommands.aria')} data-document-id={documentId} data-command-scope="canvas" data-preserve-animation-selection>
+  return <div ref={barRef} className={`quick-command-bar quick-command-bar-${edge} ${translucent ? 'translucent' : ''} ${visuallyExpanded ? 'expanded' : ''} ${moving ? 'moving' : ''}`.trim()} style={style} role="toolbar" aria-label={`${t('quickCommands.aria')}: ${bar.name}`} data-document-id={documentId} data-quick-command-bar-id={bar.id} data-command-scope="canvas" data-preserve-animation-selection>
     <Tooltip className="quick-command-tooltip quick-command-toggle-tooltip" content={<><strong>{t(visuallyExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')}</strong><span>{t('quickCommands.toggleDescription')}</span></>}>
       <button type="button" className="quick-command-toggle" aria-label={t(visuallyExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={visuallyExpanded} onPointerDown={preserveCanvasFocus} onClick={toggleExpanded}><PixelUtilityIcon kind={visuallyExpanded ? 'up' : 'down'} /></button>
     </Tooltip>
     <div className="quick-command-actions-clip" aria-hidden={!visuallyExpanded}><div className="quick-command-actions">
-        {commands.map((command) => {
-          const shortcut = shortcutFor(command.shortcutId)
-          return <Tooltip key={command.id} className="quick-command-tooltip" content={<><strong>{t(command.label)}</strong><span>{t(command.description)}</span>{shortcut && <small>{shortcut}</small>}</>}>
-            <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''}`} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}><PixelUtilityIcon kind={command.icon} /></button>
-          </Tooltip>
-        })}
-        <Tooltip className="quick-command-tooltip quick-command-settings-tooltip" content={<><strong>{t('quickCommands.settings')}</strong><span>{t('quickCommands.settingsDescription')}</span></>}>
-          <button type="button" className="quick-command-button quick-command-settings" aria-label={t('quickCommands.settings')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={onOpenPreferences}><PixelUtilityIcon kind="properties" /></button>
+      {commands.map((command) => {
+        const shortcut = command.shortcutId ? shortcutFor(command.shortcutId) : ''
+        return <Tooltip key={command.id} className="quick-command-tooltip" content={<><strong>{t(command.label)}</strong><span>{t(command.description)}</span>{shortcut && <small>{shortcut}</small>}</>}>
+          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''}`} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}><PixelUtilityIcon kind={command.icon} /></button>
         </Tooltip>
-        <Tooltip className="quick-command-tooltip quick-command-move-tooltip" content={<><strong>{t('quickCommands.move')}</strong><span>{t('quickCommands.moveDescription')}</span></>}>
-          <button type="button" className="quick-command-button quick-command-move" aria-label={t('quickCommands.move')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={startMoving} onPointerMove={moveHorizontally} onPointerUp={stopMoving} onPointerCancel={stopMoving} onLostPointerCapture={finishMoving}><PixelUtilityIcon kind="move" /></button>
-        </Tooltip>
-      </div></div>
+      })}
+      <Tooltip className="quick-command-tooltip quick-command-settings-tooltip" content={<><strong>{t('quickCommands.settings')}</strong><span>{t('quickCommands.settingsDescription')}</span></>}>
+        <button type="button" className="quick-command-button quick-command-settings" aria-label={t('quickCommands.settings')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={onOpenPreferences}><PixelUtilityIcon kind="properties" /></button>
+      </Tooltip>
+      <Tooltip className="quick-command-tooltip quick-command-move-tooltip" content={<><strong>{t('quickCommands.move')}</strong><span>{t('quickCommands.moveDescription')}</span></>}>
+        <button type="button" className="quick-command-button quick-command-move" aria-label={t('quickCommands.move')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={startMoving} onPointerMove={moveBar} onPointerUp={stopMoving} onPointerCancel={stopMoving} onLostPointerCapture={finishMoving}><PixelUtilityIcon kind="move" /></button>
+      </Tooltip>
+    </div></div>
   </div>
+})
+
+export const QuickCommandBar = memo(function QuickCommandBar(props: QuickCommandBarProps) {
+  const [preferences, setPreferences] = useState(loadEditorPreferences)
+  useEffect(() => {
+    const syncPreferences = (): void => setPreferences(loadEditorPreferences())
+    window.addEventListener('moonsprite:preferences-changed', syncPreferences)
+    return () => window.removeEventListener('moonsprite:preferences-changed', syncPreferences)
+  }, [])
+  if (!preferences.quickCommandBarEnabled) return null
+  const onBarChange = (next: QuickCommandBarPreference): void => {
+    const latest = loadEditorPreferences()
+    const bars = latest.quickCommandBars.map((bar) => bar.id === next.id ? { ...next, commands: next.commands.map((item) => ({ ...item })) } : bar)
+    saveEditorPreferences({ ...latest, quickCommandBars: bars })
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+  }
+  return <>{preferences.quickCommandBars.map((bar) => <QuickCommandBarInstance key={bar.id} {...props} bar={bar} translucent={preferences.quickCommandBarTranslucent} onBarChange={onBarChange} />)}</>
 })

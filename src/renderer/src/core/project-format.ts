@@ -16,6 +16,7 @@ import { normalizeBackgroundLayerSettings } from './background-patterns'
 import { MAX_TILE_SIZE, MAX_TILEMAP_CELLS, MAX_TILEMAP_SURFACE_PIXELS, MAX_TILESET_LAYOUT_SLOTS, MAX_TILESET_PIXELS, compactTilesetTileSlots, normalizeTilemapCell, renderTilemapSurface } from './tilemap'
 import { MAX_FREE_TILE_INSTANCES, freeTileSourceRefs, normalizeFreeTileCelData, renderFreeTileSurface, type FreeTileSourceCollection } from './free-tile'
 import { ensureFreeTileTilesetOwnership, freeTileSourcesForLayer } from './free-tile-document'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 
 interface ManifestLayer {
   id: string
@@ -854,12 +855,15 @@ interface ProjectEncodeWorkerResponse {
 
 let projectEncodeWorker: Worker | null = null
 let projectEncodeSequence = 0
-const pendingProjectEncodes = new Map<number, { resolve: (result: ProjectEncodeWorkerResult) => void; reject: (error: Error) => void }>()
+const pendingProjectEncodes = new Map<number, { resolve: (result: ProjectEncodeWorkerResult) => void; reject: (error: Error) => void; diagnostic: RuntimeDiagnosticOperation | null }>()
 
 const resetProjectEncodeWorker = (error: Error): void => {
   projectEncodeWorker?.terminate()
   projectEncodeWorker = null
-  for (const request of pendingProjectEncodes.values()) request.reject(error)
+  for (const request of pendingProjectEncodes.values()) {
+    request.diagnostic?.finish('error', { message: error.message })
+    request.reject(error)
+  }
   pendingProjectEncodes.clear()
 }
 
@@ -870,8 +874,14 @@ const ensureProjectEncodeWorker = (): Worker => {
     const request = pendingProjectEncodes.get(event.data.id)
     if (!request) return
     pendingProjectEncodes.delete(event.data.id)
-    if (event.data.result) request.resolve(event.data.result)
-    else request.reject(new Error(event.data.error || 'Project encode failed'))
+    if (event.data.result) {
+      request.diagnostic?.finish('ok', { outputBytes: event.data.result.data.byteLength })
+      request.resolve(event.data.result)
+    } else {
+      const error = new Error(event.data.error || 'Project encode failed')
+      request.diagnostic?.finish('error', { message: error.message })
+      request.reject(error)
+    }
   }
   worker.onerror = (event) => resetProjectEncodeWorker(new Error(event.message || 'Project encode worker failed'))
   projectEncodeWorker = worker
@@ -882,12 +892,25 @@ const encodeProjectInWorker = (payload: ProjectEncodeWorkerPayload): Promise<Pro
   if (typeof Worker === 'undefined') return Promise.resolve().then(() => encodeProjectWorkerPayload(payload))
   return new Promise((resolve, reject) => {
     const id = ++projectEncodeSequence
-    pendingProjectEncodes.set(id, { resolve, reject })
+    const diagnostic = runtimeDiagnosticsActive()
+      ? beginRuntimeDiagnosticOperation('project.encode.worker', {
+          width: payload.document.width,
+          height: payload.document.height,
+          layers: payload.document.layers.length,
+          frames: payload.document.animation?.frames.length ?? 1,
+          incremental: payload.incremental
+        }, 5_000)
+      : null
+    pendingProjectEncodes.set(id, { resolve, reject, diagnostic })
     try {
+      const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
       ensureProjectEncodeWorker().postMessage({ id, payload })
+      diagnostic?.mark('post-message', { durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt) })
     } catch (error) {
       pendingProjectEncodes.delete(id)
-      reject(error instanceof Error ? error : new Error(String(error)))
+      const failure = error instanceof Error ? error : new Error(String(error))
+      diagnostic?.finish('error', { message: failure.message })
+      reject(failure)
     }
   })
 }

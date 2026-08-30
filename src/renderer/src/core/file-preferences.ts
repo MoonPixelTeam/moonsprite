@@ -68,6 +68,7 @@ export const QUICK_COMMAND_BAR_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.q
 export const QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY = 'moonsprite.preference.quick-command-bar-expanded'
 export const QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY = 'moonsprite.preference.quick-command-bar-translucent'
 export const QUICK_COMMAND_PREFERENCES_KEY = 'moonsprite.preference.quick-command-items'
+export const QUICK_COMMAND_BARS_PREFERENCE_KEY = 'moonsprite.preference.quick-command-bars'
 export const UI_SCALE_PREFERENCE_KEY = 'moonsprite.preference.ui-scale'
 export const TOOL_ICON_SCALE_PREFERENCE_KEY = 'moonsprite.preference.tool-icon-scale'
 export const ANIMATIONS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.animations-enabled'
@@ -118,7 +119,11 @@ export const QUICK_COMMAND_IDS = [
   'swapForegroundBackground',
   'createBrushFromSelection',
   'rotateViewClockwise90',
-  'rotateViewCounterClockwise90'
+  'rotateViewCounterClockwise90',
+  'detectImageScale',
+  'centerSelectionBoth',
+  'centerSelectionHorizontal',
+  'centerSelectionVertical'
 ] as const
 
 export type QuickCommandId = typeof QUICK_COMMAND_IDS[number]
@@ -128,7 +133,53 @@ export interface QuickCommandPreference {
   enabled: boolean
 }
 
-const DEFAULT_ENABLED_QUICK_COMMAND_IDS = new Set<QuickCommandId>([
+export type QuickCommandBarEdge = 'top' | 'right' | 'bottom' | 'left' | 'none'
+
+export interface QuickCommandBarPreference {
+  id: string
+  name: string
+  edge: QuickCommandBarEdge
+  position: number
+  expanded: boolean
+  commands: QuickCommandPreference[]
+}
+
+const DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
+  ['selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'customGrid', 'tileRepeatBoth', 'relativeLuminance', 'detectImageScale', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical'],
+  ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
+  ['selectionFlipHorizontal'],
+  ['selectionFlipHorizontal']
+]
+
+const PREVIOUS_DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
+  DEFAULT_QUICK_COMMAND_GROUPS[0],
+  ['tileRepeatX', 'tileRepeatY', 'pixelGrid', 'selectionOutline', 'resetView'],
+  ['undo', 'redo', 'fillForeground', 'deleteSelection', 'swapForegroundBackground'],
+  ['selectAll', 'deselect', 'createBrushFromSelection', 'rotateViewClockwise90', 'rotateViewCounterClockwise90']
+]
+
+const EARLIER_DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
+  DEFAULT_QUICK_COMMAND_GROUPS[0],
+  ['undo', 'redo', 'relativeLuminance', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
+  ['tileRepeatX', 'tileRepeatY', 'pixelGrid', 'selectionOutline', 'fillForeground'],
+  ['selectAll', 'deselect', 'deleteSelection', 'swapForegroundBackground', 'createBrushFromSelection']
+]
+
+const RECENT_DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
+  DEFAULT_QUICK_COMMAND_GROUPS[0],
+  ['undo', 'redo', 'relativeLuminance', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
+  DEFAULT_QUICK_COMMAND_GROUPS[2],
+  DEFAULT_QUICK_COMMAND_GROUPS[3]
+]
+
+const createQuickCommandPreferences = (enabledIds: readonly QuickCommandId[]): QuickCommandPreference[] => {
+  const enabled = new Set(enabledIds)
+  return QUICK_COMMAND_IDS.map((id) => ({ id, enabled: enabled.has(id) }))
+}
+
+export const DEFAULT_QUICK_COMMAND_PREFERENCES: QuickCommandPreference[] = createQuickCommandPreferences(DEFAULT_QUICK_COMMAND_GROUPS[0])
+
+const LEGACY_DEFAULT_QUICK_COMMAND_ENABLED_IDS = new Set<QuickCommandId>([
   'selectionFlipHorizontal',
   'selectionFlipVertical',
   'canvasMirrorHorizontal',
@@ -138,10 +189,12 @@ const DEFAULT_ENABLED_QUICK_COMMAND_IDS = new Set<QuickCommandId>([
   'tileRepeatX',
   'tileRepeatY',
   'tileRepeatBoth',
-  'relativeLuminance'
+  'relativeLuminance',
+  'detectImageScale',
+  'centerSelectionBoth',
+  'centerSelectionHorizontal',
+  'centerSelectionVertical'
 ])
-
-export const DEFAULT_QUICK_COMMAND_PREFERENCES: QuickCommandPreference[] = QUICK_COMMAND_IDS.map((id) => ({ id, enabled: DEFAULT_ENABLED_QUICK_COMMAND_IDS.has(id) }))
 
 const QUICK_COMMAND_ID_SET = new Set<string>(QUICK_COMMAND_IDS)
 
@@ -164,6 +217,72 @@ export function parseQuickCommandPreferences(value: string | null): QuickCommand
     for (const item of DEFAULT_QUICK_COMMAND_PREFERENCES) if (!seen.has(item.id)) preferences.push({ ...item })
     if (!preferences.some((item) => item.enabled)) preferences[0] = { ...preferences[0], enabled: true }
     return preferences
+  } catch {
+    return fallback()
+  }
+}
+
+export const DEFAULT_QUICK_COMMAND_BARS: QuickCommandBarPreference[] = DEFAULT_QUICK_COMMAND_GROUPS.map((group, index) => ({
+  id: `quick-command-bar-${index + 1}`,
+  name: `快捷指令栏 ${index + 1}`,
+  edge: index === 0 ? 'top' : 'none',
+  position: 0.5,
+  expanded: false,
+  commands: createQuickCommandPreferences(group)
+}))
+
+const QUICK_COMMAND_EDGE_SET = new Set<QuickCommandBarEdge>(['top', 'right', 'bottom', 'left', 'none'])
+const isLegacyDefaultQuickCommandBar = (bar: QuickCommandBarPreference): boolean => bar.commands.length === QUICK_COMMAND_IDS.length && bar.commands.every((item) => item.enabled === LEGACY_DEFAULT_QUICK_COMMAND_ENABLED_IDS.has(item.id))
+const isQuickCommandGroup = (bar: QuickCommandBarPreference, group: readonly QuickCommandId[]): boolean => {
+  const enabled = new Set(group)
+  return bar.commands.length === QUICK_COMMAND_IDS.length && bar.commands.every((item) => item.enabled === enabled.has(item.id))
+}
+const normalizeQuickCommandBar = (candidate: unknown, index: number, fallbackCommands: QuickCommandPreference[]): QuickCommandBarPreference | null => {
+  if (!candidate || typeof candidate !== 'object') return null
+  const value = candidate as Partial<QuickCommandBarPreference>
+  const commands = parseQuickCommandPreferences(JSON.stringify(value.commands))
+  const edge = QUICK_COMMAND_EDGE_SET.has(value.edge as QuickCommandBarEdge) ? value.edge as QuickCommandBarEdge : 'top'
+  const position = typeof value.position === 'number' && Number.isFinite(value.position) ? Math.min(1, Math.max(0, value.position)) : 0.5
+  return {
+    id: typeof value.id === 'string' && value.id.trim() ? value.id : `quick-command-bar-${index + 1}`,
+    name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 32) : `快捷指令栏 ${index + 1}`,
+    edge,
+    position,
+    expanded: value.expanded === true,
+    commands: Array.isArray(value.commands) ? commands : fallbackCommands.map((item) => ({ ...item }))
+  }
+}
+
+export function parseQuickCommandBars(value: string | null, legacyCommands = DEFAULT_QUICK_COMMAND_PREFERENCES): QuickCommandBarPreference[] {
+  const fallback = (): QuickCommandBarPreference[] => DEFAULT_QUICK_COMMAND_BARS.map((bar) => ({ ...bar, commands: bar.commands.map((item) => ({ ...item })) }))
+  if (!value) return fallback()
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed)) return fallback()
+    const bars: QuickCommandBarPreference[] = []
+    const seen = new Set<string>()
+    for (let index = 0; index < parsed.length && bars.length < 4; index += 1) {
+      const bar = normalizeQuickCommandBar(parsed[index], index, legacyCommands)
+      if (!bar || seen.has(bar.id)) continue
+      seen.add(bar.id)
+      bars.push(bar)
+    }
+    if (bars.length === 0) return fallback()
+    if (bars.length === 1 && isLegacyDefaultQuickCommandBar(bars[0])) {
+      bars[0] = { ...bars[0], edge: 'top', commands: DEFAULT_QUICK_COMMAND_BARS[0].commands.map((item) => ({ ...item })) }
+    }
+    if (bars.length === DEFAULT_QUICK_COMMAND_BARS.length && (bars.every((bar, index) => isQuickCommandGroup(bar, PREVIOUS_DEFAULT_QUICK_COMMAND_GROUPS[index])) || bars.every((bar, index) => isQuickCommandGroup(bar, EARLIER_DEFAULT_QUICK_COMMAND_GROUPS[index])) || bars.every((bar, index) => isQuickCommandGroup(bar, RECENT_DEFAULT_QUICK_COMMAND_GROUPS[index])))) {
+      bars.splice(0, bars.length, ...DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bars[index], name: bars[index].name, edge: bars[index].edge, position: bars[index].position, expanded: bars[index].expanded, commands: bar.commands.map((item) => ({ ...item })) })))
+    }
+    for (let index = bars.length; index < DEFAULT_QUICK_COMMAND_BARS.length; index += 1) {
+      const template = DEFAULT_QUICK_COMMAND_BARS[index]
+      let id = template.id
+      let suffix = 1
+      while (seen.has(id)) id = `${template.id}-${suffix++}`
+      seen.add(id)
+      bars.push({ ...template, id, commands: template.commands.map((item) => ({ ...item })) })
+    }
+    return bars
   } catch {
     return fallback()
   }
@@ -456,6 +575,7 @@ export interface EditorPreferences {
   quickCommandBarExpanded: boolean
   quickCommandBarTranslucent: boolean
   quickCommandPreferences: QuickCommandPreference[]
+  quickCommandBars: QuickCommandBarPreference[]
   theme: ThemePreferences
 }
 
@@ -463,7 +583,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
   toolIconScale: 1,
-  uiMotionLevel: 'normal',
+  uiMotionLevel: 'subtle',
   animationsEnabled: true,
   saveFormat: 'moonsprite',
   exportFormat: 'png',
@@ -521,8 +641,9 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   timelapseRecordingEnabled: false,
   quickCommandBarEnabled: true,
   quickCommandBarExpanded: false,
-  quickCommandBarTranslucent: true,
+  quickCommandBarTranslucent: false,
   quickCommandPreferences: DEFAULT_QUICK_COMMAND_PREFERENCES,
+  quickCommandBars: DEFAULT_QUICK_COMMAND_BARS,
   theme: DEFAULT_THEME_PREFERENCES
 }
 
@@ -921,8 +1042,9 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     timelapseRecordingEnabled: get(TIMELAPSE_RECORDING_ENABLED_PREFERENCE_KEY) === 'true',
     quickCommandBarEnabled: get(QUICK_COMMAND_BAR_ENABLED_PREFERENCE_KEY) !== 'false',
     quickCommandBarExpanded: get(QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY) === 'true',
-    quickCommandBarTranslucent: get(QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY) !== 'false',
+    quickCommandBarTranslucent: get(QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY) === 'true',
     quickCommandPreferences: parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY)),
+    quickCommandBars: parseQuickCommandBars(get(QUICK_COMMAND_BARS_PREFERENCE_KEY), parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY))),
     theme: theme.theme
   }
 }
@@ -997,7 +1119,8 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [QUICK_COMMAND_BAR_ENABLED_PREFERENCE_KEY]: String(preferences.quickCommandBarEnabled),
     [QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY]: String(preferences.quickCommandBarExpanded),
     [QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY]: String(preferences.quickCommandBarTranslucent),
-    [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences)))
+    [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences))),
+    [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences))
   }
   for (const [key, value] of Object.entries(values)) writeStoredString(key, value, storage)
   saveThemePreferences(theme, storage)

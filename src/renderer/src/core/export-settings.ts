@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SelectionMask, SpriteDocument } from '@shared/types'
 import type { GifDirection } from './gif'
 import type { ImageExportKind } from './png'
 import { readStoredJson, writeStoredJson } from './storage'
@@ -21,7 +21,7 @@ export interface ExportPreset {
   name: string
   format: ImageExportKind
   scalePercent: number
-  target?: 'document' | 'slices' | 'frames'
+  target?: 'document' | 'slices' | 'frames' | 'selection'
   sliceId?: string
   directory?: string
   gifFrameRange?: 'all' | 'range'
@@ -39,7 +39,9 @@ export interface DocumentExportSettings {
   name: string
   format: ImageExportKind
   scalePercent: number
-  target?: 'document' | 'slices' | 'frames'
+  target?: 'document' | 'slices' | 'frames' | 'selection'
+  /** Runtime-only mask used when target is selection; never persisted. */
+  selection?: SelectionMask | null
   sliceId?: string
   directory?: string
   gifFrameRange?: 'all' | 'range'
@@ -93,7 +95,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
   const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'
@@ -129,7 +131,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
   const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'

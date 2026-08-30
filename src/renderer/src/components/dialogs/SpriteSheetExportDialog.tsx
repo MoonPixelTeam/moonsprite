@@ -89,9 +89,12 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
   const update = <K extends keyof SpriteSheetExportOptions>(key: K, value: SpriteSheetExportOptions[K]): void => {
     setOptions((current) => ({ ...current, [key]: value }))
   }
+  useEffect(() => {
+    if (options.area === 'selection' && !session.selection) update('area', 'canvas')
+  }, [options.area, session.selection])
   const loopSections = document.animation?.loopSections ?? []
   const gridLayout = options.layout === 'rows' || options.layout === 'columns'
-  const selectedArea = useMemo(() => resolveSpriteSheetArea(document, options.area), [document, options.area])
+  const selectedArea = useMemo(() => resolveSpriteSheetArea(document, options.area, session.selection), [document, options.area, session.selection])
   const layerCount = useMemo(() => resolveSpriteSheetLayerIds(document, options.layerScope, {
     selectedLayerIds: session.selectedLayerIds,
     selectedGroupIds: session.selectedGroupIds
@@ -104,6 +107,7 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
   ]
   const areaOptions = [
     { value: 'canvas' as const, label: t('spriteSheet.area.canvas') },
+    { value: 'selection' as const, label: t('spriteSheet.area.selection') },
     ...(document.slices ?? []).map((slice) => ({ value: `slice:${slice.id}` as const, label: slice.name }))
   ]
   const layerOptions = [

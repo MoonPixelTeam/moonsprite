@@ -5,6 +5,19 @@ import {
 } from './canvas-performance-options.mjs'
 
 const normalized = (file) => file.replaceAll('\\', '/')
+const sourceExtension = '[cm]?[jt]sx?'
+const benchmarkPattern = new RegExp(`\\.bench\\.${sourceExtension}$`)
+const performanceMeasurementScripts = new Set([
+  'scripts/canvas-performance-options.mjs',
+  'scripts/canvas-performance.mjs',
+  'scripts/performance-executor.mjs',
+])
+const vitestConfigPattern = /^vitest\.config\.[cm]?ts$/
+const profileHarnessPatterns = [
+  /\/components\/PerformanceProfiler\.tsx$/,
+  /\/main\.tsx$/,
+  /\/performance\/(?:benchmark-harness|benchmark-plan)\.ts$/,
+]
 
 const p4Patterns = [
   /(^|\/)pnpm-lock\.yaml$/,
@@ -13,6 +26,7 @@ const p4Patterns = [
 ]
 
 const p3Patterns = [
+  /^vitest\.config\.[cm]?ts$/,
   /\/CanvasStage\.tsx$/,
   /\/(canvas|onion-skin)-composite-cache\.(ts|tsx)$/,
   /\/canvas-render-plan\.(ts|tsx)$/,
@@ -37,7 +51,13 @@ const isTestOrMaintenance = (file) => file.endsWith('.md')
   || file.startsWith('docs/')
   || file.startsWith('.github/')
   || file.startsWith('scripts/')
-  || /\.(test|bench)\.[cm]?[jt]sx?$/.test(file)
+  || /\.(?:test|spec|bench)\.[cm]?[jt]sx?$/.test(file)
+
+const isPerformanceHarnessPath = (file) => (
+  benchmarkPattern.test(file)
+  || performanceMeasurementScripts.has(file)
+  || profileHarnessPatterns.some((pattern) => pattern.test(file))
+)
 
 export function classifyPerformanceImpact(files) {
   return classifyPerformanceAudit(files)
@@ -55,25 +75,45 @@ const largeCanvasSuites = () => [
 ]
 
 const largeSentinelSuite = () => canvasSuite('canvas-large-sentinel', [2048, 4000], ['large-detail-pan', 'large-detail-draw'], 3)
+const targetedP3Suites = ({ complexDocument, profileHarness, canvasTarget }) => [
+  ...(canvasTarget
+    ? [canvasSuite('canvas-targeted', [1024], ['pan', 'zoom', 'draw'])]
+    : []),
+  ...(profileHarness
+    ? [canvasSuite('canvas-profile-targeted', [1024], ['zoom', 'draw'], 1, 'profile')]
+    : []),
+  ...(canvasTarget
+    ? [canvasSuite('canvas-large-sentinel', [2048], ['large-detail-pan', 'large-detail-draw'])]
+    : []),
+  ...(complexDocument
+    ? [canvasSuite('canvas-complex-targeted', [1024], ['complex-draw'])]
+    : []),
+]
 
 export function classifyPerformanceAudit(files, options = {}) {
   const paths = files.map(normalized).filter(Boolean)
   const matched = (patterns) => paths.some((file) => patterns.some((pattern) => pattern.test(file)))
   let level = 'P0'
-  if (matched(p4Patterns)) level = 'P4'
-  else if (matched(p3Patterns)) level = 'P3'
+  if (options.all) level = 'P4'
+  else if (matched(p4Patterns)) level = 'P4'
+  else if (matched(p3Patterns) || paths.some(isPerformanceHarnessPath)) level = 'P3'
   else if (matched(p2Patterns)) level = 'P2'
   else if (paths.some((file) => !isTestOrMaintenance(file))) level = 'P1'
 
   const minimumLevel = options.minimumLevel ?? 'P0'
   if (levelRank[minimumLevel] > levelRank[level]) level = minimumLevel
 
-  const selectionAlgorithm = paths.some((file) => /\/core\/selection(?:-performance)?\.(?:ts|tsx)$/.test(file))
-  const adjustmentAlgorithm = paths.some((file) => /\/core\/adjustments(?:-performance)?\.(?:ts|tsx)$/.test(file))
-  const projectFormat = paths.some((file) => /\/core\/(?:project-format|document-files)\.ts$/.test(file) || /\/workers\/document-decode\.worker\.ts$/.test(file))
+  const selectionAlgorithm = paths.some((file) => /\/core\/selection(?:-performance)?(?:\.bench)?\.[cm]?[jt]sx?$/.test(file))
+  const adjustmentAlgorithm = paths.some((file) => /\/core\/adjustments(?:-performance)?(?:\.bench)?\.[cm]?[jt]sx?$/.test(file))
+  const projectFormat = paths.some((file) => /\/core\/(?:project-format|document-files)(?:-performance)?(?:\.bench)?\.[cm]?[jt]sx?$/.test(file) || /\/workers\/document-decode\.worker\.[cm]?[jt]sx?$/.test(file))
   const canvasInteraction = paths.some((file) => /\/(canvas-input|view-geometry|canvas-selection-renderer|useCanvasViewPreview)/.test(file))
   const complexDocument = paths.some((file) => /\/(animation|animation-thumbnail|document|layer-operations|onion-skin|timelapse|workspace|LayersPanel|PreviewPanel)/.test(file))
   const includeReleaseComplexSuite = options.releaseAudit === true
+  const profileHarness = paths.some((file) => profileHarnessPatterns.some((pattern) => pattern.test(file)))
+  const vitestConfig = paths.some((file) => vitestConfigPattern.test(file))
+  const dedicatedBenchmark = selectionAlgorithm || adjustmentAlgorithm || projectFormat || vitestConfig
+  const canvasHotPath = paths.some((file) => /\/(CanvasStage|canvas-(?:render-plan|composite-cache)|canvas-input|view-geometry|canvas-selection-renderer|useCanvasViewPreview)\./.test(file))
+  const canvasTarget = canvasHotPath || (!dedicatedBenchmark && !complexDocument && !profileHarness)
   const suites = []
 
   if (level === 'P4') {
@@ -91,20 +131,23 @@ export function classifyPerformanceAudit(files, options = {}) {
       { id: 'desktop', kind: 'desktop' },
     )
   } else if (level === 'P3') {
-    suites.push(
-      canvasSuite('canvas-standard', [...STANDARD_CANVAS_PERFORMANCE_SIZES], [...CANVAS_PERFORMANCE_SCENARIOS]),
-      canvasSuite('canvas-profile', [1024], ['zoom', 'draw', 'bucket-fill'], 3, 'profile'),
-      ...largeCanvasSuites(),
-      largeSentinelSuite(),
-    )
-    if (includeReleaseComplexSuite || complexDocument) {
-      suites.push(canvasSuite('canvas-complex', [1024], ['complex-draw', 'complex-undo', 'complex-playback'], includeReleaseComplexSuite ? 3 : 1))
+    if (includeReleaseComplexSuite) {
+      suites.push(
+        canvasSuite('canvas-standard', [...STANDARD_CANVAS_PERFORMANCE_SIZES], [...CANVAS_PERFORMANCE_SCENARIOS]),
+        canvasSuite('canvas-profile', [1024], ['zoom', 'draw', 'bucket-fill'], 3, 'profile'),
+        ...largeCanvasSuites(),
+        largeSentinelSuite(),
+        canvasSuite('canvas-complex', [1024], ['complex-draw', 'complex-undo', 'complex-playback'], 3),
+      )
+    } else {
+      suites.push(...targetedP3Suites({ complexDocument, profileHarness, canvasTarget }))
     }
     if (complexDocument) suites.push(benchmarkSuite('document-composite', 'src/renderer/src/core/document-performance.bench.ts'))
     if (projectFormat || includeReleaseComplexSuite) suites.push(benchmarkSuite('project-format', 'src/renderer/src/core/project-format-performance.bench.ts'))
     if (selectionAlgorithm) suites.push(benchmarkSuite('selection', 'src/renderer/src/core/selection-performance.bench.ts'))
     if (adjustmentAlgorithm) suites.push(benchmarkSuite('adjustments', 'src/renderer/src/core/adjustments-performance.bench.ts'))
-    suites.push({ id: 'bundle', kind: 'bundle' })
+    if (vitestConfig && !selectionAlgorithm) suites.push(benchmarkSuite('selection', 'src/renderer/src/core/selection-performance.bench.ts'))
+    if (includeReleaseComplexSuite) suites.push({ id: 'bundle', kind: 'bundle' })
   } else if (level === 'P2') {
     if (adjustmentAlgorithm) suites.push(benchmarkSuite('adjustments', 'src/renderer/src/core/adjustments-performance.bench.ts'))
     else if (selectionAlgorithm) suites.push(benchmarkSuite('selection', 'src/renderer/src/core/selection-performance.bench.ts'))
@@ -121,7 +164,7 @@ export function classifyPerformanceAudit(files, options = {}) {
     if (suite.kind === 'vitest-benchmark') return `pnpm exec vitest bench ${suite.file} --run`
     if (suite.kind === 'bundle') return 'pnpm build:web（记录包体积）'
     if (suite.kind === 'desktop') return 'pnpm test:desktop'
-    return '暂无对应自动基准：运行相关测试，并在性能历史标记未覆盖'
+    return '暂无对应自动基准：运行对应的定向测试，并在性能历史标记未覆盖'
   })
   return { level, files: paths, suites, commands }
 }

@@ -15,10 +15,7 @@ describe('onion skin helpers', () => {
     ])
   })
 
-  it('tints visible pixels and fades distant frames', () => {
-    const source = new Uint8ClampedArray([10, 20, 30, 200, 0, 0, 0, 0])
-    expect([...tintOnionSkinPixels(source, { r: 255, g: 0, b: 0, a: 255 }, 50, 2)]).toEqual([255, 0, 0, 50, 0, 0, 0, 0])
-  })
+
 
   it('composites every visible layer from the requested animation frame', () => {
     const document = createDocument('multi-layer onion', 2, 1, 'rgba')

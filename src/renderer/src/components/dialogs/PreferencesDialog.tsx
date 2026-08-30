@@ -3,7 +3,7 @@ import {
   DEFAULT_COLOR_EDITOR_MODES,
   EYEDROPPER_MAGNIFIER_SIZE_VALUES,
   DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
-  DEFAULT_QUICK_COMMAND_PREFERENCES,
+  DEFAULT_QUICK_COMMAND_BARS,
   UI_SCALE_VALUES,
   VIEW_DRAG_SENSITIVITY_VALUES,
   loadEditorPreferences,
@@ -21,6 +21,8 @@ import {
   type MoveLayerClickFlashDuration,
   MOVE_LAYER_CLICK_FLASH_DURATIONS,
   type QuickCommandId,
+  type QuickCommandBarEdge,
+  type QuickCommandBarPreference,
   type RelativeLuminanceScope,
   type RotationIndicatorPosition,
   type SelectionPreviewColorMode,
@@ -81,7 +83,7 @@ const QUICK_COMMAND_SEARCH_KEYS = Object.values(QUICK_COMMAND_METADATA).flatMap(
 
 const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
   general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording'],
-  quickCommands: ['preferences.sections.quickCommands', 'preferences.groups.quickCommandLayout', 'preferences.quickCommandBar', 'preferences.quickCommandBarTranslucent', 'preferences.quickCommandBarTranslucentHint', 'preferences.quickCommandOrderHint', ...QUICK_COMMAND_SEARCH_KEYS],
+  quickCommands: ['preferences.sections.quickCommands', 'preferences.groups.quickCommandLayout', 'preferences.quickCommandBar', 'preferences.quickCommandBarTranslucent', 'preferences.quickCommandBarTranslucentHint', 'preferences.quickCommandOrderHint', 'preferences.quickCommandBarName', 'preferences.quickCommandBarEdge', ...QUICK_COMMAND_SEARCH_KEYS],
   appearance: ['preferences.groups.canvas', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
   theme: ['preferences.groups.theme', 'preferences.theme.available', 'preferences.theme.current'],
   input: ['preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position'],
@@ -98,6 +100,7 @@ type PreferenceOrderKind = 'color-mode' | 'quick-command'
 interface PreferencePointerDrag {
   kind: PreferenceOrderKind
   id: string
+  barId?: string
   pointerId: number
   captureTarget: HTMLElement
 }
@@ -129,7 +132,8 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [extensions, setExtensions] = useState<StoredExtension[]>([])
   const [extensionsLoading, setExtensionsLoading] = useState(false)
   const [extensionBusyId, setExtensionBusyId] = useState<string | null>(null)
-  const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string } | null>(null)
+  const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string; barId?: string } | null>(null)
+  const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set())
   const preferencePointerDragRef = useRef<PreferencePointerDrag | null>(null)
   const update = <K extends keyof typeof preferences>(key: K, value: typeof preferences[K]): void => setPreferences((current) => ({ ...current, [key]: value }))
   const updateDocumentSize = (index: number, key: keyof DocumentSizePreset, value: number): void => update('documentSizePresets', preferences.documentSizePresets.map((preset, presetIndex) => presetIndex === index ? { ...preset, [key]: value } : preset))
@@ -160,18 +164,30 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     if (next === current.colorEditorModes) return current
     return { ...current, colorEditorModes: next }
   })
-  const moveQuickCommand = (id: QuickCommandId, targetId: QuickCommandId, insertAfter: boolean): void => setPreferences((current) => {
-    const next = reorderPreferenceItems(current.quickCommandPreferences, id, targetId, insertAfter, (item) => item.id)
-    if (next === current.quickCommandPreferences) return current
-    return { ...current, quickCommandPreferences: next }
+  const updateQuickCommandBar = (barId: string, patch: Partial<QuickCommandBarPreference>): void => setPreferences((current) => ({
+    ...current,
+    quickCommandBars: current.quickCommandBars.map((bar) => bar.id === barId ? { ...bar, ...patch } : bar)
+  }))
+  const toggleQuickCommandBarCollapsed = (barId: string): void => setCollapsedQuickCommandBars((current) => {
+    const next = new Set(current)
+    if (next.has(barId)) next.delete(barId)
+    else next.add(barId)
+    return next
   })
-  const beginPreferencePointerDrag = (event: React.PointerEvent<HTMLElement>, kind: PreferenceOrderKind, id: string): void => {
+  const moveQuickCommand = (barId: string, id: QuickCommandId, targetId: QuickCommandId, insertAfter: boolean): void => setPreferences((current) => {
+    const bar = current.quickCommandBars.find((candidate) => candidate.id === barId)
+    if (!bar) return current
+    const next = reorderPreferenceItems(bar.commands, id, targetId, insertAfter, (item) => item.id)
+    if (next === bar.commands) return current
+    return { ...current, quickCommandBars: current.quickCommandBars.map((candidate) => candidate.id === barId ? { ...candidate, commands: next } : candidate) }
+  })
+  const beginPreferencePointerDrag = (event: React.PointerEvent<HTMLElement>, kind: PreferenceOrderKind, id: string, barId?: string): void => {
     if (event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
-    preferencePointerDragRef.current = { kind, id, pointerId: event.pointerId, captureTarget: event.currentTarget }
-    setDraggedPreferenceItem({ kind, id })
+    preferencePointerDragRef.current = { kind, id, barId, pointerId: event.pointerId, captureTarget: event.currentTarget }
+    setDraggedPreferenceItem({ kind, id, barId })
   }
   useEffect(() => {
     setEditorPreferencesPreview(preferences)
@@ -226,7 +242,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       const bounds = row.getBoundingClientRect()
       const insertAfter = event.clientY >= bounds.top + bounds.height / 2
       if (drag.kind === 'color-mode') moveColorMode(drag.id, targetId, insertAfter)
-      else moveQuickCommand(drag.id as QuickCommandId, targetId as QuickCommandId, insertAfter)
+      else if (drag.barId && row.dataset.quickCommandBarId === drag.barId) moveQuickCommand(drag.barId, drag.id as QuickCommandId, targetId as QuickCommandId, insertAfter)
       event.preventDefault()
     }
     const end = (event: PointerEvent): void => {
@@ -330,7 +346,12 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     })
     if (choice !== 'reset') return
     clearStoredValuesExcept([RECENT_PROJECTS_STORAGE_KEY, GALLERY_PINS_STORAGE_KEY])
-    window.location.reload()
+    setEditorPreferencesPreview(null)
+    const defaults = loadEditorPreferences()
+    setPreferences(defaults)
+    onPresetChange(defaults.documentSizePresets, defaults.exportScalePresets)
+    applyThemeToDocument(defaults.theme)
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
   }
   const toggle = (label: string, checked: boolean, onChange: (checked: boolean) => void, tooltip?: string) => <PreferenceToggle label={label} checked={checked} onChange={onChange} tooltip={tooltip} />
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
@@ -367,15 +388,21 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.timelapseRecording'), preferences.timelapseRecordingEnabled, (value) => update('timelapseRecordingEnabled', value), t('preferences.timelapseRecordingHint'))}
         </PreferenceGroup>
       </>}
-      {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandPreferences', DEFAULT_QUICK_COMMAND_PREFERENCES.map((item) => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
+      {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bar, name: t('preferences.quickCommandDefaultName', { index: index + 1 }), commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
         {toggle(t('preferences.quickCommandBar'), preferences.quickCommandBarEnabled, (value) => update('quickCommandBarEnabled', value), t('preferences.quickCommandBarHint'))}
         {toggle(t('preferences.quickCommandBarTranslucent'), preferences.quickCommandBarTranslucent, (value) => update('quickCommandBarTranslucent', value), t('preferences.quickCommandBarTranslucentHint'))}
         <p className="preference-quick-command-hint">{t('preferences.quickCommandOrderHint')}</p>
-        <div className="preference-quick-command-list">{preferences.quickCommandPreferences.map((item) => {
-          const metadata = QUICK_COMMAND_METADATA[item.id]
-          const enabledCount = preferences.quickCommandPreferences.filter((candidate) => candidate.enabled).length
-          const label = t(metadata.label)
-          return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => update('quickCommandPreferences', preferences.quickCommandPreferences.map((candidate) => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate))} /></div>
+        <div className="preference-quick-command-bars">{preferences.quickCommandBars.map((bar) => {
+          const collapsed = collapsedQuickCommandBars.has(bar.id)
+          return <section className={`preference-quick-command-bar ${collapsed ? 'collapsed' : ''}`} key={bar.id}>
+          <header className="preference-quick-command-bar-header"><TextInput className="preference-quick-command-bar-name" aria-label={t('preferences.quickCommandBarName')} value={bar.name} maxLength={32} onChange={(event) => updateQuickCommandBar(bar.id, { name: event.target.value })} /><ThemedSelect value={bar.edge} groups={[{ label: t('preferences.quickCommandBarEdge'), options: [{ value: 'top' as QuickCommandBarEdge, label: t('common.top') }, { value: 'right' as QuickCommandBarEdge, label: t('common.right') }, { value: 'bottom' as QuickCommandBarEdge, label: t('common.bottom') }, { value: 'left' as QuickCommandBarEdge, label: t('common.left') }, { value: 'none' as QuickCommandBarEdge, label: t('common.close') }] }]} label={t('preferences.quickCommandBarEdge')} onChange={(edge) => updateQuickCommandBar(bar.id, { edge })} /><button type="button" className="icon-button preference-quick-command-collapse" aria-label={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} title={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} onClick={() => toggleQuickCommandBarCollapsed(bar.id)}><PixelUtilityIcon kind={collapsed ? 'down' : 'up'} /></button></header>
+          {!collapsed && <div className="preference-quick-command-list">{bar.commands.map((item) => {
+            const metadata = QUICK_COMMAND_METADATA[item.id]
+            const enabledCount = bar.commands.filter((candidate) => candidate.enabled).length
+            const label = t(metadata.label)
+            return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id && (draggedPreferenceItem.barId === bar.id) ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-bar-id={bar.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id, bar.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => updateQuickCommandBar(bar.id, { commands: bar.commands.map((candidate) => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate) })} /></div>
+          })}</div>}
+        </section>
         })}</div>
       </PreferenceGroup>}
       {section === 'appearance' && <>

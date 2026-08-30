@@ -1,12 +1,13 @@
-import type { LayerMask, RasterLayer, SelectionRect, SpriteDocument, ViewState } from '@shared/types'
+import type { LayerMask, RasterLayer, SelectionQuad, SelectionRect, SpriteDocument, ViewState } from '@shared/types'
 import { compositeRegion, DocumentCompositeCache, expandLayerStyleInvalidationRect, rasterContentBounds, readLayerPackedAt, renderLayerMaskRegion } from '@/core/document'
 import { applyRelativeLuminance } from '@/core/raster'
 import { selectionTransformPreviewPacked, selectionTransformPreviewRasterPacked, type SelectionTransformSource } from '@/core/tools'
-import { transformedSelectionBounds } from '@/core/selection'
+import { selectionQuadBounds, transformedSelectionBounds } from '@/core/selection'
 import { translatedSelectionRect } from '@/core/canvas-input'
 import { normalizeSelectionForTileRepeatPreview, tileRepeatDocumentOffsets } from '@/core/tilemap'
 import { initialDocumentCompositePending, initialDocumentCompositeSurface, registerInitialDocumentCompositeSurface } from '@/core/initial-document-composite'
-import type { CanvasPreviewSelection } from '@/core/canvas-preview-lifecycle'
+import { deviceAlignedCanvasRect, deviceAlignedDocumentRect, deviceAlignedPixelRuns, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
+import type { CanvasPreviewInvalidation, CanvasPreviewSelection } from '@/core/canvas-preview-lifecycle'
 import type { RasterContext2D } from './canvas-selection-renderer'
 
 const recordCanvasStage = (stage: string, startedAt: number, detail?: Record<string, number | string | boolean>): void => {
@@ -96,9 +97,14 @@ interface DrawCompositeOptions {
   frameId?: string
   isolatedLayerMask?: LayerMask
   imageSmoothingEnabled?: boolean
+  /** Effective device pixels per logical canvas unit used by the caller's context. */
+  devicePixelRatio?: CanvasDeviceScaleInput
   movingLayerIds?: readonly string[]
   selectionPreview?: SelectionTransformCompositePreview
 }
+
+const invalidationRegion = (invalidation: DrawCompositeOptions['contentInvalidation']): SelectionRect | undefined =>
+  invalidation?.kind === 'region' ? invalidation.rect : undefined
 
 const MAX_SURFACE_DIMENSION = 8192
 const MAX_CACHED_FRAMES = 32
@@ -172,6 +178,28 @@ const pixelAlignedRect = (rect: SelectionRect): SelectionRect => {
   }
 }
 
+const selectionQuadKey = (quad?: SelectionQuad): string => quad
+  ? [quad.nw.x, quad.nw.y, quad.ne.x, quad.ne.y, quad.se.x, quad.se.y, quad.sw.x, quad.sw.y].join(',')
+  : ''
+
+const translatedSelectionQuad = (quad: SelectionQuad | undefined, offsetX: number, offsetY: number): SelectionQuad | undefined => quad
+  ? {
+      nw: { x: quad.nw.x + offsetX, y: quad.nw.y + offsetY },
+      ne: { x: quad.ne.x + offsetX, y: quad.ne.y + offsetY },
+      se: { x: quad.se.x + offsetX, y: quad.se.y + offsetY },
+      sw: { x: quad.sw.x + offsetX, y: quad.sw.y + offsetY }
+    }
+  : undefined
+
+const selectionQuadForTarget = (
+  selection: SelectionTransformCompositePreview,
+  target: SelectionRect
+): SelectionQuad | undefined => translatedSelectionQuad(
+  selection.quad,
+  target.x - selection.target.x,
+  target.y - selection.target.y
+)
+
 const selectionPreviewRasterKey = (selection: SelectionTransformCompositePreview, layerFormat: RasterLayer['format']): string => {
   const { target, shear } = selection
   return [
@@ -187,6 +215,8 @@ const selectionPreviewRasterKey = (selection: SelectionTransformCompositePreview
     shear?.axis ?? '',
     shear?.edge ?? '',
     shear?.amount ?? '',
+    selectionQuadKey(selection.quad),
+    selectionQuadKey(selection.source.sourceQuad),
     layerFormat
   ].join(':')
 }
@@ -235,6 +265,8 @@ const selectionPreviewTransformKey = (selection: SelectionTransformCompositePrev
     shear?.axis ?? '',
     shear?.edge ?? '',
     shear?.amount ?? '',
+    selectionQuadKey(selection.quad),
+    selectionQuadKey(selection.source.sourceQuad),
     selection.copy ? 1 : 0,
     tileRepeatMode
   ].join(':')
@@ -273,11 +305,23 @@ export const shouldCacheFullCompositeSurface = (width: number, height: number, m
   width > 0 && height > 0 && width <= MAX_SURFACE_DIMENSION && height <= MAX_SURFACE_DIMENSION && width * height * 4 <= maxCacheBytes
 
 export class CanvasCompositeCache {
+  /**
+   * Device-pixel ratio used by the most recent draw.  Cache composition is
+   * synchronous; keeping it on the instance lets all preview paths use the
+   * same canonical screen rectangle without threading another argument
+   * through every private renderer.
+   */
+  private currentDevicePixelRatio: CanvasDeviceScaleInput = 1
   private namespace = ''
   private lastDrawnFrameId = 'static'
+  private lastDocument: SpriteDocument | null = null
+  private invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
   private surfaces = new Map<string, CompositeSurface>()
   private regions = new Map<string, CompositeRegionSurface>()
   private dirtyRects = new Map<string, SelectionRect[]>()
+  /** Raw source regions changed during a live gesture, before style expansion. */
+  private sourceDirtyHints = new Map<string, { rect: SelectionRect; used: boolean }>()
+  private fullPreviewInvalidationPending = false
   private compositeCache = new DocumentCompositeCache()
   private movePreview: MovePreviewSurface | null = null
   private selectionPreview: SelectionPreviewSurface | null = null
@@ -287,13 +331,15 @@ export class CanvasCompositeCache {
   constructor(private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES) {}
 
   supportsSelectionPreview(document: SpriteDocument, contentRevision: number, layerId: string): boolean {
-    return Boolean(this.compositeCache.normalLayersFor(document, contentRevision)?.some((layer) => layer.id === layerId))
+    return Boolean(this.compositeCache.renderLayersFor(document, contentRevision)?.some((layer) => layer.id === layerId))
   }
 
   invalidateSurface(): void {
     this.surfaces.clear()
     this.regions.clear()
     this.dirtyRects.clear()
+    this.sourceDirtyHints.clear()
+    this.compositeCache.invalidateAll()
     this.movePreview = null
     this.selectionPreview = null
     this.clipboardPreview = null
@@ -301,6 +347,8 @@ export class CanvasCompositeCache {
   }
 
   invalidateAll(): void {
+    if (this.lastDocument) this.invalidatedInitialDocuments.add(this.lastDocument)
+    this.fullPreviewInvalidationPending = true
     this.invalidateSurface()
   }
 
@@ -318,22 +366,54 @@ export class CanvasCompositeCache {
 
   invalidateDocumentRect(selection: SelectionRect | null | undefined, document: SpriteDocument, frameId = this.lastDrawnFrameId, affectedOwnerIds?: readonly string[]): void {
     if (!selection) return
+    this.invalidatedInitialDocuments.add(document)
+    this.compositeCache.invalidateLiveSourceCaches()
     this.invalidateRect(expandLayerStyleInvalidationRect(document, selection, affectedOwnerIds), document.width, document.height, frameId)
+    const previous = this.sourceDirtyHints.get(frameId)
+    const rect = previous && !previous.used ? unionRect(previous.rect, selection) : { ...selection }
+    this.sourceDirtyHints.set(frameId, { rect, used: false })
   }
 
-  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
+  consumePreviewInvalidation(frameId = this.lastDrawnFrameId): CanvasPreviewInvalidation | null {
+    if (this.fullPreviewInvalidationPending) {
+      this.fullPreviewInvalidationPending = false
+      this.sourceDirtyHints.delete(frameId)
+      return { kind: 'full' }
+    }
+    const hint = this.sourceDirtyHints.get(frameId)
+    if (!hint) return null
+    this.sourceDirtyHints.delete(frameId)
+    return { kind: 'region', rect: { ...hint.rect } }
+  }
+
+  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
+    this.currentDevicePixelRatio = devicePixelRatio
+    this.lastDocument = document
     const effectiveFrameId = frameId ?? document.animation?.activeFrameId ?? 'static'
     this.lastDrawnFrameId = effectiveFrameId
     const namespace = this.surfaceNamespace(document, view, isolatedLayerMask)
     if (this.namespace !== namespace) {
       this.namespace = namespace
-      this.invalidateAll()
+      // A namespace change invalidates rendered surfaces, but it does not
+      // mean the document content changed. Keep the one-time initial
+      // composite available for a first draw of a newly loaded document.
+      this.invalidateSurface()
     }
     const frameKey = `${namespace}:${effectiveFrameId}`
+    const liveSourceDirtyHint = this.sourceDirtyHints.get(effectiveFrameId)
+    const liveSourceDirtyRect = liveSourceDirtyHint?.rect
+    // A single draw pass can render several tile-repeat copies. Keep the hint
+    // available to every copy; a later edit resets it in invalidateDocumentRect.
+    if (liveSourceDirtyHint) liveSourceDirtyHint.used = true
+    const committedSourceDirtyRect = invalidationRegion(contentInvalidation)
+    const sourceDirtyRect = liveSourceDirtyRect && committedSourceDirtyRect
+      ? unionRect(liveSourceDirtyRect, committedSourceDirtyRect)
+      : liveSourceDirtyRect ?? committedSourceDirtyRect
 
+    const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, devicePixelRatio)
     context.save()
     context.beginPath()
-    context.rect(originX, originY, canvasWidth, canvasHeight)
+    context.rect(boundary.left, boundary.top, boundary.width, boundary.height)
     context.clip()
     context.imageSmoothingEnabled = imageSmoothingEnabled
     if (imageSmoothingEnabled) context.imageSmoothingQuality = 'high'
@@ -353,9 +433,69 @@ export class CanvasCompositeCache {
     }
     this.selectionPreview = null
     const initialCompositeIsPending = contentRevision === 0 && !isolatedLayerMask && !view.relativeLuminance && initialDocumentCompositePending(document, effectiveFrameId)
-    if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending)) this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, imageSmoothingEnabled, isolatedLayerMask)
-    else this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, isolatedLayerMask)
+    if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending)) this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, sourceDirtyRect, imageSmoothingEnabled, isolatedLayerMask)
+    else this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, sourceDirtyRect, imageSmoothingEnabled, isolatedLayerMask)
     context.restore()
+  }
+
+  private alignedDestination(originX: number, originY: number, width: number, height: number): ReturnType<typeof deviceAlignedCanvasRect> {
+    return deviceAlignedCanvasRect(originX, originY, width, height, this.currentDevicePixelRatio)
+  }
+
+  private alignedDocumentDestination(originX: number, originY: number, zoom: number, x: number, y: number, width: number, height: number): ReturnType<typeof deviceAlignedDocumentRect> {
+    return deviceAlignedDocumentRect(originX, originY, zoom, x, y, width, height, this.currentDevicePixelRatio)
+  }
+
+  /**
+   * Blit a cached raster using the same per-pixel device edges as the live
+   * brush preview. A single large drawImage lets the browser distribute a
+   * fractional physical scale across source rows/columns, which can move a
+   * pixel by one device row when the effective backing ratio is non-integer.
+   */
+  private drawAlignedPixelRegion(
+    context: RasterContext2D,
+    source: OffscreenCanvas,
+    originX: number,
+    originY: number,
+    zoom: number,
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+    width: number,
+    height: number
+  ): void {
+    const dpr = typeof this.currentDevicePixelRatio === 'number'
+      ? { x: this.currentDevicePixelRatio, y: this.currentDevicePixelRatio }
+      : this.currentDevicePixelRatio
+    const columns = deviceAlignedPixelRuns(originX, zoom, targetX, width, dpr.x)
+    const rows = deviceAlignedPixelRuns(originY, zoom, targetY, height, dpr.y)
+    for (const row of rows) for (const column of columns) {
+      context.drawImage(
+        source,
+        sourceX + column.start - targetX,
+        sourceY + row.start - targetY,
+        column.count,
+        row.count,
+        column.left,
+        row.left,
+        column.right - column.left,
+        row.right - row.left
+      )
+    }
+  }
+
+  private requiresAlignedPixelBlit(zoom: number): boolean {
+    if (!Number.isFinite(zoom) || zoom <= 0) return false
+    const dpr = typeof this.currentDevicePixelRatio === 'number'
+      ? { x: this.currentDevicePixelRatio, y: this.currentDevicePixelRatio }
+      : this.currentDevicePixelRatio
+    // Keep the common small-pixel path cheap. Once a document pixel spans at
+    // least four physical pixels, a one-pixel redistribution is visible and
+    // the segmented blit preserves the exact preview boundary.
+    if (Math.min(zoom * dpr.x, zoom * dpr.y) < 4) return false
+    const fractional = (value: number): boolean => Math.abs(value - Math.round(value)) > 0.0000001
+    return fractional(zoom * dpr.x) || fractional(zoom * dpr.y)
   }
 
   private selectionTransformRasterFor(
@@ -373,7 +513,8 @@ export class CanvasCompositeCache {
       selection.target,
       selection.angle,
       selection.shear,
-      activeLayer
+      activeLayer,
+      selection.quad
     )
     const next = { source: selection.source, key, ...raster }
     this.selectionTransformRaster = next
@@ -404,11 +545,11 @@ export class CanvasCompositeCache {
     if (source.origin !== 'clipboard'
       || !selection.copy) return false
 
-    const layers = this.compositeCache.normalLayersFor(document, contentRevision)
+    const layers = this.compositeCache.renderLayersFor(document, contentRevision)
     if (!layers) return false
     const layerIndex = layers.findIndex((layer) => layer.id === selection.layerId)
     if (layerIndex < 0 || layerIndex !== layers.length - 1) return false
-    const activeLayer = layers[layerIndex]
+    const activeLayer = this.compositeCache.sourceLayerFor(layers[layerIndex])
     if (activeLayer.kind === 'text'
       || activeLayer.format !== 'rgba'
       || activeLayer.opacity !== 1
@@ -417,6 +558,7 @@ export class CanvasCompositeCache {
 
     const directSource = selection.angle % 360 === 0
       && !selection.shear
+      && !selection.quad
       && !target.flipHorizontal
       && !target.flipVertical
       && target.width === source.selection.width
@@ -455,24 +597,33 @@ export class CanvasCompositeCache {
 
     const initialCompositeIsPending = contentRevision === 0 && initialDocumentCompositePending(document, frameId)
     if (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending) {
-      this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, contentInvalidation, imageSmoothingEnabled)
+      this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, contentInvalidation, undefined, imageSmoothingEnabled)
     } else {
-      this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, contentInvalidation)
+      this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, contentInvalidation, undefined, imageSmoothingEnabled)
     }
     for (const repeatedTarget of repeatedSelectionTargets(selection, document, view)) {
+      const repeatedQuad = selectionQuadForTarget(selection, repeatedTarget)
       const drawRect = directSource
         ? repeatedTarget
-        : pixelAlignedRect(transformedSelectionBounds(repeatedTarget, selection.angle, selection.shear))
+        : pixelAlignedRect(repeatedQuad
+          ? selectionQuadBounds(repeatedQuad)
+          : transformedSelectionBounds(repeatedTarget, selection.angle, selection.shear))
+      const destination = this.alignedDestination(
+        originX + drawRect.x * view.zoom,
+        originY + drawRect.y * view.zoom,
+        drawRect.width * view.zoom,
+        drawRect.height * view.zoom
+      )
       context.drawImage(
         preview.canvas,
         0,
         0,
         preview.canvas.width,
         preview.canvas.height,
-        originX + drawRect.x * view.zoom,
-        originY + drawRect.y * view.zoom,
-        drawRect.width * view.zoom,
-        drawRect.height * view.zoom
+        destination.left,
+        destination.top,
+        destination.width,
+        destination.height
       )
     }
     return true
@@ -486,11 +637,11 @@ export class CanvasCompositeCache {
     const width = right - x
     const height = bottom - y
     if (width <= 0 || height <= 0) return true
-    const layers = this.compositeCache.normalLayersFor(document, contentRevision)
+    const layers = this.compositeCache.renderLayersFor(document, contentRevision)
     if (!layers) return false
     const layerIndex = layers.findIndex((layer) => layer.id === selection.layerId)
     if (layerIndex < 0) return false
-    const activeLayer = layers[layerIndex]
+    const activeLayer = this.compositeCache.sourceLayerFor(layers[layerIndex])
     const key = `${document.id}:${frameId}:${contentRevision}:${selection.layerId}`
     let preview = this.selectionPreview
     const viewportCovered = preview
@@ -507,12 +658,12 @@ export class CanvasCompositeCache {
       let baseDocumentX: number
       let baseDocumentY: number
       if (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes)) {
-        const surface = this.drawSurface(context, document, view, originX, originY, document.width * view.zoom, document.height * view.zoom, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, null, false, undefined, false)
+        const surface = this.drawSurface(context, document, view, originX, originY, document.width * view.zoom, document.height * view.zoom, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, null, undefined, false, undefined, false)
         baseCanvas = surface.canvas
         baseDocumentX = 0
         baseDocumentY = 0
       } else {
-        const region = this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, null, undefined, false)
+        const region = this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, frameId, contentRevision, null, undefined, false, undefined, false)
         if (!region) return false
         baseCanvas = region.canvas
         baseDocumentX = region.x
@@ -547,7 +698,10 @@ export class CanvasCompositeCache {
     const transformKey = selectionPreviewTransformKey(selection, tileRepeatMode)
     const previewChanged = preview.source !== selection.source || preview.transformKey !== transformKey
     const selectionTargets = repeatedSelectionTargets(selection, document, view)
-    const currentBounds = selectionTargets.map((target) => pixelAlignedRect(transformedSelectionBounds(target, selection.angle, selection.shear)))
+    const selectionQuads = selectionTargets.map((target) => selectionQuadForTarget(selection, target))
+    const currentBounds = selectionTargets.map((target, index) => pixelAlignedRect(selectionQuads[index]
+      ? selectionQuadBounds(selectionQuads[index]!)
+      : transformedSelectionBounds(target, selection.angle, selection.shear)))
     const sourceSelection = selection.source.selection
     const patchRects = mergeOverlappingRects([
       ...(!selection.copy ? [sourceSelection] : []),
@@ -599,7 +753,7 @@ export class CanvasCompositeCache {
           const overlap = intersectRect(transformedRect, patchRect)
           if (!overlap) continue
           if (transformedRaster.width !== transformedRect.width || transformedRaster.height !== transformedRect.height) {
-            const transformed = selectionTransformPreviewPacked(document, selection.source, selectionTargets[targetIndex], patchRect.x, patchRect.y, patchRect.width, patchRect.height, selection.angle, selection.shear, activeLayer)
+            const transformed = selectionTransformPreviewPacked(document, selection.source, selectionTargets[targetIndex], patchRect.x, patchRect.y, patchRect.width, patchRect.height, selection.angle, selection.shear, activeLayer, undefined, selectionQuads[targetIndex])
             for (let offset = 0; offset < transformed.length; offset += 1) {
               const outputOffset = offset * 4
               compositePreviewPixel(patchPixels, outputOffset, transformed[offset], activeLayer.format, activeLayer.opacity, palette)
@@ -622,16 +776,22 @@ export class CanvasCompositeCache {
     }
     const drawRect = intersectRect({ x: preview.x, y: preview.y, width: preview.width, height: preview.height }, visibleRect)
     if (!drawRect) return true
+    const destination = this.alignedDestination(
+      originX + drawRect.x * view.zoom,
+      originY + drawRect.y * view.zoom,
+      drawRect.width * view.zoom,
+      drawRect.height * view.zoom
+    )
     context.drawImage(
       preview.canvas,
       drawRect.x - preview.x,
       drawRect.y - preview.y,
       drawRect.width,
       drawRect.height,
-      originX + drawRect.x * view.zoom,
-      originY + drawRect.y * view.zoom,
-      drawRect.width * view.zoom,
-      drawRect.height * view.zoom
+      destination.left,
+      destination.top,
+      destination.width,
+      destination.height
     )
     return true
   }
@@ -667,7 +827,8 @@ export class CanvasCompositeCache {
     preview.outputPixels.set(preview.basePixels)
     this.compositeCache.compositeNormalLayersInto(document, repeatedLayers(preview.movingLayers, document, view), x, y, width, height, contentRevision, preview.outputPixels)
     preview.canvas.getContext('2d')?.putImageData(imageData(preview.outputPixels, width, height), 0, 0)
-    context.drawImage(preview.canvas, 0, 0, width, height, originX + x * view.zoom, originY + y * view.zoom, width * view.zoom, height * view.zoom)
+    const destination = this.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
+    context.drawImage(preview.canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
     return true
   }
 
@@ -675,7 +836,7 @@ export class CanvasCompositeCache {
     return `${CACHE_VERSION}:${document.id}:${isolatedLayerMask ? `mask:${isolatedLayerMask.id}` : view.relativeLuminance ? 'luminance' : 'color'}`
   }
 
-  private drawSurface(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, canvasWidth: number, canvasHeight: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], imageSmoothingEnabled: boolean, isolatedLayerMask?: LayerMask, render = true): CompositeSurface {
+  private drawSurface(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, canvasWidth: number, canvasHeight: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], sourceDirtyRect: SelectionRect | undefined, imageSmoothingEnabled: boolean, isolatedLayerMask?: LayerMask, render = true): CompositeSurface {
     let surface = this.surfaces.get(key)
     const canApplyInvalidation = surface
       && surface.revision !== contentRevision
@@ -695,16 +856,27 @@ export class CanvasCompositeCache {
     }
     if (!surface || surface.canvas.width !== document.width || surface.canvas.height !== document.height) {
       const initialSurface = !isolatedLayerMask && !view.relativeLuminance && contentRevision === 0
+        && !this.invalidatedInitialDocuments.has(document)
         ? initialDocumentCompositeSurface(document, frameId)
         : null
       const canvas = initialSurface ?? new OffscreenCanvas(document.width, document.height)
       if (!initialSurface) {
         const pixels = isolatedLayerMask
           ? renderLayerMaskRegion(isolatedLayerMask, 0, 0, document.width, document.height)
-          : compositeRegion(document, 0, 0, document.width, document.height, this.compositeCache, contentRevision)
+          : compositeRegion(
+            document,
+            0,
+            0,
+            document.width,
+            document.height,
+            this.compositeCache,
+            contentRevision,
+            undefined,
+            sourceDirtyRect
+          )
         if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
         canvas.getContext('2d')?.putImageData(imageData(pixels, document.width, document.height), 0, 0)
-        if (!isolatedLayerMask && !view.relativeLuminance && contentRevision === 0) registerInitialDocumentCompositeSurface(document, canvas, frameId)
+        if (!isolatedLayerMask && !view.relativeLuminance && contentRevision === 0 && !this.invalidatedInitialDocuments.has(document)) registerInitialDocumentCompositeSurface(document, canvas, frameId)
       }
       surface = { canvas, revision: contentRevision }
       this.remember(this.surfaces, key, surface)
@@ -737,7 +909,17 @@ export class CanvasCompositeCache {
         const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
         const pixels = isolatedLayerMask
           ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
-          : compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, rect)
+          : compositeRegion(
+            document,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            this.compositeCache,
+            contentRevision,
+            rect,
+            sourceDirtyRect
+          )
         if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
         recordCanvasStage('canvas.recompose', compositeStartedAt, { pixels: rect.width * rect.height })
         const uploadStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
@@ -749,22 +931,27 @@ export class CanvasCompositeCache {
     const visibleWidth = Math.max(0, toX - fromX)
     const visibleHeight = Math.max(0, toY - fromY)
     if (render && visibleWidth > 0 && visibleHeight > 0) {
-      context.drawImage(
-        surface.canvas,
-        fromX,
-        fromY,
-        visibleWidth,
-        visibleHeight,
-        originX + fromX * view.zoom,
-        originY + fromY * view.zoom,
-        visibleWidth * view.zoom,
-        visibleHeight * view.zoom
-      )
+      const destination = this.alignedDocumentDestination(originX, originY, view.zoom, fromX, fromY, visibleWidth, visibleHeight)
+      if (this.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+        this.drawAlignedPixelRegion(context, surface.canvas, originX, originY, view.zoom, fromX, fromY, fromX, fromY, visibleWidth, visibleHeight)
+      } else {
+        context.drawImage(
+          surface.canvas,
+          fromX,
+          fromY,
+          visibleWidth,
+          visibleHeight,
+          destination.left,
+          destination.top,
+          destination.width,
+          destination.height
+        )
+      }
     }
     return surface
   }
 
-  private drawRegion(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], isolatedLayerMask?: LayerMask, render = true): CompositeRegionSurface | null {
+  private drawRegion(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], sourceDirtyRect: SelectionRect | undefined, imageSmoothingEnabled = false, isolatedLayerMask?: LayerMask, render = true): CompositeRegionSurface | null {
     const x = Math.max(0, Math.floor(fromX))
     const y = Math.max(0, Math.floor(fromY))
     const right = Math.min(document.width, Math.ceil(toX))
@@ -777,7 +964,17 @@ export class CanvasCompositeCache {
     if (!sameGeometry) {
       const pixels = isolatedLayerMask
         ? renderLayerMaskRegion(isolatedLayerMask, x, y, width, height)
-        : compositeRegion(document, x, y, width, height, this.compositeCache, contentRevision)
+        : compositeRegion(
+          document,
+          x,
+          y,
+          width,
+          height,
+          this.compositeCache,
+          contentRevision,
+          undefined,
+          sourceDirtyRect
+        )
       if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
       const canvas = new OffscreenCanvas(width, height)
       canvas.getContext('2d')?.putImageData(imageData(pixels, width, height), 0, 0)
@@ -816,7 +1013,17 @@ export class CanvasCompositeCache {
         const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
         const pixels = isolatedLayerMask
           ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
-          : compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, rect)
+          : compositeRegion(
+            document,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            this.compositeCache,
+            contentRevision,
+            rect,
+            sourceDirtyRect
+          )
         if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
         recordCanvasStage('canvas.recompose', compositeStartedAt, { pixels: rect.width * rect.height })
         const uploadStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
@@ -827,11 +1034,12 @@ export class CanvasCompositeCache {
     }
     if (!region) return null
     if (render) {
-      context.save()
-      context.translate(originX, originY)
-      context.scale(view.zoom, view.zoom)
-      context.drawImage(region.canvas, x, y)
-      context.restore()
+      const destination = this.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
+      if (this.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+        this.drawAlignedPixelRegion(context, region.canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
+      } else {
+        context.drawImage(region.canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
+      }
     }
     return region
   }

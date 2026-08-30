@@ -1,6 +1,6 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientType, ImageBrushSettings, LineKind, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, LineKind, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
-import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings } from './gradient-color'
+import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
 import { readStoredJson, writeStoredJson } from './storage'
 import { DEFAULT_SYMMETRY_AXES, type SymmetryAxes } from './symmetry'
 import { DEFAULT_GAP_CLOSING_THRESHOLD, normalizeGapClosingThreshold } from './contiguous-region'
@@ -15,6 +15,7 @@ import {
   type BrushDynamicsSettings,
   type LegacyBrushDynamicsSettingsV2,
   type LegacyBrushDynamicsSettingsV3,
+  type LegacyBrushDynamicsSettingsV4,
   type BrushPressureSettings
 } from './pressure'
 
@@ -57,6 +58,8 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   gradientContiguous: boolean
   gradientType: GradientType
   gradientDither: GradientDither
+  gradientFreeform: boolean
+  gradientStops: GradientStop[]
   moveAutoSelect: boolean
   selectionKind: SelectionKind
   selectionMode: SelectionMode
@@ -111,6 +114,11 @@ export const defaultToolSettings: PersistedToolSettings = {
   gradientContiguous: true,
   gradientType: 'linear',
   gradientDither: 'none',
+  gradientFreeform: false,
+  gradientStops: [
+    { position: 0, color: { r: 41, g: 121, b: 255, a: 255 } },
+    { position: 1, color: { r: 241, g: 244, b: 248, a: 255 } }
+  ],
   moveAutoSelect: true,
   selectionKind: 'rectangle',
   selectionMode: 'replace',
@@ -147,8 +155,8 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
     id,
     normalizeProceduralBrushSettings(id, stored?.proceduralBrushSettings?.[id] ?? fallback.proceduralBrushSettings[id])
   ])) as Record<ProceduralBrushId, ProceduralBrushSettings>
-  const storedDynamics = stored?.brushDynamics as BrushDynamicsSettings | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | undefined
-  const brushDynamics = storedDynamics?.version === 2 || storedDynamics?.version === 3 || storedDynamics?.version === 4
+  const storedDynamics = stored?.brushDynamics as BrushDynamicsSettings | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | undefined
+  const brushDynamics = storedDynamics?.version === 2 || storedDynamics?.version === 3 || storedDynamics?.version === 4 || storedDynamics?.version === 5
     ? normalizeBrushDynamicsSettings(storedDynamics, fallback.brushDynamics)
     : stored?.brushPressure
       ? migrateBrushPressureSettings(stored.brushPressure)
@@ -215,6 +223,8 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       gradientContiguous: typeof stored.gradientContiguous === 'boolean' ? stored.gradientContiguous : defaultToolSettings.gradientContiguous,
       gradientType: stored.gradientType === 'radial' ? 'radial' : 'linear',
       gradientDither: stored.gradientDither === 'checker' || stored.gradientDither === 'diagonal' || stored.gradientDither === 'diagonal-reverse' || stored.gradientDither === 'horizontal' || stored.gradientDither === 'vertical' || stored.gradientDither === 'bayer-2' || stored.gradientDither === 'bayer-4' || stored.gradientDither === 'bayer-8' || stored.gradientDither === 'none' ? stored.gradientDither : defaultToolSettings.gradientDither,
+      gradientFreeform: typeof stored.gradientFreeform === 'boolean' ? stored.gradientFreeform : defaultToolSettings.gradientFreeform,
+      gradientStops: normalizeGradientStops(stored.gradientStops, defaultToolSettings.gradientStops[0].color, defaultToolSettings.gradientStops.at(-1)!.color),
       moveAutoSelect: typeof stored.moveAutoSelect === 'boolean' ? stored.moveAutoSelect : defaultToolSettings.moveAutoSelect,
       selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' ? stored.selectionKind : defaultToolSettings.selectionKind,
       selectionMode: stored.selectionMode === 'add' || stored.selectionMode === 'subtract' || stored.selectionMode === 'intersect' || stored.selectionMode === 'replace' ? stored.selectionMode : defaultToolSettings.selectionMode,

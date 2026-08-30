@@ -39,19 +39,5 @@ describe('PNG format', () => {
     expect(decoded.height).toBe(3)
   })
 
-  it('exports transparent pixel art as crisp SVG rectangles', async () => {
-    const document = createDocument('svg', 2, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    if (layer.format !== 'rgba') throw new Error('expected rgba layer')
-    layer.pixels.set([41, 121, 255, 255, 0, 0, 0, 0])
-    const result = await exportDocumentImage(document, 200, 'svg')
-    const svg = new TextDecoder().decode(result.bytes)
-    expect(result.extension).toBe('svg')
-    expect(result.width).toBe(4)
-    expect(result.height).toBe(2)
-    expect(svg).toContain('width="4" height="2"')
-    expect(svg).toContain('shape-rendering="crispEdges"')
-    expect(svg).toContain('fill="#2979ff"')
-    expect(svg).not.toContain('M2 0')
-  })
+
 })

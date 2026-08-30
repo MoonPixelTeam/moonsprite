@@ -1,6 +1,8 @@
 import type { MoonSpriteApi, RecoveryRecord, SpriteDocument } from '@shared/types'
-import { decodeProject, encodeProjectAsync } from '@/core/project-format'
+import { clearProjectSaveBaseline, encodeProjectAsync } from '@/core/project-format'
+import { decodeDocumentFileAsync } from '@/core/document-files'
 import { translateCurrent as tr } from '@/core/localization'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 
 export interface RecoveryAutosaveTarget {
   id: string
@@ -21,22 +23,45 @@ export class RecoveryService {
   }
 
   async restore(api: MoonSpriteApi, record: RecoveryRecord): Promise<SpriteDocument> {
-    const document = decodeProject(await api.readRecovery(record.id))
-    document.name = tr('core.recovery.restoredName', { name: record.name })
-    document.dirty = true
-    return document
+    const diagnostic = runtimeDiagnosticsActive()
+      ? beginRuntimeDiagnosticOperation('recovery.restore', {}, 5_000)
+      : null
+    try {
+      const data = await api.readRecovery(record.id)
+      diagnostic?.mark('read-complete', { archiveBytes: data.byteLength })
+      const document = await decodeDocumentFileAsync(data, `${record.id}.moonsprite`)
+      clearProjectSaveBaseline(document)
+      document.filePath = null
+      document.sourceFilePath = undefined
+      document.name = tr('core.recovery.restoredName', { name: record.name })
+      document.dirty = true
+      diagnostic?.finish('ok', { width: document.width, height: document.height, layers: document.layers.length })
+      return document
+    } catch (error) {
+      diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
   }
 
   autosave(api: MoonSpriteApi, targets: readonly RecoveryAutosaveTarget[]): Promise<void> {
     return this.enqueue(async () => {
-      const results = await Promise.allSettled(targets.map(async ({ id, document }) => {
-        // Recovery only needs the manifest and editable layer data. Avoid
-        // generating a full-canvas gallery preview and use light compression.
-        await api.writeRecovery(id, document.name, await encodeProjectAsync(document, { includePreview: false, compressionLevel: 1 }))
-      }))
-      const failures = results.flatMap((result, index) => result.status === 'rejected'
-        ? [new Error(`${targets[index].document.name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`)]
-        : [])
+      const diagnostic = runtimeDiagnosticsActive()
+        ? beginRuntimeDiagnosticOperation('recovery.autosave', { documents: targets.length }, 5_000)
+        : null
+      const failures: Error[] = []
+      for (const [index, { id, document }] of targets.entries()) {
+        try {
+          diagnostic?.mark('encode-start', { index, width: document.width, height: document.height, layers: document.layers.length })
+          // Recovery only needs editable project data. Serial processing prevents
+          // multiple large documents from being cloned and compressed together.
+          const data = await encodeProjectAsync(document, { includePreview: false, compressionLevel: 1 })
+          diagnostic?.mark('write-start', { index, archiveBytes: data.byteLength })
+          await api.writeRecovery(id, document.name, data)
+        } catch (error) {
+          failures.push(new Error(`${document.name}: ${error instanceof Error ? error.message : String(error)}`))
+        }
+      }
+      diagnostic?.finish(failures.length > 0 ? 'error' : 'ok', { failures: failures.length })
       if (failures.length > 0) throw new AggregateError(failures, tr('core.recovery.autosaveFailed', { count: failures.length }))
     })
   }

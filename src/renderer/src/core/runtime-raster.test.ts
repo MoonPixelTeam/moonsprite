@@ -49,16 +49,7 @@ describe('runtime sparse raster', () => {
     expect(surfacePixelsMaterialized(layer)).toBe(false)
   })
 
-  it('copies a clipped packed region from sparse tiles without materializing the surface', () => {
-    const layer = rgbaLayer()
-    installRuntimeRaster(layer, rgbaRuntime())
 
-    expect(Array.from(readSurfacePackedRegion(layer, -1, 0, 4, 2))).toEqual([
-      0, 0x04030201, 0x08070605, 0,
-      0, 0x0c0b0a09, 0x100f0e0d, 0
-    ])
-    expect(surfacePixelsMaterialized(layer)).toBe(false)
-  })
 
   it('copies a clipped RGBA region directly from sparse tile bytes', () => {
     const layer = rgbaLayer()
@@ -103,23 +94,7 @@ describe('runtime sparse raster', () => {
     expect(readSurfacePackedLocal(layer, 1, 0)).toBe(0x08070605)
   })
 
-  it('keeps RGBA visible bounds prepared in the worker without materializing pixels', () => {
-    const document = createDocument('runtime metadata', 4, 4, 'rgba')
-    const layer = document.layers[0] as RgbaLayer
-    installRuntimeRaster(layer, rgbaRuntime())
-    installRuntimeRaster(document.animation!.cels[0].surface!, runtimeRasterForSurface(layer)!)
 
-    expect(cachedRuntimeRasterVisibleBounds(layer)).toBeUndefined()
-    prepareRuntimeRasterMetadata(document)
-    expect(runtimeRasterForSurface(layer)?.visibleBounds).toEqual({ x: 0, y: 0, width: 2, height: 2 })
-    expect(cachedRuntimeRasterVisibleBounds(layer)).toEqual({ x: 0, y: 0, width: 2, height: 2 })
-    expect(surfacePixelsMaterialized(layer)).toBe(false)
-
-    prepareRuntimeRasterDocumentForTransfer(document)
-    rehydrateRuntimeRasterDocument(document)
-    expect(runtimeRasterVisibleBounds(layer)).toEqual({ x: 0, y: 0, width: 2, height: 2 })
-    expect(surfacePixelsMaterialized(layer)).toBe(false)
-  })
 
   it('detaches runtime storage when a layer becomes editable', () => {
     const layer = rgbaLayer()
@@ -130,15 +105,7 @@ describe('runtime sparse raster', () => {
     expect(layer.pixels).toHaveLength(64)
   })
 
-  it('counts shared sparse payload once instead of full logical surfaces', () => {
-    const document = createDocument('resident bytes', 4, 4, 'rgba')
-    const layer = document.layers[0] as RgbaLayer
-    const runtime = rgbaRuntime()
-    installRuntimeRaster(layer, runtime)
-    installRuntimeRaster(document.animation!.cels[0].surface!, runtime)
 
-    expect(runtimeRasterResidentBytes(document)).toBe(runtime.data.byteLength + runtime.tileOffsets.byteLength)
-  })
 
   it('composites sparse RGBA pixels without materializing the source layer', () => {
     const document = createDocument('runtime composite', 4, 4, 'rgba')

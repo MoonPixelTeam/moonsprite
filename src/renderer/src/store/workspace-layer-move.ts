@@ -1,5 +1,6 @@
 import type { AnimationCel, RasterLayer, SelectionMask, SelectionRect } from '@shared/types'
 import { cloneAnimationCel, cloneAnimationCelsForLayer, ensureAnimationDocument, parseAnimationCelKey, removeAnimationCelsForLayers, restoreAnimationCels, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, animationCelOffsetsForKeys } from '@/core/animation'
+import { animationMaskAt } from '@/core/document'
 import type { CanvasDragState } from '@/core/canvas-input'
 import type { ContentInvalidationHint, HistoryEntry } from '@/core/history'
 import { cloneLayerStyles, layerStylesHistoryBytes } from '@/core/layer-styles'
@@ -15,6 +16,7 @@ export type LayerMoveState = Pick<CanvasDragState,
   | 'layerOffsets'
   | 'layerContentBounds'
   | 'layerPreviewOffset'
+  | 'animationMaskOffsets'
   | 'layerFrameId'
   | 'animationCellKeys'
   | 'animationCellOffsets'
@@ -49,6 +51,38 @@ const moveLayerInvalidation = (move: LayerMoveState, frameId?: string): ContentI
   const right = Math.max(...regions.map((region) => region.x + region.width))
   const bottom = Math.max(...regions.map((region) => region.y + region.height))
   return { kind: 'region', frameId, rect: { x: left, y: top, width: right - left, height: bottom - top } }
+}
+
+export const animationMaskOffsetsForLayerMove = (session: DocumentSession, layerIds: readonly string[], frameId: string | undefined, animationCellKeys: readonly string[] = []): Record<string, Point> => {
+  if (!frameId && animationCellKeys.length === 0) return {}
+  const timeline = ensureAnimationDocument(session.document)
+  const keys = animationCellKeys.length
+    ? animationCellKeys
+    : frameId ? layerIds.map((layerId) => `${layerId}\u0000${frameId}`) : []
+  return Object.fromEntries(keys.flatMap((key) => {
+    const target = parseAnimationCelKey(key)
+    const mask = target ? animationMaskAt(timeline, target.layerId, target.frameId) : null
+    return mask && mask.moveWithOwner !== false ? [[key, { x: mask.offsetX, y: mask.offsetY }] as const] : []
+  }))
+}
+
+const setAnimationMaskOffsets = (session: DocumentSession, offsets: Readonly<Record<string, Point>>): void => {
+  if (Object.keys(offsets).length === 0) return
+  const timeline = ensureAnimationDocument(session.document)
+  const seen = new Set<string>()
+  for (const [key, offset] of Object.entries(offsets)) {
+    const target = parseAnimationCelKey(key)
+    const mask = target ? animationMaskAt(timeline, target.layerId, target.frameId) : null
+    if (!mask || seen.has(mask.id)) continue
+    seen.add(mask.id)
+    mask.offsetX = offset.x
+    mask.offsetY = offset.y
+  }
+}
+
+const previewAnimationMaskOffsets = (session: DocumentSession, move: LayerMoveState, distanceX: number, distanceY: number): void => {
+  if (!move.animationMaskOffsets) move.animationMaskOffsets = animationMaskOffsetsForLayerMove(session, move.layerIds ?? [], move.layerFrameId, move.animationCellKeys ?? [])
+  setAnimationMaskOffsets(session, Object.fromEntries(Object.entries(move.animationMaskOffsets).map(([key, offset]) => [key, { x: offset.x + distanceX, y: offset.y + distanceY }])))
 }
 
 export const beginLayerMoveDuplicatePreview = (
@@ -93,6 +127,7 @@ export const previewLayerMove = (
       return [key, { x: offset.x + distanceX, y: offset.y + distanceY }]
     }))
     setAnimationCelOffsetsForKeys(session.document, nextOffsets)
+    previewAnimationMaskOffsets(session, move, distanceX, distanceY)
   } else {
     const layerIds = move.duplicatedLayerId ? [move.duplicatedLayerId] : move.layerIds ?? [move.layerId]
     for (const layerId of layerIds) {
@@ -102,6 +137,7 @@ export const previewLayerMove = (
       layer.offsetX = offset.x + distanceX
       layer.offsetY = offset.y + distanceY
     }
+    if (move.animationMaskOffsets) previewAnimationMaskOffsets(session, move, distanceX, distanceY)
   }
   if (move.selectionStart) {
     session.selection = shiftSelection(move.selectionStart, distanceX, distanceY, session.document.width, session.document.height)
@@ -119,6 +155,7 @@ export const cancelLayerMovePreview = (session: DocumentSession, move: LayerMove
     session.selectedGroupIds = []
   } else if (move.animationCellOffsets && move.animationCellKeys?.length) {
     setAnimationCelOffsetsForKeys(session.document, move.animationCellOffsets)
+    if (move.animationMaskOffsets) setAnimationMaskOffsets(session, move.animationMaskOffsets)
   } else {
     for (const layerId of move.layerIds ?? (move.layerId ? [move.layerId] : [])) {
       const layer = session.document.layers.find((candidate) => candidate.id === layerId)
@@ -128,6 +165,7 @@ export const cancelLayerMovePreview = (session: DocumentSession, move: LayerMove
         layer.offsetY = offset.y
       }
     }
+    if (move.animationMaskOffsets) setAnimationMaskOffsets(session, move.animationMaskOffsets)
   }
   if (move.selectionStart !== undefined) session.selection = cloneSelection(move.selectionStart)
   return true
@@ -147,21 +185,26 @@ export const createLayerMoveHistoryEntry = (
   if (!move.duplicatedLayer && move.animationCellOffsets && move.animationCellKeys?.length) {
     const before = move.animationCellOffsets
     const after = animationCelOffsetsForKeys(session.document, move.animationCellKeys)
+    const beforeMasks = move.animationMaskOffsets ?? animationMaskOffsetsForLayerMove(session, move.layerIds ?? [], move.layerFrameId, move.animationCellKeys)
+    const afterMasks = animationMaskOffsetsForLayerMove(session, move.layerIds ?? [], move.layerFrameId, move.animationCellKeys)
     const beforeSelection = cloneSelection(move.selectionStart ?? null)
     const afterSelection = cloneSelection(session.selection)
     const offsetsChanged = move.animationCellKeys.some((key) => after[key] && (after[key].x !== before[key].x || after[key].y !== before[key].y))
-    if (!offsetsChanged) return null
+    const maskOffsetsChanged = Object.keys(beforeMasks).some((key) => afterMasks[key] && (afterMasks[key].x !== beforeMasks[key].x || afterMasks[key].y !== beforeMasks[key].y))
+    if (!offsetsChanged && !maskOffsetsChanged) return null
     const affectedLayerIds = [...new Set(move.animationCellKeys.map((key) => parseAnimationCelKey(key)?.layerId).filter((id): id is string => Boolean(id)))]
     const activeFrameOnly = Boolean(move.layerFrameId) && move.animationCellKeys.every((key) => parseAnimationCelKey(key)?.frameId === move.layerFrameId)
     return {
       label: move.animationCellKeys.length > 1 ? labels.multiple : labels.single,
-      bytes: move.animationCellKeys.length * 32,
+      bytes: move.animationCellKeys.length * 32 + Object.keys(beforeMasks).length * 16,
       undo: () => {
         setAnimationCelOffsetsForKeys(session.document, before)
+        setAnimationMaskOffsets(session, beforeMasks)
         session.selection = cloneSelection(beforeSelection)
       },
       redo: () => {
         setAnimationCelOffsetsForKeys(session.document, after)
+        setAnimationMaskOffsets(session, afterMasks)
         session.selection = cloneSelection(afterSelection)
       },
       invalidation: activeFrameOnly ? moveLayerInvalidation(move, move.layerFrameId) : undefined,
@@ -172,25 +215,31 @@ export const createLayerMoveHistoryEntry = (
 
   if (!move.duplicatedLayer && move.layerIds && move.layerIds.length > 1 && move.layerOffsets) {
     const before = move.layerOffsets
+    const beforeMasks = move.animationMaskOffsets ?? animationMaskOffsetsForLayerMove(session, move.layerIds, move.layerFrameId)
+    const afterMasks = animationMaskOffsetsForLayerMove(session, move.layerIds, move.layerFrameId)
     const beforeSelection = cloneSelection(move.selectionStart ?? null)
     const afterSelection = cloneSelection(session.selection)
     const after = Object.fromEntries(move.layerIds.map((id) => {
       const layer = session.document.layers.find((candidate) => candidate.id === id)
       return [id, { x: layer?.offsetX ?? before[id].x, y: layer?.offsetY ?? before[id].y }]
     }))
-    if (!move.layerIds.some((id) => after[id].x !== before[id].x || after[id].y !== before[id].y)) return null
+    const offsetsChanged = move.layerIds.some((id) => after[id].x !== before[id].x || after[id].y !== before[id].y)
+    const maskOffsetsChanged = Object.keys(beforeMasks).some((key) => afterMasks[key] && (afterMasks[key].x !== beforeMasks[key].x || afterMasks[key].y !== beforeMasks[key].y))
+    if (!offsetsChanged && !maskOffsetsChanged) return null
     const frameId = move.layerFrameId
     return {
       label: labels.multiple,
-      bytes: move.layerIds.length * 32,
+      bytes: move.layerIds.length * 32 + Object.keys(beforeMasks).length * 16,
       undo: () => {
         if (frameId) setAnimationCelOffsets(session.document, frameId, before)
         else restoreLayerOffsets(session, before)
+        setAnimationMaskOffsets(session, beforeMasks)
         session.selection = cloneSelection(beforeSelection)
       },
       redo: () => {
         if (frameId) setAnimationCelOffsets(session.document, frameId, after)
         else restoreLayerOffsets(session, after)
+        setAnimationMaskOffsets(session, afterMasks)
         session.selection = cloneSelection(afterSelection)
       },
       invalidation: moveLayerInvalidation(move, frameId),
@@ -202,7 +251,10 @@ export const createLayerMoveHistoryEntry = (
   if (!move.layerId || !move.layerOffset) return null
   const layerId = move.duplicatedLayerId ?? move.layerId
   const layer = session.document.layers.find((candidate) => candidate.id === layerId)
-  if (!layer || (!move.duplicatedLayer && layer.offsetX === move.layerOffset.x && layer.offsetY === move.layerOffset.y)) return null
+  const beforeMasks = move.animationMaskOffsets ?? animationMaskOffsetsForLayerMove(session, move.layerIds ?? [move.layerId], move.layerFrameId)
+  const afterMasks = animationMaskOffsetsForLayerMove(session, move.layerIds ?? [move.layerId], move.layerFrameId)
+  const maskOffsetsChanged = Object.keys(beforeMasks).some((key) => afterMasks[key] && (afterMasks[key].x !== beforeMasks[key].x || afterMasks[key].y !== beforeMasks[key].y))
+  if (!layer || (!move.duplicatedLayer && layer.offsetX === move.layerOffset.x && layer.offsetY === move.layerOffset.y && !maskOffsetsChanged)) return null
   const before = { ...move.layerOffset }
   const after = { x: layer.offsetX, y: layer.offsetY }
   const beforeSelection = cloneSelection(move.selectionStart ?? null)
@@ -225,6 +277,7 @@ export const createLayerMoveHistoryEntry = (
       } else {
         restoreLayerOffsets(session, { [layerId]: before })
       }
+      setAnimationMaskOffsets(session, beforeMasks)
       session.selection = cloneSelection(beforeSelection)
     },
     redo: () => {
@@ -244,6 +297,7 @@ export const createLayerMoveHistoryEntry = (
       } else {
         restoreLayerOffsets(session, { [layerId]: after })
       }
+      setAnimationMaskOffsets(session, afterMasks)
       session.selection = cloneSelection(afterSelection)
     },
     invalidation: duplicatedLayer ? undefined : moveLayerInvalidation(move, move.layerFrameId),

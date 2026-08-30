@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="11" height="16" viewBox="0 0 11 16" shape-rendering="crispEdges">
+  <path fill="currentColor" d="M5 0h1v1H5zM4 1h3v1H4zM3 2h5v1H3zM2 3h7v1H2zM1 4h9v1H1zM0 5h11v1H0zM0 15h11v1H0z"/>
+  <path fill="currentColor" d="M0 6h1v9H0zM10 6h1v9h-1z"/>
+  <path fill="var(--gradient-stop-color)" d="M1 6h9v9H1z"/>
+</svg>

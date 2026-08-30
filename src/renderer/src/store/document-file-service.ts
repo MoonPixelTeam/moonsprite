@@ -1,6 +1,6 @@
 import type { DocumentSlice, MoonSpriteApi, SpriteDocument, TimelapseExportFormat } from '@shared/types'
 import { checkTypedArrayLimit } from '@/core/resource-policy'
-import { decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileNameFromPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageExtension, saveImageKindForPath, sourceRasterImageKindForPath } from '@/core/document-files'
+import { decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageExtension, saveImageKindForPath, sourceRasterImageKindForPath } from '@/core/document-files'
 import { decodePng, exportDocumentImage, exportDocumentSliceImage, type SaveImageKind } from '@/core/png'
 import { sliceExportFileName } from '@/core/slices'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -12,7 +12,9 @@ import { RECENT_EXPORTS_CHANGED_EVENT, exportFileExtension, parentDirectoryFromP
 import { acceptProjectSaveBaseline, clearProjectSaveBaseline, encodeProjectAsync, encodeProjectSaveAsync } from '@/core/project-format'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
 import { compositeRegion } from '@/core/document'
+import { selectionContains } from '@/core/selection'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 
 export type ExportOptions = DocumentExportSettings
 
@@ -83,7 +85,8 @@ async function writeDocumentPngAtomic(
   format: PngFileFormat,
   region?: PngSourceRegion,
   onProgress?: (value: number) => void,
-  onCancelReady?: (cancel: () => void) => void
+  onCancelReady?: (cancel: () => void) => void,
+  selection?: ExportOptions['selection']
 ): Promise<{ indexed: boolean } | null> {
   if (!api.writeScaledPngAtomic) return null
   const sourceX = region?.x ?? 0
@@ -96,7 +99,13 @@ async function writeDocumentPngAtomic(
   const direct = directPngSource(document, sourceX, sourceY, sourceWidth, sourceHeight)
   const pixels = direct?.data ?? (() => {
     const composite = compositeRegion(document, sourceX, sourceY, sourceWidth, sourceHeight)
-    return new Uint8Array(composite.buffer, composite.byteOffset, composite.byteLength)
+    if (!selection) return new Uint8Array(composite.buffer, composite.byteOffset, composite.byteLength)
+    const masked = Uint8Array.from(composite)
+    for (let y = 0; y < sourceHeight; y += 1) for (let x = 0; x < sourceWidth; x += 1) {
+      if (selectionContains(selection, sourceX + x, sourceY + y)) continue
+      masked[(y * sourceWidth + x) * 4 + 3] = 0
+    }
+    return masked
   })()
   return api.writeScaledPngAtomic(
     filePath,
@@ -276,6 +285,43 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   const fallbackName = sanitizeFileStem(document.name, 'MoonSprite-export')
   const requestedName = sanitizeFileStem(options?.name ?? fallbackName, fallbackName)
   const format = options?.format ?? 'png-auto'
+  if (options?.target === 'selection') {
+    if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
+    const selection = options.selection
+    if (!selection || selection.width < 1 || selection.height < 1) throw new Error(translate(loadEditorPreferences().language, 'file.export.selectionMissing'))
+    const region = { id: 'selection', name: 'Selection', x: selection.x, y: selection.y, width: selection.width, height: selection.height }
+    const exportWidth = Math.max(1, Math.round(region.width * scalePercent / 100))
+    const exportHeight = Math.max(1, Math.round(region.height * scalePercent / 100))
+    if (!Number.isSafeInteger(exportWidth) || !Number.isSafeInteger(exportHeight)) throw new Error(translate(loadEditorPreferences().language, 'file.export.safeRange'))
+    const extension = exportFileExtension(format)
+    const dialogFormat = isPngFileFormat(format) ? 'png' : format
+    const selectedDirectory = options.directory?.trim()
+    let path = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
+    if (!path) {
+      const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${requestedName}.${extension}`), dialogFormat)
+      if (result.canceled || !result.filePath) return null
+      path = result.filePath.toLowerCase().endsWith(`.${extension}`) ? result.filePath : `${result.filePath}.${extension}`
+    }
+    throwIfExportCanceled(lifecycle)
+    lifecycle?.onEncodeStart?.()
+    let output: { extension: string; indexed: boolean }
+    if (isPngFileFormat(format) && api.writeScaledPngAtomic) {
+      const nativePng = await writeDocumentPngAtomic(api, path, document, scalePercent, format, region, lifecycle?.onEncodeProgress, lifecycle?.onCancelReady, selection)
+      output = { extension: 'png', indexed: nativePng?.indexed ?? false }
+    } else {
+      const encoded = format === 'gif'
+        ? { ...exportAnimationGif(document, { scalePercent, frameStart: options.gifFrameRange === 'range' ? options.gifFrameStart : undefined, frameEnd: options.gifFrameRange === 'range' ? options.gifFrameEnd : undefined, direction: options.gifDirection ?? 'forward', crop: region }), extension: 'gif' as const, indexed: false }
+        : await exportDocumentSliceImage(document, region, scalePercent, format)
+      if (!path.toLowerCase().endsWith(`.${encoded.extension}`)) path = `${path}.${encoded.extension}`
+      lifecycle?.onWriteStart?.()
+      await api.writeBinaryAtomic(path, encoded.bytes)
+      output = encoded
+    }
+    throwIfExportCanceled(lifecycle)
+    rememberExportPath(path)
+    rememberLastDocumentExport(document, options, { name: fileNameFromPath(path), format, scalePercent, target: 'selection', directory: parentDirectoryFromPath(path) })
+    return output.indexed ? translate(loadEditorPreferences().language, 'file.export.indexed') : translate(loadEditorPreferences().language, 'file.export.image', { extension: output.extension.toUpperCase() })
+  }
   if (options?.target === 'slices') {
     if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
     const documentSlices = document.slices ?? []
@@ -490,11 +536,28 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
 }
 
 export async function openDocumentFile(api: MoonSpriteApi, filePath: string, lifecycle?: OpenDocumentLifecycle): Promise<SpriteDocument> {
-  lifecycle?.onReadStart?.()
-  const bytes = await api.readBinary(filePath, ({ bytesRead, totalBytes }) => lifecycle?.onReadProgress?.(bytesRead, totalBytes))
-  lifecycle?.onDecodeStart?.()
-  const document = await decodeDocumentFileAsync(bytes, filePath, lifecycle?.onDecodeProgress)
-  const check = checkTypedArrayLimit(document.width, document.height, document.layers.length, document.colorMode)
-  if (!check.allowed) throw new Error(check.reason)
-  return document
+  const diagnostic = runtimeDiagnosticsActive()
+    ? beginRuntimeDiagnosticOperation('file.open', { extension: fileExtension(filePath) }, 5_000)
+    : null
+  try {
+    lifecycle?.onReadStart?.()
+    diagnostic?.mark('read-start')
+    const bytes = await api.readBinary(filePath, ({ bytesRead, totalBytes }) => lifecycle?.onReadProgress?.(bytesRead, totalBytes))
+    diagnostic?.mark('read-complete', { archiveBytes: bytes.byteLength })
+    lifecycle?.onDecodeStart?.()
+    const document = await decodeDocumentFileAsync(bytes, filePath, lifecycle?.onDecodeProgress)
+    diagnostic?.mark('decode-complete', {
+      width: document.width,
+      height: document.height,
+      layers: document.layers.length,
+      frames: document.animation?.frames.length ?? 1
+    })
+    const check = checkTypedArrayLimit(document.width, document.height, document.layers.length, document.colorMode)
+    if (!check.allowed) throw new Error(check.reason)
+    diagnostic?.finish('ok')
+    return document
+  } catch (error) {
+    diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+    throw error
+  }
 }

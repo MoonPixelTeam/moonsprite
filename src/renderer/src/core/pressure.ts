@@ -1,6 +1,6 @@
 import type { GradientDither } from '@shared/types'
 
-export type BrushDynamicsEffect = 'size' | 'strength' | 'gradient'
+export type BrushDynamicsEffect = 'size' | 'strength' | 'gradient' | 'angle'
 export type BrushDynamicsSensor = 'pressure' | 'speed'
 export type BrushDynamicsCurve = 'soft' | 'linear' | 'hard'
 export type BrushDynamicsDirection = 'direct' | 'inverse'
@@ -16,7 +16,7 @@ export interface BrushDynamicsMapping {
 }
 
 export interface BrushDynamicsSettings {
-  version: 4
+  version: 5
   effects: Record<BrushDynamicsEffect, BrushDynamicsMapping>
   gradientDither: GradientDither
 }
@@ -29,6 +29,12 @@ export interface LegacyBrushDynamicsSettingsV2 {
 export interface LegacyBrushDynamicsSettingsV3 {
   version: 3
   effects: Partial<Record<BrushDynamicsEffect, Partial<BrushDynamicsMapping>>>
+}
+
+export interface LegacyBrushDynamicsSettingsV4 {
+  version: 4
+  effects: Partial<Record<'size' | 'strength' | 'gradient', Partial<BrushDynamicsMapping>>>
+  gradientDither?: GradientDither
 }
 
 export type PressureCurve = BrushDynamicsCurve
@@ -71,11 +77,12 @@ const defaultGradientMapping = (): BrushDynamicsMapping => ({
 })
 
 export const DEFAULT_BRUSH_DYNAMICS_SETTINGS: BrushDynamicsSettings = {
-  version: 4,
+  version: 5,
   effects: {
     size: defaultMapping(),
     strength: defaultMapping(),
-    gradient: defaultGradientMapping()
+    gradient: defaultGradientMapping(),
+    angle: { ...defaultMapping(), outputMin: -180, outputMax: 180 }
   },
   gradientDither: 'none'
 }
@@ -111,7 +118,9 @@ const inputDefaultsForSensor = (sensor: BrushDynamicsSensor | null): Pick<BrushD
 
 export function normalizeBrushDynamicsMapping(
   mapping: Partial<BrushDynamicsMapping> | undefined,
-  fallback: BrushDynamicsMapping = DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.size
+  fallback: BrushDynamicsMapping = DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.size,
+  outputLimit = 100,
+  outputMinimum = 0
 ): BrushDynamicsMapping {
   const sensor = normalizedSensor(mapping?.sensor, fallback.sensor)
   const inputLimit = inputLimitForSensor(sensor)
@@ -120,8 +129,8 @@ export function normalizeBrushDynamicsMapping(
   const defaultInputMin = sensorChanged ? sensorDefaults.inputMin : fallback.inputMin
   const defaultInputMax = sensorChanged ? sensorDefaults.inputMax : fallback.inputMax
   const defaultCurve = sensorChanged ? sensorDefaults.curve : fallback.curve
-  const outputA = normalizedNumber(mapping?.outputMin, fallback.outputMin, 0, 100)
-  const outputB = normalizedNumber(mapping?.outputMax, fallback.outputMax, 0, 100)
+  const outputA = normalizedNumber(mapping?.outputMin, fallback.outputMin, outputMinimum, outputLimit)
+  const outputB = normalizedNumber(mapping?.outputMax, fallback.outputMax, outputMinimum, outputLimit)
   const inputA = normalizedNumber(mapping?.inputMin, clamp(defaultInputMin, 0, inputLimit), 0, inputLimit)
   const inputB = normalizedNumber(mapping?.inputMax, clamp(defaultInputMax, 0, inputLimit), 0, inputLimit)
   return {
@@ -150,38 +159,46 @@ const migrateV2Mapping = (mapping: Partial<BrushDynamicsMapping> | undefined, fa
 
 export function cloneBrushDynamicsSettings(settings: BrushDynamicsSettings): BrushDynamicsSettings {
   return {
-    version: 4,
+    version: 5,
     effects: {
       size: { ...settings.effects.size },
       strength: { ...settings.effects.strength },
-      gradient: { ...settings.effects.gradient }
+      gradient: { ...settings.effects.gradient },
+      angle: { ...settings.effects.angle }
     },
     gradientDither: settings.gradientDither
   }
 }
 
 export function normalizeBrushDynamicsSettings(
-  settings: Partial<BrushDynamicsSettings> | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | undefined,
+  settings: Partial<BrushDynamicsSettings> | LegacyBrushDynamicsSettingsV2 | LegacyBrushDynamicsSettingsV3 | LegacyBrushDynamicsSettingsV4 | undefined,
   fallback: BrushDynamicsSettings = DEFAULT_BRUSH_DYNAMICS_SETTINGS
 ): BrushDynamicsSettings {
   if (settings?.version === 2) {
     return {
-      version: 4,
+      version: 5,
       effects: {
         size: migrateV2Mapping(settings.effects?.size, fallback.effects.size),
         strength: migrateV2Mapping(settings.effects?.strength, fallback.effects.strength),
-        gradient: { ...fallback.effects.gradient, sensor: null }
+        gradient: { ...fallback.effects.gradient, sensor: null },
+        angle: { ...fallback.effects.angle, sensor: null }
       },
       gradientDither: 'none'
     }
   }
   const legacyV3 = settings?.version === 3
   return {
-    version: 4,
+    version: 5,
     effects: {
       size: normalizeBrushDynamicsMapping(settings?.effects?.size, fallback.effects.size),
       strength: normalizeBrushDynamicsMapping(settings?.effects?.strength, fallback.effects.strength),
-      gradient: normalizeBrushDynamicsMapping(settings?.effects?.gradient, fallback.effects.gradient)
+      gradient: normalizeBrushDynamicsMapping(settings?.effects?.gradient, fallback.effects.gradient),
+      angle: normalizeBrushDynamicsMapping(
+        settings?.effects && 'angle' in settings.effects ? settings.effects.angle : undefined,
+        fallback.effects.angle,
+        180,
+        -180
+      )
     },
     gradientDither: legacyV3
       ? 'none'
@@ -201,13 +218,14 @@ export function patchBrushDynamicsMapping(
     ...current,
     ...sensorDefaults,
     ...patch
-  }, current)
+  }, current, effect === 'angle' ? 180 : 100, effect === 'angle' ? -180 : 0)
   return {
-    version: 4,
+    version: 5,
     effects: {
       size: effect === 'size' ? next : { ...settings.effects.size },
       strength: effect === 'strength' ? next : { ...settings.effects.strength },
-      gradient: effect === 'gradient' ? next : { ...settings.effects.gradient }
+      gradient: effect === 'gradient' ? next : { ...settings.effects.gradient },
+      angle: effect === 'angle' ? next : { ...settings.effects.angle }
     },
     gradientDither: settings.gradientDither
   }
@@ -252,11 +270,12 @@ export function migrateBrushPressureSettings(settings: Partial<BrushPressureSett
     direction: 'direct'
   })
   return {
-    version: 4,
+    version: 5,
     effects: {
       size: mapping(legacy.affectsSize, legacy.minSizePercent),
       strength: mapping(legacy.affectsOpacity, legacy.minOpacityPercent),
-      gradient: { ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.gradient, sensor: null }
+      gradient: { ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.gradient, sensor: null },
+      angle: { ...DEFAULT_BRUSH_DYNAMICS_SETTINGS.effects.angle, sensor: null }
     },
     gradientDither: 'none'
   }
@@ -403,16 +422,18 @@ export function resolveBrushDynamics(
   settings: BrushDynamicsSettings,
   input: BrushDynamicsInput,
   baseSize: number
-): { size: number; opacityScale: number; gradientAmount: number | null } {
+): { size: number; opacityScale: number; gradientAmount: number | null; angle: number } {
   const normalized = normalizeBrushDynamicsSettings(settings)
   const size = Number.isFinite(baseSize) ? Math.max(1, Math.round(baseSize)) : 1
   const sizePercent = mappingOutput(normalized.effects.size, input) ?? 100
   const strengthPercent = mappingOutput(normalized.effects.strength, input) ?? 100
   const gradientPercent = mappingOutput(normalized.effects.gradient, input)
+  const angle = mappingOutput(normalized.effects.angle, input) ?? 0
   return {
     size: Math.max(1, Math.round(size * sizePercent / 100)),
     opacityScale: clamp(strengthPercent / 100, 0, 1),
-    gradientAmount: gradientPercent === null ? null : clamp(gradientPercent / 100, 0, 1)
+    gradientAmount: gradientPercent === null ? null : clamp(gradientPercent / 100, 0, 1),
+    angle: clamp(angle, -180, 180)
   }
 }
 

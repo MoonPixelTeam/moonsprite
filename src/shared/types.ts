@@ -184,6 +184,11 @@ export type GradientType = 'linear' | 'radial'
 export type GradientDither = 'none' | 'checker' | 'diagonal' | 'diagonal-reverse' | 'horizontal' | 'vertical' | 'bayer-2' | 'bayer-4' | 'bayer-8'
 export type BrushDitherTemplate = Exclude<GradientDither, 'none'>
 
+export interface GradientStop {
+  position: number
+  color: RgbaColor
+}
+
 export interface BrushDitherSettings {
   enabled: boolean
   template: BrushDitherTemplate
@@ -519,6 +524,8 @@ export interface LayerMask extends RgbaLayer {
   ownerId: string
   /** Optional independent link to another mask surface. */
   linkedMaskId?: string | null
+  /** Whether this mask keeps its offset synchronized with its owner. */
+  moveWithOwner?: boolean
 }
 
 export interface AnimationGroupMask {
@@ -730,6 +737,14 @@ export interface SelectionRect {
   /** 在跨越对侧边界时，记录被拖动轴线的连续像素坐标。 */
   flipOriginX?: number
   flipOriginY?: number
+}
+
+/** Four-corner transform frame used by the selection free-transform mode. */
+export interface SelectionQuad {
+  nw: { x: number; y: number }
+  ne: { x: number; y: number }
+  se: { x: number; y: number }
+  sw: { x: number; y: number }
 }
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect'

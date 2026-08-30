@@ -2,7 +2,7 @@
 
 中文 | [English](release-checklist.en.md)
 
-只有明确要求发布 `dev.X` 或交付安装包时才执行本流程。连续开发中的普通代码修改不自动进入发布门禁或打包。
+只有明确要求发布当前 Beta、后续正式版本或交付安装包时才执行本流程。连续开发中的普通代码修改不自动进入发布门禁或打包；目标版本号以三份项目清单的一致值为准。
 
 ## 发布前
 
@@ -11,7 +11,7 @@
 - [ ] `CHANGELOG.md` 的“未发布”区已逐项记录本版本全部变化，没有删除或压缩既有有效条目。
 - [ ] 发布归档只移动“未发布”条目到 `docs/changelog/<版本>.md`，条目正文保持完整，并重新建立空的“未发布”区。
 - [ ] 根目录与 `docs/changelog/README.md` 的版本索引均已链接新归档。
-- [ ] “帮助 > 更新日志”的版本号和摘要已更新为本次归档内容，不继续展示上一 DEV 的摘要。
+- [ ] “帮助 > 更新日志”的版本号和摘要已更新为本次归档内容，不继续展示上一版本的摘要。
 - [ ] 首页“新闻”的版本号、发布日期和摘要已同步为本次归档，并可打开与“帮助 > 更新日志”相同的完整更新内容。
 - [ ] 内部 SemVer 在 `package.json`、Cargo 和 Tauri 配置中一致。
 - [ ] 当前应用显示版本、最近已打包版本和归档索引符合 `docs/release/development-cycle.md`；`pnpm check:version -- --release` 通过。
@@ -23,7 +23,7 @@
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm check:release-performance -- <本周期相关文件...>
+pnpm check:performance:release -- <本周期相关文件...>
 pnpm check:performance:verify -- --audit=<审计编号> --correctness-passed
 pnpm check:performance:accept -- --audit=<审计编号> --outcome=<adopted|not-adopted|approved-no-change> --reason=<原因>
 pnpm check:release
@@ -31,7 +31,7 @@ pnpm check:release -- --desktop # 需要真实桌面自动门禁时
 pnpm package                     # 用户明确要求安装包时
 ```
 
-每次 dev.X 或正式版本发布都执行一次性能审计；普通连续开发不执行。`check:release` 只验证性能凭证，不重复运行性能基准。
+每次 Beta 或正式版本发布都执行一次性能审计；普通连续开发不执行。`check:release` 只验证性能凭证，不重复运行性能基准。
 
 ## 安装版检查
 
@@ -47,5 +47,5 @@ pnpm package                     # 用户明确要求安装包时
 
 - [ ] 记录安装包绝对路径、字节大小和 SHA-256。
 - [ ] 不把 `release/` 内容提交到 Git。
-- [ ] 记录本次 dev 发布提交 SHA，作为下一个周期基线。
+- [ ] 记录本次发布提交 SHA，作为下一个周期基线。
 - [ ] 正式发布创建带注释 Git tag；开发包只有用户需要时才创建轻量 tag。

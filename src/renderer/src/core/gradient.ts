@@ -1,11 +1,11 @@
-import type { GradientDither, GradientType, RasterLayer, RgbaColor, SelectionMask, SpriteDocument } from '@shared/types'
+import type { GradientDither, GradientStop, GradientType, RasterLayer, RgbaColor, SelectionMask, SpriteDocument } from '@shared/types'
 import { beginPixelEdit, preparePixelEdit, recordPixel, type PixelEdit } from './history'
 import { expandLayerToRect, getLayerStorageOrigin, isLayerEffectivelyLocked, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, readLayerColor, readLayerPacked, writeLayerPacked } from './document'
 import { blendOver, packColor } from './raster'
 import { magicWandSelection, selectionContains } from './selection'
 import { createGradientColorSampler, type GradientGeometryOptions } from './gradient-color'
 
-export { createGradientColorSampler, gradientAmountAt, gradientColorAt, gradientColorForAmount, GRADIENT_DITHER_PRESETS, interpolateRgbaColor, resolveRadialGradientGeometry } from './gradient-color'
+export { createGradientColorSampler, gradientAmountAt, gradientColorAt, gradientColorForAmount, GRADIENT_DITHER_PRESETS, interpolateRgbaColor, normalizeGradientStops, resolveRadialGradientGeometry } from './gradient-color'
 export type { GradientGeometryOptions, RadialGradientGeometry } from './gradient-color'
 
 /** Snaps a gradient endpoint to one of sixteen evenly spaced directions. */
@@ -128,7 +128,8 @@ export const applyGradient = (
   dither: GradientDither = 'none',
   paintRegion?: SelectionMask | null,
   type: GradientType = 'linear',
-  geometryOptions: GradientGeometryOptions = {}
+  geometryOptions: GradientGeometryOptions = {},
+  gradientStops?: readonly GradientStop[]
 ): PixelEdit | null => {
   if (paintRegion === null || isLayerEffectivelyLocked(document, layer)) return null
   const left = Math.ceil(Math.max(0, selection?.x ?? 0, paintRegion?.x ?? 0))
@@ -137,7 +138,7 @@ export const applyGradient = (
   const bottom = Math.min(document.height, selection ? selection.y + selection.height : document.height, paintRegion ? paintRegion.y + paintRegion.height : document.height)
   if (right <= left || bottom <= top) return null
   if (!expandLayerToRect(layer, left, top, right, bottom)) return null
-  const sampleColor = createGradientColorSampler(startColor, endColor, start, end, dither, type, geometryOptions)
+  const sampleColor = createGradientColorSampler(startColor, endColor, start, end, dither, type, geometryOptions, gradientStops)
   const edit = beginPixelEdit(layer.id)
   if ((right - left) * (bottom - top) >= DENSE_GRADIENT_MIN_PIXELS) {
     return applyDenseGradient(document, layer, edit, left, top, right, bottom, sampleColor, selection, paintRegion)

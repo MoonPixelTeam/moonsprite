@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { SelectionQuad } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
@@ -7,6 +8,7 @@ import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSele
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections } from '@/core/animation-loop-sections'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
+import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { consumeCanvasResizePreviewHistory } from '@/core/canvas-resize-preview'
 import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
 import { openProgress } from '@/core/open-progress'
@@ -16,7 +18,7 @@ import { createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteS
 import { applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, captureSelectionTransform, clampSelection, clearSelection, fillSelectionOrCanvas, flipLayer, flipSelection, flipSelectionTransformSource, moveSelection, outlineSelection, replaceLayerColor, restoreSelectionTranslationPreview, selectionTranslationPreviewEdit, transformSelectionCopy, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from '@/core/tools'
 import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransformStates, selectionTransformLayerForState } from '@/core/selection-transform-targets'
 import { applyRelativeLuminance, colorEquals, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from '@/core/raster'
-import { combineSelection, flipSelectionMask, invertSelectionMask, selectionContains, shiftSelection, transformSelectionMask, type SelectionShearTransform } from '@/core/selection'
+import { combineSelection, flipSelectionMask, invertSelectionMask, rotateSelectionTargetAroundPivot, selectionContains, selectionQuadFromRect, shearTransformedSelection, shiftSelection, transformSelectionMask, transformSelectionMaskQuad, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from '@/core/selection'
 import { recordRecentProject } from '@/core/home-history'
 import { createProceduralBrush, isProceduralBrushId, normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from '@/core/brushes'
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
@@ -40,6 +42,7 @@ import { readStoredString } from '@/core/storage'
 import { loadColorRolePreferences, persistColorRolePreferences } from '@/core/color-role-preferences'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
 import { defaultSymmetryCenter, type SymmetryAxes, type SymmetryCenter } from '@/core/symmetry'
+import { saveDocumentViewState } from '@/core/document-view-state'
 import { brushPressureFromDynamics, migrateBrushPressureSettings, normalizeBrushPressureSettings, patchBrushDynamicsGradientDither, patchBrushDynamicsMapping, type BrushDynamicsEffect, type BrushDynamicsMapping, type BrushPressureSettings } from '@/core/pressure'
 import { cloneTextCelData, convertTextSurface, normalizeTextCelData, rasterizeText, translateTextCelData } from '@/core/text-raster'
 import { cloneLayerStyles, hasConfiguredLayerStyles, hasEnabledLayerStyles, layerStyleOutputBounds, layerStylesEqual, layerStylesHistoryBytes } from '@/core/layer-styles'
@@ -56,7 +59,7 @@ import { RecoveryService } from './recovery-service'
 import { ClipboardService, selectionClipboardImage, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
 import { captureAdjustmentSnapshot, captureLayerUi, commitLayerMerge, prepareAdjustmentSnapshotTargets, restoreAdjustmentSnapshot, restoreAdjustmentSnapshotRegions, restorePreparedAdjustmentSnapshotLayer } from './workspace-history'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, captureDocumentStructureSnapshot, captureLayerContentSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, documentStructureDeltaBytes, layerContentSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot, restoreDocumentStructureSnapshot, restoreLayerContentSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
-import { activePaintLayer, applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, cloneSelectionMask, isBrushTool, isToolAvailableForSession, persistToolSettings, remapSelectionBrushColors, rememberBrushProfile, selectedTransformLayersForSession, sessionFromDocument, touch, touchMetadata } from './workspace-session'
+import { activeLayerMask, activePaintLayer, applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, cloneSelectionMask, enterLayerMaskEditing, exitLayerMaskEditing, isBrushTool, isToolAvailableForSession, persistToolSettings, remapSelectionBrushColors, rememberBrushProfile, selectedTransformLayersForSession, sessionFromDocument, touch, touchMetadata } from './workspace-session'
 import { addPaletteColor as addPaletteColorCommand, applyPalette as applyPaletteCommand, deletePaletteColors as deletePaletteColorsCommand, gradientPaletteColors as gradientPaletteColorsCommand, gradientPaletteSlots as gradientPaletteSlotsCommand, movePaletteColor as movePaletteColorCommand, reorderPaletteColors as reorderPaletteColorsCommand, reversePaletteColors as reversePaletteColorsCommand, selectPaletteColor as selectPaletteColorCommand, selectPaletteColors as selectPaletteColorsCommand, sortPaletteColors as sortPaletteColorsCommand, updatePaletteColor as updatePaletteColorCommand } from './workspace-palette'
 import { DocumentTransactionRegistry } from './document-transactions'
 import { beginFreeTileInstancePropertiesTransaction as beginFreeTileInstancePropertiesTransactionCommand, beginFreeTileSourcePropertiesTransaction as beginFreeTileSourcePropertiesTransactionCommand, cancelFreeTileInstancePropertiesTransaction as cancelFreeTileInstancePropertiesTransactionCommand, cancelFreeTileSourcePropertiesTransaction as cancelFreeTileSourcePropertiesTransactionCommand, commitFreeTileInstancePropertiesTransaction as commitFreeTileInstancePropertiesTransactionCommand, commitFreeTileSourcePropertiesTransaction as commitFreeTileSourcePropertiesTransactionCommand, previewFreeTileInstancePropertiesTransaction as previewFreeTileInstancePropertiesTransactionCommand, previewFreeTileSourcePropertiesTransaction as previewFreeTileSourcePropertiesTransactionCommand } from './workspace-free-tile-properties'
@@ -215,6 +218,40 @@ const intersectSelectionRects = (first: SelectionRect, second: SelectionRect): S
   const right = Math.min(first.x + first.width, second.x + second.width)
   const bottom = Math.min(first.y + first.height, second.y + second.height)
   return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null
+}
+
+const visibleLayerContentBoundsWithinSelection = (document: SpriteDocument, layer: RasterLayer, selection: SelectionMask): SelectionMask | null => {
+  // Scan the selection itself. The layer content bounds can be stale or cover
+  // another piece of content after the layer has been expanded, while shrink
+  // must be based only on pixels inside the current selection.
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (let y = selection.y; y < selection.y + selection.height; y += 1) {
+    for (let x = selection.x; x < selection.x + selection.width; x += 1) {
+      if (!selectionContains(selection, x, y) || readLayerColorAt(document, layer, x, y).a === 0) continue
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+  if (maxX < minX || maxY < minY) return null
+  const width = maxX - minX + 1
+  const height = maxY - minY + 1
+  if (!selection.mask) return { x: minX, y: minY, width, height }
+
+  // Keep irregular selections irregular while trimming their empty perimeter.
+  // The content bounds determine the new frame; the original selection mask
+  // determines which pixels remain selected inside that frame.
+  const mask = new Uint8Array(width * height)
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      if (selectionContains(selection, x, y)) mask[(y - minY) * width + x - minX] = 1
+    }
+  }
+  return { x: minX, y: minY, width, height, mask }
 }
 
 const selectionRectContains = (container: SelectionRect, target: SelectionRect): boolean => container.x <= target.x
@@ -377,10 +414,45 @@ const rectangularSelection = (selection: SelectionRect): SelectionMask => ({
   height: selection.height
 })
 
+const selectionShearForAngle = (target: SelectionRect, angle: number): SelectionShearTransform | undefined => {
+  const normalized = Math.max(-89, Math.min(89, Number.isFinite(angle) ? angle : 0))
+  if (Math.abs(normalized) < 0.0001) return undefined
+  return {
+    axis: 'x',
+    edge: 's',
+    amount: Math.tan(normalized * Math.PI / 180) * Math.max(1, target.height)
+  }
+}
+
+const selectionShearAngle = (target: SelectionRect, shear: SelectionShearTransform | undefined): number => {
+  if (!shear || shear.amount === 0) return 0
+  const reference = shear.axis === 'x' ? Math.max(1, target.height) : Math.max(1, target.width)
+  return Math.round(Math.atan(shear.amount / reference) * 1800 / Math.PI) / 10
+}
+
 const floatingSelectionGeometrySource = (pending: FloatingPaste): SelectionMask => pending.freeTile?.selectionSource
   ?? (pending.source.origin === 'clipboard' ? rectangularSelection(pending.source.selection) : pending.source.selection)
 
 const cloneSelectionPivot = (pivot: SelectionPivot | null | undefined): SelectionPivot | null => pivot ? { ...pivot } : null
+
+const cloneSelectionQuad = (quad: SelectionQuad | null | undefined): SelectionQuad | null => quad
+  ? {
+      nw: { ...quad.nw },
+      ne: { ...quad.ne },
+      se: { ...quad.se },
+      sw: { ...quad.sw }
+    }
+  : null
+
+const translateSelectionQuad = (quad: SelectionQuad | null | undefined, deltaX: number, deltaY: number): SelectionQuad | null => {
+  const cloned = cloneSelectionQuad(quad)
+  if (!cloned) return null
+  for (const corner of ['nw', 'ne', 'se', 'sw'] as const) {
+    cloned[corner].x += deltaX
+    cloned[corner].y += deltaY
+  }
+  return cloned
+}
 
 const cloneFloatingSelectionBoxHistoryEntry = (entry: FloatingSelectionBoxHistoryEntry): FloatingSelectionBoxHistoryEntry => ({
   beforeSelection: cloneSelectionMask(entry.beforeSelection)!,
@@ -532,7 +604,9 @@ const combinedPixelHistoryEntry = (
   beforeSelection: SelectionMask | null,
   afterSelection: SelectionMask,
   beforeSelectionPivot: SelectionPivot | null,
-  afterSelectionPivot: SelectionPivot | null = null
+  afterSelectionPivot: SelectionPivot | null = null,
+  beforeFreeTransformQuad: SelectionQuad | null = null,
+  afterFreeTransformQuad: SelectionQuad | null = null
 ): HistoryEntry => ({
   label,
   bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0)
@@ -543,11 +617,13 @@ const combinedPixelHistoryEntry = (
     for (let index = entries.length - 1; index >= 0; index -= 1) entries[index].undo()
     session.selection = cloneSelectionMask(beforeSelection)
     session.selectionPivot = beforeSelectionPivot ? { ...beforeSelectionPivot } : null
+    session.freeTransformQuad = cloneSelectionQuad(beforeFreeTransformQuad)
   },
   redo: () => {
     for (const entry of entries) entry.redo()
     session.selection = cloneSelectionMask(afterSelection)
     session.selectionPivot = afterSelectionPivot ? { ...afterSelectionPivot } : null
+    session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad)
   },
   invalidation: { kind: 'full' },
   affectedLayerIds: [...new Set(entries.flatMap((entry) => entry.affectedLayerIds ?? []))]
@@ -952,19 +1028,6 @@ const ensureLayerSelection = (session: DocumentSession): void => {
   ensureFreeTileInstanceSelection(session)
 }
 
-const applyLayerCurrentFrameCellSelection = (session: DocumentSession, layerIds: readonly string[], anchorLayerId: string): void => {
-  const timeline = ensureAnimationDocument(session.document)
-  const selectedKeys = layerIds.map((id) => animationCelKey(id, timeline.activeFrameId))
-  const anchorKey = animationCelKey(anchorLayerId, timeline.activeFrameId)
-  session.selectedAnimationFrameIds = []
-  session.animationFrameSelectionAnchorId = null
-  session.selectedAnimationMaskCellKeys = []
-  session.animationMaskCellSelectionAnchorKey = null
-  session.selectedAnimationCellKeys = selectedKeys
-  session.animationCellSelectionAnchorKey = selectedKeys.includes(anchorKey) ? anchorKey : selectedKeys.at(-1) ?? null
-  session.animationCellSelectionExplicit = false
-}
-
 const clearAnimationItemSelection = (session: DocumentSession): void => {
   session.selectedAnimationFrameIds = []
   session.animationFrameSelectionAnchorId = null
@@ -1115,6 +1178,7 @@ const commitVisibilityChange = (
 }
 
 const applyLayerRowSelection = (session: DocumentSession, layerIds: readonly string[], groupIds: readonly string[], focus: { kind: 'layer' | 'group'; id: string }): void => {
+  exitLayerMaskEditing(session)
   session.activeLayerMaskId = null
   session.layerMaskIsolatedView = false
   const selectedLayers = [...new Set(layerIds)].filter((id) => session.document.layers.some((layer) => layer.id === id))
@@ -1881,7 +1945,7 @@ const initialColorRoles = loadColorRolePreferences()
 
 async function buildSpriteSheetResult(sourceSession: DocumentSession, options: SpriteSheetExportOptions) {
   const source = sourceSession.document
-  const area = resolveSpriteSheetArea(source, options.area)
+  const area = resolveSpriteSheetArea(source, options.area, sourceSession.selection)
   const names = {
     document: tr('workspace.spriteSheet.documentName', { name: source.name }),
     layer: tr('workspace.spriteSheet.layerName')
@@ -1897,6 +1961,7 @@ async function buildSpriteSheetResult(sourceSession: DocumentSession, options: S
       return [createSpriteSheetDocument(source, names, {
         ...options,
         area,
+        selection: options.area === 'selection' ? sourceSession.selection : null,
         frameIds: target.frameIds,
         layerIds: target.layerIds
       })]
@@ -2162,6 +2227,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     requestTilesetPanelVisibility(documentUsesTilesetPanel(target?.document))
   },
   setTool(tool) {
+    if (isCanvasToolGestureLocked()) return
     get().commitFloatingPaste()
     const current = activeSession(get())
     if (current && !isToolAvailableForSession(current, tool)) {
@@ -2174,6 +2240,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (session.tool === tool) return
       if (isBrushTool(session.tool)) rememberBrushProfile(session)
       session.tool = tool
+      if (tool !== 'selection') {
+        session.selectionPropertiesActive = false
+        session.freeTransformActive = false
+        session.freeTransformQuad = null
+      }
       if (isBrushTool(tool)) applyBrushProfile(session, session.brushProfiles[tool])
     }, false)
   },
@@ -2401,6 +2472,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }, false)
   },
   setTemporaryBrush(brush) {
+    if (isCanvasToolGestureLocked()) return
     get().mutateActive((session) => {
       session.brushImage = { ...brush, colors: brush.colors?.slice(), paintColors: undefined }
       session.brushImageId = brush.id
@@ -2520,6 +2592,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setGradientContiguous(contiguous) { get().mutateActive((session) => { session.gradientContiguous = contiguous; persistToolSettings(session) }, false) },
   setGradientType(type) { get().mutateActive((session) => { session.gradientType = type; persistToolSettings(session) }, false) },
   setGradientDither(dither) { get().mutateActive((session) => { session.gradientDither = dither; persistToolSettings(session) }, false) },
+  setGradientFreeform(enabled) { get().mutateActive((session) => { session.gradientFreeform = enabled && session.gradientDither === 'none'; if (session.gradientFreeform) session.gradientStops = [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]; persistToolSettings(session) }, false) },
+  setGradientStops(stops: GradientStop[]) { get().mutateActive((session) => { session.gradientStops = stops.map((stop) => ({ position: Math.max(0, Math.min(1, stop.position)), color: { ...stop.color } })); persistToolSettings(session) }, false) },
   setMoveAutoSelect(enabled) { get().mutateActive((session) => { session.moveAutoSelect = enabled; persistToolSettings(session) }, false) },
   setPrimaryColor(color) {
     const state = get()
@@ -2715,6 +2789,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const session = activeSession(state)
     if (!session) return
     Object.assign(session.view, view)
+    saveDocumentViewState(session.document, session.view, session.symmetryCenter)
     if (persistDisplaySettings(session, view)) touch(session)
     set({ sessions: [...state.sessions] })
   },
@@ -2723,6 +2798,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const session = state.sessions.find((item) => item.document.id === documentId)
     if (!session) return
     Object.assign(session.view, view)
+    saveDocumentViewState(session.document, session.view, session.symmetryCenter)
     if (persistDisplaySettings(session, view)) touch(session)
     set({ sessions: [...state.sessions] })
   },
@@ -2757,7 +2833,117 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     set({ sessions: [...state.sessions] })
   },
-  setSelection(selection) { get().mutateActive((session) => { session.selection = selection ? { ...selection, mask: selection.mask?.slice() } : null; session.selectionPivot = null }, false) },
+  setSelection(selection) { get().mutateActive((session) => { session.selection = selection ? { ...selection, mask: selection.mask?.slice() } : null; session.selectionPropertiesActive = false; session.selectionAngle = 0; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null }, false) },
+  setSelectionPropertiesActive(active) { get().mutateActive((session) => { session.selectionPropertiesActive = Boolean(active) }, false) },
+  updateSelectionProperties(patch) {
+    const current = activeSession(get())
+    if (!current?.selection) return
+    const layer = activePaintLayer(current)
+    const pending = current.pendingPaste
+    if (layer.kind || isLayerEffectivelyLocked(current.document, layer) || pending?.layers?.length || pending?.freeTile) return
+
+    const before = pending?.beforeSelection ? cloneSelectionMask(pending.beforeSelection) : cloneSelectionMask(current.selection)
+    const source = pending?.source ?? (before ? captureSelectionTransform(current.document, before, layer) : null)
+    if (!before || !source) return
+    const currentTarget = pending?.transformTarget ?? {
+      x: current.selection.x,
+      y: current.selection.y,
+      width: current.selection.width,
+      height: current.selection.height
+    }
+    let target = {
+      x: Number.isFinite(patch.x) ? Math.round(patch.x!) : currentTarget.x,
+      y: Number.isFinite(patch.y) ? Math.round(patch.y!) : currentTarget.y,
+      width: Number.isFinite(patch.width) ? Math.max(1, Math.round(patch.width!)) : currentTarget.width,
+      height: Number.isFinite(patch.height) ? Math.max(1, Math.round(patch.height!)) : currentTarget.height
+    }
+    const currentAngle = pending?.transformAngle ?? current.selectionAngle ?? 0
+    const currentShear = pending?.transformShear
+    const pivot = current.selectionPivot ?? transformedSelectionPivotPreset(currentTarget, 'center', currentAngle, currentShear)
+    const hasAnglePatch = Number.isFinite(patch.angle)
+    const angle = hasAnglePatch ? Math.round(patch.angle! * 10) / 10 : currentAngle
+    if (hasAnglePatch) target = rotateSelectionTargetAroundPivot(target, pivot, angle - currentAngle)
+    const nextShearAngle = Number.isFinite(patch.shearAngle)
+      ? Math.round(patch.shearAngle! * 10) / 10
+      : selectionShearAngle(currentTarget, currentShear)
+    let shear = selectionShearForAngle(target, nextShearAngle)
+    if (Number.isFinite(patch.shearAngle)) {
+      const desiredAmount = shear?.amount ?? 0
+      const currentAmount = currentShear?.axis === 'x' ? currentShear.amount : 0
+      const points = transformedSelectionControlPoints(target, angle, currentShear)
+      const horizontalAxis = { x: points[2].x - points[0].x, y: points[2].y - points[0].y }
+      const verticalAxis = { x: points[5].x - points[0].x, y: points[5].y - points[0].y }
+      const determinant = horizontalAxis.x * verticalAxis.y - horizontalAxis.y * verticalAxis.x
+      const pivotOffset = { x: pivot.x - points[0].x, y: pivot.y - points[0].y }
+      const pivotCoordinate = Math.abs(determinant) < 1e-9
+        ? 0.5
+        : (horizontalAxis.x * pivotOffset.y - horizontalAxis.y * pivotOffset.x) / determinant
+      const edge = pivotCoordinate <= 0.5 ? 's' : 'n'
+      const edgeDistance = (edge === 's' ? 1 : 0) - pivotCoordinate
+      const transformed = Math.abs(edgeDistance) < 1e-9
+        ? { target, angle, shear }
+        : shearTransformedSelection(target, angle, currentShear, edge, (desiredAmount - currentAmount) * edgeDistance, pivot)
+      target = transformed.target
+      // shearTransformedSelection derives the final angle from the transformed
+      // geometry, so keep the representation and the raster transform aligned.
+      if (transformed.angle !== angle) {
+        // The selection shear path should preserve the current rotation. This
+        // fallback only protects against sub-pixel rounding drift.
+        target = rotateSelectionTargetAroundPivot(target, pivot, angle - transformed.angle)
+      }
+      shear = transformed.shear
+    }
+    const after = transformSelectionMask(source.selection, target, current.document.width, current.document.height, angle, shear, true)
+    if (!after) return
+    const same = selectionMasksEqual(current.selection, after)
+      && (pending?.transformTarget
+        ? pending.transformTarget.x === target.x && pending.transformTarget.y === target.y && pending.transformTarget.width === target.width && pending.transformTarget.height === target.height
+        : current.selection.x === target.x && current.selection.y === target.y && current.selection.width === target.width && current.selection.height === target.height)
+      && (pending?.transformAngle ?? 0) === angle
+      && selectionShearAngle(currentTarget, pending?.transformShear) === nextShearAngle
+    if (same) return
+
+    if (pending) restoreFloatingPreview(current)
+    const edit = applySelectionTransform(current.document, source, target, angle, false, shear, undefined, undefined, layer, undefined, undefined, true)
+    if (pending) {
+      get().updateFloatingPastePreview(edit, after, null, target, angle, shear, false)
+    } else {
+      get().beginFloatingSelectionTransform(source, edit, before, after, false, tr('workspace.history.transformSelectionContent'), null, target, angle, shear, false)
+    }
+    get().mutateActive((session) => { session.selectionPropertiesActive = true }, false)
+  },
+  shrinkSelectionToContent() {
+    get().commitFloatingPaste()
+    const current = activeSession(get())
+    if (!current?.selection) { set({ message: tr('workspace.selectionRequired') }); return }
+    const layer = activePaintLayer(current)
+    const content = layer.kind === 'tilemap' || layer.kind === 'free-tile'
+      ? documentVisibleContentBounds(current.document)
+      : visibleLayerContentBoundsWithinSelection(current.document, layer, current.selection)
+    const next = content ? intersectSelectionRects(current.selection, content) : null
+    if (!next) { set({ message: tr('workspace.trim.empty') }); return }
+    const after = layer.kind === 'tilemap' || layer.kind === 'free-tile'
+      ? rectangularSelection(next)
+      : content
+    if (selectionMasksEqual(current.selection, after)) return
+    get().mutateActive((session) => {
+      const before = cloneSelectionMask(session.selection)
+      const afterSnapshot = cloneSelectionMask(after)!
+      session.selection = afterSnapshot
+      session.selectionPropertiesActive = true
+      session.selectionAngle = 0
+      session.selectionPivot = null
+      session.history.push({
+        label: tr('toolOptions.shrinkSelection'),
+        bytes: 48 + (before?.mask?.byteLength ?? 0),
+        undo: () => { session.selection = cloneSelectionMask(before); session.selectionPropertiesActive = true },
+        redo: () => { session.selection = cloneSelectionMask(afterSnapshot); session.selectionPropertiesActive = true },
+        documentChanged: false,
+        contentChanged: false,
+        requiresAnimationSync: false
+      })
+    }, false)
+  },
   setSelectionPivot(pivot) { get().mutateActive((session) => { session.selectionPivot = pivot ? { ...pivot } : null }, false) },
   invertSelection() {
     const session = activeSession(get())
@@ -2774,6 +2960,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }, false)
   },
   beginLayerTransform() {
+    if (isCanvasToolGestureLocked()) return
     get().commitFloatingPaste()
     get().cancelTextBoxTransform()
     const session = activeSession(get())
@@ -2838,8 +3025,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       active.selection = visibleBounds
       active.selectionKind = 'rectangle'
       active.selectionMode = 'replace'
+      active.freeTransformActive = false
+      active.freeTransformQuad = null
     }, false)
     set({ message: tr('workspace.transform.started') })
+  },
+  beginFreeTransform() {
+    if (isCanvasToolGestureLocked()) return
+    get().commitFloatingPaste()
+    get().cancelTextBoxTransform()
+    const session = activeSession(get())
+    if (!session?.selection) {
+      set({ message: tr('workspace.selectionRequired') })
+      return
+    }
+    if (activePaintLayer(session).kind === 'free-tile' && session.freeTileMode === 'paint') return
+    const layer = activePaintLayer(session)
+    if (!isLayerEffectivelyVisible(session.document, layer)) {
+      set({ message: tr('workspace.transform.hidden') })
+      return
+    }
+    if (isLayerEffectivelyLocked(session.document, layer)) {
+      set({ message: tr('workspace.transform.locked') })
+      return
+    }
+    get().mutateActive((active) => {
+      active.tool = 'selection'
+      active.freeTransformActive = true
+      active.freeTransformQuad = selectionQuadFromRect(active.selection!)
+    }, false)
+    set({ message: tr('workspace.transform.freeStarted') })
   },
   beginSelectedTextBoxTransform() {
     const session = activeSession(get())
@@ -2957,16 +3172,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         diagonalDown: Boolean(session.symmetryAxes.diagonalDown),
         rotational: Boolean(session.symmetryAxes.rotational)
       }
-      if (enabled && !session.symmetryAxes[axis] && !initialized[axis]) {
+      if (enabled && !session.symmetryAxes[axis] && !initialized[axis] && !Object.values(session.symmetryAxes).some(Boolean)) {
         session.symmetryCenter = defaultSymmetryCenter(session.document.width, session.document.height)
       }
       session.symmetryAxesInitialized = { ...initialized, [axis]: initialized[axis] || enabled }
       session.symmetryAxes = { ...session.symmetryAxes, [axis]: enabled }
+      saveDocumentViewState(session.document, session.view, session.symmetryCenter)
       persistToolSettings(session)
     }, false)
   },
-  setSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center }; }, false) },
-  resetSymmetryCenter() { get().mutateActive((session) => { session.symmetryCenter = { x: session.document.width / 2, y: session.document.height / 2 }; }, false) },
+  setSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center }; saveDocumentViewState(session.document, session.view, session.symmetryCenter) }, false) },
+  resetSymmetryCenter() { get().mutateActive((session) => { session.symmetryCenter = { x: session.document.width / 2, y: session.document.height / 2 }; saveDocumentViewState(session.document, session.view, session.symmetryCenter) }, false) },
   setLastPencilPoint(point) { get().mutateActive((session) => { session.lastPencilPoint = point ? { ...point } : null }, false) },
   setLastEraserPoint(point) { get().mutateActive((session) => { session.lastEraserPoint = point ? { ...point } : null }, false) },
   setCanvasResizePreview(preview) {
@@ -2987,7 +3203,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const beforeSnapshot = snapshot(before)
       const afterSnapshot = snapshot(after)
       session.selection = afterSnapshot
+      session.selectionPropertiesActive = false
+      session.selectionAngle = 0
       session.selectionPivot = null
+      session.freeTransformActive = false
+      session.freeTransformQuad = null
       session.history.push({
         label,
         bytes: 48 + (before?.mask?.byteLength ?? 0) + (after?.mask?.byteLength ?? 0),
@@ -4334,6 +4554,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationCellSelectionExplicit = false
       session.selectedAnimationMaskCellKeys = []
       session.animationMaskCellSelectionAnchorKey = null
+      session.activeLayerMaskId = null
+      session.layerMaskIsolatedView = false
+      session.selectedGroupId = null
+      session.selectedGroupIds = []
+      if (session.document.layers.some((layer) => layer.id === session.document.activeLayerId)) {
+        session.selectedLayerIds = [session.document.activeLayerId]
+      }
       const current = new Set(session.selectedAnimationFrameIds)
       if (mode === 'range' && session.animationFrameSelectionAnchorId) {
         const start = timeline.frames.findIndex((frame) => frame.id === session.animationFrameSelectionAnchorId)
@@ -4359,7 +4586,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const target = parseAnimationCelKey(key)
       const timeline = ensureAnimationDocument(session.document)
       if (!target || !timeline.frames.some((frame) => frame.id === target.frameId) || !session.document.layers.some((layer) => layer.id === target.layerId)) return
-      const preservedLayerIds = mode !== 'replace' && session.selectedLayerIds.length > 1 ? [...session.selectedLayerIds] : null
       const implicitAnchorKey = mode !== 'replace' && session.selectedAnimationCellKeys.length === 0
         ? animationCelKey(session.document.activeLayerId, timeline.activeFrameId)
         : null
@@ -4399,13 +4625,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       session.selectedAnimationCellKeys = [...current]
       session.animationCellSelectionExplicit = current.size > 0
-      if (preservedLayerIds) session.selectedLayerIds = preservedLayerIds
-      else {
-        const focusKey = current.has(key) ? key : session.selectedAnimationCellKeys.at(-1)
-        const focus = focusKey ? parseAnimationCelKey(focusKey) : null
-        session.selectedLayerIds = focus ? [focus.layerId] : []
-        if (focus) session.document.activeLayerId = focus.layerId
-      }
+      const focusKey = current.has(key) ? key : session.selectedAnimationCellKeys.at(-1)
+      const focus = focusKey ? parseAnimationCelKey(focusKey) : null
+      session.selectedLayerIds = focus ? [focus.layerId] : [target.layerId]
+      if (focus) session.document.activeLayerId = focus.layerId
       session.animationCellSelectionAnchorKey = current.has(key) ? key : session.selectedAnimationCellKeys.at(-1) ?? null
     }, false)
     const parsed = parseAnimationCelKey(key)
@@ -4471,6 +4694,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.selectedAnimationMaskCellKeys = [...current]
       session.animationMaskCellSelectionAnchorKey = key
       session.activeLayerMaskId = current.has(key) ? mask.id : null
+      if (current.has(key)) enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = false
     }, false)
   },
@@ -6989,6 +7213,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().cancelTextBoxTransform()
     get().commitFloatingPaste()
     get().mutateActive((session) => {
+      // Layer, frame, and cel selections are mutually exclusive modes.
+      clearAnimationItemSelection(session)
       const selectionMode: Exclude<LayerRowSelectionMode, boolean> = mode === true ? 'toggle' : mode === false ? 'replace' : mode
       if (selectionMode === 'range') {
         applyLayerRowRange(session, { kind: 'layer', id: layerId })
@@ -7002,9 +7228,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         applyLayerRowSelection(session, [layerId], [], { kind: 'layer', id: layerId })
         session.layerSelectionAnchorId = layerId
       }
-      if (selectionMode !== 'replace' && session.selectedAnimationFrameIds.length === 0) {
-        applyLayerCurrentFrameCellSelection(session, selectedDirectLayerRows(session), layerId)
-      }
     }, false)
   },
 
@@ -7012,8 +7235,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().commitFloatingPaste()
     get().mutateActive((session) => {
       if (!session.document.layers.some((layer) => layer.id === layerId)) return
+      clearAnimationItemSelection(session)
       const currentLayerIds = selectedDirectLayerRows(session)
-      const preserveFrameSelection = session.selectedAnimationFrameIds.length > 0
       const toggledLayerIds = additive
         ? currentLayerIds.includes(layerId)
           ? currentLayerIds.filter((candidate) => candidate !== layerId)
@@ -7021,7 +7244,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         : [layerId]
       const selectedLayerIds = toggledLayerIds.length > 0 ? toggledLayerIds : [layerId]
       applyLayerRowSelection(session, selectedLayerIds, [], { kind: 'layer', id: layerId })
-      if (!preserveFrameSelection) applyLayerCurrentFrameCellSelection(session, selectedLayerIds, layerId)
     }, false)
   },
 
@@ -7030,6 +7252,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().commitFloatingPaste()
     get().mutateActive((session) => {
       getGroup(session.document, groupId)
+      clearAnimationItemSelection(session)
       const selectionMode: Exclude<LayerRowSelectionMode, boolean> = mode === true ? 'toggle' : mode === false ? 'replace' : mode
       if (selectionMode === 'range') applyLayerRowRange(session, { kind: 'group', id: groupId })
       else if (selectionMode === 'toggle') {
@@ -7046,6 +7269,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   selectLayerRows(layerIds, groupIds) {
     get().mutateActive((session) => {
+      clearAnimationItemSelection(session)
       const focus = layerIds.length > 0
         ? { kind: 'layer' as const, id: layerIds.at(-1)! }
         : groupIds.length > 0
@@ -7124,6 +7348,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       activateAnimationFrame(session.document, cel.frameId)
       applyLayerRowSelection(session, [], [], { kind: 'layer', id: cel.layerId })
       session.activeLayerMaskId = mask.id
+      enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = true
       const key = animationCelKey(cel.layerId, cel.frameId)
       session.selectedAnimationCellKeys = []
@@ -7145,6 +7370,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       activateAnimationFrame(session.document, frameId)
       applyLayerRowSelection(session, [], [groupId], { kind: 'group', id: groupId })
       session.activeLayerMaskId = mask.id
+      enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = true
       const key = animationCelKey(groupId, frameId)
       session.selectedAnimationCellKeys = []
@@ -7179,6 +7405,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })
   },
 
+  setLayerMaskMoveWithOwner(celId, enabled) {
+    get().mutateActive((session) => {
+      const timeline = ensureAnimationDocument(session.document)
+      const cel = timeline.cels.find((candidate) => candidate.id === celId)
+        ?? timeline.cels.find((candidate) => candidate.layerId === celId && candidate.frameId === timeline.activeFrameId)
+      const mask = cel ? animationMaskAt(timeline, cel.layerId, cel.frameId) : null
+      if (!mask || mask.moveWithOwner === enabled) return
+      const before = mask.moveWithOwner !== false
+      mask.moveWithOwner = enabled
+      session.history.push({ label: tr('workspace.history.layerMaskMoveBinding'), bytes: 8, undo: () => { mask.moveWithOwner = before }, redo: () => { mask.moveWithOwner = enabled } })
+    })
+  },
+
+  setGroupMaskMoveWithOwner(groupId, frameId, enabled) {
+    get().mutateActive((session) => {
+      const mask = animationMaskAt(ensureAnimationDocument(session.document), groupId, frameId)
+      if (!mask || mask.moveWithOwner === enabled) return
+      const before = mask.moveWithOwner !== false
+      mask.moveWithOwner = enabled
+      session.history.push({ label: tr('workspace.history.layerMaskMoveBinding'), bytes: 8, undo: () => { mask.moveWithOwner = before }, redo: () => { mask.moveWithOwner = enabled } })
+    })
+  },
+
   createLayerMask(celId, frameId) {
     const current = activeSession(get())
     if (!current) return
@@ -7199,7 +7448,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const cel = directCel ?? ensured?.cel ?? timeline.cels.find((candidate) => candidate.layerId === targetLayerId && candidate.frameId === targetFrameId)
       const sourceCel = resolveAnimationCel(timeline, cel ?? null) ?? cel
       if (!cel || !sourceCel) return
-      if (sourceCel.mask) { session.activeLayerMaskId = sourceCel.mask.id; return }
+      if (sourceCel.mask) { session.activeLayerMaskId = sourceCel.mask.id; enterLayerMaskEditing(session); return }
       if (!animationCelHasContent(sourceCel, session.document.palette)) return
       const mask = createAttachedLayerMask(sourceCel.id, session.document.width, session.document.height)
       sourceCel.mask = mask
@@ -7207,6 +7456,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       refreshActiveAnimationFrame(session.document)
       applyLayerRowSelection(session, [], [], { kind: 'layer', id: targetLayerId })
       session.activeLayerMaskId = mask.id
+      enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = false
       const key = animationCelKey(targetLayerId, targetFrameId)
       session.selectedAnimationCellKeys = []
@@ -7217,8 +7467,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.history.push({
         label: tr('workspace.history.createLayerMask'),
         bytes: mask.pixels.byteLength,
-        undo: () => { delete sourceCel.mask; if (ensured?.created) timeline.cels = timeline.cels.filter((candidate) => candidate !== cel); if (session.activeLayerMaskId === mask.id) { session.activeLayerMaskId = null; session.layerMaskIsolatedView = false } },
-        redo: () => { if (ensured?.created && !timeline.cels.includes(cel)) timeline.cels.push(cel); sourceCel.mask = mask; session.activeLayerMaskId = mask.id; session.layerMaskIsolatedView = false; refreshActiveAnimationFrame(session.document) },
+        undo: () => { delete sourceCel.mask; if (ensured?.created) timeline.cels = timeline.cels.filter((candidate) => candidate !== cel); if (session.activeLayerMaskId === mask.id) { session.activeLayerMaskId = null; session.layerMaskIsolatedView = false; exitLayerMaskEditing(session) } },
+        redo: () => { if (ensured?.created && !timeline.cels.includes(cel)) timeline.cels.push(cel); sourceCel.mask = mask; session.activeLayerMaskId = mask.id; enterLayerMaskEditing(session); session.layerMaskIsolatedView = false; refreshActiveAnimationFrame(session.document) },
         invalidation: { kind: 'full' }
       })
     })
@@ -7259,6 +7509,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const activeMask = activeSource?.mask ?? null
       applyLayerRowSelection(session, [layerId], [], { kind: 'layer', id: layerId })
       session.activeLayerMaskId = activeMask?.id ?? null
+      if (activeMask) enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = false
       session.selectedAnimationCellKeys = []
       session.animationCellSelectionAnchorKey = null
@@ -7269,12 +7520,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const createdMaskIds = new Set(created.map(({ mask }) => mask.id))
       const remove = (): void => {
         for (const { source, mask } of created) if (source.mask === mask) delete source.mask
-        if (session.activeLayerMaskId && createdMaskIds.has(session.activeLayerMaskId)) session.activeLayerMaskId = null
+        if (session.activeLayerMaskId && createdMaskIds.has(session.activeLayerMaskId)) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) }
         refreshActiveAnimationFrame(session.document)
       }
       const restore = (): void => {
         for (const { source, mask } of created) source.mask = mask
         session.activeLayerMaskId = activeMask?.id ?? null
+        if (activeMask) enterLayerMaskEditing(session)
         session.layerMaskIsolatedView = false
         refreshActiveAnimationFrame(session.document)
       }
@@ -7306,6 +7558,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       activateAnimationFrame(session.document, targetFrameId)
       applyLayerRowSelection(session, [], [groupId], { kind: 'group', id: groupId })
       session.activeLayerMaskId = mask.id
+      enterLayerMaskEditing(session)
       session.layerMaskIsolatedView = false
       const key = animationCelKey(groupId, targetFrameId)
       session.selectedAnimationCellKeys = []
@@ -7313,8 +7566,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationCellSelectionExplicit = false
       session.selectedAnimationMaskCellKeys = [key]
       session.animationMaskCellSelectionAnchorKey = key
-      const restore = (): void => { if (!timeline.groupMasks?.some((candidate) => candidate.mask.id === mask.id)) timeline.groupMasks?.push(entry) }
-      const remove = (): void => { timeline.groupMasks = (timeline.groupMasks ?? []).filter((candidate) => candidate.mask.id !== mask.id); if (session.activeLayerMaskId === mask.id) session.activeLayerMaskId = null }
+      const restore = (): void => { if (!timeline.groupMasks?.some((candidate) => candidate.mask.id === mask.id)) timeline.groupMasks?.push(entry); session.activeLayerMaskId = mask.id; enterLayerMaskEditing(session) }
+      const remove = (): void => { timeline.groupMasks = (timeline.groupMasks ?? []).filter((candidate) => candidate.mask.id !== mask.id); if (session.activeLayerMaskId === mask.id) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) } }
       session.history.push({ label: tr('workspace.history.createLayerGroupMask'), bytes: mask.pixels.byteLength, undo: remove, redo: restore, invalidation: { kind: 'full' } })
     })
   },
@@ -7336,7 +7589,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!mask) return
       const wasActive = session.activeLayerMaskId === mask.id
       delete sourceCel.mask
-      if (wasActive) session.activeLayerMaskId = null
+      if (wasActive) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) }
       session.selectedAnimationMaskCellKeys = session.selectedAnimationMaskCellKeys.filter((key) => {
         const target = parseAnimationCelKey(key)
         const selectedCel = target ? timeline.cels.find((candidate) => candidate.layerId === target.layerId && candidate.frameId === target.frameId) : null
@@ -7346,8 +7599,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.history.push({
         label: tr('workspace.history.deleteLayerMask'),
         bytes: mask.pixels.byteLength,
-        undo: () => { sourceCel.mask = mask; if (wasActive) session.activeLayerMaskId = mask.id },
-        redo: () => { delete sourceCel.mask; if (session.activeLayerMaskId === mask.id) session.activeLayerMaskId = null },
+        undo: () => { sourceCel.mask = mask; if (wasActive) { session.activeLayerMaskId = mask.id; enterLayerMaskEditing(session) } },
+        redo: () => { delete sourceCel.mask; if (session.activeLayerMaskId === mask.id) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) } },
         invalidation: { kind: 'full' }
       })
     })
@@ -7366,8 +7619,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const entry = timeline.groupMasks?.find((candidate) => candidate.groupId === groupId && candidate.frameId === targetFrameId)
       if (!entry) return
       const wasActive = session.activeLayerMaskId === entry.mask.id
-      const remove = (): void => { timeline.groupMasks = (timeline.groupMasks ?? []).filter((candidate) => candidate !== entry); if (session.activeLayerMaskId === entry.mask.id) session.activeLayerMaskId = null }
-      const restore = (): void => { timeline.groupMasks ??= []; if (!timeline.groupMasks.includes(entry)) timeline.groupMasks.push(entry); if (wasActive) session.activeLayerMaskId = entry.mask.id }
+      const remove = (): void => { timeline.groupMasks = (timeline.groupMasks ?? []).filter((candidate) => candidate !== entry); if (session.activeLayerMaskId === entry.mask.id) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) } }
+      const restore = (): void => { timeline.groupMasks ??= []; if (!timeline.groupMasks.includes(entry)) timeline.groupMasks.push(entry); if (wasActive) { session.activeLayerMaskId = entry.mask.id; enterLayerMaskEditing(session) } }
       remove()
       const key = animationCelKey(groupId, targetFrameId)
       session.selectedAnimationMaskCellKeys = session.selectedAnimationMaskCellKeys.filter((candidate) => candidate !== key)
@@ -7396,10 +7649,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const snapshots = sourceCels.flatMap((source) => source.mask ? [{ source, mask: source.mask }] : [])
       if (snapshots.length === 0) return
       const activeMaskId = session.activeLayerMaskId
-      const restore = (): void => { for (const item of snapshots) item.source.mask = item.mask }
+      const restore = (): void => { for (const item of snapshots) item.source.mask = item.mask; if (activeMaskId) { session.activeLayerMaskId = activeMaskId; enterLayerMaskEditing(session) } }
       const remove = (): void => {
         for (const item of snapshots) delete item.source.mask
-        if (activeMaskId && snapshots.some((item) => item.mask.id === activeMaskId)) session.activeLayerMaskId = null
+        if (activeMaskId && snapshots.some((item) => item.mask.id === activeMaskId)) { session.activeLayerMaskId = null; exitLayerMaskEditing(session) }
       }
       remove()
       session.selectedAnimationMaskCellKeys = []
@@ -7898,6 +8151,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }, false)
       return
     }
+    const mask = activeLayerMask(current)
+    if (mask) {
+      const edit = fillSelectionOrCanvas(current.document, mask, current.secondaryColor, current.selection)
+      if (edit) get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))
+      return
+    }
     const operationProbe = window.__moonSpriteCanvasProbe
     const editStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
     const edit = clearSelection(current.document, current.selection, activePaintLayer(current))
@@ -8281,6 +8540,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   async pasteSelection() {
+    if (isCanvasToolGestureLocked()) return
     const targetSession = activeSession(get())
     if (!targetSession || !hasSelectedPaintTarget(targetSession)) {
       set({ message: tr('workspace.clipboard.selectTarget') })
@@ -8288,6 +8548,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     get().commitFloatingPaste()
     const clipboard = await clipboardService.readSelection(() => window.moonSprite.readClipboardImage())
+    if (isCanvasToolGestureLocked()) return
     get().mutateActive((session) => {
       if (!clipboard) { set({ message: tr('workspace.clipboard.emptyPixels') }); return }
       const document = session.document
@@ -8458,7 +8719,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     return true
   },
 
-  updateFloatingPastePreview(edit, target, translationPreview = null, transformTarget, transformAngle, transformShear, previewDeferred = false, layers) {
+  updateFloatingPastePreview(edit, target, translationPreview = null, transformTarget, transformAngle, transformShear, previewDeferred = false, layers, transformQuad) {
     get().mutateActive((session) => {
       if (!session.pendingPaste) return
       const previousTarget = session.pendingPaste.target
@@ -8474,6 +8735,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       if (transformAngle !== undefined) session.pendingPaste.transformAngle = transformAngle
       if (transformShear !== undefined) session.pendingPaste.transformShear = { ...transformShear }
+      else if (transformAngle !== undefined) session.pendingPaste.transformShear = undefined
+      if (transformQuad !== undefined) session.pendingPaste.transformQuad = cloneSelectionQuad(transformQuad) ?? undefined
       syncFloatingPrimaryLayerState(session.pendingPaste)
       session.selection = cloneSelectionMask(target)
       if (session.pendingPaste.previewDeferred) markFloatingOverlayChanged(session)
@@ -8481,7 +8744,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }, false)
   },
 
-  beginFloatingSelectionTransform(source, edit, before, target, copy, label, translationPreview = null, transformTarget, transformAngle = 0, transformShear, previewDeferred = false, tilemapEditCellIndex, layers) {
+  beginFloatingSelectionTransform(source, edit, before, target, copy, label, translationPreview = null, transformTarget, transformAngle = 0, transformShear, previewDeferred = false, tilemapEditCellIndex, layers, transformQuad) {
     get().mutateActive((session) => {
       const layer = layers?.[0] ?? null
       const activeLayer = activePaintLayer(session)
@@ -8495,6 +8758,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         transformTarget: transformTarget ? { ...transformTarget } : { x: target.x, y: target.y, width: target.width, height: target.height },
         transformAngle,
         transformShear: transformShear ? { ...transformShear } : undefined,
+        transformQuad: cloneSelectionQuad(transformQuad) ?? undefined,
         previewEdit: layer?.previewEdit ?? edit,
         translationPreview: layer?.translationPreview ?? translationPreview,
         previewDeferred: layers?.length ? false : previewDeferred,
@@ -8522,6 +8786,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : { x: options.target.x, y: options.target.y, width: options.target.width, height: options.target.height },
         transformAngle: options.transformAngle ?? 0,
         transformShear: options.transformShear ? { ...options.transformShear } : undefined,
+        transformQuad: cloneSelectionQuad(options.transformQuad) ?? undefined,
         previewEdit: options.previewEdit,
         translationPreview: options.translationPreview ?? null,
         previewDeferred: false,
@@ -8545,6 +8810,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => {
       const pending = session.pendingPaste
       if (!pending) return
+      const beforeFreeTransformQuad = cloneSelectionQuad(session.freeTransformQuad)
+      const afterFreeTransformQuad = session.freeTransformActive
+        ? cloneSelectionQuad(pending.transformQuad)
+          ?? selectionQuadFromRect(pending.transformTarget ?? pending.target)
+        : null
       if (pending.freeTile) {
         const beforeSelection = cloneSelectionMask(pending.beforeSelection)
         const afterSelection = cloneSelectionMask(pending.target)
@@ -8552,6 +8822,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const afterSelectionPivot = session.selectionPivot ? { ...session.selectionPivot } : null
         const freeTile = pending.freeTile
         session.pendingPaste = null
+        if (session.freeTransformActive) session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad)
         commitFreeTileSourceEditInSession(
           session,
           freeTile.sourceId,
@@ -8569,11 +8840,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (deselectLabel && afterSelection) {
           session.selection = null
           session.selectionPivot = null
+          session.freeTransformActive = false
+          session.freeTransformQuad = null
           session.history.push({
             label: deselectLabel,
             bytes: 48 + (afterSelection.mask?.byteLength ?? 0),
-            undo: () => { session.selection = cloneSelectionMask(afterSelection); session.selectionPivot = afterSelectionPivot ? { ...afterSelectionPivot } : null },
-            redo: () => { session.selection = null; session.selectionPivot = null },
+            undo: () => { session.selection = cloneSelectionMask(afterSelection); session.selectionPivot = afterSelectionPivot ? { ...afterSelectionPivot } : null; session.freeTransformActive = false; session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad) },
+            redo: () => { session.selection = null; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null },
             documentChanged: false,
             contentChanged: false,
             requiresAnimationSync: false
@@ -8585,6 +8858,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const transformTarget = pending.transformTarget ?? { x: pending.target.x, y: pending.target.y, width: pending.target.width, height: pending.target.height }
         const simpleTranslation = (pending.transformAngle ?? 0) % 360 === 0
           && !pending.transformShear
+          && !pending.transformQuad
           && transformTarget.width === pending.source.selection.width
           && transformTarget.height === pending.source.selection.height
           && !transformTarget.flipHorizontal
@@ -8595,10 +8869,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (!layer || layer.kind) continue
           const edit = pending.previewDeferred
             ? layerState.frameId
-              ? applySelectionTransformLayerState(session.document, layerState, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear)
+              ? applySelectionTransformLayerState(session.document, layerState, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, undefined, pending.transformQuad)
               : simpleTranslation
               ? applySelectionTranslationCommit(session.document, layerState.source, transformTarget, pending.copy, layer, session.view.tileRepeatMode)
-              : applySelectionTransform(session.document, layerState.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, layer)
+              : applySelectionTransform(session.document, layerState.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, layer, undefined, pending.transformQuad)
             : layerState.previewEdit ?? (layerState.translationPreview ? selectionTranslationPreviewEdit(session.document, layerState.translationPreview) : null)
           const entry = edit ? commitPixelEdit(session.document, edit, pending.label) : null
           if (entry) entries.push(entry)
@@ -8612,14 +8886,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const selectionChanged = !selectionMasksEqual(beforeSelection, afterSelection)
         session.pendingPaste = null
         session.selection = deselectLabel ? null : cloneSelectionMask(afterSelection)
+        if (session.freeTransformActive) session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad)
+        else session.freeTransformQuad = null
         if (deselectLabel) session.selectionPivot = null
+        if (deselectLabel) {
+          session.freeTransformActive = false
+          session.freeTransformQuad = null
+        }
         if (entries.length > 0) session.history.push(combinedPixelHistoryEntry(
           session,
           entries,
           pending.label,
           beforeSelection,
           afterSelection,
-          beforeSelectionPivot
+          beforeSelectionPivot,
+          null,
+          beforeFreeTransformQuad,
+          afterFreeTransformQuad
         ))
         else if (selectionChanged) session.history.push({
           label: pending.label,
@@ -8627,10 +8910,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           undo: () => {
             session.selection = cloneSelectionMask(beforeSelection)
             session.selectionPivot = beforeSelectionPivot ? { ...beforeSelectionPivot } : null
+            session.freeTransformQuad = cloneSelectionQuad(beforeFreeTransformQuad)
           },
           redo: () => {
             session.selection = cloneSelectionMask(afterSelection)
             session.selectionPivot = null
+            session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad)
           },
           documentChanged: false,
           contentChanged: false,
@@ -8639,8 +8924,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (deselectLabel) session.history.push({
           label: deselectLabel,
           bytes: 48 + (afterSelection.mask?.byteLength ?? 0),
-          undo: () => { session.selection = cloneSelectionMask(afterSelection); session.selectionPivot = null },
-          redo: () => { session.selection = null; session.selectionPivot = null },
+          undo: () => { session.selection = cloneSelectionMask(afterSelection); session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad) },
+          redo: () => { session.selection = null; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null },
           documentChanged: false,
           contentChanged: false,
           requiresAnimationSync: false
@@ -8656,6 +8941,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const transformTarget = pending.transformTarget ?? { x: pending.target.x, y: pending.target.y, width: pending.target.width, height: pending.target.height }
       const simpleTranslation = (pending.transformAngle ?? 0) % 360 === 0
         && !pending.transformShear
+        && !pending.transformQuad
         && transformTarget.width === pending.source.selection.width
         && transformTarget.height === pending.source.selection.height
         && !transformTarget.flipHorizontal
@@ -8679,7 +8965,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         : pending.previewDeferred && activeLayer && (!activeLayer.kind || activeLayer.kind === 'tilemap')
           ? simpleTranslation
             ? applySelectionTranslationCommit(session.document, pending.source, transformTarget, pending.copy, activeLayer, session.view.tileRepeatMode)
-            : applySelectionTransform(session.document, pending.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, activeLayer)
+            : applySelectionTransform(session.document, pending.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, activeLayer, undefined, pending.transformQuad)
           : pending.previewEdit ?? (pending.translationPreview ? selectionTranslationPreviewEdit(session.document, pending.translationPreview) : null)
       const timeline = ensureAnimationDocument(session.document)
       const activeCel = activeLayer?.kind === 'text' ? timeline.cels.find((cel) => cel.layerId === activeLayer.id && cel.frameId === timeline.activeFrameId) : null
@@ -8748,7 +9034,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const selectionChanged = selectionGeometryChanged || !sameMask
       session.pendingPaste = null
       session.selection = deselectLabel ? null : afterSelection
+      if (session.freeTransformActive) session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad)
+      else session.freeTransformQuad = null
       if (deselectLabel) session.selectionPivot = null
+      if (deselectLabel) {
+        session.freeTransformActive = false
+        session.freeTransformQuad = null
+      }
       let textHistory: { before: TextCelData; after: TextCelData; restore: (value: TextCelData) => void } | null = null
       if (activeLayer?.kind === 'text' && textSource?.text && (edit || selectionChanged)) {
         const sourceTarget = { x: pending.source.selection.x, y: pending.source.selection.y, width: pending.source.selection.width, height: pending.source.selection.height }
@@ -8781,20 +9073,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (pixelEntry) session.history.push({
         ...pixelEntry,
         bytes: pixelEntry.bytes + (beforeSelection?.mask?.byteLength ?? 0) + (afterSelection?.mask?.byteLength ?? 0) + 64,
-        undo: () => { pixelEntry.undo(); session.selection = selectionSnapshot(beforeSelection); session.selectionPivot = null },
-        redo: () => { pixelEntry.redo(); session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null }
+        undo: () => { pixelEntry.undo(); session.selection = selectionSnapshot(beforeSelection); session.selectionPivot = null; session.freeTransformQuad = cloneSelectionQuad(beforeFreeTransformQuad) },
+        redo: () => { pixelEntry.redo(); session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null; session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad) }
       })
       else if (selectionChanged || textHistory) session.history.push({
         label: pending.label,
         bytes: 48 + (beforeSelection?.mask?.byteLength ?? 0) + (afterSelection?.mask?.byteLength ?? 0),
-        undo: () => { textHistory?.restore(textHistory.before); session.selection = selectionSnapshot(beforeSelection); session.selectionPivot = null },
-        redo: () => { textHistory?.restore(textHistory.after); session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null }
+        undo: () => { textHistory?.restore(textHistory.before); session.selection = selectionSnapshot(beforeSelection); session.selectionPivot = null; session.freeTransformQuad = cloneSelectionQuad(beforeFreeTransformQuad) },
+        redo: () => { textHistory?.restore(textHistory.after); session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null; session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad) }
       })
       if (deselectLabel) session.history.push({
         label: deselectLabel,
         bytes: 48 + (afterSelection.mask?.byteLength ?? 0),
-        undo: () => { session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null },
-        redo: () => { session.selection = null; session.selectionPivot = null },
+        undo: () => { session.selection = selectionSnapshot(afterSelection); session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = cloneSelectionQuad(afterFreeTransformQuad) },
+        redo: () => { session.selection = null; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null },
         documentChanged: false,
         contentChanged: false,
         requiresAnimationSync: false
@@ -8856,6 +9148,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           const beforePivot = cloneSelectionPivot(session.selectionPivot)
           const afterPivot = beforePivot ? { x: beforePivot.x + actualX, y: beforePivot.y + actualY } : null
           recordFloatingSelectionBoxMove(session, pending, currentSelection, nextSelection, beforePivot, afterPivot)
+          if (pending.transformQuad) pending.transformQuad = translateSelectionQuad(pending.transformQuad, actualX, actualY) ?? undefined
           return
         }
         clearFloatingSelectionBoxHistory(pending)
@@ -8871,21 +9164,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           height: pending.target.height
         }
         const nextTransformTarget = { ...transformTarget, x: transformTarget.x + actualX, y: transformTarget.y + actualY }
+        const nextTransformQuad = pending.transformQuad
+          ? translateSelectionQuad(pending.transformQuad, actualX, actualY)
+          : undefined
         if (pending.freeTile) {
           restoreFloatingPreview(session)
-          const nextSelection = transformSelectionMask(
-            pending.freeTile.selectionSource,
-            nextTransformTarget,
-            session.document.width,
-            session.document.height,
-            angle,
-            shear,
-            false
-          )
+          const nextSelection = nextTransformQuad
+            ? transformSelectionMaskQuad(
+                pending.freeTile.selectionSource,
+                nextTransformQuad,
+                session.document.width,
+                session.document.height,
+                false,
+                pending.source.sourceQuad
+                  ? translateSelectionQuad(pending.source.sourceQuad, pending.freeTile.edit.origin.x, pending.freeTile.edit.origin.y) ?? undefined
+                  : undefined
+              )
+            : transformSelectionMask(
+                pending.freeTile.selectionSource,
+                nextTransformTarget,
+                session.document.width,
+                session.document.height,
+                angle,
+                shear,
+                false
+              )
           if (!nextSelection) return
           const localTarget = freeTileTransformTargetToEditRaster(pending.freeTile.edit, nextTransformTarget)
           const simpleTranslation = angle % 360 === 0
             && !shear
+            && !nextTransformQuad
             && nextTransformTarget.width === pending.source.selection.width
             && nextTransformTarget.height === pending.source.selection.height
             && !nextTransformTarget.flipHorizontal
@@ -8910,20 +9218,33 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             shear,
             undefined,
             undefined,
-            pending.freeTile.edit.layer
+            pending.freeTile.edit.layer,
+            undefined,
+            nextTransformQuad
+              ? {
+                  nw: { x: nextTransformQuad.nw.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.nw.y - pending.freeTile.edit.origin.y },
+                  ne: { x: nextTransformQuad.ne.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.ne.y - pending.freeTile.edit.origin.y },
+                  se: { x: nextTransformQuad.se.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.se.y - pending.freeTile.edit.origin.y },
+                  sw: { x: nextTransformQuad.sw.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.sw.y - pending.freeTile.edit.origin.y }
+                }
+              : undefined
           )
           pending.target = cloneSelectionMask(nextSelection)!
           pending.transformTarget = nextTransformTarget
+          if (nextTransformQuad) pending.transformQuad = nextTransformQuad
           session.selection = cloneSelectionMask(nextSelection)
           if (session.selectionPivot) session.selectionPivot = { x: session.selectionPivot.x + actualX, y: session.selectionPivot.y + actualY }
           if (!previewFloatingFreeTileSource(session, pending)) markFloatingOverlayChanged(session)
           return
         }
         restoreFloatingPreview(session)
-        const nextSelection = transformSelectionMask(floatingSelectionGeometrySource(pending), nextTransformTarget, session.document.width, session.document.height, angle, shear, false)
+        const nextSelection = nextTransformQuad
+          ? transformSelectionMaskQuad(floatingSelectionGeometrySource(pending), nextTransformQuad, session.document.width, session.document.height, false, pending.source.sourceQuad)
+          : transformSelectionMask(floatingSelectionGeometrySource(pending), nextTransformTarget, session.document.width, session.document.height, angle, shear, false)
         if (!nextSelection) return
         const simpleTranslation = angle % 360 === 0
           && !shear
+          && !nextTransformQuad
           && nextTransformTarget.width === pending.source.selection.width
           && nextTransformTarget.height === pending.source.selection.height
           && !nextTransformTarget.flipHorizontal
@@ -8937,12 +9258,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               layerState.translationPreview = applySelectionTranslationPreview(session.document, layerState.source, nextTransformTarget, pending.copy, layerState.translationPreview, layer, undefined, session.view.tileRepeatMode)
             } else {
               layerState.translationPreview = null
-              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, nextTransformTarget, angle, pending.copy, shear)
+              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, undefined, nextTransformQuad ?? undefined)
             }
           }
           syncFloatingPrimaryLayerState(pending)
           pending.target = cloneSelectionMask(nextSelection)!
           pending.transformTarget = nextTransformTarget
+          if (nextTransformQuad) pending.transformQuad = nextTransformQuad
           session.selection = cloneSelectionMask(nextSelection)
           if (session.selectionPivot) session.selectionPivot = { x: session.selectionPivot.x + actualX, y: session.selectionPivot.y + actualY }
           markFloatingPreviewChanged(session, previousTarget, nextSelection)
@@ -8953,9 +9275,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         pending.translationPreview = simpleTranslation
           ? applySelectionTranslationPreview(session.document, pending.source, nextTransformTarget, pending.copy, pending.translationPreview, layer, tilemapEditClipForCell(session, pending.tilemapEditCellIndex), session.view.tileRepeatMode)
           : null
-        if (!simpleTranslation) pending.previewEdit = applySelectionTransform(session.document, pending.source, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, layer)
+        if (!simpleTranslation) pending.previewEdit = applySelectionTransform(session.document, pending.source, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, layer, undefined, nextTransformQuad ?? undefined)
         pending.target = cloneSelectionMask(nextSelection)!
         pending.transformTarget = nextTransformTarget
+        if (nextTransformQuad) pending.transformQuad = nextTransformQuad
         session.selection = cloneSelectionMask(nextSelection)
         if (session.selectionPivot) session.selectionPivot = { x: session.selectionPivot.x + actualX, y: session.selectionPivot.y + actualY }
         markFloatingPreviewChanged(session, previousTarget, nextSelection)
@@ -9207,6 +9530,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })
   },
 
+  centerActiveContent(axis) {
+    get().mutateActive((session) => {
+      const layer = activePaintLayer(session)
+      if (isLayerEffectivelyLocked(session.document, layer)) return
+      const selection = session.selection ? cloneSelectionMask(session.selection) : layerContentBounds(session.document, layer)
+      if (!selection) return
+      const deltaX = axis === 'vertical' ? 0 : Math.round(session.document.width / 2 - (selection.x + selection.width / 2))
+      const deltaY = axis === 'horizontal' ? 0 : Math.round(session.document.height / 2 - (selection.y + selection.height / 2))
+      const source = session.selection
+        ? captureSelectionTransform(session.document, selection, layer, { preserveOutsideCanvas: true })
+        : null
+      const target = { ...selection, x: selection.x + deltaX, y: selection.y + deltaY }
+      const edit = source
+        ? applySelectionTransform(session.document, source, target, 0, false, undefined, undefined, undefined, layer)
+        : moveSelection(session.document, selection, deltaX, deltaY, false, layer)
+      const entry = edit && commitPixelEdit(session.document, edit, session.selection ? tr('workspace.history.moveSelectionContent') : tr('canvas.history.moveLayer'))
+      if (!entry) return
+      session.history.push(entry)
+      if (session.selection) {
+        session.selection = { ...session.selection, x: session.selection.x + deltaX, y: session.selection.y + deltaY }
+        if (session.selectionPivot) session.selectionPivot = { x: session.selectionPivot.x + deltaX, y: session.selectionPivot.y + deltaY }
+      }
+    })
+  },
+
   async convertColorMode(mode) {
     const current = activeSession(get())
     if (!current || current.document.colorMode === mode) return
@@ -9333,7 +9681,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     try {
       const encodingLabel = tr('workspace.export.encoding')
-      const message = await exportDocumentFile(window.moonSprite, session.document, options, {
+      const exportOptions: ExportOptions | undefined = options
+        ? { ...options, selection: options.target === 'selection' ? session.selection : undefined }
+        : options
+      const message = await exportDocumentFile(window.moonSprite, session.document, exportOptions, {
         onEncodeStart: () => updateProgress(12, encodingLabel),
         onEncodeProgress: (value) => updateProgress(12 + value * 0.86, encodingLabel),
         onWriteStart: () => updateProgress(72, tr('workspace.save.writing')),
@@ -9359,7 +9710,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   async openFiles() {
     const result = await window.moonSprite.openFiles()
-    if (!result.canceled) await Promise.all(result.filePaths.map((filePath) => get().openPath(filePath)))
+    if (!result.canceled) {
+      for (const filePath of result.filePaths) await get().openPath(filePath)
+    }
   },
 
   async openPath(filePath, options) {

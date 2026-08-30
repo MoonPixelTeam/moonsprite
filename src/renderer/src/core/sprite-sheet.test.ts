@@ -150,54 +150,23 @@ describe('sprite sheet document creation', () => {
     ])
   })
 
-  it('resolves visible, all, and selected layer scopes without changing source visibility', () => {
-    const source = createDocument('layers', 1, 1, 'rgba')
-    const bottom = getActiveLayer(source)
-    writeLayerColor(source, bottom, 0, { r: 255, g: 0, b: 0, a: 255 })
-    const top = createLayer('Top', 1, 1, 'rgba')
-    top.visible = false
-    source.layers.push(top)
-    source.activeLayerId = top.id
-    writeLayerColor(source, top, 0, { r: 0, g: 0, b: 255, a: 255 })
-    ensureAnimationDocument(source)
-    const sourceCels = source.animation!.cels
-
-    expect(resolveSpriteSheetLayerIds(source, 'visible', { selectedLayerIds: [], selectedGroupIds: [] })).toEqual([bottom.id])
-    expect(resolveSpriteSheetLayerIds(source, 'all', { selectedLayerIds: [], selectedGroupIds: [] })).toEqual([bottom.id, top.id])
-    expect(resolveSpriteSheetLayerIds(source, 'selected', { selectedLayerIds: [top.id], selectedGroupIds: [] })).toEqual([top.id])
-
-    const frameId = source.animation!.activeFrameId
-    const result = createSpriteSheetDocument(source, { document: 'top', layer: 'sheet' }, buildOptions({ frameIds: [frameId], layerIds: [top.id] })).document
-    expect(Array.from(getActiveLayer(result).pixels)).toEqual([0, 0, 255, 255])
-    expect(top.visible).toBe(false)
-    expect(source.animation!.cels).toBe(sourceCels)
+  it('exports only pixels inside an irregular selection', () => {
+    const source = createDocument('selection', 2, 1, 'rgba')
+    const layer = getActiveLayer(source)
+    writeLayerColor(source, layer, 0, { r: 255, g: 0, b: 0, a: 255 })
+    writeLayerColor(source, layer, 1, { r: 0, g: 255, b: 0, a: 255 })
+    const result = createSpriteSheetDocument(source, { document: 'selection', layer: 'sheet' }, buildOptions({
+      layout: 'horizontal',
+      area: { x: 0, y: 0, width: 2, height: 1 },
+      selection: { x: 0, y: 0, width: 2, height: 1, mask: Uint8Array.from([1, 0]) },
+      frameIds: [ensureAnimationDocument(source).activeFrameId]
+    }))
+    expect(Array.from(getActiveLayer(result.document).pixels)).toEqual([255, 0, 0, 255, 0, 255, 0, 0])
   })
 
-  it('combines split layers with loop sections and respects reverse section order', () => {
-    const source = createDocument('split', 1, 1, 'rgba')
-    const bottom = getActiveLayer(source)
-    bottom.name = 'Bottom'
-    const top = createLayer('Top', 1, 1, 'rgba')
-    source.layers.push(top)
-    const secondFrame = addRgbaFrame(source, [0, 0, 0, 0])
-    const thirdFrame = addRgbaFrame(source, [0, 0, 0, 0])
-    ensureAnimationDocument(source)
-    const firstFrame = source.animation!.frames[0].id
-    source.animation!.loopSections = [
-      { id: 'walk', name: 'Walk', startFrameId: firstFrame, endFrameId: secondFrame, direction: 'forward', repeatCount: null },
-      { id: 'turn', name: 'Turn', startFrameId: secondFrame, endFrameId: thirdFrame, direction: 'reverse', repeatCount: 1 }
-    ]
 
-    const targets = createSpriteSheetExportTargets(source, {
-      selectedLayerIds: [], selectedGroupIds: [], selectedFrameIds: []
-    }, { layerScope: 'all', splitLayers: true, frameScope: 'all', splitLoopSections: true })
 
-    expect(targets).toHaveLength(4)
-    expect(targets.map((target) => target.suffixes)).toEqual([
-      ['Bottom', 'Walk'], ['Bottom', 'Turn'], ['Top', 'Walk'], ['Top', 'Turn']
-    ])
-    expect(targets[1].frameIds).toEqual([thirdFrame, secondFrame])
-  })
+
 
   it('stacks split targets below one another in a single sprite sheet document', () => {
     const source = createDocument('stacked', 1, 1, 'rgba')

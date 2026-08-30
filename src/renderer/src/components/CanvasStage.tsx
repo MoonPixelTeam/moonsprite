@@ -1,29 +1,31 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { FreeTileInstance, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionRect, TilemapCell } from '@shared/types'
-import { compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
+import type { FreeTileInstance, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, TilemapCell } from '@shared/types'
+import { compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
 import { beginPixelEdit, revertPixelEdit, type HistoryEntry } from '@/core/history'
-import { applyRelativeLuminance, blendOver, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
+import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture } from '@/core/canvas-tool-gesture-lock'
+import { blendOver, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, gradientRegionSelection, type GradientGeometryOptions } from '@/core/gradient'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
 import { DEFAULT_GRID_SETTINGS, gridCellBoundsAt, gridLinePositions, shouldRenderPixelGrid } from '@/core/grid'
 import { alignmentThresholdForZoom, resolveAlignment } from '@/core/alignment'
-import { appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStrokeInvalidationRects, captureSelectionTransform, filledShapePathPixelPoints, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, outlinePixelSamples, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, restoreSelectionTranslationPreview, rotatedShapePixelPoints, sampleCompositeColor, selectionTranslationPreviewEdit, shapeContainsPixel, type BrushGradientSample, type OutlinePixelSample, type SelectionTransformLayerState } from '@/core/tools'
+import { appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStrokeInvalidationRects, captureSelectionTransform, filledPolygonPathPixelPoints, filledShapePathPixelPoints, floodFillSymmetric, inheritBrushPaintBaseline, interpolateBrushAngle, lineShapePixelPoints, outlinePixelSamples, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, restoreSelectionTranslationPreview, shapeBoundaryPixelPoints, selectionTranslationPreviewEdit, type BrushGradientSample, type OutlinePixelSample, type SelectionTransformLayerState, type SelectionTransformSource } from '@/core/tools'
 import { resolveOutlineStrokeColor } from '@/core/outline-settings'
 import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransformStates, selectionTransformLayerForState } from '@/core/selection-transform-targets'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activeLayerMask, activePaintLayer, isToolAvailableForSession, selectedTransformLayersAreEditable, selectedTransformLayersForSession } from '@/store/workspace-session'
+import { startCanvasSelection } from '@/components/layer-panel-reveal'
 import { DEFAULT_GRID_COLOR, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, loadEditorPreferences, parseIsoViewPreferences, type BrushPreviewMode, type CheckerboardPreferences, type CursorScale, type EyedropperMagnifierStyle, type GridColorPreferences, type IsoViewPreferences, type OnionSkinPreferences, type RotationIndicatorPosition, type SelectionPreviewColorMode, type SymmetryAxisPreferences, type WheelZoomMode, type ZoomToolDragMode } from '@/core/file-preferences'
-import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotateViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, unrotateViewportPoint, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from '@/core/view-geometry'
-import { createCanvasRenderPlan, deviceAlignedPixelRect } from '@/core/canvas-render-plan'
+import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotateViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from '@/core/view-geometry'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, deviceAlignedDocumentPointAtViewport, deviceAlignedPixelRect, repeatedDeviceAlignedCanvasRect, type CanvasDeviceScale, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale, canvasClientDeltaForInterfaceScale, canvasViewportPointForInterfaceScale, canvasViewportPointToCss, canvasViewportSizeForInterfaceScale } from '@/core/canvas-interface-scale'
 import { balancedStairLinePoints, constrainLineEndpoint } from '@/core/pixel-line'
 import { advanceIsoAlignedStrokeSegment, isoGridLineSegment, isoGuidePixelPattern, isoGuideSegments, isoGuideSpacingForZoom, isoLineEndpoint, snapIsoPointToGridVertex, traceIsoGridPointerEdges, updateIsoAlignedStrokePath } from '@/core/isometric'
-import { cloneSelection, combineSelection, lassoSelection, magicWandSelection, rasterLinePoints, rectSelection, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, shearTransformedSelection, shiftSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, type SelectionShearTransform } from '@/core/selection'
-import { CANVAS_RESIZE_PREVIEW_EVENT, drawCanvasResizePreviewLayers } from '@/core/canvas-resize-preview'
+import { cloneSelection, combineSelection, lassoSelection, magicWandSelection, polygonSelection, rasterLinePoints, rectSelection, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadTransform, shearTransformedSelection, shiftSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad, type SelectionShearTransform } from '@/core/selection'
+import { CANVAS_RESIZE_PREVIEW_EVENT, canvasResizePreviewExposedRects, drawCanvasResizePreviewLayers } from '@/core/canvas-resize-preview'
 import { SLICE_PREVIEW_EVENT } from '@/core/slice-preview'
 import { deriveShortcutConflicts, dispatchWheelShortcutInput, loadShortcutBindings, matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutMatchesAnyEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
-import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom as clampZoom, coalescedPointerClientPoints, constrainedTranslation, createCanvasPanDrag, createMarqueeResizeStart, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, floatingSelectionCopyMode, isPendingCanvasPathGesture, isQuickSelectionSecondPress, marqueePreviewTargetForDrag, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, sampledForegroundColorToAdd, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, snapSelectionRotation, steppedCanvasZoom as steppedZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState as DragState, type CanvasPoint as Point, type QuickSelectionPress, type SelectionHandle, type SelectionHit, type SelectionRotationHandle, type SelectionShearHandle } from '@/core/canvas-input'
+import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom as clampZoom, coalescedPointerClientPoints, constrainedTranslation, createCanvasPanDrag, createMarqueeResizeStart, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, floatingSelectionCopyMode, isPendingCanvasPathGesture, isQuickSelectionSecondPress, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, sampledForegroundColorToAdd, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, snapSelectionRotation, steppedCanvasZoom as steppedZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState as DragState, type CanvasPoint as Point, type QuickSelectionPress, type SelectionHandle, type SelectionHit, type SelectionRotationHandle, type SelectionShearHandle } from '@/core/canvas-input'
 import { canvasCursors, canvasStatusTextColor, canvasToolCursor, colorLuminance, directionalResizeCursors, directionalShearCursors, previewCursorTools, resizeCursors, rotationCursors, selectionCornerResizeCursorForPoints, selectionResizeCursorForHandle, selectionRotationCursorForPosition, selectionShearCursorForDirection, shearCursors, selectionCreationCursor, selectionCursorCornerRects, selectionPathPreviewPixelVisible, selectionPreviewPixels, selectionTransformDragCursor, transparencyColorAt } from '@/core/canvas-visuals'
 import { defaultSymmetryCenter, hasSymmetry, moveSymmetryCenter, symmetryAxisDragAllowed, symmetryAxisSegment, symmetryPoints, symmetrySelection, symmetrySelectionDragDelta, transformSymmetrySelection, type SymmetryAxes, type SymmetryAxis } from '@/core/symmetry'
 import { beginAdjustmentPreviewEdit, endAdjustmentPreviewEdit, hasAdjustmentPreviewController, prepareAdjustmentPreviewEdit, renderAdjustmentPreviewEdit } from '@/core/adjustment-preview-lifecycle'
@@ -35,11 +37,11 @@ import { drawSelectionOutline, drawSelectionSizeLabel, selectionScreenBox, selec
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
-import { syncCanvasDisplaySize } from '@/components/canvas-display-size'
+import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { onionSkinFrameRefs } from '@/core/onion-skin'
 import { resolveTheme } from '@/core/theme'
 import { pixelSamplingMode } from '@/core/pixel-display'
-import { finishAnimationCellOperation, revealLayerInPanel } from '@/components/layer-panel-reveal'
+import { preserveCanvasSelection, revealLayerInPanel } from '@/components/layer-panel-reveal'
 import { layerIdsInVisualStackOrder } from '@/core/layer-panel-layout'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { eyedropperMagnifierPixelScale } from '@/core/eyedropper-magnifier'
@@ -48,6 +50,7 @@ import { airbrushParticleSize, airbrushSymmetryPoints, generateAirbrushParticles
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { clampSliceRect, moveSliceRect, moveSliceRects, sliceAtPoint } from '@/core/slices'
 import { animationCelKey, animationCelOffsetsForKeys, ensureAnimationDocument, parseAnimationCelKey, resolveAnimationCel } from '@/core/animation'
+import { animationMaskOffsetsForLayerMove } from '@/store/workspace-layer-move'
 import { activeTilemapCelTarget, applyTilemapDocumentEdit, captureTilemapSelectionMove, previewTilemapSelectionMove, tilemapEditPreviewTilePixels, writeTilemapCell } from '@/core/tilemap-document'
 import { beginTilemapEdit, expandSelectionToTilemapCells, nearestTileRepeatEquivalent, normalizeSelectionForTileRepeatPreview, readTilesetTilePixels, tilemapCellBounds, tilemapCellIndexAtPoint, tilemapCellLineIndices, tilemapEditableSelectionAtPoint, tilemapSourcePointForCell, tilesetHasOnlyTransparentTile, tileRepeatContinuousPreviewPlacements, tileRepeatLinePoints, tileRepeatLineSegments, tileRepeatMappedPointForCopies, tileRepeatOffsetsForViewport, tileRepeatPreviewPlacements, wrapDocumentPointForTileRepeat, wrapSelectionMaskForTileRepeat } from '@/core/tilemap'
 import { freeTileInstanceAtPoint, freeTileInstanceBounds, freeTileSourceEditTargetAtPoint, freeTileSourceForInstance, freeTileSourcePointForInstance, freeTileSourceStampOrigin, freeTileTileIdForInstance } from '@/core/free-tile'
@@ -73,6 +76,7 @@ import eyedropperMagnifierSampledMask from '@/assets/eyedropper-magnifier-sample
 import eyedropperMagnifierPreviousMask from '@/assets/eyedropper-magnifier-previous-mask.svg?raw'
 import selectionPivotIcon from '@/assets/pixel-icons/selection-pivot.svg'
 import { cursorOverlayDescriptor, setNativeCursorVisible } from '@/platform/cursor-theme'
+import { createPolygonPathRasterCache } from '@/core/canvas-input'
 
 const nonContentPreviewDragKinds = new Set([
   'pan',
@@ -96,6 +100,27 @@ const SELECTION_PIVOT_ICON_SIZE = 18
 const SELECTION_PIVOT_ICON_OFFSET = SELECTION_PIVOT_ICON_SIZE / 2
 const EYEDROPPER_MAGNIFIER_BASE_SIZE = 256
 const EYEDROPPER_MAGNIFIER_VIEWPORT_SIZE = 204
+const drawDeviceAlignedCanvasBorder = (
+  context: RasterContext2D,
+  originX: number,
+  originY: number,
+  width: number,
+  height: number,
+  devicePixelRatio: CanvasDeviceScaleInput,
+  color: string
+): void => {
+  const dpr = typeof devicePixelRatio === 'number'
+    ? { x: Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1, y: Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1 }
+    : devicePixelRatio
+  const boundary = deviceAlignedCanvasRect(originX, originY, width, height, dpr)
+  // Use one physical pixel for the outline. Drawing four filled edges avoids
+  // strokeRect's half-pixel expansion when the scaled canvas size is fractional.
+  context.fillStyle = color
+  context.fillRect(boundary.left, boundary.top, boundary.width, 1 / dpr.y)
+  context.fillRect(boundary.left, boundary.bottom - 1 / dpr.y, boundary.width, 1 / dpr.y)
+  context.fillRect(boundary.left, boundary.top, 1 / dpr.x, boundary.height)
+  context.fillRect(boundary.right - 1 / dpr.x, boundary.top, 1 / dpr.x, boundary.height)
+}
 const selectionBoundsEqual = (left: SelectionRect, right: SelectionRect): boolean => left.x === right.x
   && left.y === right.y
   && left.width === right.width
@@ -103,7 +128,6 @@ const selectionBoundsEqual = (left: SelectionRect, right: SelectionRect): boolea
 const symmetryGuideAxisEnabled = (axes: SymmetryAxes, axis: SymmetryAxis): boolean =>
   Boolean(axes[axis] || (axes.rotational && (axis === 'horizontal' || axis === 'vertical')))
 
-interface CompositeSurface { canvas: OffscreenCanvas; revision: string }
 interface GradientPreviewSurface { canvas: OffscreenCanvas; context: OffscreenCanvasRenderingContext2D; imageData: ImageData; pixels: Uint8ClampedArray; width: number; height: number }
 interface GradientPreviewCoverageCache {
   selection: SelectionMask | null | undefined
@@ -121,7 +145,7 @@ interface GradientPreviewCoverageCache {
   zoom: number
   originX: number
   originY: number
-  dpr: number
+  deviceScale: CanvasDeviceScale
   coverage: Uint8ClampedArray
   sampleX: Int32Array
   sampleY: Int32Array
@@ -139,8 +163,17 @@ interface LineAnchorHistory {
   baseline: Map<number, number>
   mergeWithNext: boolean
 }
+interface PolygonPathPreviewRenderCache {
+  sourcePath: readonly Point[] | null
+  sourcePathLength: number
+  balanced: boolean
+  visualKey: string
+  committedPointCount: number
+  paths: Map<string, Path2D>
+}
 const SMOOTH_GRADIENT_PREVIEW_SAMPLE_LIMIT = 96_000
 const DITHERED_GRADIENT_PREVIEW_SAMPLE_LIMIT = 1_500_000
+const SELECTION_PATH_PREVIEW_BATCH_THRESHOLD = 32
 const insideSelection = (selection: SelectionMask, point: Point): boolean => selectionContains(selection, point.x, point.y)
 const selectedTextBoxForSession = (session: DocumentSession): SelectionRect | null => {
   if (session.selectedGroupIds.length > 0 || session.selectedLayerIds.length !== 1) return null
@@ -251,6 +284,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const match = currentQuickTool()
     return applyQuickToolTarget(current, match && !quickToolNeedsContextualCanvasHandling(match.target) ? match.target : null)
   }
+  const liveInputSession = (): DocumentSession => {
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === storedSession.document.id)
+    return current ? sessionWithActiveQuickTool(current) : session
+  }
   const inputRef = useRef(new CanvasInputState())
   const pressureAdapterRef = useRef(new PointerPressureAdapter())
   const quickSelectionPressRef = useRef<QuickSelectionPress | null>(null)
@@ -271,11 +308,24 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const stageSizeScaleRef = useRef(interfaceScale)
   const compositeCacheRef = useRef(new CanvasCompositeCache())
   const compositePointSamplerRef = useRef<{ document: DocumentSession['document']; revision: number; sampler: (x: number, y: number) => RgbaColor } | null>(null)
+  const cursorCompositePointSamplerRef = useRef<{
+    document: DocumentSession['document']
+    revision: number
+    activeLayerId: string
+    backgroundLayersKey: string
+    sampler: (x: number, y: number) => RgbaColor
+  } | null>(null)
+  const cursorCompositePointReplacementSamplerRef = useRef<{
+    document: DocumentSession['document']
+    revision: number
+    layerId: string
+    sampler: (x: number, y: number, replacement: RgbaColor) => RgbaColor
+  } | null>(null)
   const renderDocumentSizeRef = useRef({ width: session.document.width, height: session.document.height })
   const onionSkinCacheRef = useRef(new OnionSkinCompositeCache())
-  const canvasResizeSurfaceRef = useRef<CompositeSurface | null>(null)
   const outlinePreviewCacheRef = useRef<{ revision: number; layerId: string; selection: SelectionMask | null; preview: NonNullable<DocumentSession['outlinePreview']>; samples: OutlinePixelSample[] } | null>(null)
   const selectionBoundaryCacheRef = useRef<SelectionBoundaryCache | null>(null)
+  const polygonPathPreviewRenderCacheRef = useRef<PolygonPathPreviewRenderCache | null>(null)
   const selectionOverlayVisibleRef = useRef(false)
   const selectionPreviewFrameRef = useRef<number | null>(null)
   const publishedCanvasPreviewRef = useRef<CanvasPreviewSnapshot | null>(null)
@@ -342,9 +392,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
   }
   const activeFreeTileSelectionTarget = selectedFreeTileSelectionTarget()
-  const selectedTransformLayers = selectedTransformLayersForSession(session)
-  const multipleAnimationFramesSelected = session.selectedAnimationFrameIds.length > 1
-  const selectionLayersEditable = multipleAnimationFramesSelected
+  const selectedTransformLayers = session.selectedAnimationFrameIds.length > 0
+    ? session.document.layers.filter((layer) => !layer.kind && isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer))
+    : selectedTransformLayersForSession(session)
+  const animationFrameSelectionActive = session.selectedAnimationFrameIds.length > 0
+  const multipleAnimationCellsSelected = session.selectedAnimationCellKeys.length > 1
+  const multipleAnimationSelection = animationFrameSelectionActive || multipleAnimationCellsSelected
+  const selectionLayersEditable = multipleAnimationSelection
     ? !selectedLayerMask
       && selectedTransformLayers.length > 0
       && selectedTransformLayers.every((layer) => !layer.kind
@@ -370,6 +424,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const fillKind = session.fillKind ?? 'bucket'
   const sliceTool = session.tool === 'move' && session.moveKind === 'slice'
   const gradientDither = session.gradientDither ?? 'none'
+  const gradientStops = session.gradientFreeform && gradientDither === 'none' ? session.gradientStops : undefined
+  const gradientStopsForButton = (button: number): typeof gradientStops => button === 2 && gradientStops
+    ? gradientStops.slice().reverse().map((stop) => ({ position: 1 - stop.position, color: { ...stop.color } }))
+    : gradientStops
   const gradientType = session.gradientType ?? 'linear'
   const radialGradientCenterModifierActive = (
     targetSession: DocumentSession,
@@ -629,7 +687,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const temporaryMoveActive = (
     event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
     targetSession: DocumentSession = session
-  ): boolean => !radialGradientCenterModifierActive(targetSession, event)
+  ): boolean => targetSession.freeTransformActive !== true
+    && !radialGradientCenterModifierActive(targetSession, event)
     && quickMoveToolActive()
     && temporaryMoveToolAllowed(targetSession.tool, targetSession.moveKind)
     && !brushLineConnectionHasPriority(event, targetSession)
@@ -874,17 +933,18 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     compositeCacheRef.current.invalidateDocumentRect(selection, session.document, session.document.animation?.activeFrameId, layerIds?.length ? layerIds : [paintTarget.id])
   }
 
-  const invalidateStrokeSegment = (from: Point, to: Point): void => {
+  const invalidateStrokeSegment = (from: Point, to: Point, size = session.brushSize, angle = 0): void => {
     for (const rect of brushStrokeInvalidationRects(
       from,
       to,
-      session.brushSize,
+      size,
       activeBrushImage,
       session.document.width,
       session.document.height,
       session.symmetryAxes,
       symmetryCenter,
-      session.view.tileRepeatMode ?? 'off'
+      session.view.tileRepeatMode ?? 'off',
+      angle
     )) invalidateCompositeRect(rect)
   }
 
@@ -963,15 +1023,25 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const target = { ...drag.previewTarget }
     const angle = drag.previewAngle ?? 0
     const shear = drag.previewShear ? { ...drag.previewShear } : undefined
+    const quad = drag.freeTransform ? drag.previewQuad ?? drag.transformStartQuad : undefined
     const symmetryStartPoint = symmetryStartPointForDrag(drag)
     const rawTarget = drag.kind === 'move-selection'
       ? { ...drag.selectionStart, x: target.x, y: target.y }
       : target
     const transformSourceSelection = selectionTransformGeometrySource(drag) ?? drag.selectionStart
-    const translatedPreviewSelection = drag.freeTileSelectionTransform || hasSymmetry(session.symmetryAxes)
+    const translatedPreviewSelection = drag.freeTransform || drag.freeTileSelectionTransform || hasSymmetry(session.symmetryAxes)
       ? undefined
       : translatedSelectionTransformPreviewMask(drag, target, angle, shear, session.document.width, session.document.height)
-    const previewSelection = translatedPreviewSelection ?? (drag.freeTileSelectionTransform
+    const previewSelection = translatedPreviewSelection ?? (drag.freeTransform && quad
+      ? transformSelectionMaskQuad(
+          transformSourceSelection,
+          quad,
+          session.document.width,
+          session.document.height,
+          false,
+          selectionSourceQuadForCanvas(drag)
+        )
+      : drag.freeTileSelectionTransform
       ? drag.kind === 'move-selection'
         ? rawTarget
         : transformSelectionMask(transformSourceSelection, target, session.document.width, session.document.height, angle, shear, false)
@@ -1001,6 +1071,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           : null
         if (sourceEdit && drag.freeTileSourceId) {
           const localTarget = freeTileTransformTargetToEditRaster(sourceEdit, target)
+          const localQuad = quad
+            ? {
+                nw: { x: quad.nw.x - sourceEdit.origin.x, y: quad.nw.y - sourceEdit.origin.y },
+                ne: { x: quad.ne.x - sourceEdit.origin.x, y: quad.ne.y - sourceEdit.origin.y },
+                se: { x: quad.se.x - sourceEdit.origin.x, y: quad.se.y - sourceEdit.origin.y },
+                sw: { x: quad.sw.x - sourceEdit.origin.x, y: quad.sw.y - sourceEdit.origin.y }
+              }
+            : undefined
           if (drag.translationPreview) {
             restoreSelectionTranslationPreview(sourceEdit.document, drag.translationPreview)
             drag.translationPreview = null
@@ -1016,13 +1094,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             undefined,
             undefined,
             sourceEdit.layer,
-            symmetryStartPoint
+            symmetryStartPoint,
+            localQuad
           )
           const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit)
           drag.appliedSelection = previewSelection
           drag.appliedPreviewTarget = { ...target }
           drag.appliedPreviewAngle = angle
           drag.appliedPreviewShear = shear ? { ...shear } : undefined
+          drag.appliedPreviewQuad = cloneSelectionQuad(quad) ?? undefined
           drag.appliedPreviewPivot = drag.previewPivot ? { ...drag.previewPivot } : undefined
           useWorkspace.getState().previewFreeTileSource(
             drag.freeTileSourceId,
@@ -1041,7 +1121,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         invalidateCompositeRect(drag.selectionStart, previewLayerIds)
         invalidateCompositeRect(drag.appliedSelection, previewLayerIds)
         invalidateCompositeRect(drag.previewSelection, previewLayerIds)
-        const translation = drag.kind === 'move-content' && !hasSymmetry(session.symmetryAxes) && angle % 360 === 0 && !drag.previewShear && !target.flipHorizontal && !target.flipVertical && target.width === drag.selectionSource.selection.width && target.height === drag.selectionSource.selection.height
+        const translation = !drag.freeTransform && drag.kind === 'move-content' && !hasSymmetry(session.symmetryAxes) && angle % 360 === 0 && !drag.previewShear && !target.flipHorizontal && !target.flipVertical && target.width === drag.selectionSource.selection.width && target.height === drag.selectionSource.selection.height
         if (drag.selectionLayers?.length) {
           for (const layerState of drag.selectionLayers) {
             if (translation && !layerState.frameId) {
@@ -1056,7 +1136,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 layerState.translationPreview = null
               }
               if (layerState.previewEdit) revertPixelEdit(session.document, layerState.previewEdit)
-              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, symmetryStartPoint)
+              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, symmetryStartPoint, quad)
             }
           }
           syncPrimarySelectionLayerState(drag)
@@ -1071,9 +1151,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             drag.translationPreview = null
           }
           if (drag.previewEdit) revertPixelEdit(session.document, drag.previewEdit)
-          drag.previewEdit = applySelectionTransform(session.document, drag.selectionSource, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, activePaintLayer(session), symmetryStartPoint)
+          drag.previewEdit = applySelectionTransform(session.document, drag.selectionSource, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, activePaintLayer(session), symmetryStartPoint, quad)
         }
         drag.appliedSelection = drag.previewSelection
+        drag.appliedPreviewQuad = cloneSelectionQuad(quad) ?? undefined
       }
     }
     if (render) {
@@ -1290,6 +1371,39 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     scheduleSelectionPreview(drag)
   }
 
+  const updateFreeTransformPreview = (drag: DragState, point: Point): void => {
+    if (!drag.freeTransform || !drag.selectionStart || !drag.handle) return
+    if (drag.handle !== 'nw' && drag.handle !== 'ne' && drag.handle !== 'se' && drag.handle !== 'sw') return
+    const startQuad = drag.transformStartQuad
+      ?? selectionQuadFromRect(drag.transformStartTarget ?? drag.selectionStart, drag.startAngle ?? 0, drag.transformStartShear)
+    const nextQuad: SelectionQuad = {
+      nw: { ...startQuad.nw },
+      ne: { ...startQuad.ne },
+      se: { ...startQuad.se },
+      sw: { ...startQuad.sw }
+    }
+    // Keep the frame pixel-aligned while allowing the selected corner to move
+    // independently. The other three corners are copied verbatim.
+    nextQuad[drag.handle] = { x: Math.round(point.x), y: Math.round(point.y) }
+    if (!selectionQuadTransform(nextQuad)) return
+    const target = selectionQuadBounds(nextQuad)
+    const previousQuad = drag.previewQuad ?? startQuad
+    if (previousQuad.nw.x === nextQuad.nw.x && previousQuad.nw.y === nextQuad.nw.y
+      && previousQuad.ne.x === nextQuad.ne.x && previousQuad.ne.y === nextQuad.ne.y
+      && previousQuad.se.x === nextQuad.se.x && previousQuad.se.y === nextQuad.se.y
+      && previousQuad.sw.x === nextQuad.sw.x && previousQuad.sw.y === nextQuad.sw.y) return
+    if (!prepareSelectionTransformDrag(drag)) return
+    drag.last = point
+    drag.previewQuad = nextQuad
+    drag.previewTarget = target
+    drag.previewAngle = 0
+    drag.previewShear = undefined
+    drag.previewPivot = undefined
+    // Free transforms are materialized during the drag so zooming or panning
+    // cannot fall back to the rectangular deferred preview.
+    scheduleSelectionPreview(drag, true)
+  }
+
   const beginSelectionAdjustmentEdit = (): void => {
     if (adjustmentPreviewEditRef.current) return
     adjustmentPreviewEditRef.current = true
@@ -1305,10 +1419,30 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const prepareSelectionTransformDrag = (drag: DragState): boolean => {
     if (!drag.selectionPreparationPending) return Boolean(drag.selectionSource)
     drag.selectionPreparationPending = false
+    preserveCanvasSelection(session.document.id)
     beginSelectionAdjustmentEdit()
+    const sourceQuadForOrigin = (origin?: Point): SelectionQuad | undefined => {
+      if (!drag.freeTransform || !drag.transformStartQuad) return undefined
+      const offsetX = origin?.x ?? 0
+      const offsetY = origin?.y ?? 0
+      return {
+        nw: { x: drag.transformStartQuad.nw.x - offsetX, y: drag.transformStartQuad.nw.y - offsetY },
+        ne: { x: drag.transformStartQuad.ne.x - offsetX, y: drag.transformStartQuad.ne.y - offsetY },
+        se: { x: drag.transformStartQuad.se.x - offsetX, y: drag.transformStartQuad.se.y - offsetY },
+        sw: { x: drag.transformStartQuad.sw.x - offsetX, y: drag.transformStartQuad.sw.y - offsetY }
+      }
+    }
+    const ensureSourceQuad = (source: SelectionTransformSource, origin?: Point): void => {
+      // A floating source can be transformed repeatedly before confirmation.
+      // Its original frame must remain stable, so only initialize this once.
+      if (source.sourceQuad) return
+      const sourceQuad = sourceQuadForOrigin(origin)
+      if (sourceQuad) source.sourceQuad = sourceQuad
+    }
+    if (drag.selectionSource) ensureSourceQuad(drag.selectionSource)
     if (!drag.selectionSource && drag.selectionStart) {
       const layer = activePaintLayer(session)
-      if (session.selectedAnimationFrameIds.length > 1) {
+      if (multipleAnimationSelection) {
         if (!selectionLayersEditable) {
           endSelectionAdjustmentEdit()
           return false
@@ -1316,14 +1450,18 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.deferredSelectionPreview = false
         drag.selectionLayers = captureAnimationFrameSelectionTransformStates(
           session.document,
-          session.selectedAnimationFrameIds,
+          multipleAnimationCellsSelected
+            ? session.selectedAnimationCellKeys.map((key) => parseAnimationCelKey(key)?.frameId).filter((id): id is string => Boolean(id))
+            : session.selectedAnimationFrameIds,
           selectedTransformLayers.map((candidate) => candidate.id),
-          drag.selectionStart
+          drag.selectionStart,
+          multipleAnimationCellsSelected ? session.selectedAnimationCellKeys : undefined
         )
         if (drag.selectionLayers.length === 0) {
           endSelectionAdjustmentEdit()
           return false
         }
+        for (const layerState of drag.selectionLayers) ensureSourceQuad(layerState.source)
         syncPrimarySelectionLayerState(drag)
       } else if (layer.kind === 'free-tile') {
         const selectedTarget = selectedFreeTileSelectionTarget()
@@ -1343,6 +1481,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         }
         drag.selectionStart = scopedSelection
         drag.selectionSource = source
+        ensureSourceQuad(source, sourceEdit.origin)
         drag.deferredSelectionPreview = false
         drag.freeTileSelectionTransform = true
         drag.freeTileSelectionSource = cloneSelection(scopedSelection) ?? undefined
@@ -1372,11 +1511,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           drag.deferredSelectionPreview = false
           drag.selectionLayers = layers.flatMap((layer) => {
             const source = captureSelectionTransform(session.document, drag.selectionStart!, layer)
+            if (source) ensureSourceQuad(source)
             return source ? [{ layerId: layer.id, source, previewEdit: null, translationPreview: null }] : []
           })
           syncPrimarySelectionLayerState(drag)
         } else {
           drag.selectionSource = captureSelectionTransform(session.document, drag.selectionStart, layer, { cacheOpaqueOffsets: !drag.deferredSelectionPreview }) ?? undefined
+          if (drag.selectionSource) ensureSourceQuad(drag.selectionSource)
         }
       }
     }
@@ -1439,6 +1580,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const cancelActiveCanvasInteraction = (): void => {
+    clearCanvasToolGestures()
     stopAirbrushTimer()
     hideMoveLayerContentPreview()
     gradientPreviewCoverageCacheRef.current = null
@@ -1462,7 +1604,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     } else if (drag.floatingPaste) {
       const target = drag.previewSelection ?? drag.selectionStart
       const hasLayerPreview = drag.selectionLayers?.some((layer) => layer.previewEdit || layer.translationPreview)
-      if (target && (drag.previewEdit || drag.translationPreview || hasLayerPreview)) state.updateFloatingPastePreview(drag.previewEdit ?? null, target, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, false, drag.selectionLayers)
+      if (target && (drag.previewEdit || drag.translationPreview || hasLayerPreview)) state.updateFloatingPastePreview(drag.previewEdit ?? null, target, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, false, drag.selectionLayers, drag.previewQuad)
     } else if (drag.selectionLayers?.length) {
       restoreSelectionLayerPreviews(drag.selectionLayers)
       documentChanged = true
@@ -1547,18 +1689,19 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rotatingSelection = Boolean(rotatingDrag)
     const overlayFrame = selectionOverlayFrameForDrag(currentSession.selection, selectionDrag)
     const visibleSelection = overlayFrame.selection
-    const selectionSizeTarget = marqueePreviewTargetForDrag(selectionDrag)
-    const selectionSizeAngle = selectionDrag?.kind === 'marquee'
+    const selectionSizeTarget = drawingSizePreviewTargetForDrag(selectionDrag, currentSession.shapeRatio)
+    const selectionSizeAngle = selectionDrag?.kind === 'marquee' || selectionDrag?.kind === 'shape'
       ? selectionDrag.previewAngle ?? selectionDrag.marqueeAngle ?? 0
       : 0
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
-    syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
+    const deviceScale = syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
     const displayContext = overlay.getContext('2d')
     if (!displayContext) return
-    displayContext.setTransform(dpr, 0, 0, dpr, 0, 0)
-    displayContext.clearRect(0, 0, rect.width, rect.height)
+    displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
+    clearCanvasBacking(displayContext, overlay)
+    displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
     const alignmentGuides = alignmentPreferences.alignmentGuidesVisible ? selectionDrag?.alignmentGuides ?? [] : []
     const shouldDrawSelection = Boolean(visibleSelection || visibleTextBox || (selectionSizeVisible && selectionSizeTarget) || alignmentGuides.length)
     selectionOverlayVisibleRef.current = shouldDrawSelection
@@ -1568,58 +1711,83 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     let context: RasterContext2D = displayContext
     if (rotated) {
       let scene = selectionRotationSceneRef.current
-      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * dpr))
-      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * dpr))
+      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * deviceScale.x))
+      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * deviceScale.y))
       if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
         scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
         selectionRotationSceneRef.current = scene
       }
       const sceneContext = scene.getContext('2d')
       if (!sceneContext) return
-      sceneContext.setTransform(dpr, 0, 0, dpr, -sceneLeft * dpr, -sceneTop * dpr)
-      sceneContext.clearRect(sceneLeft, sceneTop, sceneWidth, sceneHeight)
+      sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)
+      clearCanvasBacking(sceneContext, scene)
+      sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)
       context = sceneContext
     }
     if (alignmentGuides.length) {
-      const devicePixel = 1 / dpr
-      const alignToDevicePixel = (value: number): number => Math.round(value * dpr) / dpr
+      const devicePixelX = 1 / deviceScale.x
+      const devicePixelY = 1 / deviceScale.y
+      const alignToDevicePixelX = (value: number): number => deviceAlignedCoordinate(value, deviceScale.x)
+      const alignToDevicePixelY = (value: number): number => deviceAlignedCoordinate(value, deviceScale.y)
       context.save()
       context.beginPath()
-      context.rect(originX, originY, canvasWidth, canvasHeight)
+      const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, deviceScale)
+      context.rect(boundary.left, boundary.top, boundary.width, boundary.height)
       context.clip()
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = 0.9
       context.fillStyle = '#2979FF'
       for (const guide of alignmentGuides) {
         if (guide.axis === 'x' && guide.position >= 0 && guide.position <= session.document.width) {
-          const x = alignToDevicePixel(originX + guide.position * liveViewRef.current.zoom) - (guide.position === session.document.width ? devicePixel : 0)
-          context.fillRect(x, originY, devicePixel, canvasHeight)
+          const x = alignToDevicePixelX(originX + guide.position * liveViewRef.current.zoom) - (guide.position === session.document.width ? devicePixelX : 0)
+          context.fillRect(x, boundary.top, devicePixelX, boundary.height)
         } else if (guide.axis === 'y' && guide.position >= 0 && guide.position <= session.document.height) {
-          const y = alignToDevicePixel(originY + guide.position * liveViewRef.current.zoom) - (guide.position === session.document.height ? devicePixel : 0)
-          context.fillRect(originX, y, canvasWidth, devicePixel)
+          const y = alignToDevicePixelY(originY + guide.position * liveViewRef.current.zoom) - (guide.position === session.document.height ? devicePixelY : 0)
+          context.fillRect(boundary.left, y, boundary.width, devicePixelY)
         }
       }
       context.restore()
     }
     const floatingTransform = currentSession.pendingPaste
-    const transformedTarget = transformedDrag
-      ? overlayFrame.target
-      : floatingTransform?.transformTarget
-    const transformedAngle = transformedDrag
-      ? overlayFrame.angle
-      : floatingTransform?.transformAngle ?? 0
-    const transformedShear = transformedDrag
-      ? overlayFrame.shear
-      : floatingTransform?.transformShear
-    const transformedHandlePoints = transformedTarget
-      ? transformedSelectionControlPoints(
-          transformedTarget,
-          transformedAngle,
-          transformedShear
-        ).map((point) => selectionScreenPoint(rect.width, rect.height, session.document.width, session.document.height, liveViewRef.current, point))
+    const transformedQuad = transformedDrag?.freeTransform
+      ? overlayFrame.quad
+      : currentSession.freeTransformActive
+        ? currentSession.pendingPaste?.transformQuad ?? currentSession.freeTransformQuad ?? undefined
+        : undefined
+    const transformedTarget = transformedQuad
+      ? selectionQuadBounds(transformedQuad)
+      : transformedDrag
+        ? overlayFrame.target
+        : floatingTransform?.transformTarget
+          ?? (currentSession.freeTransformActive ? visibleSelection ?? undefined : undefined)
+    const transformedAngle = transformedQuad
+      ? 0
+      : transformedDrag
+        ? overlayFrame.angle
+        : floatingTransform?.transformAngle ?? 0
+    const transformedShear = transformedQuad
+      ? undefined
+      : transformedDrag
+        ? overlayFrame.shear
+        : floatingTransform?.transformShear
+    const transformedHandlePoints = transformedQuad
+      ? [transformedQuad.nw, transformedQuad.ne, transformedQuad.sw, transformedQuad.se]
+          .map((point) => selectionScreenPoint(rect.width, rect.height, session.document.width, session.document.height, liveViewRef.current, point))
+      : transformedTarget
+        ? transformedSelectionControlPoints(
+            transformedTarget,
+            transformedAngle,
+            transformedShear
+          )
+            .filter((_point, index) => !currentSession.freeTransformActive || index === 0 || index === 2 || index === 5 || index === 7)
+            .map((point) => selectionScreenPoint(rect.width, rect.height, session.document.width, session.document.height, liveViewRef.current, point))
+        : undefined
+    const transformedFramePoints = transformedQuad
+      ? [transformedQuad.nw, transformedQuad.ne, transformedQuad.se, transformedQuad.sw]
+          .map((point) => selectionScreenPoint(rect.width, rect.height, session.document.width, session.document.height, liveViewRef.current, point))
       : undefined
     const pivotTarget = transformedTarget ?? visibleSelection ?? undefined
-    const visiblePivot = visibleSelection && !visibleTextBox && currentSession.view.showSelectionPivot !== false && !creatingSelection && pivotTarget
+    const visiblePivot = visibleSelection && !visibleTextBox && currentSession.freeTransformActive !== true && currentSession.view.showSelectionPivot !== false && !creatingSelection && pivotTarget
       ? overlayFrame.pivot
         ?? currentSession.selectionPivot
         ?? transformedSelectionPivotPreset(pivotTarget, 'center', transformedTarget ? transformedAngle : 0, transformedTarget ? transformedShear : undefined)
@@ -1638,7 +1806,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         outlineLight: color ?? activeTheme.variables['--theme-selection-outline-light'],
         showOutline: !rotatingSelection && currentSession.view.showSelectionOutline !== false,
         showHandles,
-        handlePoints: transformedHandlePoints
+        handlePoints: transformedHandlePoints,
+        framePoints: transformedFramePoints
       })
     }
     if (visibleTextBox) {
@@ -1650,7 +1819,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       applyViewRotation(displayContext, rect.width, rect.height, liveViewRef.current)
       displayContext.imageSmoothingEnabled = false
       const scene = selectionRotationSceneRef.current!
-      displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / dpr, scene.height / dpr)
+      // Use the actual horizontal/vertical backing ratios.  The scene size
+      // is rounded independently on each axis, so a single nominal DPR can
+      // introduce a second fractional scale at the final composite step.
+      displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / deviceScale.x, scene.height / deviceScale.y)
       displayContext.restore()
     }
     const pivotImage = selectionPivotImageRef.current
@@ -1720,12 +1892,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
-    syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
+    const deviceScale = syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
     const displayContext = canvas.getContext('2d')
     if (!displayContext) return
-    displayContext.setTransform(dpr, 0, 0, dpr, 0, 0)
-    displayContext.clearRect(0, 0, rect.width, rect.height)
-    const document = session.document
+    displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
+    clearCanvasBacking(displayContext, canvas)
+    displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
+    const document = currentSession.document
     const view = liveViewRef.current
     const activeDrag = inputRef.current.drag
     const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
@@ -1738,21 +1911,29 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     let context: RasterContext2D = displayContext
     if (rotated) {
       let scene = rotationSceneRef.current
-      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * dpr))
-      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * dpr))
+      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * deviceScale.x))
+      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * deviceScale.y))
       if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
         scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
         rotationSceneRef.current = scene
       }
       const sceneContext = scene.getContext('2d')
       if (!sceneContext) return
-      sceneContext.setTransform(dpr, 0, 0, dpr, -sceneLeft * dpr, -sceneTop * dpr)
-      sceneContext.clearRect(sceneLeft, sceneTop, sceneWidth, sceneHeight)
+      sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)
+      clearCanvasBacking(sceneContext, scene)
+      sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)
       context = sceneContext
     }
     context.fillStyle = activeTheme.definition.seeds.canvasSurround
     context.fillRect(rotated ? sceneLeft : 0, rotated ? sceneTop : 0, rotated ? sceneWidth : rect.width, rotated ? sceneHeight : rect.height)
     context.save()
+    // Every repeated canvas copy must use the same device-aligned period.
+    // Rounding each floating-point copy origin independently can make the
+    // right edge of one copy differ from the left edge of its neighbour by a
+    // physical pixel, which shows up as a transient seam during previews.
+    const baseCanvasBoundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, deviceScale)
+    const renderCanvasWidth = baseCanvasBoundary.width
+    const renderCanvasHeight = baseCanvasBoundary.height
     const repeatOffsets = tileRepeatOffsetsForViewport(
       viewport,
       originX,
@@ -1762,8 +1943,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       view.tileRepeatMode ?? 'off'
     )
     const repeatCopies = repeatOffsets.map((offset) => {
-      const copyOriginX = originX + offset.x * canvasWidth
-      const copyOriginY = originY + offset.y * canvasHeight
+      const copyBoundary = repeatedDeviceAlignedCanvasRect(baseCanvasBoundary, offset.x, offset.y)
+      const copyOriginX = copyBoundary.left
+      const copyOriginY = copyBoundary.top
       return {
         ...offset,
         originX: copyOriginX,
@@ -1774,14 +1956,29 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         toY: offset.y === 0 ? toY : Math.min(document.height, Math.ceil((viewport.bottom - copyOriginY) / view.zoom))
       }
     })
+    const baseRenderCopy = repeatCopies.find((copy) => copy.x === 0 && copy.y === 0) ?? repeatCopies[0]
+    const previewOriginX = baseRenderCopy?.originX ?? baseCanvasBoundary.left
+    const previewOriginY = baseRenderCopy?.originY ?? baseCanvasBoundary.top
+    const canvasBoundaryFor = (copy: { x: number; y: number }): ReturnType<typeof deviceAlignedCanvasRect> =>
+      repeatedDeviceAlignedCanvasRect(baseCanvasBoundary, copy.x, copy.y)
+    const clipCanvasCopy = (targetContext: RasterContext2D, copy: { x: number; y: number }): void => {
+      const boundary = canvasBoundaryFor(copy)
+      targetContext.beginPath()
+      targetContext.rect(boundary.left, boundary.top, boundary.width, boundary.height)
+      targetContext.clip()
+    }
+    const clipBaseCanvas = (targetContext: RasterContext2D): void => {
+      targetContext.beginPath()
+      targetContext.rect(baseCanvasBoundary.left, baseCanvasBoundary.top, baseCanvasBoundary.width, baseCanvasBoundary.height)
+      targetContext.clip()
+    }
     const checkerCell = checkerboard.size * view.zoom
     const drawCheckerboard = (copy: typeof repeatCopies[number]): void => {
+      const boundary = canvasBoundaryFor(copy)
       context.save()
-      context.beginPath()
-      context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-      context.clip()
+      clipCanvasCopy(context, copy)
       context.fillStyle = `rgb(${checkerboard.lightColor.r} ${checkerboard.lightColor.g} ${checkerboard.lightColor.b})`
-      context.fillRect(copy.originX, copy.originY, canvasWidth, canvasHeight)
+      context.fillRect(boundary.left, boundary.top, boundary.width, boundary.height)
       if (checkerCell >= 2) {
         const integerCell = Number.isInteger(checkerCell)
         const tileKey = `${checkerCell}:${checkerboard.lightColor.r},${checkerboard.lightColor.g},${checkerboard.lightColor.b}:${checkerboard.darkColor.r},${checkerboard.darkColor.g},${checkerboard.darkColor.b}`
@@ -1807,7 +2004,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         }
         if (pattern) {
           context.fillStyle = pattern
-          context.fillRect(copy.originX, copy.originY, canvasWidth, canvasHeight)
+      context.fillRect(copy.originX, copy.originY, renderCanvasWidth, renderCanvasHeight)
         } else {
           const firstColumn = Math.max(0, Math.floor((viewport.left - copy.originX) / checkerCell))
           const firstRow = Math.max(0, Math.floor((viewport.top - copy.originY) / checkerCell))
@@ -1829,25 +2026,25 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const drawGrid = (gridX: number, gridY: number, cellWidth: number, cellHeight: number, color: RgbaColor, copy = repeatCopies[0]): void => {
       if (!copy) return
       context.save()
-      context.beginPath()
-      context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-      context.clip()
+      clipCanvasCopy(context, copy)
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = 1
       context.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
-      const devicePixel = 1 / dpr
-      const alignToDevicePixel = (value: number): number => Math.round(value * dpr) / dpr
-      const visibleLeft = alignToDevicePixel(copy.originX + copy.fromX * view.zoom)
-      const visibleTop = alignToDevicePixel(copy.originY + copy.fromY * view.zoom)
-      const visibleRight = alignToDevicePixel(copy.originX + copy.toX * view.zoom)
-      const visibleBottom = alignToDevicePixel(copy.originY + copy.toY * view.zoom)
+      const devicePixelX = 1 / deviceScale.x
+      const devicePixelY = 1 / deviceScale.y
+      const alignToDevicePixelX = (value: number): number => deviceAlignedCoordinate(value, deviceScale.x)
+      const alignToDevicePixelY = (value: number): number => deviceAlignedCoordinate(value, deviceScale.y)
+      const visibleLeft = alignToDevicePixelX(copy.originX + copy.fromX * view.zoom)
+      const visibleTop = alignToDevicePixelY(copy.originY + copy.fromY * view.zoom)
+      const visibleRight = alignToDevicePixelX(copy.originX + copy.toX * view.zoom)
+      const visibleBottom = alignToDevicePixelY(copy.originY + copy.toY * view.zoom)
       for (const x of gridLinePositions(gridX, cellWidth, copy.fromX, copy.toX, view.zoom)) {
-        const screenX = alignToDevicePixel(copy.originX + x * view.zoom)
-        context.fillRect(screenX, visibleTop, devicePixel, Math.max(devicePixel, visibleBottom - visibleTop + devicePixel))
+        const screenX = alignToDevicePixelX(copy.originX + x * view.zoom)
+        context.fillRect(screenX, visibleTop, devicePixelX, Math.max(devicePixelY, visibleBottom - visibleTop + devicePixelY))
       }
       for (const y of gridLinePositions(gridY, cellHeight, copy.fromY, copy.toY, view.zoom)) {
-        const screenY = alignToDevicePixel(copy.originY + y * view.zoom)
-        context.fillRect(visibleLeft, screenY, Math.max(devicePixel, visibleRight - visibleLeft + devicePixel), devicePixel)
+        const screenY = alignToDevicePixelY(copy.originY + y * view.zoom)
+        context.fillRect(visibleLeft, screenY, Math.max(devicePixelX, visibleRight - visibleLeft + devicePixelX), devicePixelY)
       }
       context.restore()
     }
@@ -1867,9 +2064,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (segments.length === 0) return
       const color = isoViewPreferences.guideColors[isoViewPreferences.guideLineStyle]
       context.save()
-      context.beginPath()
-      context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-      context.clip()
+      clipCanvasCopy(context, copy)
       context.globalCompositeOperation = 'source-over'
       context.globalAlpha = color.a / 255
       if (isoViewPreferences.guideLineStyle === 'pixel' && view.zoom >= 1 && typeof context.createPattern === 'function') {
@@ -1899,7 +2094,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           if (pattern) {
             context.imageSmoothingEnabled = false
             context.fillStyle = pattern
-            context.fillRect(copy.originX, copy.originY, canvasWidth, canvasHeight)
+            context.fillRect(copy.originX, copy.originY, renderCanvasWidth, renderCanvasHeight)
             context.restore()
             return
           }
@@ -1930,8 +2125,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             style: onionSkin,
             originX: copy.originX,
             originY: copy.originY,
-            canvasWidth,
-            canvasHeight,
+            canvasWidth: renderCanvasWidth,
+            canvasHeight: renderCanvasHeight,
             fromX: copy.fromX,
             fromY: copy.fromY,
             toX: copy.toX,
@@ -1939,7 +2134,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             zoom: view.zoom,
             revision: currentSession.contentRevision,
             invalidation: onionSkinInvalidation,
-            imageSmoothingEnabled: smoothPixelSampling
+            imageSmoothingEnabled: smoothPixelSampling,
+            devicePixelRatio: deviceScale
           })
         }
       }
@@ -1949,8 +2145,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         view,
         originX: copy.originX,
         originY: copy.originY,
-        canvasWidth,
-        canvasHeight,
+        canvasWidth: renderCanvasWidth,
+        canvasHeight: renderCanvasHeight,
         fromX: copy.fromX,
         fromY: copy.fromY,
         toX: copy.toX,
@@ -1961,6 +2157,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         frameId: document.animation?.activeFrameId,
         isolatedLayerMask: isolatedLayerMask ?? undefined,
         imageSmoothingEnabled: smoothPixelSampling,
+        devicePixelRatio: deviceScale,
         movingLayerIds: activeDrag?.kind === 'move-layer' && !activeDrag.duplicatedLayer && activeDrag.layerContentBounds
           ? activeDrag.animationCellKeys?.length
             ? [...new Set(activeDrag.animationCellKeys.map((key) => parseAnimationCelKey(key)?.layerId).filter((id): id is string => Boolean(id)))]
@@ -1973,6 +2170,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               target: activeDrag.previewTarget,
               angle: activeDrag.previewAngle ?? 0,
               shear: activeDrag.previewShear,
+              quad: activeDrag.previewQuad,
               copy: Boolean(activeDrag.copy)
             }
           : selectionPreviewOwner === 'pending' && currentSession.pendingPaste
@@ -1982,6 +2180,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 target: currentSession.pendingPaste.transformTarget ?? currentSession.pendingPaste.target,
                 angle: currentSession.pendingPaste.transformAngle ?? 0,
                 shear: currentSession.pendingPaste.transformShear,
+                quad: currentSession.pendingPaste.transformQuad,
                 copy: currentSession.pendingPaste.copy
               }
             : undefined
@@ -1992,13 +2191,21 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const previewContext = previewCanvas.getContext('2d')
         previewContext?.putImageData(new ImageData(textPreview.pixels.slice(), textPreview.width, textPreview.height), 0, 0)
         context.save()
+        clipCanvasCopy(context, copy)
         context.imageSmoothingEnabled = false
-        context.drawImage(
-          previewCanvas,
+        const textBoundary = deviceAlignedCanvasRect(
           copy.originX + textPreview.offsetX * view.zoom,
           copy.originY + textPreview.offsetY * view.zoom,
           textPreview.width * view.zoom,
-          textPreview.height * view.zoom
+          textPreview.height * view.zoom,
+          deviceScale
+        )
+        context.drawImage(
+          previewCanvas,
+          textBoundary.left,
+          textBoundary.top,
+          textBoundary.width,
+          textBoundary.height
         )
         context.restore()
       }
@@ -2035,14 +2242,22 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             const flashCanvas = new OffscreenCanvas(visibleWidth, visibleHeight)
             flashCanvas.getContext('2d')?.putImageData(new ImageData(flashPixels, visibleWidth, visibleHeight), 0, 0)
             context.save()
+            clipCanvasCopy(context, copy)
             context.globalCompositeOperation = 'source-over'
             context.imageSmoothingEnabled = false
-            context.drawImage(
-              flashCanvas,
+            const flashBoundary = deviceAlignedCanvasRect(
               copy.originX + visibleX * view.zoom,
               copy.originY + visibleY * view.zoom,
               visibleWidth * view.zoom,
-              visibleHeight * view.zoom
+              visibleHeight * view.zoom,
+              deviceScale
+            )
+            context.drawImage(
+              flashCanvas,
+              flashBoundary.left,
+              flashBoundary.top,
+              flashBoundary.width,
+              flashBoundary.height
             )
             context.restore()
           }
@@ -2086,9 +2301,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             const flashCanvas = new OffscreenCanvas(visibleWidth, visibleHeight)
             flashCanvas.getContext('2d')?.putImageData(new ImageData(flashPixels, visibleWidth, visibleHeight), 0, 0)
             context.save()
+            clipCanvasCopy(context, copy)
             context.globalCompositeOperation = 'source-over'
             context.imageSmoothingEnabled = false
-            context.drawImage(flashCanvas, copy.originX + visibleX * view.zoom, copy.originY + visibleY * view.zoom, visibleWidth * view.zoom, visibleHeight * view.zoom)
+            const flashBoundary = deviceAlignedCanvasRect(
+              copy.originX + visibleX * view.zoom,
+              copy.originY + visibleY * view.zoom,
+              visibleWidth * view.zoom,
+              visibleHeight * view.zoom,
+              deviceScale
+            )
+            context.drawImage(flashCanvas, flashBoundary.left, flashBoundary.top, flashBoundary.width, flashBoundary.height)
             context.restore()
           }
         }
@@ -2112,9 +2335,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           const toRow = Math.min(target.tilemap.rows, Math.ceil((copy.toY - target.surface.offsetY) / target.tilemap.tileHeight))
           if (toColumn <= fromColumn || toRow <= fromRow) continue
           context.save()
-          context.beginPath()
-          context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-          context.clip()
+          clipCanvasCopy(context, copy)
           context.textAlign = 'center'
           context.textBaseline = 'middle'
           context.font = `700 ${fontSize}px ui-monospace, Consolas, monospace`
@@ -2178,7 +2399,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         : compositePointReplacementSampler(pixelX, pixelY, resolvedReplacement)
     }
     const previewPixelRect = (pixelX: number, pixelY: number): { x: number; y: number; width: number; height: number } =>
-      deviceAlignedPixelRect(originX, originY, view.zoom, pixelX, pixelY, dpr)
+      deviceAlignedPixelRect(previewOriginX, previewOriginY, view.zoom, pixelX, pixelY, deviceScale)
     const previewPixelPlacements = (pixelX: number, pixelY: number) => tileRepeatPreviewPlacements(
       { x: pixelX, y: pixelY },
       document.width,
@@ -2187,7 +2408,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       repeatCopies
     )
     const previewPixelRects = (pixelX: number, pixelY: number): Array<{ x: number; y: number; width: number; height: number }> =>
-      previewPixelPlacements(pixelX, pixelY).map(({ point, copy }) => deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, dpr))
+      previewPixelPlacements(pixelX, pixelY).map(({ point, copy }) => deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale))
     const previewPointKey = (pixelX: number, pixelY: number): string | null => {
       const mapped = tileRepeatMappedPointForCopies({ x: pixelX, y: pixelY }, document.width, document.height, view.tileRepeatMode ?? 'off', true)
       return mapped ? `${mapped.local.x}:${mapped.local.y}` : null
@@ -2206,7 +2427,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const placements = previewPixelPlacements(pixelX, pixelY)
       const pixelRects = []
       for (const { point, copy } of placements) {
-        const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, dpr)
+        const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
         fillPreviewPixelRect(pixelRect, point.x, point.y, color)
         pixelRects.push(pixelRect)
       }
@@ -2228,9 +2449,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const toRow = Math.min(target.tilemap.rows, Math.ceil((copy.toY - target.surface.offsetY) / target.tilemap.tileHeight))
         if (toColumn <= fromColumn || toRow <= fromRow) continue
         context.save()
-        context.beginPath()
-        context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-        context.clip()
+        clipCanvasCopy(context, copy)
         for (let row = fromRow; row < toRow; row += 1) for (let column = fromColumn; column < toColumn; column += 1) {
           const cell = target.tilemap.cells[row * target.tilemap.columns + column]
           const tilePixels = cell?.tilesetId === tilesetId ? previewTiles.get(cell.tileId) : undefined
@@ -2251,7 +2470,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             const color = isolatedLayerMask
               ? layerMaskDisplayColor(replacement)
               : compositePointReplacementSampler(pixelX, pixelY, replacement)
-            const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, dpr)
+            const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, deviceScale)
             const transparency = transparencyColorAt(pixelX, pixelY, checkerboard)
             const displayColor = view.relativeLuminance ? relativeLuminanceColor(color) : color
             context.fillStyle = `rgb(${transparency.r} ${transparency.g} ${transparency.b})`
@@ -2266,60 +2485,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
       return true
     }
-    const drawSampledFilledShapePreview = (shape: SelectionRect, kind: 'rectangle' | 'ellipse', angle: number, selection: SelectionMask | null, cornerRadius = 0): boolean => {
-      if (view.zoom >= 1 || Math.abs(angle % 360) > 1e-9 || hasSymmetry(session.symmetryAxes) || shape.width * shape.height < 128 * 128) return false
-      const previewFromX = Math.min(...repeatCopies.map((copy) => copy.fromX))
-      const previewFromY = Math.min(...repeatCopies.map((copy) => copy.fromY))
-      const previewToX = Math.max(...repeatCopies.map((copy) => copy.toX))
-      const previewToY = Math.max(...repeatCopies.map((copy) => copy.toY))
-      const left = Math.max(0, previewFromX, shape.x)
-      const top = Math.max(0, previewFromY, shape.y)
-      const right = Math.min(document.width, previewToX, shape.x + shape.width)
-      const bottom = Math.min(document.height, previewToY, shape.y + shape.height)
-      if (right <= left || bottom <= top) return true
-
-      const targetLeft = Math.floor((originX + left * view.zoom) * dpr)
-      const targetTop = Math.floor((originY + top * view.zoom) * dpr)
-      const targetRight = Math.ceil((originX + right * view.zoom) * dpr)
-      const targetBottom = Math.ceil((originY + bottom * view.zoom) * dpr)
-      const targetWidth = Math.max(1, targetRight - targetLeft)
-      const targetHeight = Math.max(1, targetBottom - targetTop)
-      const pixels = new Uint8ClampedArray(targetWidth * targetHeight * 4)
-
-      for (let targetY = 0; targetY < targetHeight; targetY += 1) {
-        const pixelY = Math.floor((((targetTop + targetY + 0.5) / dpr) - originY) / view.zoom)
-        for (let targetX = 0; targetX < targetWidth; targetX += 1) {
-          const pixelX = Math.floor((((targetLeft + targetX + 0.5) / dpr) - originX) / view.zoom)
-          if (!shapeContainsPixel(shape, kind, pixelX, pixelY, cornerRadius) || (selection && !selectionContains(selection, pixelX, pixelY))) continue
-          const color = previewColorAt(pixelX, pixelY)
-          const displayColor = view.relativeLuminance ? relativeLuminanceColor(color) : color
-          const transparency = transparencyColorAt(pixelX, pixelY, checkerboard)
-          const alpha = displayColor.a / 255
-          const index = (targetY * targetWidth + targetX) * 4
-          pixels[index] = Math.round(displayColor.r * alpha + transparency.r * (1 - alpha))
-          pixels[index + 1] = Math.round(displayColor.g * alpha + transparency.g * (1 - alpha))
-          pixels[index + 2] = Math.round(displayColor.b * alpha + transparency.b * (1 - alpha))
-          pixels[index + 3] = 255
-        }
-      }
-
-      const surface = new OffscreenCanvas(targetWidth, targetHeight)
-      surface.getContext('2d')?.putImageData(new ImageData(pixels, targetWidth, targetHeight), 0, 0)
-      for (const copy of repeatCopies) {
-        const copyLeft = Math.floor((copy.originX + left * view.zoom) * dpr) / dpr
-        const copyTop = Math.floor((copy.originY + top * view.zoom) * dpr) / dpr
-        const copyRight = Math.ceil((copy.originX + right * view.zoom) * dpr) / dpr
-        const copyBottom = Math.ceil((copy.originY + bottom * view.zoom) * dpr) / dpr
-        context.save()
-        context.beginPath()
-        context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-        context.clip()
-        context.imageSmoothingEnabled = false
-        context.drawImage(surface, copyLeft, copyTop, copyRight - copyLeft, copyBottom - copyTop)
-        context.restore()
-      }
-      return true
-    }
     const customSelectionPreviewColor = selectionPreviewColorMode === 'custom'
       ? `rgb(${selectionPreviewColor.r} ${selectionPreviewColor.g} ${selectionPreviewColor.b} / ${selectionPreviewColor.a / 255})`
       : undefined
@@ -2329,37 +2494,177 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       repeatedCoordinates = false,
       previewColor?: string
     ): void => {
-      const points = [...previewPixels].map((value) => value.split(':').map(Number) as [number, number])
+      const points: Point[] = []
+      for (const value of previewPixels) {
+        const separator = value.indexOf(':')
+        points.push({ x: Number(value.slice(0, separator)), y: Number(value.slice(separator + 1)) })
+      }
+      drawSelectionPathPreviewPoints(points, copies, repeatedCoordinates, previewColor)
+    }
+    const drawSelectionPathPreviewPoints = (
+      points: Iterable<Point>,
+      copies = [repeatCopies.find((copy) => copy.x === 0 && copy.y === 0) ?? repeatCopies[0]],
+      repeatedCoordinates = false,
+      previewColor?: string
+    ): void => {
+      const pointList: readonly Point[] = Array.isArray(points) ? points : Array.from(points)
+      const canBatch = typeof Path2D !== 'undefined' && pointList.length >= SELECTION_PATH_PREVIEW_BATCH_THRESHOLD
       for (const copy of copies) {
+        if (!copy) continue
         context.save()
         if (!repeatedCoordinates) {
-          context.beginPath()
-          context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-          context.clip()
+          clipCanvasCopy(context, copy)
         }
-        for (const [x, y] of points) {
-          const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, x, y, dpr)
-          const mapped = repeatedCoordinates
-            ? tileRepeatMappedPointForCopies({ x, y }, document.width, document.height, view.tileRepeatMode ?? 'off', true)
-            : null
-          const samplePoint = mapped?.local ?? { x, y }
-          const insideDocument = repeatedCoordinates
-            ? Boolean(mapped)
-            : x >= 0 && y >= 0 && x < document.width && y < document.height
-          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
-          const sampled = sampleCompositeForPreview(samplePoint.x, samplePoint.y)
-          const background = sampled.a > 0 ? sampled : transparencyColorAt(samplePoint.x, samplePoint.y, checkerboard)
-          context.fillStyle = previewColor ?? (colorLuminance(background) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light'])
-          context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
+        if (!canBatch) {
+          for (const { x, y } of pointList) {
+            const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, x, y, deviceScale)
+            const mapped = repeatedCoordinates
+              ? tileRepeatMappedPointForCopies({ x, y }, document.width, document.height, view.tileRepeatMode ?? 'off', true)
+              : null
+            const samplePoint = mapped?.local ?? { x, y }
+            const insideDocument = repeatedCoordinates
+              ? Boolean(mapped)
+              : x >= 0 && y >= 0 && x < document.width && y < document.height
+            if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
+            const sampled = sampleCompositeForPreview(samplePoint.x, samplePoint.y)
+            const background = sampled.a > 0 ? sampled : transparencyColorAt(samplePoint.x, samplePoint.y, checkerboard)
+            context.fillStyle = previewColor ?? (colorLuminance(background) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light'])
+            context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
+          }
+        } else {
+          const paths = new Map<string, Path2D>()
+          for (const { x, y } of pointList) {
+            const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, x, y, deviceScale)
+            const mapped = repeatedCoordinates
+              ? tileRepeatMappedPointForCopies({ x, y }, document.width, document.height, view.tileRepeatMode ?? 'off', true)
+              : null
+            const samplePoint = mapped?.local ?? { x, y }
+            const insideDocument = repeatedCoordinates
+              ? Boolean(mapped)
+              : x >= 0 && y >= 0 && x < document.width && y < document.height
+            if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
+            const sampled = sampleCompositeForPreview(samplePoint.x, samplePoint.y)
+            const background = sampled.a > 0 ? sampled : transparencyColorAt(samplePoint.x, samplePoint.y, checkerboard)
+            const color = previewColor ?? (colorLuminance(background) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light'])
+            let path = paths.get(color)
+            if (!path) {
+              path = new Path2D()
+              paths.set(color, path)
+            }
+            path.rect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
+          }
+          for (const [color, path] of paths) {
+            context.fillStyle = color
+            context.fill(path)
+          }
         }
         context.restore()
       }
+    }
+    const polygonPreviewColorKey = (color: RgbaColor): string => `${color.r},${color.g},${color.b},${color.a}`
+    const polygonPathPreviewVisualKey = (copy: typeof repeatCopies[number], previewColor?: string): string => [
+      document.id,
+      currentSession.contentRevision,
+      currentSession.revision,
+      currentActiveLayer.id,
+      rect.width,
+      rect.height,
+      originX,
+      originY,
+      view.zoom,
+      `${deviceScale.x}:${deviceScale.y}`,
+      view.rotation,
+      view.mirrored ? 1 : 0,
+      view.mirroredVertical ? 1 : 0,
+      copy.originX,
+      copy.originY,
+      view.tileRepeatMode ?? 'off',
+      view.relativeLuminance ? 1 : 0,
+      previewColor ?? 'auto',
+      checkerboard.size,
+      polygonPreviewColorKey(checkerboard.lightColor),
+      polygonPreviewColorKey(checkerboard.darkColor),
+      activeTheme.variables['--theme-selection-outline-dark'],
+      activeTheme.variables['--theme-selection-outline-light']
+    ].join('|')
+    const drawCachedPolygonPath = (
+      cache: PolygonPathPreviewRenderCache,
+      copy: typeof repeatCopies[number]
+    ): void => {
+      context.save()
+      clipCanvasCopy(context, copy)
+      for (const [color, path] of cache.paths) {
+        context.fillStyle = color
+        context.fill(path)
+      }
+      context.restore()
+    }
+    const cachedPolygonPathFor = (
+      rasterCache: NonNullable<DragState['polygonPathRasterCache']>,
+      path: readonly Point[],
+      balanced: boolean,
+      copy: typeof repeatCopies[number],
+      previewColor?: string
+    ): PolygonPathPreviewRenderCache => {
+      const visualKey = polygonPathPreviewVisualKey(copy, previewColor)
+      const existing = polygonPathPreviewRenderCacheRef.current
+      const appendPoints = (target: PolygonPathPreviewRenderCache, start: number): void => {
+        for (let index = start; index < rasterCache.committedPoints.length; index += 1) {
+          const point = rasterCache.committedPoints[index]
+          const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
+          const insideDocument = point.x >= 0 && point.y >= 0 && point.x < document.width && point.y < document.height
+          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
+          const color = previewColor ?? (() => {
+            const sampled = sampleCompositeForPreview(point.x, point.y)
+            const background = sampled.a > 0 ? sampled : transparencyColorAt(point.x, point.y, checkerboard)
+            return colorLuminance(background) > 145
+              ? activeTheme.variables['--theme-selection-outline-dark']
+              : activeTheme.variables['--theme-selection-outline-light']
+          })()
+          let screenPath = target.paths.get(color)
+          if (!screenPath) {
+            screenPath = new Path2D()
+            target.paths.set(color, screenPath)
+          }
+          screenPath.rect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
+        }
+        target.committedPointCount = rasterCache.committedPoints.length
+      }
+
+      if (existing
+        && existing.sourcePath === path
+        && existing.balanced === balanced
+        && existing.visualKey === visualKey
+        && path.length === existing.sourcePathLength
+        && rasterCache.committedPoints.length === existing.committedPointCount) return existing
+      if (existing
+        && existing.sourcePath === path
+        && existing.balanced === balanced
+        && existing.visualKey === visualKey
+        && path.length === existing.sourcePathLength + 1
+        && rasterCache.committedPoints.length >= existing.committedPointCount) {
+        appendPoints(existing, existing.committedPointCount)
+        existing.sourcePathLength = path.length
+        return existing
+      }
+
+      const next: PolygonPathPreviewRenderCache = {
+        sourcePath: path,
+        sourcePathLength: path.length,
+        balanced,
+        visualKey,
+        committedPointCount: 0,
+        paths: new Map()
+      }
+      appendPoints(next, 0)
+      polygonPathPreviewRenderCacheRef.current = next
+      return next
     }
     const drawSelectionCursorCorners = (pixelX: number, pixelY: number, color: string): void => {
       const pixelRect = previewPixelRect(pixelX, pixelY)
       context.save()
       context.fillStyle = color
-      for (const mark of selectionCursorCornerRects(pixelRect, dpr)) context.fillRect(mark.x, mark.y, mark.width, mark.height)
+      for (const mark of selectionCursorCornerRects(pixelRect, deviceScale.x)) context.fillRect(mark.x, mark.y, mark.width, mark.height)
       context.restore()
     }
     const drawSelectionFillPreview = (selection: SelectionMask): void => {
@@ -2369,9 +2674,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const bottom = Math.min(selection.y + selection.height, toY)
       if (right <= left || bottom <= top) return
       context.save()
-      context.beginPath()
-      context.rect(originX, originY, canvasWidth, canvasHeight)
-      context.clip()
+      clipBaseCanvas(context)
       for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
         if (selectionContains(selection, x, y)) {
           const sampled = sampleCompositeForPreview(x, y)
@@ -2461,6 +2764,32 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         queueTilesetTilePreview(tilemapTileset?.id, previewTilePixels)
       }
     }
+    const drawShapeContourPreview = (
+      points: Iterable<Point>,
+      color: RgbaColor,
+      selection: SelectionMask | null
+    ): void => {
+      const drawn = new Set<number>()
+      if (!hasSymmetry(session.symmetryAxes)) {
+        for (const point of points) {
+          if (selection && !selectionContains(selection, point.x, point.y)) continue
+          const key = point.y * document.width + point.x
+          if (drawn.has(key)) continue
+          drawn.add(key)
+          drawPreviewPixel(point.x, point.y, previewColorAt(point.x, point.y, false, 255, color))
+        }
+        return
+      }
+      for (const sourcePoint of points) {
+        for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) {
+          if (selection && !selectionContains(selection, point.x, point.y)) continue
+          const key = point.y * document.width + point.x
+          if (drawn.has(key)) continue
+          drawn.add(key)
+          drawPreviewPixel(point.x, point.y, previewColorAt(point.x, point.y, false, 255, color))
+        }
+      }
+    }
     const drawStrokePreview = (from: Point, to: Point, erase = false, baseline?: ReadonlyMap<number, number>, selection: SelectionMask | null = session.selection): void => {
       const points = tileRepeatLinePoints(
         from,
@@ -2498,34 +2827,25 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const shape = drag.previewTarget ?? shapeBounds(drag.start, drag.last, drag.constrain, session.shapeRatio)
       const angle = drag.previewAngle ?? 0
       const selection = paintSelectionForDrag(drag)
-      const sampled = (session.shapeKind === 'rectangle' || session.shapeKind === 'ellipse')
-        && drawSampledFilledShapePreview(shape, session.shapeKind, angle, selection, shapeCornerRadius)
-      if (!sampled) {
-        for (const sourcePoint of rotatedShapePixelPoints(shape, session.shapeKind, document.width, document.height, angle, shapeCornerRadius)) {
-          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) {
-            if (selection && !selectionContains(selection, point.x, point.y)) continue
-            const color = previewColorAt(point.x, point.y)
-            drawPreviewPixel(point.x, point.y, color)
-          }
-        }
-      }
+      drawShapeContourPreview(
+        shapeBoundaryPixelPoints(shape, session.shapeKind, document.width, document.height, angle, shapeCornerRadius),
+        drag.color ?? session.primaryColor,
+        selection
+      )
     }
     if (canRenderToolPreview && drag && (drag.kind === 'freeform-shape' || drag.kind === 'polygon-shape')) {
       const color = drag.color ?? session.primaryColor
       const selection = paintSelectionForDrag(drag)
-      let points: readonly Point[] = []
-      if (drag.kind === 'freeform-shape') points = filledShapePathPixelPoints(document, drag.path ?? [])
-      else {
-        const path = drag.path ?? []
-        const previewPath = path.length > 0 ? [...path, drag.last] : path
-        points = previewPath.length >= 3 ? filledShapePathPixelPoints(document, polygonLassoClosedPathPoints(previewPath, balancedShiftLineEnabled)) : polygonLassoPreviewPoints(path, drag.last, false, balancedShiftLineEnabled)
-      }
-      for (const sourcePoint of points) {
-        for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) {
-          if (selection && !selectionContains(selection, point.x, point.y)) continue
-          drawPreviewPixel(point.x, point.y, previewColorAt(point.x, point.y, false, 255, color))
-        }
-      }
+      const path = drag.path ?? []
+      const polygonCache = drag.polygonPathRasterCache ??= createPolygonPathRasterCache()
+      const points = polygonLassoPreviewPoints(
+        path,
+        drag.last,
+        drag.kind === 'polygon-shape',
+        drag.kind === 'polygon-shape' ? balancedShiftLineEnabled : false,
+        polygonCache
+      )
+      drawShapeContourPreview(points, color, selection)
     }
     if (canRenderToolPreview && drag && (drag.kind === 'line-shape' || drag.kind === 'curve-shape')) {
       const rawPoints = drag.kind === 'line-shape'
@@ -2543,6 +2863,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (moved) {
         const startColor = drag.color ?? session.primaryColor
         const endColor = drag.gradientEndColor ?? session.secondaryColor
+        const activeGradientStops = drag.gradientStops ?? gradientStops
         const selection = paintSelectionForDrag(drag)
         const paintRegion = drag.gradientPaintRegion
         let previewFromX = Math.min(...repeatCopies.map((copy) => copy.fromX))
@@ -2562,7 +2883,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           previewToY = Math.min(previewToY, paintRegion.y + paintRegion.height)
         }
         if (previewToX > previewFromX && previewToY > previewFromY) {
-          const sampleGradient = createGradientColorSampler(startColor, endColor, drag.start, drag.last, gradientDither, gradientType, gradientGeometryOptionsForDrag(drag))
+          const sampleGradient = createGradientColorSampler(startColor, endColor, drag.start, drag.last, gradientDither, gradientType, gradientGeometryOptionsForDrag(drag), activeGradientStops)
           const sampleCompositeReplacement = compositePointReplacementSampler
           const firstPixelRect = previewPixelRect(previewFromX, previewFromY)
           const lastPixelRect = previewPixelRect(previewToX - 1, previewToY - 1)
@@ -2570,8 +2891,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           const targetY = firstPixelRect.y
           const targetWidth = lastPixelRect.x + lastPixelRect.width - targetX
           const targetHeight = lastPixelRect.y + lastPixelRect.height - targetY
-          const nativeSourceWidth = Math.max(1, Math.round(targetWidth * dpr))
-          const nativeSourceHeight = Math.max(1, Math.round(targetHeight * dpr))
+          const nativeSourceWidth = Math.max(1, Math.round(targetWidth * deviceScale.x))
+          const nativeSourceHeight = Math.max(1, Math.round(targetHeight * deviceScale.y))
           const visibleDocumentWidth = previewToX - previewFromX
           const visibleDocumentHeight = previewToY - previewFromY
           const sourceBasisWidth = view.zoom < 1 && gradientDither !== 'none' ? visibleDocumentWidth : nativeSourceWidth
@@ -2676,10 +2997,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 if (selection && !selectionContains(selection, x, y)) continue
                 if (paintRegion && !selectionContains(paintRegion, x, y)) continue
                 const pixelRect = previewPixelRect(x, y)
-                const left = Math.max(0, Math.round((pixelRect.x - targetX) * dpr))
-                const top = Math.max(0, Math.round((pixelRect.y - targetY) * dpr))
-                const right = Math.min(sourceWidth, Math.round((pixelRect.x + pixelRect.width - targetX) * dpr))
-                const bottom = Math.min(sourceHeight, Math.round((pixelRect.y + pixelRect.height - targetY) * dpr))
+                const left = Math.max(0, Math.round((pixelRect.x - targetX) * deviceScale.x))
+                const top = Math.max(0, Math.round((pixelRect.y - targetY) * deviceScale.y))
+                const right = Math.min(sourceWidth, Math.round((pixelRect.x + pixelRect.width - targetX) * deviceScale.x))
+                const bottom = Math.min(sourceHeight, Math.round((pixelRect.y + pixelRect.height - targetY) * deviceScale.y))
                 writeSample(x, y, 255, left, top, right, bottom)
               }
             } else {
@@ -2712,7 +3033,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                   && coverageCache.zoom === view.zoom
                   && coverageCache.originX === originX
                   && coverageCache.originY === originY
-                  && coverageCache.dpr === dpr
+                  && coverageCache.deviceScale.x === deviceScale.x
+                  && coverageCache.deviceScale.y === deviceScale.y
                 if (!cacheMatches) {
                   const coverage = new Uint8ClampedArray(sourceWidth * sourceHeight)
                   const sampleX = new Int32Array(sourceWidth * sourceHeight)
@@ -2752,7 +3074,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                     zoom: view.zoom,
                     originX,
                     originY,
-                    dpr,
+                    deviceScale,
                     coverage,
                     sampleX,
                     sampleY
@@ -2774,23 +3096,28 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             surface.context.putImageData(surface.imageData, 0, 0)
             for (const copy of repeatCopies) {
               context.save()
-              context.beginPath()
-              context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-              context.clip()
+              clipCanvasCopy(context, copy)
               context.globalCompositeOperation = 'source-over'
               context.globalAlpha = 1
               context.imageSmoothingEnabled = smoothPixelSampling
               if (smoothPixelSampling) context.imageSmoothingQuality = 'high'
+                const gradientBoundary = deviceAlignedCanvasRect(
+                targetX + copy.originX - originX,
+                targetY + copy.originY - originY,
+                targetWidth,
+                targetHeight,
+                deviceScale
+              )
               context.drawImage(
                 surface.canvas,
                 0,
                 0,
                 sourceWidth,
                 sourceHeight,
-                targetX + copy.originX - originX,
-                targetY + copy.originY - originY,
-                targetWidth,
-                targetHeight
+                gradientBoundary.left,
+                gradientBoundary.top,
+                gradientBoundary.width,
+                gradientBoundary.height
               )
               context.restore()
             }
@@ -2799,9 +3126,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
       for (const copy of repeatCopies) {
         context.save()
-        context.beginPath()
-        context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-        context.clip()
+        clipCanvasCopy(context, copy)
         context.strokeStyle = activeTheme.definition.seeds.accent
         context.fillStyle = activeTheme.definition.seeds.accent
         context.lineWidth = 1
@@ -2846,9 +3171,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
     if (hasSymmetry(session.symmetryAxes)) {
       context.save()
-      context.beginPath()
-      context.rect(originX, originY, canvasWidth, canvasHeight)
-      context.clip()
+      clipBaseCanvas(context)
       context.strokeStyle = `rgb(${symmetryAxisPreferences.color.r} ${symmetryAxisPreferences.color.g} ${symmetryAxisPreferences.color.b})`
       context.globalAlpha = symmetryAxisPreferences.color.a / 255
       context.lineWidth = symmetryAxisPreferences.thickness
@@ -2876,24 +3199,23 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const y = originY - preview.offsetY * view.zoom
       const previewWidth = preview.width * view.zoom
       const previewHeight = preview.height * view.zoom
-      const previewRevision = `${document.id}:${currentSession.revision}:${preview.width}:${preview.height}:${preview.offsetX}:${preview.offsetY}:${view.relativeLuminance ? 'luminance' : 'color'}`
-      let previewSurface = canvasResizeSurfaceRef.current
-      if (!previewSurface || previewSurface.revision !== previewRevision || previewSurface.canvas.width !== preview.width || previewSurface.canvas.height !== preview.height) {
-        const pixels = compositeRegion(document, -preview.offsetX, -preview.offsetY, preview.width, preview.height)
-        if (view.relativeLuminance) applyRelativeLuminance(pixels)
-        const surface = new OffscreenCanvas(preview.width, preview.height)
-        surface.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(pixels), preview.width, preview.height), 0, 0)
-        previewSurface = { canvas: surface, revision: previewRevision }
-        canvasResizeSurfaceRef.current = previewSurface
-      }
+      const previewBoundary = deviceAlignedCanvasRect(x, y, previewWidth, previewHeight, deviceScale)
+      const exposedRects = canvasResizePreviewExposedRects(
+        { x: previewBoundary.left, y: previewBoundary.top, width: previewBoundary.width, height: previewBoundary.height },
+        { x: baseCanvasBoundary.left, y: baseCanvasBoundary.top, width: baseCanvasBoundary.width, height: baseCanvasBoundary.height }
+      )
       drawCanvasResizePreviewLayers((layer) => {
         if (layer === 'checker') {
+          if (exposedRects.length === 0) return
           context.save()
           context.beginPath()
-          context.rect(x, y, previewWidth, previewHeight)
+          // The normal composite pass already rendered the old canvas. Only
+          // paint the part that exists in the proposed canvas but not in the
+          // old one, otherwise the preview checker would cover real pixels.
+          for (const exposedRect of exposedRects) context.rect(exposedRect.x, exposedRect.y, exposedRect.width, exposedRect.height)
           context.clip()
           context.fillStyle = `rgb(${checkerboard.lightColor.r} ${checkerboard.lightColor.g} ${checkerboard.lightColor.b})`
-          context.fillRect(x, y, previewWidth, previewHeight)
+          context.fillRect(previewBoundary.left, previewBoundary.top, previewBoundary.width, previewBoundary.height)
           const previewCheckerCell = checkerboard.size * view.zoom
           if (previewCheckerCell >= 2) {
             const firstColumn = Math.floor((Math.max(0, x) - originX) / previewCheckerCell)
@@ -2912,34 +3234,34 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           return
         }
         if (layer === 'content') {
-          context.save()
-          context.beginPath()
-          context.rect(x, y, previewWidth, previewHeight)
-          context.clip()
-          context.imageSmoothingEnabled = smoothPixelSampling
-          if (smoothPixelSampling) context.imageSmoothingQuality = 'high'
-          context.drawImage(previewSurface.canvas, x, y, previewWidth, previewHeight)
-          context.restore()
+          // Keep the committed composite untouched during the drag. The
+          // checkerboard already covers only the newly exposed area; content
+          // inside the old canvas was rendered by the normal cache pass above.
           return
         }
         if (layer === 'outside-mask') {
+          if (exposedRects.length === 0) return
           context.save()
           context.fillStyle = activeTheme.variables['--theme-overlay']
           context.beginPath()
-          context.rect(x, y, previewWidth, previewHeight)
+          for (const exposedRect of exposedRects) context.rect(exposedRect.x, exposedRect.y, exposedRect.width, exposedRect.height)
           context.clip()
-          context.beginPath()
-          context.rect(0, 0, rect.width, rect.height)
-          context.rect(originX, originY, canvasWidth, canvasHeight)
-          context.clip('evenodd')
-          context.fillRect(x, y, previewWidth, previewHeight)
+          context.fillRect(previewBoundary.left, previewBoundary.top, previewBoundary.width, previewBoundary.height)
           context.restore()
           return
         }
         context.save()
-        context.strokeStyle = `rgb(${canvasResizeColor.r} ${canvasResizeColor.g} ${canvasResizeColor.b} / ${canvasResizeColor.a / 255})`
-        context.lineWidth = 1
-        context.strokeRect(Math.round(originX) + 0.5, Math.round(originY) + 0.5, canvasWidth, canvasHeight)
+        const resizeBoundaryColor = `rgb(${canvasResizeColor.r} ${canvasResizeColor.g} ${canvasResizeColor.b} / ${canvasResizeColor.a / 255})`
+        context.strokeStyle = resizeBoundaryColor
+        drawDeviceAlignedCanvasBorder(
+          context,
+          originX,
+          originY,
+          canvasWidth,
+          canvasHeight,
+          deviceScale,
+          resizeBoundaryColor
+        )
         context.lineWidth = 2
         context.setLineDash([])
         context.beginPath()
@@ -2966,18 +3288,34 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       )
     }
     if ((selectionDrag?.kind === 'lasso' || selectionDrag?.kind === 'polygon-lasso') && (selectionDrag.path?.length ?? 0) > 0) {
-      const previewPixels = new Set<string>()
-      const addLine = (from: Point, to: Point): void => {
-        for (const sourcePoint of rasterLinePoints(from, to)) for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) previewPixels.add(`${point.x}:${point.y}`)
-      }
       const path = selectionDrag.path ?? []
-      if (selectionDrag.kind === 'polygon-lasso') {
-        for (const sourcePoint of polygonLassoPreviewPoints(path, selectionDrag.last, lassoPreviewClosed, balancedShiftLineEnabled)) for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) previewPixels.add(`${point.x}:${point.y}`)
+      const symmetric = hasSymmetry(session.symmetryAxes)
+      if (selectionDrag.kind === 'polygon-lasso' && !symmetric) {
+        const polygonCache = selectionDrag.polygonPathRasterCache ??= createPolygonPathRasterCache()
+        const previewPoints = polygonLassoPreviewPoints(path, selectionDrag.last, lassoPreviewClosed, balancedShiftLineEnabled, polygonCache)
+        const baseCopy = repeatCopies.find((copy) => copy.x === 0 && copy.y === 0) ?? repeatCopies[0]
+        if (baseCopy && typeof Path2D !== 'undefined') {
+          const committedPointCount = polygonCache.committedPoints.length
+          drawCachedPolygonPath(cachedPolygonPathFor(polygonCache, path, balancedShiftLineEnabled, baseCopy), baseCopy)
+          if (previewPoints.length > committedPointCount) drawSelectionPathPreviewPoints(
+            previewPoints.slice(committedPointCount),
+            [baseCopy]
+          )
+        } else drawSelectionPathPreviewPoints(previewPoints)
       } else {
-        for (let index = 1; index < path.length; index += 1) addLine(path[index - 1], path[index])
-        if (lassoPreviewClosed && path.length > 1) addLine(path.at(-1)!, path[0])
+        const previewPixels = new Map<string, Point>()
+        const addLine = (from: Point, to: Point): void => {
+          for (const sourcePoint of rasterLinePoints(from, to)) for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) previewPixels.set(`${point.x}:${point.y}`, point)
+        }
+        if (selectionDrag.kind === 'polygon-lasso') {
+          const polygonCache = selectionDrag.polygonPathRasterCache ??= createPolygonPathRasterCache()
+          for (const sourcePoint of polygonLassoPreviewPoints(path, selectionDrag.last, lassoPreviewClosed, balancedShiftLineEnabled, polygonCache)) for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) previewPixels.set(`${point.x}:${point.y}`, point)
+        } else {
+          for (let index = 1; index < path.length; index += 1) addLine(path[index - 1], path[index])
+          if (lassoPreviewClosed && path.length > 1) addLine(path.at(-1)!, path[0])
+        }
+        drawSelectionPathPreviewPoints(previewPixels.values())
       }
-      drawSelectionPathPreview(previewPixels)
       const mode = selectionDrag.selectionMode ?? session.selectionMode
       const point = inputRef.current.pointer.point
       if (mode !== 'replace' && point.x >= 0 && point.y >= 0 && point.x < document.width && point.y < document.height) {
@@ -3104,9 +3442,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           for (const copy of repeatCopies) {
             if (bounds.x + bounds.width <= copy.fromX || bounds.y + bounds.height <= copy.fromY || bounds.x >= copy.toX || bounds.y >= copy.toY) continue
             context.save()
-            context.beginPath()
-            context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-            context.clip()
+            clipCanvasCopy(context, copy)
             if (drawFullPreview) {
               for (let y = 0; y < bounds.height; y += 1) for (let x = 0; x < bounds.width; x += 1) {
                 const pixelX = bounds.x + x
@@ -3123,7 +3459,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 const color = isolatedLayerMask
                   ? layerMaskDisplayColor(replacement)
                   : compositePointReplacementSampler(pixelX, pixelY, replacement)
-                const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, dpr)
+                const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, deviceScale)
                 const transparency = transparencyColorAt(pixelX, pixelY, checkerboard)
                 const displayColor = view.relativeLuminance ? relativeLuminanceColor(color) : color
                 context.fillStyle = `rgb(${transparency.r} ${transparency.g} ${transparency.b})`
@@ -3179,9 +3515,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           for (const copy of repeatCopies) {
             if (bounds.x + bounds.width <= copy.fromX || bounds.y + bounds.height <= copy.fromY || bounds.x >= copy.toX || bounds.y >= copy.toY) continue
             context.save()
-            context.beginPath()
-            context.rect(copy.originX, copy.originY, canvasWidth, canvasHeight)
-            context.clip()
+            clipCanvasCopy(context, copy)
             if (drawFullPreview && previewPixels) {
               for (let y = 0; y < bounds.height; y += 1) for (let x = 0; x < bounds.width; x += 1) {
                 const pixelX = bounds.x + x
@@ -3200,7 +3534,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 const color = isolatedLayerMask
                   ? layerMaskDisplayColor(placedLayerColor)
                   : compositePointReplacementSampler(pixelX, pixelY, placedLayerColor)
-                const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, dpr)
+                const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, pixelX, pixelY, deviceScale)
                 const transparency = transparencyColorAt(pixelX, pixelY, checkerboard)
                 const displayColor = view.relativeLuminance ? relativeLuminanceColor(color) : color
                 context.fillStyle = `rgb(${transparency.r} ${transparency.g} ${transparency.b})`
@@ -3250,12 +3584,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // pressure (usually zero).
       const previewBrushSize = drawing ? drag?.lastBrushSize ?? currentSession.brushSize : currentSession.brushSize
       const previewBrushImage = currentBrushImage
+      const previewBrushAngle = drawing ? drag?.path?.at(-1)?.angle ?? 0 : 0
       const overwriteImageBrushPixels = !erasing && previewBrushImage?.intrinsicSize === true && currentBrushPreviewMode === 'paint'
-      const { x: beforeX, y: beforeY } = brushStampAnchor(previewBrushSize, previewBrushImage)
+      const { x: beforeX, y: beforeY } = brushStampAnchor(previewBrushSize, previewBrushImage, previewBrushAngle)
       context.save()
       const texture = currentBrushTexture
       const patternOrigin = brushPatternOrigin(point, previewBrushSize, previewBrushImage)
-      const mask = brushMaskOffsets(previewBrushSize, currentSession.brushShape, texture, currentSession.brushTextureScale, point.x - beforeX, point.y - beforeY, previewBrushImage, currentSession.brushImageSettings, currentProceduralAntialiasStrength, currentBrushPreviewMode, patternOrigin.x, patternOrigin.y, currentBrushDither)
+      const mask = brushMaskOffsets(previewBrushSize, currentSession.brushShape, texture, currentSession.brushTextureScale, point.x - beforeX, point.y - beforeY, previewBrushImage, currentSession.brushImageSettings, currentProceduralAntialiasStrength, currentBrushPreviewMode, patternOrigin.x, patternOrigin.y, currentBrushDither, previewBrushAngle)
       const previewPoints = new Map<string, { x: number; y: number; coverage: number; color: RgbaColor }>()
       for (const offset of mask) {
         const sourcePoint = { x: point.x - beforeX + offset.x, y: point.y - beforeY + offset.y }
@@ -3417,10 +3752,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     context.save()
     context.globalCompositeOperation = 'source-over'
     context.globalAlpha = 1
-    context.strokeStyle = activeTheme.variables['--theme-selection-outline-dark']
-    context.lineWidth = 1
-    context.setLineDash([])
-    context.strokeRect(Math.round(originX) + 0.5, Math.round(originY) + 0.5, canvasWidth, canvasHeight)
+    drawDeviceAlignedCanvasBorder(
+      context,
+      originX,
+      originY,
+      canvasWidth,
+      canvasHeight,
+      deviceScale,
+      activeTheme.variables['--theme-selection-outline-dark']
+    )
     context.restore()
 
     context.restore()
@@ -3432,7 +3772,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       displayContext.imageSmoothingEnabled = smoothPixelSampling
       if (smoothPixelSampling) displayContext.imageSmoothingQuality = 'high'
       const scene = rotationSceneRef.current!
-      displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / dpr, scene.height / dpr)
+      // Keep the two axes tied to their actual backing ratios; using the
+      // nominal scalar DPR here makes the rotated scene resample unevenly.
+      displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / deviceScale.x, scene.height / deviceScale.y)
       displayContext.restore()
     }
     const statusBackgroundAt = (viewportX: number, viewportY: number): RgbaColor => {
@@ -3446,7 +3788,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (view.mirrored || view.mirroredVertical) statusBackgrounds.push(statusBackgroundAt(92, rect.height - 34))
     displayContext.fillStyle = canvasStatusTextColor(statusBackgrounds, activeTheme.variables['--theme-selection-outline-dark'], activeTheme.variables['--theme-selection-outline-light'])
     displayContext.font = '12px ui-monospace, SFMono-Regular, Consolas, monospace'
-    const selectionSizeTarget = marqueePreviewTargetForDrag(inputRef.current.drag)
+    const selectionSizeTarget = drawingSizePreviewTargetForDrag(inputRef.current.drag, currentSession.shapeRatio)
     const selectionSizePreview = selectionSizeTarget
       ? { width: Math.max(1, Math.round(selectionSizeTarget.width)), height: Math.max(1, Math.round(selectionSizeTarget.height)) }
       : null
@@ -3473,6 +3815,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           target: { ...activeDrag.previewTarget },
           angle: activeDrag.previewAngle ?? 0,
           shear: activeDrag.previewShear ? { ...activeDrag.previewShear } : undefined,
+          quad: activeDrag.previewQuad ? cloneSelectionQuad(activeDrag.previewQuad) ?? undefined : undefined,
           copy: Boolean(activeDrag.copy)
         }
       : selectionPreviewOwner === 'pending' && currentSession.pendingPaste
@@ -3482,6 +3825,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             target: { ...(currentSession.pendingPaste.transformTarget ?? currentSession.pendingPaste.target) },
             angle: currentSession.pendingPaste.transformAngle ?? 0,
             shear: currentSession.pendingPaste.transformShear ? { ...currentSession.pendingPaste.transformShear } : undefined,
+            quad: currentSession.pendingPaste.transformQuad ? cloneSelectionQuad(currentSession.pendingPaste.transformQuad) ?? undefined : undefined,
             copy: currentSession.pendingPaste.copy
           }
         : undefined
@@ -3491,12 +3835,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       || selectionPreview
       || (activeDrag && !nonContentPreviewDragKinds.has(activeDrag.kind))
     )
+    const previewFrameId = currentSession.document.animation?.activeFrameId ?? 'static'
+    const previewInvalidation = compositeCacheRef.current.consumePreviewInvalidation(previewFrameId)
     if (publishesContentPreview) {
       const snapshot: CanvasPreviewSnapshot = {
         document: currentSession.document,
-        frameId: currentSession.document.animation?.activeFrameId ?? 'static',
+        frameId: previewFrameId,
         revision: currentSession.revision,
         contentRevision: currentSession.contentRevision,
+        invalidation: previewInvalidation ?? undefined,
         movingLayerIds: movingLayerIds ? [...movingLayerIds] : undefined,
         selectionPreview
       }
@@ -3560,7 +3907,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       renderDocumentSizeRef.current = { width: session.document.width, height: session.document.height }
       compositeCacheRef.current.invalidateAll()
       onionSkinCacheRef.current.invalidateAll()
-      canvasResizeSurfaceRef.current = null
       canvasResizePreviewRef.current = null
       pendingCanvasResizeRef.current = null
       if (canvasResizeFrameRef.current !== null) {
@@ -3648,6 +3994,18 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               : null
       const target = event.target instanceof Element ? event.target : null
       const selectionNudgeBlocked = Boolean(target?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop, .layer-list, .themed-select'))
+      // Text movement takes priority over arrow navigation in the layer list.
+      const textNudgeBlocked = Boolean(target?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop, .themed-select'))
+      const activeTextLayer = session.tool === 'text' && session.selectedGroupIds.length === 0
+        ? session.document.layers.find((layer) => layer.id === session.document.activeLayerId && layer.kind === 'text')
+        : null
+      if (selectionNudge && activeTextLayer && !textNudgeBlocked && !event.ctrlKey && !event.metaKey && !event.altKey && !inputRef.current.drag) {
+        event.preventDefault()
+        event.stopPropagation()
+        useWorkspace.getState().moveLayerBy(activeTextLayer.id, selectionNudge.x, selectionNudge.y)
+        scheduleDraw()
+        return
+      }
       if (selectionNudge && session.selection && !selectionNudgeBlocked && !event.ctrlKey && !event.metaKey && !event.altKey && !inputRef.current.drag) {
         event.preventDefault()
         event.stopPropagation()
@@ -3729,7 +4087,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const drag = inputRef.current.drag
         if (drag?.kind === 'marquee' && drag.moved) updateMarqueePreview(drag, inputRef.current.pointer.point, currentSelectionMarqueeModifierState())
         else if (drag?.kind === 'shape') updateShapePreview(drag, inputRef.current.pointer.point, currentSelectionMarqueeModifierState())
-        else if (drag?.kind === 'transform-content') updateSelectionTransformPreview(drag, inputRef.current.pointer.point, currentSelectionTransformModifierState())
+        else if (drag?.kind === 'transform-content') {
+          if (drag.freeTransform) updateFreeTransformPreview(drag, inputRef.current.pointer.point)
+          else updateSelectionTransformPreview(drag, inputRef.current.pointer.point, currentSelectionTransformModifierState())
+        }
       }
     }
     const keyUp = (event: KeyboardEvent): void => {
@@ -3783,7 +4144,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const drag = inputRef.current.drag
         if (drag?.kind === 'marquee' && drag.moved && inputRef.current.pointer.visible) updateMarqueePreview(drag, inputRef.current.pointer.point, currentSelectionMarqueeModifierState())
         else if (drag?.kind === 'shape' && inputRef.current.pointer.visible) updateShapePreview(drag, inputRef.current.pointer.point, currentSelectionMarqueeModifierState())
-        else if (drag?.kind === 'transform-content' && inputRef.current.pointer.visible) updateSelectionTransformPreview(drag, inputRef.current.pointer.point, currentSelectionTransformModifierState())
+        else if (drag?.kind === 'transform-content' && inputRef.current.pointer.visible) {
+          if (drag.freeTransform) updateFreeTransformPreview(drag, inputRef.current.pointer.point)
+          else updateSelectionTransformPreview(drag, inputRef.current.pointer.point, currentSelectionTransformModifierState())
+        }
         scheduleDraw()
       }
       if (temporaryPanReleased) {
@@ -3826,7 +4190,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   useEffect(() => {
     scheduleDraw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.document.id, session.revision, session.activeLayerMaskId, session.layerMaskIsolatedView, session.selectedTilesetId, session.selectedTileId, session.secondaryTileId, session.tilemapMode, session.freeTileMode, session.view.tileRepeatMode, session.view.showPixelGrid, session.view.showGrid, session.view.isoViewEnabled, session.view.grid?.x, session.view.grid?.y, session.view.grid?.width, session.view.grid?.height, session.view.relativeLuminance, session.view.mirrored, session.view.mirroredVertical, session.view.showSelectionOutline, session.view.showSelectionPivot, session.selection, session.selectionPivot?.x, session.selectionPivot?.y, session.outlinePreview, session.brushSize, session.brushShape, activeBrushDither?.enabled, activeBrushDither?.template, activeBrushDither?.stage, session.shapeKind, session.shapeRatio, session.fillMode, fillKind, gradientDither, session.symmetryAxes.horizontal, session.symmetryAxes.vertical, session.symmetryAxes.diagonalUp, session.symmetryAxes.diagonalDown, session.symmetryAxes.rotational, symmetryCenter.x, symmetryCenter.y, drawingBrushPreviewEnabled, brushPreviewMode, checkerboard, gridColors, alignmentPreferences.gridAlignmentEnabled, alignmentPreferences.smartAlignmentEnabled, alignmentPreferences.alignmentGuidesVisible, alignmentPreferences.alignmentThreshold, sliceColor, textBoxColor, canvasResizeColor, sliceOutlinesVisible, shiftLinePreviewEnabled, lassoPreviewClosed, selectionCrosshair, selectionPreviewColorMode, selectionPreviewColor, selectionSizeVisible, balancedShiftLineEnabled, lineDirectionStep, lineConnectionShortcut, rotationIndicatorPosition, onionSkin, timelineHidden, symmetryAxisPreferences, isoViewPreferences, interfaceScale])
+  }, [session.document.id, session.revision, session.activeLayerMaskId, session.layerMaskIsolatedView, session.selectedTilesetId, session.selectedTileId, session.secondaryTileId, session.tilemapMode, session.freeTileMode, session.view.tileRepeatMode, session.view.showPixelGrid, session.view.showGrid, session.view.isoViewEnabled, session.view.grid?.x, session.view.grid?.y, session.view.grid?.width, session.view.grid?.height, session.view.relativeLuminance, session.view.mirrored, session.view.mirroredVertical, session.view.showSelectionOutline, session.view.showSelectionPivot, session.selection, session.freeTransformActive, session.freeTransformQuad?.nw.x, session.freeTransformQuad?.nw.y, session.freeTransformQuad?.ne.x, session.freeTransformQuad?.ne.y, session.freeTransformQuad?.se.x, session.freeTransformQuad?.se.y, session.freeTransformQuad?.sw.x, session.freeTransformQuad?.sw.y, session.pendingPaste?.transformQuad?.nw.x, session.pendingPaste?.transformQuad?.nw.y, session.pendingPaste?.transformQuad?.ne.x, session.pendingPaste?.transformQuad?.ne.y, session.pendingPaste?.transformQuad?.se.x, session.pendingPaste?.transformQuad?.se.y, session.pendingPaste?.transformQuad?.sw.x, session.pendingPaste?.transformQuad?.sw.y, session.selectionPivot?.x, session.selectionPivot?.y, session.outlinePreview, session.brushSize, session.brushShape, activeBrushDither?.enabled, activeBrushDither?.template, activeBrushDither?.stage, session.shapeKind, session.shapeRatio, session.fillMode, fillKind, gradientDither, session.symmetryAxes.horizontal, session.symmetryAxes.vertical, session.symmetryAxes.diagonalUp, session.symmetryAxes.diagonalDown, session.symmetryAxes.rotational, symmetryCenter.x, symmetryCenter.y, drawingBrushPreviewEnabled, brushPreviewMode, checkerboard, gridColors, alignmentPreferences.gridAlignmentEnabled, alignmentPreferences.smartAlignmentEnabled, alignmentPreferences.alignmentGuidesVisible, alignmentPreferences.alignmentThreshold, sliceColor, textBoxColor, canvasResizeColor, sliceOutlinesVisible, shiftLinePreviewEnabled, lassoPreviewClosed, selectionCrosshair, selectionPreviewColorMode, selectionPreviewColor, selectionSizeVisible, balancedShiftLineEnabled, lineDirectionStep, lineConnectionShortcut, rotationIndicatorPosition, onionSkin, timelineHidden, symmetryAxisPreferences, isoViewPreferences, interfaceScale])
 
   const selectionOverlayAnimated = Boolean(session.selection || selectedTextBoxForSession(session))
   useEffect(() => {
@@ -3896,9 +4260,30 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!canvasRef.current) return null
     const size = stageSize()
     const viewportPoint = stagePoint(clientX, clientY)
-    const repeated = continuous
+    let repeated = continuous
       ? documentPointFromViewportPointContinuous(viewportPoint, size.width, size.height, session.document.width, session.document.height, liveViewRef.current, rotationIndicatorPosition)
       : documentPointFromViewportPoint(viewportPoint, size.width, size.height, session.document.width, session.document.height, liveViewRef.current, rotationIndicatorPosition)
+    if (!continuous && pixelSamplingMode(liveViewRef.current.zoom) === 'hard') {
+      const origin = viewCanvasOrigin(size.width, size.height, session.document.width, session.document.height, liveViewRef.current)
+      const deviceScale = {
+        x: canvasRef.current.width > 0 ? canvasRef.current.width / size.width : canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale),
+        y: canvasRef.current.height > 0 ? canvasRef.current.height / size.height : canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
+      }
+      // Use the displayed point directly after undoing rotation/mirroring.
+      // Converting through document coordinates and multiplying by zoom again
+      // can cross an exact device-pixel tie at high zoom due to floating-point
+      // round trips, making the brush preview land one row below the pointer.
+      const unrotatedPoint = unrotatedViewportPoint(viewportPoint, size.width, size.height, liveViewRef.current, rotationIndicatorPosition)
+      const alignedCanvas = deviceAlignedCanvasRect(origin.x, origin.y, session.document.width * liveViewRef.current.zoom, session.document.height * liveViewRef.current.zoom, deviceScale)
+      repeated = deviceAlignedDocumentPointAtViewport(
+        unrotatedPoint.x,
+        unrotatedPoint.y,
+        alignedCanvas.left,
+        alignedCanvas.top,
+        liveViewRef.current.zoom,
+        deviceScale
+      )
+    }
     const mapped = tileRepeatMappedPointForCopies(
       repeated,
       session.document.width,
@@ -4165,7 +4550,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const layer = layerById.get(layerId)
       if (!layer) continue
       if (!isLayerEffectivelyVisible(session.document, layer) || isLayerEffectivelyLocked(session.document, layer)) continue
-      if (readLayerColorAt(session.document, layer, point.x, point.y).a > 0) return layer
+      if (readLayerVisibleColorAt(session.document, layer, point.x, point.y).a > 0) return layer
     }
     return null
   }
@@ -4283,16 +4668,38 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const floating = currentSession.pendingPaste
     const selection = currentSession.selection
     if (!selection) return 'outside'
-    const hitAt = (candidate: Point): SelectionHit => floating?.transformTarget
-      ? selectionTransformedInteractionHit(
-        selection,
-        floating.transformTarget,
-        floating.transformAngle ?? 0,
-        floating.transformShear,
-        candidate,
-        liveViewRef.current.zoom
-      )
-      : selectionInteractionHit(selection, candidate, liveViewRef.current.zoom)
+    const hitAt = (candidate: Point): SelectionHit => {
+      if (currentSession.freeTransformActive) {
+        const target = freeTransformQuadForSession(currentSession) ?? (floating?.transformTarget ?? selection)
+        const corner = selectionFreeTransformHit(
+          target,
+          'nw' in target ? 0 : floating?.transformAngle ?? 0,
+          'nw' in target ? undefined : floating?.transformShear,
+          candidate,
+          liveViewRef.current.zoom
+        )
+        if (corner) return corner
+        const quad = 'nw' in target
+          ? target
+          : selectionQuadFromRect(target, floating?.transformAngle ?? 0, floating?.transformShear)
+        if (selectionFreeTransformContentHit(selection, quad, candidate)) return 'inside'
+        // Free transform exposes only corner handles for reshaping. Points
+        // outside the frame do not fall through to the regular
+        // resize/shear/rotation pipeline; transparent holes remain movable
+        // because the frame, rather than the mask, owns the hit test.
+        return 'outside'
+      }
+      return floating?.transformTarget
+        ? selectionTransformedInteractionHit(
+          selection,
+          floating.transformTarget,
+          floating.transformAngle ?? 0,
+          floating.transformShear,
+          candidate,
+          liveViewRef.current.zoom
+        )
+        : selectionInteractionHit(selection, candidate, liveViewRef.current.zoom)
+    }
     const directHit = hitAt(point)
     if (directHit !== 'outside') return directHit
     const mapped = tileRepeatMappedPointForCopies(
@@ -4305,6 +4712,39 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const selectionHit = (event: React.PointerEvent<HTMLCanvasElement>): SelectionHit => selectionHitAt(event.clientX, event.clientY)
+
+  const cloneSelectionQuad = (quad: SelectionQuad | null | undefined): SelectionQuad | null => quad
+    ? {
+        nw: { ...quad.nw },
+        ne: { ...quad.ne },
+        se: { ...quad.se },
+        sw: { ...quad.sw }
+      }
+    : null
+
+  const selectionSourceQuadForCanvas = (drag: DragState): SelectionQuad | undefined => {
+    const sourceQuad = drag.selectionSource?.sourceQuad
+    if (!sourceQuad) return undefined
+    const origin = drag.freeTileSelectionTransform ? drag.freeTileEditOrigin : undefined
+    const offsetX = origin?.x ?? 0
+    const offsetY = origin?.y ?? 0
+    return {
+      nw: { x: sourceQuad.nw.x + offsetX, y: sourceQuad.nw.y + offsetY },
+      ne: { x: sourceQuad.ne.x + offsetX, y: sourceQuad.ne.y + offsetY },
+      se: { x: sourceQuad.se.x + offsetX, y: sourceQuad.se.y + offsetY },
+      sw: { x: sourceQuad.sw.x + offsetX, y: sourceQuad.sw.y + offsetY }
+    }
+  }
+
+  const freeTransformQuadForSession = (currentSession: DocumentSession): SelectionQuad | null => {
+    const selection = currentSession.selection
+    if (!selection) return null
+    const pending = currentSession.pendingPaste
+    const persisted = pending?.transformQuad ?? currentSession.freeTransformQuad
+    if (persisted) return cloneSelectionQuad(persisted)
+    const target = pending?.transformTarget ?? selection
+    return selectionQuadFromRect(target, pending?.transformAngle ?? 0, pending?.transformShear)
+  }
 
   const selectionPivotForSession = (currentSession: DocumentSession): Point | null => {
     const selection = currentSession.selection
@@ -4472,6 +4912,39 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const sliceHandleAt = (clientX: number, clientY: number, slice: SelectionRect): SelectionHandle | null =>
     selectionResizeHit(sliceScreenBox(slice), unrotatedStagePoint(clientX, clientY), 6, 8, 3)
 
+  const cursorCompositePointSamplerFor = (currentSession: DocumentSession): ((x: number, y: number) => RgbaColor) => {
+    const document = currentSession.document
+    const activeLayerId = document.activeLayerId
+    const backgroundLayersKey = document.layers.filter((layer) => Boolean(layer.background)).map((layer) => layer.id).join('\0')
+    const cached = cursorCompositePointSamplerRef.current
+    if (cached
+      && cached.document === document
+      && cached.revision === currentSession.revision
+      && cached.activeLayerId === activeLayerId
+      && cached.backgroundLayersKey === backgroundLayersKey) return cached.sampler
+
+    const hasBackground = backgroundLayersKey.length > 0
+    const activeBackground = document.layers.some((layer) => layer.id === activeLayerId && Boolean(layer.background))
+    // Keep sampleCompositeColor's background rule while compiling only once
+    // for this document revision. The sampler still reads live pixel storage,
+    // so an in-progress stroke does not need to rebuild the layer tree.
+    const samplingDocument = activeBackground || !hasBackground
+      ? document
+      : { ...document, layers: document.layers.filter((layer) => !layer.background) }
+    const sampler = createNormalCompositePointSampler(samplingDocument) ?? createCompositePointSampler(samplingDocument)
+    cursorCompositePointSamplerRef.current = { document, revision: currentSession.revision, activeLayerId, backgroundLayersKey, sampler }
+    return sampler
+  }
+
+  const cursorCompositePointReplacementSamplerFor = (currentSession: DocumentSession, layerId: string): ((x: number, y: number, replacement: RgbaColor) => RgbaColor) => {
+    const document = currentSession.document
+    const cached = cursorCompositePointReplacementSamplerRef.current
+    if (cached && cached.document === document && cached.revision === currentSession.revision && cached.layerId === layerId) return cached.sampler
+    const sampler = createNormalCompositePointReplacementSampler(document, layerId) ?? createCompositePointReplacementSampler(document, layerId)
+    cursorCompositePointReplacementSamplerRef.current = { document, revision: currentSession.revision, layerId, sampler }
+    return sampler
+  }
+
   const updateCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -4493,6 +4966,19 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (resizeEdge) canvas.style.cursor = displayedResizeCursorForHandle(resizeEdge as SelectionHandle)
       else if (drag?.kind === 'canvas-move') canvas.style.cursor = canvasCursors.move
       else canvas.style.cursor = canvasResizeContainsAt(clientX, clientY) ? canvasCursors.move : canvasCursors.unavailable
+      return
+    }
+    const cursorSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const freeTransformActive = cursorSession.freeTransformActive === true
+    const activeDrag = inputRef.current.drag
+    // Free transform exposes corner handles for reshaping and keeps the
+    // regular move gesture available over the selected content.
+    if (freeTransformActive && activeDrag?.freeTransform !== true) {
+      const hit = selectionHitAt(clientX, clientY)
+      inputRef.current.sampling = false
+      canvas.style.cursor = hit in resizeCursors
+        ? resizeCursorForHit(hit as SelectionHandle)
+        : hit === 'inside' ? canvasCursors.move : canvasCursors.unavailable
       return
     }
     const brushSizeAdjustmentPreviewActive = Boolean(inputRef.current.modifierBrushSize)
@@ -4547,9 +5033,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const point = localPointAt(clientX, clientY)
     const insideDocument = Boolean(point && point.x >= 0 && point.y >= 0 && point.x < session.document.width && point.y < session.document.height)
     const mask = activeLayerMask(session)
+    const cursorSampleProbe = window.__moonSpriteCanvasProbe
+    const cursorSampleStartedAt = cursorSampleProbe?.recordOperationStage ? performance.now() : 0
     let contrastColor = insideDocument && point
-      ? mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleCompositeColor(session.document, point.x, point.y, session.document.activeLayerId)
+      ? mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
       : session.primaryColor
+    cursorSampleProbe?.recordOperationStage?.('cursor.composite-sample', performance.now() - cursorSampleStartedAt)
     if (insideDocument && point && activeLayerEditable && previewCursorTools.has(session.tool) && (!session.selection || selectionContains(session.selection, point.x, point.y))) {
       const layer = activePaintLayer(session)
       if (!isLayerEffectivelyLocked(session.document, layer)) {
@@ -4557,7 +5046,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const source = session.tool === 'eraser' ? TRANSPARENT : session.primaryColor
         const replacement = source.a > 0 && source.a < 255 ? blendOver(readLayerColor(session.document, layer, index), source) : source
         const resolvedReplacement = resolveLayerCanvasColor(session.document, layer, replacement)
-        contrastColor = mask ? layerMaskDisplayColor(resolvedReplacement) : compositePixelWithLayerColor(session.document, index, layer.id, resolvedReplacement)
+        const replacementSampleStartedAt = cursorSampleProbe?.recordOperationStage ? performance.now() : 0
+        contrastColor = mask ? layerMaskDisplayColor(resolvedReplacement) : cursorCompositePointReplacementSamplerFor(session, layer.id)(point.x, point.y, resolvedReplacement)
+        cursorSampleProbe?.recordOperationStage?.('cursor.replacement-sample', performance.now() - replacementSampleStartedAt)
       }
     }
     if (insideDocument && point && contrastColor.a < 255) contrastColor = blendOver(transparencyColorAt(point.x, point.y, checkerboard), contrastColor)
@@ -4568,9 +5059,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const wheelSizing = wheelBrushSizePreviewRef.current && brushSizeTool
     const selectedTextBox = selectedTextBoxForSession(session)
     const rawSelectionHit = session.tool === 'selection' || selectedTextBox ? selectionHitAt(clientX, clientY) : 'outside'
-    const selectionPivotHovered = !ctrlActive && !altActive && !shiftKey && selectionPivotHitAt(clientX, clientY)
+    const selectionPivotHovered = !freeTransformActive && !ctrlActive && !altActive && !shiftKey && selectionPivotHitAt(clientX, clientY)
     const addingToSelection = Boolean(session.selection && shiftKey)
-    const temporaryMove = temporaryMoveRequested && temporaryMoveForCanvasInteractionAllowed(
+    const temporaryMove = !freeTransformActive && temporaryMoveRequested && temporaryMoveForCanvasInteractionAllowed(
       session.tool,
       session.moveKind,
       rawSelectionHit,
@@ -4599,19 +5090,21 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     else if (session.tool === 'text' && selectedTextBox && rawSelectionHit === 'inside') canvas.style.cursor = canvasCursors.move
     else if (session.tool === 'selection') {
       const hit = selectionHit
-      canvas.style.cursor = selectionPivotHovered
-        ? canvasCursors.default
-        : hit in resizeCursors
-        ? resizeCursorForHit(hit as SelectionHandle)
-        : hit in shearCursors
-          ? shearCursorForHit(hit as SelectionShearHandle)
-        : hit in rotationCursors
-          ? rotationCursorForHit(hit as SelectionRotationHandle)
-          : hit === 'inside'
-            ? canvasCursors.move
-            : hit === 'edge'
-              ? canvasCursors.selectionMove
-            : selectionCreationCursor(selectionCrosshair, selectionLayersEditable || selectionModifierActive)
+      canvas.style.cursor = freeTransformActive
+        ? hit in resizeCursors ? resizeCursorForHit(hit as SelectionHandle) : canvasCursors.unavailable
+        : selectionPivotHovered
+          ? canvasCursors.default
+          : hit in resizeCursors
+          ? resizeCursorForHit(hit as SelectionHandle)
+          : hit in shearCursors
+            ? shearCursorForHit(hit as SelectionShearHandle)
+            : hit in rotationCursors
+              ? rotationCursorForHit(hit as SelectionRotationHandle)
+              : hit === 'inside'
+                ? canvasCursors.move
+                : hit === 'edge'
+                  ? canvasCursors.selectionMove
+                  : selectionCreationCursor(selectionCrosshair, selectionLayersEditable || selectionModifierActive)
     } else if (sliceTool) {
       const selectedIds = session.selectedSliceIds?.length ? session.selectedSliceIds : session.selectedSliceId ? [session.selectedSliceId] : []
       const selectedSlice = selectedIds.length === 1 ? session.document.slices?.find((slice) => slice.id === selectedIds[0]) : null
@@ -4643,7 +5136,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     scheduleDraw()
   // Cursor assets and the preview under a stationary pointer must change with the selected tool.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.tool, session.selectionKind, session.selectionMode, session.selection, session.primaryColor.r, session.primaryColor.g, session.primaryColor.b, session.primaryColor.a, session.animationPlaying, session.symmetryAxes.horizontal, session.symmetryAxes.vertical, session.symmetryAxes.diagonalUp, session.symmetryAxes.diagonalDown, session.symmetryAxes.rotational, symmetryCenter.x, symmetryCenter.y, symmetryAxisPreferences.locked, symmetryAxisPreferences.thickness, activeLayerEditable, selectionLayersEditable, hasSelectedMovableLayer, quickToolMatch?.id, quickToolMatch?.binding])
+  }, [session.tool, session.selectionKind, session.selectionMode, session.selection, session.freeTransformActive, session.freeTransformQuad?.nw.x, session.freeTransformQuad?.nw.y, session.freeTransformQuad?.ne.x, session.freeTransformQuad?.ne.y, session.freeTransformQuad?.se.x, session.freeTransformQuad?.se.y, session.freeTransformQuad?.sw.x, session.freeTransformQuad?.sw.y, session.pendingPaste?.transformQuad?.nw.x, session.pendingPaste?.transformQuad?.nw.y, session.pendingPaste?.transformQuad?.ne.x, session.pendingPaste?.transformQuad?.ne.y, session.pendingPaste?.transformQuad?.se.x, session.pendingPaste?.transformQuad?.se.y, session.pendingPaste?.transformQuad?.sw.x, session.pendingPaste?.transformQuad?.sw.y, session.primaryColor.r, session.primaryColor.g, session.primaryColor.b, session.primaryColor.a, session.animationPlaying, session.symmetryAxes.horizontal, session.symmetryAxes.vertical, session.symmetryAxes.diagonalUp, session.symmetryAxes.diagonalDown, session.symmetryAxes.rotational, symmetryCenter.x, symmetryCenter.y, symmetryAxisPreferences.locked, symmetryAxisPreferences.thickness, activeLayerEditable, selectionLayersEditable, hasSelectedMovableLayer, quickToolMatch?.id, quickToolMatch?.binding])
 
   const activeColor = (button = 0): RgbaColor => session.tool === 'eraser'
     ? button === 2 ? session.secondaryColor : TRANSPARENT
@@ -4655,7 +5148,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     speed = 0,
     pressureAvailable?: boolean,
     previousPressure?: number
-  ): { size: number; opacityScale: number; gradientAmount: number | null } => {
+  ): { size: number; opacityScale: number; gradientAmount: number | null; angle: number } => {
     const resolved = resolveBrushDynamics(session.brushDynamics, { pointerType, pressure, speed, pressureAvailable, previousPressure }, session.brushSize)
     return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
   }
@@ -4734,8 +5227,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const targetSample = {
       ...advanced.endpoint,
       size: targetSize,
-      opacityScale: targetDynamics.opacityScale,
-      color: targetColor,
+        opacityScale: targetDynamics.opacityScale,
+        angle: targetDynamics.angle,
+        color: targetColor,
       gradient: targetGradient
     }
     updateIsoAlignedStrokePath(path, advanced, targetSample)
@@ -4779,6 +5273,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           ...edge.from,
           size: drag.lastBrushSize ?? targetSize,
           opacityScale: drag.lastOpacityScale ?? targetDynamics.opacityScale,
+          angle: targetDynamics.angle,
           color: targetColor,
           gradient: targetGradient
         },
@@ -4786,6 +5281,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           ...edge.to,
           size: targetSize,
           opacityScale: targetDynamics.opacityScale,
+          angle: targetDynamics.angle,
           color: targetColor,
           gradient: targetGradient
         }
@@ -4808,8 +5304,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag?.kind !== 'polygon-lasso') return
     inputRef.current.finish()
     const before = drag.selectionStart ?? null
-    const path = polygonLassoClosedPathPoints(drag.path ?? [], balancedShiftLineEnabled)
-    const incoming = tilemapPaintSelectionForIncoming(symmetrySelection(lassoSelection(session.document, path), session.document.width, session.document.height, session.symmetryAxes, symmetryCenter))
+    const incoming = tilemapPaintSelectionForIncoming(symmetrySelection(polygonSelection(session.document, drag.path ?? [], balancedShiftLineEnabled), session.document.width, session.document.height, session.symmetryAxes, symmetryCenter))
     const after = combineSelection(before, incoming, drag.selectionMode ?? session.selectionMode)
     useWorkspace.getState().commitSelectionChange(before, after, t('canvas.history.polygonLasso'))
     scheduleDraw()
@@ -4907,8 +5402,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const drag = inputRef.current.drag
     if (drag?.kind !== 'polygon-shape') return
     inputRef.current.finish()
-    const path = polygonLassoClosedPathPoints(drag.path ?? [], balancedShiftLineEnabled)
-    commitShapePoints(drag, filledShapePathPixelPoints(session.document, path), t('canvas.history.drawPolygon'))
+    commitShapePoints(drag, filledPolygonPathPixelPoints(session.document, drag.path ?? [], balancedShiftLineEnabled), t('canvas.history.drawPolygon'))
     scheduleDraw()
   }
 
@@ -4940,12 +5434,56 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    // Keyboard tool changes can land before React commits the next render.
+    // Resolve the session at event time so the first pointer event sees them.
+    const session = liveInputSession()
+    const fillKind = session.fillKind ?? 'bucket'
+    const gradientType = session.gradientType ?? 'linear'
+    const brushInputs = activeBrushInputsForTool(session.tool, fillKind, session.brushImage, session.brushTexture)
+    const activeBrushImage = brushInputs.imageBrush
+    const activeBrushTexture = brushInputs.texture
+    const activeBrushDither = activeBrushImage ? undefined : session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
+    const activeBrushPaintMode = activeBrushImage?.intrinsicSize ? session.brushPaintMode : 'paint'
+    const proceduralAntialiasStrength = brushInputs.fillTextureEnabled && session.proceduralAntialias && activeBrushImage?.id.startsWith('procedural:') ? session.proceduralAntialiasStrength : 0
+    const activeColor = (button = 0): RgbaColor => session.tool === 'eraser'
+      ? button === 2 ? session.secondaryColor : TRANSPARENT
+      : button === 2 ? session.secondaryColor : session.primaryColor
+    const brushPatternOrigin = (point: Point, size = session.brushSize, imageBrush = activeBrushImage): Point => {
+      const anchor = brushStampAnchor(size, imageBrush)
+      return { x: point.x - anchor.x, y: point.y - anchor.y }
+    }
+    const brushDynamicsAtEvent = (
+      pointerEvent: Pick<React.PointerEvent<HTMLCanvasElement>, 'pointerId' | 'pointerType' | 'pressure' | 'buttons'>,
+      speed = 0
+  ): { size: number; opacityScale: number; gradientAmount: number | null; angle: number } => {
+      const adapted = pressureAdapterRef.current.adapt(pointerEvent)
+      const resolved = resolveBrushDynamics(session.brushDynamics, {
+        pointerType: adapted.pointerType,
+        pressure: adapted.pressure,
+        speed,
+        pressureAvailable: adapted.pressureAvailable,
+        previousPressure: adapted.previousPressure
+      }, session.brushSize)
+      return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
+    }
+    const brushGradientAt = (buttonColor: RgbaColor, gradientAmount: number | null): BrushGradientSample | undefined => {
+      if (session.tool !== 'pencil' || gradientAmount === null) return undefined
+      const currentIsSecondary = sameRgbaColor(buttonColor, session.secondaryColor) && !sameRgbaColor(buttonColor, session.primaryColor)
+      return {
+        startColor: currentIsSecondary ? session.primaryColor : session.secondaryColor,
+        endColor: buttonColor,
+        gradientAmount,
+        dither: session.brushDynamics.gradientDither
+      }
+    }
     syncHeldShortcutModifiers(event.nativeEvent)
     event.currentTarget.tabIndex = -1
     event.currentTarget.focus({ preventScroll: true })
     const state = useWorkspace.getState()
     if (zoomPreviewStartRef.current) finishZoomPreview()
     if (state.activeId !== session.document.id) { state.setActive(session.document.id); return }
+    if (session.animationPlaying) return
+    beginCanvasToolGesture(event.pointerId)
     if (event.button === 1 || (event.button === 0 && inputRef.current.spaceHeld)) {
       const view = liveViewRef.current
       inputRef.current.drag = createCanvasPanDrag(
@@ -4959,9 +5497,24 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.preventDefault()
       return
     }
-    if (session.animationPlaying) return
+    // Resolve the live free-transform session before any auxiliary canvas
+    // interaction (such as symmetry-axis dragging) can claim the pointer.
+    // Corner handles reshape the frame; the selected content itself remains
+    // movable. Middle-button/space panning has already returned above.
+    const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const freeTransformActive = currentInteractionSession.freeTransformActive === true
+    if (freeTransformActive) {
+      const freeTransformHit = event.button === 0 ? selectionHit(event) : 'outside'
+      const freeTransformCorner = freeTransformHit === 'nw' || freeTransformHit === 'ne' || freeTransformHit === 'se' || freeTransformHit === 'sw'
+      const freeTransformContent = freeTransformHit === 'inside'
+      if (!(event.button === 0 && (freeTransformCorner || freeTransformContent))) {
+        updateCursor(event)
+        event.preventDefault()
+        return
+      }
+    }
     const pivotSamplingHeld = paletteSamplingShortcutActive() || quickToolActive('eyedropper')
-    if (event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !pivotSamplingHeld && selectionPivotHitAt(event.clientX, event.clientY)) {
+    if (event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !pivotSamplingHeld && !freeTransformActive && selectionPivotHitAt(event.clientX, event.clientY)) {
       const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
       const pivot = selectionPivotForSession(currentSession)
       const pointer = localContinuousPointAt(event.clientX, event.clientY)
@@ -4981,7 +5534,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.preventDefault()
       return
     }
+    // A free-transform frame may extend beyond the document after a corner
+    // drag. Keep the interaction alive there by falling back to continuous
+    // document coordinates; regular tools retain the clipped integer path.
     const point = localPoint(event)
+      ?? (freeTransformActive ? localContinuousPointAt(event.clientX, event.clientY) : null)
     if (!point) return
     updateCursor(event)
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -5013,7 +5570,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
       const setSampledColor = secondary ? state.setSecondaryColor : state.setPrimaryColor
       const mask = activeLayerMask(session)
-      const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleCompositeColor(session.document, point.x, point.y, session.document.activeLayerId)
+      const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
       const previous = secondary ? session.secondaryColor : session.primaryColor
       setSampledColor(sampled)
       publishCanvasColorSample(sampled, secondary)
@@ -5031,7 +5588,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     const selectionPriorityHit = event.button === 0 && session.selection ? selectionHit(event) : 'outside'
     const addingToSelection = Boolean(session.selection && (event.shiftKey || modifierActive(event.nativeEvent, 'addToSelection')))
-    const temporaryMove = event.button === 0
+    const temporaryMove = !freeTransformActive && event.button === 0
       && !radialGradientCenterModifierActive(session, event.nativeEvent)
       && quickMoveToolActive()
       && !brushLineConnectionHasPriority(event.nativeEvent)
@@ -5122,7 +5679,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && !temporaryMove
       && !session.activeLayerMaskId
       && (session.selectedGroupIds.length > 0 || session.selectedLayerIds.length > 1)
-    if (focusesRasterLayer) state.selectLayer(session.document.activeLayerId)
     const hasRasterFocus = hasSelectedRasterLayer || focusesRasterLayer || (session.tool === 'selection' && selectionLayersEditable)
     if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser') && (session.tool === 'airbrush' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize) && event.button === 0) {
       inputRef.current.sampling = false
@@ -5130,7 +5686,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.currentTarget.style.cursor = canvasToolCursor('pencil', session.primaryColor)
       return
     }
-    const selectionTool = session.tool === 'selection'
+    // A held quick-tool shortcut can project a different tool onto the
+    // session object. Free transform must keep selection semantics regardless
+    // of that projection so a corner click cannot fall through to layer move.
+    const selectionTool = freeTransformActive || session.tool === 'selection'
     const selectionMode = (): SelectionMode => event.button === 2 ? 'subtract' : (event.shiftKey || modifierActive(event.nativeEvent, 'addToSelection')) ? 'add' : session.selectionMode
     const editableLayer = activePaintLayer(session)
     const canEditLayer = hasRasterFocus && isLayerEffectivelyVisible(session.document, editableLayer) && !isLayerEffectivelyLocked(session.document, editableLayer)
@@ -5194,7 +5753,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       state.setSelectedFreeTileInstance(instance.id)
       return { source: selectedSource, instance, placementEdit, sourceEdit, selection, sourceRegion }
     }
-    if ((session.tool === 'move' || temporaryMove) && event.button === 0 && movableActiveLayer.kind === 'free-tile' && shouldUseFreeTileInstanceMove(movableActiveLayer.id, session.freeTileInstanceLayerId)) {
+    if (!freeTransformActive && (session.tool === 'move' || temporaryMove) && event.button === 0 && movableActiveLayer.kind === 'free-tile' && shouldUseFreeTileInstanceMove(movableActiveLayer.id, session.freeTileInstanceLayerId)) {
       const target = activeFreeTileCelTarget(session.document)
       const selectedInstance = target?.freeTiles.instances.find((instance) => instance.id === session.selectedFreeTileInstanceId && instance.visible !== false) ?? null
       const selectedBounds = target && selectedInstance
@@ -5240,7 +5799,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     if (editableLayer.kind && !isToolAvailableForSession(session, temporaryMove ? 'move' : session.tool) && !canEditSelectionLayers && !eyedropperHeld) return
     if (!temporaryMove && selectionTool && (event.button === 0 || event.button === 2) && !canEditSelectionLayers && !eyedropperHeld) return
-    if (!temporaryMove && sliceTool && event.button === 0) {
+    if (!freeTransformActive && !temporaryMove && sliceTool && event.button === 0) {
       const selectedIds = session.selectedSliceIds?.length ? session.selectedSliceIds : session.selectedSliceId ? [session.selectedSliceId] : []
       const selected = selectedIds.length === 1 ? session.document.slices?.find((slice) => slice.id === selectedIds[0]) ?? null : null
       const handle = selected ? sliceHandleAt(event.clientX, event.clientY, selected) : null
@@ -5271,7 +5830,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair)
       return
     }
-    if ((session.tool === 'move' || temporaryMove) && event.button === 0) {
+    if (!freeTransformActive && (session.tool === 'move' || temporaryMove) && event.button === 0) {
       const additiveSelection = event.shiftKey
       const hitTarget = session.moveAutoSelect || additiveSelection ? topEditableLayerAt(point) : null
       let selectedLayerIds = resolveCanvasMoveLayerIds({
@@ -5297,10 +5856,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         revealLayerInPanel(session.document.id, hitTarget.id)
         showMoveLayerContentPreview(hitTarget)
       }
-      let selectedMovableLayers = selectedLayerIds
+      const frameSelectionAcrossLayers = session.selectedAnimationFrameIds.length > 0
+      let selectedMovableLayers = (frameSelectionAcrossLayers ? session.document.layers.map((layer) => layer.id) : selectedLayerIds)
         .map((id) => session.document.layers.find((layer) => layer.id === id))
         .filter((layer): layer is RasterLayer => Boolean(layer && isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer)))
-      let moveAllSelectedLayers = selectedMovableLayers.length > 1 || session.selectedGroupIds.length > 0
+      let moveAllSelectedLayers = frameSelectionAcrossLayers || selectedMovableLayers.length > 1 || session.selectedGroupIds.length > 0
       const target = additiveSelection && hitTarget ? hitTarget : moveAllSelectedLayers
         ? selectedMovableLayers.find((layer) => layer.id === session.document.activeLayerId) ?? selectedMovableLayers[0]
         : session.moveAutoSelect ? (hitTarget ?? (canMoveActiveLayer ? movableActiveLayer : null)) : (canMoveActiveLayer ? movableActiveLayer : null)
@@ -5320,13 +5880,20 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
       const activeSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
       const currentFrameId = activeSession.document.animation?.activeFrameId
+      const layerSelectionAcrossFrames = !frameSelectionAcrossLayers
+        && activeSession.selectedAnimationFrameIds.length === 0
+        && activeSession.selectedAnimationCellKeys.length === 0
+        && activeSession.selectedAnimationMaskCellKeys.length === 0
+      if (layerSelectionAcrossFrames) moveAllSelectedLayers = true
       const selectedCellKeys = resolveCanvasMoveAnimationCellKeys({
         selectedAnimationCellKeys: activeSession.selectedAnimationCellKeys,
         selectedAnimationFrameIds: activeSession.selectedAnimationFrameIds,
         selectedLayerIds: selectedMovableLayers.map((layer) => layer.id),
+        allFrameIds: activeSession.document.animation?.frames.map((frame) => frame.id) ?? [],
         currentFrameId,
         targetLayerId: target.id,
-        moveAllSelectedLayers
+        moveAllSelectedLayers,
+        moveSelectedFramesAcrossLayers: frameSelectionAcrossLayers
       })
       const movableCellKeys = selectedCellKeys.filter((key) => {
         const parsed = parseAnimationCelKey(key)
@@ -5367,13 +5934,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         layerOffset: { x: target.offsetX, y: target.offsetY }, layerIds, layerOffsets,
         layerContentBounds: layerContentBoundsById, layerPreviewOffset: { x: 0, y: 0 }, layerFrameId: currentFrameId,
         ...alignmentDragFields(alignmentMovingBounds, layerIds),
-        animationCellKeys, animationCellOffsets, duplicateOnDrag: copyLayerHeld && layerIds.length === 1 && animationCellKeys.length <= 1,
+        animationCellKeys, animationCellOffsets, animationMaskOffsets: animationMaskOffsetsForLayerMove(activeSession, layerIds, currentFrameId, animationCellKeys), duplicateOnDrag: copyLayerHeld && layerIds.length === 1 && animationCellKeys.length <= 1,
         originalSelectedLayerIds: [...selectedLayerIds], selectionStart,
         selectionPivotStart: activeSession.selectionPivot ? { ...activeSession.selectionPivot } : undefined,
         previewPivot: activeSession.selectionPivot ? { ...activeSession.selectionPivot } : undefined,
         clickLayerId: hitTarget?.id ?? session.document.activeLayerId,
         collapseLayerSelectionOnClick: !additiveSelection && (selectedLayerIds.length > 1 || activeSession.selectedAnimationCellKeys.length > 1)
       }
+      preserveCanvasSelection(session.document.id)
       event.currentTarget.style.cursor = copyLayerHeld ? canvasCursors.copy : canvasCursors.move
       return
     }
@@ -5450,6 +6018,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 toSize: dynamics.size,
                 fromOpacityScale: dynamics.opacityScale,
                 toOpacityScale: dynamics.opacityScale,
+                fromAngle: dynamics.angle,
+                toAngle: dynamics.angle,
                 gradient: brushLineGradient(gradient, gradient)
               },
               'off',
@@ -5471,6 +6041,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             toSize: dynamics.size,
             fromOpacityScale: dynamics.opacityScale,
             toOpacityScale: dynamics.opacityScale,
+            fromAngle: dynamics.angle,
+            toAngle: dynamics.angle,
             gradient: brushLineGradient(gradient, gradient)
           }, repeatMode, activeBrushDither)
         }
@@ -5503,6 +6075,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // the selected instance later, but marquee/lasso creation must remain free
       // to cover transparent space around it.
       const currentSelection = currentSelectionSession.selection
+      const freeTransformActive = currentSelectionSession.freeTransformActive === true
+      const freeTransformHit = freeTransformActive ? selectionHit(event) : 'outside'
+      const freeTransformCorner = freeTransformHit === 'nw' || freeTransformHit === 'ne' || freeTransformHit === 'se' || freeTransformHit === 'sw'
+      const freeTransformContent = freeTransformHit === 'inside'
+      if (freeTransformActive && !(event.button === 0 && (freeTransformCorner || freeTransformContent))) return
       const customSelectionPivot = currentSelectionSession.selectionPivot ? { ...currentSelectionSession.selectionPivot } : undefined
       const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
       const tileRepeatStart = repeatMode === 'off'
@@ -5514,11 +6091,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         pointerId: event.pointerId,
         timeStamp: event.timeStamp
       }
-      const quickSelectionSecondPress = event.button === 0
+      const quickSelectionSecondPress = !freeTransformActive && event.button === 0
         && session.selectionKind === 'rectangle'
         && !eyedropperHeld
         && isQuickSelectionSecondPress(quickSelectionPressRef.current, quickPress, event.detail)
-      if (event.button === 0 && session.selectionKind === 'rectangle') {
+      if (!freeTransformActive && event.button === 0 && session.selectionKind === 'rectangle') {
         quickSelectionPressRef.current = quickSelectionSecondPress ? null : quickPress
       }
       if (quickSelectionSecondPress) {
@@ -5526,6 +6103,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
         const cell = quickSelectionCellAt(active, point)
         if (cell) {
+          startCanvasSelection(session.document.id)
           const before = cloneSelection(active.selection)
           const incoming = tilemapPaintSelectionForIncoming(rectSelection(cell.x, cell.y, cell.width, cell.height), active)
           const baseSelection = combineSelection(before, incoming, mode)
@@ -5550,9 +6128,18 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           return
         }
       }
-      const rawHit = selectionHit(event)
+      const rawHit = freeTransformActive ? freeTransformHit : selectionHit(event)
       const transformInteraction = event.button === 0 && !event.shiftKey
-      const hit = transformInteraction && (mode === 'replace' || mode === 'add' || rawHit !== 'inside') ? rawHit : 'outside'
+      // Once free transform is active, the frame owns the pointer regardless
+      // of the selection mode left over from marquee creation. This prevents
+      // subtract/intersect modes from turning an interior drag into a new
+      // selection gesture.
+      const hit = freeTransformActive
+        ? freeTransformHit
+        : transformInteraction && (mode === 'replace' || mode === 'add' || rawHit !== 'inside') ? rawHit : 'outside'
+      if (event.button === 0 && session.tool === 'selection' && rawHit === 'inside' && hit === 'inside' && session.selection) {
+        state.setSelectionPropertiesActive(true)
+      }
       if (eyedropperHeld && !(hit in resizeCursors)) { sampleAtPoint(); return }
       if (session.textBoxTransform && event.button === 0) {
         if (hit in resizeCursors) {
@@ -5602,7 +6189,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           && session.selectedFreeTileInstanceId === freeTileSelectionTarget.instance.id
           && session.selectedFreeTileInstanceIds.every((id) => id === freeTileSelectionTarget.instance.id)
           && selectionCoversRect(selectionStart, freeTileSelectionTarget.bounds))
-        if (onlySelectedFreeTileInstance && freeTileSelectionTarget) {
+        if (!freeTransformActive && onlySelectedFreeTileInstance && freeTileSelectionTarget) {
           const placementEdit = state.beginFreeTilePlacement()
           if (placementEdit) {
             const selectionPivotStart = currentSelectionSession.selectionPivot ? { ...currentSelectionSession.selectionPivot } : undefined
@@ -5631,22 +6218,31 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             return
           }
         }
-        const transformTarget = floating?.transformTarget ?? floatingCopyRestart?.transformTarget ?? { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height }
-        const transformAngle = floating?.transformAngle ?? floatingCopyRestart?.transformAngle ?? 0
-        const transformShear = floating?.transformShear ?? floatingCopyRestart?.transformShear
+        const freeTransformQuad = freeTransformActive
+          ? freeTransformQuadForSession(currentSelectionSession) ?? selectionQuadFromRect(selectionStart)
+          : null
+        const freeTransform = Boolean(freeTransformQuad)
+        const transformTarget = freeTransformQuad
+          ? selectionQuadBounds(freeTransformQuad)
+          : floating?.transformTarget ?? floatingCopyRestart?.transformTarget ?? { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height }
+        const transformAngle = freeTransform ? 0 : floating?.transformAngle ?? floatingCopyRestart?.transformAngle ?? 0
+        const transformShear = freeTransform ? undefined : floating?.transformShear ?? floatingCopyRestart?.transformShear
         const floatingLayers = cloneSelectionLayerStates(floating?.layers)
         const freeTileFloatingFields = freeTileFloatingDragFields(floating)
         const tilemapEditCellIndex = floating?.tilemapEditCellIndex ?? tilemapEditCellIndexAtPoint(point, currentSelectionSession)
-        const tilemapSelectionMoveSource = editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint'
+        const tilemapSelectionMoveSource = !freeTransformActive && editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint'
           ? (() => {
               const target = activeTilemapCelTarget(session.document)
               return target ? captureTilemapSelectionMove(target, selectionStart) : null
             })()
           : null
         if (editableLayer.kind === 'tilemap' && session.tilemapMode === 'edit' && tilemapEditCellIndex == null) return
-        if (editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint' && !tilemapSelectionMoveSource) return
+        // Free-transform content movement uses the regular selection transform
+        // preview even on tilemap layers. The paint-mode guard below only
+        // applies to the legacy grid-snapped selection move path.
+        if (!freeTransformActive && editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint' && !tilemapSelectionMoveSource) return
         const alignmentMovingBounds = transformedSelectionBounds(transformTarget, transformAngle, transformShear)
-        inputRef.current.drag = { kind: 'move-content', start: point, last: point, selectionStart, selectionSource: floating?.source ?? floatingCopyRestart?.source, selectionLayers: floatingLayers, selectionSourceCacheKey: session.selection, selectionPreparationPending: !tilemapSelectionMoveSource, previewEdit: floating?.previewEdit, translationPreview: floating?.translationPreview, deferredSelectionPreview: tilemapSelectionMoveSource || floatingLayers?.length || selectedTransformLayers.length > 1 ? false : selectionTransformDeferredPreviewEnabled('move-content', canUseDeferredSelectionPreview(editableLayer), transformAngle, transformShear), copy, floatingPaste: Boolean(floating), previewSelection: selectionStart, appliedSelection: selectionStart, selectionPivotStart: customSelectionPivot, previewPivot: customSelectionPivot, transformStartTarget: { ...transformTarget }, startAngle: transformAngle, transformStartShear: transformShear ? { ...transformShear } : undefined, previewTarget: { ...transformTarget }, previewAngle: transformAngle, previewShear: transformShear ? { ...transformShear } : undefined, ...alignmentDragFields([alignmentMovingBounds], selectedTransformLayers.map((layer) => layer.id)), ...freeTileFloatingFields, ...(tileRepeatStart ? { tileRepeatStart } : {}), ...(tilemapEditCellIndex == null ? {} : { tilemapEditCellIndex }), ...(tilemapSelectionMoveSource ? { tilemapSelectionMoveSource, tilemapSelectionMoveDelta: { columns: 0, rows: 0 } } : {}) }
+        inputRef.current.drag = { kind: 'move-content', start: point, last: point, selectionStart, selectionSource: floating?.source ?? floatingCopyRestart?.source, selectionLayers: floatingLayers, selectionSourceCacheKey: session.selection, selectionPreparationPending: !tilemapSelectionMoveSource, previewEdit: floating?.previewEdit, translationPreview: floating?.translationPreview, deferredSelectionPreview: freeTransform || tilemapSelectionMoveSource || floatingLayers?.length || selectedTransformLayers.length > 1 ? false : selectionTransformDeferredPreviewEnabled('move-content', canUseDeferredSelectionPreview(editableLayer), transformAngle, transformShear), copy, floatingPaste: Boolean(floating), previewSelection: selectionStart, appliedSelection: selectionStart, selectionPivotStart: customSelectionPivot, previewPivot: customSelectionPivot, transformStartTarget: { ...transformTarget }, startAngle: transformAngle, transformStartShear: transformShear ? { ...transformShear } : undefined, previewTarget: { ...transformTarget }, previewAngle: transformAngle, previewShear: transformShear ? { ...transformShear } : undefined, freeTransform, transformStartQuad: cloneSelectionQuad(freeTransformQuad) ?? undefined, previewQuad: cloneSelectionQuad(freeTransformQuad) ?? undefined, ...alignmentDragFields([alignmentMovingBounds], selectedTransformLayers.map((layer) => layer.id)), ...freeTileFloatingFields, ...(tileRepeatStart ? { tileRepeatStart } : {}), ...(tilemapEditCellIndex == null ? {} : { tilemapEditCellIndex }), ...(tilemapSelectionMoveSource ? { tilemapSelectionMoveSource, tilemapSelectionMoveDelta: { columns: 0, rows: 0 } } : {}) }
         event.currentTarget.style.cursor = !floating && copy ? canvasCursors.copy : canvasCursors.move
         return
       }
@@ -5700,11 +6296,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const selectionStart = cloneSelection(currentSelection)
         const modifiers = selectionTransformModifierState(event.nativeEvent)
         const selectionPivotStart = selectionPivotForSession(currentSelectionSession) ?? undefined
-        const transformTarget = floating?.transformTarget ?? { x: selectionStart!.x, y: selectionStart!.y, width: selectionStart!.width, height: selectionStart!.height }
+        const freeTransform = currentSelectionSession.freeTransformActive === true
+        const transformQuad = freeTransform ? freeTransformQuadForSession(currentSelectionSession) : null
+        const transformTarget = transformQuad
+          ? selectionQuadBounds(transformQuad)
+          : floating?.transformTarget ?? { x: selectionStart!.x, y: selectionStart!.y, width: selectionStart!.width, height: selectionStart!.height }
         const transformAngle = floating?.transformAngle ?? 0
         const transformShear = floating?.transformShear
         const floatingLayers = cloneSelectionLayerStates(floating?.layers)
-        inputRef.current.drag = { kind: 'transform-content', start: point, last: point, selectionStart, selectionSource: floating?.source, selectionLayers: floatingLayers, selectionSourceCacheKey: session.selection, selectionPreparationPending: true, previewEdit: floating?.previewEdit, translationPreview: floating?.translationPreview, deferredSelectionPreview: floatingLayers?.length || selectedTransformLayers.length > 1 ? false : selectionTransformDeferredPreviewEnabled('transform-content', canUseDeferredSelectionPreview(editableLayer), transformAngle, transformShear), handle: hit as SelectionHandle, copy: floatingSelectionCopyMode(floating?.copy ?? null, modifiers.copy), floatingPaste: Boolean(floating), previewSelection: selectionStart, appliedSelection: selectionStart, selectionPivotStart, previewPivot: selectionPivotStart ? { ...selectionPivotStart } : undefined, selectionPivotCustom: Boolean(currentSelectionSession.selectionPivot), transformStartTarget: { ...transformTarget }, startAngle: transformAngle, transformStartShear: transformShear ? { ...transformShear } : undefined, previewTarget: { ...transformTarget }, previewAngle: transformAngle, previewShear: transformShear ? { ...transformShear } : undefined, ...freeTileFloatingDragFields(floating) }
+        inputRef.current.drag = { kind: 'transform-content', start: point, last: point, selectionStart, selectionSource: floating?.source, selectionLayers: floatingLayers, selectionSourceCacheKey: session.selection, selectionPreparationPending: true, previewEdit: floating?.previewEdit, translationPreview: floating?.translationPreview, deferredSelectionPreview: freeTransform ? false : floatingLayers?.length || selectedTransformLayers.length > 1 ? false : selectionTransformDeferredPreviewEnabled('transform-content', canUseDeferredSelectionPreview(editableLayer), transformAngle, transformShear), handle: hit as SelectionHandle, copy: floatingSelectionCopyMode(floating?.copy ?? null, modifiers.copy), floatingPaste: Boolean(floating), previewSelection: selectionStart, appliedSelection: selectionStart, selectionPivotStart, previewPivot: selectionPivotStart ? { ...selectionPivotStart } : undefined, selectionPivotCustom: Boolean(currentSelectionSession.selectionPivot), transformStartTarget: { ...transformTarget }, startAngle: freeTransform ? 0 : transformAngle, transformStartShear: freeTransform ? undefined : transformShear ? { ...transformShear } : undefined, previewTarget: { ...transformTarget }, previewAngle: freeTransform ? 0 : transformAngle, previewShear: freeTransform ? undefined : transformShear ? { ...transformShear } : undefined, freeTransform, transformStartQuad: cloneSelectionQuad(transformQuad) ?? undefined, previewQuad: cloneSelectionQuad(transformQuad) ?? undefined, ...freeTileFloatingDragFields(floating) }
         event.currentTarget.style.cursor = resizeCursorForHit(hit as SelectionHandle)
         return
       }
@@ -5807,6 +6407,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             gradientFromCenter: gradientType === 'radial' && Boolean(event.ctrlKey || event.metaKey),
             color: activeColor(event.button),
             gradientEndColor: event.button === 2 ? session.primaryColor : session.secondaryColor,
+            gradientStops: gradientStopsForButton(event.button),
             gradientPaintRegion: shiftSelection(paintRegion, sourceEdit.origin.x, sourceEdit.origin.y, session.document.width, session.document.height),
             ...freeTileDragFields,
             freeTileGradientPaintRegion: paintRegion
@@ -5877,6 +6478,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           gradientFromCenter: gradientType === 'radial' && Boolean(event.ctrlKey || event.metaKey),
           color: activeColor(event.button),
           gradientEndColor: event.button === 2 ? session.primaryColor : session.secondaryColor,
+          gradientStops: gradientStopsForButton(event.button),
           gradientPaintRegion,
           ...tilemapEditDragState
         }
@@ -5905,6 +6507,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const repeatedStart = repeatMode === 'off'
         ? point
         : repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point
+      startCanvasSelection(session.document.id)
       inputRef.current.drag = { kind: 'marquee', start: repeatedStart, last: repeatedStart, startClient: { x: event.clientX, y: event.clientY }, selectionStart: cloneSelection(session.selection), selectionMode: mode, constrain: false, tileRepeatPoint: repeatedStart }
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable)
       return
@@ -6005,7 +6608,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const dynamics = brushDynamicsAtEvent(event)
       const strokeColor = activeColor(event.button)
       const gradient = colorReplacement ? undefined : brushGradientAt(strokeColor, dynamics.gradientAmount)
-      if (!isoGridSnapActive) paintBrush(sourceEdit.document, sourceEdit.layer, edit, local.x, local.y, dynamics.size, strokeColor, session.brushShape, selection, activeBrushTexture, session.brushTextureScale, activeBrushImage, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, patternOrigin, undefined, undefined, colorReplacement, dynamics.opacityScale, undefined, false, gradient, 'off', activeBrushDither)
+      if (!isoGridSnapActive) paintBrush(sourceEdit.document, sourceEdit.layer, edit, local.x, local.y, dynamics.size, strokeColor, session.brushShape, selection, activeBrushTexture, session.brushTextureScale, activeBrushImage, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, patternOrigin, undefined, undefined, colorReplacement, dynamics.opacityScale, undefined, false, gradient, 'off', activeBrushDither, dynamics.angle)
       const after = freeTileSourceSnapshotFromEditRaster(sourceEdit)
       const tileId = source.tileset.tileIds[0]
       if (tileId) state.setSelectedFreeTileInstance(instance.id, undefined, event.button === 2 ? 'secondary' : 'primary')
@@ -6017,7 +6620,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         start: strokePoint,
         last: strokePoint,
         edit,
-        path: isoGridSnapActive ? [] : [{ ...strokePoint, size: dynamics.size, opacityScale: dynamics.opacityScale, color: strokeColor, gradient }],
+        path: isoGridSnapActive ? [] : [{ ...strokePoint, size: dynamics.size, opacityScale: dynamics.opacityScale, angle: dynamics.angle, color: strokeColor, gradient }],
         isoAlignedStroke: isoLineAlignmentActive ? session.tool : undefined,
         isoAlignedRawAnchor: isoLineAlignmentActive && !isoGridSnapActive ? isoPointerStart : undefined,
         isoAlignedRawEndpoint: isoLineAlignmentActive && !isoGridSnapActive ? isoPointerStart : undefined,
@@ -6099,15 +6702,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const strokeColor = activeColor(event.button)
     const gradient = colorReplacement ? undefined : brushGradientAt(strokeColor, dynamics.gradientAmount)
     if (!isoGridSnapActive) {
-      paintBrush(session.document, editableLayer, edit, strokeStart.x, strokeStart.y, dynamics.size, strokeColor, session.brushShape, pixelEditSelection, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, patternOrigin, session.symmetryAxes, symmetryCenter, colorReplacement, dynamics.opacityScale, undefined, false, gradient, repeatMode, activeBrushDither)
-      invalidateStrokeSegment(strokeStart, strokeStart)
+      paintBrush(session.document, editableLayer, edit, strokeStart.x, strokeStart.y, dynamics.size, strokeColor, session.brushShape, pixelEditSelection, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, patternOrigin, session.symmetryAxes, symmetryCenter, colorReplacement, dynamics.opacityScale, undefined, false, gradient, repeatMode, activeBrushDither, dynamics.angle)
+      invalidateStrokeSegment(strokeStart, strokeStart, dynamics.size, dynamics.angle)
     }
     inputRef.current.drag = {
       kind: 'draw',
       start: strokeStart,
       last: strokeStart,
       edit,
-      path: isoGridSnapActive ? [] : [{ ...repeatedStart, size: dynamics.size, opacityScale: dynamics.opacityScale, color: strokeColor, gradient }],
+      path: isoGridSnapActive ? [] : [{ ...repeatedStart, size: dynamics.size, opacityScale: dynamics.opacityScale, angle: dynamics.angle, color: strokeColor, gradient }],
       tileRepeatPoint: repeatedStart,
       tileRepeatStart: repeatedStart,
       isoAlignedStroke: isoLineAlignmentActive ? session.tool : undefined,
@@ -6132,6 +6735,36 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    const session = liveInputSession()
+    const brushInputs = activeBrushInputsForTool(session.tool, session.fillKind ?? 'bucket', session.brushImage, session.brushTexture)
+    const activeBrushImage = brushInputs.imageBrush
+    const activeBrushTexture = brushInputs.texture
+    const activeBrushDither = activeBrushImage ? undefined : session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
+    const activeBrushPaintMode = activeBrushImage?.intrinsicSize ? session.brushPaintMode : 'paint'
+    const proceduralAntialiasStrength = brushInputs.fillTextureEnabled && session.proceduralAntialias && activeBrushImage?.id.startsWith('procedural:') ? session.proceduralAntialiasStrength : 0
+    const activeColor = (button = 0): RgbaColor => session.tool === 'eraser'
+      ? button === 2 ? session.secondaryColor : TRANSPARENT
+      : button === 2 ? session.secondaryColor : session.primaryColor
+    const brushDynamicsAt = (
+      pointerType: string | undefined,
+      pressure: number | undefined,
+      speed = 0,
+      pressureAvailable?: boolean,
+      previousPressure?: number
+  ): { size: number; opacityScale: number; gradientAmount: number | null; angle: number } => {
+      const resolved = resolveBrushDynamics(session.brushDynamics, { pointerType, pressure, speed, pressureAvailable, previousPressure }, session.brushSize)
+      return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
+    }
+    const brushGradientAt = (buttonColor: RgbaColor, gradientAmount: number | null): BrushGradientSample | undefined => {
+      if (session.tool !== 'pencil' || gradientAmount === null) return undefined
+      const currentIsSecondary = sameRgbaColor(buttonColor, session.secondaryColor) && !sameRgbaColor(buttonColor, session.primaryColor)
+      return {
+        startColor: currentIsSecondary ? session.primaryColor : session.secondaryColor,
+        endColor: buttonColor,
+        gradientAmount,
+        dither: session.brushDynamics.gradientDither
+      }
+    }
     syncHeldShortcutModifiers(event.nativeEvent)
     const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
       const adapted = pressureAdapterRef.current.adapt({
@@ -6149,6 +6782,26 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
     })
     const activeDrag = inputRef.current.drag
+    const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const freeTransformActive = currentInteractionSession.freeTransformActive === true
+    if (freeTransformActive) {
+      // A mode change can race with a pointer gesture that was started before
+      // free transform became active. Stop stale content/layer/auxiliary
+      // drags, while preserving panning and free-transform geometry drags
+      // (corner reshape or content translation).
+      const staleSymmetryDrag = symmetryDragRef.current
+      if (staleSymmetryDrag) {
+        symmetryDragRef.current = null
+        if (event.currentTarget.hasPointerCapture(staleSymmetryDrag.pointerId)) event.currentTarget.releasePointerCapture(staleSymmetryDrag.pointerId)
+      }
+      const freeTransformDrag = (activeDrag?.kind === 'transform-content' || activeDrag?.kind === 'move-content') && activeDrag.freeTransform === true
+      if (activeDrag && activeDrag.kind !== 'pan' && !freeTransformDrag) {
+        cancelActiveCanvasInteraction()
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+        updateCursor(event)
+        return
+      }
+    }
     if (activeDrag?.kind === 'pan' && activeDrag.startPan && activeDrag.startClient) {
       const clientDelta = viewDragClientDelta(
         { x: event.clientX, y: event.clientY },
@@ -6212,6 +6865,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const repeatedSelectionMove = (inputRef.current.drag?.kind === 'move-content' || inputRef.current.drag?.kind === 'move-selection') && repeatMode !== 'off'
     const allowOutsideCopies = Boolean((inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || repeatedMarquee || repeatedSelectionMove) && repeatMode !== 'off')
     const point = localPoint(event, allowOutsideCopies)
+      ?? ((freeTransformActive || activeDrag?.freeTransform === true)
+        ? localContinuousPointAt(event.clientX, event.clientY)
+        : null)
     if (point) inputRef.current.updatePointer({ point, clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, altKey: event.altKey })
     const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser')
     if (modifierSizing && !inputRef.current.drag) {
@@ -6286,7 +6942,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           return
         }
         const mask = activeLayerMask(session)
-        const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : sampleCompositeColor(session.document, point.x, point.y, session.document.activeLayerId)
+        const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
         if (drag.sampleSecondary) state.setSecondaryColor(sampled)
         else state.setPrimaryColor(sampled)
         drag.sampledColor = { ...sampled }
@@ -6398,6 +7054,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           drag.duplicatedLayer = duplicate.layer
           drag.duplicatedAnimationCels = duplicate.animationCels
           drag.duplicatedLayerIndex = duplicate.insertionIndex
+          drag.animationMaskOffsets = Object.fromEntries(duplicate.animationCels.flatMap((cel) => cel.mask && cel.mask.moveWithOwner !== false ? [[`${cel.layerId}\u0000${cel.frameId}`, { x: cel.mask.offsetX, y: cel.mask.offsetY }] as const] : []))
         }
       }
       if (!state.previewLayerMove(session.document.id, drag, distanceX, distanceY)) return
@@ -6524,6 +7181,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 toSize: stroke.to.size ?? session.brushSize,
                 fromOpacityScale: stroke.from.opacityScale ?? 1,
                 toOpacityScale: stroke.to.opacityScale ?? 1,
+                fromAngle: stroke.from.angle ?? 0,
+                toAngle: stroke.to.angle ?? 0,
                 fromColor,
                 toColor,
                 gradient: brushLineGradient(stroke.from.gradient, stroke.to.gradient)
@@ -6587,6 +7246,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 toSize: to.size ?? session.brushSize,
                 fromOpacityScale: from.opacityScale ?? 1,
                 toOpacityScale: to.opacityScale ?? 1,
+                fromAngle: from.angle ?? 0,
+                toAngle: to.angle ?? 0,
                 fromColor,
                 toColor,
                 gradient: brushLineGradient(from.gradient, to.gradient)
@@ -6636,7 +7297,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             undefined,
             undefined,
             drag.colorReplacement,
-            { fromSize: previousSize, toSize: size, fromOpacityScale: previousOpacity, toOpacityScale: dynamics.opacityScale },
+            { fromSize: previousSize, toSize: size, fromOpacityScale: previousOpacity, toOpacityScale: dynamics.opacityScale, fromAngle: drag.path?.at(-1)?.angle ?? 0, toAngle: dynamics.angle },
             'off',
             activeBrushDither
           )
@@ -6688,6 +7349,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       let segmentStart = drag.tileRepeatPoint ?? previousPoint
       let segmentStartSize = drag.lastBrushSize ?? session.brushSize
       let segmentStartOpacityScale = drag.lastOpacityScale ?? 1
+      let segmentStartAngle = drag.path?.at(-1)?.angle ?? 0
       let segmentStartColor = drag.lastBrushColor ?? drag.color ?? activeColor()
       let segmentStartGradient = drag.path?.at(-1)?.gradient
       let rebuiltStroke = false
@@ -6698,6 +7360,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         toSize: number,
         fromOpacityScale: number,
         toOpacityScale: number,
+        fromAngle: number,
+        toAngle: number,
         color: RgbaColor,
         fromGradient: BrushGradientSample | undefined,
         toGradient: BrushGradientSample | undefined,
@@ -6712,6 +7376,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             toSize: interpolate(fromSize, toSize, segment.toProgress),
             fromOpacityScale: interpolate(fromOpacityScale, toOpacityScale, segment.fromProgress),
             toOpacityScale: interpolate(fromOpacityScale, toOpacityScale, segment.toProgress),
+            fromAngle: interpolateBrushAngle(fromAngle, toAngle, segment.fromProgress),
+            toAngle: interpolateBrushAngle(fromAngle, toAngle, segment.toProgress),
             gradient: gradient ? {
               ...gradient,
               fromAmount: interpolate(gradient.fromAmount, gradient.toAmount, segment.fromProgress),
@@ -6738,6 +7404,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               stroke.to.size ?? session.brushSize,
               stroke.from.opacityScale ?? 1,
               stroke.to.opacityScale ?? 1,
+              stroke.from.angle ?? 0,
+              stroke.to.angle ?? 0,
               stroke.from.color ?? drag.color ?? activeColor(),
               stroke.from.gradient,
               stroke.to.gradient,
@@ -6775,6 +7443,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             to.size ?? session.brushSize,
             from.opacityScale ?? 1,
             to.opacityScale ?? 1,
+            from.angle ?? 0,
+            to.angle ?? 0,
             from.color ?? drag.color ?? activeColor(),
             from.gradient,
             to.gradient,
@@ -6818,42 +7488,46 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.lastBrushColor = sampleColor
         drag.lastBrushGradientActive = Boolean(sampleGradient)
         if (session.perfectPixels) {
-          const path = drag.path ?? [{ ...segmentStart, size: segmentStartSize, opacityScale: segmentStartOpacityScale, color: segmentStartColor, gradient: segmentStartGradient }]
+          const path = drag.path ?? [{ ...segmentStart, size: segmentStartSize, opacityScale: segmentStartOpacityScale, angle: segmentStartAngle, color: segmentStartColor, gradient: segmentStartGradient }]
           if (samePoint) {
             const last = path.at(-1)
             if (last) {
               last.size = acceptedSize
               last.opacityScale = Math.max(last.opacityScale ?? dynamics.opacityScale, dynamics.opacityScale)
+              last.angle = dynamics.angle
               last.color = sampleColor
               last.gradient = sampleGradient
             }
-            paintBrush(session.document, activePaintLayer(session), drag.edit, point.x, point.y, acceptedSize, sampleColor, session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, dynamics.opacityScale, undefined, false, sampleGradient, repeatMode, activeBrushDither)
+          paintBrush(session.document, activePaintLayer(session), drag.edit, point.x, point.y, acceptedSize, sampleColor, session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, dynamics.opacityScale, undefined, false, sampleGradient, repeatMode, activeBrushDither, dynamics.angle)
           } else {
-            const removedCorner = appendPerfectPixelSegment(path, { ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, color: sampleColor, gradient: sampleGradient })
+            const removedCorner = appendPerfectPixelSegment(path, { ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: dynamics.angle, color: sampleColor, gradient: sampleGradient })
             if (removedCorner) {
               revertPixelEdit(session.document, drag.edit)
               const paintLayer = activePaintLayer(session)
               const edit = beginPixelEdit(paintLayer.id)
               for (const center of path) {
                 const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)
-                paintBrush(session.document, paintLayer, edit, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither)
+                paintBrush(session.document, paintLayer, edit, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither, center.angle)
               }
               drag.edit = edit
               rebuiltStroke = true
             } else {
-              paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartColor, segmentStartGradient, sampleGradient)
+              paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartAngle, dynamics.angle, segmentStartColor, segmentStartGradient, sampleGradient)
             }
             drag.path = path
           }
         } else {
-          paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartColor, segmentStartGradient, sampleGradient)
-          drag.path = [{ ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, color: sampleColor, gradient: sampleGradient }]
+          paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartAngle, dynamics.angle, segmentStartColor, segmentStartGradient, sampleGradient)
+          drag.path = [{ ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: dynamics.angle, color: sampleColor, gradient: sampleGradient }]
         }
         if (rebuiltStroke) compositeCacheRef.current.invalidateAll()
-        else for (const segment of tileRepeatLineSegments(segmentStart, repeatedPoint, session.document.width, session.document.height, repeatMode)) invalidateStrokeSegment(segment.from, segment.to)
+        else for (const segment of tileRepeatLineSegments(segmentStart, repeatedPoint, session.document.width, session.document.height, repeatMode)) {
+          invalidateStrokeSegment(segment.from, segment.to, Math.max(segmentStartSize, acceptedSize), Math.max(segmentStartAngle, dynamics.angle))
+        }
         segmentStart = repeatedPoint
         segmentStartSize = acceptedSize
         segmentStartOpacityScale = dynamics.opacityScale
+        segmentStartAngle = dynamics.angle
         segmentStartColor = sampleColor
         segmentStartGradient = sampleGradient
       }
@@ -7051,6 +7725,33 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       scheduleDraw()
       return
     }
+    if (drag.kind === 'move-content' && drag.freeTransform && drag.selectionStart && drag.transformStartQuad) {
+      const repeatedPoint = drag.tileRepeatStart ? repeatedDocumentPointsAt(event.clientX, event.clientY, true, true)?.repeated : undefined
+      const pointerDelta = selectionMovePointerDelta(drag, point, repeatedPoint)
+      const dragDelta = symmetrySelectionDragDelta(drag.selectionStart, drag.start, pointerDelta, session.document.width, session.document.height, session.symmetryAxes, symmetryCenter, true)
+      const distance = alignedDragTranslation(drag, constrainedTranslation(drag, dragDelta.x, dragDelta.y, modifierActive(event.nativeEvent, 'constrainAxis')))
+      const nextQuad: SelectionQuad = {
+        nw: { x: drag.transformStartQuad.nw.x + distance.x, y: drag.transformStartQuad.nw.y + distance.y },
+        ne: { x: drag.transformStartQuad.ne.x + distance.x, y: drag.transformStartQuad.ne.y + distance.y },
+        se: { x: drag.transformStartQuad.se.x + distance.x, y: drag.transformStartQuad.se.y + distance.y },
+        sw: { x: drag.transformStartQuad.sw.x + distance.x, y: drag.transformStartQuad.sw.y + distance.y }
+      }
+      const target = selectionQuadBounds(nextQuad)
+      const previousQuad = drag.previewQuad ?? drag.transformStartQuad
+      if (previousQuad.nw.x === nextQuad.nw.x && previousQuad.nw.y === nextQuad.nw.y
+        && previousQuad.ne.x === nextQuad.ne.x && previousQuad.ne.y === nextQuad.ne.y
+        && previousQuad.se.x === nextQuad.se.x && previousQuad.se.y === nextQuad.se.y
+        && previousQuad.sw.x === nextQuad.sw.x && previousQuad.sw.y === nextQuad.sw.y) return
+      if (!prepareSelectionTransformDrag(drag)) return
+      drag.last = point
+      drag.previewTarget = target
+      drag.previewQuad = nextQuad
+      drag.previewAngle = 0
+      drag.previewShear = undefined
+      if (drag.selectionPivotStart) drag.previewPivot = { x: drag.selectionPivotStart.x + distance.x, y: drag.selectionPivotStart.y + distance.y }
+      scheduleSelectionPreview(drag, true)
+      return
+    }
     if (drag.kind === 'move-content' && drag.selectionStart) {
       const start = drag.transformStartTarget ?? drag.selectionStart
       const repeatedPoint = drag.tileRepeatStart ? repeatedDocumentPointsAt(event.clientX, event.clientY, true, true)?.repeated : undefined
@@ -7065,6 +7766,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       drag.previewShear = drag.transformStartShear ? { ...drag.transformStartShear } : undefined
       if (drag.selectionPivotStart) drag.previewPivot = { x: drag.selectionPivotStart.x + distance.x, y: drag.selectionPivotStart.y + distance.y }
       scheduleSelectionPreview(drag, drag.freeTileSelectionTransform === true)
+      return
+    }
+    if (drag.kind === 'transform-content' && drag.freeTransform && drag.selectionStart && drag.handle) {
+      updateFreeTransformPreview(drag, point)
       return
     }
     if (drag.kind === 'transform-content' && drag.selectionStart && drag.handle) {
@@ -7134,8 +7839,31 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    endCanvasToolGesture(event.pointerId)
+    const session = liveInputSession()
     syncHeldShortcutModifiers(event.nativeEvent)
     stopAirbrushTimer()
+    const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    if (currentInteractionSession.freeTransformActive === true) {
+      const staleSymmetryDrag = symmetryDragRef.current
+      if (staleSymmetryDrag) {
+        symmetryDragRef.current = null
+        if (event.currentTarget.hasPointerCapture(staleSymmetryDrag.pointerId)) event.currentTarget.releasePointerCapture(staleSymmetryDrag.pointerId)
+      }
+      // A mode switch can happen after a legacy gesture has already produced a
+      // preview but before the pointer is released. Do not commit that stale
+      // gesture while free transform is active; free-transform corner drags
+      // and content translations are the only content gestures allowed here.
+      const activeDrag = inputRef.current.drag
+      const freeTransformDrag = (activeDrag?.kind === 'transform-content' || activeDrag?.kind === 'move-content') && activeDrag.freeTransform === true
+      if (activeDrag && activeDrag.kind !== 'pan' && !freeTransformDrag) {
+        cancelActiveCanvasInteraction()
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+        updateCursor(event)
+        draw()
+        return
+      }
+    }
     if (symmetryDragRef.current) {
       symmetryDragRef.current = null
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
@@ -7169,7 +7897,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const state = useWorkspace.getState()
     if (drag.kind === 'pan') {
       finishPanPreview()
-      const resumedDrag = restoreCanvasDragAfterPan(drag, localPoint(event) ?? drag.resumeDrag?.last ?? drag.last)
+      const resumedDrag = currentInteractionSession.freeTransformActive === true
+        ? null
+        : restoreCanvasDragAfterPan(drag, localPoint(event) ?? drag.resumeDrag?.last ?? drag.last)
       if (resumedDrag) inputRef.current.drag = resumedDrag
       updateCursor(event)
       draw()
@@ -7220,14 +7950,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const sourceEdit = freeTileSourceEditForDrag(drag)
       if (sourceEdit) {
         if (moved) {
-          const edit = applyGradient(sourceEdit.document, sourceEdit.layer, freeTileLocalPoint(drag, drag.start), freeTileLocalPoint(drag, drag.last), drag.color ?? session.primaryColor, drag.gradientEndColor ?? session.secondaryColor, drag.freeTileEditSelection ?? null, gradientDither, drag.freeTileGradientPaintRegion, gradientType, gradientGeometryOptionsForDrag(drag))
+          const edit = applyGradient(sourceEdit.document, sourceEdit.layer, freeTileLocalPoint(drag, drag.start), freeTileLocalPoint(drag, drag.last), drag.color ?? session.primaryColor, drag.gradientEndColor ?? session.secondaryColor, drag.freeTileEditSelection ?? null, gradientDither, drag.freeTileGradientPaintRegion, gradientType, gradientGeometryOptionsForDrag(drag), drag.gradientStops ?? gradientStops)
           if (edit) commitFreeTileSourceDrag(drag, t('canvas.history.gradient'))
           else if (drag.freeTilePlacementEdit) state.cancelFreeTilePlacement(drag.freeTilePlacementEdit)
         } else if (drag.freeTilePlacementEdit) state.cancelFreeTilePlacement(drag.freeTilePlacementEdit)
       } else if (moved) {
         const layer = activePaintLayer(session)
         if (!isLayerEffectivelyLocked(session.document, layer)) {
-          const edit = applyGradient(session.document, layer, drag.start, drag.last, drag.color ?? session.primaryColor, drag.gradientEndColor ?? session.secondaryColor, paintSelectionForDrag(drag), gradientDither, drag.gradientPaintRegion, gradientType, gradientGeometryOptionsForDrag(drag))
+          const edit = applyGradient(session.document, layer, drag.start, drag.last, drag.color ?? session.primaryColor, drag.gradientEndColor ?? session.secondaryColor, paintSelectionForDrag(drag), gradientDither, drag.gradientPaintRegion, gradientType, gradientGeometryOptionsForDrag(drag), drag.gradientStops ?? gradientStops)
           if (edit) state.commitPixelEdit(edit, t('canvas.history.gradient'))
         }
       }
@@ -7292,7 +8022,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.translationPreview,
         drag.previewTarget,
         drag.previewAngle,
-        drag.previewShear
+        drag.previewShear,
+        false,
+        undefined,
+        drag.previewQuad
       )
       else if (sourceEdit && drag.freeTileInstanceId && drag.freeTileSelectionSource && drag.selectionSource) state.beginFreeTileFloatingSelectionTransform({
         sourceId: drag.freeTileSourceId,
@@ -7308,7 +8041,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         translationPreview: drag.translationPreview,
         transformTarget: drag.previewTarget,
         transformAngle: drag.previewAngle,
-        transformShear: drag.previewShear
+        transformShear: drag.previewShear,
+        transformQuad: drag.previewQuad
       })
       if (drag.previewPivot) state.setSelectionPivot(drag.selectionPivotCustom === false ? null : drag.previewPivot)
       endSelectionAdjustmentEdit()
@@ -7351,6 +8085,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     if (drag.kind === 'draw' && drag.edit) {
       const entry = state.commitPixelEdit(drag.edit, session.tool === 'eraser' ? t('canvas.history.eraser') : t('canvas.history.draw'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
+      if (entry) {
+        // The edit may expand a cropped/transparent layer. In that case a
+        // region patch can miss pixels outside the previous storage bounds;
+        // rebuild the composite from the committed layer storage instead of
+        // allowing a stale cached transparent area to survive until a later
+        // visibility toggle.
+        compositeCacheRef.current.invalidateAll()
+      }
       const firstPathPoint = drag.path?.[0]
       const singlePoint = Boolean(firstPathPoint && drag.path?.every((point) => point.x === firstPathPoint.x && point.y === firstPathPoint.y))
       lineAnchorHistoryRef.current = entry && singlePoint ? {
@@ -7373,9 +8115,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag.kind === 'move-layer' && drag.collapseLayerSelectionOnClick && !drag.moved && drag.clickLayerId) {
       state.selectMoveToolLayer(drag.clickLayerId)
       revealLayerInPanel(session.document.id, drag.clickLayerId)
-    }
-    if (drag.kind === 'move-layer' && drag.moved && drag.animationCellKeys?.length) {
-      finishAnimationCellOperation(session.document.id)
     }
     if (drag.kind === 'move-layer' && drag.previewPivot) state.setSelectionPivot(drag.previewPivot)
     if (drag.kind === 'shape') {
@@ -7514,7 +8253,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             session.symmetryAxes,
             symmetryCenter,
             activePaintLayer(session),
-            symmetryStartPointForDrag(drag)
+            symmetryStartPointForDrag(drag),
+            drag.previewQuad
           )
           drag.deferredSelectionPreview = false
           for (const rect of deferredSelectionCommitInvalidationRects(drag)) invalidateCompositeRect(rect)
@@ -7536,8 +8276,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             ? t('workspace.history.moveSelectionContent')
             : t('workspace.history.transformSelectionContent')
       if (selectionTransformPreviewChanged(drag)) {
-        if (drag.floatingPaste) state.updateFloatingPastePreview(drag.previewEdit ?? null, drag.previewSelection, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, Boolean(drag.deferredSelectionPreview), drag.selectionLayers)
-        else if (drag.selectionSource) state.beginFloatingSelectionTransform(drag.selectionSource, drag.previewEdit ?? null, drag.selectionStart, drag.previewSelection, Boolean(drag.copy), label, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, Boolean(drag.deferredSelectionPreview), drag.tilemapEditCellIndex, drag.selectionLayers)
+        if (drag.floatingPaste) state.updateFloatingPastePreview(drag.previewEdit ?? null, drag.previewSelection, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, Boolean(drag.deferredSelectionPreview), drag.selectionLayers, drag.previewQuad)
+        else if (drag.selectionSource) state.beginFloatingSelectionTransform(drag.selectionSource, drag.previewEdit ?? null, drag.selectionStart, drag.previewSelection, Boolean(drag.copy), label, drag.translationPreview, drag.previewTarget, drag.previewAngle, drag.previewShear, Boolean(drag.deferredSelectionPreview), drag.tilemapEditCellIndex, drag.selectionLayers, drag.previewQuad)
         if (drag.previewPivot) state.setSelectionPivot(drag.selectionPivotCustom === false ? null : drag.previewPivot)
       }
     }
@@ -7677,6 +8417,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       pressureAdapterRef.current.release(event.pointerId)
       if (pressurePointer) hidePenCursor()
     })
+    endCanvasToolGesture(event.pointerId)
   }
   const handlePointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if ((inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'move-content' || inputRef.current.drag?.kind === 'move-selection') && (liveViewRef.current.tileRepeatMode ?? 'off') !== 'off') {

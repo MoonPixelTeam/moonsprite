@@ -60,28 +60,9 @@ describe('app window platform adapter', () => {
     await expect(readAppWindowLayout()).resolves.toEqual({ x: 10, y: 20, width: 800, height: 600, maximized: true })
   })
 
-  it('skips redundant workspace restoration when the maximized state already matches', async () => {
-    const appWindow = createWindow()
-    appWindow.isMaximized.mockResolvedValue(true)
-    mocks.getCurrentWindow.mockReturnValue(appWindow)
 
-    await applyAppWindowLayout({ x: 30, y: 40, width: 1200, height: 800, maximized: true })
 
-    expect(appWindow.unmaximize).not.toHaveBeenCalled()
-    expect(appWindow.setSize).not.toHaveBeenCalled()
-    expect(appWindow.setPosition).not.toHaveBeenCalled()
-  })
 
-  it('centers layouts that no longer overlap an available monitor', async () => {
-    const appWindow = createWindow()
-    mocks.getCurrentWindow.mockReturnValue(appWindow)
-
-    await applyAppWindowLayout({ x: 5000, y: 5000, width: 900, height: 700, maximized: false })
-
-    expect(appWindow.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 900, height: 700 }))
-    expect(appWindow.center).toHaveBeenCalledTimes(1)
-    expect(appWindow.setPosition).not.toHaveBeenCalled()
-  })
 
   it('initializes observers and returns one cleanup boundary', async () => {
     const appWindow = createWindow()

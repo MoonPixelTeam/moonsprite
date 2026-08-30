@@ -10,7 +10,7 @@ export interface QuickCommandMetadata {
   label: TranslationKey
   description: TranslationKey
   icon: PixelUtilityIconKind
-  shortcutId: ShortcutId
+  shortcutId?: ShortcutId
   settingsTarget?: QuickCommandSettingsTarget
 }
 
@@ -37,5 +37,9 @@ export const QUICK_COMMAND_METADATA: Record<QuickCommandId, QuickCommandMetadata
   swapForegroundBackground: { id: 'swapForegroundBackground', label: 'quickCommands.swapForegroundBackground', description: 'quickCommands.swapForegroundBackgroundDescription', icon: 'refresh', shortcutId: 'swapForegroundBackground' },
   createBrushFromSelection: { id: 'createBrushFromSelection', label: 'quickCommands.createBrushFromSelection', description: 'quickCommands.createBrushFromSelectionDescription', icon: 'plus', shortcutId: 'createBrushFromSelection' },
   rotateViewClockwise90: { id: 'rotateViewClockwise90', label: 'quickCommands.rotateViewClockwise90', description: 'quickCommands.rotateViewClockwise90Description', icon: 'rotateClockwise90', shortcutId: 'rotateViewClockwise90' },
-  rotateViewCounterClockwise90: { id: 'rotateViewCounterClockwise90', label: 'quickCommands.rotateViewCounterClockwise90', description: 'quickCommands.rotateViewCounterClockwise90Description', icon: 'rotateCounterClockwise90', shortcutId: 'rotateViewCounterClockwise90' }
+  rotateViewCounterClockwise90: { id: 'rotateViewCounterClockwise90', label: 'quickCommands.rotateViewCounterClockwise90', description: 'quickCommands.rotateViewCounterClockwise90Description', icon: 'rotateCounterClockwise90', shortcutId: 'rotateViewCounterClockwise90' },
+  detectImageScale: { id: 'detectImageScale', label: 'quickCommands.detectImageScale', description: 'quickCommands.detectImageScaleDescription', icon: 'detectImageScale' },
+  centerSelectionBoth: { id: 'centerSelectionBoth', label: 'quickCommands.centerSelectionBoth', description: 'quickCommands.centerSelectionBothDescription', icon: 'canvasCenter' },
+  centerSelectionHorizontal: { id: 'centerSelectionHorizontal', label: 'quickCommands.centerSelectionHorizontal', description: 'quickCommands.centerSelectionHorizontalDescription', icon: 'canvasHorizontalCenter' },
+  centerSelectionVertical: { id: 'centerSelectionVertical', label: 'quickCommands.centerSelectionVertical', description: 'quickCommands.centerSelectionVerticalDescription', icon: 'canvasVerticalCenter' }
 }

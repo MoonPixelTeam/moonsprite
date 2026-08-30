@@ -2206,7 +2206,7 @@ dependencies = [
 
 [[package]]
 name = "moonsprite"
-version = "1.0.0-beta.1"
+version = "1.0.0-beta2"
 dependencies = [
  "arboard",
  "mlua",
