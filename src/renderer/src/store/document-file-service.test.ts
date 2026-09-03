@@ -55,6 +55,33 @@ describe('document PSD export service', () => {
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/layers.psd', expect.any(Uint8Array))
   })
 
+  it('waits for an explicit decision before writing over an existing export', async () => {
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/layers.psd' || filePath === 'D:/exports/layers (1).psd')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Layered project', 2, 2, 'rgba')
+    const decisions: string[] = []
+
+    await expect(exportDocumentFile(api, document, { name: 'layers.psd', format: 'psd', scalePercent: 100, target: 'document', directory: 'D:/exports' }, {
+      onConflict: async (path, suggested) => { decisions.push(`${path}|${suggested}`); return 'rename' }
+    })).resolves.toBe('已导出 PSD 工程。')
+
+    expect(decisions).toEqual(['D:/exports/layers.psd|D:/exports/layers (2).psd'])
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/layers (2).psd', expect.any(Uint8Array))
+  })
+
+  it('cancels an export when the conflict decision is canceled', async () => {
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const fileExists = vi.fn(async () => true)
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Layered project', 2, 2, 'rgba')
+
+    await expect(exportDocumentFile(api, document, { name: 'layers.psd', format: 'psd', scalePercent: 100, target: 'document', directory: 'D:/exports' }, {
+      onConflict: async () => 'cancel'
+    })).resolves.toBeNull()
+    expect(writeBinaryAtomic).not.toHaveBeenCalled()
+  })
+
 
 
 
@@ -152,6 +179,21 @@ describe('timelapse image sequence export service', () => {
     expect(decodePng(writes[0].data)).toMatchObject({ width: 4, height: 2 })
     expect(decodePng(writes[1].data)).toMatchObject({ width: 4, height: 2 })
   })
+
+  it('resolves existing timelapse frame paths before writing', async () => {
+    const exportImage = vi.fn(async () => ({ canceled: false, filePath: 'D:/exports/process.png' }))
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/process-001.png')
+    const api = { exportImage, writeBinaryAtomic, fileExists } as unknown as MoonSpriteApi
+    const document = createDocument('Process', 1, 1, 'rgba')
+    const data = encodePng(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1, true).bytes
+    document.timelapse = { enabled: true, quality: 'low', fps: 12, speed: 1, snapshots: [{ id: 'one', capturedAt: 100, elapsedMs: 100, width: 1, height: 1, data }] }
+
+    await expect(exportTimelapseFile(api, document, 'png', { mode: 'duration', durationSeconds: 1, scalePercent: 100 }, {
+      onConflict: async () => 'rename'
+    })).resolves.toBe('已导出 1 张 PNG 图片。')
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/process-001 (1).png', expect.any(Uint8Array))
+  })
 })
 
 describe('sprite sheet file export service', () => {
@@ -168,5 +210,16 @@ describe('sprite sheet file export service', () => {
     for (const [, bytes] of writeBinaryAtomic.mock.calls) {
       expect(Array.from(bytes.subarray(1, 4))).toEqual([80, 78, 71])
     }
+  })
+
+  it('applies conflict resolution before writing the sprite sheet', async () => {
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/Hero.png')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Combined', 1, 2, 'rgba')
+    await expect(exportSpriteSheetFile(api, document, 'Hero.png', 'D:/exports', {
+      onConflict: async () => 'rename'
+    })).resolves.toBe('D:/exports/Hero (1).png')
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/Hero (1).png', expect.any(Uint8Array))
   })
 })

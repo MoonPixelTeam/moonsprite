@@ -1,4 +1,4 @@
-import type { AnimationCel, AnimationCelSurface, AnimationFrame, AnimationGroupMask, AnimationTimeline, FreeTileCelData, LayerMask, PaletteEntry, RasterLayer, SelectionMask, SpriteDocument, TextCelData, TilemapCelData } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationFrame, AnimationGroupMask, AnimationLayerMask, AnimationTimeline, FreeTileCelData, LayerMask, PaletteEntry, RasterLayer, SelectionMask, SpriteDocument, TextCelData, TilemapCelData } from '@shared/types'
 import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document'
 import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
@@ -15,6 +15,7 @@ export const MAX_ANIMATION_FRAME_DURATION = 60_000
 export const createDefaultAnimationTimeline = (): AnimationTimeline => ({
   frames: [{ id: 'frame-1', duration: DEFAULT_FRAME_DURATION }],
   cels: [],
+  layerMasks: [],
   groupMasks: [],
   loopSections: [],
   activeFrameId: 'frame-1',
@@ -30,7 +31,7 @@ const normalizeFrame = (value: unknown, index: number, seen: Set<string>): Anima
   const duration = Number.isFinite(candidate.duration)
     ? Math.max(1, Math.min(MAX_ANIMATION_FRAME_DURATION, Math.trunc(Number(candidate.duration))))
     : DEFAULT_FRAME_DURATION
-  return { id, duration }
+  return { id, duration, ...(candidate.disabled === true ? { disabled: true } : {}) }
 }
 
 const normalizeSurface = (value: unknown): AnimationCelSurface | undefined => {
@@ -109,6 +110,35 @@ const normalizeGroupMasks = (value: unknown, frameIds: Set<string>): AnimationGr
   return result
 }
 
+const normalizeLayerMasks = (value: unknown, legacyCels: unknown, frameIds: Set<string>): AnimationLayerMask[] => {
+  const entries = Array.isArray(value) ? value : []
+  const legacyEntries = Array.isArray(legacyCels)
+    ? legacyCels.flatMap((item) => {
+        if (!item || typeof item !== 'object') return []
+        const candidate = item as Partial<AnimationCel> & { mask?: unknown }
+        return typeof candidate.layerId === 'string' && typeof candidate.frameId === 'string' && candidate.mask
+          ? [{ layerId: candidate.layerId, frameId: candidate.frameId, mask: candidate.mask }]
+          : []
+      })
+    : []
+  const result: AnimationLayerMask[] = []
+  const slots = new Set<string>()
+  const maskIds = new Set<string>()
+  for (const item of [...entries, ...legacyEntries]) {
+    if (!item || typeof item !== 'object') continue
+    const candidate = item as Partial<AnimationLayerMask>
+    if (typeof candidate.layerId !== 'string' || !candidate.layerId || typeof candidate.frameId !== 'string' || !frameIds.has(candidate.frameId)) continue
+    const slot = `${candidate.layerId}\u0000${candidate.frameId}`
+    if (slots.has(slot)) continue
+    const mask = normalizeLayerMask(candidate.mask, candidate.layerId)
+    if (!mask || maskIds.has(mask.id)) continue
+    slots.add(slot)
+    maskIds.add(mask.id)
+    result.push({ layerId: candidate.layerId, frameId: candidate.frameId, mask })
+  }
+  return result
+}
+
 const cloneLayerMaskForCel = (mask: LayerMask, ownerId: string, id = mask.id): LayerMask => ({
   ...mask,
   id,
@@ -150,6 +180,12 @@ export const cloneAnimationGroupMask = (entry: AnimationGroupMask, groupId = ent
   mask: { ...entry.mask, id: maskId, ownerKind: 'group', ownerId: groupId, linkedMaskId: maskId === entry.mask.id ? entry.mask.linkedMaskId : null, pixels: new Uint8ClampedArray(entry.mask.pixels) }
 })
 
+export const cloneAnimationLayerMask = (entry: AnimationLayerMask, layerId = entry.layerId, frameId = entry.frameId, maskId = entry.mask.id): AnimationLayerMask => ({
+  layerId,
+  frameId,
+  mask: { ...entry.mask, id: maskId, ownerKind: 'cel', ownerId: layerId, linkedMaskId: maskId === entry.mask.id ? entry.mask.linkedMaskId : null, pixels: new Uint8ClampedArray(entry.mask.pixels) }
+})
+
 const normalizeCels = (value: unknown, frameIds: Set<string>): AnimationCel[] => {
   if (!Array.isArray(value)) return []
   const result: AnimationCel[] = []
@@ -165,7 +201,6 @@ const normalizeCels = (value: unknown, frameIds: Set<string>): AnimationCel[] =>
     ids.add(candidate.id)
     slots.add(slot)
     const surface = normalizeSurface(candidate.surface)
-    const mask = normalizeLayerMask(candidate.mask, candidate.id)
     const text = candidate.text && typeof candidate.text === 'object' ? normalizeTextCelData(candidate.text) : undefined
     const tilemap = candidate.tilemap && typeof candidate.tilemap === 'object' ? normalizeTilemapCelData(candidate.tilemap) ?? undefined : undefined
     const freeTiles = candidate.freeTiles && typeof candidate.freeTiles === 'object' ? normalizeFreeTileCelData(candidate.freeTiles) ?? undefined : undefined
@@ -178,8 +213,7 @@ const normalizeCels = (value: unknown, frameIds: Set<string>): AnimationCel[] =>
       ...(surface ? { surface } : {}),
       ...(text ? { text } : {}),
       ...(tilemap ? { tilemap } : {}),
-      ...(freeTiles ? { freeTiles } : {}),
-      ...(mask ? { mask } : {})
+      ...(freeTiles ? { freeTiles } : {})
     })
   }
   return result
@@ -195,9 +229,11 @@ export const normalizeAnimationTimeline = (value: unknown): AnimationTimeline =>
     : []
   if (frames.length === 0) return createDefaultAnimationTimeline()
   const frameIds = new Set(frames.map((frame) => frame.id))
+  const cels = normalizeCels(candidate.cels, frameIds)
   return {
     frames,
-    cels: normalizeCels(candidate.cels, frameIds),
+    cels,
+    layerMasks: normalizeLayerMasks(candidate.layerMasks, candidate.cels, frameIds),
     groupMasks: normalizeGroupMasks(candidate.groupMasks, frameIds),
     loopSections: normalizeAnimationLoopSections(candidate.loopSections, frames),
     activeFrameId: typeof candidate.activeFrameId === 'string' && frameIds.has(candidate.activeFrameId) ? candidate.activeFrameId : frames[0].id,
@@ -571,11 +607,11 @@ export const resizeAnimationCelsAt = (
 
 export const cloneAnimationCel = (cel: AnimationCel): AnimationCel => ({
   ...cel,
+  mask: undefined,
   surface: cel.surface ? cloneAnimationCelSurface(cel.surface) : undefined,
   text: cloneAnimationText(cel.text),
   tilemap: cloneAnimationTilemap(cel.tilemap),
-  freeTiles: cloneAnimationFreeTiles(cel.freeTiles),
-  mask: cel.mask ? cloneLayerMaskForCel(cel.mask, cel.id) : undefined
+  freeTiles: cloneAnimationFreeTiles(cel.freeTiles)
 })
 
 /** Create an isolated document snapshot for read-only animation previewing. */
@@ -602,7 +638,8 @@ export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId
       ? {
           ...document.animation,
           frames: document.animation.frames.map((frame) => ({ ...frame })),
-          cels: document.animation.cels.map((cel) => ({ ...cel, text: cloneAnimationText(cel.text), tilemap: cloneAnimationTilemap(cel.tilemap), freeTiles: cloneAnimationFreeTiles(cel.freeTiles), surface: cel.surface ? shareAnimationCelSurface(cel.surface) : undefined, mask: cel.mask ? { ...cel.mask, pixels: cel.mask.pixels } : undefined })),
+          cels: document.animation.cels.map((cel) => ({ ...cel, mask: undefined, text: cloneAnimationText(cel.text), tilemap: cloneAnimationTilemap(cel.tilemap), freeTiles: cloneAnimationFreeTiles(cel.freeTiles), surface: cel.surface ? shareAnimationCelSurface(cel.surface) : undefined })),
+          layerMasks: (document.animation.layerMasks ?? []).map((entry) => ({ ...entry, mask: { ...entry.mask, pixels: entry.mask.pixels } })),
           groupMasks: (document.animation.groupMasks ?? []).map((entry) => ({ ...entry, mask: { ...entry.mask, pixels: entry.mask.pixels } }))
         }
       : undefined
@@ -621,6 +658,26 @@ const applySurfaceToLayer = (layer: RasterLayer, surface: AnimationCelSurface, o
   assignRasterStorage(layer, surface)
   if (Number.isFinite(opacity)) layer.opacity = Math.max(0, Math.min(1, opacity!))
   setLayerStorageOrigin(layer, { x: surface.storageOriginX ?? 0, y: surface.storageOriginY ?? 0 })
+}
+
+/**
+ * Clear the currently displayed layer surface without changing its geometry
+ * or allocating an animation cel. Selection-only switches can target sparse
+ * frame slots, so the previous frame's pixels must not remain visible while
+ * the slot itself stays absent from the timeline.
+ */
+const clearLayerSurface = (layer: RasterLayer): void => {
+  const length = Math.max(1, layer.width * layer.height * (layer.format === 'rgba' ? 4 : 1))
+  // Reuse an already materialized buffer where possible. Assigning a fresh
+  // typed array for runtime-backed or malformed storage avoids forcing a
+  // large lazy raster to materialize just to clear it, and the runtime-raster
+  // setter drops the stale compressed backing store.
+  if (!layer.runtimeRaster && layer.pixels.length === length) {
+    layer.pixels.fill(0)
+    return
+  }
+  layer.pixels = layer.format === 'rgba' ? new Uint8ClampedArray(length) : new Uint32Array(length)
+  delete layer.runtimeRaster
 }
 
 const celsByLayerForFrame = (timeline: AnimationTimeline, frameId: string): Map<string, AnimationCel> => {
@@ -662,6 +719,7 @@ const applyFrameSurfaces = (document: SpriteDocument, timeline: AnimationTimelin
   for (const layer of document.layers) {
     const cel = lookup.resolve(activeCels.get(layer.id) ?? null)
     if (cel?.surface) applySurfaceToLayer(layer, cel.surface, cel.opacity)
+    else clearLayerSurface(layer)
   }
 }
 
@@ -692,11 +750,6 @@ const normalizeAnimationCelLinks = (timeline: AnimationTimeline): void => {
     cel.text = current.text
     cel.tilemap = current.tilemap
     cel.freeTiles = current.freeTiles
-    if (!current.mask && cel.mask) current.mask = cloneLayerMaskForCel(cel.mask, current.id, `mask-${current.id}`)
-    if (current.mask) {
-      if (!cel.mask) cel.mask = cloneLayerMaskForCel(current.mask, cel.id, `mask-${cel.id}`)
-      cel.mask.linkedMaskId = current.mask.id
-    } else delete cel.mask
   }
 }
 
@@ -821,7 +874,7 @@ export const detachLinkedLayerContent = (document: SpriteDocument, layerId: stri
 }
 
 const normalizeAnimationMaskLinks = (timeline: AnimationTimeline): void => {
-  const masks = [...timeline.cels.flatMap((cel) => cel.mask ? [cel.mask] : []), ...(timeline.groupMasks ?? []).map((entry) => entry.mask)]
+  const masks = [...(timeline.layerMasks ?? []).map((entry) => entry.mask), ...(timeline.groupMasks ?? []).map((entry) => entry.mask)]
   const byId = new Map(masks.map((mask) => [mask.id, mask]))
   for (const mask of masks) {
     if (!mask.linkedMaskId) continue
@@ -850,6 +903,7 @@ export const ensureAnimationDocument = (
   const layers = new Map(document.layers.map((layer) => [layer.id, layer]))
   const groups = new Set(document.groups.map((group) => group.id))
   timeline.cels = timeline.cels.filter((cel) => frameIds.has(cel.frameId) && layers.has(cel.layerId))
+  timeline.layerMasks = (timeline.layerMasks ?? []).filter((entry) => frameIds.has(entry.frameId) && layers.has(entry.layerId))
   timeline.groupMasks = (timeline.groupMasks ?? []).filter((entry) => frameIds.has(entry.frameId) && groups.has(entry.groupId))
   const celsBySlot = new Map(timeline.cels.map((cel) => [celSlotKey(cel.layerId, cel.frameId), cel]))
   const tilemapTemplateByLayer = new Map<string, TilemapCelData>()
@@ -917,25 +971,19 @@ export const connectAnimationCels = (document: SpriteDocument, celIds: readonly 
     const firstContent = cels.find((cel) => animationCelHasContent(resolveAnimationCel(timeline, cel), document.palette))
     if (!firstContent) continue
     const source = resolveAnimationCel(timeline, firstContent) ?? firstContent
-    const sourceMask = source.mask ?? cels.map((cel) => animationMaskAt(timeline, cel.layerId, cel.frameId)).find((mask): mask is LayerMask => Boolean(mask))
-    if (!source.mask && sourceMask) source.mask = cloneLayerMaskForCel(sourceMask, source.id, `mask-${source.id}`)
     for (const cel of cels) {
       if (cel.id === source.id) {
         if (cel.linkedCelId) changed = true
         cel.linkedCelId = null
         continue
       }
-      if (cel.linkedCelId !== source.id || cel.surface !== source.surface || cel.opacity !== source.opacity || cel.mask?.linkedMaskId !== source.mask?.id) changed = true
+      if (cel.linkedCelId !== source.id || cel.surface !== source.surface || cel.opacity !== source.opacity) changed = true
       cel.linkedCelId = source.id
       cel.surface = source.surface
       cel.opacity = source.opacity
       cel.text = source.text
       cel.tilemap = source.tilemap
       cel.freeTiles = source.freeTiles
-      if (source.mask) {
-        if (!cel.mask) cel.mask = cloneLayerMaskForCel(source.mask, cel.id, `mask-${cel.id}`)
-        cel.mask.linkedMaskId = source.mask.id
-      } else delete cel.mask
     }
   }
   normalizeAnimationCelLinks(timeline)
@@ -955,22 +1003,104 @@ export const linkAnimationFrameCels = (document: SpriteDocument, sourceFrameId: 
     const target = lookup.at(layerId, targetFrameId)
     const source = lookup.resolve(sourceSlot) ?? sourceSlot
     if (!source || !target || source.id === target.id || !animationCelHasContent(source, document.palette)) continue
-    const sourceMask = source.mask ?? animationMaskAt(timeline, layerId, sourceFrameId)
-    if (!source.mask && sourceMask) source.mask = cloneLayerMaskForCel(sourceMask, source.id, `mask-${source.id}`)
     target.linkedCelId = source.id
     target.surface = source.surface
     target.opacity = source.opacity
     target.text = source.text
     target.tilemap = source.tilemap
     target.freeTiles = source.freeTiles
-    if (source.mask) {
-      if (!target.mask) target.mask = cloneLayerMaskForCel(source.mask, target.id, `mask-${target.id}`)
-      target.mask.linkedMaskId = source.mask.id
-    } else delete target.mask
     changed = true
   }
   normalizeAnimationCelLinks(timeline)
   applyFrameSurfaces(document, timeline)
+  return changed
+}
+
+/** Inherit the previous frame's cel link for opted-in raster layers. */
+export const inheritAnimationFrameCelLinks = (
+  document: SpriteDocument,
+  sourceFrameId: string,
+  targetFrameId: string,
+  layerIds: readonly string[] = document.layers.map((layer) => layer.id)
+): boolean => {
+  const timeline = ensureAnimationDocument(document)
+  if (sourceFrameId === targetFrameId) return false
+  syncFrameSurfaces(document, timeline)
+  const lookup = createAnimationCelLookup(timeline)
+  let changed = false
+  for (const layerId of new Set(layerIds)) {
+    const layer = document.layers.find((candidate) => candidate.id === layerId)
+    if (!layer?.autoLinkAnimationCels) continue
+    const sourceSlot = lookup.at(layerId, sourceFrameId)
+    const target = lookup.at(layerId, targetFrameId)
+    if (!sourceSlot || !target) continue
+    // A source cel may be independent (the common first-frame case) or
+    // already linked to an earlier cel. Empty independent cels remain empty;
+    // only visible content starts a new canonical link chain.
+    if (!sourceSlot.linkedCelId && !animationCelHasContent(sourceSlot, document.palette)) continue
+    const source = lookup.resolve(sourceSlot) ?? sourceSlot
+    if (!source || source.id === target.id) continue
+    if (target.linkedCelId !== source.id || target.surface !== source.surface || target.opacity !== source.opacity) changed = true
+    target.linkedCelId = source.id
+    target.surface = source.surface
+    target.opacity = source.opacity
+    target.text = source.text
+    target.tilemap = source.tilemap
+    target.freeTiles = source.freeTiles
+  }
+  normalizeAnimationCelLinks(timeline)
+  applyFrameSurfaces(document, timeline)
+  return changed
+}
+
+/** Inherit per-mask links for ordinary layer masks when their owner opts in. */
+export const inheritAnimationFrameMaskLinks = (document: SpriteDocument, sourceFrameId: string, targetFrameId: string): boolean => {
+  const timeline = ensureAnimationDocument(document)
+  if (sourceFrameId === targetFrameId) return false
+  syncFrameSurfaces(document, timeline)
+  const celLookup = createAnimationCelLookup(timeline)
+  const maskBySlot = new Map<string, LayerMask>()
+  const maskById = new Map<string, LayerMask>()
+  for (const entry of timeline.layerMasks ?? []) {
+    maskBySlot.set(`${entry.layerId}:${entry.frameId}`, entry.mask)
+    maskById.set(entry.mask.id, entry.mask)
+  }
+  for (const entry of timeline.groupMasks ?? []) {
+    maskBySlot.set(`${entry.groupId}:${entry.frameId}`, entry.mask)
+    maskById.set(entry.mask.id, entry.mask)
+  }
+  const resolveMask = (mask: LayerMask): LayerMask => {
+    const visited = new Set<string>()
+    let current = mask
+    while (current.linkedMaskId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const linked = maskById.get(current.linkedMaskId)
+      if (!linked) break
+      current = linked
+    }
+    return current
+  }
+  let changed = false
+  for (const layer of document.layers) {
+    const sourceCel = celLookup.at(layer.id, sourceFrameId)
+    const targetCel = celLookup.at(layer.id, targetFrameId)
+    const sourceMask = maskBySlot.get(`${layer.id}:${sourceFrameId}`) ?? null
+    if (!sourceCel || !targetCel || !sourceMask || sourceMask.autoLinkAnimationCels !== true) continue
+    const targetMask = maskBySlot.get(`${layer.id}:${targetFrameId}`) ?? null
+    const maskHasContent = sourceMask.pixels.some((value, index) => index % 4 === 3 && value > 0)
+    if (!maskHasContent && !sourceMask.linkedMaskId) continue
+    const rootMask = resolveMask(sourceMask)
+    if (!targetMask) {
+      const mask = cloneLayerMaskForCel(rootMask, targetCel.layerId, createId('mask'))
+      mask.linkedMaskId = rootMask.id
+      timeline.layerMasks ??= []
+      timeline.layerMasks.push({ layerId: targetCel.layerId, frameId: targetCel.frameId, mask })
+      changed = true
+    } else if (targetMask.linkedMaskId !== rootMask.id) {
+      targetMask.linkedMaskId = rootMask.id
+      changed = true
+    }
+  }
   return changed
 }
 
@@ -994,13 +1124,11 @@ export const disconnectAnimationCels = (document: SpriteDocument, celIds: readon
     if ((!selected.has(cel.id) && !selectedThroughSource) || !cel.linkedCelId) continue
     const source = resolveAnimationCel(timeline, cel)
     if (!source) continue
-    const resolvedMask = animationMaskAt(timeline, cel.layerId, cel.frameId)
     cel.surface = source.surface ? cloneAnimationCelSurface(source.surface) : undefined
     cel.opacity = source.opacity
     cel.text = cloneAnimationText(source.text)
     cel.tilemap = cloneAnimationTilemap(source.tilemap)
     cel.freeTiles = cloneAnimationFreeTiles(source.freeTiles)
-    cel.mask = resolvedMask ? cloneLayerMaskForCel(resolvedMask, cel.id, `mask-${cel.id}`) : undefined
     cel.linkedCelId = null
     changed = true
   }
@@ -1101,10 +1229,28 @@ export const setAnimationCelOffsets = (document: SpriteDocument, frameId: string
   setAnimationCelOffsetsForKeys(document, Object.fromEntries(Object.entries(offsets).map(([layerId, offset]) => [animationCelKey(layerId, frameId), offset])))
 }
 
-export const activateAnimationFrame = (document: SpriteDocument, frameId: string): boolean => {
-  const timeline = ensureAnimationDocument(document)
+export const activateAnimationFrame = (document: SpriteDocument, frameId: string, materialize = true): boolean => {
+  const timeline = materialize ? ensureAnimationDocument(document) : document.animation
+  if (!timeline) return false
   if (timeline.activeFrameId === frameId) return true
   if (!timeline.frames.some((frame) => frame.id === frameId)) return false
+  if (!materialize) {
+    const lookup = createAnimationCelLookup(timeline)
+    // Persist the currently displayed layer pixels only into cels that
+    // already exist and already own a surface. Sparse empty slots remain
+    // untouched; selection must not allocate their raster storage.
+    for (const layer of document.layers) {
+      const cel = lookup.at(layer.id, timeline.activeFrameId)
+      const source = lookup.resolve(cel)
+      if (!source?.surface) continue
+      syncAnimationLayerSurface(timeline, lookup, layer)
+    }
+    timeline.activeFrameId = frameId
+    // Apply only cels that already exist. Sparse/empty slots stay absent and
+    // are never allocated by a selection-only frame switch.
+    applyFrameSurfaces(document, timeline)
+    return true
+  }
   syncFrameSurfaces(document, timeline)
   timeline.activeFrameId = frameId
   applyFrameSurfaces(document, timeline)
@@ -1141,6 +1287,8 @@ export const addBlankAnimationFrame = (document: SpriteDocument): string => {
       ...(freeTiles ? { freeTiles } : {})
     })
   }
+  inheritAnimationFrameCelLinks(document, sourceFrameId, id)
+  inheritAnimationFrameMaskLinks(document, sourceFrameId, id)
   timeline.activeFrameId = id
   applyFrameSurfaces(document, timeline)
   return id
@@ -1153,7 +1301,12 @@ export const duplicateAnimationFrame = (document: SpriteDocument): string => {
   const previousFrames = [...timeline.frames]
   const sourceIndex = Math.max(0, timeline.frames.findIndex((frame) => frame.id === sourceId))
   const id = uniqueAnimationId(timeline, 'frame')
-  timeline.frames.splice(sourceIndex + 1, 0, { id, duration: timeline.frames[sourceIndex]?.duration ?? DEFAULT_FRAME_DURATION })
+  const sourceFrame = timeline.frames[sourceIndex]
+  timeline.frames.splice(sourceIndex + 1, 0, {
+    id,
+    duration: sourceFrame?.duration ?? DEFAULT_FRAME_DURATION,
+    ...(sourceFrame?.disabled === true ? { disabled: true } : {})
+  })
   timeline.loopSections = reconcileAnimationLoopSectionsAfterFrameInsertion(timeline.loopSections, previousFrames, sourceId, id)
   const sourceCels = celsByLayerForFrame(timeline, sourceId)
   const nextCelId = createAnimationIdAllocator(timeline, 'cel')
@@ -1162,12 +1315,16 @@ export const duplicateAnimationFrame = (document: SpriteDocument): string => {
     const resolvedSourceCel = resolveAnimationCel(timeline, sourceCel ?? null)
     const source = resolvedSourceCel?.surface ?? blankSurfaceFromLayer(layer)
     const celId = nextCelId()
-    const sourceMask = animationMaskAt(timeline, layer.id, sourceId)
-    timeline.cels.push({ id: celId, layerId: layer.id, frameId: id, opacity: resolvedSourceCel?.opacity ?? layer.opacity, surface: cloneAnimationCelSurface(source), tilemap: cloneAnimationTilemap(resolvedSourceCel?.tilemap), freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles), mask: sourceMask ? cloneLayerMaskForCel(sourceMask, celId, `mask-${celId}`) : undefined })
+    timeline.cels.push({ id: celId, layerId: layer.id, frameId: id, opacity: resolvedSourceCel?.opacity ?? layer.opacity, surface: cloneAnimationCelSurface(source), tilemap: cloneAnimationTilemap(resolvedSourceCel?.tilemap), freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles) })
+  }
+  for (const entry of (timeline.layerMasks ?? []).filter((candidate) => candidate.frameId === sourceId)) {
+    timeline.layerMasks!.push(cloneAnimationLayerMask(entry, entry.layerId, id, createId('mask')))
   }
   for (const entry of (timeline.groupMasks ?? []).filter((candidate) => candidate.frameId === sourceId)) {
     timeline.groupMasks!.push(cloneAnimationGroupMask(entry, entry.groupId, id, createId('mask')))
   }
+  inheritAnimationFrameCelLinks(document, sourceId, id)
+  inheritAnimationFrameMaskLinks(document, sourceId, id)
   timeline.activeFrameId = id
   applyFrameSurfaces(document, timeline)
   return id
@@ -1182,6 +1339,7 @@ export const deleteAnimationFrame = (document: SpriteDocument, frameId = documen
   const previousFrames = [...timeline.frames]
   timeline.frames.splice(index, 1)
   timeline.cels = timeline.cels.filter((cel) => cel.frameId !== frameId)
+  timeline.layerMasks = (timeline.layerMasks ?? []).filter((entry) => entry.frameId !== frameId)
   timeline.groupMasks = (timeline.groupMasks ?? []).filter((entry) => entry.frameId !== frameId)
   timeline.loopSections = reconcileAnimationLoopSectionsAfterFrameDeletion(timeline.loopSections, previousFrames, timeline.frames, frameId)
   if (timeline.activeFrameId === frameId) {
@@ -1202,11 +1360,16 @@ export const setAnimationLoop = (document: SpriteDocument, loop: boolean): void 
   ensureAnimationDocument(document).loop = loop
 }
 
-export const nextAnimationFrameId = (timeline: AnimationTimeline, frameId: string): string => {
+export const firstPlayableAnimationFrameId = (timeline: Pick<AnimationTimeline, 'frames'>): string | null =>
+  timeline.frames.find((frame) => frame.disabled !== true)?.id ?? null
+
+export const nextAnimationFrameId = (timeline: AnimationTimeline, frameId: string): string | null => {
   const index = timeline.frames.findIndex((frame) => frame.id === frameId)
-  if (index < 0) return timeline.frames[0]?.id ?? frameId
-  if (index + 1 < timeline.frames.length) return timeline.frames[index + 1].id
-  return timeline.loop ? timeline.frames[0].id : frameId
+  if (index < 0) return firstPlayableAnimationFrameId(timeline)
+  const next = timeline.frames.slice(index + 1).find((frame) => frame.disabled !== true)
+  if (next) return next.id
+  if (timeline.loop) return firstPlayableAnimationFrameId(timeline)
+  return timeline.frames[index]?.disabled === true ? null : frameId
 }
 
 export const cloneAnimationCelsForLayer = (document: SpriteDocument, sourceLayerId: string, targetLayer: RasterLayer): void => {
@@ -1227,9 +1390,11 @@ export const cloneAnimationCelsForLayer = (document: SpriteDocument, sourceLayer
       surface: source ? cloneAnimationCelSurface(source) : blankSurfaceFromLayer(targetLayer),
       text: cloneAnimationText(resolvedSourceCel?.text),
       tilemap: cloneAnimationTilemap(resolvedSourceCel?.tilemap),
-      freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles),
-      mask: animationMaskAt(timeline, sourceLayerId, frame.id) ? cloneLayerMaskForCel(animationMaskAt(timeline, sourceLayerId, frame.id)!, celId, `mask-${celId}`) : undefined
+      freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles)
     })
+  }
+  for (const entry of (timeline.layerMasks ?? []).filter((candidate) => candidate.layerId === sourceLayerId)) {
+    timeline.layerMasks!.push(cloneAnimationLayerMask(entry, targetLayer.id, entry.frameId, createId('mask')))
   }
   if (targetLayer.linkedContentId) synchronizeLinkedLayerGroupContentsForTimeline(document, timeline, targetLayer.linkedContentId, sourceLayerId, timeline.activeFrameId)
   const active = animationCelAt(timeline, targetLayer.id, timeline.activeFrameId)

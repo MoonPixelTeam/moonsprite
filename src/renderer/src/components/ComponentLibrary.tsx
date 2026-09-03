@@ -24,6 +24,8 @@ import { SettingsSection } from './SettingsSection'
 import { SettingsSectionHeader } from './SettingsSectionHeader'
 import { SettingsNavigation } from './SettingsNavigation'
 import { LivePreviewToggle } from './LivePreviewToggle'
+import { PixelAutoLinkIcon } from './PixelAutoLinkIcon'
+import { PixelPressureIcon } from './PixelPressureIcon'
 import { OutlineStrokeControls } from './OutlineStrokeControls'
 import { TilesetTileThumbnail } from './TilesetTileThumbnail'
 import { BrushDynamicsSettingsPanel } from './app/EditorToolOptions'
@@ -160,6 +162,8 @@ export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
   { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: '.primary-button / .quiet-button / .danger-button', tags: ['操作', '状态'] },
   { id: 'icon-button', name: '图标按钮', category: 'controls', description: '工具栏和面板标题中的方形图标操作。', source: '.icon-button', tags: ['图标', '工具栏'] },
   { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '界面状态与操作使用的 5×5、6×6 或 11×11 像素图标，以整数比例显示。', source: 'PixelUtilityIcon', tags: ['图标', '状态', '操作'] },
+  { id: 'pixel-auto-link-icon', name: '动画自动链接图标', category: 'editor', description: '动画时间轴自动链接开关使用的 11×11 像素图标，保留原稿半透明边缘。', source: 'PixelAutoLinkIcon / assets/pixel-icons/animation-auto-link-*.svg', tags: ['图标', '状态'] },
+  { id: 'pixel-pressure-icon', name: '压感图标', category: 'editor', description: '压感工具属性按钮使用的原稿 11×11 像素图标，保留半透明边缘。', source: 'PixelPressureIcon / assets/pixel-icons/pressure-dynamics.svg', tags: ['图标', '工具', '状态'] },
   { id: 'tool-icons', name: '工具图标', category: 'editor', description: '工具、选区、形状、填充、渐变和不同尺寸的像素工具图标。', source: 'editor-tools.tsx / PixelAssetIcon', tags: ['图标', '工具', '工具栏'] },
   { id: 'pointer-icons', name: '指针图标', category: 'editor', description: '画布、选区、缩放、旋转和调整操作使用的像素指针。', source: 'platform/cursor-theme.ts', tags: ['图标', '工具'] },
   { id: 'delete-icon-button', name: '删除图标按钮', category: 'controls', description: '用于删除预设或列表项目的统一危险图标按钮，提供紧凑、常规和禁用状态。', source: 'DeleteIconButton', tags: ['删除', '危险', '图标'] },
@@ -340,6 +344,22 @@ function PixelUtilityIconPreview({ locale }: { locale: AppLocale }) {
   const [visible, setVisible] = useState(true)
   const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
   return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button></div>
+}
+
+function PixelAutoLinkIconPreview() {
+  return <div className="component-preview-row">
+    <span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link disabled" title="Auto-link disabled"><PixelAutoLinkIcon enabled={false} /></span>
+    <span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link enabled" title="Auto-link enabled"><PixelAutoLinkIcon enabled /></span>
+  </div>
+}
+
+function PixelPressureIconPreview({ locale }: { locale: AppLocale }) {
+  const label = componentText(locale, 'toolOptions.brushDynamics')
+  return <div className="component-preview-row">
+    <button type="button" className="icon-button" title={label} aria-label={label}><PixelPressureIcon /></button>
+    <button type="button" className="icon-button selected" title={label} aria-label={label} aria-pressed="true"><PixelPressureIcon /></button>
+    <button type="button" className="icon-button" title={componentText(locale, 'componentLibrary.preview.disabled')} aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><PixelPressureIcon /></button>
+  </div>
 }
 
 function ToolIconPreview({ locale }: { locale: AppLocale }) {
@@ -553,6 +573,8 @@ const previewRenderers: Record<string, (props: { locale: AppLocale }) => ReactEl
   buttons: ButtonsPreview,
   'icon-button': IconButtonPreview,
   'pixel-utility-icon': PixelUtilityIconPreview,
+  'pixel-auto-link-icon': PixelAutoLinkIconPreview,
+  'pixel-pressure-icon': PixelPressureIconPreview,
   'tool-icons': ToolIconPreview,
   'pointer-icons': PointerIconPreview,
   'delete-icon-button': DeleteIconButtonPreview,

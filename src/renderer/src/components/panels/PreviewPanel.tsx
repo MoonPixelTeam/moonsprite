@@ -5,7 +5,7 @@ import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import type { DockDragProps } from '@/components/workspace-panel-types'
-import { cloneDocumentForAnimationFrame, ensureAnimationDocument, nextAnimationFrameId } from '@/core/animation'
+import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId } from '@/core/animation-loop-sections'
 import { anchoredPreviewPan, followPreviewPosition, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
@@ -216,9 +216,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       ? advanceAnimationLoopSectionPlayback(timeline, { ...loopSection, repeatCount: null }, previewFrameId, previewLoopIteration)
       : null
     const loopAllFrames = previewPlaybackMode !== 'once'
-    const nextFrameId = loopStep?.frameId ?? nextAnimationFrameId({ ...timeline, loop: loopAllFrames }, previewFrameId)
+    const nextFrameId = loopSection
+      ? loopStep?.frameId ?? null
+      : nextAnimationFrameId({ ...timeline, loop: loopAllFrames }, previewFrameId)
     const timer = window.setTimeout(() => {
-      if (!loopSection && !loopAllFrames && nextFrameId === previewFrameId) {
+      if (!nextFrameId || !loopSection && !loopAllFrames && nextFrameId === previewFrameId) {
         const returnFrameId = previewReturnToStart ? previewStartFrameId : previewFrameId
         setPreviewPlaying(false)
         setPreviewStartFrameId(null)
@@ -234,13 +236,26 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const setPreviewPlayingState = (playing: boolean): void => {
     if (playing) {
       const startFrameId = previewFrameId
+      const firstPlayableFrameId = firstPlayableAnimationFrameId(timeline)
+      if (!firstPlayableFrameId) {
+        setPreviewPlaying(false)
+        return
+      }
       setPreviewStartFrameId(startFrameId)
       setPreviewLoopSectionId(null)
       setPreviewLoopIteration(0)
       const loopSection = previewPlaybackMode === 'tag' ? animationLoopSectionAtFrame(timeline, startFrameId) : null
       const targetFrameId = loopSection
         ? animationLoopSectionStartFrameId(timeline, loopSection)
-        : previewPlaybackMode === 'once' ? timeline.frames[0]?.id ?? startFrameId : startFrameId
+        : previewPlaybackMode === 'once'
+          ? firstPlayableFrameId
+          : timeline.frames.find((frame) => frame.id === startFrameId)?.disabled === true
+            ? nextAnimationFrameId({ ...timeline, loop: true }, startFrameId)
+            : startFrameId
+      if (!targetFrameId) {
+        setPreviewPlaying(false)
+        return
+      }
       if (loopSection) setPreviewLoopSectionId(loopSection.id)
       if (targetFrameId && targetFrameId !== startFrameId) setPreviewFrameId(targetFrameId)
     } else {
@@ -259,7 +274,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (!previewPlaying || mode !== 'tag') return
     const loopSection = animationLoopSectionAtFrame(timeline, previewFrameId)
     const firstFrameId = loopSection ? animationLoopSectionStartFrameId(timeline, loopSection) : null
-    if (!loopSection || !firstFrameId) return
+    if (!loopSection || !firstFrameId) {
+      setPreviewPlaying(false)
+      return
+    }
     setPreviewLoopSectionId(loopSection.id)
     if (firstFrameId !== previewFrameId) setPreviewFrameId(firstFrameId)
   }

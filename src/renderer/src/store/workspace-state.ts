@@ -124,7 +124,7 @@ export interface WorkspaceSessionCommands {
   addSession(document: SpriteDocument, options?: { recoveryOriginId?: string }): void
   reorderSessions(documentIds: string[]): void
   setActive(id: string): void
-  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata'): void
+  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata', normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
 }
 
 export interface WorkspaceSliceCommands {
@@ -234,7 +234,7 @@ export interface WorkspaceViewSelectionCommands {
   commitTextBoxTransform(bounds: SelectionRect): void
   cancelTextBoxTransform(): void
   setSelectionKind(kind: SelectionKind): void
-  commitSelectionChange(before: SelectionMask | null, after: SelectionMask | null, label: string): void
+  commitSelectionChange(before: SelectionMask | null, after: SelectionMask | null, label: string, options?: { resetTimelineSelection?: boolean }): void
   commitFloatingSelectionBoxMove(before: SelectionMask, after: SelectionMask, beforePivot: SelectionPivot | null, afterPivot: SelectionPivot | null): void
   commitTilemapSelectionMove(edit: TilemapEdit, before: SelectionMask | null, after: SelectionMask | null, label: string): void
   setSelectionMode(mode: SelectionMode): void
@@ -274,7 +274,7 @@ export interface WorkspaceViewSelectionCommands {
   updateFloatingPastePreview(edit: PixelEdit | null, target: SelectionMask, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   moveActiveSelection(deltaX: number, deltaY: number): void
   centerActiveContent(axis: 'both' | 'horizontal' | 'vertical'): void
-  moveActiveSelectionWithSelectionHistory(deltaX: number, deltaY: number): void
+  moveActiveSelectionWithSelectionHistory(deltaX: number, deltaY: number, allowOutsideCanvas?: boolean): void
   flipActiveSelection(axis: 'horizontal' | 'vertical'): void
   transformActiveSelection(before: SelectionMask, after: SelectionMask, angle?: number): void
   commitSelectionTransform(edit: PixelEdit | null, before: SelectionMask, after: SelectionMask, label: string): void
@@ -384,6 +384,7 @@ export interface WorkspaceAnimationCommands {
   selectAnimationFrame(frameId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationMaskCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
+  selectAnimationMaskRow(ownerKind: 'layer' | 'group', ownerId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCelContent(key: string, additive?: boolean): void
   clearAnimationSelection(): void
   setAnimationCelOpacity(layerId: string, frameId: string, opacity: number): void
@@ -399,6 +400,8 @@ export interface WorkspaceAnimationCommands {
   disconnectSelectedAnimationMasks(): void
   copySelectedAnimationFrames(): void
   pasteAnimationFrames(): void
+  setSelectedAnimationFramesDisabled(disabled: boolean): void
+  toggleSelectedAnimationFramesDisabled(): void
   moveSelectedAnimationFrames(targetFrameId: string, insertAfter: boolean): void
   deleteSelectedAnimationItems(): void
   setAnimationPlaying(playing: boolean, completed?: boolean): void
@@ -414,7 +417,7 @@ export interface WorkspaceAnimationCommands {
   addAnimationFrame(): void
   addLinkedAnimationFrame(): void
   duplicateAnimationFrame(): void
-  deleteAnimationFrame(): void
+  deleteAnimationFrame(normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
   setActiveAnimationFrameDuration(duration: number): void
   setAnimationLoop(loop: boolean): void
 }
@@ -426,6 +429,7 @@ export interface WorkspaceLayerCommands {
   convertLayerToTilemap(layerId: string, options: TilemapLayerOptions): Promise<void>
   createBackgroundLayer(pattern: BackgroundPatternId | BackgroundPatternTile): Promise<void>
   setLayerBackground(layerId: string, enabled: boolean): void
+  setLayerAutoLinkAnimationCels(layerId: string, enabled: boolean): void
   createTextLayer(data: TextCelData, x: number, y: number): void
   beginTextLayerDraft(data: TextCelData, x: number, y: number): TextLayerDraftTarget | null
   updateTextLayerDraft(layerId: string, frameId: string, data: TextCelData, x?: number, y?: number): void
@@ -477,6 +481,8 @@ export interface WorkspaceLayerCommands {
   selectLayerMask(celId: string, additive?: boolean): void
   selectGroupMask(groupId: string, frameId: string, additive?: boolean): void
   toggleLayerMaskVisibility(celId: string): void
+  setLayerMaskLocked(celId: string, enabled: boolean): void
+  setLayerMaskAutoLinkAnimationCels(celId: string, enabled: boolean): void
   toggleGroupMaskVisibility(groupId: string, frameId: string): void
   setLayerMaskMoveWithOwner(celId: string, enabled: boolean): void
   setGroupMaskMoveWithOwner(groupId: string, frameId: string, enabled: boolean): void
@@ -522,6 +528,7 @@ export interface WorkspaceClipboardCommands {
   copySelectedLayersToClipboard(): void
   cutSelection(): void
   pasteSelection(): Promise<void>
+  pasteClipboard(): Promise<void>
   pasteAsNewLayer(): Promise<boolean>
   pasteAsNewDocument(): Promise<boolean>
   pasteLayerFromClipboard(): boolean

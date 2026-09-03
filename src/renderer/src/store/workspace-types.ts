@@ -2,6 +2,7 @@ import type {
   AnimationCel,
   AnimationCelSurface,
   AnimationGroupMask,
+  AnimationLayerMask,
   BrushDitherSettings,
   BrushPaintMode,
   BrushShape,
@@ -44,6 +45,27 @@ import type { BrushDynamicsSettings, BrushPressureSettings } from '@/core/pressu
 import type { TilemapDrawingMode } from '@/core/tilemap'
 import type { FreeTileDrawingMode } from '@/core/free-tile'
 import type { FreeTileSourceEditRaster } from '@/core/free-tile-edit'
+import type {
+  TimelineCellRef,
+  TimelineRowRef,
+} from '@/core/animation-timeline-identity'
+
+/** Internal typed timeline selection identities. Legacy persisted arrays remain unchanged. */
+export interface TimelineSelectionIdentity {
+  rows: ReadonlySet<string>
+  cells: ReadonlySet<string>
+  masks: ReadonlySet<string>
+  rowRefs?: ReadonlySet<TimelineRowRef>
+  cellRefs?: ReadonlySet<TimelineCellRef>
+}
+
+/** Active timeline context kept separate from explicit selection during migration. */
+export interface TimelineActiveContext {
+  row: TimelineRowRef | null
+  frameId: string | null
+  /** Mask row context is independent from the concrete mask being edited. */
+  maskEditTargetId: string | null
+}
 
 export interface CanvasResizePreview {
   width: number
@@ -81,7 +103,9 @@ export interface OutlinePreview {
 export interface AnimationFrameClipboardItem {
   frameId: string
   duration: number
+  disabled?: boolean
   cels: AnimationCel[]
+  layerMasks: AnimationLayerMask[]
   groupMasks: AnimationGroupMask[]
 }
 
@@ -260,6 +284,8 @@ export interface DocumentSession {
   selectedGroupId: string | null
   selectedGroupIds: string[]
   selectedLayerIds: string[]
+  /** True when layer/group selection was explicitly made by the user. */
+  layerSelectionExplicit: boolean
   activeLayerMaskId: string | null
   layerMaskIsolatedView: boolean
   layerMaskColorMemory?: { primary: RgbaColor; secondary: RgbaColor }
@@ -281,6 +307,7 @@ export interface DocumentSession {
   animationCellSelectionExplicit: boolean
   /** Timeline cells whose attached masks are selected in the panel. */
   selectedAnimationMaskCellKeys: string[]
+  selectedAnimationMaskRowKeys: string[]
   animationMaskCellSelectionAnchorKey: string | null
   animationCellClipboard: AnimationCel[]
   animationCellClipboardAnchorKey: string | null
@@ -289,6 +316,8 @@ export interface DocumentSession {
   animationFrameClipboard: AnimationFrameClipboardItem[]
   revision: number
   contentRevision: number
+  /** Content revision produced by a selection transform whose guides must remain visible. */
+  selectionGuidesPreservedAtContentRevision?: number
   /** Changes that require the layer/timeline panel structure to render again. */
   layersPanelRevision: number
   contentInvalidation: DocumentContentInvalidation | null

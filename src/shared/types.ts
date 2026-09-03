@@ -442,6 +442,8 @@ export interface RgbaLayer {
   name: string
   /** Stable group whose ordinary raster layers share editable pixel content. */
   linkedContentId?: string
+  /** Automatically inherit the previous frame cel's link when creating animation frames. */
+  autoLinkAnimationCels?: boolean
   /** Optional visual marker shown in the layer panel. */
   displayColor?: RgbaColor
   /** Optional user-facing note shown when hovering the layer row. */
@@ -483,6 +485,8 @@ export interface IndexedLayer {
   name: string
   /** Stable group whose ordinary raster layers share editable pixel content. */
   linkedContentId?: string
+  /** Automatically inherit the previous frame cel's link when creating animation frames. */
+  autoLinkAnimationCels?: boolean
   /** Optional visual marker shown in the layer panel. */
   displayColor?: RgbaColor
   /** Optional user-facing note shown when hovering the layer row. */
@@ -534,6 +538,13 @@ export interface AnimationGroupMask {
   mask: LayerMask
 }
 
+/** Frame-specific layer mask stored independently from the layer's cel content. */
+export interface AnimationLayerMask {
+  layerId: string
+  frameId: string
+  mask: LayerMask
+}
+
 export interface LayerGroup {
   id: string
   name: string
@@ -560,6 +571,8 @@ export interface LayerGroup {
 export interface AnimationFrame {
   id: string
   duration: number
+  /** Disabled frames remain editable in the timeline but are skipped during playback. */
+  disabled?: boolean
 }
 
 /** cel 与图层、帧的稳定关联。像素存储会在实际动画编辑器落地时加入独立数据文件。 */
@@ -601,7 +614,7 @@ export interface AnimationCel {
   tilemap?: TilemapCelData
   /** Arbitrarily positioned reusable tile instances. The surface remains the rendered cache. */
   freeTiles?: FreeTileCelData
-  /** Independent grayscale surface for this cell; transparent pixels are neutral/unpainted. */
+  /** @deprecated Legacy project input only. Runtime masks live in AnimationTimeline.layerMasks. */
   mask?: LayerMask
 }
 
@@ -620,6 +633,8 @@ export interface AnimationLoopSection {
 export interface AnimationTimeline {
   frames: AnimationFrame[]
   cels: AnimationCel[]
+  /** Frame-specific masks for ordinary layers, independent from cel content. */
+  layerMasks?: AnimationLayerMask[]
   /** Frame-specific masks attached to layer groups. */
   groupMasks?: AnimationGroupMask[]
   /** Named frame ranges that can be played independently. */

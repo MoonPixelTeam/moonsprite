@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, animationCelContentSelection, animationCelHasContent, animationCelKey, animationCelOffsetsForKeys, connectAnimationCels, createAnimationCelLookup, createDefaultAnimationTimeline, deleteAnimationFrame, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, linkAnimationFrameCels, nextAnimationFrameId, normalizeAnimationTimeline, resizeAnimationCelsAt, resolveAnimationCel, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, syncActiveAnimationFrame, syncActiveAnimationLayer, syncActiveAnimationLayers } from './animation'
+import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, animationCelContentSelection, animationCelHasContent, animationCelKey, animationCelOffsetsForKeys, connectAnimationCels, createAnimationCelLookup, createDefaultAnimationTimeline, deleteAnimationFrame, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, nextAnimationFrameId, normalizeAnimationTimeline, resizeAnimationCelsAt, resolveAnimationCel, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, syncActiveAnimationFrame, syncActiveAnimationLayer, syncActiveAnimationLayers } from './animation'
 import { animationMaskAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from './history'
 
@@ -41,6 +41,118 @@ describe('animation timeline boundary', () => {
     expect(second.surface).not.toBe(first.surface)
   })
 
+  it('inherits links only for opted-in layers when adding and duplicating frames', () => {
+    const document = createDocument('automatic frame links', 1, 1, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    const secondLayer = createLayer('Second', 1, 1, 'rgba')
+    document.layers.push(secondLayer)
+    firstLayer.autoLinkAnimationCels = true
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const secondFrame = addBlankAnimationFrame(document)
+    const firstCel = animationCelAt(timeline, firstLayer.id, firstFrame)!
+    firstCel.surface!.pixels[3] = 255
+    linkAnimationFrameCels(document, firstFrame, secondFrame, [firstLayer.id])
+
+    const thirdFrame = addBlankAnimationFrame(document)
+    const thirdFirst = animationCelAt(timeline, firstLayer.id, thirdFrame)!
+    const thirdSecond = animationCelAt(timeline, secondLayer.id, thirdFrame)!
+    expect(thirdFirst.linkedCelId).toBe(firstCel.id)
+    expect(thirdFirst.surface).toBe(firstCel.surface)
+    expect(thirdSecond.linkedCelId).toBeUndefined()
+
+    const fourthFrame = duplicateAnimationFrame(document)
+    const fourthFirst = animationCelAt(timeline, firstLayer.id, fourthFrame)!
+    expect(fourthFirst.linkedCelId).toBe(firstCel.id)
+    expect(fourthFirst.surface).toBe(firstCel.surface)
+  })
+
+  it('inherits a visible independent previous cel for opted-in layers', () => {
+    const document = createDocument('automatic frame link opt in', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.autoLinkAnimationCels = true
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const first = animationCelAt(timeline, layer.id, firstFrame)!
+    first.surface!.pixels[3] = 255
+    const secondFrame = addBlankAnimationFrame(document)
+    const second = animationCelAt(timeline, layer.id, secondFrame)!
+    expect(second.linkedCelId).toBe(first.id)
+    expect(second.surface).toBe(first.surface)
+  })
+
+  it('keeps the canonical source through consecutive additions and duplication', () => {
+    const document = createDocument('automatic consecutive frame links', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.autoLinkAnimationCels = true
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const first = animationCelAt(timeline, layer.id, firstFrame)!
+    first.surface!.pixels[3] = 255
+
+    const secondFrame = addBlankAnimationFrame(document)
+    const second = animationCelAt(timeline, layer.id, secondFrame)!
+    expect(second.linkedCelId).toBe(first.id)
+
+    const thirdFrame = addBlankAnimationFrame(document)
+    const third = animationCelAt(timeline, layer.id, thirdFrame)!
+    expect(third.linkedCelId).toBe(first.id)
+
+    const fourthFrame = duplicateAnimationFrame(document)
+    const fourth = animationCelAt(timeline, layer.id, fourthFrame)!
+    expect(fourth.linkedCelId).toBe(first.id)
+  })
+
+  it('keeps an empty independent previous cel unlinked', () => {
+    const document = createDocument('automatic empty frame link opt in', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.autoLinkAnimationCels = true
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const secondFrame = addBlankAnimationFrame(document)
+    const second = animationCelAt(timeline, layer.id, secondFrame)!
+    expect(inheritAnimationFrameCelLinks(document, firstFrame, secondFrame, [layer.id])).toBe(false)
+    expect(second.linkedCelId).toBeUndefined()
+  })
+
+  it('inherits an existing link even when the resolved source is transparent', () => {
+    const document = createDocument('automatic transparent link', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.autoLinkAnimationCels = true
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const secondFrame = addBlankAnimationFrame(document)
+    const second = animationCelAt(timeline, layer.id, secondFrame)!
+    second.linkedCelId = animationCelAt(timeline, layer.id, firstFrame)!.id
+    const thirdFrame = addBlankAnimationFrame(document)
+    const third = animationCelAt(timeline, layer.id, thirdFrame)!
+    expect(third.linkedCelId).toBe(second.linkedCelId)
+  })
+
+
+  it('inherits opted-in layer-mask links while leaving empty masks absent', () => {
+    const document = createDocument('automatic mask links', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const sourceFrame = timeline.activeFrameId
+    const sourceCel = animationCelAt(timeline, layer.id, sourceFrame)!
+    sourceCel.mask = createLayerMask(sourceCel.id, 1, 1)
+    sourceCel.mask.pixels[3] = 255
+    sourceCel.mask.autoLinkAnimationCels = true
+    const linkedFrame = addBlankAnimationFrame(document)
+    const linkedCel = animationCelAt(timeline, layer.id, linkedFrame)!
+    expect(linkedCel.mask?.linkedMaskId).toBe(sourceCel.mask.id)
+
+    const emptyDocument = createDocument('automatic empty mask links', 1, 1, 'rgba')
+    const emptyLayer = getActiveLayer(emptyDocument)
+    const emptyTimeline = ensureAnimationDocument(emptyDocument)
+    const emptyCel = animationCelAt(emptyTimeline, emptyLayer.id, emptyTimeline.activeFrameId)!
+    emptyCel.mask = createLayerMask(emptyCel.id, 1, 1)
+    emptyCel.mask.autoLinkAnimationCels = true
+    const emptyFrame = addBlankAnimationFrame(emptyDocument)
+    expect(animationCelAt(emptyTimeline, emptyLayer.id, emptyFrame)?.mask).toBeUndefined()
+  })
+
   it('keeps cel opacity independent per frame when activating frames', () => {
     const document = createDocument('cel opacity', 1, 1, 'rgba')
     const first = ensureAnimationDocument(document)
@@ -71,6 +183,26 @@ describe('animation timeline boundary', () => {
     expect(activateAnimationFrame(document, secondFrame)).toBe(true)
     expect(getActiveLayer(document).pixels[3]).toBe(0)
     expect(getActiveLayer(document).pixels[7]).toBe(255)
+  })
+
+  it('clears the displayed layer when switching to a sparse empty frame without materializing a cel', () => {
+    const document = createDocument('sparse empty frame display', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    layer.pixels.set([20, 40, 60, 255])
+    syncActiveAnimationFrame(document)
+
+    const secondFrame = addBlankAnimationFrame(document)
+    const celsBefore = timeline.cels.length
+    timeline.cels = timeline.cels.filter((cel) => cel.frameId !== secondFrame)
+
+    expect(activateAnimationFrame(document, firstFrame, false)).toBe(true)
+    expect(Array.from(compositeDocument(document))).toEqual([20, 40, 60, 255])
+    expect(activateAnimationFrame(document, secondFrame, false)).toBe(true)
+    expect(timeline.cels).toHaveLength(celsBefore - 1)
+    expect(Array.from(layer.pixels)).toEqual([0, 0, 0, 0])
+    expect(Array.from(compositeDocument(document))).toEqual([0, 0, 0, 0])
   })
 
 
@@ -130,6 +262,27 @@ describe('animation timeline boundary', () => {
     expect(deleteAnimationFrame(document, second)).toBe(true)
     expect(deleteAnimationFrame(document, 'frame-1')).toBe(false)
     expect(timeline.frames).toHaveLength(1)
+  })
+
+  it('normalizes disabled frames and skips them during playback', () => {
+    const timeline = normalizeAnimationTimeline({
+      frames: [
+        { id: 'first', duration: 100 },
+        { id: 'second', duration: 100, disabled: true },
+        { id: 'third', duration: 100 }
+      ],
+      cels: [],
+      activeFrameId: 'first',
+      loop: true
+    })
+
+    expect(timeline.frames[1]?.disabled).toBe(true)
+    expect(nextAnimationFrameId(timeline, 'first')).toBe('third')
+    expect(nextAnimationFrameId(timeline, 'third')).toBe('first')
+    timeline.frames[0]!.disabled = true
+    timeline.frames[2]!.disabled = true
+    expect(firstPlayableAnimationFrameId(timeline)).toBeNull()
+    expect(nextAnimationFrameId(timeline, 'second')).toBeNull()
   })
 
   it('undoes a pixel edit in its original frame after switching frames', () => {

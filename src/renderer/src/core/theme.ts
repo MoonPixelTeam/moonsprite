@@ -75,13 +75,13 @@ const PINK_SEEDS: ThemeSeedColors = {
   accent: '#b73575', danger: '#b92f55', success: '#34765f', warning: '#8f5a18'
 }
 const GRAY_SEEDS: ThemeSeedColors = {
-  workspace: '#383b40', surface: '#474b52', raisedSurface: '#585d66', deepSurface: '#2e3136', canvasSurround: '#626872',
-  border: '#606771', borderStrong: '#858f9d', controlBackground: '#292c31', textPrimary: '#f2f4f7', textSecondary: '#d7dce3', textMuted: '#b1b8c2',
+  workspace: '#31343a', surface: '#3f434a', raisedSurface: '#4f545c', deepSurface: '#282c31', canvasSurround: '#595f67',
+  border: '#555c65', borderStrong: '#77818d', controlBackground: '#23272c', textPrimary: '#e9ecef', textSecondary: '#ccd1d8', textMuted: '#a5acb5',
   accent: '#2979ff', danger: '#ef5350', success: '#66bb6a', warning: '#ffab26'
 }
 const DARK_GRAY_SEEDS: ThemeSeedColors = {
-  workspace: '#11161d', surface: '#1a222c', raisedSurface: '#253140', deepSurface: '#0d1218', canvasSurround: '#2f3a48',
-  border: '#303d4c', borderStrong: '#586b82', controlBackground: '#0b1016', textPrimary: '#f1f3f6', textSecondary: '#cdd2d9', textMuted: '#9ca3ad',
+  workspace: '#0a0a0b', surface: '#191a1d', raisedSurface: '#222428', deepSurface: '#121417', canvasSurround: '#4b4b4d',
+  border: '#34363a', borderStrong: '#5e6167', controlBackground: '#0d0e10', textPrimary: '#f3f4f6', textSecondary: '#c6c9ce', textMuted: '#9fa2a8',
   accent: '#2979ff', danger: '#ef5350', success: '#66bb6a', warning: '#ffab26'
 }
 const AMBER_SEEDS: ThemeSeedColors = {
@@ -266,7 +266,32 @@ export function resolveTheme(preferences: ThemePreferences): ResolvedTheme {
   return { definition, visualDefaults, mode, variables: Object.fromEntries(Object.entries(variables).map(([key, value]) => [key, value.startsWith('#') ? cssColor(value) : value])) }
 }
 
-export function applyThemeToDocument(preferences: ThemePreferences): void { if (typeof document === 'undefined') return; const resolved = resolveTheme(preferences); for (const [name, value] of Object.entries(resolved.variables)) document.documentElement.style.setProperty(name, value); document.documentElement.dataset.themeId = resolved.definition.id; document.documentElement.dataset.themeMode = resolved.mode; document.documentElement.style.colorScheme = resolved.mode }
+let themeApplyRevision = 0
+
+export function applyThemeToDocument(preferences: ThemePreferences): void {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  const resolved = resolveTheme(preferences)
+  const revision = ++themeApplyRevision
+
+  // Theme variables are changed as a single visual operation. Without this
+  // guard, every component transition (background, text, border, etc.) briefly
+  // interpolates from the previous theme and produces a flash while switching.
+  root.dataset.themeSwitching = 'true'
+  for (const [name, value] of Object.entries(resolved.variables)) root.style.setProperty(name, value)
+  root.dataset.themeId = resolved.definition.id
+  root.dataset.themeMode = resolved.mode
+  root.style.colorScheme = resolved.mode
+  // Commit the new token set while the guard is active. This prevents the
+  // browser from deferring the style change until after the guard is removed.
+  void root.getBoundingClientRect()
+
+  const clearThemeSwitching = (): void => {
+    if (themeApplyRevision === revision) delete root.dataset.themeSwitching
+  }
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(clearThemeSwitching)
+  else clearThemeSwitching()
+}
 export function copyTheme(theme: ThemeDefinition, id: string, name: string): ThemeDefinition { return { ...theme, id, name, seeds: { ...theme.seeds }, visualDefaults: copyVisuals(theme.visualDefaults) } }
 const uniqueThemeId = (base: string, themes: readonly ThemeDefinition[]): string => { const normalized = base.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'custom-theme'; let id = normalized; let index = 2; while (BUILT_IN_THEMES.some((theme) => theme.id === id) || themes.some((theme) => theme.id === id)) id = `${normalized}-${index++}`; return id }
 export function editableThemePreferences(preferences: ThemePreferences, suffix = 'Custom'): { preferences: ThemePreferences; definition: ThemeDefinition } { const current = themeById(preferences); if (preferences.customThemes.some((theme) => theme.id === current.id)) return { preferences, definition: current }; const definition = { ...copyTheme(current, uniqueThemeId(`${current.name} ${suffix}`, preferences.customThemes), `${current.name} ${suffix}`), baseThemeId: current.id }; return { preferences: { activeThemeId: definition.id, customThemes: [...preferences.customThemes, definition] }, definition } }

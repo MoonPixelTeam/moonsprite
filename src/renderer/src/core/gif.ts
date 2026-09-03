@@ -8,6 +8,7 @@ export interface GifExportOptions {
   scalePercent: number
   frameStart?: number
   frameEnd?: number
+  loopSectionId?: string
   direction: GifDirection
   crop?: SelectionRect
 }
@@ -186,8 +187,16 @@ export const exportAnimationGif = (document: SpriteDocument, options: GifExportO
   syncActiveAnimationFrame(document)
   const timeline = ensureAnimationDocument(document)
   const crop = normalizeCrop(document, options.crop)
-  const start = Math.max(0, Math.min(timeline.frames.length - 1, Math.round(options.frameStart ?? 1) - 1))
-  const end = Math.max(start, Math.min(timeline.frames.length - 1, Math.round(options.frameEnd ?? timeline.frames.length) - 1))
+  const loopSection = options.loopSectionId ? (timeline.loopSections ?? []).find((section) => section.id === options.loopSectionId) : undefined
+  const loopStart = loopSection ? timeline.frames.findIndex((frame) => frame.id === loopSection.startFrameId) : -1
+  const loopEnd = loopSection ? timeline.frames.findIndex((frame) => frame.id === loopSection.endFrameId) : -1
+  const hasValidLoopSection = loopStart >= 0 && loopEnd >= 0
+  const start = hasValidLoopSection
+    ? Math.min(loopStart, loopEnd)
+    : Math.max(0, Math.min(timeline.frames.length - 1, Math.round(options.frameStart ?? 1) - 1))
+  const end = hasValidLoopSection
+    ? Math.max(loopStart, loopEnd)
+    : Math.max(start, Math.min(timeline.frames.length - 1, Math.round(options.frameEnd ?? timeline.frames.length) - 1))
   const selected = timeline.frames.slice(start, end + 1).map((frame) => {
     const composite = compositeAnimationFrame(document, frame.id)
     const pixels = crop.x === 0 && crop.y === 0 && crop.width === document.width && crop.height === document.height

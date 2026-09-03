@@ -29,7 +29,8 @@ import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBr
 import { canvasCursors, canvasStatusTextColor, canvasToolCursor, colorLuminance, directionalResizeCursors, directionalShearCursors, previewCursorTools, resizeCursors, rotationCursors, selectionCornerResizeCursorForPoints, selectionResizeCursorForHandle, selectionRotationCursorForPosition, selectionShearCursorForDirection, shearCursors, selectionCreationCursor, selectionCursorCornerRects, selectionPathPreviewPixelVisible, selectionPreviewPixels, selectionTransformDragCursor, transparencyColorAt } from '@/core/canvas-visuals'
 import { defaultSymmetryCenter, hasSymmetry, moveSymmetryCenter, symmetryAxisDragAllowed, symmetryAxisSegment, symmetryPoints, symmetrySelection, symmetrySelectionDragDelta, transformSymmetrySelection, type SymmetryAxes, type SymmetryAxis } from '@/core/symmetry'
 import { beginAdjustmentPreviewEdit, endAdjustmentPreviewEdit, hasAdjustmentPreviewController, prepareAdjustmentPreviewEdit, renderAdjustmentPreviewEdit } from '@/core/adjustment-preview-lifecycle'
-import { notifyCanvasPreview, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
+import { notifyAnimationCelThumbnailPreview, notifyCanvasPreview, notifyLayerMaskThumbnailPreview, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
+import { timelineSelectionPrecedesMarquee } from '@/core/animation-timeline-focus'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { animationFrameIdsForCellKeys, resolveCanvasMoveAnimationCellKeys, resolveCanvasMoveLayerIds, shouldUseFreeTileInstanceMove } from '@/components/canvas-move-selection'
@@ -192,6 +193,17 @@ const selectedTextBoxForSession = (session: DocumentSession): SelectionRect | nu
   }
 }
 
+const timelineSelectionPrecedesCanvasMarquee = (session: DocumentSession, selection = session.selection): boolean => timelineSelectionPrecedesMarquee({
+  canvasSelectionActive: Boolean(selection),
+  activeMaskId: session.activeLayerMaskId,
+  selectedFrameCount: session.selectedAnimationFrameIds.length,
+  selectedCellCount: session.selectedAnimationCellKeys.length,
+  layerSelectionExplicit: session.layerSelectionExplicit === true,
+  selectedLayerCount: session.selectedLayerIds.length,
+  selectedGroupCount: session.selectedGroupIds.length,
+  selectedGroupId: session.selectedGroupId
+})
+
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
   const { t } = useI18n()
   const stageRef = useRef<HTMLDivElement>(null)
@@ -246,6 +258,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
   })
   const [sliceColor, setSliceColor] = useState<RgbaColor>(() => loadEditorPreferences().sliceColor)
+  const [freeTileInstanceOutlineColor, setFreeTileInstanceOutlineColor] = useState<RgbaColor>(() => loadEditorPreferences().freeTileInstanceOutlineColor)
   const [textBoxColor, setTextBoxColor] = useState<RgbaColor>(() => loadEditorPreferences().textBoxColor)
   const [canvasResizeColor, setCanvasResizeColor] = useState<RgbaColor>(() => loadEditorPreferences().canvasResizeColor)
   const [sliceOutlinesVisible, setSliceOutlinesVisible] = useState(() => loadEditorPreferences().sliceOutlinesVisible)
@@ -373,6 +386,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     return { from: start, to: target }
   }
   const selectedLayerMask = activeLayerMask(session)
+  const groupSelectionActive = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
   const hasSelectedRasterLayer = Boolean(selectedLayerMask) || (session.selectedGroupIds.length === 0 && session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id)))
   const activeLayer = activePaintLayer(session)
   const selectedFreeTileSelectionTarget = (current: DocumentSession = session) => {
@@ -391,13 +405,35 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       bounds: freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
     }
   }
+  const selectedFreeTileInstances = (current: DocumentSession = session) => {
+    const layer = activePaintLayer(current)
+    if (layer.kind !== 'free-tile') return null
+    const target = activeFreeTileCelTarget(current.document)
+    if (!target || target.layer.id !== layer.id) return null
+    const ids = current.selectedFreeTileInstanceIds.length > 0
+      ? current.selectedFreeTileInstanceIds
+      : current.selectedFreeTileInstanceId ? [current.selectedFreeTileInstanceId] : []
+    const instances = ids.flatMap((id) => target.freeTiles.instances.find((candidate) => candidate.id === id) ?? [])
+    return instances.length > 0 ? { target, layer, instances } : null
+  }
+  const selectedFreeTileInstancesBounds = (current: DocumentSession = session): SelectionRect | null => {
+    const selected = selectedFreeTileInstances(current)
+    if (!selected) return null
+    const bounds = selected.instances.map((instance) => freeTileInstanceBounds(instance, selected.target.sources, selected.target.surface.offsetX, selected.target.surface.offsetY))
+    const left = Math.min(...bounds.map((bound) => bound.x))
+    const top = Math.min(...bounds.map((bound) => bound.y))
+    const right = Math.max(...bounds.map((bound) => bound.x + bound.width))
+    const bottom = Math.max(...bounds.map((bound) => bound.y + bound.height))
+    return { x: left, y: top, width: right - left, height: bottom - top }
+  }
   const activeFreeTileSelectionTarget = selectedFreeTileSelectionTarget()
-  const selectedTransformLayers = session.selectedAnimationFrameIds.length > 0
-    ? session.document.layers.filter((layer) => !layer.kind && isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer))
-    : selectedTransformLayersForSession(session)
+  // A frame selection uses explicitly selected layers when present. With no
+  // explicit layer selection, selectedTransformLayersForSession retains the
+  // timeline-wide behavior and targets every editable raster layer.
+  const selectedTransformLayers = selectedTransformLayersForSession(session)
   const animationFrameSelectionActive = session.selectedAnimationFrameIds.length > 0
-  const multipleAnimationCellsSelected = session.selectedAnimationCellKeys.length > 1
-  const multipleAnimationSelection = animationFrameSelectionActive || multipleAnimationCellsSelected
+  const animationCellSelectionActive = session.selectedAnimationCellKeys.length > 0
+  const multipleAnimationSelection = animationFrameSelectionActive || animationCellSelectionActive
   const selectionLayersEditable = multipleAnimationSelection
     ? !selectedLayerMask
       && selectedTransformLayers.length > 0
@@ -786,6 +822,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         alignmentThreshold: preferences.alignmentThreshold
       })
       setSliceColor(preferences.sliceColor)
+      setFreeTileInstanceOutlineColor(preferences.freeTileInstanceOutlineColor)
       setTextBoxColor(preferences.textBoxColor)
       setCanvasResizeColor(preferences.canvasResizeColor)
       setSliceOutlinesVisible(preferences.sliceOutlinesVisible)
@@ -1450,12 +1487,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.deferredSelectionPreview = false
         drag.selectionLayers = captureAnimationFrameSelectionTransformStates(
           session.document,
-          multipleAnimationCellsSelected
-            ? session.selectedAnimationCellKeys.map((key) => parseAnimationCelKey(key)?.frameId).filter((id): id is string => Boolean(id))
-            : session.selectedAnimationFrameIds,
+          session.selectedAnimationFrameIds,
           selectedTransformLayers.map((candidate) => candidate.id),
           drag.selectionStart,
-          multipleAnimationCellsSelected ? session.selectedAnimationCellKeys : undefined
+          session.selectedAnimationCellKeys
         )
         if (drag.selectionLayers.length === 0) {
           endSelectionAdjustmentEdit()
@@ -1703,7 +1738,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     clearCanvasBacking(displayContext, overlay)
     displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
     const alignmentGuides = alignmentPreferences.alignmentGuidesVisible ? selectionDrag?.alignmentGuides ?? [] : []
-    const shouldDrawSelection = Boolean(visibleSelection || visibleTextBox || (selectionSizeVisible && selectionSizeTarget) || alignmentGuides.length)
+    const freeTileInstancesSelectionBounds = !visibleSelection && !visibleTextBox && !currentSession.animationPlaying
+      ? selectedFreeTileInstancesBounds(currentSession)
+      : null
+    const shouldDrawSelection = Boolean(visibleSelection || visibleTextBox || freeTileInstancesSelectionBounds || (selectionSizeVisible && selectionSizeTarget) || alignmentGuides.length)
     selectionOverlayVisibleRef.current = shouldDrawSelection
     if (!shouldDrawSelection) return
     const renderPlan = createCanvasRenderPlan(rect.width, rect.height, session.document, liveViewRef.current, rotationIndicatorPosition)
@@ -1814,6 +1852,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const selection = rectSelection(visibleTextBox.x, visibleTextBox.y, visibleTextBox.width, visibleTextBox.height)
       drawOverlaySelection(selection, currentSession.tool === 'text' && Boolean(selectedTextBox), `rgb(${textBoxColor.r} ${textBoxColor.g} ${textBoxColor.b} / ${textBoxColor.a / 255})`)
     } else if (visibleSelection) drawOverlaySelection(visibleSelection, currentSession.tool === 'selection' && !creatingSelection)
+    else if (freeTileInstancesSelectionBounds) drawOverlaySelection(rectSelection(
+      freeTileInstancesSelectionBounds.x,
+      freeTileInstancesSelectionBounds.y,
+      freeTileInstancesSelectionBounds.width,
+      freeTileInstancesSelectionBounds.height
+    ), false, `rgb(${freeTileInstanceOutlineColor.r} ${freeTileInstanceOutlineColor.g} ${freeTileInstanceOutlineColor.b} / ${freeTileInstanceOutlineColor.a / 255})`)
     if (rotated) {
       displayContext.save()
       applyViewRotation(displayContext, rect.width, rect.height, liveViewRef.current)
@@ -3857,6 +3901,20 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const scheduleDraw = (): void => {
+    const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const currentMask = activeLayerMask(currentSession)
+    const activeDrag = inputRef.current.drag
+    if (activeDrag && !nonContentPreviewDragKinds.has(activeDrag.kind)) {
+      if (currentMask) {
+        notifyLayerMaskThumbnailPreview(session.document.id, currentMask.id)
+      } else {
+        const timeline = currentSession.document.animation
+        const activeCel = timeline
+          ? resolveAnimationCel(timeline, timeline.cels.find((cel) => cel.layerId === currentSession.document.activeLayerId && cel.frameId === timeline.activeFrameId) ?? null)
+          : null
+        if (activeCel) notifyAnimationCelThumbnailPreview(session.document.id, activeCel.id, currentSession.document.activeLayerId)
+      }
+    }
     if (drawRequestRef.current !== null) return
     drawRequestRef.current = window.requestAnimationFrame(() => {
       drawRequestRef.current = null
@@ -4191,6 +4249,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     scheduleDraw()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.document.id, session.revision, session.activeLayerMaskId, session.layerMaskIsolatedView, session.selectedTilesetId, session.selectedTileId, session.secondaryTileId, session.tilemapMode, session.freeTileMode, session.view.tileRepeatMode, session.view.showPixelGrid, session.view.showGrid, session.view.isoViewEnabled, session.view.grid?.x, session.view.grid?.y, session.view.grid?.width, session.view.grid?.height, session.view.relativeLuminance, session.view.mirrored, session.view.mirroredVertical, session.view.showSelectionOutline, session.view.showSelectionPivot, session.selection, session.freeTransformActive, session.freeTransformQuad?.nw.x, session.freeTransformQuad?.nw.y, session.freeTransformQuad?.ne.x, session.freeTransformQuad?.ne.y, session.freeTransformQuad?.se.x, session.freeTransformQuad?.se.y, session.freeTransformQuad?.sw.x, session.freeTransformQuad?.sw.y, session.pendingPaste?.transformQuad?.nw.x, session.pendingPaste?.transformQuad?.nw.y, session.pendingPaste?.transformQuad?.ne.x, session.pendingPaste?.transformQuad?.ne.y, session.pendingPaste?.transformQuad?.se.x, session.pendingPaste?.transformQuad?.se.y, session.pendingPaste?.transformQuad?.sw.x, session.pendingPaste?.transformQuad?.sw.y, session.selectionPivot?.x, session.selectionPivot?.y, session.outlinePreview, session.brushSize, session.brushShape, activeBrushDither?.enabled, activeBrushDither?.template, activeBrushDither?.stage, session.shapeKind, session.shapeRatio, session.fillMode, fillKind, gradientDither, session.symmetryAxes.horizontal, session.symmetryAxes.vertical, session.symmetryAxes.diagonalUp, session.symmetryAxes.diagonalDown, session.symmetryAxes.rotational, symmetryCenter.x, symmetryCenter.y, drawingBrushPreviewEnabled, brushPreviewMode, checkerboard, gridColors, alignmentPreferences.gridAlignmentEnabled, alignmentPreferences.smartAlignmentEnabled, alignmentPreferences.alignmentGuidesVisible, alignmentPreferences.alignmentThreshold, sliceColor, textBoxColor, canvasResizeColor, sliceOutlinesVisible, shiftLinePreviewEnabled, lassoPreviewClosed, selectionCrosshair, selectionPreviewColorMode, selectionPreviewColor, selectionSizeVisible, balancedShiftLineEnabled, lineDirectionStep, lineConnectionShortcut, rotationIndicatorPosition, onionSkin, timelineHidden, symmetryAxisPreferences, isoViewPreferences, interfaceScale])
+
+  useEffect(() => {
+    scheduleDraw()
+  // Free-tile instance selection is session state rather than document revision.
+  // Redraw the overlay when it changes so the merged selection frame stays in sync.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.document.id, session.freeTileInstanceLayerId, session.selectedFreeTileInstanceId, session.selectedFreeTileInstanceIds.join('\\0')])
 
   const selectionOverlayAnimated = Boolean(session.selection || selectedTextBoxForSession(session))
   useEffect(() => {
@@ -4957,6 +5022,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         : drag?.kind === 'pan' ? canvasCursors.grabbing : canvasCursors.grab
       return
     }
+    const liveCursorSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const liveCursorGroupSelected = liveCursorSession.selectedGroupIds.length > 0 || Boolean(liveCursorSession.selectedGroupId)
+    if (liveCursorGroupSelected && !isToolAvailableForSession(liveCursorSession, liveCursorSession.tool)) {
+      inputRef.current.sampling = false
+      canvas.style.cursor = canvasCursors.unavailable
+      return
+    }
     const activeResizePreview = canvasResizePreviewRef.current
     if (activeResizePreview) {
       inputRef.current.sampling = false
@@ -5483,6 +5555,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (zoomPreviewStartRef.current) finishZoomPreview()
     if (state.activeId !== session.document.id) { state.setActive(session.document.id); return }
     if (session.animationPlaying) return
+    const preflightSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const preflightGroupSelected = preflightSession.selectedGroupIds.length > 0 || Boolean(preflightSession.selectedGroupId)
+    const preflightToolAllowed = preflightSession.tool === 'move' || preflightSession.tool === 'hand' || preflightSession.tool === 'zoom' || preflightSession.tool === 'rotate'
+    if (preflightGroupSelected && !preflightToolAllowed && event.button !== 1 && !(event.button === 0 && inputRef.current.spaceHeld)) {
+      event.currentTarget.style.cursor = canvasCursors.unavailable
+      event.preventDefault()
+      return
+    }
     beginCanvasToolGesture(event.pointerId)
     if (event.button === 1 || (event.button === 0 && inputRef.current.spaceHeld)) {
       const view = liveViewRef.current
@@ -5502,6 +5582,16 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     // Corner handles reshape the frame; the selected content itself remains
     // movable. Middle-button/space panning has already returned above.
     const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const liveGroupSelectionActive = currentInteractionSession.selectedGroupIds.length > 0 || Boolean(currentInteractionSession.selectedGroupId)
+    const liveGroupToolAllowed = currentInteractionSession.tool === 'move' || currentInteractionSession.tool === 'hand' || currentInteractionSession.tool === 'zoom' || currentInteractionSession.tool === 'rotate'
+    // Group selection is a document-level move target, not a paint target.
+    // Block pixel-edit/selection gestures before they can create any drag or
+    // pixel edit state; viewport navigation remains available above.
+    if (liveGroupSelectionActive && !liveGroupToolAllowed) {
+      event.currentTarget.style.cursor = canvasCursors.unavailable
+      event.preventDefault()
+      return
+    }
     const freeTransformActive = currentInteractionSession.freeTransformActive === true
     if (freeTransformActive) {
       const freeTransformHit = event.button === 0 ? selectionHit(event) : 'outside'
@@ -5669,7 +5759,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     const eyedropperHeld = paletteSamplingHeld || quickToolActive('eyedropper')
-    const focusesRasterLayer = event.button === 0
+    const focusesRasterLayer = !groupSelectionActive && event.button === 0
       && session.tool !== 'hand'
       && session.tool !== 'zoom'
       && session.tool !== 'move'
@@ -5768,7 +5858,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const source = target && instance ? freeTileSourceForInstance(target.sources, instance) : null
       const sourceLayer = source ? target?.layer.freeTileSources?.find((candidate) => candidate.id === source.id) : null
       if (target && instance && instance.locked !== true && source && sourceLayer?.locked !== true && canMoveActiveLayer) {
-        state.setSelectedFreeTileInstance(instance.id)
+        const selectedIds = session.selectedFreeTileInstanceIds.length > 0 && session.selectedFreeTileInstanceIds.includes(instance.id)
+          ? session.selectedFreeTileInstanceIds
+          : [instance.id]
+        const movingInstances = selectedIds.flatMap((id) => target.freeTiles.instances.find((candidate) => candidate.id === id && candidate.visible !== false && candidate.locked !== true) ?? [])
+        const starts = Object.fromEntries(movingInstances.map((candidate) => [candidate.id, { x: candidate.x, y: candidate.y }]))
+        if (!session.selectedFreeTileInstanceIds.includes(instance.id)) state.setSelectedFreeTileInstance(instance.id)
         publishFreeTileInstanceFlash({ documentId: session.document.id, instanceId: instance.id })
         const placementEdit = state.beginFreeTilePlacement()
         if (!placementEdit) return
@@ -5780,6 +5875,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           freeTileSourceId: source.id,
           freeTileInstanceId: instance.id,
           freeTileInstanceStart: { x: instance.x, y: instance.y },
+          freeTileInstanceIds: movingInstances.map((candidate) => candidate.id),
+          freeTileInstanceStarts: starts,
           startedAt: Date.now()
         }
         event.currentTarget.style.cursor = canvasCursors.move
@@ -6103,6 +6200,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
         const cell = quickSelectionCellAt(active, point)
         if (cell) {
+          if (timelineSelectionPrecedesCanvasMarquee(active)) {
+            const timeline = ensureAnimationDocument(active.document)
+            state.selectAnimationCell(animationCelKey(active.document.activeLayerId, timeline.activeFrameId))
+          }
           startCanvasSelection(session.document.id)
           const before = cloneSelection(active.selection)
           const incoming = tilemapPaintSelectionForIncoming(rectSelection(cell.x, cell.y, cell.width, cell.height), active)
@@ -6181,14 +6282,31 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const copy = floatingCopyRestart ? true : floatingSelectionCopyMode(floating?.copy ?? null, copyRequested)
         let selectionStart = cloneSelection(currentSelection)!
         if (editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint') selectionStart = tilemapPaintSelectionForIncoming(selectionStart) ?? selectionStart
+        const selectedFreeTileIds = session.selectedFreeTileInstanceIds.length > 0
+          ? session.selectedFreeTileInstanceIds
+          : session.selectedFreeTileInstanceId ? [session.selectedFreeTileInstanceId] : []
+        const selectedFreeTileInstancesForMove = freeTileSelectionTarget
+          ? selectedFreeTileIds.flatMap((id) => freeTileSelectionTarget.target.freeTiles.instances.find((candidate) => candidate.id === id && candidate.visible !== false && candidate.locked !== true) ?? [])
+          : []
+        const selectedFreeTileMoveBounds = selectedFreeTileInstancesForMove.length > 0
+          ? (() => {
+              const bounds = selectedFreeTileInstancesForMove.map((instance) => freeTileInstanceBounds(instance, freeTileSelectionTarget!.target.sources, freeTileSelectionTarget!.target.surface.offsetX, freeTileSelectionTarget!.target.surface.offsetY))
+              const left = Math.min(...bounds.map((bound) => bound.x))
+              const top = Math.min(...bounds.map((bound) => bound.y))
+              const right = Math.max(...bounds.map((bound) => bound.x + bound.width))
+              const bottom = Math.max(...bounds.map((bound) => bound.y + bound.height))
+              return { x: left, y: top, width: right - left, height: bottom - top }
+            })()
+          : null
         const onlySelectedFreeTileInstance = Boolean(!floating
           && !copy
           && editableLayer.kind === 'free-tile'
           && session.freeTileMode === 'edit'
           && freeTileSelectionTarget
-          && session.selectedFreeTileInstanceId === freeTileSelectionTarget.instance.id
-          && session.selectedFreeTileInstanceIds.every((id) => id === freeTileSelectionTarget.instance.id)
-          && selectionCoversRect(selectionStart, freeTileSelectionTarget.bounds))
+          && selectedFreeTileInstancesForMove.length > 0
+          && selectedFreeTileIds.includes(freeTileSelectionTarget.instance.id)
+          && selectedFreeTileMoveBounds
+          && selectionCoversRect(selectionStart, selectedFreeTileMoveBounds))
         if (!freeTransformActive && onlySelectedFreeTileInstance && freeTileSelectionTarget) {
           const placementEdit = state.beginFreeTilePlacement()
           if (placementEdit) {
@@ -6212,6 +6330,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               freeTilePlacementEdit: placementEdit,
               freeTileInstanceId: freeTileSelectionTarget.instance.id,
               freeTileInstanceStart: { x: freeTileSelectionTarget.instance.x, y: freeTileSelectionTarget.instance.y },
+              freeTileInstanceIds: selectedFreeTileInstancesForMove.map((instance) => instance.id),
+              freeTileInstanceStarts: Object.fromEntries(selectedFreeTileInstancesForMove.map((instance) => [instance.id, { x: instance.x, y: instance.y }])),
               freeTileInstanceSelectionMove: true
             }
             event.currentTarget.style.cursor = canvasCursors.move
@@ -6507,6 +6627,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const repeatedStart = repeatMode === 'off'
         ? point
         : repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point
+      if (timelineSelectionPrecedesCanvasMarquee(session)) {
+        const timeline = ensureAnimationDocument(session.document)
+        state.selectAnimationCell(animationCelKey(session.document.activeLayerId, timeline.activeFrameId))
+      }
       startCanvasSelection(session.document.id)
       inputRef.current.drag = { kind: 'marquee', start: repeatedStart, last: repeatedStart, startClient: { x: event.clientX, y: event.clientY }, selectionStart: cloneSelection(session.selection), selectionMode: mode, constrain: false, tileRepeatPoint: repeatedStart }
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable)
@@ -6784,6 +6908,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const activeDrag = inputRef.current.drag
     const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     const freeTransformActive = currentInteractionSession.freeTransformActive === true
+    const liveGroupSelectionActive = currentInteractionSession.selectedGroupIds.length > 0 || Boolean(currentInteractionSession.selectedGroupId)
+    const liveGroupToolAllowed = currentInteractionSession.tool === 'move' || currentInteractionSession.tool === 'hand' || currentInteractionSession.tool === 'zoom' || currentInteractionSession.tool === 'rotate'
+    if (liveGroupSelectionActive && !liveGroupToolAllowed) {
+      event.currentTarget.style.cursor = canvasCursors.unavailable
+      event.preventDefault()
+      return
+    }
     if (freeTransformActive) {
       // A mode change can race with a pointer gesture that was started before
       // free transform became active. Stop stale content/layer/auxiliary
@@ -7017,22 +7148,33 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.currentTarget.style.cursor = canvasCursors.move
       return
     }
-    if (drag.kind === 'free-tile-instance-move' && drag.freeTilePlacementEdit && drag.freeTileInstanceId && drag.freeTileInstanceStart) {
+    if (drag.kind === 'free-tile-instance-move' && drag.freeTilePlacementEdit && drag.freeTileInstanceId) {
       const target = activeFreeTileCelTarget(session.document)
       if (!target || target.layer.id !== drag.freeTilePlacementEdit.layerId || target.cel.frameId !== drag.freeTilePlacementEdit.frameId) return
-      const instance = drag.freeTilePlacementEdit.after.instances.find((candidate) => candidate.id === drag.freeTileInstanceId)
-      if (!instance) return
+      const instanceIds = drag.freeTileInstanceIds?.length ? drag.freeTileInstanceIds : [drag.freeTileInstanceId]
+      const instances = instanceIds.flatMap((id) => {
+        const instance = drag.freeTilePlacementEdit!.after.instances.find((candidate) => candidate.id === id)
+        if (!instance) return []
+        const start = drag.freeTileInstanceStarts?.[id] ?? (id === drag.freeTileInstanceId ? drag.freeTileInstanceStart : undefined)
+        return start ? [{ instance, start }] : []
+      })
+      if (instances.length === 0) return
       const distance = constrainedTranslation(drag, point.x - drag.start.x, point.y - drag.start.y, modifierActive(event.nativeEvent, 'constrainAxis'))
-      const nextX = drag.freeTileInstanceStart.x + distance.x
-      const nextY = drag.freeTileInstanceStart.y + distance.y
-      if (instance.x === nextX && instance.y === nextY) return
-      const previousBounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-      instance.x = nextX
-      instance.y = nextY
-      drag.freeTilePlacementEdit.dirtyRect = unionFreeTileDirtyRect(
-        unionFreeTileDirtyRect(drag.freeTilePlacementEdit.dirtyRect, previousBounds),
-        freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-      )
+      let dirtyRect = drag.freeTilePlacementEdit.dirtyRect
+      let changed = false
+      for (const { instance, start } of instances) {
+        const nextX = start.x + distance.x
+        const nextY = start.y + distance.y
+        if (instance.x === nextX && instance.y === nextY) continue
+        const previousBounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
+        instance.x = nextX
+        instance.y = nextY
+        dirtyRect = unionFreeTileDirtyRect(dirtyRect, previousBounds)
+        dirtyRect = unionFreeTileDirtyRect(dirtyRect, freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY))
+        changed = true
+      }
+      if (!changed) return
+      drag.freeTilePlacementEdit.dirtyRect = dirtyRect
       state.previewFreeTilePlacement(drag.freeTilePlacementEdit)
       compositeCacheRef.current.invalidateAll()
       event.currentTarget.style.cursor = canvasCursors.move
@@ -7054,7 +7196,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           drag.duplicatedLayer = duplicate.layer
           drag.duplicatedAnimationCels = duplicate.animationCels
           drag.duplicatedLayerIndex = duplicate.insertionIndex
-          drag.animationMaskOffsets = Object.fromEntries(duplicate.animationCels.flatMap((cel) => cel.mask && cel.mask.moveWithOwner !== false ? [[`${cel.layerId}\u0000${cel.frameId}`, { x: cel.mask.offsetX, y: cel.mask.offsetY }] as const] : []))
+          drag.animationMaskOffsets = animationMaskOffsetsForLayerMove(session, [duplicate.layerId], ensureAnimationDocument(session.document).activeFrameId)
         }
       }
       if (!state.previewLayerMove(session.document.id, drag, distanceX, distanceY)) return
@@ -7693,27 +7835,37 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && drag.freeTileInstanceSelectionMove
       && drag.freeTilePlacementEdit
       && drag.freeTileInstanceId
-      && drag.freeTileInstanceStart
       && drag.selectionStart) {
       const target = activeFreeTileCelTarget(session.document)
       if (!target || target.layer.id !== drag.freeTilePlacementEdit.layerId || target.cel.frameId !== drag.freeTilePlacementEdit.frameId) return
-      const instance = drag.freeTilePlacementEdit.after.instances.find((candidate) => candidate.id === drag.freeTileInstanceId)
-      if (!instance) return
+      const instanceIds = drag.freeTileInstanceIds?.length ? drag.freeTileInstanceIds : [drag.freeTileInstanceId]
+      const instances = instanceIds.flatMap((id) => {
+        const instance = drag.freeTilePlacementEdit!.after.instances.find((candidate) => candidate.id === id)
+        if (!instance) return []
+        const start = drag.freeTileInstanceStarts?.[id] ?? (id === drag.freeTileInstanceId ? drag.freeTileInstanceStart : undefined)
+        return start ? [{ instance, start }] : []
+      })
+      if (instances.length === 0) return
       const repeatedPoint = drag.tileRepeatStart ? repeatedDocumentPointsAt(event.clientX, event.clientY, true, true)?.repeated : undefined
       const pointerDelta = selectionMovePointerDelta(drag, point, repeatedPoint)
       const dragDelta = symmetrySelectionDragDelta(drag.selectionStart, drag.start, pointerDelta, session.document.width, session.document.height, session.symmetryAxes, symmetryCenter, true)
       const distance = alignedDragTranslation(drag, constrainedTranslation(drag, dragDelta.x, dragDelta.y, modifierActive(event.nativeEvent, 'constrainAxis')))
-      const nextX = drag.freeTileInstanceStart.x + distance.x
-      const nextY = drag.freeTileInstanceStart.y + distance.y
       const nextSelection = shiftSelection(drag.selectionStart, distance.x, distance.y, session.document.width, session.document.height)
-      if (instance.x === nextX && instance.y === nextY) return
-      const previousBounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-      instance.x = nextX
-      instance.y = nextY
-      drag.freeTilePlacementEdit.dirtyRect = unionFreeTileDirtyRect(
-        unionFreeTileDirtyRect(drag.freeTilePlacementEdit.dirtyRect, previousBounds),
-        freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-      )
+      let dirtyRect = drag.freeTilePlacementEdit.dirtyRect
+      let changed = false
+      for (const { instance, start } of instances) {
+        const nextX = start.x + distance.x
+        const nextY = start.y + distance.y
+        if (instance.x === nextX && instance.y === nextY) continue
+        const previousBounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
+        instance.x = nextX
+        instance.y = nextY
+        dirtyRect = unionFreeTileDirtyRect(dirtyRect, previousBounds)
+        dirtyRect = unionFreeTileDirtyRect(dirtyRect, freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY))
+        changed = true
+      }
+      if (!changed) return
+      drag.freeTilePlacementEdit.dirtyRect = dirtyRect
       drag.last = point
       drag.previewTarget = { ...(drag.transformStartTarget ?? drag.selectionStart), x: drag.selectionStart.x + distance.x, y: drag.selectionStart.y + distance.y }
       drag.previewSelection = nextSelection
@@ -8158,7 +8310,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag.kind === 'marquee') {
       const moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       const change = marqueeSelectionCommit(drag, session.selection, moved, session.selectionMode)
+      // A timeline selection made before the first marquee is a navigation
+      // context, not a multi-target transform request. Bind the new marquee
+      // to the active layer/frame cel; selecting timeline targets afterwards
+      // will keep the existing canvas selection and enable batch transforms.
+      const timelineSelectionBeforeMarquee = timelineSelectionPrecedesCanvasMarquee(session, drag.selectionStart)
       state.commitSelectionChange(change.before, change.after, t('canvas.history.createSelection'))
+      if (timelineSelectionBeforeMarquee) {
+        const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+        const frameId = currentSession?.document.animation?.activeFrameId
+        if (currentSession && frameId) state.selectAnimationCell(animationCelKey(currentSession.document.activeLayerId, frameId))
+      }
       updateCursor(event)
       scheduleDraw()
     }

@@ -52,21 +52,17 @@ export function createLayerMask(ownerId: string, width: number, height: number, 
 
 export const isLayerMask = (surface: RasterLayer): surface is LayerMask => 'ownerKind' in surface && 'ownerId' in surface
 export const layerMasks = (document: SpriteDocument): LayerMask[] => document.animation
-  ? [...document.animation.cels.flatMap((cel) => cel.mask ? [cel.mask] : []), ...(document.animation.groupMasks ?? []).map((entry) => entry.mask)]
+  ? [...(document.animation.layerMasks ?? []).map((entry) => entry.mask), ...(document.animation.groupMasks ?? []).map((entry) => entry.mask)]
   : []
 export const findLayerMask = (document: SpriteDocument, id: string): LayerMask | null => layerMasks(document).find((mask) => mask.id === id) ?? null
 export const animationMaskSlotAt = (timeline: AnimationTimeline, ownerId: string, frameId: string): LayerMask | null => {
-  const cel = timeline.cels.find((candidate) => candidate.layerId === ownerId && candidate.frameId === frameId)
-  if (cel?.mask) return cel.mask
-  if (cel?.linkedCelId) {
-    const source = timeline.cels.find((candidate) => candidate.id === cel.linkedCelId)
-    if (source?.mask) return source.mask
-  }
+  const layerMask = (timeline.layerMasks ?? []).find((entry) => entry.layerId === ownerId && entry.frameId === frameId)?.mask
+  if (layerMask) return layerMask
   return (timeline.groupMasks ?? []).find((entry) => entry.groupId === ownerId && entry.frameId === frameId)?.mask ?? null
 }
 export const resolveAnimationMask = (timeline: AnimationTimeline, mask: LayerMask | null): LayerMask | null => {
   if (!mask?.linkedMaskId) return mask
-  const byId = new Map([...timeline.cels.flatMap((cel) => cel.mask ? [cel.mask] : []), ...(timeline.groupMasks ?? []).map((entry) => entry.mask)].map((candidate) => [candidate.id, candidate]))
+  const byId = new Map([...(timeline.layerMasks ?? []).map((entry) => entry.mask), ...(timeline.groupMasks ?? []).map((entry) => entry.mask)].map((candidate) => [candidate.id, candidate]))
   const visited = new Set<string>()
   let current = mask
   while (current.linkedMaskId) {
@@ -77,6 +73,29 @@ export const resolveAnimationMask = (timeline: AnimationTimeline, mask: LayerMas
     current = linked
   }
   return current
+}
+/** Build a single-pass lookup of resolved animation masks by owner/frame key. */
+export const createAnimationMaskLookup = (timeline: AnimationTimeline): Map<string, LayerMask> => {
+  const byId = new Map<string, LayerMask>()
+  for (const entry of timeline.layerMasks ?? []) byId.set(entry.mask.id, entry.mask)
+  for (const entry of timeline.groupMasks ?? []) byId.set(entry.mask.id, entry.mask)
+  const resolve = (mask: LayerMask): LayerMask => {
+    if (!mask.linkedMaskId) return mask
+    const visited = new Set<string>()
+    let current = mask
+    while (current.linkedMaskId) {
+      if (visited.has(current.id)) return mask
+      visited.add(current.id)
+      const linked = byId.get(current.linkedMaskId)
+      if (!linked) return mask
+      current = linked
+    }
+    return current
+  }
+  const result = new Map<string, LayerMask>()
+  for (const entry of timeline.layerMasks ?? []) result.set(`${entry.layerId}:${entry.frameId}`, resolve(entry.mask))
+  for (const entry of timeline.groupMasks ?? []) result.set(`${entry.groupId}:${entry.frameId}`, resolve(entry.mask))
+  return result
 }
 export const animationMaskAt = (timeline: AnimationTimeline, ownerId: string, frameId: string): LayerMask | null =>
   resolveAnimationMask(timeline, animationMaskSlotAt(timeline, ownerId, frameId))
@@ -89,8 +108,9 @@ export const getLayerMaskOwner = (document: SpriteDocument, mask: LayerMask): La
     const group = entry ? document.groups.find((candidate) => candidate.id === entry.groupId) : null
     return entry && group ? { kind: 'group', frameId: entry.frameId, groupId: group.id, group } : null
   }
-  const cel = document.animation?.cels.find((candidate) => candidate.id === mask.ownerId)
-  return cel ? { kind: 'cel', frameId: cel.frameId, layerId: cel.layerId, cel } : null
+  const entry = document.animation?.layerMasks?.find((candidate) => candidate.mask.id === mask.id)
+  const cel = entry ? document.animation?.cels.find((candidate) => candidate.layerId === entry.layerId && candidate.frameId === entry.frameId) : null
+  return entry && cel ? { kind: 'cel', frameId: entry.frameId, layerId: entry.layerId, cel } : null
 }
 
 export const readLayerMaskDisplayColorAt = (mask: LayerMask, x: number, y: number): RgbaColor => {
@@ -204,7 +224,7 @@ export function createDocument(name: string, width: number, height: number, colo
     nextColorId: 3,
     customBrushes: [],
     tilesets: [],
-    animation: { frames: [{ id: frameId, duration: 100 }], cels: [{ id: createId('cel'), layerId: layer.id, frameId, opacity: layer.opacity, surface: initialSurface }], groupMasks: [], loopSections: [], activeFrameId: frameId, loop: true },
+    animation: { frames: [{ id: frameId, duration: 100 }], cels: [{ id: createId('cel'), layerId: layer.id, frameId, opacity: layer.opacity, surface: initialSurface }], layerMasks: [], groupMasks: [], loopSections: [], activeFrameId: frameId, loop: true },
     displaySettings: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS, grid: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS.grid } },
     statistics: { ...DEFAULT_PROJECT_STATISTICS },
     timelapse: { ...DEFAULT_TIMELAPSE_SETTINGS, enabled: timelapseEnabled, snapshots: [] },
@@ -718,6 +738,7 @@ export const isGroupEffectivelyVisible = (document: SpriteDocument, group: Layer
 export const isLayerEffectivelyLocked = (document: SpriteDocument, layer: RasterLayer): boolean => {
   if (!isLayerMask(layer)) return layer.locked || Boolean(getLayerLockingGroup(document, layer))
   const owner = getLayerMaskOwner(document, layer)
+  if (layer.locked) return true
   if (owner?.kind === 'group') return isGroupEffectivelyLocked(document, owner.group)
   const ownerLayer = owner ? document.layers.find((candidate) => candidate.id === owner.layerId) : null
   return !ownerLayer || isLayerEffectivelyLocked(document, ownerLayer)
@@ -1111,6 +1132,31 @@ export function writeLayerColor(document: SpriteDocument, layer: RasterLayer, in
 }
 export function readLayerPacked(_document: SpriteDocument, layer: RasterLayer, index: number): number {
   return readSurfacePackedLocal(layer, index % layer.width, Math.floor(index / layer.width))
+}
+/** Checks a materialized raster without allocating or converting per-pixel colors. */
+export function rasterLayerPackedValueIsUniform(layer: RasterLayer, packed: number): boolean {
+  const expected = packed >>> 0
+  if (layer.format === 'indexed') {
+    for (let index = 0; index < layer.pixels.length; index += 1) {
+      if ((layer.pixels[index] >>> 0) !== expected) return false
+    }
+    return true
+  }
+  if (layer.pixels.byteOffset % 4 === 0) {
+    const words = new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
+    for (let index = 0; index < words.length; index += 1) {
+      if (words[index] !== expected) return false
+    }
+    return true
+  }
+  for (let offset = 0; offset < layer.pixels.length; offset += 4) {
+    const value = (layer.pixels[offset]
+      | (layer.pixels[offset + 1] << 8)
+      | (layer.pixels[offset + 2] << 16)
+      | (layer.pixels[offset + 3] << 24)) >>> 0
+    if (value !== expected) return false
+  }
+  return true
 }
 export function writeLayerPacked(document: SpriteDocument, layer: RasterLayer, index: number, value: number): void {
   value = normalizeLayerPackedValue(document, layer, value)

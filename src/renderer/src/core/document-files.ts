@@ -91,10 +91,10 @@ function hasImageIncompatibleDocumentStructure(document: SpriteDocument): boolea
   if (layer.kind === 'text' || layer.groupId || layer.clippingMask || layer.layerStyles || layer.background) return true
   const timeline = document.animation
   if (!timeline) return false
-  if (timeline.frames.length !== 1 || timeline.cels.length !== 1 || (timeline.groupMasks?.length ?? 0) > 0) return true
+  if (timeline.frames.length !== 1 || timeline.cels.length !== 1 || (timeline.layerMasks?.length ?? 0) > 0 || (timeline.groupMasks?.length ?? 0) > 0) return true
   const frame = timeline.frames[0]
   const cel = timeline.cels[0]
-  return cel.layerId !== layer.id || cel.frameId !== frame.id || Boolean(cel.linkedCelId || cel.text || cel.mask)
+  return cel.layerId !== layer.id || cel.frameId !== frame.id || Boolean(cel.linkedCelId || cel.text)
 }
 
 export function directSourceImageSaveTarget(document: SpriteDocument): DirectSourceImageSaveTarget | null {

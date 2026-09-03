@@ -106,6 +106,110 @@ describe('project manifest migration boundary', () => {
     })
   })
 
+  it('round-trips the per-layer automatic animation cel link setting', () => {
+    const document = createDocument('automatic cel link setting', 2, 2, 'rgba')
+    document.layers[0].autoLinkAnimationCels = true
+    document.layers.push(createLayer('Untoggled', 2, 2, 'rgba'))
+    const reopened = decodeProject(encodeProject(document))
+    expect(reopened.layers[0].autoLinkAnimationCels).toBe(true)
+    expect(reopened.layers[1].autoLinkAnimationCels).toBeUndefined()
+  })
+
+  it('writes shared pixel storage with one canonical geometry after a non-active cel diverges', () => {
+    const document = createDocument('shared raster geometry save', 42, 39, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    activateAnimationFrame(document, firstFrameId)
+    const firstCel = timeline.cels.find((cel) => cel.frameId === firstFrameId)!
+    const secondCel = timeline.cels.find((cel) => cel.frameId === secondFrameId)!
+    if (!firstCel.surface || firstCel.surface.format !== 'rgba') throw new Error('Expected an RGBA animation cel')
+    secondCel.surface = { ...firstCel.surface, width: 44, height: 40, offsetX: -1, offsetY: 0, pixels: firstCel.surface.pixels }
+
+    const files = unzipSync(encodeProject(document))
+    const manifest = readTestManifest(files)
+    const savedSecondCel = manifest.document.animation.cels.find((cel) => cel.id === secondCel.id)!
+
+    expect(savedSecondCel).toMatchObject({ width: 42, height: 39, offsetX: -1, offsetY: 0 })
+    expect(() => decodeProject(zipSync(files))).not.toThrow()
+  })
+
+  it('does not reuse one incremental archive path for conflicting raster geometries', async () => {
+    const document = createDocument('incremental raster path conflict', 42, 39, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    activateAnimationFrame(document, firstFrameId)
+    const secondCel = timeline.cels.find((cel) => cel.frameId === secondFrameId)!
+    secondCel.surface = { format: 'rgba', width: 44, height: 40, offsetX: -1, offsetY: 0, pixels: new Uint8ClampedArray(44 * 40 * 4) }
+    secondCel.surface.pixels.set([12, 34, 56, 255], 4)
+
+    const healthyArchive = encodeProject(document)
+    const sourceFiles = unzipSync(healthyArchive)
+    const corruptManifest = readTestManifest(sourceFiles)
+    const layerEntry = corruptManifest.document.layers[0]
+    const secondCelEntry = corruptManifest.document.animation.cels.find((cel) => cel.id === secondCel.id)!
+    secondCelEntry.dataFile = layerEntry.dataFile
+    secondCelEntry.dataEncoding = layerEntry.dataEncoding
+    sourceFiles['manifest.json'] = new TextEncoder().encode(JSON.stringify(corruptManifest))
+    const corruptArchive = zipSync(sourceFiles)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-raster-path-conflict.moonsprite', corruptArchive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const patchFiles = unzipSync(encoded.data)
+    const repairedManifest = readTestManifest(patchFiles)
+    const repairedLayerEntry = repairedManifest.document.layers[0]
+    const repairedCelEntry = repairedManifest.document.animation.cels.find((cel) => cel.id === secondCel.id)!
+
+    expect(repairedCelEntry.dataFile).not.toBe(repairedLayerEntry.dataFile)
+    expect(repairedCelEntry).toMatchObject({ width: 44, height: 40, offsetX: -1, offsetY: 0 })
+    expect(patchFiles[repairedCelEntry.dataFile]).toBeDefined()
+  })
+
+  it('does not reuse one incremental archive path for distinct same-size frame pixels', async () => {
+    const document = createDocument('incremental same-size raster conflict', 4, 4, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    activateAnimationFrame(document, firstFrameId)
+    const secondCel = timeline.cels.find((cel) => cel.frameId === secondFrameId)!
+    secondCel.surface = { format: 'rgba', width: 4, height: 4, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(4 * 4 * 4) }
+    secondCel.surface.pixels.set([220, 30, 40, 255])
+
+    const healthyArchive = encodeProject(document)
+    const sourceFiles = unzipSync(healthyArchive)
+    const corruptManifest = readTestManifest(sourceFiles)
+    const layerEntry = corruptManifest.document.layers[0]
+    const secondCelEntry = corruptManifest.document.animation.cels.find((cel) => cel.id === secondCel.id)!
+    secondCelEntry.dataFile = layerEntry.dataFile
+    secondCelEntry.dataEncoding = layerEntry.dataEncoding
+    sourceFiles['manifest.json'] = new TextEncoder().encode(JSON.stringify(corruptManifest))
+    const corruptArchive = zipSync(sourceFiles)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-same-size-raster-conflict.moonsprite', corruptArchive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const patchFiles = unzipSync(encoded.data)
+    const repairedManifest = readTestManifest(patchFiles)
+    const repairedLayerEntry = repairedManifest.document.layers[0]
+    const repairedCelEntry = repairedManifest.document.animation.cels.find((cel) => cel.id === secondCel.id)!
+
+    expect(repairedCelEntry.dataFile).not.toBe(repairedLayerEntry.dataFile)
+    expect(patchFiles[repairedCelEntry.dataFile]).toBeDefined()
+    expect(Array.from(patchFiles[repairedCelEntry.dataFile].subarray(0, 4))).toEqual([220, 30, 40, 255])
+  })
+
+  it('rejects a raw raster size mismatch instead of substituting another frame resource', () => {
+    const document = createDocument('ambiguous raster corruption', 4, 4, 'rgba')
+    const files = unzipSync(encodeProject(document))
+    const manifest = readTestManifest(files)
+    manifest.document.layers[0].width = 8
+    manifest.document.layers[0].height = 3
+    manifest.document.animation.cels = []
+    files['manifest.json'] = new TextEncoder().encode(JSON.stringify(manifest))
+
+    expect(() => decodeProject(zipSync(files))).toThrow()
+  })
+
   it('round-trips linked layer frame content while preserving independent placement', () => {
     const document = createDocument('linked layer project', 4, 1, 'rgba')
     const source = getActiveLayer(document)

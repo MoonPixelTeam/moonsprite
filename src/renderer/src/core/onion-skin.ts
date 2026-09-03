@@ -36,9 +36,11 @@ export const tintOnionSkinPixels = (source: Uint8ClampedArray, tint: RgbaColor, 
   const opacity = Math.max(0, Math.min(1, opacityPercent / 100)) / Math.max(1, distance)
   for (let offset = 0; offset < source.length; offset += 4) {
     if (source[offset + 3] === 0) continue
-    output[offset] = tint.r
-    output[offset + 1] = tint.g
-    output[offset + 2] = tint.b
+    const sourceLuminance = source[offset] * 0.2126 + source[offset + 1] * 0.7152 + source[offset + 2] * 0.0722
+    const brightness = 0.25 + sourceLuminance / 255 * 0.75
+    output[offset] = Math.round(tint.r * brightness)
+    output[offset + 1] = Math.round(tint.g * brightness)
+    output[offset + 2] = Math.round(tint.b * brightness)
     output[offset + 3] = Math.round(source[offset + 3] * opacity * tint.a / 255)
   }
   return output

@@ -15,7 +15,7 @@ import {
 } from '@/core/tool-preferences'
 import type { BrushProfile, DocumentSession } from './workspace-types'
 import { defaultSymmetryCenter } from '@/core/symmetry'
-import { ensureAnimationDocument, parseAnimationCelKey, refreshActiveAnimationFrame } from '@/core/animation'
+import { ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
 import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document'
 import { cloneBrushDynamicsSettings, normalizeBrushDynamicsSettings } from '@/core/pressure'
@@ -37,8 +37,8 @@ const FREE_TILE_EDIT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'airbrush', 'era
 
 export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId): boolean => {
   const groupSelected = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
-  if (groupSelected && tool === 'fill') return false
-  if (session.activeLayerMaskId || groupSelected) return true
+  if (groupSelected) return tool === 'move' || tool === 'hand' || tool === 'zoom' || tool === 'rotate'
+  if (session.activeLayerMaskId) return true
   const textLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'text'))
   if (textLayerSelected) return TEXT_LAYER_ALLOWED_TOOLS.has(tool)
   const tilemapLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'tilemap'))
@@ -82,6 +82,14 @@ export const selectedTransformLayersForSession = (session: DocumentSession): Ras
   const selectedGroupIds = new Set(session.selectedGroupIds)
   if (session.selectedGroupId) selectedGroupIds.add(session.selectedGroupId)
   for (const groupId of selectedGroupIds) for (const layerId of getLayerIdsInGroup(session.document, groupId)) selectedIds.add(layerId)
+  // Frame selection without an explicit layer selection means the complete
+  // editable timeline. Once the user explicitly selects layers, the frame
+  // selection is scoped to those layers.
+  if (session.selectedAnimationFrameIds.length > 0 && session.layerSelectionExplicit !== true) {
+    return session.document.layers.filter((layer) => !layer.kind
+      && isLayerEffectivelyVisible(session.document, layer)
+      && !isLayerEffectivelyLocked(session.document, layer))
+  }
   return session.document.layers.filter((layer) => selectedIds.has(layer.id))
 }
 
@@ -241,8 +249,11 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     const fallbackLayerId = document.layers.at(-1)?.id
     if (fallbackLayerId) document.activeLayerId = fallbackLayerId
   }
-  const timeline = ensureAnimationDocument(document)
-  refreshActiveAnimationFrame(document)
+  // Loading a document is a read/session boundary. Do not normalize sparse
+  // animation timelines here: GIF/imported projects may intentionally omit
+  // empty cel slots, and merely opening/selecting them must not allocate
+  // surfaces. Editing/drawing commands materialize slots at their boundary.
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   ensureTilemapTilesetOwnership(document)
   ensureFreeTileTilesetOwnership(document)
   document.displaySettings = normalizeProjectDisplaySettings(document.displaySettings)
@@ -376,6 +387,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     selectedGroupId: null,
     selectedGroupIds: [],
     selectedLayerIds: [document.activeLayerId],
+    layerSelectionExplicit: false,
     activeLayerMaskId: null,
     layerMaskIsolatedView: false,
     layerSelectionAnchorId: document.activeLayerId,
@@ -394,6 +406,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationCellSelectionAnchorKey: null,
     animationCellSelectionExplicit: false,
     selectedAnimationMaskCellKeys: [],
+    selectedAnimationMaskRowKeys: [],
     animationMaskCellSelectionAnchorKey: null,
     animationCellClipboard: [],
     animationCellClipboardAnchorKey: null,
@@ -402,6 +415,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationFrameClipboard: [],
     revision: 0,
     contentRevision: 0,
+    selectionGuidesPreservedAtContentRevision: undefined,
     layersPanelRevision: 0,
     contentInvalidation: null,
     recoveryOriginId: null,

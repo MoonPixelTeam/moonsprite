@@ -36,6 +36,7 @@ export const SMART_ALIGNMENT_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.sma
 export const ALIGNMENT_GUIDES_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.alignment-guides-visible'
 export const ALIGNMENT_THRESHOLD_PREFERENCE_KEY = 'moonsprite.preference.alignment-threshold'
 export const SLICE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.slice-color'
+export const FREE_TILE_INSTANCE_OUTLINE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.free-tile-instance-outline-color'
 export const TEXT_BOX_COLOR_PREFERENCE_KEY = 'moonsprite.preference.text-box-color'
 export const CANVAS_RESIZE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.canvas-resize-color'
 export const SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.slice-outlines-visible'
@@ -303,6 +304,7 @@ export const DEFAULT_CHECKERBOARD_PREFERENCES: CheckerboardPreferences = {
 export const DEFAULT_PIXEL_GRID_COLOR: RgbaColor = { r: 69, g: 77, b: 92, a: 143 }
 export const DEFAULT_GRID_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_SLICE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
+export const DEFAULT_FREE_TILE_INSTANCE_OUTLINE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_TEXT_BOX_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_CANVAS_RESIZE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_SELECTION_PREVIEW_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
@@ -543,6 +545,7 @@ export interface EditorPreferences {
   alignmentGuidesVisible: boolean
   alignmentThreshold: number
   sliceColor: RgbaColor
+  freeTileInstanceOutlineColor: RgbaColor
   textBoxColor: RgbaColor
   canvasResizeColor: RgbaColor
   sliceOutlinesVisible: boolean
@@ -611,6 +614,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   alignmentGuidesVisible: false,
   alignmentThreshold: 6,
   sliceColor: DEFAULT_SLICE_COLOR,
+  freeTileInstanceOutlineColor: DEFAULT_FREE_TILE_INSTANCE_OUTLINE_COLOR,
   textBoxColor: DEFAULT_TEXT_BOX_COLOR,
   canvasResizeColor: DEFAULT_CANVAS_RESIZE_COLOR,
   sliceOutlinesVisible: true,
@@ -1012,6 +1016,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     alignmentGuidesVisible: get(ALIGNMENT_GUIDES_VISIBLE_PREFERENCE_KEY) === 'true',
     alignmentThreshold: parseAlignmentThreshold(get(ALIGNMENT_THRESHOLD_PREFERENCE_KEY)),
     sliceColor: parseHexColor(get(SLICE_COLOR_PREFERENCE_KEY), DEFAULT_SLICE_COLOR),
+    freeTileInstanceOutlineColor: parseHexColor(get(FREE_TILE_INSTANCE_OUTLINE_COLOR_PREFERENCE_KEY), DEFAULT_FREE_TILE_INSTANCE_OUTLINE_COLOR),
     textBoxColor: parseHexColor(get(TEXT_BOX_COLOR_PREFERENCE_KEY), DEFAULT_TEXT_BOX_COLOR),
     canvasResizeColor: parseHexColor(get(CANVAS_RESIZE_COLOR_PREFERENCE_KEY), DEFAULT_CANVAS_RESIZE_COLOR),
     sliceOutlinesVisible: get(SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY) !== 'false',
@@ -1088,6 +1093,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [ALIGNMENT_GUIDES_VISIBLE_PREFERENCE_KEY]: String(preferences.alignmentGuidesVisible),
     [ALIGNMENT_THRESHOLD_PREFERENCE_KEY]: String(parseAlignmentThreshold(String(preferences.alignmentThreshold))),
     [SLICE_COLOR_PREFERENCE_KEY]: colorHex(preferences.sliceColor),
+    [FREE_TILE_INSTANCE_OUTLINE_COLOR_PREFERENCE_KEY]: colorHex(preferences.freeTileInstanceOutlineColor),
     [TEXT_BOX_COLOR_PREFERENCE_KEY]: colorHex(preferences.textBoxColor),
     [CANVAS_RESIZE_COLOR_PREFERENCE_KEY]: colorHex(preferences.canvasResizeColor),
     [SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY]: String(preferences.sliceOutlinesVisible),

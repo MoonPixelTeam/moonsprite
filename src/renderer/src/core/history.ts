@@ -12,6 +12,11 @@ export interface HistoryEntry {
   documentChanged?: boolean
   contentChanged?: boolean
   requiresAnimationSync?: boolean
+  /**
+   * Structural animation/layer changes can invalidate timeline selections.
+   * Pixel-only entries leave this unset so undo/redo can avoid a full scan.
+   */
+  requiresAnimationSelectionNormalization?: boolean
 }
 
 export interface HistoryTimelineEntry {
@@ -50,7 +55,8 @@ const compoundHistoryEntry = (entries: readonly HistoryEntry[], label: string): 
   affectedLayerIds: [...new Set(entries.flatMap((entry) => entry.affectedLayerIds ?? []))],
   documentChanged: entries.some((entry) => entry.documentChanged !== false),
   contentChanged: entries.some((entry) => entry.documentChanged !== false && entry.contentChanged !== false),
-  requiresAnimationSync: entries.some((entry) => entry.documentChanged !== false && entry.requiresAnimationSync !== false)
+  requiresAnimationSync: entries.some((entry) => entry.documentChanged !== false && entry.requiresAnimationSync !== false),
+  requiresAnimationSelectionNormalization: entries.some((entry) => entry.requiresAnimationSelectionNormalization === true)
 })
 
 export class HistoryStack {
@@ -60,6 +66,7 @@ export class HistoryStack {
   private compoundEntries: HistoryEntry[] | null = null
   private compoundDepth = 0
   private stackRevision = 0
+  private animationSelectionNormalizationRequested = false
 
   constructor(private readonly maxBytes = 256 * 1024 * 1024) {}
 
@@ -82,10 +89,19 @@ export class HistoryStack {
     this.bytes = 0
     this.compoundEntries = null
     this.compoundDepth = 0
+    this.animationSelectionNormalizationRequested = false
     this.stackRevision += 1
   }
 
+  /** Mark entries recorded by the current mutateActive scope as structural. */
+  setAnimationSelectionNormalizationRequested(requested: boolean): void {
+    this.animationSelectionNormalizationRequested = requested
+  }
+
   push(entry: HistoryEntry): void {
+    if (this.animationSelectionNormalizationRequested && entry.requiresAnimationSelectionNormalization !== true) {
+      entry = { ...entry, requiresAnimationSelectionNormalization: true }
+    }
     if (this.compoundEntries) {
       this.compoundEntries.push(entry)
       return

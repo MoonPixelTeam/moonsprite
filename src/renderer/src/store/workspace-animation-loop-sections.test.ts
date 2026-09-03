@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ensureAnimationDocument } from '@/core/animation'
+import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { createDocument } from '@/core/document'
 import { useWorkspace } from './workspace'
 
@@ -166,5 +166,110 @@ describe('workspace animation loop sections', () => {
     expect(document.animation?.activeFrameId).toBe(firstFrame.id)
     expect(useWorkspace.getState().sessions[0].animationPlaying).toBe(true)
     expect(document.dirty).toBe(false)
+  })
+
+  it('retargets tag playback when a different timeline cel is clicked', () => {
+    const document = createDocument('tag retarget from cel', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 3; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    const [firstFrame, secondFrame, thirdFrame, fourthFrame] = ensureAnimationDocument(document).frames
+    const firstLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'First', startFrameId: firstFrame.id, endFrameId: secondFrame.id, direction: 'forward', repeatCount: null
+    })!
+    const secondLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Second', startFrameId: thirdFrame.id, endFrameId: fourthFrame.id, direction: 'forward', repeatCount: null
+    })!
+
+    useWorkspace.getState().setActiveAnimationFrame(firstFrame.id)
+    useWorkspace.getState().setAnimationPlaybackMode('tag')
+    useWorkspace.getState().setAnimationPlaying(true)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopSectionId).toBe(firstLoopId)
+
+    useWorkspace.getState().selectAnimationCell(animationCelKey(document.layers[0].id, thirdFrame.id))
+    expect(document.animation?.activeFrameId).toBe(thirdFrame.id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      animationPlaying: true,
+      animationPlaybackLoopSectionId: secondLoopId,
+      animationPlaybackLoopSectionRepeatIndefinitely: true,
+      animationPlaybackLoopIteration: 0
+    })
+  })
+
+  it('collapses playback frame selection to the final paused frame', () => {
+    const document = createDocument('pause current frame selection', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame, thirdFrame] = timeline.frames
+    const session = useWorkspace.getState().sessions[0]
+    session.animationPlaybackMode = 'all'
+    useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
+    useWorkspace.getState().selectAnimationFrame(firstFrame.id)
+    useWorkspace.getState().setAnimationPlaying(true)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([firstFrame.id])
+
+    useWorkspace.getState().setAnimationPlaying(false)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([secondFrame.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).not.toContain(thirdFrame.id)
+  })
+
+  it('clears a clicked cel selection when playback is paused on another frame', () => {
+    const document = createDocument('pause current cel selection', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame] = timeline.frames
+    const layerId = document.layers[0].id
+    const session = useWorkspace.getState().sessions[0]
+    session.animationPlaybackMode = 'all'
+    useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
+    useWorkspace.getState().selectAnimationCell(animationCelKey(layerId, firstFrame.id))
+    useWorkspace.getState().setAnimationPlaying(true)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(layerId, firstFrame.id)])
+
+    useWorkspace.getState().setAnimationPlaying(false)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([secondFrame.id])
+  })
+
+  it('skips disabled frames inside forward and reverse loop sections', () => {
+    const document = createDocument('disabled loop frames', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const [firstFrame, secondFrame, thirdFrame] = ensureAnimationDocument(document).frames
+    secondFrame.disabled = true
+    const forwardId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Forward',
+      startFrameId: firstFrame.id,
+      endFrameId: thirdFrame.id,
+      direction: 'forward',
+      repeatCount: 1
+    })!
+
+    useWorkspace.getState().playAnimationLoopSection(forwardId)
+    expect(document.animation?.activeFrameId).toBe(firstFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(document.animation?.activeFrameId).toBe(thirdFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(useWorkspace.getState().sessions[0].animationPlaying).toBe(false)
+
+    useWorkspace.getState().updateAnimationLoopSection(forwardId, {
+      name: 'Reverse',
+      startFrameId: firstFrame.id,
+      endFrameId: thirdFrame.id,
+      direction: 'reverse',
+      repeatCount: 1
+    })
+    useWorkspace.getState().playAnimationLoopSection(forwardId)
+    expect(document.animation?.activeFrameId).toBe(thirdFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(document.animation?.activeFrameId).toBe(firstFrame.id)
   })
 })

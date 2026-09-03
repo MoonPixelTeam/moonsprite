@@ -10,6 +10,7 @@ import { encodeProjectPreview } from '@/core/project-format'
 import { createRasterImagePreview, rasterImageMimeType } from '@/core/raster-image'
 import { latestRelease } from '@/core/latest-release'
 import { clearRecentProjects, getGalleryPins, getRecentProjects, recordRecentProject, removeGalleryPin, removeRecentProject, reorderRecentProjects, toggleGalleryPin, toggleRecentProjectPinned, type RecentProject } from '@/core/home-history'
+import { getHomeFileDisplayFormats, matchesHomeFileDisplayFormats, saveHomeFileDisplayFormats, type HomeFileDisplayFormat } from '@/core/home-file-display'
 import { createFolderHomeSection, findFolderHomeSection, getHomeSections, saveHomeSections, type HomeSectionDefinition } from '@/core/home-sections'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -419,6 +420,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
 export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery, onOpenLatestRelease }: HomeWorkspaceProps) {
   const { locale, t } = useI18n()
   const [homeSections, setHomeSections] = useState(getHomeSections)
+  const [fileDisplayFormats, setFileDisplayFormats] = useState(getHomeFileDisplayFormats)
   const [section, setSection] = useState(() => loadHomeSection(getHomeSections()))
   const [projectLayout, setProjectLayout] = useState<HomeProjectLayout>(loadHomeProjectLayout)
   const [recentProjectsHidden, setRecentProjectsHidden] = useState(loadRecentProjectsHidden)
@@ -426,6 +428,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
   const [sectionDirectory, setSectionDirectory] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [hasFilesHiddenByFormat, setHasFilesHiddenByFormat] = useState(false)
   const objectUrls = useRef<string[]>([])
   const loadGeneration = useRef(0)
   const projectsRef = useRef<ProjectCard[]>([])
@@ -444,6 +447,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
   const requestDialog = useWorkspace((state) => state.requestDialog)
   const activeSection = homeSections.find((candidate) => candidate.id === section) ?? homeSections[0] ?? { id: 'recent', kind: 'recent' }
   const activeSectionReloadKey = activeSection.kind === 'folder' ? `${activeSection.id}\u0000${activeSection.directoryPath}` : activeSection.id
+  const fileDisplayFormatsKey = fileDisplayFormats.join(',')
 
   const triggerLogoSpin = (): void => {
     const now = Date.now()
@@ -523,6 +527,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
     releaseObjectUrls()
     setProjects([])
     setLoadError('')
+    setHasFilesHiddenByFormat(false)
     setSectionDirectory(target.kind === 'folder' ? target.directoryPath : '')
     if (target.kind === 'recovery') { setLoading(false); return }
     setLoading(true)
@@ -537,7 +542,10 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
         records = listing.projects.map((project) => ({ filePath: project.filePath, fileName: project.fileName, name: project.fileName, lastOpened: project.modifiedAt, pinned: pins.has(project.filePath) }))
           .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.lastOpened - left.lastOpened)
       } else records = getRecentProjects()
+      const visibleRecords = records.filter((record) => matchesHomeFileDisplayFormats(record.filePath, fileDisplayFormats))
       if (generation !== loadGeneration.current) return
+      setHasFilesHiddenByFormat(visibleRecords.length < records.length)
+      records = visibleRecords
       const initialCards = records.map((record): ProjectCard => ({ ...record, name: record.fileName, previewLoading: true }))
       projectsRef.current = initialCards
       setProjects(initialCards)
@@ -582,7 +590,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
   useEffect(() => {
     void loadSection(activeSection)
     return () => { loadGeneration.current += 1; releaseObjectUrls() }
-  }, [activeSectionReloadKey])
+  }, [activeSectionReloadKey, fileDisplayFormatsKey])
 
   useEffect(() => {
     let disposed = false
@@ -609,6 +617,10 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
 
   const updateHomeSections = (next: HomeSectionDefinition[]): void => {
     setHomeSections(saveHomeSections(next))
+  }
+
+  const updateFileDisplayFormats = (next: HomeFileDisplayFormat[]): void => {
+    setFileDisplayFormats(saveHomeFileDisplayFormats(next))
   }
 
   const addHomeFolderSection = async (): Promise<void> => {
@@ -863,7 +875,9 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
     }
   }, [activeSection.kind, projectLayout])
 
-  const emptyState = activeSection.kind === 'gallery'
+  const emptyState = hasFilesHiddenByFormat && activeSection.kind !== 'recovery'
+    ? { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyFileFilter'), detail: t('home.emptyFileFilterDetail') }
+    : activeSection.kind === 'gallery'
     ? { icon: <PixelUtilityIcon kind="image" />, title: t('home.emptyGallery'), detail: t('home.emptyGalleryDetail') }
     : activeSection.kind === 'recovery'
       ? { icon: <PixelUtilityIcon kind="refresh" />, title: t('home.emptyRecovery'), detail: t('home.emptyRecoveryDetail') }
@@ -941,6 +955,6 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
       <footer className="start-screen-footer"><span className="start-screen-build-status"><span>MoonSprite</span><strong>{APP_CHANNEL_LABEL}</strong></span><small className="start-screen-development-notice"><span>{t('home.internalUseOnly')}</span><span>{t('home.doNotDistribute')}</span></small></footer>
     </div>
     {languageDialogOpen && <HomeLanguageDialog current={locale} onApply={applyLanguage} onClose={() => setLanguageDialogOpen(false)} />}
-    {sectionManagerOpen && <HomeSectionManagerDialog activeSectionId={section} sections={homeSections} onAddFolder={addHomeFolderSection} onChange={updateHomeSections} onClose={() => setSectionManagerOpen(false)} onRemove={removeHomeFolderSection} onSelect={selectSection} />}
+    {sectionManagerOpen && <HomeSectionManagerDialog activeSectionId={section} fileDisplayFormats={fileDisplayFormats} sections={homeSections} onAddFolder={addHomeFolderSection} onChange={updateHomeSections} onClose={() => setSectionManagerOpen(false)} onFileDisplayFormatsChange={updateFileDisplayFormats} onRemove={removeHomeFolderSection} onSelect={selectSection} />}
   </section>
 }

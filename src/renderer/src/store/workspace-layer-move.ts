@@ -173,7 +173,7 @@ export const cancelLayerMovePreview = (session: DocumentSession, move: LayerMove
 
 const duplicateHistoryBytes = (layer: RasterLayer, cels: readonly AnimationCel[]): number =>
   layer.pixels.byteLength
-  + cels.reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0) + (cel.mask?.pixels.byteLength ?? 0) + (cel.tilemap?.cells.length ?? 0) * 24, 0)
+  + cels.reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0) + (cel.tilemap?.cells.length ?? 0) * 24, 0)
   + layerStylesHistoryBytes(layer.layerStyles)
   + 32
 
@@ -302,7 +302,8 @@ export const createLayerMoveHistoryEntry = (
     },
     invalidation: duplicatedLayer ? undefined : moveLayerInvalidation(move, move.layerFrameId),
     affectedLayerIds: duplicatedLayer ? undefined : [layerId],
-    requiresAnimationSync: duplicatedLayer ? undefined : false
+    requiresAnimationSync: duplicatedLayer ? undefined : false,
+    requiresAnimationSelectionNormalization: duplicatedLayer ? true : undefined
   }
 }
 

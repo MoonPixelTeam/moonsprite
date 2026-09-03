@@ -24,9 +24,10 @@ export interface ExportPreset {
   target?: 'document' | 'slices' | 'frames' | 'selection'
   sliceId?: string
   directory?: string
-  gifFrameRange?: 'all' | 'range'
+  gifFrameRange?: 'all' | 'range' | 'loop-section'
   gifFrameStart?: number
   gifFrameEnd?: number
+  gifLoopSectionId?: string
   gifDirection?: GifDirection
 }
 
@@ -44,9 +45,10 @@ export interface DocumentExportSettings {
   selection?: SelectionMask | null
   sliceId?: string
   directory?: string
-  gifFrameRange?: 'all' | 'range'
+  gifFrameRange?: 'all' | 'range' | 'loop-section'
   gifFrameStart?: number
   gifFrameEnd?: number
+  gifLoopSectionId?: string
   gifDirection?: GifDirection
   presetName?: string
 }
@@ -97,7 +99,8 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     ? 'document'
     : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
-  const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : 'all'
+  const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
+  const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : value.gifFrameRange === 'loop-section' && gifLoopSectionId ? 'loop-section' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'
     || value.gifDirection === 'forward-ping-pong'
     || value.gifDirection === 'reverse-ping-pong'
@@ -117,6 +120,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),
+      ...(gifFrameRange === 'loop-section' ? { gifLoopSectionId } : {}),
       gifDirection
     } : {})
   }
@@ -133,7 +137,8 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     ? 'document'
     : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
-  const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : 'all'
+  const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
+  const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : value.gifFrameRange === 'loop-section' && gifLoopSectionId ? 'loop-section' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'
     || value.gifDirection === 'forward-ping-pong'
     || value.gifDirection === 'reverse-ping-pong'
@@ -154,6 +159,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),
+      ...(gifFrameRange === 'loop-section' ? { gifLoopSectionId } : {}),
       gifDirection
     } : {})
   }

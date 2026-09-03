@@ -1,4 +1,4 @@
-import type { AnimationCel, AnimationFrame, AnimationGroupMask, AnimationLoopSection, ColorMode, FreeTileSourceLayer, LayerGroup, PaletteEntry, RasterLayer, SpriteDocument, Tileset } from '@shared/types'
+import type { AnimationCel, AnimationFrame, AnimationGroupMask, AnimationLayerMask, AnimationLoopSection, ColorMode, FreeTileSourceLayer, LayerGroup, PaletteEntry, RasterLayer, SpriteDocument, Tileset } from '@shared/types'
 import { cloneAnimationCel, ensureAnimationDocument, refreshActiveAnimationFrame, restoreAnimationCels, syncActiveAnimationFrame } from '@/core/animation'
 import { cloneAnimationLoopSections } from '@/core/animation-loop-sections'
 import { captureDocumentImageResizeSnapshot, documentImageResizeSnapshotBytes, restoreDocumentImageResizeSnapshot, type DocumentImageResizeSnapshot } from '@/core/document'
@@ -10,6 +10,7 @@ import { cloneFreeTileCelData } from '@/core/free-tile'
 interface AnimationStructureSnapshot {
   frames: AnimationFrame[]
   cels: AnimationCel[]
+  layerMasks: AnimationLayerMask[]
   groupMasks: AnimationGroupMask[]
   loopSections: AnimationLoopSection[]
   activeFrameId: string
@@ -51,6 +52,7 @@ export const captureDocumentStructureSnapshot = (document: SpriteDocument): Docu
     animation: {
       frames: [...timeline.frames],
       cels: [...timeline.cels],
+      layerMasks: [...(timeline.layerMasks ?? [])],
       groupMasks: [...(timeline.groupMasks ?? [])],
       loopSections: cloneAnimationLoopSections(timeline.loopSections),
       activeFrameId: timeline.activeFrameId,
@@ -78,6 +80,7 @@ export const restoreDocumentStructureSnapshot = (document: SpriteDocument, snaps
   const timeline = ensureAnimationDocument(document)
   timeline.frames = [...snapshot.animation.frames]
   timeline.cels = [...snapshot.animation.cels]
+  timeline.layerMasks = [...snapshot.animation.layerMasks]
   timeline.groupMasks = [...snapshot.animation.groupMasks]
   timeline.loopSections = cloneAnimationLoopSections(snapshot.animation.loopSections)
   timeline.activeFrameId = snapshot.animation.activeFrameId
@@ -91,6 +94,7 @@ const snapshotObjects = (snapshot: DocumentStructureSnapshot): Set<object> => ne
   ...snapshot.tilesets,
   ...snapshot.animation.frames,
   ...snapshot.animation.cels,
+  ...snapshot.animation.layerMasks,
   ...snapshot.animation.groupMasks,
   ...snapshot.animation.loopSections
 ])
@@ -106,10 +110,8 @@ const retainedBytesForObjects = (snapshot: DocumentStructureSnapshot, retained: 
     bytes += runtime ? runtime.data.byteLength + runtime.tileOffsets.byteLength : surface.pixels.byteLength
   }
   for (const layer of snapshot.layers) if (retained.has(layer)) addSurface(layer)
-  for (const cel of snapshot.animation.cels) if (retained.has(cel)) {
-    if (cel.surface) addSurface(cel.surface)
-    if (cel.mask) addSurface(cel.mask)
-  }
+  for (const cel of snapshot.animation.cels) if (retained.has(cel) && cel.surface) addSurface(cel.surface)
+  for (const entry of snapshot.animation.layerMasks) if (retained.has(entry)) addSurface(entry.mask)
   for (const entry of snapshot.animation.groupMasks) if (retained.has(entry)) addSurface(entry.mask)
   for (const tileset of snapshot.tilesets) if (retained.has(tileset) && !storage.has(tileset.pixels)) {
     storage.add(tileset.pixels)
@@ -218,10 +220,6 @@ export const layerContentSnapshotBytes = (snapshot: LayerContentSnapshot): numbe
         const runtime = runtimeRasterForSurface(cel.surface)
         bytes += runtime ? runtime.data.byteLength + runtime.tileOffsets.byteLength : cel.surface.pixels.byteLength
       }
-    }
-    if (cel.mask && !storage.has(cel.mask.pixels)) {
-      storage.add(cel.mask.pixels)
-      bytes += cel.mask.pixels.byteLength
     }
   }
   for (const tileset of snapshot.tilesets) if (!storage.has(tileset.pixels)) {

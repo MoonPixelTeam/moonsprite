@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, loadShortcutBindings, loadShortcuts, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
+import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 
 describe('shortcut persistence boundary', () => {
+  it('recognizes only F1 through F12 as native function keys', () => {
+    expect(Array.from({ length: 12 }, (_, index) => isFunctionKey(`F${index + 1}`))).toEqual(Array(12).fill(true))
+    expect(isFunctionKey('F13')).toBe(false)
+    expect(isFunctionKey('F0')).toBe(false)
+    expect(isFunctionKey('F1x')).toBe(false)
+  })
+
   it('only accepts known shortcut ids and string values', () => {
     expect(parseShortcutJson(JSON.stringify({ save: 'Ctrl+S', unknown: 'X', undo: 12 }))).toEqual({ save: 'Ctrl+S' })
   })
@@ -41,7 +48,7 @@ describe('shortcut persistence boundary', () => {
     expect(SHORTCUT_GROUPS.selection).toContain('toggleSelectionOutline')
     expect(SHORTCUT_GROUPS.file).toContain('exportSpriteSheet')
     expect(SHORTCUT_GROUPS.animation).toContain('toggleAnimationPlayback')
-    expect(SHORTCUT_GROUPS.animation).toEqual(expect.arrayContaining(['copyAnimationFrames', 'pasteAnimationCels', 'createAnimationLoopSection', 'openAnimationCelProperties']))
+    expect(SHORTCUT_GROUPS.animation).toEqual(expect.arrayContaining(['enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationFrames', 'pasteAnimationCels', 'createAnimationLoopSection', 'openAnimationCelProperties']))
     expect(DEFAULT_SHORTCUTS.toggleAnimationPlayback).toBe('Enter')
     expect(DEFAULT_SHORTCUTS.addLinkedAnimationFrame).toBe('Alt+M')
     expect(SHORTCUT_GROUPS.animation).toContain('addLinkedAnimationFrame')

@@ -68,7 +68,7 @@ import { getRecentProjects, type RecentProject } from '@/core/home-history'
 import { RECENT_EXPORTS_CHANGED_EVENT, loadDocumentExportSettings, loadExportPresets, loadRecentExportPaths, parentDirectoryFromPath, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
 import { EXPORT_FORMAT_PREFERENCE_KEY, EXPORT_SCALE_PRESETS_KEY, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, NEW_DOCUMENT_SIZE_PRESETS_KEY, RELATIVE_LUMINANCE_SCOPE_KEY, SAVE_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences, parseDocumentSizePresets, parseExportScalePresets, parseRelativeLuminanceScope, saveEditorPreferences, type IsoViewPreferences, type RelativeLuminanceScope } from '@/core/file-preferences'
 import { applyThemeToDocument } from '@/core/theme'
-import { CYCLING_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseShortcutInput, findShortcutBindingOwners, keyboardEventKey, loadShortcutBindings, mouseShortcutText, saveShortcutBindings as persistShortcutBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutDisplayText, shortcutMatchesEvent, shortcutPrimary, shortcutReleasedByBindings, shortcutText, type ShortcutBindings, type ShortcutId } from '@/core/shortcuts'
+import { CYCLING_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseShortcutInput, findShortcutBindingOwners, isFunctionKey, keyboardEventKey, loadShortcutBindings, mouseShortcutText, saveShortcutBindings as persistShortcutBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutDisplayText, shortcutMatchesEvent, shortcutPrimary, shortcutReleasedByBindings, shortcutText, type ShortcutBindings, type ShortcutId } from '@/core/shortcuts'
 import { beginPaletteSamplingShortcut, endPaletteSamplingShortcut } from '@/core/palette-sampling-shortcut'
 import { readStoredString, writeStoredString } from '@/core/storage'
 import { flushColorRolePreferences } from '@/core/color-role-preferences'
@@ -988,6 +988,10 @@ export default function App() {
     const defaultScale = format === 'svg' ? 100 : exportScalePresets.includes(100) ? 100 : exportScalePresets[0] ?? 100
     const documentName = session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|svg|gif|psd)$/i, '') || 'MoonSprite-export'
     const gifFrameLimit = Math.max(1, frameCount)
+    const rememberedLoopSectionId = remembered?.gifFrameRange === 'loop-section' && remembered.gifLoopSectionId && session.document.animation?.loopSections?.some((section) => section.id === remembered.gifLoopSectionId)
+      ? remembered.gifLoopSectionId
+      : undefined
+    const gifFrameRange = remembered?.gifFrameRange === 'range' ? 'range' : rememberedLoopSectionId ? 'loop-section' : 'all'
     setExportForm({
       name: withExportFileExtension(remembered?.name ?? documentName, format),
       format,
@@ -995,9 +999,10 @@ export default function App() {
       directory: remembered?.directory || preferences.exportDirectory || defaultFileDirectories.exportDirectory,
       target,
       ...(sliceId ? { sliceId } : {}),
-      gifFrameRange: remembered?.gifFrameRange ?? 'all',
+      gifFrameRange,
       ...(remembered?.gifFrameStart !== undefined ? { gifFrameStart: Math.min(gifFrameLimit, remembered.gifFrameStart) } : {}),
       ...(remembered?.gifFrameEnd !== undefined ? { gifFrameEnd: Math.min(gifFrameLimit, remembered.gifFrameEnd) } : {}),
+      ...(rememberedLoopSectionId ? { gifLoopSectionId: rememberedLoopSectionId } : {}),
       gifDirection: remembered?.gifDirection ?? 'forward'
     })
     const rememberedPresetName = remembered?.presetName ?? ''
@@ -1686,7 +1691,12 @@ export default function App() {
       if (session?.selection && runCommand('deselect', () => {
         const label = t('app.selection.cancelHistory')
         if (session.pendingPaste) workspace.commitFloatingPaste(label)
-        else workspace.commitSelectionChange({ ...session.selection! }, null, label)
+        else workspace.commitSelectionChange(
+          { ...session.selection! },
+          null,
+          label,
+          { resetTimelineSelection: session.selectionGuidesPreservedAtContentRevision === session.contentRevision }
+        )
       })) return
       const selectionOwnsCopy = Boolean(session?.selection) && (commandScopeRef.current === 'canvas' || selectionCommandOverrideRef.current)
       if (selectionOwnsCopy && runCommand('copy', () => workspace.copySelection())) return
@@ -1718,18 +1728,16 @@ export default function App() {
       })) return
       if (runCommand('cut', () => workspace.cutSelection())) return
       if (runCommand('paste', () => {
-        if (!session || (!session.activeLayerMaskId && session.selectedLayerIds.length === 0 && session.selectedGroupIds.length === 0 && !session.selectedGroupId)) {
+        const hasAnimationTarget = Boolean(session && (session.selectedAnimationMaskCellKeys.length || session.selectedAnimationCellKeys.length || session.selectedAnimationFrameIds.length))
+        if (!session || (!hasAnimationTarget && !session.activeLayerMaskId && session.selectedLayerIds.length === 0 && session.selectedGroupIds.length === 0 && !session.selectedGroupId)) {
           workspace.setMessage(t('workspace.clipboard.selectTarget'))
           return
         }
-        if (session?.selectedAnimationMaskCellKeys.length && !selectionCommandOverrideRef.current && session.animationMaskClipboard.length) { workspace.pasteAnimationMasks(); return }
-        if (session?.activeLayerMaskId) { void workspace.pasteSelection(); return }
-        if (session?.selectedAnimationCellKeys.length && !selectionCommandOverrideRef.current && session.animationCellClipboard.length) { workspace.pasteAnimationCels(); return }
-        if (session?.selectedAnimationFrameIds.length && session.animationFrameClipboard.length) { workspace.pasteAnimationFrames(); return }
-        if (commandScopeRef.current === 'layers' && workspace.pasteLayersFromClipboard()) return
         if (commandScopeRef.current === 'palette') { workspace.setMessage(t('app.palette.pasteUnsupported')); return }
-        if (!session?.selection && workspace.pasteLayersFromClipboard()) return
-        void workspace.pasteSelection()
+        // Centralize clipboard precedence (OS image first, then animation or
+        // internal layer payload) so every paste entry point sees the latest
+        // copy source regardless of the active panel.
+        void workspace.pasteClipboard()
       })) return
       if (runCommand('pasteAsNewLayer', () => { void workspace.pasteAsNewLayer() })) return
       if (runCommand('pasteAsNewDocument', () => { void workspace.pasteAsNewDocument() })) return
@@ -1792,6 +1800,7 @@ export default function App() {
         'pasteAnimationFrames', 'pasteAnimationCels', 'copyAnimationMasks', 'pasteAnimationMasks',
         'connectAnimationCels', 'disconnectAnimationCels', 'connectAnimationMasks', 'disconnectAnimationMasks',
         'toggleAnimationMask', 'createAnimationLoopSection', 'openAnimationFrameProperties',
+        'enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled',
         'playAnimationLoopSection', 'openAnimationLoopSectionProperties', 'deleteAnimationLoopSection',
         'openAnimationCelProperties', 'showOnlyFreeTileInstance', 'openFreeTileInstanceProperties',
         'rotateFreeTileInstance90', 'mirrorFreeTileInstanceHorizontal', 'mirrorFreeTileInstanceVertical',
@@ -2109,7 +2118,7 @@ export default function App() {
         ['p', 'r', 'l', 'u', '0', '+', '=', '-'].includes(key)
         || (event.shiftKey && ['i', 'j', 'c'].includes(key))
       )
-      if (browserShortcut || key === 'f5' || key === 'f12' || (event.altKey && (key === 'arrowleft' || key === 'arrowright'))) {
+      if (browserShortcut || isFunctionKey(key) || (event.altKey && (key === 'arrowleft' || key === 'arrowright'))) {
         event.preventDefault()
         event.stopPropagation()
       }
@@ -2421,6 +2430,11 @@ export default function App() {
     : exportForm.target === 'slices' && exportSlices.length === 0
       ? 'document'
       : exportForm.target ?? 'document'
+  const exportLoopSections = session?.document.animation?.loopSections ?? []
+  const selectedGifLoopSectionId = exportForm.gifFrameRange === 'loop-section' && exportForm.gifLoopSectionId && exportLoopSections.some((section) => section.id === exportForm.gifLoopSectionId)
+    ? exportForm.gifLoopSectionId
+    : ''
+  const gifFrameRangeValue = selectedGifLoopSectionId ? `loop-section:${selectedGifLoopSectionId}` : exportForm.gifFrameRange === 'range' ? 'range' : 'all'
   const selectedExportSliceId = exportForm.sliceId && exportSlices.some((slice) => slice.id === exportForm.sliceId) ? exportForm.sliceId : ''
   const submitExport = async (openFolderAfterExport: boolean): Promise<void> => {
     const directory = exportForm.directory?.trim() || defaultFileDirectories.exportDirectory
@@ -2593,7 +2607,7 @@ export default function App() {
             {exportTarget === 'slices' && <FormField className="export-slice-field" label={t('app.export.sliceSelection')}><ThemedSelect value={selectedExportSliceId} groups={[{ label: t('app.export.sliceSelection'), options: [{ value: '', label: t('app.export.allSlices') }, ...exportSlices.map((slice) => ({ value: slice.id, label: slice.name, description: `${slice.width} × ${slice.height} · ${slice.x}, ${slice.y}` }))] }]} label={t('app.export.sliceSelection')} onChange={(sliceId) => setExportForm({ ...exportForm, sliceId: sliceId || undefined })} /></FormField>}
           </div>
           {exportForm.format === 'gif' && <section className="gif-export-options">
-            <FormField label={t('app.export.gifRange')}><ThemedSelect value={exportForm.gifFrameRange ?? 'all'} groups={[{ label: t('app.export.gifRange'), options: [{ value: 'all', label: t('app.export.gifAllFrames') }, { value: 'range', label: t('app.export.gifFrameRange') }] }]} label={t('app.export.gifRange')} onChange={(gifFrameRange) => setExportForm({ ...exportForm, gifFrameRange: gifFrameRange as 'all' | 'range' })} /></FormField>
+            <FormField label={t('app.export.gifRange')}><ThemedSelect value={gifFrameRangeValue} groups={[{ label: t('app.export.gifRange'), options: [{ value: 'all', label: t('app.export.gifAllFrames') }, { value: 'range', label: t('app.export.gifFrameRange') }, ...exportLoopSections.map((section) => ({ value: `loop-section:${section.id}`, label: t('app.export.gifLoopSection', { name: section.name }) }))] }]} label={t('app.export.gifRange')} onChange={(value) => setExportForm((current) => value.startsWith('loop-section:') ? { ...current, gifFrameRange: 'loop-section', gifLoopSectionId: value.slice('loop-section:'.length) } : { ...current, gifFrameRange: value === 'range' ? 'range' : 'all', gifLoopSectionId: undefined })} /></FormField>
             {exportForm.gifFrameRange === 'range' && <div className="gif-range-fields"><FormField label={t('app.export.gifStart')}><NumberInput min={1} max={session?.document.animation?.frames.length ?? 1} value={exportForm.gifFrameStart ?? 1} onValueChange={(gifFrameStart) => setExportForm({ ...exportForm, gifFrameStart })} /></FormField><FormField label={t('app.export.gifEnd')}><NumberInput min={1} max={session?.document.animation?.frames.length ?? 1} value={exportForm.gifFrameEnd ?? session?.document.animation?.frames.length ?? 1} onValueChange={(gifFrameEnd) => setExportForm({ ...exportForm, gifFrameEnd })} /></FormField></div>}
             <FormField label={t('app.export.gifDirection')}><ThemedSelect value={exportForm.gifDirection ?? 'forward'} groups={[{ label: t('app.export.gifDirection'), options: [{ value: 'forward', label: t('app.export.gifForward'), description: t('app.export.gifForwardHint') }, { value: 'reverse', label: t('app.export.gifReverse'), description: t('app.export.gifReverseHint') }, { value: 'forward-ping-pong', label: t('app.export.gifForwardPingPong'), description: t('app.export.gifForwardPingPongHint') }, { value: 'reverse-ping-pong', label: t('app.export.gifReversePingPong'), description: t('app.export.gifReversePingPongHint') }] }]} label={t('app.export.gifDirection')} onChange={(gifDirection) => setExportForm({ ...exportForm, gifDirection: gifDirection as NonNullable<ExportOptions['gifDirection']> })} /></FormField>
           </section>}

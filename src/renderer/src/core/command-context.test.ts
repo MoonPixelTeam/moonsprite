@@ -17,6 +17,11 @@ describe('command context', () => {
     expect(resolveDeleteCommand('palette', false, true)).toBe('palette')
   })
 
+  it('treats one explicitly selected cel as an animation delete target', () => {
+    expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: true })).toBe(true)
+    expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: false })).toBe(false)
+  })
+
 
 
 

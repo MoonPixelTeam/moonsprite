@@ -94,6 +94,28 @@ describe('GIF animation export', () => {
     expect([...result.bytes].filter((value) => value === 0x2c)).toHaveLength(2)
   })
 
+  it('exports only the frames inside the selected loop section', () => {
+    const document = createDocument('gif loop section', 1, 1, 'rgba')
+    writeLayerColor(document, document.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+    addBlankAnimationFrame(document)
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 255, b: 0, a: 255 })
+    addBlankAnimationFrame(document)
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 0, b: 255, a: 255 })
+    addBlankAnimationFrame(document)
+    writeLayerColor(document, document.layers[0], 0, { r: 255, g: 255, b: 255, a: 255 })
+    const timeline = document.animation!
+    timeline.loopSections = [{ id: 'loop-middle', name: 'Middle', startFrameId: timeline.frames[1].id, endFrameId: timeline.frames[2].id, direction: 'forward', repeatCount: null }]
+
+    const result = exportAnimationGif(document, { scalePercent: 100, loopSectionId: 'loop-middle', direction: 'forward' })
+    const frames = decompressFrames(parseGIF(result.bytes.slice().buffer), true)
+
+    expect(result.frameCount).toBe(2)
+    expect(frames.map((frame) => Array.from(frame.patch))).toEqual([
+      [0, 255, 0, 255],
+      [0, 0, 255, 255]
+    ])
+  })
+
   it('clears transparent pixels between full-canvas animation frames', () => {
     const document = createDocument('gif disposal', 2, 1, 'rgba')
     const layer = document.layers[0]

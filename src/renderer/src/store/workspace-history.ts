@@ -187,6 +187,7 @@ export function restoreAdjustmentSnapshotRegions(
 
 export interface LayerUiSnapshot {
   selectedLayerIds: string[]
+  layerSelectionExplicit: boolean
   selectedGroupId: string | null
   selectedGroupIds: string[]
   collapsedGroupIds: string[]
@@ -194,6 +195,7 @@ export interface LayerUiSnapshot {
 
 export const captureLayerUi = (session: DocumentSession): LayerUiSnapshot => ({
   selectedLayerIds: [...session.selectedLayerIds],
+  layerSelectionExplicit: session.layerSelectionExplicit === true,
   selectedGroupId: session.selectedGroupId,
   selectedGroupIds: [...session.selectedGroupIds],
   collapsedGroupIds: [...session.collapsedGroupIds]
@@ -201,6 +203,7 @@ export const captureLayerUi = (session: DocumentSession): LayerUiSnapshot => ({
 
 const restoreLayerUi = (session: DocumentSession, snapshot: LayerUiSnapshot): void => {
   session.selectedLayerIds = [...snapshot.selectedLayerIds]
+  session.layerSelectionExplicit = snapshot.layerSelectionExplicit === true
   session.selectedGroupId = snapshot.selectedGroupId
   session.selectedGroupIds = [...snapshot.selectedGroupIds]
   session.collapsedGroupIds = [...snapshot.collapsedGroupIds]
@@ -210,6 +213,7 @@ export function commitLayerMerge(session: DocumentSession, beforeDocument: Docum
   session.selectedGroupId = null
   session.selectedGroupIds = []
   session.selectedLayerIds = [result.layerId]
+  session.layerSelectionExplicit = true
   session.collapsedGroupIds = session.collapsedGroupIds.filter((id) => !result.removedGroupIds.includes(id))
   touch(session)
   const afterDocument = captureDocumentStructureSnapshot(session.document)

@@ -50,6 +50,42 @@ describe('gradient tool core', () => {
     expect(sample(4, 0)).toEqual(blue)
   })
 
+  it('represents a uniform gradient paint region without a full-size mask', () => {
+    const document = createDocument('uniform gradient region', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+
+    expect(gradientRegionSelection(document, layer, { x: 256, y: 256 }, 0, true)).toEqual({
+      x: 0,
+      y: 0,
+      width: 512,
+      height: 512
+    })
+  })
+
+  it('keeps dense opaque multi-stop gradients exact through undo and redo', () => {
+    const document = createDocument('dense packed gradient', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    const stops = [
+      { position: 0, color: red },
+      { position: 0.5, color: green },
+      { position: 1, color: blue }
+    ]
+    const start = { x: 0, y: 0 }
+    const end = { x: 511, y: 0 }
+    const sample = createGradientColorSampler(red, blue, start, end, 'none', 'linear', {}, stops)
+    const edit = applyGradient(document, layer, start, end, red, blue, null, 'none', undefined, 'linear', {}, stops)
+
+    expect(edit?.denseRegion?.count).toBeGreaterThan(0)
+    for (const x of [0, 128, 256, 384, 511]) expect(readLayerColorAt(document, layer, x, 300)).toEqual(sample(x, 300))
+
+    const history = commitPixelEdit(document, edit!, 'dense gradient')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 300).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 511, 300).a).toBe(0)
+    history.redo()
+    for (const x of [0, 128, 256, 384, 511]) expect(readLayerColorAt(document, layer, x, 300)).toEqual(sample(x, 300))
+  })
+
   it('uses the nearest edge stop outside the first and last positions', () => {
     const sample = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none', 'linear', {}, [
       { position: 0.25, color: red },

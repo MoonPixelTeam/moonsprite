@@ -20,8 +20,27 @@ class MockOffscreenCanvas {
         this.pixels.set(image.data.subarray(sourceOffset, sourceOffset + image.width * 4), targetOffset)
       }
     }),
-    drawImage: vi.fn(),
-    clearRect: vi.fn(),
+    drawImage: vi.fn((source: unknown, ...args: number[]) => {
+      if (!(source instanceof MockOffscreenCanvas) || args.length < 8) return
+      const [sx, sy, sw, sh, dx, dy, dw, dh] = args
+      for (let y = 0; y < Math.ceil(dh); y += 1) for (let x = 0; x < Math.ceil(dw); x += 1) {
+        const sourceX = Math.min(source.width - 1, Math.max(0, Math.floor(sx + x * sw / dw)))
+        const sourceY = Math.min(source.height - 1, Math.max(0, Math.floor(sy + y * sh / dh)))
+        const targetX = Math.floor(dx + x)
+        const targetY = Math.floor(dy + y)
+        if (targetX < 0 || targetY < 0 || targetX >= this.width || targetY >= this.height) continue
+        const sourceOffset = (sourceY * source.width + sourceX) * 4
+        const targetOffset = (targetY * this.width + targetX) * 4
+        this.pixels.set(source.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset)
+      }
+    }),
+    clearRect: vi.fn((x: number, y: number, width: number, height: number) => {
+      const left = Math.max(0, Math.floor(x))
+      const top = Math.max(0, Math.floor(y))
+      const right = Math.min(this.width, Math.ceil(x + width))
+      const bottom = Math.min(this.height, Math.ceil(y + height))
+      for (let row = top; row < bottom; row += 1) this.pixels.fill(0, (row * this.width + left) * 4, (row * this.width + right) * 4)
+    }),
     save: vi.fn(),
     restore: vi.fn(),
     globalAlpha: 1,
@@ -214,6 +233,32 @@ describe('CanvasCompositeCache', () => {
 
     expect(readLayerColor(document, layer, 1)).toEqual(before)
     expect(context.drawImage).toHaveBeenCalledOnce()
+  })
+
+  it('clears the visible tail of an off-canvas preview before centering it', () => {
+    const document = createDocument('gif off-canvas selection preview', 8, 1, 'rgba')
+    ensureAnimationDocument(document)
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 1, { r: 255, g: 0, b: 0, a: 255 })
+    writeLayerColor(document, layer, 2, { r: 0, g: 80, b: 255, a: 255 })
+    writeLayerColor(document, layer, 3, { r: 0, g: 200, b: 80, a: 255 })
+    const source = captureSelectionTransform(document, { x: 1, y: 0, width: 3, height: 1 }, layer)!
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+
+    draw(cache, document, context, {
+      selectionPreview: { layerId: layer.id, source, target: { x: -1, y: 0, width: 3, height: 1 }, angle: 0, copy: false }
+    })
+    draw(cache, document, context, {
+      selectionPreview: { layerId: layer.id, source, target: { x: 3, y: 0, width: 3, height: 1 }, angle: 0, copy: false }
+    })
+
+    const preview = (cache as unknown as { selectionPreview?: { canvas: MockOffscreenCanvas } }).selectionPreview
+    if (!preview) throw new Error('selection preview surface was not created')
+    expect(Array.from(preview.canvas.pixels.slice(0, 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(preview.canvas.pixels.slice(3 * 4, 4 * 4))).toEqual([255, 0, 0, 255])
+    expect(Array.from(preview.canvas.pixels.slice(4 * 4, 5 * 4))).toEqual([0, 80, 255, 255])
+    expect(Array.from(preview.canvas.pixels.slice(5 * 4, 6 * 4))).toEqual([0, 200, 80, 255])
   })
 
   it('keeps selection previews available when the active layer has styles', () => {

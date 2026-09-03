@@ -357,6 +357,8 @@ export interface CanvasDragState {
   freeTileSourceId?: string
   freeTileInstanceId?: string
   freeTileInstanceStart?: CanvasPoint
+  freeTileInstanceIds?: string[]
+  freeTileInstanceStarts?: Record<string, CanvasPoint>
   freeTileInstanceSelectionMove?: boolean
   freeTileEditDocument?: SpriteDocument
   freeTileEditLayer?: RasterLayer

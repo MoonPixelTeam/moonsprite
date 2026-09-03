@@ -1,5 +1,5 @@
 import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
-import { getPaletteEntry } from './document'
+import { getPaletteEntry, rasterLayerPackedValueIsUniform } from './document'
 import { isInBounds, packColor, pixelIndex } from './raster'
 import { contiguousMatchingRegion } from './contiguous-region'
 import { balancedStairLinePoints } from './pixel-line'
@@ -1081,6 +1081,17 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
   }
   const target = packedAt(pixelIndex(document.width, startX, startY))
   const matches = (index: number): boolean => packedColorMatchesTolerance(packedAt(index), target, normalizedTolerance)
+  const layerCoversCanvas = layer.offsetX <= 0
+    && layer.offsetY <= 0
+    && layer.offsetX + layer.width >= document.width
+    && layer.offsetY + layer.height >= document.height
+  if (layerCoversCanvas) {
+    const localIndex = (startY - layer.offsetY) * layer.width + startX - layer.offsetX
+    const rawTarget = layer.format === 'rgba' ? target : layer.pixels[localIndex]
+    if (rasterLayerPackedValueIsUniform(layer, rawTarget)) {
+      return { x: 0, y: 0, width: document.width, height: document.height }
+    }
+  }
   const total = document.width * document.height
   const selected = new Uint8Array(total)
   let minX = document.width; let maxX = -1; let minY = document.height; let maxY = -1

@@ -54,7 +54,7 @@ const MemoPalettePanel = memo(function MemoPalettePanel({ renderKey: _renderKey,
 
 const MemoLayersPanel = memo(function MemoLayersPanel({ renderKey: _renderKey, ...props }: PanelRenderProps<ComponentProps<typeof LayersPanel>>) {
   return <LayersPanel {...props} />
-}, (previous, next) => samePanelRender(previous, next) && previous.session === next.session)
+}, samePanelRender)
 
 const MemoFreeTileInstancesPanel = memo(function MemoFreeTileInstancesPanel({ renderKey: _renderKey, ...props }: PanelRenderProps<ComponentProps<typeof FreeTileInstancesPanel>>) {
   return <FreeTileInstancesPanel {...props} />

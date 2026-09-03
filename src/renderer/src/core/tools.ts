@@ -1,5 +1,5 @@
 import type { AnimationCelSurface, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
-import { compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
+import { compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
 import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
 import { blendOver, isInBounds, packColor, pixelIndex, unpackColor } from './raster'
 import { flipSelectionMask, lassoSelection, packedColorMatchesTolerance, polygonSelection, rasterLinePoints, rotatedEllipseSelection, rotatedRectSelection, rotatedSelectionBounds, roundedRectContainsPoint, roundedRectRadius, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionDestinationPoint, transformedSelectionSourcePoint, type SelectionFlipAxis, type SelectionShearTransform } from './selection'
@@ -1581,6 +1581,22 @@ export interface PixelOperationProfiler {
   record(stage: string, duration: number, detail?: Record<string, number | string | boolean>): void
 }
 
+const floodFillUniformSolidRuns = (document: SpriteDocument, layer: RasterLayer, target: number, next: number): PixelEdit => {
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  markLayerContentChanged(layer)
+  for (let y = 0; y < document.height; y += 1) {
+    const index = layerIndexAt(layer, 0, y)
+    if (index === null) continue
+    writeLayerPackedRun(document, layer, index, document.width, next)
+    runs.push({ index, length: document.width, before: target, after: next })
+  }
+  edit.runs = runs
+  edit.dirtyRect = { x: 0, y: 0, width: document.width, height: document.height }
+  return edit
+}
+
 const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, target: number, next: number, selection: SelectionMask | null | undefined, contiguous: boolean): PixelEdit | null => {
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
@@ -1767,8 +1783,18 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   preparePixelEdit(document, edit)
   const next = paintLayerValue(document, layer, edit, startLayerIndex, color)
   if (target === next) return null
-  if (gapClosingThreshold <= 0 && normalizedTolerance === 0 && document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid') {
-    return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
+  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid'
+  if (compactSolidFill) {
+    const layerCoversCanvas = layer.offsetX <= 0
+      && layer.offsetY <= 0
+      && layer.offsetX + layer.width >= document.width
+      && layer.offsetY + layer.height >= document.height
+    if (!selection && layerCoversCanvas && rasterLayerPackedValueIsUniform(layer, target)) {
+      return floodFillUniformSolidRuns(document, layer, target, next)
+    }
+    if (gapClosingThreshold <= 0 && normalizedTolerance === 0) {
+      return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
+    }
   }
   const textureCoverage = (x: number, y: number): number => {
     if (!imageBrush) return brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0

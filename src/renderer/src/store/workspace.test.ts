@@ -3,11 +3,11 @@ import type { MoonSpriteApi } from '@shared/types'
 import { animationMaskAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel, revertPixelEdit } from '@/core/history'
 import { packColor, relativeLuminanceColor } from '@/core/raster'
-import { applySelectionTransform, applySelectionTranslationPreview, captureSelectionTransform, paintBrush, selectionTranslationPreviewEdit } from '@/core/tools'
+import { applySelectionTransform, applySelectionTranslationPreview, captureSelectionTransform, paintBrush, selectionTranslationPreviewEdit, type SelectionTransformSource } from '@/core/tools'
 import { builtInPalettes } from '@/core/built-in-palettes'
 import { createProceduralBrush } from '@/core/brushes'
 import { brushLibraryLocation } from '@/core/brush-library-location'
-import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, animationLayerAtFrame, ensureAnimationDocument, resolveAnimationCel, setAnimationCelOffsetsForKeys } from '@/core/animation'
+import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, animationLayerAtFrame, ensureAnimationDocument, linkAnimationFrameCels, resolveAnimationCel, setAnimationCelOffsetsForKeys } from '@/core/animation'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { transformedSelectionBounds, transformedSelectionPivotPreset, transformSelectionMask } from '@/core/selection'
 import { registerViewPreviewFlusher } from '@/core/view-preview-lifecycle'
@@ -17,6 +17,7 @@ import { decodeProject, encodeProject, registerProjectSaveBaseline } from '@/cor
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { LAYER_PANEL_STATE_STORAGE_KEY } from '@/core/layer-panel-state'
 import { saveProgress } from '@/core/save-progress'
+import { activePaintLayer } from '@/store/workspace-session'
 import { repositionPaletteSlots } from '@/core/palette-layout'
 import { decodePng } from '@/core/png'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
@@ -83,6 +84,181 @@ beforeEach(() => {
   brushLibraryLocation.set(null)
   saveProgress.dismiss()
   useWorkspace.setState({ sessions: [], activeId: null, message: null, saveProgress: null, dialog: null, recoveryRecords: [] })
+})
+
+describe('automatic animation cel links', () => {
+  it('stores independent layer-mask lock and auto-link settings with undo/redo', () => {
+    const document = createDocument('mask settings', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const cel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    cel.mask = createLayerMask(cel.id, 1, 1)
+    useWorkspace.getState().addSession(document)
+
+    const maskKey = animationCelKey(layer.id, cel.frameId)
+    useWorkspace.getState().selectAnimationMaskCell(maskKey)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask.id)
+    useWorkspace.getState().setLayerMaskLocked(cel.id, true)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask.id)
+    useWorkspace.getState().redo()
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
+    useWorkspace.getState().setLayerMaskAutoLinkAnimationCels(cel.id, true)
+    expect(cel.mask?.locked).toBe(true)
+    expect(cel.mask?.autoLinkAnimationCels).toBe(true)
+    useWorkspace.getState().undo()
+    expect(cel.mask?.autoLinkAnimationCels).toBeUndefined()
+    useWorkspace.getState().undo()
+    expect(cel.mask?.locked).toBe(false)
+    useWorkspace.getState().redo()
+    expect(cel.mask?.locked).toBe(true)
+  })
+
+  it('stores the toggle per layer and supports undo/redo without affecting groups', () => {
+    const document = createDocument('automatic cel link setting', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const second = createLayer('Second', 1, 1, 'rgba')
+    document.layers.push(second)
+    document.groups.push({ id: 'group', name: 'Group', visible: true, locked: false, opacity: 1, blendMode: 'normal' })
+    useWorkspace.getState().addSession(document)
+
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+    expect(layer.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).toBeUndefined()
+    expect(document.groups[0]).not.toHaveProperty('autoLinkAnimationCels')
+
+    useWorkspace.getState().undo()
+    expect(layer.autoLinkAnimationCels).toBeUndefined()
+    useWorkspace.getState().redo()
+    expect(layer.autoLinkAnimationCels).toBe(true)
+
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, false)
+    expect(layer.autoLinkAnimationCels).toBeUndefined()
+  })
+
+  it('uses the toggled Store state for subsequent frame creation', () => {
+    const document = createDocument('automatic cel link workflow', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+
+    const timeline = ensureAnimationDocument(document)
+    const firstFrame = timeline.activeFrameId
+    const secondFrame = addBlankAnimationFrame(document)
+    const firstCel = animationCelAt(timeline, layer.id, firstFrame)!
+    firstCel.surface!.pixels[3] = 255
+    linkAnimationFrameCels(document, firstFrame, secondFrame, [layer.id])
+    useWorkspace.getState().addAnimationFrame()
+
+    const thirdFrame = ensureAnimationDocument(document).activeFrameId
+    const thirdCel = animationCelAt(timeline, layer.id, thirdFrame)!
+    expect(layer.autoLinkAnimationCels).toBe(true)
+    expect(thirdCel.linkedCelId).toBe(firstCel.id)
+  })
+
+  it('auto-links after a real pixel edit on the active source frame', () => {
+    const document = createDocument('automatic cel link painted source', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const firstCel = animationCelAt(timeline, layer.id, firstFrameId)!
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(red))
+    useWorkspace.getState().commitPixelEdit(edit, 'paint source')
+
+    useWorkspace.getState().addAnimationFrame()
+    const secondCel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    expect(firstCel.surface?.pixels[3]).toBe(255)
+    expect(secondCel.linkedCelId).toBe(firstCel.id)
+  })
+
+  it('auto-links the duplicate-frame toolbar path from an independent source cel', () => {
+    const document = createDocument('automatic cel link duplicate path', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+    const timeline = ensureAnimationDocument(document)
+    const firstCel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    firstCel.surface!.pixels[3] = 255
+
+    useWorkspace.getState().duplicateAnimationFrame()
+    const secondCel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    expect(secondCel.linkedCelId).toBe(firstCel.id)
+  })
+
+  it('auto-links a new frame from an independent cel and preserves the link through undo/redo', () => {
+    const document = createDocument('automatic cel link history', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const firstCel = animationCelAt(timeline, layer.id, firstFrameId)!
+    firstCel.surface!.pixels[3] = 255
+
+    useWorkspace.getState().addAnimationFrame()
+    const secondFrameId = timeline.activeFrameId
+    const secondCel = animationCelAt(timeline, layer.id, secondFrameId)!
+    expect(secondCel.linkedCelId).toBe(firstCel.id)
+    expect(secondCel.surface).toBe(firstCel.surface)
+
+    useWorkspace.getState().undo()
+    expect(timeline.frames.some((frame) => frame.id === secondFrameId)).toBe(false)
+    expect(timeline.activeFrameId).toBe(firstFrameId)
+
+    useWorkspace.getState().redo()
+    expect(timeline.activeFrameId).toBe(secondFrameId)
+    expect(animationCelAt(timeline, layer.id, secondFrameId)?.linkedCelId).toBe(firstCel.id)
+  })
+
+  it('does not auto-link a new frame when the layer toggle is off', () => {
+    const document = createDocument('automatic cel link disabled', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+
+    const timeline = ensureAnimationDocument(document)
+    const firstCel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    firstCel.surface!.pixels[3] = 255
+    useWorkspace.getState().addAnimationFrame()
+
+    const secondCel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
+    expect(layer.autoLinkAnimationCels).toBeUndefined()
+    expect(secondCel.linkedCelId).toBeUndefined()
+    expect(secondCel.surface).not.toBe(firstCel.surface)
+  })
+
+  it('auto-links frames inserted by animation-frame paste, including consecutive inserts', () => {
+    const document = createDocument('automatic cel link paste', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setLayerAutoLinkAnimationCels(layer.id, true)
+
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const firstCel = animationCelAt(timeline, layer.id, firstFrameId)!
+    firstCel.surface!.pixels[3] = 255
+    useWorkspace.getState().selectAnimationFrame(firstFrameId)
+    useWorkspace.getState().copySelectedAnimationFrames()
+    useWorkspace.getState().pasteAnimationFrames()
+
+    const insertedFrameId = timeline.activeFrameId
+    const insertedCel = animationCelAt(timeline, layer.id, insertedFrameId)!
+    expect(insertedFrameId).not.toBe(firstFrameId)
+    expect(insertedCel.linkedCelId).toBe(firstCel.id)
+
+    // Pasting the same clipboard again inserts after the selected frame and
+    // inherits from that preceding linked cel as well.
+    useWorkspace.getState().pasteAnimationFrames()
+    const secondInsertedFrameId = timeline.activeFrameId
+    const secondInsertedCel = animationCelAt(timeline, layer.id, secondInsertedFrameId)!
+    expect(secondInsertedCel.linkedCelId).toBe(firstCel.id)
+  })
 })
 
 describe('symmetry axis placement', () => {
@@ -233,6 +409,10 @@ describe('quick command content centering', () => {
     expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
     expect(readLayerColorAt(document, layer, 4, 1)).toEqual(red)
     expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 0, y: 0, width: 2, height: 2 })
+    useWorkspace.getState().redo()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 3, y: 0, width: 2, height: 2 })
   })
 
   it('preserves content moved outside the canvas before centering a selection', () => {
@@ -264,6 +444,228 @@ describe('quick command content centering', () => {
     useWorkspace.getState().centerActiveContent('horizontal')
     expect(readLayerColorAt(document, layer, 2, 0)).toEqual(red)
     expect(readLayerColorAt(document, layer, 5, 0)).toEqual(blue)
+  })
+
+  it('centers a floating selection without committing or clipping its full bounds', () => {
+    const document = createDocument('center pending selection', 8, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1, red)
+    writeLayerColor(document, layer, 4, blue)
+    useWorkspace.getState().addSession(document)
+
+    const selection = { x: 1, y: 0, width: 4, height: 1 }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const outsideTarget = { ...selection, x: -1 }
+    useWorkspace.getState().beginFloatingSelectionTransform(
+      source,
+      null,
+      selection,
+      outsideTarget,
+      false,
+      'floating selection move',
+      null,
+      outsideTarget,
+      0,
+      undefined,
+      false
+    )
+
+    useWorkspace.getState().centerActiveContent('horizontal')
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.pendingPaste).not.toBeNull()
+    expect(session.selection).toMatchObject({ x: 2, y: 0, width: 4, height: 1 })
+
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 5, 0)).toEqual(blue)
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject(selection)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+    useWorkspace.getState().redo()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 2, y: 0, width: 4, height: 1 })
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 5, 0)).toEqual(blue)
+  })
+
+  it('centers a partially off-canvas selection on both axes and restores it exactly', () => {
+    const document = createDocument('center partial selection both axes', 8, 6, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1 + layer.width * 1, red)
+    writeLayerColor(document, layer, 3 + layer.width * 2, blue)
+    useWorkspace.getState().addSession(document)
+
+    const selection = { x: 1, y: 1, width: 3, height: 2 }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const outsideTarget = { ...selection, x: -1, y: -1 }
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, selection, outsideTarget, false, 'move outside', null, outsideTarget, 0, undefined, false)
+
+    useWorkspace.getState().centerActiveContent('both')
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 3, y: 2, width: 3, height: 2 })
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 5, 3)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 1, 1)).toEqual(transparent)
+
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 1, 1)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 3, 2)).not.toEqual(red)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 5, 3)).toEqual(blue)
+  })
+
+  it('keeps one copy when a materialized selection move is centered before apply or cancel', () => {
+    const document = createDocument('center materialized selection preview', 8, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    writeLayerColor(document, layer, 1, blue)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 2, height: 1 })
+
+    useWorkspace.getState().moveActiveSelectionWithSelectionHistory(2, 0)
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(blue)
+
+    useWorkspace.getState().centerActiveContent('horizontal')
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+
+    useWorkspace.getState().undo()
+    useWorkspace.getState().cancelFloatingPaste()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
+  })
+
+  it('rebuilds a clipboard preview when centering after moving its selection box', () => {
+    const document = createDocument('center clipboard selection box', 8, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    const source: SelectionTransformSource = {
+      selection: { x: 0, y: 0, width: 1, height: 1 },
+      values: Uint32Array.from([packColor(red)]),
+      selectedOffsets: new Uint32Array(0),
+      opaqueOffsets: new Uint32Array(0),
+      opaqueIndices: new Uint32Array(0),
+      opaqueValues: new Uint32Array(0),
+      origin: 'clipboard'
+    }
+    const preview = applySelectionTranslationPreview(document, source, { x: 0, y: 0, width: 1, height: 1 }, true, null, layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, { x: 0, y: 0, width: 1, height: 1 }, { x: 0, y: 0, width: 1, height: 1 }, true, 'clipboard center', preview)
+    useWorkspace.getState().commitFloatingSelectionBoxMove({ x: 0, y: 0, width: 1, height: 1 }, { x: 2, y: 0, width: 1, height: 1 }, null, null)
+    useWorkspace.getState().centerActiveContent('horizontal')
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 4, y: 0, width: 1, height: 1 })
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(red)
+
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(red)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(red)
+
+    useWorkspace.getState().undo()
+    useWorkspace.getState().cancelFloatingPaste()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
+  })
+
+  it('restores the original canvas when canceling a centered clipboard box move', () => {
+    const document = createDocument('cancel centered clipboard selection box', 8, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    const source: SelectionTransformSource = {
+      selection: { x: 0, y: 0, width: 1, height: 1 },
+      values: Uint32Array.from([packColor(red)]),
+      selectedOffsets: new Uint32Array(0),
+      opaqueOffsets: new Uint32Array(0),
+      opaqueIndices: new Uint32Array(0),
+      opaqueValues: new Uint32Array(0),
+      origin: 'clipboard'
+    }
+    const preview = applySelectionTranslationPreview(document, source, { x: 0, y: 0, width: 1, height: 1 }, true, null, layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, { x: 0, y: 0, width: 1, height: 1 }, { x: 0, y: 0, width: 1, height: 1 }, true, 'clipboard cancel center', preview)
+    useWorkspace.getState().commitFloatingSelectionBoxMove({ x: 0, y: 0, width: 1, height: 1 }, { x: 2, y: 0, width: 1, height: 1 }, null, null)
+    useWorkspace.getState().centerActiveContent('horizontal')
+    useWorkspace.getState().cancelFloatingPaste()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 0, y: 0, width: 1, height: 1 })
+    for (let x = 0; x < document.width; x += 1) expect(readLayerColorAt(document, layer, x, 0)).toEqual(transparent)
+  })
+
+  it('keeps deferred off-canvas selection centering out of document pixels until apply', () => {
+    const document = createDocument('deferred gif selection center', 8, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1, red)
+    writeLayerColor(document, layer, 2, blue)
+    useWorkspace.getState().addSession(document)
+    const before = { x: 1, y: 0, width: 2, height: 1 }
+    const source = captureSelectionTransform(document, before, layer, { preserveOutsideCanvas: true })!
+    const outside = { ...before, x: -1 }
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, before, outside, false, 'deferred center', null, outside, 0, undefined, true)
+    useWorkspace.getState().centerActiveContent('horizontal')
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.pendingPaste?.previewDeferred).toBe(true)
+    expect(session.pendingPaste?.translationPreview).toBeNull()
+    expect(session.pendingPaste?.previewEdit).toBeNull()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
+
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blue)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(blue)
+  })
+
+  it('cancels deferred off-canvas centering without leaving a target ghost', () => {
+    const document = createDocument('cancel deferred gif selection center', 8, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1, red)
+    writeLayerColor(document, layer, 2, blue)
+    useWorkspace.getState().addSession(document)
+    const before = { x: 1, y: 0, width: 2, height: 1 }
+    const source = captureSelectionTransform(document, before, layer, { preserveOutsideCanvas: true })!
+    const outside = { ...before, x: -1 }
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, before, outside, false, 'deferred cancel center', null, outside, 0, undefined, true)
+    useWorkspace.getState().centerActiveContent('horizontal')
+    useWorkspace.getState().cancelFloatingPaste()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 3, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, layer, 4, 0)).toEqual(transparent)
   })
 })
 
@@ -359,6 +761,264 @@ describe('layer masks', () => {
     expect(mask.offsetX).toBe(1)
   })
 
+  it('keeps the owning layer active when painting after leaving mask mode', () => {
+    const document = createDocument('mask owner paint context', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    layer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const key = animationCelKey(layer.id, cel.frameId)
+    const initialActiveLayerId = document.activeLayerId
+    useWorkspace.getState().selectAnimationMaskCell(key)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask?.id)
+    expect(document.activeLayerId).toBe(initialActiveLayerId)
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([])
+    expect(useWorkspace.getState().sessions[0].selectedGroupIds).toEqual([])
+
+    useWorkspace.getState().selectLayer(layer.id)
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(red))
+    useWorkspace.getState().commitPixelEdit(edit, 'paint owner layer')
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(document.activeLayerId).toBe(layer.id)
+    expect(session.activeLayerMaskId).toBeNull()
+    expect(session.layerMaskIsolatedView).toBe(false)
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(activePaintLayer(session)).toBe(layer)
+
+    useWorkspace.getState().undo()
+    expect(session.activeLayerMaskId).toBeNull()
+    expect(activePaintLayer(session)).toBe(layer)
+    useWorkspace.getState().redo()
+    expect(session.activeLayerMaskId).toBeNull()
+    expect(activePaintLayer(session)).toBe(layer)
+  })
+
+  it('clears mask and timeline selection when clicking the owning layer row', () => {
+    const document = createDocument('layer row clears mask context', 1, 1, 'rgba')
+    const ownerLayer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels.find((candidate) => candidate.layerId === ownerLayer.id && candidate.frameId === timeline.activeFrameId)!
+    ownerLayer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+
+    const session = useWorkspace.getState().sessions[0]!
+    const frameId = timeline.activeFrameId
+    const celKey = animationCelKey(ownerLayer.id, frameId)
+    const maskId = cel.mask!.id
+    session.selectedAnimationMaskRowKeys = [`layer:${ownerLayer.id}`]
+    session.selectedAnimationMaskCellKeys = [celKey]
+    session.activeLayerMaskId = maskId
+    session.selectedAnimationFrameIds = [frameId]
+    session.selectedAnimationCellKeys = [celKey]
+    session.animationFrameSelectionAnchorId = frameId
+    session.animationMaskCellSelectionAnchorKey = celKey
+    session.animationCellSelectionAnchorKey = celKey
+    session.document.activeLayerId = ownerLayer.id
+    timeline.activeFrameId = frameId
+    useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
+
+    useWorkspace.getState().selectLayer(ownerLayer.id)
+
+    const nextSession = useWorkspace.getState().sessions[0]!
+    expect(nextSession.selectedAnimationMaskRowKeys).toEqual([])
+    expect(nextSession.selectedAnimationMaskCellKeys).toEqual([])
+    expect(nextSession.activeLayerMaskId).toBeNull()
+    expect(nextSession.layerMaskIsolatedView).toBe(false)
+    expect(nextSession.selectedLayerIds).toEqual([ownerLayer.id])
+    expect(nextSession.selectedAnimationFrameIds).toEqual([])
+    expect(nextSession.selectedAnimationCellKeys).toEqual([])
+    expect(nextSession.document.activeLayerId).toBe(ownerLayer.id)
+    expect(ensureAnimationDocument(nextSession.document).activeFrameId).toBe(frameId)
+  })
+
+  it('leaves no mask-row visual context after selecting its owning layer', () => {
+    const document = createDocument('mask row to owner layer', 1, 1, 'rgba')
+    const ownerLayer = getActiveLayer(document)
+    ownerLayer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels.find((candidate) => candidate.layerId === ownerLayer.id && candidate.frameId === timeline.activeFrameId)!
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+
+    const frameId = timeline.activeFrameId
+    useWorkspace.getState().selectAnimationMaskRow('layer', ownerLayer.id)
+    const session = useWorkspace.getState().sessions[0]!
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${ownerLayer.id}`])
+    expect(session.selectedLayerIds).toEqual([])
+
+    // Simulate the stale active-mask target that can survive until the next
+    // render while the mask row is still the formal selection.
+    session.activeLayerMaskId = cel.mask!.id
+    useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
+    useWorkspace.getState().selectLayer(ownerLayer.id)
+
+    const nextSession = useWorkspace.getState().sessions[0]!
+    expect(nextSession.selectedAnimationMaskRowKeys).toEqual([])
+    expect(nextSession.selectedAnimationMaskCellKeys).toEqual([])
+    expect(nextSession.activeLayerMaskId).toBeNull()
+    expect(nextSession.layerMaskIsolatedView).toBe(false)
+    expect(nextSession.selectedLayerIds).toEqual([ownerLayer.id])
+    expect(nextSession.document.activeLayerId).toBe(ownerLayer.id)
+    expect(ensureAnimationDocument(nextSession.document).activeFrameId).toBe(frameId)
+  })
+
+  it('keeps mask-row selection separate from mask-cell selection', () => {
+    const document = createDocument('mask row cell selection', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+
+    useWorkspace.getState().selectAnimationMaskRow('layer', layer.id)
+    let session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(session.selectedLayerIds).toEqual([])
+    expect(session.selectedGroupIds).toEqual([])
+    expect(session.activeLayerMaskId).toBeNull()
+
+    const key = animationCelKey(layer.id, cel.frameId)
+    useWorkspace.getState().selectAnimationMaskCell(key)
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([key])
+    expect(session.activeLayerMaskId).toBe(cel.mask?.id)
+    expect(session.selectedLayerIds).toEqual([])
+  })
+
+  it('allows a mask row and ordinary layer rows to be multi-selected', async () => {
+    const document = createDocument('mixed layer and mask row selection', 1, 1, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    firstLayer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(timeline.cels[0]!.id)
+    await useWorkspace.getState().addLayer()
+
+    const secondLayer = useWorkspace.getState().sessions[0]!.document.layers.find((layer) => layer.id !== firstLayer.id)!
+    useWorkspace.getState().selectLayer(firstLayer.id)
+    useWorkspace.getState().selectAnimationMaskRow('layer', firstLayer.id, 'toggle')
+
+    let session = useWorkspace.getState().sessions[0]!
+    expect(session.selectedLayerIds).toEqual([firstLayer.id])
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${firstLayer.id}`])
+
+    useWorkspace.getState().selectLayer(secondLayer.id, 'toggle')
+    session = useWorkspace.getState().sessions[0]!
+    expect(session.selectedLayerIds).toEqual([firstLayer.id, secondLayer.id])
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${firstLayer.id}`])
+    expect(session.layerSelectionExplicit).toBe(true)
+  })
+
+  it('keeps mask rows in shift ranges with ordinary layer rows', async () => {
+    const document = createDocument('shift range across mask row', 1, 1, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    firstLayer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(timeline.cels[0]!.id)
+    await useWorkspace.getState().addLayer()
+
+    const secondLayer = useWorkspace.getState().sessions[0]!.document.layers.find((layer) => layer.id !== firstLayer.id)!
+    useWorkspace.getState().selectLayer(firstLayer.id)
+    useWorkspace.getState().selectAnimationMaskRow('layer', firstLayer.id, 'range')
+
+    let session = useWorkspace.getState().sessions[0]!
+    expect(session.selectedLayerIds).toEqual([firstLayer.id])
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${firstLayer.id}`])
+
+    useWorkspace.getState().selectLayer(secondLayer.id, 'range')
+    session = useWorkspace.getState().sessions[0]!
+    expect(session.selectedLayerIds).toEqual([secondLayer.id])
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${firstLayer.id}`])
+  })
+
+  it('keeps the first active frame when adding another mask cell to the selection', () => {
+    const document = createDocument('mask multi-cell activity', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    const firstFrameId = ensureAnimationDocument(document).activeFrameId
+    const firstCel = animationCelAt(ensureAnimationDocument(document), layer.id, firstFrameId)!
+    useWorkspace.getState().createLayerMask(firstCel.id)
+    useWorkspace.getState().duplicateAnimationFrame()
+
+    const session = useWorkspace.getState().sessions[0]!
+    const timeline = ensureAnimationDocument(session.document)
+    const secondFrameId = timeline.frames.find((frame) => frame.id !== firstFrameId)!.id
+    const secondCel = animationCelAt(timeline, layer.id, secondFrameId)!
+    if (!secondCel.mask) useWorkspace.getState().createLayerMask(secondCel.id)
+    useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layer.id, secondFrameId))
+    useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layer.id, firstFrameId), 'toggle')
+
+    const next = useWorkspace.getState().sessions[0]!
+    expect(next.selectedAnimationMaskCellKeys).toEqual([
+      animationCelKey(layer.id, secondFrameId),
+      animationCelKey(layer.id, firstFrameId)
+    ])
+    expect(ensureAnimationDocument(next.document).activeFrameId).toBe(firstFrameId)
+  })
+
+  it('keeps the selected mask row active when selecting an animation frame', () => {
+    const document = createDocument('mask row frame selection', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const activeLayerBefore = document.activeLayerId
+
+    useWorkspace.getState().selectAnimationMaskRow('layer', layer.id)
+    const sessionDocument = useWorkspace.getState().sessions[0].document
+    const sessionTimeline = ensureAnimationDocument(sessionDocument)
+    sessionTimeline.frames.push({ id: 'mask-row-frame-2', duration: sessionTimeline.frames[0]?.duration ?? 100 })
+    const nextFrame = sessionTimeline.frames[1]!
+    useWorkspace.getState().selectAnimationFrame(nextFrame.id)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(session.selectedAnimationFrameIds).toEqual([nextFrame.id])
+    expect(session.selectedLayerIds).toEqual([])
+    expect(session.activeLayerMaskId).toBeNull()
+    expect(document.activeLayerId).toBe(activeLayerBefore)
+  })
+
+  it('keeps the active mask target when selecting a frame from a mask cell', () => {
+    const document = createDocument('mask cell frame selection', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const key = animationCelKey(layer.id, cel.frameId)
+    useWorkspace.getState().selectAnimationMaskCell(key)
+    const sessionDocument = useWorkspace.getState().sessions[0].document
+    const sessionTimeline = ensureAnimationDocument(sessionDocument)
+    sessionTimeline.frames.push({ id: 'mask-cell-frame-2', duration: sessionTimeline.frames[0]?.duration ?? 100 })
+    const nextFrame = sessionTimeline.frames[1]!
+    const activeMaskId = useWorkspace.getState().sessions[0].activeLayerMaskId
+    const activeLayerBefore = sessionDocument.activeLayerId
+
+    useWorkspace.getState().selectAnimationFrame(nextFrame.id)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(session.selectedAnimationFrameIds).toEqual([nextFrame.id])
+    expect(session.activeLayerMaskId).toBe(activeMaskId)
+    expect(sessionDocument.activeLayerId).toBe(activeLayerBefore)
+  })
+
   it('does not expose fully masked layer pixels to visible-pixel reads', () => {
     const document = createDocument('mask hit test', 1, 1, 'rgba')
     const layer = getActiveLayer(document)
@@ -372,6 +1032,286 @@ describe('layer masks', () => {
 })
 
 describe('animation workspace', () => {
+
+  it('preserves timeline multi-selection while playback advances and stops', () => {
+    const document = createDocument('playback selection', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+
+    const timeline = ensureAnimationDocument(document)
+    const [first, second] = timeline.frames
+    useWorkspace.getState().selectAnimationFrame(first.id)
+    useWorkspace.getState().selectAnimationFrame(second.id, 'toggle')
+    useWorkspace.getState().setAnimationLoop(true)
+
+    useWorkspace.getState().setAnimationPlaying(true)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([first.id, second.id])
+    useWorkspace.getState().advanceAnimationFrame()
+
+    let session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(ensureAnimationDocument(session.document).activeFrameId).toBe(first.id)
+    expect(session.selectedAnimationCellKeys).toEqual([])
+
+    useWorkspace.getState().setAnimationPlaying(false)
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+  })
+
+  it('rejects moving inherited linked mask members instead of silently doing nothing', () => {
+    const document = createDocument('linked mask move', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    const timeline = ensureAnimationDocument(document)
+    const sourceCel = timeline.cels[0]!
+    useWorkspace.getState().createLayerMask(sourceCel.id)
+    useWorkspace.getState().duplicateAnimationFrame()
+    const targetFrame = timeline.frames[1]!
+    const linkedCel = timeline.cels.find((cel) => cel.frameId === targetFrame.id && cel.layerId === layer.id)!
+    linkedCel.linkedCelId = sourceCel.id
+    const linkedKey = animationCelKey(layer.id, targetFrame.id)
+    useWorkspace.getState().selectAnimationMaskCell(linkedKey)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationMaskCellKeys).toEqual([linkedKey])
+
+    useWorkspace.getState().moveSelectedAnimationMasks(layer.id, sourceCel.frameId, linkedKey)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(useWorkspace.getState().message).toBeTruthy()
+    expect(sourceCel.mask).toBeDefined()
+  })
+
+  it('keeps a white source mask slot when moving mask content across layers', () => {
+    const document = createDocument('move animation mask across layers', 1, 1, 'rgba')
+    const sourceLayer = getActiveLayer(document)
+    const targetLayer = createLayer('Target', 1, 1, 'rgba')
+    document.layers.push(targetLayer)
+    sourceLayer.pixels[3] = 255
+    targetLayer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+
+    const timeline = ensureAnimationDocument(document)
+    const sourceCel = animationCelAt(timeline, sourceLayer.id, timeline.activeFrameId)!
+    const targetCel = animationCelAt(timeline, targetLayer.id, timeline.activeFrameId)!
+    sourceCel.mask = createLayerMask(sourceCel.id, 1, 1)
+    sourceCel.mask.pixels.set([12, 12, 12, 255])
+    targetCel.mask = createLayerMask(targetCel.id, 1, 1)
+
+    const sourceKey = animationCelKey(sourceLayer.id, sourceCel.frameId)
+    const targetKey = animationCelKey(targetLayer.id, targetCel.frameId)
+    useWorkspace.getState().selectAnimationMaskCell(sourceKey)
+    useWorkspace.getState().moveSelectedAnimationMasks(targetLayer.id, targetCel.frameId, sourceKey)
+
+    expect(Array.from(sourceCel.mask!.pixels)).toEqual([255, 255, 255, 255])
+    expect(Array.from(targetCel.mask!.pixels)).toEqual([12, 12, 12, 255])
+    expect(sourceCel.mask!.id).not.toBe(targetCel.mask!.id)
+    expect(useWorkspace.getState().sessions[0].selectedAnimationMaskCellKeys).toEqual([targetKey])
+    expect(useWorkspace.getState().sessions[0].document.activeLayerId).toBe(targetLayer.id)
+    expect(useWorkspace.getState().sessions[0].document.animation?.activeFrameId).toBe(targetCel.frameId)
+  })
+
+  it('keeps moved multi-cel selection and restores it through undo/redo', () => {
+    const document = createDocument('move selected animation cels', 2, 1, 'rgba')
+    const bottom = getActiveLayer(document)
+    const top = createLayer('Top', 2, 1, 'rgba')
+    document.layers.push(top)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [first, second, third] = timeline.frames
+    const sourceKeys = [animationCelKey(bottom.id, first.id), animationCelKey(top.id, second.id)]
+    useWorkspace.getState().selectAnimationCell(sourceKeys[0])
+    useWorkspace.getState().selectAnimationCell(sourceKeys[1], 'toggle')
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual(sourceKeys)
+
+    useWorkspace.getState().moveSelectedAnimationCels(bottom.id, second.id, sourceKeys[0])
+    let session = useWorkspace.getState().sessions[0]
+    const targetKeys = [animationCelKey(bottom.id, second.id), animationCelKey(top.id, third.id)]
+    expect(session.selectedAnimationCellKeys).toEqual(targetKeys)
+    expect(session.animationCellSelectionAnchorKey).toBe(targetKeys[0])
+    expect(session.document.activeLayerId).toBe(bottom.id)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(second.id)
+
+    useWorkspace.getState().undo()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual(sourceKeys)
+    expect(session.animationCellSelectionAnchorKey).toBe(sourceKeys[1])
+    expect(session.document.activeLayerId).toBe(top.id)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(second.id)
+
+    useWorkspace.getState().redo()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual(targetKeys)
+    expect(session.animationCellSelectionAnchorKey).toBe(targetKeys[0])
+    expect(session.document.activeLayerId).toBe(bottom.id)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(second.id)
+  })
+
+  it('keeps timeline and canvas selection guides after mirroring selected cels', () => {
+    const document = createDocument('mirror selected animation cels', 2, 1, 'rgba')
+    const bottom = getActiveLayer(document)
+    const top = createLayer('Top', 2, 1, 'rgba')
+    document.layers.push(top)
+    writeLayerColor(document, bottom, 0, red)
+    writeLayerColor(document, top, 1, blue)
+    useWorkspace.getState().addSession(document)
+    const frameId = ensureAnimationDocument(document).activeFrameId
+    const selectedKeys = [animationCelKey(bottom.id, frameId), animationCelKey(top.id, frameId)]
+    useWorkspace.getState().selectAnimationCell(selectedKeys[0])
+    useWorkspace.getState().selectAnimationCell(selectedKeys[1], 'toggle')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 2, height: 1 })
+
+    useWorkspace.getState().flipActiveSelection('horizontal')
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual(selectedKeys)
+    expect(session.selection).toMatchObject({ x: 0, y: 0, width: 2, height: 1 })
+    expect(session.selectionGuidesPreservedAtContentRevision).toBe(session.contentRevision)
+  })
+
+  it('returns to the active layer and frame when deselecting a transformed multi-selection', () => {
+    const document = createDocument('deselect transformed multi-selection', 2, 1, 'rgba')
+    const activeLayer = getActiveLayer(document)
+    const otherLayer = createLayer('Other', 2, 1, 'rgba')
+    document.layers.push(otherLayer)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+
+    const timeline = ensureAnimationDocument(document)
+    const activeFrameId = timeline.activeFrameId
+    const selectedKeys = [
+      animationCelKey(activeLayer.id, activeFrameId),
+      animationCelKey(otherLayer.id, activeFrameId)
+    ]
+    useWorkspace.getState().selectAnimationCell(selectedKeys[0])
+    useWorkspace.getState().selectAnimationCell(selectedKeys[1], 'toggle')
+
+    const session = useWorkspace.getState().sessions[0]
+    document.activeLayerId = activeLayer.id
+    session.selection = { x: 0, y: 0, width: 1, height: 1 }
+    session.selectionGuidesPreservedAtContentRevision = session.contentRevision
+
+    useWorkspace.getState().commitSelectionChange(
+      { ...session.selection },
+      null,
+      'deselect transformed selection',
+      { resetTimelineSelection: true }
+    )
+
+    expect(session.selection).toBeNull()
+    expect(session.selectedAnimationFrameIds).toEqual([])
+    expect(session.selectedAnimationCellKeys).toEqual([])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([])
+    expect(session.selectedLayerIds).toEqual([activeLayer.id])
+    expect(session.selectedGroupIds).toEqual([])
+    expect(document.activeLayerId).toBe(activeLayer.id)
+    expect(timeline.activeFrameId).toBe(activeFrameId)
+
+    useWorkspace.getState().undo()
+    expect(session.selection).toMatchObject({ x: 0, y: 0, width: 1, height: 1 })
+    expect(session.selectedAnimationCellKeys).toEqual([])
+    expect(session.selectedLayerIds).toEqual([activeLayer.id])
+
+    useWorkspace.getState().redo()
+    expect(session.selection).toBeNull()
+    expect(session.selectedAnimationCellKeys).toEqual([])
+    expect(session.selectedLayerIds).toEqual([activeLayer.id])
+  })
+
+  it('tracks first paint on the initial animation cel for timeline rendering', () => {
+    const document = createDocument('first paint timeline', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    useWorkspace.getState().addSession(document)
+    let session = useWorkspace.getState().sessions[0]!
+    const before = { revision: session.revision, contentRevision: session.contentRevision, layersPanelRevision: session.layersPanelRevision, activeLayerId: document.activeLayerId, activeFrameId: timeline.activeFrameId }
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(red))
+    useWorkspace.getState().commitPixelEdit(edit, 'first paint')
+    session = useWorkspace.getState().sessions[0]!
+    expect(session.revision).toBe(before.revision + 1)
+    expect(session.contentRevision).toBe(before.contentRevision + 1)
+    expect(session.layersPanelRevision).toBe(before.layersPanelRevision)
+    expect(session.history.position).toBe(1)
+    expect(readLayerColor(document, layer, 0)).toEqual(red)
+    expect(cel.surface?.pixels?.[3] ?? layer.pixels[3]).toBe(255)
+    expect(document.activeLayerId).toBe(layer.id)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(before.activeFrameId)
+  })
+
+  it('restores animation and active selection context around pixel history', () => {
+    const document = createDocument('pixel selection history', 2, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    const initialTimeline = ensureAnimationDocument(document)
+    const frameId = initialTimeline.activeFrameId
+    useWorkspace.getState().addSession(document)
+    let timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]!
+    useWorkspace.getState().createLayerMask(cel.id)
+
+    let session = useWorkspace.getState().sessions[0]
+    session.history.clear()
+    const celKey = animationCelKey(layer.id, frameId)
+    timeline = ensureAnimationDocument(document)
+    const mask = timeline.cels[0]!.mask!
+    session.selectedLayerIds = [layer.id]
+    session.selectedGroupId = null
+    session.selectedGroupIds = []
+    session.selectedAnimationFrameIds = [frameId]
+    session.animationFrameSelectionAnchorId = frameId
+    session.selectedAnimationCellKeys = [celKey]
+    session.animationCellSelectionAnchorKey = celKey
+    session.animationCellSelectionExplicit = true
+    session.selectedAnimationMaskCellKeys = [celKey]
+    session.animationMaskCellSelectionAnchorKey = celKey
+    session.document.activeLayerId = layer.id
+    timeline.activeFrameId = frameId
+    session.activeLayerMaskId = mask.id
+    session.layerMaskIsolatedView = true
+
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(blue))
+    useWorkspace.getState().commitPixelEdit(edit, 'paint with selection')
+    session = useWorkspace.getState().sessions[0]
+    expect(session.history.position).toBe(1)
+
+    session.selectedLayerIds = []
+    session.selectedAnimationFrameIds = []
+    session.selectedAnimationCellKeys = []
+    session.selectedAnimationMaskCellKeys = []
+    session.activeLayerMaskId = null
+    session.layerMaskIsolatedView = false
+    useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
+
+    useWorkspace.getState().undo()
+    session = useWorkspace.getState().sessions[0]
+    expect(readLayerColor(document, layer, 0)).toEqual(red)
+    expect(session.selectedLayerIds).toEqual([layer.id])
+    expect(session.selectedAnimationFrameIds).toEqual([frameId])
+    expect(session.animationFrameSelectionAnchorId).toBe(frameId)
+    expect(session.selectedAnimationCellKeys).toEqual([celKey])
+    expect(session.animationCellSelectionAnchorKey).toBe(celKey)
+    expect(session.animationCellSelectionExplicit).toBe(true)
+    expect(session.selectedAnimationMaskCellKeys).toEqual([celKey])
+    expect(session.animationMaskCellSelectionAnchorKey).toBe(celKey)
+    expect(session.document.activeLayerId).toBe(layer.id)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(frameId)
+    expect(session.activeLayerMaskId).toBe(mask.id)
+    expect(session.layerMaskIsolatedView).toBe(true)
+
+    useWorkspace.getState().redo()
+    expect(readLayerColor(document, layer, 0)).toEqual(blue)
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual([celKey])
+    expect(session.selectedAnimationMaskCellKeys).toEqual([celKey])
+    expect(session.activeLayerMaskId).toBe(mask.id)
+    expect(session.layerMaskIsolatedView).toBe(true)
+  })
 
   it('deletes selected animation frames as one undoable action', () => {
     const document = createDocument('delete selected animation frames', 1, 1, 'rgba')
@@ -425,6 +1365,53 @@ describe('animation workspace', () => {
 })
 
 describe('selection clipboard', () => {
+  it('prefers a newer external image after an internal layer copy', async () => {
+    const document = createDocument('layer then external clipboard', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    useWorkspace.getState().addSession(document)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => null)
+    useWorkspace.getState().copySelectedLayersToClipboard()
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+
+    await useWorkspace.getState().pasteClipboard()
+    const pending = useWorkspace.getState().sessions[0].pendingPaste
+    expect(pending?.source.values[0]).toBe(packColor({ r: 0, g: 255, b: 0, a: 255 }))
+  })
+
+  it('prefers the internal layer copied after an external image', async () => {
+    const document = createDocument('external then layer clipboard', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    useWorkspace.getState().addSession(document)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+    useWorkspace.getState().copySelectedLayersToClipboard()
+
+    await useWorkspace.getState().pasteClipboard()
+    expect(document.layers).toHaveLength(2)
+    expect(useWorkspace.getState().sessions[0].pendingPaste).toBeNull()
+  })
+
+  it('switches paste source when the system image changes between layer copies', async () => {
+    const document = createDocument('clipboard source switching', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    useWorkspace.getState().addSession(document)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+    useWorkspace.getState().copySelectedLayersToClipboard()
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 0, 255, 255]) }))
+
+    await useWorkspace.getState().pasteClipboard()
+    expect(useWorkspace.getState().sessions[0].pendingPaste?.source.values[0]).toBe(packColor({ r: 0, g: 0, b: 255, a: 255 }))
+    useWorkspace.getState().cancelFloatingPaste()
+    useWorkspace.getState().copySelectedLayersToClipboard()
+    await useWorkspace.getState().pasteClipboard()
+    expect(document.layers).toHaveLength(2)
+  })
+
   it('keeps a copied selection when a stale timeline cel clipboard exists across frames', async () => {
     const document = createDocument('cross-frame selection clipboard', 2, 1, 'rgba')
     const layer = getActiveLayer(document)
@@ -478,10 +1465,12 @@ describe('selection clipboard', () => {
     useWorkspace.getState().selectAnimationFrame(first.id)
     useWorkspace.getState().selectAnimationFrame(second.id, 'range')
     useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+    const expectedActiveLayerId = document.activeLayerId
+    const expectedActiveFrameId = timeline.activeFrameId
 
     useWorkspace.getState().moveActiveSelectionWithSelectionHistory(1, 0)
 
-    const session = useWorkspace.getState().sessions[0]
+    let session = useWorkspace.getState().sessions[0]
     expect(session.pendingPaste?.layers?.map(({ layerId, frameId }) => `${layerId}:${frameId}`)).toEqual([
       `${top.id}:${second.id}`,
       `${bottom.id}:${second.id}`,
@@ -493,14 +1482,29 @@ describe('selection clipboard', () => {
     expect(readLayerColorAt(document, animationLayerAtFrame(document, bottom.id, second.id)!, 1, 0)).toEqual(green)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, top.id, second.id)!, 1, 0)).toEqual(yellow)
     useWorkspace.getState().commitFloatingPaste()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedLayerIds).toEqual([bottom.id, top.id])
+    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(session.document.activeLayerId).toBe(expectedActiveLayerId)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(expectedActiveFrameId)
 
     useWorkspace.getState().undo()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedLayerIds).toEqual([bottom.id, top.id])
+    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(session.document.activeLayerId).toBe(expectedActiveLayerId)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(expectedActiveFrameId)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, bottom.id, first.id)!, 0, 0)).toEqual(red)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, top.id, first.id)!, 0, 0)).toEqual(blue)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, bottom.id, second.id)!, 0, 0)).toEqual(green)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, top.id, second.id)!, 0, 0)).toEqual(yellow)
 
     useWorkspace.getState().redo()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedLayerIds).toEqual([bottom.id, top.id])
+    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(session.document.activeLayerId).toBe(expectedActiveLayerId)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(expectedActiveFrameId)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, bottom.id, first.id)!, 1, 0)).toEqual(red)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, top.id, first.id)!, 1, 0)).toEqual(blue)
     expect(readLayerColorAt(document, animationLayerAtFrame(document, bottom.id, second.id)!, 1, 0)).toEqual(green)

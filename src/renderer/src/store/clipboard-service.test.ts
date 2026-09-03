@@ -35,6 +35,22 @@ describe('ClipboardService', () => {
     expect(clipboard && selectionClipboardImage(clipboard).data).toEqual(red)
   })
 
+  it('prefers an animation copy while the system clipboard remains unchanged', async () => {
+    const service = new ClipboardService()
+    service.captureAnimationCopySystemBaseline(async () => ({ width: 1, height: 1, data: red }))
+    const current = await service.readSystemSelection(async () => ({ width: 1, height: 1, data: red.slice() }))
+
+    expect(await service.preferInternalAnimation(current)).toBe(true)
+  })
+
+  it('lets a newer external image replace an animation copy', async () => {
+    const service = new ClipboardService()
+    service.captureAnimationCopySystemBaseline(async () => ({ width: 1, height: 1, data: red }))
+    const current = await service.readSystemSelection(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+
+    expect(await service.preferInternalAnimation(current)).toBe(false)
+  })
+
 
 
 
@@ -53,5 +69,43 @@ describe('ClipboardService', () => {
     expect(copied?.groups[0].collapsed).toBe(true)
     copied!.layers[0].pixels[0] = 0
     expect(service.getLayers()?.layers[0].pixels[0]).toBe(255)
+  })
+
+  it('uses the internal layer bounds when the OS clipboard is the pre-copy image', async () => {
+    const service = new ClipboardService()
+    service.setLayers({
+      layers: [{ name: 'layer', width: 30, height: 30, offsetX: 0, offsetY: 0, visible: true, locked: false, opacity: 1, blendMode: 'normal', pixels: new Uint8ClampedArray(30 * 30 * 4) }],
+      groups: []
+    })
+    service.captureLayerCopySystemBaselineSize(async () => ({ width: 600, height: 600 }))
+    expect(await service.readSize(async () => ({ width: 600, height: 600 }))).toEqual({ width: 30, height: 30 })
+  })
+
+  it('uses the newer external image size and computes multi-layer bounds', async () => {
+    const service = new ClipboardService()
+    service.setLayers({
+      layers: [
+        { name: 'a', width: 30, height: 30, offsetX: 4, offsetY: 6, visible: true, locked: false, opacity: 1, blendMode: 'normal', pixels: new Uint8ClampedArray(30 * 30 * 4) },
+        { name: 'b', width: 20, height: 10, offsetX: 40, offsetY: -2, visible: true, locked: false, opacity: 1, blendMode: 'normal', pixels: new Uint8ClampedArray(20 * 10 * 4) }
+      ],
+      groups: [{ key: 'g', name: 'group', visible: true, locked: false, opacity: 1, blendMode: 'normal', parentKey: null }]
+    })
+    service.captureLayerCopySystemBaselineSize(async () => ({ width: 30, height: 30 }))
+    expect(await service.readSize(async () => ({ width: 800, height: 500 }))).toEqual({ width: 800, height: 500 })
+    expect(service.layerClipboardSize()).toEqual({ width: 56, height: 38 })
+  })
+
+  it('does not treat a same-sized but different external image as the copied layer', async () => {
+    const service = new ClipboardService()
+    service.setLayers({
+      layers: [{ name: 'layer', width: 20, height: 20, offsetX: 0, offsetY: 0, visible: true, locked: false, opacity: 1, blendMode: 'normal', pixels: new Uint8ClampedArray(20 * 20 * 4) }],
+      groups: []
+    })
+    service.captureLayerCopySystemBaseline(async () => ({ width: 30, height: 30, data: new Uint8Array(30 * 30 * 4) }))
+    service.captureLayerCopySystemBaselineSize(async () => ({ width: 30, height: 30 }))
+    const different = new Uint8Array(30 * 30 * 4)
+    different[0] = 255
+    different[3] = 255
+    expect(await service.latestClipboardSize(async () => ({ width: 30, height: 30 }), async () => ({ width: 30, height: 30, data: different }))).toEqual({ width: 30, height: 30 })
   })
 })

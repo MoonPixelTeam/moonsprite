@@ -25,7 +25,11 @@ export interface TilemapLayerTileset {
 }
 
 export const ensureTilemapTilesetOwnership = (document: SpriteDocument): void => {
-  const timeline = ensureAnimationDocument(document)
+  // Ownership repair is metadata-only; reading a sparse animation timeline
+  // must not materialize every layer×frame cel. Mutation boundaries ensure a
+  // complete timeline before invoking tilemap commands that need it.
+  const timeline = document.animation
+  if (!timeline) return
   const tilesets = document.tilesets ?? []
   const tilesetsById = new Map(tilesets.map((tileset) => [tileset.id, tileset]))
   const claimed = new Set<string>()

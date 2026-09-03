@@ -5,6 +5,40 @@ import type { SelectionShearTransform } from './selection'
 import type { SymmetryAxes, SymmetryCenter, SymmetryPoint } from './symmetry'
 import { applySelectionTransform, captureSelectionTransform, type SelectionTransformLayerState } from './tools'
 
+export interface AnimationSelectionTargetPair {
+  layerId: string
+  frameId: string
+}
+
+/**
+ * Resolve the timeline selection into concrete layer/frame targets. Cell
+ * selections are exact targets; frame selections expand across the selected
+ * layers. Keeping this as a pure operation makes the same target set usable
+ * by drag previews and command-based transforms.
+ */
+export const animationSelectionTargetPairs = (
+  selectedFrameIds: readonly string[],
+  selectedLayerIds: readonly string[],
+  selectedCellKeys: readonly string[] = []
+): AnimationSelectionTargetPair[] => {
+  const pairs: AnimationSelectionTargetPair[] = []
+  const seen = new Set<string>()
+  const add = (pair: AnimationSelectionTargetPair): void => {
+    const key = `${pair.layerId}:${pair.frameId}`
+    if (seen.has(key)) return
+    seen.add(key)
+    pairs.push(pair)
+  }
+  for (const key of selectedCellKeys) {
+    const target = parseAnimationCelKey(key)
+    if (target) add(target)
+  }
+  for (const frameId of selectedFrameIds) {
+    for (const layerId of selectedLayerIds) add({ layerId, frameId })
+  }
+  return pairs
+}
+
 export const captureAnimationFrameSelectionTransformStates = (
   document: SpriteDocument,
   selectedFrameIds: readonly string[],
@@ -13,22 +47,18 @@ export const captureAnimationFrameSelectionTransformStates = (
   selectedCellKeys: readonly string[] = []
 ): SelectionTransformLayerState[] => {
   const timeline = ensureAnimationDocument(document)
-  const selectedFrames = new Set(selectedFrameIds)
-  const selectedLayers = new Set(selectedLayerIds)
-  const explicitCellTargets = selectedCellKeys
-    .map((key) => parseAnimationCelKey(key))
-    .filter((target): target is { layerId: string; frameId: string } => Boolean(target))
-    .filter((target) => selectedFrames.size === 0 || selectedFrames.has(target.frameId))
-    .filter((target) => selectedLayers.size === 0 || selectedLayers.has(target.layerId))
-  if (explicitCellTargets.length === 0 && (selectedFrameIds.length < 1 || selectedLayerIds.length === 0)) return []
-  const pairs = explicitCellTargets.length > 0
-    ? explicitCellTargets
-    : timeline.frames
-      .filter((frame) => selectedFrames.has(frame.id))
-      .flatMap((frame) => document.layers.filter((layer) => selectedLayers.has(layer.id)).map((layer) => ({ layerId: layer.id, frameId: frame.id })))
+  const pairs = animationSelectionTargetPairs(selectedFrameIds, selectedLayerIds, selectedCellKeys)
+  if (pairs.length === 0) return []
   const orderedPairs = [...pairs].sort((left, right) => {
-    const leftActive = left.frameId === timeline.activeFrameId && left.layerId === document.activeLayerId
-    const rightActive = right.frameId === timeline.activeFrameId && right.layerId === document.activeLayerId
+    // Keep the active frame as one contiguous batch. Within each frame, put
+    // the active layer first; elevating only the active layer without first
+    // grouping the active frame would split that frame around other batches
+    // and make multi-frame transforms apply in the wrong order.
+    const leftActiveFrame = left.frameId === timeline.activeFrameId
+    const rightActiveFrame = right.frameId === timeline.activeFrameId
+    if (leftActiveFrame !== rightActiveFrame) return leftActiveFrame ? -1 : 1
+    const leftActive = left.layerId === document.activeLayerId
+    const rightActive = right.layerId === document.activeLayerId
     if (leftActive !== rightActive) return leftActive ? -1 : 1
     const frameDelta = timeline.frames.findIndex((frame) => frame.id === left.frameId) - timeline.frames.findIndex((frame) => frame.id === right.frameId)
     if (frameDelta !== 0) return frameDelta

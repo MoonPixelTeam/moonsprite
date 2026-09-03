@@ -22,6 +22,7 @@ interface ManifestLayer {
   id: string
   name: string
   linkedContentId?: string
+  autoLinkAnimationCels?: boolean
   displayColor?: RgbaColor
   description?: string
   kind?: 'text' | 'tilemap' | 'free-tile'
@@ -48,6 +49,8 @@ interface ManifestLayer {
 interface ManifestMask {
   id: string
   linkedMaskId?: string | null
+  locked?: boolean
+  autoLinkAnimationCels?: boolean
   width: number
   height: number
   offsetX: number
@@ -119,9 +122,16 @@ interface ManifestGroupMask {
   mask: ManifestMask
 }
 
+interface ManifestLayerMask {
+  layerId: string
+  frameId: string
+  mask: ManifestMask
+}
+
 interface ManifestAnimation {
   frames: AnimationFrame[]
   cels: ManifestCel[]
+  layerMasks: ManifestLayerMask[]
   groupMasks: ManifestGroupMask[]
   loopSections: AnimationLoopSection[]
   activeFrameId: string
@@ -555,6 +565,15 @@ const normalizeManifestAnimation = (value: unknown): ManifestAnimation => {
       const { mask: _runtimeMask, surface: _runtimeSurface, tilemap: _runtimeTilemap, freeTiles: _runtimeFreeTiles, ...normalizedCel } = cel
       return { ...normalizedCel, ...(Number.isFinite(raw?.opacity) ? { opacity: Math.max(0, Math.min(1, Number(raw!.opacity))) } : {}), ...(raw?.format === 'rgba' || raw?.format === 'indexed' ? { format: raw.format } : {}), ...(Number.isSafeInteger(raw?.width) ? { width: raw!.width } : {}), ...(Number.isSafeInteger(raw?.height) ? { height: raw!.height } : {}), ...(Number.isFinite(raw?.offsetX) ? { offsetX: Math.trunc(raw!.offsetX!) } : {}), ...(Number.isFinite(raw?.offsetY) ? { offsetY: Math.trunc(raw!.offsetY!) } : {}), ...(typeof raw?.dataFile === 'string' ? { dataFile: raw.dataFile } : {}), ...(raw?.dataEncoding === 'raw' || raw?.dataEncoding === 'sparse-tiles-v1' ? { dataEncoding: raw.dataEncoding } : {}), ...(raw?.mask ? { mask: raw.mask } : {}), ...(raw?.text && typeof raw.text === 'object' ? { text: normalizeTextCelData(raw.text) } : {}), ...(raw?.tilemap && typeof raw.tilemap === 'object' ? { tilemap: raw.tilemap } : {}), ...(raw?.freeTiles && typeof raw.freeTiles === 'object' ? { freeTiles: raw.freeTiles } : {}) }
     }),
+    layerMasks: value && typeof value === 'object' && Array.isArray((value as { layerMasks?: unknown }).layerMasks)
+      ? (value as { layerMasks: unknown[] }).layerMasks.flatMap((item) => {
+          if (!item || typeof item !== 'object') return []
+          const candidate = item as Partial<ManifestLayerMask>
+          return typeof candidate.layerId === 'string' && candidate.layerId && typeof candidate.frameId === 'string' && frameIds.has(candidate.frameId) && candidate.mask
+            ? [{ layerId: candidate.layerId, frameId: candidate.frameId, mask: candidate.mask }]
+            : []
+        })
+      : [],
     groupMasks: value && typeof value === 'object' && Array.isArray((value as { groupMasks?: unknown }).groupMasks)
       ? (value as { groupMasks: unknown[] }).groupMasks.flatMap((item) => {
           if (!item || typeof item !== 'object') return []
@@ -652,6 +671,14 @@ const createProjectArchiveFiles = (
   const files: Record<string, Uint8Array> = {}
   const resources: ProjectArchiveResource[] = []
   const dataFileByPixels = new Map<object, { dataFile: string; dataEncoding: RasterDataEncoding; width: number; height: number }>()
+  const rasterStorageByFile = new Map<string, { storage: object; dataEncoding: RasterDataEncoding; width: number; height: number }>()
+  const canClaimRasterFile = (dataFile: string, storage: object, raster: { dataEncoding: RasterDataEncoding; width: number; height: number }): boolean => {
+    const claimed = rasterStorageByFile.get(dataFile)
+    return !claimed || (claimed.storage === storage && claimed.dataEncoding === raster.dataEncoding && claimed.width === raster.width && claimed.height === raster.height)
+  }
+  const claimRasterFile = (dataFile: string, storage: object, raster: { dataEncoding: RasterDataEncoding; width: number; height: number }): void => {
+    rasterStorageByFile.set(dataFile, { storage, dataEncoding: raster.dataEncoding, width: raster.width, height: raster.height })
+  }
   const revisionFor = (key: string, resource: object): number | null => revisionOverrides?.get(key) ?? getRasterContentRevision(resource)
   const encodePixels = (key: string, preferredFile: string, surface: RasterLayer | AnimationCelSurface): { dataFile: string; dataEncoding: RasterDataEncoding; width: number; height: number; offsetX: number; offsetY: number } => {
     const storage = rasterStorageIdentity(surface)
@@ -663,9 +690,10 @@ const createProjectArchiveFiles = (
       return result
     }
     const previous = baseline?.resources.get(key)
-    if (baseline?.schemaVersion === PROJECT_SCHEMA_VERSION && previous?.raster && previous.revision === revision && rasterGeometryMatchesSurface(previous.raster, surface)) {
+    if (baseline?.schemaVersion === PROJECT_SCHEMA_VERSION && previous?.raster && previous.revision === revision && rasterGeometryMatchesSurface(previous.raster, surface) && canClaimRasterFile(previous.path, storage, previous.raster)) {
       const result = { dataFile: previous.path, ...previous.raster }
       resources.push({ key, path: previous.path, revision, raster: previous.raster })
+      claimRasterFile(previous.path, storage, previous.raster)
       dataFileByPixels.set(storage, { dataFile: result.dataFile, dataEncoding: result.dataEncoding, width: result.width, height: result.height })
       return result
     }
@@ -677,6 +705,7 @@ const createProjectArchiveFiles = (
     files[dataFile] = encoded.data
     const raster = { width: surface.width, height: surface.height, offsetX: surface.offsetX, offsetY: surface.offsetY, dataEncoding: encoded.encoding }
     resources.push({ key, path: dataFile, revision, raster })
+    claimRasterFile(dataFile, storage, raster)
     const result = { dataFile, ...raster }
     dataFileByPixels.set(storage, { dataFile: result.dataFile, dataEncoding: result.dataEncoding, width: result.width, height: result.height })
     return result
@@ -685,7 +714,7 @@ const createProjectArchiveFiles = (
     const dataFile = `masks/${mask.id}.rgba`
     files[dataFile] = toU8(mask.pixels)
     resources.push({ key, path: dataFile, revision: revisionFor(key, mask.pixels) })
-    return { id: mask.id, ...(mask.linkedMaskId ? { linkedMaskId: mask.linkedMaskId } : {}), width: mask.width, height: mask.height, offsetX: mask.offsetX, offsetY: mask.offsetY, dataFile }
+    return { id: mask.id, ...(mask.linkedMaskId ? { linkedMaskId: mask.linkedMaskId } : {}), ...(mask.locked ? { locked: true } : {}), ...(mask.autoLinkAnimationCels ? { autoLinkAnimationCels: true } : {}), width: mask.width, height: mask.height, offsetX: mask.offsetX, offsetY: mask.offsetY, dataFile }
   }
   const layers: ManifestLayer[] = document.layers.map((layer) => {
     const encoded = encodePixels(`layer:${layer.id}`, `layers/${layer.id}.${layer.format === 'rgba' ? 'rgba' : 'idx32'}`, layer)
@@ -693,6 +722,7 @@ const createProjectArchiveFiles = (
       id: layer.id,
       name: layer.name,
       ...(layer.linkedContentId ? { linkedContentId: layer.linkedContentId } : {}),
+      ...(layer.autoLinkAnimationCels === true ? { autoLinkAnimationCels: true } : {}),
       ...(layer.displayColor ? { displayColor: layer.displayColor } : {}),
       ...(layer.description ? { description: layer.description } : {}),
       ...(layer.kind === 'text' || layer.kind === 'tilemap' || layer.kind === 'free-tile' ? { kind: layer.kind } : {}),
@@ -745,6 +775,7 @@ const createProjectArchiveFiles = (
     activeFrameId: timeline.activeFrameId,
     loop: timeline.loop,
     loopSections: (timeline.loopSections ?? []).map((section) => ({ ...section })),
+    layerMasks: (timeline.layerMasks ?? []).map((entry) => ({ layerId: entry.layerId, frameId: entry.frameId, mask: encodeMask(`layer-mask:${entry.layerId}:${entry.frameId}`, entry.mask) })),
     groupMasks: (timeline.groupMasks ?? []).map((entry) => ({ groupId: entry.groupId, frameId: entry.frameId, mask: encodeMask(`group-mask:${entry.groupId}:${entry.frameId}`, entry.mask) })),
     cels: timeline.cels.flatMap((cel) => {
       if (!cel.surface) return []
@@ -764,7 +795,6 @@ const createProjectArchiveFiles = (
           dataFile: encoded.dataFile,
           dataEncoding: encoded.dataEncoding
         } : {}),
-        ...(cel.mask ? { mask: encodeMask(`cel-mask:${cel.id}`, cel.mask) } : {}),
         ...(cel.text ? { text: normalizeTextCelData(cel.text) } : {}),
         ...(cel.tilemap && !cel.linkedCelId ? { tilemap: manifestTilemapFromData(cel.tilemap) } : {}),
         ...(cel.freeTiles && !cel.linkedCelId ? { freeTiles: manifestFreeTilesFromData(cel.freeTiles) } : {})
@@ -953,8 +983,8 @@ const captureProjectResourceRevisions = (document: SpriteDocument): Array<[strin
   const timeline = ensureAnimationDocument(document)
   for (const cel of timeline.cels) {
     if (cel.surface) revisions.push([`cel:${cel.id}`, getRasterContentRevision(rasterStorageIdentity(cel.surface))])
-    if (cel.mask) revisions.push([`cel-mask:${cel.id}`, getRasterContentRevision(cel.mask.pixels)])
   }
+  for (const entry of timeline.layerMasks ?? []) revisions.push([`layer-mask:${entry.layerId}:${entry.frameId}`, getRasterContentRevision(entry.mask.pixels)])
   for (const entry of timeline.groupMasks ?? []) revisions.push([`group-mask:${entry.groupId}:${entry.frameId}`, getRasterContentRevision(entry.mask.pixels)])
   for (const snapshot of document.timelapse?.snapshots ?? []) revisions.push([`timelapse:${snapshot.id}`, null])
   return revisions
@@ -1064,8 +1094,9 @@ const projectResourcesFromManifest = (document: SpriteDocument, manifest: Projec
       const storage = rasterStorageIdentity(cel.surface)
       add(`cel:${cel.id}`, metadata.dataFile, getRasterContentRevision(storage), rasterFromMetadata(metadata))
     }
-    if (cel.mask) add(`cel-mask:${cel.id}`, metadata?.mask?.dataFile, getRasterContentRevision(cel.mask.pixels))
   }
+  const layerMaskMetadata = new Map((manifest.document.animation.layerMasks ?? []).map((entry) => [`${entry.layerId}\u0000${entry.frameId}`, entry]))
+  for (const entry of timeline.layerMasks ?? []) add(`layer-mask:${entry.layerId}:${entry.frameId}`, layerMaskMetadata.get(`${entry.layerId}\u0000${entry.frameId}`)?.mask.dataFile, getRasterContentRevision(entry.mask.pixels))
   const groupMaskMetadata = new Map((manifest.document.animation.groupMasks ?? []).map((entry) => [`${entry.groupId}\u0000${entry.frameId}`, entry]))
   for (const entry of timeline.groupMasks ?? []) add(`group-mask:${entry.groupId}:${entry.frameId}`, groupMaskMetadata.get(`${entry.groupId}\u0000${entry.frameId}`)?.mask.dataFile, getRasterContentRevision(entry.mask.pixels))
   const snapshotMetadata = new Map((manifest.document.timelapse?.snapshots ?? []).map((snapshot) => [snapshot.id, snapshot]))
@@ -1235,6 +1266,7 @@ export function readProjectExpandedRasterBytes(input: Uint8Array): number | null
       if (cel.dataFile) add(cel.dataFile, cel.width, cel.height)
       if (cel.mask) add(cel.mask.dataFile, cel.mask.width, cel.mask.height)
     }
+    for (const entry of source.animation.layerMasks ?? []) add(entry.mask.dataFile, entry.mask.width, entry.mask.height)
     for (const entry of source.animation.groupMasks ?? []) add(entry.mask.dataFile, entry.mask.width, entry.mask.height)
     let total = 0
     for (const bytes of resources.values()) {
@@ -1296,6 +1328,7 @@ const requiredProjectDataFiles = (manifest: ProjectManifest, activeCelFiles: Rea
     if (cel.dataFile) required.add(cel.dataFile)
     if (cel.mask?.dataFile) required.add(cel.mask.dataFile)
   }
+  for (const entry of source.animation.layerMasks ?? []) required.add(entry.mask.dataFile)
   for (const entry of source.animation.groupMasks ?? []) required.add(entry.mask.dataFile)
   for (const snapshot of source.timelapse?.snapshots ?? []) if (!storedTimelapseFiles.has(snapshot.dataFile)) required.add(snapshot.dataFile)
   return required
@@ -1609,13 +1642,14 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
     }
     decodedMaskIds.add(metadata.id)
     if (metadata.linkedMaskId !== undefined && metadata.linkedMaskId !== null && (typeof metadata.linkedMaskId !== 'string' || !metadata.linkedMaskId)) throw new Error(tr('core.project.layerMaskCorrupt'))
-    return { id: metadata.id, name: tr(ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask'), description: '', visible: true, locked: false, opacity: 1, blendMode: 'normal', width, height, offsetX: Math.trunc(offsetX), offsetY: Math.trunc(offsetY), format: 'rgba', pixels: maskPixels, ownerKind, ownerId, ...(metadata.linkedMaskId ? { linkedMaskId: metadata.linkedMaskId } : {}) }
+    return { id: metadata.id, name: tr(ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask'), description: '', visible: true, locked: metadata.locked === true, opacity: 1, blendMode: 'normal', width, height, offsetX: Math.trunc(offsetX), offsetY: Math.trunc(offsetY), format: 'rgba', pixels: maskPixels, ownerKind, ownerId, ...(metadata.linkedMaskId ? { linkedMaskId: metadata.linkedMaskId } : {}), ...(metadata.autoLinkAnimationCels === true ? { autoLinkAnimationCels: true } : {}) }
   }
   const totalItems = Math.max(1,
     source.layers.length
     + (source.customBrushes?.length ?? 0)
     + (source.tilesets?.length ?? 0)
     + source.animation.cels.length
+    + (source.animation.layerMasks?.length ?? source.animation.cels.filter((cel) => cel.mask).length)
     + (source.animation.groupMasks?.length ?? 0)
     + (source.timelapse?.snapshots?.length ?? 0)
   )
@@ -1641,6 +1675,7 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
       id: metadata.id,
       name: metadata.name,
       ...(typeof metadata.linkedContentId === 'string' ? { linkedContentId: metadata.linkedContentId } : {}),
+      ...(metadata.autoLinkAnimationCels === true ? { autoLinkAnimationCels: true } : {}),
       description: typeof metadata.description === 'string' ? metadata.description : '',
       visible: metadata.visible !== false,
       locked: metadata.locked === true,
@@ -1778,10 +1813,9 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
     } else if (layer.kind === 'free-tile') {
       if (metadata.text || metadata.tilemap || !freeTileCollection || (!cel.linkedCelId && !freeTiles)) throw new Error(tr('core.project.layerCorrupt', { name: cel.id }))
     } else if (tilemap || freeTiles || metadata.freeTiles) throw new Error(tr('core.project.layerCorrupt', { name: cel.id }))
-    const mask = decodeMask(metadata.mask, cel.id)
     if (!metadata.dataFile) {
       reportItem()
-      return cel.linkedCelId ? [{ ...cel, text: metadata.text ? normalizeTextCelData(metadata.text) : cel.text, mask }] : []
+      return cel.linkedCelId ? [{ ...cel, text: metadata.text ? normalizeTextCelData(metadata.text) : cel.text }] : []
     }
     if (metadata.format !== 'rgba' && metadata.format !== 'indexed') throw new Error(tr('core.project.layerCorrupt', { name: cel.id }))
     const width = Number(metadata.width)
@@ -1793,7 +1827,18 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
       : { format: 'indexed' as const, width: decoded.width, height: decoded.height, offsetX: Math.trunc(metadata.offsetX ?? 0) + decoded.storageOffsetX, offsetY: Math.trunc(metadata.offsetY ?? 0) + decoded.storageOffsetY, storageOriginX: decoded.storageOffsetX, storageOriginY: decoded.storageOffsetY, pixels: decoded.pixels as Uint32Array }
     if (decoded.runtimeRaster) installRuntimeRaster(surface, decoded.runtimeRaster)
     reportItem()
-    return [{ ...cel, text: metadata.text ? normalizeTextCelData(metadata.text) : cel.text, ...(tilemap ? { tilemap } : {}), ...(freeTiles ? { freeTiles } : {}), surface, mask }]
+    return [{ ...cel, text: metadata.text ? normalizeTextCelData(metadata.text) : cel.text, ...(tilemap ? { tilemap } : {}), ...(freeTiles ? { freeTiles } : {}), surface }]
+  })
+  const manifestLayerMasks = Array.isArray(source.animation?.layerMasks) ? source.animation.layerMasks : []
+  const decodedLayerMaskSlots = new Set<string>()
+  animation.layerMasks = [...manifestLayerMasks, ...manifestCels.flatMap((cel) => cel.mask ? [{ layerId: cel.layerId, frameId: cel.frameId, mask: cel.mask }] : [])].flatMap((entry) => {
+    if (!entry || typeof entry.layerId !== 'string' || !layersById.has(entry.layerId) || typeof entry.frameId !== 'string' || !animation.frames.some((frame) => frame.id === entry.frameId)) throw new Error(tr('core.project.layerMaskCorrupt'))
+    const slot = `${entry.layerId}\u0000${entry.frameId}`
+    if (decodedLayerMaskSlots.has(slot)) return []
+    decodedLayerMaskSlots.add(slot)
+    const mask = decodeMask(entry.mask, entry.layerId)
+    reportItem()
+    return mask ? [{ layerId: entry.layerId, frameId: entry.frameId, mask }] : []
   })
   const manifestGroupMasks = Array.isArray(source.animation?.groupMasks) ? source.animation.groupMasks : []
   const decodedGroupMaskSlots = new Set<string>()
@@ -1806,7 +1851,7 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
     reportItem()
     return mask ? [{ groupId: entry.groupId, frameId: entry.frameId, mask }] : []
   })
-  const decodedMasks = [...animation.cels.flatMap((cel) => cel.mask ? [cel.mask] : []), ...(animation.groupMasks ?? []).map((entry) => entry.mask)]
+  const decodedMasks = [...(animation.layerMasks ?? []).map((entry) => entry.mask), ...(animation.groupMasks ?? []).map((entry) => entry.mask)]
   const decodedMasksById = new Map(decodedMasks.map((mask) => [mask.id, mask]))
   for (const mask of decodedMasks) {
     if (!mask.linkedMaskId) continue
