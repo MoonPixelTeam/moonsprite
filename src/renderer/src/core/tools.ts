@@ -10,7 +10,7 @@ import { brushDitherContains, gradientColorForAmount, interpolateRgbaColor } fro
 import { readSurfacePackedRegion } from './runtime-raster'
 import { allOutlineDirections, DEFAULT_OUTLINE_SMART_HUE_DARKNESS, outlineDirectionForOffset, outlineKernelContainsOffset, resolveOutlineStrokeColor } from './outline-settings'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
-import { contiguousMatchingRegion } from './contiguous-region'
+import { contiguousMatchingRegion, contiguousMatchingRegionInBounds, type BinaryRegionBounds } from './contiguous-region'
 
 const paintLayerValue = (
   document: SpriteDocument,
@@ -1577,6 +1577,15 @@ const insideSelection = (selection: SelectionMask, x: number, y: number): boolea
 const COMPACT_FILL_MIN_PIXELS = 512 * 512
 const DENSE_SELECTION_FILL_MIN_PIXELS = 512 * 512
 
+const smartClosureBoundsForLayer = (document: SpriteDocument, layer: RasterLayer): BinaryRegionBounds | undefined => {
+  const left = Math.max(0, layer.offsetX)
+  const top = Math.max(0, layer.offsetY)
+  const right = Math.min(document.width, layer.offsetX + layer.width)
+  const bottom = Math.min(document.height, layer.offsetY + layer.height)
+  if (left === 0 && top === 0 && right === document.width && bottom === document.height) return undefined
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+}
+
 export interface PixelOperationProfiler {
   record(stage: string, duration: number, detail?: Record<string, number | string | boolean>): void
 }
@@ -1597,6 +1606,98 @@ const floodFillUniformSolidRuns = (document: SpriteDocument, layer: RasterLayer,
   return edit
 }
 
+const floodFillBinaryRegionSolidRuns = (document: SpriteDocument, layer: RasterLayer, region: Uint8Array, target: number, next: number): PixelEdit | null => {
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  const fromX = Math.max(0, layer.offsetX)
+  const toX = Math.min(document.width, layer.offsetX + layer.width)
+  const fromY = Math.max(0, layer.offsetY)
+  const toY = Math.min(document.height, layer.offsetY + layer.height)
+  let dirtyLeft = document.width
+  let dirtyTop = document.height
+  let dirtyRight = 0
+  let dirtyBottom = 0
+  for (let y = fromY; y < toY; y += 1) {
+    const regionRow = y * document.width
+    let x = fromX
+    while (x < toX) {
+      while (x < toX && region[regionRow + x] !== 1) x += 1
+      if (x >= toX) break
+      const left = x
+      while (x < toX && region[regionRow + x] === 1) x += 1
+      const length = x - left
+      const index = (y - layer.offsetY) * layer.width + left - layer.offsetX
+      if (runs.length === 0) markLayerContentChanged(layer)
+      writeLayerPackedRun(document, layer, index, length, next)
+      runs.push({ index, length, before: target, after: next })
+      dirtyLeft = Math.min(dirtyLeft, left)
+      dirtyTop = Math.min(dirtyTop, y)
+      dirtyRight = Math.max(dirtyRight, x)
+      dirtyBottom = Math.max(dirtyBottom, y + 1)
+    }
+  }
+  if (runs.length === 0) return null
+  edit.runs = runs
+  edit.dirtyRect = { x: dirtyLeft, y: dirtyTop, width: dirtyRight - dirtyLeft, height: dirtyBottom - dirtyTop }
+  return edit
+}
+
+const floodFillLocalBinaryRegionSolidRuns = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  region: Uint8Array,
+  regionBounds: BinaryRegionBounds,
+  target: number,
+  next: number
+): PixelEdit | null => {
+  const width = Math.max(0, Math.trunc(regionBounds.width))
+  const height = Math.max(0, Math.trunc(regionBounds.height))
+  if (width < 1 || height < 1 || region.length < width * height) return null
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  let dirtyLeft = document.width
+  let dirtyTop = document.height
+  let dirtyRight = 0
+  let dirtyBottom = 0
+  const fromX = Math.max(0, Math.ceil(regionBounds.x), layer.offsetX)
+  const toX = Math.min(document.width, Math.ceil(regionBounds.x) + width, layer.offsetX + layer.width)
+  const fromY = Math.max(0, Math.ceil(regionBounds.y), layer.offsetY)
+  const toY = Math.min(document.height, Math.ceil(regionBounds.y) + height, layer.offsetY + layer.height)
+  for (let y = fromY; y < toY; y += 1) {
+    const regionRow = (y - Math.ceil(regionBounds.y)) * width
+    let x = fromX
+    while (x < toX) {
+      while (x < toX && region[regionRow + x - Math.ceil(regionBounds.x)] !== 1) x += 1
+      if (x >= toX) break
+      const left = x
+      while (x < toX && region[regionRow + x - Math.ceil(regionBounds.x)] === 1) x += 1
+      const length = x - left
+      const index = (y - layer.offsetY) * layer.width + left - layer.offsetX
+      if (runs.length === 0) markLayerContentChanged(layer)
+      writeLayerPackedRun(document, layer, index, length, next)
+      runs.push({ index, length, before: target, after: next })
+      dirtyLeft = Math.min(dirtyLeft, left)
+      dirtyTop = Math.min(dirtyTop, y)
+      dirtyRight = Math.max(dirtyRight, x)
+      dirtyBottom = Math.max(dirtyBottom, y + 1)
+    }
+  }
+  if (runs.length === 0) return null
+  edit.runs = runs
+  edit.dirtyRect = { x: dirtyLeft, y: dirtyTop, width: dirtyRight - dirtyLeft, height: dirtyBottom - dirtyTop }
+  return edit
+}
+
+const packedCanvasPixels = (document: SpriteDocument, layer: RasterLayer): Uint32Array | null => {
+  if (layer.offsetX !== 0 || layer.offsetY !== 0 || layer.width !== document.width || layer.height !== document.height) return null
+  if (layer.format === 'indexed') return layer.pixels
+  return layer.pixels.byteOffset % 4 === 0
+    ? new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
+    : null
+}
+
 const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, target: number, next: number, selection: SelectionMask | null | undefined, contiguous: boolean): PixelEdit | null => {
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
@@ -1604,49 +1705,69 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
   const rgbaWords = layer.format === 'rgba' && layer.pixels.byteOffset % 4 === 0
     ? new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
     : null
-  const layerIndexAtCanvas = (x: number, y: number): number | null => {
-    const localX = x - layer.offsetX
-    const localY = y - layer.offsetY
-    return localX < 0 || localY < 0 || localX >= layer.width || localY >= layer.height ? null : localY * layer.width + localX
-  }
+  const visibleLeft = Math.max(0, layer.offsetX)
+  const visibleTop = Math.max(0, layer.offsetY)
+  const visibleRight = Math.min(document.width, layer.offsetX + layer.width)
+  const visibleBottom = Math.min(document.height, layer.offsetY + layer.height)
+  const localLeft = visibleLeft - layer.offsetX
+  const localTop = visibleTop - layer.offsetY
+  const localRight = visibleRight - layer.offsetX
+  const localBottom = visibleBottom - layer.offsetY
   const selected = (x: number, y: number): boolean => {
     if (!selection) return true
     if (x < selection.x || y < selection.y || x >= selection.x + selection.width || y >= selection.y + selection.height) return false
     return !selection.mask || selection.mask[(y - selection.y) * selection.width + x - selection.x] === 1
   }
-  const matches = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= document.width || y >= document.height || !selected(x, y)) return false
-    const index = layerIndexAtCanvas(x, y)
-    if (index === null) return false
-    return layer.format === 'indexed' ? layer.pixels[index] === target : rgbaWords ? rgbaWords[index] === target : readLayerPacked(document, layer, index) === target
+  const readLocal = (index: number): number => layer.format === 'indexed'
+    ? layer.pixels[index]
+    : rgbaWords ? rgbaWords[index] : readLayerPacked(document, layer, index)
+  const matchesLocal = (x: number, y: number): boolean => {
+    if (x < localLeft || y < localTop || x >= localRight || y >= localBottom) return false
+    const canvasX = x + layer.offsetX
+    const canvasY = y + layer.offsetY
+    return selected(canvasX, canvasY) && readLocal(y * layer.width + x) === target
   }
   let dirtyLeft = document.width
   let dirtyTop = document.height
   let dirtyRight = 0
   let dirtyBottom = 0
+  const normalizedNext = normalizeLayerPackedValue(document, layer, next)
+  const writeRun = (index: number, length: number): void => {
+    if (layer.format === 'indexed') layer.pixels.fill(normalizedNext, index, index + length)
+    else if (rgbaWords) rgbaWords.fill(normalizedNext, index, index + length)
+    else writeLayerPackedRun(document, layer, index, length, normalizedNext)
+  }
   const fillSpan = (left: number, right: number, y: number): void => {
-    const index = layerIndexAtCanvas(left, y)
-    if (index === null) return
+    if (left < localLeft || right >= localRight || y < localTop || y >= localBottom) return
     const length = right - left + 1
     if (runs.length === 0) markLayerContentChanged(layer)
-    writeLayerPackedRun(document, layer, index, length, next)
-    runs.push({ index, length, before: target, after: next })
-    dirtyLeft = Math.min(dirtyLeft, left)
-    dirtyTop = Math.min(dirtyTop, y)
-    dirtyRight = Math.max(dirtyRight, right + 1)
-    dirtyBottom = Math.max(dirtyBottom, y + 1)
+    const index = y * layer.width + left
+    writeRun(index, length)
+    runs.push({ index, length, before: target, after: normalizedNext })
+    const canvasLeft = left + layer.offsetX
+    const canvasTop = y + layer.offsetY
+    dirtyLeft = Math.min(dirtyLeft, canvasLeft)
+    dirtyTop = Math.min(dirtyTop, canvasTop)
+    dirtyRight = Math.max(dirtyRight, canvasLeft + length)
+    dirtyBottom = Math.max(dirtyBottom, canvasTop + 1)
   }
 
   if (!contiguous) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     if (!bounds) return null
-    for (let y = bounds.y; y < bounds.y + bounds.height; y += 1) {
-      let x = bounds.x
-      while (x < bounds.x + bounds.width) {
-        while (x < bounds.x + bounds.width && !matches(x, y)) x += 1
-        if (x >= bounds.x + bounds.width) break
+    const fromX = Math.max(bounds.x, visibleLeft)
+    const toX = Math.min(bounds.x + bounds.width, visibleRight)
+    const fromY = Math.max(bounds.y, visibleTop)
+    const toY = Math.min(bounds.y + bounds.height, visibleBottom)
+    for (let canvasY = fromY; canvasY < toY; canvasY += 1) {
+      const y = canvasY - layer.offsetY
+      let x = fromX - layer.offsetX
+      const endX = toX - layer.offsetX
+      while (x < endX) {
+        while (x < endX && !matchesLocal(x, y)) x += 1
+        if (x >= endX) break
         const left = x
-        while (x + 1 < bounds.x + bounds.width && matches(x + 1, y)) x += 1
+        while (x + 1 < endX && matchesLocal(x + 1, y)) x += 1
         fillSpan(left, x, y)
         x += 1
       }
@@ -1655,34 +1776,35 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
     let stack = new Int32Array(1024)
     let stackLength = 0
     const push = (x: number, y: number): void => {
+      if (!matchesLocal(x, y)) return
       if (stackLength === stack.length) {
         const expanded = new Int32Array(stack.length * 2)
         expanded.set(stack)
         stack = expanded
       }
-      stack[stackLength++] = pixelIndex(document.width, x, y)
+      stack[stackLength++] = y * layer.width + x
     }
     const scanNeighbor = (left: number, right: number, y: number): void => {
-      if (y < 0 || y >= document.height) return
+      if (y < localTop || y >= localBottom) return
       let x = left
       while (x <= right) {
-        while (x <= right && !matches(x, y)) x += 1
+        while (x <= right && !matchesLocal(x, y)) x += 1
         if (x > right) break
         push(x, y)
         x += 1
-        while (x <= right && matches(x, y)) x += 1
+        while (x <= right && matchesLocal(x, y)) x += 1
       }
     }
-    push(startX, startY)
+    push(startX - layer.offsetX, startY - layer.offsetY)
     while (stackLength > 0) {
       const seed = stack[--stackLength]
-      const x = seed % document.width
-      const y = Math.floor(seed / document.width)
-      if (!matches(x, y)) continue
+      const x = seed % layer.width
+      const y = Math.floor(seed / layer.width)
+      if (!matchesLocal(x, y)) continue
       let left = x
       let right = x
-      while (matches(left - 1, y)) left -= 1
-      while (matches(right + 1, y)) right += 1
+      while (matchesLocal(left - 1, y)) left -= 1
+      while (matchesLocal(right + 1, y)) right += 1
       fillSpan(left, right, y)
       scanNeighbor(left, right, y - 1)
       scanNeighbor(left, right, y + 1)
@@ -1694,7 +1816,7 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
   return edit
 }
 
-export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0): PixelEdit | null {
+export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler): PixelEdit | null {
   if (!isInBounds(document.width, document.height, startX, startY) || isLayerEffectivelyLocked(document, layer) || (selection && !insideSelection(selection, startX, startY))) return null
   const startWasOutsideLayer = layerIndexAt(layer, startX, startY) === null
   if (startWasOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
@@ -1702,6 +1824,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   if (startLayerIndex === null) return null
   const target = readLayerPacked(document, layer, startLayerIndex)
   const normalizedTolerance = Math.max(0, Math.min(255, Math.round(tolerance) || 0))
+  const effectiveGapClosingThreshold = contiguous ? gapClosingThreshold : 0
   const paletteColors = layer.format === 'indexed'
     ? new Map(document.palette.map((entry) => [entry.id, packColor(getPaletteEntry(document, entry.id).color)]))
     : null
@@ -1792,7 +1915,57 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     if (!selection && layerCoversCanvas && rasterLayerPackedValueIsUniform(layer, target)) {
       return floodFillUniformSolidRuns(document, layer, target, next)
     }
-    if (gapClosingThreshold <= 0 && normalizedTolerance === 0) {
+    const packedPixels = normalizedTolerance === 0 && contiguous && !selection
+      ? packedCanvasPixels(document, layer)
+      : null
+    if (packedPixels) {
+      const region = contiguousMatchingRegion(
+        document.width,
+        document.height,
+        startX,
+        startY,
+        (index) => packedPixels[index] === target,
+        effectiveGapClosingThreshold,
+        undefined,
+        profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
+      )
+      return region ? floodFillBinaryRegionSolidRuns(document, layer, region, target, next) : null
+    }
+    if (effectiveGapClosingThreshold > 0 && !selection) {
+      const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
+      if (smartClosureBounds) {
+        const boundsX = Math.trunc(smartClosureBounds.x)
+        const boundsY = Math.trunc(smartClosureBounds.y)
+        const boundsWidth = Math.trunc(smartClosureBounds.width)
+        const boundsHeight = Math.trunc(smartClosureBounds.height)
+        const packedRegion = readSurfacePackedRegion(
+          layer,
+          boundsX - layer.offsetX,
+          boundsY - layer.offsetY,
+          boundsWidth,
+          boundsHeight
+        )
+        const region = contiguousMatchingRegionInBounds(
+          boundsWidth,
+          boundsHeight,
+          startX - boundsX,
+          startY - boundsY,
+          (index) => packedRegion[index] === target,
+          effectiveGapClosingThreshold,
+          { x: 0, y: 0, width: boundsWidth, height: boundsHeight },
+          profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
+        )
+        return region
+          ? floodFillLocalBinaryRegionSolidRuns(document, layer, region.region, {
+              x: boundsX,
+              y: boundsY,
+              width: boundsWidth,
+              height: boundsHeight
+            }, target, next)
+          : null
+      }
+    }
+    if (effectiveGapClosingThreshold <= 0 && normalizedTolerance === 0) {
       return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
     }
   }
@@ -1843,14 +2016,15 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     return edit.before.size > 0 ? edit : null
   }
   const maxPixels = document.width * document.height
-  if (gapClosingThreshold > 0) {
+  if (effectiveGapClosingThreshold > 0) {
+    const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
     const region = contiguousMatchingRegion(document.width, document.height, startX, startY, (index) => {
       const x = index % document.width
       const y = Math.floor(index / document.width)
       if (selection && !insideSelection(selection, x, y)) return false
       const layerIndex = layerIndexAtCanvas(x, y)
       return layerIndex !== null && matchesValue(readLayerPacked(document, layer, layerIndex))
-    }, gapClosingThreshold)
+      }, effectiveGapClosingThreshold, smartClosureBounds, profiler ? (stage, duration) => profiler.record(stage, duration) : undefined)
     if (!region) return null
     for (let index = 0; index < maxPixels; index += 1) {
       if (region[index] !== 1) continue
@@ -1898,7 +2072,7 @@ export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer,
   const merged = beginPixelEdit(layer.id)
   for (const seed of symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)) {
     const fillStartedAt = profiler ? performance.now() : 0
-    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold)
+    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
       points: edit?.before.size ?? 0,
       runs: edit?.runs?.length ?? 0,

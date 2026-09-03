@@ -347,7 +347,7 @@ describe('LayersPanel timeline focus interactions', () => {
     const ordinaryFrameCell = view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)
     const maskFrameCell = view.container.querySelector(`[data-animation-mask-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)
     expect(ordinaryFrameCell).toHaveClass('active-frame', 'selected-animation-frame')
-    expect(maskFrameCell).not.toHaveClass('active-frame')
+    expect(maskFrameCell).toHaveClass('active-frame')
     expect(maskFrameCell).toHaveClass('selected-animation-frame')
     expect(maskFrameCell).not.toHaveClass('selected-cel')
     expect(maskFrameCell?.querySelector('.cel-mask-marker')).toBeNull()
@@ -726,7 +726,7 @@ describe('LayersPanel timeline focus interactions', () => {
     const list = view.container.querySelector('.layer-list')!
     await act(async () => { fireEvent.pointerDown(list, { button: 0 }) })
     const after = useWorkspace.getState().sessions[0]!
-    expect(after.selectedAnimationMaskCellKeys.length).toBe(1)
+    expect(after.selectedAnimationMaskCellKeys).toEqual([])
     expect(after.activeLayerMaskId).not.toBeNull()
     const maskRow = view.container.querySelector(`[data-layer-mask-row-owner="${layer.id}"]`)
     expect(maskRow).toHaveClass('active-layer')
@@ -738,6 +738,9 @@ describe('LayersPanel timeline focus interactions', () => {
     expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, timeline.activeFrameId)}"]`)).not.toHaveClass('current-cel')
     expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, timeline.activeFrameId)}"]`)).not.toHaveClass('selected-cel')
     expect(view.container.querySelector(`[data-layer-id="${layer.id}"]`)).not.toHaveClass('cel-owner-active')
+    await act(async () => { fireEvent.pointerDown(list, { button: 0 }) })
+    expect(useWorkspace.getState().sessions[0]!.selectedAnimationMaskCellKeys).toEqual([])
+    expect(view.container.querySelectorAll('.layer-mask-cel.active-mask')).toHaveLength(1)
   })
 
   it('does not create a normal-layer cel marker when blank space in the layer row is clicked from mask focus', async () => {

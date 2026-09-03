@@ -5,6 +5,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { createDocumentPaneLayout, insertDocumentPane, resizeDocumentPane, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPaneOrientation, type DocumentPanePlacement } from '@/core/document-pane-layout'
 import { clearDocumentPaneDockPreview, updateDocumentPaneDockPreview } from './document-pane-dock-preview'
 import { paneDockTargetAtPoint, type DocumentPaneDockTarget } from './document-pane-hit-test'
+import { canvasColorSamplingIntentActive } from '@/core/canvas-color-sampling'
 import { QuickCommandBar } from './QuickCommandBar'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -262,7 +263,7 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
       const paneSession = sessions.find((item) => item.document.id === node.documentId)
       if (!paneSession) return null
       const showPaneHeader = paneOnlyDocumentIds.includes(paneSession.document.id)
-      return <section key={node.id} data-document-pane-id={node.id} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={() => useWorkspace.getState().setActive(paneSession.document.id)} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
+      return <section key={node.id} data-document-pane-id={node.id} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={(event) => { if (canvasColorSamplingIntentActive() && (event.target as Element).closest('canvas.stage-canvas')) return; const workspace = useWorkspace.getState(); workspace.syncCanvasToolSettings(paneSession.document.id); workspace.setActive(paneSession.document.id) }} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
         {showPaneHeader && <header onPointerDown={(event) => beginPaneDrag(event, paneSession.document.id)} onContextMenu={(event) => { if (!onDocumentPaneFloat) return; event.preventDefault(); event.stopPropagation(); useWorkspace.getState().setActive(paneSession.document.id); setPaneContextMenu({ documentId: paneSession.document.id, x: event.clientX, y: event.clientY }) }}><PixelUtilityIcon kind="image" /><span>{paneSession.document.name}</span>{paneSession.document.dirty && <i />}<button title={t('common.close')} aria-label={t('tabs.closeAria', { name: paneSession.document.name })} onClick={() => { void useWorkspace.getState().closeDocument(paneSession.document.id) }}><PixelUtilityIcon kind="close" /></button></header>}
         <div className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={paneSession} /></div></div>
       </section>

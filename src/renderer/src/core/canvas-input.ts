@@ -1178,6 +1178,11 @@ export const zoomDragTarget = (startZoom: number, horizontalDistance: number, mo
 
 export const zoomDragModeForModifiers = (defaultMode: 'smooth' | 'stepped', shiftKey: boolean): 'smooth' | 'stepped' => shiftKey ? 'stepped' : defaultMode
 
+export const isCanvasViewNavigationTool = (tool: ToolId): boolean => tool === 'hand' || tool === 'zoom' || tool === 'rotate'
+
+export const isCanvasViewNavigationDrag = (drag: Pick<CanvasDragState, 'kind'> | null | undefined): boolean =>
+  drag?.kind === 'pan' || drag?.kind === 'zoom-drag' || drag?.kind === 'rotate-view'
+
 export const shouldStartCanvasPan = (tool: string): boolean => tool === 'hand'
 
 export const rotationHandles = (box: { x: number; y: number; width: number; height: number }): Array<[SelectionRotationHandle, number, number]> => {

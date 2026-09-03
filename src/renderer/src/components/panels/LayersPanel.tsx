@@ -410,6 +410,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     { label: t('blend.group.components'), options: blendOptions.filter((option) => ['hue', 'saturation', 'color', 'luminosity'].includes(option.value)) }
   ]
   const store = useWorkspace.getState()
+  const timelineActiveContext = useWorkspace((state) =>
+    state.sessions.find((item) => item.document.id === session.document.id)?.timelineActiveContext
+      ?? session.timelineActiveContext
+  )
   const liveLayers = useWorkspace((state) => state.sessions.find((item) => item.document.id === session.document.id)?.document.layers ?? session.document.layers)
   const liveAutoLinkById = new Map(liveLayers.map((layer) => [layer.id, layer.autoLinkAnimationCels === true]))
   const layerStyleClipboard = useWorkspace((state) => state.layerStyleClipboard)
@@ -1842,6 +1846,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     if (ownerKind === 'group' && session.document.groups.some((group) => group.id === ownerId)) return { kind: 'mask', ownerKind, ownerId }
     return null
   }
+  const gestureActiveRow: TimelineRowRef | null = animationGestureActiveTarget?.kind === 'mask'
+    ? {
+        kind: 'mask',
+        ownerKind: session.document.layers.some((layer) => layer.id === animationGestureActiveTarget.layerId) ? 'layer' : 'group',
+        ownerId: animationGestureActiveTarget.layerId
+      }
+    : animationGestureActiveTarget?.kind === 'cel'
+      ? session.document.groups.some((group) => group.id === animationGestureActiveTarget.layerId)
+        ? { kind: 'group', ownerKind: 'group', ownerId: animationGestureActiveTarget.layerId }
+        : { kind: 'layer', ownerKind: 'layer', ownerId: animationGestureActiveTarget.layerId }
+      : null
+  const timelineActiveRow = gestureActiveRow ?? timelineActiveContext.row
   const focusState = resolveTimelineFocusState({
     activeLayerId: session.document.activeLayerId,
     activeFrameId: timeline.activeFrameId,
@@ -1867,43 +1883,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   })
   const explicitLayerFocus = focusState.explicitLayerFocus
   const normalLayerSelectionActive = explicitLayerFocus
-  const activeMaskCanonicalId = session.activeLayerMaskId
-  const activeMaskEntry = activeMaskCanonicalId
-    ? (() => {
-        const currentFrame = timeline.activeFrameId
-        const selectedCurrent = session.selectedAnimationMaskCellKeys
-          .map((key) => parseAnimationCelKey(key))
-          .find((target) => target?.frameId === currentFrame)
-        const matches = (entry: (typeof maskSnapshotEntries)[number]): boolean => entry.mask.id === activeMaskCanonicalId || resolveAnimationMask(timeline, entry.mask)?.id === activeMaskCanonicalId
-        return (selectedCurrent
-          ? maskSnapshotEntries.find((entry) => entry.ownerId === selectedCurrent.layerId && entry.frameId === selectedCurrent.frameId && matches(entry))
-          : undefined)
-          ?? maskSnapshotEntries.find(matches)
-          ?? null
-      })()
-    : null
-  const selectedMaskCellOwnerKey = session.selectedAnimationMaskCellKeys.at(-1)
-    ? (() => {
-        const target = parseAnimationCelKey(session.selectedAnimationMaskCellKeys.at(-1)!)
-        if (!target) return null
-        if (session.document.layers.some((layer) => layer.id === target.layerId)) return `layer:${target.layerId}`
-        if (session.document.groups.some((group) => group.id === target.layerId)) return `group:${target.layerId}`
-        return null
-      })()
-    : null
-  const selectedMaskRowOwnerKey = session.selectedAnimationMaskRowKeys.at(-1) ?? null
   // Mask activity is an independent editing context. Do not let a stale
   // ordinary-layer selection hide it during frame changes or playback.
-  const maskContextActive = focusState.maskFocus
-    || activeMaskCanonicalId !== null
-    || session.selectedAnimationMaskCellKeys.length > 0
-    || session.selectedAnimationMaskRowKeys.length > 0
-  const activeMaskOwnerKey = maskContextActive
-    ? focusState.owner?.kind === 'mask'
-      ? `${focusState.owner.ownerKind}:${focusState.owner.ownerId}`
-        : activeMaskEntry
-          ? `${activeMaskEntry.ownerKind}:${activeMaskEntry.ownerId}`
-        : selectedMaskRowOwnerKey ?? selectedMaskCellOwnerKey
+  const maskContextActive = timelineActiveRow?.kind === 'mask'
+  const activeMaskOwnerKey = timelineActiveRow?.kind === 'mask'
+    ? `${timelineActiveRow.ownerKind}:${timelineActiveRow.ownerId}`
     : null
   const maskVisualByOwnerFrame = new Map(maskSnapshotEntries.map((entry) => [maskOwnerFrameKey(entry.ownerKind, entry.ownerId, entry.frameId), entry.mask]))
   const animationMaskLayerIds = new Set(maskSnapshotEntries.filter((entry) => entry.ownerKind === 'layer').map((entry) => entry.ownerId))
@@ -1962,9 +1946,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const effectiveSelectedGroupIds = session.selectedGroupIds.length > 0
     ? [...new Set(session.selectedGroupIds)]
     : session.selectedGroupId ? [session.selectedGroupId] : []
-  const contextGroupId = session.document.groups.some((group) => group.id === session.layerSelectionAnchorId)
-    ? session.layerSelectionAnchorId
-    : null
+  const contextGroupId = timelineActiveRow?.kind === 'group' ? timelineActiveRow.ownerId : null
   const visualContextGroupIds = effectiveSelectedGroupIds.length > 0
     ? effectiveSelectedGroupIds
     : contextGroupId ? [contextGroupId] : []
@@ -1984,11 +1966,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     ? []
     : session.selectedLayerIds
   const gestureActiveFrameId = animationGestureActiveTarget?.frameId ?? null
-  const gestureActiveLayerId = animationGestureActiveTarget?.kind === 'cel'
-    ? animationGestureActiveTarget.layerId
-    : animationGestureActiveTarget?.kind === 'mask' && session.document.layers.some((layer) => layer.id === animationGestureActiveTarget.layerId)
-      ? animationGestureActiveTarget.layerId
-      : null
   const visualActiveFrameId = gestureActiveFrameId ?? timeline.activeFrameId
   // A selected group owns the timeline focus. Its descendant activeLayerId is
   // an internal document cursor only and must not light a child current-cel.
@@ -1997,17 +1974,12 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const gestureOverridesMaskContext = animationGestureSelection?.kind === 'cel'
     || (animationGestureActiveTarget?.kind === 'cel' && session.document.groups.some((group) => group.id === animationGestureActiveTarget.layerId))
   const maskVisualSelectionActive = (maskContextActive || animationGestureSelection?.kind === 'mask') && !gestureOverridesMaskContext
-  const retainedNormalLayerFrameScope = focusState.frameFocus
-    && session.selectedLayerIds.includes(session.document.activeLayerId)
-    && session.document.layers.some((layer) => layer.id === session.document.activeLayerId)
-  const normalLayerFrameScopeActive = !maskVisualSelectionActive
-    && (focusState.explicitLayerFocus || retainedNormalLayerFrameScope)
   // Frame focus suppresses only single-cel current markers; the document's
   // active layer row remains the ambient activity context beneath the column
   // selection.
-  const visualActiveLayerId = groupVisualSelectionActive || maskVisualSelectionActive
-    ? null
-    : gestureActiveLayerId ?? session.document.activeLayerId
+  const visualActiveLayerId = timelineActiveRow?.kind === 'layer'
+    ? timelineActiveRow.ownerId
+    : null
   // Playback still paints the current ordinary cel even when a mask row is
   // retained as the user's selection context. This is a playback indicator,
   // not a change to the editing focus.
@@ -2017,43 +1989,14 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     : visualActiveLayerId
   const visualActiveFrameIndex = timeline.frames.findIndex((frame) => frame.id === visualActiveFrameId)
 
-  // Blank clicks clear an explicit selection, but a mask selection has a
-  // separate row/cell context that must survive that gesture. Promote the
-  // current mask owner to a single current-frame cell instead of falling
-  // back to the implicit document.activeLayerId.
-  const preserveMaskContextFromBlank = useCallback((): boolean => {
-    if (!maskVisualSelectionActive || !activeMaskOwnerKey) return false
-    const separator = activeMaskOwnerKey.indexOf(':')
-    if (separator <= 0) return false
-    const ownerKind = activeMaskOwnerKey.slice(0, separator)
-    const ownerId = activeMaskOwnerKey.slice(separator + 1)
-    if (ownerKind !== 'layer' && ownerKind !== 'group' || ownerId.length === 0) return false
-    const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
-    const liveTimeline = liveSession?.document.animation ?? timeline
-    const currentFrameId = liveTimeline.activeFrameId
-    const key = liveSession?.selectedAnimationMaskCellKeys.find((candidate) => {
-      const parsed = parseAnimationCelKey(candidate)
-      return parsed?.layerId === ownerId && parsed.frameId === currentFrameId
-    }) ?? animationCelKey(ownerId, currentFrameId)
-    const parsed = parseAnimationCelKey(key)
-    if (!parsed || !animationMaskAt(liveTimeline, parsed.layerId, parsed.frameId)) return false
-    store.selectAnimationMaskCell(key, 'replace')
-    return true
-  }, [activeMaskOwnerKey, maskVisualSelectionActive, session.document.id, store, timeline])
   const clearSelectionFromBlank = useCallback((): void => {
-    if (preserveMaskContextFromBlank()) return
-    store.clearLayerSelection()
-    store.clearAnimationSelection()
-  }, [preserveMaskContextFromBlank, store])
+    store.clearAnimationSelection(true)
+  }, [store])
   clearSelectionFromBlankRef.current = clearSelectionFromBlank
   const updateAnimationFrameDisabled = useCallback((disabled: boolean | 'toggle'): void => {
     if (disabled === 'toggle') store.toggleSelectedAnimationFramesDisabled()
     else store.setSelectedAnimationFramesDisabled(disabled)
-    // Match the user's explicit blank-area refresh gesture after changing
-    // playback metadata, so stale active/selected cell visuals are cleared in
-    // the same state boundary as a normal timeline blank click.
-    clearSelectionFromBlank()
-  }, [clearSelectionFromBlank, store])
+  }, [store])
   const canonicalTimelineIndex = createAnimationTimelineVisualIndex(timeline.frames.map((frame) => ({ id: frame.id })), visualCells)
   const derivedTimelineVisualState = deriveAnimationTimelineVisualState({
     rows: visualRows,
@@ -2074,9 +2017,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     // resolved row lets the pure derivation keep mask rows/cells current even
     // when visualActiveLayerId is intentionally null in mask mode.
     active: {
-      row: focusState.owner,
+      row: timelineActiveRow,
       frameId: visualActiveFrameId,
-      maskEditTargetId: session.activeLayerMaskId,
+      maskEditTargetId: timelineActiveContext.maskEditTargetId,
     },
     presentation: { presentationHidden: !selectionOutlineVisible, playing: session.animationPlaying }
   })
@@ -3258,7 +3201,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       ...maskRowFlags,
       // A mask occupies its own timeline row. Its position is attached to the
       // owner layer, but its activity/selection is independent of that row.
-      active: !normalLayerFrameScopeActive && maskRowFlags.active,
+      active: maskRowFlags.active,
       selected: Boolean(
         session.selectedAnimationFrameIds.length === 0
           && animationGestureSelection?.kind !== 'frame'
@@ -3364,14 +3307,14 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
           && session.selectedAnimationMaskRowKeys.includes(`${displayRow.ownerKind}:${displayRow.owner.id}`)
         // Frame selection is column-wide, including the independent mask
         // surface. Keep its slot marker in sync with the selected frame.
-        const maskSlotSelected = maskRowSelected || maskFrameSelected || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
         // A frame selection can remain as the formal focus while the mask is
         // the active editing surface. Playback must keep that mask activity;
         // frameFocus only suppresses it when there is no mask context.
         const maskActive = frameVisualEnabled
           && !animationCelDragActive
-          && ((session.animationPlaying && maskVisualSelectionActive) || !focusState.frameFocus)
+          && !focusState.frameFocus
           && maskCellClasses.current
+        const maskSlotSelected = maskRowSelected || maskFrameSelected || maskActive || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
         const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key)
         const maskThumbnail = resolvedMask && showCelThumbnails
           ? <ActiveLayerMaskThumbnail documentId={session.document.id} ownerId={displayRow.owner.id} frameId={frame.id} mask={resolvedMask} revision={session.contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} />
@@ -3390,7 +3333,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
           || maskVisualSelectionActive
         const maskActiveFrameHighlighted = maskFrameActivityVisible
           && frameVisualEnabled
-          && (session.animationPlaying || !normalLayerFrameScopeActive)
           && (maskCellClasses.frameActive || maskCellClasses.selectedByFrame || (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
         // The active/selected frame column is an ordinary-layer guide. Paint
         // over that guide on an unfocused mask row so it cannot look active
@@ -3466,13 +3408,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // A selection marker is an interior cel indicator, not the selection
       // highlight itself. Empty/transparent slots must keep their grid or
       // selection-box state without looking like visible cels.
-      const selectionMarker = shouldRenderTimelineCelSelectionMarker(hasContent, Boolean(keySelected || currentCell || layerSelectedAcrossTimeline || cellVisuallySelected))
-        ? <span className="cel-content-marker selection-marker" aria-hidden="true" />
-        : null
+      const selectionMarkerVisible = shouldRenderTimelineCelSelectionMarker(hasContent, Boolean(keySelected || currentCell || layerSelectedAcrossTimeline || cellVisuallySelected))
       const liveActiveCell = Boolean(!animationCelDragActive && active && node.layer.id === playbackActiveLayerId && resolvedCel)
       const normalCelMarker = resolvedCel && (hasContent || liveActiveCell)
-        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} cel={resolvedCel} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={currentCell} />
-        : selectionMarker
+        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} cel={resolvedCel} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={selectionMarkerVisible} />
+        : selectionMarkerVisible ? <span className="cel-content-marker selection-marker" aria-hidden="true" /> : null
       return <button type="button" data-animation-cel-key={key} data-frame-index={index} key={`${node.id}-${frame.id}`} className={`layer-animation-cel ${node.layer.kind === 'text' ? 'text-cel' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-cel' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-cel' : ''} ${cel ? 'has-cel' : ''} ${node.layer.id === visualActiveLayerId ? 'active-layer-cel' : ''} ${currentFrameCellHighlighted ? 'active-frame' : ''} ${frameSelectedForCell ? 'selected-animation-frame' : ''} ${layerSelectedAcrossTimeline ? 'selected-layer' : ''} ${currentCell ? 'current-cel' : ''} ${cellVisuallySelected ? 'selected-cel' : ''} ${linkedCelMember ? 'linked-cel-member' : ''} ${showLinkedCelVisuals && (linkedWithPrevious || linkedWithNext) ? 'linked-cel' : ''} ${showLinkedVisuals && linkedWithPrevious ? 'linked-cel-previous' : ''} ${linkedCelEnd ? 'linked-cel-end' : ''} ${linkedCelBridgeEnd ? 'linked-cel-bridge-end' : ''} ${draggingAnimationFrameIds.includes(frame.id) || (draggingAnimationCellKind === 'cel' && draggingAnimationCellKeys.includes(key)) ? 'dragging' : ''} ${animationCelDropTargetKey === key && !animationCelDragActive && !(animationCelDragAnchorKey && draggingAnimationCellKeys.length > 1) ? 'drop-target' : ''}`} aria-label={t('timeline.celAtFrame', { number: index + 1 })} title={`${node.layer.name} · ${t('timeline.frameNumber', { number: index + 1 })}`} onPointerDown={(event) => beginAnimationCelDrag(event, node.layer.id, frame.id)} onPointerMove={(event) => updateAnimationItemCursor(event, frame.id, key)} onPointerLeave={(event) => { event.currentTarget.style.cursor = '' }} onClick={(event) => { if (suppressAnimationClickRef.current) { event.preventDefault(); event.stopPropagation(); return } if (event.detail === 0) store.selectAnimationCell(key, event.shiftKey ? 'range' : event.ctrlKey ? 'toggle' : 'replace') }} onDoubleClick={() => {
         if (node.layer.kind === 'text') {
           const source = celLookup.resolve(cel)

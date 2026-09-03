@@ -1041,6 +1041,7 @@ export const ruRUMessages = {
   "colorReplacement.target.cellsHint": "Заменить matching Цвета Только in Этот Выбранный timeЛиния cels.",
   "colorReplacement.target.palette": "Палитра",
   "colorReplacement.target.paletteHint": "Заменить Палитра swatches that exactly match Этот Исходный Цвет.",
+  "colorReplacement.target.loopSection": "Цикл: {name}",
   "colorReplacement.targetCount": "Текущий Цель: {count} items",
   "colorReplacement.targetUnavailable": "Выбрать Этот corresponding Содержимое in Этот Слои panel или timeЛиния Первый.",
   "colorReplacement.preview": "В реальном времени Предпросмотр",

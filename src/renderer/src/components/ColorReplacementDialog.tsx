@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { RgbaColor, ToolId } from '@shared/types'
 import { ColorValueControl } from './ColorValueControl'
 import { DialogHeader } from './DialogHeader'
@@ -46,6 +46,18 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
     cells: Boolean(session?.selectedAnimationCellKeys.length),
     palette: Boolean(session?.document.palette.some((entry) => entry.id !== 0))
   }
+  const loopSections = session?.document.animation?.loopSections ?? []
+  const animationFrames = session?.document.animation?.frames ?? []
+  const selectedLoopSection = target.startsWith('loop-section:')
+    ? loopSections.find((section) => section.id === target.slice('loop-section:'.length)) ?? null
+    : null
+  const loopSectionFrameCount = selectedLoopSection && session?.document.animation
+    ? (() => {
+      const start = animationFrames.findIndex((frame) => frame.id === selectedLoopSection.startFrameId)
+      const end = animationFrames.findIndex((frame) => frame.id === selectedLoopSection.endFrameId)
+      return start >= 0 && end >= 0 ? Math.abs(end - start) + 1 : 0
+    })()
+    : 0
   const targetCount = target === 'layers'
     ? session?.selectedLayerIds.length ?? 0
     : target === 'frames'
@@ -56,8 +68,10 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
           ? session?.selection ? 1 : 0
         : target === 'palette'
           ? session?.document.palette.filter((entry) => entry.id !== 0).length ?? 0
-          : session?.document.layers.length ?? 0
-  const targetAvailable = targetAvailability[target]
+          : selectedLoopSection ? loopSectionFrameCount * (session?.document.layers.length ?? 0) : session?.document.layers.length ?? 0
+  const targetAvailable = selectedLoopSection
+    ? true
+    : targetAvailability[target as Exclude<DialogTarget, `loop-section:${string}`>]
   const replacementDisabled = !session || !targetAvailable || colorEquals(sourceColor, replacementColor)
   const targetSelectionKey = target === 'layers'
     ? session?.selectedLayerIds.join('\u0000') ?? ''
@@ -71,19 +85,30 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
             : ''
           : target === 'palette'
             ? session?.document.paletteOrder.join('\u0000') ?? ''
-            : session?.document.id ?? ''
+            : selectedLoopSection
+              ? `${target}:${selectedLoopSection.startFrameId}:${selectedLoopSection.endFrameId}`
+          : session?.document.id ?? ''
 
-  const targetGroups = useMemo(() => [{
-    label: t('colorReplacement.target'),
-    options: ([
-      ['document', 'colorReplacement.target.document', 'colorReplacement.target.documentHint'],
-      ['selection', 'colorReplacement.target.selection', 'colorReplacement.target.selectionHint'],
-      ['layers', 'colorReplacement.target.layers', 'colorReplacement.target.layersHint'],
-      ['frames', 'colorReplacement.target.frames', 'colorReplacement.target.framesHint'],
-      ['cells', 'colorReplacement.target.cells', 'colorReplacement.target.cellsHint'],
-      ['palette', 'colorReplacement.target.palette', 'colorReplacement.target.paletteHint']
-    ] as const).map(([value, label, description]) => ({ value, label: t(label), description: t(description) }))
-  }], [t])
+  const targetOptions: Array<{ value: DialogTarget; label: string; description: string }> = ([
+    ['document', 'colorReplacement.target.document', 'colorReplacement.target.documentHint'],
+    ['selection', 'colorReplacement.target.selection', 'colorReplacement.target.selectionHint'],
+    ['layers', 'colorReplacement.target.layers', 'colorReplacement.target.layersHint'],
+    ['frames', 'colorReplacement.target.frames', 'colorReplacement.target.framesHint'],
+    ['cells', 'colorReplacement.target.cells', 'colorReplacement.target.cellsHint'],
+    ['palette', 'colorReplacement.target.palette', 'colorReplacement.target.paletteHint']
+  ] as const).map(([value, label, description]) => ({ value, label: t(label), description: t(description) }))
+  targetOptions.push(...loopSections.map((section) => ({
+    value: `loop-section:${section.id}` as DialogTarget,
+    label: t('colorReplacement.target.loopSection', { name: section.name }),
+    description: t('timeline.loopSectionSummary', {
+      name: section.name,
+      start: animationFrames.findIndex((frame) => frame.id === section.startFrameId) + 1,
+      end: animationFrames.findIndex((frame) => frame.id === section.endFrameId) + 1,
+      direction: t(section.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
+      repeats: section.repeatCount ?? t('timeline.loopSectionInfiniteShort')
+    })
+  })))
+  const targetGroups = [{ label: t('colorReplacement.target'), options: targetOptions }]
 
   const cancelScheduledPreview = (): void => {
     if (previewFrameRef.current === null) return
@@ -105,6 +130,10 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
     setReplacementColor(copyColor(color))
   }
   const beginSampling = (nextTarget: SamplingTarget): void => {
+    if (samplingTargetRef.current === nextTarget) {
+      finishSampling()
+      return
+    }
     if (!samplingTargetRef.current) {
       const workspace = useWorkspace.getState()
       samplingReturnToolRef.current = workspace.sessions.find((item) => item.document.id === workspace.activeId)?.tool ?? null

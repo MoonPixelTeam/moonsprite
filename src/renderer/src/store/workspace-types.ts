@@ -299,6 +299,8 @@ export interface DocumentSession {
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
   animationReturnToStart: boolean
+  /** Canonical active timeline row/cursor. Selection and playback never infer or overwrite this row. */
+  timelineActiveContext: TimelineActiveContext
   selectedAnimationFrameIds: string[]
   animationFrameSelectionAnchorId: string | null
   selectedAnimationCellKeys: string[]

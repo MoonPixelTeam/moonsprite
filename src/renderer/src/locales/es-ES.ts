@@ -1041,6 +1041,7 @@ export const esESMessages = {
   'colorReplacement.target.cellsHint': 'Replace matching Colores only en el seleccionado timeline cels.',
   'colorReplacement.target.palette': 'Palette',
   'colorReplacement.target.paletteHint': 'Replace palette swatches that exactly match el original Color.',
+  'colorReplacement.target.loopSection': 'Sección de bucle: {name}',
   'colorReplacement.targetCount': 'actual target: {count} items',
   'colorReplacement.targetUnavailable': 'Seleccionar el corresponding content en el Layers panel o timeline first.',
   'colorReplacement.preview': 'Live Preview',

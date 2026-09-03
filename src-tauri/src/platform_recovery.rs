@@ -2,12 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Manager, State,
+    AppHandle, Manager,
 };
 
 use crate::platform_storage::atomic_write;
@@ -17,9 +16,7 @@ const RECOVERY_ID_HEADER: &str = "x-moonsprite-recovery-id";
 const RECOVERY_NAME_HEADER: &str = "x-moonsprite-recovery-name";
 
 #[derive(Default)]
-pub(crate) struct RecoveryState {
-    previous_session_crashed: Mutex<bool>,
-}
+pub(crate) struct RecoveryState;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,22 +125,10 @@ pub(crate) fn mark_session(app: &AppHandle, clean: bool) -> Result<(), String> {
 
 pub(crate) fn initialize_session_marker(
     app: &AppHandle,
-    state: &RecoveryState,
 ) -> Result<(), String> {
     if let Err(error) = migrate_legacy_data(app) {
         eprintln!("无法迁移恢复数据，继续启动 MoonSprite：{error}");
     }
-    let marker = session_marker(app)?;
-    let crashed = fs::read_to_string(marker)
-        .ok()
-        .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
-        .and_then(|value| value.get("clean").and_then(serde_json::Value::as_bool))
-        .map(|clean| !clean)
-        .unwrap_or(false);
-    *state
-        .previous_session_crashed
-        .lock()
-        .map_err(|_| "恢复状态锁不可用")? = crashed;
     if let Err(error) = mark_session(app, false) {
         eprintln!("无法写入恢复会话标记，继续启动 MoonSprite：{error}");
     }
@@ -240,19 +225,11 @@ fn request_data(request: &Request<'_>) -> Result<Vec<u8>, String> {
 #[tauri::command]
 pub(crate) fn list_recoveries(
     app: AppHandle,
-    state: State<'_, RecoveryState>,
     retention_days: u32,
 ) -> Result<Vec<RecoveryRecord>, String> {
     let directory = recovery_dir(&app)?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     purge_expired_recoveries(&directory, retention_days, unix_timestamp_millis())?;
-    if !*state
-        .previous_session_crashed
-        .lock()
-        .map_err(|_| "恢复状态锁不可用")?
-    {
-        return Ok(Vec::new());
-    }
     let mut records = Vec::new();
     for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
         let path = entry.map_err(|error| error.to_string())?.path();

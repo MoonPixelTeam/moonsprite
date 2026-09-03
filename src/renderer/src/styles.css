@@ -416,10 +416,38 @@ input[type="range"]:focus, input[type="range"]:focus-visible { outline: 0; box-s
 .pixel-utility-icon.pixel-utility-icon-7px { flex-basis: 14px; width: 14px; height: 14px; }
 .pixel-utility-icon.pixel-utility-icon-7px.pixel-utility-icon-1x { flex-basis: 7px; width: 7px; height: 7px; }
 .pixel-utility-asset-icon { flex: 0 0 22px; width: 22px; height: 22px; }
-/* Pixel status buttons use the theme's existing active surface for the press
+/* Pixel status buttons use the theme's existing deep surface for the press
    state. The glyph keeps its normal/selected color while the control surface
-   moves to the theme-defined deeper interaction layer. */
-button:active:not(:disabled):has(:is(
+   moves to the theme-defined deeper interaction layer. This state changes
+   color only and never overrides the geometry of the button or glyph. */
+button:active:not(:disabled):not(
+  .layer-row,
+  .app-window-control,
+  .app-window-control-close,
+  .recent-file-pin,
+  .recent-file-delete,
+  .recent-file-remove,
+  .recent-file-reorder,
+  .recent-file-discard,
+  .reorderable-list-handle,
+  .home-section-drag-handle,
+  .quick-command-drag-handle,
+  .quick-command-move,
+  .color-mode-drag-handle,
+  .context-menu-item,
+  [role^='menuitem'],
+  [role='tab'],
+  .themed-select-trigger,
+  .home-section-tab,
+  .menu-strip button,
+  .menu-popover button,
+  nav button,
+  .layer-context-menu button,
+  .palette-library-context button,
+  .layer-style-effect-row > button,
+  .brush-folder-navigation > button,
+  .themed-select-group > button
+):has(:is(
   .pixel-utility-icon,
   .pixel-auto-link-icon,
   .pixel-pressure-icon,
@@ -427,43 +455,8 @@ button:active:not(:disabled):has(:is(
   .pixel-playback-icon,
   .pixel-shape-icon
 )) {
-  position: relative;
-  isolation: isolate;
-  filter: none;
-}
-button:active:not(:disabled):has(:is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-))::after {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  content: '';
-  background: var(--theme-surface-active);
-  opacity: 1;
-  pointer-events: none;
-}
-button:active:not(:disabled):has(:is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-)) > :is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-) {
-  position: relative;
-  z-index: 1;
+  background-color: var(--theme-deep-surface) !important;
+  transition-property: color, border-color, transform;
 }
 button[aria-label]:has(> .pixel-utility-icon:only-child) { display: inline-grid; place-items: center; padding: 0; }
 .rail-tool-icon { position: absolute; top: 50%; left: 50%; width: var(--tool-rail-icon-size); height: var(--tool-rail-icon-size); margin: 0; transform: translate(-50%, -50%); }
@@ -3043,13 +3036,18 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .recent-file-row:last-child { border-bottom: 0; }
 .recent-file-row:hover { background: var(--theme-surface-hover); }
 .recent-file-row.invalid { background: var(--theme-danger-soft); }
+.recent-file-row.invalid:hover { background: color-mix(in srgb, var(--theme-danger-soft) 90%, var(--theme-danger) 10%); }
 .recent-file-row.concealed .recent-file-preview { color: var(--theme-icon-muted); background: var(--theme-surface-muted); }
 .recent-file-row.concealed .recent-file-copy strong { color: var(--theme-text-muted); }
 .recent-file-row.concealed .recent-file-copy :is(small, span), .recent-file-row.concealed time { color: var(--theme-icon-muted); }
 .recent-file-row.pinned { border-left: 2px solid var(--theme-accent); }
 .recent-file-row.dragging.remove-pending { background: var(--theme-danger-soft); outline: 1px solid var(--theme-danger); outline-offset: -1px; opacity: .5; }
 .recent-file-open { display: grid; grid-template-columns: 84px minmax(0, 1fr) 78px; align-items: center; gap: var(--ui-space-4); min-width: 0; width: 100%; min-height: 78px; padding: var(--ui-space-3) var(--ui-space-4); color: var(--theme-text-primary); background: transparent; text-align: left; }
-.recent-file-open:hover:not(:disabled) { background: var(--theme-surface-hover); }
+.recent-file-open:hover:not(:disabled) { background: transparent; }
+/* Preserve the error surface while hovering an unreadable project. The generic
+   open-button hover layer otherwise replaces the status color with a dark
+   neutral surface. */
+.recent-file-row.invalid .recent-file-open:hover:not(:disabled) { background: transparent; }
 .recent-file-open:disabled { cursor: var(--cursor-unavailable); opacity: 1; }
 .recent-file-preview { display: flex; align-items: center; justify-content: center; width: 84px; height: 62px; overflow: hidden; color: var(--theme-danger); background: repeating-conic-gradient(var(--theme-checker-dark) 0 25%, var(--theme-checker-light) 0 50%) 50% / 8px 8px; border: 1px solid var(--theme-border-muted); }
 .recent-file-preview img { display: block; flex: 0 0 auto; width: 100%; height: 100%; margin: auto; object-fit: cover; object-position: 50% 50%; image-rendering: pixelated; }
@@ -3064,14 +3062,44 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .recovery-preview-spinner { flex: 0 0 22px; color: var(--theme-accent); }
 .recovery-file-row .recent-file-copy small { color: var(--theme-warning); }
 .recovery-file-row .recovery-file-expiry { color: var(--theme-warning); }
-.recent-file-discard { display: grid; place-items: center; align-self: stretch; width: 34px; min-height: 30px; color: var(--theme-text-muted); background: transparent; }
-.recent-file-discard:hover { color: var(--theme-on-danger); background: var(--theme-danger); }
+.recent-file-discard { display: grid; place-items: center; align-self: stretch; width: 34px; min-height: 30px; color: var(--theme-border-strong); background: transparent; }
 .recovery-count { display: inline-grid; flex: 0 0 auto; place-items: center; min-width: 20px; height: 18px; margin: 0; padding: 0 var(--ui-space-2); box-sizing: border-box; color: var(--theme-on-danger); background: var(--theme-danger); font: 600 var(--ui-font-small)/var(--ui-line-regular) ui-monospace, Consolas, monospace; }
-.recent-file-pin:hover { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
 .recent-file-row.pinned .recent-file-pin { color: var(--theme-accent); background: transparent; }
-.recent-file-row.pinned .recent-file-pin:hover { color: var(--theme-accent-hover); background: var(--theme-surface-hover); }
-.recent-file-delete:hover { color: var(--theme-on-danger); background: var(--theme-danger); }
-.recent-file-remove:hover { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
+/* Card actions keep a transparent hit area; only the glyph communicates hover. */
+.recent-file-row > :is(.recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard):hover:not(:disabled) {
+  color: var(--theme-text-primary);
+  background: transparent;
+  border-color: transparent;
+}
+.recent-file-row > :is(.recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard) {
+  background: transparent !important;
+  border-color: transparent !important;
+  transition: color var(--ui-motion-fast) linear !important;
+}
+.recent-file-row > :is(.recent-file-delete, .recent-file-discard):hover:not(:disabled) { color: var(--theme-danger-hover); }
+.recent-file-row.pinned > .recent-file-pin:hover:not(:disabled) { color: var(--theme-accent-hover); }
+.recovery-file-row > .recent-file-discard {
+  color: var(--theme-border-strong) !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: color var(--ui-motion-fast) linear !important;
+}
+.recovery-file-row > .recent-file-discard:hover:not(:disabled) {
+  color: var(--theme-danger-hover) !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.recovery-file-row > .recent-file-discard:active:not(:disabled) {
+  color: var(--theme-danger-hover) !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
 .recent-files-list.home-project-layout-small .recent-file-open { grid-template-columns: minmax(0, 1fr); gap: 0; min-height: 34px; padding: 0 var(--ui-space-3); }
 .recent-files-list.home-project-layout-small .recent-file-preview,
 .recent-files-list.home-project-layout-small .recent-file-copy small,
@@ -3088,6 +3116,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .recent-files-list.home-project-layout-large .recovery-file-row { position: relative; display: block; align-self: start; min-width: 0; overflow: hidden; background: var(--theme-deep-surface); border: 1px solid var(--theme-border); }
 :root[data-theme-mode='light'] .recent-files-list.home-project-layout-large .recent-file-row { background: var(--theme-raised-surface); }
 .recent-files-list.home-project-layout-large .recent-file-row:last-child { border-bottom: 1px solid var(--theme-border); }
+.recent-files-list.home-project-layout-large .recent-file-row:hover { background: var(--theme-surface-hover); }
+.recent-files-list.home-project-layout-large .recent-file-row.invalid:hover { background: color-mix(in srgb, var(--theme-danger-soft) 90%, var(--theme-danger) 10%); }
 .recent-files-list.home-project-layout-large .recent-file-row:hover,
 .recent-files-list.home-project-layout-large .recent-file-row:focus-within { border-color: var(--theme-border-strong); }
 .recent-files-list.home-project-layout-large .recent-file-row.pinned { border-left: 1px solid var(--theme-border); }
@@ -3141,7 +3171,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .home-file-format-option:nth-child(3n) { border-right: 0; }
 .home-file-format-option:nth-last-child(-n + 3) { border-bottom: 0; }
 .home-file-format-option:hover { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
-.home-file-format-option:has(input:checked) { color: var(--theme-text-primary); background: var(--theme-accent-soft); }
+.home-file-format-option:has(input:checked) { color: var(--theme-text-soft); background: var(--theme-surface); }
+.home-file-format-option:has(input:checked):hover { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
 .home-file-format-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-section-manager-footer { justify-content: space-between; }
 .home-section-manager-footer > :is(.quiet-button, .primary-button) { display: inline-flex; min-height: var(--ui-dialog-button-height); align-items: center; justify-content: center; gap: var(--ui-space-3); }
@@ -3718,71 +3749,6 @@ body input[type='checkbox'] {
 :root .app-window-control-close:active:not(:disabled) {
   color: var(--theme-text-primary) !important;
   background: transparent !important;
-}
-
-/* Menus and menu items have their own hover/active skin. They may contain
-   pixel icons, but must not receive the icon-button press overlay, which
-   would otherwise cover labels while the pointer is held down. */
-:root :is(
-  .menu-strip button,
-  .menu-popover button,
-  button[role^='menuitem'],
-  .context-menu-item,
-  .layer-context-menu button,
-  .palette-library-context button
-):active:not(:disabled):has(:is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-)) {
-  position: static !important;
-  isolation: auto !important;
-  filter: none !important;
-}
-:root :is(
-  .menu-strip button,
-  .menu-popover button,
-  button[role^='menuitem'],
-  .context-menu-item,
-  .layer-context-menu button,
-  .palette-library-context button
-):active:not(:disabled):has(:is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-))::after {
-  display: none !important;
-}
-:root :is(
-  .menu-strip button,
-  .menu-popover button,
-  button[role^='menuitem'],
-  .context-menu-item,
-  .layer-context-menu button,
-  .palette-library-context button
-):active:not(:disabled):has(:is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-)) > :is(
-  .pixel-utility-icon,
-  .pixel-auto-link-icon,
-  .pixel-pressure-icon,
-  .pixel-asset-icon,
-  .pixel-playback-icon,
-  .pixel-shape-icon
-) {
-  position: static !important;
-  z-index: auto !important;
 }
 
 /* Palette, tileset, and pattern-brush cells do not use press feedback. */

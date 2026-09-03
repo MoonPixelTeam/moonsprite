@@ -65,7 +65,7 @@ import type { LayerMoveDuplicateResult, LayerMoveState } from './workspace-layer
 import type { LayerPropertyField, LayerPropertyTarget, LayerPropertyValues } from './workspace-layer-properties'
 import type { AdjustmentSnapshot, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, OutlinePreview, SelectionPivot } from './workspace-types'
 
-export type ColorReplacementTarget = 'layer' | 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette'
+export type ColorReplacementTarget = 'layer' | 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette' | `loop-section:${string}`
 
 export interface ColorReplacementPreview {
   documentId: string
@@ -141,6 +141,7 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
+  syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
   setAirbrushParticleRadius(radius: number): void
@@ -386,7 +387,7 @@ export interface WorkspaceAnimationCommands {
   selectAnimationMaskCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationMaskRow(ownerKind: 'layer' | 'group', ownerId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCelContent(key: string, additive?: boolean): void
-  clearAnimationSelection(): void
+  clearAnimationSelection(preserveActiveContext?: boolean): void
   setAnimationCelOpacity(layerId: string, frameId: string, opacity: number): void
   connectSelectedAnimationCels(): void
   disconnectSelectedAnimationCels(): void

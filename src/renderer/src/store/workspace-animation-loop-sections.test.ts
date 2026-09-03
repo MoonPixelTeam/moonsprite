@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
-import { createDocument } from '@/core/document'
+import { createDocument, createLayerMask } from '@/core/document'
 import { useWorkspace } from './workspace'
 
 beforeEach(() => {
@@ -195,7 +195,42 @@ describe('workspace animation loop sections', () => {
     })
   })
 
-  it('collapses playback frame selection to the final paused frame', () => {
+  it('retargets tag playback when a mask cell in another loop section is clicked', () => {
+    const document = createDocument('tag retarget from mask cell', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 3; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame, thirdFrame, fourthFrame] = timeline.frames
+    const layerId = document.layers[0].id
+    const firstLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'First', startFrameId: firstFrame.id, endFrameId: secondFrame.id, direction: 'forward', repeatCount: null
+    })!
+    const secondLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Second', startFrameId: thirdFrame.id, endFrameId: fourthFrame.id, direction: 'forward', repeatCount: null
+    })!
+    timeline.layerMasks = [firstFrame, thirdFrame].map((frame) => ({
+      layerId,
+      frameId: frame.id,
+      mask: createLayerMask(layerId, document.width, document.height),
+    }))
+
+    useWorkspace.getState().setActiveAnimationFrame(firstFrame.id)
+    useWorkspace.getState().setAnimationPlaybackMode('tag')
+    useWorkspace.getState().setAnimationPlaying(true)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopSectionId).toBe(firstLoopId)
+
+    useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layerId, thirdFrame.id))
+
+    expect(timeline.activeFrameId).toBe(thirdFrame.id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      animationPlaying: true,
+      animationPlaybackLoopSectionId: secondLoopId,
+      animationPlaybackLoopSectionRepeatIndefinitely: true,
+      animationPlaybackLoopIteration: 0
+    })
+  })
+
+  it('preserves the pre-playback frame selection when playback stops', () => {
     const document = createDocument('pause current frame selection', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -212,12 +247,12 @@ describe('workspace animation loop sections', () => {
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([firstFrame.id])
 
     useWorkspace.getState().setAnimationPlaying(false)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([secondFrame.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([firstFrame.id])
     expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).not.toContain(thirdFrame.id)
   })
 
-  it('clears a clicked cel selection when playback is paused on another frame', () => {
+  it('preserves a direct cel selection when playback is paused on another frame', () => {
     const document = createDocument('pause current cel selection', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -234,8 +269,8 @@ describe('workspace animation loop sections', () => {
     expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(layerId, firstFrame.id)])
 
     useWorkspace.getState().setAnimationPlaying(false)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
-    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([secondFrame.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(layerId, firstFrame.id)])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
   })
 
   it('skips disabled frames inside forward and reverse loop sections', () => {

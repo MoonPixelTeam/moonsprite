@@ -1041,6 +1041,7 @@ export const frFRMessages = {
   'colorReplacement.target.cellsHint': 'Replace matching Couleurs only dans le sélectionné timeline cels.',
   'colorReplacement.target.palette': 'Palette',
   'colorReplacement.target.paletteHint': 'Replace palette swatches that exactly match le original Couleur.',
+  'colorReplacement.target.loopSection': 'Section de boucle : {name}',
   'colorReplacement.targetCount': 'actuel target: {count} items',
   'colorReplacement.targetUnavailable': 'Sélectionner le corresponding content dans le Layers panel ou timeline first.',
   'colorReplacement.preview': 'Live Preview',

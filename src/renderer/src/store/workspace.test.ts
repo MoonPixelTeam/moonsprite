@@ -379,6 +379,61 @@ describe('editable text layers', () => {
 })
 
 describe('quick command content centering', () => {
+  it('centers a boxed text layer by its text box and keeps editable geometry in sync', () => {
+    const document = createDocument('center boxed text', 32, 24, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createTextLayer({ ...textData('Box'), boxWidth: 12, boxHeight: 8 }, 1, 2)
+
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === timeline.activeFrameId)!
+    useWorkspace.getState().centerActiveContent('both')
+
+    expect(layer.offsetX).toBe(10)
+    expect(layer.offsetY).toBe(8)
+    expect(cel.text).toMatchObject({ originX: 10, originY: 8, boxWidth: 12, boxHeight: 8 })
+    expect(cel.surface).toMatchObject({ offsetX: 10, offsetY: 8, width: 12, height: 8 })
+
+    useWorkspace.getState().undo()
+    expect(layer.offsetX).toBe(1)
+    expect(layer.offsetY).toBe(2)
+    expect(cel.text).toMatchObject({ originX: 1, originY: 2 })
+    useWorkspace.getState().redo()
+    expect(layer.offsetX).toBe(10)
+    expect(layer.offsetY).toBe(8)
+  })
+
+  it('uses the text box independently for horizontal and vertical centering', () => {
+    const horizontal = createDocument('center boxed text horizontal', 32, 24, 'rgba')
+    useWorkspace.getState().addSession(horizontal)
+    useWorkspace.getState().createTextLayer({ ...textData('Box'), boxWidth: 12, boxHeight: 8 }, 1, 2)
+    const horizontalLayer = getActiveLayer(horizontal)
+    useWorkspace.getState().centerActiveContent('horizontal')
+    expect(horizontalLayer.offsetX).toBe(10)
+    expect(horizontalLayer.offsetY).toBe(2)
+
+    useWorkspace.getState().undo()
+    const vertical = horizontal
+    const verticalLayer = getActiveLayer(vertical)
+    useWorkspace.getState().centerActiveContent('vertical')
+    expect(verticalLayer.offsetX).toBe(1)
+    expect(verticalLayer.offsetY).toBe(8)
+  })
+
+  it('uses opaque text content bounds when no text box is present', () => {
+    const document = createDocument('center unboxed text', 64, 24, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createTextLayer(textData('Text'), 1, 2)
+    const layer = getActiveLayer(document)
+    const before = layerContentBounds(document, layer)!
+    const expectedX = before.x + Math.round(document.width / 2 - (before.x + before.width / 2))
+    useWorkspace.getState().centerActiveContent('horizontal')
+    const after = layerContentBounds(document, layer)!
+    expect(after.x).toBe(expectedX)
+    expect(Math.abs(after.x + after.width / 2 - document.width / 2)).toBeLessThanOrEqual(0.5)
+    expect(after.y).toBe(before.y)
+  })
+
   it('centers the active layer content and supports undo', () => {
     const document = createDocument('center layer content', 8, 8, 'rgba')
     const layer = getActiveLayer(document)

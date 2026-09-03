@@ -1037,6 +1037,7 @@ export const enUSMessages = {
   'colorReplacement.target.cellsHint': 'Replace matching colors only in the selected timeline cels.',
   'colorReplacement.target.palette': 'Palette',
   'colorReplacement.target.paletteHint': 'Replace palette swatches that exactly match the original color.',
+  'colorReplacement.target.loopSection': 'Loop Section: {name}',
   'colorReplacement.targetCount': 'Current target: {count} items',
   'colorReplacement.targetUnavailable': 'Select the corresponding content in the Layers panel or timeline first.',
   'colorReplacement.preview': 'Live Preview',

@@ -1041,6 +1041,7 @@ export const deDEMessages = {
   "colorReplacement.target.cellsHint": "Ersetzen matching Farben Nur in Die Ausgewählte timeLinie cels.",
   "colorReplacement.target.palette": "Nicht angegeben",
   "colorReplacement.target.paletteHint": "Ersetzen Palette swatches that exactly match Die Original Farbe.",
+  "colorReplacement.target.loopSection": "Loopabschnitt: {name}",
   "colorReplacement.targetCount": "Aktuelle Ziel: {count} items",
   "colorReplacement.targetUnavailable": "Auswählen Die corresponding Inhalt in Die Ebenen panel oder timeLinie Erste.",
   "colorReplacement.preview": "Live Vorschau",

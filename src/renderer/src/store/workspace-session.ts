@@ -48,6 +48,65 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
   return (session.freeTileMode === 'edit' ? FREE_TILE_EDIT_ALLOWED_TOOLS : FREE_TILE_PAINT_ALLOWED_TOOLS).has(tool)
 }
 
+export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
+  Object.assign(target, {
+    tool: source.tool,
+    moveKind: source.moveKind,
+    primaryColor: { ...source.primaryColor },
+    secondaryColor: { ...source.secondaryColor },
+    brushSize: source.brushSize,
+    brushShape: source.brushShape,
+    brushDither: structuredClone(source.brushDither),
+    brushTexture: source.brushTexture,
+    brushTextureScale: source.brushTextureScale,
+    brushPaintMode: source.brushPaintMode,
+    brushImageId: source.brushImageId,
+    brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
+    brushImageTemporary: source.brushImageTemporary,
+    brushImageSettings: structuredClone(source.brushImageSettings),
+    brushProfiles: structuredClone(source.brushProfiles),
+    proceduralBrushSettings: structuredClone(source.proceduralBrushSettings),
+    proceduralAntialias: source.proceduralAntialias,
+    proceduralAntialiasStrength: source.proceduralAntialiasStrength,
+    brushDynamics: structuredClone(source.brushDynamics),
+    brushPressure: structuredClone(source.brushPressure),
+    shapeKind: source.shapeKind,
+    lineKind: source.lineKind,
+    curveAnchorCount: source.curveAnchorCount,
+    shapeRatio: source.shapeRatio,
+    shapeRounded: source.shapeRounded,
+    shapeCornerRadius: source.shapeCornerRadius,
+    fillMode: source.fillMode,
+    fillKind: source.fillKind,
+    fillTolerance: source.fillTolerance,
+    fillGapClosing: source.fillGapClosing,
+    fillGapThreshold: source.fillGapThreshold,
+    gradientTolerance: source.gradientTolerance,
+    gradientContiguous: source.gradientContiguous,
+    gradientType: source.gradientType,
+    gradientDither: source.gradientDither,
+    gradientFreeform: source.gradientFreeform,
+    gradientStops: source.gradientStops ? structuredClone(source.gradientStops) : undefined,
+    moveAutoSelect: source.moveAutoSelect,
+    selectionKind: source.selectionKind,
+    selectionMode: source.selectionMode,
+    selectionRounded: source.selectionRounded,
+    selectionCornerRadius: source.selectionCornerRadius,
+    wandTolerance: source.wandTolerance,
+    wandContiguous: source.wandContiguous,
+    wandGapClosing: source.wandGapClosing,
+    wandGapThreshold: source.wandGapThreshold,
+    perfectPixels: source.perfectPixels,
+    symmetryAxes: structuredClone(source.symmetryAxes),
+    symmetryAxesInitialized: structuredClone(source.symmetryAxesInitialized),
+    airbrushParticleRadius: source.airbrushParticleRadius,
+    airbrushParticleShape: source.airbrushParticleShape,
+    airbrushScatterRadius: source.airbrushScatterRadius,
+    airbrushDensity: source.airbrushDensity,
+    airbrushIntervalMs: source.airbrushIntervalMs
+  })
+}
+
 export const activeLayerMask = (session: DocumentSession): LayerMask | null => session.activeLayerMaskId
   ? findLayerMask(session.document, session.activeLayerMaskId)
   : null
@@ -400,6 +459,11 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationPlaybackLoopIteration: 0,
     animationPlaybackLoopSectionRepeatIndefinitely: false,
     animationReturnToStart: false,
+    timelineActiveContext: {
+      row: { kind: 'layer', ownerKind: 'layer', ownerId: document.activeLayerId },
+      frameId: timeline.activeFrameId,
+      maskEditTargetId: null
+    },
     selectedAnimationFrameIds: [],
     animationFrameSelectionAnchorId: null,
     selectedAnimationCellKeys: [],

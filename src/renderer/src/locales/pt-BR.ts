@@ -1041,6 +1041,7 @@ export const ptBRMessages = {
   "colorReplacement.target.cellsHint": "Substituir matching Cores Somente in O Selecionado timeLinha cels.",
   "colorReplacement.target.palette": "Paleta",
   "colorReplacement.target.paletteHint": "Substituir Paleta swatches that exactly match O Original Cor.",
+  "colorReplacement.target.loopSection": "Seção de loop: {name}",
   "colorReplacement.targetCount": "Atual Destino: {count} items",
   "colorReplacement.targetUnavailable": "Selecionar O corresponding Conteúdo in O Camadas panel ou timeLinha Primeiro.",
   "colorReplacement.preview": "Tempo real Pré-visualização",

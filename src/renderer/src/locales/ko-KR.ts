@@ -1041,6 +1041,7 @@ export const koKRMessages = {
   'colorReplacement.target.cellsHint': '데이터 데이터 색상 만 에서 선택됨 데이터 데이터.',
   'colorReplacement.target.palette': '팔레트',
   'colorReplacement.target.paletteHint': '데이터 팔레트 데이터 그 데이터 데이터 데이터 색상.',
+  'colorReplacement.target.loopSection': '루프 구간: {name}',
   'colorReplacement.targetCount': '현재 대상: {count} 데이터 ',
   'colorReplacement.targetUnavailable': '선택 데이터 데이터 에서 레이어 패널 또는 데이터 첫 번째.',
   'colorReplacement.preview': '데이터 미리 보기',

@@ -1041,6 +1041,7 @@ export const jaJPMessages = {
   'colorReplacement.target.cellsHint': 'データ データ カラー のみ 内 選択中 データ データ.',
   'colorReplacement.target.palette': 'パレット',
   'colorReplacement.target.paletteHint': 'データ パレット データ その データ データ データ カラー.',
+  'colorReplacement.target.loopSection': 'ループセクション：{name}',
   'colorReplacement.targetCount': '現在の 対象: {count} データ ',
   'colorReplacement.targetUnavailable': '選択 データ データ 内 レイヤー パネル または データ 最初.',
   'colorReplacement.preview': 'データ プレビュー',

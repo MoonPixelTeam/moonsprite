@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, animationCelContentSelection, animationCelHasContent, animationCelKey, animationCelOffsetsForKeys, connectAnimationCels, createAnimationCelLookup, createDefaultAnimationTimeline, deleteAnimationFrame, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, nextAnimationFrameId, normalizeAnimationTimeline, resizeAnimationCelsAt, resolveAnimationCel, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, syncActiveAnimationFrame, syncActiveAnimationLayer, syncActiveAnimationLayers } from './animation'
-import { animationMaskAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, resizeDocumentAt, writeLayerColor } from './document'
+import { animationMaskAt, animationMaskSlotAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from './history'
 
 describe('animation timeline boundary', () => {
@@ -130,27 +130,32 @@ describe('animation timeline boundary', () => {
   })
 
 
-  it('inherits opted-in layer-mask links while leaving empty masks absent', () => {
+  it('inherits opted-in layer-mask links across consecutive blank frame additions', () => {
     const document = createDocument('automatic mask links', 1, 1, 'rgba')
     const layer = getActiveLayer(document)
     const timeline = ensureAnimationDocument(document)
     const sourceFrame = timeline.activeFrameId
-    const sourceCel = animationCelAt(timeline, layer.id, sourceFrame)!
-    sourceCel.mask = createLayerMask(sourceCel.id, 1, 1)
-    sourceCel.mask.pixels[3] = 255
-    sourceCel.mask.autoLinkAnimationCels = true
-    const linkedFrame = addBlankAnimationFrame(document)
-    const linkedCel = animationCelAt(timeline, layer.id, linkedFrame)!
-    expect(linkedCel.mask?.linkedMaskId).toBe(sourceCel.mask.id)
+    const sourceMask = createLayerMask(layer.id, 1, 1)
+    sourceMask.autoLinkAnimationCels = true
+    timeline.layerMasks!.push({ layerId: layer.id, frameId: sourceFrame, mask: sourceMask })
 
-    const emptyDocument = createDocument('automatic empty mask links', 1, 1, 'rgba')
-    const emptyLayer = getActiveLayer(emptyDocument)
-    const emptyTimeline = ensureAnimationDocument(emptyDocument)
-    const emptyCel = animationCelAt(emptyTimeline, emptyLayer.id, emptyTimeline.activeFrameId)!
-    emptyCel.mask = createLayerMask(emptyCel.id, 1, 1)
-    emptyCel.mask.autoLinkAnimationCels = true
-    const emptyFrame = addBlankAnimationFrame(emptyDocument)
-    expect(animationCelAt(emptyTimeline, emptyLayer.id, emptyFrame)?.mask).toBeUndefined()
+    const linkedFrame = addBlankAnimationFrame(document)
+    const linkedMask = animationMaskSlotAt(timeline, layer.id, linkedFrame)
+    expect(linkedMask?.linkedMaskId).toBe(sourceMask.id)
+    expect(linkedMask?.autoLinkAnimationCels).toBe(true)
+
+    const nextLinkedFrame = addBlankAnimationFrame(document)
+    const nextLinkedMask = animationMaskSlotAt(timeline, layer.id, nextLinkedFrame)
+    expect(nextLinkedMask?.linkedMaskId).toBe(sourceMask.id)
+    expect(nextLinkedMask?.autoLinkAnimationCels).toBe(true)
+
+    const optedOutDocument = createDocument('manual mask links', 1, 1, 'rgba')
+    const optedOutLayer = getActiveLayer(optedOutDocument)
+    const optedOutTimeline = ensureAnimationDocument(optedOutDocument)
+    const optedOutMask = createLayerMask(optedOutLayer.id, 1, 1)
+    optedOutTimeline.layerMasks!.push({ layerId: optedOutLayer.id, frameId: optedOutTimeline.activeFrameId, mask: optedOutMask })
+    const independentFrame = addBlankAnimationFrame(optedOutDocument)
+    expect(animationMaskSlotAt(optedOutTimeline, optedOutLayer.id, independentFrame)).toBeNull()
   })
 
   it('keeps cel opacity independent per frame when activating frames', () => {

@@ -93,6 +93,30 @@ describe('independent animation layer masks', () => {
     expectMasksUnchanged(fixture)
   })
 
+  it('deletes only the selected mask cell and restores it on undo', () => {
+    const fixture = createMaskedTwoFrameDocument()
+    useWorkspace.getState().selectAnimationMaskCell(animationCelKey(fixture.layer.id, fixture.firstFrame.id))
+
+    useWorkspace.getState().deleteSelectedAnimationItems()
+
+    expect(animationMaskAt(fixture.timeline, fixture.layer.id, fixture.firstFrame.id)).toBeNull()
+    expect(animationMaskAt(fixture.timeline, fixture.layer.id, fixture.secondFrame.id)?.id).toBe(fixture.secondMask.id)
+    useWorkspace.getState().undo()
+    expectMasksUnchanged(fixture)
+  })
+
+  it('deletes every mask cell when the mask row is selected and restores them on undo', () => {
+    const fixture = createMaskedTwoFrameDocument()
+    useWorkspace.getState().selectAnimationMaskRow('layer', fixture.layer.id)
+
+    useWorkspace.getState().deleteSelectedAnimationItems()
+
+    expect(animationMaskAt(fixture.timeline, fixture.layer.id, fixture.firstFrame.id)).toBeNull()
+    expect(animationMaskAt(fixture.timeline, fixture.layer.id, fixture.secondFrame.id)).toBeNull()
+    useWorkspace.getState().undo()
+    expectMasksUnchanged(fixture)
+  })
+
   it('restores every layer mask when a masked layer deletion is undone', () => {
     const fixture = createMaskedTwoFrameDocument()
     fixture.document.layers.push(createLayer('Surviving layer', 1, 1, 'rgba'))

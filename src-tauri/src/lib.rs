@@ -158,8 +158,7 @@ pub fn run() {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
                 window.set_icon(icon)?;
             }
-            let recovery_state = app.state::<platform_recovery::RecoveryState>();
-            platform_recovery::initialize_session_marker(app.handle(), &recovery_state)?;
+            platform_recovery::initialize_session_marker(app.handle())?;
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
             let _ = platform_paths::export_directory();
             let _ = platform_background_presets::ensure_background_preset_folder();

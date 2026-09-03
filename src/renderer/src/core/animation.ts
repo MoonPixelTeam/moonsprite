@@ -1087,8 +1087,6 @@ export const inheritAnimationFrameMaskLinks = (document: SpriteDocument, sourceF
     const sourceMask = maskBySlot.get(`${layer.id}:${sourceFrameId}`) ?? null
     if (!sourceCel || !targetCel || !sourceMask || sourceMask.autoLinkAnimationCels !== true) continue
     const targetMask = maskBySlot.get(`${layer.id}:${targetFrameId}`) ?? null
-    const maskHasContent = sourceMask.pixels.some((value, index) => index % 4 === 3 && value > 0)
-    if (!maskHasContent && !sourceMask.linkedMaskId) continue
     const rootMask = resolveMask(sourceMask)
     if (!targetMask) {
       const mask = cloneLayerMaskForCel(rootMask, targetCel.layerId, createId('mask'))

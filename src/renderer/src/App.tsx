@@ -2085,6 +2085,7 @@ export default function App() {
           selectedFrameCount: session.selectedAnimationFrameIds.length,
           selectedCellCount: session.selectedAnimationCellKeys.length,
           selectedMaskCellCount: session.selectedAnimationMaskCellKeys.length,
+          selectedMaskRowCount: session.selectedAnimationMaskRowKeys.length,
           cellSelectionExplicit: session.animationCellSelectionExplicit
         }))
         const target = resolveDeleteCommand(commandScopeRef.current, Boolean(session?.selection), hasAnimationSelection, Boolean(session?.selectedFreeTileInstanceId))
@@ -2093,7 +2094,7 @@ export default function App() {
           return
         }
         if (target === 'animation') {
-          if (session?.selectedAnimationMaskCellKeys.length) workspace.deleteSelectedLayerMasks()
+          if (session?.selectedAnimationMaskCellKeys.length || session?.selectedAnimationMaskRowKeys.length) workspace.deleteSelectedLayerMasks()
           else workspace.deleteSelectedAnimationItems()
           return
         }

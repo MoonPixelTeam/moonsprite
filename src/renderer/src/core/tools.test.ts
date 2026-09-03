@@ -203,6 +203,56 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(document, layer, 511, 511)).toEqual(blue)
   })
 
+  it('keeps non-uniform large smart-closure fills in compact runs and exactly undoable', () => {
+    const document = createDocument('non-uniform smart closure fill', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    for (let x = 96; x <= 415; x += 1) {
+      if (x !== 255 && x !== 256) writeLayerColor(document, layer, 96 * document.width + x, blue)
+      writeLayerColor(document, layer, 415 * document.width + x, blue)
+    }
+    for (let y = 97; y < 415; y += 1) {
+      writeLayerColor(document, layer, y * document.width + 96, blue)
+      writeLayerColor(document, layer, y * document.width + 415, blue)
+    }
+
+    const edit = floodFill(document, layer, 256, 256, red, null, true, null, 1, undefined, 'solid', 1, 0, 'paint', 0, 2)
+
+    expect(edit?.before.size).toBe(0)
+    expect(edit?.runs?.length).toBeGreaterThan(0)
+    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 255, 96)).toEqual(red)
+
+    const history = commitPixelEdit(document, edit!, 'non-uniform smart closure fill')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 256, 256).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 255, 96).a).toBe(0)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 255, 96)).toEqual(red)
+  })
+
+  it('ignores stale smart-closure settings for large global fills', () => {
+    const document = createDocument('global fill with stale smart closure', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 256 * document.width + 256, blue)
+
+    const edit = floodFill(document, layer, 0, 0, red, null, false, null, 1, undefined, 'solid', 1, 0, 'paint', 0, 2)
+
+    expect(edit?.before.size).toBe(0)
+    expect(edit?.runs?.length).toBeGreaterThan(0)
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(blue)
+
+    const history = commitPixelEdit(document, edit!, 'global fill')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(blue)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(blue)
+  })
+
   it('fills a selected region using canvas coordinates on an offset layer', () => {
     const document = createDocument('offset fill', 6, 4, 'rgba')
     const layer = getActiveLayer(document)

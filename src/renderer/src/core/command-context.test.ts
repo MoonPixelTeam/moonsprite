@@ -20,6 +20,7 @@ describe('command context', () => {
   it('treats one explicitly selected cel as an animation delete target', () => {
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: true })).toBe(true)
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: false })).toBe(false)
+    expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 0, selectedMaskCellCount: 0, selectedMaskRowCount: 1, cellSelectionExplicit: false })).toBe(true)
   })
 
 

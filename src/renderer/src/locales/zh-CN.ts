@@ -1039,6 +1039,7 @@ export const zhCNMessages = {
   'colorReplacement.target.cellsHint': '只替换时间轴中已选单元格的匹配颜色。',
   'colorReplacement.target.palette': '调色板',
   'colorReplacement.target.paletteHint': '替换调色板中与原颜色完全相同的色块。',
+  'colorReplacement.target.loopSection': '循环节：{name}',
   'colorReplacement.targetCount': '当前目标：{count} 项',
   'colorReplacement.targetUnavailable': '请先在图层或时间轴中选择对应内容。',
   'colorReplacement.preview': '实时预览',
