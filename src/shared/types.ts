@@ -236,6 +236,8 @@ export interface RgbaColor {
   a: number
 }
 
+export type AntiAliasColorSource = 'automatic' | 'canvas' | 'palette'
+
 export type TextAntialiasMode = 'pixel' | 'smooth'
 export type TextSpacingMode = 'font' | 'actual'
 
@@ -770,6 +772,7 @@ export type OutlineDirection = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se'
 export type OutlineDirections = Record<OutlineDirection, boolean>
 export interface OutlineSettings {
   color: RgbaColor
+  backgroundColor: RgbaColor
   thickness: number
   position: OutlinePosition
   kernel: OutlineKernel

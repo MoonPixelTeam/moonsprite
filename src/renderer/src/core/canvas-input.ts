@@ -470,6 +470,7 @@ export interface CanvasDragState {
   alignmentTargetBounds?: SelectionRect[]
   alignmentGuides?: AlignmentGuide[]
   alignmentGridEnabled?: boolean
+  alignmentSnapToGridOrigin?: boolean
   alignmentSmartEnabled?: boolean
   alignmentThreshold?: number
   layerFrameId?: string

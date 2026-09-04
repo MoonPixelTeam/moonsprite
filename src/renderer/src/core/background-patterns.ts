@@ -163,7 +163,7 @@ export const renderBackgroundTileIndexed = (width: number, height: number, tile:
   return pixels
 }
 
-/** Repeats the old visible canvas into a resized canvas while preserving anchor phase. */
+/** Preserves the old canvas contents and fills only the newly exposed area. */
 export const tileBackgroundSurfaceToCanvas = (
   surface: BackgroundSurface,
   sourceCanvasWidth: number,
@@ -171,7 +171,10 @@ export const tileBackgroundSurfaceToCanvas = (
   targetCanvasWidth: number,
   targetCanvasHeight: number,
   offsetX: number,
-  offsetY: number
+  offsetY: number,
+  repeatSize?: { width: number; height: number },
+  presetPattern?: BackgroundPatternId,
+  resolveColor?: (color: RgbaColor) => number
 ): void => {
   const sourceWidth = surface.width
   const sourceHeight = surface.height
@@ -179,16 +182,31 @@ export const tileBackgroundSurfaceToCanvas = (
   const sourceOffsetY = surface.offsetY
   const horizontal = Math.trunc(offsetX)
   const vertical = Math.trunc(offsetY)
+  const repeatWidth = repeatSize?.width ?? sourceCanvasWidth
+  const repeatHeight = repeatSize?.height ?? sourceCanvasHeight
   if (surface.format === 'rgba') {
     const pixels = new Uint8ClampedArray(targetCanvasWidth * targetCanvasHeight * 4)
     for (let y = 0; y < targetCanvasHeight; y += 1) for (let x = 0; x < targetCanvasWidth; x += 1) {
-      const sourceCanvasX = positiveModulo(x - horizontal, sourceCanvasWidth)
-      const sourceCanvasY = positiveModulo(y - vertical, sourceCanvasHeight)
-      const localX = sourceCanvasX - sourceOffsetX
-      const localY = sourceCanvasY - sourceOffsetY
+      const sourceCanvasX = x - horizontal
+      const sourceCanvasY = y - vertical
+      const insideSourceCanvas = sourceCanvasX >= 0 && sourceCanvasX < sourceCanvasWidth && sourceCanvasY >= 0 && sourceCanvasY < sourceCanvasHeight
+      const localX = insideSourceCanvas
+        ? sourceCanvasX - sourceOffsetX
+        : positiveModulo(sourceCanvasX - sourceOffsetX, repeatWidth)
+      const localY = insideSourceCanvas
+        ? sourceCanvasY - sourceOffsetY
+        : positiveModulo(sourceCanvasY - sourceOffsetY, repeatHeight)
+      const target = (y * targetCanvasWidth + x) * 4
+      if (!insideSourceCanvas && presetPattern) {
+        const color = backgroundPatternColorAt(presetPattern, sourceCanvasX, sourceCanvasY)
+        pixels[target] = color.r
+        pixels[target + 1] = color.g
+        pixels[target + 2] = color.b
+        pixels[target + 3] = color.a
+        continue
+      }
       if (localX < 0 || localY < 0 || localX >= sourceWidth || localY >= sourceHeight) continue
       const packed = readSurfacePackedLocal(surface, localX, localY)
-      const target = (y * targetCanvasWidth + x) * 4
       pixels[target] = packed & 0xff
       pixels[target + 1] = (packed >>> 8) & 0xff
       pixels[target + 2] = (packed >>> 16) & 0xff
@@ -198,10 +216,19 @@ export const tileBackgroundSurfaceToCanvas = (
   } else {
     const pixels = new Uint32Array(targetCanvasWidth * targetCanvasHeight)
     for (let y = 0; y < targetCanvasHeight; y += 1) for (let x = 0; x < targetCanvasWidth; x += 1) {
-      const sourceCanvasX = positiveModulo(x - horizontal, sourceCanvasWidth)
-      const sourceCanvasY = positiveModulo(y - vertical, sourceCanvasHeight)
-      const localX = sourceCanvasX - sourceOffsetX
-      const localY = sourceCanvasY - sourceOffsetY
+      const sourceCanvasX = x - horizontal
+      const sourceCanvasY = y - vertical
+      const insideSourceCanvas = sourceCanvasX >= 0 && sourceCanvasX < sourceCanvasWidth && sourceCanvasY >= 0 && sourceCanvasY < sourceCanvasHeight
+      const localX = insideSourceCanvas
+        ? sourceCanvasX - sourceOffsetX
+        : positiveModulo(sourceCanvasX - sourceOffsetX, repeatWidth)
+      const localY = insideSourceCanvas
+        ? sourceCanvasY - sourceOffsetY
+        : positiveModulo(sourceCanvasY - sourceOffsetY, repeatHeight)
+      if (!insideSourceCanvas && presetPattern && resolveColor) {
+        pixels[y * targetCanvasWidth + x] = resolveColor(backgroundPatternColorAt(presetPattern, sourceCanvasX, sourceCanvasY))
+        continue
+      }
       if (localX < 0 || localY < 0 || localX >= sourceWidth || localY >= sourceHeight) continue
       pixels[y * targetCanvasWidth + x] = readSurfacePackedLocal(surface, localX, localY)
     }

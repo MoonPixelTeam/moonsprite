@@ -4,12 +4,13 @@ import { CheckCircle2, ExternalLink, GitFork } from 'lucide-react'
 import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout } from '@shared/types'
 import type { AdjustmentKind } from '@/core/adjustments'
 import { compositePixelWithLayerColor, getActiveLayer, isLayerEffectivelyVisible, readLayerColorAt } from '@/core/document'
+import { decodeBrowserRasterImage } from '@/core/raster-image'
 import { blendOver, packColor, unpackColor } from '@/core/raster'
 import type { PanelDock, WorkspacePanelId } from '@/components/WorkspacePanels'
 import { AppMenuBar } from '@/components/app/AppMenuBar'
 import { ExtensionPanelHost } from '@/components/extensions/ExtensionPanelHost'
 import { AppWindowTitleBar } from '@/components/app/AppWindowTitleBar'
-import { DocumentTabs, type DocumentTabDockDebugState } from '@/components/app/DocumentTabs'
+import { DocumentTabs } from '@/components/app/DocumentTabs'
 import { EditorStatusBar } from '@/components/app/EditorStatusBar'
 import { BrushDynamicsTelemetryCapture } from '@/components/app/BrushDynamicsTelemetryCapture'
 import { EditorWorkspaceShell } from '@/components/app/EditorWorkspaceShell'
@@ -29,9 +30,11 @@ import { CanvasResizeDialog } from '@/components/CanvasResizeDialog'
 import { ColorReplacementDialog } from '@/components/ColorReplacementDialog'
 import { ImageResizeDialog } from '@/components/ImageResizeDialog'
 import { OutlineDialog } from '@/components/OutlineDialog'
+import { AntiAliasDialog } from '@/components/AntiAliasDialog'
 import { OpenProgressOverlay } from '@/components/OpenProgressOverlay'
 import { SaveProgressOverlay } from '@/components/SaveProgressOverlay'
 import { AdjustmentDialog } from '@/components/dialogs/AdjustmentDialog'
+import { LcdScreenDialog } from '@/components/dialogs/LcdScreenDialog'
 import { PreferencesDialog, type PreferenceSection } from '@/components/dialogs/PreferencesDialog'
 import { SaveAsDialog } from '@/components/dialogs/SaveAsDialog'
 import { ShortcutDialog } from '@/components/dialogs/ShortcutDialog'
@@ -62,6 +65,7 @@ import { isExtensionPackagePath } from '@/core/extension-packages'
 import { listExtensionPanelContributions, listExtensionTopMenuContributions, reconcileExtensionPanelVisibility, saveExtensionPanelVisibility } from '@/core/extension-contributions'
 import { startDocumentDropService } from '@/platform/document-drop-service'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'
+import type { LatestReleaseDefinition } from '@/core/latest-release'
 import moonspriteLogo from '@/assets/moonsprite-logo.svg'
 import { cloneTextCelData, normalizeTextCelData, rasterizeText } from '@/core/text-raster'
 import { getRecentProjects, type RecentProject } from '@/core/home-history'
@@ -130,7 +134,7 @@ const workspaceDockParentSize = (workArea: HTMLElement | null): { width: number;
 
 const defaultPanelDocks: Record<WorkspacePanelId, PanelDock> = { ...DEFAULT_PANEL_DOCKS }
 const defaultInspectorLayout = JSON.stringify({
-  order: ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'brushes', 'tileset', 'preview'],
+  order: ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'preview', 'tileset', 'brushes'],
   verticalWeights: { color: 330, palette: 620, layers: 560, freeTileInstances: 180, history: 220, preview: 220, tileset: 280, brushes: 240 },
   bottomWeights: { color: 280, palette: 280, layers: 720, freeTileInstances: 300, history: 320, preview: 280, tileset: 360, brushes: 320 }
 })
@@ -142,7 +146,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   builtIn: true,
   layout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: true },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -159,7 +163,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   },
   initialLayout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: true },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -202,6 +206,8 @@ export default function App() {
   const [canvasResizeOpen, setCanvasResizeOpen] = useState(false)
   const [imageResizeOpen, setImageResizeOpen] = useState(false)
   const [outlineOpen, setOutlineOpen] = useState(false)
+  const [antiAliasOpen, setAntiAliasOpen] = useState(false)
+  const [lcdScreenOpen, setLcdScreenOpen] = useState(false)
   const [colorReplacementOpen, setColorReplacementOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [preferencesInitialSection, setPreferencesInitialSection] = useState<PreferenceSection>('general')
@@ -214,6 +220,11 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [componentLibraryOpen, setComponentLibraryOpen] = useState(false)
   const [latestReleaseOpen, setLatestReleaseOpen] = useState(false)
+  const [latestReleaseSelection, setLatestReleaseSelection] = useState<LatestReleaseDefinition | null>(null)
+  const openLatestRelease = useCallback((release?: LatestReleaseDefinition): void => {
+    setLatestReleaseSelection(release ?? null)
+    setLatestReleaseOpen(true)
+  }, [])
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [isoViewSettingsOpen, setIsoViewSettingsOpen] = useState(false)
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
@@ -278,7 +289,6 @@ export default function App() {
   const [toolRailDockPreview, setToolRailDockPreview] = useState<ToolRailSide | null>(null)
   const [workspaceLayoutRevision, setWorkspaceLayoutRevision] = useState(0)
   const [documentPaneLayout, setDocumentPaneLayout] = useState<DocumentPaneNode | null>(null)
-  const [documentPaneDockDebug, setDocumentPaneDockDebug] = useState<DocumentTabDockDebugState | null>(null)
   const [paneOnlyDocumentIds, setPaneOnlyDocumentIds] = useState<string[]>([])
   const [workspaceDocumentId, setWorkspaceDocumentId] = useState<string | null>(() => useWorkspace.getState().activeId)
   const [floatingDocuments, setFloatingDocuments] = useState<FloatingDocumentEntry[]>([])
@@ -1130,6 +1140,21 @@ export default function App() {
     return opened
   }
 
+  const openHomeImage = async (imageUrl: string, name: string): Promise<boolean> => {
+    try {
+      const response = await fetch(imageUrl)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      const document = await decodeBrowserRasterImage(bytes, name, response.headers.get('content-type') ?? 'image/png')
+      useWorkspace.getState().addSession(document)
+      setHomeOpen(false)
+      return true
+    } catch (error) {
+      workspace.setMessage(error instanceof Error ? error.message : t('home.openFailed'))
+      return false
+    }
+  }
+
   const restoreRecoveryAndShowDocument = async (id: string): Promise<boolean> => {
     const restored = await useWorkspace.getState().restoreRecovery(id)
     if (restored) setHomeOpen(false)
@@ -1475,6 +1500,7 @@ export default function App() {
         else if (canvasResizeOpen) setCanvasResizeOpen(false)
         else if (imageResizeOpen) setImageResizeOpen(false)
         else if (outlineOpen) setOutlineOpen(false)
+        else if (lcdScreenOpen) setLcdScreenOpen(false)
         else if (colorReplacementOpen) setColorReplacementOpen(false)
         else if (preferencesOpen) setPreferencesOpen(false)
         else if (shortcutOpen) setShortcutOpen(false)
@@ -1945,7 +1971,7 @@ export default function App() {
       if (runCommand('resetWorkspaceLayout', () => { void resetCurrentWorkspace() })) return
       if (runCommand('openWorkspaceManager', () => { void loadSavedWorkspaces(); setWorkspaceManagerOpen(true) })) return
       if (runCommand('openComponentLibrary', () => setComponentLibraryOpen(true))) return
-      if (runCommand('openLatestRelease', () => setLatestReleaseOpen(true))) return
+      if (runCommand('openLatestRelease', () => openLatestRelease())) return
       if (runCommand('openAbout', () => setAboutOpen(true))) return
       const matchingToolShortcuts = CYCLING_TOOL_SHORTCUT_IDS.filter((id) => matches(id))
       if (matchingToolShortcuts.length > 0) {
@@ -2179,7 +2205,7 @@ export default function App() {
       window.removeEventListener('auxclick', auxclick, true)
       window.removeEventListener('blur', blur)
     }
-  }, [adjustmentOpen, advancedMode, aboutOpen, canvasResizeOpen, colorReplacementOpen, componentLibraryOpen, cycleAdvancedMode, exportOpen, gridSettingsOpen, homeOpen, imageResizeOpen, isoViewSettingsOpen, latestReleaseOpen, loadSavedWorkspaces, luaScriptReport, luaScriptSession, newOpen, openLuaScriptFolder, openMenu, openPreferences, openSaveAs, outlineOpen, panelVisibility, popupPanelId, preferencesOpen, projectInfoOpen, publishShortcutCommand, resetCurrentWorkspace, runtimePreferences.timelineHidden, saveAsOpen, shortcutConflictState, shortcutOpen, spriteSheetExportOpen, timelapseOpen, toggleMirrorView, togglePopupPanel, toggleSliceOutlinesVisibility, toggleTimelineVisibility, updatePanelVisibility, updateToolRailSide, workspace, workspaceManagerOpen, workspaceSaveOpen, session?.brushSize, session?.document.id, session?.moveKind, session?.selectedFreeTileInstanceId, session?.selectedSliceId, session?.selectedSliceIds, session?.selection, session?.textBoxTransform, session?.tool, shortcuts])
+  }, [adjustmentOpen, advancedMode, aboutOpen, canvasResizeOpen, colorReplacementOpen, componentLibraryOpen, cycleAdvancedMode, exportOpen, gridSettingsOpen, homeOpen, imageResizeOpen, isoViewSettingsOpen, lcdScreenOpen, latestReleaseOpen, loadSavedWorkspaces, luaScriptReport, luaScriptSession, newOpen, openLuaScriptFolder, openMenu, openPreferences, openSaveAs, outlineOpen, panelVisibility, popupPanelId, preferencesOpen, projectInfoOpen, publishShortcutCommand, resetCurrentWorkspace, runtimePreferences.timelineHidden, saveAsOpen, shortcutConflictState, shortcutOpen, spriteSheetExportOpen, timelapseOpen, toggleMirrorView, togglePopupPanel, toggleSliceOutlinesVisibility, toggleTimelineVisibility, updatePanelVisibility, updateToolRailSide, workspace, workspaceManagerOpen, workspaceSaveOpen, session?.brushSize, session?.document.id, session?.moveKind, session?.selectedFreeTileInstanceId, session?.selectedSliceId, session?.selectedSliceIds, session?.selection, session?.textBoxTransform, session?.tool, shortcuts])
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent): void => {
@@ -2248,9 +2274,6 @@ export default function App() {
     setHomeOpen(false)
     setWorkspaceDocumentId(documentId)
     useWorkspace.getState().setActive(documentId)
-  }, [])
-  const updateDocumentPaneDockDebug = useCallback((next: DocumentTabDockDebugState | null): void => {
-    setDocumentPaneDockDebug((current) => current?.draggedDocumentId === next?.draggedDocumentId && current?.targetDocumentId === next?.targetDocumentId && current?.direction === next?.direction && current?.magnetVisible === next?.magnetVisible ? current : next)
   }, [])
   const splitDocumentFromTab = useCallback((placement: DocumentPanePlacement): void => {
     const workspace = useWorkspace.getState()
@@ -2411,18 +2434,7 @@ export default function App() {
       : `"${editorMainAreaRow}"`
 
   const editorOnly = advancedMode !== null && Boolean(session) && !homeOpen
-  const documentPaneDockDebugTargetName = documentPaneDockDebug?.targetDocumentId
-    ? workspace.sessions.find((item) => item.document.id === documentPaneDockDebug.targetDocumentId)?.document.name ?? documentPaneDockDebug.targetDocumentId
-    : null
-  const documentPaneDockDebugDirection = documentPaneDockDebug?.direction === 'left'
-    ? t('app.documentDockDebug.left')
-    : documentPaneDockDebug?.direction === 'right'
-      ? t('app.documentDockDebug.right')
-      : documentPaneDockDebug?.direction === 'top'
-        ? t('app.documentDockDebug.top')
-        : documentPaneDockDebug?.direction === 'bottom'
-          ? t('app.documentDockDebug.bottom')
-          : t('app.documentDockDebug.none')
+  const documentTabsVisible = workspace.sessions.length > 0
   const exportSlices = session?.document.slices ?? []
   const exportTarget: NonNullable<ExportOptions['target']> = exportForm.format === 'psd'
     ? 'document'
@@ -2456,7 +2468,7 @@ export default function App() {
       workspace.setMessage(error instanceof Error ? error.message : typeof error === 'string' ? error : t('app.export.openFolderFailed'))
     }
   }
-  return <main className={`app-shell ${session?.view.showPixelGrid ? 'pixel-grid-on' : ''} ${editorOnly ? 'advanced-mode' : ''} ${advancedMode === 'tool-options' ? 'advanced-tool-options' : ''} ${advancedMode === 'canvas-only' ? 'advanced-canvas-only' : ''}`}>
+  return <main className={`app-shell ${session?.view.showPixelGrid ? 'pixel-grid-on' : ''} ${editorOnly ? 'advanced-mode' : ''} ${advancedMode === 'tool-options' ? 'advanced-tool-options' : ''} ${advancedMode === 'canvas-only' ? 'advanced-canvas-only' : ''} ${documentTabsVisible ? '' : 'no-document-tabs'}`}>
     <AppWindowTitleBar />
     <BrushDynamicsTelemetryCapture documentId={session?.document.id ?? null} />
     {saveAsOpen && session && <SaveAsDialog initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|psd)$/i, '') || 'MoonSprite-project'} initialFormat={saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY))} initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory} onClose={() => setSaveAsOpen(false)} onSave={(options) => runSaveActive(true, options)} />}
@@ -2499,8 +2511,10 @@ export default function App() {
       onToggleExtensionPanel={toggleExtensionPanel}
       onOpenProjectFolder={openProjectFolder}
       onOpenOutline={() => setOutlineOpen(true)}
+      onOpenAntiAlias={() => setAntiAliasOpen(true)}
       onOpenColorReplacement={() => setColorReplacementOpen(true)}
       onOpenAdjustment={(kind) => { setAdjustmentKind(kind); setAdjustmentOpen(true) }}
+      onOpenLcdScreenFilter={() => setLcdScreenOpen(true)}
       onOpenShortcuts={() => setShortcutOpen(true)}
       onOpenPreferences={() => openPreferences()}
       onOpenCanvasResize={() => setCanvasResizeOpen(true)}
@@ -2515,15 +2529,15 @@ export default function App() {
       onToolRailSideChange={updateToolRailSide}
       onCycleAdvancedMode={cycleAdvancedMode}
       onOpenComponentLibrary={() => setComponentLibraryOpen(true)}
-      onOpenLatestRelease={() => setLatestReleaseOpen(true)}
+      onOpenLatestRelease={openLatestRelease}
       onOpenDiagnostics={() => { void openRuntimeDiagnosticLogs().catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error))) }}
       onOpenAbout={() => setAboutOpen(true)}
     />
 
-    <section className="tab-strip" aria-label={t('app.documentTabs.aria')}>
-      <DocumentTabs homeOpen={homeOpen} hiddenDocumentIds={hiddenDocumentIds} onNew={openNewDocumentFromTab} onActivate={activateDocumentTab} onContextActivate={contextActivateDocumentTab} onSplit={splitDocumentFromTab} onFloat={floatDocument} onDockDebug={updateDocumentPaneDockDebug} />
+    {documentTabsVisible && <section className="tab-strip" aria-label={t('app.documentTabs.aria')}>
+      <DocumentTabs homeOpen={homeOpen} hiddenDocumentIds={hiddenDocumentIds} onNew={openNewDocumentFromTab} onActivate={activateDocumentTab} onContextActivate={contextActivateDocumentTab} onSplit={splitDocumentFromTab} onFloat={floatDocument} />
       <span className="workspace-top-control workspace-tab-control"><button type="button" className={`icon-button ${openMenu === 'workspace' ? 'active' : ''}`} title={t('app.workspace.aria')} aria-label={t('app.workspace.aria')} aria-expanded={openMenu === 'workspace'} onPointerDown={(event) => event.stopPropagation()} onClick={() => { setOpenMenu(openMenu === 'workspace' ? null : 'workspace'); if (openMenu !== 'workspace') void loadSavedWorkspaces() }}><PixelUtilityIcon kind="workspace" /></button>{openMenu === 'workspace' && createPortal(<div className="workspace-popover" role="menu" aria-label={t('app.workspace.aria')}><button type="button" role="menuitem" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setWorkspaceSaveName(''); setWorkspaceSaveOpen(true); closeMenu() }}>{t('app.workspace.new')}{shortcutFor('saveWorkspaceLayout') && <kbd>{shortcutFor('saveWorkspaceLayout')}</kbd>}</button><span className="workspace-popover-divider" />{savedWorkspaces.map((saved) => <button key={saved.id} type="button" role="menuitem" className={saved.id === activeWorkspaceId ? 'selected-workspace' : ''} title={t('app.workspace.loadTitle', { name: saved.name })} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); void applyWorkspaceLayout(saved); closeMenu() }}><span className="menu-check">{saved.id === activeWorkspaceId && <PixelUtilityIcon kind="check" />}</span><span>{saved.name}</span></button>)}<span className="workspace-popover-divider" /><button type="button" role="menuitem" disabled={!activeWorkspaceId} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); void resetCurrentWorkspace(); closeMenu() }}>{t('app.workspace.resetCurrent')}</button><button type="button" role="menuitem" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setWorkspaceManagerOpen(true); closeMenu() }}>{t('app.workspace.manage')}{shortcutFor('openWorkspaceManager') && <kbd>{shortcutFor('openWorkspaceManager')}</kbd>}</button></div>, document.body)}</span>
-    </section>
+    </section>}
 
     {session && !homeOpen ? <EditorWorkspaceShell
       editorOnly={editorOnly}
@@ -2563,15 +2577,16 @@ export default function App() {
       onPanelVisibilityChange={updatePanelVisibility}
       relativeLuminanceInPreview={relativeLuminanceScope === 'app'}
       onOpenColorReplacement={openColorReplacement}
+      onOpenAntiAlias={() => setAntiAliasOpen(true)}
       onOpenPreferences={openQuickCommandPreferences}
       onOpenCommandSettings={openQuickCommandSettings}
       shortcutFor={shortcutFor}
       onToggleMirror={toggleMirrorView}
-    /> : <Suspense fallback={<div aria-hidden="true" />}><LazyHomeWorkspace onNew={() => setNewOpen(true)} onOpen={() => void openFilesAndShowDocument()} onOpenProject={openGalleryProject} onRestoreRecovery={restoreRecoveryAndShowDocument} onOpenLatestRelease={() => setLatestReleaseOpen(true)} /></Suspense>}
+    /> : <Suspense fallback={<div aria-hidden="true" />}><LazyHomeWorkspace onNew={() => setNewOpen(true)} onOpen={() => void openFilesAndShowDocument()} onOpenProject={openGalleryProject} onOpenImage={openHomeImage} onRestoreRecovery={restoreRecoveryAndShowDocument} onOpenLatestRelease={openLatestRelease} /></Suspense>}
 
     {floatingDocuments.map((item, stackIndex) => {
       const floatingSession = workspace.sessions.find((candidate) => candidate.document.id === item.documentId)
-      return floatingSession ? <FloatingDocumentWindow key={item.documentId} session={floatingSession} initialPosition={item.initialPosition} pinned={item.pinned} stackIndex={stackIndex} onActivate={activateFloatingDocument} onPinnedChange={setFloatingDocumentPinned} onReturnToTabs={returnFloatingDocumentToTabs} onCloseDocument={closeFloatingDocument} shortcutFor={shortcutFor} onToggleMirror={toggleMirrorView} onOpenPreferences={openQuickCommandPreferences} onOpenCommandSettings={openQuickCommandSettings} /> : null
+      return floatingSession ? <FloatingDocumentWindow key={item.documentId} session={floatingSession} initialPosition={item.initialPosition} pinned={item.pinned} stackIndex={stackIndex} onActivate={activateFloatingDocument} onPinnedChange={setFloatingDocumentPinned} onReturnToTabs={returnFloatingDocumentToTabs} onCloseDocument={closeFloatingDocument} shortcutFor={shortcutFor} onToggleMirror={toggleMirrorView} onOpenAntiAlias={() => setAntiAliasOpen(true)} onOpenPreferences={openQuickCommandPreferences} onOpenCommandSettings={openQuickCommandSettings} /> : null
     })}
     <ExtensionPanelHost
       contributions={extensionPanelContributions}
@@ -2585,7 +2600,7 @@ export default function App() {
     <EditorStatusBar homeOpen={homeOpen} resourceLabel={resourceLabel} />
     <OpenProgressOverlay />
     <SaveProgressOverlay />
-    {documentPaneDockDebug ? <div className="advanced-mode-notice" role="status" aria-live="polite"><strong>{documentPaneDockDebugTargetName ? t('app.documentDockDebug.target', { name: documentPaneDockDebugTargetName, direction: documentPaneDockDebugDirection }) : t('app.documentDockDebug.noTarget', { direction: documentPaneDockDebugDirection })}</strong><small>{t(documentPaneDockDebug.magnetVisible ? 'app.documentDockDebug.magnetVisible' : 'app.documentDockDebug.magnetHidden')}</small></div> : advancedModeNotice && <div className="advanced-mode-notice" role="status" aria-live="polite"><strong>{advancedModeNotice}</strong><small>{advancedModeNotice === t('app.advanced.enabled') ? `${advancedModeNoticeShortcut} ${t('app.advanced.restore')}` : advancedModeNoticeShortcut}</small></div>}
+    {advancedModeNotice && <div className="advanced-mode-notice" role="status" aria-live="polite"><strong>{advancedModeNotice}</strong><small>{advancedModeNotice === t('app.advanced.enabled') ? `${advancedModeNoticeShortcut} ${t('app.advanced.restore')}` : advancedModeNoticeShortcut}</small></div>}
     {workspace.saveProgress && createPortal(<div className={`modal-backdrop save-progress-backdrop ${workspace.saveProgress.requiresConfirmation ? 'is-complete' : 'is-running'}`} role="presentation"><ModalShell storageKey="save-progress" defaultWidth={280} defaultHeight={workspace.saveProgress.requiresConfirmation ? 190 : 142} fitContentKey={workspace.saveProgress.requiresConfirmation ? 'complete' : 'progress'} minWidth={250} minHeight={workspace.saveProgress.requiresConfirmation ? 176 : 132} className="save-progress-modal" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="save-progress-title"><header><div className="save-progress-heading"><span className="save-progress-icon" aria-hidden="true">{workspace.saveProgress.requiresConfirmation ? <CheckCircle2 size={20} /> : <span className="save-progress-animation" />}</span><div><span className="eyebrow">FILE OPERATION</span><h2 id="save-progress-title">{workspace.saveProgress.title}</h2></div></div>{!workspace.saveProgress.requiresConfirmation && <button type="button" className="icon-button" aria-label={t('app.progress.close', { title: workspace.saveProgress.title })} onClick={() => workspace.cancelExport()}><PixelUtilityIcon kind="close" /></button>}</header><div className="save-progress-body"><strong>{workspace.saveProgress.label}</strong><div className={`save-progress-track ${workspace.saveProgress.value >= 100 ? 'is-full' : ''}`} aria-label={t('app.progress.aria', { title: workspace.saveProgress.title, value: workspace.saveProgress.value })}><i style={{ width: `${workspace.saveProgress.value}%` }} /></div><div className="save-progress-meta"><span>{t(workspace.saveProgress.requiresConfirmation ? 'app.progress.complete' : 'app.progress.processing')}</span><small>{workspace.saveProgress.value}%</small></div></div>{workspace.saveProgress.requiresConfirmation && <footer><button type="button" className="primary-button" onClick={() => workspace.dismissSaveProgress()}>{t('timelapse.confirmExport')}</button></footer>}</ModalShell></div>, document.body)}
     {workspace.dialog && <div className="modal-backdrop dialog-backdrop" role="presentation"><ModalShell storageKey="confirm-content-v2" fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}`} defaultWidth={420} defaultHeight={180} minHeight={0} resizable={false} className="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title"><DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title" /><div className="confirm-content"><strong>{workspace.dialog.message}</strong>{workspace.dialog.detail && <p>{workspace.dialog.detail}</p>}</div><footer>{workspace.dialog.choices.map((choice) => <button key={choice.id} className={choice.tone === 'primary' ? 'primary-button' : choice.tone === 'danger' ? 'danger-button' : 'quiet-button'} onClick={() => workspace.resolveDialog(choice.id)}>{choice.label}</button>)}</footer></ModalShell></div>}
     {exportOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
@@ -2624,6 +2639,7 @@ export default function App() {
       </ModalShell>
     </div>}
     {adjustmentOpen && <AdjustmentDialog kind={adjustmentKind} onClose={() => setAdjustmentOpen(false)} />}
+    {lcdScreenOpen && session && <LcdScreenDialog onClose={() => setLcdScreenOpen(false)} onApply={(options) => { void workspace.applyLcdScreenFilter(options) }} />}
     {colorReplacementOpen && session && <ColorReplacementDialog key={session.document.id} onClose={() => setColorReplacementOpen(false)} />}
     {aboutOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setAboutOpen(false) }}>
       <ModalShell storageKey="about-v2" defaultWidth={460} defaultHeight={360} minWidth={380} minHeight={310} maxWidth={620} maxHeight={520} className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
@@ -2644,7 +2660,7 @@ export default function App() {
       </ModalShell>
     </div>}
     {componentLibraryOpen && <Suspense fallback={null}><LazyComponentLibrary onClose={() => setComponentLibraryOpen(false)} /></Suspense>}
-    {latestReleaseOpen && <LatestReleaseDialog onClose={() => setLatestReleaseOpen(false)} />}
+    {latestReleaseOpen && <LatestReleaseDialog release={latestReleaseSelection ?? undefined} onClose={() => setLatestReleaseOpen(false)} />}
     {session && gridSettingsOpen && <GridSettingsDialog value={session.view.grid} onApply={(grid) => workspace.setView({ grid })} onClose={() => setGridSettingsOpen(false)} />}
     {session && isoViewSettingsOpen && <IsoViewSettingsDialog value={runtimePreferences.isoView} onApply={applyIsoViewPreferences} onPreview={previewIsoViewPreferences} onClose={() => setIsoViewSettingsOpen(false)} />}
     {session && projectInfoOpen && <ProjectInfoDialog document={session.document} onClose={() => setProjectInfoOpen(false)} />}
@@ -2681,6 +2697,7 @@ export default function App() {
     {session && <CanvasResizeDialog open={canvasResizeOpen} documentId={session.document.id} currentWidth={session.document.width} currentHeight={session.document.height} onClose={() => { workspace.setCanvasResizePreview(null); setCanvasResizeOpen(false) }} onResize={async (width, height, anchor, offsetX, offsetY, trimOutside) => { await workspace.resizeActiveCanvas(width, height, anchor, offsetX, offsetY, trimOutside); workspace.setCanvasResizePreview(null) }} onPreview={(preview) => { workspace.setCanvasResizePreview(preview); publishCanvasResizePreview(session.document.id, preview) }} preview={session.canvasResizePreview} />}
     {session && <ImageResizeDialog open={imageResizeOpen} currentWidth={session.document.width} currentHeight={session.document.height} onClose={() => setImageResizeOpen(false)} onResize={(width, height, interpolation: ImageResizeInterpolation) => workspace.resizeActiveImage(width, height, interpolation)} onDetectScale={() => detectDocumentPixelScale(session.document)} />}
     {session && <OutlineDialog open={outlineOpen} session={session} onClose={() => setOutlineOpen(false)} />}
+    {session && antiAliasOpen && <AntiAliasDialog session={session} onClose={() => setAntiAliasOpen(false)} />}
     {preferencesOpen && <PreferencesDialog initialSection={preferencesInitialSection} onClose={() => setPreferencesOpen(false)} onPresetChange={(documentSizes, exportScales) => { setDocumentSizePresets(documentSizes); setExportScalePresets(exportScales) }} />}
     {shortcutOpen && <ShortcutDialog shortcuts={shortcuts} onSave={saveShortcuts} onClose={() => setShortcutOpen(false)} />}
   </main>

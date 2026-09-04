@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { blendWithMode, packColor, writeRgbaPixel } from './raster'
+import { BLEND_MODES } from '@shared/types'
+import { blendWithMode, blendWithModeInto, packColor, writeRgbaPixel } from './raster'
 import { createDefaultLayerStyles } from './layer-styles'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument } from './animation'
 import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
@@ -86,6 +87,52 @@ describe('document compositing', () => {
     const groupColor = blendWithMode(groupBottomColor, groupTopColor, 1, 'screen')
     const expected = blendWithMode(outsideColor, groupColor, 1, 'multiply')
     expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual(Object.values(expected))
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1, new DocumentCompositeCache(), 1))).toEqual(Object.values(expected))
+    expect(new DocumentCompositeCache().movePreviewLayersFor(document, 1)).toBeNull()
+  })
+
+  it('exposes a blended top layer stack for the layer move preview', () => {
+    const document = createDocument('move preview blend stack', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    const groupLayer = createLayer('group layer', 1, 1, 'rgba')
+    const moving = createLayer('moving screen layer', 1, 1, 'rgba')
+    groupLayer.groupId = 'simple-group'
+    moving.groupId = 'simple-group'
+    moving.blendMode = 'screen'
+    document.layers.push(groupLayer, moving)
+    document.groups.push({ id: 'simple-group', name: 'simple group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' })
+    writeLayerColor(document, bottom, 0, { r: 20, g: 40, b: 80, a: 255 })
+    writeLayerColor(document, groupLayer, 0, { r: 30, g: 60, b: 90, a: 255 })
+    writeLayerColor(document, moving, 0, { r: 100, g: 120, b: 140, a: 255 })
+
+    const cache = new DocumentCompositeCache()
+    const layers = cache.movePreviewLayersFor(document, 1)
+    expect(layers?.map((layer) => layer.id)).toEqual([bottom.id, groupLayer.id, moving.id])
+    const base = blendWithMode({ r: 20, g: 40, b: 80, a: 255 }, { r: 30, g: 60, b: 90, a: 255 }, 1, 'normal')
+    expect(Array.from(cache.movePreviewLayerRegion(document, layers!.slice(0, -1), 0, 0, 1, 1, 1))).toEqual(Object.values(base))
+    expect(Array.from(cache.movePreviewLayerRegion(document, layers!, 0, 0, 1, 1, 1))).toEqual(Array.from(compositeRegion(document, 0, 0, 1, 1, new DocumentCompositeCache(), 1)))
+  })
+
+  it('keeps an empty non-normal layer on the fast normal compositor path', () => {
+    const document = createDocument('empty blend layer', 2, 2, 'rgba')
+    const background = document.layers[0]
+    const emptyBlendLayer = createLayer('empty blend', 2, 2, 'rgba')
+    emptyBlendLayer.blendMode = 'multiply'
+    document.layers.push(emptyBlendLayer)
+    writeLayerColor(document, background, 0, red)
+
+    expect(normalCompositeLayers(document)).not.toBeNull()
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([255, 0, 0, 255])
+  })
+
+  it('keeps direct blend writes identical to the canonical blend function', () => {
+    const bottom = { r: 31, g: 148, b: 219, a: 173 }
+    const top = { r: 224, g: 72, b: 19, a: 201 }
+    for (const mode of BLEND_MODES) {
+      const output = new Uint8ClampedArray(4)
+      blendWithModeInto(output, 0, bottom.r, bottom.g, bottom.b, bottom.a, top.r, top.g, top.b, top.a, 0.63, mode)
+      expect(Array.from(output), mode).toEqual(Object.values(blendWithMode(bottom, top, 0.63, mode)))
+    }
   })
 
   it('applies a blended group to the fully composited Photoshop-style backdrop', () => {

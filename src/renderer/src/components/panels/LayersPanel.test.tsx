@@ -440,6 +440,27 @@ describe('LayersPanel animation', () => {
     expect(session.selectedAnimationCellKeys).toEqual([])
   })
 
+  it('keeps selected frame activity on group timeline cells', async () => {
+    const document = createDocument('selected group frames', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const group = { id: 'group-1', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    layer.groupId = group.id
+    document.groups.push(group)
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 4; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+
+    const timeline = ensureAnimationDocument(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    useWorkspace.getState().selectAnimationFrame(timeline.frames[0].id)
+    useWorkspace.getState().selectAnimationFrame(timeline.frames[3].id, 'range')
+    await waitFor(() => {
+      const groupCells = timeline.frames.map((frame) => container.querySelector<HTMLElement>(`[data-animation-group-cel-key="${animationCelKey(group.id, frame.id)}"]`))
+      expect(groupCells).toHaveLength(5)
+      expect(groupCells.slice(0, 4).every((cell) => cell?.classList.contains('selected-animation-frame'))).toBe(true)
+      expect(groupCells[4]).not.toHaveClass('selected-animation-frame')
+    })
+  })
+
   it('creates a named loop section from selected frames and exposes play, edit, and delete actions', () => {
     const document = createDocument('timeline loop section', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -519,6 +540,7 @@ describe('LayersPanel animation', () => {
     let loopBar = container.querySelector<HTMLButtonElement>(`[data-animation-loop-section-id="${loopId}"]`)!
     const startEdge = loopBar.querySelector<HTMLElement>('.animation-loop-section-edge-start')!
     fireEvent.pointerDown(startEdge, { button: 0, clientX: 0, clientY: 10, pointerId: 71 })
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
     fireEvent.pointerMove(window, { clientX: 68, clientY: 10, pointerId: 71 })
     expect(loopBar.style.gridColumn).toBe('3 / span 1')
     fireEvent.pointerUp(window, { clientX: 68, clientY: 10, pointerId: 71 })

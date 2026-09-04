@@ -1,12 +1,12 @@
 import type { AnimationCel, AnimationCelSurface, AnimationTimeline, BlendMode, CanvasAnchor, ColorMode, FreeTileCelData, FreeTileSourceLayer, ImageResizeInterpolation, IndexedLayer, LayerGroup, LayerMask, LayerStyles, PaletteEntry, RasterLayer, RgbaColor, RgbaLayer, RuntimeRasterTiles, SelectionRect, SpriteDocument, Tileset } from '@shared/types'
-import { blendWithMode, colorEquals, packColor, pixelIndex, readRgbaPixel, relativeLuminanceColor, TRANSPARENT, unpackColor, writeRgbaPixel } from './raster'
+import { blendWithMode, blendWithModeInto, colorEquals, packColor, pixelIndex, readRgbaPixel, relativeLuminanceColor, TRANSPARENT, unpackColor, writeRgbaPixel } from './raster'
 import { translateCurrent as tr } from './localization'
 import { DEFAULT_PROJECT_DISPLAY_SETTINGS, DEFAULT_PROJECT_STATISTICS, DEFAULT_TIMELAPSE_SETTINGS } from './project-metadata'
 import { buildLayerPanelTree } from './layer-panel-layout'
 import { addPaletteIdToSlots, normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots, PALETTE_GRID_COLUMNS } from './palette-layout'
-import { cachedRuntimeRasterVisibleBounds, detachRuntimeRaster, installRuntimeRaster, lazyRuntimeRasterForSurface, rasterStorageIdentity, readSurfacePackedLocal, readSurfaceRgbaRegion, runtimeRasterForSurface, runtimeRasterVisibleBounds, runtimeTileHasVisiblePixels } from './runtime-raster'
+import { cachedRuntimeRasterVisibleBounds, detachRuntimeRaster, installRuntimeRaster, lazyRuntimeRasterForSurface, rasterStorageIdentity, readSurfacePackedLocal, readSurfacePackedRegion, readSurfaceRgbaRegion, runtimeRasterForSurface, runtimeRasterVisibleBounds, runtimeTileHasVisiblePixels } from './runtime-raster'
 import { applyLayerStylesAt, applySimpleLayerStylesPacked, cloneLayerStyles, hasEnabledLayerStyles, layerStyleAffectedRect, layerStyleBinaryStrokeMetric, layerStyleOutputBounds, layerStylesEqual, layerStylesSignature, mapLayerStyleColors, resolveLayerStyles, type LayerStyleBinaryStrokeMetric, type LayerStyleCoverageOverrides, type LayerStyleGeometry } from './layer-styles'
-import { tileBackgroundSurfaceToCanvas } from './background-patterns'
+import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
 
 let sequence = 0
 const layerStorageOrigins = new WeakMap<RasterLayer, { x: number; y: number }>()
@@ -244,7 +244,9 @@ export function resizeDocumentAt(document: SpriteDocument, width: number, height
   const expanding = width > sourceWidth || height > sourceHeight
   for (const layer of document.layers) {
     if (layer.background && expanding) {
-      tileBackgroundSurfaceToCanvas(layer, sourceWidth, sourceHeight, width, height, horizontal, vertical)
+      const repeatSize = layer.background.mode === 'preset' && layer.background.pattern ? backgroundPatternSize(layer.background.pattern) : undefined
+      const presetPattern = layer.background.mode === 'preset' ? layer.background.pattern : undefined
+      tileBackgroundSurfaceToCanvas(layer, sourceWidth, sourceHeight, width, height, horizontal, vertical, repeatSize, presetPattern, (color) => paletteColorIdForCanvas(document, color))
       setLayerStorageOrigin(layer, { x: 0, y: 0 })
       continue
     }
@@ -1304,7 +1306,7 @@ export function convertDocumentColorMode(document: SpriteDocument, target: Color
   document.colorMode = target
 }
 
-type CompositeStackItem =
+export type CompositeStackItem =
   | { kind: 'layer'; layer: RasterLayer }
   | { kind: 'group'; group: LayerGroup; children: CompositeStackItem[] }
 
@@ -1339,7 +1341,7 @@ const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => 
   return root
 }
 
-export const normalCompositeLayers = (document: SpriteDocument): RasterLayer[] | null => {
+export const normalCompositeLayers = (document: SpriteDocument, allowLayerBlendModes = false): RasterLayer[] | null => {
   const activeMasks = activeCelMasksByLayer(document)
   const activeGroupMasks = activeGroupMasksByGroup(document)
   const flatten = (items: readonly CompositeStackItem[]): RasterLayer[] | null => {
@@ -1350,8 +1352,10 @@ export const normalCompositeLayers = (document: SpriteDocument): RasterLayer[] |
         if (activeMasks.has(item.layer.id)) return null
         if (item.layer.clippingMask === true || hasEnabledLayerStyles(item.layer.layerStyles)) return null
         if (item.layer.blendMode !== 'normal') {
-          if (layerContentBounds(document, item.layer)) return null
-          continue
+          // An empty non-normal layer has no effect and must not force the
+          // whole document onto the opacity-group compositor.
+          if (!layerContentBounds(document, item.layer)) continue
+          if (!allowLayerBlendModes) return null
         }
         layers.push(item.layer)
         continue
@@ -1384,7 +1388,7 @@ const opacityGroupCompositeStack = (document: SpriteDocument): CompositeStackIte
         if (activeMasks.has(item.layer.id)) return null
         if (item.layer.clippingMask === true || hasEnabledLayerStyles(item.layer.layerStyles)) return null
         if (item.layer.blendMode !== 'normal') {
-          if (layerContentBounds(document, item.layer)) return null
+          if (layerContentBounds(document, item.layer)) prepared.push(item)
           continue
         }
         prepared.push(item)
@@ -1775,6 +1779,7 @@ export class DocumentCompositeCache {
   private rowRanges = new WeakMap<object, Map<string, { contentRevision: number; ranges: Int32Array }>>()
   private visibleTiles = new WeakMap<object, Map<string, Map<number, boolean>>>()
   private normalLayerPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; layers: RasterLayer[] | null }>()
+  private movePreviewLayerPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; layers: RasterLayer[] | null }>()
   private styledLayerPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; layers: RasterLayer[] | null }>()
   private opacityGroupPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; items: CompositeStackItem[] | null }>()
   private styledLayerBlocks = new WeakMap<RasterLayer, StyledLayerBlockCache>()
@@ -1783,6 +1788,7 @@ export class DocumentCompositeCache {
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
     this.normalLayerPlans = new WeakMap()
+    this.movePreviewLayerPlans = new WeakMap()
     this.styledLayerPlans = new WeakMap()
     this.opacityGroupPlans = new WeakMap()
     this.styledLayerBlocks = new WeakMap()
@@ -1834,6 +1840,20 @@ export class DocumentCompositeCache {
       : layer)
     const layers = normalCompositeLayers({ ...document, layers: preparedLayers })
     this.styledLayerPlans.set(document, { revision, frameId, layers })
+    return layers
+  }
+
+  /**
+   * Returns a flat, bottom-to-top stack for move previews. Unlike the normal
+   * render plan this permits a layer blend mode, but still rejects every
+   * group/layer feature whose result depends on the surrounding stack.
+   */
+  movePreviewLayersFor(document: SpriteDocument, revision: number): RasterLayer[] | null {
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    const cached = this.movePreviewLayerPlans.get(document)
+    if (cached && cached.revision === revision && cached.frameId === frameId) return cached.layers
+    const layers = normalCompositeLayers(document, true)
+    this.movePreviewLayerPlans.set(document, { revision, frameId, layers })
     return layers
   }
 
@@ -2150,6 +2170,16 @@ export class DocumentCompositeCache {
     compositeNormalLayers(document, layers, startX, startY, width, height, this, revision, output)
   }
 
+  movePreviewLayerRegion(document: SpriteDocument, layers: readonly RasterLayer[], startX: number, startY: number, width: number, height: number, revision: number): Uint8ClampedArray {
+    const output = new Uint8ClampedArray(width * height * 4)
+    compositeMovePreviewLayersInto(document, layers, startX, startY, width, height, revision, this, output)
+    return output
+  }
+
+  compositeMovePreviewLayersInto(document: SpriteDocument, layers: readonly RasterLayer[], startX: number, startY: number, width: number, height: number, revision: number, output: Uint8ClampedArray): void {
+    compositeMovePreviewLayersInto(document, layers, startX, startY, width, height, revision, this, output)
+  }
+
   rowsFor(layer: RasterLayer, palette: readonly PaletteEntry[], _revision: number, dirtyRect?: SelectionRect): Int32Array {
     const paletteKey = layer.format === 'rgba' ? 'rgba' : palette.map((entry) => `${entry.id}:${entry.color.a}`).join(',')
     const key = `${layer.format}:${layer.width}:${layer.height}:${paletteKey}`
@@ -2459,6 +2489,120 @@ const compositeNormalBufferInto = (output: Uint8ClampedArray<ArrayBufferLike>, s
   }
 }
 
+/** Composites a plain raster layer with its own blend mode without falling back
+ * to the per-pixel recursive document sampler. */
+const compositeLayerWithModeInto = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  output: Uint8ClampedArray<ArrayBufferLike>
+): void => {
+  const left = Math.max(startX, layer.offsetX)
+  const top = Math.max(startY, layer.offsetY)
+  const right = Math.min(startX + width, layer.offsetX + layer.width)
+  const bottom = Math.min(startY + height, layer.offsetY + layer.height)
+  if (right <= left || bottom <= top) return
+  const paletteById = layer.format === 'indexed'
+    ? new Map(document.palette.map((entry) => [entry.id, entry.color]))
+    : null
+  const opacity = layer.opacity
+  const sourceWidth = right - left
+  const sourceHeight = bottom - top
+  const directRgbaPixels = layer.format === 'rgba' && !lazyRuntimeRasterForSurface(layer)
+    ? layer.pixels
+    : null
+  const sourceRgba = layer.format === 'rgba' && !directRgbaPixels
+    ? readSurfaceRgbaRegion(layer, left - layer.offsetX, top - layer.offsetY, sourceWidth, sourceHeight)
+    : null
+  const sourceIndexed = layer.format === 'indexed'
+    ? readSurfacePackedRegion(layer, left - layer.offsetX, top - layer.offsetY, sourceWidth, sourceHeight)
+    : null
+  for (let row = 0; row < sourceHeight; row += 1) {
+    let sourceOffset = row * sourceWidth * 4
+    let directSourceOffset = ((top + row - layer.offsetY) * layer.width + left - layer.offsetX) * 4
+    let sourceIndex = row * sourceWidth
+    let outputOffset = ((top + row - startY) * width + left - startX) * 4
+    for (let column = 0; column < sourceWidth; column += 1, sourceOffset += 4, sourceIndex += 1, outputOffset += 4) {
+      const sourceRgbaPixels = directRgbaPixels ?? sourceRgba
+      const sourceRgbaOffset = directRgbaPixels ? directSourceOffset : sourceOffset
+      let sourceR: number
+      let sourceG: number
+      let sourceB: number
+      let sourceA: number
+      if (sourceRgbaPixels) {
+        sourceR = sourceRgbaPixels[sourceRgbaOffset]
+        sourceG = sourceRgbaPixels[sourceRgbaOffset + 1]
+        sourceB = sourceRgbaPixels[sourceRgbaOffset + 2]
+        sourceA = sourceRgbaPixels[sourceRgbaOffset + 3]
+      } else {
+        const source = paletteById!.get(sourceIndexed![sourceIndex]) ?? TRANSPARENT
+        sourceR = source.r
+        sourceG = source.g
+        sourceB = source.b
+        sourceA = source.a
+      }
+      directSourceOffset += 4
+      if (sourceA === 0) continue
+      const bottomAlpha = output[outputOffset + 3]
+      if (opacity === 1 && bottomAlpha === 0) {
+        output[outputOffset] = sourceR
+        output[outputOffset + 1] = sourceG
+        output[outputOffset + 2] = sourceB
+        output[outputOffset + 3] = sourceA
+        continue
+      }
+      blendWithModeInto(
+        output,
+        outputOffset,
+        output[outputOffset],
+        output[outputOffset + 1],
+        output[outputOffset + 2],
+        bottomAlpha,
+        sourceR,
+        sourceG,
+        sourceB,
+        sourceA,
+        opacity,
+        layer.blendMode
+      )
+    }
+  }
+}
+
+/** Composites the simple layer stack used by the live move preview. Groups
+ * have already been flattened and validated, so layer blend modes can be
+ * applied in the same bottom-to-top order as the document compositor. */
+export const compositeMovePreviewLayersInto = (
+  document: SpriteDocument,
+  layers: readonly RasterLayer[],
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  revision: number,
+  cache: DocumentCompositeCache,
+  output: Uint8ClampedArray<ArrayBufferLike>
+): void => {
+  let normalLayers: RasterLayer[] = []
+  const flushNormalLayers = (): void => {
+    if (normalLayers.length === 0) return
+    compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, output)
+    normalLayers = []
+  }
+  for (const layer of layers) {
+    if (layer.blendMode === 'normal') {
+      normalLayers.push(layer)
+      continue
+    }
+    flushNormalLayers()
+    compositeLayerWithModeInto(document, layer, startX, startY, width, height, output)
+  }
+  flushNormalLayers()
+}
+
 const compositeBufferWithModeInto = (
   output: Uint8ClampedArray<ArrayBufferLike>,
   source: Uint8ClampedArray<ArrayBufferLike>,
@@ -2513,7 +2657,11 @@ const compositeOpacityGroupStack = (
   }
   for (const item of items) {
     if (item.kind === 'layer') {
-      layerBatch.push(item.layer)
+      if (item.layer.blendMode === 'normal') layerBatch.push(item.layer)
+      else {
+        flushLayers()
+        compositeLayerWithModeInto(document, item.layer, startX, startY, width, height, output)
+      }
       continue
     }
     flushLayers()

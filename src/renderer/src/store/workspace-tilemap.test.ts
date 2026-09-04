@@ -8,7 +8,7 @@ import { activeTilemapCelTarget, captureTilemapSelectionMove, previewTilemapSele
 import { activeFreeTileCelTarget, captureFreeTileSourceSnapshot } from '@/core/free-tile-document'
 import { freeTileInstanceBounds, freeTileSourceRefs } from '@/core/free-tile'
 import { createFreeTileSourceEditRaster, freeTileSelectionToEditRaster, freeTileSourceSnapshotFromEditRaster, freeTileTransformTargetToEditRaster } from '@/core/free-tile-edit'
-import { beginTilemapEdit, createBlankTileset, readTilesetTilePixels, tilemapCellBounds, tilemapCellIndexAtPoint, writeTilesetTilePixels } from '@/core/tilemap'
+import { appendBlankTilesetTile, beginTilemapEdit, createBlankTileset, readTilesetTilePixels, tilemapCellBounds, tilemapCellIndexAtPoint, writeTilesetTilePixels } from '@/core/tilemap'
 import { applySelectionTranslationPreview, captureSelectionTransform, selectionTranslationPreviewEdit } from '@/core/tools'
 import { isToolAvailableForSession } from './workspace-session'
 import { useWorkspace } from './workspace'
@@ -408,6 +408,122 @@ describe('workspace Free Tile layer ownership', () => {
 
 
 describe('workspace Tilemap layers', () => {
+  it('keeps the active layer until drawing with another layer\'s tileset', async () => {
+    const document = createDocument('tileset owner selection', 4, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().createTilemapLayer({ name: 'Tilemap A', tileWidth: 2, tileHeight: 2 })
+    const layerA = document.layers.find((candidate) => candidate.name === 'Tilemap A')!
+    await useWorkspace.getState().createTilemapLayer({ name: 'Tilemap B', tileWidth: 2, tileHeight: 2 })
+    const layerB = document.layers.find((candidate) => candidate.name === 'Tilemap B')!
+    const tilesetB = document.tilesets!.find((tileset) => tileset.id === layerB.tilemapTilesetId)!
+
+    useWorkspace.getState().selectLayer(layerA.id)
+    expect(document.activeLayerId).toBe(layerA.id)
+    useWorkspace.getState().setSelectedTile(tilesetB.id, tilesetB.tileIds[0])
+
+    expect(document.activeLayerId).toBe(layerA.id)
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([layerA.id])
+    useWorkspace.getState().setTilemapMode('paint')
+    expect(document.activeLayerId).toBe(layerA.id)
+    useWorkspace.getState().activateTilemapLayerForDrawing()
+    expect(document.activeLayerId).toBe(layerB.id)
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([layerA.id])
+    expect(useWorkspace.getState().sessions[0].timelineActiveContext.row).toEqual({
+      kind: 'layer',
+      ownerKind: 'layer',
+      ownerId: layerB.id
+    })
+    expect(useWorkspace.getState().sessions[0].selectedTilesetId).toBe(tilesetB.id)
+  })
+
+  it('resolves the selected Tilemap layer only when drawing starts', async () => {
+    const document = createDocument('paint mode tileset owner', 4, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().createTilemapLayer({ name: 'Paint A', tileWidth: 2, tileHeight: 2 })
+    const layerA = document.layers.find((candidate) => candidate.name === 'Paint A')!
+    await useWorkspace.getState().createTilemapLayer({ name: 'Paint B', tileWidth: 1, tileHeight: 1 })
+    const layerB = document.layers.find((candidate) => candidate.name === 'Paint B')!
+    const tilesetB = document.tilesets!.find((tileset) => tileset.id === layerB.tilemapTilesetId)!
+    const session = useWorkspace.getState().sessions[0]
+
+    document.activeLayerId = layerA.id
+    session.selectedLayerIds = [layerA.id]
+    session.selectedTilesetId = tilesetB.id
+    useWorkspace.getState().setTilemapMode('paint')
+
+    expect(document.activeLayerId).toBe(layerA.id)
+    useWorkspace.getState().activateTilemapLayerForDrawing()
+    expect(document.activeLayerId).toBe(layerB.id)
+    expect(session.selectedLayerIds).toEqual([layerA.id])
+    expect(session.tilemapMode).toBe('paint')
+  })
+
+  it('mirrors a copied selection in paint mode as tile cells and keeps it undoable', async () => {
+    const document = createDocument('flip copied tiles', 2, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    await useWorkspace.getState().createTilemapLayer({ name: 'Flip tiles', tileWidth: 1, tileHeight: 1 })
+    let target = activeTilemapCelTarget(document)!
+    let tileset = document.tilesets![0]
+    const redTileId = tileset.tileIds[0]
+    const blueTileId = 'blue-tile'
+    tileset = appendBlankTilesetTile(tileset, blueTileId)
+    document.tilesets![0] = tileset
+    target = activeTilemapCelTarget(document)!
+    writeTilesetTilePixels(tileset, redTileId, new Uint8ClampedArray([220, 30, 40, 255]))
+    writeTilesetTilePixels(tileset, blueTileId, new Uint8ClampedArray([30, 80, 220, 255]))
+    const cells = beginTilemapEdit(target.layer.id, target.cel.frameId)
+    writeTilemapCell(document, target, cells, 0, { tilesetId: tileset.id, tileId: redTileId })
+    writeTilemapCell(document, target, cells, 1, { tilesetId: tileset.id, tileId: blueTileId })
+    useWorkspace.getState().commitTilemapEdit(cells, 'Set source tiles')
+
+    useWorkspace.getState().setTilemapMode('paint')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 2, height: 1 })
+    useWorkspace.getState().flipActiveSelection('horizontal')
+
+    expect(target.tilemap.cells.map((cell) => cell?.tileId)).toEqual([blueTileId, redTileId])
+    expect(readLayerColorAt(document, target.layer, 0, 0)).toEqual({ r: 30, g: 80, b: 220, a: 255 })
+    expect(readLayerColorAt(document, target.layer, 1, 0)).toEqual({ r: 220, g: 30, b: 40, a: 255 })
+
+    useWorkspace.getState().undo()
+    expect(target.tilemap.cells.map((cell) => cell?.tileId)).toEqual([redTileId, blueTileId])
+    useWorkspace.getState().redo()
+    expect(target.tilemap.cells.map((cell) => cell?.tileId)).toEqual([blueTileId, redTileId])
+  })
+
+  it('keeps a mirrored floating copy when committing a hybrid Tilemap edit', async () => {
+    const document = createDocument('flip floating tiles', 4, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    await useWorkspace.getState().createTilemapLayer({ name: 'Flip floating tiles', tileWidth: 1, tileHeight: 1 })
+    let target = activeTilemapCelTarget(document)!
+    let tileset = document.tilesets![0]
+    const redTileId = tileset.tileIds[0]
+    const blueTileId = 'floating-blue-tile'
+    tileset = appendBlankTilesetTile(tileset, blueTileId)
+    document.tilesets![0] = tileset
+    target = activeTilemapCelTarget(document)!
+    writeTilesetTilePixels(tileset, redTileId, new Uint8ClampedArray([220, 30, 40, 255]))
+    writeTilesetTilePixels(tileset, blueTileId, new Uint8ClampedArray([30, 80, 220, 255]))
+    const cells = beginTilemapEdit(target.layer.id, target.cel.frameId)
+    writeTilemapCell(document, target, cells, 0, { tilesetId: tileset.id, tileId: redTileId })
+    writeTilemapCell(document, target, cells, 1, { tilesetId: tileset.id, tileId: blueTileId })
+    useWorkspace.getState().commitTilemapEdit(cells, 'Set floating source tiles')
+
+    const selection = { x: 0, y: 0, width: 2, height: 1 }
+    const destination = { x: 2, y: 0, width: 2, height: 1 }
+    const source = captureSelectionTransform(document, selection, target.layer)!
+    const preview = applySelectionTranslationPreview(document, source, destination, true, null, target.layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, selection, destination, true, 'Flip floating copy', preview, destination)
+    useWorkspace.getState().flipActiveSelection('horizontal')
+    useWorkspace.getState().commitFloatingPaste()
+
+    target = activeTilemapCelTarget(document)!
+    expect(target.tilemap.cells.map((cell) => cell?.tileId)).toEqual([redTileId, blueTileId, blueTileId, redTileId])
+    expect(readLayerColorAt(document, target.layer, 2, 0)).toEqual({ r: 30, g: 80, b: 220, a: 255 })
+    expect(readLayerColorAt(document, target.layer, 3, 0)).toEqual({ r: 220, g: 30, b: 40, a: 255 })
+  })
+
   it('creates an empty Tilemap with one transparent tile and restores the structure through history', async () => {
     const document = createDocument('empty tiles', 4, 2, 'rgba')
     const firstFrameId = ensureAnimationDocument(document).activeFrameId
@@ -641,6 +757,64 @@ describe('workspace Tilemap layers', () => {
     useWorkspace.getState().undo()
     expect(readLayerColorAt(document, target.layer, 0, 0)).toEqual({ r: 220, g: 20, b: 30, a: 255 })
     expect(readLayerColorAt(document, target.layer, 1, 0)).toEqual({ r: 220, g: 20, b: 30, a: 255 })
+  })
+
+  it('updates the destination tile when a copied selection stays inside it in hybrid mode', async () => {
+    const document = createDocument('hybrid floating selection inside tile', 8, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+    await useWorkspace.getState().createTilemapLayer({ name: 'Hybrid floating selection', tileWidth: 4, tileHeight: 4 })
+    const target = activeTilemapCelTarget(document)!
+    const tileset = document.tilesets![0]
+    const sourceTileId = tileset.tileIds[0]
+    const destinationTileId = 'hybrid-destination-tile'
+    const sourcePixels = new Uint8ClampedArray(4 * 4 * 4)
+    const destinationPixels = new Uint8ClampedArray(4 * 4 * 4)
+    for (let offset = 0; offset < sourcePixels.length; offset += 4) {
+      sourcePixels[offset + 3] = 255
+      destinationPixels[offset] = 20
+      destinationPixels[offset + 1] = 40
+      destinationPixels[offset + 2] = 220
+      destinationPixels[offset + 3] = 255
+    }
+    for (let y = 1; y < 3; y += 1) for (let x = 1; x < 3; x += 1) {
+      const offset = (y * 4 + x) * 4
+      sourcePixels[offset] = 220
+      sourcePixels[offset + 1] = 30
+      sourcePixels[offset + 2] = 40
+    }
+    const updatedDestinationPixels = new Uint8ClampedArray(destinationPixels)
+    for (let y = 1; y < 3; y += 1) for (let x = 1; x < 3; x += 1) {
+      const offset = (y * 4 + x) * 4
+      updatedDestinationPixels[offset] = 220
+      updatedDestinationPixels[offset + 1] = 30
+      updatedDestinationPixels[offset + 2] = 40
+    }
+    writeTilesetTilePixels(tileset, sourceTileId, sourcePixels)
+    const withDestination = appendBlankTilesetTile(tileset, destinationTileId)
+    document.tilesets![0] = withDestination
+    writeTilesetTilePixels(withDestination, destinationTileId, destinationPixels)
+    const cells = beginTilemapEdit(target.layer.id, target.cel.frameId)
+    writeTilemapCell(document, target, cells, 0, { tilesetId: withDestination.id, tileId: sourceTileId })
+    writeTilemapCell(document, target, cells, 1, { tilesetId: withDestination.id, tileId: destinationTileId })
+    useWorkspace.getState().commitTilemapEdit(cells, 'Set hybrid floating tiles')
+    useWorkspace.getState().setTilemapMode('hybrid')
+
+    const selection = { x: 1, y: 1, width: 2, height: 2 }
+    const destination = { x: 5, y: 1, width: 2, height: 2 }
+    const source = captureSelectionTransform(document, selection, target.layer)!
+    const preview = applySelectionTranslationPreview(document, source, destination, true, null, target.layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, selection, destination, true, 'Copy inside destination tile', preview, destination)
+    useWorkspace.getState().commitFloatingPaste()
+
+    expect(withDestination.tileIds).toHaveLength(2)
+    expect(target.tilemap.cells.map((cell) => cell?.tileId)).toEqual([sourceTileId, destinationTileId])
+    expect(readTilesetTilePixels(withDestination, destinationTileId)).toEqual(updatedDestinationPixels)
+    expect(readLayerColorAt(document, target.layer, 5, 1)).toEqual({ r: 220, g: 30, b: 40, a: 255 })
+
+    useWorkspace.getState().undo()
+    expect(readTilesetTilePixels(document.tilesets![0], destinationTileId)).toEqual(destinationPixels)
+    useWorkspace.getState().redo()
+    expect(readTilesetTilePixels(document.tilesets![0], destinationTileId)).toEqual(updatedDestinationPixels)
   })
 
   it('keeps create mode variant generation for occupied tiles', async () => {

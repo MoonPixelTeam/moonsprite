@@ -22,6 +22,25 @@ interface FollowPreviewPositionOptions {
 
 export const previewCheckerCellSize = (checkerSize: number, displayScale: number): number => checkerSize * displayScale
 
+/**
+ * Choose a fit scale whose document pixels occupy an equal number of device
+ * pixels whenever the artwork is shown at or above 1:1. A raw fit scale is
+ * commonly fractional (for example 7.8x), which makes the rasterizer
+ * distribute neighbouring source pixels across 7 and 8 device pixels. That
+ * is technically aligned at the outer edges but visibly compresses pixel art.
+ * Downscaling below 1:1 cannot preserve every source pixel, so it keeps the
+ * available fit scale instead of unexpectedly cropping the preview.
+ */
+export const pixelAlignedPreviewFitScale = (fitScale: number, devicePixelRatio = 1): number => {
+  if (!Number.isFinite(fitScale) || fitScale <= 0) return 1
+  if (fitScale <= 1) return fitScale
+  const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
+  const aligned = Math.floor(fitScale * dpr + 0.000001) / dpr
+  // Keep 1:1 rather than dropping below it when the first device-aligned
+  // candidate would be smaller than one CSS pixel per document pixel.
+  return aligned >= 1 ? aligned : 1
+}
+
 const clampFollowAxis = (pan: number, viewportSize: number, contentSize: number): number => {
   const centeredOrigin = (viewportSize - contentSize) / 2
   const minimumOrigin = Math.min(0, viewportSize - contentSize)

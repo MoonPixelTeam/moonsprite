@@ -114,8 +114,8 @@ fn workspace_from_file(
 
 fn built_in_workspace() -> StoredWorkspace {
     let layout = serde_json::json!({
-        "panelDocks": { "color": "left", "palette": "left", "layers": "bottom", "preview": "bottom" },
-        "panelVisibility": { "color": true, "palette": true, "layers": true, "preview": true },
+        "panelDocks": { "color": "left", "palette": "left", "layers": "bottom", "freeTileInstances": "bottom", "history": "right", "preview": "right", "tileset": "right", "brushes": "right" },
+        "panelVisibility": { "color": true, "palette": true, "layers": true, "freeTileInstances": false, "history": true, "preview": true, "tileset": false, "brushes": false },
         "inspectorWidth": 300,
         "leftDockWidth": 280,
         "bottomDockHeight": 220,
@@ -124,10 +124,10 @@ fn built_in_workspace() -> StoredWorkspace {
         "bottomDockHeightRatio": 0.275,
         "toolRailSide": "right",
         "previewOpen": true,
-        "inspectorLayout": "{\"order\":[\"palette\",\"color\",\"layers\",\"preview\"],\"verticalWeights\":{\"color\":330,\"palette\":620,\"layers\":560,\"preview\":220},\"bottomWeights\":{\"color\":280,\"palette\":280,\"layers\":720,\"preview\":280}}",
+        "inspectorLayout": "{\"order\":[\"palette\",\"color\",\"layers\",\"freeTileInstances\",\"history\",\"preview\",\"tileset\",\"brushes\"],\"verticalWeights\":{\"color\":330,\"palette\":620,\"layers\":560,\"freeTileInstances\":180,\"history\":220,\"preview\":220,\"tileset\":280,\"brushes\":240},\"bottomWeights\":{\"color\":280,\"palette\":280,\"layers\":720,\"freeTileInstances\":300,\"history\":320,\"preview\":280,\"tileset\":360,\"brushes\":320}}",
         "colorSquareDock": "left",
         "colorSquareAnchor": "end",
-        "floatingPanels": { "color": null, "palette": null, "layers": null, "preview": null },
+        "floatingPanels": { "color": null, "palette": null, "layers": null, "freeTileInstances": null, "history": null, "preview": null, "tileset": null, "brushes": null },
         "mainWindow": null
     });
     StoredWorkspace {
@@ -139,6 +139,104 @@ fn built_in_workspace() -> StoredWorkspace {
         layout: layout.clone(),
         initial_layout: layout,
     }
+}
+
+fn looks_like_legacy_builtin_layout(layout: &serde_json::Value) -> bool {
+    let Some(object) = layout.as_object() else {
+        return false;
+    };
+    let Some(docks) = object
+        .get("panelDocks")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return false;
+    };
+    let expected_docks = [
+        ("color", "left"),
+        ("palette", "left"),
+        ("layers", "bottom"),
+        ("preview", "bottom"),
+    ];
+    if !expected_docks
+        .iter()
+        .all(|(key, value)| docks.get(*key).and_then(serde_json::Value::as_str) == Some(*value))
+    {
+        return false;
+    }
+    if object
+        .get("toolRailSide")
+        .and_then(serde_json::Value::as_str)
+        .map(|side| side != "right")
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    if object
+        .get("previewOpen")
+        .and_then(serde_json::Value::as_bool)
+        .map(|open| !open)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    for (key, expected) in [
+        ("inspectorWidth", 300.0),
+        ("leftDockWidth", 280.0),
+        ("bottomDockHeight", 220.0),
+    ] {
+        if object
+            .get(key)
+            .and_then(serde_json::Value::as_f64)
+            .map(|value| (value - expected).abs() > f64::EPSILON)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+    }
+    let brushes_were_visible = object
+        .get("panelVisibility")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|visibility| visibility.get("brushes"))
+        .map(|value| value.as_bool().unwrap_or(true))
+        .unwrap_or(true);
+    if !brushes_were_visible {
+        return false;
+    }
+    let Some(inspector_layout) = object
+        .get("inspectorLayout")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return true;
+    };
+    let Ok(inspector_layout) = serde_json::from_str::<serde_json::Value>(inspector_layout) else {
+        return true;
+    };
+    let Some(order) = inspector_layout
+        .get("order")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return true;
+    };
+    let old_rust_order = ["palette", "color", "layers", "preview"];
+    let old_frontend_order = [
+        "palette",
+        "color",
+        "layers",
+        "freeTileInstances",
+        "history",
+        "brushes",
+        "tileset",
+        "preview",
+    ];
+    [old_rust_order.as_slice(), old_frontend_order.as_slice()]
+        .iter()
+        .any(|expected| {
+            order.len() == expected.len()
+                && order
+                    .iter()
+                    .zip(expected.iter())
+                    .all(|(actual, expected)| actual.as_str() == Some(*expected))
+        })
 }
 
 fn read_workspace(path: &Path) -> Result<StoredWorkspace, String> {
@@ -174,6 +272,13 @@ fn read_default_workspace(path: &Path) -> Result<StoredWorkspace, String> {
     }
     // The built-in workspace is editable, but keeps its stable user-facing name.
     workspace.name = "默认工作区".to_string();
+    // Migrate an untouched copy of the previous built-in defaults. User-edited
+    // layouts remain intact, including an intentional bottom-docked preview.
+    let legacy_layout = looks_like_legacy_builtin_layout(&workspace.layout);
+    let legacy_baseline = looks_like_legacy_builtin_layout(&workspace.initial_layout);
+    if legacy_layout && (workspace.layout == workspace.initial_layout || legacy_baseline) {
+        workspace.layout = built_in_workspace().layout;
+    }
     // Preserve the current layout while keeping Reset aligned with this build.
     workspace.initial_layout = built_in_workspace().initial_layout;
     Ok(workspace)
@@ -356,7 +461,46 @@ mod tests {
 
         assert_eq!(workspace.layout, legacy_layout);
         assert_eq!(workspace.initial_layout["panelDocks"]["layers"], "bottom");
-        assert_eq!(workspace.initial_layout["panelDocks"]["preview"], "bottom");
+        assert_eq!(workspace.initial_layout["panelDocks"]["preview"], "right");
         assert_eq!(workspace.initial_layout["toolRailSide"], "right");
+    }
+
+    #[test]
+    fn migrates_untouched_legacy_builtin_layout() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should follow the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "moonsprite-legacy-default-workspace-{}-{suffix}.json",
+            std::process::id()
+        ));
+        let legacy_layout = serde_json::json!({
+            "panelDocks": { "color": "left", "palette": "left", "layers": "bottom", "preview": "bottom" },
+            "panelVisibility": { "color": true, "palette": true, "layers": true, "preview": true, "brushes": true },
+            "toolRailSide": "right",
+            "inspectorLayout": "{\"order\":[\"palette\",\"color\",\"layers\",\"preview\"]}"
+        });
+        let file = WorkspaceDiskFile {
+            schema_version: 1,
+            id: "builtin-default".to_string(),
+            name: "默认工作区".to_string(),
+            updated_at: String::new(),
+            layout: legacy_layout.clone(),
+            initial_layout: Some(legacy_layout),
+        };
+        fs::write(
+            &path,
+            serde_json::to_vec(&file).expect("workspace should encode"),
+        )
+        .expect("temporary workspace should be writable");
+
+        let result = read_default_workspace(&path);
+        let _ = fs::remove_file(&path);
+        let workspace = result.expect("legacy default workspace should load");
+
+        assert_eq!(workspace.layout["panelDocks"]["preview"], "right");
+        assert_eq!(workspace.layout["panelVisibility"]["brushes"], false);
+        assert_eq!(workspace.initial_layout["panelDocks"]["preview"], "right");
     }
 }

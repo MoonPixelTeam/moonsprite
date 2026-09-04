@@ -1,4 +1,5 @@
 import type { OutlineDirection, OutlineKernel, OutlinePosition, OutlineSettings, RgbaColor } from '@shared/types'
+import { colorEquals } from './raster'
 
 export const OUTLINE_DIRECTIONS: readonly OutlineDirection[] = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']
 export const DEFAULT_OUTLINE_SMART_HUE_DARKNESS = 45
@@ -69,6 +70,7 @@ export const resolveOutlineStrokeColor = (
 
 export const defaultOutlineSettings = (color: RgbaColor): OutlineSettings => ({
   color: { ...color },
+  backgroundColor: { r: 0, g: 0, b: 0, a: 0 },
   thickness: 1,
   position: 'outside',
   kernel: 'round',
@@ -81,6 +83,7 @@ export const defaultOutlineSettings = (color: RgbaColor): OutlineSettings => ({
 export const cloneOutlineSettings = (settings: OutlineSettings): OutlineSettings => ({
   ...settings,
   color: { ...settings.color },
+  backgroundColor: { ...settings.backgroundColor },
   directions: { ...settings.directions }
 })
 
@@ -89,12 +92,19 @@ export const normalizeOutlineSettings = (value: unknown, fallbackColor?: RgbaCol
   const candidate = value as Partial<OutlineSettings>
   const fallback = defaultOutlineSettings(fallbackColor ?? { r: 0, g: 0, b: 0, a: 255 })
   const color = candidate.color && typeof candidate.color === 'object' ? candidate.color : fallback.color
+  const backgroundColor = candidate.backgroundColor && typeof candidate.backgroundColor === 'object' ? candidate.backgroundColor : fallback.backgroundColor
   return {
     color: {
       r: clampChannel(color.r, fallback.color.r),
       g: clampChannel(color.g, fallback.color.g),
       b: clampChannel(color.b, fallback.color.b),
       a: clampChannel(color.a, fallback.color.a)
+    },
+    backgroundColor: {
+      r: clampChannel(backgroundColor.r, fallback.backgroundColor.r),
+      g: clampChannel(backgroundColor.g, fallback.backgroundColor.g),
+      b: clampChannel(backgroundColor.b, fallback.backgroundColor.b),
+      a: clampChannel(backgroundColor.a, fallback.backgroundColor.a)
     },
     thickness: typeof candidate.thickness === 'number' && Number.isFinite(candidate.thickness)
       ? Math.max(1, Math.min(64, Math.round(candidate.thickness)))

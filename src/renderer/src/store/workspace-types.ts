@@ -92,6 +92,7 @@ export interface AdjustmentSnapshot {
 
 export interface OutlinePreview {
   color: RgbaColor
+  backgroundColor: RgbaColor
   thickness: number
   position: OutlinePosition
   directions: OutlineDirections
@@ -141,6 +142,8 @@ export interface FloatingPaste {
   translationPreview: SelectionTranslationPreview | null
   previewDeferred?: boolean
   tilemapEditCellIndex?: number
+  sourceFlipHorizontal?: boolean
+  sourceFlipVertical?: boolean
   copy: boolean
   label: string
   selectionBoxUndo?: FloatingSelectionBoxHistoryEntry[]

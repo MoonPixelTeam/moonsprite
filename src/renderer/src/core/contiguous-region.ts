@@ -63,10 +63,32 @@ const thinBarrier = (barrier: Uint8Array, width: number, height: number): Uint8A
   }
 
   const removals = new Uint32Array(skeleton.length)
-  const thinningPass = (secondPass: boolean): number => {
+  const candidates = new Uint32Array(skeleton.length)
+  const queued = new Uint8Array(skeleton.length)
+  let candidateCount = 0
+
+  const enqueue = (index: number): void => {
+    if (skeleton[index] !== 1 || queued[index] === 1) return
+    queued[index] = 1
+    candidates[candidateCount++] = index
+  }
+  const enqueueNeighborhood = (index: number): void => {
+    const x = index % paddedWidth
+    const y = Math.floor(index / paddedWidth)
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue
+      enqueue((y + offsetY) * paddedWidth + x + offsetX)
+    }
+  }
+  const enqueueAll = (): void => {
+    for (let y = 1; y + 1 < paddedHeight; y += 1) for (let x = 1; x + 1 < paddedWidth; x += 1) enqueue(y * paddedWidth + x)
+  }
+  const thinningPass = (secondPass: boolean, scanAll: boolean): boolean => {
+    if (scanAll) enqueueAll()
     let removalCount = 0
-    for (let y = 1; y + 1 < paddedHeight; y += 1) for (let x = 1; x + 1 < paddedWidth; x += 1) {
-      const index = y * paddedWidth + x
+    while (candidateCount > 0) {
+      const index = candidates[--candidateCount]
+      queued[index] = 0
       if (skeleton[index] !== 1) continue
       const north = skeleton[index - paddedWidth]
       const northEast = skeleton[index - paddedWidth + 1]
@@ -86,21 +108,25 @@ const thinBarrier = (barrier: Uint8Array, width: number, height: number): Uint8A
         + Number(southWest === 0 && west === 1)
         + Number(west === 0 && northWest === 1)
         + Number(northWest === 0 && north === 1)
-      if (transitions !== 1) continue
-      if (neighborCount === 2) continue
+      if (transitions !== 1 || neighborCount === 2) continue
       if (secondPass) {
         if (north * east * west !== 0 || north * south * west !== 0) continue
       } else if (north * east * south !== 0 || east * south * west !== 0) continue
       removals[removalCount++] = index
     }
     for (let index = 0; index < removalCount; index += 1) skeleton[removals[index]] = 0
-    return removalCount
+    for (let index = 0; index < removalCount; index += 1) enqueueNeighborhood(removals[index])
+    return removalCount > 0
   }
 
+  enqueueAll()
   let changed = false
+  let firstPass = true
   do {
-    changed = thinningPass(false) > 0
-    changed = thinningPass(true) > 0 || changed
+    const firstChanged = thinningPass(false, false)
+    const secondChanged = thinningPass(true, firstPass)
+    changed = firstChanged || secondChanged
+    firstPass = false
   } while (changed)
 
   const result = new Uint8Array(barrier.length)

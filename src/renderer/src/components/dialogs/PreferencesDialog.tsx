@@ -36,6 +36,7 @@ import {
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { clearStoredValuesExcept } from '@/core/storage'
 import { GALLERY_PINS_STORAGE_KEY, RECENT_PROJECTS_STORAGE_KEY } from '@/core/home-history'
+import { WORKSPACE_LAYOUT_STORAGE_KEYS } from '@/core/workspace-layout-preferences'
 import { AVAILABLE_APP_LOCALES, localeDisplayName, type AppLocale, type TranslationKey } from '@/core/localization'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { DeleteIconButton } from '@/components/DeleteIconButton'
@@ -48,12 +49,14 @@ import { PixelCheckbox } from '@/components/PixelCheckbox'
 import { PreferenceToggle } from '@/components/PreferenceToggle'
 import { SettingsSectionHeader } from '@/components/SettingsSectionHeader'
 import { SettingsNavigation } from '@/components/SettingsNavigation'
+import { PreferenceSearchContext, searchText } from '@/components/PreferenceSearchContext'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
 import { useWorkspace } from '@/store/workspace'
 import { applyThemeToDocument, resolveTheme, type ThemeVisualDefaults } from '@/core/theme'
 import { ThemePreferencesSection } from './ThemePreferencesSection'
 import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
+import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
 import type { StoredExtension } from '@shared/types'
 
@@ -87,7 +90,7 @@ const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
   appearance: ['preferences.groups.canvas', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
   theme: ['preferences.groups.theme', 'preferences.theme.available', 'preferences.theme.current'],
   input: ['preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position'],
-  tools: ['preferences.groups.previews', 'preferences.brushPreview', 'preferences.drawingBrushPreview', 'preferences.selectionCrosshair', 'preferences.selectionPreviewColor', 'preferences.selectionPreviewColor.auto', 'preferences.selectionPreviewColor.custom', 'preferences.selectionPreviewCustomColor', 'preferences.selectionSizeVisible', 'preferences.moveLayerContentPreview', 'preferences.moveLayerClickFlash', 'preferences.moveLayerClickFlashDuration', 'preferences.groups.alignment', 'preferences.gridAlignment', 'preferences.gridAlignmentHint', 'preferences.smartAlignment', 'preferences.smartAlignmentHint', 'preferences.alignmentGuides', 'preferences.alignmentGuidesHint', 'preferences.alignmentThreshold', 'preferences.alignmentThresholdHint', 'preferences.groups.drawing', 'preferences.shiftLinePreview', 'preferences.balancedLine', 'preferences.lineDirectionStep', 'preferences.lassoClosed', 'preferences.eyedropperPencil', 'preferences.groups.eyedropper', 'preferences.eyedropperMagnifier', 'preferences.eyedropperMagnifierSize', 'preferences.eyedropperMagnifierStyle', 'preferences.eyedropperMagnifierDistortion'],
+  tools: ['preferences.groups.previews', 'preferences.brushPreview', 'preferences.drawingBrushPreview', 'preferences.selectionCrosshair', 'preferences.selectionPreviewColor', 'preferences.selectionPreviewColor.auto', 'preferences.selectionPreviewColor.custom', 'preferences.selectionPreviewCustomColor', 'preferences.selectionSizeVisible', 'preferences.moveLayerContentPreview', 'preferences.moveLayerClickFlash', 'preferences.moveLayerClickFlashDuration', 'preferences.groups.alignment', 'preferences.gridAlignment', 'preferences.gridAlignmentHint', 'preferences.smartAlignment', 'preferences.smartAlignmentHint', 'preferences.alignmentGuides', 'preferences.alignmentGuidesHint', 'preferences.alignmentThreshold', 'preferences.alignmentThresholdHint', 'preferences.groups.drawing', 'preferences.gradientLineVisible', 'preferences.gradientLineColor', 'preferences.shiftLinePreview', 'preferences.balancedLine', 'preferences.lineDirectionStep', 'preferences.lassoClosed', 'preferences.eyedropperPencil', 'preferences.groups.eyedropper', 'preferences.eyedropperMagnifier', 'preferences.eyedropperMagnifierSize', 'preferences.eyedropperMagnifierStyle', 'preferences.eyedropperMagnifierDistortion'],
   files: ['preferences.groups.locations', 'preferences.saveDirectory', 'preferences.exportDirectory', 'preferences.groups.formats', 'preferences.saveFormat', 'preferences.exportFormat', 'preferences.groups.recovery', 'preferences.recovery', 'preferences.recoveryRetentionDays', 'preferences.recoveryRetentionDaysHint'],
   colorLayers: ['preferences.colorModes', 'preferences.restoreDefaults'],
   presets: ['preferences.newDocumentPresets', 'preferences.addSize', 'preferences.exportScalePresets', 'preferences.addScale', 'preferences.layerColors', 'preferences.addColor', 'preferences.restoreDefaults'],
@@ -133,7 +136,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [extensionsLoading, setExtensionsLoading] = useState(false)
   const [extensionBusyId, setExtensionBusyId] = useState<string | null>(null)
   const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string; barId?: string } | null>(null)
-  const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set())
+  const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set(preferences.quickCommandBars.filter((bar) => bar.edge === 'none').map((bar) => bar.id)))
   const preferencePointerDragRef = useRef<PreferencePointerDrag | null>(null)
   const update = <K extends keyof typeof preferences>(key: K, value: typeof preferences[K]): void => setPreferences((current) => ({ ...current, [key]: value }))
   const updateDocumentSize = (index: number, key: keyof DocumentSizePreset, value: number): void => update('documentSizePresets', preferences.documentSizePresets.map((preset, presetIndex) => presetIndex === index ? { ...preset, [key]: value } : preset))
@@ -164,10 +167,21 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     if (next === current.colorEditorModes) return current
     return { ...current, colorEditorModes: next }
   })
-  const updateQuickCommandBar = (barId: string, patch: Partial<QuickCommandBarPreference>): void => setPreferences((current) => ({
-    ...current,
-    quickCommandBars: current.quickCommandBars.map((bar) => bar.id === barId ? { ...bar, ...patch } : bar)
-  }))
+  const updateQuickCommandBar = (barId: string, patch: Partial<QuickCommandBarPreference>): void => {
+    setPreferences((current) => ({
+      ...current,
+      quickCommandBars: current.quickCommandBars.map((bar) => bar.id === barId ? { ...bar, ...patch } : bar)
+    }))
+    if (patch.edge !== undefined) {
+      setCollapsedQuickCommandBars((current) => {
+        const next = new Set(current)
+        if (patch.edge === 'none') next.add(barId)
+        else next.delete(barId)
+        if (next.size === current.size && (patch.edge === 'none' ? current.has(barId) : !current.has(barId))) return current
+        return next
+      })
+    }
+  }
   const toggleQuickCommandBarCollapsed = (barId: string): void => setCollapsedQuickCommandBars((current) => {
     const next = new Set(current)
     if (next.has(barId)) next.delete(barId)
@@ -345,7 +359,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       ]
     })
     if (choice !== 'reset') return
-    clearStoredValuesExcept([RECENT_PROJECTS_STORAGE_KEY, GALLERY_PINS_STORAGE_KEY])
+    clearStoredValuesExcept([RECENT_PROJECTS_STORAGE_KEY, GALLERY_PINS_STORAGE_KEY, ...WORKSPACE_LAYOUT_STORAGE_KEYS])
     setEditorPreferencesPreview(null)
     const defaults = loadEditorPreferences()
     setPreferences(defaults)
@@ -355,20 +369,25 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   }
   const toggle = (label: string, checked: boolean, onChange: (checked: boolean) => void, tooltip?: string) => <PreferenceToggle label={label} checked={checked} onChange={onChange} tooltip={tooltip} />
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
-  const visiblePreferenceSections = useMemo(() => PREFERENCE_SECTIONS.filter(([value, labelKey]) => {
-    if (!normalizedQuery) return true
-    return [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key))].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))
-  }), [locale, normalizedQuery, t])
+  const preferenceSectionMatches = useMemo(() => new Map(PREFERENCE_SECTIONS.map(([value, labelKey]) => [value, !normalizedQuery || [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key))].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))])), [locale, normalizedQuery, t])
+  const visiblePreferenceSections = PREFERENCE_SECTIONS
+  const hasPreferenceMatches = !normalizedQuery || Array.from(preferenceSectionMatches.values()).some(Boolean)
+  const preferenceSearch = useMemo(() => ({ query: normalizedQuery, matches: (value: ReactNode) => !normalizedQuery || (() => {
+    const text = searchText(value)
+    return text.toLocaleLowerCase(locale).includes(normalizedQuery)
+  })() }), [locale, normalizedQuery])
+  /* Keep every category visible while searching; unmatched categories are
+     muted so the user can still open and inspect them. */
   useEffect(() => {
-    if (!normalizedQuery || visiblePreferenceSections.some(([value]) => value === section)) return
-    const first = visiblePreferenceSections[0]?.[0]
+    if (!normalizedQuery || preferenceSectionMatches.get(section)) return
+    const first = PREFERENCE_SECTIONS.find(([value]) => preferenceSectionMatches.get(value))?.[0]
     if (first) setSection(first)
-  }, [normalizedQuery, section, visiblePreferenceSections])
+  }, [normalizedQuery, preferenceSectionMatches, section])
 
   return <div className="modal-backdrop" role="presentation"><ModalShell storageKey="preferences" defaultWidth={720} defaultHeight={560} minWidth={620} minHeight={460} fitContent={false} className="settings-modal" role="dialog" aria-label={t('preferences.title')}>
     <DialogHeader eyebrow={t('preferences.eyebrow')} title={t('preferences.title')} closeLabel={t('common.close')} onClose={onClose} />
-    <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey) }))} onChange={setSection} /></aside><main className="component-scrollbar">
-      {visiblePreferenceSections.length === 0 ? <p className="preference-search-empty">{t('preferences.searchNoResults')}</p> : <>
+    <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey), muted: Boolean(normalizedQuery && !preferenceSectionMatches.get(value)) }))} onChange={setSection} /></aside><PreferenceSearchContext.Provider value={preferenceSearch}><main className="component-scrollbar">
+      {!hasPreferenceMatches ? <p className="preference-search-empty">{t('preferences.searchNoResults')}</p> : <>
       {section === 'general' && <>
         <PreferenceGroup title={t('preferences.groups.interface')}>
           <FormField className="preference-field" label={t('preferences.language')}><ThemedSelect value={preferences.language} groups={[{ label: t('preferences.languageGroup'), options: AVAILABLE_APP_LOCALES.map((value) => ({ value, label: localeDisplayName(value, locale) })) }]} label={t('preferences.language')} onChange={(value) => update('language', value as AppLocale)} /></FormField>
@@ -400,7 +419,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
             const metadata = QUICK_COMMAND_METADATA[item.id]
             const enabledCount = bar.commands.filter((candidate) => candidate.enabled).length
             const label = t(metadata.label)
-            return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id && (draggedPreferenceItem.barId === bar.id) ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-bar-id={bar.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id, bar.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => updateQuickCommandBar(bar.id, { commands: bar.commands.map((candidate) => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate) })} /></div>
+            return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id && (draggedPreferenceItem.barId === bar.id) ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-bar-id={bar.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id, bar.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon">{metadata.iconSource ? <PixelAssetIcon src={metadata.iconSource} /> : <PixelUtilityIcon kind={metadata.icon} />}</span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => updateQuickCommandBar(bar.id, { commands: bar.commands.map((candidate) => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate) })} /></div>
           })}</div>}
         </section>
         })}</div>
@@ -411,7 +430,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           <FormField className="preference-field" label={t('preferences.luminanceScope')}><ThemedSelect value={preferences.relativeLuminanceScope} groups={[{ label: t('preferences.luminanceScopeGroup'), options: [{ value: 'canvas', label: t('preferences.luminanceScope.canvas') }, { value: 'app', label: t('preferences.luminanceScope.app') }] }]} label={t('preferences.luminanceScope')} onChange={(value) => update('relativeLuminanceScope', value as RelativeLuminanceScope)} /></FormField>
           <div className="preference-checker-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.checkerColors')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['checkerLight', 'checkerDark'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-color-value-list"><ColorValueControl color={preferences.checkerboard.lightColor} density="regular" onChange={(lightColor) => setVisualOverride('checkerLight', { ...lightColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.lightColor')} fillWithColor /><ColorValueControl color={preferences.checkerboard.darkColor} density="regular" onChange={(darkColor) => setVisualOverride('checkerDark', { ...darkColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.darkColor')} fillWithColor /></div></div>
           <div className="preference-visual-color-grid"><div className="preference-checker-colors preference-grid-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.pixelGridColor')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['pixelGrid'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-grid-color-list"><ColorValueControl color={preferences.pixelGridColor} density="regular" onChange={(color) => setVisualOverride('pixelGrid', color)} label={t('preferences.pixelGridColor')} roleLabel={t('preferences.pixelGridColor')} fillWithColor inPalette={false} /></div></div><div className="preference-checker-colors preference-grid-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.gridColor')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['customGrid'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-grid-color-list"><ColorValueControl color={preferences.gridColor} density="regular" onChange={(color) => setVisualOverride('customGrid', color)} label={t('preferences.gridColor')} roleLabel={t('preferences.gridColor')} fillWithColor inPalette={false} /></div></div><div className="preference-checker-colors preference-grid-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.sliceColor')} /><div className="preference-grid-color-list"><ColorValueControl color={preferences.sliceColor} density="regular" onChange={(sliceColor) => update('sliceColor', sliceColor)} label={t('preferences.sliceColor')} roleLabel={t('preferences.sliceColor')} fillWithColor inPalette={false} /></div></div><div className="preference-checker-colors preference-grid-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.textBoxColor')} /><div className="preference-grid-color-list"><ColorValueControl color={preferences.textBoxColor} density="regular" onChange={(textBoxColor) => update('textBoxColor', textBoxColor)} label={t('preferences.textBoxColor')} roleLabel={t('preferences.textBoxColor')} fillWithColor inPalette={false} /></div></div><div className="preference-checker-colors preference-grid-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.canvasResizeColor')} /><div className="preference-grid-color-list"><ColorValueControl color={preferences.canvasResizeColor} density="regular" onChange={(canvasResizeColor) => update('canvasResizeColor', canvasResizeColor)} label={t('preferences.canvasResizeColor')} roleLabel={t('preferences.canvasResizeColor')} fillWithColor inPalette={false} /></div></div></div>
-          <FormField className="preference-field" label={t('preferences.freeTileInstanceOutlineColor')}><ColorValueControl color={preferences.freeTileInstanceOutlineColor} density="regular" onChange={(freeTileInstanceOutlineColor) => update('freeTileInstanceOutlineColor', freeTileInstanceOutlineColor)} label={t('preferences.freeTileInstanceOutlineColor')} roleLabel={t('preferences.freeTileInstanceOutlineColor')} fillWithColor inPalette={false} /></FormField>
+          <FormField className="preference-field preference-free-tile-outline-field" label={t('preferences.freeTileInstanceOutlineColor')}><ColorValueControl color={preferences.freeTileInstanceOutlineColor} density="regular" onChange={(freeTileInstanceOutlineColor) => update('freeTileInstanceOutlineColor', freeTileInstanceOutlineColor)} label={t('preferences.freeTileInstanceOutlineColor')} roleLabel={t('preferences.freeTileInstanceOutlineColor')} fillWithColor inPalette={false} /></FormField>
         </PreferenceGroup>
       </>}
       {section === 'theme' && <ThemePreferencesSection preferences={preferences} onChange={setPreferences} />}
@@ -447,6 +466,8 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           <FormField className="preference-field" label={t('preferences.alignmentThreshold')} tooltip={t('preferences.alignmentThresholdHint')}><NumberInput aria-label={t('preferences.alignmentThreshold')} min={1} max={32} suffix="px" value={preferences.alignmentThreshold} disabled={!preferences.gridAlignmentEnabled && !preferences.smartAlignmentEnabled} onValueChange={(value) => update('alignmentThreshold', parseAlignmentThreshold(String(value)))} /></FormField>
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.drawing')}>
+          {toggle(t('preferences.gradientLineVisible'), preferences.gradientLineVisible, (value) => update('gradientLineVisible', value))}
+          <FormField className="preference-field" label={t('preferences.gradientLineColor')}><ColorValueControl color={preferences.gradientLineColor} density="regular" onChange={(gradientLineColor) => update('gradientLineColor', gradientLineColor)} label={t('preferences.gradientLineColor')} roleLabel={t('preferences.gradientLineColor')} fillWithColor inPalette={false} disabled={!preferences.gradientLineVisible} /></FormField>
           {toggle(t('preferences.shiftLinePreview'), preferences.shiftLinePreviewEnabled, (value) => update('shiftLinePreviewEnabled', value))}
           {toggle(t('preferences.balancedLine'), preferences.balancedShiftLineEnabled, (value) => update('balancedShiftLineEnabled', value), t('preferences.balancedLineHint'))}
           <FormField className="preference-field" label={t('preferences.lineDirectionStep')} tooltip={t('preferences.lineDirectionStepHint')}><NumberInput aria-label={t('preferences.lineDirectionStep')} min={1} max={16} value={preferences.lineDirectionStep} onValueChange={(value) => update('lineDirectionStep', Math.round(value))} /></FormField>
@@ -504,7 +525,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       </PreferenceGroup>}
       {section === 'reset' && <><p>{t('preferences.resetDescription')}</p><button className="danger-button" onClick={() => void resetAllSettings()}>{t('preferences.resetAll')}</button></>}
       </>}
-    </main></div>
+    </main></PreferenceSearchContext.Provider></div>
     <footer><button className="quiet-button" onClick={onClose}>{t('preferences.cancel')}</button><button className="quiet-button" onClick={persist}>{t('preferences.apply')}</button><button className="primary-button" onClick={() => { persist(); onClose() }}>{t('preferences.confirm')}</button></footer>
   </ModalShell></div>
 }

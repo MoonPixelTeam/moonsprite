@@ -3,19 +3,26 @@ import { outlineDirectionsForKernel, outlineDirectionsMatchKernel } from '@/core
 import { RangeField } from './RangeField'
 import { SegmentedControl } from './SegmentedControl'
 import { useI18n } from './I18nProvider'
+import { PixelAssetIcon } from './app/editor-tools'
+import outlineKernelRoundIcon from '@/assets/pixel-icons/outline-kernel-round.svg'
+import outlineKernelSquareIcon from '@/assets/pixel-icons/outline-kernel-square.svg'
+import outlineKernelHorizontalIcon from '@/assets/pixel-icons/outline-kernel-horizontal.svg'
+import outlineKernelVerticalIcon from '@/assets/pixel-icons/outline-kernel-vertical.svg'
+import outlineDirectionOffIcon from '@/assets/pixel-icons/outline-direction-off.svg'
+import outlineDirectionOnIcon from '@/assets/pixel-icons/outline-direction-on.svg'
 
 const directionGrid: Array<OutlineDirection | 'center'> = ['nw', 'n', 'ne', 'w', 'center', 'e', 'sw', 's', 'se']
 const quickShapeIds: OutlineKernel[] = ['round', 'square', 'horizontal', 'vertical']
 
-const kernelMasks: Record<OutlineKernel, string[]> = {
-  round: ['010', '101', '010'],
-  square: ['111', '101', '111'],
-  horizontal: ['000', '101', '000'],
-  vertical: ['010', '000', '010']
+const kernelIcons: Record<OutlineKernel, string> = {
+  round: outlineKernelRoundIcon,
+  square: outlineKernelSquareIcon,
+  horizontal: outlineKernelHorizontalIcon,
+  vertical: outlineKernelVerticalIcon
 }
 
 function OutlineKernelIcon({ kernel }: { kernel: OutlineKernel }) {
-  return <span className="outline-kernel-icon" aria-hidden="true">{kernelMasks[kernel].flatMap((row, y) => [...row].map((cell, x) => <i key={`${x}-${y}`} className={`${cell === '1' ? 'active' : ''} ${x === 1 && y === 1 ? 'source' : ''}`} />))}</span>
+  return <PixelAssetIcon className="outline-kernel-icon" src={kernelIcons[kernel]} />
 }
 
 interface OutlineStrokeControlsProps {
@@ -45,7 +52,8 @@ export function OutlineStrokeControls({ directions, kernel, maxThickness = 64, o
         <div className="outline-setting-group"><span>{t('outline.quickShapes')}</span><div className="outline-quick-shapes">{quickShapes.map((shape) => <button key={shape.id} type="button" className={activeQuickShape === shape.id ? 'selected' : ''} title={shape.label} aria-label={shape.label} onClick={() => applyQuickShape(shape.id)}><OutlineKernelIcon kernel={shape.id} /></button>)}</div></div>
         <div className="outline-setting-group outline-direction-setting"><span>{t('outline.pixelDirections')}</span><div className="outline-direction-grid" aria-label={t('outline.pixelDirectionsAria')}>{directionGrid.map((direction) => {
           if (direction === 'center') return <span key={direction} className="outline-direction-center" aria-hidden="true"><i /></span>
-          return <button key={direction} type="button" className={directions[direction] ? 'selected' : ''} title={t('outline.allowDirection', { direction })} aria-label={t('outline.allowDirection', { direction })} onClick={() => toggleDirection(direction)}><span /></button>
+          const selected = directions[direction]
+          return <button key={direction} type="button" className={selected ? 'selected' : ''} title={t('outline.allowDirection', { direction })} aria-label={t('outline.allowDirection', { direction })} onClick={() => toggleDirection(direction)}><PixelAssetIcon className="outline-direction-marker" src={selected ? outlineDirectionOnIcon : outlineDirectionOffIcon} /></button>
         })}</div></div>
       </div>
     </fieldset>

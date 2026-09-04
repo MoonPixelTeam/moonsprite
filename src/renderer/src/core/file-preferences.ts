@@ -42,6 +42,8 @@ export const CANVAS_RESIZE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.canvas-
 export const SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.slice-outlines-visible'
 export const WHEEL_ZOOM_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-enabled'
 export const SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.shift-line-preview-enabled'
+export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-visible'
+export const GRADIENT_LINE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-color'
 export const LASSO_PREVIEW_CLOSED_PREFERENCE_KEY = 'moonsprite.preference.lasso-preview-closed'
 export const EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-switch-to-pencil'
 export const EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-enabled'
@@ -117,6 +119,7 @@ export const QUICK_COMMAND_IDS = [
   'resetView',
   'fillForeground',
   'deleteSelection',
+  'quickAntiAlias',
   'swapForegroundBackground',
   'createBrushFromSelection',
   'rotateViewClockwise90',
@@ -146,7 +149,7 @@ export interface QuickCommandBarPreference {
 }
 
 const DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
-  ['selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'customGrid', 'tileRepeatBoth', 'relativeLuminance', 'detectImageScale', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical'],
+  ['selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'customGrid', 'tileRepeatBoth', 'relativeLuminance', 'detectImageScale', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical', 'quickAntiAlias'],
   ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
   ['selectionFlipHorizontal'],
   ['selectionFlipHorizontal']
@@ -308,6 +311,7 @@ export const DEFAULT_FREE_TILE_INSTANCE_OUTLINE_COLOR: RgbaColor = { r: 0, g: 0,
 export const DEFAULT_TEXT_BOX_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_CANVAS_RESIZE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_SELECTION_PREVIEW_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
+export const DEFAULT_GRADIENT_LINE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 
 export function parseRotationIndicatorPosition(value: string | null): RotationIndicatorPosition {
   return value === 'canvas' ? 'canvas' : 'view'
@@ -552,6 +556,8 @@ export interface EditorPreferences {
   wheelZoomEnabled: boolean
   wheelZoomMode: WheelZoomMode
   shiftLinePreviewEnabled: boolean
+  gradientLineVisible: boolean
+  gradientLineColor: RgbaColor
   lassoPreviewClosed: boolean
   eyedropperSwitchToPencil: boolean
   eyedropperMagnifierEnabled: boolean
@@ -621,6 +627,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   wheelZoomEnabled: true,
   wheelZoomMode: 'stepped',
   shiftLinePreviewEnabled: true,
+  gradientLineVisible: true,
+  gradientLineColor: DEFAULT_GRADIENT_LINE_COLOR,
   lassoPreviewClosed: false,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
@@ -1023,6 +1031,8 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     wheelZoomEnabled: get(WHEEL_ZOOM_ENABLED_PREFERENCE_KEY) !== 'false',
     wheelZoomMode: parseWheelZoomMode(get(WHEEL_ZOOM_MODE_PREFERENCE_KEY)),
     shiftLinePreviewEnabled: get(SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY) !== 'false',
+    gradientLineVisible: get(GRADIENT_LINE_VISIBLE_PREFERENCE_KEY) !== 'false',
+    gradientLineColor: parseHexColor(get(GRADIENT_LINE_COLOR_PREFERENCE_KEY), DEFAULT_GRADIENT_LINE_COLOR),
     lassoPreviewClosed: get(LASSO_PREVIEW_CLOSED_PREFERENCE_KEY) === 'true',
     eyedropperSwitchToPencil: get(EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY) === 'true',
     eyedropperMagnifierEnabled: get(EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY) !== 'false',
@@ -1100,6 +1110,8 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [WHEEL_ZOOM_ENABLED_PREFERENCE_KEY]: String(preferences.wheelZoomEnabled),
     [WHEEL_ZOOM_MODE_PREFERENCE_KEY]: preferences.wheelZoomMode,
     [SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY]: String(preferences.shiftLinePreviewEnabled),
+    [GRADIENT_LINE_VISIBLE_PREFERENCE_KEY]: String(preferences.gradientLineVisible),
+    [GRADIENT_LINE_COLOR_PREFERENCE_KEY]: colorHex(preferences.gradientLineColor),
     [LASSO_PREVIEW_CLOSED_PREFERENCE_KEY]: String(preferences.lassoPreviewClosed),
     [EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY]: String(preferences.eyedropperSwitchToPencil),
     [EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY]: String(preferences.eyedropperMagnifierEnabled),

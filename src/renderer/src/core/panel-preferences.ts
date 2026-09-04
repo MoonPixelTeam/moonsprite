@@ -2,6 +2,8 @@ import { readStoredJson, readStoredString, removeStoredValue, writeStoredString 
 
 export { readStoredString, removeStoredValue, writeStoredString } from './storage'
 
+export const ACTIVE_PALETTE_ID_STORAGE_KEY = 'moonsprite.active-palette-id'
+
 export interface FloatingPosition { x: number; y: number; width?: number; height?: number }
 
 interface PersistedFloatingPosition extends FloatingPosition {

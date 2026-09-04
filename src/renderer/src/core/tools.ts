@@ -1,7 +1,7 @@
-import type { AnimationCelSurface, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
-import { compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
+import type { AnimationCelSurface, AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
+import { cachedLayerContentBounds, compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, isLayerMask, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
 import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
-import { blendOver, isInBounds, packColor, pixelIndex, unpackColor } from './raster'
+import { blendOver, colorEquals, isInBounds, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from './raster'
 import { flipSelectionMask, lassoSelection, packedColorMatchesTolerance, polygonSelection, rasterLinePoints, rotatedEllipseSelection, rotatedRectSelection, rotatedSelectionBounds, roundedRectContainsPoint, roundedRectRadius, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionDestinationPoint, transformedSelectionSourcePoint, type SelectionFlipAxis, type SelectionShearTransform } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 import { balancedStairLinePoints } from './pixel-line'
@@ -49,6 +49,34 @@ const paintLayerValue = (
   const blended = blendOver(base, color)
   return layer.format === 'rgba' ? packColor(blended) : paletteColorIdForCanvas(document, blended)
 }
+
+/**
+ * Composites a captured selection pixel over the destination pixel. Selection
+ * moves/copies are source-over operations: a translucent source must not
+ * replace an opaque destination. Masks keep their scalar/direct-write
+ * semantics and therefore bypass color compositing.
+ */
+const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {
+  if (isLayerMask(layer)) return value
+  const top = layer.format === 'rgba' ? unpackColor(value) : getPaletteEntry(document, value).color
+  if (top.a === 0) return destination
+  const base = layer.format === 'rgba' ? unpackColor(destination) : getPaletteEntry(document, destination).color
+  const blended = blendOver(base, top)
+  return layer.format === 'rgba' ? packColor(blended) : paletteColorIdForCanvas(document, blended)
+}
+
+const compositeSelectionPixel = (document: SpriteDocument, layer: RasterLayer, index: number, value: number): number => (
+  compositeSelectionPixelOver(document, layer, readLayerPacked(document, layer, index), value)
+)
+
+/**
+ * Uses the original value captured by a pixel edit when available. Selection
+ * transforms clear their source before writing destinations, so reading the
+ * live layer here would incorrectly blend over a cleared pixel for overlaps.
+ */
+const compositeSelectionPixelForEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number, value: number): number => (
+  compositeSelectionPixelOver(document, layer, edit.before.get(index) ?? readLayerPacked(document, layer, index), value)
+)
 
 const layerColorBeforeEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number): RgbaColor => {
   const original = brushPaintBaselineByEdit.get(edit)?.get(index) ?? edit.before.get(index)
@@ -1165,7 +1193,9 @@ export function outlinePixelSamples(
   thickness: number,
   position: OutlinePosition,
   directions: OutlineDirections = allOutlineDirections(),
-  kernel: OutlineKernel = 'square'
+  kernel: OutlineKernel = 'square',
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 },
+  sourceColor: RgbaColor | null = null
 ): OutlinePixelSample[] {
   const radius = Math.max(1, Math.min(64, Math.round(thickness)))
   const sourceBounds = selection ?? layerContentBounds(document, layer)
@@ -1177,8 +1207,12 @@ export function outlinePixelSamples(
   if (right <= left || bottom <= top) return []
   const width = right - left
   const height = bottom - top
-  const isSource = (x: number, y: number): boolean =>
-    x >= left && y >= top && x < right && y < bottom && (!selection || selectionContains(selection, x, y)) && readLayerColorAt(document, layer, x, y).a > 0
+  const isSource = (x: number, y: number): boolean => {
+    if (x < left || y < top || x >= right || y >= bottom || (selection && !selectionContains(selection, x, y))) return false
+    const color = readLayerColorAt(document, layer, x, y)
+    if (sourceColor) return color.a > 0 && colorEquals(color, sourceColor)
+    return color.a > 0 && !colorEquals(color, backgroundColor)
+  }
   const result = new Map<number, OutlinePixelSample>()
   const boundary: Array<{ x: number; y: number; color: RgbaColor }> = []
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
@@ -1202,7 +1236,7 @@ export function outlinePixelSamples(
       const targetY = source.y + dy
       if (targetX < 0 || targetY < 0 || targetX >= document.width || targetY >= document.height || isSource(targetX, targetY)) continue
       const index = pixelIndex(document.width, targetX, targetY)
-      if (readLayerColorAt(document, layer, targetX, targetY).a !== 0) continue
+      if (!sourceColor && readLayerColorAt(document, layer, targetX, targetY).a !== 0) continue
       const distance = dx * dx + dy * dy
       const rank = (-dy + radius) * diameter + (-dx + radius)
       setOutlinePixelCandidate(unclipped, index, source.color, distance, rank)
@@ -1248,9 +1282,10 @@ export function outlinePixelIndices(
   thickness: number,
   position: OutlinePosition,
   directions: OutlineDirections = allOutlineDirections(),
-  kernel: OutlineKernel = 'square'
+  kernel: OutlineKernel = 'square',
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 }
 ): number[] {
-  return outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel).map((sample) => sample.index)
+  return outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel, backgroundColor).map((sample) => sample.index)
 }
 
 export function outlineSelection(
@@ -1263,19 +1298,246 @@ export function outlineSelection(
   directions: OutlineDirections = allOutlineDirections(),
   kernel: OutlineKernel = 'square',
   smartHue = false,
-  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS
+  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS,
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 }
 ): PixelEdit | null {
   if (isLayerEffectivelyLocked(document, layer)) return null
   if (!ensureLayerCoversCanvas(document, layer)) return null
   const edit = beginPixelEdit(layer.id)
   const colorSettings = { color, smartHue, smartHueDarkness }
-  for (const sample of outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel)) {
+  for (const sample of outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel, backgroundColor)) {
     const x = sample.index % document.width
     const y = Math.floor(sample.index / document.width)
     const index = layerIndexAt(layer, x, y)
     if (index !== null) recordPixel(document, layer, edit, index, paintLayerValue(document, layer, edit, index, resolveOutlineStrokeColor(colorSettings, sample.referenceColor)))
   }
   return edit.before.size > 0 ? edit : null
+}
+
+/** Paints the one-pixel diagonal gaps shared by horizontal and vertical outlines. */
+export function antiAliasSelection(
+  document: SpriteDocument,
+  layer: RasterLayer,
+  selection: SelectionMask | null,
+  color: RgbaColor | null,
+  autoColorOpacity = 50,
+  includeInteriorColors = false,
+  colorSource: AntiAliasColorSource = 'automatic'
+): PixelEdit | null {
+  if (isLayerEffectivelyLocked(document, layer)) return null
+  if (!ensureLayerCoversCanvas(document, layer)) return null
+  const paletteColors = colorSource === 'palette'
+    ? document.palette.filter((entry) => entry.id !== 0 && entry.color.a > 0).map((entry) => entry.color)
+    : []
+  const canvasColors = colorSource === 'canvas' ? collectAntiAliasCanvasColors(document) : []
+  const regionByIndex = new Map<number, number>()
+  const interiorRegions: Array<{ color: RgbaColor; area: number; touchesTransparent: boolean }> = []
+  if (includeInteriorColors) {
+    const sourceBounds = selection ?? layerContentBounds(document, layer)
+    if (sourceBounds) {
+      const left = Math.max(0, sourceBounds.x)
+      const top = Math.max(0, sourceBounds.y)
+      const right = Math.min(document.width, sourceBounds.x + sourceBounds.width)
+      const bottom = Math.min(document.height, sourceBounds.y + sourceBounds.height)
+      const visited = new Set<number>()
+      const regionNeighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+      const contourNeighbors = [-1, 0, 1] as const
+      const inScope = (x: number, y: number): boolean => x >= left && y >= top && x < right && y < bottom && (!selection || selectionContains(selection, x, y))
+      for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
+        if (!inScope(x, y)) continue
+        const startIndex = pixelIndex(document.width, x, y)
+        if (visited.has(startIndex)) continue
+        const startColor = readLayerColorAt(document, layer, x, y)
+        if (startColor.a === 0) continue
+        const regionId = interiorRegions.length
+        const queue = [startIndex]
+        let area = 0
+        let touchesTransparent = false
+        visited.add(startIndex)
+        while (queue.length > 0) {
+          const currentIndex = queue.pop()!
+          const currentX = currentIndex % document.width
+          const currentY = Math.floor(currentIndex / document.width)
+          regionByIndex.set(currentIndex, regionId)
+          area += 1
+          for (const dy of contourNeighbors) for (const dx of contourNeighbors) {
+            if (dx === 0 && dy === 0) continue
+            const neighborX = currentX + dx
+            const neighborY = currentY + dy
+            if (!inScope(neighborX, neighborY) || readLayerColorAt(document, layer, neighborX, neighborY).a === 0) {
+              touchesTransparent = true
+              continue
+            }
+          }
+          for (const [dx, dy] of regionNeighbors) {
+            const neighborX = currentX + dx
+            const neighborY = currentY + dy
+            if (!inScope(neighborX, neighborY)) continue
+            const neighborIndex = pixelIndex(document.width, neighborX, neighborY)
+            if (visited.has(neighborIndex) || !colorEquals(readLayerColorAt(document, layer, neighborX, neighborY), startColor)) continue
+            visited.add(neighborIndex)
+            queue.push(neighborIndex)
+          }
+        }
+        interiorRegions.push({ color: startColor, area, touchesTransparent })
+      }
+    }
+  }
+  const intersections = new Map<number, { horizontal: OutlinePixelSample; vertical: OutlinePixelSample; preferredColor: RgbaColor | null }>()
+  const collectIntersections = (sourceColor: RgbaColor | null): void => {
+    const horizontal = outlinePixelSamples(document, layer, selection, 1, 'outside', {
+      nw: false, n: false, ne: false,
+      w: true, e: true,
+      sw: false, s: false, se: false
+    }, 'square', { r: 0, g: 0, b: 0, a: 0 }, sourceColor)
+    const vertical = new Map(outlinePixelSamples(document, layer, selection, 1, 'outside', {
+      nw: false, n: true, ne: false,
+      w: false, e: false,
+      sw: false, s: true, se: false
+    }, 'square', { r: 0, g: 0, b: 0, a: 0 }, sourceColor).map((sample) => [sample.index, sample]))
+    for (const sample of horizontal) {
+      if (!antiAliasTargetInScope(document, selection, sample.index)) continue
+      const verticalSample = vertical.get(sample.index)
+      if (!verticalSample) continue
+      intersections.set(sample.index, { horizontal: sample, vertical: verticalSample, preferredColor: sourceColor })
+    }
+  }
+  collectIntersections(null)
+  if (includeInteriorColors && interiorRegions.length > 0) {
+    const horizontal = new Map<number, OutlinePixelSample>()
+    const vertical = new Map<number, OutlinePixelSample>()
+    const sourceBounds = selection ?? layerContentBounds(document, layer)
+    if (sourceBounds) {
+      const left = Math.max(0, sourceBounds.x)
+      const top = Math.max(0, sourceBounds.y)
+      const right = Math.min(document.width, sourceBounds.x + sourceBounds.width)
+      const bottom = Math.min(document.height, sourceBounds.y + sourceBounds.height)
+      const addCandidate = (targetX: number, targetY: number, targetMap: Map<number, OutlinePixelSample>, sourceIndex: number, sourceColor: RgbaColor): void => {
+        if (targetX < left || targetY < top || targetX >= right || targetY >= bottom || (selection && !selectionContains(selection, targetX, targetY))) return
+        const targetIndex = pixelIndex(document.width, targetX, targetY)
+        const targetRegionId = regionByIndex.get(targetIndex)
+        const sourceRegionId = regionByIndex.get(sourceIndex)
+        if (sourceRegionId === undefined || targetRegionId === undefined || sourceRegionId === targetRegionId) return
+        const sourceRegion = interiorRegions[sourceRegionId]
+        const targetRegion = interiorRegions[targetRegionId]
+        if (targetRegion.area < sourceRegion.area || targetRegion.area === sourceRegion.area && targetRegionId < sourceRegionId) return
+        targetMap.set(targetIndex, { index: targetIndex, referenceColor: sourceColor })
+      }
+      for (const [sourceIndex, sourceRegionId] of regionByIndex) {
+        const sourceX = sourceIndex % document.width
+        const sourceY = Math.floor(sourceIndex / document.width)
+        const sourceColor = interiorRegions[sourceRegionId].color
+        addCandidate(sourceX - 1, sourceY, horizontal, sourceIndex, sourceColor)
+        addCandidate(sourceX + 1, sourceY, horizontal, sourceIndex, sourceColor)
+        addCandidate(sourceX, sourceY - 1, vertical, sourceIndex, sourceColor)
+        addCandidate(sourceX, sourceY + 1, vertical, sourceIndex, sourceColor)
+      }
+      for (const [index, horizontalSample] of horizontal) {
+        const verticalSample = vertical.get(index)
+        if (verticalSample) intersections.set(index, { horizontal: horizontalSample, vertical: verticalSample, preferredColor: null })
+      }
+    }
+  }
+  const edit = beginPixelEdit(layer.id)
+  for (const { horizontal, vertical, preferredColor } of intersections.values()) {
+    const sample = horizontal
+    const x = sample.index % document.width
+    const y = Math.floor(sample.index / document.width)
+    const index = layerIndexAt(layer, x, y)
+    if (index === null) continue
+    const targetColor = readLayerColorAt(document, layer, x, y)
+    const useTargetAsReference = colorSource !== 'automatic' && targetColor.a > 0 && !colorEquals(targetColor, sample.referenceColor)
+    const firstReference = useTargetAsReference ? targetColor : sample.referenceColor
+    const secondReference = useTargetAsReference ? sample.referenceColor : vertical.referenceColor
+    const automaticColor = automaticAntiAliasColor(document, layer, selection, x, y, firstReference, secondReference, targetColor, colorSource, paletteColors, canvasColors)
+    const resolvedColor = color ?? (colorSource === 'automatic' ? applyAntiAliasOpacity(automaticColor, autoColorOpacity) : automaticColor)
+    recordPixel(document, layer, edit, index, paintLayerValue(document, layer, edit, index, resolvedColor))
+  }
+  return edit.before.size > 0 ? edit : null
+}
+
+const antiAliasTargetInScope = (document: SpriteDocument, selection: SelectionMask | null, index: number): boolean => {
+  if (!selection) return true
+  return selectionContains(selection, index % document.width, Math.floor(index / document.width))
+}
+
+const applyAntiAliasOpacity = (color: RgbaColor, opacityPercent: number): RgbaColor => ({
+  ...color,
+  a: Math.round(color.a * Math.max(0, Math.min(100, opacityPercent)) / 100)
+})
+
+/** Matches the editor's relative-lightness view, represented as 0..255. */
+const antiAliasLuminance = (color: RgbaColor): number => relativeLuminanceColor(color).r
+
+const collectAntiAliasCanvasColors = (document: SpriteDocument): RgbaColor[] => {
+  const pixels = compositeRegion(document, 0, 0, document.width, document.height)
+  const colors = new Map<number, RgbaColor>()
+  for (let offset = 0; offset < pixels.length; offset += 4) {
+    const color = { r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2], a: pixels[offset + 3] }
+    if (color.a > 0) colors.set(packColor(color), color)
+  }
+  return [...colors.values()]
+}
+
+const nearestAntiAliasIntermediateColor = (
+  left: RgbaColor,
+  right: RgbaColor,
+  candidates: readonly RgbaColor[],
+  excludedColor: RgbaColor | null
+): RgbaColor | null => {
+  const leftLuminance = antiAliasLuminance(left)
+  const rightLuminance = antiAliasLuminance(right)
+  const minimum = Math.min(leftLuminance, rightLuminance)
+  const maximum = Math.max(leftLuminance, rightLuminance)
+  const target = (leftLuminance + rightLuminance) / 2
+  const usable = candidates.filter((candidate) => candidate.a > 0 && (!excludedColor || !colorEquals(candidate, excludedColor)))
+  const intermediate = usable.filter((candidate) => {
+    const luminance = antiAliasLuminance(candidate)
+    return luminance > minimum && luminance < maximum
+  })
+  const pool = intermediate.length > 0 ? intermediate : usable
+  return [...pool].sort((candidate, other) => {
+    const distance = Math.abs(antiAliasLuminance(candidate) - target)
+    const otherDistance = Math.abs(antiAliasLuminance(other) - target)
+    return distance - otherDistance
+  })[0] ?? null
+}
+
+const automaticAntiAliasColor = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  selection: SelectionMask | null,
+  x: number,
+  y: number,
+  horizontalReference: RgbaColor,
+  verticalReference: RgbaColor,
+  excludedColor: RgbaColor | null = null,
+  colorSource: AntiAliasColorSource = 'automatic',
+  paletteColors: readonly RgbaColor[] = [],
+  canvasColors: readonly RgbaColor[] = []
+): RgbaColor => {
+  if (colorSource === 'palette' && paletteColors.length > 0) {
+    return nearestAntiAliasIntermediateColor(horizontalReference, verticalReference, paletteColors, excludedColor) ?? paletteColors[0]
+  }
+  if (colorSource === 'canvas' && canvasColors.length > 0) {
+    return nearestAntiAliasIntermediateColor(horizontalReference, verticalReference, canvasColors, excludedColor) ?? horizontalReference
+  }
+  const candidates = new Map<number, { color: RgbaColor; count: number; distance: number; rank: number }>()
+  let rank = 0
+  for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+    if (dx === 0 && dy === 0) continue
+    const sourceX = x + dx
+    const sourceY = y + dy
+    if (selection && !selectionContains(selection, sourceX, sourceY)) continue
+    const candidate = sampleCompositeColor(document, sourceX, sourceY, layer.id)
+    if (candidate.a === 0 || (excludedColor && colorEquals(candidate, excludedColor))) continue
+    const key = packColor(candidate)
+    const current = candidates.get(key)
+    if (current) current.count += 1
+    else candidates.set(key, { color: candidate, count: 1, distance: Math.abs(dx) + Math.abs(dy), rank })
+    rank += 1
+  }
+  return [...candidates.values()].sort((left, right) => right.count - left.count || left.distance - right.distance || left.rank - right.rank)[0]?.color ?? horizontalReference
 }
 
 const shapeContainsOffset = (width: number, height: number, ellipse: boolean, offsetX: number, offsetY: number, cornerRadius = 0): boolean => {
@@ -1586,6 +1848,40 @@ const smartClosureBoundsForLayer = (document: SpriteDocument, layer: RasterLayer
   return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
 }
 
+const smartClosureCandidateBoundsForLayer = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  startX: number,
+  startY: number,
+  gapClosingThreshold: number
+): BinaryRegionBounds | undefined => {
+  const layerBounds = smartClosureBoundsForLayer(document, layer)
+  if (!layerBounds) return undefined
+  const cachedContent = cachedLayerContentBounds(document, layer)
+  const content = cachedContent === undefined ? layerContentBounds(document, layer) : cachedContent
+  const padding = Math.max(2, Math.trunc(gapClosingThreshold) + 2)
+  const contentLeft = content ? Math.floor(content.x) : startX
+  const contentTop = content ? Math.floor(content.y) : startY
+  const contentRight = content ? Math.ceil(content.x + content.width) : startX + 1
+  const contentBottom = content ? Math.ceil(content.y + content.height) : startY + 1
+  const left = Math.max(layerBounds.x, Math.min(startX, contentLeft) - padding)
+  const top = Math.max(layerBounds.y, Math.min(startY, contentTop) - padding)
+  const right = Math.min(layerBounds.x + layerBounds.width, Math.max(startX + 1, contentRight) + padding)
+  const bottom = Math.min(layerBounds.y + layerBounds.height, Math.max(startY + 1, contentBottom) + padding)
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+}
+
+const regionTouchesBoundsBoundary = (region: Uint8Array, width: number, height: number): boolean => {
+  if (width < 1 || height < 1 || region.length < width * height) return false
+  for (let y = 0; y < height; y += 1) {
+    if (region[y * width] === 1 || region[y * width + width - 1] === 1) return true
+  }
+  for (let x = 0; x < width; x += 1) {
+    if (region[x] === 1 || region[(height - 1) * width + x] === 1) return true
+  }
+  return false
+}
+
 export interface PixelOperationProfiler {
   record(stage: string, duration: number, detail?: Record<string, number | string | boolean>): void
 }
@@ -1832,6 +2128,44 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const matchesValue = (value: number): boolean => normalizedTolerance === 0
     ? value === target
     : packedColorMatchesTolerance(layer.format === 'rgba' ? value : paletteColors!.get(value) ?? 0, targetColor, normalizedTolerance)
+  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid'
+  type LocalSmartClosure = { bounds: BinaryRegionBounds; result: ReturnType<typeof contiguousMatchingRegionInBounds> }
+  let cachedLocalSmartClosure: LocalSmartClosure | null | undefined
+  const resolveLocalSmartClosure = (): LocalSmartClosure | null => {
+    if (cachedLocalSmartClosure !== undefined) return cachedLocalSmartClosure
+    if (effectiveGapClosingThreshold <= 0 || selection || !compactSolidFill) {
+      cachedLocalSmartClosure = null
+      return cachedLocalSmartClosure
+    }
+    const bounds = smartClosureCandidateBoundsForLayer(document, layer, startX, startY, effectiveGapClosingThreshold)
+    if (!bounds) {
+      cachedLocalSmartClosure = null
+      return cachedLocalSmartClosure
+    }
+    const boundsX = Math.trunc(bounds.x)
+    const boundsY = Math.trunc(bounds.y)
+    const boundsWidth = Math.trunc(bounds.width)
+    const boundsHeight = Math.trunc(bounds.height)
+    const packedRegion = readSurfacePackedRegion(
+      layer,
+      boundsX - layer.offsetX,
+      boundsY - layer.offsetY,
+      boundsWidth,
+      boundsHeight
+    )
+    const result = contiguousMatchingRegionInBounds(
+      boundsWidth,
+      boundsHeight,
+      startX - boundsX,
+      startY - boundsY,
+      (index) => packedRegion[index] === target,
+      effectiveGapClosingThreshold,
+      { x: 0, y: 0, width: boundsWidth, height: boundsHeight },
+      profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
+    )
+    cachedLocalSmartClosure = { bounds, result }
+    return cachedLocalSmartClosure
+  }
   if (!startWasOutsideLayer && matchesValue(0)) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     const layerLeft = layer.offsetX
@@ -1899,14 +2233,16 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       }
       return false
     }
-    const mayReachOutsideLayer = contiguousRegionCanEscapeLayer()
+    const localSmartClosure = resolveLocalSmartClosure()
+    const mayReachOutsideLayer = localSmartClosure
+      ? Boolean(localSmartClosure.result && regionTouchesBoundsBoundary(localSmartClosure.result.region, Math.trunc(localSmartClosure.result.bounds.width), Math.trunc(localSmartClosure.result.bounds.height)))
+      : contiguousRegionCanEscapeLayer()
     if (mayReachOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
   }
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
   const next = paintLayerValue(document, layer, edit, startLayerIndex, color)
   if (target === next) return null
-  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid'
   if (compactSolidFill) {
     const layerCoversCanvas = layer.offsetX <= 0
       && layer.offsetY <= 0
@@ -1932,37 +2268,15 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       return region ? floodFillBinaryRegionSolidRuns(document, layer, region, target, next) : null
     }
     if (effectiveGapClosingThreshold > 0 && !selection) {
-      const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
-      if (smartClosureBounds) {
-        const boundsX = Math.trunc(smartClosureBounds.x)
-        const boundsY = Math.trunc(smartClosureBounds.y)
-        const boundsWidth = Math.trunc(smartClosureBounds.width)
-        const boundsHeight = Math.trunc(smartClosureBounds.height)
-        const packedRegion = readSurfacePackedRegion(
-          layer,
-          boundsX - layer.offsetX,
-          boundsY - layer.offsetY,
-          boundsWidth,
-          boundsHeight
-        )
-        const region = contiguousMatchingRegionInBounds(
-          boundsWidth,
-          boundsHeight,
-          startX - boundsX,
-          startY - boundsY,
-          (index) => packedRegion[index] === target,
-          effectiveGapClosingThreshold,
-          { x: 0, y: 0, width: boundsWidth, height: boundsHeight },
-          profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
-        )
-        return region
-          ? floodFillLocalBinaryRegionSolidRuns(document, layer, region.region, {
-              x: boundsX,
-              y: boundsY,
-              width: boundsWidth,
-              height: boundsHeight
-            }, target, next)
-          : null
+      const localSmartClosure = resolveLocalSmartClosure()
+      if (localSmartClosure) {
+        if (!localSmartClosure.result) return null
+        if (!regionTouchesBoundsBoundary(localSmartClosure.result.region, Math.trunc(localSmartClosure.result.bounds.width), Math.trunc(localSmartClosure.result.bounds.height))) {
+          return floodFillLocalBinaryRegionSolidRuns(document, layer, localSmartClosure.result.region, localSmartClosure.result.bounds, target, next)
+        }
+      } else {
+        const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
+        if (smartClosureBounds) return null
       }
     }
     if (effectiveGapClosingThreshold <= 0 && normalizedTolerance === 0) {
@@ -2026,6 +2340,9 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       return layerIndex !== null && matchesValue(readLayerPacked(document, layer, layerIndex))
       }, effectiveGapClosingThreshold, smartClosureBounds, profiler ? (stage, duration) => profiler.record(stage, duration) : undefined)
     if (!region) return null
+    if (!imageBrush && brushTexture === 'solid' && normalizedTolerance === 0) {
+      return floodFillLocalBinaryRegionSolidRuns(document, layer, region, { x: 0, y: 0, width: document.width, height: document.height }, target, next)
+    }
     for (let index = 0; index < maxPixels; index += 1) {
       if (region[index] !== 1) continue
       const x = index % document.width
@@ -2530,7 +2847,12 @@ export function applySelectionTranslationCommit(
     const targetY = y - target.y
     if (targetX >= 0 && targetY >= 0 && targetX < target.width && targetY < target.height) {
       const offset = targetY * sourceSelection.width + targetX
-      if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) next = source.values[offset]
+      if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) {
+        // Use the value captured before this edit as the backdrop. This keeps
+        // overlapping moves deterministic regardless of iteration order while
+        // still applying source-over to translucent selection pixels.
+        next = compositeSelectionPixelOver(document, layer, before, source.values[offset])
+      }
     }
     return next
   }
@@ -2684,12 +3006,12 @@ export function applySelectionTranslationPreview(
     preview.before[preview.count] = readLayerPacked(document, layer, index)
     preview.count += 1
   }
-  const writeCanvasPacked = (canvasIndex: number, value: number): void => {
+  const writeCanvasPacked = (canvasIndex: number, value: number, composite = false): void => {
     const x = canvasIndex % document.width
     const y = Math.floor(canvasIndex / document.width)
     if (!insideClip(x, y)) return
     const index = layerIndexAt(layer, x, y)
-    if (index !== null) writeLayerPacked(document, layer, index, value)
+    if (index !== null) writeLayerPacked(document, layer, index, composite ? compositeSelectionPixel(document, layer, index, value) : value)
   }
   const sourceSelection = source.selection
   if (tileRepeatMode !== 'off') {
@@ -2738,7 +3060,7 @@ export function applySelectionTranslationPreview(
     })
     forEachOpaqueSource((localOffset, value) => {
       const targetIndex = targetCanvasIndex(localOffset)
-      if (targetIndex !== null) writeCanvasPacked(targetIndex, value)
+      if (targetIndex !== null) writeCanvasPacked(targetIndex, value, true)
     })
     return finishPreview()
   }
@@ -2760,7 +3082,7 @@ export function applySelectionTranslationPreview(
         if (transparent) continue
         const index = pixelIndex(document.width, x, y)
         capture(index)
-        writeCanvasPacked(index, value)
+        writeCanvasPacked(index, value, true)
       }
     }
     return finishPreview()
@@ -2790,7 +3112,7 @@ export function applySelectionTranslationPreview(
       if (!selectionContains(sourceSelection, sourceX, sourceY) || isTransparent(source.values[sourceOffset])) continue
       const targetX = target.x + localX
       const targetY = target.y + localY
-      if (isInBounds(document.width, document.height, targetX, targetY)) writeCanvasPacked(pixelIndex(document.width, targetX, targetY), source.values[sourceOffset])
+      if (isInBounds(document.width, document.height, targetX, targetY)) writeCanvasPacked(pixelIndex(document.width, targetX, targetY), source.values[sourceOffset], true)
     }
     return finishPreview()
   }
@@ -2809,7 +3131,7 @@ export function applySelectionTranslationPreview(
     const localOffset = source.opaqueOffsets[offset]
     const x = target.x + localOffset % sourceSelection.width
     const y = target.y + Math.floor(localOffset / sourceSelection.width)
-    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset])
+    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset], true)
   }
   return finishPreview()
 }
@@ -3290,7 +3612,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
           const index = layerIndexAt(layer, destination.x, destination.y)
           if (index === null || written.has(index)) continue
           written.add(index)
-          recordCanvasPixel(destination.x, destination.y, value)
+          recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, index, value))
         }
       }
     }
@@ -3322,7 +3644,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
         const transparent = layer.format === 'rgba'
           ? (value >>> 24) === 0
           : value === 0 || getPaletteEntry(document, value).color.a === 0
-        if (!transparent) recordCanvasPixel(x, y, value)
+        if (!transparent) {
+          const destinationIndex = layerIndexAt(layer, x, y)
+          if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+        }
       }
     } else forEachSelectedSourceOffset(source, (offset) => {
       const localX = offset % sourceSelection.width
@@ -3334,7 +3659,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
       const transparent = layer.format === 'rgba'
         ? unpackColor(value).a === 0
         : value === 0 || getPaletteEntry(document, value).color.a === 0
-      if (!transparent) recordCanvasPixel(x, y, value)
+      if (!transparent) {
+        const destinationIndex = layerIndexAt(layer, x, y)
+        if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+      }
     })
     return edit.before.size > 0 ? edit : null
   }
@@ -3355,7 +3683,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
       ? unpackColor(cell.value).a === 0
       : cell.value === 0 || getPaletteEntry(document, cell.value).color.a === 0
     if (transparent) continue
-    for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) recordCanvasPixel(destination.x, destination.y, cell.value)
+    for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) {
+      const destinationIndex = layerIndexAt(layer, destination.x, destination.y)
+      if (destinationIndex !== null) recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, cell.value))
+    }
   }
   return edit.before.size > 0 ? edit : null
 }

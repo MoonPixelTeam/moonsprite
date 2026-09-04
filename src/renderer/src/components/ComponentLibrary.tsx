@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactElement } from 'react'
-import { CheckCircle2, FileText, Layers2, Palette, Search } from 'lucide-react'
+import { FileText, Layers2, Palette, Search } from 'lucide-react'
 import type { GradientDither, ImageBrush, OutlineDirections, OutlineKernel, OutlinePosition, RgbaColor, Tileset } from '@shared/types'
 import { BrushThumbnail } from './BrushThumbnail'
 import { ColorPicker, type ColorPickerConfig } from './ColorPicker'
@@ -31,6 +31,7 @@ import { TilesetTileThumbnail } from './TilesetTileThumbnail'
 import { BrushDynamicsSettingsPanel } from './app/EditorToolOptions'
 import { FILL_KIND_ICONS, GRADIENT_TYPE_ICONS, SELECTION_KIND_ICONS, fillKindDefinitions, lineKindDefinitions, normalEditorToolIconFor, selectionKindDefinitions, shapeKindDefinitions, toolDefinitions } from './app/editor-tools'
 import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
+import quickAntiAliasIcon from '@/assets/pixel-icons/quick-command-anti-alias.svg'
 import { CURSOR_ICON_LIBRARY } from '@/platform/cursor-theme'
 import { translate, type AppLocale, type TranslationKey, type TranslationParams } from '@/core/localization'
 import { outlineDirectionsForKernel } from '@/core/outline-settings'
@@ -87,7 +88,7 @@ const pixelIconNames: Partial<Record<PixelUtilityIconKind, string>> = {
   paletteCenter: '居中', restore: '恢复', undo: '撤销', redo: '重做', workspace: '工作区', copy: '复制',
   linkedLayer: '关联图层', mergeDown: '向下合并', mergeVisible: '合并可见图层', clippingMask: '剪贴蒙版', layerMask: '图层蒙版', layerStyle: '图层样式', folder: '文件夹', folderOpen: '展开文件夹', move: '移动',
   save: '保存', export: '导出', image: '图像', roadmapPlanned: '未完成', roadmapCompleted: '完成',
-  info: '信息', canvasCenter: '居中', canvasTop: '上', canvasBottom: '下', canvasLeft: '左', canvasRight: '右',
+  info: '信息', canvasCenter: '居中', canvasAnchorCenter: '画布居中锚点', canvasTop: '上', canvasBottom: '下', canvasLeft: '左', canvasRight: '右',
   canvasTopLeft: '左上', canvasTopRight: '右上', canvasBottomLeft: '左下', canvasBottomRight: '右下',
   checkboxUnchecked: '复选框未选中', checkboxChecked: '复选框选中', pin: '置顶', clearRecords: '清除记录',
   refresh: '刷新', extractColors: '提取颜色', follow: '跟随', check: '选择',
@@ -121,15 +122,27 @@ const cursorLabel = (locale: AppLocale, names: { zh: string; en: string }): stri
   'ru-RU': `Указатель: ${names.en.toLowerCase()}`
 })[locale]
 
-const cursorLibraryItems = (locale: AppLocale) => CURSOR_ICON_LIBRARY.flatMap((item) => {
-  const key = item.variable.replace('--cursor-', '')
-  const names = cursorNames[key] ?? { zh: key, en: key }
-  const name = cursorLabel(locale, names)
-  const base = { id: `cursor.${key}`, name, source: item.source, builtinSource: item.builtinSource }
-  return item.builtinSource && item.builtinSource !== item.source
-    ? [base, { ...base, id: `${base.id}.builtin`, name: `${name}${previewText(locale, 'builtIn')}`, source: item.builtinSource, builtinSource: item.builtinSource }]
-    : [base]
-})
+const cursorLibraryItems = (locale: AppLocale) => {
+  const grouped = new Map<string, { id: string; names: string[]; source: string; builtinSource?: string }>()
+  for (const item of CURSOR_ICON_LIBRARY) {
+    const key = item.variable.replace('--cursor-', '')
+    const names = cursorNames[key] ?? { zh: key, en: key }
+    const name = cursorLabel(locale, names)
+    const visualKey = `${item.source}\u0000${item.hotspot[0]}\u0000${item.hotspot[1]}`
+    const current = grouped.get(visualKey)
+    if (current) {
+      if (!current.names.includes(name)) current.names.push(name)
+      continue
+    }
+    grouped.set(visualKey, { id: `cursor.${key}`, names: [name], source: item.source })
+    if (item.includeBuiltinInLibrary && item.builtinSource && item.builtinSource !== item.source) {
+      const builtinKey = `${item.builtinSource}\u0000${item.hotspot[0]}\u0000${item.hotspot[1]}`
+      if (!grouped.has(builtinKey)) grouped.set(builtinKey, { id: `cursor.${key}.builtin`, names: [`${name}${previewText(locale, 'builtIn')}`], source: item.builtinSource, builtinSource: item.builtinSource })
+    }
+  }
+  const separator = locale === 'zh-CN' ? '、' : ' / '
+  return [...grouped.values()].map(({ names, ...item }) => ({ ...item, name: names.join(separator) }))
+}
 
 const toolLibraryItems = (locale: AppLocale) => {
   const primaryTools = toolDefinitions(locale).filter((item) => item.id !== 'selection' && item.id !== 'shape' && item.id !== 'line' && item.id !== 'fill')
@@ -161,9 +174,7 @@ const localizeEntry = (entry: ComponentLibraryEntry, locale: AppLocale): Compone
 export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
   { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: '.primary-button / .quiet-button / .danger-button', tags: ['操作', '状态'] },
   { id: 'icon-button', name: '图标按钮', category: 'controls', description: '工具栏和面板标题中的方形图标操作。', source: '.icon-button', tags: ['图标', '工具栏'] },
-  { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '界面状态与操作使用的 5×5、6×6 或 11×11 像素图标，以整数比例显示。', source: 'PixelUtilityIcon', tags: ['图标', '状态', '操作'] },
-  { id: 'pixel-auto-link-icon', name: '动画自动链接图标', category: 'editor', description: '动画时间轴自动链接开关使用的 11×11 像素图标，保留原稿半透明边缘。', source: 'PixelAutoLinkIcon / assets/pixel-icons/animation-auto-link-*.svg', tags: ['图标', '状态'] },
-  { id: 'pixel-pressure-icon', name: '压感图标', category: 'editor', description: '压感工具属性按钮使用的原稿 11×11 像素图标，保留半透明边缘。', source: 'PixelPressureIcon / assets/pixel-icons/pressure-dynamics.svg', tags: ['图标', '工具', '状态'] },
+  { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '统一收录界面状态、动画自动链接和压感操作使用的 5×5、6×6 或 11×11 像素图标，以整数比例显示并保留原稿半透明边缘。', source: 'PixelUtilityIcon / PixelAutoLinkIcon / PixelPressureIcon / assets/pixel-icons/*.svg', tags: ['图标', '状态', '操作'] },
   { id: 'tool-icons', name: '工具图标', category: 'editor', description: '工具、选区、形状、填充、渐变和不同尺寸的像素工具图标。', source: 'editor-tools.tsx / PixelAssetIcon', tags: ['图标', '工具', '工具栏'] },
   { id: 'pointer-icons', name: '指针图标', category: 'editor', description: '画布、选区、缩放、旋转和调整操作使用的像素指针。', source: 'platform/cursor-theme.ts', tags: ['图标', '工具'] },
   { id: 'delete-icon-button', name: '删除图标按钮', category: 'controls', description: '用于删除预设或列表项目的统一危险图标按钮，提供紧凑、常规和禁用状态。', source: 'DeleteIconButton', tags: ['删除', '危险', '图标'] },
@@ -342,24 +353,8 @@ function PanelHeaderPreview({ locale }: { locale: AppLocale }) {
 function PixelUtilityIconPreview({ locale }: { locale: AppLocale }) {
   const [locked, setLocked] = useState(true)
   const [visible, setVisible] = useState(true)
-  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
-  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button></div>
-}
-
-function PixelAutoLinkIconPreview() {
-  return <div className="component-preview-row">
-    <span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link disabled" title="Auto-link disabled"><PixelAutoLinkIcon enabled={false} /></span>
-    <span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link enabled" title="Auto-link enabled"><PixelAutoLinkIcon enabled /></span>
-  </div>
-}
-
-function PixelPressureIconPreview({ locale }: { locale: AppLocale }) {
-  const label = componentText(locale, 'toolOptions.brushDynamics')
-  return <div className="component-preview-row">
-    <button type="button" className="icon-button" title={label} aria-label={label}><PixelPressureIcon /></button>
-    <button type="button" className="icon-button selected" title={label} aria-label={label} aria-pressed="true"><PixelPressureIcon /></button>
-    <button type="button" className="icon-button" title={componentText(locale, 'componentLibrary.preview.disabled')} aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><PixelPressureIcon /></button>
-  </div>
+  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasAnchorCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
+  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')} aria-label={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${quickAntiAliasIcon}")` } as React.CSSProperties} aria-hidden="true" /></button><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link disabled" title="Auto-link disabled"><PixelAutoLinkIcon enabled={false} /></span><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link enabled" title="Auto-link enabled"><PixelAutoLinkIcon enabled /></span><button type="button" className="icon-button" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')}><PixelPressureIcon /></button><button type="button" className="icon-button selected" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')} aria-pressed="true"><PixelPressureIcon /></button><button type="button" className="icon-button" title={componentText(locale, 'componentLibrary.preview.disabled')} aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><PixelPressureIcon /></button></div>
 }
 
 function ToolIconPreview({ locale }: { locale: AppLocale }) {
@@ -452,7 +447,7 @@ function SaveProgressPreview({ locale }: { locale: AppLocale }) {
   const [complete, setComplete] = useState(false)
   const value = complete ? 100 : 64
   return <div className="component-save-progress-preview"><section className={`save-progress-modal component-save-progress-card ${complete ? 'is-complete' : ''}`}>
-    <header><div className="save-progress-heading"><span className="save-progress-icon" aria-hidden="true">{complete ? <CheckCircle2 size={20} /> : <span className="save-progress-animation" />}</span><div><span className="eyebrow">FILE OPERATION</span><h2>{componentText(locale, complete ? 'componentLibrary.preview.exportComplete' : 'componentLibrary.preview.exporting')}</h2></div></div></header>
+    <header><div className="save-progress-heading"><span className="save-progress-icon" aria-hidden="true">{complete ? <PixelUtilityIcon kind="check" /> : <span className="save-progress-animation" />}</span><div><span className="eyebrow">FILE OPERATION</span><h2>{componentText(locale, complete ? 'componentLibrary.preview.exportComplete' : 'componentLibrary.preview.exporting')}</h2></div></div></header>
     <div className="save-progress-body"><strong>{componentText(locale, complete ? 'componentLibrary.preview.videoExported' : 'componentLibrary.preview.encodingVideo')}</strong><div className="save-progress-track"><i style={{ width: `${value}%` }} /></div><div className="save-progress-meta"><span>{componentText(locale, complete ? 'app.progress.complete' : 'app.progress.processing')}</span><small>{value}%</small></div></div>
     <footer><button className={complete ? 'primary-button' : 'quiet-button'} type="button" onClick={() => setComplete((current) => !current)}>{componentText(locale, complete ? 'componentLibrary.preview.ok' : 'componentLibrary.preview.finishExport')}</button></footer>
   </section></div>
@@ -573,8 +568,6 @@ const previewRenderers: Record<string, (props: { locale: AppLocale }) => ReactEl
   buttons: ButtonsPreview,
   'icon-button': IconButtonPreview,
   'pixel-utility-icon': PixelUtilityIconPreview,
-  'pixel-auto-link-icon': PixelAutoLinkIconPreview,
-  'pixel-pressure-icon': PixelPressureIconPreview,
   'tool-icons': ToolIconPreview,
   'pointer-icons': PointerIconPreview,
   'delete-icon-button': DeleteIconButtonPreview,
@@ -638,7 +631,7 @@ export function ComponentLibrary({ onClose }: { onClose: () => void }) {
         </aside>
         <main className="component-library-main">
           <div className="component-library-main-heading"><div><span className="eyebrow">{componentText(locale, 'componentLibrary.eyebrow')}</span><h3>{selectedEntry.name}</h3></div><span className="component-library-id">{selectedEntry.id}</span></div>
-          <div className="component-preview-stage"><Preview locale={locale} /></div>
+          <div key={selectedEntry.id} className={`component-preview-stage ${selectedEntry.id === 'pointer-icons' ? 'component-preview-stage-pointer' : ''}`}><Preview locale={locale} /></div>
           <div className="component-library-details"><div className="component-detail-block"><span>{componentText(locale, 'componentLibrary.details')}</span><p>{selectedEntry.description}</p></div><div className="component-detail-block"><span>{componentText(locale, 'componentLibrary.source')}</span><code>{selectedEntry.source}</code></div><div className="component-detail-block"><span>{componentText(locale, 'componentLibrary.tags')}</span><div className="component-tag-list">{selectedEntry.tags.map((tag) => <span key={tag}>{tag}</span>)}</div></div></div>
           <div className="component-library-checklist"><strong><PixelUtilityIcon kind="check" />{componentText(locale, 'componentLibrary.checkStatus')}</strong><span><i />{componentText(locale, 'componentLibrary.interactive')}</span><span><i />{componentText(locale, 'componentLibrary.squareLayout')}</span><span><i />{componentText(locale, 'componentLibrary.blue')}</span></div>
         </main>

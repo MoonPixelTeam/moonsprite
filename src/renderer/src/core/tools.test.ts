@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
-import { appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints } from './tools'
+import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints } from './tools'
 import { combineSelection, ellipseSelection, lassoSelection, magicWandSelection, rasterLinePoints, rotatedSelectionBounds, selectionBoundarySegments, selectionContains, selectionQuadBounds, transformedSelectionBounds, transformedSelectionSourcePoint, transformSelectionMask } from './selection'
 import { resizeDocument } from './document'
 import { createProceduralBrush, createProceduralBrushes, createSelectionBrush, proceduralBrushCoverageAt } from './brushes'
-import { packColor, unpackColor } from './raster'
+import { blendOver, packColor, unpackColor } from './raster'
 import { installRuntimeRaster, runtimeRasterForSurface } from './runtime-raster'
 import type { RuntimeRasterTiles } from '@shared/types'
 import { balancedStairLinePoints } from './pixel-line'
@@ -13,8 +13,71 @@ import { symmetrySelection, type SymmetryAxes } from './symmetry'
 
 const blue = { r: 41, g: 121, b: 255, a: 255 }
 const red = { r: 255, g: 48, b: 48, a: 255 }
+const black = { r: 0, g: 0, b: 0, a: 255 }
 
 describe('pixel tools', () => {
+  it('composites translucent selection pixels over an existing destination when moved or copied', () => {
+    const document = createDocument('translucent selection source-over', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 30, g: 90, b: 210, a: 255 }
+    const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
+    writeLayerColor(document, layer, 2, base)
+    writeLayerColor(document, layer, 0, sourceColor)
+    const selection = { x: 0, y: 0, width: 1, height: 1 }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const expected = blendOver(base, sourceColor)
+
+    applySelectionTransform(document, source, { ...selection, x: 2 }, 0, false, undefined, undefined, undefined, layer)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+
+    writeLayerColor(document, layer, 0, sourceColor)
+    const copySource = captureSelectionTransform(document, selection, layer)!
+    applySelectionTransform(document, copySource, { ...selection, x: 2 }, 0, true, undefined, undefined, undefined, layer)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blendOver(expected, sourceColor))
+
+    const previewDocument = createDocument('translucent selection preview source-over', 4, 1, 'rgba')
+    const previewLayer = getActiveLayer(previewDocument)
+    writeLayerColor(previewDocument, previewLayer, 2, base)
+    writeLayerColor(previewDocument, previewLayer, 0, sourceColor)
+    const previewSource = captureSelectionTransform(previewDocument, selection, previewLayer)!
+    applySelectionTranslationPreview(previewDocument, previewSource, { ...selection, x: 2 }, true, null, previewLayer)
+    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(expected)
+  })
+
+  it('composites translucent pixels in the committed translation path', () => {
+    const document = createDocument('translucent committed translation', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 30, g: 90, b: 210, a: 255 }
+    const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
+    writeLayerColor(document, layer, 2, base)
+    writeLayerColor(document, layer, 0, sourceColor)
+    const selection = { x: 0, y: 0, width: 1, height: 1 }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const expected = blendOver(base, sourceColor)
+
+    const edit = applySelectionTranslationCommit(document, source, { ...selection, x: 2 }, false, layer)
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
+  it('uses the pre-move backdrop for overlapping translucent selection transforms', () => {
+    const document = createDocument('overlapping translucent selection transform', 3, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 30, g: 90, b: 210, a: 255 }
+    const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
+    writeLayerColor(document, layer, 0, sourceColor)
+    writeLayerColor(document, layer, 1, base)
+    const selection = { x: 0, y: 0, width: 1, height: 1 }
+    const source = captureSelectionTransform(document, selection, layer)!
+
+    const edit = applySelectionTransform(document, source, { ...selection, x: 1 }, 0, false, undefined, undefined, undefined, layer)
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blendOver(base, sourceColor))
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
   it('materializes sparse layer storage before the opaque pencil fast path writes', () => {
     const document = createDocument('lazy pencil stroke', 4, 4, 'rgba')
     const layer = getActiveLayer(document)
@@ -230,6 +293,49 @@ describe('pixel tools', () => {
     history.redo()
     expect(readLayerColorAt(document, layer, 256, 256)).toEqual(red)
     expect(readLayerColorAt(document, layer, 255, 96)).toEqual(red)
+  })
+
+  it('keeps a closed smart-closure fill local to a cropped layer', () => {
+    const document = createDocument('cropped smart closure fill', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.width = 6
+    layer.height = 6
+    layer.offsetX = 3
+    layer.offsetY = 3
+    layer.pixels = new Uint8ClampedArray(layer.width * layer.height * 4)
+    for (let y = 1; y <= 4; y += 1) for (let x = 1; x <= 4; x += 1) {
+      if (x !== 1 && x !== 4 && y !== 1 && y !== 4) continue
+      writeLayerColor(document, layer, y * layer.width + x, blue)
+    }
+
+    const edit = floodFill(document, layer, 6, 6, red, null, true, null, 1, undefined, 'solid', 1, 0, 'paint', 0, 2)
+
+    expect(edit).not.toBeNull()
+    expect(layer.width).toBe(6)
+    expect(layer.height).toBe(6)
+    expect(layer.offsetX).toBe(3)
+    expect(layer.offsetY).toBe(3)
+    expect(readLayerColorAt(document, layer, 6, 6)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
+  it('still expands a cropped smart-closure fill that reaches its canvas-internal edge', () => {
+    const document = createDocument('open cropped smart closure fill', 12, 12, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.width = 6
+    layer.height = 6
+    layer.offsetX = 3
+    layer.offsetY = 3
+    layer.pixels = new Uint8ClampedArray(layer.width * layer.height * 4)
+
+    const edit = floodFill(document, layer, 6, 6, red, null, true, null, 1, undefined, 'solid', 1, 0, 'paint', 0, 2)
+
+    expect(edit).not.toBeNull()
+    expect(layer.width).toBe(12)
+    expect(layer.height).toBe(12)
+    expect(layer.offsetX).toBe(0)
+    expect(layer.offsetY).toBe(0)
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
   })
 
   it('ignores stale smart-closure settings for large global fills', () => {
@@ -548,6 +654,204 @@ describe('pixel tools', () => {
     const inside = outlineSelection(insideDocument, insideLayer, { x: 0, y: 0, width: 3, height: 3 }, { r: 255, g: 0, b: 0, a: 255 }, 1, 'inside')!
     expect(inside.before.size).toBe(8)
     expect(readLayerColor(insideDocument, insideLayer, 4)).toEqual(blue)
+  })
+
+  it('treats the configured background color as existing outline instead of source content', () => {
+    const document = createDocument('background-aware outline', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 3, height: 3 }, 'rectangle', blue)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 3, 1, 1, black)
+
+    const outlined = new Set(outlinePixelIndices(document, layer, null, 1, 'outside', undefined, 'square', black))
+    expect([...outlined].every((index) => Math.floor(index / 5) > 0)).toBe(true)
+    expect(outlined.has(4 * 5 + 2)).toBe(true)
+  })
+
+  it('fills only the intersection of horizontal and vertical outline samples', () => {
+    const document = createDocument('quick anti-alias', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 3, 3, 1, blue)
+
+    const color = { r: 255, g: 0, b: 0, a: 255 }
+    const edit = antiAliasSelection(document, layer, null, color)
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColor(document, layer, 1 * 5 + 2)).toEqual(color)
+    expect(readLayerColor(document, layer, 2 * 5 + 1)).toEqual(color)
+    expect(readLayerColor(document, layer, 0)).toEqual({ r: 0, g: 0, b: 0, a: 0 })
+  })
+
+  it('selects the dominant surrounding source color for each anti-alias pixel', () => {
+    const document = createDocument('automatic anti-alias color', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 2, 1, blue)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, red)
+
+    const edit = antiAliasSelection(document, layer, null, null)
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual({ ...blue, a: 128 })
+  })
+
+  it('restricts automatic anti-alias colors to the document palette and matches luminance', () => {
+    const document = createDocument('palette anti-alias color', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const orange = { r: 220, g: 100, b: 20, a: 255 }
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 3, 3, 1, orange)
+
+    const edit = antiAliasSelection(document, layer, null, null, 25, false, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual({ r: 41, g: 121, b: 255, a: 255 })
+  })
+
+  it('chooses the palette color at the midpoint of the two source relative luminances', () => {
+    const document = createDocument('palette brightness midpoint', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 0x4d, g: 0x79, b: 0x17, a: 255 }
+    const second = { r: 0x35, g: 0x91, b: 0x53, a: 255 }
+    const midpoint = { r: 100, g: 133, b: 40, a: 255 }
+    document.palette = [
+      { id: 0, name: 'transparent', color: { r: 0, g: 0, b: 0, a: 0 } },
+      { id: 1, name: 'first', color: first },
+      { id: 2, name: 'second', color: second },
+      { id: 3, name: 'midpoint', color: midpoint }
+    ]
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(midpoint)
+  })
+
+  it('does not confuse HSV brightness with relative luminance when choosing a palette color', () => {
+    const document = createDocument('palette relative luminance midpoint', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 0x4d, g: 0x79, b: 0x17, a: 255 }
+    const second = { r: 0x35, g: 0x91, b: 0x53, a: 255 }
+    const lowerRelativeLuminance = { r: 0x4a, g: 0x70, b: 0x85, a: 255 }
+    const middleRelativeLuminance = { r: 0x6b, g: 0x87, b: 0x3f, a: 255 }
+    document.palette = [
+      { id: 0, name: 'transparent', color: { r: 0, g: 0, b: 0, a: 0 } },
+      { id: 1, name: 'first', color: first },
+      { id: 2, name: 'second', color: second },
+      { id: 3, name: 'lower relative luminance', color: lowerRelativeLuminance },
+      { id: 4, name: 'middle relative luminance', color: middleRelativeLuminance }
+    ]
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
+    paintLine(document, layer, beginPixelEdit(layer.id), 4, 4, 4, 4, 1, lowerRelativeLuminance)
+    paintLine(document, layer, beginPixelEdit(layer.id), 3, 4, 3, 4, 1, middleRelativeLuminance)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(middleRelativeLuminance)
+  })
+
+  it('keeps canvas-source anti-alias colors opaque regardless of the opacity setting', () => {
+    const document = createDocument('canvas anti-alias opacity', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 2, 1, blue)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, red)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'canvas')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual({ ...blue, a: 255 })
+  })
+
+  it('chooses an existing canvas color between the two reference luminances', () => {
+    const document = createDocument('canvas luminance midpoint', 7, 7, 'rgba')
+    const layer = getActiveLayer(document)
+    const light = { r: 255, g: 255, b: 255, a: 255 }
+    const dark = { r: 0, g: 0, b: 0, a: 255 }
+    const midpoint = { r: 128, g: 128, b: 128, a: 255 }
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, light)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, dark)
+    paintLine(document, layer, beginPixelEdit(layer.id), 5, 5, 5, 5, 1, midpoint)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'canvas')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(midpoint)
+  })
+
+  it('applies the configured opacity to automatic anti-alias colors', () => {
+    const document = createDocument('automatic anti-alias opacity', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 2, 1, blue)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, red)
+
+    const edit = antiAliasSelection(document, layer, null, null, 25)
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual({ ...blue, a: 64 })
+  })
+
+  it('does not paint outside a selection', () => {
+    const document = createDocument('selection-scoped anti-alias', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, blue)
+
+    const edit = antiAliasSelection(document, layer, { x: 1, y: 1, width: 1, height: 1 }, { r: 255, g: 0, b: 0, a: 255 })
+
+    expect(edit).toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual({ r: 0, g: 0, b: 0, a: 0 })
+  })
+
+  it('can include an opaque interior color as an anti-alias source', () => {
+    const document = createDocument('interior anti-alias color', 7, 7, 'rgba')
+    const layer = getActiveLayer(document)
+    const yellow = { r: 255, g: 204, b: 64, a: 255 }
+    const brown = { r: 149, g: 109, b: 0, a: 255 }
+    paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 5, height: 5 }, 'rectangle', yellow)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 4, 4, 1, brown)
+
+    const withoutInteriorColor = antiAliasSelection(document, layer, null, null, 100)
+    expect(withoutInteriorColor).toBeNull()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(yellow)
+
+    const withInteriorColor = antiAliasSelection(document, layer, null, null, 100, true)
+    expect(withInteriorColor).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(brown)
+  })
+
+  it('uses both sides of an interior boundary when selecting a palette midpoint', () => {
+    const document = createDocument('interior palette midpoint', 7, 7, 'rgba')
+    const layer = getActiveLayer(document)
+    const outer = { r: 255, g: 204, b: 64, a: 255 }
+    const inner = { r: 149, g: 109, b: 0, a: 255 }
+    const midpoint = { r: 169, g: 169, b: 169, a: 255 }
+    document.palette = [
+      { id: 0, name: 'transparent', color: { r: 0, g: 0, b: 0, a: 0 } },
+      { id: 1, name: 'outer', color: outer },
+      { id: 2, name: 'inner', color: inner },
+      { id: 3, name: 'midpoint', color: midpoint }
+    ]
+    paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 5, height: 5 }, 'rectangle', outer)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 4, 4, 1, inner)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, true, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(midpoint)
+  })
+
+  it('keeps processing an interior boundary when the same region also reaches the outer edge', () => {
+    const document = createDocument('mixed interior boundary', 7, 7, 'rgba')
+    const layer = getActiveLayer(document)
+    const yellow = { r: 255, g: 204, b: 64, a: 255 }
+    const blue = { r: 32, g: 96, b: 192, a: 255 }
+    paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 5, height: 5 }, 'rectangle', yellow)
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 3, 3, 1, blue)
+
+    const edit = antiAliasSelection(document, layer, null, null, 100, true)
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 3, 2)).toEqual(blue)
   })
 
 

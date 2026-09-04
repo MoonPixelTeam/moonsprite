@@ -69,6 +69,19 @@ const blendChannel = (bottom: number, top: number, mode: BlendMode): number => {
   return top
 }
 
+const blendTables = new Map<BlendMode, Float64Array>()
+const separableBlendTableFor = (mode: BlendMode): Float64Array | null => {
+  if (mode === 'hue' || mode === 'saturation' || mode === 'color' || mode === 'luminosity') return null
+  let table = blendTables.get(mode)
+  if (table) return table
+  table = new Float64Array(256 * 256)
+  for (let bottom = 0; bottom < 256; bottom += 1) for (let top = 0; top < 256; top += 1) {
+    table[bottom * 256 + top] = blendChannel(bottom, top, mode)
+  }
+  blendTables.set(mode, table)
+  return table
+}
+
 type RgbVector = [number, number, number]
 const vectorLuminosity = ([r, g, b]: RgbVector): number => 0.3 * r + 0.59 * g + 0.11 * b
 const vectorSaturation = (value: RgbVector): number => Math.max(...value) - Math.min(...value)
@@ -114,6 +127,76 @@ export const blendWithMode = (bottom: RgbaColor, top: RgbaColor, opacity: number
     a: top.a
   }
   return blendOver(bottom, mixed, opacity)
+}
+
+/** Writes the same blend result without allocating intermediate colors.
+ * Non-separable modes still use the canonical color-vector implementation. */
+export const blendWithModeInto = (
+  output: Uint8ClampedArray<ArrayBufferLike>,
+  offset: number,
+  bottomR: number,
+  bottomG: number,
+  bottomB: number,
+  bottomA: number,
+  topR: number,
+  topG: number,
+  topB: number,
+  topA: number,
+  opacity: number,
+  mode: BlendMode
+): void => {
+  if (opacity === 1 && topA === 255 && bottomA === 255) {
+    if (mode === 'normal') {
+      output[offset] = topR
+      output[offset + 1] = topG
+      output[offset + 2] = topB
+      output[offset + 3] = 255
+      return
+    }
+    const table = separableBlendTableFor(mode)
+    if (table) {
+      output[offset] = clampByte(table[bottomR * 256 + topR])
+      output[offset + 1] = clampByte(table[bottomG * 256 + topG])
+      output[offset + 2] = clampByte(table[bottomB * 256 + topB])
+      output[offset + 3] = 255
+      return
+    }
+  }
+  const topAlpha = (topA / 255) * opacity
+  const bottomAlpha = bottomA / 255
+  const outputAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
+  if (outputAlpha <= 0) {
+    output[offset] = 0
+    output[offset + 1] = 0
+    output[offset + 2] = 0
+    output[offset + 3] = 0
+    return
+  }
+  let mixedR = topR
+  let mixedG = topG
+  let mixedB = topB
+  if (mode !== 'normal' && bottomA !== 0) {
+    const isNonSeparable = mode === 'hue' || mode === 'saturation' || mode === 'color' || mode === 'luminosity'
+    if (isNonSeparable) {
+      const nonSeparable = nonSeparableBlend(
+        { r: bottomR, g: bottomG, b: bottomB, a: bottomA },
+        { r: topR, g: topG, b: topB, a: topA },
+        mode
+      )!
+      mixedR = nonSeparable[0] * 255
+      mixedG = nonSeparable[1] * 255
+      mixedB = nonSeparable[2] * 255
+    } else {
+      const table = separableBlendTableFor(mode)
+      mixedR = table ? table[bottomR * 256 + topR] : blendChannel(bottomR, topR, mode)
+      mixedG = table ? table[bottomG * 256 + topG] : blendChannel(bottomG, topG, mode)
+      mixedB = table ? table[bottomB * 256 + topB] : blendChannel(bottomB, topB, mode)
+    }
+  }
+  output[offset] = clampByte(((mixedR * topAlpha) + (bottomR * bottomAlpha * (1 - topAlpha))) / outputAlpha)
+  output[offset + 1] = clampByte(((mixedG * topAlpha) + (bottomG * bottomAlpha * (1 - topAlpha))) / outputAlpha)
+  output[offset + 2] = clampByte(((mixedB * topAlpha) + (bottomB * bottomAlpha * (1 - topAlpha))) / outputAlpha)
+  output[offset + 3] = clampByte(outputAlpha * 255)
 }
 
 const srgbToLinear = (channel: number): number => {

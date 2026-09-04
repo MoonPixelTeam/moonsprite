@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi, StoredPalette } from '@shared/types'
 import { animationMaskAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel, revertPixelEdit } from '@/core/history'
 import { packColor, relativeLuminanceColor } from '@/core/raster'
@@ -84,6 +84,90 @@ beforeEach(() => {
   brushLibraryLocation.set(null)
   saveProgress.dismiss()
   useWorkspace.setState({ sessions: [], activeId: null, message: null, saveProgress: null, dialog: null, recoveryRecords: [] })
+})
+
+describe('filter layer commands', () => {
+  it('uses the last selected palette when creating a new document', async () => {
+    const palette: StoredPalette = {
+      id: 'last-used-palette',
+      name: 'Last used',
+      filePath: 'palettes/last-used.palette.json',
+      builtIn: false,
+      colors: [
+        { r: 255, g: 32, b: 64, a: 255 },
+        { r: 32, g: 224, b: 128, a: 255 },
+        { r: 32, g: 96, b: 255, a: 255 }
+      ],
+      columns: 2,
+      slots: [0, 1, null, 2]
+    }
+    localStorage.setItem('moonsprite.active-palette-id', palette.id)
+    installApi({ listPalettes: vi.fn(async () => ({ directoryPath: 'palettes', palettes: [palette] })) })
+
+    await useWorkspace.getState().newDocument('New palette project', 4, 4, 'rgba')
+
+    const document = useWorkspace.getState().sessions[0]?.document
+    expect(document?.paletteOrder.map((id) => document.palette.find((entry) => entry.id === id)?.color)).toEqual(palette.colors)
+    expect(document?.paletteColumns).toBe(2)
+    expect(document?.paletteSlots).toHaveLength(4)
+    expect(document?.paletteSlots?.filter((id) => id === null)).toHaveLength(1)
+  })
+
+  it('creates an animated CRT filter layer with undoable structure changes', async () => {
+    const document = createDocument('CRT filter', 4, 4, 'rgba')
+    addBlankAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().applyFilterPreset('crt-scanlines-medium')
+
+    const session = useWorkspace.getState().sessions[0]
+    const filterLayer = session.document.layers.find((layer) => layer.name.includes('CRT 扫描线'))
+    expect(filterLayer).toBeDefined()
+    expect(filterLayer?.blendMode).toBe('soft-light')
+    expect(session.document.animation?.cels.filter((cel) => cel.layerId === filterLayer?.id)).toHaveLength(2)
+    expect(session.selectedLayerIds).toEqual([filterLayer?.id])
+
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].document.layers.some((layer) => layer.id === filterLayer?.id)).toBe(false)
+    useWorkspace.getState().redo()
+    expect(useWorkspace.getState().sessions[0].document.layers.some((layer) => layer.id === filterLayer?.id)).toBe(true)
+  })
+
+  it('creates an LCD Screen group from exactly one selected layer', async () => {
+    const document = createDocument('LCD filter', 3, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, { r: 220, g: 120, b: 40, a: 255 })
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectLayer(layer.id)
+
+    await useWorkspace.getState().applyLcdScreenFilter()
+
+    const session = useWorkspace.getState().sessions[0]
+    const group = session.document.groups.find((candidate) => candidate.name === 'LCD屏幕滤镜')
+    expect(group).toBeDefined()
+    expect(session.document.layers.filter((candidate) => candidate.groupId === group?.id).map((candidate) => candidate.name)).toEqual(['红色通道', '绿色通道', '蓝色通道', '扫描线'])
+    const generated = session.document.layers.filter((candidate) => candidate.groupId === group?.id)
+    expect(generated.every((candidate) => (candidate.displayColor?.a ?? 0) < 255)).toBe(true)
+    expect(generated.map((candidate) => candidate.displayColor)).toEqual([
+      { r: 255, g: 0, b: 0, a: 64 },
+      { r: 0, g: 255, b: 0, a: 64 },
+      { r: 0, g: 0, b: 255, a: 64 },
+      { r: 128, g: 128, b: 128, a: 64 }
+    ])
+    expect(generated.map((candidate) => candidate.blendMode)).toEqual(['screen', 'screen', 'screen', 'soft-light'])
+    expect(generated.find((candidate) => candidate.name === '扫描线')?.blendMode).toBe('soft-light')
+    expect(group?.displayColor).toBeDefined()
+    expect(layer.visible).toBe(false)
+    expect(session.selectedGroupId).toBe(group?.id)
+    const layerIndex = session.document.layers.indexOf(layer)
+    const generatedIndexes = generated.map((candidate) => session.document.layers.indexOf(candidate))
+    expect(Math.min(...generatedIndexes)).toBeGreaterThan(layerIndex)
+
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].document.layers.find((candidate) => candidate.id === layer.id)?.visible).toBe(true)
+    useWorkspace.getState().redo()
+    expect(useWorkspace.getState().sessions[0].document.layers.find((candidate) => candidate.id === layer.id)?.visible).toBe(false)
+  })
 })
 
 describe('automatic animation cel links', () => {
@@ -468,6 +552,21 @@ describe('quick command content centering', () => {
     expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 0, y: 0, width: 2, height: 2 })
     useWorkspace.getState().redo()
     expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 3, y: 0, width: 2, height: 2 })
+  })
+
+  it('allows a selection nudge to move outside the canvas', () => {
+    const document = createDocument('nudge selection outside canvas', 4, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().moveActiveSelectionWithSelectionHistory(-1, 0, true)
+
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: -1, y: 0, width: 1, height: 1 })
+    useWorkspace.getState().undo()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ x: 0, y: 0, width: 1, height: 1 })
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
   })
 
   it('preserves content moved outside the canvas before centering a selection', () => {

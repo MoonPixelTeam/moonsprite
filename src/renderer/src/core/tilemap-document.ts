@@ -271,6 +271,78 @@ export const previewTilemapSelectionMove = (
   return edit
 }
 
+const mirroredTilemapCell = (cell: TilemapCell | null, axis: 'horizontal' | 'vertical', width: number, height: number): TilemapCell | null => {
+  if (!cell) return null
+  const candidates: Array<{ flipHorizontal?: boolean; flipVertical?: boolean; rotation?: 0 | 1 | 2 | 3 }> = []
+  for (const flipHorizontal of [false, true]) for (const flipVertical of [false, true]) {
+    const rotations: Array<0 | 1 | 2 | 3> = width === height ? [0, 1, 2, 3] : [0]
+    for (const rotation of rotations) candidates.push({
+      ...(flipHorizontal ? { flipHorizontal: true } : {}),
+      ...(flipVertical ? { flipVertical: true } : {}),
+      ...(rotation !== 0 ? { rotation } : {})
+    })
+  }
+  const sourcePoint = (x: number, y: number): { x: number; y: number } => tilemapSourcePointForCell(
+    axis === 'horizontal' ? width - 1 - x : x,
+    axis === 'vertical' ? height - 1 - y : y,
+    width,
+    height,
+    cell
+  )
+  const sameMapping = (candidate: TilemapCell): boolean => {
+    for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+      const expected = sourcePoint(x, y)
+      const actual = tilemapSourcePointForCell(x, y, width, height, candidate)
+      if (expected.x !== actual.x || expected.y !== actual.y) return false
+    }
+    return true
+  }
+  const transform = candidates.find((candidate) => sameMapping({ ...cell, ...candidate }))
+  return transform ? { ...cell, ...transform } : { ...cell }
+}
+
+export const flipTilemapSelection = (
+  document: SpriteDocument,
+  layerId: string,
+  frameId: string,
+  selection: SelectionMask,
+  axis: 'horizontal' | 'vertical'
+): TilemapEdit | null => {
+  const target = tilemapCelTargetAt(document, layerId, frameId)
+  if (!target) return null
+  const indexes = tilemapCellIndexesForSelection(selection, target.tilemap, target.surface.offsetX, target.surface.offsetY)
+  if (indexes.length === 0) return null
+  const selected = new Set(indexes)
+  const columns = indexes.map((index) => index % target.tilemap.columns)
+  const rows = indexes.map((index) => Math.floor(index / target.tilemap.columns))
+  const left = Math.min(...columns)
+  const right = Math.max(...columns)
+  const top = Math.min(...rows)
+  const bottom = Math.max(...rows)
+  const before = new Map(indexes.map((index) => [index, cloneTilemapCell(target.tilemap.cells[index])]))
+  const edit = beginTilemapEdit(layerId, frameId)
+  for (const index of indexes) {
+    const column = index % target.tilemap.columns
+    const row = Math.floor(index / target.tilemap.columns)
+    const mirroredColumn = axis === 'horizontal' ? left + right - column : column
+    const mirroredRow = axis === 'vertical' ? top + bottom - row : row
+    const mirroredIndex = mirroredRow * target.tilemap.columns + mirroredColumn
+    if (!selected.has(mirroredIndex)) continue
+    recordTilemapCell(
+      target.tilemap,
+      edit,
+      mirroredIndex,
+      mirroredTilemapCell(before.get(index) ?? null, axis, target.tilemap.tileWidth, target.tilemap.tileHeight),
+      target.surface.offsetX,
+      target.surface.offsetY
+    )
+  }
+  if (edit.after.size === 0) return null
+  rerenderTilemapCells(document, target, [...edit.after.keys()])
+  refreshActiveAnimationFrame(document)
+  return edit
+}
+
 export const applyTilemapSelectionCellMove = (
   document: SpriteDocument,
   layerId: string,

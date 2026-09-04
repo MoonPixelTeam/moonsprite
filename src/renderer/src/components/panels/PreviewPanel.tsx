@@ -7,7 +7,7 @@ import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId } from '@/core/animation-loop-sections'
-import { anchoredPreviewPan, followPreviewPosition, previewCheckerCellSize } from '@/core/preview-geometry'
+import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
 import { loadEditorPreferences, type CheckerboardPreferences } from '@/core/file-preferences'
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
@@ -77,7 +77,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const compositeCacheRef = useRef(new CanvasCompositeCache())
-  const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; scale: number } | null>(null)
+  const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
   const drawRef = useRef<() => void>(() => {})
   const liveCanvasPreviewRef = useRef<CanvasPreviewSnapshot | null>(null)
@@ -110,7 +110,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       if (!canvas) return
       const bounds = canvas.getBoundingClientRect()
       if (bounds.width < 1 || bounds.height < 1) return
-      const fitScale = Math.min(bounds.width / session.document.width, bounds.height / session.document.height)
+      const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
       const currentZoom = zoom ?? fitScale
       if (detail.zoom === currentZoom) return
       if (!followViewport) {
@@ -140,6 +140,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       })
     }
     const unregister = registerCanvasPreviewListener(session.document.id, (snapshot) => {
+      // The editor canvas already renders the live layer-move preview. A
+      // second full-size composite in this auxiliary panel doubles the
+      // synchronous blend work for every pointer event, so keep the panel at
+      // its last committed image until the move ends.
+      if (snapshot?.movingLayerIds?.length) return
       liveCanvasPreviewRef.current = snapshot
       if (snapshot?.invalidation?.kind === 'region') {
         compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
@@ -372,8 +377,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       clearCanvasBacking(context, canvas)
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
       let baseFit = baseFitRef.current
-      if (!baseFit || baseFit.documentId !== sourceDocument.id || baseFit.width !== sourceDocument.width || baseFit.height !== sourceDocument.height || baseFit.viewportWidth !== displayWidth || baseFit.viewportHeight !== displayHeight) {
-        baseFit = { documentId: sourceDocument.id, width: sourceDocument.width, height: sourceDocument.height, viewportWidth: displayWidth, viewportHeight: displayHeight, scale: Math.min(displayWidth / sourceDocument.width, displayHeight / sourceDocument.height) }
+      if (!baseFit || baseFit.documentId !== sourceDocument.id || baseFit.width !== sourceDocument.width || baseFit.height !== sourceDocument.height || baseFit.viewportWidth !== displayWidth || baseFit.viewportHeight !== displayHeight || baseFit.devicePixelRatio !== dpr) {
+        baseFit = { documentId: sourceDocument.id, width: sourceDocument.width, height: sourceDocument.height, viewportWidth: displayWidth, viewportHeight: displayHeight, devicePixelRatio: dpr, scale: pixelAlignedPreviewFitScale(Math.min(displayWidth / sourceDocument.width, displayHeight / sourceDocument.height), dpr) }
         baseFitRef.current = baseFit
       }
       const scale = zoom ?? baseFit.scale
@@ -478,7 +483,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const currentFollowPan = (): { x: number; y: number } | null => {
     const bounds = canvasRef.current?.getBoundingClientRect()
     if (!bounds || bounds.width < 1 || bounds.height < 1) return null
-    const previewFit = Math.min(bounds.width / session.document.width, bounds.height / session.document.height)
+    const previewFit = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
     const followSnapshot = followSnapshotRef.current
     return followPreviewPosition({
       documentSize: { width: session.document.width, height: session.document.height },
@@ -495,7 +500,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (!canvas) return
     const bounds = canvas.getBoundingClientRect()
     if (bounds.width < 1 || bounds.height < 1) return
-    const fitScale = Math.min(bounds.width / session.document.width, bounds.height / session.document.height)
+    const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
     const currentZoom = zoom ?? fitScale
     const nextZoom = steppedCanvasZoom(currentZoom, zoomIn)
     if (nextZoom === currentZoom) return
@@ -521,7 +526,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     const delta = normalizeCanvasWheelDelta(event.nativeEvent)
     if (delta === 0) return
     event.preventDefault()
-    const fitScale = Math.min(bounds.width / session.document.width, bounds.height / session.document.height)
+    const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
     const currentZoom = zoom ?? fitScale
     const nextZoom = steppedCanvasZoom(currentZoom, delta < 0)
     if (nextZoom === currentZoom) return

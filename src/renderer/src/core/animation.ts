@@ -3,7 +3,7 @@ import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanv
 import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
 import { cloneLayerStyles } from './layer-styles'
-import { tileBackgroundSurfaceToCanvas } from './background-patterns'
+import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
 import { cloneTilemapCelData, cloneTileset, normalizeTilemapCelData, renderTilemapSurface, resizeTilemapCelDataToCanvas } from './tilemap'
 import { cloneFreeTileCelData, createFreeTileCelData, freeTileSourceRefs, freeTileSourceForInstance, normalizeFreeTileCelData, renderFreeTileSurface } from './free-tile'
 import { normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameDeletion, reconcileAnimationLoopSectionsAfterFrameInsertion } from './animation-loop-sections'
@@ -593,7 +593,10 @@ export const resizeAnimationCelsAt = (
     }
     if (activeSource || !source.surface) continue
     if (expanding && backgroundLayerIds.has(cel.layerId)) {
-      tileBackgroundSurfaceToCanvas(source.surface, sourceCanvasWidth, sourceCanvasHeight, document.width, document.height, horizontal, vertical)
+      const background = document.layers.find((layer) => layer.id === cel.layerId)?.background
+      const repeatSize = background?.mode === 'preset' && background.pattern ? backgroundPatternSize(background.pattern) : undefined
+      const presetPattern = background?.mode === 'preset' ? background.pattern : undefined
+      tileBackgroundSurfaceToCanvas(source.surface, sourceCanvasWidth, sourceCanvasHeight, document.width, document.height, horizontal, vertical, repeatSize, presetPattern, (color) => paletteColorIdForCanvas(document, color))
       continue
     }
     source.surface.offsetX += horizontal

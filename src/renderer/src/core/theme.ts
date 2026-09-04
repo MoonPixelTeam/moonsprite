@@ -80,8 +80,8 @@ const GRAY_SEEDS: ThemeSeedColors = {
   accent: '#2979ff', danger: '#ef5350', success: '#66bb6a', warning: '#ffab26'
 }
 const DARK_GRAY_SEEDS: ThemeSeedColors = {
-  workspace: '#0a0a0b', surface: '#191a1d', raisedSurface: '#222428', deepSurface: '#121417', canvasSurround: '#4b4b4d',
-  border: '#34363a', borderStrong: '#5e6167', controlBackground: '#0d0e10', textPrimary: '#f3f4f6', textSecondary: '#c6c9ce', textMuted: '#9fa2a8',
+  workspace: '#0c0d0f', surface: '#1c1e22', raisedSurface: '#25272c', deepSurface: '#14171b', canvasSurround: '#4e5054',
+  border: '#383b40', borderStrong: '#646870', controlBackground: '#101215', textPrimary: '#f3f4f6', textSecondary: '#c6c9ce', textMuted: '#9fa2a8',
   accent: '#2979ff', danger: '#ef5350', success: '#66bb6a', warning: '#ffab26'
 }
 const AMBER_SEEDS: ThemeSeedColors = {

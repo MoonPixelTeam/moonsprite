@@ -8,14 +8,19 @@ import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-prefer
 import { readProjectGalleryMetadataAsync } from '@/core/project-gallery'
 import { encodeProjectPreview } from '@/core/project-format'
 import { createRasterImagePreview, rasterImageMimeType } from '@/core/raster-image'
-import { latestRelease } from '@/core/latest-release'
+import { homeAnnouncementsForDisplay, latestReleases, type LatestReleaseDefinition } from '@/core/latest-release'
 import { clearRecentProjects, getGalleryPins, getRecentProjects, recordRecentProject, removeGalleryPin, removeRecentProject, reorderRecentProjects, toggleGalleryPin, toggleRecentProjectPinned, type RecentProject } from '@/core/home-history'
 import { getHomeFileDisplayFormats, matchesHomeFileDisplayFormats, saveHomeFileDisplayFormats, type HomeFileDisplayFormat } from '@/core/home-file-display'
 import { createFolderHomeSection, findFolderHomeSection, getHomeSections, saveHomeSections, type HomeSectionDefinition } from '@/core/home-sections'
+import { homeBannerDefinitions, resolveHomeBanners, type HomeBannerDefinition } from '@/core/home-banner'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { AVAILABLE_APP_LOCALES, localeDisplayName, translate, type AppLocale } from '@/core/localization'
 import moonspriteLogo from '@/assets/moonsprite-logo.svg'
+import homeBannerFire from '@/assets/home-banner-fire.png'
+import homeBannerCrystal from '@/assets/home-banner-crystal.png'
+import homeBannerCoast from '@/assets/home-banner-coast.png'
+import homeBannerHall from '@/assets/home-banner-hall.png'
 import { PixelCloseIcon as X, PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { DialogHeader } from '@/components/DialogHeader'
 import { ModalShell } from '@/components/ModalShell'
@@ -31,16 +36,27 @@ interface ProjectCard extends RecentProject {
   error?: string
 }
 
+interface BannerProjectCard {
+  id: string
+  author: string
+  authorUrl: string
+  name: string
+  filePath?: string
+  previewUrl?: string
+  imageUrl?: string
+}
+
 interface HomeWorkspaceProps {
   onNew(): void
   onOpen(): void
   onOpenProject(filePath: string, keepHomeOpen?: boolean): Promise<boolean>
+  onOpenImage(imageUrl: string, name: string): Promise<boolean>
   onRestoreRecovery(id: string): Promise<boolean>
-  onOpenLatestRelease?(): void
+  onOpenLatestRelease?(release?: LatestReleaseDefinition): void
 }
 
 type HomeProjectLayout = 'small' | 'medium' | 'large'
-type HomeLinkIconKind = 'qq' | 'steam' | 'github' | 'language'
+type HomeLinkIconKind = 'qq' | 'community' | 'steam' | 'github' | 'language'
 const homeSectionStorageKey = 'moonsprite.home-section.v1'
 const homeProjectLayoutStorageKey = 'moonsprite.home-project-layout.v1'
 const homeRecentPrivacyStorageKey = 'moonsprite.home-recent-privacy.v1'
@@ -51,6 +67,7 @@ const logoSpinClickWindowMs = 850
 const logoSpinDurationMs = 2_000
 const homeExternalLinks = {
   qq: 'https://qm.qq.com/q/3OUXtFg4lW',
+  community: 'https://moonpx.art/',
   steam: 'https://store.steampowered.com/search/?term=MoonSprite',
   github: 'https://github.com/MoonPixelTeam/moonsprite'
 } as const
@@ -58,6 +75,10 @@ const homeLinkIconPaths: Record<HomeLinkIconKind, { solid: string; soft: string 
   qq: {
     solid: 'M4 0h3v1h-3zM2 1h2v1h-2zM7 1h2v1h-2zM1 2h2v1h-2zM8 2h2v1h-2zM1 3h2v1h-2zM8 3h2v1h-2zM0 4h3v1h-3zM8 4h3v1h-3zM0 5h2v1h-2zM5 5h2v1h-2zM9 5h2v1h-2zM0 6h2v1h-2zM4 6h3v1h-3zM9 6h2v1h-2zM1 7h2v1h-2zM4 7h1v1h-1zM6 7h1v1h-1zM8 7h2v1h-2zM1 8h1v1h-1zM9 8h1v1h-1zM2 9h7v1h-7zM4 10h3v1h-3z',
     soft: 'M3 0h1v1h-1zM7 0h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM0 3h1v1h-1zM4 3h3v1h-3zM10 3h1v1h-1zM3 4h5v1h-5zM4 5h1v1h-1zM2 6h1v1h-1zM8 6h1v1h-1zM0 7h1v1h-1zM5 7h1v1h-1zM10 7h1v1h-1zM2 8h1v1h-1zM5 8h1v1h-1zM8 8h1v1h-1zM3 10h1v1h-1zM7 10h1v1h-1z'
+  },
+  community: {
+    solid: 'M4 0h3v1H4zM2 1h3v1H2zM6 1h3v1H6zM1 2h3v1H1zM7 2h3v1H7zM1 3h2v1H1zM8 3h2v1H8zM0 4h2v1H0zM9 4h2v1H9zM0 5h2v1H0zM9 5h2v1H9zM0 6h3v1H0zM4 6h1v1H4zM6 6h1v1H6zM8 6h3v1H8zM1 7h2v1H1zM5 7h1v1H5zM8 7h2v1H8zM1 8h2v1H1zM8 8h2v1H8zM2 9h7v1H2zM4 10h3v1H4z',
+    soft: 'M3 0h1v1H3zM7 0h1v1H7zM5 1h1v1H5zM0 3h1v1H0zM3 3h1v1H3zM7 3h1v1H7zM10 3h1v1H10zM2 5h1v1H2zM4 5h1v1H4zM6 5h1v1H6zM8 5h1v1H8zM0 7h1v1H0zM4 7h1v1H4zM6 7h1v1H6zM10 7h1v1H10zM3 8h1v1H3zM7 8h1v1H7zM3 10h1v1H3zM7 10h1v1H7z'
   },
   steam: {
     solid: 'M4 0h3v1h-3zM2 1h7v1h-7zM1 2h5v1h-5zM9 2h1v1h-1zM1 3h4v1h-4zM7 3h1v1h-1zM0 4h5v1h-5zM6 4h1v1h-1zM8 4h1v1h-1zM10 4h1v1h-1zM1 5h4v1h-4zM7 5h1v1h-1zM10 5h1v1h-1zM3 6h1v1h-1zM9 6h2v1h-2zM8 7h2v1h-2zM1 8h1v1h-1zM6 8h4v1h-4zM2 9h1v1h-1zM5 9h4v1h-4zM4 10h3v1h-3z',
@@ -417,7 +438,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
   </div>
 }
 
-export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery, onOpenLatestRelease }: HomeWorkspaceProps) {
+export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRestoreRecovery, onOpenLatestRelease }: HomeWorkspaceProps) {
   const { locale, t } = useI18n()
   const [homeSections, setHomeSections] = useState(getHomeSections)
   const [fileDisplayFormats, setFileDisplayFormats] = useState(getHomeFileDisplayFormats)
@@ -425,11 +446,14 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
   const [projectLayout, setProjectLayout] = useState<HomeProjectLayout>(loadHomeProjectLayout)
   const [recentProjectsHidden, setRecentProjectsHidden] = useState(loadRecentProjectsHidden)
   const [projects, setProjects] = useState<ProjectCard[]>([])
+  const [bannerProjects, setBannerProjects] = useState<BannerProjectCard[]>([])
+  const [bannerIndex, setBannerIndex] = useState(0)
   const [sectionDirectory, setSectionDirectory] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [hasFilesHiddenByFormat, setHasFilesHiddenByFormat] = useState(false)
   const objectUrls = useRef<string[]>([])
+  const bannerObjectUrls = useRef<string[]>([])
   const loadGeneration = useRef(0)
   const projectsRef = useRef<ProjectCard[]>([])
   const recentListRef = useRef<HTMLDivElement>(null)
@@ -473,6 +497,11 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
   const releaseObjectUrls = (): void => {
     for (const url of objectUrls.current) URL.revokeObjectURL(url)
     objectUrls.current = []
+  }
+
+  const releaseBannerObjectUrls = (): void => {
+    for (const url of bannerObjectUrls.current) URL.revokeObjectURL(url)
+    bannerObjectUrls.current = []
   }
 
   const sectionName = (target: HomeSectionDefinition): string => {
@@ -521,6 +550,56 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
       return { ...record, name: record.fileName, error: error instanceof Error ? error.message : t('home.projectUnreadable') }
     }
   }
+
+  useEffect(() => {
+    let disposed = false
+    const loadBanners = async (): Promise<void> => {
+      try {
+        let galleryProjects: Awaited<ReturnType<typeof window.moonSprite.listGalleryProjects>>['projects'] = []
+        try {
+          galleryProjects = (await window.moonSprite.listGalleryProjects()).projects
+        } catch {
+          // Bundled image banners remain available if the optional gallery is unavailable.
+        }
+        const matches = resolveHomeBanners(homeBannerDefinitions, galleryProjects)
+        const cards = await Promise.all(matches.map(async (match): Promise<BannerProjectCard> => {
+          if (match.kind === 'image') return { id: match.id, author: match.author, authorUrl: match.authorUrl, name: match.imageName ?? match.id, imageUrl: match.imageAssetKey === 'home-banner-fire' ? homeBannerFire : match.imageAssetKey === 'home-banner-crystal' ? homeBannerCrystal : match.imageAssetKey === 'home-banner-coast' ? homeBannerCoast : match.imageAssetKey === 'home-banner-hall' ? homeBannerHall : undefined }
+          const card = await readCard({
+            filePath: match.filePath!,
+            fileName: match.fileName ?? match.projectFileName ?? match.id,
+            name: match.fileName ?? match.projectFileName ?? match.id,
+            lastOpened: match.modifiedAt ?? 0,
+            pinned: false
+          })
+          return { ...card, id: match.id, author: match.author, authorUrl: match.authorUrl }
+        }))
+        if (disposed) {
+          for (const card of cards) if (card.previewUrl) URL.revokeObjectURL(card.previewUrl)
+          return
+        }
+        releaseBannerObjectUrls()
+        for (const card of cards) if (card.previewUrl) bannerObjectUrls.current.push(card.previewUrl)
+        setBannerProjects(cards)
+      } catch {
+        if (!disposed) setBannerProjects([])
+      }
+    }
+    void loadBanners()
+    return () => {
+      disposed = true
+      releaseBannerObjectUrls()
+    }
+    // Banner metadata is static for the lifetime of the start screen; gallery
+    // paths are resolved once and refreshed when the home screen is remounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    setBannerIndex(0)
+    if (bannerProjects.length < 2) return
+    const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % bannerProjects.length), 8_000)
+    return () => window.clearInterval(timer)
+  }, [bannerProjects.length])
 
   const loadSection = async (target: HomeSectionDefinition): Promise<void> => {
     const generation = ++loadGeneration.current
@@ -782,7 +861,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
     setMessage(t('home.removedRecentMessage', { name: project.name }))
   }
 
-  const openProject = async (project: ProjectCard, keepHomeOpen = false): Promise<void> => {
+  const openProject = async (project: Pick<ProjectCard, 'filePath' | 'name'>, keepHomeOpen = false): Promise<void> => {
     const opened = await onOpenProject(project.filePath, keepHomeOpen)
     if (opened) return
     const error = t('home.openFailed')
@@ -895,6 +974,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
       recoveryCount: candidate.kind === 'recovery' ? recoveryRecords.length : undefined
     }
   })
+  const activeBanner = bannerProjects.length > 0 ? bannerProjects[bannerIndex % bannerProjects.length] : undefined
 
   return <section className="aseprite-home" aria-label={t('home.aria')} onWheel={handleProjectLayoutWheel}>
     <div className="aseprite-home-inner">
@@ -907,6 +987,9 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
           <div className="start-screen-links" aria-label={t('home.linksAria')}>
             <Tooltip content={<><strong>{t('home.qq')}</strong><span>{t('home.qqDescription')}</span></>}>
               <button className="start-screen-link" type="button" onClick={() => openExternalLink(homeExternalLinks.qq)} aria-label={t('home.qq')}><HomeLinkIcon kind="qq" /></button>
+            </Tooltip>
+            <Tooltip content={<><strong>{t('home.community')}</strong><span>{t('home.communityDescription')}</span></>}>
+              <button className="start-screen-link" type="button" onClick={() => openExternalLink(homeExternalLinks.community)} aria-label={t('home.community')}><HomeLinkIcon kind="community" /></button>
             </Tooltip>
             <Tooltip content={<><strong>{t('home.steam')}</strong><span>{t('home.steamDescription')}</span></>}>
               <button className="start-screen-link" type="button" onClick={() => openExternalLink(homeExternalLinks.steam)} aria-label={t('home.steam')}><HomeLinkIcon kind="steam" /></button>
@@ -921,15 +1004,37 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
         </div>
       </header>
       <div className="start-screen-rule" />
+      {activeBanner && <section className="home-feature-banner" aria-label="首页作品横幅">
+        <div className="home-feature-banner-grid">
+          {bannerProjects.map((project, index) => {
+            const isActive = index === bannerIndex % bannerProjects.length
+            return <article key={project.id} className={`home-feature-banner-item ${isActive ? 'active' : ''}`} aria-hidden={!isActive}>
+              <div className="home-feature-banner-art-frame">
+                <button className="home-feature-banner-art" type="button" tabIndex={isActive ? undefined : -1} onClick={() => {
+                  if (project.imageUrl) void onOpenImage(project.imageUrl, project.name)
+                  else if (project.filePath) void openProject({ filePath: project.filePath, name: project.name })
+                }} aria-label={`打开作品 ${project.name}`}>
+                  {project.imageUrl ? <img src={project.imageUrl} alt={project.name} /> : project.previewUrl ? <img src={project.previewUrl} alt={project.name} /> : <PixelUtilityIcon kind="image" />}
+                </button>
+                <span className="home-feature-banner-title">{project.name}</span>
+                <button type="button" className="home-feature-banner-author" tabIndex={isActive ? undefined : -1} onClick={() => openExternalLink(project.authorUrl)} aria-label={`打开作者 ${project.author}`}>作者：{project.author}</button>
+                {bannerProjects.length > 1 && <div className="home-feature-banner-dots" role="tablist" aria-label="横幅图片切换">
+                  {bannerProjects.map((_, dotIndex) => <button key={dotIndex} type="button" tabIndex={isActive ? undefined : -1} role="tab" aria-selected={isActive && dotIndex === bannerIndex} aria-label={`第 ${dotIndex + 1} 张图片`} className={`home-feature-banner-dot ${isActive && dotIndex === bannerIndex ? 'active' : ''}`} onClick={() => setBannerIndex(dotIndex)} />)}
+                </div>}
+              </div>
+            </article>
+          })}
+        </div>
+      </section>}
       <div className="start-screen-layout">
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
           <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
           <section className="start-screen-news" aria-label={t('home.news')}>
-            <button className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.()} aria-label={t('home.newsOpenAria', { version: latestRelease.version })}>
-              <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: latestRelease.version })}</strong><time dateTime={latestRelease.publishedAt}>{formatReleaseDate(latestRelease.publishedAt, locale)}</time></span>
-              <p>{t(latestRelease.homeSummary)}</p>
-            </button>
+            {homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
+              <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: release.version })}</strong><time dateTime={release.publishedAt}>{formatReleaseDate(release.publishedAt, locale)}</time></span>
+              <p>{t(release.homeSummary)}</p>
+            </button>)}
           </section>
         </aside>
         <section className="recent-files-panel" aria-label={sectionName(activeSection)}>
@@ -952,7 +1057,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onRestoreRecovery,
           </div>
         </section>
       </div>
-      <footer className="start-screen-footer"><span className="start-screen-build-status"><span>MoonSprite</span><strong>{APP_CHANNEL_LABEL}</strong></span><small className="start-screen-development-notice"><span>{t('home.internalUseOnly')}</span><span>{t('home.doNotDistribute')}</span></small></footer>
+      <footer className="start-screen-footer"><span className="start-screen-build-status"><span>MoonSprite</span><strong>{APP_CHANNEL_LABEL}</strong></span><small className="start-screen-development-notice">{t('home.internalUseOnly')}{' '}{t('home.doNotDistribute')}</small></footer>
     </div>
     {languageDialogOpen && <HomeLanguageDialog current={locale} onApply={applyLanguage} onClose={() => setLanguageDialogOpen(false)} />}
     {sectionManagerOpen && <HomeSectionManagerDialog activeSectionId={section} fileDisplayFormats={fileDisplayFormats} sections={homeSections} onAddFolder={addHomeFolderSection} onChange={updateHomeSections} onClose={() => setSectionManagerOpen(false)} onFileDisplayFormatsChange={updateFileDisplayFormats} onRemove={removeHomeFolderSection} onSelect={selectSection} />}

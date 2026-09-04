@@ -52,6 +52,10 @@ interface DrawSelectionSizeLabelOptions {
   sizeLabel: string
   background: string
   foreground: string
+  sizeWidth?: number
+  sizeHeight?: number
+  /** Optional viewport-space anchor for the label's upper-left edge. */
+  anchor?: { x: number; y: number }
 }
 
 const SELECTION_SIZE_LABEL_LINE_HEIGHT_CSS = 14
@@ -73,21 +77,26 @@ export function drawSelectionSizeLabel({
   endLabel,
   sizeLabel,
   background,
-  foreground
+  foreground,
+  sizeWidth,
+  sizeHeight,
+  anchor
 }: DrawSelectionSizeLabelOptions): SelectionSizeLabelLayout | null {
   if (points.length === 0) return null
   const startX = Math.round(selectionX)
   const startY = Math.round(selectionY)
   const widthValue = Math.max(1, Math.round(selectionWidth))
   const heightValue = Math.max(1, Math.round(selectionHeight))
+  const readoutWidth = Math.max(1, Math.round(sizeWidth ?? widthValue))
+  const readoutHeight = Math.max(1, Math.round(sizeHeight ?? heightValue))
   const endX = startX + widthValue - 1
   const endY = startY + heightValue - 1
   const lines = [
     `${startLabel} ${startX}, ${startY}    ${endLabel} ${endX}, ${endY}`,
-    `${sizeLabel} ${widthValue} × ${heightValue}`
+    `${sizeLabel} ${readoutWidth} × ${readoutHeight}`
   ] as const
-  const minX = Math.min(...points.map((point) => point.x))
-  const minY = Math.min(...points.map((point) => point.y))
+  const minX = anchor?.x ?? Math.min(...points.map((point) => point.x))
+  const minY = anchor?.y ?? Math.min(...points.map((point) => point.y))
 
   context.save()
   context.font = '11px ui-monospace, SFMono-Regular, Consolas, monospace'

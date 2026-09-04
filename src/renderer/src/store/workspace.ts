@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { SelectionQuad } from '@shared/types'
-import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
@@ -15,7 +15,7 @@ import { openProgress } from '@/core/open-progress'
 import { saveProgress } from '@/core/save-progress'
 import { createSelectionBrush, encodeBrushPng } from '@/core/brushes'
 import { createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
-import { applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, captureSelectionTransform, clampSelection, clearSelection, fillSelectionOrCanvas, flipLayer, flipSelection, flipSelectionTransformSource, moveSelection, outlineSelection, replaceLayerColor, restoreSelectionTranslationPreview, selectionTranslationPreviewEdit, transformSelectionCopy, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from '@/core/tools'
+import { antiAliasSelection, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, captureSelectionTransform, clampSelection, clearSelection, fillSelectionOrCanvas, flipLayer, flipSelection, flipSelectionTransformSource, moveSelection, outlineSelection, replaceLayerColor, restoreSelectionTranslationPreview, selectionTranslationPreviewEdit, transformSelectionCopy, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from '@/core/tools'
 import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransformStates, selectionTransformLayerForState } from '@/core/selection-transform-targets'
 import { applyRelativeLuminance, colorEquals, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from '@/core/raster'
 import { combineSelection, flipSelectionMask, invertSelectionMask, rotateSelectionTargetAroundPivot, selectionContains, selectionQuadFromRect, shearTransformedSelection, shiftSelection, transformSelectionMask, transformSelectionMaskQuad, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from '@/core/selection'
@@ -39,6 +39,8 @@ import { normalizeGapClosingThreshold } from '@/core/contiguous-region'
 import { normalizeBrushDitherSettings } from '@/core/gradient-color'
 import { cloneOutlineSettings, normalizeOutlineSettings } from '@/core/outline-settings'
 import { readStoredString } from '@/core/storage'
+import { ACTIVE_PALETTE_ID_STORAGE_KEY } from '@/core/panel-preferences'
+import { normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots } from '@/core/palette-layout'
 import { loadColorRolePreferences, persistColorRolePreferences } from '@/core/color-role-preferences'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
 import { defaultSymmetryCenter, type SymmetryAxes, type SymmetryCenter } from '@/core/symmetry'
@@ -50,11 +52,12 @@ import { cloneLayerStyles, hasConfiguredLayerStyles, hasEnabledLayerStyles, laye
 import { renderBackgroundPatternIndexed, renderBackgroundPatternRgba, renderBackgroundTileIndexed, renderBackgroundTileRgba, type BackgroundPatternTile } from '@/core/background-patterns'
 import { encodeSelectionBackgroundPreset } from '@/core/background-preset-images'
 import { isLinkableRasterLayer, linkedLayerDefaultNameSequence, linkedLayerMembers, setLinkedLayerGroupDisplayColor, shareLinkedRasterContent } from '@/core/linked-layers'
-import { activeTilemapCelTarget, applyTilemapDocumentEdit, applyTilemapSelectionCellMove, applyTilemapTilesetDocumentEdit, applyTilesetTileReferences, captureTilesetTileReferences, convertTilemapPixelEdit, rerenderTilesetReferences, rerenderTilesetTileReferences } from '@/core/tilemap-document'
+import { activeTilemapCelTarget, applyTilemapDocumentEdit, applyTilemapSelectionCellMove, applyTilemapTilesetDocumentEdit, applyTilesetTileReferences, captureTilesetTileReferences, convertTilemapPixelEdit, flipTilemapSelection, rerenderTilesetReferences, rerenderTilesetTileReferences } from '@/core/tilemap-document'
 import { appendBlankTilesetTile, cloneTilemapCelData, cloneTileset, compactTilesetTileSlots, createBlankTileset, createTilemapCelData, deleteTilesetTiles as deleteTilesetTilesData, MAX_TILE_SIZE, renderTilemapSurface, reorderTilesetTiles as reorderTilesetTilesData, setTilesetTileSlots as setTilesetTileSlotsData, sliceRasterSurfaceToTilemap, tileRepeatFitZoom, tilemapCellBounds, tilemapCellIndexAtPoint, tilemapCellTranslationForSelection, tilemapEditBytes, tilemapTilesetEditBytes, tilemapTilesetEditHasChanges, wrapSelectionMaskForTileRepeat, writeTilesetTilePixels, type TilemapDrawingMode, type TilemapEdit, type TilemapTilesetEdit } from '@/core/tilemap'
 import { cloneFreeTileCelData, createFreeTileCelData, freeTileCelDataEqual, freeTileInstanceBounds, freeTileSourceForInstance, renderFreeTileSurface, type FreeTileDrawingMode } from '@/core/free-tile'
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, applyFreeTileReferences, applyFreeTileSourceLayerSnapshot, applyFreeTileSourceSnapshot, captureFreeTileImageResizeState, captureFreeTileReferences, captureFreeTileSourceReferences, captureFreeTileSourceSnapshot, ensureFreeTileTilesetOwnership, freeTileCelTargetAt, freeTileLayerIdsForSource, freeTileLayersForSet, freeTileLayerTilesets, freeTileSetIdForLayer, freeTileSourceEditSnapshotBytes, freeTileSourceEditSnapshotsEqual, freeTileSourceOwnerForId, freeTileSourcesForLayer, rasterSurfaceToFreeTileStamps, replaceFreeTileSetSources, rerenderFreeTileReferences, rerenderFreeTileSourceReferences, resizeFreeTileDocumentImage, validateFreeTileImageResize, type FreeTileCelTarget, type FreeTilePlacementEdit, type FreeTileSourceEditSnapshot } from '@/core/free-tile-document'
 import { createFreeTileSourceEditRaster, freeTileSelectionToEditRaster, freeTileSourceSnapshotFromEditRaster, freeTileTransformTargetToEditRaster } from '@/core/free-tile-edit'
+import { filterPresetById, lcdChannelColorAtNormalized, lcdChannelOffset, lcdScanlineColorAtNormalized, normalizeLcdScreenFilterOptions, renderFilterPreset, type FilterPresetId, type LcdScreenFilterOptions } from '@/core/filter-presets'
 import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, openDocumentFile, saveDocumentFile, type ExportOptions, type SaveAsOptions } from './document-file-service'
 import { RecoveryService } from './recovery-service'
 import { clipboardService, selectionClipboardImage, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
@@ -66,7 +69,7 @@ import { DocumentTransactionRegistry } from './document-transactions'
 import { beginFreeTileInstancePropertiesTransaction as beginFreeTileInstancePropertiesTransactionCommand, beginFreeTileSourcePropertiesTransaction as beginFreeTileSourcePropertiesTransactionCommand, cancelFreeTileInstancePropertiesTransaction as cancelFreeTileInstancePropertiesTransactionCommand, cancelFreeTileSourcePropertiesTransaction as cancelFreeTileSourcePropertiesTransactionCommand, commitFreeTileInstancePropertiesTransaction as commitFreeTileInstancePropertiesTransactionCommand, commitFreeTileSourcePropertiesTransaction as commitFreeTileSourcePropertiesTransactionCommand, previewFreeTileInstancePropertiesTransaction as previewFreeTileInstancePropertiesTransactionCommand, previewFreeTileSourcePropertiesTransaction as previewFreeTileSourcePropertiesTransactionCommand } from './workspace-free-tile-properties'
 import { beginLayerPropertiesTransaction as beginLayerPropertiesTransactionCommand, cancelLayerPropertiesTransaction as cancelLayerPropertiesTransactionCommand, commitLayerPropertiesTransaction as commitLayerPropertiesTransactionCommand, previewLayerPropertiesTransaction as previewLayerPropertiesTransactionCommand, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from './workspace-layer-properties'
 import { beginLayerMoveDuplicatePreview as beginLayerMoveDuplicatePreviewCommand, cancelLayerMovePreview as cancelLayerMovePreviewCommand, createLayerMoveHistoryEntry, previewLayerMove as previewLayerMoveCommand, type LayerMoveDuplicateResult, type LayerMoveState } from './workspace-layer-move'
-import type { ColorReplacementPreview, ColorReplacementTarget, FreeTileInstancePropertyChanges, TextCelPreview, TextLayerDraftTarget, WorkspaceState } from './workspace-state'
+import type { AntiAliasPreview, ColorReplacementPreview, ColorReplacementTarget, FreeTileInstancePropertyChanges, TextCelPreview, TextLayerDraftTarget, WorkspaceState } from './workspace-state'
 import type { PaletteSortDirection, PaletteSortMode } from '@/core/palette'
 import type { AdjustmentSnapshot, AnimationFrameClipboardItem, AnimationMaskClipboardItem, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, FloatingPaste, FloatingSelectionBoxHistoryEntry, OutlinePreview, SelectionPivot, TimelineActiveContext } from './workspace-types'
 
@@ -75,10 +78,23 @@ export type { SpriteSheetExportOptions } from '@/core/sprite-sheet'
 export type { AdjustmentSnapshot, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DialogChoice, DocumentSession, FloatingPaste, OutlinePreview, SelectionPivot } from './workspace-types'
 export type { LayerPropertyField, LayerPropertyTarget, LayerPropertyValues } from './workspace-layer-properties'
 export type { LayerMoveDuplicateResult, LayerMoveState } from './workspace-layer-move'
-export type { ColorReplacementPreview, ColorReplacementTarget, FreeTileInstancePropertyChanges, FreeTileLayerOptions, TextCelPreview, TextLayerDraftTarget, TilemapLayerOptions, WorkspaceState } from './workspace-state'
+export type { AntiAliasPreview, ColorReplacementPreview, ColorReplacementTarget, FreeTileInstancePropertyChanges, FreeTileLayerOptions, TextCelPreview, TextLayerDraftTarget, TilemapLayerOptions, WorkspaceState } from './workspace-state'
 
 function activeSession(state: WorkspaceState): DocumentSession | null {
   return state.sessions.find((session) => session.document.id === state.activeId) ?? null
+}
+
+const applyStoredPaletteToNewDocument = (document: SpriteDocument, palette: StoredPalette): void => {
+  const paletteSession = sessionFromDocument(document)
+  const layout = palette.columns !== undefined && palette.slots !== undefined
+    ? { columns: palette.columns, slots: palette.slots }
+    : undefined
+  applyPaletteCommand(paletteSession, palette.colors.map((color) => ({ ...color })), layout)
+  // The temporary session only applies the document data; its UI state and history
+  // are intentionally discarded before the new document enters the workspace.
+  document.paletteColumns = normalizePaletteColumns(document.paletteColumns)
+  document.paletteSlots = normalizePaletteSlots(document.palette.map((entry) => entry.id), document.paletteOrder, document.paletteSlots, document.paletteColumns)
+  document.paletteOrder = paletteOrderFromSlots(document.paletteSlots)
 }
 
 const clearAnimationClipboards = (session: DocumentSession): void => {
@@ -852,10 +868,11 @@ const ensureTileSelection = (session: DocumentSession): void => {
   }
   const freeTarget = activeFreeTileCelTarget(session.document)
   const target = freeTarget ? null : activeTilemapCelTarget(session.document)
+  const tilemapTilesetIds = new Set(session.document.layers.flatMap((layer) => layer.kind === 'tilemap' && layer.tilemapTilesetId ? [layer.tilemapTilesetId] : []))
   const compatible = freeTarget
     ? tilesets.filter((tileset) => freeTarget.sources.some((source) => source.tileset.id === tileset.id))
     : target
-      ? tilesets.filter((tileset) => tileset.tileWidth === target.tilemap.tileWidth && tileset.tileHeight === target.tilemap.tileHeight)
+      ? tilesets.filter((tileset) => tilemapTilesetIds.has(tileset.id))
       : tilesets
   const selected = compatible.find((tileset) => tileset.id === session.selectedTilesetId) ?? compatible[0] ?? null
   session.selectedTilesetId = selected?.id ?? null
@@ -939,6 +956,10 @@ const requestTilesetPanelVisibility = (visible: boolean): void => {
 
 const documentUsesTilesetPanel = (document: SpriteDocument | null | undefined): boolean =>
   Boolean(document?.layers.some((layer) => layer.kind === 'tilemap' || layer.kind === 'free-tile'))
+
+const requestTilesetPanelForLayer = (document: SpriteDocument, layerId: string): void => {
+  if (document.layers.some((layer) => layer.id === layerId && layer.kind === 'tilemap')) requestTilesetPanelVisibility(true)
+}
 
 const defaultFreeTileSourceDisplayColor = (index: number): RgbaColor => {
   const presets = loadEditorPreferences().layerDisplayColorPresets
@@ -1482,6 +1503,29 @@ const groupVisibilityInvalidation = (document: SpriteDocument, groupId: string):
   return rect ? { kind: 'region', rect } : { kind: 'full' }
 }
 
+const layerBlendModeInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {
+  const bounds = cachedLayerContentBounds(document, layer)
+  return bounds
+    ? { kind: 'region', frameId: document.animation?.activeFrameId, rect: expandLayerStyleInvalidationRect(document, bounds, [layer.id]) }
+    : { kind: 'full' }
+}
+
+const groupBlendModeInvalidation = (document: SpriteDocument, groupId: string): ContentInvalidationHint => {
+  const layerIds = new Set(getLayerIdsInGroup(document, groupId))
+  let rect: SelectionRect | null = null
+  for (const layer of document.layers) {
+    if (!layerIds.has(layer.id)) continue
+    const bounds = cachedLayerContentBounds(document, layer)
+    if (bounds === undefined) return { kind: 'full' }
+    if (!bounds) continue
+    const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
+    rect = rect ? unionRects(rect, expanded) : expanded
+  }
+  return rect
+    ? { kind: 'region', frameId: document.animation?.activeFrameId, rect }
+    : { kind: 'full' }
+}
+
 const commitVisibilityChange = (
   session: DocumentSession,
   target: { visible: boolean },
@@ -1569,6 +1613,14 @@ const applyLayerRowSelection = (
     }
   }
 }
+
+const layerOwnsTileset = (layer: RasterLayer, tilesetId: string): boolean =>
+  (layer.kind === 'tilemap' && layer.tilemapTilesetId === tilesetId)
+  || (layer.kind === 'free-tile' && layer.freeTileSources?.some((source) => source.tilesetId === tilesetId) === true)
+
+const ownerLayerForTileset = (session: DocumentSession, tilesetId: string): RasterLayer | undefined =>
+  session.document.layers.find((layer) => layer.id === session.document.activeLayerId && layerOwnsTileset(layer, tilesetId))
+  ?? session.document.layers.find((layer) => layerOwnsTileset(layer, tilesetId))
 
 const applyLayerRowRange = (
   session: DocumentSession,
@@ -1756,6 +1808,18 @@ const restoreColorReplacementPreviewState = (session: DocumentSession, preview: 
 const invalidateColorReplacementPreview = (session: DocumentSession): void => {
   session.revision += 1
   session.contentRevision += 1
+}
+
+const restoreAntiAliasPreviewState = (session: DocumentSession, preview: AntiAliasPreview): void => {
+  revertPixelEdit(session.document, preview.edit)
+  syncActiveAnimationFrame(session.document)
+}
+
+const invalidateAntiAliasPreview = (session: DocumentSession): void => {
+  const fromRevision = session.contentRevision
+  session.revision += 1
+  session.contentRevision += 1
+  session.contentInvalidation = { kind: 'full', fromRevision, revision: session.contentRevision }
 }
 
 const tr = (key: TranslationKey, params?: TranslationParams): string => translate(loadEditorPreferences().language, key, params)
@@ -2428,7 +2492,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const resource = await window.moonSprite.getResourceInfo()
       const check = checkResourceLimit(width, height, 1, colorMode, resource)
       if (!check.allowed) throw new Error(check.reason)
-      get().addSession(createDocument(name || tr('workspace.defaultName'), width, height, colorMode, recordDrawing))
+      const document = createDocument(name || tr('workspace.defaultName'), width, height, colorMode, recordDrawing)
+      const previousPaletteId = readStoredString(ACTIVE_PALETTE_ID_STORAGE_KEY)
+      if (previousPaletteId) {
+        try {
+          const listing = await window.moonSprite.listPalettes()
+          const previousPalette = listing.palettes.find((palette) => palette.id === previousPaletteId)
+          if (previousPalette) applyStoredPaletteToNewDocument(document, previousPalette)
+        } catch (error) {
+          console.warn('Failed to restore the last selected palette for a new document.', error)
+        }
+      }
+      get().addSession(document)
     } catch (error) {
       set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
     }
@@ -3691,7 +3766,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((active) => { active.canvasResizePreview = preview ? { ...preview } : null }, false)
   },
   setOutlinePreview(preview) {
-    get().mutateActive((session) => { session.outlinePreview = preview ? { ...preview, color: { ...preview.color }, directions: { ...preview.directions } } : null }, false)
+    get().mutateActive((session) => { session.outlinePreview = preview ? { ...preview, color: { ...preview.color }, backgroundColor: { ...preview.backgroundColor }, directions: { ...preview.directions } } : null }, false)
   },
   commitSelectionChange(before, after, label, options = {}) {
     const sameMask = before?.mask === after?.mask || (before?.mask?.length === after?.mask?.length && before?.mask?.every((value, index) => value === after?.mask?.[index]))
@@ -3831,7 +3906,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => sortPaletteColorsCommand(session, mode, direction))
   },
 
-  mutateActive(mutator, dirty = true, normalizeSelection = false, markSelectionNormalizationHistory = normalizeSelection) {
+  mutateActive(mutator, dirty = true, normalizeSelection = false, markSelectionNormalizationHistory = normalizeSelection, invalidation?: ContentInvalidationHint) {
     const state = get()
     const session = activeSession(state)
     if (!session) return
@@ -3856,7 +3931,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     ensureTimelineActiveContext(session)
     persistProjectLayerPanelState(session)
     if (dirty === 'metadata') touchMetadata(session)
-    else touch(session, dirty === true || dirty === 'content')
+    else touch(session, dirty === true || dirty === 'content', invalidation)
     if (dirty === true || dirty === 'content' || dirty === 'metadata') recordDocumentOperation(session, undefined, dirty !== 'metadata')
     set({ sessions: [...state.sessions] })
   },
@@ -4001,6 +4076,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setTilemapMode(mode) {
     get().mutateActive((session) => {
       session.tilemapMode = mode
+    }, false)
+  },
+
+  activateTilemapLayerForDrawing(layerId) {
+    get().mutateActive((session) => {
+      if (session.tilemapMode !== 'paint') return
+      const requestedOwner = layerId
+        ? session.document.layers.find((layer) => layer.id === layerId && layer.kind === 'tilemap')
+        : undefined
+      const owner = requestedOwner
+        ?? (session.selectedTilesetId ? ownerLayerForTileset(session, session.selectedTilesetId) : undefined)
+      if (owner?.kind !== 'tilemap') return
+      const activeLayer = session.document.layers.find((layer) => layer.id === session.document.activeLayerId)
+      // A shared tileset is intentionally not an implicit layer switch. For
+      // a concrete edit target, however, the target layer is authoritative;
+      // this prevents pointer-up from restoring the layer that was active
+      // before the stroke began.
+      if (activeLayer?.kind === 'tilemap' && activeLayer.tilemapTilesetId === owner.tilemapTilesetId) {
+        const frameId = session.document.animation?.activeFrameId ?? null
+        setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: activeLayer.id }, frameId, null)
+        return
+      }
+      // Drawing with another layer's tileset changes the active paint target,
+      // but it must not replace the user's layer selection. Selection visuals
+      // and active-row visuals are separate timeline states.
+      session.document.activeLayerId = owner.id
+      // Keep the timeline focus in the same transition as the active paint
+      // target; otherwise the old layer can reappear after pointer-up.
+      const frameId = session.document.animation?.activeFrameId ?? null
+      setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: owner.id }, frameId, null)
     }, false)
   },
 
@@ -4642,14 +4747,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => {
       const tileset = session.document.tilesets?.find((candidate) => candidate.id === id)
       if (!tileset) return
-      const owner = session.document.layers.find((layer) => layer.id === session.document.activeLayerId && ((layer.kind === 'tilemap' && layer.tilemapTilesetId === tileset.id)
-        || (layer.kind === 'free-tile' && layer.freeTileSources?.some((source) => source.tilesetId === tileset.id))))
-        ?? session.document.layers.find((layer) => (layer.kind === 'tilemap' && layer.tilemapTilesetId === tileset.id)
-        || (layer.kind === 'free-tile' && layer.freeTileSources?.some((source) => source.tilesetId === tileset.id)))
-      if (owner) {
-        applyLayerRowSelection(session, [owner.id], [], { kind: 'layer', id: owner.id })
-        session.layerSelectionAnchorId = owner.id
-      }
       session.selectedTilesetId = tileset.id
       clearFreeTileInstanceSelection(session)
       session.selectedTileId = tileset.tileIds.includes(session.selectedTileId ?? '') ? session.selectedTileId : tileset.tileIds[0] ?? null
@@ -5314,6 +5411,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationCellSelectionAnchorKey = current.has(key) ? key : session.selectedAnimationCellKeys.at(-1) ?? null
     }, false, false)
     const parsed = parseAnimationCelKey(key)
+    const current = activeSession(get())
+    if (parsed && current) requestTilesetPanelForLayer(current.document, parsed.layerId)
     if (parsed) get().setActiveAnimationFrame(parsed.frameId)
   },
 
@@ -6777,6 +6876,200 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (placementHistory) session.history.push(placementHistory)
       session.history.endCompound(tr('workspace.history.newLayer'))
     }, true, true)
+  },
+
+  async applyFilterPreset(presetId) {
+    get().commitFloatingPaste()
+    const current = activeSession(get())
+    const preset = filterPresetById(presetId)
+    if (!current || !preset) return
+    const documentId = current.document.id
+    try {
+      const resource = await window.moonSprite.getResourceInfo()
+      const check = checkResourceLimit(current.document.width, current.document.height, current.document.layers.length + 1, current.document.colorMode, resource)
+      if (!check.allowed) throw new Error(check.reason)
+      get().mutateActive((session) => {
+        if (session.document.id !== documentId) return
+        const document = session.document
+        const before = captureDocumentStructureSnapshot(document)
+        const beforeSelection = captureLayerUi(session)
+        const rgbaPixels = renderFilterPreset(preset.id, document.width, document.height)
+        const layer = createLayer(`滤镜 · ${preset.name}`, document.width, document.height, document.colorMode)
+        layer.blendMode = preset.blendMode
+        layer.opacity = preset.opacity
+        layer.description = preset.description
+        if (session.selectedGroupId && document.groups.some((group) => group.id === session.selectedGroupId)) layer.groupId = session.selectedGroupId
+        if (layer.format === 'rgba') layer.pixels = rgbaPixels
+        else {
+          const pixels = new Uint32Array(document.width * document.height)
+          for (let index = 0; index < pixels.length; index += 1) {
+            const offset = index * 4
+            pixels[index] = paletteColorIdForCanvas(document, {
+              r: rgbaPixels[offset],
+              g: rgbaPixels[offset + 1],
+              b: rgbaPixels[offset + 2],
+              a: rgbaPixels[offset + 3]
+            })
+          }
+          layer.pixels = pixels
+        }
+        document.layers.push(layer)
+        const timeline = ensureAnimationDocument(document)
+        const filterCels = timeline.cels.filter((cel) => cel.layerId === layer.id)
+        const sourceSurface: AnimationCelSurface = layer.format === 'rgba'
+          ? { format: 'rgba', width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: new Uint8ClampedArray(layer.pixels) }
+          : { format: 'indexed', width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: new Uint32Array(layer.pixels) }
+        for (const cel of filterCels) {
+          cel.linkedCelId = null
+          cel.surface = cloneAnimationCelSurface(sourceSurface)
+          delete cel.text
+          delete cel.tilemap
+          delete cel.freeTiles
+        }
+        connectAnimationCels(document, filterCels.map((cel) => cel.id))
+        document.activeLayerId = layer.id
+        session.selectedGroupId = null
+        session.selectedGroupIds = []
+        session.selectedLayerIds = [layer.id]
+        refreshActiveAnimationFrame(document)
+        const after = captureDocumentStructureSnapshot(document)
+        const afterSelection = captureLayerUi(session)
+        const restore = (snapshot: DocumentStructureSnapshot, selection: ReturnType<typeof captureLayerUi>): void => {
+          restoreDocumentStructureSnapshot(document, snapshot)
+          session.selectedLayerIds = [...selection.selectedLayerIds]
+          session.selectedGroupId = selection.selectedGroupId
+          session.selectedGroupIds = [...selection.selectedGroupIds]
+          session.collapsedGroupIds = [...selection.collapsedGroupIds]
+        }
+        session.history.push({
+          label: `滤镜：${preset.name}`,
+          bytes: documentStructureDeltaBytes(before, after),
+          undo: () => restore(before, beforeSelection),
+          redo: () => restore(after, afterSelection),
+          invalidation: { kind: 'full' },
+          requiresAnimationSync: false
+        })
+      }, true, true)
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
+    }
+  },
+
+  async applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>) {
+    get().commitFloatingPaste()
+    const current = activeSession(get())
+    const selectedLayerId = current?.selectedLayerIds.length === 1 ? current.selectedLayerIds[0] : null
+    if (!current || !selectedLayerId) return
+    const documentId = current.document.id
+    const lcdOptions = normalizeLcdScreenFilterOptions(options)
+    try {
+      const resource = await window.moonSprite.getResourceInfo()
+      const check = checkResourceLimit(current.document.width, current.document.height, current.document.layers.length + 4, current.document.colorMode, resource)
+      if (!check.allowed) throw new Error(check.reason)
+      get().mutateActive((session) => {
+        if (session.document.id !== documentId) return
+        const document = session.document
+        const source = document.layers.find((layer) => layer.id === selectedLayerId)
+        if (!source) return
+        syncActiveAnimationFrame(document)
+        const before = captureDocumentStructureSnapshot(document)
+        const beforeSelection = captureLayerUi(session)
+        const sourceVisibleBefore = source.visible
+        const groupId = createId('filter-group')
+        const group: LayerGroup = {
+          id: groupId,
+          name: tr('filter.lcdScreen'),
+          parentGroupId: source.groupId ?? null,
+          visible: true,
+          locked: false,
+          opacity: 1,
+          blendMode: 'normal',
+          panelOrder: document.layers.indexOf(source) + 0.5,
+          displayColor: { ...nextAvailableLayerDisplayColor(document), a: 64 }
+        }
+        let lcdLayerColorIndex = 0
+        const sourceColorAt = (x: number, y: number): RgbaColor => x < 0 || y < 0 || x >= source.width || y >= source.height
+          ? { r: 0, g: 0, b: 0, a: 0 }
+          : readLayerColor(document, source, y * source.width + x)
+        const makeLayer = (name: string, mode: BlendMode, colorize: (color: RgbaColor, x: number, y: number) => RgbaColor, offset = { x: 0, y: 0 }): RasterLayer => {
+          const layer = createLayer(name, source.width, source.height, document.colorMode)
+          layer.groupId = groupId
+          layer.blendMode = mode
+          layer.displayColor = defaultFreeTileSourceDisplayColor(lcdLayerColorIndex++)
+          if (layer.format === 'rgba') {
+            const pixels = new Uint8ClampedArray(source.width * source.height * 4)
+            for (let y = 0; y < source.height; y += 1) for (let x = 0; x < source.width; x += 1) {
+              const color = colorize(sourceColorAt(x - offset.x, y - offset.y), x, y)
+              const pixelOffset = (y * source.width + x) * 4
+              pixels[pixelOffset] = color.r
+              pixels[pixelOffset + 1] = color.g
+              pixels[pixelOffset + 2] = color.b
+              pixels[pixelOffset + 3] = color.a
+            }
+            layer.pixels = pixels
+          } else {
+            const pixels = new Uint32Array(source.width * source.height)
+            for (let y = 0; y < source.height; y += 1) for (let x = 0; x < source.width; x += 1) {
+              pixels[y * source.width + x] = paletteColorIdForCanvas(document, colorize(sourceColorAt(x - offset.x, y - offset.y), x, y))
+            }
+            layer.pixels = pixels
+          }
+          layer.offsetX = source.offsetX
+          layer.offsetY = source.offsetY
+          return layer
+        }
+        const redLayer = makeLayer(tr('filter.red'), 'screen', (color, x, y) => lcdChannelColorAtNormalized(color, 0, x, y, lcdOptions), lcdChannelOffset(0, lcdOptions))
+        const greenLayer = makeLayer(tr('filter.green'), 'screen', (color, x, y) => lcdChannelColorAtNormalized(color, 1, x, y, lcdOptions), lcdChannelOffset(1, lcdOptions))
+        const blueLayer = makeLayer(tr('filter.blue'), 'screen', (color, x, y) => lcdChannelColorAtNormalized(color, 2, x, y, lcdOptions), lcdChannelOffset(2, lcdOptions))
+        const scanlineLayer = makeLayer(tr('filter.scanlines'), 'soft-light', (_color, x, y) => lcdScanlineColorAtNormalized(x, y, lcdOptions))
+        redLayer.displayColor = { r: 255, g: 0, b: 0, a: 64 }
+        greenLayer.displayColor = { r: 0, g: 255, b: 0, a: 64 }
+        blueLayer.displayColor = { r: 0, g: 0, b: 255, a: 64 }
+        scanlineLayer.displayColor = { r: 128, g: 128, b: 128, a: 64 }
+        document.groups.push(group)
+        const sourceIndex = document.layers.indexOf(source)
+        const insertAt = sourceIndex >= 0 ? sourceIndex + 1 : document.layers.length
+        // Internal layer order is bottom-to-top; reverse the visual child order
+        // so the panel reads Scanlines, Blue, Green, Red.
+        document.layers.splice(insertAt, 0, redLayer, greenLayer, blueLayer, scanlineLayer)
+        source.visible = false
+        const timeline = ensureAnimationDocument(document)
+        const createdLayers = [redLayer, greenLayer, blueLayer, scanlineLayer]
+        for (const layer of createdLayers) {
+          const cels = timeline.cels.filter((cel) => cel.layerId === layer.id)
+          const surface: AnimationCelSurface = layer.format === 'rgba'
+            ? { format: 'rgba', width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: new Uint8ClampedArray(layer.pixels) }
+            : { format: 'indexed', width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: new Uint32Array(layer.pixels) }
+          for (const cel of cels) {
+            cel.linkedCelId = null
+            cel.surface = cloneAnimationCelSurface(surface)
+            delete cel.text
+            delete cel.tilemap
+            delete cel.freeTiles
+          }
+          connectAnimationCels(document, cels.map((cel) => cel.id))
+        }
+        document.activeLayerId = redLayer.id
+        session.selectedLayerIds = []
+        session.selectedGroupId = groupId
+        session.selectedGroupIds = [groupId]
+        refreshActiveAnimationFrame(document)
+        const after = captureDocumentStructureSnapshot(document)
+        const afterSelection = captureLayerUi(session)
+        const restore = (snapshot: DocumentStructureSnapshot, selection: ReturnType<typeof captureLayerUi>, sourceVisible: boolean): void => {
+          restoreDocumentStructureSnapshot(document, snapshot)
+          const restoredSource = document.layers.find((layer) => layer.id === selectedLayerId)
+          if (restoredSource) restoredSource.visible = sourceVisible
+          session.selectedLayerIds = [...selection.selectedLayerIds]
+          session.selectedGroupId = selection.selectedGroupId
+          session.selectedGroupIds = [...selection.selectedGroupIds]
+          session.collapsedGroupIds = [...selection.collapsedGroupIds]
+        }
+        session.history.push({ label: `${tr('filter.lcdScreen')}`, bytes: documentStructureDeltaBytes(before, after), undo: () => restore(before, beforeSelection, sourceVisibleBefore), redo: () => restore(after, afterSelection, false), invalidation: { kind: 'full' }, requiresAnimationSync: false })
+      }, true, true)
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
+    }
   },
 
   async createTilemapLayer(options) {
@@ -8280,6 +8573,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, session.document.animation?.activeFrameId ?? null, null)
       // applyLayerRowSelection owns the complete transition out of mask mode.
     }, false)
+    const current = activeSession(get())
+    if (current) requestTilesetPanelForLayer(current.document, layerId)
   },
 
   selectMoveToolLayer(layerId, additive = false) {
@@ -8298,6 +8593,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       applyLayerRowSelection(session, selectedLayerIds, [], { kind: 'layer', id: layerId })
       setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, session.document.animation?.activeFrameId ?? null, null)
     }, false)
+    const current = activeSession(get())
+    if (current) requestTilesetPanelForLayer(current.document, layerId)
   },
 
   selectGroup(groupId, mode = 'replace') {
@@ -8342,6 +8639,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         null
       )
     }, false)
+    const current = activeSession(get())
+    if (current && layerIds.some((layerId) => current.document.layers.some((layer) => layer.id === layerId && layer.kind === 'tilemap'))) requestTilesetPanelVisibility(true)
   },
 
   clearLayerSelection() {
@@ -8839,8 +9138,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const after = { name: trimmed, opacity: visualLocked ? group.opacity : Math.max(0, Math.min(1, opacity)), blendMode: visualLocked ? group.blendMode : blendMode, locked: lockingAncestor ? group.locked : locked, displayColor: displayColor === undefined ? group.displayColor : displayColor ?? undefined, description: description ?? group.description ?? '', cumulativeBlend: visualLocked || cumulativeBlend === undefined ? group.cumulativeBlend === true : cumulativeBlend }
       if (before.name === after.name && before.opacity === after.opacity && before.blendMode === after.blendMode && before.locked === after.locked && before.description === after.description && before.cumulativeBlend === after.cumulativeBlend && optionalColorEquals(before.displayColor, after.displayColor)) return
       Object.assign(group, after)
-      session.history.push({ label: tr('workspace.history.groupProperties'), bytes: 48 + before.name.length + after.name.length, undo: () => Object.assign(group, before), redo: () => Object.assign(group, after), contentChanged, requiresAnimationSync: false })
-    }, contentChanged ? 'content' : 'metadata')
+      const invalidation = contentChanged ? groupBlendModeInvalidation(session.document, group.id) : undefined
+      session.history.push({ label: tr('workspace.history.groupProperties'), bytes: 48 + before.name.length + after.name.length, undo: () => Object.assign(group, before), redo: () => Object.assign(group, after), invalidation, contentChanged, requiresAnimationSync: false })
+    }, contentChanged ? 'content' : 'metadata', false, false, contentChanged ? groupBlendModeInvalidation(current.document, currentGroup.id) : undefined)
   },
 
   renameLayer(layerId, name) {
@@ -8926,8 +9226,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       apply(after)
       if (contentChanged) syncActiveAnimationLayer(session.document, layer.id)
-      session.history.push({ label: tr('workspace.history.layerProperties'), bytes: 40 + before.name.length + after.name.length, undo: () => apply(before), redo: () => apply(after), contentChanged, affectedLayerIds: contentChanged ? [layer.id] : undefined, requiresAnimationSync: contentChanged })
-    }, contentChanged ? 'content' : 'metadata')
+      const invalidation = contentChanged ? layerBlendModeInvalidation(session.document, layer) : undefined
+      session.history.push({ label: tr('workspace.history.layerProperties'), bytes: 40 + before.name.length + after.name.length, undo: () => apply(before), redo: () => apply(after), invalidation, contentChanged, affectedLayerIds: contentChanged ? [layer.id] : undefined, requiresAnimationSync: contentChanged })
+    }, contentChanged ? 'content' : 'metadata', false, false, contentChanged ? layerBlendModeInvalidation(current.document, currentLayer) : undefined)
   },
 
   beginLayerPropertiesTransaction(targets) {
@@ -9331,7 +9632,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (isLayerEffectivelyLocked(session.document, layer)) { set({ message: tr('workspace.clipboard.layerLocked') }); return false }
     try {
       const normalized = normalizeOutlineSettings(settings, session.primaryColor)!
-      const edit = outlineSelection(session.document, layer, session.selection, normalized.color, normalized.thickness, normalized.position, normalized.directions, normalized.kernel, normalized.smartHue, normalized.smartHueDarkness)
+      const edit = outlineSelection(session.document, layer, session.selection, normalized.color, normalized.thickness, normalized.position, normalized.directions, normalized.kernel, normalized.smartHue, normalized.smartHueDarkness, normalized.backgroundColor)
       if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
       session.document.outlineSettings = cloneOutlineSettings(normalized)
       const historyLabel = normalized.position === 'inside'
@@ -9351,6 +9652,60 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ message: error instanceof Error ? error.message : tr('workspace.outline.applyError') })
       return false
     }
+  },
+
+  antiAliasSelection(color, autoColorOpacity, includeInteriorColors, colorSource) {
+    const session = activeSession(get())
+    if (!session) return false
+    const layer = activePaintLayer(session)
+    if (isLayerEffectivelyLocked(session.document, layer)) { set({ message: tr('workspace.clipboard.layerLocked') }); return false }
+    const edit = antiAliasSelection(session.document, layer, session.selection, color, autoColorOpacity, includeInteriorColors, colorSource)
+    if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
+    get().commitPixelEdit(edit, tr('workspace.history.antiAlias'))
+    return true
+  },
+
+  previewAntiAliasSelection(color, autoColorOpacity, includeInteriorColors, colorSource, previous = null) {
+    const state = get()
+    const changedSessions = new Set<DocumentSession>()
+    if (previous) {
+      const previousSession = state.sessions.find((candidate) => candidate.document.id === previous.documentId)
+      if (previousSession) {
+        restoreAntiAliasPreviewState(previousSession, previous)
+        invalidateAntiAliasPreview(previousSession)
+        changedSessions.add(previousSession)
+      }
+    }
+    const session = activeSession(state)
+    if (!session) {
+      if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
+      return null
+    }
+    const layer = activePaintLayer(session)
+    if (isLayerEffectivelyLocked(session.document, layer)) {
+      if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
+      return null
+    }
+    const edit = antiAliasSelection(session.document, layer, session.selection, color, autoColorOpacity, includeInteriorColors, colorSource)
+    if (!edit) {
+      if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
+      return null
+    }
+    syncActiveAnimationFrame(session.document)
+    invalidateAntiAliasPreview(session)
+    changedSessions.add(session)
+    set({ sessions: [...state.sessions] })
+    return { documentId: session.document.id, edit }
+  },
+
+  restoreAntiAliasPreview(preview) {
+    if (!preview) return
+    const state = get()
+    const session = state.sessions.find((candidate) => candidate.document.id === preview.documentId)
+    if (!session) return
+    restoreAntiAliasPreviewState(session, preview)
+    invalidateAntiAliasPreview(session)
+    set({ sessions: [...state.sessions] })
   },
 
   copyActiveLayerToClipboard() {
@@ -10156,6 +10511,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const tilemapTarget = currentTilemapTarget?.layer.id === activeLayer?.id ? currentTilemapTarget : null
       const hybridCellTranslation = session.tilemapMode === 'hybrid'
         && pending.source.origin === 'selection'
+        && !pending.sourceFlipHorizontal
+        && !pending.sourceFlipVertical
         && simpleTranslation
         && tilemapTarget
         ? tilemapCellTranslationForSelection(
@@ -10193,9 +10550,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             pending.copy
           )
         } else if (edit) {
-          const conversionMode: Exclude<TilemapDrawingMode, 'paint'> = session.tilemapMode === 'hybrid' && pending.source.origin === 'selection'
-            ? 'create'
-            : session.tilemapMode
+          const conversionMode: Exclude<TilemapDrawingMode, 'paint'> = session.tilemapMode
           tilemapPixelEdit = convertTilemapPixelEdit(
             session.document,
             edit,
@@ -10634,6 +10989,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           for (const layerState of pending.layers) layerState.source = flipSelectionTransformSource(layerState.source, axis)
           syncFloatingPrimaryLayerState(pending)
         } else pending.source = flipSelectionTransformSource(pending.source, axis)
+        if (axis === 'horizontal') pending.sourceFlipHorizontal = !pending.sourceFlipHorizontal
+        else pending.sourceFlipVertical = !pending.sourceFlipVertical
         if (pending.freeTile) pending.freeTile.selectionSource = flipSelectionMask(pending.freeTile.selectionSource, axis)
         const transformTarget = pending.transformTarget ?? { x: pending.target.x, y: pending.target.y, width: pending.target.width, height: pending.target.height }
         const angle = pending.transformAngle ?? 0
@@ -10673,6 +11030,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (preview) pending.previewEdit = preview
           markFloatingPreviewChanged(session, previousTarget, transformed)
         }
+        return
+      }
+      const tilemapLayer = activePaintLayer(session)
+      if (session.selection && tilemapLayer.kind === 'tilemap' && session.tilemapMode === 'paint') {
+        const beforeSelection = cloneSelectionMask(session.selection)
+        const afterSelection = flipSelectionMask(session.selection, axis)
+        const edit = flipTilemapSelection(session.document, tilemapLayer.id, ensureAnimationDocument(session.document).activeFrameId, session.selection, axis)
+        if (edit) {
+          const label = axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical')
+          session.history.push({
+            label,
+            bytes: tilemapEditBytes(edit),
+            undo: () => { applyTilemapDocumentEdit(session.document, edit, 'before') },
+            redo: () => { applyTilemapDocumentEdit(session.document, edit, 'after') },
+            invalidation: edit.dirtyRect ? { kind: 'region', frameId: edit.frameId, rect: { ...edit.dirtyRect } } : { kind: 'full' },
+            affectedLayerIds: [tilemapLayer.id],
+            contentChanged: true,
+            requiresAnimationSync: false
+          })
+          session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
+        }
+        session.selection = afterSelection
+        session.lastPencilPoint = null
+        session.lastEraserPoint = null
         return
       }
       const selectedLayers = selectedTransformLayersForSession(session)

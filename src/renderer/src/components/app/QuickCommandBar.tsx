@@ -7,11 +7,13 @@ import { useWorkspace } from '@/store/workspace'
 import type { ShortcutId } from '@/core/shortcuts'
 import { QUICK_COMMAND_METADATA, type QuickCommandMetadata, type QuickCommandSettingsTarget } from './quick-command-registry'
 import { detectDocumentPixelScale } from '@/core/image-scale-detection'
+import { PixelAssetIcon } from './editor-tools'
 
 interface QuickCommandBarProps {
   documentId: string
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
+  onOpenAntiAlias: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
 }
@@ -50,7 +52,7 @@ const preserveCanvasFocus = (event: ReactPointerEvent<HTMLButtonElement>): void 
   event.preventDefault()
 }
 
-const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
+const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
   const { t } = useI18n()
   const [moving, setMoving] = useState(false)
   const [dragPreview, setDragPreview] = useState<{ edge: QuickCommandBarEdge; position: number } | null>(null)
@@ -182,6 +184,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       case 'resetView': return { run: () => runForDocument((state) => state.setView({ zoom: 16, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false })) }
       case 'fillForeground': return { run: () => runForDocument((state) => state.fillForeground()) }
       case 'deleteSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.deleteSelection()) }
+      case 'quickAntiAlias': return { run: () => runForDocument(() => onOpenAntiAlias()) }
       case 'swapForegroundBackground': return { run: () => runForDocument((state) => state.swapPrimarySecondaryColors()) }
       case 'createBrushFromSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.createBrushFromSelection()) }
       case 'rotateViewClockwise90': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (active) state.setView({ rotation: (active.view.rotation + 90) % 360 }) }) }
@@ -205,7 +208,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       {commands.map((command) => {
         const shortcut = command.shortcutId ? shortcutFor(command.shortcutId) : ''
         return <Tooltip key={command.id} className="quick-command-tooltip" content={<><strong>{t(command.label)}</strong><span>{t(command.description)}</span>{shortcut && <small>{shortcut}</small>}</>}>
-          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''}`} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}><PixelUtilityIcon kind={command.icon} /></button>
+          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''}`} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}>{command.iconSource ? <PixelAssetIcon src={command.iconSource} className="quick-command-asset-icon" /> : <PixelUtilityIcon kind={command.icon} />}</button>
         </Tooltip>
       })}
       <Tooltip className="quick-command-tooltip quick-command-settings-tooltip" content={<><strong>{t('quickCommands.settings')}</strong><span>{t('quickCommands.settingsDescription')}</span></>}>

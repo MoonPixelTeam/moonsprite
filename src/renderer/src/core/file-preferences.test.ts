@@ -45,6 +45,8 @@ describe('editor preferences boundary', () => {
       uiScale: 1,
       viewDragSensitivity: 1,
       moveLayerClickFlashDuration: 120,
+      gradientLineVisible: true,
+      gradientLineColor: DEFAULT_EDITOR_PREFERENCES.gradientLineColor,
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
     expect(parseUiScale('1.25')).toBe(1)
@@ -89,6 +91,8 @@ describe('editor preferences boundary', () => {
       uiScale: 1.5,
       viewDragSensitivity: 1.5,
       moveLayerClickFlashDuration: 80,
+      gradientLineVisible: false,
+      gradientLineColor: { r: 12, g: 34, b: 56, a: 78 },
       isoView: { ...DEFAULT_EDITOR_PREFERENCES.isoView, snapToGrid: true }
     }, storage)
 
@@ -98,6 +102,8 @@ describe('editor preferences boundary', () => {
     expect(loaded.uiScale).toBe(1.5)
     expect(loaded.viewDragSensitivity).toBe(1.5)
     expect(loaded.moveLayerClickFlashDuration).toBe(80)
+    expect(loaded.gradientLineVisible).toBe(false)
+    expect(loaded.gradientLineColor).toEqual({ r: 12, g: 34, b: 56, a: 78 })
     expect(loaded.isoView.snapToGrid).toBe(true)
     expect(storage.getItem(SAVE_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(EXPORT_FORMAT_PREFERENCE_KEY)).toBe('psd')

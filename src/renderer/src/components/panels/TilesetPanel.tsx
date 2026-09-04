@@ -417,13 +417,17 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
     }
   }
 
+  const enterPaintMode = (): void => {
+    store.setTilemapMode('paint')
+  }
+
   const panelTitle = t('panel.tileset')
 
   return <><section ref={floating.ref} className={`panel tileset-panel ${floating.style ? 'floating-panel' : ''}`} data-command-scope="tileset" style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
     <header aria-label={panelTitle} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
       <strong>{panelTitle}</strong>
       <span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>
-        <button type="button" className={session.tilemapMode === 'paint' ? 'selected' : ''} aria-pressed={session.tilemapMode === 'paint'} title={t('tileset.mode.paint')} aria-label={t('tileset.mode.paint')} onClick={() => store.setTilemapMode('paint')}><PixelUtilityIcon kind="tilePaint" /></button>
+        <button type="button" className={session.tilemapMode === 'paint' ? 'selected' : ''} aria-pressed={session.tilemapMode === 'paint'} title={t('tileset.mode.paint')} aria-label={t('tileset.mode.paint')} onClick={enterPaintMode}><PixelUtilityIcon kind="tilePaint" /></button>
         <button type="button" disabled={!selectedTileset || (!selectedTileId && displayedSelectedTileIds.length === 0) || selectedTileset.tileIds.length <= 1} title={t('tileset.deleteTile')} aria-label={t('tileset.deleteTile')} onClick={deleteSelectedTiles}><PixelUtilityIcon kind="delete" /></button>
       </span>
     </header>
@@ -440,12 +444,14 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
       <div ref={tileGridRef} className={`swatch-grid tileset-tile-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`} role="listbox" aria-multiselectable="true" aria-label={t('toolOptions.tiles')} style={{ '--swatch-size': `${PALETTE_SWATCH_PIXELS[swatchSize]}px`, '--palette-swatch-gap': `${PALETTE_SWATCH_GAP}px` } as CSSProperties} onPointerDownCapture={beginTileOutlineDrag} onPointerMove={moveTilePointer} onPointerLeave={() => { if (!tileDragRef.current && !tileSelectionGestureRef.current) setSelectionOutlineHovered(false) }} onPointerUp={(event) => finishTilePointer(event.pointerId)} onPointerCancel={(event) => finishTilePointer(event.pointerId, true)} onWheel={handleTileWheel} onBlur={clearTileSelection}>
         {displayedTileSlots.map((tileId, index) => {
           const tileNumber = tileId === null ? -1 : selectedTileset.tileIds.indexOf(tileId)
+          const hasOccupiedRight = tileId !== null && index % gridCapacity.columns < gridCapacity.columns - 1 && displayedTileSlots[index + 1] !== null
+          const hasOccupiedBottom = tileId !== null && index + gridCapacity.columns < displayedTileSlots.length && displayedTileSlots[index + gridCapacity.columns] !== null
           const primary = tileId !== null && selectedTileId === tileId
           const secondary = tileId !== null && secondaryTileId === tileId
           const selected = tileId !== null && displayedSelectedTileIds.includes(tileId)
           const dragging = tileId !== null && draggingTileIds.includes(tileId)
           const label = tileId === null ? t('tileset.emptySlot', { index: index + 1 }) : `${t('toolOptions.tileIndex', { index: tileNumber })} · ${t('tileset.tileRoleHint')}`
-          return <span key={tileId ?? `empty-${index}`} className="palette-swatch-wrap tileset-tile-wrap" data-tile-index={index}><button
+          return <span key={tileId ?? `empty-${index}`} className={`palette-swatch-wrap tileset-tile-wrap ${tileId !== null ? 'palette-swatch-occupied' : ''} ${hasOccupiedRight ? 'palette-swatch-has-right' : ''} ${hasOccupiedBottom ? 'palette-swatch-has-bottom' : ''}`.trim()} data-tile-index={index}><button
               type="button"
               role="option"
               data-tile-id={tileId ?? undefined}
@@ -456,7 +462,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
               title={label}
               onPointerDown={(event) => beginTileSelection(event, selectedTileset.id, tileId, index)}
               onContextMenu={(event) => event.preventDefault()}
-            >{tileId !== null && <><TilesetTileThumbnail tileset={selectedTileset} tileId={tileId} previewPixels={tilePixelPreview?.documentId === session.document.id && tilePixelPreview.tilesetId === selectedTileset.id ? tilePixelPreview.tiles?.get(tileId) : undefined} />{ctrlHeld && <span className="tileset-tile-id">{tileNumber}</span>}</>}</button>
+            >{tileId !== null && <><TilesetTileThumbnail tileset={selectedTileset} tileId={tileId} previewPixels={tilePixelPreview?.documentId === session.document.id && tilePixelPreview.tilesetId === selectedTileset.id ? tilePixelPreview.tiles?.get(tileId) : undefined} renderRevision={session.contentRevision} />{ctrlHeld && <span className="tileset-tile-id">{tileNumber}</span>}</>}</button>
           </span>
         })}
         {tileSelectionRange && <span data-tileset-selection-outline className="palette-selection-box tileset-selection-box" aria-hidden="true" style={{ '--palette-selection-left': tileSelectionRange.left, '--palette-selection-top': tileSelectionRange.top, '--palette-selection-width': tileSelectionRange.right - tileSelectionRange.left + 1, '--palette-selection-height': tileSelectionRange.bottom - tileSelectionRange.top + 1 } as CSSProperties} />}

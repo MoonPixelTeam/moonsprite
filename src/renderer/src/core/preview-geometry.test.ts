@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchoredPreviewPan, followPreviewPosition, previewCheckerCellSize } from './preview-geometry'
+import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from './preview-geometry'
 
 describe('preview zoom geometry', () => {
   it('keeps the document point under the pointer while zooming', () => {
@@ -30,6 +30,13 @@ describe('preview zoom geometry', () => {
     expect(previewCheckerCellSize(8, 1)).toBe(8)
     expect(previewCheckerCellSize(8, 0.25)).toBe(2)
     expect(previewCheckerCellSize(8, 0.01)).toBeCloseTo(0.08)
+  })
+
+  it('quantizes an upscaled fit to equal device-pixel widths', () => {
+    expect(pixelAlignedPreviewFitScale(7.8, 1)).toBe(7)
+    expect(pixelAlignedPreviewFitScale(7.8, 1.25)).toBeCloseTo(7.2)
+    expect(pixelAlignedPreviewFitScale(1, 1.25)).toBe(1)
+    expect(pixelAlignedPreviewFitScale(0.8, 1)).toBe(0.8)
   })
 })
 

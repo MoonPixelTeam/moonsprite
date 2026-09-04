@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "id": "game-boy-4",
+  "name": "Game Boy 4",
+  "columns": 4,
+  "colors": [
+    "#0F380FFF",
+    "#306230FF",
+    "#8BAC0FFF",
+    "#9BBC0FFF"
+  ],
+  "slots": [
+    0,
+    1,
+    2,
+    3
+  ]
+}

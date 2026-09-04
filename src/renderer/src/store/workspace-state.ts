@@ -1,6 +1,7 @@
 import type {
   AnimationLoopDirection,
   AnimationCelSurface,
+  AntiAliasColorSource,
   BackgroundPatternId,
   BlendMode,
   BrushDitherSettings,
@@ -47,7 +48,7 @@ import type {
 import type { ColorAdjustment } from '@/core/adjustments'
 import type { AdjustmentPreviewResult } from '@/core/adjustment-preview-protocol'
 import type { BackgroundPatternTile } from '@/core/background-patterns'
-import type { HistoryEntry, PixelEdit } from '@/core/history'
+import type { ContentInvalidationHint, HistoryEntry, PixelEdit } from '@/core/history'
 import type { LayerPanelRowMoveTarget } from '@/core/layer-operations'
 import type { PaletteSortDirection, PaletteSortMode } from '@/core/palette'
 import type { BrushDynamicsEffect, BrushDynamicsMapping, BrushPressureSettings } from '@/core/pressure'
@@ -60,6 +61,7 @@ import type { FreeTilePlacementEdit, FreeTileSourceEditSnapshot } from '@/core/f
 import type { FreeTileSourceEditRaster } from '@/core/free-tile-edit'
 import type { TimelapseExportOptions } from '@/core/timelapse'
 import type { SpriteSheetExportOptions } from '@/core/sprite-sheet'
+import type { FilterPresetId, LcdScreenFilterOptions } from '@/core/filter-presets'
 import type { ExportOptions, SaveAsOptions } from './document-file-service'
 import type { LayerMoveDuplicateResult, LayerMoveState } from './workspace-layer-move'
 import type { LayerPropertyField, LayerPropertyTarget, LayerPropertyValues } from './workspace-layer-properties'
@@ -74,6 +76,11 @@ export interface ColorReplacementPreview {
   nextColorId: number
   primaryColor: RgbaColor
   secondaryColor: RgbaColor
+}
+
+export interface AntiAliasPreview {
+  documentId: string
+  edit: PixelEdit
 }
 
 export interface TextCelPreview {
@@ -124,7 +131,7 @@ export interface WorkspaceSessionCommands {
   addSession(document: SpriteDocument, options?: { recoveryOriginId?: string }): void
   reorderSessions(documentIds: string[]): void
   setActive(id: string): void
-  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata', normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
+  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata', normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean, invalidation?: ContentInvalidationHint): void
 }
 
 export interface WorkspaceSliceCommands {
@@ -250,6 +257,9 @@ export interface WorkspaceViewSelectionCommands {
   toggleGrid(): void
   deleteSelection(): void
   fillForeground(): void
+  antiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource): boolean
+  previewAntiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource, previous?: AntiAliasPreview | null): AntiAliasPreview | null
+  restoreAntiAliasPreview(preview: AntiAliasPreview | null): void
   setOutlinePreview(preview: OutlinePreview | null): void
   outlineActiveSelection(settings: OutlineSettings): boolean
   beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
@@ -296,6 +306,7 @@ export interface WorkspaceHistoryCommands {
 
 export interface WorkspaceTilemapCommands {
   setTilemapMode(mode: TilemapDrawingMode): void
+  activateTilemapLayerForDrawing(layerId?: string): void
   setSelectedTileset(id: string): void
   setSelectedTile(tilesetId: string, tileId: string, role?: 'primary' | 'secondary'): void
   reorderTilesetTiles(tilesetId: string, orderedTileIds: string[]): boolean
@@ -425,6 +436,8 @@ export interface WorkspaceAnimationCommands {
 
 export interface WorkspaceLayerCommands {
   addLayer(): Promise<void>
+  applyFilterPreset(presetId: FilterPresetId): Promise<void>
+  applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>): Promise<void>
   createTilemapLayer(options: TilemapLayerOptions): Promise<void>
   createFreeTileLayer(options: FreeTileLayerOptions): Promise<void>
   convertLayerToTilemap(layerId: string, options: TilemapLayerOptions): Promise<void>
