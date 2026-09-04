@@ -2,6 +2,7 @@ import type {
   AnimationCel,
   AnimationCelSurface,
   AnimationGroupMask,
+  AnimationLayerMask,
   BrushDitherSettings,
   BrushPaintMode,
   BrushShape,
@@ -9,6 +10,7 @@ import type {
   FillKind,
   FillMode,
   GradientDither,
+  GradientStop,
   GradientType,
   ImageBrush,
   LayerMask,
@@ -25,6 +27,7 @@ import type {
   SelectionKind,
   SelectionMask,
   SelectionMode,
+  SelectionQuad,
   SelectionRect,
   ShapeKind,
   ShapeRatio,
@@ -42,6 +45,27 @@ import type { BrushDynamicsSettings, BrushPressureSettings } from '@/core/pressu
 import type { TilemapDrawingMode } from '@/core/tilemap'
 import type { FreeTileDrawingMode } from '@/core/free-tile'
 import type { FreeTileSourceEditRaster } from '@/core/free-tile-edit'
+import type {
+  TimelineCellRef,
+  TimelineRowRef,
+} from '@/core/animation-timeline-identity'
+
+/** Internal typed timeline selection identities. Legacy persisted arrays remain unchanged. */
+export interface TimelineSelectionIdentity {
+  rows: ReadonlySet<string>
+  cells: ReadonlySet<string>
+  masks: ReadonlySet<string>
+  rowRefs?: ReadonlySet<TimelineRowRef>
+  cellRefs?: ReadonlySet<TimelineCellRef>
+}
+
+/** Active timeline context kept separate from explicit selection during migration. */
+export interface TimelineActiveContext {
+  row: TimelineRowRef | null
+  frameId: string | null
+  /** Mask row context is independent from the concrete mask being edited. */
+  maskEditTargetId: string | null
+}
 
 export interface CanvasResizePreview {
   width: number
@@ -68,6 +92,7 @@ export interface AdjustmentSnapshot {
 
 export interface OutlinePreview {
   color: RgbaColor
+  backgroundColor: RgbaColor
   thickness: number
   position: OutlinePosition
   directions: OutlineDirections
@@ -79,7 +104,9 @@ export interface OutlinePreview {
 export interface AnimationFrameClipboardItem {
   frameId: string
   duration: number
+  disabled?: boolean
   cels: AnimationCel[]
+  layerMasks: AnimationLayerMask[]
   groupMasks: AnimationGroupMask[]
 }
 
@@ -110,10 +137,13 @@ export interface FloatingPaste {
   transformTarget?: SelectionRect
   transformAngle?: number
   transformShear?: SelectionShearTransform
+  transformQuad?: SelectionQuad
   previewEdit: PixelEdit | null
   translationPreview: SelectionTranslationPreview | null
   previewDeferred?: boolean
   tilemapEditCellIndex?: number
+  sourceFlipHorizontal?: boolean
+  sourceFlipVertical?: boolean
   copy: boolean
   label: string
   selectionBoxUndo?: FloatingSelectionBoxHistoryEntry[]
@@ -212,8 +242,18 @@ export interface DocumentSession {
   gradientContiguous: boolean
   gradientType: GradientType
   gradientDither: GradientDither
+  gradientFreeform?: boolean
+  gradientStops?: GradientStop[]
   moveAutoSelect: boolean
   selection: SelectionMask | null
+  /** View-only flag set when the user clicks an existing selection to edit its properties. */
+  selectionPropertiesActive?: boolean
+  /** Rotation displayed and edited by the selection properties bar. */
+  selectionAngle?: number
+  /** View-only mode that exposes only the four corner transform handles. */
+  freeTransformActive?: boolean
+  /** Current free-transform frame, kept after a committed corner drag. */
+  freeTransformQuad?: SelectionQuad | null
   /** View-only custom transform pivot. Null uses the current transformed selection center. */
   selectionPivot?: SelectionPivot | null
   selectionKind: SelectionKind
@@ -247,8 +287,11 @@ export interface DocumentSession {
   selectedGroupId: string | null
   selectedGroupIds: string[]
   selectedLayerIds: string[]
+  /** True when layer/group selection was explicitly made by the user. */
+  layerSelectionExplicit: boolean
   activeLayerMaskId: string | null
   layerMaskIsolatedView: boolean
+  layerMaskColorMemory?: { primary: RgbaColor; secondary: RgbaColor }
   layerSelectionAnchorId: string | null
   collapsedGroupIds: string[]
   animationPlaying: boolean
@@ -259,6 +302,8 @@ export interface DocumentSession {
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
   animationReturnToStart: boolean
+  /** Canonical active timeline row/cursor. Selection and playback never infer or overwrite this row. */
+  timelineActiveContext: TimelineActiveContext
   selectedAnimationFrameIds: string[]
   animationFrameSelectionAnchorId: string | null
   selectedAnimationCellKeys: string[]
@@ -267,6 +312,7 @@ export interface DocumentSession {
   animationCellSelectionExplicit: boolean
   /** Timeline cells whose attached masks are selected in the panel. */
   selectedAnimationMaskCellKeys: string[]
+  selectedAnimationMaskRowKeys: string[]
   animationMaskCellSelectionAnchorKey: string | null
   animationCellClipboard: AnimationCel[]
   animationCellClipboardAnchorKey: string | null
@@ -275,6 +321,8 @@ export interface DocumentSession {
   animationFrameClipboard: AnimationFrameClipboardItem[]
   revision: number
   contentRevision: number
+  /** Content revision produced by a selection transform whose guides must remain visible. */
+  selectionGuidesPreservedAtContentRevision?: number
   /** Changes that require the layer/timeline panel structure to render again. */
   layersPanelRevision: number
   contentInvalidation: DocumentContentInvalidation | null

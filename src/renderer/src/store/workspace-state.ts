@@ -1,6 +1,7 @@
 import type {
   AnimationLoopDirection,
   AnimationCelSurface,
+  AntiAliasColorSource,
   BackgroundPatternId,
   BlendMode,
   BrushDitherSettings,
@@ -15,6 +16,7 @@ import type {
   FreeTileInstance,
   FreeTileSourceLayer,
   GradientDither,
+  GradientStop,
   GradientType,
   ImageBrush,
   ImageBrushSettings,
@@ -31,6 +33,7 @@ import type {
   SelectionKind,
   SelectionMask,
   SelectionMode,
+  SelectionQuad,
   SelectionRect,
   ShapeKind,
   ShapeRatio,
@@ -45,7 +48,7 @@ import type {
 import type { ColorAdjustment } from '@/core/adjustments'
 import type { AdjustmentPreviewResult } from '@/core/adjustment-preview-protocol'
 import type { BackgroundPatternTile } from '@/core/background-patterns'
-import type { HistoryEntry, PixelEdit } from '@/core/history'
+import type { ContentInvalidationHint, HistoryEntry, PixelEdit } from '@/core/history'
 import type { LayerPanelRowMoveTarget } from '@/core/layer-operations'
 import type { PaletteSortDirection, PaletteSortMode } from '@/core/palette'
 import type { BrushDynamicsEffect, BrushDynamicsMapping, BrushPressureSettings } from '@/core/pressure'
@@ -58,12 +61,13 @@ import type { FreeTilePlacementEdit, FreeTileSourceEditSnapshot } from '@/core/f
 import type { FreeTileSourceEditRaster } from '@/core/free-tile-edit'
 import type { TimelapseExportOptions } from '@/core/timelapse'
 import type { SpriteSheetExportOptions } from '@/core/sprite-sheet'
+import type { FilterPresetId, LcdScreenFilterOptions } from '@/core/filter-presets'
 import type { ExportOptions, SaveAsOptions } from './document-file-service'
 import type { LayerMoveDuplicateResult, LayerMoveState } from './workspace-layer-move'
 import type { LayerPropertyField, LayerPropertyTarget, LayerPropertyValues } from './workspace-layer-properties'
 import type { AdjustmentSnapshot, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, OutlinePreview, SelectionPivot } from './workspace-types'
 
-export type ColorReplacementTarget = 'layer' | 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette'
+export type ColorReplacementTarget = 'layer' | 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette' | `loop-section:${string}`
 
 export interface ColorReplacementPreview {
   documentId: string
@@ -72,6 +76,11 @@ export interface ColorReplacementPreview {
   nextColorId: number
   primaryColor: RgbaColor
   secondaryColor: RgbaColor
+}
+
+export interface AntiAliasPreview {
+  documentId: string
+  edit: PixelEdit
 }
 
 export interface TextCelPreview {
@@ -122,7 +131,7 @@ export interface WorkspaceSessionCommands {
   addSession(document: SpriteDocument, options?: { recoveryOriginId?: string }): void
   reorderSessions(documentIds: string[]): void
   setActive(id: string): void
-  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata'): void
+  mutateActive(mutator: (session: DocumentSession) => void, dirty?: boolean | 'content' | 'metadata', normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean, invalidation?: ContentInvalidationHint): void
 }
 
 export interface WorkspaceSliceCommands {
@@ -139,6 +148,7 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
+  syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
   setAirbrushParticleRadius(radius: number): void
@@ -178,6 +188,8 @@ export interface WorkspaceToolCommands {
   setGradientContiguous(contiguous: boolean): void
   setGradientType(type: GradientType): void
   setGradientDither(dither: GradientDither): void
+  setGradientFreeform(enabled: boolean): void
+  setGradientStops(stops: GradientStop[]): void
   setMoveAutoSelect(enabled: boolean): void
   setPerfectPixels(enabled: boolean): void
   setSymmetryAxis(axis: keyof SymmetryAxes, enabled: boolean): void
@@ -217,16 +229,20 @@ export interface WorkspaceViewSelectionCommands {
   setViewportSizeForDocument(documentId: string, size: { width: number; height: number }): void
   setTileRepeatMode(mode: TileRepeatMode): void
   setSelection(selection: SelectionMask | null): void
+  setSelectionPropertiesActive(active: boolean): void
+  updateSelectionProperties(patch: Partial<SelectionRect> & { angle?: number; shearAngle?: number }): void
+  shrinkSelectionToContent(): void
   setSelectionPivot(pivot: SelectionPivot | null): void
   invertSelection(): void
   toggleSelectionOutline(): void
   beginLayerTransform(): void
+  beginFreeTransform(): void
   beginSelectedTextBoxTransform(): void
   previewTextBoxTransform(bounds: SelectionRect): void
   commitTextBoxTransform(bounds: SelectionRect): void
   cancelTextBoxTransform(): void
   setSelectionKind(kind: SelectionKind): void
-  commitSelectionChange(before: SelectionMask | null, after: SelectionMask | null, label: string): void
+  commitSelectionChange(before: SelectionMask | null, after: SelectionMask | null, label: string, options?: { resetTimelineSelection?: boolean }): void
   commitFloatingSelectionBoxMove(before: SelectionMask, after: SelectionMask, beforePivot: SelectionPivot | null, afterPivot: SelectionPivot | null): void
   commitTilemapSelectionMove(edit: TilemapEdit, before: SelectionMask | null, after: SelectionMask | null, label: string): void
   setSelectionMode(mode: SelectionMode): void
@@ -241,9 +257,12 @@ export interface WorkspaceViewSelectionCommands {
   toggleGrid(): void
   deleteSelection(): void
   fillForeground(): void
+  antiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource): boolean
+  previewAntiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource, previous?: AntiAliasPreview | null): AntiAliasPreview | null
+  restoreAntiAliasPreview(preview: AntiAliasPreview | null): void
   setOutlinePreview(preview: OutlinePreview | null): void
   outlineActiveSelection(settings: OutlineSettings): boolean
-  beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[]): void
+  beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   beginFreeTileFloatingSelectionTransform(options: {
     sourceId: string
     instanceId: string
@@ -259,12 +278,14 @@ export interface WorkspaceViewSelectionCommands {
     transformTarget?: SelectionRect
     transformAngle?: number
     transformShear?: SelectionShearTransform
+    transformQuad?: SelectionQuad
   }): void
   commitFloatingPaste(deselectLabel?: string): void
   cancelFloatingPaste(): void
-  updateFloatingPastePreview(edit: PixelEdit | null, target: SelectionMask, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, layers?: SelectionTransformLayerState[]): void
+  updateFloatingPastePreview(edit: PixelEdit | null, target: SelectionMask, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   moveActiveSelection(deltaX: number, deltaY: number): void
-  moveActiveSelectionWithSelectionHistory(deltaX: number, deltaY: number): void
+  centerActiveContent(axis: 'both' | 'horizontal' | 'vertical'): void
+  moveActiveSelectionWithSelectionHistory(deltaX: number, deltaY: number, allowOutsideCanvas?: boolean): void
   flipActiveSelection(axis: 'horizontal' | 'vertical'): void
   transformActiveSelection(before: SelectionMask, after: SelectionMask, angle?: number): void
   commitSelectionTransform(edit: PixelEdit | null, before: SelectionMask, after: SelectionMask, label: string): void
@@ -285,6 +306,7 @@ export interface WorkspaceHistoryCommands {
 
 export interface WorkspaceTilemapCommands {
   setTilemapMode(mode: TilemapDrawingMode): void
+  activateTilemapLayerForDrawing(layerId?: string): void
   setSelectedTileset(id: string): void
   setSelectedTile(tilesetId: string, tileId: string, role?: 'primary' | 'secondary'): void
   reorderTilesetTiles(tilesetId: string, orderedTileIds: string[]): boolean
@@ -374,8 +396,9 @@ export interface WorkspaceAnimationCommands {
   selectAnimationFrame(frameId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationMaskCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
+  selectAnimationMaskRow(ownerKind: 'layer' | 'group', ownerId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCelContent(key: string, additive?: boolean): void
-  clearAnimationSelection(): void
+  clearAnimationSelection(preserveActiveContext?: boolean): void
   setAnimationCelOpacity(layerId: string, frameId: string, opacity: number): void
   connectSelectedAnimationCels(): void
   disconnectSelectedAnimationCels(): void
@@ -389,6 +412,8 @@ export interface WorkspaceAnimationCommands {
   disconnectSelectedAnimationMasks(): void
   copySelectedAnimationFrames(): void
   pasteAnimationFrames(): void
+  setSelectedAnimationFramesDisabled(disabled: boolean): void
+  toggleSelectedAnimationFramesDisabled(): void
   moveSelectedAnimationFrames(targetFrameId: string, insertAfter: boolean): void
   deleteSelectedAnimationItems(): void
   setAnimationPlaying(playing: boolean, completed?: boolean): void
@@ -404,18 +429,21 @@ export interface WorkspaceAnimationCommands {
   addAnimationFrame(): void
   addLinkedAnimationFrame(): void
   duplicateAnimationFrame(): void
-  deleteAnimationFrame(): void
+  deleteAnimationFrame(normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
   setActiveAnimationFrameDuration(duration: number): void
   setAnimationLoop(loop: boolean): void
 }
 
 export interface WorkspaceLayerCommands {
   addLayer(): Promise<void>
+  applyFilterPreset(presetId: FilterPresetId): Promise<void>
+  applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>): Promise<void>
   createTilemapLayer(options: TilemapLayerOptions): Promise<void>
   createFreeTileLayer(options: FreeTileLayerOptions): Promise<void>
   convertLayerToTilemap(layerId: string, options: TilemapLayerOptions): Promise<void>
   createBackgroundLayer(pattern: BackgroundPatternId | BackgroundPatternTile): Promise<void>
   setLayerBackground(layerId: string, enabled: boolean): void
+  setLayerAutoLinkAnimationCels(layerId: string, enabled: boolean): void
   createTextLayer(data: TextCelData, x: number, y: number): void
   beginTextLayerDraft(data: TextCelData, x: number, y: number): TextLayerDraftTarget | null
   updateTextLayerDraft(layerId: string, frameId: string, data: TextCelData, x?: number, y?: number): void
@@ -467,7 +495,11 @@ export interface WorkspaceLayerCommands {
   selectLayerMask(celId: string, additive?: boolean): void
   selectGroupMask(groupId: string, frameId: string, additive?: boolean): void
   toggleLayerMaskVisibility(celId: string): void
+  setLayerMaskLocked(celId: string, enabled: boolean): void
+  setLayerMaskAutoLinkAnimationCels(celId: string, enabled: boolean): void
   toggleGroupMaskVisibility(groupId: string, frameId: string): void
+  setLayerMaskMoveWithOwner(celId: string, enabled: boolean): void
+  setGroupMaskMoveWithOwner(groupId: string, frameId: string, enabled: boolean): void
   createLayerMask(celIdOrLayerId: string, frameId?: string): void
   createLayerMasksForLayer(layerId: string): void
   createGroupMask(groupId: string, frameId?: string): void
@@ -477,6 +509,7 @@ export interface WorkspaceLayerCommands {
   toggleActiveClippingMask(): void
   setClippingMask(kind: 'layer' | 'group', id: string, enabled: boolean): void
   setGroupProperties(groupId: string, name: string, opacity: number, blendMode: BlendMode, locked: boolean, displayColor?: RgbaColor | null, description?: string, cumulativeBlend?: boolean): void
+  setGroupLocked(groupId: string, enabled: boolean): void
   toggleLayerVisibility(layerId: string): void
   selectLayer(layerId: string, mode?: boolean | 'replace' | 'toggle' | 'range'): void
   selectMoveToolLayer(layerId: string, additive?: boolean): void
@@ -484,6 +517,7 @@ export interface WorkspaceLayerCommands {
   setLayerOpacity(layerId: string, opacity: number): void
   setLayerProperties(layerId: string, name: string, opacity: number): void
   setLayerPropertiesWithBlend(layerId: string, name: string, opacity: number, blendMode: BlendMode, locked?: boolean, displayColor?: RgbaColor | null, description?: string): void
+  setLayerLocked(layerId: string, enabled: boolean): void
   beginLayerPropertiesTransaction(targets: readonly LayerPropertyTarget[]): string | null
   previewLayerPropertiesTransaction(id: string, values: LayerPropertyValues, changedFields: readonly LayerPropertyField[]): void
   commitLayerPropertiesTransaction(id: string, values: LayerPropertyValues, changedFields: readonly LayerPropertyField[]): void
@@ -510,6 +544,7 @@ export interface WorkspaceClipboardCommands {
   copySelectedLayersToClipboard(): void
   cutSelection(): void
   pasteSelection(): Promise<void>
+  pasteClipboard(): Promise<void>
   pasteAsNewLayer(): Promise<boolean>
   pasteAsNewDocument(): Promise<boolean>
   pasteLayerFromClipboard(): boolean

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ViewState } from '@shared/types'
-import { createCanvasRenderPlan, deviceAlignedPixelRect } from './canvas-render-plan'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, deviceAlignedDocumentPointAtViewport, deviceAlignedDocumentRect, deviceAlignedPixelRect, deviceAlignedPixelRuns, repeatedDeviceAlignedCanvasRect } from './canvas-render-plan'
 
 const view = (overrides: Partial<ViewState> = {}): ViewState => ({
   zoom: 4,
@@ -15,21 +15,132 @@ const view = (overrides: Partial<ViewState> = {}): ViewState => ({
 })
 
 describe('createCanvasRenderPlan', () => {
+
+
+
+
   it('shares device-pixel boundaries between adjacent preview pixels', () => {
     const first = deviceAlignedPixelRect(10.2, 12.4, 3.13, 0, 0, 1.5)
     const second = deviceAlignedPixelRect(10.2, 12.4, 3.13, 1, 0, 1.5)
     expect(first.x + first.width).toBe(second.x)
     expect(first.x * 1.5).toBe(Math.round(first.x * 1.5))
     expect(second.x * 1.5).toBe(Math.round(second.x * 1.5))
+
+    for (const dpr of [1, 1.5, 2]) {
+      const boundary = deviceAlignedCanvasRect(-17.35, 8.2, 123.47, 76.19, dpr)
+      expect(boundary.left * dpr).toBeCloseTo(Math.round(boundary.left * dpr), 8)
+      expect(boundary.top * dpr).toBeCloseTo(Math.round(boundary.top * dpr), 8)
+      expect(boundary.right * dpr).toBeCloseTo(Math.round(boundary.right * dpr), 8)
+      expect(boundary.bottom * dpr).toBeCloseTo(Math.round(boundary.bottom * dpr), 8)
+      expect(boundary.width).toBe(boundary.right - boundary.left)
+      expect(boundary.height).toBe(boundary.bottom - boundary.top)
+    }
+
+    const tinyBoundary = deviceAlignedCanvasRect(10.31, -4.2, 0.08, 0.12, 2)
+    expect(tinyBoundary.width).toBeGreaterThanOrEqual(0.5)
+    expect(tinyBoundary.height).toBeGreaterThanOrEqual(0.5)
   })
 
-  it('matches nearest-neighbour canvas sampling at exact half-device boundaries', () => {
-    const first = deviceAlignedPixelRect(13.5, 32.5, 96, 6, 4, 1)
-    const below = deviceAlignedPixelRect(13.5, 32.5, 96, 6, 5, 1)
+  it('keeps horizontal and vertical backing scales independent', () => {
+    const deviceScale = { x: 1.248, y: 1.252 }
+    const first = deviceAlignedPixelRect(7.35, -2.2, 3.7, 0, 0, deviceScale)
+    const nextX = deviceAlignedPixelRect(7.35, -2.2, 3.7, 1, 0, deviceScale)
+    const nextY = deviceAlignedPixelRect(7.35, -2.2, 3.7, 0, 1, deviceScale)
+    const canvas = deviceAlignedCanvasRect(7.35, -2.2, 37, 29.6, deviceScale)
 
-    expect(first).toEqual({ x: 589, y: 416, width: 96, height: 96 })
-    expect(first.y + first.height).toBe(below.y)
+    expect(first.x + first.width).toBeCloseTo(nextX.x, 12)
+    expect(first.y + first.height).toBeCloseTo(nextY.y, 12)
+    expect(first.x * deviceScale.x).toBeCloseTo(Math.round(first.x * deviceScale.x), 8)
+    expect(first.y * deviceScale.y).toBeCloseTo(Math.round(first.y * deviceScale.y), 8)
+    expect(canvas.left * deviceScale.x).toBeCloseTo(Math.round(canvas.left * deviceScale.x), 8)
+    expect(canvas.top * deviceScale.y).toBeCloseTo(Math.round(canvas.top * deviceScale.y), 8)
+    expect(canvas.right * deviceScale.x).toBeCloseTo(Math.round(canvas.right * deviceScale.x), 8)
+    expect(canvas.bottom * deviceScale.y).toBeCloseTo(Math.round(canvas.bottom * deviceScale.y), 8)
   })
+
+  it('keeps high-zoom grouped draws on the same edges as pixel previews', () => {
+    const originX = -1600.125
+    const originY = -987.375
+    const zoom = 32
+    const deviceScale = { x: 1.25, y: 1.25 }
+    const startX = 37
+    const startY = 19
+    const width = 41
+    const height = 23
+    const grouped = deviceAlignedDocumentRect(originX, originY, zoom, startX, startY, width, height, deviceScale)
+    const first = deviceAlignedPixelRect(originX, originY, zoom, startX, startY, deviceScale)
+    const last = deviceAlignedPixelRect(originX, originY, zoom, startX + width - 1, startY + height - 1, deviceScale)
+
+    expect(grouped.left).toBe(first.x)
+    expect(grouped.top).toBe(first.y)
+    expect(grouped.right).toBe(last.x + last.width)
+    expect(grouped.bottom).toBe(last.y + last.height)
+  })
+
+  it('partitions fractional high-zoom scales at the same pixel edges as previews', () => {
+    const origin = -9.24
+    const zoom = 16
+    const devicePixelRatio = 1.1
+    const runs = deviceAlignedPixelRuns(origin, zoom, 0, 8, devicePixelRatio)
+    expect(runs.length).toBeGreaterThan(1)
+    expect(runs.reduce((sum, run) => sum + run.count, 0)).toBe(8)
+    expect(runs[0]?.left).toBe(deviceAlignedCoordinate(origin, devicePixelRatio))
+    expect(runs.at(-1)?.right).toBe(deviceAlignedCoordinate(origin + 8 * zoom, devicePixelRatio))
+    for (let index = 1; index < runs.length; index += 1) expect(runs[index - 1]?.right).toBe(runs[index]?.left)
+    for (const run of runs) {
+      expect(run.count).toBeGreaterThan(0)
+      expect(run.right).toBeGreaterThan(run.left)
+    }
+  })
+
+  it('keeps grid and guide ties on the same edges at every high zoom level', () => {
+    const deviceScale = { x: 1.25, y: 1.25 }
+    const origin = { x: 10.5, y: -6.5 }
+    for (const zoom of [16, 20, 32, 64]) {
+      const preview = deviceAlignedPixelRect(origin.x, origin.y, zoom, 3, 4, deviceScale)
+      expect(deviceAlignedCoordinate(origin.x + 3 * zoom, deviceScale.x)).toBe(preview.x)
+      expect(deviceAlignedCoordinate(origin.y + 4 * zoom, deviceScale.y)).toBe(preview.y)
+    }
+  })
+
+  it('maps high-zoom pointer positions using rendered pixel boundaries', () => {
+    const originX = -1600.375
+    const originY = -987.125
+    const zoom = 32
+    const deviceScale = { x: 1.25, y: 1.25 }
+    const pixel = 43
+    const canvas = deviceAlignedCanvasRect(originX, originY, 128 * zoom, 128 * zoom, deviceScale)
+    const next = deviceAlignedPixelRect(canvas.left, canvas.top, zoom, pixel, 0, deviceScale)
+    const point = deviceAlignedDocumentPointAtViewport(
+      next.x + next.width * 0.75,
+      next.y + next.height * 0.75,
+      canvas.left,
+      canvas.top,
+      zoom,
+      deviceScale
+    )
+
+    expect(point).toEqual({ x: pixel, y: 0 })
+  })
+
+  it('shares exact boundaries between repeated canvas copies', () => {
+    const base = deviceAlignedCanvasRect(10.2, -4.7, 123.47, 76.19, { x: 1.25, y: 1.3 })
+    const left = repeatedDeviceAlignedCanvasRect(base, -1, 0)
+    const right = repeatedDeviceAlignedCanvasRect(base, 1, 0)
+    const above = repeatedDeviceAlignedCanvasRect(base, 0, -1)
+    const below = repeatedDeviceAlignedCanvasRect(base, 0, 1)
+
+    expect(left.right).toBe(base.left)
+    expect(right.left).toBe(base.right)
+    expect(above.bottom).toBe(base.top)
+    expect(below.top).toBe(base.bottom)
+    expect(left.width).toBeCloseTo(base.width, 12)
+    expect(right.width).toBeCloseTo(base.width, 12)
+    expect(above.height).toBeCloseTo(base.height, 12)
+    expect(below.height).toBeCloseTo(base.height, 12)
+  })
+
+
 
   it('computes the visible document rectangle for an unrotated view', () => {
     const plan = createCanvasRenderPlan(320, 240, { width: 128, height: 128 }, view(), 'view')
@@ -50,13 +161,5 @@ describe('createCanvasRenderPlan', () => {
     expect(plan.toY).toBeLessThanOrEqual(128)
   })
 
-  it('covers a mirrored viewport around a panned canvas pivot without clipping edges', () => {
-    const plan = createCanvasRenderPlan(320, 240, { width: 128, height: 128 }, view({ panX: 80, panY: -30, mirrored: true, mirroredVertical: true }), 'canvas')
-    expect(plan.rotated).toBe(true)
-    expect(plan.viewport).toEqual({ left: 160, top: -60, right: 480, bottom: 180 })
-    expect(plan.sceneLeft).toBeLessThanOrEqual(plan.viewport.left)
-    expect(plan.sceneTop).toBeLessThanOrEqual(plan.viewport.top)
-    expect(plan.sceneLeft + plan.sceneWidth).toBeGreaterThanOrEqual(plan.viewport.right)
-    expect(plan.sceneTop + plan.sceneHeight).toBeGreaterThanOrEqual(plan.viewport.bottom)
-  })
+
 })

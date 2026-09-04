@@ -12,6 +12,7 @@ mod close_coordinator;
 mod platform_background_presets;
 mod platform_brushes;
 mod platform_clipboard;
+mod platform_diagnostics;
 mod platform_dialogs;
 mod platform_extensions;
 mod platform_files;
@@ -79,6 +80,20 @@ fn cancel_close(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
+fn close_listener_ready(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    if !state.close_requests.is_pending() {
+        return Ok(false);
+    }
+    window
+        .emit("app:request-close", ())
+        .map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 fn approve_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.close_requests.cancel();
     platform_recovery::mark_session(&app, true)?;
@@ -135,6 +150,7 @@ pub fn run() {
             ..AppState::default()
         })
         .manage(platform_recovery::RecoveryState::default())
+        .manage(platform_diagnostics::DiagnosticState::default())
         .manage(platform_files::ScaledPngCancellation::default())
         .manage(platform_scripts::LuaScriptRuntime::default())
         .setup(|app| {
@@ -142,8 +158,7 @@ pub fn run() {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
                 window.set_icon(icon)?;
             }
-            let recovery_state = app.state::<platform_recovery::RecoveryState>();
-            platform_recovery::initialize_session_marker(app.handle(), &recovery_state)?;
+            platform_recovery::initialize_session_marker(app.handle())?;
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
             let _ = platform_paths::export_directory();
             let _ = platform_background_presets::ensure_background_preset_folder();
@@ -161,6 +176,8 @@ pub fn run() {
             platform_dialogs::save_theme_file,
             platform_dialogs::default_file_directories,
             platform_dialogs::choose_directory,
+            platform_diagnostics::append_diagnostic_events,
+            platform_diagnostics::open_diagnostic_logs,
             platform_extensions::list_extensions,
             platform_extensions::install_extension,
             platform_extensions::choose_and_install_extension,
@@ -224,6 +241,7 @@ pub fn run() {
             platform_scripts::close_lua_script_session,
             start_window_drag_if_primary_pressed,
             cancel_close,
+            close_listener_ready,
             approve_close,
             confirm_unsaved
         ])
@@ -240,6 +258,10 @@ pub fn run() {
                 api.prevent_close();
                 let pending = window.state::<AppState>().close_requests.clone();
                 let Some(generation) = pending.begin() else {
+                    // A request may have arrived before the renderer finished
+                    // registering its listener. Re-emit it so the ready
+                    // listener can recover the existing close transaction.
+                    let _ = window.emit("app:request-close", ());
                     return;
                 };
                 let _ = window.emit("app:request-close", ());

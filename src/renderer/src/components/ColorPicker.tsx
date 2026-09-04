@@ -596,8 +596,13 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     if (kind === 'hue') pickHueStrip(event)
     else pickStrip(event, kind)
   }
-  const endStripPointer = (): void => {
+  const endStripPointer = (event: React.PointerEvent<HTMLInputElement>): void => {
     flushPendingColor()
+    // The custom pointer handlers focus the range input so native capture and
+    // keyboard accessibility continue to work during the drag. Release that
+    // focus when the gesture ends so application-wide tool shortcuts are not
+    // mistaken for range editing keys.
+    event.currentTarget.blur()
     if (stripReleaseFrameRef.current !== null) window.cancelAnimationFrame(stripReleaseFrameRef.current)
     stripReleaseFrameRef.current = window.requestAnimationFrame(() => {
       stripReleaseFrameRef.current = null

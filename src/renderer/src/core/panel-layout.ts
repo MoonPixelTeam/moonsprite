@@ -6,7 +6,7 @@ export const INSPECTOR_LAYOUT_STORAGE_KEY = 'moonsprite.inspector-layout.v2'
 export const COLOR_SQUARE_DOCK_STORAGE_KEY = 'moonsprite.color-picker-square-dock'
 export const COLOR_SQUARE_ANCHOR_STORAGE_KEY = 'moonsprite.color-picker-square-anchor'
 
-export const DEFAULT_INSPECTOR_ORDER: WorkspacePanelId[] = ['color', 'palette', 'layers', 'freeTileInstances', 'history', 'brushes', 'tileset', 'preview']
+export const DEFAULT_INSPECTOR_ORDER: WorkspacePanelId[] = ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'preview', 'tileset', 'brushes']
 export const DEFAULT_INSPECTOR_SIZES: Record<WorkspacePanelId, number> = { color: 370, palette: 90, layers: 230, freeTileInstances: 180, history: 220, preview: 180, tileset: 280, brushes: 240 }
 export const MINIMUM_INSPECTOR_SIZES: Record<WorkspacePanelId, number> = { color: 128, palette: 52, layers: 180, freeTileInstances: 120, history: 120, preview: 120, tileset: 180, brushes: 120 }
 export const DEFAULT_BOTTOM_WIDTHS: Record<WorkspacePanelId, number> = { color: 280, palette: 280, layers: 720, freeTileInstances: 300, history: 320, preview: 280, tileset: 360, brushes: 320 }

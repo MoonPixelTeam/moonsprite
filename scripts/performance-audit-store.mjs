@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { normalizeBundleReport, normalizeCanvasResults, normalizeVitestBenchmark } from './performance-analysis.mjs'
+import { normalizeValidationFiles } from './validation-scope.mjs'
 
 export const PERFORMANCE_ARTIFACT_ROOT = 'artifacts/performance'
 export const PERFORMANCE_BASELINE_PATH = 'docs/testing/performance-baseline-data.json'
@@ -75,8 +76,36 @@ export function parseAuditArguments(args) {
     reason: option('--reason'),
     release: options.has('--release'),
     ci: options.has('--ci'),
+    all: options.has('--all'),
     correctnessPassed: options.has('--correctness-passed'),
     userApproved: options.has('--user-approved'),
     files,
   }
+}
+
+/**
+ * Resolve the audit scope without silently widening an omitted file list.
+ * The discovery callback is intentionally lazy so a targeted audit never
+ * shells out to Git just to determine an unused fallback scope.
+ */
+export function resolvePerformanceAuditFiles(options, discoverAllFiles) {
+  let files
+  try {
+    files = normalizeValidationFiles(options.files ?? [])
+  } catch (error) {
+    throw new Error(`性能审计范围无效：${error.message}`)
+  }
+  if (options.all && files.length > 0) {
+    throw new Error('--all 不能与显式文件同时使用。请删除 --all 或改为仅传 --all。')
+  }
+  if (!options.all && files.length === 0) {
+    throw new Error('性能审计需要明确范围：请传入至少一个文件；如需审计整个仓库，请显式传 --all。')
+  }
+  if (!options.all) return files
+
+  const allFiles = discoverAllFiles()
+  if (allFiles.length === 0) {
+    throw new Error('--all 未找到可审计的工作区文件。请确认仓库已检出文件，或改为传入明确文件。')
+  }
+  return allFiles
 }

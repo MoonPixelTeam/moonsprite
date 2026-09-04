@@ -1,12 +1,13 @@
-import type { SelectionRect, SpriteDocument } from '@shared/types'
+import type { SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
 import { animationLayersAtFrame, cloneDocumentForAnimationFrame } from './animation'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
 import { compositeRegion, createDocument, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyVisible } from './document'
 import { translateCurrent as tr } from './localization'
+import { selectionContains } from './selection'
 
 export type SpriteSheetLayout = 'horizontal' | 'vertical' | 'rows' | 'columns'
 export type SpriteSheetConstraint = 'none' | 'fixed-columns' | 'fixed-width' | 'fixed-rows' | 'fixed-height'
-export type SpriteSheetAreaTarget = 'canvas' | `slice:${string}`
+export type SpriteSheetAreaTarget = 'canvas' | 'selection' | `slice:${string}`
 export type SpriteSheetLayerScope = 'visible' | 'all' | 'selected'
 export type SpriteSheetFrameScope = 'all' | 'selected' | `loop:${string}`
 
@@ -51,6 +52,7 @@ export interface SpriteSheetDocumentNames {
 
 export interface SpriteSheetBuildOptions extends SpriteSheetLayoutSettings {
   area: SelectionRect
+  selection?: SelectionMask | null
   frameIds: readonly string[]
   /** Null keeps current visibility; an array isolates and reveals only those layers. */
   layerIds: readonly string[] | null
@@ -146,8 +148,12 @@ export function spriteSheetLayoutMetrics(
   }
 }
 
-export function resolveSpriteSheetArea(source: SpriteDocument, target: SpriteSheetAreaTarget): SelectionRect {
+export function resolveSpriteSheetArea(source: SpriteDocument, target: SpriteSheetAreaTarget, selection?: SelectionMask | null): SelectionRect {
   if (target === 'canvas') return { x: 0, y: 0, width: source.width, height: source.height }
+  if (target === 'selection') {
+    if (!selection) throw new Error(tr('core.spriteSheet.selectionMissing'))
+    return { x: selection.x, y: selection.y, width: selection.width, height: selection.height }
+  }
   const slice = (source.slices ?? []).find((candidate) => `slice:${candidate.id}` === target)
   if (!slice) throw new Error(tr('core.spriteSheet.areaMissing'))
   return { x: slice.x, y: slice.y, width: slice.width, height: slice.height }
@@ -219,7 +225,8 @@ const renderSpriteSheetItem = (
   source: SpriteDocument,
   frameId: string,
   area: SelectionRect,
-  layerIds: readonly string[] | null
+  layerIds: readonly string[] | null,
+  selection?: SelectionMask | null
 ): Uint8ClampedArray => {
   const frameDocument = cloneDocumentForAnimationFrame(source, frameId)
   const frameLayers = animationLayersAtFrame(frameDocument, frameId)
@@ -250,7 +257,14 @@ const renderSpriteSheetItem = (
         visible: relevantGroupIds.has(group.id),
         ...(!allLayersSelected ? { clippingMask: false } : {})
       }))
-  return compositeRegion({ ...frameDocument, layers, groups }, area.x, area.y, area.width, area.height)
+  const pixels = compositeRegion({ ...frameDocument, layers, groups }, area.x, area.y, area.width, area.height)
+  if (selection) {
+    for (let y = 0; y < area.height; y += 1) for (let x = 0; x < area.width; x += 1) {
+      if (selectionContains(selection, area.x + x, area.y + y)) continue
+      pixels[(y * area.width + x) * 4 + 3] = 0
+    }
+  }
+  return pixels
 }
 
 const isEmptyItem = (pixels: Uint8ClampedArray): boolean => {
@@ -305,7 +319,7 @@ export function createSpriteSheetDocument(
     throw new Error(tr('core.spriteSheet.invalidArea'))
   }
 
-  const rendered = frameIds.map((frameId) => renderSpriteSheetItem(source, frameId, area, options.layerIds))
+  const rendered = frameIds.map((frameId) => renderSpriteSheetItem(source, frameId, area, options.layerIds, options.selection))
   const items = filterSpriteSheetItems(rendered, options.ignoreEmpty, options.mergeDuplicates)
   if (items.length === 0) throw new EmptySpriteSheetError(tr('core.spriteSheet.noItems'))
   const metrics = spriteSheetLayoutMetrics(items.length, area.width, area.height, options)

@@ -31,6 +31,8 @@ interface PanelSessionState {
   selectedAnimationFrameIds?: string[]
   selectedAnimationCellKeys?: string[]
   selectedAnimationMaskCellKeys?: string[]
+  selectedAnimationMaskRowKeys?: string[]
+  animationCellSelectionExplicit?: boolean
   activeLayerMaskId?: string | null
   layerMaskIsolatedView?: boolean
   view: { relativeLuminance: boolean }
@@ -67,10 +69,14 @@ export const palettePanelRenderKey = (session: PanelSessionState): string => [
 
 export const layersPanelRenderKey = (session: PanelSessionState): string => [
   session.document.id,
-  session.animationPlaying ? 'playing' : session.document.animation?.activeFrameId ?? '',
+  session.document.activeLayerId,
+  // Playback advances activeFrameId in place while keeping the session object
+  // stable. Include the live frame in the memo key even during playback so
+  // LayersPanel re-renders its playhead/cel visuals on every timer tick.
+  session.document.animation?.activeFrameId ?? '',
   session.document.animation?.frames.map((frame) => `${frame.id}:${frame.duration}`).join(',') ?? '',
   session.document.animation?.loopSections?.map((section) => `${section.id}:${section.name}:${section.startFrameId}:${section.endFrameId}:${section.direction}:${section.repeatCount ?? 'infinite'}`).join(',') ?? '',
-  session.document.animation?.cels.filter((cel) => cel.mask).map((cel) => `${cel.layerId}:${cel.frameId}:${cel.mask!.id}:${cel.mask!.visible ? 1 : 0}`).join(',') ?? '',
+  session.document.animation?.layerMasks?.map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.visible ? 1 : 0}`).join(',') ?? '',
   session.document.animation?.groupMasks?.map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.visible ? 1 : 0}`).join(',') ?? '',
   session.animationPlaying ? 1 : 0,
   session.animationPlaybackRate ?? 1,
@@ -80,13 +86,18 @@ export const layersPanelRenderKey = (session: PanelSessionState): string => [
   session.selectedAnimationFrameIds?.join(',') ?? '',
   session.selectedAnimationCellKeys?.join(',') ?? '',
   session.selectedAnimationMaskCellKeys?.join(',') ?? '',
+  session.selectedAnimationMaskRowKeys?.join(',') ?? '',
+  session.animationCellSelectionExplicit === false ? 0 : 1,
   session.activeLayerMaskId ?? '',
   session.layerMaskIsolatedView ? 1 : 0,
   session.freeTileInstanceLayerId ?? '',
   session.selectedFreeTileInstanceId ?? '',
   session.selectedFreeTileInstanceIds?.join(',') ?? '',
   session.layersPanelRevision ?? session.revision,
-  session.document.layers.map((layer) => `${layer.id}:${layer.name}:${layer.groupId ?? ''}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${layer.opacity}:${layer.blendMode}:${layer.freeTileSetId ?? ''}`).join('|'),
+  session.document.animation?.cels.map((cel) => `${cel.id}:${cel.layerId}:${cel.frameId}:${cel.linkedCelId ?? ''}`).join('|') ?? '',
+  session.document.animation?.layerMasks?.map((entry) => `${entry.layerId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
+  session.document.animation?.groupMasks?.map((entry) => `${entry.groupId}:${entry.frameId}:${entry.mask.id}:${entry.mask.linkedMaskId ?? ''}`).join('|') ?? '',
+  session.document.layers.map((layer) => `${layer.id}:${layer.name}:${layer.groupId ?? ''}:${layer.visible ? 1 : 0}:${layer.locked ? 1 : 0}:${layer.autoLinkAnimationCels ? 1 : 0}:${layer.opacity}:${layer.blendMode}:${layer.freeTileSetId ?? ''}`).join('|'),
   session.document.groups.map((group) => `${group.id}:${group.name}:${group.parentGroupId ?? ''}:${group.visible ? 1 : 0}:${group.locked ? 1 : 0}:${group.opacity}:${group.blendMode}:${group.cumulativeBlend === true ? 1 : 0}`).join('|'),
   session.selectedLayerIds.join(','),
   session.selectedGroupId ?? '',

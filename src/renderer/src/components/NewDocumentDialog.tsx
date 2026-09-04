@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ColorMode } from '@shared/types'
 import { DEFAULT_DOCUMENT_SIZE_PRESETS, loadEditorPreferences, type DocumentSizePreset } from '@/core/file-preferences'
 import { AVAILABLE_APP_LOCALES, DEFAULT_APP_LOCALE, translate, type AppLocale } from '@/core/localization'
@@ -10,6 +10,7 @@ import { NumberInput } from './NumberInput'
 import { SegmentedControl } from './SegmentedControl'
 import { TextInput } from './TextInput'
 import { PreferenceToggle } from './PreferenceToggle'
+import { clipboardService } from '@/store/clipboard-service'
 import rgbaModeIcon from '@/assets/pixel-icons/color-mode-rgba.svg'
 import indexedModeIcon from '@/assets/pixel-icons/color-mode-indexed.svg'
 import grayscaleModeIcon from '@/assets/pixel-icons/color-mode-grayscale.svg'
@@ -39,6 +40,7 @@ export function NewDocumentDialog({ open, presets = DEFAULT_DOCUMENT_SIZE_PRESET
   const [mode, setMode] = useState<ColorMode>('rgba')
   const [recordDrawing, setRecordDrawing] = useState(() => loadEditorPreferences().timelapseRecordingEnabled)
   const [nameError, setNameError] = useState<string | null>(null)
+  const manualSizeChangedRef = useRef(false)
 
   useEffect(() => {
     if (open) setRecordDrawing(loadEditorPreferences().timelapseRecordingEnabled)
@@ -51,8 +53,12 @@ export function NewDocumentDialog({ open, presets = DEFAULT_DOCUMENT_SIZE_PRESET
   useEffect(() => {
     if (!open || !window.moonSprite) return
     let active = true
-    void window.moonSprite.readClipboardImageSize().then((size) => {
-      if (!active || !size || size.width < 1 || size.height < 1) return
+    manualSizeChangedRef.current = false
+    void clipboardService.latestClipboardSize(
+      () => window.moonSprite.readClipboardImageSize(),
+      () => window.moonSprite.readClipboardImage()
+    ).then((size) => {
+      if (!active || manualSizeChangedRef.current || !size || size.width < 1 || size.height < 1) return
       setWidth(size.width)
       setHeight(size.height)
     }).catch(() => {
@@ -78,10 +84,10 @@ export function NewDocumentDialog({ open, presets = DEFAULT_DOCUMENT_SIZE_PRESET
       <DialogHeader eyebrow={t('newDocument.eyebrow')} title={t('newDocument.title')} closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body"><FormField label={t('newDocument.name')}><TextInput autoFocus value={name} aria-invalid={Boolean(nameError)} onChange={(event) => { setName(event.target.value); setNameError(getWindowsFileNameError(event.target.value, locale)) }} /></FormField>{nameError && <p className="field-error" role="alert">{nameError}</p>}
         <div className="form-grid">
-          <FormField label={t('common.width')}><NumberInput aria-label={t('newDocument.widthAria')} min={1} value={width} onValueChange={setWidth} /></FormField>
-          <FormField label={t('common.height')}><NumberInput aria-label={t('newDocument.heightAria')} min={1} value={height} onValueChange={setHeight} /></FormField>
+          <FormField label={t('common.width')}><NumberInput aria-label={t('newDocument.widthAria')} min={1} value={width} onValueChange={(value) => { manualSizeChangedRef.current = true; setWidth(value) }} /></FormField>
+          <FormField label={t('common.height')}><NumberInput aria-label={t('newDocument.heightAria')} min={1} value={height} onValueChange={(value) => { manualSizeChangedRef.current = true; setHeight(value) }} /></FormField>
         </div>
-        <div className="new-document-presets" aria-label={t('newDocument.presetsAria')}>{presets.map((preset) => <button type="button" key={`${preset.width}x${preset.height}`} className={width === preset.width && height === preset.height ? 'selected' : ''} onClick={() => { setWidth(preset.width); setHeight(preset.height) }}>{preset.width}x{preset.height}</button>)}</div>
+        <div className="new-document-presets" aria-label={t('newDocument.presetsAria')}>{presets.map((preset) => <button type="button" key={`${preset.width}x${preset.height}`} className={width === preset.width && height === preset.height ? 'selected' : ''} onClick={() => { manualSizeChangedRef.current = true; setWidth(preset.width); setHeight(preset.height) }}>{preset.width}x{preset.height}</button>)}</div>
         <FormField label={t('newDocument.colorMode')}><SegmentedControl className="new-document-mode-control" label={t('newDocument.colorMode')} value={mode} options={[
           { value: 'rgba', label: colorModeLabel(rgbaModeIcon, 32, 16, t('colorMode.rgba')), description: t('colorMode.rgbaDescription') },
           { value: 'indexed', label: colorModeLabel(indexedModeIcon, 32, 14, t('colorMode.indexed')), description: t('colorMode.indexedDescription') },

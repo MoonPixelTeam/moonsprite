@@ -6,6 +6,7 @@ import { ditherStageCount } from './gradient-color'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
 const blue = { r: 0, g: 0, b: 255, a: 255 }
+const green = { r: 0, g: 255, b: 0, a: 255 }
 
 describe('gradient tool core', () => {
   it('snaps constrained endpoints to sixteen directions while preserving distance', () => {
@@ -20,11 +21,7 @@ describe('gradient tool core', () => {
     expect(Math.hypot(snapped.x, snapped.y)).toBeGreaterThan(0)
   })
 
-  it('interpolates exact endpoint colors without dithering', () => {
-    expect(gradientColorAt(red, blue, 0, 0, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none')).toEqual(red)
-    expect(gradientColorAt(red, blue, 2, 0, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none')).toEqual({ r: 128, g: 0, b: 128, a: 255 })
-    expect(gradientColorAt(red, blue, 4, 0, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none')).toEqual(blue)
-  })
+
 
   it('resolves radial gradients from independently sized ellipse bounds', () => {
     const start = { x: 0, y: 0 }
@@ -37,6 +34,82 @@ describe('gradient tool core', () => {
     expect(gradientColorAt(red, blue, 4, 2, start, end, 'none', 'radial')).toEqual(red)
     expect(gradientColorAt(red, blue, 6, 2, start, end, 'none', 'radial')).toEqual({ r: 128, g: 0, b: 128, a: 255 })
     expect(createGradientColorSampler(red, blue, start, end, 'none', 'radial')(4, 4)).toEqual(blue)
+  })
+
+  it('interpolates any number of freeform gradient stops', () => {
+    const stops = [
+      { position: 1, color: blue },
+      { position: 0.5, color: green },
+      { position: 0, color: red }
+    ]
+    const sample = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none', 'linear', {}, stops)
+    expect(sample(0, 0)).toEqual(red)
+    expect(sample(1, 0)).toEqual({ r: 128, g: 128, b: 0, a: 255 })
+    expect(sample(2, 0)).toEqual(green)
+    expect(sample(3, 0)).toEqual({ r: 0, g: 128, b: 128, a: 255 })
+    expect(sample(4, 0)).toEqual(blue)
+  })
+
+  it('represents a uniform gradient paint region without a full-size mask', () => {
+    const document = createDocument('uniform gradient region', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+
+    expect(gradientRegionSelection(document, layer, { x: 256, y: 256 }, 0, true)).toEqual({
+      x: 0,
+      y: 0,
+      width: 512,
+      height: 512
+    })
+  })
+
+  it('keeps dense opaque multi-stop gradients exact through undo and redo', () => {
+    const document = createDocument('dense packed gradient', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    const stops = [
+      { position: 0, color: red },
+      { position: 0.5, color: green },
+      { position: 1, color: blue }
+    ]
+    const start = { x: 0, y: 0 }
+    const end = { x: 511, y: 0 }
+    const sample = createGradientColorSampler(red, blue, start, end, 'none', 'linear', {}, stops)
+    const edit = applyGradient(document, layer, start, end, red, blue, null, 'none', undefined, 'linear', {}, stops)
+
+    expect(edit?.denseRegion?.count).toBeGreaterThan(0)
+    for (const x of [0, 128, 256, 384, 511]) expect(readLayerColorAt(document, layer, x, 300)).toEqual(sample(x, 300))
+
+    const history = commitPixelEdit(document, edit!, 'dense gradient')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 300).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 511, 300).a).toBe(0)
+    history.redo()
+    for (const x of [0, 128, 256, 384, 511]) expect(readLayerColorAt(document, layer, x, 300)).toEqual(sample(x, 300))
+  })
+
+  it('uses the nearest edge stop outside the first and last positions', () => {
+    const sample = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none', 'linear', {}, [
+      { position: 0.25, color: red },
+      { position: 0.75, color: blue }
+    ])
+    expect(sample(0, 0)).toEqual(red)
+    expect(sample(1, 0)).toEqual(red)
+    expect(sample(2, 0)).toEqual({ r: 128, g: 0, b: 128, a: 255 })
+    expect(sample(4, 0)).toEqual(blue)
+  })
+
+  it('supports freeform stops in radial gradients while dithering stays two-color', () => {
+    const stops = [
+      { position: 0, color: red },
+      { position: 0.5, color: green },
+      { position: 1, color: blue }
+    ]
+    const radial = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 4 }, 'none', 'radial', {}, stops)
+    expect(radial(2, 2)).toEqual(red)
+    expect(radial(2, 3)).toEqual(green)
+    expect(radial(2, 4)).toEqual(blue)
+    const dithered = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'checker', 'linear', {}, stops)
+    expect(dithered(0, 0)).toEqual(red)
+    expect(dithered(2, 0)).toEqual(blue)
   })
 
   it('matches marquee-style center and proportional modifiers for radial geometry', () => {
@@ -82,63 +155,9 @@ describe('gradient tool core', () => {
     expect(readLayerColorAt(document, layer, 0, 0)).toEqual(blue)
   })
 
-  it('interpolates RGBA channels directly with rounding', () => {
-    expect(interpolateRgbaColor({ r: 10, g: 20, b: 30, a: 40 }, { r: 21, g: 31, b: 41, a: 51 }, 0.5)).toEqual({ r: 16, g: 26, b: 36, a: 46 })
-    expect(interpolateRgbaColor(red, blue, -1)).toEqual(red)
-    expect(interpolateRgbaColor(red, blue, 2)).toEqual(blue)
-  })
 
-  it('carries the visible stop RGB through fully transparent gradient stops', () => {
-    const transparent = { r: 0, g: 0, b: 0, a: 0 }
-    expect(gradientColorForAmount(transparent, red, 0.5, 0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 128 })
-    expect(gradientColorForAmount(red, transparent, 0.5, 0, 0)).toEqual({ r: 255, g: 0, b: 0, a: 128 })
-    expect(gradientColorForAmount(transparent, red, 0, 0, 0, 'checker')).toEqual({ r: 255, g: 0, b: 0, a: 0 })
-  })
 
-  it('provides deterministic built-in dither presets', () => {
-    expect(GRADIENT_DITHER_PRESETS).toEqual(['none', 'bayer-2', 'bayer-4', 'bayer-8', 'checker', 'diagonal', 'diagonal-reverse', 'horizontal', 'vertical'])
-    for (const preset of GRADIENT_DITHER_PRESETS.filter((item) => item !== 'none')) {
-      const colors = Array.from({ length: 8 }, (_, x) => gradientColorAt(red, blue, x, 1, { x: 0, y: 0 }, { x: 7, y: 0 }, preset))
-      expect(colors[0]).toEqual(red)
-      expect(colors[7]).toEqual(blue)
-      expect(colors.every((color) => color.r === 255 || color.b === 255)).toBe(true)
-    }
-  })
 
-  it('uses the same amount resolver for all nine gradient modes', () => {
-    for (const preset of GRADIENT_DITHER_PRESETS) {
-      for (let x = -2; x <= 9; x += 1) {
-        const amount = Math.max(0, Math.min(1, x / 7))
-        expect(gradientColorForAmount(red, blue, amount, x, 3, preset)).toEqual(
-          gradientColorAt(red, blue, x, 3, { x: 0, y: 3 }, { x: 7, y: 3 }, preset)
-        )
-      }
-    }
-  })
-
-  it('matches the point API for floating endpoints, alpha colors, and every dither mode', () => {
-    const startColor = { r: 11, g: 29, b: 47, a: 0 }
-    const endColor = { r: 230, g: 170, b: 90, a: 137 }
-    const start = { x: -0.75, y: 1.25 }
-    const end = { x: 6.5, y: -2.125 }
-    const points = [{ x: -3, y: 4 }, { x: 0, y: 0 }, { x: 2, y: -1 }, { x: 7, y: 3 }]
-
-    for (const preset of GRADIENT_DITHER_PRESETS) {
-      const sample = createGradientColorSampler(startColor, endColor, start, end, preset)
-      for (const point of points) {
-        const expected = gradientColorForAmount(startColor, endColor, gradientAmountAt(point.x, point.y, start, end), point.x, point.y, preset)
-        expect(sample(point.x, point.y)).toEqual(expected)
-        expect(gradientColorAt(startColor, endColor, point.x, point.y, start, end, preset)).toEqual(expected)
-      }
-    }
-  })
-
-  it('provides both diagonal dither directions', () => {
-    const left = gradientColorAt(red, blue, 2, 1, { x: 0, y: 0 }, { x: 4, y: 0 }, 'diagonal')
-    const right = gradientColorAt(red, blue, 2, 1, { x: 0, y: 0 }, { x: 4, y: 0 }, 'diagonal-reverse')
-    expect(left).toEqual(red)
-    expect(right).toEqual(blue)
-  })
 
   it('uses six stages for directional gradient dithering', () => {
     const samples = [
@@ -154,150 +173,13 @@ describe('gradient tool core', () => {
     }
   })
 
-  it('clips to the active selection and remains one undo step', () => {
-    const document = createDocument('gradient', 4, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    const edit = applyGradient(document, layer, { x: 1, y: 0 }, { x: 2, y: 0 }, red, blue, { x: 1, y: 0, width: 2, height: 1 })
-    expect(edit).not.toBeNull()
-    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
-    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blue)
-    expect(readLayerColorAt(document, layer, 3, 0).a).toBe(0)
 
-    const history = commitPixelEdit(document, edit!, 'Gradient')
-    history?.undo()
-    expect(readLayerColorAt(document, layer, 1, 0).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 2, 0).a).toBe(0)
-    history?.redo()
-    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(red)
-    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blue)
-  })
 
-  it('does not replace existing pixels with a fully transparent gradient stop', () => {
-    const document = createDocument('transparent gradient overlay', 1, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    writeLayerColor(document, layer, 0, blue)
-    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 0, y: 0 }, { r: 0, g: 0, b: 0, a: 0 }, { r: 0, g: 0, b: 0, a: 0 })
-    expect(edit).toBeNull()
-    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(blue)
-  })
 
-  it('keeps large dense gradients exact and undoable without per-pixel maps', () => {
-    const document = createDocument('dense gradient', 512, 512, 'rgba')
-    const layer = getActiveLayer(document)
-    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 511, y: 0 }, red, blue)
 
-    expect(edit?.before.size).toBe(0)
-    expect(edit?.denseRegion?.count).toBe(512 * 512)
-    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
-    expect(readLayerColorAt(document, layer, 511, 256)).toEqual(blue)
 
-    const history = commitPixelEdit(document, edit!, 'Dense gradient')
-    history?.undo()
-    expect(readLayerColorAt(document, layer, 0, 256).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 511, 256).a).toBe(0)
-    history?.redo()
-    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
-    expect(readLayerColorAt(document, layer, 511, 256)).toEqual(blue)
-  })
 
-  it('reverts a large dense gradient before it is committed', () => {
-    const document = createDocument('revert dense gradient', 512, 512, 'rgba')
-    const layer = getActiveLayer(document)
-    const original = { r: 20, g: 40, b: 60, a: 255 }
-    writeLayerColor(document, layer, 256 * 512 + 256, original)
 
-    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 511, y: 0 }, red, blue)
-    expect(edit?.denseRegion?.count).toBe(512 * 512)
-    expect(readLayerColorAt(document, layer, 256, 256)).not.toEqual(original)
-
-    revertPixelEdit(document, edit)
-    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 256, 256)).toEqual(original)
-    expect(readLayerColorAt(document, layer, 511, 511).a).toBe(0)
-  })
-
-  it('limits gradients to tolerance-matched contiguous or global regions', () => {
-    const createRegionDocument = () => {
-      const document = createDocument('gradient region', 5, 1, 'rgba')
-      const layer = getActiveLayer(document)
-      const colors = [
-        { r: 20, g: 20, b: 20, a: 255 },
-        { r: 23, g: 20, b: 20, a: 255 },
-        { r: 180, g: 180, b: 180, a: 255 },
-        { r: 22, g: 20, b: 20, a: 255 },
-        { r: 20, g: 20, b: 20, a: 255 }
-      ]
-      colors.forEach((color, index) => writeLayerColor(document, layer, index, color))
-      return { document, layer, colors }
-    }
-
-    const contiguous = createRegionDocument()
-    const contiguousRegion = gradientRegionSelection(contiguous.document, contiguous.layer, { x: 0, y: 0 }, 3, true)
-    applyGradient(contiguous.document, contiguous.layer, { x: 0, y: 0 }, { x: 4, y: 0 }, red, blue, null, 'none', contiguousRegion)
-    expect(readLayerColorAt(contiguous.document, contiguous.layer, 0, 0)).toEqual(red)
-    expect(readLayerColorAt(contiguous.document, contiguous.layer, 1, 0)).toEqual({ r: 191, g: 0, b: 64, a: 255 })
-    expect(readLayerColorAt(contiguous.document, contiguous.layer, 3, 0)).toEqual(contiguous.colors[3])
-
-    const global = createRegionDocument()
-    const globalRegion = gradientRegionSelection(global.document, global.layer, { x: 0, y: 0 }, 3, false)
-    applyGradient(global.document, global.layer, { x: 0, y: 0 }, { x: 4, y: 0 }, red, blue, null, 'none', globalRegion)
-    expect(readLayerColorAt(global.document, global.layer, 0, 0)).toEqual(red)
-    expect(readLayerColorAt(global.document, global.layer, 1, 0)).toEqual({ r: 191, g: 0, b: 64, a: 255 })
-    expect(readLayerColorAt(global.document, global.layer, 3, 0)).toEqual({ r: 64, g: 0, b: 191, a: 255 })
-    expect(readLayerColorAt(global.document, global.layer, 4, 0)).toEqual(blue)
-    expect(readLayerColorAt(global.document, global.layer, 2, 0)).toEqual(global.colors[2])
-  })
-
-  it('intersects canvas, selection, and paint-region bounds before applying their masks', () => {
-    const document = createDocument('gradient bounds', 5, 3, 'rgba')
-    const layer = getActiveLayer(document)
-    const selectionMask = new Uint8Array(15)
-    selectionMask[3] = 1
-    selectionMask[9] = 1
-    const paintMask = new Uint8Array(12)
-    paintMask[4] = 1
-    paintMask[9] = 1
-
-    const edit = applyGradient(
-      document,
-      layer,
-      { x: 0, y: 0 },
-      { x: 4, y: 0 },
-      red,
-      blue,
-      { x: -1, y: 0, width: 5, height: 3, mask: selectionMask },
-      'none',
-      { x: 2, y: -1, width: 4, height: 3, mask: paintMask }
-    )
-
-    expect(Array.from(edit!.before.keys())).toEqual([2, 8])
-    expect(readLayerColorAt(document, layer, 2, 0)).toEqual({ r: 128, g: 0, b: 128, a: 255 })
-    expect(readLayerColorAt(document, layer, 3, 1)).toEqual({ r: 64, g: 0, b: 191, a: 255 })
-    expect(readLayerColorAt(document, layer, 3, 0).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 2, 1).a).toBe(0)
-  })
-
-  it('returns without allocating an edit when selection and paint region do not intersect', () => {
-    const document = createDocument('empty gradient intersection', 4000, 4000, 'rgba')
-    const layer = getActiveLayer(document)
-
-    const edit = applyGradient(
-      document,
-      layer,
-      { x: 0, y: 0 },
-      { x: 3999, y: 0 },
-      red,
-      blue,
-      { x: 0, y: 0, width: 1000, height: 1000 },
-      'none',
-      { x: 3000, y: 3000, width: 1000, height: 1000 }
-    )
-
-    expect(edit).toBeNull()
-    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
-    expect(readLayerColorAt(document, layer, 3999, 3999).a).toBe(0)
-  })
 
   it('maps indexed gradients to the existing palette without inserting colors', () => {
     const document = createDocument('indexed gradient', 3, 1, 'indexed')

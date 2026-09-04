@@ -59,8 +59,7 @@ const createInitialCompositeSnapshot = (document: SpriteDocument): SpriteDocumen
           layerId: cel.layerId,
           frameId: cel.frameId,
           ...(cel.linkedCelId !== undefined ? { linkedCelId: cel.linkedCelId } : {}),
-          ...(cel.opacity !== undefined ? { opacity: cel.opacity } : {}),
-          ...(cel.mask ? { mask: cel.mask } : {})
+          ...(cel.opacity !== undefined ? { opacity: cel.opacity } : {})
         }))
       }
     : undefined

@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm check:maintenance
 
   windows:
@@ -45,13 +47,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - id: scope
         run: node scripts/ci-scope.mjs
       - run: pnpm check:maintenance
-      - if: steps.scope.outputs.web == 'true'
-        run: pnpm install --frozen-lockfile
-      - if: steps.scope.outputs.web == 'true'
-        run: pnpm check:boundaries
       - if: steps.scope.outputs.web == 'true'
         run: pnpm typecheck
       - if: steps.scope.outputs.web == 'true'

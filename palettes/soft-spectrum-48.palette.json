@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 2,
-  "id": "soft-spectrum-48",
-  "name": "柔和色相 48",
-  "colors": ["#EEECE8FF", "#B9B5B2FF", "#706D70FF", "#2F3036FF", "#E7CDB7FF", "#BE9579FF", "#80604FFF", "#463832FF", "#E9B9B8FF", "#C77D7FFF", "#92535FFF", "#4F303AFF", "#EBC7A5FF", "#C89568FF", "#8F654AFF", "#503B32FF", "#E9D9A7FF", "#B9A464FF", "#7E713FFF", "#464126FF", "#D8DFACFF", "#9BA56CFF", "#687444FF", "#3A402AFF", "#BDD7B8FF", "#7DA27AFF", "#507052FF", "#2D4132FF", "#B5D5CAFF", "#70A198FF", "#486F6CFF", "#294044FF", "#B7D6DCFF", "#72A2B0FF", "#496E7DFF", "#293E4CFF", "#BFCCE2FF", "#7F91B5FF", "#536488FF", "#303A55FF", "#D0C3DEFF", "#9882ADFF", "#6A577EFF", "#3D324FFF", "#DFC0D1FF", "#B17D99FF", "#7D536DFF", "#472F43FF"],
-  "columns": 13,
-  "slots": [0, null, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 1, null, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 2, null, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 3, null, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47]
-}

@@ -12,6 +12,7 @@ The Chinese `AGENTS.md` is the machine-readable source of truth for all project-
 - The commit SHA at the start of the current development cycle is the audit baseline. Release audits cover the cumulative changes after that baseline; ordinary development validates only the files changed by the current task.
 - Unless the user explicitly invokes `$moonsprite-code-architect`, the current main Agent must directly handle all ordinary requests, UI changes, debugging, reviews, tests, and release work. Creating, assigning, or retaining sub-agents is prohibited.
 - `$moonsprite-code-architect` is used only when the user explicitly requests a whole-project architecture audit, a major milestone architecture review, or planning for a large cross-module refactor. It is read-only by default. Only one architect instance may be created at a time, and that instance may not create or assign descendants. Ordinary requests, UI changes, and continuous debugging must not invoke it automatically or restore per-request agent delegation.
+- Ordinary tasks use the configured `gpt-5.6-terra` model at `low` reasoning. Do not raise ordinary UI, debugging, or review work to `gpt-5.6-sol`/`ultra`; reserve that for an explicit request or complex architecture work. Do not run timed “continue” loops or blind retries after a 403/429.
 
 ## Change Process
 
@@ -28,7 +29,7 @@ The Chinese `AGENTS.md` is the machine-readable source of truth for all project-
 
 - Prioritize a user-testable implementation for each request. Run at most one round of the minimum necessary checks, then return it for user testing immediately.
 - Run `pnpm check:dev -- <task-files...>` by default. Development mode must receive an explicit file list and may not fall back to scanning the whole worktree. Documentation, wording, CSS, and visual-only layout changes may skip application tests.
-- Ordinary TypeScript, including general Core, Store, and Shared debugging, runs only type checking and targeted module-boundary checks for the changed files. Coordinates, selections, undo, file formats, persistence, platform security, shared core algorithms, and recurring or hard-to-detect bugs use `pnpm check:dev -- --risk=high <source-files...> <related-test-files...>` and run only the explicitly listed tests. Rust and thumbnail code run the corresponding `cargo check`.
+- Ordinary TypeScript, including general Core, Store, and Shared debugging, runs only the checks selected by the Chinese policy. Coordinates, selections, undo, file formats, persistence, platform security, shared core algorithms, and recurring or hard-to-detect bugs use `pnpm check:dev -- --risk=high <source-files...> <focused-test-files...>` and run only the explicitly listed tests. Rust and thumbnail code run the corresponding `cargo check`; explicitly listed files under `src-tauri/**/tests/` run the matching `cargo test --test` target.
 - The user owns subjective validation of layout, feel, animation, visuals, and requirement fit. Do not run automated browser interaction, screenshot comparison, desktop acceptance, or full builds unless explicitly requested.
 - During development, do not run `check:maintenance`, the full test suite, full CI, or performance benchmarks. Do not update release notes, performance history, or the general regression matrix, and do not commit, push, or package every issue.
 - Add one `pnpm check:architecture` to the minimum checks only when the task touches component authoring documentation, the undo model, project encoding or decoding, recovery, Core dependencies, or root Store responsibilities. Ordinary UI, wording, and continuous debugging do not run this repository-wide static gate.
@@ -37,7 +38,7 @@ The Chinese `AGENTS.md` is the machine-readable source of truth for all project-
 
 ## Releasing dev.X
 
-- Enter this stage only when the user explicitly requests a release. Run `pnpm check:release-performance` first. Process one candidate at a time for at most two rounds. Low-risk candidates may be attempted automatically; high-risk candidates require confirmation. Restore candidates with no benefit and record them as not adopted.
+- Enter this stage only when the user explicitly requests a release. Run `pnpm check:performance:release` first. Process one candidate at a time for at most two rounds. Low-risk candidates may be attempted automatically; high-risk candidates require confirmation. Restore candidates with no benefit and record them as not adopted.
 - Then consolidate the changelog, behavior contracts, architecture status, and required regression matrix updates before running `pnpm check:release`. Run desktop gates and installers only when explicitly needed. Record the completed release SHA as the baseline for the next cycle.
 - See `docs/agent-workflow.en.md` and `docs/release/release-checklist.en.md` for the complete release steps. Ordinary development must not load those details.
 
@@ -80,7 +81,7 @@ The Chinese `AGENTS.md` is the machine-readable source of truth for all project-
 pnpm check:dev -- <task-files...>
 
 # High-risk development: run only explicitly listed targeted tests
-pnpm check:dev -- --risk=high <source-files...> <related-test-files...>
+pnpm check:dev -- --risk=high <source-files...> <focused-test-files...>
 
 # Add only when protected architecture boundaries are touched
 pnpm check:architecture
@@ -92,7 +93,5 @@ pnpm check:boundaries -- --files <changed-renderer-files...>
 pnpm check:release
 
 # Version release, milestone, or performance work
-pnpm check:release-performance
+pnpm check:performance:release
 ```
-
-`check:fast` and `check:integration` remain only as compatibility aliases for `check:dev` and `check:release`. New work must use the current command names.

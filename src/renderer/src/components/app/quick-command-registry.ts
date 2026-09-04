@@ -2,6 +2,7 @@ import type { PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import type { QuickCommandId } from '@/core/file-preferences'
 import type { TranslationKey } from '@/core/localization'
 import type { ShortcutId } from '@/core/shortcuts'
+import quickAntiAliasIcon from '@/assets/pixel-icons/quick-command-anti-alias.svg'
 
 export type QuickCommandSettingsTarget = 'grid' | 'appearance'
 
@@ -10,7 +11,8 @@ export interface QuickCommandMetadata {
   label: TranslationKey
   description: TranslationKey
   icon: PixelUtilityIconKind
-  shortcutId: ShortcutId
+  iconSource?: string
+  shortcutId?: ShortcutId
   settingsTarget?: QuickCommandSettingsTarget
 }
 
@@ -34,8 +36,13 @@ export const QUICK_COMMAND_METADATA: Record<QuickCommandId, QuickCommandMetadata
   resetView: { id: 'resetView', label: 'quickCommands.resetView', description: 'quickCommands.resetViewDescription', icon: 'resetView', shortcutId: 'resetView' },
   fillForeground: { id: 'fillForeground', label: 'quickCommands.fillForeground', description: 'quickCommands.fillForegroundDescription', icon: 'paletteLocal', shortcutId: 'fillForeground' },
   deleteSelection: { id: 'deleteSelection', label: 'quickCommands.deleteSelection', description: 'quickCommands.deleteSelectionDescription', icon: 'deleteSelection', shortcutId: 'deleteSelection' },
+  quickAntiAlias: { id: 'quickAntiAlias', label: 'quickCommands.quickAntiAlias', description: 'quickCommands.quickAntiAliasDescription', icon: 'selectionOutline', iconSource: quickAntiAliasIcon },
   swapForegroundBackground: { id: 'swapForegroundBackground', label: 'quickCommands.swapForegroundBackground', description: 'quickCommands.swapForegroundBackgroundDescription', icon: 'refresh', shortcutId: 'swapForegroundBackground' },
   createBrushFromSelection: { id: 'createBrushFromSelection', label: 'quickCommands.createBrushFromSelection', description: 'quickCommands.createBrushFromSelectionDescription', icon: 'plus', shortcutId: 'createBrushFromSelection' },
   rotateViewClockwise90: { id: 'rotateViewClockwise90', label: 'quickCommands.rotateViewClockwise90', description: 'quickCommands.rotateViewClockwise90Description', icon: 'rotateClockwise90', shortcutId: 'rotateViewClockwise90' },
-  rotateViewCounterClockwise90: { id: 'rotateViewCounterClockwise90', label: 'quickCommands.rotateViewCounterClockwise90', description: 'quickCommands.rotateViewCounterClockwise90Description', icon: 'rotateCounterClockwise90', shortcutId: 'rotateViewCounterClockwise90' }
+  rotateViewCounterClockwise90: { id: 'rotateViewCounterClockwise90', label: 'quickCommands.rotateViewCounterClockwise90', description: 'quickCommands.rotateViewCounterClockwise90Description', icon: 'rotateCounterClockwise90', shortcutId: 'rotateViewCounterClockwise90' },
+  detectImageScale: { id: 'detectImageScale', label: 'quickCommands.detectImageScale', description: 'quickCommands.detectImageScaleDescription', icon: 'detectImageScale' },
+  centerSelectionBoth: { id: 'centerSelectionBoth', label: 'quickCommands.centerSelectionBoth', description: 'quickCommands.centerSelectionBothDescription', icon: 'canvasCenter' },
+  centerSelectionHorizontal: { id: 'centerSelectionHorizontal', label: 'quickCommands.centerSelectionHorizontal', description: 'quickCommands.centerSelectionHorizontalDescription', icon: 'canvasHorizontalCenter' },
+  centerSelectionVertical: { id: 'centerSelectionVertical', label: 'quickCommands.centerSelectionVertical', description: 'quickCommands.centerSelectionVerticalDescription', icon: 'canvasVerticalCenter' }
 }

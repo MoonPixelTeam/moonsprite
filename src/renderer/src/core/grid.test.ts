@@ -1,34 +1,46 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_GRID_SETTINGS, PIXEL_GRID_MIN_ZOOM, gridCellBoundsAt, gridLinePositions, normalizeGridSettings, shouldRenderPixelGrid } from './grid'
+import { snapPointToGrid, snapSelectionBoundsToGrid, snapSelectionTranslationToGrid } from './grid'
 
-describe('configurable grid geometry', () => {
-  it('normalizes invalid settings without changing the default object', () => {
-    expect(DEFAULT_GRID_SETTINGS).toEqual({ x: 0, y: 0, width: 16, height: 16 })
-    expect(normalizeGridSettings({ x: 3.8, y: -2.9, width: 0, height: 4.9 })).toEqual({ x: 3, y: -2, width: 1, height: 4 })
-    expect(normalizeGridSettings(null)).toEqual(DEFAULT_GRID_SETTINGS)
+describe('grid point snapping', () => {
+  it('snaps to the closest grid vertex', () => {
+    expect(snapPointToGrid({ x: 5, y: 14 }, { x: 0, y: 0, width: 16, height: 16 })).toEqual({ x: 0, y: 16 })
+    expect(snapPointToGrid({ x: 9, y: 7 }, { x: 1, y: 2, width: 4, height: 3 })).toEqual({ x: 9, y: 8 })
+    // Aseprite keeps an exact half-cell tie on the lower vertex.
+    expect(snapPointToGrid({ x: 8, y: 8 }, { x: 0, y: 0, width: 16, height: 16 })).toEqual({ x: 0, y: 0 })
   })
 
-  it('only renders the pixel grid when individual pixels have enough screen space', () => {
-    expect(shouldRenderPixelGrid(PIXEL_GRID_MIN_ZOOM - 0.01)).toBe(false)
-    expect(shouldRenderPixelGrid(PIXEL_GRID_MIN_ZOOM)).toBe(true)
-    expect(shouldRenderPixelGrid(Number.NaN)).toBe(false)
+  it('supports negative origins and leaves invalid settings unchanged', () => {
+    expect(snapPointToGrid({ x: -6, y: -5 }, { x: -3, y: -2, width: 4, height: 4 })).toEqual({ x: -3, y: -2 })
+    const point = { x: 5, y: 6 }
+    expect(snapPointToGrid(point, { x: 0, y: 0, width: 0, height: 16 })).toEqual(point)
+  })
+})
+
+describe('grid selection snapping', () => {
+  it('snaps marquee edges outward to complete cells like Aseprite', () => {
+    expect(snapSelectionBoundsToGrid(
+      { x: 5, y: 6, width: 7, height: 5 },
+      { x: 1, y: 2, width: 4, height: 3 }
+    )).toEqual({ x: 5, y: 5, width: 8, height: 6 })
   })
 
-  it('starts from the configured origin and skips dense lines at low zoom', () => {
-    expect(gridLinePositions(2, 4, 0, 16, 2)).toEqual([2, 6, 10, 14])
-    expect(gridLinePositions(0, 1, 0, 20, 0.5)).toEqual([0, 8, 16])
+  it('handles negative grid origins and keeps a one-cell click selectable', () => {
+    expect(snapSelectionBoundsToGrid(
+      { x: 0, y: 0, width: 1, height: 1 },
+      { x: -3, y: -2, width: 4, height: 4 }
+    )).toEqual({ x: -3, y: -2, width: 4, height: 4 })
   })
 
-  it('resolves the checkerboard cell under the pointer', () => {
-    expect(gridCellBoundsAt({ x: 18, y: 34 }, { x: 0, y: 0, width: 16, height: 16 }, 64, 64)).toEqual({ x: 16, y: 32, width: 16, height: 16 })
+  it('leaves invalid bounds or grid settings unchanged', () => {
+    const bounds = { x: 2, y: 3, width: 5, height: 6 }
+    expect(snapSelectionBoundsToGrid(bounds, { x: 0, y: 0, width: 0, height: 4 })).toEqual(bounds)
   })
 
-  it('uses the configured grid origin and clips edge cells to the canvas', () => {
-    expect(gridCellBoundsAt({ x: 15, y: 20 }, { x: 4, y: 6, width: 10, height: 12 }, 64, 64)).toEqual({ x: 14, y: 18, width: 10, height: 12 })
-    expect(gridCellBoundsAt({ x: 0, y: 0 }, { x: -4, y: -6, width: 10, height: 12 }, 64, 64)).toEqual({ x: 0, y: 0, width: 6, height: 6 })
-  })
-
-  it('ignores pointers outside the canvas', () => {
-    expect(gridCellBoundsAt({ x: 64, y: 20 }, DEFAULT_GRID_SETTINGS, 64, 64)).toBeNull()
+  it('snaps a moved selection as one shared offset without a threshold', () => {
+    expect(snapSelectionTranslationToGrid(
+      [{ x: 1, y: 2, width: 5, height: 4 }, { x: 20, y: 10, width: 2, height: 2 }],
+      { x: 7, y: 8 },
+      { x: 0, y: 0, width: 16, height: 16 }
+    )).toEqual({ x: 15, y: 14 })
   })
 })

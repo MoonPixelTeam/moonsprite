@@ -1,21 +1,21 @@
 import { LATEST_PACKAGED_RELEASE_LABEL } from './app-meta'
 import type { TranslationKey } from './localization'
 
-interface LatestReleaseSection {
+export interface LatestReleaseSection {
   title: TranslationKey
   items: readonly TranslationKey[]
 }
 
-interface LatestReleaseDefinition {
+export interface LatestReleaseDefinition {
   version: string
   publishedAt: string
   homeSummary: TranslationKey
   sections: readonly LatestReleaseSection[]
 }
 
-export const latestRelease = {
+const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
-  publishedAt: '2026-08-26',
+  publishedAt: '2026-09-05',
   homeSummary: 'home.newsReleaseSummary',
   sections: [
     {
@@ -56,3 +56,15 @@ export const latestRelease = {
     }
   ]
 } as const satisfies LatestReleaseDefinition
+
+/**
+ * Ordered announcement feed. New announcements must be inserted at the
+ * beginning; the home page deliberately renders only the first three.
+ */
+export const latestReleases = [currentRelease] as const satisfies readonly LatestReleaseDefinition[]
+export const MAX_HOME_ANNOUNCEMENTS = 3
+export const homeAnnouncementsForDisplay = (releases: readonly LatestReleaseDefinition[]): readonly LatestReleaseDefinition[] => releases.slice(0, MAX_HOME_ANNOUNCEMENTS)
+
+// Keep the existing single-release API for menus and callers that only need
+// the current announcement.
+export const latestRelease = latestReleases[0]

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeftRight } from 'lucide-react'
-import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientType, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
+import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientStop, GradientType, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { NumberInput } from '@/components/NumberInput'
 import { ColorValueControl } from '@/components/ColorValueControl'
@@ -30,13 +30,17 @@ import { BRUSH_SPEED_INPUT_LIMIT, DEFAULT_PRESSURE_INPUT_RANGE, DEFAULT_SPEED_IN
 import { getBrushDynamicsTelemetry, subscribeBrushDynamicsTelemetry, type BrushDynamicsTelemetrySnapshot } from '@/core/brush-dynamics-telemetry'
 import { MAX_GAP_CLOSING_THRESHOLD, MIN_GAP_CLOSING_THRESHOLD } from '@/core/contiguous-region'
 import { BRUSH_DITHER_TEMPLATES, DEFAULT_BRUSH_DITHER_SETTINGS, brushDitherContains, brushDitherSettingsForTemplate, ditherStageCount } from '@/core/gradient-color'
+import { interpolateRgbaColor } from '@/core/gradient-color'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { useWorkspace } from '@/store/workspace'
-import { PixelDownIcon as ChevronDown, PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { PixelPressureIcon } from '@/components/PixelPressureIcon'
 import { useFloatingWindowStack } from '@/components/floating-panel'
 import { GRADIENT_TYPE_ICONS, PixelAssetIcon, PixelShapeIcon, selectionModes, temporarySelectionModeForModifiers } from './editor-tools'
 import { SelectionPivotControls } from './SelectionPivotControls'
 import { SymmetryControls } from './SymmetryControls'
+import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
+import gradientStopIcon from '@/assets/pixel-icons/gradient-stop.svg?raw'
 
 function BrushTextureThumbnail({ texture }: { texture: BrushTexture }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -65,6 +69,117 @@ function BrushDitherPreview({ template, stage }: { template: BrushDitherTemplate
     const y = Math.floor(index / 8)
     return <i key={index} className={brushDitherContains(settings, x, y) ? 'filled' : ''} />
   })}</span>
+}
+
+const gradientStopCssColor = (color: RgbaColor): string => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
+const gradientStopIconContent = gradientStopIcon.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
+
+function GradientStopIcon({ color }: { color: RgbaColor }) {
+  return <svg className="gradient-editor-stop-icon" width={11} height={16} viewBox="0 0 11 16" style={{ '--gradient-stop-color': gradientStopCssColor(color) } as React.CSSProperties} dangerouslySetInnerHTML={{ __html: gradientStopIconContent }} aria-hidden="true" />
+}
+
+function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryColor, onChange, onClose, t }: { open: boolean; stops: GradientStop[]; disabled: boolean; primaryColor: RgbaColor; secondaryColor: RgbaColor; onChange: (stops: GradientStop[]) => void; onClose: () => void; t: (key: TranslationKey, params?: Record<string, string | number>) => string }) {
+  const barRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef<{ index: number; startX: number; startY: number; moved: boolean } | null>(null)
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const selectedStop = stops[selectedIndex] ?? stops[0]
+  const addStopAtPosition = (position: number): void => {
+    const clampedPosition = Math.max(0.001, Math.min(0.999, position))
+    const ordered = [...stops].sort((left, right) => left.position - right.position)
+    const rightIndex = ordered.findIndex((stop) => stop.position >= clampedPosition)
+    const left = ordered[Math.max(0, rightIndex - 1)]
+    const right = ordered[rightIndex < 0 ? ordered.length - 1 : rightIndex]
+    if (!left || !right || Math.abs(right.position - left.position) < 0.002) return
+    const amount = (clampedPosition - left.position) / (right.position - left.position)
+    const next = [...ordered, { position: clampedPosition, color: interpolateRgbaColor(left.color, right.color, amount) }].sort((a, b) => a.position - b.position)
+    setSelectedIndex(next.findIndex((stop) => stop.position === clampedPosition))
+    onChange(next)
+  }
+  const addStop = (): void => {
+    let largestGap = -1
+    let position = 0.5
+    const ordered = [...stops].sort((left, right) => left.position - right.position)
+    for (let index = 0; index < ordered.length - 1; index += 1) {
+      const gap = ordered[index + 1].position - ordered[index].position
+      if (gap > largestGap) { largestGap = gap; position = (ordered[index].position + ordered[index + 1].position) / 2 }
+    }
+    addStopAtPosition(position)
+  }
+  const restoreColors = (): void => {
+    setSelectedIndex(0)
+    onChange([{ position: 0, color: { ...primaryColor } }, { position: 1, color: { ...secondaryColor } }])
+  }
+  const updateStop = (index: number, patch: Partial<GradientStop>): void => onChange(stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, ...patch } : stop))
+  useEffect(() => {
+    const updateDraggedStop = (event: PointerEvent): void => {
+      const drag = draggingRef.current
+      const bar = barRef.current
+      if (!drag || !bar || stops.length <= 2) return
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 3) return
+      drag.moved = true
+      setDraggingIndex(drag.index)
+      const bounds = bar.getBoundingClientRect()
+      if (event.clientY > bounds.bottom + 24) {
+        setPendingDeleteIndex(drag.index)
+        return
+      }
+      setPendingDeleteIndex(null)
+      const position = Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width)))
+      updateStop(drag.index, { position })
+    }
+    const finishDragging = (): void => {
+      const drag = draggingRef.current
+      if (drag && pendingDeleteIndex === drag.index && stops.length > 2) {
+        setSelectedIndex(Math.max(0, drag.index - 1))
+        onChange(stops.filter((_, stopIndex) => stopIndex !== drag.index))
+      }
+      draggingRef.current = null
+      setDraggingIndex(null)
+      setPendingDeleteIndex(null)
+    }
+    const cancelDragging = (): void => {
+      draggingRef.current = null
+      setDraggingIndex(null)
+      setPendingDeleteIndex(null)
+    }
+    window.addEventListener('pointermove', updateDraggedStop)
+    window.addEventListener('pointerup', finishDragging)
+    window.addEventListener('pointercancel', cancelDragging)
+    return () => {
+      window.removeEventListener('pointermove', updateDraggedStop)
+      window.removeEventListener('pointerup', finishDragging)
+      window.removeEventListener('pointercancel', cancelDragging)
+    }
+  }, [pendingDeleteIndex, stops])
+  useEffect(() => {
+    if (selectedIndex >= stops.length) setSelectedIndex(Math.max(0, stops.length - 1))
+  }, [selectedIndex, stops.length])
+  if (!open || !selectedStop) return null
+  const orderedStops = [...stops].sort((left, right) => left.position - right.position)
+  const gradient = `linear-gradient(90deg, ${orderedStops.map((stop) => `${gradientStopCssColor(stop.color)} ${stop.position * 100}%`).join(', ')})`
+  return createPortal(<div className="modal-backdrop gradient-editor-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <ModalShell storageKey="gradient-stops-editor" defaultWidth={520} defaultHeight={210} fitContentKey="gradient-editor" minWidth={420} minHeight={180} maxWidth={680} maxHeight={480} resizable={false} className="gradient-stops-modal">
+      <DialogHeader eyebrow="GRADIENT" title={t('toolOptions.gradientFreeform')} closeLabel={t('common.close')} onClose={onClose} />
+      <div className="modal-body gradient-editor-body">
+        <div className="gradient-editor-track-wrap" onClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; const bounds = barRef.current?.getBoundingClientRect(); if (!bounds || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom + 40) return; addStopAtPosition((event.clientX - bounds.left) / Math.max(1, bounds.width)) }}>
+          <div className="gradient-editor-scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+          <div ref={barRef} className="gradient-editor-track" style={{ background: gradient }} role="group" aria-label={t('toolOptions.gradientFreeform')}>
+            {stops.map((stop, index) => <button key={`${index}-${stop.position}`} type="button" className={`gradient-editor-stop ${selectedIndex === index ? 'selected' : ''} ${draggingIndex === index ? 'is-dragging' : ''} ${pendingDeleteIndex === index ? 'pending-delete' : ''}`.trim()} style={{ left: `${stop.position * 100}%` }} aria-label={`${t('toolOptions.gradientStopColor')} ${index + 1} ${Math.round(stop.position * 100)}%`} aria-pressed={selectedIndex === index} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setSelectedIndex(index); if (!disabled && stops.length > 2) draggingRef.current = { index, startX: event.clientX, startY: event.clientY, moved: false } }} onClick={(event) => { event.stopPropagation(); setSelectedIndex(index) }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setSelectedIndex(index); window.setTimeout(() => { document.querySelector<HTMLElement>('[data-gradient-selected-color] .color-value-trigger')?.click() }, 0) }}><GradientStopIcon color={stop.color} /></button>)}</div>
+        </div>
+        <div className="gradient-editor-controls">
+          <div className="gradient-editor-value-controls"><span data-gradient-selected-color="true"><ColorValueControl color={selectedStop.color} density="compact" label={`${t('toolOptions.gradientStopColor')} ${selectedIndex + 1}`} roleLabel={t('toolOptions.gradientStopColor')} onChange={(color) => updateStop(selectedIndex, { color })} disabled={disabled} fillWithColor /></span>
+            <NumberInput aria-label={`${t('toolOptions.gradientStopPosition')} ${selectedIndex + 1}`} density="compact" min={0} max={100} step={1} suffix="%" value={Math.round(selectedStop.position * 100)} onValueChange={(position) => updateStop(selectedIndex, { position: Math.max(0, Math.min(100, position)) / 100 })} disabled={disabled} />
+          </div>
+          <div className="gradient-editor-actions"><button type="button" className="icon-button gradient-stop-reset" aria-label={t('toolOptions.restoreGradientColors')} title={t('toolOptions.restoreGradientColors')} onClick={restoreColors} disabled={disabled}><PixelUtilityIcon kind="restore" /></button>
+            <button type="button" className="icon-button gradient-stop-add" aria-label={t('toolOptions.addGradientStop')} title={t('toolOptions.addGradientStop')} onClick={addStop} disabled={disabled}><PixelUtilityIcon kind="plus" /></button>
+            <button type="button" className="icon-button" aria-label={t('toolOptions.removeGradientStop')} title={t('toolOptions.removeGradientStop')} onClick={() => { const next = stops.filter((_, index) => index !== selectedIndex); setSelectedIndex(Math.max(0, selectedIndex - 1)); onChange(next) }} disabled={disabled || stops.length <= 2}><PixelUtilityIcon kind="delete" /></button>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  </div>, document.body)
 }
 
 type ProceduralControl = { key: keyof ProceduralBrushSettings; label: TranslationKey; min: number; max: number; suffix?: string }
@@ -152,6 +267,38 @@ function ToleranceControl({ value, open, label, inputLabel, sliderLabel, classNa
   </div>
 }
 
+function SelectionAngleControl({ value, inputLabel, sliderLabel, min, max, onChange }: {
+  value: number
+  inputLabel: string
+  sliderLabel: string
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const controlRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !controlRef.current?.contains(event.target)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', closeOutside, true)
+    window.addEventListener('keydown', closeOnEscape, true)
+    return () => {
+      window.removeEventListener('pointerdown', closeOutside, true)
+      window.removeEventListener('keydown', closeOnEscape, true)
+    }
+  }, [])
+  return <div ref={controlRef} className="selection-angle-control" onPointerDown={() => setOpen(true)}>
+    <NumberInput aria-label={inputLabel} density="compact" min={min} max={max} step={0.1} suffix="°" value={value} onValueChange={onChange} onFocus={() => setOpen(true)} />
+    {open && <div className="brush-size-popover selection-angle-popover" role="dialog" aria-label={sliderLabel}>
+      <RangeField ariaLabel={sliderLabel} density="compact" min={min} max={max} step={0.1} suffix="°" value={Math.max(min, Math.min(max, value))} onChange={onChange} />
+    </div>}
+  </div>
+}
+
 function GapClosingControls({ enabled, threshold, open, onEnabledChange, onThresholdChange, onOpen }: {
   enabled: boolean
   threshold: number
@@ -172,7 +319,7 @@ const pressureSensorBounds: Record<BrushDynamicsSensor, { max: number; defaultMi
   speed: { max: BRUSH_SPEED_INPUT_LIMIT, defaultMin: DEFAULT_SPEED_INPUT_RANGE.inputMin, defaultMax: DEFAULT_SPEED_INPUT_RANGE.inputMax, defaultCurve: DEFAULT_SPEED_INPUT_RANGE.curve, step: 10, suffix: 'px/s' }
 }
 
-const brushDynamicsEffects: BrushDynamicsEffect[] = ['size', 'strength', 'gradient']
+const brushDynamicsEffects: BrushDynamicsEffect[] = ['size', 'strength', 'gradient', 'angle']
 
 type BrushDynamicsRangeEndpoint = 'min' | 'max'
 
@@ -249,8 +396,8 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, 
       <span className={`pressure-range-live-marker ${liveSensorValue === null ? 'is-empty' : liveActive ? 'is-active' : 'is-inactive'}`} style={{ left: `${liveSensorPosition}%` }} />
     </span>
     <div className="pressure-range-hit-surface" aria-hidden="true" onPointerDown={handleSurfacePointerDown} onPointerMove={handleSurfacePointerMove} onPointerUp={finishSurfaceDrag} onPointerCancel={finishSurfaceDrag} />
-    <input ref={minimumRef} className={`pressure-range-min ${activeEndpoint === 'min' ? 'is-active' : ''}`} aria-label={minimumLabel} type="range" min={0} max={maximum} step={step} value={minimum} onFocus={() => selectEndpoint('min')} onPointerDown={() => selectEndpoint('min')} onChange={(event) => updateEndpoint('min', Number(event.target.value))} />
-    <input ref={maximumRef} className={`pressure-range-max ${activeEndpoint === 'max' ? 'is-active' : ''}`} aria-label={maximumLabel} type="range" min={minimum} max={limit} step={step} value={maximum} onFocus={() => selectEndpoint('max')} onPointerDown={() => selectEndpoint('max')} onChange={(event) => updateEndpoint('max', Number(event.target.value))} />
+    <input ref={minimumRef} className={`pressure-range-min ${activeEndpoint === 'min' ? 'is-active' : ''}`} aria-label={minimumLabel} type="range" min={0} max={limit} step={step} value={minimum} onFocus={() => selectEndpoint('min')} onPointerDown={() => selectEndpoint('min')} onChange={(event) => updateEndpoint('min', Number(event.target.value))} />
+    <input ref={maximumRef} className={`pressure-range-max ${activeEndpoint === 'max' ? 'is-active' : ''}`} aria-label={maximumLabel} type="range" min={0} max={limit} step={step} value={maximum} onFocus={() => selectEndpoint('max')} onPointerDown={() => selectEndpoint('max')} onChange={(event) => updateEndpoint('max', Number(event.target.value))} />
   </div>
 }
 
@@ -280,7 +427,9 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
     ? t('toolOptions.pressureEffectSize')
     : effect === 'gradient'
       ? t('toolOptions.pressureEffectGradient')
-      : t('toolOptions.pressureEffectStrength')
+      : effect === 'angle'
+        ? t('toolOptions.pressureEffectAngle')
+        : t('toolOptions.pressureEffectStrength')
   const sensorLabel = (sensor: BrushDynamicsSensor): string => sensor === 'pressure'
     ? t('toolOptions.pressureSensorPressure')
     : t('toolOptions.pressureSensorSpeed')
@@ -293,7 +442,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
       return !disabled && settings.effects[effect].sensor
     })
     setActiveEffect(fallback ?? null)
-  }, [activeEffect, intrinsicSize, settings.effects.gradient.sensor, settings.effects.size.sensor, settings.effects.strength.sensor, tool])
+  }, [activeEffect, intrinsicSize, settings.effects.angle.sensor, settings.effects.gradient.sensor, settings.effects.size.sensor, settings.effects.strength.sensor, tool])
   const selectMapping = (effect: BrushDynamicsEffect, sensor: BrushDynamicsSensor): void => {
     if (effectDisabled(effect)) return
     const mapping = settings.effects[effect]
@@ -359,6 +508,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
         {intrinsicSize ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureIntrinsicSizeHint')}>{renderEffectRow('size')}</Tooltip> : renderEffectRow('size')}
         {renderEffectRow('strength')}
         {tool === 'eraser' ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureEraserGradientHint')}>{renderEffectRow('gradient')}</Tooltip> : renderEffectRow('gradient')}
+        {renderEffectRow('angle')}
       </div>
     </div>
     {activeMapping && activeSensor && sensorBounds ? <section className="pressure-mapping-details">
@@ -375,8 +525,8 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
         </div>}
         <div className="pressure-detail-section pressure-detail-group">
           <span className="pressure-detail-label">{t('toolOptions.pressureOutputRange')}</span>
-          <RangeField className="pressure-slider-row" density="compact" label={t('toolOptions.pressureOutputMin')} value={activeMapping.outputMin} min={0} max={activeMapping.outputMax} suffix="%" onChange={(outputMin) => onChange(activeEffect!, { outputMin })} />
-          <RangeField className="pressure-slider-row" density="compact" label={t('toolOptions.pressureOutputMax')} value={activeMapping.outputMax} min={activeMapping.outputMin} max={100} suffix="%" onChange={(outputMax) => onChange(activeEffect!, { outputMax })} />
+          <RangeField className="pressure-slider-row" density="compact" label={t('toolOptions.pressureOutputMin')} value={activeMapping.outputMin} min={activeEffect === 'angle' ? -180 : 0} max={activeMapping.outputMax} suffix={activeEffect === 'angle' ? '°' : '%'} onChange={(outputMin) => onChange(activeEffect!, { outputMin })} />
+          <RangeField className="pressure-slider-row" density="compact" label={t('toolOptions.pressureOutputMax')} value={activeMapping.outputMax} min={activeMapping.outputMin} max={activeEffect === 'angle' ? 180 : 100} suffix={activeEffect === 'angle' ? '°' : '%'} onChange={(outputMax) => onChange(activeEffect!, { outputMax })} />
         </div>
         <div className="pressure-detail-section pressure-detail-group">
           <div className="pressure-detail-heading"><span className="pressure-detail-label">{t('toolOptions.pressureSensorRange')}</span><span className={`pressure-live-value ${liveSensorValue === null ? 'is-empty' : liveTelemetry?.active ? 'is-active' : 'is-inactive'}`}>{t('toolOptions.pressureSensorLive')}: {liveSensorText}</span></div>
@@ -406,6 +556,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const [brushDitherResident, setBrushDitherResident] = useState(false)
   const [brushDitherPopoverPosition, setBrushDitherPopoverPosition] = useState({ left: 8, top: 8, maxHeight: 320 })
   const [fillTextureOpen, setFillTextureOpen] = useState(false)
+  const [gradientStopsOpen, setGradientStopsOpen] = useState(false)
   const [toleranceFlyoutOpen, setToleranceFlyoutOpen] = useState<'wand' | 'wand-gap' | 'fill' | 'fill-gap' | 'gradient' | null>(null)
   const [temporarySelectionMode, setTemporarySelectionMode] = useState<SelectionMode | null>(null)
   const [pressureFlyoutOpen, setPressureFlyoutOpen] = useState(false)
@@ -680,6 +831,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const workspace = useWorkspace.getState()
   const fillKind = session.fillKind ?? 'bucket'
   const gradientDither = session.gradientDither ?? 'none'
+  const gradientStops = session.gradientStops ?? [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]
   const isStrokeBrushTool = session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line'
   const isBucketBrushTool = session.tool === 'fill' && fillKind === 'bucket'
   const isBrushTool = isStrokeBrushTool || isBucketBrushTool
@@ -767,7 +919,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     </div>}
     {isBrushTool && <>
       {isStrokeBrushTool && <div className="brush-shape-selector">
-        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><PixelShapeIcon kind={session.brushShape} /><ChevronDown className="brush-shape-trigger-arrow" /></button>
+        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><PixelShapeIcon kind={session.brushShape} /></button>
         {basicBrushFlyoutOpen && <div className="brush-shape-popover" role="menu" aria-label={t('toolOptions.basicBrushes')}>
           {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <button key={shape} type="button" role="menuitemradio" className={`icon-button brush-preset ${!activeLibraryBrush && session.brushShape === shape ? 'selected' : ''}`} title={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-checked={!activeLibraryBrush && session.brushShape === shape} onClick={() => chooseBasicBrush(shape)}><PixelShapeIcon kind={shape} /></button>)}
         </div>}
@@ -837,11 +989,35 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
       {(session.tool === 'pencil' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">
-        <Tooltip content={t('toolOptions.brushDynamicsDescription')}><button className={`pressure-trigger ${session.brushDynamics.effects.size.sensor || session.brushDynamics.effects.strength.sensor || session.brushDynamics.effects.gradient.sensor ? 'selected' : ''}`} type="button" aria-expanded={pressureFlyoutOpen} onClick={() => setPressureFlyoutOpen((open) => !open)}>{t('toolOptions.brushDynamics')}<ChevronDown size={14} /></button></Tooltip>
+      <Tooltip content={t('toolOptions.brushDynamicsDescription')}><button className={`pressure-trigger icon-button ${session.brushDynamics.effects.size.sensor || session.brushDynamics.effects.strength.sensor || session.brushDynamics.effects.gradient.sensor || session.brushDynamics.effects.angle.sensor ? 'selected' : ''}`} type="button" aria-label={t('toolOptions.brushDynamics')} title={t('toolOptions.brushDynamics')} aria-expanded={pressureFlyoutOpen} onClick={() => setPressureFlyoutOpen((open) => !open)}><PixelPressureIcon /></button></Tooltip>
         {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} /></div>, document.body)}
       </div>}
     </>}
-    {session.tool === 'selection' && <>
+    {session.tool === 'selection' && session.selectionPropertiesActive && session.selection ? (() => {
+      const target = session.pendingPaste?.transformTarget ?? session.selection
+      const angle = session.pendingPaste?.transformAngle ?? session.selectionAngle ?? 0
+      const shear = session.pendingPaste?.transformShear
+      const shearReference = shear?.axis === 'x' ? Math.max(1, target.height) : Math.max(1, target.width)
+      const shearAngle = shear ? Math.round(Math.atan(shear.amount / shearReference) * 1800 / Math.PI) / 10 : 0
+      return <div className="selection-properties" aria-label={t('toolOptions.selectionProperties')}>
+        <FormField className="selection-properties-field" layout="inline" label="X"><NumberInput aria-label="X" density="compact" value={target.x} onValueChange={(x) => workspace.updateSelectionProperties({ x })} /></FormField>
+        <FormField className="selection-properties-field" layout="inline" label="Y"><NumberInput aria-label="Y" density="compact" value={target.y} onValueChange={(y) => workspace.updateSelectionProperties({ y })} /></FormField>
+        <FormField className="selection-properties-field" layout="inline" label={t('common.width')}><NumberInput aria-label={t('common.width')} density="compact" min={1} value={target.width} onValueChange={(width) => workspace.updateSelectionProperties({ width })} /></FormField>
+        <FormField className="selection-properties-field" layout="inline" label={t('common.height')}><NumberInput aria-label={t('common.height')} density="compact" min={1} value={target.height} onValueChange={(height) => workspace.updateSelectionProperties({ height })} /></FormField>
+        <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionRotation')}><SelectionAngleControl value={angle} inputLabel={t('toolOptions.selectionRotation')} sliderLabel={t('toolOptions.selectionRotation')} min={-180} max={180} onChange={(nextAngle) => workspace.updateSelectionProperties({ angle: nextAngle })} /></FormField>
+        <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionShearAngle')}><SelectionAngleControl value={shearAngle} inputLabel={t('toolOptions.selectionShearAngle')} sliderLabel={t('toolOptions.selectionShearAngle')} min={-89} max={89} onChange={(nextAngle) => workspace.updateSelectionProperties({ shearAngle: nextAngle })} /></FormField>
+        <SelectionPivotControls
+          target={target}
+          angle={angle}
+          shear={shear}
+          pivot={session.selectionPivot ?? null}
+          visible={session.view.showSelectionPivot !== false}
+          onPivotChange={workspace.setSelectionPivot}
+          onVisibleChange={(showSelectionPivot) => workspace.setView({ showSelectionPivot })}
+        />
+        <button type="button" className="icon-button selection-shrink-button" title={t('toolOptions.shrinkSelection')} aria-label={t('toolOptions.shrinkSelection')} onClick={workspace.shrinkSelectionToContent}><PixelAssetIcon src={selectionShrinkIcon} /></button>
+      </div>
+    })() : session.tool === 'selection' && <>
       <div className="selection-mode-control" aria-label={t('toolOptions.selectionMode')}>{selectionModeItems.map((mode) => <button key={mode.id} title={mode.label} aria-label={mode.label} className={`icon-button ${(temporarySelectionMode ?? session.selectionMode) === mode.id ? 'selected' : ''}`} onClick={() => workspace.setSelectionMode(mode.id)}><PixelAssetIcon src={mode.icon} /></button>)}</div>
       <SelectionPivotControls
         target={session.pendingPaste?.transformTarget ?? session.selection}
@@ -852,6 +1028,14 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         onPivotChange={workspace.setSelectionPivot}
         onVisibleChange={(showSelectionPivot) => workspace.setView({ showSelectionPivot })}
       />
+      <button
+        type="button"
+        className="icon-button selection-shrink-button"
+        title={t('toolOptions.shrinkSelection')}
+        aria-label={t('toolOptions.shrinkSelection')}
+        disabled={!session.selection}
+        onClick={workspace.shrinkSelectionToContent}
+      ><PixelAssetIcon src={selectionShrinkIcon} /></button>
       {session.selectionKind === 'rectangle' && <div className="corner-radius-control"><CheckboxField className="tool-checkbox" checked={session.selectionRounded} label={t('toolOptions.roundedCorners')} onChange={workspace.setSelectionRounded} />{session.selectionRounded && <NumberInput aria-label={t('toolOptions.cornerRadius')} density="compact" min={0} max={256} suffix="px" value={session.selectionCornerRadius} onValueChange={workspace.setSelectionCornerRadius} />}</div>}
       {session.selectionKind === 'magic' && <><ToleranceControl value={session.wandTolerance} open={toleranceFlyoutOpen === 'wand'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.magicWandTolerance')} sliderLabel={t('toolOptions.magicWandToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('wand')} onChange={workspace.setWandTolerance} /><CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousSelection')} checked={session.wandContiguous} label={t('toolOptions.contiguous')} onChange={workspace.setWandContiguous} />{session.wandContiguous && <GapClosingControls enabled={session.wandGapClosing} threshold={session.wandGapThreshold} open={toleranceFlyoutOpen === 'wand-gap'} onEnabledChange={workspace.setWandGapClosing} onThresholdChange={workspace.setWandGapThreshold} onOpen={() => setToleranceFlyoutOpen('wand-gap')} />}</>}
     </>}
@@ -867,6 +1051,8 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <ToleranceControl value={session.gradientTolerance} open={toleranceFlyoutOpen === 'gradient'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.gradientTolerance')} sliderLabel={t('toolOptions.gradientToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('gradient')} onChange={workspace.setGradientTolerance} />
       <CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousGradient')} checked={session.gradientContiguous} label={t('toolOptions.contiguous')} onChange={workspace.setGradientContiguous} />
       <GradientDitherSelect className="gradient-dither-select" value={gradientDither} density="compact" onChange={workspace.setGradientDither} />
+      {gradientDither === 'none' && <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>}
+      <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform) && gradientDither === 'none'} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     </>}
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
     {session.tool === 'move' && session.moveKind === 'move' && <CheckboxField className="tool-checkbox" checked={session.moveAutoSelect} label={t('toolOptions.autoSelectLayer')} onChange={workspace.setMoveAutoSelect} />}

@@ -13,7 +13,7 @@ import { registerCanvasResizePreviewHistory } from '@/core/canvas-resize-preview
 
 const anchors: Array<{ id: CanvasAnchor; labelKey: TranslationKey; icon: PixelUtilityIconKind }> = [
   { id: 'nw', labelKey: 'canvasResize.anchor.nw', icon: 'canvasTopLeft' }, { id: 'n', labelKey: 'canvasResize.anchor.n', icon: 'canvasTop' }, { id: 'ne', labelKey: 'canvasResize.anchor.ne', icon: 'canvasTopRight' },
-  { id: 'w', labelKey: 'canvasResize.anchor.w', icon: 'canvasLeft' }, { id: 'center', labelKey: 'canvasResize.anchor.center', icon: 'canvasCenter' }, { id: 'e', labelKey: 'canvasResize.anchor.e', icon: 'canvasRight' },
+  { id: 'w', labelKey: 'canvasResize.anchor.w', icon: 'canvasLeft' }, { id: 'center', labelKey: 'canvasResize.anchor.center', icon: 'canvasAnchorCenter' }, { id: 'e', labelKey: 'canvasResize.anchor.e', icon: 'canvasRight' },
   { id: 'sw', labelKey: 'canvasResize.anchor.sw', icon: 'canvasBottomLeft' }, { id: 's', labelKey: 'canvasResize.anchor.s', icon: 'canvasBottom' }, { id: 'se', labelKey: 'canvasResize.anchor.se', icon: 'canvasBottomRight' }
 ]
 

@@ -2,19 +2,21 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{
+    ipc::{InvokeBody, Request},
+    AppHandle, Manager,
+};
 
 use crate::platform_storage::atomic_write;
 
 const MILLIS_PER_DAY: u128 = 86_400_000;
+const RECOVERY_ID_HEADER: &str = "x-moonsprite-recovery-id";
+const RECOVERY_NAME_HEADER: &str = "x-moonsprite-recovery-name";
 
 #[derive(Default)]
-pub(crate) struct RecoveryState {
-    previous_session_crashed: Mutex<bool>,
-}
+pub(crate) struct RecoveryState;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,24 +123,10 @@ pub(crate) fn mark_session(app: &AppHandle, clean: bool) -> Result<(), String> {
     atomic_write(&session_marker(app)?, payload.to_string().as_bytes())
 }
 
-pub(crate) fn initialize_session_marker(
-    app: &AppHandle,
-    state: &RecoveryState,
-) -> Result<(), String> {
+pub(crate) fn initialize_session_marker(app: &AppHandle) -> Result<(), String> {
     if let Err(error) = migrate_legacy_data(app) {
         eprintln!("无法迁移恢复数据，继续启动 MoonSprite：{error}");
     }
-    let marker = session_marker(app)?;
-    let crashed = fs::read_to_string(marker)
-        .ok()
-        .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
-        .and_then(|value| value.get("clean").and_then(serde_json::Value::as_bool))
-        .map(|clean| !clean)
-        .unwrap_or(false);
-    *state
-        .previous_session_crashed
-        .lock()
-        .map_err(|_| "恢复状态锁不可用")? = crashed;
     if let Err(error) = mark_session(app, false) {
         eprintln!("无法写入恢复会话标记，继续启动 MoonSprite：{error}");
     }
@@ -188,22 +176,58 @@ fn safe_recovery_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
+fn decode_header(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len() {
+            return Err("无效的恢复数据头".to_string());
+        }
+        let hex = |byte: u8| match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        };
+        let high = hex(bytes[index + 1]).ok_or_else(|| "无效的恢复数据头".to_string())?;
+        let low = hex(bytes[index + 2]).ok_or_else(|| "无效的恢复数据头".to_string())?;
+        decoded.push((high << 4) | low);
+        index += 3;
+    }
+    String::from_utf8(decoded).map_err(|_| "无效的恢复数据头".to_string())
+}
+
+fn request_header(request: &Request<'_>, name: &str) -> Result<String, String> {
+    let value = request
+        .headers()
+        .get(name)
+        .ok_or_else(|| "恢复数据头不完整".to_string())?
+        .to_str()
+        .map_err(|error| error.to_string())?;
+    decode_header(value)
+}
+
+fn request_data(request: &Request<'_>) -> Result<Vec<u8>, String> {
+    match request.body() {
+        InvokeBody::Raw(data) => Ok(data.clone()),
+        _ => Err("恢复数据必须使用二进制传输".to_string()),
+    }
+}
+
 #[tauri::command]
 pub(crate) fn list_recoveries(
     app: AppHandle,
-    state: State<'_, RecoveryState>,
     retention_days: u32,
 ) -> Result<Vec<RecoveryRecord>, String> {
     let directory = recovery_dir(&app)?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     purge_expired_recoveries(&directory, retention_days, unix_timestamp_millis())?;
-    if !*state
-        .previous_session_crashed
-        .lock()
-        .map_err(|_| "恢复状态锁不可用")?
-    {
-        return Ok(Vec::new());
-    }
     let mut records = Vec::new();
     for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
         let path = entry.map_err(|error| error.to_string())?.path();
@@ -228,27 +252,30 @@ pub(crate) fn read_recovery(app: AppHandle, id: String) -> Result<Vec<u8>, Strin
 }
 
 #[tauri::command]
-pub(crate) fn write_recovery(
-    app: AppHandle,
-    id: String,
-    name: String,
-    data: Vec<u8>,
-) -> Result<(), String> {
+pub(crate) async fn write_recovery(app: AppHandle, request: Request<'_>) -> Result<(), String> {
+    let id = request_header(&request, RECOVERY_ID_HEADER)?;
+    let name = request_header(&request, RECOVERY_NAME_HEADER)?;
+    let data = request_data(&request)?;
     let id = safe_recovery_id(&id)?;
     let directory = recovery_dir(&app)?;
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    atomic_write(&directory.join(format!("{id}.moonsprite")), &data)?;
-    let record = RecoveryRecord {
-        id: id.to_string(),
-        name,
-        updated_at: unix_timestamp_millis().to_string(),
-    };
-    atomic_write(
-        &directory.join(format!("{id}.json")),
-        serde_json::to_string(&record)
-            .map_err(|error| error.to_string())?
-            .as_bytes(),
-    )
+    let id = id.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        atomic_write(&directory.join(format!("{id}.moonsprite")), &data)?;
+        let record = RecoveryRecord {
+            id: id.clone(),
+            name,
+            updated_at: unix_timestamp_millis().to_string(),
+        };
+        atomic_write(
+            &directory.join(format!("{id}.json")),
+            serde_json::to_string(&record)
+                .map_err(|error| error.to_string())?
+                .as_bytes(),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -298,6 +325,16 @@ mod tests {
         expect_timestamp("1700000000000", 1_700_000_000_000);
         expect_timestamp("1700000000000000", 1_700_000_000_000);
         expect_timestamp("1700000000000000000", 1_700_000_000_000);
+    }
+
+    #[test]
+    fn decodes_recovery_headers_without_accepting_malformed_percent_sequences() {
+        assert_eq!(
+            decode_header("draft%20%E6%81%A2%E5%A4%8D").unwrap(),
+            "draft 恢复"
+        );
+        assert!(decode_header("broken%ZZ").is_err());
+        assert!(decode_header("broken%").is_err());
     }
 
     fn expect_timestamp(value: &str, expected: u128) {

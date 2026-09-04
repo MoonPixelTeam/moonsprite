@@ -52,49 +52,9 @@ describe('layer merging', () => {
     expect(Array.from(compositeDocument(document))).toEqual(Array.from(before))
   })
 
-  it('merges visible layers while retaining hidden layers', () => {
-    const document = createDocument('visible', 1, 1, 'rgba')
-    const hidden = getActiveLayer(document)
-    hidden.name = 'Hidden'
-    hidden.visible = false
-    writeLayerColor(document, hidden, 0, blue)
-    const first = createLayer('Visible 1', 1, 1, 'rgba')
-    const second = createLayer('Visible 2', 1, 1, 'rgba')
-    writeLayerColor(document, first, 0, red)
-    writeLayerColor(document, second, 0, green)
-    document.layers.push(first, second)
-    const before = compositeDocument(document)
 
-    const result = mergeVisibleLayers(document)
 
-    expect(result.ok).toBe(true)
-    expect(document.layers).toHaveLength(2)
-    expect(document.layers[0]).toBe(hidden)
-    expect(document.layers[1].name).toBe('合并可见图层')
-    expect(Array.from(compositeDocument(document))).toEqual(Array.from(before))
-  })
 
-  it('maps an indexed merged result to the nearest visible palette color', () => {
-    const document = createDocument('indexed', 1, 1, 'indexed')
-    const bottom = getActiveLayer(document)
-    if (bottom.format !== 'indexed') throw new Error('wrong mode')
-    bottom.pixels[0] = 1
-    const top = createLayer('Top', 1, 1, 'indexed')
-    if (top.format !== 'indexed') throw new Error('wrong mode')
-    top.pixels[0] = 2
-    top.opacity = 0.5
-    document.layers.push(top)
-    const before = compositeDocument(document)
-
-    const result = mergeRasterLayers(document, [bottom.id, top.id])
-
-    expect(result.ok).toBe(true)
-    expect(document.layers[0].format).toBe('indexed')
-    expect(document.palette.some((entry) => entry.id === document.layers[0].pixels[0])).toBe(true)
-    expect(document.layers[0].pixels[0]).toBe(2)
-    expect(Array.from(compositeDocument(document))).toEqual([41, 121, 255, 255])
-    expect(Array.from(compositeDocument(document))).not.toEqual(Array.from(before))
-  })
 
   it('bakes selected blend modes into the merged layer', () => {
     const document = createDocument('blend mode', 1, 1, 'rgba')

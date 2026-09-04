@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, BrushDitherTemplate, GradientDither, GradientType, RgbaColor } from '@shared/types'
+import type { BrushDitherSettings, BrushDitherTemplate, GradientDither, GradientStop, GradientType, RgbaColor } from '@shared/types'
 
 export const GRADIENT_DITHER_PRESETS: readonly GradientDither[] = [
   'none', 'bayer-2', 'bayer-4', 'bayer-8', 'checker', 'diagonal', 'diagonal-reverse', 'horizontal', 'vertical'
@@ -34,6 +34,7 @@ export const DEFAULT_BRUSH_DITHER_SETTINGS: BrushDitherSettings = {
 }
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
+const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))
 
 export interface GradientGeometryOptions {
   fromCenter?: boolean
@@ -99,6 +100,26 @@ const normalizeTransparentGradientStops = (start: RgbaColor, end: RgbaColor): { 
   if (start.a === 0 && end.a !== 0) return { start: { ...start, r: end.r, g: end.g, b: end.b }, end: { ...end } }
   if (start.a !== 0 && end.a === 0) return { start: { ...start }, end: { ...end, r: start.r, g: start.g, b: start.b } }
   return { start: { ...start }, end: { ...end } }
+}
+
+export const normalizeGradientStops = (
+  stops: readonly GradientStop[] | null | undefined,
+  fallbackStart: RgbaColor,
+  fallbackEnd: RgbaColor
+): GradientStop[] => {
+  const normalized = (stops ?? []).filter((stop) => Boolean(stop && Number.isFinite(stop.position) && stop.color))
+    .map((stop) => ({
+      position: clamp01(stop.position),
+      color: {
+        r: clampByte(stop.color.r),
+        g: clampByte(stop.color.g),
+        b: clampByte(stop.color.b),
+        a: clampByte(stop.color.a)
+      }
+    }))
+    .sort((left, right) => left.position - right.position)
+  if (normalized.length < 2) return [{ position: 0, color: { ...fallbackStart } }, { position: 1, color: { ...fallbackEnd } }]
+  return normalized
 }
 
 const bayerStage = (matrix: number[][], x: number, y: number): number => {
@@ -181,9 +202,20 @@ export const gradientColorForAmount = (
   amount: number,
   x: number,
   y: number,
-  dither: GradientDither = 'none'
+  dither: GradientDither = 'none',
+  gradientStops?: readonly GradientStop[]
 ): RgbaColor => {
   const normalizedAmount = clamp01(amount)
+  if (dither === 'none' && gradientStops && gradientStops.length >= 2) {
+    const stops = normalizeGradientStops(gradientStops, startColor, endColor)
+    const rightIndex = stops.findIndex((stop) => stop.position >= normalizedAmount)
+    if (rightIndex < 0) return { ...stops[stops.length - 1].color }
+    if (rightIndex === 0) return { ...stops[0].color }
+    const left = stops[rightIndex - 1]
+    const right = stops[rightIndex]
+    const span = right.position - left.position
+    return interpolateRgbaColor(left.color, right.color, span === 0 ? 0 : (normalizedAmount - left.position) / span)
+  }
   const normalizedStart = startColor.a === 0 && endColor.a !== 0
     ? { ...startColor, r: endColor.r, g: endColor.g, b: endColor.b }
     : startColor
@@ -201,24 +233,39 @@ export const createGradientColorSampler = (
   end: { x: number; y: number },
   dither: GradientDither = 'none',
   type: GradientType = 'linear',
-  geometryOptions: GradientGeometryOptions = {}
+  geometryOptions: GradientGeometryOptions = {},
+  gradientStops?: readonly GradientStop[]
 ): ((x: number, y: number) => RgbaColor) => {
-  const stops = normalizeTransparentGradientStops(startColor, endColor)
+  const freeStops = dither === 'none' && gradientStops && gradientStops.length >= 2
+    ? normalizeGradientStops(gradientStops, startColor, endColor).map((stop) => ({ ...stop, color: { ...stop.color } }))
+    : null
+  const legacyStops = normalizeTransparentGradientStops(startColor, endColor)
   const dx = end.x - start.x
   const dy = end.y - start.y
   const lengthSquared = dx * dx + dy * dy
-  const deltaR = stops.end.r - stops.start.r
-  const deltaG = stops.end.g - stops.start.g
-  const deltaB = stops.end.b - stops.start.b
-  const deltaA = stops.end.a - stops.start.a
-  const colorForAmount: (amount: number, x: number, y: number) => RgbaColor = dither === 'none'
-    ? (amount: number): RgbaColor => ({
-        r: Math.round(stops.start.r + deltaR * amount),
-        g: Math.round(stops.start.g + deltaG * amount),
-        b: Math.round(stops.start.b + deltaB * amount),
-        a: Math.round(stops.start.a + deltaA * amount)
-      })
-    : (amount: number, x: number, y: number): RgbaColor => amount >= ditherThreshold(dither, x, y) ? { ...stops.end } : { ...stops.start }
+  const deltaR = legacyStops.end.r - legacyStops.start.r
+  const deltaG = legacyStops.end.g - legacyStops.start.g
+  const deltaB = legacyStops.end.b - legacyStops.start.b
+  const deltaA = legacyStops.end.a - legacyStops.start.a
+  const colorForAmount: (amount: number, x: number, y: number) => RgbaColor = freeStops
+    ? (amount: number): RgbaColor => {
+        const normalizedAmount = clamp01(amount)
+        const rightIndex = freeStops.findIndex((stop) => stop.position >= normalizedAmount)
+        if (rightIndex < 0) return { ...freeStops[freeStops.length - 1].color }
+        if (rightIndex === 0) return { ...freeStops[0].color }
+        const left = freeStops[rightIndex - 1]
+        const right = freeStops[rightIndex]
+        const span = right.position - left.position
+        return interpolateRgbaColor(left.color, right.color, span === 0 ? 0 : (normalizedAmount - left.position) / span)
+      }
+    : dither === 'none'
+      ? (amount: number): RgbaColor => ({
+          r: Math.round(legacyStops.start.r + deltaR * amount),
+          g: Math.round(legacyStops.start.g + deltaG * amount),
+          b: Math.round(legacyStops.start.b + deltaB * amount),
+          a: Math.round(legacyStops.start.a + deltaA * amount)
+        })
+      : (amount: number, x: number, y: number): RgbaColor => amount >= ditherThreshold(dither, x, y) ? { ...legacyStops.end } : { ...legacyStops.start }
   if (type === 'radial') {
     const geometry = resolveRadialGradientGeometry(start, end, geometryOptions)
     return (x, y) => colorForAmount(radialGradientAmountAt(x, y, geometry), x, y)
@@ -239,5 +286,6 @@ export const gradientColorAt = (
   end: { x: number; y: number },
   dither: GradientDither = 'none',
   type: GradientType = 'linear',
-  geometryOptions: GradientGeometryOptions = {}
-): RgbaColor => gradientColorForAmount(startColor, endColor, gradientAmountAt(x, y, start, end, type, geometryOptions), x, y, dither)
+  geometryOptions: GradientGeometryOptions = {},
+  gradientStops?: readonly GradientStop[]
+): RgbaColor => gradientColorForAmount(startColor, endColor, gradientAmountAt(x, y, start, end, type, geometryOptions), x, y, dither, gradientStops)

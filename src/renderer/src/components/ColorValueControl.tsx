@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PaletteEntry, RgbaColor, ToolId } from '@shared/types'
 import { clampByte } from '@/core/raster'
 import { colorFromValues, colorToValues, colorValueFields, colorValueModeLabel, displayRgbaHex, parseRgbaHex, type ColorValueMode } from '@/core/color-values'
@@ -12,6 +12,7 @@ import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { CANVAS_COLOR_SAMPLED_EVENT, CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, type CanvasColorSampledDetail } from './color-sampling-events'
 import { normalEditorToolIconFor, PixelAssetIcon, TOOL_DEFINITIONS } from './app/editor-tools'
 import { useWorkspace } from '@/store/workspace'
+import { PreferenceSearchContext } from './PreferenceSearchContext'
 
 interface ColorValueControlProps {
   color: RgbaColor
@@ -94,6 +95,8 @@ const colorGradient = (mode: ColorValueMode, values: Record<string, number>, fal
 
 export function ColorValueControl({ color, density = 'regular', onChange, onCommit, label, roleLabel, className = '', storageKey, inPalette = true, onAddToPalette, addToPaletteShortcut, fillWithColor = false, dismissOnFocusLoss = false, preserveAnimationSelection = false, mixed = false, disabled = false, preserveEditorOnDisable = false }: ColorValueControlProps) {
   const { locale, t } = useI18n()
+  const search = useContext(PreferenceSearchContext)
+  const searchUnmatched = Boolean(search?.query && !search.matches([label, roleLabel]))
   const [open, setOpen] = useState(false)
   const [availableModes, setAvailableModes] = useState(() => loadEditorPreferences().colorEditorModes.filter((item) => item.enabled).map((item) => item.mode))
   const [mode, setMode] = useState<ColorValueMode>(() => loadEditorPreferences().colorEditorModes.find((item) => item.enabled)?.mode ?? 'hsv')
@@ -468,11 +471,13 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
   </div> : null
 
   return <>
-    <span className={`color-value-action-row color-value-density-${density} ${onAddToPalette ? 'supports-palette-action' : ''} ${onAddToPalette && !inPalette ? 'has-add-action' : ''}`}><button ref={triggerRef} type="button" className={`color-value-trigger ${fillWithColor && !mixed ? 'filled-color-trigger' : ''} ${mixed ? 'mixed-color-trigger' : ''} ${className}`.trim()} style={fillWithColor && !mixed ? { '--color-value-fill': cssColor(color), '--color-value-contrast': paletteMarkerColor(color) } as React.CSSProperties : undefined} aria-label={`${label}${roleLabel ? ` ${roleLabel}` : ''}`} aria-expanded={open} disabled={disabled} onClick={() => { if (open) commitHexRef.current(); const next = copyColor(color); setPreviousColor(next); setWorkingColor(next); workingColorRef.current = next; committedColorRef.current = next; setConfirmedColor(next); setDraftMode(mode); setDraftValues(colorToValues(next, mode)); setHexText(displayRgbaHex(next)); if (open) { finishSampling(); positionedRef.current = false } else { residentRef.current = false; setResident(false) }; setOpen((value) => !value) }}>
+    <span className={`color-value-action-row color-value-density-${density} ${onAddToPalette ? 'supports-palette-action' : ''} ${onAddToPalette && !inPalette ? 'has-add-action' : ''} ${searchUnmatched ? 'search-unmatched' : ''}`.trim()}>
+      <button ref={triggerRef} type="button" className={`color-value-trigger ${fillWithColor && !mixed ? 'filled-color-trigger' : ''} ${mixed ? 'mixed-color-trigger' : ''} ${className}`.trim()} style={fillWithColor && !mixed ? { '--color-value-fill': cssColor(color), '--color-value-contrast': paletteMarkerColor(color) } as React.CSSProperties : undefined} aria-label={`${label}${roleLabel ? ` ${roleLabel}` : ''}`} aria-expanded={open} disabled={disabled} onClick={() => { if (open) commitHexRef.current(); const next = copyColor(color); setPreviousColor(next); setWorkingColor(next); workingColorRef.current = next; committedColorRef.current = next; setConfirmedColor(next); setDraftMode(mode); setDraftValues(colorToValues(next, mode)); setHexText(displayRgbaHex(next)); if (open) { finishSampling(); positionedRef.current = false } else { residentRef.current = false; setResident(false) }; setOpen((value) => !value) }}>
       {!fillWithColor && <span className="color-value-swatch"><i style={{ background: `rgba(${color.r}, ${color.g}, ${color.b}, ${clampByte(color.a) / 255})` }} /></span>}
       <strong>{mixed ? '' : displayRgbaHex(color)}</strong>
       {roleLabel && <small>{roleLabel}</small>}
-    </button>{onAddToPalette && !inPalette && <button type="button" className="color-value-add-button" title={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} aria-label={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} onClick={onAddToPalette}><PixelUtilityIcon kind="plus" /></button>}</span>
+      </button>{onAddToPalette && !inPalette && <button type="button" className="color-value-add-button" title={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} aria-label={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} onClick={onAddToPalette}><PixelUtilityIcon kind="plus" /></button>}
+    </span>
     {editor && createPortal(editor, document.body)}
   </>
 }

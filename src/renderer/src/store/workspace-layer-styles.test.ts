@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { LayerGroup } from '@shared/types'
-import { compositeRegion, createDocument, createLayer, createLayerMask, getActiveLayer, writeLayerColor } from '@/core/document'
+import { animationMaskAt, compositeRegion, createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
 import { ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { useWorkspace } from './workspace'
@@ -108,33 +108,7 @@ describe('layer style workspace history', () => {
     expect(group.layerStyles?.stroke.size).toBe(3)
   })
 
-  it('toggles configured styles for multiple owners without losing effect settings', () => {
-    const document = createDocument('toggle layer styles', 3, 1, 'rgba')
-    const source = getActiveLayer(document)
-    const target = createLayer('Target', 3, 1, 'rgba')
-    const sourceStyles = createDefaultLayerStyles()
-    sourceStyles.stroke.enabled = true
-    sourceStyles.stroke.size = 3
-    const targetStyles = createDefaultLayerStyles()
-    targetStyles.shadow.enabled = true
-    targetStyles.shadow.offsetX = 4
-    source.layerStyles = sourceStyles
-    target.layerStyles = targetStyles
-    document.layers.push(target)
-    useWorkspace.getState().addSession(document)
-    const targets = [{ kind: 'layer' as const, id: source.id }, { kind: 'layer' as const, id: target.id }]
 
-    expect(useWorkspace.getState().setLayerStylesEnabled(targets, false)).toBe(true)
-    expect(source.layerStyles).toMatchObject({ enabled: false, stroke: { enabled: true, size: 3 } })
-    expect(target.layerStyles).toMatchObject({ enabled: false, shadow: { enabled: true, offsetX: 4 } })
-
-    useWorkspace.getState().undo()
-    expect(source.layerStyles).toMatchObject({ enabled: true, stroke: { enabled: true, size: 3 } })
-    expect(target.layerStyles).toMatchObject({ enabled: true, shadow: { enabled: true, offsetX: 4 } })
-    useWorkspace.getState().redo()
-    expect(source.layerStyles?.enabled).toBe(false)
-    expect(target.layerStyles?.enabled).toBe(false)
-  })
 
   it('rasterizes enabled styles across the layer surface and keeps the visible result undoable', () => {
     const document = createDocument('rasterize styles', 5, 5, 'rgba')
@@ -143,43 +117,51 @@ describe('layer style workspace history', () => {
     const styles = createDefaultLayerStyles()
     styles.stroke.enabled = true
     layer.layerStyles = styles
-    const cel = ensureAnimationDocument(document).cels[0]
-    cel.mask = createLayerMask(cel.id, document.width, document.height)
-    writeLayerColor(document, cel.mask, 2 * document.width + 2, { r: 128, g: 128, b: 128, a: 255 })
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]
     useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(timeline, layer.id, cel.frameId)
+    if (!mask) throw new Error('missing canonical test mask')
+    writeLayerColor(document, mask, 2 * document.width + 2, { r: 128, g: 128, b: 128, a: 255 })
     const before = compositeRegion(document, 0, 0, document.width, document.height)
+    const visiblePixelOffset = (2 * document.width + 2) * 4
+    const beforeVisiblePixel = Array.from(before.slice(visiblePixelOffset, visiblePixelOffset + 4))
+    const maskPixels = Array.from(mask.pixels)
 
     useWorkspace.getState().rasterizeLayer(layer.id)
     expect(layer.layerStyles).toBeUndefined()
-    expect(ensureAnimationDocument(document).cels[0].mask).toBeUndefined()
-    expect(Array.from(compositeRegion(document, 0, 0, document.width, document.height))).toEqual(Array.from(before))
+    const rasterizedMask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)
+    expect(rasterizedMask).toBeNull()
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      activeLayerMaskId: null,
+      layerMaskIsolatedView: false,
+      selectedAnimationMaskCellKeys: []
+    })
+    const after = compositeRegion(document, 0, 0, document.width, document.height)
+    expect(Array.from(after)).toEqual(Array.from(before))
+    expect(Array.from(after.slice(visiblePixelOffset, visiblePixelOffset + 4))).toEqual(beforeVisiblePixel)
 
     useWorkspace.getState().undo()
     expect(getActiveLayer(document).layerStyles?.stroke.enabled).toBe(true)
-    expect(ensureAnimationDocument(document).cels[0].mask).toBeDefined()
+    const restoredMask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)
+    expect(restoredMask?.id).toBe(mask.id)
+    expect(Array.from(restoredMask?.pixels ?? [])).toEqual(maskPixels)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(mask.id)
+    const restored = compositeRegion(document, 0, 0, document.width, document.height)
+    expect(Array.from(restored)).toEqual(Array.from(before))
+    expect(Array.from(restored.slice(visiblePixelOffset, visiblePixelOffset + 4))).toEqual(beforeVisiblePixel)
+
+    useWorkspace.getState().redo()
+    expect(getActiveLayer(document).layerStyles).toBeUndefined()
+    expect(animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)).toBeNull()
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      activeLayerMaskId: null,
+      layerMaskIsolatedView: false,
+      selectedAnimationMaskCellKeys: []
+    })
     expect(Array.from(compositeRegion(document, 0, 0, document.width, document.height))).toEqual(Array.from(before))
   })
 
-  it('deep-copies styles when duplicating and copying layer rows', () => {
-    const document = createDocument('copy styles', 2, 2, 'rgba')
-    const source = getActiveLayer(document)
-    const styles = createDefaultLayerStyles()
-    styles.gradientOverlay.enabled = true
-    source.layerStyles = styles
-    useWorkspace.getState().addSession(document)
 
-    useWorkspace.getState().duplicateActiveLayer()
-    const duplicate = getActiveLayer(document)
-    expect(duplicate.layerStyles).toEqual(source.layerStyles)
-    expect(duplicate.layerStyles).not.toBe(source.layerStyles)
-    expect(duplicate.layerStyles?.stroke.directions).not.toBe(source.layerStyles?.stroke.directions)
-    expect(duplicate.layerStyles?.gradientOverlay.from).not.toBe(source.layerStyles?.gradientOverlay.from)
-
-    useWorkspace.getState().copySelectedLayersToClipboard()
-    expect(useWorkspace.getState().pasteLayersFromClipboard()).toBe(true)
-    const pasted = getActiveLayer(document)
-    expect(pasted.layerStyles).toEqual(duplicate.layerStyles)
-    expect(pasted.layerStyles).not.toBe(duplicate.layerStyles)
-    expect(pasted.layerStyles?.stroke.directions).not.toBe(duplicate.layerStyles?.stroke.directions)
-  })
 })

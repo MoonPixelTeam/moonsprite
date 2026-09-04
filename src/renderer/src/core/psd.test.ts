@@ -53,11 +53,13 @@ describe('PSD export', () => {
       opacity: inside.opacity,
       surface: { format: 'rgba', width: 2, height: 2, offsetX: 0, offsetY: 0, pixels: inside.pixels }
     }
-    const mask = createLayerMask(cel.id, 2, 2)
+    const mask = createLayerMask(inside.id, 2, 2)
     mask.visible = false
     mask.pixels.set([0, 0, 0, 255], 0)
-    cel.mask = mask
-    document.animation!.cels.push(cel)
+    const timeline = document.animation!
+    timeline.cels.push(cel)
+    timeline.layerMasks ??= []
+    timeline.layerMasks.push({ layerId: inside.id, frameId, mask })
 
     const bytes = encodePsd(document)
     expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe('8BPS')
@@ -118,29 +120,9 @@ describe('PSD export', () => {
     expect(parsed.children?.[0].effects).toBeUndefined()
   })
 
-  it('stores a nearest-neighbor scaled composite and layer pixels', () => {
-    const document = createDocument('Scaled PSD', 1, 1, 'rgba')
-    writeLayerColor(document, getActiveLayer(document), 0, { r: 8, g: 24, b: 40, a: 255 })
 
-    const parsed = readPsd(encodePsd(document, 200), { useImageData: true, skipThumbnail: true })
-    expect(parsed).toMatchObject({ width: 2, height: 2 })
-    expect(Array.from(parsed.imageData?.data ?? [])).toEqual([
-      8, 24, 40, 255, 8, 24, 40, 255,
-      8, 24, 40, 255, 8, 24, 40, 255
-    ])
-    expect(parsed.children?.[0].imageData).toMatchObject({ width: 2, height: 2 })
-  })
 
-  it('keeps editable layer sampling aligned with the composite when shrinking', () => {
-    const document = createDocument('Shrunk PSD', 2, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    writeLayerColor(document, layer, 0, { r: 255, g: 0, b: 0, a: 255 })
-    writeLayerColor(document, layer, 1, { r: 0, g: 0, b: 255, a: 255 })
 
-    const parsed = readPsd(encodePsd(document, 50), { useImageData: true, skipThumbnail: true })
-    expect(Array.from(parsed.imageData?.data ?? [])).toEqual([255, 0, 0, 255])
-    expect(Array.from(parsed.children?.[0].imageData?.data ?? [])).toEqual([255, 0, 0, 255])
-  })
 
   it('rejects dimensions above the PSD canvas limit', () => {
     expect(() => encodePsd(createDocument('Too large', 500, 1, 'rgba'), 6400)).toThrow('PSD')

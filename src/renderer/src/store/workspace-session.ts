@@ -15,7 +15,7 @@ import {
 } from '@/core/tool-preferences'
 import type { BrushProfile, DocumentSession } from './workspace-types'
 import { defaultSymmetryCenter } from '@/core/symmetry'
-import { ensureAnimationDocument, refreshActiveAnimationFrame } from '@/core/animation'
+import { ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
 import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document'
 import { cloneBrushDynamicsSettings, normalizeBrushDynamicsSettings } from '@/core/pressure'
@@ -23,6 +23,7 @@ import { applyProjectLayerPanelState, loadLocalLayerPanelState, normalizeProject
 import { ensureTilemapTilesetOwnership } from '@/core/tilemap-document'
 import { ensureFreeTileTilesetOwnership } from '@/core/free-tile-document'
 import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadDocumentViewState } from '@/core/document-view-state'
 
 const defaultColor: RgbaColor = { r: 41, g: 121, b: 255, a: 255 }
 const defaultSecondary: RgbaColor = { r: 241, g: 244, b: 248, a: 255 }
@@ -36,8 +37,8 @@ const FREE_TILE_EDIT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'airbrush', 'era
 
 export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId): boolean => {
   const groupSelected = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
-  if (groupSelected && tool === 'fill') return false
-  if (session.activeLayerMaskId || groupSelected) return true
+  if (groupSelected) return tool === 'move' || tool === 'hand' || tool === 'zoom' || tool === 'rotate'
+  if (session.activeLayerMaskId) return true
   const textLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'text'))
   if (textLayerSelected) return TEXT_LAYER_ALLOWED_TOOLS.has(tool)
   const tilemapLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'tilemap'))
@@ -47,19 +48,107 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
   return (session.freeTileMode === 'edit' ? FREE_TILE_EDIT_ALLOWED_TOOLS : FREE_TILE_PAINT_ALLOWED_TOOLS).has(tool)
 }
 
+export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
+  Object.assign(target, {
+    tool: source.tool,
+    moveKind: source.moveKind,
+    primaryColor: { ...source.primaryColor },
+    secondaryColor: { ...source.secondaryColor },
+    brushSize: source.brushSize,
+    brushShape: source.brushShape,
+    brushDither: structuredClone(source.brushDither),
+    brushTexture: source.brushTexture,
+    brushTextureScale: source.brushTextureScale,
+    brushPaintMode: source.brushPaintMode,
+    brushImageId: source.brushImageId,
+    brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
+    brushImageTemporary: source.brushImageTemporary,
+    brushImageSettings: structuredClone(source.brushImageSettings),
+    brushProfiles: structuredClone(source.brushProfiles),
+    proceduralBrushSettings: structuredClone(source.proceduralBrushSettings),
+    proceduralAntialias: source.proceduralAntialias,
+    proceduralAntialiasStrength: source.proceduralAntialiasStrength,
+    brushDynamics: structuredClone(source.brushDynamics),
+    brushPressure: structuredClone(source.brushPressure),
+    shapeKind: source.shapeKind,
+    lineKind: source.lineKind,
+    curveAnchorCount: source.curveAnchorCount,
+    shapeRatio: source.shapeRatio,
+    shapeRounded: source.shapeRounded,
+    shapeCornerRadius: source.shapeCornerRadius,
+    fillMode: source.fillMode,
+    fillKind: source.fillKind,
+    fillTolerance: source.fillTolerance,
+    fillGapClosing: source.fillGapClosing,
+    fillGapThreshold: source.fillGapThreshold,
+    gradientTolerance: source.gradientTolerance,
+    gradientContiguous: source.gradientContiguous,
+    gradientType: source.gradientType,
+    gradientDither: source.gradientDither,
+    gradientFreeform: source.gradientFreeform,
+    gradientStops: source.gradientStops ? structuredClone(source.gradientStops) : undefined,
+    moveAutoSelect: source.moveAutoSelect,
+    selectionKind: source.selectionKind,
+    selectionMode: source.selectionMode,
+    selectionRounded: source.selectionRounded,
+    selectionCornerRadius: source.selectionCornerRadius,
+    wandTolerance: source.wandTolerance,
+    wandContiguous: source.wandContiguous,
+    wandGapClosing: source.wandGapClosing,
+    wandGapThreshold: source.wandGapThreshold,
+    perfectPixels: source.perfectPixels,
+    symmetryAxes: structuredClone(source.symmetryAxes),
+    symmetryAxesInitialized: structuredClone(source.symmetryAxesInitialized),
+    airbrushParticleRadius: source.airbrushParticleRadius,
+    airbrushParticleShape: source.airbrushParticleShape,
+    airbrushScatterRadius: source.airbrushScatterRadius,
+    airbrushDensity: source.airbrushDensity,
+    airbrushIntervalMs: source.airbrushIntervalMs
+  })
+}
+
 export const activeLayerMask = (session: DocumentSession): LayerMask | null => session.activeLayerMaskId
   ? findLayerMask(session.document, session.activeLayerMaskId)
   : null
 
 export const activePaintLayer = (session: DocumentSession): RasterLayer => activeLayerMask(session) ?? getActiveLayer(session.document)
 
+const MASK_WHITE: RgbaColor = { r: 255, g: 255, b: 255, a: 255 }
+const MASK_BLACK: RgbaColor = { r: 0, g: 0, b: 0, a: 255 }
+
+export const enterLayerMaskEditing = (session: DocumentSession): void => {
+  if (!session.layerMaskColorMemory) session.layerMaskColorMemory = { primary: { ...session.primaryColor }, secondary: { ...session.secondaryColor } }
+  session.primaryColor = { ...MASK_WHITE }
+  session.secondaryColor = { ...MASK_BLACK }
+}
+
+export const exitLayerMaskEditing = (session: DocumentSession): void => {
+  const memory = session.layerMaskColorMemory
+  session.layerMaskColorMemory = undefined
+  if (!memory) return
+  session.primaryColor = { ...memory.primary }
+  session.secondaryColor = { ...memory.secondary }
+}
+
 export const selectedTransformLayersForSession = (session: DocumentSession): RasterLayer[] => {
   const mask = activeLayerMask(session)
   if (mask) return [mask]
   const selectedIds = new Set(session.selectedLayerIds)
+  for (const key of [...session.selectedAnimationCellKeys, ...session.selectedAnimationMaskCellKeys]) {
+    const target = parseAnimationCelKey(key)
+    if (target) selectedIds.add(target.layerId)
+  }
   const selectedGroupIds = new Set(session.selectedGroupIds)
   if (session.selectedGroupId) selectedGroupIds.add(session.selectedGroupId)
   for (const groupId of selectedGroupIds) for (const layerId of getLayerIdsInGroup(session.document, groupId)) selectedIds.add(layerId)
+  // Frame selection without an explicit layer selection means the complete
+  // editable timeline. Once the user explicitly selects layers, the frame
+  // selection is scoped to those layers.
+  if (session.selectedAnimationFrameIds.length > 0 && session.layerSelectionExplicit !== true) {
+    return session.document.layers.filter((layer) => !layer.kind
+      && isLayerEffectivelyVisible(session.document, layer)
+      && !isLayerEffectivelyLocked(session.document, layer))
+  }
   return session.document.layers.filter((layer) => selectedIds.has(layer.id))
 }
 
@@ -186,6 +275,8 @@ export function persistToolSettings(session: DocumentSession): void {
     gradientContiguous: session.gradientContiguous,
     gradientType: session.gradientType,
     gradientDither: session.gradientDither ?? 'none',
+    gradientFreeform: session.gradientFreeform ?? false,
+    gradientStops: (session.gradientStops ?? defaultToolSettings.gradientStops).map((stop) => ({ ...stop, color: { ...stop.color } })),
     moveAutoSelect: session.moveAutoSelect,
     selectionKind: session.selectionKind,
     selectionMode: session.selectionMode,
@@ -217,8 +308,11 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     const fallbackLayerId = document.layers.at(-1)?.id
     if (fallbackLayerId) document.activeLayerId = fallbackLayerId
   }
-  const timeline = ensureAnimationDocument(document)
-  refreshActiveAnimationFrame(document)
+  // Loading a document is a read/session boundary. Do not normalize sparse
+  // animation timelines here: GIF/imported projects may intentionally omit
+  // empty cel slots, and merely opening/selecting them must not allocate
+  // surfaces. Editing/drawing commands materialize slots at their boundary.
+  const timeline = document.animation ?? ensureAnimationDocument(document)
   ensureTilemapTilesetOwnership(document)
   ensureFreeTileTilesetOwnership(document)
   document.displaySettings = normalizeProjectDisplaySettings(document.displaySettings)
@@ -227,6 +321,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const layerPanelState = loadLocalLayerPanelState(document) ?? normalizeProjectLayerPanelState(document, document.layerPanelState)
   const settings = loadToolSettings()
   const editorPreferences = loadEditorPreferences()
+  const storedView = loadDocumentViewState(document)
   const fallbackProfile = normalizePersistedBrushProfile(settings, defaultToolSettings)
   const persistedProfiles = settings.brushProfiles ?? Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, fallbackProfile])) as Record<BrushTool, PersistedBrushProfile>
   const brushProfiles = Object.fromEntries(BRUSH_TOOLS.map((tool) => [
@@ -287,8 +382,13 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     gradientContiguous: settings.gradientContiguous,
     gradientType: settings.gradientType,
     gradientDither: settings.gradientDither,
+    gradientFreeform: settings.gradientFreeform,
+    gradientStops: settings.gradientStops.map((stop) => ({ ...stop, color: { ...stop.color } })),
     moveAutoSelect: settings.moveAutoSelect,
     selection: null,
+    selectionPropertiesActive: false,
+    selectionAngle: 0,
+    freeTransformQuad: null,
     selectionPivot: null,
     selectionKind: settings.selectionKind,
     selectionMode: settings.selectionMode,
@@ -312,7 +412,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
       diagonalDown: settings.symmetryAxes.diagonalDown,
       rotational: Boolean(settings.symmetryAxes.rotational)
     },
-    symmetryCenter: defaultSymmetryCenter(document.width, document.height),
+    symmetryCenter: storedView?.symmetryCenter ?? defaultSymmetryCenter(document.width, document.height),
     lastPencilPoint: null,
     lastEraserPoint: null,
     canvasResizePreview: null,
@@ -320,12 +420,12 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     pendingPaste: null,
     textBoxTransform: null,
     view: {
-      zoom: 16,
-      panX: 0,
-      panY: 0,
-      rotation: 0,
-      mirrored: false,
-      mirroredVertical: false,
+      zoom: storedView?.zoom ?? 16,
+      panX: storedView?.panX ?? 0,
+      panY: storedView?.panY ?? 0,
+      rotation: storedView?.rotation ?? 0,
+      mirrored: storedView?.mirrored ?? false,
+      mirroredVertical: storedView?.mirroredVertical ?? false,
       showPixelGrid: document.displaySettings.showPixelGrid,
       showGrid: document.displaySettings.showGrid,
       isoViewEnabled: false,
@@ -346,6 +446,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     selectedGroupId: null,
     selectedGroupIds: [],
     selectedLayerIds: [document.activeLayerId],
+    layerSelectionExplicit: false,
     activeLayerMaskId: null,
     layerMaskIsolatedView: false,
     layerSelectionAnchorId: document.activeLayerId,
@@ -358,12 +459,18 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationPlaybackLoopIteration: 0,
     animationPlaybackLoopSectionRepeatIndefinitely: false,
     animationReturnToStart: false,
+    timelineActiveContext: {
+      row: { kind: 'layer', ownerKind: 'layer', ownerId: document.activeLayerId },
+      frameId: timeline.activeFrameId,
+      maskEditTargetId: null
+    },
     selectedAnimationFrameIds: [],
     animationFrameSelectionAnchorId: null,
     selectedAnimationCellKeys: [],
     animationCellSelectionAnchorKey: null,
     animationCellSelectionExplicit: false,
     selectedAnimationMaskCellKeys: [],
+    selectedAnimationMaskRowKeys: [],
     animationMaskCellSelectionAnchorKey: null,
     animationCellClipboard: [],
     animationCellClipboardAnchorKey: null,
@@ -372,6 +479,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationFrameClipboard: [],
     revision: 0,
     contentRevision: 0,
+    selectionGuidesPreservedAtContentRevision: undefined,
     layersPanelRevision: 0,
     contentInvalidation: null,
     recoveryOriginId: null,

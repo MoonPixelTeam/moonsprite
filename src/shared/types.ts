@@ -184,6 +184,11 @@ export type GradientType = 'linear' | 'radial'
 export type GradientDither = 'none' | 'checker' | 'diagonal' | 'diagonal-reverse' | 'horizontal' | 'vertical' | 'bayer-2' | 'bayer-4' | 'bayer-8'
 export type BrushDitherTemplate = Exclude<GradientDither, 'none'>
 
+export interface GradientStop {
+  position: number
+  color: RgbaColor
+}
+
 export interface BrushDitherSettings {
   enabled: boolean
   template: BrushDitherTemplate
@@ -230,6 +235,8 @@ export interface RgbaColor {
   b: number
   a: number
 }
+
+export type AntiAliasColorSource = 'automatic' | 'canvas' | 'palette'
 
 export type TextAntialiasMode = 'pixel' | 'smooth'
 export type TextSpacingMode = 'font' | 'actual'
@@ -437,6 +444,8 @@ export interface RgbaLayer {
   name: string
   /** Stable group whose ordinary raster layers share editable pixel content. */
   linkedContentId?: string
+  /** Automatically inherit the previous frame cel's link when creating animation frames. */
+  autoLinkAnimationCels?: boolean
   /** Optional visual marker shown in the layer panel. */
   displayColor?: RgbaColor
   /** Optional user-facing note shown when hovering the layer row. */
@@ -478,6 +487,8 @@ export interface IndexedLayer {
   name: string
   /** Stable group whose ordinary raster layers share editable pixel content. */
   linkedContentId?: string
+  /** Automatically inherit the previous frame cel's link when creating animation frames. */
+  autoLinkAnimationCels?: boolean
   /** Optional visual marker shown in the layer panel. */
   displayColor?: RgbaColor
   /** Optional user-facing note shown when hovering the layer row. */
@@ -519,10 +530,19 @@ export interface LayerMask extends RgbaLayer {
   ownerId: string
   /** Optional independent link to another mask surface. */
   linkedMaskId?: string | null
+  /** Whether this mask keeps its offset synchronized with its owner. */
+  moveWithOwner?: boolean
 }
 
 export interface AnimationGroupMask {
   groupId: string
+  frameId: string
+  mask: LayerMask
+}
+
+/** Frame-specific layer mask stored independently from the layer's cel content. */
+export interface AnimationLayerMask {
+  layerId: string
   frameId: string
   mask: LayerMask
 }
@@ -553,6 +573,8 @@ export interface LayerGroup {
 export interface AnimationFrame {
   id: string
   duration: number
+  /** Disabled frames remain editable in the timeline but are skipped during playback. */
+  disabled?: boolean
 }
 
 /** cel 与图层、帧的稳定关联。像素存储会在实际动画编辑器落地时加入独立数据文件。 */
@@ -594,7 +616,7 @@ export interface AnimationCel {
   tilemap?: TilemapCelData
   /** Arbitrarily positioned reusable tile instances. The surface remains the rendered cache. */
   freeTiles?: FreeTileCelData
-  /** Independent grayscale surface for this cell; transparent pixels are neutral/unpainted. */
+  /** @deprecated Legacy project input only. Runtime masks live in AnimationTimeline.layerMasks. */
   mask?: LayerMask
 }
 
@@ -613,6 +635,8 @@ export interface AnimationLoopSection {
 export interface AnimationTimeline {
   frames: AnimationFrame[]
   cels: AnimationCel[]
+  /** Frame-specific masks for ordinary layers, independent from cel content. */
+  layerMasks?: AnimationLayerMask[]
   /** Frame-specific masks attached to layer groups. */
   groupMasks?: AnimationGroupMask[]
   /** Named frame ranges that can be played independently. */
@@ -732,6 +756,14 @@ export interface SelectionRect {
   flipOriginY?: number
 }
 
+/** Four-corner transform frame used by the selection free-transform mode. */
+export interface SelectionQuad {
+  nw: { x: number; y: number }
+  ne: { x: number; y: number }
+  se: { x: number; y: number }
+  sw: { x: number; y: number }
+}
+
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect'
 export type SelectionKind = 'rectangle' | 'ellipse' | 'magic' | 'lasso' | 'polygon-lasso'
 export type OutlinePosition = 'inside' | 'outside' | 'both'
@@ -740,6 +772,7 @@ export type OutlineDirection = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se'
 export type OutlineDirections = Record<OutlineDirection, boolean>
 export interface OutlineSettings {
   color: RgbaColor
+  backgroundColor: RgbaColor
   thickness: number
   position: OutlinePosition
   kernel: OutlineKernel

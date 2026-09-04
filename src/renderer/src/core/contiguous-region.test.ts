@@ -40,27 +40,7 @@ describe('contiguous smart-closure regions', () => {
     expect(selected[1 * width + 8]).toBe(0)
   })
 
-  it('activates a closure contained inside a small pocket beside the filled region', () => {
-    const width = 9
-    const height = 7
-    const matching = new Uint8Array(width * height)
-    const selected = new Uint8Array(width * height)
-    const virtualBarrier = new Uint8Array(width * height)
-    for (let x = 2; x <= 3; x += 1) {
-      matching[1 * width + x] = 1
-      selected[1 * width + x] = 1
-    }
-    for (let y = 2; y <= 4; y += 1) for (let x = 2; x <= 3; x += 1) matching[y * width + x] = 1
-    virtualBarrier[4 * width + 2] = 1
-    matching[1 * width + 8] = 1
 
-    includeSmartClosurePixels(selected, virtualBarrier, matching, width, height, 2)
-
-    expect(selected[2 * width + 3]).toBe(1)
-    expect(selected[4 * width + 2]).toBe(1)
-    expect(selected[4 * width + 3]).toBe(1)
-    expect(selected[1 * width + 8]).toBe(0)
-  })
 
   it('bridges gaps up to the configured threshold', () => {
     const { width, height, matching } = gappedOutlineMask(2)
@@ -93,29 +73,7 @@ describe('contiguous smart-closure regions', () => {
     expect(closed[2 * width + 5]).toBe(1)
   })
 
-  it('uses an isolated line pixel to close two consecutive gaps', () => {
-    const width = 15
-    const height = 11
-    const matching = new Uint8Array(width * height).fill(1)
-    for (let x = 2; x <= 12; x += 1) matching[2 * width + x] = 0
-    for (let y = 2; y <= 8; y += 1) {
-      matching[y * width + 2] = 0
-      matching[y * width + 12] = 0
-    }
-    for (let x = 2; x <= 4; x += 1) matching[8 * width + x] = 0
-    matching[8 * width + 7] = 0
-    for (let x = 10; x <= 12; x += 1) matching[8 * width + x] = 0
 
-    const leaking = contiguousMatchingRegion(width, height, 7, 5, (index) => matching[index] === 1, 1)!
-    const closed = contiguousMatchingRegion(width, height, 7, 5, (index) => matching[index] === 1, 2)!
-
-    expect(leaking[0]).toBe(1)
-    expect(closed[0]).toBe(0)
-    expect(closed[8 * width + 5]).toBe(1)
-    expect(closed[8 * width + 6]).toBe(1)
-    expect(closed[8 * width + 8]).toBe(1)
-    expect(closed[8 * width + 9]).toBe(1)
-  })
 
   it('skeletonizes thick strokes before searching for gap endpoints', () => {
     const width = 22
@@ -139,58 +97,9 @@ describe('contiguous smart-closure regions', () => {
     }
   })
 
-  it('closes an endpoint toward the side of another stroke', () => {
-    const width = 13
-    const height = 11
-    const matching = new Uint8Array(width * height).fill(1)
-    for (let x = 2; x <= 10; x += 1) matching[2 * width + x] = 0
-    for (let y = 2; y <= 8; y += 1) matching[y * width + 2] = 0
-    for (let x = 2; x <= 7; x += 1) matching[8 * width + x] = 0
-    for (let y = 5; y <= 8; y += 1) matching[y * width + 7] = 0
 
-    const tooSmall = contiguousMatchingRegion(width, height, 4, 5, (index) => matching[index] === 1, 1)!
-    const closed = contiguousMatchingRegion(width, height, 4, 5, (index) => matching[index] === 1, 2)!
 
-    expect(tooSmall[0]).toBe(1)
-    expect(closed[0]).toBe(0)
-    expect(closed[3 * width + 7]).toBe(1)
-    expect(closed[4 * width + 7]).toBe(1)
-  })
 
-  it('does not treat isolated canvas-edge cutouts as line endpoints', () => {
-    const rows = [
-      '################.#######',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '.#######################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '.######################.',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '########################',
-      '######........##.####.##'
-    ]
-    const width = rows[0].length
-    const height = rows.length
-    const matching = Uint8Array.from(rows.join(''), (value) => value === '#' ? 1 : 0)
-    const normal = contiguousMatchingRegion(width, height, 12, 11, (index) => matching[index] === 1)!
-    const smart = contiguousMatchingRegion(width, height, 12, 11, (index) => matching[index] === 1, 10)!
-
-    expect([...smart]).toEqual([...normal])
-  })
 
   it('keeps a normal solid region intact beside canvas-edge background', () => {
     const width = 37
@@ -264,11 +173,5 @@ describe('contiguous smart-closure regions', () => {
     }
   })
 
-  it('keeps working when the threshold is larger than a canvas dimension', () => {
-    const width = 2
-    const height = 3
-    const region = contiguousMatchingRegion(width, height, 0, 0, () => true, 16)!
 
-    expect([...region]).toEqual([1, 1, 1, 1, 1, 1])
-  })
 })

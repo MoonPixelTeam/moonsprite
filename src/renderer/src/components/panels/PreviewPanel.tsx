@@ -5,9 +5,9 @@ import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import type { DockDragProps } from '@/components/workspace-panel-types'
-import { cloneDocumentForAnimationFrame, ensureAnimationDocument, nextAnimationFrameId } from '@/core/animation'
+import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId } from '@/core/animation-loop-sections'
-import { anchoredPreviewPan, followPreviewPosition, previewCheckerCellSize } from '@/core/preview-geometry'
+import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
 import { loadEditorPreferences, type CheckerboardPreferences } from '@/core/file-preferences'
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
@@ -17,6 +17,9 @@ import { useI18n } from '@/components/I18nProvider'
 import { resolveTheme } from '@/core/theme'
 import { initialDocumentCompositePending, subscribeInitialDocumentComposite } from '@/core/initial-document-composite'
 import { pixelSamplingMode } from '@/core/pixel-display'
+import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { clearCanvasBacking } from '@/components/canvas-display-size'
+import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
 
 interface FollowViewportSnapshot {
   viewportSize: { width: number; height: number }
@@ -49,7 +52,9 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const defaultPosition = { x: Math.max(12, window.innerWidth - 310 - 250 - 16), y: Math.max(46, window.innerHeight - 27 - 260 - 16), width: 250, height: 260 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.preview-panel.v1', true, onFloatingDock, docked)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [zoom, setZoom] = useState(1)
+  // null keeps the artwork fitted until the first explicit zoom operation.
+  // Once set, zoom is an absolute document-pixel scale: 1 === 100%.
+  const [zoom, setZoom] = useState<number | null>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [followViewport, setFollowViewport] = useState(false)
   const [panning, setPanning] = useState(false)
@@ -72,7 +77,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const compositeCacheRef = useRef(new CanvasCompositeCache())
-  const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; scale: number } | null>(null)
+  const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
   const drawRef = useRef<() => void>(() => {})
   const liveCanvasPreviewRef = useRef<CanvasPreviewSnapshot | null>(null)
@@ -89,6 +94,44 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   }, [session.document])
 
   useEffect(() => {
+    setZoom(null)
+    setPan({ x: 0, y: 0 })
+    baseFitRef.current = null
+  }, [session.document.id])
+
+  useEffect(() => {
+    const handleZoomShortcut = (event: Event): void => {
+      const panel = floating.ref.current
+      const target = event.target
+      if (!panel || !(target instanceof Node) || !panel.contains(target)) return
+      const detail = (event as CustomEvent<PreviewZoomShortcutDetail>).detail
+      if (!detail || !Number.isFinite(detail.zoom) || detail.zoom <= 0) return
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const bounds = canvas.getBoundingClientRect()
+      if (bounds.width < 1 || bounds.height < 1) return
+      const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
+      const currentZoom = zoom ?? fitScale
+      if (detail.zoom === currentZoom) return
+      if (!followViewport) {
+        setPan(anchoredPreviewPan({
+          documentSize: { width: session.document.width, height: session.document.height },
+          viewportSize: { width: bounds.width, height: bounds.height },
+          pointer: detail.pointer
+            ? { x: detail.pointer.x - bounds.left, y: detail.pointer.y - bounds.top }
+            : { x: bounds.width / 2, y: bounds.height / 2 },
+          pan,
+          zoom: currentZoom,
+          nextZoom: detail.zoom
+        }))
+      }
+      setZoom(detail.zoom)
+    }
+    window.addEventListener(PREVIEW_ZOOM_SHORTCUT_EVENT, handleZoomShortcut)
+    return () => window.removeEventListener(PREVIEW_ZOOM_SHORTCUT_EVENT, handleZoomShortcut)
+  }, [floating.ref, followViewport, pan, session.document.height, session.document.id, session.document.width, zoom])
+
+  useEffect(() => {
     const scheduleDraw = (): void => {
       if (liveCanvasPreviewFrameRef.current !== null) return
       liveCanvasPreviewFrameRef.current = window.requestAnimationFrame(() => {
@@ -97,8 +140,15 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       })
     }
     const unregister = registerCanvasPreviewListener(session.document.id, (snapshot) => {
+      // The editor canvas already renders the live layer-move preview. A
+      // second full-size composite in this auxiliary panel doubles the
+      // synchronous blend work for every pointer event, so keep the panel at
+      // its last committed image until the move ends.
+      if (snapshot?.movingLayerIds?.length) return
       liveCanvasPreviewRef.current = snapshot
-      compositeCacheRef.current.invalidateAll()
+      if (snapshot?.invalidation?.kind === 'region') {
+        compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
+      } else if (snapshot?.invalidation?.kind === 'full') compositeCacheRef.current.invalidateAll()
       scheduleDraw()
     })
     return () => {
@@ -171,9 +221,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       ? advanceAnimationLoopSectionPlayback(timeline, { ...loopSection, repeatCount: null }, previewFrameId, previewLoopIteration)
       : null
     const loopAllFrames = previewPlaybackMode !== 'once'
-    const nextFrameId = loopStep?.frameId ?? nextAnimationFrameId({ ...timeline, loop: loopAllFrames }, previewFrameId)
+    const nextFrameId = loopSection
+      ? loopStep?.frameId ?? null
+      : nextAnimationFrameId({ ...timeline, loop: loopAllFrames }, previewFrameId)
     const timer = window.setTimeout(() => {
-      if (!loopSection && !loopAllFrames && nextFrameId === previewFrameId) {
+      if (!nextFrameId || !loopSection && !loopAllFrames && nextFrameId === previewFrameId) {
         const returnFrameId = previewReturnToStart ? previewStartFrameId : previewFrameId
         setPreviewPlaying(false)
         setPreviewStartFrameId(null)
@@ -189,13 +241,26 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const setPreviewPlayingState = (playing: boolean): void => {
     if (playing) {
       const startFrameId = previewFrameId
+      const firstPlayableFrameId = firstPlayableAnimationFrameId(timeline)
+      if (!firstPlayableFrameId) {
+        setPreviewPlaying(false)
+        return
+      }
       setPreviewStartFrameId(startFrameId)
       setPreviewLoopSectionId(null)
       setPreviewLoopIteration(0)
       const loopSection = previewPlaybackMode === 'tag' ? animationLoopSectionAtFrame(timeline, startFrameId) : null
       const targetFrameId = loopSection
         ? animationLoopSectionStartFrameId(timeline, loopSection)
-        : previewPlaybackMode === 'once' ? timeline.frames[0]?.id ?? startFrameId : startFrameId
+        : previewPlaybackMode === 'once'
+          ? firstPlayableFrameId
+          : timeline.frames.find((frame) => frame.id === startFrameId)?.disabled === true
+            ? nextAnimationFrameId({ ...timeline, loop: true }, startFrameId)
+            : startFrameId
+      if (!targetFrameId) {
+        setPreviewPlaying(false)
+        return
+      }
       if (loopSection) setPreviewLoopSectionId(loopSection.id)
       if (targetFrameId && targetFrameId !== startFrameId) setPreviewFrameId(targetFrameId)
     } else {
@@ -214,7 +279,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (!previewPlaying || mode !== 'tag') return
     const loopSection = animationLoopSectionAtFrame(timeline, previewFrameId)
     const firstFrameId = loopSection ? animationLoopSectionStartFrameId(timeline, loopSection) : null
-    if (!loopSection || !firstFrameId) return
+    if (!loopSection || !firstFrameId) {
+      setPreviewPlaying(false)
+      return
+    }
     setPreviewLoopSectionId(loopSection.id)
     if (firstFrameId !== previewFrameId) setPreviewFrameId(firstFrameId)
   }
@@ -306,13 +374,14 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
       const displayWidth = bounds.width
       const displayHeight = bounds.height
-      context.clearRect(0, 0, displayWidth, displayHeight)
+      clearCanvasBacking(context, canvas)
+      context.setTransform(dpr, 0, 0, dpr, 0, 0)
       let baseFit = baseFitRef.current
-      if (!baseFit || baseFit.documentId !== sourceDocument.id || baseFit.width !== sourceDocument.width || baseFit.height !== sourceDocument.height || baseFit.viewportWidth !== displayWidth || baseFit.viewportHeight !== displayHeight) {
-        baseFit = { documentId: sourceDocument.id, width: sourceDocument.width, height: sourceDocument.height, viewportWidth: displayWidth, viewportHeight: displayHeight, scale: Math.min(displayWidth / sourceDocument.width, displayHeight / sourceDocument.height) }
+      if (!baseFit || baseFit.documentId !== sourceDocument.id || baseFit.width !== sourceDocument.width || baseFit.height !== sourceDocument.height || baseFit.viewportWidth !== displayWidth || baseFit.viewportHeight !== displayHeight || baseFit.devicePixelRatio !== dpr) {
+        baseFit = { documentId: sourceDocument.id, width: sourceDocument.width, height: sourceDocument.height, viewportWidth: displayWidth, viewportHeight: displayHeight, devicePixelRatio: dpr, scale: pixelAlignedPreviewFitScale(Math.min(displayWidth / sourceDocument.width, displayHeight / sourceDocument.height), dpr) }
         baseFitRef.current = baseFit
       }
-      const scale = baseFit.scale * zoom
+      const scale = zoom ?? baseFit.scale
       const smoothPixelSampling = pixelSamplingMode(scale) === 'smooth'
       const followSnapshot = followSnapshotRef.current
       const effectivePan = followViewport ? followPreviewPosition({
@@ -327,14 +396,15 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       const drawHeight = sourceDocument.height * scale
       const originX = (displayWidth - drawWidth) / 2 + effectivePan.x
       const originY = (displayHeight - drawHeight) / 2 + effectivePan.y
+      const canvasBoundary = deviceAlignedCanvasRect(originX, originY, drawWidth, drawHeight, dpr)
       context.fillStyle = canvasSurround
       context.fillRect(0, 0, displayWidth, displayHeight)
       context.save()
       context.beginPath()
-      context.rect(originX, originY, drawWidth, drawHeight)
+      context.rect(canvasBoundary.left, canvasBoundary.top, canvasBoundary.width, canvasBoundary.height)
       context.clip()
       context.fillStyle = `rgb(${checkerboard.lightColor.r} ${checkerboard.lightColor.g} ${checkerboard.lightColor.b})`
-      context.fillRect(originX, originY, drawWidth, drawHeight)
+      context.fillRect(canvasBoundary.left, canvasBoundary.top, canvasBoundary.width, canvasBoundary.height)
       const checkerCell = previewCheckerCellSize(checkerboard.size, scale)
       if (checkerCell >= 2) {
         const columnCount = Math.ceil(sourceDocument.width / checkerboard.size)
@@ -372,6 +442,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         contentInvalidation: livePreviewForFrame ? null : currentSession.contentInvalidation,
         frameId: previewFrameId,
         imageSmoothingEnabled: smoothPixelSampling,
+        devicePixelRatio: dpr,
         movingLayerIds: livePreviewForFrame?.movingLayerIds,
         selectionPreview: livePreviewForFrame?.selectionPreview
       })
@@ -412,13 +483,13 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const currentFollowPan = (): { x: number; y: number } | null => {
     const bounds = canvasRef.current?.getBoundingClientRect()
     if (!bounds || bounds.width < 1 || bounds.height < 1) return null
-    const previewFit = Math.min(bounds.width / session.document.width, bounds.height / session.document.height)
+    const previewFit = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
     const followSnapshot = followSnapshotRef.current
     return followPreviewPosition({
       documentSize: { width: session.document.width, height: session.document.height },
       sourceViewportSize: followSnapshot.viewportSize,
       previewViewportSize: { width: bounds.width, height: bounds.height },
-      previewScale: previewFit * zoom,
+      previewScale: zoom ?? previewFit,
       sourceView: followSnapshot.view,
       rotationIndicatorPosition
     })
@@ -429,8 +500,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (!canvas) return
     const bounds = canvas.getBoundingClientRect()
     if (bounds.width < 1 || bounds.height < 1) return
-    const nextZoom = steppedCanvasZoom(zoom, zoomIn)
-    if (nextZoom === zoom) return
+    const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
+    const currentZoom = zoom ?? fitScale
+    const nextZoom = steppedCanvasZoom(currentZoom, zoomIn)
+    if (nextZoom === currentZoom) return
     if (followViewport) {
       setZoom(nextZoom)
       return
@@ -440,7 +513,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       viewportSize: { width: bounds.width, height: bounds.height },
       pointer: pointer ?? { x: bounds.width / 2, y: bounds.height / 2 },
       pan,
-      zoom,
+      zoom: currentZoom,
       nextZoom
     }))
     setZoom(nextZoom)
@@ -453,8 +526,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     const delta = normalizeCanvasWheelDelta(event.nativeEvent)
     if (delta === 0) return
     event.preventDefault()
-    const nextZoom = steppedCanvasZoom(zoom, delta < 0)
-    if (nextZoom === zoom) return
+    const fitScale = pixelAlignedPreviewFitScale(Math.min(bounds.width / session.document.width, bounds.height / session.document.height), Math.max(1, window.devicePixelRatio || 1))
+    const currentZoom = zoom ?? fitScale
+    const nextZoom = steppedCanvasZoom(currentZoom, delta < 0)
+    if (nextZoom === currentZoom) return
     if (followViewport) {
       setZoom(nextZoom)
       return
@@ -464,7 +539,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       viewportSize: { width: bounds.width, height: bounds.height },
       pointer: { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
       pan,
-      zoom,
+      zoom: currentZoom,
       nextZoom
     }))
     setZoom(nextZoom)

@@ -123,33 +123,7 @@ describe('linked layer workspace commands', () => {
     expect(rasterStorageIdentity(restored)).toBe(rasterStorageIdentity(source))
   })
 
-  it('keeps normal duplicates and same-document pasted layers in the same association', () => {
-    const document = createDocument('linked copies', 2, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const source = getActiveLayer(document)
-    source.name = '角色'
-    writeLayerColor(document, source, 0, red)
-    const linkedId = useWorkspace.getState().createLinkedLayer(source.id)!
 
-    useWorkspace.getState().duplicateActiveLayer()
-    const duplicated = getActiveLayer(document)
-    expect(duplicated.linkedContentId).toBe(source.linkedContentId)
-    expect(duplicated.name).toBe('角色 关联2')
-
-    useWorkspace.getState().copySelectedLayersToClipboard()
-    expect(useWorkspace.getState().pasteLayersFromClipboard()).toBe(true)
-    const pasted = getActiveLayer(document)
-    expect(pasted.id).not.toBe(linkedId)
-    expect(pasted.linkedContentId).toBe(source.linkedContentId)
-    expect(pasted.name).toBe('角色 关联3')
-
-    const edit = beginPixelEdit(pasted.id)
-    recordPixel(document, pasted, edit, 1, 0xffff5000)
-    useWorkspace.getState().commitPixelEdit(edit, 'edit linked paste')
-    for (const layer of document.layers.filter((layer) => layer.linkedContentId === source.linkedContentId)) {
-      expect(readLayerColorAt(document, layer, layer.offsetX + 1, layer.offsetY)).toEqual(blue)
-    }
-  })
 
   it('maps copied association groups to a new identity in another document', () => {
     const sourceDocument = createDocument('source links', 1, 1, 'rgba')

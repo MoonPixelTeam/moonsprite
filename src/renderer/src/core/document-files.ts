@@ -10,6 +10,7 @@ import { exportAnimationGif } from './gif'
 import { decodeGifAnimation } from './gif-import'
 import { compositeDocument } from './document'
 import { encodeBmp } from './bmp'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 
 export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
 
@@ -90,10 +91,10 @@ function hasImageIncompatibleDocumentStructure(document: SpriteDocument): boolea
   if (layer.kind === 'text' || layer.groupId || layer.clippingMask || layer.layerStyles || layer.background) return true
   const timeline = document.animation
   if (!timeline) return false
-  if (timeline.frames.length !== 1 || timeline.cels.length !== 1 || (timeline.groupMasks?.length ?? 0) > 0) return true
+  if (timeline.frames.length !== 1 || timeline.cels.length !== 1 || (timeline.layerMasks?.length ?? 0) > 0 || (timeline.groupMasks?.length ?? 0) > 0) return true
   const frame = timeline.frames[0]
   const cel = timeline.cels[0]
-  return cel.layerId !== layer.id || cel.frameId !== frame.id || Boolean(cel.linkedCelId || cel.text || cel.mask)
+  return cel.layerId !== layer.id || cel.frameId !== frame.id || Boolean(cel.linkedCelId || cel.text)
 }
 
 export function directSourceImageSaveTarget(document: SpriteDocument): DirectSourceImageSaveTarget | null {
@@ -222,6 +223,7 @@ interface PendingDecodeRequest {
   initialCompositeFrameId?: string
   initialComposite: Promise<void>
   resolveInitialComposite: () => void
+  diagnostic: RuntimeDiagnosticOperation | null
 }
 
 interface WorkerDecodeResult {
@@ -239,6 +241,7 @@ const resetDecodeWorker = (error?: Error): void => {
   sharedDecodeWorker = null
   if (!error) return
   for (const request of pendingDecodeRequests.values()) {
+    request.diagnostic?.finish('error', { message: error.message })
     if (request.document) request.resolveInitialComposite()
     else request.reject(error)
   }
@@ -263,6 +266,9 @@ const ensureDecodeWorker = (): Worker => {
       if (!event.data.initialCompositePending) {
         pendingDecodeRequests.delete(event.data.id)
         request.resolveInitialComposite()
+        request.diagnostic?.finish('ok', { initialComposite: false })
+      } else {
+        request.diagnostic?.mark('document-ready', { initialCompositePending: true })
       }
       request.resolve({
         document: event.data.document,
@@ -274,11 +280,17 @@ const ensureDecodeWorker = (): Worker => {
       pendingDecodeRequests.delete(event.data.id)
       if (event.data.initialComposite) registerInitialDocumentComposite(request.document, event.data.initialComposite, request.initialCompositeFrameId)
       request.resolveInitialComposite()
+      request.diagnostic?.finish(event.data.error ? 'error' : 'ok', {
+        initialComposite: Boolean(event.data.initialComposite),
+        ...(event.data.error ? { message: event.data.error } : {})
+      })
       return
     }
     pendingDecodeRequests.delete(event.data.id)
     request.resolveInitialComposite()
-    request.reject(new Error(event.data.error || 'Document decode failed'))
+    const error = new Error(event.data.error || 'Document decode failed')
+    request.diagnostic?.finish('error', { message: error.message })
+    request.reject(error)
   }
   worker.onerror = (event) => resetDecodeWorker(new DocumentDecodeWorkerTransportError(event.message || 'Document decode worker failed'))
   sharedDecodeWorker = worker
@@ -293,21 +305,34 @@ const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgre
   let resolveInitialComposite!: () => void
   const initialComposite = new Promise<void>((complete) => { resolveInitialComposite = complete })
   const id = ++decodeRequestSequence
+  const diagnostic = runtimeDiagnosticsActive()
+    ? beginRuntimeDiagnosticOperation('document.decode.worker', {
+        archiveBytes: data.byteLength,
+        extension: fileExtension(filePath),
+        prepareInitialComposite
+      }, 5_000)
+    : null
   let worker: Worker
   try {
     worker = ensureDecodeWorker()
   } catch (error) {
-    reject(new DocumentDecodeWorkerTransportError(error instanceof Error ? error.message : String(error)))
+    const failure = new DocumentDecodeWorkerTransportError(error instanceof Error ? error.message : String(error))
+    diagnostic?.finish('error', { message: failure.message })
+    reject(failure)
     return
   }
-  pendingDecodeRequests.set(id, { resolve, reject, onProgress, initialComposite, resolveInitialComposite })
+  pendingDecodeRequests.set(id, { resolve, reject, onProgress, initialComposite, resolveInitialComposite, diagnostic })
   const transfer = data.buffer instanceof ArrayBuffer ? [data.buffer] : []
   try {
+    const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
     worker.postMessage({ id, data, filePath, locale: currentAppLocale(), prepareInitialComposite, reportProgress: Boolean(onProgress) }, transfer)
+    diagnostic?.mark('post-message', { durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt) })
   } catch (error) {
     pendingDecodeRequests.delete(id)
     resolveInitialComposite()
-    reject(new DocumentDecodeWorkerTransportError(error instanceof Error ? error.message : String(error)))
+    const failure = new DocumentDecodeWorkerTransportError(error instanceof Error ? error.message : String(error))
+    diagnostic?.finish('error', { message: failure.message })
+    reject(failure)
   }
 })
 

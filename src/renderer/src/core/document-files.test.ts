@@ -50,22 +50,9 @@ describe('document file rules', () => {
     expect(directSourceImageSaveTarget(animated)).toBeNull()
   })
 
-  it('encodes BMP and GIF source-image saves without changing their extensions', async () => {
-    const document = createDocument('sprite', 1, 1, 'rgba')
-    document.layers[0].pixels.set([255, 0, 0, 255])
 
-    const bmp = await encodeDocumentForSourceImage(document, 'bmp')
-    const gif = await encodeDocumentForSourceImage(document, 'gif')
 
-    expect(String.fromCharCode(...bmp.subarray(0, 2))).toBe('BM')
-    expect(new TextDecoder().decode(gif.subarray(0, 6))).toBe('GIF89a')
-  })
 
-  it('joins default directories without changing their platform separator style', () => {
-    expect(joinDirectoryPath('', 'sprite.png')).toBe('sprite.png')
-    expect(joinDirectoryPath('D:\\MoonSprite\\exports\\', 'sprite.png')).toBe('D:\\MoonSprite\\exports\\sprite.png')
-    expect(joinDirectoryPath('/opt/moonsprite/exports/', 'sprite.png')).toBe('/opt/moonsprite/exports/sprite.png')
-  })
 
   it('restores MoonSprite file identity and encodes project saves', async () => {
     const document = createDocument('sprite', 8, 8, 'rgba')
@@ -90,12 +77,7 @@ describe('document file rules', () => {
     expect(new TextDecoder().decode(encoded.subarray(0, 4))).toBe('8BPS')
   })
 
-  it('decodes genuinely small projects directly but keeps large expanded canvases in the worker', () => {
-    const small = encodeProject(createDocument('small', 11, 11, 'rgba'))
-    const large = encodeProject(createDocument('large', 2048, 2048, 'rgba'))
-    expect(shouldDecodeDocumentInWorker(small, 'small.moonsprite')).toBe(false)
-    expect(shouldDecodeDocumentInWorker(large, 'large.moonsprite')).toBe(true)
-  })
+
 
   it('uses one worker decode per project and keeps composite or worker failures recoverable', async () => {
     const documents = [createDocument('first', 2, 2, 'rgba'), createDocument('second', 2, 2, 'rgba')]

@@ -39,11 +39,31 @@ export const POPUP_PANEL_STORAGE_KEYS: Record<WorkspacePanelId, string> = {
   brushes: 'moonsprite.popup-brushes-panel.v1'
 }
 
+export const WORKSPACE_LAYOUT_STORAGE_KEYS = [
+  MAIN_WINDOW_STORAGE_KEY,
+  INSPECTOR_WIDTH_STORAGE_KEY,
+  INSPECTOR_WIDTH_RATIO_STORAGE_KEY,
+  PANEL_DOCKS_STORAGE_KEY,
+  PANEL_VISIBILITY_STORAGE_KEY,
+  LEGACY_LAYERS_DOCK_STORAGE_KEY,
+  BOTTOM_DOCK_HEIGHT_STORAGE_KEY,
+  BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY,
+  LEFT_DOCK_WIDTH_STORAGE_KEY,
+  LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY,
+  TOOL_RAIL_SIDE_STORAGE_KEY,
+  INSPECTOR_LAYOUT_STORAGE_KEY,
+  COLOR_SQUARE_DOCK_STORAGE_KEY,
+  COLOR_SQUARE_ANCHOR_STORAGE_KEY,
+  ACTIVE_WORKSPACE_STORAGE_KEY,
+  ...Object.values(FLOATING_PANEL_STORAGE_KEYS),
+  ...Object.values(POPUP_PANEL_STORAGE_KEYS)
+] as const
+
 export const DEFAULT_PANEL_DOCKS: Record<WorkspacePanelId, WorkspacePanelDock> = {
-  color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'bottom', tileset: 'right', brushes: 'right'
+  color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'right', tileset: 'right', brushes: 'right'
 }
 export const DEFAULT_PANEL_VISIBILITY: Record<WorkspacePanelId, boolean> = {
-  color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: true
+  color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: false
 }
 
 export function workspacePanelDockPresence(

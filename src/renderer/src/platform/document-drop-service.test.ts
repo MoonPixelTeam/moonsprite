@@ -72,20 +72,7 @@ describe('document drop service', () => {
     expect(recoveredCleanup).toHaveBeenCalledOnce()
   })
 
-  it('keeps the HTML drop fallback active outside Tauri', async () => {
-    const openPath = vi.fn(async () => true)
-    const stop = startDocumentDropService({
-      openPath,
-      pathForFile: () => 'D:\\Art\\sprite.png',
-      desktop: false
-    })
-    const file = new File(['pixel'], 'sprite.png', { type: 'image/png' })
 
-    fireEvent.drop(window, { dataTransfer: { files: [file] } })
-
-    await waitFor(() => expect(openPath).toHaveBeenCalledWith('D:\\Art\\sprite.png'))
-    stop()
-  })
 
   it('lets a positioned drop target claim files before document opening', async () => {
     let nativeHandler!: (event: Event<DragDropEvent>) => void

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi } from '@shared/types'
 import { addBlankAnimationFrame, ensureAnimationDocument, resolveAnimationCel } from '@/core/animation'
-import { createDocument, createLayer, getActiveLayer } from '@/core/document'
-import type { BackgroundPatternTile } from '@/core/background-patterns'
+import { createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
+import { backgroundPatternColorAt, type BackgroundPatternTile } from '@/core/background-patterns'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { useWorkspace } from './workspace'
 
@@ -16,6 +16,22 @@ beforeEach(() => {
 })
 
 describe('workspace background layers', () => {
+  it('continues preset backgrounds by their pattern period when the canvas expands', async () => {
+    const document = createDocument('expanded background preset', 64, 64, 'rgba')
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().createBackgroundLayer('diamond-nested')
+    const background = document.layers[0]
+    const editedColor = { r: 255, g: 32, b: 64, a: 255 }
+    writeLayerColor(document, background, 0, editedColor)
+    await useWorkspace.getState().resizeActiveCanvas(128, 128, 'nw')
+
+    const expected = backgroundPatternColorAt('diamond-nested', 64, 0)
+    expect(Array.from(background.pixels.subarray(0, 4))).toEqual(Object.values(editedColor))
+    expect(Array.from(background.pixels.subarray(64 * 4, 64 * 4 + 4))).toEqual([expected.r, expected.g, expected.b, expected.a])
+    expect(Array.from(background.pixels.subarray((22 * 128 + 86) * 4, (22 * 128 + 86) * 4 + 4))).toEqual([expected.r, expected.g, expected.b, expected.a])
+  })
+
   it('creates a bottom preset layer shared by every existing animation frame and restores it through history', async () => {
     const document = createDocument('background preset', 32, 1, 'rgba')
     addBlankAnimationFrame(document)

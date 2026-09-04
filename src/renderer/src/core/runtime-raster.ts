@@ -1,4 +1,5 @@
 import type { AnimationCelSurface, RasterFormat, RasterLayer, RuntimeRasterTiles, SpriteDocument } from '@shared/types'
+import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from './runtime-diagnostics'
 
 type RasterSurface = RasterLayer | AnimationCelSurface
 type RasterPixels = Uint8ClampedArray | Uint32Array
@@ -23,27 +24,42 @@ const blankPixels = (format: RasterFormat): RasterPixels => format === 'rgba' ? 
 const materializeRuntimeRaster = (runtime: RuntimeRasterTiles): RasterPixels => {
   const cached = materializedByRuntime.get(runtime)
   if (cached) return cached
-  const bytes = new Uint8Array(runtime.width * runtime.height * 4)
-  const columns = Math.ceil(runtime.width / runtime.tileSize)
-  for (let slot = 0; slot < runtime.tileOffsets.length; slot += 1) {
-    const encodedOffset = runtime.tileOffsets[slot]
-    if (encodedOffset === 0) continue
-    const tileX = slot % columns
-    const tileY = Math.floor(slot / columns)
-    const startX = tileX * runtime.tileSize
-    const startY = tileY * runtime.tileSize
-    const tileWidth = Math.min(runtime.tileSize, runtime.width - startX)
-    const tileHeight = Math.min(runtime.tileSize, runtime.height - startY)
-    const dataOffset = encodedOffset - 1
-    for (let row = 0; row < tileHeight; row += 1) {
-      const sourceOffset = dataOffset + row * tileWidth * 4
-      const targetOffset = ((startY + row) * runtime.width + startX) * 4
-      bytes.set(runtime.data.subarray(sourceOffset, sourceOffset + tileWidth * 4), targetOffset)
+  const expandedBytes = runtime.width * runtime.height * 4
+  const diagnostic = runtimeDiagnosticsActive() && expandedBytes >= 8 * 1024 * 1024
+    ? beginRuntimeDiagnosticOperation('raster.materialize', {
+        width: runtime.width,
+        height: runtime.height,
+        expandedBytes,
+        storedBytes: runtime.data.byteLength + runtime.tileOffsets.byteLength
+      }, 500)
+    : null
+  try {
+    const bytes = new Uint8Array(expandedBytes)
+    const columns = Math.ceil(runtime.width / runtime.tileSize)
+    for (let slot = 0; slot < runtime.tileOffsets.length; slot += 1) {
+      const encodedOffset = runtime.tileOffsets[slot]
+      if (encodedOffset === 0) continue
+      const tileX = slot % columns
+      const tileY = Math.floor(slot / columns)
+      const startX = tileX * runtime.tileSize
+      const startY = tileY * runtime.tileSize
+      const tileWidth = Math.min(runtime.tileSize, runtime.width - startX)
+      const tileHeight = Math.min(runtime.tileSize, runtime.height - startY)
+      const dataOffset = encodedOffset - 1
+      for (let row = 0; row < tileHeight; row += 1) {
+        const sourceOffset = dataOffset + row * tileWidth * 4
+        const targetOffset = ((startY + row) * runtime.width + startX) * 4
+        bytes.set(runtime.data.subarray(sourceOffset, sourceOffset + tileWidth * 4), targetOffset)
+      }
     }
+    const pixels = runtime.format === 'rgba' ? new Uint8ClampedArray(bytes.buffer) : new Uint32Array(bytes.buffer)
+    materializedByRuntime.set(runtime, pixels)
+    diagnostic?.finish('ok')
+    return pixels
+  } catch (error) {
+    diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+    throw error
   }
-  const pixels = runtime.format === 'rgba' ? new Uint8ClampedArray(bytes.buffer) : new Uint32Array(bytes.buffer)
-  materializedByRuntime.set(runtime, pixels)
-  return pixels
 }
 
 const installAccessor = (surface: RasterSurface, state: RuntimeRasterState): void => {

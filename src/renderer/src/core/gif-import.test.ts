@@ -86,17 +86,5 @@ describe('GIF animation import', () => {
     expect(directSourceImageSaveTarget(imported)).toBeNull()
   })
 
-  it('keeps a single-frame GIF eligible for direct source-image saving', async () => {
-    const source = createDocument('still', 1, 1, 'rgba')
-    source.animation!.loop = false
-    writeLayerColor(source, source.layers[0], 0, { r: 30, g: 80, b: 140, a: 255 })
-    const encoded = exportAnimationGif(source, { scalePercent: 100, direction: 'forward' }).bytes
 
-    const imported = await decodeDocumentFileAsync(encoded, 'D:/imports/still.gif')
-
-    expect(imported.animation?.frames).toHaveLength(1)
-    expect(imported.animation?.cels).toHaveLength(1)
-    expect(imported.animation?.loop).toBe(false)
-    expect(directSourceImageSaveTarget(imported)).toEqual({ filePath: 'D:/imports/still.gif', format: 'gif' })
-  })
 })

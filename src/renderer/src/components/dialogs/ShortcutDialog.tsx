@@ -171,13 +171,16 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
   const importInputRef = useRef<HTMLInputElement>(null)
   const conflictState = useMemo(() => deriveShortcutConflicts(draftShortcuts), [draftShortcuts])
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
+  const shortcutGroupMatches = useMemo(() => new Map((Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[]).map((groupId) => [groupId, !normalizedQuery || SHORTCUT_GROUPS[groupId].some((id) => {
+    const shortcut = formatShortcutBindingsForLocale(draftShortcuts[id] ?? [], locale)
+    return [labels[id], shortcut, groupLabels[groupId], id].some((value) => value.toLocaleLowerCase(locale).includes(normalizedQuery))
+  })])), [draftShortcuts, groupLabels, labels, locale, normalizedQuery])
   const visibleCommands = useMemo(() => {
-    const groupIds = normalizedQuery ? Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[] : [section]
-    return groupIds.flatMap((groupId) => SHORTCUT_GROUPS[groupId].filter((id) => {
-      if (!normalizedQuery) return true
+    const groupId = section
+    return SHORTCUT_GROUPS[groupId].map((id) => ({ id, matches: !normalizedQuery || (() => {
       const shortcut = formatShortcutBindingsForLocale(draftShortcuts[id] ?? [], locale)
-      return [labels[id], shortcut, groupLabels[groupId], id].some((value) => value.toLocaleLowerCase(locale).includes(normalizedQuery))
-    }))
+      return [labels[id], shortcut, id].some((value) => value.toLocaleLowerCase(locale).includes(normalizedQuery))
+    })() }))
   }, [draftShortcuts, groupLabels, labels, locale, normalizedQuery, section])
 
   const importShortcuts = async (file: File | undefined): Promise<void> => {
@@ -230,7 +233,7 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
           <div className="shortcut-sidebar-search">
             <TextInput className="shortcut-search" placeholder={t('shortcuts.search')} aria-label={t('shortcuts.searchGlobal')} value={query} onChange={(event) => setQuery(event.target.value)} />
           </div>
-          <SettingsNavigation label={t('shortcuts.title')} value={section} items={(Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[]).map((value) => ({ value, label: groupLabels[value] }))} onChange={setSection} />
+          <SettingsNavigation label={t('shortcuts.title')} value={section} items={(Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[]).map((value) => ({ value, label: groupLabels[value], muted: Boolean(normalizedQuery && !shortcutGroupMatches.get(value)) }))} onChange={setSection} />
         </aside>
         <main className="shortcut-settings-content component-scrollbar">
           <header className="shortcut-content-header">
@@ -240,12 +243,12 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
           {importNotice && <p className={`shortcut-import-notice ${importNotice.tone}`} role={importNotice.tone === 'success' ? 'status' : 'alert'}>{importNotice.text}</p>}
           {conflictSummary && <p className="shortcut-conflict">{conflictSummary}</p>}
           {visibleCommands.length === 0 ? <p className="shortcut-empty">{t('shortcuts.noResults')}</p> : <div className="shortcut-list">
-            {visibleCommands.map((id) => {
+            {visibleCommands.map(({ id, matches }) => {
               const bindings = draftShortcuts[id] ?? []
               const defaults = DEFAULT_SHORTCUT_BINDINGS[id]
               const customized = bindings.length !== defaults.length || bindings.some((value, index) => value !== defaults[index])
               const blockedOwner = conflictState.blocked[id]
-              return <div className={`shortcut-command-row${customized ? ' customized' : ''}${blockedOwner ? ' conflicted' : ''}`} key={id}>
+              return <div className={`shortcut-command-row${customized ? ' customized' : ''}${blockedOwner ? ' conflicted' : ''}${normalizedQuery && !matches ? ' search-unmatched' : ''}`} key={id}>
                 <div className="shortcut-command-name">
                   <strong>{labels[id]}</strong>
                 </div>
@@ -272,8 +275,8 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
       </div>
       <footer>
         <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { void importShortcuts(event.target.files?.[0]); event.currentTarget.value = '' }} />
-        <button className="quiet-button" onClick={() => importInputRef.current?.click()}><PixelUtilityIcon kind="folderOpen" scale={1} />{t('shortcuts.import')}</button>
-        <button className="quiet-button" onClick={() => { void exportShortcuts() }}><PixelUtilityIcon kind="export" scale={1} />{t('shortcuts.export')}</button>
+        <button className="quiet-button" onClick={() => importInputRef.current?.click()}><PixelUtilityIcon kind="folderOpen" scale={2} />{t('shortcuts.import')}</button>
+        <button className="quiet-button" onClick={() => { void exportShortcuts() }}><PixelUtilityIcon kind="export" scale={2} />{t('shortcuts.export')}</button>
         <button className="quiet-button" onClick={() => { setImportNotice(null); setDraftShortcuts(cloneShortcutBindings(DEFAULT_SHORTCUT_BINDINGS)) }}>{t('common.reset')}</button>
         <button className="primary-button" onClick={() => { onSave(cloneShortcutBindings(draftShortcuts)); onClose() }}>{t('common.done')}</button>
       </footer>

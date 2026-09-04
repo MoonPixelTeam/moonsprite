@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { analyzePerformance } from './performance-analysis.mjs'
 import { classifyPerformanceAudit } from './performance-scope-rules.mjs'
@@ -10,22 +11,37 @@ import {
   parseAuditArguments,
   performanceReportMarkdown,
   readOptionalJson,
+  resolvePerformanceAuditFiles,
   writeJson,
 } from './performance-audit-store.mjs'
-import { currentReleaseLabel, performanceEnvironment, performanceSourceFingerprint, workingTreeFiles } from './performance-runtime.mjs'
+import { currentReleaseLabel, performanceEnvironment, performanceSourceFingerprint, repositoryFiles } from './performance-runtime.mjs'
 
 const options = parseAuditArguments(process.argv.slice(2))
-const files = options.files.length > 0 ? options.files : workingTreeFiles()
+let files
+try {
+  files = resolvePerformanceAuditFiles(options, repositoryFiles)
+} catch (error) {
+  console.error(`性能审计未运行：${error.message}`)
+  process.exit(1)
+}
 const scope = classifyPerformanceAudit(files, {
   minimumLevel: options.release ? 'P3' : 'P0',
   releaseAudit: options.release,
+  all: options.all,
 })
-const id = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
+if (scope.suites.length === 0) {
+  console.log(`性能审计跳过：${scope.level} 范围没有自动性能套件，请运行对应的脚本测试。`)
+  process.exit(0)
+}
+const id = `${new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')}_${randomUUID().slice(0, 8)}`
 const directory = resolve(PERFORMANCE_ARTIFACT_ROOT, id)
 await mkdir(directory, { recursive: true })
 
 const environment = performanceEnvironment()
-const sourceFingerprint = performanceSourceFingerprint()
+const sourceFingerprint = performanceSourceFingerprint(
+  process.cwd(),
+  options.release || options.all ? null : files,
+)
 const baseline = await readOptionalJson(PERFORMANCE_BASELINE_PATH)
 const reports = await executePerformanceSuites(scope.suites, directory)
 let metrics = normalizeSuiteReports(scope.suites, reports)
@@ -45,6 +61,7 @@ const audit = {
   createdAt: new Date().toISOString(),
   releaseLabel: currentReleaseLabel(),
   releaseAudit: options.release,
+  allFiles: options.all,
   ci: options.ci,
   files,
   scope,

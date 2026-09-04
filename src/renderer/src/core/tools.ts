@@ -1,8 +1,8 @@
-import type { AnimationCelSurface, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
-import { compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
+import type { AnimationCelSurface, AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
+import { cachedLayerContentBounds, compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, isLayerMask, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
 import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
-import { blendOver, isInBounds, packColor, pixelIndex, unpackColor } from './raster'
-import { flipSelectionMask, lassoSelection, packedColorMatchesTolerance, rasterLinePoints, rotatedEllipseSelection, rotatedRectSelection, roundedRectContainsPoint, selectionContains, transformedSelectionBounds, transformedSelectionDestinationPoint, transformedSelectionSourcePoint, type SelectionFlipAxis, type SelectionShearTransform } from './selection'
+import { blendOver, colorEquals, isInBounds, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from './raster'
+import { flipSelectionMask, lassoSelection, packedColorMatchesTolerance, polygonSelection, rasterLinePoints, rotatedEllipseSelection, rotatedRectSelection, rotatedSelectionBounds, roundedRectContainsPoint, roundedRectRadius, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionDestinationPoint, transformedSelectionSourcePoint, type SelectionFlipAxis, type SelectionShearTransform } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 import { balancedStairLinePoints } from './pixel-line'
 import { hasSymmetry, symmetryPoints, symmetrySelectionDragRegion, type SymmetryAxes, type SymmetryCenter, type SymmetryPoint } from './symmetry'
@@ -10,7 +10,7 @@ import { brushDitherContains, gradientColorForAmount, interpolateRgbaColor } fro
 import { readSurfacePackedRegion } from './runtime-raster'
 import { allOutlineDirections, DEFAULT_OUTLINE_SMART_HUE_DARKNESS, outlineDirectionForOffset, outlineKernelContainsOffset, resolveOutlineStrokeColor } from './outline-settings'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
-import { contiguousMatchingRegion } from './contiguous-region'
+import { contiguousMatchingRegion, contiguousMatchingRegionInBounds, type BinaryRegionBounds } from './contiguous-region'
 
 const paintLayerValue = (
   document: SpriteDocument,
@@ -49,6 +49,34 @@ const paintLayerValue = (
   const blended = blendOver(base, color)
   return layer.format === 'rgba' ? packColor(blended) : paletteColorIdForCanvas(document, blended)
 }
+
+/**
+ * Composites a captured selection pixel over the destination pixel. Selection
+ * moves/copies are source-over operations: a translucent source must not
+ * replace an opaque destination. Masks keep their scalar/direct-write
+ * semantics and therefore bypass color compositing.
+ */
+const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {
+  if (isLayerMask(layer)) return value
+  const top = layer.format === 'rgba' ? unpackColor(value) : getPaletteEntry(document, value).color
+  if (top.a === 0) return destination
+  const base = layer.format === 'rgba' ? unpackColor(destination) : getPaletteEntry(document, destination).color
+  const blended = blendOver(base, top)
+  return layer.format === 'rgba' ? packColor(blended) : paletteColorIdForCanvas(document, blended)
+}
+
+const compositeSelectionPixel = (document: SpriteDocument, layer: RasterLayer, index: number, value: number): number => (
+  compositeSelectionPixelOver(document, layer, readLayerPacked(document, layer, index), value)
+)
+
+/**
+ * Uses the original value captured by a pixel edit when available. Selection
+ * transforms clear their source before writing destinations, so reading the
+ * live layer here would incorrectly blend over a cleared pixel for overlaps.
+ */
+const compositeSelectionPixelForEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number, value: number): number => (
+  compositeSelectionPixelOver(document, layer, edit.before.get(index) ?? readLayerPacked(document, layer, index), value)
+)
 
 const layerColorBeforeEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number): RgbaColor => {
   const original = brushPaintBaselineByEdit.get(edit)?.get(index) ?? edit.before.get(index)
@@ -286,18 +314,19 @@ export function paintBrush(
   overrideImageBrushColor = false,
   gradient?: BrushGradientSample,
   tileRepeatMode: TileRepeatMode = 'off',
-  brushDither?: BrushDitherSettings
+  brushDither?: BrushDitherSettings,
+  angle = 0
 ): void {
   const normalizedOpacityScale = Math.max(0, Math.min(1, Number.isFinite(opacityScale) ? opacityScale : 1))
   if (normalizedOpacityScale <= 0) return
   const recordedPixelCount = edit.before.size
-  const stamp = brushStampDimensions(size, imageBrush)
-  const { x: beforeX, y: beforeY } = brushStampAnchor(size, imageBrush)
+  const stamp = brushStampDimensions(size, imageBrush, angle)
+  const { x: beforeX, y: beforeY } = brushStampAnchor(size, imageBrush, angle)
   const stampX = x - beforeX
   const stampY = y - beforeY
   const footprint = symmetricRect(document, { x: stampX, y: stampY, width: stamp.width, height: stamp.height }, symmetryAxes, symmetryCenter, tileRepeatMode)
   if (!ensureLayerCoversEditRect(document, layer, edit, footprint)) return
-  const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither)
+  const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle)
   const solidStampKey = tileRepeatMode === 'off' && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && !hasSymmetry(symmetryAxes) && (color.a === 0 || color.a === 255)
     ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}`
     : null
@@ -327,6 +356,7 @@ export function paintBrush(
       ? new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
       : null
     let changed = false
+    let storageChanged = false
     let dirtyLeft = Number.POSITIVE_INFINITY
     let dirtyTop = Number.POSITIVE_INFINITY
     let dirtyRight = Number.NEGATIVE_INFINITY
@@ -344,7 +374,13 @@ export function paintBrush(
       if (index === null || edit.before.has(index)) continue
       const current = layer.format === 'indexed' ? layer.pixels[index] : packedPixels ? packedPixels[index] : readLayerPacked(document, layer, index)
       if (current === packedValue) continue
-      if (!changed && !edit.dirtyRect) markLayerContentChanged(layer)
+      // A loaded layer may still use sparse runtime storage. Materialize it
+      // before the first direct write so the write is not lost in the
+      // placeholder pixel buffer when the runtime storage is detached.
+      if (!storageChanged) {
+        markLayerContentChanged(layer)
+        storageChanged = true
+      }
       edit.before.set(index, current)
       edit.after.set(index, packedValue)
       if (layer.format === 'indexed') layer.pixels[index] = packedValue
@@ -369,7 +405,6 @@ export function paintBrush(
         currentDirty.width = right - left
         currentDirty.height = bottom - top
       }
-      markLayerContentChanged(layer)
     }
     if (occupancy && solidStampKey) lastBrushStampByEdit.set(edit, { key: solidStampKey, stampX, stampY, width: stamp.width, height: stamp.height, occupied: occupancy })
     return
@@ -467,9 +502,17 @@ export interface BrushLineDynamics {
   gradient?: BrushLineGradient
   coverageKey?: string
   overrideImageBrushColor?: boolean
+  fromAngle?: number
+  toAngle?: number
 }
 
 export interface BrushMaskPoint { x: number; y: number; coverage: number; color?: RgbaColor }
+
+/** Interpolates signed brush angles through the shortest turn. */
+export function interpolateBrushAngle(from: number, to: number, progress: number): number {
+  const delta = ((to - from + 540) % 360) - 180
+  return from + delta * progress
+}
 
 /** Selects the brush centers shared by geometric-path previews and commits. */
 export function brushPathStampPoints(
@@ -492,15 +535,23 @@ export function brushPathStampPoints(
 }
 
 /** The footprint shared by painting and the canvas preview. */
-export function brushStampDimensions(size: number, imageBrush: ImageBrush | null = null): { width: number; height: number } {
-  if (imageBrush?.intrinsicSize) return { width: Math.max(1, imageBrush.width), height: Math.max(1, imageBrush.height) }
-  const normalizedSize = Math.max(1, Math.round(size))
-  return { width: normalizedSize, height: normalizedSize }
+export function brushStampDimensions(size: number, imageBrush: ImageBrush | null = null, angle = 0): { width: number; height: number } {
+  const base = imageBrush?.intrinsicSize
+    ? { width: Math.max(1, imageBrush.width), height: Math.max(1, imageBrush.height) }
+    : { width: Math.max(1, Math.round(size)), height: Math.max(1, Math.round(size)) }
+  if (!imageBrush || Math.abs(angle % 360) < 0.0001) return base
+  const radians = angle * Math.PI / 180
+  const cosine = Math.abs(Math.cos(radians))
+  const sine = Math.abs(Math.sin(radians))
+  return {
+    width: Math.max(1, Math.ceil(base.width * cosine + base.height * sine - 1e-9)),
+    height: Math.max(1, Math.ceil(base.width * sine + base.height * cosine - 1e-9))
+  }
 }
 
 /** The pointer pixel inside a brush stamp. Even dimensions use the lower-right center pixel. */
-export function brushStampAnchor(size: number, imageBrush: ImageBrush | null = null): { x: number; y: number } {
-  const stamp = brushStampDimensions(size, imageBrush)
+export function brushStampAnchor(size: number, imageBrush: ImageBrush | null = null, angle = 0): { x: number; y: number } {
+  const stamp = brushStampDimensions(size, imageBrush, angle)
   return { x: Math.floor(stamp.width / 2), y: Math.floor(stamp.height / 2) }
 }
 
@@ -514,10 +565,11 @@ export function brushStrokeInvalidationRects(
   documentHeight: number,
   axes?: SymmetryAxes,
   center?: SymmetryCenter,
-  tileRepeatMode: TileRepeatMode = 'off'
+  tileRepeatMode: TileRepeatMode = 'off',
+  angle = 0
 ): SelectionRect[] {
-  const stamp = brushStampDimensions(size, imageBrush)
-  const anchor = brushStampAnchor(size, imageBrush)
+  const stamp = brushStampDimensions(size, imageBrush, angle)
+  const anchor = brushStampAnchor(size, imageBrush, angle)
   const afterX = stamp.width - anchor.x - 1
   const afterY = stamp.height - anchor.y - 1
   const symmetric = hasSymmetry(axes)
@@ -582,14 +634,14 @@ const imageBrushCoverage = (sourceCoverage: number, x: number, y: number, settin
   return 0
 }
 
-const imageBrushCacheKey = (imageBrush: ImageBrush, size: number, settings: ImageBrushSettings = defaultImageBrushSettings, antialiasStrength = 0, paintMode: BrushPaintMode = 'paint', originX = 0, originY = 0, patternOriginX = originX, patternOriginY = originY): string => {
+const imageBrushCacheKey = (imageBrush: ImageBrush, size: number, settings: ImageBrushSettings = defaultImageBrushSettings, antialiasStrength = 0, paintMode: BrushPaintMode = 'paint', originX = 0, originY = 0, patternOriginX = originX, patternOriginY = originY, angle = 0): string => {
   const procedural = imageBrush.proceduralSettings
   const proceduralKey = procedural ? `${procedural.seed}:${procedural.scale}:${procedural.detail}:${procedural.variation}:${procedural.angle}` : ''
-  const dimensions = brushStampDimensions(size, imageBrush)
+  const dimensions = brushStampDimensions(size, imageBrush, angle)
   const originKey = paintMode !== 'paint'
     ? `${wrappedIndex(originX, imageBrush.width)}:${wrappedIndex(originY, imageBrush.height)}:${wrappedIndex(patternOriginX, imageBrush.width)}:${wrappedIndex(patternOriginY, imageBrush.height)}`
     : ''
-  return `${dimensions.width}x${dimensions.height}:${settings.mode}:${settings.threshold}:${settings.blackPoint}:${settings.whitePoint}:${settings.invert ? 1 : 0}:${antialiasStrength}:${paintMode}:${originKey}:${proceduralKey}`
+  return `${dimensions.width}x${dimensions.height}:${settings.mode}:${settings.threshold}:${settings.blackPoint}:${settings.whitePoint}:${settings.invert ? 1 : 0}:${antialiasStrength}:${paintMode}:${originKey}:${proceduralKey}:${Math.round(angle * 1000) / 1000}`
 }
 
 export function imageBrushCoverageAt(imageBrush: ImageBrush, x: number, y: number, size: number, settings?: ImageBrushSettings, proceduralAntialiasStrength = 0): number {
@@ -677,35 +729,44 @@ const integerEllipseRowSpans = (size: number): Array<{ left: number; right: numb
   return spans
 }
 
-export function brushMaskOffsets(size: number, shape: BrushShape, texture: BrushTexture = 'solid', textureScale = 1, originX = 0, originY = 0, imageBrush: ImageBrush | null = null, imageBrushSettings?: ImageBrushSettings, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', patternOriginX = originX, patternOriginY = originY, brushDither?: BrushDitherSettings): BrushMaskPoint[] {
+export function brushMaskOffsets(size: number, shape: BrushShape, texture: BrushTexture = 'solid', textureScale = 1, originX = 0, originY = 0, imageBrush: ImageBrush | null = null, imageBrushSettings?: ImageBrushSettings, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', patternOriginX = originX, patternOriginY = originY, brushDither?: BrushDitherSettings, angle = 0): BrushMaskPoint[] {
   const normalizedSize = Math.max(1, Math.round(size))
   const points: BrushMaskPoint[] = []
   if (imageBrush) {
-    const stamp = brushStampDimensions(normalizedSize, imageBrush)
+    const stamp = brushStampDimensions(normalizedSize, imageBrush, angle)
     const strength = imageBrush.id.startsWith('procedural:') ? proceduralAntialiasStrength : 0
-    const cacheKey = imageBrushCacheKey(imageBrush, normalizedSize, imageBrushSettings, strength, brushPaintMode, originX, originY, patternOriginX, patternOriginY)
+    const cacheKey = imageBrushCacheKey(imageBrush, normalizedSize, imageBrushSettings, strength, brushPaintMode, originX, originY, patternOriginX, patternOriginY, angle)
     let cache = imageBrushMaskCache.get(imageBrush)
     const cached = cache?.get(cacheKey)
     if (cached) return cached
+    const sourceStamp = brushStampDimensions(normalizedSize, imageBrush)
+    const radians = angle * Math.PI / 180
+    const cosine = Math.cos(radians)
+    const sine = Math.sin(radians)
     for (let y = 0; y < stamp.height; y += 1) for (let x = 0; x < stamp.width; x += 1) {
+      const outputCenterX = x - (stamp.width - 1) / 2
+      const outputCenterY = y - (stamp.height - 1) / 2
+      const sourceCenterX = cosine * outputCenterX + sine * outputCenterY + (sourceStamp.width - 1) / 2
+      const sourceCenterY = -sine * outputCenterX + cosine * outputCenterY + (sourceStamp.height - 1) / 2
+      const sourcePixelX = Math.round(sourceCenterX)
+      const sourcePixelY = Math.round(sourceCenterY)
+      if (sourcePixelX < 0 || sourcePixelY < 0 || sourcePixelX >= sourceStamp.width || sourcePixelY >= sourceStamp.height) continue
       // Source-aligned brushes preserve the pixels captured when the brush was
       // created. Target-aligned brushes restart the tile at the current stamp.
-      const canvasX = originX + x
-      const canvasY = originY + y
       const sampleX = brushPaintMode === 'pattern-source'
-        ? canvasX - (imageBrush.sourceX ?? 0)
+        ? originX + sourcePixelX - (imageBrush.sourceX ?? 0)
         : brushPaintMode === 'pattern-target'
-          ? canvasX - patternOriginX
-          : x
+          ? originX + sourcePixelX - patternOriginX
+          : sourcePixelX
       const sampleY = brushPaintMode === 'pattern-source'
-        ? canvasY - (imageBrush.sourceY ?? 0)
+        ? originY + sourcePixelY - (imageBrush.sourceY ?? 0)
         : brushPaintMode === 'pattern-target'
-          ? canvasY - patternOriginY
-          : y
+          ? originY + sourcePixelY - patternOriginY
+          : sourcePixelY
       const sourceCoverage = imageBrush.id.startsWith('procedural:')
-        ? proceduralBrushCoverageAt(imageBrush.id, sampleX, sampleY, brushPaintMode === 'paint' ? stamp.width : Math.max(imageBrush.width, imageBrush.height), imageBrush.proceduralSettings)
+        ? proceduralBrushCoverageAt(imageBrush.id, sampleX, sampleY, brushPaintMode === 'paint' ? sourceStamp.width : Math.max(imageBrush.width, imageBrush.height), imageBrush.proceduralSettings)
         : brushPaintMode === 'paint'
-          ? imageBrush.coverage[(imageBrush.intrinsicSize ? y : Math.min(imageBrush.height - 1, Math.floor(y * imageBrush.height / stamp.height))) * imageBrush.width + (imageBrush.intrinsicSize ? x : Math.min(imageBrush.width - 1, Math.floor(x * imageBrush.width / stamp.width)))] ?? 0
+          ? imageBrush.coverage[(imageBrush.intrinsicSize ? sourcePixelY : Math.min(imageBrush.height - 1, Math.floor(sourcePixelY * imageBrush.height / sourceStamp.height))) * imageBrush.width + (imageBrush.intrinsicSize ? sourcePixelX : Math.min(imageBrush.width - 1, Math.floor(sourcePixelX * imageBrush.width / sourceStamp.width)))] ?? 0
           : (() => {
               const sourceX = wrappedIndex(sampleX, imageBrush.width)
               const sourceY = wrappedIndex(sampleY, imageBrush.height)
@@ -713,8 +774,8 @@ export function brushMaskOffsets(size: number, shape: BrushShape, texture: Brush
             })()
       const colorSource = imageBrush.paintColors ?? imageBrush.colors
       const colorIndex = brushPaintMode === 'paint'
-        ? (imageBrush.intrinsicSize ? y : Math.min(imageBrush.height - 1, Math.floor(y * imageBrush.height / stamp.height))) * imageBrush.width
-          + (imageBrush.intrinsicSize ? x : Math.min(imageBrush.width - 1, Math.floor(x * imageBrush.width / stamp.width)))
+        ? (imageBrush.intrinsicSize ? sourcePixelY : Math.min(imageBrush.height - 1, Math.floor(sourcePixelY * imageBrush.height / sourceStamp.height))) * imageBrush.width
+          + (imageBrush.intrinsicSize ? sourcePixelX : Math.min(imageBrush.width - 1, Math.floor(sourcePixelX * imageBrush.width / sourceStamp.width)))
         : wrappedIndex(sampleY, imageBrush.height) * imageBrush.width + wrappedIndex(sampleX, imageBrush.width)
       const sourceColor = colorSource?.length === imageBrush.width * imageBrush.height ? unpackColor(colorSource[colorIndex] ?? 0) : undefined
       const coverage = sourceColor
@@ -733,6 +794,23 @@ export function brushMaskOffsets(size: number, shape: BrushShape, texture: Brush
   const solidCacheKey = texture === 'solid' ? `${shape}:${normalizedSize}` : null
   const cachedSolid = solidCacheKey ? solidBrushMaskCache.get(solidCacheKey) : null
   if (cachedSolid) return applyDither(cachedSolid)
+  if (shape === 'line' && Math.abs(angle % 360) >= 0.0001) {
+    const radians = angle * Math.PI / 180
+    const cosine = Math.cos(radians)
+    const sine = Math.sin(radians)
+    const center = (normalizedSize - 1) / 2
+    const sourceRow = Math.floor(normalizedSize / 2)
+    for (let y = 0; y < normalizedSize; y += 1) for (let x = 0; x < normalizedSize; x += 1) {
+      const outputX = x - center
+      const outputY = y - center
+      const sourceX = Math.round(cosine * outputX + sine * outputY + center)
+      const sourceY = Math.round(-sine * outputX + cosine * outputY + center)
+      if (sourceY === sourceRow && sourceX >= 0 && sourceX < normalizedSize && brushTextureContains(texture, sourceX, sourceY, textureScale)) {
+        points.push({ x, y, coverage: 255 })
+      }
+    }
+    return applyDither(points)
+  }
   if (shape === 'line') {
     const row = Math.floor(normalizedSize / 2)
     for (let x = 0; x < normalizedSize; x += 1) if (brushTextureContains(texture, originX + x, originY + row, textureScale)) points.push({ x, y: row, coverage: 255 })
@@ -793,6 +871,7 @@ export function paintLine(
   const paintPoint = (pointX: number, pointY: number, progress: number): void => {
     const pointSize = Math.max(1, Math.round(dynamicValue(dynamics?.fromSize, dynamics?.toSize, size, progress)))
     const opacityScale = dynamicValue(dynamics?.fromOpacityScale, dynamics?.toOpacityScale, 1, progress)
+    const angle = interpolateBrushAngle(dynamics?.fromAngle ?? 0, dynamics?.toAngle ?? 0, progress)
     const pointColor = dynamics?.fromColor || dynamics?.toColor
       ? interpolateRgbaColor(dynamics.fromColor ?? dynamics.toColor ?? color, dynamics.toColor ?? dynamics.fromColor ?? color, progress)
       : color
@@ -804,15 +883,16 @@ export function paintLine(
           dither: dynamics.gradient.dither
         }
       : undefined
-    paintBrush(document, layer, edit, pointX, pointY, pointSize, pointColor, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, colorReplacement, opacityScale, dynamics?.coverageKey, dynamics?.overrideImageBrushColor, gradient, tileRepeatMode, brushDither)
+    paintBrush(document, layer, edit, pointX, pointY, pointSize, pointColor, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, colorReplacement, opacityScale, dynamics?.coverageKey, dynamics?.overrideImageBrushColor, gradient, tileRepeatMode, brushDither, angle)
   }
   const points = lineAlgorithm === 'balanced'
     ? balancedStairLinePoints({ x: fromX, y: fromY }, { x: toX, y: toY })
     : rasterLinePoints({ x: fromX, y: fromY }, { x: toX, y: toY })
   if (points.length === 0) return
   const maximumSize = Math.max(1, Math.round(Math.max(size, dynamics?.fromSize ?? size, dynamics?.toSize ?? size)))
-  const maximumStamp = brushStampDimensions(maximumSize, imageBrush)
-  const maximumAnchor = brushStampAnchor(maximumSize, imageBrush)
+  const maximumAngle = Math.max(Math.abs(dynamics?.fromAngle ?? 0), Math.abs(dynamics?.toAngle ?? 0))
+  const maximumStamp = brushStampDimensions(maximumSize, imageBrush, maximumAngle)
+  const maximumAnchor = brushStampAnchor(maximumSize, imageBrush, maximumAngle)
   const lineLeft = Math.min(fromX, toX) - maximumAnchor.x
   const lineTop = Math.min(fromY, toY) - maximumAnchor.y
   const lineRight = Math.max(fromX, toX) - maximumAnchor.x + maximumStamp.width
@@ -824,7 +904,8 @@ export function paintLine(
   for (let index = 0; index < points.length; index += 1) {
     const progress = points.length <= 1 ? 1 : index / (points.length - 1)
     const pointSize = Math.max(1, Math.round(dynamicValue(dynamics?.fromSize, dynamics?.toSize, size, progress)))
-    const stamp = brushStampDimensions(pointSize, imageBrush)
+    const pointAngle = interpolateBrushAngle(dynamics?.fromAngle ?? 0, dynamics?.toAngle ?? 0, progress)
+    const stamp = brushStampDimensions(pointSize, imageBrush, pointAngle)
     const stampSpacing = Math.max(1, Math.floor(Math.max(stamp.width, stamp.height) / 16))
     if (index > 0) stepsSinceStamp += 1
     const sizeChanged = lastStampedSize !== null && pointSize !== lastStampedSize
@@ -873,7 +954,7 @@ export function paintBrushPath(
   }
 }
 
-export interface PixelPathPoint { x: number; y: number; size?: number; opacityScale?: number; color?: RgbaColor; gradient?: BrushGradientSample; coverageKey?: string; overrideImageBrushColor?: boolean }
+export interface PixelPathPoint { x: number; y: number; size?: number; opacityScale?: number; angle?: number; color?: RgbaColor; gradient?: BrushGradientSample; coverageKey?: string; overrideImageBrushColor?: boolean }
 
 export function appendPerfectPixelSegment(path: PixelPathPoint[], target: PixelPathPoint): boolean {
   if (!path.length) {
@@ -903,6 +984,9 @@ export function appendPerfectPixelSegment(path: PixelPathPoint[], target: PixelP
     }
     if (segmentStart.opacityScale !== undefined || target.opacityScale !== undefined) {
       point.opacityScale = (segmentStart.opacityScale ?? target.opacityScale ?? 1) + ((target.opacityScale ?? segmentStart.opacityScale ?? 1) - (segmentStart.opacityScale ?? target.opacityScale ?? 1)) * progress
+    }
+    if (segmentStart.angle !== undefined || target.angle !== undefined) {
+      point.angle = interpolateBrushAngle(segmentStart.angle ?? target.angle ?? 0, target.angle ?? segmentStart.angle ?? 0, progress)
     }
     if (segmentStart.color || target.color) point.color = interpolateRgbaColor(segmentStart.color ?? target.color!, target.color ?? segmentStart.color!, progress)
     if (segmentStart.gradient || target.gradient) {
@@ -985,16 +1069,41 @@ const uniquePixelPoints = (points: Iterable<{ x: number; y: number }>): BrushMas
   return result
 }
 
-export function filledShapePathPixelPoints(document: SpriteDocument, path: readonly { x: number; y: number }[]): BrushMaskPoint[] {
-  const filled = lassoSelection(document, path.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) })))
-  if (!filled) return []
+export function selectionMaskPixelPoints(selection: SelectionMask): BrushMaskPoint[] {
   const points: BrushMaskPoint[] = []
-  for (let y = filled.y; y < filled.y + filled.height; y += 1) {
-    for (let x = filled.x; x < filled.x + filled.width; x += 1) {
-      if (selectionContains(filled, x, y)) points.push({ x, y, coverage: 255 })
-    }
+  const mask = selection.mask
+  for (let localY = 0; localY < selection.height; localY += 1) for (let localX = 0; localX < selection.width; localX += 1) {
+    const offset = localY * selection.width + localX
+    if (mask && mask[offset] !== 1) continue
+    points.push({ x: selection.x + localX, y: selection.y + localY, coverage: 255 })
   }
   return points
+}
+
+export function filledShapePathPixelPoints(document: SpriteDocument, path: readonly { x: number; y: number }[]): BrushMaskPoint[] {
+  let roundedPath: readonly { x: number; y: number }[] = path
+  for (const point of path) {
+    if (!Number.isInteger(point.x) || !Number.isInteger(point.y)) {
+      roundedPath = path.map((candidate) => ({ x: Math.round(candidate.x), y: Math.round(candidate.y) }))
+      break
+    }
+  }
+  const filled = lassoSelection(document, roundedPath)
+  if (!filled) return []
+  return selectionMaskPixelPoints(filled)
+}
+
+export function filledPolygonPathPixelPoints(document: SpriteDocument, vertices: readonly { x: number; y: number }[], balanced = false): BrushMaskPoint[] {
+  let roundedVertices: readonly { x: number; y: number }[] = vertices
+  for (const point of vertices) {
+    if (!Number.isInteger(point.x) || !Number.isInteger(point.y)) {
+      roundedVertices = vertices.map((candidate) => ({ x: Math.round(candidate.x), y: Math.round(candidate.y) }))
+      break
+    }
+  }
+  const filled = polygonSelection(document, roundedVertices, balanced)
+  if (!filled) return []
+  return selectionMaskPixelPoints(filled)
 }
 
 export function lineShapePixelPoints(start: { x: number; y: number }, end: { x: number; y: number }, balanced = false): BrushMaskPoint[] {
@@ -1084,7 +1193,9 @@ export function outlinePixelSamples(
   thickness: number,
   position: OutlinePosition,
   directions: OutlineDirections = allOutlineDirections(),
-  kernel: OutlineKernel = 'square'
+  kernel: OutlineKernel = 'square',
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 },
+  sourceColor: RgbaColor | null = null
 ): OutlinePixelSample[] {
   const radius = Math.max(1, Math.min(64, Math.round(thickness)))
   const sourceBounds = selection ?? layerContentBounds(document, layer)
@@ -1096,8 +1207,12 @@ export function outlinePixelSamples(
   if (right <= left || bottom <= top) return []
   const width = right - left
   const height = bottom - top
-  const isSource = (x: number, y: number): boolean =>
-    x >= left && y >= top && x < right && y < bottom && (!selection || selectionContains(selection, x, y)) && readLayerColorAt(document, layer, x, y).a > 0
+  const isSource = (x: number, y: number): boolean => {
+    if (x < left || y < top || x >= right || y >= bottom || (selection && !selectionContains(selection, x, y))) return false
+    const color = readLayerColorAt(document, layer, x, y)
+    if (sourceColor) return color.a > 0 && colorEquals(color, sourceColor)
+    return color.a > 0 && !colorEquals(color, backgroundColor)
+  }
   const result = new Map<number, OutlinePixelSample>()
   const boundary: Array<{ x: number; y: number; color: RgbaColor }> = []
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
@@ -1121,7 +1236,7 @@ export function outlinePixelSamples(
       const targetY = source.y + dy
       if (targetX < 0 || targetY < 0 || targetX >= document.width || targetY >= document.height || isSource(targetX, targetY)) continue
       const index = pixelIndex(document.width, targetX, targetY)
-      if (readLayerColorAt(document, layer, targetX, targetY).a !== 0) continue
+      if (!sourceColor && readLayerColorAt(document, layer, targetX, targetY).a !== 0) continue
       const distance = dx * dx + dy * dy
       const rank = (-dy + radius) * diameter + (-dx + radius)
       setOutlinePixelCandidate(unclipped, index, source.color, distance, rank)
@@ -1167,9 +1282,10 @@ export function outlinePixelIndices(
   thickness: number,
   position: OutlinePosition,
   directions: OutlineDirections = allOutlineDirections(),
-  kernel: OutlineKernel = 'square'
+  kernel: OutlineKernel = 'square',
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 }
 ): number[] {
-  return outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel).map((sample) => sample.index)
+  return outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel, backgroundColor).map((sample) => sample.index)
 }
 
 export function outlineSelection(
@@ -1182,19 +1298,246 @@ export function outlineSelection(
   directions: OutlineDirections = allOutlineDirections(),
   kernel: OutlineKernel = 'square',
   smartHue = false,
-  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS
+  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS,
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 }
 ): PixelEdit | null {
   if (isLayerEffectivelyLocked(document, layer)) return null
   if (!ensureLayerCoversCanvas(document, layer)) return null
   const edit = beginPixelEdit(layer.id)
   const colorSettings = { color, smartHue, smartHueDarkness }
-  for (const sample of outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel)) {
+  for (const sample of outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel, backgroundColor)) {
     const x = sample.index % document.width
     const y = Math.floor(sample.index / document.width)
     const index = layerIndexAt(layer, x, y)
     if (index !== null) recordPixel(document, layer, edit, index, paintLayerValue(document, layer, edit, index, resolveOutlineStrokeColor(colorSettings, sample.referenceColor)))
   }
   return edit.before.size > 0 ? edit : null
+}
+
+/** Paints the one-pixel diagonal gaps shared by horizontal and vertical outlines. */
+export function antiAliasSelection(
+  document: SpriteDocument,
+  layer: RasterLayer,
+  selection: SelectionMask | null,
+  color: RgbaColor | null,
+  autoColorOpacity = 50,
+  includeInteriorColors = false,
+  colorSource: AntiAliasColorSource = 'automatic'
+): PixelEdit | null {
+  if (isLayerEffectivelyLocked(document, layer)) return null
+  if (!ensureLayerCoversCanvas(document, layer)) return null
+  const paletteColors = colorSource === 'palette'
+    ? document.palette.filter((entry) => entry.id !== 0 && entry.color.a > 0).map((entry) => entry.color)
+    : []
+  const canvasColors = colorSource === 'canvas' ? collectAntiAliasCanvasColors(document) : []
+  const regionByIndex = new Map<number, number>()
+  const interiorRegions: Array<{ color: RgbaColor; area: number; touchesTransparent: boolean }> = []
+  if (includeInteriorColors) {
+    const sourceBounds = selection ?? layerContentBounds(document, layer)
+    if (sourceBounds) {
+      const left = Math.max(0, sourceBounds.x)
+      const top = Math.max(0, sourceBounds.y)
+      const right = Math.min(document.width, sourceBounds.x + sourceBounds.width)
+      const bottom = Math.min(document.height, sourceBounds.y + sourceBounds.height)
+      const visited = new Set<number>()
+      const regionNeighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+      const contourNeighbors = [-1, 0, 1] as const
+      const inScope = (x: number, y: number): boolean => x >= left && y >= top && x < right && y < bottom && (!selection || selectionContains(selection, x, y))
+      for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
+        if (!inScope(x, y)) continue
+        const startIndex = pixelIndex(document.width, x, y)
+        if (visited.has(startIndex)) continue
+        const startColor = readLayerColorAt(document, layer, x, y)
+        if (startColor.a === 0) continue
+        const regionId = interiorRegions.length
+        const queue = [startIndex]
+        let area = 0
+        let touchesTransparent = false
+        visited.add(startIndex)
+        while (queue.length > 0) {
+          const currentIndex = queue.pop()!
+          const currentX = currentIndex % document.width
+          const currentY = Math.floor(currentIndex / document.width)
+          regionByIndex.set(currentIndex, regionId)
+          area += 1
+          for (const dy of contourNeighbors) for (const dx of contourNeighbors) {
+            if (dx === 0 && dy === 0) continue
+            const neighborX = currentX + dx
+            const neighborY = currentY + dy
+            if (!inScope(neighborX, neighborY) || readLayerColorAt(document, layer, neighborX, neighborY).a === 0) {
+              touchesTransparent = true
+              continue
+            }
+          }
+          for (const [dx, dy] of regionNeighbors) {
+            const neighborX = currentX + dx
+            const neighborY = currentY + dy
+            if (!inScope(neighborX, neighborY)) continue
+            const neighborIndex = pixelIndex(document.width, neighborX, neighborY)
+            if (visited.has(neighborIndex) || !colorEquals(readLayerColorAt(document, layer, neighborX, neighborY), startColor)) continue
+            visited.add(neighborIndex)
+            queue.push(neighborIndex)
+          }
+        }
+        interiorRegions.push({ color: startColor, area, touchesTransparent })
+      }
+    }
+  }
+  const intersections = new Map<number, { horizontal: OutlinePixelSample; vertical: OutlinePixelSample; preferredColor: RgbaColor | null }>()
+  const collectIntersections = (sourceColor: RgbaColor | null): void => {
+    const horizontal = outlinePixelSamples(document, layer, selection, 1, 'outside', {
+      nw: false, n: false, ne: false,
+      w: true, e: true,
+      sw: false, s: false, se: false
+    }, 'square', { r: 0, g: 0, b: 0, a: 0 }, sourceColor)
+    const vertical = new Map(outlinePixelSamples(document, layer, selection, 1, 'outside', {
+      nw: false, n: true, ne: false,
+      w: false, e: false,
+      sw: false, s: true, se: false
+    }, 'square', { r: 0, g: 0, b: 0, a: 0 }, sourceColor).map((sample) => [sample.index, sample]))
+    for (const sample of horizontal) {
+      if (!antiAliasTargetInScope(document, selection, sample.index)) continue
+      const verticalSample = vertical.get(sample.index)
+      if (!verticalSample) continue
+      intersections.set(sample.index, { horizontal: sample, vertical: verticalSample, preferredColor: sourceColor })
+    }
+  }
+  collectIntersections(null)
+  if (includeInteriorColors && interiorRegions.length > 0) {
+    const horizontal = new Map<number, OutlinePixelSample>()
+    const vertical = new Map<number, OutlinePixelSample>()
+    const sourceBounds = selection ?? layerContentBounds(document, layer)
+    if (sourceBounds) {
+      const left = Math.max(0, sourceBounds.x)
+      const top = Math.max(0, sourceBounds.y)
+      const right = Math.min(document.width, sourceBounds.x + sourceBounds.width)
+      const bottom = Math.min(document.height, sourceBounds.y + sourceBounds.height)
+      const addCandidate = (targetX: number, targetY: number, targetMap: Map<number, OutlinePixelSample>, sourceIndex: number, sourceColor: RgbaColor): void => {
+        if (targetX < left || targetY < top || targetX >= right || targetY >= bottom || (selection && !selectionContains(selection, targetX, targetY))) return
+        const targetIndex = pixelIndex(document.width, targetX, targetY)
+        const targetRegionId = regionByIndex.get(targetIndex)
+        const sourceRegionId = regionByIndex.get(sourceIndex)
+        if (sourceRegionId === undefined || targetRegionId === undefined || sourceRegionId === targetRegionId) return
+        const sourceRegion = interiorRegions[sourceRegionId]
+        const targetRegion = interiorRegions[targetRegionId]
+        if (targetRegion.area < sourceRegion.area || targetRegion.area === sourceRegion.area && targetRegionId < sourceRegionId) return
+        targetMap.set(targetIndex, { index: targetIndex, referenceColor: sourceColor })
+      }
+      for (const [sourceIndex, sourceRegionId] of regionByIndex) {
+        const sourceX = sourceIndex % document.width
+        const sourceY = Math.floor(sourceIndex / document.width)
+        const sourceColor = interiorRegions[sourceRegionId].color
+        addCandidate(sourceX - 1, sourceY, horizontal, sourceIndex, sourceColor)
+        addCandidate(sourceX + 1, sourceY, horizontal, sourceIndex, sourceColor)
+        addCandidate(sourceX, sourceY - 1, vertical, sourceIndex, sourceColor)
+        addCandidate(sourceX, sourceY + 1, vertical, sourceIndex, sourceColor)
+      }
+      for (const [index, horizontalSample] of horizontal) {
+        const verticalSample = vertical.get(index)
+        if (verticalSample) intersections.set(index, { horizontal: horizontalSample, vertical: verticalSample, preferredColor: null })
+      }
+    }
+  }
+  const edit = beginPixelEdit(layer.id)
+  for (const { horizontal, vertical, preferredColor } of intersections.values()) {
+    const sample = horizontal
+    const x = sample.index % document.width
+    const y = Math.floor(sample.index / document.width)
+    const index = layerIndexAt(layer, x, y)
+    if (index === null) continue
+    const targetColor = readLayerColorAt(document, layer, x, y)
+    const useTargetAsReference = colorSource !== 'automatic' && targetColor.a > 0 && !colorEquals(targetColor, sample.referenceColor)
+    const firstReference = useTargetAsReference ? targetColor : sample.referenceColor
+    const secondReference = useTargetAsReference ? sample.referenceColor : vertical.referenceColor
+    const automaticColor = automaticAntiAliasColor(document, layer, selection, x, y, firstReference, secondReference, targetColor, colorSource, paletteColors, canvasColors)
+    const resolvedColor = color ?? (colorSource === 'automatic' ? applyAntiAliasOpacity(automaticColor, autoColorOpacity) : automaticColor)
+    recordPixel(document, layer, edit, index, paintLayerValue(document, layer, edit, index, resolvedColor))
+  }
+  return edit.before.size > 0 ? edit : null
+}
+
+const antiAliasTargetInScope = (document: SpriteDocument, selection: SelectionMask | null, index: number): boolean => {
+  if (!selection) return true
+  return selectionContains(selection, index % document.width, Math.floor(index / document.width))
+}
+
+const applyAntiAliasOpacity = (color: RgbaColor, opacityPercent: number): RgbaColor => ({
+  ...color,
+  a: Math.round(color.a * Math.max(0, Math.min(100, opacityPercent)) / 100)
+})
+
+/** Matches the editor's relative-lightness view, represented as 0..255. */
+const antiAliasLuminance = (color: RgbaColor): number => relativeLuminanceColor(color).r
+
+const collectAntiAliasCanvasColors = (document: SpriteDocument): RgbaColor[] => {
+  const pixels = compositeRegion(document, 0, 0, document.width, document.height)
+  const colors = new Map<number, RgbaColor>()
+  for (let offset = 0; offset < pixels.length; offset += 4) {
+    const color = { r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2], a: pixels[offset + 3] }
+    if (color.a > 0) colors.set(packColor(color), color)
+  }
+  return [...colors.values()]
+}
+
+const nearestAntiAliasIntermediateColor = (
+  left: RgbaColor,
+  right: RgbaColor,
+  candidates: readonly RgbaColor[],
+  excludedColor: RgbaColor | null
+): RgbaColor | null => {
+  const leftLuminance = antiAliasLuminance(left)
+  const rightLuminance = antiAliasLuminance(right)
+  const minimum = Math.min(leftLuminance, rightLuminance)
+  const maximum = Math.max(leftLuminance, rightLuminance)
+  const target = (leftLuminance + rightLuminance) / 2
+  const usable = candidates.filter((candidate) => candidate.a > 0 && (!excludedColor || !colorEquals(candidate, excludedColor)))
+  const intermediate = usable.filter((candidate) => {
+    const luminance = antiAliasLuminance(candidate)
+    return luminance > minimum && luminance < maximum
+  })
+  const pool = intermediate.length > 0 ? intermediate : usable
+  return [...pool].sort((candidate, other) => {
+    const distance = Math.abs(antiAliasLuminance(candidate) - target)
+    const otherDistance = Math.abs(antiAliasLuminance(other) - target)
+    return distance - otherDistance
+  })[0] ?? null
+}
+
+const automaticAntiAliasColor = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  selection: SelectionMask | null,
+  x: number,
+  y: number,
+  horizontalReference: RgbaColor,
+  verticalReference: RgbaColor,
+  excludedColor: RgbaColor | null = null,
+  colorSource: AntiAliasColorSource = 'automatic',
+  paletteColors: readonly RgbaColor[] = [],
+  canvasColors: readonly RgbaColor[] = []
+): RgbaColor => {
+  if (colorSource === 'palette' && paletteColors.length > 0) {
+    return nearestAntiAliasIntermediateColor(horizontalReference, verticalReference, paletteColors, excludedColor) ?? paletteColors[0]
+  }
+  if (colorSource === 'canvas' && canvasColors.length > 0) {
+    return nearestAntiAliasIntermediateColor(horizontalReference, verticalReference, canvasColors, excludedColor) ?? horizontalReference
+  }
+  const candidates = new Map<number, { color: RgbaColor; count: number; distance: number; rank: number }>()
+  let rank = 0
+  for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+    if (dx === 0 && dy === 0) continue
+    const sourceX = x + dx
+    const sourceY = y + dy
+    if (selection && !selectionContains(selection, sourceX, sourceY)) continue
+    const candidate = sampleCompositeColor(document, sourceX, sourceY, layer.id)
+    if (candidate.a === 0 || (excludedColor && colorEquals(candidate, excludedColor))) continue
+    const key = packColor(candidate)
+    const current = candidates.get(key)
+    if (current) current.count += 1
+    else candidates.set(key, { color: candidate, count: 1, distance: Math.abs(dx) + Math.abs(dy), rank })
+    rank += 1
+  }
+  return [...candidates.values()].sort((left, right) => right.count - left.count || left.distance - right.distance || left.rank - right.rank)[0]?.color ?? horizontalReference
 }
 
 const shapeContainsOffset = (width: number, height: number, ellipse: boolean, offsetX: number, offsetY: number, cornerRadius = 0): boolean => {
@@ -1236,6 +1579,229 @@ export function shapePixelPoints(bounds: SelectionRect, kind: ShapeKind, cornerR
   return points
 }
 
+interface ShapeBoundarySpan {
+  left: number
+  right: number
+}
+
+const findShapeBoundarySpan = (
+  minX: number,
+  maxX: number,
+  y: number,
+  contains: (x: number, y: number) => boolean,
+  seedX: number
+): ShapeBoundarySpan | null => {
+  if (minX > maxX) return null
+  let seed = Math.max(minX, Math.min(maxX, Math.round(seedX)))
+  if (!contains(seed, y)) {
+    let found = -1
+    for (let distance = 1; distance <= maxX - minX; distance += 1) {
+      const left = seed - distance
+      if (left >= minX && contains(left, y)) { found = left; break }
+      const right = seed + distance
+      if (right <= maxX && contains(right, y)) { found = right; break }
+    }
+    if (found < 0) return null
+    seed = found
+  }
+
+  let left = minX
+  let right = seed
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2)
+    if (contains(middle, y)) right = middle
+    else left = middle + 1
+  }
+  const spanLeft = left
+
+  left = seed
+  right = maxX
+  while (left < right) {
+    const middle = Math.ceil((left + right) / 2)
+    if (contains(middle, y)) left = middle
+    else right = middle - 1
+  }
+  return { left: spanLeft, right: left }
+}
+
+const collectShapeBoundaryPoints = (
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  contains: (x: number, y: number) => boolean,
+  seedForRow: (y: number) => number,
+  removeIsolatedTips: boolean
+): BrushMaskPoint[] => {
+  if (minX > maxX || minY > maxY) return []
+  const spans: Array<ShapeBoundarySpan | null> = []
+  for (let y = minY; y <= maxY; y += 1) spans.push(findShapeBoundarySpan(minX, maxX, y, contains, seedForRow(y)))
+
+  const points: BrushMaskPoint[] = []
+  const seen = new Set<number>()
+  const add = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= canvasWidth || y >= canvasHeight) return
+    const key = y * canvasWidth + x
+    if (seen.has(key)) return
+    seen.add(key)
+    points.push({ x, y, coverage: 255 })
+  }
+  const addRange = (left: number, right: number, y: number): void => {
+    for (let x = left; x <= right; x += 1) add(x, y)
+  }
+  const addVerticalBoundary = (span: ShapeBoundarySpan, neighbor: ShapeBoundarySpan | null, y: number): void => {
+    if (!neighbor) {
+      addRange(span.left, span.right, y)
+      return
+    }
+    if (span.left < neighbor.left) addRange(span.left, Math.min(span.right, neighbor.left - 1), y)
+    if (span.right > neighbor.right) addRange(Math.max(span.left, neighbor.right + 1), span.right, y)
+  }
+
+  let currentRow = 0
+  for (const span of spans) {
+    if (!span) { currentRow += 1; continue }
+    const y = minY + currentRow
+    add(span.left, y)
+    add(span.right, y)
+    const previous = currentRow > 0 ? spans[currentRow - 1] : null
+    const next = currentRow + 1 < spans.length ? spans[currentRow + 1] : null
+    addVerticalBoundary(span, previous, y)
+    addVerticalBoundary(span, next, y)
+    currentRow += 1
+  }
+
+  if (!removeIsolatedTips) return points
+
+  const spanAt = (y: number): ShapeBoundarySpan | null => {
+    if (y < minY || y > maxY) return null
+    return spans[y - minY]
+  }
+  const spanContains = (x: number, y: number): boolean => {
+    const span = spanAt(y)
+    return Boolean(span && x >= span.left && x <= span.right)
+  }
+  const removedTips = new Set<number>()
+  for (let row = 0; row < spans.length; row += 1) {
+    const span = spans[row]
+    if (!span) continue
+    const y = minY + row
+    // Only span ends can have one horizontal neighbor. A short span is
+    // checked in full because both ends may be isolated on a clipped tip.
+    const candidates = span.right - span.left <= 3
+      ? Array.from({ length: span.right - span.left + 1 }, (_, index) => span.left + index)
+      : [span.left, span.right]
+    for (const x of candidates) {
+      let neighbors = 0
+      if (spanContains(x - 1, y)) neighbors += 1
+      if (spanContains(x + 1, y)) neighbors += 1
+      if (spanContains(x, y - 1)) neighbors += 1
+      if (spanContains(x, y + 1)) neighbors += 1
+      if (neighbors <= 1) removedTips.add(y * canvasWidth + x)
+    }
+  }
+
+  if (removedTips.size === 0) return points
+  const result = points.filter((point) => !removedTips.has(point.y * canvasWidth + point.x))
+  const boundaryKeys = new Set(result.map((point) => point.y * canvasWidth + point.x))
+  for (const key of removedTips) {
+    const x = key % canvasWidth
+    const y = Math.floor(key / canvasWidth)
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      const neighborX = x + dx
+      const neighborY = y + dy
+      if (!spanContains(neighborX, neighborY)) continue
+      const neighborKey = neighborY * canvasWidth + neighborX
+      if (removedTips.has(neighborKey) || boundaryKeys.has(neighborKey)) continue
+      boundaryKeys.add(neighborKey)
+      result.push({ x: neighborX, y: neighborY, coverage: 255 })
+    }
+  }
+  return result
+}
+
+const snapShapeRotationValue = (value: number): number => {
+  const rounded = Math.round(value)
+  return Math.abs(value - rounded) < 1e-9 ? rounded : value
+}
+
+/** Returns only the current shape contour for a cheap drag-time preview. */
+export function shapeBoundaryPixelPoints(
+  bounds: SelectionRect,
+  kind: ShapeKind,
+  canvasWidth: number,
+  canvasHeight: number,
+  angle = 0,
+  cornerRadius = 0
+): BrushMaskPoint[] {
+  if (kind === 'freeform' || kind === 'polygon' || canvasWidth <= 0 || canvasHeight <= 0) return []
+
+  const normalizedAngle = ((angle % 360) + 360) % 360
+  const normalizedWidth = Math.max(1, Math.ceil(bounds.width))
+  const normalizedHeight = Math.max(1, Math.ceil(bounds.height))
+  const ellipse = kind === 'ellipse' || kind === 'ellipse-outline'
+  const axisAligned = normalizedAngle < 1e-9 || Math.abs(normalizedAngle - 360) < 1e-9
+
+  if (axisAligned) {
+    const minX = Math.max(0, Math.ceil(bounds.x))
+    const maxX = Math.min(canvasWidth - 1, Math.floor(bounds.x + normalizedWidth - 1))
+    const minY = Math.max(0, Math.ceil(bounds.y))
+    const maxY = Math.min(canvasHeight - 1, Math.floor(bounds.y + normalizedHeight - 1))
+    const contains = (x: number, y: number): boolean => shapeContainsOffset(
+      normalizedWidth,
+      normalizedHeight,
+      ellipse,
+      x - bounds.x,
+      y - bounds.y,
+      cornerRadius
+    )
+    const seedX = bounds.x + (normalizedWidth - 1) / 2
+    return collectShapeBoundaryPoints(minX, maxX, minY, maxY, canvasWidth, canvasHeight, contains, () => seedX, false)
+  }
+
+  const target = { ...bounds, width: Math.max(1, bounds.width), height: Math.max(1, bounds.height) }
+  const rotatedBounds = rotatedSelectionBounds(target, angle)
+  const minX = Math.max(0, rotatedBounds.x)
+  const maxX = Math.min(canvasWidth - 1, rotatedBounds.x + rotatedBounds.width - 1)
+  const minY = Math.max(0, rotatedBounds.y)
+  const maxY = Math.min(canvasHeight - 1, rotatedBounds.y + rotatedBounds.height - 1)
+  const centerX = target.x + target.width / 2
+  const centerY = target.y + target.height / 2
+  const radians = angle * Math.PI / 180
+  const cosine = snapShapeRotationValue(Math.cos(-radians))
+  const sine = snapShapeRotationValue(Math.sin(-radians))
+  const radius = roundedRectRadius(target.width, target.height, cornerRadius)
+  const halfWidth = target.width / 2
+  const halfHeight = target.height / 2
+  const radiusX = Math.max(0.5, target.width / 2)
+  const radiusY = Math.max(0.5, target.height / 2)
+  const contains = (x: number, y: number): boolean => {
+    const offsetX = x + 0.5 - centerX
+    const offsetY = y + 0.5 - centerY
+    const localX = offsetX * cosine - offsetY * sine
+    const localY = offsetX * sine + offsetY * cosine
+    if (ellipse) {
+      const normalizedX = localX / radiusX
+      const normalizedY = localY / radiusY
+      return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
+    }
+    if (Math.abs(localX) >= halfWidth - 1e-9 || Math.abs(localY) >= halfHeight - 1e-9) return false
+    return radius === 0 || roundedRectContainsPoint(target.width, target.height, radius, localX + halfWidth, localY + halfHeight)
+  }
+  const seedForRow = (y: number): number => {
+    const offsetY = y + 0.5 - centerY
+    return Math.abs(sine) < 1e-9 ? centerX - 0.5 : centerX - (offsetY * cosine / sine) - 0.5
+  }
+  const removeIsolatedTips = !ellipse
+    && radius === 0
+    && target.width > 2
+    && target.height > 2
+    && Math.abs(normalizedAngle % 90) > 1e-9
+  return collectShapeBoundaryPoints(minX, maxX, minY, maxY, canvasWidth, canvasHeight, contains, seedForRow, removeIsolatedTips)
+}
+
 export function rotatedShapePixelPoints(
   bounds: SelectionRect,
   kind: ShapeKind,
@@ -1273,8 +1839,159 @@ const insideSelection = (selection: SelectionMask, x: number, y: number): boolea
 const COMPACT_FILL_MIN_PIXELS = 512 * 512
 const DENSE_SELECTION_FILL_MIN_PIXELS = 512 * 512
 
+const smartClosureBoundsForLayer = (document: SpriteDocument, layer: RasterLayer): BinaryRegionBounds | undefined => {
+  const left = Math.max(0, layer.offsetX)
+  const top = Math.max(0, layer.offsetY)
+  const right = Math.min(document.width, layer.offsetX + layer.width)
+  const bottom = Math.min(document.height, layer.offsetY + layer.height)
+  if (left === 0 && top === 0 && right === document.width && bottom === document.height) return undefined
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+}
+
+const smartClosureCandidateBoundsForLayer = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  startX: number,
+  startY: number,
+  gapClosingThreshold: number
+): BinaryRegionBounds | undefined => {
+  const layerBounds = smartClosureBoundsForLayer(document, layer)
+  if (!layerBounds) return undefined
+  const cachedContent = cachedLayerContentBounds(document, layer)
+  const content = cachedContent === undefined ? layerContentBounds(document, layer) : cachedContent
+  const padding = Math.max(2, Math.trunc(gapClosingThreshold) + 2)
+  const contentLeft = content ? Math.floor(content.x) : startX
+  const contentTop = content ? Math.floor(content.y) : startY
+  const contentRight = content ? Math.ceil(content.x + content.width) : startX + 1
+  const contentBottom = content ? Math.ceil(content.y + content.height) : startY + 1
+  const left = Math.max(layerBounds.x, Math.min(startX, contentLeft) - padding)
+  const top = Math.max(layerBounds.y, Math.min(startY, contentTop) - padding)
+  const right = Math.min(layerBounds.x + layerBounds.width, Math.max(startX + 1, contentRight) + padding)
+  const bottom = Math.min(layerBounds.y + layerBounds.height, Math.max(startY + 1, contentBottom) + padding)
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+}
+
+const regionTouchesBoundsBoundary = (region: Uint8Array, width: number, height: number): boolean => {
+  if (width < 1 || height < 1 || region.length < width * height) return false
+  for (let y = 0; y < height; y += 1) {
+    if (region[y * width] === 1 || region[y * width + width - 1] === 1) return true
+  }
+  for (let x = 0; x < width; x += 1) {
+    if (region[x] === 1 || region[(height - 1) * width + x] === 1) return true
+  }
+  return false
+}
+
 export interface PixelOperationProfiler {
   record(stage: string, duration: number, detail?: Record<string, number | string | boolean>): void
+}
+
+const floodFillUniformSolidRuns = (document: SpriteDocument, layer: RasterLayer, target: number, next: number): PixelEdit => {
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  markLayerContentChanged(layer)
+  for (let y = 0; y < document.height; y += 1) {
+    const index = layerIndexAt(layer, 0, y)
+    if (index === null) continue
+    writeLayerPackedRun(document, layer, index, document.width, next)
+    runs.push({ index, length: document.width, before: target, after: next })
+  }
+  edit.runs = runs
+  edit.dirtyRect = { x: 0, y: 0, width: document.width, height: document.height }
+  return edit
+}
+
+const floodFillBinaryRegionSolidRuns = (document: SpriteDocument, layer: RasterLayer, region: Uint8Array, target: number, next: number): PixelEdit | null => {
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  const fromX = Math.max(0, layer.offsetX)
+  const toX = Math.min(document.width, layer.offsetX + layer.width)
+  const fromY = Math.max(0, layer.offsetY)
+  const toY = Math.min(document.height, layer.offsetY + layer.height)
+  let dirtyLeft = document.width
+  let dirtyTop = document.height
+  let dirtyRight = 0
+  let dirtyBottom = 0
+  for (let y = fromY; y < toY; y += 1) {
+    const regionRow = y * document.width
+    let x = fromX
+    while (x < toX) {
+      while (x < toX && region[regionRow + x] !== 1) x += 1
+      if (x >= toX) break
+      const left = x
+      while (x < toX && region[regionRow + x] === 1) x += 1
+      const length = x - left
+      const index = (y - layer.offsetY) * layer.width + left - layer.offsetX
+      if (runs.length === 0) markLayerContentChanged(layer)
+      writeLayerPackedRun(document, layer, index, length, next)
+      runs.push({ index, length, before: target, after: next })
+      dirtyLeft = Math.min(dirtyLeft, left)
+      dirtyTop = Math.min(dirtyTop, y)
+      dirtyRight = Math.max(dirtyRight, x)
+      dirtyBottom = Math.max(dirtyBottom, y + 1)
+    }
+  }
+  if (runs.length === 0) return null
+  edit.runs = runs
+  edit.dirtyRect = { x: dirtyLeft, y: dirtyTop, width: dirtyRight - dirtyLeft, height: dirtyBottom - dirtyTop }
+  return edit
+}
+
+const floodFillLocalBinaryRegionSolidRuns = (
+  document: SpriteDocument,
+  layer: RasterLayer,
+  region: Uint8Array,
+  regionBounds: BinaryRegionBounds,
+  target: number,
+  next: number
+): PixelEdit | null => {
+  const width = Math.max(0, Math.trunc(regionBounds.width))
+  const height = Math.max(0, Math.trunc(regionBounds.height))
+  if (width < 1 || height < 1 || region.length < width * height) return null
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs = [] as NonNullable<PixelEdit['runs']>
+  let dirtyLeft = document.width
+  let dirtyTop = document.height
+  let dirtyRight = 0
+  let dirtyBottom = 0
+  const fromX = Math.max(0, Math.ceil(regionBounds.x), layer.offsetX)
+  const toX = Math.min(document.width, Math.ceil(regionBounds.x) + width, layer.offsetX + layer.width)
+  const fromY = Math.max(0, Math.ceil(regionBounds.y), layer.offsetY)
+  const toY = Math.min(document.height, Math.ceil(regionBounds.y) + height, layer.offsetY + layer.height)
+  for (let y = fromY; y < toY; y += 1) {
+    const regionRow = (y - Math.ceil(regionBounds.y)) * width
+    let x = fromX
+    while (x < toX) {
+      while (x < toX && region[regionRow + x - Math.ceil(regionBounds.x)] !== 1) x += 1
+      if (x >= toX) break
+      const left = x
+      while (x < toX && region[regionRow + x - Math.ceil(regionBounds.x)] === 1) x += 1
+      const length = x - left
+      const index = (y - layer.offsetY) * layer.width + left - layer.offsetX
+      if (runs.length === 0) markLayerContentChanged(layer)
+      writeLayerPackedRun(document, layer, index, length, next)
+      runs.push({ index, length, before: target, after: next })
+      dirtyLeft = Math.min(dirtyLeft, left)
+      dirtyTop = Math.min(dirtyTop, y)
+      dirtyRight = Math.max(dirtyRight, x)
+      dirtyBottom = Math.max(dirtyBottom, y + 1)
+    }
+  }
+  if (runs.length === 0) return null
+  edit.runs = runs
+  edit.dirtyRect = { x: dirtyLeft, y: dirtyTop, width: dirtyRight - dirtyLeft, height: dirtyBottom - dirtyTop }
+  return edit
+}
+
+const packedCanvasPixels = (document: SpriteDocument, layer: RasterLayer): Uint32Array | null => {
+  if (layer.offsetX !== 0 || layer.offsetY !== 0 || layer.width !== document.width || layer.height !== document.height) return null
+  if (layer.format === 'indexed') return layer.pixels
+  return layer.pixels.byteOffset % 4 === 0
+    ? new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
+    : null
 }
 
 const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, target: number, next: number, selection: SelectionMask | null | undefined, contiguous: boolean): PixelEdit | null => {
@@ -1284,49 +2001,69 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
   const rgbaWords = layer.format === 'rgba' && layer.pixels.byteOffset % 4 === 0
     ? new Uint32Array(layer.pixels.buffer as ArrayBuffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
     : null
-  const layerIndexAtCanvas = (x: number, y: number): number | null => {
-    const localX = x - layer.offsetX
-    const localY = y - layer.offsetY
-    return localX < 0 || localY < 0 || localX >= layer.width || localY >= layer.height ? null : localY * layer.width + localX
-  }
+  const visibleLeft = Math.max(0, layer.offsetX)
+  const visibleTop = Math.max(0, layer.offsetY)
+  const visibleRight = Math.min(document.width, layer.offsetX + layer.width)
+  const visibleBottom = Math.min(document.height, layer.offsetY + layer.height)
+  const localLeft = visibleLeft - layer.offsetX
+  const localTop = visibleTop - layer.offsetY
+  const localRight = visibleRight - layer.offsetX
+  const localBottom = visibleBottom - layer.offsetY
   const selected = (x: number, y: number): boolean => {
     if (!selection) return true
     if (x < selection.x || y < selection.y || x >= selection.x + selection.width || y >= selection.y + selection.height) return false
     return !selection.mask || selection.mask[(y - selection.y) * selection.width + x - selection.x] === 1
   }
-  const matches = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= document.width || y >= document.height || !selected(x, y)) return false
-    const index = layerIndexAtCanvas(x, y)
-    if (index === null) return false
-    return layer.format === 'indexed' ? layer.pixels[index] === target : rgbaWords ? rgbaWords[index] === target : readLayerPacked(document, layer, index) === target
+  const readLocal = (index: number): number => layer.format === 'indexed'
+    ? layer.pixels[index]
+    : rgbaWords ? rgbaWords[index] : readLayerPacked(document, layer, index)
+  const matchesLocal = (x: number, y: number): boolean => {
+    if (x < localLeft || y < localTop || x >= localRight || y >= localBottom) return false
+    const canvasX = x + layer.offsetX
+    const canvasY = y + layer.offsetY
+    return selected(canvasX, canvasY) && readLocal(y * layer.width + x) === target
   }
   let dirtyLeft = document.width
   let dirtyTop = document.height
   let dirtyRight = 0
   let dirtyBottom = 0
+  const normalizedNext = normalizeLayerPackedValue(document, layer, next)
+  const writeRun = (index: number, length: number): void => {
+    if (layer.format === 'indexed') layer.pixels.fill(normalizedNext, index, index + length)
+    else if (rgbaWords) rgbaWords.fill(normalizedNext, index, index + length)
+    else writeLayerPackedRun(document, layer, index, length, normalizedNext)
+  }
   const fillSpan = (left: number, right: number, y: number): void => {
-    const index = layerIndexAtCanvas(left, y)
-    if (index === null) return
+    if (left < localLeft || right >= localRight || y < localTop || y >= localBottom) return
     const length = right - left + 1
     if (runs.length === 0) markLayerContentChanged(layer)
-    writeLayerPackedRun(document, layer, index, length, next)
-    runs.push({ index, length, before: target, after: next })
-    dirtyLeft = Math.min(dirtyLeft, left)
-    dirtyTop = Math.min(dirtyTop, y)
-    dirtyRight = Math.max(dirtyRight, right + 1)
-    dirtyBottom = Math.max(dirtyBottom, y + 1)
+    const index = y * layer.width + left
+    writeRun(index, length)
+    runs.push({ index, length, before: target, after: normalizedNext })
+    const canvasLeft = left + layer.offsetX
+    const canvasTop = y + layer.offsetY
+    dirtyLeft = Math.min(dirtyLeft, canvasLeft)
+    dirtyTop = Math.min(dirtyTop, canvasTop)
+    dirtyRight = Math.max(dirtyRight, canvasLeft + length)
+    dirtyBottom = Math.max(dirtyBottom, canvasTop + 1)
   }
 
   if (!contiguous) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     if (!bounds) return null
-    for (let y = bounds.y; y < bounds.y + bounds.height; y += 1) {
-      let x = bounds.x
-      while (x < bounds.x + bounds.width) {
-        while (x < bounds.x + bounds.width && !matches(x, y)) x += 1
-        if (x >= bounds.x + bounds.width) break
+    const fromX = Math.max(bounds.x, visibleLeft)
+    const toX = Math.min(bounds.x + bounds.width, visibleRight)
+    const fromY = Math.max(bounds.y, visibleTop)
+    const toY = Math.min(bounds.y + bounds.height, visibleBottom)
+    for (let canvasY = fromY; canvasY < toY; canvasY += 1) {
+      const y = canvasY - layer.offsetY
+      let x = fromX - layer.offsetX
+      const endX = toX - layer.offsetX
+      while (x < endX) {
+        while (x < endX && !matchesLocal(x, y)) x += 1
+        if (x >= endX) break
         const left = x
-        while (x + 1 < bounds.x + bounds.width && matches(x + 1, y)) x += 1
+        while (x + 1 < endX && matchesLocal(x + 1, y)) x += 1
         fillSpan(left, x, y)
         x += 1
       }
@@ -1335,34 +2072,35 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
     let stack = new Int32Array(1024)
     let stackLength = 0
     const push = (x: number, y: number): void => {
+      if (!matchesLocal(x, y)) return
       if (stackLength === stack.length) {
         const expanded = new Int32Array(stack.length * 2)
         expanded.set(stack)
         stack = expanded
       }
-      stack[stackLength++] = pixelIndex(document.width, x, y)
+      stack[stackLength++] = y * layer.width + x
     }
     const scanNeighbor = (left: number, right: number, y: number): void => {
-      if (y < 0 || y >= document.height) return
+      if (y < localTop || y >= localBottom) return
       let x = left
       while (x <= right) {
-        while (x <= right && !matches(x, y)) x += 1
+        while (x <= right && !matchesLocal(x, y)) x += 1
         if (x > right) break
         push(x, y)
         x += 1
-        while (x <= right && matches(x, y)) x += 1
+        while (x <= right && matchesLocal(x, y)) x += 1
       }
     }
-    push(startX, startY)
+    push(startX - layer.offsetX, startY - layer.offsetY)
     while (stackLength > 0) {
       const seed = stack[--stackLength]
-      const x = seed % document.width
-      const y = Math.floor(seed / document.width)
-      if (!matches(x, y)) continue
+      const x = seed % layer.width
+      const y = Math.floor(seed / layer.width)
+      if (!matchesLocal(x, y)) continue
       let left = x
       let right = x
-      while (matches(left - 1, y)) left -= 1
-      while (matches(right + 1, y)) right += 1
+      while (matchesLocal(left - 1, y)) left -= 1
+      while (matchesLocal(right + 1, y)) right += 1
       fillSpan(left, right, y)
       scanNeighbor(left, right, y - 1)
       scanNeighbor(left, right, y + 1)
@@ -1374,7 +2112,7 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
   return edit
 }
 
-export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0): PixelEdit | null {
+export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler): PixelEdit | null {
   if (!isInBounds(document.width, document.height, startX, startY) || isLayerEffectivelyLocked(document, layer) || (selection && !insideSelection(selection, startX, startY))) return null
   const startWasOutsideLayer = layerIndexAt(layer, startX, startY) === null
   if (startWasOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
@@ -1382,6 +2120,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   if (startLayerIndex === null) return null
   const target = readLayerPacked(document, layer, startLayerIndex)
   const normalizedTolerance = Math.max(0, Math.min(255, Math.round(tolerance) || 0))
+  const effectiveGapClosingThreshold = contiguous ? gapClosingThreshold : 0
   const paletteColors = layer.format === 'indexed'
     ? new Map(document.palette.map((entry) => [entry.id, packColor(getPaletteEntry(document, entry.id).color)]))
     : null
@@ -1389,6 +2128,44 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const matchesValue = (value: number): boolean => normalizedTolerance === 0
     ? value === target
     : packedColorMatchesTolerance(layer.format === 'rgba' ? value : paletteColors!.get(value) ?? 0, targetColor, normalizedTolerance)
+  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid'
+  type LocalSmartClosure = { bounds: BinaryRegionBounds; result: ReturnType<typeof contiguousMatchingRegionInBounds> }
+  let cachedLocalSmartClosure: LocalSmartClosure | null | undefined
+  const resolveLocalSmartClosure = (): LocalSmartClosure | null => {
+    if (cachedLocalSmartClosure !== undefined) return cachedLocalSmartClosure
+    if (effectiveGapClosingThreshold <= 0 || selection || !compactSolidFill) {
+      cachedLocalSmartClosure = null
+      return cachedLocalSmartClosure
+    }
+    const bounds = smartClosureCandidateBoundsForLayer(document, layer, startX, startY, effectiveGapClosingThreshold)
+    if (!bounds) {
+      cachedLocalSmartClosure = null
+      return cachedLocalSmartClosure
+    }
+    const boundsX = Math.trunc(bounds.x)
+    const boundsY = Math.trunc(bounds.y)
+    const boundsWidth = Math.trunc(bounds.width)
+    const boundsHeight = Math.trunc(bounds.height)
+    const packedRegion = readSurfacePackedRegion(
+      layer,
+      boundsX - layer.offsetX,
+      boundsY - layer.offsetY,
+      boundsWidth,
+      boundsHeight
+    )
+    const result = contiguousMatchingRegionInBounds(
+      boundsWidth,
+      boundsHeight,
+      startX - boundsX,
+      startY - boundsY,
+      (index) => packedRegion[index] === target,
+      effectiveGapClosingThreshold,
+      { x: 0, y: 0, width: boundsWidth, height: boundsHeight },
+      profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
+    )
+    cachedLocalSmartClosure = { bounds, result }
+    return cachedLocalSmartClosure
+  }
   if (!startWasOutsideLayer && matchesValue(0)) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     const layerLeft = layer.offsetX
@@ -1456,15 +2233,55 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       }
       return false
     }
-    const mayReachOutsideLayer = contiguousRegionCanEscapeLayer()
+    const localSmartClosure = resolveLocalSmartClosure()
+    const mayReachOutsideLayer = localSmartClosure
+      ? Boolean(localSmartClosure.result && regionTouchesBoundsBoundary(localSmartClosure.result.region, Math.trunc(localSmartClosure.result.bounds.width), Math.trunc(localSmartClosure.result.bounds.height)))
+      : contiguousRegionCanEscapeLayer()
     if (mayReachOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
   }
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
   const next = paintLayerValue(document, layer, edit, startLayerIndex, color)
   if (target === next) return null
-  if (gapClosingThreshold <= 0 && normalizedTolerance === 0 && document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid') {
-    return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
+  if (compactSolidFill) {
+    const layerCoversCanvas = layer.offsetX <= 0
+      && layer.offsetY <= 0
+      && layer.offsetX + layer.width >= document.width
+      && layer.offsetY + layer.height >= document.height
+    if (!selection && layerCoversCanvas && rasterLayerPackedValueIsUniform(layer, target)) {
+      return floodFillUniformSolidRuns(document, layer, target, next)
+    }
+    const packedPixels = normalizedTolerance === 0 && contiguous && !selection
+      ? packedCanvasPixels(document, layer)
+      : null
+    if (packedPixels) {
+      const region = contiguousMatchingRegion(
+        document.width,
+        document.height,
+        startX,
+        startY,
+        (index) => packedPixels[index] === target,
+        effectiveGapClosingThreshold,
+        undefined,
+        profiler ? (stage, duration) => profiler.record(stage, duration) : undefined
+      )
+      return region ? floodFillBinaryRegionSolidRuns(document, layer, region, target, next) : null
+    }
+    if (effectiveGapClosingThreshold > 0 && !selection) {
+      const localSmartClosure = resolveLocalSmartClosure()
+      if (localSmartClosure) {
+        if (!localSmartClosure.result) return null
+        if (!regionTouchesBoundsBoundary(localSmartClosure.result.region, Math.trunc(localSmartClosure.result.bounds.width), Math.trunc(localSmartClosure.result.bounds.height))) {
+          return floodFillLocalBinaryRegionSolidRuns(document, layer, localSmartClosure.result.region, localSmartClosure.result.bounds, target, next)
+        }
+      } else {
+        const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
+        if (smartClosureBounds) return null
+      }
+    }
+    if (effectiveGapClosingThreshold <= 0 && normalizedTolerance === 0) {
+      return floodFillSolidRuns(document, layer, startX, startY, target, next, selection, contiguous)
+    }
   }
   const textureCoverage = (x: number, y: number): number => {
     if (!imageBrush) return brushTextureContains(brushTexture, x, y, brushTextureScale) ? 255 : 0
@@ -1513,15 +2330,19 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     return edit.before.size > 0 ? edit : null
   }
   const maxPixels = document.width * document.height
-  if (gapClosingThreshold > 0) {
+  if (effectiveGapClosingThreshold > 0) {
+    const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
     const region = contiguousMatchingRegion(document.width, document.height, startX, startY, (index) => {
       const x = index % document.width
       const y = Math.floor(index / document.width)
       if (selection && !insideSelection(selection, x, y)) return false
       const layerIndex = layerIndexAtCanvas(x, y)
       return layerIndex !== null && matchesValue(readLayerPacked(document, layer, layerIndex))
-    }, gapClosingThreshold)
+      }, effectiveGapClosingThreshold, smartClosureBounds, profiler ? (stage, duration) => profiler.record(stage, duration) : undefined)
     if (!region) return null
+    if (!imageBrush && brushTexture === 'solid' && normalizedTolerance === 0) {
+      return floodFillLocalBinaryRegionSolidRuns(document, layer, region, { x: 0, y: 0, width: document.width, height: document.height }, target, next)
+    }
     for (let index = 0; index < maxPixels; index += 1) {
       if (region[index] !== 1) continue
       const x = index % document.width
@@ -1568,7 +2389,7 @@ export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer,
   const merged = beginPixelEdit(layer.id)
   for (const seed of symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)) {
     const fillStartedAt = profiler ? performance.now() : 0
-    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold)
+    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
       points: edit?.before.size ?? 0,
       runs: edit?.runs?.length ?? 0,
@@ -1754,6 +2575,12 @@ export interface SelectionTransformSource {
   opaqueIndices: Uint32Array
   opaqueValues: Uint32Array
   origin?: 'selection' | 'clipboard'
+  /**
+   * Exact frame occupied by the captured pixels. When present, a free
+   * transform maps this frame to the next target quad instead of assuming the
+   * captured selection bounds are an axis-aligned rectangle.
+   */
+  sourceQuad?: SelectionQuad
 }
 
 const SELECTION_OFFSET_CACHE_LIMIT = 262_144
@@ -1787,6 +2614,21 @@ export function flipSelectionTransformSource(source: SelectionTransformSource, a
     offset: flippedSelectionOffset(offset, width, height, axis),
     value: source.opaqueValues[index]
   })).sort((left, right) => left.offset - right.offset)
+  const sourceQuad = source.sourceQuad
+    ? axis === 'horizontal'
+      ? {
+          nw: { ...source.sourceQuad.ne },
+          ne: { ...source.sourceQuad.nw },
+          se: { ...source.sourceQuad.sw },
+          sw: { ...source.sourceQuad.se }
+        }
+      : {
+          nw: { ...source.sourceQuad.sw },
+          ne: { ...source.sourceQuad.se },
+          se: { ...source.sourceQuad.ne },
+          sw: { ...source.sourceQuad.nw }
+        }
+    : undefined
   return {
     selection: flipSelectionMask(source.selection, axis),
     values,
@@ -1796,7 +2638,8 @@ export function flipSelectionTransformSource(source: SelectionTransformSource, a
     // destination offsets and values follow the mirrored floating content.
     opaqueIndices: source.opaqueIndices.slice(),
     opaqueValues: Uint32Array.from(opaque, (item) => item.value),
-    origin: source.origin
+    origin: source.origin,
+    sourceQuad
   }
 }
 
@@ -1821,9 +2664,11 @@ const SELECTION_TRANSLATION_POINT_HISTORY_THRESHOLD = 65_536
 
 interface TransformCell { x: number; y: number; sourceIndex: number; value: number }
 
-export function captureSelectionTransform(document: SpriteDocument, selection: SelectionMask, targetLayer?: RasterLayer, options?: { cacheOpaqueOffsets?: boolean }): SelectionTransformSource | null {
+export function captureSelectionTransform(document: SpriteDocument, selection: SelectionMask, targetLayer?: RasterLayer, options?: { cacheOpaqueOffsets?: boolean; preserveOutsideCanvas?: boolean }): SelectionTransformSource | null {
   const layer = targetLayer ?? getActiveLayer(document)
-  const source = clampSelectionMask(document, selection)
+  const source = options?.preserveOutsideCanvas
+    ? { ...selection, mask: selection.mask?.slice() }
+    : clampSelectionMask(document, selection)
   if (!source) return null
   const size = source.width * source.height
   const values = readSurfacePackedRegion(layer, source.x - layer.offsetX, source.y - layer.offsetY, source.width, source.height)
@@ -2002,7 +2847,12 @@ export function applySelectionTranslationCommit(
     const targetY = y - target.y
     if (targetX >= 0 && targetY >= 0 && targetX < target.width && targetY < target.height) {
       const offset = targetY * sourceSelection.width + targetX
-      if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) next = source.values[offset]
+      if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) {
+        // Use the value captured before this edit as the backdrop. This keeps
+        // overlapping moves deterministic regardless of iteration order while
+        // still applying source-over to translucent selection pixels.
+        next = compositeSelectionPixelOver(document, layer, before, source.values[offset])
+      }
     }
     return next
   }
@@ -2156,12 +3006,12 @@ export function applySelectionTranslationPreview(
     preview.before[preview.count] = readLayerPacked(document, layer, index)
     preview.count += 1
   }
-  const writeCanvasPacked = (canvasIndex: number, value: number): void => {
+  const writeCanvasPacked = (canvasIndex: number, value: number, composite = false): void => {
     const x = canvasIndex % document.width
     const y = Math.floor(canvasIndex / document.width)
     if (!insideClip(x, y)) return
     const index = layerIndexAt(layer, x, y)
-    if (index !== null) writeLayerPacked(document, layer, index, value)
+    if (index !== null) writeLayerPacked(document, layer, index, composite ? compositeSelectionPixel(document, layer, index, value) : value)
   }
   const sourceSelection = source.selection
   if (tileRepeatMode !== 'off') {
@@ -2210,7 +3060,7 @@ export function applySelectionTranslationPreview(
     })
     forEachOpaqueSource((localOffset, value) => {
       const targetIndex = targetCanvasIndex(localOffset)
-      if (targetIndex !== null) writeCanvasPacked(targetIndex, value)
+      if (targetIndex !== null) writeCanvasPacked(targetIndex, value, true)
     })
     return finishPreview()
   }
@@ -2232,7 +3082,7 @@ export function applySelectionTranslationPreview(
         if (transparent) continue
         const index = pixelIndex(document.width, x, y)
         capture(index)
-        writeCanvasPacked(index, value)
+        writeCanvasPacked(index, value, true)
       }
     }
     return finishPreview()
@@ -2262,7 +3112,7 @@ export function applySelectionTranslationPreview(
       if (!selectionContains(sourceSelection, sourceX, sourceY) || isTransparent(source.values[sourceOffset])) continue
       const targetX = target.x + localX
       const targetY = target.y + localY
-      if (isInBounds(document.width, document.height, targetX, targetY)) writeCanvasPacked(pixelIndex(document.width, targetX, targetY), source.values[sourceOffset])
+      if (isInBounds(document.width, document.height, targetX, targetY)) writeCanvasPacked(pixelIndex(document.width, targetX, targetY), source.values[sourceOffset], true)
     }
     return finishPreview()
   }
@@ -2281,7 +3131,7 @@ export function applySelectionTranslationPreview(
     const localOffset = source.opaqueOffsets[offset]
     const x = target.x + localOffset % sourceSelection.width
     const y = target.y + Math.floor(localOffset / sourceSelection.width)
-    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset])
+    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset], true)
   }
   return finishPreview()
 }
@@ -2333,9 +3183,9 @@ export function selectionTranslationPreviewEdit(document: SpriteDocument, previe
   return edit
 }
 
-function selectionTransformCells(document: SpriteDocument, sourceData: SelectionTransformSource, target: SelectionRect, angle: number, shear?: SelectionShearTransform, targetLayer?: RasterLayer): TransformCell[] {
+function selectionTransformCells(document: SpriteDocument, sourceData: SelectionTransformSource, target: SelectionRect, angle: number, shear?: SelectionShearTransform, targetLayer?: RasterLayer, quad?: SelectionQuad, pixelCenteredSampling = false): TransformCell[] {
   const source = sourceData.selection
-  const transformedBounds = transformedSelectionBounds(target, angle, shear)
+  const transformedBounds = quad ? selectionQuadBounds(quad) : transformedSelectionBounds(target, angle, shear)
   const destination = clampSelection(document, {
     x: Math.floor(transformedBounds.x),
     y: Math.floor(transformedBounds.y),
@@ -2348,6 +3198,38 @@ function selectionTransformCells(document: SpriteDocument, sourceData: Selection
   const isOpaqueValue = (value: number): boolean => layer.format === 'rgba'
     ? (value >>> 24) !== 0
     : value !== 0 && getPaletteEntry(document, value).color.a !== 0
+  if (quad) {
+    const transform = selectionQuadTransformFor(source, quad)
+    const sourceTransform = sourceData.sourceQuad ? selectionQuadTransformFor(source, sourceData.sourceQuad) : null
+    if (!transform || (sourceData.sourceQuad && !sourceTransform)) return []
+    for (let y = destination.y; y < destination.y + destination.height; y += 1) {
+      for (let x = destination.x; x < destination.x + destination.width; x += 1) {
+        const normalized = selectionQuadSourcePoint(transform, { x: x + 0.5, y: y + 0.5 })
+        if (!normalized || normalized.x < -1e-9 || normalized.x > 1 + 1e-9 || normalized.y < -1e-9 || normalized.y > 1 + 1e-9) continue
+        const sourcePoint = sourceTransform
+          ? selectionQuadPoint(sourceTransform, normalized.x, normalized.y)
+          : null
+        const sourceX = sourcePoint
+          ? Math.floor(sourcePoint.x)
+          : source.x + Math.min(source.width - 1, Math.max(0, Math.floor(normalized.x * source.width)))
+        const sourceY = sourcePoint
+          ? Math.floor(sourcePoint.y)
+          : source.y + Math.min(source.height - 1, Math.max(0, Math.floor(normalized.y * source.height)))
+        if (sourceX < source.x || sourceY < source.y || sourceX >= source.x + source.width || sourceY >= source.y + source.height) continue
+        if (!selectionContains(source, sourceX, sourceY)) continue
+        const sourceOffset = (sourceY - source.y) * source.width + sourceX - source.x
+        const value = sourceData.values[sourceOffset]
+        if (!isOpaqueValue(value)) continue
+        cells.set(pixelIndex(document.width, x, y), {
+          x,
+          y,
+          sourceIndex: pixelIndex(document.width, sourceX, sourceY),
+          value
+        })
+      }
+    }
+    return [...cells.values()]
+  }
   const normalizedAngle = ((angle % 360) + 360) % 360
   const pixelPreservingRotation = Boolean(
     normalizedAngle !== 0
@@ -2429,9 +3311,11 @@ function selectionTransformCells(document: SpriteDocument, sourceData: Selection
   }
   for (let y = destination.y; y < destination.y + destination.height; y += 1) {
     for (let x = destination.x; x < destination.x + destination.width; x += 1) {
-      const sourcePoint = transformedSelectionSourcePoint(source, target, x, y, angle, shear)
+      const sourcePoint = transformedSelectionSourcePoint(source, target, x, y, angle, shear, pixelCenteredSampling)
       if (!sourcePoint) continue
-      const { x: sourceX, y: sourceY } = sourcePoint
+      const sourceX = Math.floor(sourcePoint.x)
+      const sourceY = Math.floor(sourcePoint.y)
+      if (sourceX < source.x || sourceY < source.y || sourceX >= source.x + source.width || sourceY >= source.y + source.height) continue
       const sourceIndex = pixelIndex(document.width, sourceX, sourceY)
       const sourceOffset = (sourceY - source.y) * source.width + sourceX - source.x
       cells.set(pixelIndex(document.width, x, y), { x, y, sourceIndex, value: sourceData.values[sourceOffset] })
@@ -2451,14 +3335,15 @@ export function selectionTransformPreviewPacked(
   angle = 0,
   shear?: SelectionShearTransform,
   targetLayer?: RasterLayer,
-  reusable?: Uint32Array
+  reusable?: Uint32Array,
+  quad?: SelectionQuad
 ): Uint32Array {
   const size = Math.max(0, width * height)
   const output = reusable?.length === size ? reusable : new Uint32Array(size)
   output.fill(0)
   if (width <= 0 || height <= 0) return output
   const layer = targetLayer ?? getActiveLayer(document)
-  const simpleInverseTransform = angle % 360 === 0 && !shear
+  const simpleInverseTransform = angle % 360 === 0 && !shear && !quad
   if (simpleInverseTransform) {
     const right = Math.min(document.width, startX + width, Math.ceil(target.x + target.width))
     const bottom = Math.min(document.height, startY + height, Math.ceil(target.y + target.height))
@@ -2472,7 +3357,7 @@ export function selectionTransformPreviewPacked(
     }
     return output
   }
-  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer)) {
+  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer, quad)) {
     if (cell.x < startX || cell.y < startY || cell.x >= startX + width || cell.y >= startY + height) continue
     output[(cell.y - startY) * width + cell.x - startX] = cell.value
   }
@@ -2492,9 +3377,10 @@ export function selectionTransformPreviewRasterPacked(
   target: SelectionRect,
   angle = 0,
   shear?: SelectionShearTransform,
-  targetLayer?: RasterLayer
+  targetLayer?: RasterLayer,
+  quad?: SelectionQuad
 ): SelectionTransformPreviewRasterPacked {
-  const transformedBounds = transformedSelectionBounds(target, angle, shear)
+  const transformedBounds = quad ? selectionQuadBounds(quad) : transformedSelectionBounds(target, angle, shear)
   const left = Math.floor(transformedBounds.x)
   const top = Math.floor(transformedBounds.y)
   const right = Math.ceil(transformedBounds.x + transformedBounds.width)
@@ -2512,13 +3398,29 @@ export function selectionTransformPreviewRasterPacked(
     ...(Number.isFinite(target.flipOriginX) ? { flipOriginX: target.flipOriginX! + shiftX } : {}),
     ...(Number.isFinite(target.flipOriginY) ? { flipOriginY: target.flipOriginY! + shiftY } : {})
   }
+  const shiftedQuad = quad
+    ? {
+        nw: { x: quad.nw.x + shiftX, y: quad.nw.y + shiftY },
+        ne: { x: quad.ne.x + shiftX, y: quad.ne.y + shiftY },
+        se: { x: quad.se.x + shiftX, y: quad.se.y + shiftY },
+        sw: { x: quad.sw.x + shiftX, y: quad.sw.y + shiftY }
+      }
+    : undefined
   const shiftedSource: SelectionTransformSource = {
     ...source,
     selection: {
       ...source.selection,
       x: source.selection.x + shiftX,
       y: source.selection.y + shiftY
-    }
+    },
+    sourceQuad: source.sourceQuad
+      ? {
+          nw: { x: source.sourceQuad.nw.x + shiftX, y: source.sourceQuad.nw.y + shiftY },
+          ne: { x: source.sourceQuad.ne.x + shiftX, y: source.sourceQuad.ne.y + shiftY },
+          se: { x: source.sourceQuad.se.x + shiftX, y: source.sourceQuad.se.y + shiftY },
+          sw: { x: source.sourceQuad.sw.x + shiftX, y: source.sourceQuad.sw.y + shiftY }
+        }
+      : undefined
   }
   const localDocument = {
     width,
@@ -2538,7 +3440,9 @@ export function selectionTransformPreviewRasterPacked(
       height,
       angle,
       shear,
-      targetLayer
+      targetLayer,
+      undefined,
+      shiftedQuad
     )
   }
 }
@@ -2632,20 +3536,21 @@ const isSymmetryRepresentative = (point: { x: number; y: number }, selection: Se
   return candidates.every((candidate) => currentKey <= candidate.y * document.width + candidate.x)
 }
 
-export function selectionTransformPreview(document: SpriteDocument, selection: SelectionMask, target: SelectionRect, angle = 0, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer): Uint8ClampedArray {
-  const output = new Uint8ClampedArray(target.width * target.height * 4)
+export function selectionTransformPreview(document: SpriteDocument, selection: SelectionMask, target: SelectionRect, angle = 0, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer, quad?: SelectionQuad): Uint8ClampedArray {
+  const outputBounds = quad ? selectionQuadBounds(quad) : target
+  const output = new Uint8ClampedArray(outputBounds.width * outputBounds.height * 4)
   const layer = targetLayer ?? getActiveLayer(document)
   const source = captureSelectionTransform(document, selection, layer)
   if (!source) return output
-  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer)) {
+  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer, quad)) {
     const sourcePoint = { x: cell.sourceIndex % document.width, y: Math.floor(cell.sourceIndex / document.width) }
     if (!isSymmetryRepresentative(sourcePoint, source.selection, document, symmetryAxes, symmetryCenter)) continue
     const color = layer.format === 'indexed' ? getPaletteEntry(document, cell.value).color : unpackColor(cell.value)
     for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) {
-      const localX = destination.x - target.x
-      const localY = destination.y - target.y
-      if (localX < 0 || localY < 0 || localX >= target.width || localY >= target.height) continue
-      const offset = (localY * target.width + localX) * 4
+      const localX = destination.x - outputBounds.x
+      const localY = destination.y - outputBounds.y
+      if (localX < 0 || localY < 0 || localX >= outputBounds.width || localY >= outputBounds.height) continue
+      const offset = (localY * outputBounds.width + localX) * 4
       output[offset] = color.r
       output[offset + 1] = color.g
       output[offset + 2] = color.b
@@ -2655,13 +3560,13 @@ export function selectionTransformPreview(document: SpriteDocument, selection: S
   return output
 }
 
-export function transformSelectionCopy(document: SpriteDocument, selection: SelectionMask, target: SelectionRect, angle = 0, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer): PixelEdit | null {
+export function transformSelectionCopy(document: SpriteDocument, selection: SelectionMask, target: SelectionRect, angle = 0, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer, quad?: SelectionQuad): PixelEdit | null {
   const layer = targetLayer ?? getActiveLayer(document)
   const source = captureSelectionTransform(document, selection, layer)
-  return source ? applySelectionTransform(document, source, target, angle, true, shear, symmetryAxes, symmetryCenter, layer) : null
+  return source ? applySelectionTransform(document, source, target, angle, true, shear, symmetryAxes, symmetryCenter, layer, undefined, quad) : null
 }
 
-export function applySelectionTransform(document: SpriteDocument, source: SelectionTransformSource, target: SelectionRect, angle = 0, copy = false, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer, symmetryStartPoint?: SymmetryPoint): PixelEdit | null {
+export function applySelectionTransform(document: SpriteDocument, source: SelectionTransformSource, target: SelectionRect, angle = 0, copy = false, shear?: SelectionShearTransform, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, targetLayer?: RasterLayer, symmetryStartPoint?: SymmetryPoint, quad?: SelectionQuad, pixelCenteredSampling = false): PixelEdit | null {
   const layer = targetLayer ?? getActiveLayer(document)
   if (isLayerEffectivelyLocked(document, layer)) return null
   if (!ensureLayerCoversCanvas(document, layer)) return null
@@ -2675,6 +3580,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
   const symmetryRegion = symmetryStartPoint
     && normalizedAngle === 0
     && !shear
+    && !quad
     && !target.flipHorizontal
     && !target.flipVertical
     && target.width === sourceSelection.width
@@ -2706,7 +3612,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
           const index = layerIndexAt(layer, destination.x, destination.y)
           if (index === null || written.has(index)) continue
           written.add(index)
-          recordCanvasPixel(destination.x, destination.y, value)
+          recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, index, value))
         }
       }
     }
@@ -2715,7 +3621,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
 
   // Moving an unscaled selection is the common interactive path. Iterate its
   // captured offsets directly instead of allocating a TransformCell per pixel.
-  if (!hasSymmetry(symmetryAxes) && normalizedAngle === 0 && !shear && Number.isInteger(target.x) && Number.isInteger(target.y) && target.width === sourceSelection.width && target.height === sourceSelection.height && !target.flipHorizontal && !target.flipVertical) {
+  if (!hasSymmetry(symmetryAxes) && normalizedAngle === 0 && !shear && !quad && Number.isInteger(target.x) && Number.isInteger(target.y) && target.width === sourceSelection.width && target.height === sourceSelection.height && !target.flipHorizontal && !target.flipVertical) {
     if (!copy) {
       forEachSelectedSourceOffset(source, (offset) => {
         const localX = offset % sourceSelection.width
@@ -2738,7 +3644,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
         const transparent = layer.format === 'rgba'
           ? (value >>> 24) === 0
           : value === 0 || getPaletteEntry(document, value).color.a === 0
-        if (!transparent) recordCanvasPixel(x, y, value)
+        if (!transparent) {
+          const destinationIndex = layerIndexAt(layer, x, y)
+          if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+        }
       }
     } else forEachSelectedSourceOffset(source, (offset) => {
       const localX = offset % sourceSelection.width
@@ -2750,7 +3659,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
       const transparent = layer.format === 'rgba'
         ? unpackColor(value).a === 0
         : value === 0 || getPaletteEntry(document, value).color.a === 0
-      if (!transparent) recordCanvasPixel(x, y, value)
+      if (!transparent) {
+        const destinationIndex = layerIndexAt(layer, x, y)
+        if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+      }
     })
     return edit.before.size > 0 ? edit : null
   }
@@ -2764,14 +3676,17 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
       }
     }
   }
-  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer)) {
+  for (const cell of selectionTransformCells(document, source, target, angle, shear, layer, quad, pixelCenteredSampling)) {
     const sourcePoint = { x: cell.sourceIndex % document.width, y: Math.floor(cell.sourceIndex / document.width) }
     if (!isSymmetryRepresentative(sourcePoint, sourceSelection, document, symmetryAxes, symmetryCenter)) continue
     const transparent = layer.format === 'rgba'
       ? unpackColor(cell.value).a === 0
       : cell.value === 0 || getPaletteEntry(document, cell.value).color.a === 0
     if (transparent) continue
-    for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) recordCanvasPixel(destination.x, destination.y, cell.value)
+    for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) {
+      const destinationIndex = layerIndexAt(layer, destination.x, destination.y)
+      if (destinationIndex !== null) recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, cell.value))
+    }
   }
   return edit.before.size > 0 ? edit : null
 }

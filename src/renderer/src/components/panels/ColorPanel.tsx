@@ -61,7 +61,7 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
     : null
   const primaryTileId = selectedTileset?.tileIds.includes(session.selectedTileId ?? '') ? session.selectedTileId : selectedTileset?.tileIds[0] ?? null
   const secondaryTileId = selectedTileset?.tileIds.includes(session.secondaryTileId ?? '') ? session.secondaryTileId : selectedTileset?.tileIds[0] ?? null
-  const tileRoleControls = selectedTileset && primaryTileId && secondaryTileId ? <>
+  const tileRoleControls = selectedTileset && primaryTileId && secondaryTileId ? <div className="tile-role-controls">
     {([
       { role: 'primary' as const, tileId: primaryTileId, label: t('tileset.foregroundTile') },
       { role: 'secondary' as const, tileId: secondaryTileId, label: t('tileset.backgroundTile') }
@@ -73,7 +73,7 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
         <small>#{index}</small>
       </button>
     })}
-  </> : undefined
+  </div> : undefined
 
   useLayoutEffect(() => {
     if (!schemeMenuOpen) return

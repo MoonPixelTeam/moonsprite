@@ -105,6 +105,17 @@ const inverseDisplayPoint = (point: ViewportPoint, pivot: ViewportPoint, view: V
   return mirrorViewportPoint(unrotated, pivot, Boolean(view.mirrored), Boolean(view.mirroredVertical))
 }
 
+/** Convert a displayed viewport point to the untransformed canvas viewport. */
+export function unrotatedViewportPoint(
+  point: ViewportPoint,
+  viewportWidth: number,
+  viewportHeight: number,
+  view: ViewGeometryState,
+  position: RotationIndicatorPosition
+): ViewportPoint {
+  return inverseDisplayPoint(point, viewRotationPivot(viewportWidth, viewportHeight, view.panX, view.panY, position), view)
+}
+
 export function rotateViewAroundViewportPoint(view: ViewGeometryState, nextRotation: number, point: ViewportPoint, viewportWidth: number, viewportHeight: number, position: RotationIndicatorPosition): ViewGeometryState {
   if (position === 'canvas') return { ...view, rotation: nextRotation }
   const pivot = viewRotationPivot(viewportWidth, viewportHeight, view.panX, view.panY, position)
@@ -173,8 +184,7 @@ export function clampCanvasViewPan<T extends ViewGeometryState>(viewportWidth: n
 }
 
 export function documentPointFromViewportPointContinuous(point: ViewportPoint, viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): ViewportPoint {
-  const pivot = viewRotationPivot(viewportWidth, viewportHeight, view.panX, view.panY, position)
-  const unrotated = inverseDisplayPoint(point, pivot, view)
+  const unrotated = unrotatedViewportPoint(point, viewportWidth, viewportHeight, view, position)
   const origin = viewCanvasOrigin(viewportWidth, viewportHeight, documentWidth, documentHeight, view)
   return { x: (unrotated.x - origin.x) / view.zoom, y: (unrotated.y - origin.y) / view.zoom }
 }

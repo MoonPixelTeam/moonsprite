@@ -19,6 +19,10 @@ impl CloseCoordinator {
         self.active_token.store(0, Ordering::SeqCst);
     }
 
+    pub fn is_pending(&self) -> bool {
+        self.active_token.load(Ordering::SeqCst) != 0
+    }
+
     pub fn expire(&self, token: u64) -> bool {
         self.active_token
             .compare_exchange(token, 0, Ordering::SeqCst, Ordering::SeqCst)
@@ -34,8 +38,10 @@ mod tests {
     fn allows_only_one_pending_close_request() {
         let coordinator = CloseCoordinator::default();
         let token = coordinator.begin().unwrap();
+        assert!(coordinator.is_pending());
         assert!(coordinator.begin().is_none());
         assert!(coordinator.expire(token));
+        assert!(!coordinator.is_pending());
     }
 
     #[test]
@@ -43,6 +49,7 @@ mod tests {
         let coordinator = CloseCoordinator::default();
         let first = coordinator.begin().unwrap();
         coordinator.cancel();
+        assert!(!coordinator.is_pending());
         let second = coordinator.begin().unwrap();
         assert_ne!(first, second);
         assert!(!coordinator.expire(first));

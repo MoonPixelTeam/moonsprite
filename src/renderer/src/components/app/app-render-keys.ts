@@ -116,7 +116,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.proceduralAntialiasStrength,
     session.brushDynamics.version,
     session.brushDynamics.gradientDither,
-    ...(['size', 'strength', 'gradient'] as const).flatMap((effect) => {
+    ...(['size', 'strength', 'gradient', 'angle'] as const).flatMap((effect) => {
       const mapping = session.brushDynamics.effects[effect]
       return [mapping.sensor ?? '', mapping.outputMin, mapping.outputMax, mapping.inputMin, mapping.inputMax, mapping.curve, mapping.direction]
     }),
@@ -142,6 +142,8 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.gradientContiguous ? 1 : 0,
     session.gradientType ?? 'linear',
     session.gradientDither ?? 'none',
+    session.gradientFreeform ? 1 : 0,
+    (session.gradientStops ?? []).map((stop) => `${stop.position}:${stop.color.r},${stop.color.g},${stop.color.b},${stop.color.a}`).join('|'),
     session.moveAutoSelect ? 1 : 0,
     session.moveKind,
     session.selectedSliceId ?? '',
@@ -151,6 +153,8 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.selectionMode,
     session.selectionRounded ? 1 : 0,
     session.selectionCornerRadius,
+    session.selectionPropertiesActive ? 1 : 0,
+    session.selectionAngle ?? 0,
     session.selection ? `${session.selection.x}:${session.selection.y}:${session.selection.width}:${session.selection.height}` : '',
     session.selectionPivot ? `${session.selectionPivot.x}:${session.selectionPivot.y}` : '',
     session.pendingPaste?.transformTarget ? `${session.pendingPaste.transformTarget.x}:${session.pendingPaste.transformTarget.y}:${session.pendingPaste.transformTarget.width}:${session.pendingPaste.transformTarget.height}` : '',

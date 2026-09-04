@@ -1,10 +1,14 @@
-import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionRect, SpriteDocument } from '@shared/types'
-import { getPaletteEntry } from './document'
+import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
+import { getPaletteEntry, rasterLayerPackedValueIsUniform } from './document'
 import { isInBounds, packColor, pixelIndex } from './raster'
 import { contiguousMatchingRegion } from './contiguous-region'
+import { balancedStairLinePoints } from './pixel-line'
 
-export const rasterLinePoints = (from: { x: number; y: number }, to: { x: number; y: number }): Array<{ x: number; y: number }> => {
-  const points: Array<{ x: number; y: number }> = []
+export const forEachRasterLinePoint = (
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  visit: (x: number, y: number) => void
+): void => {
   let x = from.x
   let y = from.y
   const dx = Math.abs(to.x - from.x)
@@ -13,12 +17,17 @@ export const rasterLinePoints = (from: { x: number; y: number }, to: { x: number
   const stepY = from.y < to.y ? 1 : -1
   let error = dx - dy
   while (true) {
-    points.push({ x, y })
+    visit(x, y)
     if (x === to.x && y === to.y) break
     const doubled = error * 2
     if (doubled > -dy) { error -= dy; x += stepX }
     if (doubled < dx) { error += dx; y += stepY }
   }
+}
+
+export const rasterLinePoints = (from: { x: number; y: number }, to: { x: number; y: number }): Array<{ x: number; y: number }> => {
+  const points: Array<{ x: number; y: number }> = []
+  forEachRasterLinePoint(from, to, (x, y) => points.push({ x, y }))
   return points
 }
 
@@ -381,6 +390,208 @@ export const transformedSelectionControlPoints = (
   [0, 1], [0.5, 1], [1, 1]
 ].map(([normalizedX, normalizedY]) => transformedSelectionPoint(target, normalizedX, normalizedY, angle, shear))
 
+/** Projective transform used by the free-transform tool. Quad points use
+ * document edge coordinates and are ordered clockwise (nw, ne, se, sw). */
+export interface SelectionQuadTransform {
+  forward: readonly number[]
+  inverse: readonly number[]
+  quad?: SelectionQuad
+}
+
+const solveSelectionQuadLinearSystem = (matrix: number[][], values: number[]): number[] | null => {
+  const size = values.length
+  const augmented = matrix.map((row, index) => [...row, values[index]])
+  for (let column = 0; column < size; column += 1) {
+    let pivot = column
+    for (let row = column + 1; row < size; row += 1) {
+      if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) pivot = row
+    }
+    if (!Number.isFinite(augmented[pivot][column]) || Math.abs(augmented[pivot][column]) < 1e-10) return null
+    if (pivot !== column) [augmented[pivot], augmented[column]] = [augmented[column], augmented[pivot]]
+    const divisor = augmented[column][column]
+    for (let current = column; current <= size; current += 1) augmented[column][current] /= divisor
+    for (let row = 0; row < size; row += 1) {
+      if (row === column) continue
+      const factor = augmented[row][column]
+      if (Math.abs(factor) < 1e-14) continue
+      for (let current = column; current <= size; current += 1) augmented[row][current] -= factor * augmented[column][current]
+    }
+  }
+  const result = augmented.map((row) => row[size])
+  return result.every(Number.isFinite) ? result : null
+}
+
+const selectionQuadHomography = (
+  source: readonly { x: number; y: number }[],
+  destination: readonly { x: number; y: number }[]
+): number[] | null => {
+  if (source.length !== 4 || destination.length !== 4) return null
+  const matrix: number[][] = []
+  const values: number[] = []
+  for (let index = 0; index < 4; index += 1) {
+    const from = source[index]
+    const to = destination[index]
+    matrix.push([from.x, from.y, 1, 0, 0, 0, -from.x * to.x, -from.y * to.x])
+    values.push(to.x)
+    matrix.push([0, 0, 0, from.x, from.y, 1, -from.x * to.y, -from.y * to.y])
+    values.push(to.y)
+  }
+  return solveSelectionQuadLinearSystem(matrix, values)
+}
+
+const applySelectionQuadHomography = (
+  coefficients: readonly number[],
+  x: number,
+  y: number
+): { x: number; y: number } | null => {
+  const denominator = coefficients[6] * x + coefficients[7] * y + 1
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-10) return null
+  const nextX = (coefficients[0] * x + coefficients[1] * y + coefficients[2]) / denominator
+  const nextY = (coefficients[3] * x + coefficients[4] * y + coefficients[5]) / denominator
+  return Number.isFinite(nextX) && Number.isFinite(nextY) ? { x: nextX, y: nextY } : null
+}
+
+const selectionQuadCorners = (quad: SelectionQuad): Array<{ x: number; y: number }> => [
+  quad.nw, quad.ne, quad.se, quad.sw
+]
+
+const selectionQuadIsConvex = (quad: SelectionQuad): boolean => {
+  const corners = selectionQuadCorners(quad)
+  let orientation = 0
+  for (let index = 0; index < corners.length; index += 1) {
+    const a = corners[index]
+    const b = corners[(index + 1) % corners.length]
+    const c = corners[(index + 2) % corners.length]
+    if (![a.x, a.y, b.x, b.y, c.x, c.y].every(Number.isFinite)) return false
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+    if (Math.abs(cross) < 1e-9) return false
+    const nextOrientation = Math.sign(cross)
+    if (orientation === 0) orientation = nextOrientation
+    else if (orientation !== nextOrientation) return false
+  }
+  return true
+}
+
+export const selectionQuadTransformFor = (
+  source: SelectionRect,
+  quad: SelectionQuad
+): SelectionQuadTransform | null => {
+  if (source.width <= 0 || source.height <= 0 || !selectionQuadIsConvex(quad)) return null
+  const sourcePoints = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
+  const destinationPoints = selectionQuadCorners(quad)
+  const forward = selectionQuadHomography(sourcePoints, destinationPoints)
+  const inverse = selectionQuadHomography(destinationPoints, sourcePoints)
+  return forward && inverse
+    ? {
+        forward,
+        inverse,
+        quad: {
+          nw: { ...quad.nw },
+          ne: { ...quad.ne },
+          se: { ...quad.se },
+          sw: { ...quad.sw }
+        }
+      }
+    : null
+}
+
+/** Builds a unit-square transform for callers that do not have a source rect. */
+export const selectionQuadTransform = (quad: SelectionQuad): SelectionQuadTransform | null =>
+  selectionQuadTransformFor({ x: 0, y: 0, width: 1, height: 1 }, quad)
+
+export const selectionQuadPoint = (
+  quadOrTransform: SelectionQuad | SelectionQuadTransform,
+  normalizedX: number,
+  normalizedY: number,
+  transform?: SelectionQuadTransform | null
+): { x: number; y: number } | null => {
+  const resolved = 'forward' in quadOrTransform ? quadOrTransform : transform
+  if (resolved) return applySelectionQuadHomography(resolved.forward, normalizedX, normalizedY)
+  if ('forward' in quadOrTransform) return null
+  const generated = selectionQuadTransform(quadOrTransform)
+  return generated ? applySelectionQuadHomography(generated.forward, normalizedX, normalizedY) : null
+}
+
+export const selectionQuadSourcePoint = (
+  transform: SelectionQuadTransform,
+  point: { x: number; y: number }
+): { x: number; y: number } | null => applySelectionQuadHomography(transform.inverse, point.x, point.y)
+
+export const inverseSelectionQuadPoint = (
+  quadOrTransform: SelectionQuad | SelectionQuadTransform,
+  point: { x: number; y: number }
+): { x: number; y: number } | null => {
+  const transform = 'inverse' in quadOrTransform ? quadOrTransform : selectionQuadTransform(quadOrTransform)
+  return transform ? selectionQuadSourcePoint(transform, point) : null
+}
+
+export const selectionQuadFromRect = (
+  target: SelectionRect,
+  angle = 0,
+  shear?: SelectionShearTransform
+): SelectionQuad => {
+  const points = transformedSelectionControlPoints(target, angle, shear)
+  return { nw: points[0], ne: points[2], se: points[7], sw: points[5] }
+}
+
+export const selectionQuadBounds = (quad: SelectionQuad): SelectionRect => {
+  const points = selectionQuadCorners(quad)
+  const x = Math.floor(Math.min(...points.map((point) => point.x)))
+  const y = Math.floor(Math.min(...points.map((point) => point.y)))
+  const right = Math.ceil(Math.max(...points.map((point) => point.x)))
+  const bottom = Math.ceil(Math.max(...points.map((point) => point.y)))
+  return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) }
+}
+
+// Short aliases keep the geometry helpers convenient for canvas interaction
+// code while the prefixed names remain the canonical public API.
+export const quadFromRect = selectionQuadFromRect
+export const quadBounds = selectionQuadBounds
+export const quadPoint = selectionQuadPoint
+export const inverseQuadPoint = inverseSelectionQuadPoint
+
+/** Rasterizes a masked selection into an arbitrary convex four-corner frame. */
+export const transformSelectionMaskQuad = (
+  source: SelectionMask,
+  quad: SelectionQuad,
+  canvasWidth: number,
+  canvasHeight: number,
+  clipToCanvas = true,
+  sourceQuad?: SelectionQuad
+): SelectionMask | null => {
+  const transform = selectionQuadTransformFor(source, quad)
+  const sourceTransform = sourceQuad ? selectionQuadTransformFor(source, sourceQuad) : null
+  if (!transform || (sourceQuad && !sourceTransform)) return null
+  const bounds = selectionQuadBounds(quad)
+  const x = clipToCanvas ? Math.max(0, bounds.x) : bounds.x
+  const y = clipToCanvas ? Math.max(0, bounds.y) : bounds.y
+  const right = clipToCanvas ? Math.min(canvasWidth, bounds.x + bounds.width) : bounds.x + bounds.width
+  const bottom = clipToCanvas ? Math.min(canvasHeight, bounds.y + bounds.height) : bounds.y + bounds.height
+  if (right <= x || bottom <= y) return null
+  const width = right - x
+  const height = bottom - y
+  const mask = new Uint8Array(width * height)
+  let selected = 0
+  for (let destinationY = y; destinationY < bottom; destinationY += 1) {
+    for (let destinationX = x; destinationX < right; destinationX += 1) {
+      const normalized = selectionQuadSourcePoint(transform, { x: destinationX + 0.5, y: destinationY + 0.5 })
+      if (!normalized || normalized.x < -1e-9 || normalized.x > 1 + 1e-9 || normalized.y < -1e-9 || normalized.y > 1 + 1e-9) continue
+      const sourcePoint = sourceTransform ? selectionQuadPoint(sourceTransform, normalized.x, normalized.y) : null
+      const sourceX = sourcePoint
+        ? Math.floor(sourcePoint.x)
+        : source.x + Math.min(source.width - 1, Math.max(0, Math.floor(normalized.x * source.width)))
+      const sourceY = sourcePoint
+        ? Math.floor(sourcePoint.y)
+        : source.y + Math.min(source.height - 1, Math.max(0, Math.floor(normalized.y * source.height)))
+      if (sourceX < source.x || sourceY < source.y || sourceX >= source.x + source.width || sourceY >= source.y + source.height) continue
+      if (!selectionContains(source, sourceX, sourceY)) continue
+      mask[(destinationY - y) * width + destinationX - x] = 1
+      selected += 1
+    }
+  }
+  return trimSelectionMaskBounds(x, y, width, height, mask, selected)
+}
+
 export const transformedSelectionCenter = (
   target: SelectionRect,
   angle = 0,
@@ -645,7 +856,8 @@ export const transformedSelectionSourcePoint = (
   x: number,
   y: number,
   angle = 0,
-  shear?: SelectionShearTransform
+  shear?: SelectionShearTransform,
+  pixelCenteredSampling = false
 ): { x: number; y: number } | null => {
   if (target.width < 1 || target.height < 1) return null
   const radians = angle * Math.PI / 180
@@ -679,8 +891,9 @@ export const transformedSelectionSourcePoint = (
   }
   const mappedX = target.flipHorizontal ? axisMapped(normalizedX, target.x, target.width, target.flipOriginX) : normalizedX
   const mappedY = target.flipVertical ? axisMapped(normalizedY, target.y, target.height, target.flipOriginY) : normalizedY
-  const sourceX = Math.min(source.x + source.width - 1, Math.max(source.x, source.x + Math.floor(mappedX * source.width)))
-  const sourceY = Math.min(source.y + source.height - 1, Math.max(source.y, source.y + Math.floor(mappedY * source.height)))
+  const centerOffset = pixelCenteredSampling ? 0.5 : 0
+  const sourceX = Math.min(source.x + source.width - 1, Math.max(source.x, source.x + Math.floor(mappedX * source.width - centerOffset)))
+  const sourceY = Math.min(source.y + source.height - 1, Math.max(source.y, source.y + Math.floor(mappedY * source.height - centerOffset)))
   return selectionContains(source, sourceX, sourceY) ? { x: sourceX, y: sourceY } : null
 }
 
@@ -868,6 +1081,17 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
   }
   const target = packedAt(pixelIndex(document.width, startX, startY))
   const matches = (index: number): boolean => packedColorMatchesTolerance(packedAt(index), target, normalizedTolerance)
+  const layerCoversCanvas = layer.offsetX <= 0
+    && layer.offsetY <= 0
+    && layer.offsetX + layer.width >= document.width
+    && layer.offsetY + layer.height >= document.height
+  if (layerCoversCanvas) {
+    const localIndex = (startY - layer.offsetY) * layer.width + startX - layer.offsetX
+    const rawTarget = layer.format === 'rgba' ? target : layer.pixels[localIndex]
+    if (rasterLayerPackedValueIsUniform(layer, rawTarget)) {
+      return { x: 0, y: 0, width: document.width, height: document.height }
+    }
+  }
   const total = document.width * document.height
   const selected = new Uint8Array(total)
   let minX = document.width; let maxX = -1; let minY = document.height; let maxY = -1
@@ -894,28 +1118,190 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
   return { x: minX, y: minY, width, height, mask }
 }
 
-export const lassoSelection = (document: SpriteDocument, path: Array<{ x: number; y: number }>): SelectionMask | null => {
-  if (path.length < 3) return null
-  const minX = Math.max(0, Math.min(...path.map((point) => point.x)))
-  const maxX = Math.min(document.width - 1, Math.max(...path.map((point) => point.x)))
-  const minY = Math.max(0, Math.min(...path.map((point) => point.y)))
-  const maxY = Math.min(document.height - 1, Math.max(...path.map((point) => point.y)))
-  const points: Array<{ x: number; y: number }> = []
-  for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
-    let inside = false
-    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
-      const a = path[i]; const b = path[j]
-      const cross = (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x)
-      const onBoundary = cross === 0
-        && x >= Math.min(a.x, b.x) && x <= Math.max(a.x, b.x)
-        && y >= Math.min(a.y, b.y) && y <= Math.max(a.y, b.y)
-      if (onBoundary) { inside = true; break }
-      if (((a.y > y) !== (b.y > y)) && x < ((b.x - a.x) * (y - a.y)) / ((b.y - a.y) || 1) + a.x) inside = !inside
-    }
-    if (inside) points.push({ x, y })
-  }
-  return maskFromPoints(points)
+interface LassoScanlineEdge {
+  yMin: number
+  yMax: number
+  xAtMinY: number
+  slope: number
 }
+
+type LassoBoundaryVisitor = (select: (x: number, y: number) => void) => void
+
+/**
+ * Rasterizes a lasso with an active-edge scanline. The previous implementation
+ * tested every pixel against every path point, which became quadratic in the
+ * number of vertices for large polygon tools. Boundary pixels are written
+ * separately so the existing closed-edge semantics remain intact.
+ */
+const rasterizeLassoSelection = (
+  document: SpriteDocument,
+  path: readonly { x: number; y: number }[],
+  visitBoundary?: LassoBoundaryVisitor,
+  clip?: SelectionRect,
+  extraPoint?: { x: number; y: number }
+): SelectionMask | null => {
+  const pathLength = path.length + (extraPoint ? 1 : 0)
+  if (pathLength < 3) return null
+  const pointAt = (index: number): { x: number; y: number } => index < path.length ? path[index] : extraPoint!
+
+  let pathMinX = Number.POSITIVE_INFINITY
+  let pathMaxX = Number.NEGATIVE_INFINITY
+  let pathMinY = Number.POSITIVE_INFINITY
+  let pathMaxY = Number.NEGATIVE_INFINITY
+  for (let index = 0; index < pathLength; index += 1) {
+    const point = pointAt(index)
+    pathMinX = Math.min(pathMinX, point.x)
+    pathMaxX = Math.max(pathMaxX, point.x)
+    pathMinY = Math.min(pathMinY, point.y)
+    pathMaxY = Math.max(pathMaxY, point.y)
+  }
+
+  const clipMinX = clip ? Math.ceil(clip.x) : 0
+  const clipMaxX = clip ? Math.floor(clip.x + clip.width - 1) : document.width - 1
+  const clipMinY = clip ? Math.ceil(clip.y) : 0
+  const clipMaxY = clip ? Math.floor(clip.y + clip.height - 1) : document.height - 1
+  const minX = Math.max(0, pathMinX, clipMinX)
+  const maxX = Math.min(document.width - 1, pathMaxX, clipMaxX)
+  const minY = Math.max(0, pathMinY, clipMinY)
+  const maxY = Math.min(document.height - 1, pathMaxY, clipMaxY)
+  if (maxX < minX || maxY < minY) return null
+
+  const width = maxX - minX + 1
+  const height = maxY - minY + 1
+  const mask = new Uint8Array(width * height)
+  let hasSelected = false
+  let selectedMinX = document.width
+  let selectedMaxX = -1
+  let selectedMinY = document.height
+  let selectedMaxY = -1
+  const select = (x: number, y: number): void => {
+    if (x < minX || y < minY || x > maxX || y > maxY) return
+    const offset = (y - minY) * width + x - minX
+    if (mask[offset] === 1) return
+    mask[offset] = 1
+    hasSelected = true
+    if (x < selectedMinX) selectedMinX = x
+    if (x > selectedMaxX) selectedMaxX = x
+    if (y < selectedMinY) selectedMinY = y
+    if (y > selectedMaxY) selectedMaxY = y
+  }
+  const fillRange = (left: number, right: number, y: number): void => {
+    if (y < minY || y > maxY) return
+    const clippedLeft = Math.max(minX, left)
+    const clippedRight = Math.min(maxX, right)
+    if (clippedRight < clippedLeft) return
+    const rowOffset = (y - minY) * width
+    mask.fill(1, rowOffset + clippedLeft - minX, rowOffset + clippedRight - minX + 1)
+    hasSelected = true
+    if (clippedLeft < selectedMinX) selectedMinX = clippedLeft
+    if (clippedRight > selectedMaxX) selectedMaxX = clippedRight
+    if (y < selectedMinY) selectedMinY = y
+    if (y > selectedMaxY) selectedMaxY = y
+  }
+
+  const starts = new Map<number, LassoScanlineEdge[]>()
+  const edges: LassoScanlineEdge[] = []
+  for (let index = 0; index < pathLength; index += 1) {
+    const from = pointAt(index)
+    const to = pointAt((index + 1) % pathLength)
+    select(from.x, from.y)
+    if (from.y === to.y) {
+      const left = Math.ceil(Math.min(from.x, to.x))
+      const right = Math.floor(Math.max(from.x, to.x))
+      fillRange(left, right, from.y)
+      continue
+    }
+    const lower = from.y < to.y ? from : to
+    const upper = from.y < to.y ? to : from
+    const edge: LassoScanlineEdge = {
+      yMin: lower.y,
+      yMax: upper.y,
+      xAtMinY: lower.x,
+      slope: (upper.x - lower.x) / (upper.y - lower.y)
+    }
+    edges.push(edge)
+    const bucket = starts.get(edge.yMin)
+    if (bucket) bucket.push(edge)
+    else starts.set(edge.yMin, [edge])
+  }
+  visitBoundary?.(select)
+
+  const active: LassoScanlineEdge[] = edges.filter((edge) => edge.yMin < minY && edge.yMax > minY)
+  const intersections: number[] = []
+  for (let y = minY; y <= maxY; y += 1) {
+    const bucket = starts.get(y)
+    if (bucket) active.push(...bucket)
+    let activeLength = 0
+    for (const edge of active) if (edge.yMax > y) active[activeLength++] = edge
+    active.length = activeLength
+    intersections.length = 0
+    for (const edge of active) {
+      const x = edge.xAtMinY + (y - edge.yMin) * edge.slope
+      intersections.push(x)
+      const roundedX = Math.round(x)
+      if (Math.abs(x - roundedX) < 1e-9) select(roundedX, y)
+    }
+    intersections.sort((left, right) => left - right)
+    for (let index = 0; index + 1 < intersections.length; index += 2) {
+      const left = Math.max(minX, Math.floor(intersections[index]) + 1)
+      const right = Math.min(maxX, Math.ceil(intersections[index + 1]) - 1)
+      fillRange(left, right, y)
+    }
+  }
+
+  if (!hasSelected) return null
+  const trimmedWidth = selectedMaxX - selectedMinX + 1
+  const trimmedHeight = selectedMaxY - selectedMinY + 1
+  if (selectedMinX === minX && selectedMaxX === maxX && selectedMinY === minY && selectedMaxY === maxY) return { x: minX, y: minY, width, height, mask }
+  const trimmed = new Uint8Array(trimmedWidth * trimmedHeight)
+  for (let y = selectedMinY; y <= selectedMaxY; y += 1) {
+    const sourceStart = (y - minY) * width + selectedMinX - minX
+    const targetStart = (y - selectedMinY) * trimmedWidth
+    trimmed.set(mask.subarray(sourceStart, sourceStart + trimmedWidth), targetStart)
+  }
+  return { x: selectedMinX, y: selectedMinY, width: trimmedWidth, height: trimmedHeight, mask: trimmed }
+}
+
+export const lassoSelection = (document: SpriteDocument, path: readonly { x: number; y: number }[]): SelectionMask | null =>
+  rasterizeLassoSelection(document, path)
+
+const visitPolygonBoundary = (
+  vertices: readonly { x: number; y: number }[],
+  extraPoint: { x: number; y: number } | undefined,
+  balanced: boolean,
+  select: (x: number, y: number) => void
+): void => {
+  const pathLength = vertices.length + (extraPoint ? 1 : 0)
+  const pointAt = (index: number): { x: number; y: number } => index < vertices.length ? vertices[index] : extraPoint!
+  for (let index = 0; index < pathLength; index += 1) {
+    const from = pointAt(index)
+    const to = pointAt((index + 1) % pathLength)
+    if (balanced) {
+      for (const point of balancedStairLinePoints(from, to)) select(point.x, point.y)
+    } else forEachRasterLinePoint(from, to, select)
+  }
+}
+
+export const polygonSelection = (
+  document: SpriteDocument,
+  vertices: readonly { x: number; y: number }[],
+  balanced = false
+): SelectionMask | null => rasterizeLassoSelection(document, vertices, (select) => visitPolygonBoundary(vertices, undefined, balanced, select))
+
+/** Rasterizes a live polygon without allocating a new vertices array per pointer move. */
+export const polygonSelectionPreview = (
+  document: SpriteDocument,
+  vertices: readonly { x: number; y: number }[],
+  pointer: { x: number; y: number },
+  balanced = false,
+  clip?: SelectionRect
+): SelectionMask | null => rasterizeLassoSelection(
+  document,
+  vertices,
+  (select) => visitPolygonBoundary(vertices, pointer, balanced, select),
+  clip,
+  pointer
+)
 
 export const shiftSelection = (selection: SelectionMask | null, offsetX: number, offsetY: number, width: number, height: number): SelectionMask | null => {
   if (!selection) return null

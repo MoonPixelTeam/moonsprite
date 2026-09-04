@@ -1,53 +1,23 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Check, ChevronDown, ExternalLink, GitFork, Languages, Menu, Monitor, Play, ShieldCheck, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ExternalLink, Languages, Menu, Moon, Sun, X } from 'lucide-react'
 import { SITE_CONFIG } from './config'
 import { copy, type Language } from './content'
+import { navigate, useRoute, type Route } from './router'
+import { SteamButton, scrollToId } from './ui'
+import { Home } from './pages/Home'
+import { DocsPage } from './pages/Docs'
+import { FaqPage } from './pages/Faq'
+import { BlogPage } from './pages/Blog'
 
-type ProductImageName = 'workspace-v3' | 'timeline-v3' | 'luminance-v3' | 'export'
+type SiteTheme = 'dark' | 'light'
 
-const imageDimensions: Record<ProductImageName, { width: number; height: number }> = {
-  'workspace-v3': { width: 2560, height: 1392 },
-  'timeline-v3': { width: 2560, height: 1392 },
-  'luminance-v3': { width: 2560, height: 1392 },
-  export: { width: 440, height: 621 },
-}
-
-function ProductImage({ name, alt, priority = false }: { name: ProductImageName; alt: string; priority?: boolean }) {
-  const dimensions = imageDimensions[name]
-  const wide = name !== 'export'
-  return <img
-    src={`/assets/product/${name}-${wide ? 2560 : 1600}.webp`}
-    srcSet={wide ? `/assets/product/${name}-1280.webp 1280w, /assets/product/${name}-2560.webp 2560w` : `/assets/product/${name}-960.webp 960w, /assets/product/${name}-1600.webp 1600w`}
-    sizes={wide ? '(max-width: 760px) 94vw, 1180px' : '(max-width: 760px) 80vw, 440px'}
-    width={dimensions.width}
-    height={dimensions.height}
-    loading={priority ? 'eager' : 'lazy'}
-    fetchPriority={priority ? 'high' : 'auto'}
-    decoding="async"
-    alt={alt}
-  />
-}
-
-function SteamButton({ label, soon, compact = false }: { label: string; soon: string; compact?: boolean }) {
-  if (!SITE_CONFIG.steamUrl) return <span className={`button primary disabled ${compact ? 'compact' : ''}`} aria-disabled="true"><Play aria-hidden="true" />{soon}</span>
-  return <a className={`button primary ${compact ? 'compact' : ''}`} href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer"><Play aria-hidden="true" />{label}<ExternalLink aria-hidden="true" /></a>
-}
-
-function useReveal() {
-  useEffect(() => {
-    const elements = [...document.querySelectorAll<HTMLElement>('[data-reveal]')]
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      elements.forEach((element) => element.dataset.revealed = 'true')
-      return
-    }
-    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
-      if (!entry.isIntersecting) return
-      ;(entry.target as HTMLElement).dataset.revealed = 'true'
-      observer.unobserve(entry.target)
-    }), { threshold: 0.08 })
-    elements.forEach((element) => observer.observe(element))
-    return () => observer.disconnect()
-  }, [])
+function FooterLink({ linkKey, label }: { linkKey: string; label: string }) {
+  const href = (SITE_CONFIG.footerLinks as Record<string, string>)[linkKey]
+  if (href) {
+    const external = href.startsWith('http')
+    return <li><a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{label}{external && <ExternalLink aria-hidden="true" />}</a></li>
+  }
+  return <li><span className="pending" aria-disabled="true">{label}</span></li>
 }
 
 export function App() {
@@ -57,18 +27,53 @@ export function App() {
     return navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
   }
   const [language, setLanguage] = useState<Language>(initialLanguage)
+  const [theme, setTheme] = useState<SiteTheme>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
+  const langMenuRef = useRef<HTMLDivElement>(null)
+  const route = useRoute()
   const t = copy[language]
-  useReveal()
+
+  useEffect(() => {
+    if (!langOpen) return
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(event.target as Node)) setLangOpen(false)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [langOpen])
 
   useEffect(() => {
     localStorage.setItem('moonsprite-language', language)
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
-    document.title = t.meta.title
+  }, [language])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('moonsprite-site-theme', theme)
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#d8dfe7' : '#090a0d')
+  }, [theme])
+
+  useEffect(() => {
+    const titles: Record<Route['page'], string> = {
+      home: t.meta.title,
+      docs: `${t.docsPage.title} - MoonSprite`,
+      faq: `${t.faqPage.title} - MoonSprite`,
+      blog: `${t.blogPage.title} - MoonSprite`,
+    }
+    document.title = titles[route.page]
     document.querySelector('meta[name="description"]')?.setAttribute('content', t.meta.description)
     document.querySelector('meta[property="og:title"]')?.setAttribute('content', t.meta.title)
     document.querySelector('meta[property="og:description"]')?.setAttribute('content', t.meta.description)
-  }, [language, t.meta])
+  }, [route.page, t])
+
+  useEffect(() => {
+    if (route.page === 'blog' && route.subId) {
+      const timer = setTimeout(() => scrollToId(`post-${route.subId}`), 90)
+      return () => clearTimeout(timer)
+    }
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [route.page, route.subId])
 
   useEffect(() => {
     document.body.dataset.menuOpen = String(menuOpen)
@@ -76,76 +81,76 @@ export function App() {
   }, [menuOpen])
 
   const closeMenu = () => setMenuOpen(false)
-  const featureImages: ProductImageName[] = ['workspace-v3', 'timeline-v3', 'luminance-v3', 'export']
+  const goSection = (id: string) => {
+    closeMenu()
+    if (route.page === 'home') {
+      scrollToId(id)
+      return
+    }
+    navigate('#/')
+    setTimeout(() => scrollToId(id), 90)
+  }
+  const goHome = () => {
+    closeMenu()
+    navigate('#/')
+  }
+  const columns = t.footer.columns
+
+  const navLinks = <>
+    <a href="#/" onClick={(event) => { event.preventDefault(); goSection('work') }}>{t.nav.work}</a>
+    <a href="#/" onClick={(event) => { event.preventDefault(); goSection('features') }}>{t.nav.features}</a>
+    <a href="#/docs" onClick={closeMenu} aria-current={route.page === 'docs' ? 'page' : undefined}>{t.nav.docs}</a>
+    <a href="#/faq" onClick={closeMenu} aria-current={route.page === 'faq' ? 'page' : undefined}>{t.nav.faq}</a>
+    <a href="#/blog" onClick={closeMenu} aria-current={route.page === 'blog' ? 'page' : undefined}>{t.nav.blog}</a>
+    <a href={SITE_CONFIG.communityUrl} target="_blank" rel="noopener noreferrer">{t.nav.community}</a>
+    <a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
+  </>
 
   return <div className="site-shell">
     <a className="skip-link" href="#main">Skip to content</a>
-    <header className="site-header">
-      <div className="header-inner">
-        <a className="brand" href="#top" onClick={closeMenu} aria-label="MoonSprite"><img src="/assets/moonsprite-logo.svg" width="28" height="28" alt="" /><span>MoonSprite</span><small>DEV.6</small></a>
-        <nav className={menuOpen ? 'site-nav open' : 'site-nav'} aria-label="Primary navigation">
-          <a href="#work" onClick={closeMenu}>{t.nav.work}</a>
-          <a href="#features" onClick={closeMenu}>{t.nav.features}</a>
-          <a href="#faq" onClick={closeMenu}>{t.nav.faq}</a>
-          <a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
-          <button className="language-button" type="button" onClick={() => setLanguage((value) => value === 'zh' ? 'en' : 'zh')} aria-label={language === 'zh' ? 'Switch to English' : '切换到中文'}><Languages aria-hidden="true" />{language === 'zh' ? 'EN' : '中文'}</button>
+
+    <header className="app-chrome">
+      <div className="titlebar">
+        <a className="titlebar-app" href="#/" onClick={(event) => { event.preventDefault(); goHome() }}>
+          <img src="/assets/moonsprite-logo.svg" width="16" height="16" alt="" />
+          <span>MoonSprite</span>
+          <small>— {t.chrome.docLabel}</small>
+        </a>
+        <div className="titlebar-controls" aria-hidden="true"><i>—</i><i>▢</i><i className="close">✕</i></div>
+      </div>
+      <div className="menubar">
+        <nav className={menuOpen ? 'menubar-tabs open' : 'menubar-tabs'} aria-label="Primary navigation">{navLinks}</nav>
+        <div className="menubar-utils">
+          <button className="icon-button" type="button" onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')} aria-label={theme === 'dark' ? t.common.themeToLight : t.common.themeToDark}>{theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button>
+          <div className="lang-menu" ref={langMenuRef}>
+            <button className="language-button" type="button" onClick={() => setLangOpen((value) => !value)} aria-haspopup="listbox" aria-expanded={langOpen}><Languages aria-hidden="true" />{language === 'zh' ? '中文' : 'EN'}</button>
+            {langOpen && <ul className="lang-options" role="listbox" aria-label="Language">
+              <li><button type="button" role="option" aria-selected={language === 'zh'} onClick={() => { setLanguage('zh'); setLangOpen(false) }}>中文</button></li>
+              <li><button type="button" role="option" aria-selected={language === 'en'} onClick={() => { setLanguage('en'); setLangOpen(false) }}>English</button></li>
+            </ul>}
+          </div>
           <SteamButton label={t.common.steam} soon={t.common.steamSoon} compact />
-        </nav>
-        <button className="menu-button" type="button" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label={menuOpen ? t.nav.close : t.nav.menu}>{menuOpen ? <X /> : <Menu />}</button>
+          <button className="menu-button" type="button" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label={menuOpen ? t.nav.close : t.nav.menu}>{menuOpen ? <X /> : <Menu />}</button>
+        </div>
       </div>
     </header>
 
-    <main id="main">
-      <section className="hero" id="top">
-        <div className="hero-copy">
-          <div className="hero-brand"><img src="/assets/moonsprite-logo.svg" width="70" height="70" alt="" /><h1>{t.hero.title}</h1></div>
-          <p className="hero-subtitle">{t.hero.subtitle}</p>
-          <p className="hero-description">{t.hero.description}</p>
-          <div className="hero-actions"><SteamButton label={t.common.steam} soon={t.common.steamSoon} /><a className="button secondary" href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer"><GitFork aria-hidden="true" />{t.common.github}</a></div>
-          <div className="hero-meta"><span><Monitor aria-hidden="true" />{t.hero.platform}</span><span><ShieldCheck aria-hidden="true" />{t.hero.license}</span><span className="dev-state">{t.common.dev}</span></div>
-        </div>
-        <div className="hero-product"><ProductImage name="workspace-v3" alt={t.hero.imageAlt} priority /></div>
-      </section>
+    {route.page === 'home' && <Home t={t} />}
+    {route.page === 'docs' && <main id="main"><DocsPage t={t} subId={route.subId} /></main>}
+    {route.page === 'faq' && <main id="main"><FaqPage t={t} subId={route.subId} /></main>}
+    {route.page === 'blog' && <main id="main"><BlogPage t={t} subId={route.subId} /></main>}
 
-      <section className="showcase" id="work">
-        <div className="content-wrap" data-reveal>
-          <div className="section-title"><span>{t.work.eyebrow}</span><h2>{t.work.title}</h2><p>{t.work.description}</p></div>
-          <div className="showcase-grid">
-            {[1, 2, 3].map((number, index) => <figure key={number} className={`showcase-item item-${number}`}>
-              <img src={`/assets/showcase/showcase-${number}-1536.webp`} srcSet={`/assets/showcase/showcase-${number}-768.webp 768w, /assets/showcase/showcase-${number}-1536.webp 1536w`} sizes={number === 1 ? '(max-width: 760px) 94vw, 760px' : '(max-width: 760px) 94vw, 470px'} width="1536" height="1024" loading="lazy" decoding="async" alt={t.work.itemAlt[index]} />
-            </figure>)}
-          </div>
-        </div>
-      </section>
-
-      <section className="trust-strip">
-        <div className="content-wrap" data-reveal>{t.facts.items.map((item, index) => <article key={item.title}><span>0{index + 1}</span><div><h3>{item.title}</h3><p>{item.body}</p></div></article>)}</div>
-      </section>
-
-      <section className="features" id="features">
-        <div className="content-wrap">
-          <div className="section-title centered" data-reveal><span>{t.features.eyebrow}</span><h2>{t.features.title}</h2></div>
-          <div className="feature-list">
-            {t.features.items.map((item, index) => <article className={`feature-row row-${index + 1}`} key={item.index} data-reveal>
-              <div className="feature-copy"><span className="feature-number">{item.index}</span><h3>{item.title}</h3><p>{item.body}</p><ul>{item.tags.map((tag) => <li key={tag}><Check aria-hidden="true" />{tag}</li>)}</ul></div>
-              <div className={`feature-media media-${featureImages[index]}`}><ProductImage name={featureImages[index]} alt={item.alt} /></div>
-            </article>)}
-          </div>
-        </div>
-      </section>
-
-      <section className="faq" id="faq">
-        <div className="content-wrap faq-layout">
-          <div className="section-title" data-reveal><span>{t.faq.eyebrow}</span><h2>{t.faq.title}</h2></div>
-          <div className="faq-list" data-reveal>{t.faq.items.map((item) => <details key={item.q}><summary><strong>{item.q}</strong><ChevronDown aria-hidden="true" /></summary><p>{item.a}</p></details>)}</div>
-        </div>
-      </section>
-
-      <section className="final-cta">
-        <div className="content-wrap" data-reveal><img src="/assets/moonsprite-logo.svg" width="42" height="42" alt="" /><div><span>{t.cta.eyebrow}</span><h2>{t.cta.title}</h2><p>{t.cta.body}</p></div><div className="final-actions"><SteamButton label={t.common.steam} soon={t.common.steamSoon} /><a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">{t.common.github}<ArrowRight aria-hidden="true" /></a></div></div>
-      </section>
-    </main>
-
-    <footer className="site-footer"><div className="content-wrap"><div className="footer-brand"><img src="/assets/moonsprite-logo.svg" width="28" height="28" alt="" /><strong>MoonSprite</strong></div><p>{t.footer.notice}</p><nav><a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">{t.footer.source}</a><a href={`${SITE_CONFIG.githubUrl}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">{t.footer.license}</a></nav></div></footer>
+    <footer className="site-footer">
+      <div className="content-wrap footer-cols">
+        <nav className="footer-col" aria-label={columns.community.title}><h3>{columns.community.title}</h3><ul>{columns.community.items.map((item) => <FooterLink key={item.key} linkKey={item.key} label={item.label} />)}</ul></nav>
+        <nav className="footer-col" aria-label={columns.follow.title}><h3>{columns.follow.title}</h3><ul>{columns.follow.items.map((item) => <FooterLink key={item.key} linkKey={item.key} label={item.label} />)}</ul></nav>
+        <nav className="footer-col" aria-label={columns.docs.title}><h3>{columns.docs.title}</h3><ul>{columns.docs.items.map((item) => <FooterLink key={item.key} linkKey={item.key} label={item.label} />)}</ul></nav>
+        <nav className="footer-col" aria-label={columns.more.title}><h3>{columns.more.title}</h3><ul>{columns.more.items.map((item) => <FooterLink key={item.key} linkKey={item.key} label={item.label} />)}</ul></nav>
+      </div>
+      <div className="content-wrap footer-bottom">
+        <div className="footer-logo"><img src="/assets/moonsprite-logo.svg" width="40" height="40" alt="" /><strong>MoonSprite</strong></div>
+        <p>{t.footer.copyright}</p>
+      </div>
+    </footer>
   </div>
 }

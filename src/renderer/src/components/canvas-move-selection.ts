@@ -4,9 +4,11 @@ interface CanvasMoveAnimationCellSelection {
   selectedAnimationCellKeys: readonly string[]
   selectedAnimationFrameIds: readonly string[]
   selectedLayerIds: readonly string[]
+  allFrameIds?: readonly string[]
   currentFrameId: string | null | undefined
   targetLayerId: string
   moveAllSelectedLayers: boolean
+  moveSelectedFramesAcrossLayers?: boolean
 }
 
 interface CanvasMoveLayerSelection {
@@ -33,12 +35,32 @@ export function resolveCanvasMoveAnimationCellKeys({
   selectedAnimationCellKeys,
   selectedAnimationFrameIds,
   selectedLayerIds,
+  allFrameIds,
   currentFrameId,
   targetLayerId,
-  moveAllSelectedLayers
+  moveAllSelectedLayers,
+  moveSelectedFramesAcrossLayers = false
 }: CanvasMoveAnimationCellSelection): string[] {
   if (!currentFrameId) return []
   const targetKey = animationCelKey(targetLayerId, currentFrameId)
+  if (moveSelectedFramesAcrossLayers && selectedAnimationFrameIds.length > 0 && selectedLayerIds.length > 0) {
+    const selectedFrames = new Set(selectedAnimationFrameIds)
+    return selectedLayerIds.flatMap((layerId) => allFrameIds
+      ?.filter((frameId) => selectedFrames.has(frameId))
+      .map((frameId) => animationCelKey(layerId, frameId)) ?? [])
+  }
+  // A multi-layer selection is a document-level selection. Moving it must
+  // affect every animation frame, even though selecting a layer also creates
+  // implicit current-frame cel selections for timeline highlighting.
+  const parsedSelectedKeys = selectedAnimationCellKeys.map(parseAnimationCelKey)
+  const implicitCurrentFrameLayerSelection = selectedAnimationCellKeys.length === selectedLayerIds.length
+    && parsedSelectedKeys.every((parsed) => Boolean(parsed && parsed.frameId === currentFrameId && selectedLayerIds.includes(parsed.layerId)))
+  if (moveAllSelectedLayers
+    && selectedLayerIds.length > 0
+    && (selectedAnimationCellKeys.length === 0 || implicitCurrentFrameLayerSelection)
+    && (allFrameIds?.length ?? 0) > 0) {
+    return selectedLayerIds.flatMap((layerId) => allFrameIds!.map((frameId) => animationCelKey(layerId, frameId)))
+  }
   if (selectedAnimationCellKeys.includes(targetKey)) return [...selectedAnimationCellKeys]
   if (selectedAnimationFrameIds.length > 1) return selectedAnimationFrameIds.map((frameId) => animationCelKey(targetLayerId, frameId))
   if (moveAllSelectedLayers) return selectedLayerIds.map((layerId) => animationCelKey(layerId, currentFrameId))

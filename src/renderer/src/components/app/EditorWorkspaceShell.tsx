@@ -50,6 +50,7 @@ interface EditorWorkspaceShellProps {
   onPanelVisibilityChange: (id: WorkspacePanelId, visible: boolean) => void
   relativeLuminanceInPreview: boolean
   onOpenColorReplacement: () => void
+  onOpenAntiAlias: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
   shortcutFor: (id: ShortcutId) => string
@@ -94,6 +95,7 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
   onPanelVisibilityChange,
   relativeLuminanceInPreview,
   onOpenColorReplacement,
+  onOpenAntiAlias,
   onOpenPreferences,
   onOpenCommandSettings,
   shortcutFor,
@@ -107,7 +109,7 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
     {hasLeftDock && <div className="left-dock-resizer" role="separator" aria-orientation="vertical" aria-label={t('workspaceDock.resizeLeft')} onPointerDown={onLeftDockResize}><span aria-hidden="true" /></div>}
     <section ref={workAreaRef} className={`work-area ${hasBottomDock ? 'has-bottom-layers' : ''}`} style={{ '--bottom-layers-height': `${bottomDockHeight}px` } as CSSProperties}>
       <EditorToolOptions onOpenColorReplacement={onOpenColorReplacement} />
-      <EditorCanvasHost documentPaneLayout={documentPaneLayout} workspaceDocumentId={workspaceDocumentId} paneOnlyDocumentIds={paneOnlyDocumentIds} onDocumentPaneLayoutChange={onDocumentPaneLayoutChange} onDocumentPaneMove={onDocumentPaneMove} onDocumentPaneReturnToTabs={onDocumentPaneReturnToTabs} onDocumentPaneFloat={onDocumentPaneFloat} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
+      <EditorCanvasHost documentPaneLayout={documentPaneLayout} workspaceDocumentId={workspaceDocumentId} paneOnlyDocumentIds={paneOnlyDocumentIds} onDocumentPaneLayoutChange={onDocumentPaneLayoutChange} onDocumentPaneMove={onDocumentPaneMove} onDocumentPaneReturnToTabs={onDocumentPaneReturnToTabs} onDocumentPaneFloat={onDocumentPaneFloat} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
       {hasBottomDock && <div className="bottom-layers-resizer" role="separator" aria-orientation="horizontal" aria-label={t('workspaceDock.resizeBottom')} onPointerDown={onBottomDockResize}><span /></div>}
       {hasBottomDock && <div ref={setBottomDockHost} className="bottom-layers-dock" data-panel-dock-zone="bottom" />}
     </section>

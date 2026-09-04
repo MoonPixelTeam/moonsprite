@@ -16,7 +16,13 @@ if (!options.auditId) throw new Error('用法：pnpm check:performance:accept --
 const auditPath = resolve(PERFORMANCE_ARTIFACT_ROOT, options.auditId, 'audit.json')
 const audit = await readJson(auditPath)
 if (audit.releaseLabel !== currentReleaseLabel()) throw new Error('审计版本与当前发布目标不一致。')
-const sourceFingerprint = performanceSourceFingerprint()
+if (!(audit.releaseAudit === true || audit.allFiles === true) || (audit.scope?.level !== 'P3' && audit.scope?.level !== 'P4')) {
+  throw new Error('只有发布审计或显式 --all 的 P3/P4 结果才能生成发布性能凭证；普通定向审计无需执行 accept。')
+}
+const sourceFingerprint = performanceSourceFingerprint(
+  process.cwd(),
+  audit.releaseAudit || audit.allFiles ? null : audit.files,
+)
 const errors = validateAcceptance(audit, { ...options, sourceFingerprint })
 if (errors.length > 0) throw new Error(errors.join('\n'))
 

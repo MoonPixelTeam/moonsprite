@@ -26,6 +26,38 @@ const color = (value: unknown, fallback: RgbaColor): RgbaColor => {
     : { ...fallback }
 }
 
+const field = (value: unknown): string => value === undefined ? '' : String(value)
+const rawColorSignature = (value: unknown): string => {
+  const source = record(value)
+  return source ? [source.r, source.g, source.b, source.a].map(field).join(',') : ''
+}
+
+/**
+ * Produces a cheap mutation-sensitive key for the normalized style fields.
+ * The compositor uses it on every draw instead of cloning a complete style
+ * tree just to decide whether its cached result is still usable.
+ */
+export const layerStylesSignature = (value: unknown): string => {
+  const source = record(value)
+  if (!source) return ''
+  const stroke = record(source.stroke)
+  const shadow = record(source.shadow)
+  const innerGlow = record(source.innerGlow)
+  const colorOverlay = record(source.colorOverlay)
+  const gradientOverlay = record(source.gradientOverlay)
+  const directions = record(stroke?.directions)
+  return [
+    source.enabled,
+    stroke?.enabled, rawColorSignature(stroke?.color), stroke?.size, stroke?.position, stroke?.kernel,
+    directions?.nw, directions?.n, directions?.ne, directions?.w, directions?.e, directions?.sw, directions?.s, directions?.se,
+    stroke?.smartHue, stroke?.smartHueDarkness,
+    shadow?.enabled, rawColorSignature(shadow?.color), shadow?.offsetX, shadow?.offsetY, shadow?.blur, shadow?.smartShadow, shadow?.smartShadowDarkness,
+    innerGlow?.enabled, rawColorSignature(innerGlow?.color), innerGlow?.size,
+    colorOverlay?.enabled, rawColorSignature(colorOverlay?.color),
+    gradientOverlay?.enabled, rawColorSignature(gradientOverlay?.from), rawColorSignature(gradientOverlay?.to), gradientOverlay?.angle, gradientOverlay?.dither
+  ].map(field).join('|')
+}
+
 export function createDefaultLayerStyles(): LayerStyles {
   return {
     enabled: true,
@@ -113,6 +145,7 @@ export const hasEnabledLayerStyles = (styles: LayerStyles | undefined): boolean 
 
 export const layerStylesEqual = (left: LayerStyles | undefined, right: LayerStyles | undefined): boolean => {
   if (left === right) return true
+  if (layerStylesSignature(left) === layerStylesSignature(right)) return true
   const a = normalizeLayerStyles(left)
   const b = normalizeLayerStyles(right)
   if (!a || !b) return a === b
@@ -293,6 +326,155 @@ const innerGlowCoverage = (read: LayerStyleSourceReader, x: number, y: number, s
   return 0
 }
 
+export const layerStyleShadowCoverage = shadowCoverage
+export const layerStyleInnerGlowCoverage = innerGlowCoverage
+
+export type LayerStyleBinaryStrokeMetric = 'square' | 'horizontal' | 'vertical' | 'cardinal'
+
+/**
+ * Returns the exact distance metric for the common binary stroke presets.
+ * Custom direction masks intentionally use the pixel-accurate fallback.
+ */
+export const layerStyleBinaryStrokeMetric = (stroke: LayerStyles['stroke']): LayerStyleBinaryStrokeMetric | null => {
+  if (stroke.smartHue) return null
+  const directions = stroke.directions
+  const cardinal = !directions.nw && !directions.ne && !directions.sw && !directions.se
+    && directions.n && directions.w && directions.e && directions.s
+  const square = OUTLINE_DIRECTIONS.every((direction) => directions[direction])
+  const horizontal = directions.w && directions.e
+    && !directions.nw && !directions.n && !directions.ne
+    && !directions.sw && !directions.s && !directions.se
+  const vertical = directions.n && directions.s
+    && !directions.nw && !directions.ne && !directions.w
+    && !directions.e && !directions.sw && !directions.se
+  if (stroke.kernel === 'square' && square) return 'square'
+  if (stroke.kernel === 'horizontal' && horizontal) return 'horizontal'
+  if (stroke.kernel === 'vertical' && vertical) return 'vertical'
+  if (stroke.kernel === 'round' && cardinal) return 'cardinal'
+  return null
+}
+
+const blendNormalColors = (backdrop: RgbaColor, source: RgbaColor): RgbaColor => {
+  if (backdrop.a === 0) return source
+  if (source.a === 0) return backdrop
+  if (source.a === 255) return source
+  const topAlpha = source.a / 255
+  const bottomAlpha = backdrop.a / 255
+  const outputAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
+  return outputAlpha <= 0
+    ? TRANSPARENT
+    : {
+        r: Math.round((source.r * topAlpha + backdrop.r * bottomAlpha * (1 - topAlpha)) / outputAlpha),
+        g: Math.round((source.g * topAlpha + backdrop.g * bottomAlpha * (1 - topAlpha)) / outputAlpha),
+        b: Math.round((source.b * topAlpha + backdrop.b * bottomAlpha * (1 - topAlpha)) / outputAlpha),
+        a: Math.round(outputAlpha * 255)
+      }
+}
+
+const packedByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))
+const packedRgba = (r: number, g: number, b: number, a: number): number =>
+  (packedByte(r) | (packedByte(g) << 8) | (packedByte(b) << 16) | (packedByte(a) << 24)) >>> 0
+
+const blendPackedNormal = (backdropPacked: number, sourcePacked: number): number => {
+  const backdropA = backdropPacked >>> 24 & 0xff
+  const sourceA = sourcePacked >>> 24 & 0xff
+  if (backdropA === 0) return sourcePacked >>> 0
+  if (sourceA === 0) return backdropPacked >>> 0
+  if (sourceA === 255) return sourcePacked >>> 0
+  const topAlpha = sourceA / 255
+  const bottomAlpha = backdropA / 255
+  const outputAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
+  if (outputAlpha <= 0) return 0
+  const sourceR = sourcePacked & 0xff
+  const sourceG = sourcePacked >>> 8 & 0xff
+  const sourceB = sourcePacked >>> 16 & 0xff
+  const backdropR = backdropPacked & 0xff
+  const backdropG = backdropPacked >>> 8 & 0xff
+  const backdropB = backdropPacked >>> 16 & 0xff
+  return packedRgba(
+    (sourceR * topAlpha + backdropR * bottomAlpha * (1 - topAlpha)) / outputAlpha,
+    (sourceG * topAlpha + backdropG * bottomAlpha * (1 - topAlpha)) / outputAlpha,
+    (sourceB * topAlpha + backdropB * bottomAlpha * (1 - topAlpha)) / outputAlpha,
+    outputAlpha * 255
+  )
+}
+
+/**
+ * Applies the normal-alpha subset of layer styles without allocating colors.
+ * A null result means that the caller must use the full style evaluator.
+ */
+export const applySimpleLayerStylesPacked = (
+  styles: LayerStyles,
+  x: number,
+  y: number,
+  sourcePacked: number,
+  readGeometry: LayerStyleSourceReader,
+  shadowCoverageOverride?: number,
+  innerGlowCoverageOverride?: number,
+  outsideStrokeCoverageOverride?: number,
+  innerStrokeCoverageOverride?: number
+): number | null => {
+  if (styles.enabled === false) return sourcePacked >>> 0
+  if (styles.colorOverlay.enabled || styles.gradientOverlay.enabled) return null
+  if (styles.stroke.enabled && styles.stroke.smartHue) return null
+  if (styles.stroke.enabled && outsideStrokeCoverageOverride === undefined && innerStrokeCoverageOverride === undefined) return null
+  if (!styles.shadow.enabled && !styles.innerGlow.enabled && !styles.stroke.enabled) return sourcePacked >>> 0
+
+  const sourceR = sourcePacked & 0xff
+  const sourceG = (sourcePacked >>> 8) & 0xff
+  const sourceB = (sourcePacked >>> 16) & 0xff
+  const sourceA = (sourcePacked >>> 24) & 0xff
+  let styledR = sourceR
+  let styledG = sourceG
+  let styledB = sourceB
+  if (sourceA > 0 && styles.innerGlow.enabled) {
+    const coverage = innerGlowCoverageOverride ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
+    const amount = Math.max(0, Math.min(1, styles.innerGlow.color.a / 255 * coverage))
+    styledR = packedByte(sourceR + (styles.innerGlow.color.r - sourceR) * amount)
+    styledG = packedByte(sourceG + (styles.innerGlow.color.g - sourceG) * amount)
+    styledB = packedByte(sourceB + (styles.innerGlow.color.b - sourceB) * amount)
+  }
+
+  if (sourceA > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') {
+    const amount = Math.max(0, Math.min(1, innerStrokeCoverageOverride ?? 0))
+    const strokeAmount = styles.stroke.color.a / 255 * amount
+    styledR = packedByte(styledR + (styles.stroke.color.r - styledR) * strokeAmount)
+    styledG = packedByte(styledG + (styles.stroke.color.g - styledG) * strokeAmount)
+    styledB = packedByte(styledB + (styles.stroke.color.b - styledB) * strokeAmount)
+  }
+
+  let backdropPacked = 0
+  if (styles.shadow.enabled) {
+    const coverage = shadowCoverageOverride ?? layerStyleShadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
+    const shadowAlphaBase = styles.shadow.smartShadow
+      ? packedByte(255 * Math.max(0, Math.min(100, styles.shadow.smartShadowDarkness)) / 100)
+      : styles.shadow.color.a
+    const shadowAlpha = packedByte(shadowAlphaBase * Math.max(0, Math.min(1, coverage)))
+    if (shadowAlpha > 0) {
+      const shadowR = styles.shadow.smartShadow ? 0 : styles.shadow.color.r
+      const shadowG = styles.shadow.smartShadow ? 0 : styles.shadow.color.g
+      const shadowB = styles.shadow.smartShadow ? 0 : styles.shadow.color.b
+      backdropPacked = packedRgba(shadowR, shadowG, shadowB, shadowAlpha)
+    }
+  }
+
+  if (sourceA === 0 && styles.stroke.enabled && styles.stroke.position !== 'inside') {
+    const amount = Math.max(0, Math.min(1, outsideStrokeCoverageOverride ?? 0))
+    const strokeAlpha = packedByte(styles.stroke.color.a * amount)
+    if (strokeAlpha > 0) {
+      const strokePacked = packedRgba(styles.stroke.color.r, styles.stroke.color.g, styles.stroke.color.b, strokeAlpha)
+      if (backdropPacked === 0) backdropPacked = strokePacked
+      else backdropPacked = blendPackedNormal(backdropPacked, strokePacked)
+    }
+  }
+
+  if (sourceA === 0) return backdropPacked
+  const sourceStyledPacked = packedRgba(styledR, styledG, styledB, sourceA)
+  if (backdropPacked === 0) return sourceStyledPacked
+  if (sourceA === 255) return sourceStyledPacked
+  return blendPackedNormal(backdropPacked, sourceStyledPacked)
+}
+
 export interface LayerStyleGeometry {
   x: number
   y: number
@@ -315,6 +497,7 @@ export type LayerStyleSourceReader = (x: number, y: number) => RgbaColor
 export type LayerStyleColorResolver = (color: RgbaColor) => RgbaColor
 export interface LayerStyleCoverageOverrides {
   shadow?: number
+  innerGlow?: number
 }
 
 export function applyLayerStylesAt(
@@ -328,6 +511,28 @@ export function applyLayerStylesAt(
   coverageOverrides?: LayerStyleCoverageOverrides
 ): RgbaColor {
   if (styles.enabled === false) return source
+  const hasStroke = styles.stroke.enabled
+  const hasOverlay = styles.colorOverlay.enabled || styles.gradientOverlay.enabled
+  const hasShadow = styles.shadow.enabled
+  const hasInnerGlow = styles.innerGlow.enabled
+
+  // These effects only perform normal-alpha operations. Keeping them on a
+  // scalar path avoids constructing several transient colors for every pixel
+  // during large style previews while preserving the same blend order.
+  if (!hasStroke && !hasOverlay && (hasShadow || hasInnerGlow)) {
+    let styledSource = source
+    if (source.a > 0 && hasInnerGlow) styledSource = overlayPreservingAlpha(
+      source,
+      styles.innerGlow.color,
+      coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
+    )
+    if (!hasShadow) return styledSource
+    const shadowCoverageValue = coverageOverrides?.shadow ?? shadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
+    const shadow = withCoverage(shadowColor(styles.shadow), shadowCoverageValue)
+    if (shadow.a === 0) return styledSource.a > 0 ? styledSource : TRANSPARENT
+    return styledSource.a > 0 ? blendNormalColors(shadow, styledSource) : shadow
+  }
+
   let backdrop = TRANSPARENT
   if (styles.shadow.enabled) {
     const coverage = coverageOverrides?.shadow ?? shadowCoverage(readGeometry, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur)
@@ -342,7 +547,11 @@ export function applyLayerStylesAt(
   let styledSource = source
   if (styledSource.a > 0 && styles.colorOverlay.enabled) styledSource = overlayPreservingAlpha(styledSource, styles.colorOverlay.color)
   if (styledSource.a > 0 && styles.gradientOverlay.enabled) styledSource = overlayPreservingAlpha(styledSource, gradientColorAt('offsetX' in geometry ? { x: geometry.offsetX, y: geometry.offsetY, width: geometry.width, height: geometry.height } : geometry, styles.gradientOverlay, x, y))
-  if (styledSource.a > 0 && styles.innerGlow.enabled) styledSource = overlayPreservingAlpha(styledSource, styles.innerGlow.color, innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size))
+  if (styledSource.a > 0 && styles.innerGlow.enabled) styledSource = overlayPreservingAlpha(
+    styledSource,
+    styles.innerGlow.color,
+    coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
+  )
   if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor(styles.stroke, styledSource, resolveDynamicColor), innerStrokeCoverage(readGeometry, x, y, styles.stroke))
   return styledSource.a > 0 ? blendWithMode(backdrop, styledSource, 1, 'normal') : backdrop
 }

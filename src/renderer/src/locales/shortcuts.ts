@@ -2,7 +2,8 @@ import { translateSourceText, type AppLocale } from '@/core/localization'
 import type { ShortcutGroupId, ShortcutId } from '@/core/shortcuts'
 import { CYCLING_TOOL_SHORTCUT_IDS, quickToolShortcutId, type QuickToolShortcutId } from '@/core/tool-shortcut-ids'
 
-type BaseShortcutId = Exclude<ShortcutId, QuickToolShortcutId>
+type ViewZoomShortcutId = 'viewZoom100' | 'viewZoom200' | 'viewZoom400' | 'viewZoom800' | 'viewZoom3200'
+type BaseShortcutId = Exclude<ShortcutId, QuickToolShortcutId | ViewZoomShortcutId>
 
 const zhGroups: Record<ShortcutGroupId, string> = {
   file: '文件', edit: '编辑', selection: '选区', image: '图像', color: '颜色与调色板', layers: '图层', animation: '动画', view: '视图', interface: '界面与栏目', tools: '工具', tiles: '瓦片', brushes: '图案笔刷', modifiers: '工具修饰', help: '帮助'
@@ -16,7 +17,7 @@ const zhBaseLabels: Record<BaseShortcutId, string> = {
   'tool.slice': '切片工具',
   'tool.text': '文本工具',
   toggleClippingMask: '剪贴蒙版',
-  toggleAnimationPlayback: '播放或暂停动画', previousAnimationFrame: '上一帧', nextAnimationFrame: '下一帧', addAnimationFrame: '新增帧', addLinkedAnimationFrame: '新建链接帧', addBlankAnimationFrame: '新建空帧', deleteAnimationFrame: '删除帧', copyAnimationCel: '复制单元格',
+  toggleAnimationPlayback: '播放或暂停动画', previousAnimationFrame: '上一帧', nextAnimationFrame: '下一帧', addAnimationFrame: '新增帧', addLinkedAnimationFrame: '新建链接帧', addBlankAnimationFrame: '新建空帧', deleteAnimationFrame: '删除帧', enableAnimationFrames: '启用帧', disableAnimationFrames: '停用帧', toggleAnimationFramesDisabled: '切换启停用帧状态', copyAnimationCel: '复制单元格',
   openHome: '打开主页', newDocument: '新建工程', openDocument: '打开工程', closeDocument: '关闭工程', openProjectFolder: '在文件夹中打开', exportDocument: '导出', exportAllFrames: '导出所有帧', exportSpriteSheet: '导出精灵表', openTimelapse: '缩时动画', openProjectInfo: '项目信息',
   'tool.airbrush': '喷枪', 'tool.pencil': '画笔', 'tool.eraser': '橡皮擦', 'tool.selection': '矩形选区', 'tool.selection.ellipse': '椭圆选区', 'tool.move': '移动工具', 'tool.shape': '形状工具', 'tool.line': '直线工具', 'tool.curve': '曲线工具', 'tool.fill': '油漆桶', 'tool.fill.gradient': '渐变工具', 'tool.eyedropper': '吸管', 'tool.hand': '抓手', 'tool.zoom': '缩放工具', 'tool.rotate': '旋转视图',
   'tool.shape.rectangleOutline': '矩形轮廓', 'tool.shape.rectangle': '填充矩形', 'tool.shape.ellipseOutline': '椭圆轮廓', 'tool.shape.ellipse': '填充椭圆',
@@ -41,7 +42,7 @@ const enBaseLabels: Record<BaseShortcutId, string> = {
   'tool.slice': 'Slice Tool',
   'tool.text': 'Text Tool',
   toggleClippingMask: 'Clipping Mask',
-  toggleAnimationPlayback: 'Play or Pause Animation', previousAnimationFrame: 'Previous Frame', nextAnimationFrame: 'Next Frame', addAnimationFrame: 'Add Frame', addLinkedAnimationFrame: 'New Linked Frame', addBlankAnimationFrame: 'New Blank Frame', deleteAnimationFrame: 'Delete Frame', copyAnimationCel: 'Copy Cel',
+  toggleAnimationPlayback: 'Play or Pause Animation', previousAnimationFrame: 'Previous Frame', nextAnimationFrame: 'Next Frame', addAnimationFrame: 'Add Frame', addLinkedAnimationFrame: 'New Linked Frame', addBlankAnimationFrame: 'New Blank Frame', deleteAnimationFrame: 'Delete Frame', enableAnimationFrames: 'Enable Frame', disableAnimationFrames: 'Disable Frame', toggleAnimationFramesDisabled: 'Toggle Frame Enabled State', copyAnimationCel: 'Copy Cel',
   openHome: 'Open Home', newDocument: 'New Project', openDocument: 'Open Project', closeDocument: 'Close Project', openProjectFolder: 'Show in Folder', exportDocument: 'Export', exportAllFrames: 'Export All Frames', exportSpriteSheet: 'Export Sprite Sheet', openTimelapse: 'Timelapse', openProjectInfo: 'Project Information',
   'tool.airbrush': 'Airbrush', 'tool.pencil': 'Pencil', 'tool.eraser': 'Eraser', 'tool.selection': 'Rectangular Selection', 'tool.selection.ellipse': 'Elliptical Selection', 'tool.move': 'Move Tool', 'tool.shape': 'Shape Tool', 'tool.line': 'Line Tool', 'tool.curve': 'Curve Tool', 'tool.fill': 'Paint Bucket', 'tool.fill.gradient': 'Gradient Tool', 'tool.eyedropper': 'Eyedropper', 'tool.hand': 'Hand Tool', 'tool.zoom': 'Zoom Tool', 'tool.rotate': 'Rotate View',
   'tool.shape.rectangleOutline': 'Rectangle Outline', 'tool.shape.rectangle': 'Filled Rectangle', 'tool.shape.ellipseOutline': 'Ellipse Outline', 'tool.shape.ellipse': 'Filled Ellipse',
@@ -70,8 +71,20 @@ const quickToolLabels = (
   `${labels[id]}${suffix}`
 ])) as Record<QuickToolShortcutId, string>
 
-const zhLabels = { ...zhBaseLabels, ...quickToolLabels(zhBaseLabels, '（快速选择）') } as Record<ShortcutId, string>
-const enLabels = { ...enBaseLabels, ...quickToolLabels(enBaseLabels, ' (Quick Select)') } as Record<ShortcutId, string>
+const viewZoomLabelsByLocale: Record<AppLocale, Record<ViewZoomShortcutId, string>> = {
+  'zh-CN': { viewZoom100: '视图倍率 100%', viewZoom200: '视图倍率 200%', viewZoom400: '视图倍率 400%', viewZoom800: '视图倍率 800%', viewZoom3200: '视图倍率 3200%' },
+  'en-US': { viewZoom100: 'View Zoom 100%', viewZoom200: 'View Zoom 200%', viewZoom400: 'View Zoom 400%', viewZoom800: 'View Zoom 800%', viewZoom3200: 'View Zoom 3200%' },
+  'ja-JP': { viewZoom100: '表示倍率 100%', viewZoom200: '表示倍率 200%', viewZoom400: '表示倍率 400%', viewZoom800: '表示倍率 800%', viewZoom3200: '表示倍率 3200%' },
+  'ko-KR': { viewZoom100: '보기 배율 100%', viewZoom200: '보기 배율 200%', viewZoom400: '보기 배율 400%', viewZoom800: '보기 배율 800%', viewZoom3200: '보기 배율 3200%' },
+  'es-ES': { viewZoom100: 'Zoom de vista 100%', viewZoom200: 'Zoom de vista 200%', viewZoom400: 'Zoom de vista 400%', viewZoom800: 'Zoom de vista 800%', viewZoom3200: 'Zoom de vista 3200%' },
+  'fr-FR': { viewZoom100: 'Zoom de vue 100%', viewZoom200: 'Zoom de vue 200%', viewZoom400: 'Zoom de vue 400%', viewZoom800: 'Zoom de vue 800%', viewZoom3200: 'Zoom de vue 3200%' },
+  'de-DE': { viewZoom100: 'Ansichtszoom 100%', viewZoom200: 'Ansichtszoom 200%', viewZoom400: 'Ansichtszoom 400%', viewZoom800: 'Ansichtszoom 800%', viewZoom3200: 'Ansichtszoom 3200%' },
+  'pt-BR': { viewZoom100: 'Zoom da visualização 100%', viewZoom200: 'Zoom da visualização 200%', viewZoom400: 'Zoom da visualização 400%', viewZoom800: 'Zoom da visualização 800%', viewZoom3200: 'Zoom da visualização 3200%' },
+  'ru-RU': { viewZoom100: 'Масштаб вида 100%', viewZoom200: 'Масштаб вида 200%', viewZoom400: 'Масштаб вида 400%', viewZoom800: 'Масштаб вида 800%', viewZoom3200: 'Масштаб вида 3200%' }
+}
+
+const zhLabels = { ...zhBaseLabels, ...viewZoomLabelsByLocale['zh-CN'], ...quickToolLabels(zhBaseLabels, '（快速选择）') } as Record<ShortcutId, string>
+const enLabels = { ...enBaseLabels, ...viewZoomLabelsByLocale['en-US'], ...quickToolLabels(enBaseLabels, ' (Quick Select)') } as Record<ShortcutId, string>
 
 // Keep an independent label table per locale. The command ids are shared, but
 // the visible category names and quick-select suffixes must not point directly
@@ -83,20 +96,20 @@ const frGroups: Record<ShortcutGroupId, string> = { file: 'Fichier', edit: 'Édi
 const deGroups: Record<ShortcutGroupId, string> = { file: 'Datei', edit: 'Bearbeiten', selection: 'Auswahl', image: 'Bild', color: 'Farbe und Palette', layers: 'Ebenen', animation: 'Animation', view: 'Ansicht', interface: 'Oberfläche und Bedienfelder', tools: 'Werkzeuge', tiles: 'Kacheln', brushes: 'Musterpinsel', modifiers: 'Werkzeugmodifikatoren', help: 'Hilfe' }
 const ptGroups: Record<ShortcutGroupId, string> = { file: 'Arquivo', edit: 'Editar', selection: 'Seleção', image: 'Imagem', color: 'Cor e paleta', layers: 'Camadas', animation: 'Animação', view: 'Exibição', interface: 'Interface e painéis', tools: 'Ferramentas', tiles: 'Azulejos', brushes: 'Pincéis de padrão', modifiers: 'Modificadores', help: 'Ajuda' }
 const ruGroups: Record<ShortcutGroupId, string> = { file: 'Файл', edit: 'Правка', selection: 'Выделение', image: 'Изображение', color: 'Цвет и палитра', layers: 'Слои', animation: 'Анимация', view: 'Вид', interface: 'Интерфейс и панели', tools: 'Инструменты', tiles: 'Тайлы', brushes: 'Текстурные кисти', modifiers: 'Модификаторы', help: 'Справка' }
-const localizedShortcutLabels = (sourceLabels: Record<BaseShortcutId, string>, locale: AppLocale, suffix: string): Record<ShortcutId, string> => {
+const localizedShortcutLabels = (sourceLabels: Record<BaseShortcutId, string>, locale: AppLocale, suffix: string): Record<Exclude<ShortcutId, ViewZoomShortcutId>, string> => {
   const generic = {
     'ja-JP': 'コマンド', 'ko-KR': '명령', 'es-ES': 'Comando', 'fr-FR': 'Commande', 'de-DE': 'Befehl', 'pt-BR': 'Comando', 'ru-RU': 'Команда', 'zh-CN': '命令', 'en-US': 'Command'
   }[locale]
   const labels = Object.fromEntries(Object.entries(sourceLabels).map(([id, sourceText]) => [id, translateSourceText(locale, sourceText) || `${generic} ${sourceText}`])) as Record<BaseShortcutId, string>
   return { ...labels, ...quickToolLabels(labels, suffix) }
 }
-const jaLabels = localizedShortcutLabels(zhBaseLabels, 'ja-JP', '（クイック選択）')
-const koLabels = localizedShortcutLabels(zhBaseLabels, 'ko-KR', ' (빠른 선택)')
-const esLabels = localizedShortcutLabels(zhBaseLabels, 'es-ES', ' (selección rápida)')
-const frLabels = localizedShortcutLabels(zhBaseLabels, 'fr-FR', ' (sélection rapide)')
-const deLabels = localizedShortcutLabels(zhBaseLabels, 'de-DE', ' (Schnellauswahl)')
-const ptLabels = localizedShortcutLabels(zhBaseLabels, 'pt-BR', ' (seleção rápida)')
-const ruLabels = localizedShortcutLabels(zhBaseLabels, 'ru-RU', ' (быстрый выбор)')
+const jaLabels = { ...localizedShortcutLabels(zhBaseLabels, 'ja-JP', '（クイック選択）'), ...viewZoomLabelsByLocale['ja-JP'] } as Record<ShortcutId, string>
+const koLabels = { ...localizedShortcutLabels(zhBaseLabels, 'ko-KR', ' (빠른 선택)'), ...viewZoomLabelsByLocale['ko-KR'] } as Record<ShortcutId, string>
+const esLabels = { ...localizedShortcutLabels(zhBaseLabels, 'es-ES', ' (selección rápida)'), ...viewZoomLabelsByLocale['es-ES'] } as Record<ShortcutId, string>
+const frLabels = { ...localizedShortcutLabels(zhBaseLabels, 'fr-FR', ' (sélection rapide)'), ...viewZoomLabelsByLocale['fr-FR'] } as Record<ShortcutId, string>
+const deLabels = { ...localizedShortcutLabels(zhBaseLabels, 'de-DE', ' (Schnellauswahl)'), ...viewZoomLabelsByLocale['de-DE'] } as Record<ShortcutId, string>
+const ptLabels = { ...localizedShortcutLabels(zhBaseLabels, 'pt-BR', ' (seleção rápida)'), ...viewZoomLabelsByLocale['pt-BR'] } as Record<ShortcutId, string>
+const ruLabels = { ...localizedShortcutLabels(zhBaseLabels, 'ru-RU', ' (быстрый выбор)'), ...viewZoomLabelsByLocale['ru-RU'] } as Record<ShortcutId, string>
 
 export const shortcutGroupLabelsByLocale: Record<AppLocale, Record<ShortcutGroupId, string>> = {
   'zh-CN': zhGroups,

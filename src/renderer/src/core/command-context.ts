@@ -19,13 +19,15 @@ export interface AnimationDeleteSelectionContext {
   selectedFrameCount: number
   selectedCellCount: number
   selectedMaskCellCount: number
+  selectedMaskRowCount?: number
   cellSelectionExplicit: boolean
 }
 
 export const hasAnimationDeleteSelection = (context: AnimationDeleteSelectionContext): boolean =>
   context.selectedFrameCount > 0
   || context.selectedMaskCellCount > 0
-  || (context.cellSelectionExplicit && context.selectedCellCount > 1)
+  || (context.selectedMaskRowCount ?? 0) > 0
+  || (context.cellSelectionExplicit && context.selectedCellCount > 0)
 
 export function resolveDeleteCommand(scope: EditorCommandScope, hasSelection: boolean, hasAnimationSelection = false, hasFreeTileInstanceSelection = false): DeleteCommandTarget {
   if (scope === 'layers' && hasFreeTileInstanceSelection) return 'free-tile-instance'

@@ -1,15 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#080a0f" />
+    <meta name="theme-color" content="#090a0d" />
     <meta name="description" content="MoonSprite 是面向 Windows 的原创源码可见像素画工作台。" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="MoonSprite - Windows 像素画工作台" />
     <meta property="og:description" content="绘制、制作动画并管理完整的像素创作流程。" />
     <meta property="og:image" content="/assets/product/workspace-v3-2560.webp" />
     <title>MoonSprite - Windows 像素画工作台</title>
+    <script>
+      ;(function () {
+        var stored = null
+        try { stored = localStorage.getItem('moonsprite-site-theme') } catch (error) {}
+        var theme = stored === 'light' || stored === 'dark' ? stored : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

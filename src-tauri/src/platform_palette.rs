@@ -52,20 +52,56 @@ pub(crate) struct PaletteListing {
 
 const DEFAULT_PALETTES: &[(&str, &str)] = &[
     (
-        "universal-spectrum-48.palette.json",
-        include_str!("../../palettes/universal-spectrum-48.palette.json"),
+        "palette-1787134251358577400.palette.json",
+        include_str!("../../palettes/palette-1787134251358577400.palette.json"),
     ),
     (
-        "soft-spectrum-48.palette.json",
-        include_str!("../../palettes/soft-spectrum-48.palette.json"),
+        "palette-1787825099718557000.palette.json",
+        include_str!("../../palettes/palette-1787825099718557000.palette.json"),
     ),
     (
-        "vivid-spectrum-48.palette.json",
-        include_str!("../../palettes/vivid-spectrum-48.palette.json"),
+        "palette-1787826522645068600.palette.json",
+        include_str!("../../palettes/palette-1787826522645068600.palette.json"),
     ),
     (
-        "deep-spectrum-48.palette.json",
-        include_str!("../../palettes/deep-spectrum-48.palette.json"),
+        "pixel-core-32.palette.json",
+        include_str!("../../palettes/pixel-core-32.palette.json"),
+    ),
+    (
+        "pico-8-16.palette.json",
+        include_str!("../../palettes/pico-8-16.palette.json"),
+    ),
+    (
+        "game-boy-4.palette.json",
+        include_str!("../../palettes/game-boy-4.palette.json"),
+    ),
+    (
+        "nes-16.palette.json",
+        include_str!("../../palettes/nes-16.palette.json"),
+    ),
+    (
+        "warm-autumn-24.palette.json",
+        include_str!("../../palettes/warm-autumn-24.palette.json"),
+    ),
+    (
+        "ocean-depths-24.palette.json",
+        include_str!("../../palettes/ocean-depths-24.palette.json"),
+    ),
+    (
+        "forest-trail-24.palette.json",
+        include_str!("../../palettes/forest-trail-24.palette.json"),
+    ),
+    (
+        "neon-night-24.palette.json",
+        include_str!("../../palettes/neon-night-24.palette.json"),
+    ),
+    (
+        "candy-pop-24.palette.json",
+        include_str!("../../palettes/candy-pop-24.palette.json"),
+    ),
+    (
+        "paper-ink-16.palette.json",
+        include_str!("../../palettes/paper-ink-16.palette.json"),
     ),
 ];
 
@@ -75,6 +111,10 @@ const LEGACY_DEFAULT_PALETTE_FILES: &[&str] = &[
     "forest-dusk-12.palette.json",
     "sunset-12.palette.json",
     "mono-10.palette.json",
+    "universal-spectrum-48.palette.json",
+    "soft-spectrum-48.palette.json",
+    "vivid-spectrum-48.palette.json",
+    "deep-spectrum-48.palette.json",
 ];
 
 fn chrono_like_timestamp() -> u128 {

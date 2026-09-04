@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 2,
-  "id": "vivid-spectrum-48",
-  "name": "鲜亮色相 48",
-  "colors": ["#FFFFFFFF", "#BFC6D4FF", "#596273FF", "#10131AFF", "#FFD1A3FF", "#F68B3CFF", "#A94B19FF", "#421D10FF", "#FFB6BEFF", "#FF4767FF", "#C20D3DFF", "#4D0A20FF", "#FFC08BFF", "#FF7A24FF", "#C63E0AFF", "#4F1908FF", "#FFF38AFF", "#FFD21FFF", "#B78400FF", "#493500FF", "#DFFF78FF", "#9BE31FFF", "#4D9D0EFF", "#1D4108FF", "#91F59AFF", "#24D65AFF", "#08923EFF", "#073D22FF", "#79F2D0FF", "#18D1A2FF", "#078977FF", "#053B39FF", "#80EDFFFF", "#20C9F2FF", "#057FAFFF", "#073650FF", "#96C8FFFF", "#3284FFFF", "#1551C5FF", "#10265EFF", "#C5A0FFFF", "#8B4DFFFF", "#5721BDFF", "#2B155FFF", "#FF9FE2FF", "#F23CB5FF", "#AD1479FF", "#4D0C38FF"],
-  "columns": 13,
-  "slots": [0, null, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 1, null, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 2, null, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 3, null, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47]
-}

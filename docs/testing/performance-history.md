@@ -11,9 +11,33 @@
 5. 没有自动基准覆盖的交互必须明确写“未覆盖”，禁止用主观流畅度代替数据。
 6. 性能优化不能改变像素结果、快捷键、撤销语义或文件兼容性。
 
-## 2026-08-26 1.0.0-beta.1 自动性能审计
+## 2026-09-04 1.0.0-beta2 自动性能审计
 
-审计编号：`2026-08-26_12-57-05-746`。性能等级为 P4，结果为“用户批准不改代码”。用户明确要求直接打包 1.0.0-beta.1 并推送合并；该 4000x4000 高风险渲染候选没有历史可比基线，本次不扩大像素渲染改动范围。
+审计编号：`2026-09-04_22-18-44-643_e2a4e56c`。性能等级为 P3，结果为“用户批准不改代码”。用户已明确批准本次不实施高风险性能优化；最终审计仅剩与本次蒙版修复及机械 rustfmt 无关的 4000x4000 图层重排候选。
+
+候选热点：4000x4000 large-layer-reorder 主绘制 p95；初始值 232.900，测量噪声 0.52%。
+本次没有执行代码复测。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
+## 2026-09-04 1.0.0-beta2 自动性能审计
+
+审计编号：`2026-09-04_22-05-55-467_61a88aff`。性能等级为 P3，结果为“用户批准不改代码”。用户已明确批准本次不实施高风险性能优化；最终审计仅剩与本次蒙版修复无关的 4000x4000 图层重排候选。
+
+候选热点：4000x4000 large-layer-reorder 主绘制 p95；初始值 232.900，测量噪声 7.51%。
+本次没有执行代码复测。
+执行套件：canvas-standard、canvas-profile、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、canvas-complex、document-composite、project-format、bundle。
+
+## 2026-09-04 1.0.0-beta2 自动性能审计
+
+审计编号：`2026-09-04_21-16-20-254_5503803f`。性能等级为 P4，结果为“用户批准不改代码”。用户明确批准本次不实施高风险性能优化，按当前 Beta2 状态继续发布。
+
+候选热点：4000x4000 large-layer-reorder 主绘制 p95；初始值 249.300，测量噪声 0.56%。
+本次没有执行代码复测。
+执行套件：canvas-standard、canvas-profile、canvas-complex、canvas-large-800、canvas-large-2048、canvas-large-4000、canvas-large-sentinel、selection、adjustments、document-composite、project-format、bundle、desktop。
+
+## 2026-08-26 1.0.0-beta1 自动性能审计
+
+审计编号：`2026-08-26_12-57-05-746`。性能等级为 P4，结果为“用户批准不改代码”。用户明确要求直接打包 1.0.0-beta1 并推送合并；该 4000x4000 高风险渲染候选没有历史可比基线，本次不扩大像素渲染改动范围。
 
 候选热点：4000x4000 large-group-visibility 主绘制 p95；初始值 285.600，测量噪声 9.24%。
 本次没有执行代码复测。

@@ -1,6 +1,7 @@
 use rfd::FileDialog;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::Window;
 
 use crate::platform_gallery::gallery_dir;
 use crate::platform_paths::export_directory;
@@ -126,8 +127,8 @@ fn has_explicit_directory(default_path: Option<&str>) -> bool {
         .is_some_and(|parent| !parent.as_os_str().is_empty())
 }
 
-fn file_dialog(default_path: Option<&str>) -> FileDialog {
-    let mut dialog = FileDialog::new();
+fn file_dialog(default_path: Option<&str>, parent: &Window) -> FileDialog {
+    let mut dialog = FileDialog::new().set_parent(parent);
     if let Some(path) = default_path {
         let path = PathBuf::from(path);
         if let Some(parent) = path.parent() {
@@ -143,9 +144,10 @@ fn file_dialog(default_path: Option<&str>) -> FileDialog {
 }
 
 #[tauri::command]
-pub(crate) fn open_files(language: Option<String>) -> OpenDialogResult {
+pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialogResult {
     let english = is_english(language.as_deref());
     let paths = FileDialog::new()
+        .set_parent(&window)
         .add_filter(
             if english {
                 "All supported files"
@@ -190,8 +192,9 @@ pub(crate) fn open_files(language: Option<String>) -> OpenDialogResult {
 }
 
 #[tauri::command]
-pub(crate) fn open_brush_images(language: Option<String>) -> OpenDialogResult {
+pub(crate) fn open_brush_images(window: Window, language: Option<String>) -> OpenDialogResult {
     let paths = FileDialog::new()
+        .set_parent(&window)
         .add_filter(
             if is_english(language.as_deref()) {
                 "Brush images"
@@ -214,12 +217,13 @@ pub(crate) fn open_brush_images(language: Option<String>) -> OpenDialogResult {
 
 #[tauri::command]
 pub(crate) fn save_project(
+    window: Window,
     default_path: Option<String>,
     format: Option<String>,
     language: Option<String>,
 ) -> SaveDialogResult {
     let has_explicit_directory = has_explicit_directory(default_path.as_deref());
-    let mut dialog = file_dialog(default_path.as_deref());
+    let mut dialog = file_dialog(default_path.as_deref(), &window);
     if !has_explicit_directory {
         if let Ok(directory) = gallery_dir() {
             dialog = dialog.set_directory(directory);
@@ -235,13 +239,14 @@ pub(crate) fn save_project(
 
 #[tauri::command]
 pub(crate) fn export_image(
+    window: Window,
     default_path: Option<String>,
     format: String,
     language: Option<String>,
 ) -> SaveDialogResult {
     let has_explicit_directory = has_explicit_directory(default_path.as_deref());
     let (label, extensions) = image_export_filter(&format, language.as_deref());
-    let mut dialog = file_dialog(default_path.as_deref());
+    let mut dialog = file_dialog(default_path.as_deref(), &window);
     if !has_explicit_directory {
         if let Ok(directory) = export_directory() {
             dialog = dialog.set_directory(directory);
@@ -256,11 +261,12 @@ pub(crate) fn export_image(
 
 #[tauri::command]
 pub(crate) fn save_palette_image(
+    window: Window,
     default_path: Option<String>,
     language: Option<String>,
 ) -> SaveDialogResult {
     let has_explicit_directory = has_explicit_directory(default_path.as_deref());
-    let mut dialog = file_dialog(default_path.as_deref());
+    let mut dialog = file_dialog(default_path.as_deref(), &window);
     if !has_explicit_directory {
         if let Ok(directory) = export_directory() {
             dialog = dialog.set_directory(directory);
@@ -291,8 +297,11 @@ pub(crate) fn default_file_directories() -> Result<DefaultFileDirectories, Strin
 }
 
 #[tauri::command]
-pub(crate) fn choose_directory(default_path: Option<String>) -> DirectoryDialogResult {
-    let mut dialog = FileDialog::new();
+pub(crate) fn choose_directory(
+    window: Window,
+    default_path: Option<String>,
+) -> DirectoryDialogResult {
+    let mut dialog = FileDialog::new().set_parent(&window);
     if let Some(value) = default_path
         .as_deref()
         .filter(|value| !value.trim().is_empty())
@@ -313,10 +322,11 @@ pub(crate) fn choose_directory(default_path: Option<String>) -> DirectoryDialogR
 
 #[tauri::command]
 pub(crate) fn save_shortcut_file(
+    window: Window,
     default_path: Option<String>,
     language: Option<String>,
 ) -> SaveDialogResult {
-    let path = file_dialog(default_path.as_deref())
+    let path = file_dialog(default_path.as_deref(), &window)
         .add_filter(
             if is_english(language.as_deref()) {
                 "MoonSprite shortcut settings"
@@ -334,10 +344,11 @@ pub(crate) fn save_shortcut_file(
 
 #[tauri::command]
 pub(crate) fn save_theme_file(
+    window: Window,
     default_path: Option<String>,
     language: Option<String>,
 ) -> SaveDialogResult {
-    let path = file_dialog(default_path.as_deref())
+    let path = file_dialog(default_path.as_deref(), &window)
         .add_filter(
             if is_english(language.as_deref()) {
                 "MoonSprite theme"

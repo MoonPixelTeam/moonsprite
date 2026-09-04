@@ -12,6 +12,10 @@ import { applyCursorPreferences } from './platform/cursor-theme'
 import { applyToolIconScale, applyUiScale } from './platform/ui-scale'
 import { loadTextFontCatalog } from './platform/font-service'
 import { showAppWindow } from './platform/app-window'
+import { installRuntimeDiagnostics } from './platform/runtime-diagnostics'
+import type { RuntimeDiagnosticDetail } from './core/runtime-diagnostics'
+import { runtimeRasterResidentBytes } from './core/runtime-raster'
+import { useWorkspace } from './store/workspace'
 
 const rootElement = document.getElementById('root')
 
@@ -26,6 +30,25 @@ void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferenc
 void installTauriApi()
   .then(async () => {
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)
+    installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {
+      const state = useWorkspace.getState()
+      const session = state.sessions.find((item) => item.document.id === state.activeId) ?? null
+      if (!session) return { activeDocument: false, sessionCount: state.sessions.length }
+      const document = session.document
+      return {
+        activeDocument: true,
+        sessionCount: state.sessions.length,
+        canvasWidth: document.width,
+        canvasHeight: document.height,
+        layerCount: document.layers.length,
+        groupCount: document.groups.length,
+        frameCount: document.animation?.frames.length ?? 1,
+        residentRasterBytes: runtimeRasterResidentBytes(document),
+        tool: session.tool,
+        zoom: session.view.zoom,
+        dirty: document.dirty
+      }
+    })
     void loadTextFontCatalog().catch(() => undefined)
     if (__MOONSPRITE_PERFORMANCE_BUILD__ && new URLSearchParams(window.location.search).has('moonsprite-perf')) {
       const { installPerformanceHarness } = await import('./performance/benchmark-harness')

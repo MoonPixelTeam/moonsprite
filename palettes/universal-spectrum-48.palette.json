@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 2,
-  "id": "universal-spectrum-48",
-  "name": "通用色相 48",
-  "colors": ["#F5F5F5FF", "#B8BCC4FF", "#5A606BFF", "#171A21FF", "#F1D0B0FF", "#C4875DFF", "#7A4933FF", "#35251FFF", "#FFC2C2FF", "#F06464FF", "#B52F45FF", "#4A1824FF", "#FFD0A3FF", "#F28C45FF", "#B94D2BFF", "#4D241CFF", "#FFF1A8FF", "#E9C94AFF", "#9A7727FF", "#40331AFF", "#E0F5A0FF", "#9CCC4AFF", "#577C2CFF", "#26351CFF", "#B7E8B1FF", "#55B86AFF", "#28764BFF", "#173626FF", "#A8E2D2FF", "#42B89CFF", "#247067FF", "#153738FF", "#B5EBF4FF", "#55C1D9FF", "#2A7894FF", "#17394AFF", "#BDD7FFFF", "#619AF0FF", "#355EB7FF", "#1C2D5AFF", "#D7C3FFFF", "#9470E8FF", "#5F3AA3FF", "#2E2055FF", "#F3B9E3FF", "#D95FAFFF", "#91366FFF", "#461D3BFF"],
-  "columns": 13,
-  "slots": [0, null, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 1, null, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 2, null, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 3, null, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47]
-}

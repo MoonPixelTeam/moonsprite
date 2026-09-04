@@ -95,7 +95,9 @@ export const animationLoopSectionStartFrameId = (
 ): string | null => {
   const range = resolveAnimationLoopSectionRange(timeline, section)
   if (!range) return null
-  return section.direction === 'reverse' ? range.endFrameId : range.startFrameId
+  const frames = timeline.frames.slice(range.startIndex, range.endIndex + 1)
+  if (section.direction === 'reverse') frames.reverse()
+  return frames.find((frame) => frame.disabled !== true)?.id ?? null
 }
 
 export const advanceAnimationLoopSectionPlayback = (
@@ -107,21 +109,21 @@ export const advanceAnimationLoopSectionPlayback = (
   const range = resolveAnimationLoopSectionRange(timeline, section)
   if (!range) return null
   const direction: AnimationLoopDirection = section.direction === 'reverse' ? 'reverse' : 'forward'
-  const firstIndex = direction === 'reverse' ? range.endIndex : range.startIndex
-  const terminalIndex = direction === 'reverse' ? range.startIndex : range.endIndex
-  const currentIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
-  if (currentIndex < range.startIndex || currentIndex > range.endIndex) {
-    return { frameId: timeline.frames[firstIndex].id, completedIterations, completed: false }
-  }
-  if (currentIndex !== terminalIndex) {
-    const nextIndex = currentIndex + (direction === 'reverse' ? -1 : 1)
-    return { frameId: timeline.frames[nextIndex].id, completedIterations, completed: false }
+  const playableFrames = timeline.frames
+    .slice(range.startIndex, range.endIndex + 1)
+    .filter((frame) => frame.disabled !== true)
+  if (direction === 'reverse') playableFrames.reverse()
+  if (playableFrames.length === 0) return null
+  const currentIndex = playableFrames.findIndex((frame) => frame.id === frameId)
+  if (currentIndex < 0) return { frameId: playableFrames[0].id, completedIterations, completed: false }
+  if (currentIndex + 1 < playableFrames.length) {
+    return { frameId: playableFrames[currentIndex + 1].id, completedIterations, completed: false }
   }
   const nextCompletedIterations = completedIterations + 1
   if (section.repeatCount !== null && nextCompletedIterations >= section.repeatCount) {
-    return { frameId: timeline.frames[terminalIndex].id, completedIterations: nextCompletedIterations, completed: true }
+    return { frameId: playableFrames[playableFrames.length - 1].id, completedIterations: nextCompletedIterations, completed: true }
   }
-  return { frameId: timeline.frames[firstIndex].id, completedIterations: nextCompletedIterations, completed: false }
+  return { frameId: playableFrames[0].id, completedIterations: nextCompletedIterations, completed: false }
 }
 
 export const reconcileAnimationLoopSectionsAfterFrameInsertion = (

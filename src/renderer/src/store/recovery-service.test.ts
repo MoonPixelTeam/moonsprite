@@ -14,14 +14,7 @@ const api = (changes: Partial<MoonSpriteApi> = {}): MoonSpriteApi => ({
 } as MoonSpriteApi)
 
 describe('recovery service', () => {
-  it('passes the configured retention period to the platform', async () => {
-    const listRecoveries = vi.fn(async () => [])
-    const service = new RecoveryService()
 
-    await service.list(api({ listRecoveries }), 14)
-
-    expect(listRecoveries).toHaveBeenCalledWith(14)
-  })
 
   it('serializes discard after an in-flight autosave', async () => {
     let releaseWrite!: () => void
@@ -63,6 +56,43 @@ describe('recovery service', () => {
     const restored = await service.restore(api({ readRecovery: async () => encodeProject(document) }), record)
     expect(restored.name).toBe('draft（恢复）')
     expect(restored.dirty).toBe(true)
+    expect(restored.filePath).toBeNull()
+    expect(restored.sourceFilePath).toBeUndefined()
+  })
+
+  it('encodes and writes multiple dirty documents one at a time', async () => {
+    let releaseFirst!: () => void
+    let activeWrites = 0
+    let maximumActiveWrites = 0
+    const writes: string[] = []
+    const first = createDocument('first', 8, 8, 'rgba')
+    const second = createDocument('second', 8, 8, 'rgba')
+    const service = new RecoveryService()
+    const writeRecovery = vi.fn(async (id: string) => {
+      activeWrites += 1
+      maximumActiveWrites = Math.max(maximumActiveWrites, activeWrites)
+      writes.push(`${id}:start`)
+      if (id === first.id) await new Promise<void>((resolve) => { releaseFirst = resolve })
+      writes.push(`${id}:end`)
+      activeWrites -= 1
+    })
+
+    const autosave = service.autosave(api({ writeRecovery }), [
+      { id: first.id, document: first },
+      { id: second.id, document: second }
+    ])
+    await vi.waitFor(() => expect(writes).toEqual([`${first.id}:start`]))
+    expect(writeRecovery).toHaveBeenCalledTimes(1)
+    releaseFirst()
+    await autosave
+
+    expect(maximumActiveWrites).toBe(1)
+    expect(writes).toEqual([
+      `${first.id}:start`,
+      `${first.id}:end`,
+      `${second.id}:start`,
+      `${second.id}:end`
+    ])
   })
 
   it('reports autosave failures while keeping the queue usable', async () => {

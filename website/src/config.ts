@@ -1,4 +1,22 @@
 export const SITE_CONFIG = {
   githubUrl: 'https://github.com/MoonPixelTeam/moonsprite',
+  communityUrl: 'https://moonpx.art/',
   steamUrl: '',
+  footerLinks: {
+    github: 'https://github.com/MoonPixelTeam/moonsprite',
+    issues: 'https://github.com/MoonPixelTeam/moonsprite/issues',
+    discussions: 'https://github.com/MoonPixelTeam/moonsprite/discussions',
+    steam: '',
+    x: '',
+    xiaohongshu: '',
+    bilibili: '',
+    heybox: '',
+    docs: '#/docs',
+    faq: '#/faq',
+    support: '#/docs/support',
+    blog: '#/blog',
+    changelog: 'https://github.com/MoonPixelTeam/moonsprite/blob/main/CHANGELOG.md',
+    team: 'https://github.com/MoonPixelTeam',
+    privacy: '',
+  },
 } as const

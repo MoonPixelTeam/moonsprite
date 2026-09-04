@@ -13,19 +13,26 @@ interface PixelPoint {
   index: number
 }
 
-const neighbors8 = (index: number, width: number, height: number, mask: Uint8Array): number[] => {
+export type BinaryRegionProfiler = (stage: string, duration: number) => void
+
+const forEachNeighbor8 = (index: number, width: number, height: number, callback: (neighbor: number) => void): void => {
   const x = index % width
   const y = Math.floor(index / width)
-  const neighbors: number[] = []
   for (let offsetY = -1; offsetY <= 1; offsetY += 1) for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
     if (offsetX === 0 && offsetY === 0) continue
     const nextX = x + offsetX
     const nextY = y + offsetY
     if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) continue
-    const nextIndex = nextY * width + nextX
-    if (mask[nextIndex] === 1) neighbors.push(nextIndex)
+    callback(nextY * width + nextX)
   }
-  return neighbors
+}
+
+const hasNeighbor8 = (index: number, width: number, height: number, mask: Uint8Array): boolean => {
+  let found = false
+  forEachNeighbor8(index, width, height, (neighbor) => {
+    if (mask[neighbor] === 1) found = true
+  })
+  return found
 }
 
 const neighborTransitionCount = (index: number, width: number, mask: Uint8Array): number => {
@@ -56,10 +63,32 @@ const thinBarrier = (barrier: Uint8Array, width: number, height: number): Uint8A
   }
 
   const removals = new Uint32Array(skeleton.length)
-  const thinningPass = (secondPass: boolean): number => {
+  const candidates = new Uint32Array(skeleton.length)
+  const queued = new Uint8Array(skeleton.length)
+  let candidateCount = 0
+
+  const enqueue = (index: number): void => {
+    if (skeleton[index] !== 1 || queued[index] === 1) return
+    queued[index] = 1
+    candidates[candidateCount++] = index
+  }
+  const enqueueNeighborhood = (index: number): void => {
+    const x = index % paddedWidth
+    const y = Math.floor(index / paddedWidth)
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      if (offsetX === 0 && offsetY === 0) continue
+      enqueue((y + offsetY) * paddedWidth + x + offsetX)
+    }
+  }
+  const enqueueAll = (): void => {
+    for (let y = 1; y + 1 < paddedHeight; y += 1) for (let x = 1; x + 1 < paddedWidth; x += 1) enqueue(y * paddedWidth + x)
+  }
+  const thinningPass = (secondPass: boolean, scanAll: boolean): boolean => {
+    if (scanAll) enqueueAll()
     let removalCount = 0
-    for (let y = 1; y + 1 < paddedHeight; y += 1) for (let x = 1; x + 1 < paddedWidth; x += 1) {
-      const index = y * paddedWidth + x
+    while (candidateCount > 0) {
+      const index = candidates[--candidateCount]
+      queued[index] = 0
       if (skeleton[index] !== 1) continue
       const north = skeleton[index - paddedWidth]
       const northEast = skeleton[index - paddedWidth + 1]
@@ -79,21 +108,25 @@ const thinBarrier = (barrier: Uint8Array, width: number, height: number): Uint8A
         + Number(southWest === 0 && west === 1)
         + Number(west === 0 && northWest === 1)
         + Number(northWest === 0 && north === 1)
-      if (transitions !== 1) continue
-      if (neighborCount === 2) continue
+      if (transitions !== 1 || neighborCount === 2) continue
       if (secondPass) {
         if (north * east * west !== 0 || north * south * west !== 0) continue
       } else if (north * east * south !== 0 || east * south * west !== 0) continue
       removals[removalCount++] = index
     }
     for (let index = 0; index < removalCount; index += 1) skeleton[removals[index]] = 0
-    return removalCount
+    for (let index = 0; index < removalCount; index += 1) enqueueNeighborhood(removals[index])
+    return removalCount > 0
   }
 
+  enqueueAll()
   let changed = false
+  let firstPass = true
   do {
-    changed = thinningPass(false) > 0
-    changed = thinningPass(true) > 0 || changed
+    const firstChanged = thinningPass(false, false)
+    const secondChanged = thinningPass(true, firstPass)
+    changed = firstChanged || secondChanged
+    firstPass = false
   } while (changed)
 
   const result = new Uint8Array(barrier.length)
@@ -126,12 +159,13 @@ const endpointDirection = (
     displacementY += y - endpoint.y
     visitedCount += 1
     if (distance >= sampleDepth) continue
-    for (const neighbor of neighbors8(index, width, height, skeleton)) {
-      if (visited.has(neighbor)) continue
+    forEachNeighbor8(index, width, height, (neighbor) => {
+      if (skeleton[neighbor] !== 1) return
+      if (visited.has(neighbor)) return
       visited.add(neighbor)
       queue.push(neighbor)
       distances.push(distance + 1)
-    }
+    })
   }
   if (visitedCount < 2) return null
   const direction = { x: -displacementX / visitedCount, y: -displacementY / visitedCount }
@@ -265,19 +299,22 @@ const bridgePathAlongRay = (
 // Adapted from OpenToonz TAutocloser: topology-preserving thinning, oriented
 // skeleton endpoints, endpoint pairing, then endpoint-to-stroke ray searches.
 // OpenToonz is BSD-3-Clause licensed; see THIRD_PARTY_NOTICES.md.
-const virtualGapBarrier = (matching: Uint8Array, width: number, height: number, threshold: number): Uint8Array => {
+const virtualGapBarrier = (matching: Uint8Array, width: number, height: number, threshold: number, profiler?: BinaryRegionProfiler): Uint8Array => {
   const barrier = new Uint8Array(matching.length)
   for (let index = 0; index < matching.length; index += 1) barrier[index] = matching[index] === 1 ? 0 : 1
+  const thinningStartedAt = performance.now()
   const skeleton = thinBarrier(barrier, width, height)
+  profiler?.('bucket.smart.thin-barrier', performance.now() - thinningStartedAt)
   const sampleDepth = Math.max(1, Math.min(threshold - 1, 8))
   const endpoints: Array<PixelPoint & { direction: { x: number; y: number } | null; isolated: boolean }> = []
   for (let index = 0; index < skeleton.length; index += 1) {
     if (skeleton[index] !== 1) continue
-    const skeletonNeighbors = neighbors8(index, width, height, skeleton)
     const endpoint = { x: index % width, y: Math.floor(index / width), index }
     if (endpoint.x === 0 || endpoint.y === 0 || endpoint.x === width - 1 || endpoint.y === height - 1) continue
-    const isolated = skeletonNeighbors.length === 0
-    if (!isolated && (skeletonNeighbors.length > 3 || neighborTransitionCount(index, width, skeleton) !== 1)) continue
+    let neighborCount = 0
+    forEachNeighbor8(index, width, height, (neighbor) => { neighborCount += skeleton[neighbor] })
+    const isolated = neighborCount === 0
+    if (!isolated && (neighborCount > 3 || neighborTransitionCount(index, width, skeleton) !== 1)) continue
     endpoints.push({
       ...endpoint,
       direction: isolated ? null : endpointDirection(endpoint, skeleton, width, height, sampleDepth),
@@ -379,6 +416,45 @@ const virtualGapBarrier = (matching: Uint8Array, width: number, height: number, 
   return virtualBarrier
 }
 
+export interface BinaryRegionBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+const virtualGapBarrierInBounds = (
+  matching: Uint8Array,
+  width: number,
+  height: number,
+  threshold: number,
+  barrierBounds: BinaryRegionBounds,
+  profiler?: BinaryRegionProfiler
+): Uint8Array => {
+  const padding = threshold + 2
+  const left = Math.max(0, barrierBounds.x - padding)
+  const top = Math.max(0, barrierBounds.y - padding)
+  const right = Math.min(width, barrierBounds.x + barrierBounds.width + padding)
+  const bottom = Math.min(height, barrierBounds.y + barrierBounds.height + padding)
+  const localWidth = right - left
+  const localHeight = bottom - top
+  if (left === 0 && top === 0 && localWidth === width && localHeight === height) {
+    return virtualGapBarrier(matching, width, height, threshold, profiler)
+  }
+  const localMatching = new Uint8Array(localWidth * localHeight)
+  for (let y = 0; y < localHeight; y += 1) {
+    const source = (top + y) * width + left
+    localMatching.set(matching.subarray(source, source + localWidth), y * localWidth)
+  }
+  const localBarrier = virtualGapBarrier(localMatching, localWidth, localHeight, threshold, profiler)
+  const barrier = new Uint8Array(matching.length)
+  for (let y = 0; y < localHeight; y += 1) {
+    const source = y * localWidth
+    barrier.set(localBarrier.subarray(source, source + localWidth), (top + y) * width + left)
+  }
+  return barrier
+}
+
 const floodBinaryRegion = (
   width: number,
   height: number,
@@ -421,13 +497,13 @@ export const includeSmartClosurePixels = (
   matching: Uint8Array,
   width: number,
   height: number,
-  threshold: number
+  threshold: number,
+  profiler?: BinaryRegionProfiler
 ): void => {
+  const startedAt = performance.now()
   const queue = new Uint32Array(virtualBarrier.length)
   const activeVirtualBarrier = new Uint8Array(virtualBarrier.length)
-  const touchesSelected = (index: number): boolean => {
-    return neighbors8(index, width, height, selected).length > 0
-  }
+  const touchesSelected = (index: number): boolean => hasNeighbor8(index, width, height, selected)
   const activateVirtualBarrier = (seed: number): void => {
     if (virtualBarrier[seed] !== 1 || activeVirtualBarrier[seed] === 1) return
     let read = 0
@@ -437,11 +513,12 @@ export const includeSmartClosurePixels = (
     while (read < written) {
       const index = queue[read++]
       selected[index] = 1
-      for (const neighbor of neighbors8(index, width, height, virtualBarrier)) {
-        if (activeVirtualBarrier[neighbor] === 1) continue
+      forEachNeighbor8(index, width, height, (neighbor) => {
+        if (virtualBarrier[neighbor] !== 1) return
+        if (activeVirtualBarrier[neighbor] === 1) return
         activeVirtualBarrier[neighbor] = 1
         queue[written++] = neighbor
-      }
+      })
     }
   }
   for (let index = 0; index < virtualBarrier.length; index += 1) {
@@ -481,10 +558,11 @@ export const includeSmartClosurePixels = (
       maximumY = Math.max(maximumY, y)
       if (x === 0 || y === 0 || x === width - 1 || y === height - 1) touchesCanvasEdge = true
       containsClosure ||= virtualBarrier[index] === 1
-      for (const neighbor of neighbors8(index, width, height, selected)) {
+      forEachNeighbor8(index, width, height, (neighbor) => {
+        if (selected[neighbor] !== 1) return
         touchesFilledRegion = true
         if (activeVirtualBarrier[neighbor] === 1) touchesActiveClosure = true
-      }
+      })
       if (x > 0) pushPocket(index - 1)
       if (x + 1 < width) pushPocket(index + 1)
       if (y > 0) pushPocket(index - width)
@@ -505,28 +583,126 @@ export const includeSmartClosurePixels = (
   }
   for (let index = 0; index < activeVirtualBarrier.length; index += 1) {
     if (activeVirtualBarrier[index] !== 1) continue
-    for (const neighbor of neighbors8(index, width, height, matching)) visitPocket(neighbor)
+    forEachNeighbor8(index, width, height, (neighbor) => {
+      if (matching[neighbor] === 1) visitPocket(neighbor)
+    })
   }
+  profiler?.('bucket.smart.pocket-closure', performance.now() - startedAt)
 }
 
-export const contiguousMatchingRegion = (
+const contiguousMatchingRegionWithin = (
   width: number,
   height: number,
   startX: number,
   startY: number,
   matches: (index: number) => boolean,
-  gapClosingThreshold = 0
+  gapClosingThreshold = 0,
+  profiler?: BinaryRegionProfiler
 ): Uint8Array | null => {
   if (width < 1 || height < 1 || startX < 0 || startY < 0 || startX >= width || startY >= height) return null
   const startIndex = startY * width + startX
   if (gapClosingThreshold <= 0) return floodBinaryRegion(width, height, startIndex, matches)
 
   const matching = new Uint8Array(width * height)
-  for (let index = 0; index < matching.length; index += 1) matching[index] = matches(index) ? 1 : 0
+  const matchingStartedAt = performance.now()
+  let barrierLeft = width
+  let barrierTop = height
+  let barrierRight = 0
+  let barrierBottom = 0
+  for (let index = 0; index < matching.length; index += 1) {
+    if (matches(index)) {
+      matching[index] = 1
+      continue
+    }
+    const x = index % width
+    const y = Math.floor(index / width)
+    barrierLeft = Math.min(barrierLeft, x)
+    barrierTop = Math.min(barrierTop, y)
+    barrierRight = Math.max(barrierRight, x + 1)
+    barrierBottom = Math.max(barrierBottom, y + 1)
+  }
+  profiler?.('bucket.smart.matching-scan', performance.now() - matchingStartedAt)
   if (matching[startIndex] === 0) return null
-  const virtualBarrier = virtualGapBarrier(matching, width, height, normalizeGapClosingThreshold(gapClosingThreshold))
+  if (barrierRight <= barrierLeft || barrierBottom <= barrierTop) return matching
+  const threshold = normalizeGapClosingThreshold(gapClosingThreshold)
+  const virtualBarrier = virtualGapBarrierInBounds(matching, width, height, threshold, {
+    x: barrierLeft,
+    y: barrierTop,
+    width: barrierRight - barrierLeft,
+    height: barrierBottom - barrierTop
+  }, profiler)
+  const floodStartedAt = performance.now()
   const region = floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1, virtualBarrier)
     ?? floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1)
-  if (region) includeSmartClosurePixels(region, virtualBarrier, matching, width, height, normalizeGapClosingThreshold(gapClosingThreshold))
+  profiler?.('bucket.smart.region-flood', performance.now() - floodStartedAt)
+  if (region) includeSmartClosurePixels(region, virtualBarrier, matching, width, height, threshold, profiler)
+  return region
+}
+
+export interface BinaryRegionResult {
+  region: Uint8Array
+  bounds: BinaryRegionBounds
+}
+
+/**
+ * Computes a matching region without expanding the result to canvas size.
+ * The bounds are a hard caller-owned boundary: pixels outside it are not
+ * considered part of the requested region.
+ */
+export const contiguousMatchingRegionInBounds = (
+  width: number,
+  height: number,
+  startX: number,
+  startY: number,
+  matches: (index: number) => boolean,
+  gapClosingThreshold = 0,
+  bounds: BinaryRegionBounds,
+  profiler?: BinaryRegionProfiler
+): BinaryRegionResult | null => {
+  const left = Math.max(0, Math.floor(bounds.x))
+  const top = Math.max(0, Math.floor(bounds.y))
+  const right = Math.min(width, Math.ceil(bounds.x + bounds.width))
+  const bottom = Math.min(height, Math.ceil(bounds.y + bounds.height))
+  if (right <= left || bottom <= top || startX < left || startY < top || startX >= right || startY >= bottom) return null
+  const localWidth = right - left
+  const localHeight = bottom - top
+  const localRegion = contiguousMatchingRegionWithin(
+    localWidth,
+    localHeight,
+    startX - left,
+    startY - top,
+    (index) => matches((top + Math.floor(index / localWidth)) * width + left + index % localWidth),
+    gapClosingThreshold,
+    profiler
+  )
+  return localRegion
+    ? { region: localRegion, bounds: { x: left, y: top, width: localWidth, height: localHeight } }
+    : null
+}
+
+/**
+ * Runs the topology analysis inside a caller-provided hard boundary. The
+ * caller must only provide a boundary when pixels outside it cannot belong to
+ * the requested region; this keeps the public result in canvas coordinates
+ * while avoiding work on unrelated canvas area.
+ */
+export const contiguousMatchingRegion = (
+  width: number,
+  height: number,
+  startX: number,
+  startY: number,
+  matches: (index: number) => boolean,
+  gapClosingThreshold = 0,
+  bounds?: BinaryRegionBounds,
+  profiler?: BinaryRegionProfiler
+): Uint8Array | null => {
+  if (!bounds) return contiguousMatchingRegionWithin(width, height, startX, startY, matches, gapClosingThreshold, profiler)
+  const local = contiguousMatchingRegionInBounds(width, height, startX, startY, matches, gapClosingThreshold, bounds, profiler)
+  if (!local) return null
+  const { region: localRegion, bounds: resolvedBounds } = local
+  const region = new Uint8Array(width * height)
+  for (let y = 0; y < resolvedBounds.height; y += 1) {
+    region.set(localRegion.subarray(y * resolvedBounds.width, (y + 1) * resolvedBounds.width), (resolvedBounds.y + y) * width + resolvedBounds.x)
+  }
   return region
 }

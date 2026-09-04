@@ -52,6 +52,10 @@ interface DrawSelectionSizeLabelOptions {
   sizeLabel: string
   background: string
   foreground: string
+  sizeWidth?: number
+  sizeHeight?: number
+  /** Optional viewport-space anchor for the label's upper-left edge. */
+  anchor?: { x: number; y: number }
 }
 
 const SELECTION_SIZE_LABEL_LINE_HEIGHT_CSS = 14
@@ -73,21 +77,26 @@ export function drawSelectionSizeLabel({
   endLabel,
   sizeLabel,
   background,
-  foreground
+  foreground,
+  sizeWidth,
+  sizeHeight,
+  anchor
 }: DrawSelectionSizeLabelOptions): SelectionSizeLabelLayout | null {
   if (points.length === 0) return null
   const startX = Math.round(selectionX)
   const startY = Math.round(selectionY)
   const widthValue = Math.max(1, Math.round(selectionWidth))
   const heightValue = Math.max(1, Math.round(selectionHeight))
+  const readoutWidth = Math.max(1, Math.round(sizeWidth ?? widthValue))
+  const readoutHeight = Math.max(1, Math.round(sizeHeight ?? heightValue))
   const endX = startX + widthValue - 1
   const endY = startY + heightValue - 1
   const lines = [
     `${startLabel} ${startX}, ${startY}    ${endLabel} ${endX}, ${endY}`,
-    `${sizeLabel} ${widthValue} × ${heightValue}`
+    `${sizeLabel} ${readoutWidth} × ${readoutHeight}`
   ] as const
-  const minX = Math.min(...points.map((point) => point.x))
-  const minY = Math.min(...points.map((point) => point.y))
+  const minX = anchor?.x ?? Math.min(...points.map((point) => point.x))
+  const minY = anchor?.y ?? Math.min(...points.map((point) => point.y))
 
   context.save()
   context.font = '11px ui-monospace, SFMono-Regular, Consolas, monospace'
@@ -156,6 +165,8 @@ interface DrawSelectionOptions {
   showOutline?: boolean
   showHandles?: boolean
   handlePoints?: Array<{ x: number; y: number }>
+  /** Optional exact transform frame, in the same viewport coordinates as the context. */
+  framePoints?: Array<{ x: number; y: number }>
 }
 
 export function drawSelectionOutline({
@@ -171,7 +182,8 @@ export function drawSelectionOutline({
   outlineLight,
   showOutline = true,
   showHandles = true,
-  handlePoints
+  handlePoints,
+  framePoints
 }: DrawSelectionOptions): SelectionBoundaryCache {
   const phase = Math.floor(performance.now() / SELECTION_DASH_STEP_MS) % SELECTION_DASH_CYCLE_CSS
   let nextCache = cache
@@ -231,7 +243,25 @@ export function drawSelectionOutline({
     context.save()
     context.lineCap = 'butt'
     context.lineJoin = 'miter'
-    if (outlineDark === outlineLight) {
+    if (framePoints && framePoints.length === 4) {
+      context.beginPath()
+      context.moveTo(framePoints[0].x, framePoints[0].y)
+      context.lineTo(framePoints[1].x, framePoints[1].y)
+      context.lineTo(framePoints[2].x, framePoints[2].y)
+      context.lineTo(framePoints[3].x, framePoints[3].y)
+      context.closePath()
+      context.lineWidth = outlineDark === outlineLight ? SELECTION_SOLID_OUTLINE_WIDTH_CSS : SELECTION_OUTLINE_WIDTH_CSS
+      context.setLineDash([])
+      context.lineDashOffset = 0
+      context.strokeStyle = outlineLight
+      context.stroke()
+      if (outlineDark !== outlineLight) {
+        context.setLineDash([SELECTION_DASH_LENGTH_CSS, SELECTION_DASH_LENGTH_CSS])
+        context.strokeStyle = outlineDark
+        context.lineDashOffset = -phase
+        context.stroke()
+      }
+    } else if (outlineDark === outlineLight) {
       context.translate(Math.round(box.x) + 0.5, Math.round(box.y) + 0.5)
       context.lineWidth = SELECTION_SOLID_OUTLINE_WIDTH_CSS
       context.setLineDash([])

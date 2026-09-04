@@ -9,111 +9,46 @@ export interface BuiltInPalette {
   slots: Array<number | null>
 }
 
-const opaque = (hex: string): RgbaColor => {
-  const value = Number.parseInt(hex.replace('#', ''), 16)
-  return { r: value >>> 16, g: (value >>> 8) & 0xff, b: value & 0xff, a: 255 }
-}
-
-const colors = (...values: string[]): RgbaColor[] => values.map(opaque)
-
-const shadeColumns = (familyCount: number, shadesPerFamily: number): Array<number | null> => {
-  const slots: Array<number | null> = []
-  for (let shade = 0; shade < shadesPerFamily; shade++) {
-    slots.push(shade, null)
-    for (let family = 1; family < familyCount; family++) slots.push(family * shadesPerFamily + shade)
+const hexColors = (...values: string[]): RgbaColor[] => values.map((value) => {
+  const hex = value.replace('#', '')
+  const rgb = hex.length === 8 ? hex.slice(0, 6) : hex
+  const alpha = hex.length === 8 ? hex.slice(6) : 'FF'
+  return {
+    r: Number.parseInt(rgb.slice(0, 2), 16),
+    g: Number.parseInt(rgb.slice(2, 4), 16),
+    b: Number.parseInt(rgb.slice(4, 6), 16),
+    a: Number.parseInt(alpha, 16)
   }
-  return slots
-}
+})
 
-const SPECTRUM_COLUMNS = 13
-const SPECTRUM_SLOTS = shadeColumns(12, 4)
+const gridSlots = (colorCount: number, columns: number): Array<number | null> =>
+  Array.from({ length: Math.ceil(colorCount / columns) * columns }, (_, index) => index < colorCount ? index : null)
 
-export const builtInPaletteNameKeys: Record<string, TranslationKey> = {
-  'universal-spectrum-48': 'palette.builtIn.universalSpectrum48',
-  'soft-spectrum-48': 'palette.builtIn.softSpectrum48',
-  'vivid-spectrum-48': 'palette.builtIn.vividSpectrum48',
-  'deep-spectrum-48': 'palette.builtIn.deepSpectrum48'
-}
+const palette = (
+  id: string,
+  name: string,
+  values: string[],
+  columns: number,
+  slots = gridSlots(values.length, columns)
+): BuiltInPalette => ({ id, name, colors: hexColors(...values), columns, slots })
+
+// Built-in palettes are embedded in both the web fallback and the desktop
+// runtime. Keep the IDs and layouts stable so saved palette selections remain
+// recognizable across platforms.
+export const builtInPaletteNameKeys: Record<string, TranslationKey> = {}
 
 export const builtInPalettes: BuiltInPalette[] = [
-  {
-    id: 'universal-spectrum-48',
-    name: '通用色相 48',
-    columns: SPECTRUM_COLUMNS,
-    slots: [...SPECTRUM_SLOTS],
-    colors: colors(
-      '#F5F5F5', '#B8BCC4', '#5A606B', '#171A21',
-      '#F1D0B0', '#C4875D', '#7A4933', '#35251F',
-      '#FFC2C2', '#F06464', '#B52F45', '#4A1824',
-      '#FFD0A3', '#F28C45', '#B94D2B', '#4D241C',
-      '#FFF1A8', '#E9C94A', '#9A7727', '#40331A',
-      '#E0F5A0', '#9CCC4A', '#577C2C', '#26351C',
-      '#B7E8B1', '#55B86A', '#28764B', '#173626',
-      '#A8E2D2', '#42B89C', '#247067', '#153738',
-      '#B5EBF4', '#55C1D9', '#2A7894', '#17394A',
-      '#BDD7FF', '#619AF0', '#355EB7', '#1C2D5A',
-      '#D7C3FF', '#9470E8', '#5F3AA3', '#2E2055',
-      '#F3B9E3', '#D95FAF', '#91366F', '#461D3B'
-    )
-  },
-  {
-    id: 'soft-spectrum-48',
-    name: '柔和色相 48',
-    columns: SPECTRUM_COLUMNS,
-    slots: [...SPECTRUM_SLOTS],
-    colors: colors(
-      '#EEECE8', '#B9B5B2', '#706D70', '#2F3036',
-      '#E7CDB7', '#BE9579', '#80604F', '#463832',
-      '#E9B9B8', '#C77D7F', '#92535F', '#4F303A',
-      '#EBC7A5', '#C89568', '#8F654A', '#503B32',
-      '#E9D9A7', '#B9A464', '#7E713F', '#464126',
-      '#D8DFAC', '#9BA56C', '#687444', '#3A402A',
-      '#BDD7B8', '#7DA27A', '#507052', '#2D4132',
-      '#B5D5CA', '#70A198', '#486F6C', '#294044',
-      '#B7D6DC', '#72A2B0', '#496E7D', '#293E4C',
-      '#BFCCE2', '#7F91B5', '#536488', '#303A55',
-      '#D0C3DE', '#9882AD', '#6A577E', '#3D324F',
-      '#DFC0D1', '#B17D99', '#7D536D', '#472F43'
-    )
-  },
-  {
-    id: 'vivid-spectrum-48',
-    name: '鲜亮色相 48',
-    columns: SPECTRUM_COLUMNS,
-    slots: [...SPECTRUM_SLOTS],
-    colors: colors(
-      '#FFFFFF', '#BFC6D4', '#596273', '#10131A',
-      '#FFD1A3', '#F68B3C', '#A94B19', '#421D10',
-      '#FFB6BE', '#FF4767', '#C20D3D', '#4D0A20',
-      '#FFC08B', '#FF7A24', '#C63E0A', '#4F1908',
-      '#FFF38A', '#FFD21F', '#B78400', '#493500',
-      '#DFFF78', '#9BE31F', '#4D9D0E', '#1D4108',
-      '#91F59A', '#24D65A', '#08923E', '#073D22',
-      '#79F2D0', '#18D1A2', '#078977', '#053B39',
-      '#80EDFF', '#20C9F2', '#057FAF', '#073650',
-      '#96C8FF', '#3284FF', '#1551C5', '#10265E',
-      '#C5A0FF', '#8B4DFF', '#5721BD', '#2B155F',
-      '#FF9FE2', '#F23CB5', '#AD1479', '#4D0C38'
-    )
-  },
-  {
-    id: 'deep-spectrum-48',
-    name: '深色色相 48',
-    columns: SPECTRUM_COLUMNS,
-    slots: [...SPECTRUM_SLOTS],
-    colors: colors(
-      '#D8DAE0', '#8A8E99', '#444954', '#0B0D12',
-      '#C99F7C', '#8A5C42', '#503328', '#241A18',
-      '#D9868D', '#A34354', '#672538', '#2B1521',
-      '#D89562', '#9B552F', '#5D311F', '#291A16',
-      '#D1B95F', '#8E782F', '#55481F', '#262216',
-      '#A6C258', '#657F2C', '#3B4C20', '#1D2516',
-      '#6FC082', '#36784C', '#244A35', '#14251D',
-      '#5DB9A4', '#2F746A', '#204844', '#122526',
-      '#65B4C8', '#347088', '#214655', '#132632',
-      '#789DD5', '#4563A0', '#2B3D68', '#171F3A',
-      '#9A7BCE', '#654894', '#412D61', '#231933',
-      '#C078A9', '#88426F', '#572845', '#2D1726'
-    )
-  }
+  palette("palette-1787134251358577400", "通用色系大谱", ["#FEFEFEFF","#C8E643FF","#FEF6A3FF","#FCEF5AFF","#F7CF86FF","#A7CF04FF","#F5C836FF","#E6B775FF","#5B8A49FF","#83BD26FF","#E38D27FF","#D9845FFF","#356636FF","#6D9E18FF","#E36C27FF","#C2684AFF","#2D544BFF","#446E0AFF","#AC3131FF","#293340FF","#8D49E6FF","#803340FF","#6837A8FF","#5C2D42FF","#8E375CFF","#B03877FF","#C75067FF","#E8647DFF","#746891FF","#5E5180FF","#4D3B73FF","#40233EFF","#564153FF","#675E63FF","#807478FF","#948B8CFF","#B0A7A7FF","#372959FF","#2A1C30FF","#615F74FF","#7A5651FF","#3E77CDFF","#334EA3FF","#2A396BFF","#28284FFF","#120F1FFF","#6D7A8DFF","#966A57FF","#4194D4FF","#364266FF","#7C8E99FF","#AF8258FF","#52AEF0FF","#4D5E94FF","#8DA6A4FF","#BF9862FF","#6DD3FEFF","#8297BAFF","#B7F2FEFF","#9FB9CCFF"], 16, [null,null,null,0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,2,3,4,null,null,null,null,null,null,null,null,null,null,null,null,5,null,6,7,null,null,null,null,null,null,null,null,null,null,null,8,9,null,10,11,null,null,null,null,null,null,null,null,null,null,null,12,13,null,14,15,null,null,null,null,null,null,null,null,null,null,null,16,17,null,18,null,null,null,null,null,null,null,null,null,null,null,null,19,null,20,21,null,null,null,null,null,null,null,null,null,null,null,null,null,null,22,23,24,25,26,27,null,null,null,null,null,null,null,null,28,29,30,31,32,33,34,35,36,null,null,null,null,null,null,null,null,null,37,38,39,40,null,null,null,null,null,null,null,null,null,41,42,43,44,45,46,47,null,null,null,null,null,null,null,null,null,48,null,49,null,null,50,51,null,null,null,null,null,null,null,null,null,52,null,53,null,null,54,55,null,null,null,null,null,null,null,null,null,56,null,57,null,null,null,null,null,null,null,null,null,null,null,null,null,58,null,59,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]),
+  palette("palette-1787825099718557000", "灰色系", ["#485770FF","#557285FF","#3C6696FF","#224B7AFF","#576988FF","#6D899CFF","#68961EFF","#899EA9FF","#76A7ADFF","#53A3ADFF","#2C7896FF","#83A133FF","#88BAB8FF","#6D9E88FF","#99AD63FF","#B5C46AFF","#D6D374FF","#F6F6DDFF","#D1F1EBFF","#AED5CAFF","#9BC4C2FF","#EDD466FF","#EDDD96FF","#C0E8BAFF","#B2DEB5FF","#A2C9A8FF","#E1D28EFF","#8FBA9FFF","#D6B085FF","#82B09AFF","#5CB088FF","#32946BFF","#CC9C81FF","#DE9645FF","#6DA189FF","#C08377FF","#538A70FF","#A1727BFF","#AC2E2EFF","#AC4A4AFF","#AC6767FF","#8F6077FF","#A34E78FF","#A13067FF","#732F5EFF","#78546DFF","#593E56FF","#3B2D39FF"], 13, [null,null,null,null,null,null,null,0,null,null,null,null,null,null,null,null,null,null,null,null,1,2,3,null,null,null,null,null,null,null,null,null,4,5,null,null,null,null,null,6,null,null,null,null,null,7,8,9,10,null,null,null,11,null,null,null,null,null,null,12,null,null,null,null,null,13,14,15,16,17,18,19,20,null,null,null,null,null,null,null,null,21,22,23,24,25,null,null,null,null,null,null,null,null,null,26,null,null,27,null,null,null,null,null,null,null,null,null,28,null,null,29,30,31,null,null,null,null,null,null,null,32,33,null,34,null,null,null,null,null,null,null,null,null,35,null,null,36,null,null,null,null,null,null,null,null,null,37,null,null,null,null,null,null,null,null,null,38,39,40,41,42,43,null,null,null,null,null,null,null,null,null,44,45,null,null,null,null,null,null,null,null,null,null,null,null,46,null,null,null,null,null,null,null,null,null,null,null,null,47,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]),
+  palette("palette-1787826522645068600", "脏色系", ["#CDD9DEFF","#B5C0C4FF","#485770FF","#97B9C4FF","#F7FFD5FF","#557285FF","#98A2ADFF","#F2E750FF","#3C6696FF","#6D899CFF","#8F8F8FFF","#B3675BFF","#FA7A25FF","#FC9F58FF","#F2C19BFF","#E3DB68FF","#72778DFF","#BF7575FF","#B34837FF","#C4B65EFF","#99967CFF","#6E7F6BFF","#626F6CFF","#50555EFF","#55404BFF","#753853FF","#9E2F2FFF","#A17739FF","#99895EFF","#717349FF","#799475FF","#422B3BFF","#66538CFF","#4F2727FF","#825D38FF","#445E4CFF","#88A79BFF","#584D73FF","#4A0A0AFF","#66543CFF","#474F3FFF","#244345FF","#19323BFF","#111A23FF","#332842FF","#3B231EFF","#231912FF","#1F151EFF"], 13, [null,null,null,null,null,null,null,null,0,null,null,null,null,null,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,2,null,3,null,null,null,null,null,null,null,null,4,null,5,null,6,null,null,null,null,null,null,null,null,7,null,8,9,10,null,null,null,null,11,12,13,14,15,null,null,null,16,null,17,null,null,18,null,null,null,19,20,21,22,23,24,25,null,null,26,null,null,27,28,29,30,null,null,31,32,null,null,33,null,null,34,null,35,36,null,null,null,37,null,null,38,null,null,39,40,41,42,43,null,null,44,null,null,null,null,null,null,null,null,45,null,null,null,null,null,null,null,null,null,null,null,null,46,null,null,null,null,null,null,null,null,null,null,null,null,47,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]),
+  palette("pixel-core-32", "像素基础 32", ["#FFFFFFFF","#D9E0EAFF","#9AA7B8FF","#5B6575FF","#2D3440FF","#11151CFF","#FFEBB5FF","#F4C95DFF","#D98E2BFF","#A94F24FF","#6E2A25FF","#FFB3B8FF","#E95B67FF","#B52D4AFF","#6E1E3CFF","#D8B4FFFF","#9561D8FF","#56359DFF","#2E266BFF","#B7E3FFFF","#53B5E8FF","#2873B7FF","#1E437AFF","#B8F1C8FF","#55C77AFF","#2E8B57FF","#1F5B4BFF","#F2F2F2FF","#B9C1CCFF","#748091FF","#3F4A5AFF","#202633FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]),
+  palette("pico-8-16", "PICO-8 16", ["#000000FF","#1D2B53FF","#7E2553FF","#008751FF","#AB5236FF","#5F574FFF","#C2C3C7FF","#FFF1E8FF","#FF004DFF","#FFA300FF","#FFEC27FF","#00E436FF","#29ADFFFF","#83769CFF","#FF77A8FF","#FFCCAAFF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]),
+  palette("game-boy-4", "Game Boy 4", ["#0F380FFF","#306230FF","#8BAC0FFF","#9BBC0FFF"], 4, [0,1,2,3]),
+  palette("nes-16", "NES 16", ["#000000FF","#FCFCFCFF","#F8F8F8FF","#BCBCBCFF","#7C7C7CFF","#A4E4FCFF","#3CBCFCFF","#0078F8FF","#0000BCFF","#B8B8F8FF","#6888FCFF","#4838D8FF","#940084FF","#D800CCFF","#F878F8FF","#F8B8F8FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]),
+  palette("warm-autumn-24", "暖秋 24", ["#FFF4D6FF","#F6D7A7FF","#E8B878FF","#C9824BFF","#9F5138FF","#6D3030FF","#3B2025FF","#FFD166FF","#E9A227FF","#C66B27FF","#8F3D2EFF","#5A2630FF","#F5A6A6FF","#D66A6AFF","#A73E50FF","#6C263BFF","#E4C1A6FF","#B87958FF","#7B4A42FF","#4A3036FF","#F6E7C1FF","#CBB58BFF","#88745DFF","#4B3D3BFF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette("ocean-depths-24", "深海 24", ["#E6FAFFFF","#B9E9F2FF","#72C7D8FF","#3E9EB5FF","#1F688AFF","#174568FF","#102A4AFF","#071A31FF","#C8F7E5FF","#73D8B0FF","#32A982FF","#18735FFF","#105247FF","#0D3738FF","#B5D7F7FF","#6CA9E6FF","#3C7FCAFF","#2D579FFF","#283B78FF","#252858FF","#A8B8D1FF","#71829FFF","#485B78FF","#28364FFF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette("forest-trail-24", "森林 24", ["#F2F0D5FF","#D7D99DFF","#A8B66AFF","#71934DFF","#426B45FF","#254A3DFF","#16352FFF","#0B211FFF","#E7D4A5FF","#C39B5BFF","#916C3EFF","#68452FFF","#442E29FF","#2B2022FF","#B8E0B0FF","#7AB47AFF","#4B8D60FF","#2F6A51FF","#20503FFF","#17382FFF","#C2C8B6FF","#7B8975FF","#4E5D55FF","#293B38FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette("neon-night-24", "霓虹夜 24", ["#080A18FF","#11183AFF","#1D2454FF","#30306BFF","#49377BFF","#6B3C80FF","#963C7BFF","#D13D6DFF","#FF4F68FF","#FF7A5CFF","#FFAE5BFF","#FFE66DFF","#B8F05AFF","#5BE67BFF","#29D7A0FF","#36D6D1FF","#37B9F2FF","#4C8BFFFF","#705CFFFF","#9B5CFFFF","#D25CFFFF","#F56BD8FF","#FF9BDBFF","#FFD1E8FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette("candy-pop-24", "糖果流行 24", ["#FFF4F0FF","#FFD6E0FF","#FFAAC5FF","#FF7FAEFF","#F05287FF","#C93C78FF","#8D316BFF","#54265BFF","#FFF1B8FF","#FFDA6AFF","#FFB84DFF","#F47C48FF","#D65355FF","#A83E57FF","#733152FF","#422448FF","#C6F4E8FF","#7EDFC5FF","#42C2B0FF","#2995A5FF","#3376A8FF","#4F5AABFF","#7150A7FF","#A04A99FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]),
+  palette("paper-ink-16", "纸墨 16", ["#FFF9E8FF","#F1E4C8FF","#D8C7A5FF","#B5A184FF","#8B7658FF","#5C4935FF","#30261FFF","#171311FF","#F4D6B5FF","#D89B72FF","#AE6651FF","#7A3F3AFF","#4D2B32FF","#30243AFF","#514969FF","#7B7790FF"], 8, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]),
 ]

@@ -5,6 +5,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { createDocumentPaneLayout, insertDocumentPane, resizeDocumentPane, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPaneOrientation, type DocumentPanePlacement } from '@/core/document-pane-layout'
 import { clearDocumentPaneDockPreview, updateDocumentPaneDockPreview } from './document-pane-dock-preview'
 import { paneDockTargetAtPoint, type DocumentPaneDockTarget } from './document-pane-hit-test'
+import { canvasColorSamplingIntentActive } from '@/core/canvas-color-sampling'
 import { QuickCommandBar } from './QuickCommandBar'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -26,6 +27,7 @@ interface EditorCanvasHostProps {
   onDocumentPaneFloat?: (documentId: string, anchor: { x: number; y: number }) => void
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
+  onOpenAntiAlias: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
 }
@@ -73,7 +75,7 @@ const positionPaneDragGhost = (pointerX: number, pointerY: number, pointerOffset
   ghost.style.top = `${pointerY - pointerOffsetY}px`
 }
 
-export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds, onDocumentPaneLayoutChange, onDocumentPaneMove, onDocumentPaneReturnToTabs, onDocumentPaneFloat, shortcutFor, onToggleMirror, onOpenPreferences, onOpenCommandSettings }: EditorCanvasHostProps) {
+export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds, onDocumentPaneLayoutChange, onDocumentPaneMove, onDocumentPaneReturnToTabs, onDocumentPaneFloat, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings }: EditorCanvasHostProps) {
   const { t } = useI18n()
   const sessions = useWorkspace((state) => state.sessions)
   const activeId = useWorkspace((state) => state.activeId)
@@ -262,9 +264,9 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
       const paneSession = sessions.find((item) => item.document.id === node.documentId)
       if (!paneSession) return null
       const showPaneHeader = paneOnlyDocumentIds.includes(paneSession.document.id)
-      return <section key={node.id} data-document-pane-id={node.id} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={() => useWorkspace.getState().setActive(paneSession.document.id)} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
+      return <section key={node.id} data-document-pane-id={node.id} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={(event) => { if (canvasColorSamplingIntentActive() && (event.target as Element).closest('canvas.stage-canvas')) return; const workspace = useWorkspace.getState(); workspace.syncCanvasToolSettings(paneSession.document.id); workspace.setActive(paneSession.document.id) }} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
         {showPaneHeader && <header onPointerDown={(event) => beginPaneDrag(event, paneSession.document.id)} onContextMenu={(event) => { if (!onDocumentPaneFloat) return; event.preventDefault(); event.stopPropagation(); useWorkspace.getState().setActive(paneSession.document.id); setPaneContextMenu({ documentId: paneSession.document.id, x: event.clientX, y: event.clientY }) }}><PixelUtilityIcon kind="image" /><span>{paneSession.document.name}</span>{paneSession.document.dirty && <i />}<button title={t('common.close')} aria-label={t('tabs.closeAria', { name: paneSession.document.name })} onClick={() => { void useWorkspace.getState().closeDocument(paneSession.document.id) }}><PixelUtilityIcon kind="close" /></button></header>}
-        <div className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={paneSession} /></div></div>
+        <div className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={paneSession} /></div></div>
       </section>
     }
     const splitStyle: CSSProperties = node.orientation === 'horizontal'
@@ -279,7 +281,7 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
 
   const content = documentPaneLayout
     ? <div className="split-workspace">{renderNode(documentPaneLayout)}</div>
-    : session ? <div className="document-pane-target" data-document-pane-id={session.document.id}><QuickCommandBar documentId={session.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={session} /></div></div> : null
+    : session ? <div className="document-pane-target" data-document-pane-id={session.document.id}><QuickCommandBar documentId={session.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={session} /></div></div> : null
 
   return <PerformanceProfiler id="EditorCanvasHost"><div className={`stage-wrap ${documentPaneLayout ? 'has-split' : ''}`} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-moonsprite-document')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' } }} onDrop={dropDocumentIntoWorkspace}><Suspense fallback={<div aria-hidden="true" />}>{content}</Suspense></div>{paneDragPreview && createPortal(<div className="document-tab-drag-layer" aria-hidden="true">{paneTabReturnPreview && <div className="document-pane-tab-return-preview" style={{ left: paneTabReturnPreview.left, top: paneTabReturnPreview.top, height: paneTabReturnPreview.height }} />}<div className="document-tab-drag-ghost" data-document-pane-drag-ghost="true" style={{ left: paneDragPreview.pointerX - paneDragPreview.pointerOffsetX, top: paneDragPreview.pointerY - paneDragPreview.pointerOffsetY, width: paneDragPreview.width, height: paneDragPreview.height }}><PixelUtilityIcon kind="image" /><span>{paneDragPreview.name}</span></div></div>, document.body)}{paneContextMenu && onDocumentPaneFloat && createPortal(<div className="context-menu document-pane-context-menu" role="menu" aria-label={t('tabs.contextAria')} style={{ left: Math.min(paneContextMenu.x, Math.max(8, window.innerWidth - 232)), top: Math.min(paneContextMenu.y, Math.max(8, window.innerHeight - 72)) }}><button className="context-menu-item" type="button" role="menuitem" onClick={() => { onDocumentPaneFloat(paneContextMenu.documentId, { x: paneContextMenu.x, y: paneContextMenu.y }); setPaneContextMenu(null) }}><PixelUtilityIcon kind="move" /><span>{t('tabs.floatDocument')}</span></button></div>, document.body)}</PerformanceProfiler>
 })

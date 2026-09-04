@@ -22,6 +22,25 @@ interface FollowPreviewPositionOptions {
 
 export const previewCheckerCellSize = (checkerSize: number, displayScale: number): number => checkerSize * displayScale
 
+/**
+ * Choose a fit scale whose document pixels occupy an equal number of device
+ * pixels whenever the artwork is shown at or above 1:1. A raw fit scale is
+ * commonly fractional (for example 7.8x), which makes the rasterizer
+ * distribute neighbouring source pixels across 7 and 8 device pixels. That
+ * is technically aligned at the outer edges but visibly compresses pixel art.
+ * Downscaling below 1:1 cannot preserve every source pixel, so it keeps the
+ * available fit scale instead of unexpectedly cropping the preview.
+ */
+export const pixelAlignedPreviewFitScale = (fitScale: number, devicePixelRatio = 1): number => {
+  if (!Number.isFinite(fitScale) || fitScale <= 0) return 1
+  if (fitScale <= 1) return fitScale
+  const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
+  const aligned = Math.floor(fitScale * dpr + 0.000001) / dpr
+  // Keep 1:1 rather than dropping below it when the first device-aligned
+  // candidate would be smaller than one CSS pixel per document pixel.
+  return aligned >= 1 ? aligned : 1
+}
+
 const clampFollowAxis = (pan: number, viewportSize: number, contentSize: number): number => {
   const centeredOrigin = (viewportSize - contentSize) / 2
   const minimumOrigin = Math.min(0, viewportSize - contentSize)
@@ -57,14 +76,16 @@ interface AnchoredPreviewPanOptions {
   viewportSize: Size
   pointer: Point
   pan: Point
+  /** Absolute document-pixel scale. 1 means one document pixel per CSS pixel. */
   zoom: number
   nextZoom: number
 }
 
 export const anchoredPreviewPan = ({ documentSize, viewportSize, pointer, pan, zoom, nextZoom }: AnchoredPreviewPanOptions): Point => {
-  const fitScale = Math.min(viewportSize.width / documentSize.width, viewportSize.height / documentSize.height)
-  const currentScale = fitScale * zoom
-  const targetScale = fitScale * nextZoom
+  const currentScale = zoom
+  const targetScale = nextZoom
+  if (![documentSize.width, documentSize.height, viewportSize.width, viewportSize.height, pointer.x, pointer.y, pan.x, pan.y, currentScale, targetScale].every(Number.isFinite)) return pan
+  if (documentSize.width <= 0 || documentSize.height <= 0 || viewportSize.width <= 0 || viewportSize.height <= 0 || currentScale <= 0 || targetScale <= 0) return pan
   const currentOriginX = (viewportSize.width - documentSize.width * currentScale) / 2 + pan.x
   const currentOriginY = (viewportSize.height - documentSize.height * currentScale) / 2 + pan.y
   const documentX = (pointer.x - currentOriginX) / currentScale

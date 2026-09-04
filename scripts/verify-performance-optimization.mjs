@@ -29,7 +29,10 @@ audit.attempts.push({
   attempt,
   createdAt: new Date().toISOString(),
   correctnessPassed: true,
-  sourceFingerprint: performanceSourceFingerprint(),
+  sourceFingerprint: performanceSourceFingerprint(
+    process.cwd(),
+    audit.releaseAudit || audit.allFiles ? null : audit.files,
+  ),
   afterMetrics,
   comparison,
 })

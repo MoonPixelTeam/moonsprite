@@ -23,7 +23,7 @@ Run this process only when explicitly asked to release `dev.X` or deliver an ins
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm check:release-performance -- <files relevant to this cycle...>
+pnpm check:performance:release -- <files relevant to this cycle...>
 pnpm check:performance:verify -- --audit=<audit-id> --correctness-passed
 pnpm check:performance:accept -- --audit=<audit-id> --outcome=<adopted|not-adopted|approved-no-change> --reason=<reason>
 pnpm check:release

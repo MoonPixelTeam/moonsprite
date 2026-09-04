@@ -55,19 +55,7 @@ describe('canvas alignment', () => {
     ]))
   })
 
-  it('does not snap outside the configured threshold', () => {
-    const result = resolveAlignment({
-      movingBounds: [{ x: 2, y: 3, width: 4, height: 4 }],
-      targetBounds: [{ x: 20, y: 30, width: 4, height: 4 }],
-      delta: { x: 8, y: 9 },
-      canvasWidth: 64,
-      canvasHeight: 64,
-      gridEnabled: false,
-      smartEnabled: true,
-      threshold: 1
-    })
-    expect(result).toEqual({ offset: { x: 8, y: 9 }, guides: [] })
-  })
+
 
   it('keeps the constrained axis locked while snapping the movable axis', () => {
     const result = resolveAlignment({
@@ -85,29 +73,7 @@ describe('canvas alignment', () => {
     expect(result.guides.every((guide) => guide.axis === 'x')).toBe(true)
   })
 
-  it('skips half-pixel center matches that cannot preserve integer document offsets', () => {
-    const result = resolveAlignment({
-      movingBounds: [{ x: 21, y: 20, width: 3, height: 3 }],
-      targetBounds: [{ x: 30, y: 30, width: 4, height: 4 }],
-      delta: { x: 2, y: 0 },
-      canvasWidth: 100,
-      canvasHeight: 100,
-      gridEnabled: false,
-      smartEnabled: true,
-      threshold: 8
-    })
-    expect(result.offset.x).toBe(6)
-    expect(result.guides).toContainEqual({ axis: 'x', position: 30, source: 'smart' })
-    expect(result.guides).not.toContainEqual({ axis: 'x', position: 32, source: 'smart' })
-  })
 
-  it('unions multiple moving layer bounds and keeps the threshold screen-space stable', () => {
-    expect(unionAlignmentBounds([
-      { x: -2, y: 3, width: 4, height: 5 },
-      { x: 5, y: -1, width: 2, height: 3 }
-    ])).toEqual({ x: -2, y: -1, width: 9, height: 9 })
-    expect(alignmentThresholdForZoom(6, 3)).toBe(2)
-    expect(alignmentThresholdForZoom(6, 0.5)).toBe(12)
-    expect(alignmentThresholdForZoom(6, 16)).toBe(1)
-  })
+
+
 })

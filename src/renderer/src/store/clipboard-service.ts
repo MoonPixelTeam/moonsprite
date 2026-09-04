@@ -1,4 +1,4 @@
-import type { BackgroundLayerSettings, ClipboardImage, FreeTileCelData, FreeTileSourceLayer, LayerGroup, RasterLayer, TextCelData, TilemapCelData, Tileset } from '@shared/types'
+import type { BackgroundLayerSettings, ClipboardImage, ClipboardImageSize, FreeTileCelData, FreeTileSourceLayer, LayerGroup, RasterLayer, TextCelData, TilemapCelData, Tileset } from '@shared/types'
 import { unpackColor } from '@/core/raster'
 import { cloneLayerStyles } from '@/core/layer-styles'
 
@@ -170,18 +170,28 @@ export const selectionClipboardImage = (clipboard: SelectionClipboard): Clipboar
 export class ClipboardService {
   private selection: SelectionClipboard | null = null
   private layers: LayerCollectionClipboard | null = null
+  private layerCopySystemBaseline: Promise<SelectionClipboard | null> | null = null
+  private layerCopySystemBaselineSize: Promise<ClipboardImageSize | null> | null = null
+  private animationCopySystemBaseline: Promise<SelectionClipboard | null> | null = null
 
   clearSelection(): void {
     this.selection = null
+    this.animationCopySystemBaseline = null
   }
 
   clearLayer(): void {
     this.layers = null
+    this.layerCopySystemBaseline = null
+    this.layerCopySystemBaselineSize = null
+    this.animationCopySystemBaseline = null
   }
 
   setSelection(clipboard: SelectionClipboard): void {
     this.selection = cloneSelectionClipboard(clipboard)
     this.layers = null
+    this.layerCopySystemBaseline = null
+    this.layerCopySystemBaselineSize = null
+    this.animationCopySystemBaseline = null
   }
 
   getSelection(): SelectionClipboard | null {
@@ -195,6 +205,25 @@ export class ClipboardService {
   setLayers(clipboard: LayerCollectionClipboard): void {
     this.layers = cloneLayerCollectionClipboard(clipboard)
     this.selection = null
+    this.layerCopySystemBaseline = null
+    this.layerCopySystemBaselineSize = null
+    this.animationCopySystemBaseline = null
+  }
+
+  captureLayerCopySystemBaseline(readSystemImage: () => Promise<ClipboardImage | null>): void {
+    this.layerCopySystemBaseline = this.readSystemSelection(readSystemImage)
+  }
+
+  captureLayerCopySystemBaselineSize(readSystemSize: () => Promise<ClipboardImageSize | null>): void {
+    this.layerCopySystemBaselineSize = readSystemSize().catch(() => null)
+  }
+
+  captureAnimationCopySystemBaseline(readSystemImage?: () => Promise<ClipboardImage | null>): void {
+    this.selection = null
+    this.layers = null
+    this.layerCopySystemBaseline = null
+    this.layerCopySystemBaselineSize = null
+    this.animationCopySystemBaseline = readSystemImage ? this.readSystemSelection(readSystemImage) : Promise.resolve(null)
   }
 
   getLayer(): LayerClipboard | null {
@@ -218,7 +247,77 @@ export class ClipboardService {
       return internal ? cloneSelectionClipboard(internal) : null
     }
   }
+
+  async readSystemSelection(readSystemImage: () => Promise<ClipboardImage | null>): Promise<SelectionClipboard | null> {
+    try {
+      const image = await readSystemImage()
+      return image ? selectionClipboardFromImage(image) : null
+    } catch {
+      return null
+    }
+  }
+
+  async preferInternalLayers(currentSystemSelection: SelectionClipboard | null): Promise<boolean> {
+    if (!this.layers) return false
+    const baseline = this.layerCopySystemBaseline ? await this.layerCopySystemBaseline : null
+    if (!baseline) return currentSystemSelection === null
+    if (!currentSystemSelection) return true
+    return selectionClipboardsEqual(currentSystemSelection, baseline)
+  }
+
+  async preferInternalAnimation(currentSystemSelection: SelectionClipboard | null): Promise<boolean> {
+    if (!this.animationCopySystemBaseline) return false
+    const baseline = await this.animationCopySystemBaseline
+    if (!baseline) return currentSystemSelection === null
+    if (!currentSystemSelection) return true
+    return selectionClipboardsEqual(currentSystemSelection, baseline)
+  }
+
+  layerClipboardSize(): ClipboardImageSize | null {
+    if (!this.layers?.layers.length) return null
+    let left = Infinity
+    let top = Infinity
+    let right = -Infinity
+    let bottom = -Infinity
+    for (const layer of this.layers.layers) {
+      left = Math.min(left, layer.offsetX)
+      top = Math.min(top, layer.offsetY)
+      right = Math.max(right, layer.offsetX + layer.width)
+      bottom = Math.max(bottom, layer.offsetY + layer.height)
+    }
+    if (!Number.isFinite(left) || right <= left || bottom <= top) return null
+    return { width: right - left, height: bottom - top }
+  }
+
+  async latestClipboardSize(
+    readSystemSize: () => Promise<ClipboardImageSize | null>,
+    readSystemImage?: () => Promise<ClipboardImage | null>
+  ): Promise<ClipboardImageSize | null> {
+    const system = await readSystemSize().catch(() => null)
+    const layers = this.layerClipboardSize()
+    if (!layers) return system
+    const baseline = this.layerCopySystemBaselineSize ? await this.layerCopySystemBaselineSize : null
+    if (!baseline) return system ?? layers
+    if (system && system.width === baseline.width && system.height === baseline.height) {
+      if (!readSystemImage) return layers
+      const currentImage = await this.readSystemSelection(readSystemImage)
+      const baselineImage = this.layerCopySystemBaseline ? await this.layerCopySystemBaseline : null
+      if (currentImage && baselineImage && selectionClipboardsEqual(currentImage, baselineImage)) return layers
+      if (!currentImage && !baselineImage) return layers
+      return system
+    }
+    return system ?? layers
+  }
+
+  async readSize(
+    readSystemSize: () => Promise<ClipboardImageSize | null>,
+    readSystemImage?: () => Promise<ClipboardImage | null>
+  ): Promise<ClipboardImageSize | null> {
+    return this.latestClipboardSize(readSystemSize, readSystemImage)
+  }
 }
+
+export const clipboardService = new ClipboardService()
 
 const masksEqual = (left: Uint8Array | undefined, right: Uint8Array | undefined, size: number): boolean => {
   if (left === right) return true
@@ -226,3 +325,11 @@ const masksEqual = (left: Uint8Array | undefined, right: Uint8Array | undefined,
   if (!right) return left.length === size && left.every((value) => value === 1)
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
+
+const selectionClipboardsEqual = (left: SelectionClipboard, right: SelectionClipboard): boolean => left.width === right.width
+  && left.height === right.height
+  && left.originX === right.originX
+  && left.originY === right.originY
+  && left.pixels.length === right.pixels.length
+  && left.pixels.every((value, index) => value === right.pixels[index])
+  && masksEqual(left.mask, right.mask, left.width * left.height)

@@ -38,6 +38,8 @@ export interface CursorDefinition {
   variable: string
   source: string
   builtinSource?: string
+  /** Show a genuinely different builtin fallback in the component library. */
+  includeBuiltinInLibrary?: boolean
   hotspot: [number, number]
   fallback: string
 }
@@ -70,10 +72,10 @@ export const CURSOR_ICON_LIBRARY: readonly CursorDefinition[] = [
   { variable: '--cursor-ew-resize', source: cursorEwResize, hotspot: [15, 15], fallback: 'ew-resize' },
   { variable: '--cursor-nwse-resize', source: cursorNwseResize, hotspot: [16, 16], fallback: 'nwse-resize' },
   { variable: '--cursor-nesw-resize', source: cursorNeswResize, hotspot: [16, 16], fallback: 'nesw-resize' },
-  { variable: '--cursor-selection-rotate-ne', source: cursorRotateNe, builtinSource: builtinRotateNe, hotspot: [16, 16], fallback: 'crosshair' },
+  { variable: '--cursor-selection-rotate-ne', source: cursorRotateNe, builtinSource: builtinRotateNe, includeBuiltinInLibrary: true, hotspot: [16, 16], fallback: 'crosshair' },
   { variable: '--cursor-selection-rotate-se', source: cursorRotateSe, builtinSource: builtinRotateSe, hotspot: [16, 16], fallback: 'crosshair' },
-  { variable: '--cursor-selection-rotate-sw', source: cursorRotateSw, builtinSource: builtinRotateSw, hotspot: [16, 16], fallback: 'crosshair' },
-  { variable: '--cursor-selection-rotate-nw', source: cursorRotateNw, builtinSource: builtinRotateNw, hotspot: [16, 16], fallback: 'crosshair' },
+  { variable: '--cursor-selection-rotate-sw', source: cursorRotateSw, builtinSource: builtinRotateSw, includeBuiltinInLibrary: true, hotspot: [16, 16], fallback: 'crosshair' },
+  { variable: '--cursor-selection-rotate-nw', source: cursorRotateNw, builtinSource: builtinRotateNw, includeBuiltinInLibrary: true, hotspot: [16, 16], fallback: 'crosshair' },
   { variable: '--cursor-selection-rotate-n', source: cursorRotateN, builtinSource: cursorRotateN, hotspot: [16, 16], fallback: 'crosshair' },
   { variable: '--cursor-selection-rotate-s', source: cursorRotateS, builtinSource: cursorRotateS, hotspot: [16, 16], fallback: 'crosshair' },
   { variable: '--cursor-selection-shear-horizontal', source: cursorShearHorizontal, builtinSource: cursorShearHorizontal, hotspot: [16, 16], fallback: 'ew-resize' },
@@ -85,9 +87,10 @@ export const CURSOR_ICON_LIBRARY: readonly CursorDefinition[] = [
 const cursorDefinitions: CursorDefinition[] = [...CURSOR_ICON_LIBRARY]
 
 // Editing feedback must stay deterministic. The system crosshair is visually
-// indistinguishable from a lost/unfinished canvas interaction, so these
-// canvas-facing cursors always use the bundled pixel assets. The preference
-// still controls ordinary application cursors and resize cursors.
+// indistinguishable from a lost/unfinished canvas interaction, and the home
+// project-card cursor is part of the product's visual language. These cursors
+// always use the bundled pixel assets; the preference still controls ordinary
+// application cursors and resize cursors.
 const canvasPixelCursorVariables = new Set([
   '--cursor-crosshair',
   '--cursor-pencil-black',
@@ -95,7 +98,10 @@ const canvasPixelCursorVariables = new Set([
   '--cursor-selection-black',
   '--cursor-selection-white',
   '--cursor-eyedropper',
-  '--cursor-zoom'
+  '--cursor-zoom',
+  // Home project cards use a dedicated pixel pointer. Keep it available even
+  // when ordinary application pointers are delegated to the system cursor.
+  '--cursor-project'
 ])
 
 export type CursorPreferenceSource = 'system' | 'moonsprite'

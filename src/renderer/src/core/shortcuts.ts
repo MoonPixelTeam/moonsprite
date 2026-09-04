@@ -191,6 +191,11 @@ export const DEFAULT_SHORTCUTS = {
   tileRepeatY: '',
   rotateViewClockwise90: '',
   rotateViewCounterClockwise90: '',
+  viewZoom100: '',
+  viewZoom200: '',
+  viewZoom400: '',
+  viewZoom800: '',
+  viewZoom3200: '',
   resetView: '',
   toggleColorPanel: '',
   togglePalettePanel: '',
@@ -275,6 +280,9 @@ export const DEFAULT_SHORTCUTS = {
   addLinkedAnimationFrame: 'Alt+M',
   addBlankAnimationFrame: 'Alt+B',
   deleteAnimationFrame: 'Alt+C',
+  enableAnimationFrames: '',
+  disableAnimationFrames: '',
+  toggleAnimationFramesDisabled: '',
   copyAnimationCel: 'Ctrl+D',
   copyAnimationFrames: '',
   pasteAnimationFrames: '',
@@ -338,8 +346,8 @@ export const SHORTCUT_GROUPS = {
   image: ['canvasResize', 'imageResize', 'convertColorMode', 'convertColorModeRgba', 'convertColorModeIndexed', 'convertColorModeGrayscale', 'cropCanvas', 'trimCanvas'],
   color: ['fillForeground', 'addForegroundToPalette', 'swapForegroundBackground', 'replaceColor', 'adjustmentColorBalance', 'adjustmentBrightnessContrast', 'adjustmentHueSaturation', 'adjustmentCurves', 'togglePaletteEditLock', 'extractPaletteColors', 'togglePaletteColorSync', 'reversePaletteColors', 'createPaletteGradient', 'createPaletteHueGradient', 'sortPaletteHue', 'sortPaletteSaturation', 'sortPaletteBrightness', 'sortPaletteLuminance', 'sortPaletteRed', 'sortPaletteGreen', 'sortPaletteBlue', 'sortPaletteAlpha', 'paletteSortAscending', 'paletteSortDescending', 'paletteSwatchTiny', 'paletteSwatchSmall', 'paletteSwatchMedium', 'paletteSwatchLarge', 'paletteSwatchHuge', 'savePalette', 'openPaletteFolder', 'refreshPalettes'],
   layers: ['newLayer', 'createLayerGroup', 'newTilemapLayer', 'newFreeTileLayer', 'newBackgroundLayer', 'createLinkedLayer', 'convertLayerToBackground', 'convertLayerToTilemap', 'convertLayerToRaster', 'openLayerProperties', 'toggleClippingMask', 'toggleSelectedLayerVisibility', 'toggleSelectedLayerLock', 'toggleSelectedGroupCollapsed', 'toggleLayerMask', 'toggleGroupMask', 'openLayerStyles', 'toggleLayerStyles', 'copyLayerStyles', 'pasteLayerStyles', 'clearLayerStyles', 'duplicateLayer', 'mergeLayerDown', 'mergeSelectedLayers', 'mergeLayerGroup', 'mergeVisibleLayers', 'ungroupLayers', 'deleteLayer', 'openLayerSettings'],
-  animation: ['toggleAnimationPlayback', 'animationPlaybackOnce', 'animationPlaybackAll', 'animationPlaybackTag', 'toggleAnimationReturnToStart', 'animationPlaybackSpeed025', 'animationPlaybackSpeed050', 'animationPlaybackSpeed100', 'animationPlaybackSpeed150', 'animationPlaybackSpeed200', 'animationPlaybackSpeed300', 'previousAnimationFrame', 'nextAnimationFrame', 'addAnimationFrame', 'addLinkedAnimationFrame', 'addBlankAnimationFrame', 'deleteAnimationFrame', 'copyAnimationCel', 'copyAnimationFrames', 'pasteAnimationFrames', 'pasteAnimationCels', 'copyAnimationMasks', 'pasteAnimationMasks', 'connectAnimationCels', 'disconnectAnimationCels', 'connectAnimationMasks', 'disconnectAnimationMasks', 'toggleAnimationMask', 'createAnimationLoopSection', 'openAnimationFrameProperties', 'playAnimationLoopSection', 'openAnimationLoopSectionProperties', 'deleteAnimationLoopSection', 'openAnimationCelProperties'],
-  view: ['relativeLuminance', 'toggleGrid', 'toggleCustomGrid', 'toggleIsoView', 'toggleSliceOutlines', 'openGridSettings', 'openIsoViewSettings', 'tileRepeatOff', 'tileRepeatBoth', 'tileRepeatX', 'tileRepeatY', 'mirrorView', 'mirrorViewVertical', 'rotateViewClockwise90', 'rotateViewCounterClockwise90', 'resetView'],
+  animation: ['toggleAnimationPlayback', 'animationPlaybackOnce', 'animationPlaybackAll', 'animationPlaybackTag', 'toggleAnimationReturnToStart', 'animationPlaybackSpeed025', 'animationPlaybackSpeed050', 'animationPlaybackSpeed100', 'animationPlaybackSpeed150', 'animationPlaybackSpeed200', 'animationPlaybackSpeed300', 'previousAnimationFrame', 'nextAnimationFrame', 'addAnimationFrame', 'addLinkedAnimationFrame', 'addBlankAnimationFrame', 'deleteAnimationFrame', 'enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationCel', 'copyAnimationFrames', 'pasteAnimationFrames', 'pasteAnimationCels', 'copyAnimationMasks', 'pasteAnimationMasks', 'connectAnimationCels', 'disconnectAnimationCels', 'connectAnimationMasks', 'disconnectAnimationMasks', 'toggleAnimationMask', 'createAnimationLoopSection', 'openAnimationFrameProperties', 'playAnimationLoopSection', 'openAnimationLoopSectionProperties', 'deleteAnimationLoopSection', 'openAnimationCelProperties'],
+  view: ['relativeLuminance', 'toggleGrid', 'toggleCustomGrid', 'toggleIsoView', 'toggleSliceOutlines', 'openGridSettings', 'openIsoViewSettings', 'tileRepeatOff', 'tileRepeatBoth', 'tileRepeatX', 'tileRepeatY', 'mirrorView', 'mirrorViewVertical', 'rotateViewClockwise90', 'rotateViewCounterClockwise90', 'viewZoom100', 'viewZoom200', 'viewZoom400', 'viewZoom800', 'viewZoom3200', 'resetView'],
   interface: ['popupColorPanel', 'popupPalettePanel', 'popupLayersPanel', 'popupPreviewPanel', 'popupTilesetPanel', 'popupBrushLibraryPanel', 'toggleColorPanel', 'togglePalettePanel', 'toggleLayersPanel', 'togglePreviewPanel', 'toggleTilesetPanel', 'toggleBrushLibraryPanel', 'toggleTimeline', 'toolRailLeft', 'toolRailRight', 'toolRailTop', 'toolRailBottom', 'saveWorkspaceLayout', 'resetWorkspaceLayout', 'openWorkspaceManager', 'advancedMode', 'openShortcutSettings', 'openPreferences'],
   tools: [...TOOL_SHORTCUT_GROUP, 'brushShapeRound', 'brushShapeSquare', 'brushShapeLine', 'togglePerfectPixels', 'toggleContiguous', 'toggleSmartClosure', 'toggleRoundedCorners', 'toggleFixedRatio', 'toggleMoveAutoSelect', 'toggleSymmetryHorizontal', 'toggleSymmetryVertical', 'toggleSymmetryDiagonalUp', 'toggleSymmetryDiagonalDown', 'toggleSymmetryRotational', 'resetSymmetryCenter', 'brushSizeDecrease', 'brushSizeIncrease'],
   tiles: ['tilemapModeEdit', 'tilemapModeCreate', 'tilemapModeHybrid', 'tilemapModePaint', 'freeTileModeEdit', 'freeTileModePaint', 'addFreeTileSource', 'deleteTilesetSelection', 'openFreeTileSourceProperties', 'showOnlyFreeTileInstance', 'openFreeTileInstanceProperties', 'rotateFreeTileInstance90', 'mirrorFreeTileInstanceHorizontal', 'mirrorFreeTileInstanceVertical', 'deleteFreeTileInstances'],
@@ -647,6 +655,10 @@ export function keyboardEventKey(event: KeyboardEvent): string {
   if (event.code === 'Quote') return "'"
   if (['Process', 'Unidentified', 'Dead'].includes(event.key) && /^Key[A-Z]$/.test(event.code)) return event.code.slice(3)
   return event.key
+}
+
+export function isFunctionKey(key: string): boolean {
+  return /^F(?:[1-9]|1[0-2])$/i.test(key)
 }
 
 export function shortcutText(event: KeyboardEvent): string {
