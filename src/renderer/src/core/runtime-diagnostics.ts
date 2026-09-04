@@ -37,7 +37,26 @@ const DEFAULT_OPERATION_WARNING_MS = 5_000
 const MAX_DETAIL_KEYS = 32
 const MAX_DETAIL_STRING_LENGTH = 500
 
-const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+type RuntimeDiagnosticCrypto = Partial<Pick<Crypto, 'getRandomValues' | 'randomUUID'>>
+
+let fallbackSessionIdSequence = 0
+
+export const createRuntimeDiagnosticSessionId = (
+  randomSource: RuntimeDiagnosticCrypto | null = typeof globalThis.crypto === 'undefined' ? null : globalThis.crypto
+): string => {
+  if (typeof randomSource?.randomUUID === 'function') return randomSource.randomUUID()
+  if (typeof randomSource?.getRandomValues === 'function') {
+    const bytes = randomSource.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+  fallbackSessionIdSequence += 1
+  return `runtime-${Date.now().toString(36)}-${fallbackSessionIdSequence.toString(36)}`
+}
+
+const sessionId = createRuntimeDiagnosticSessionId()
 const recentEvents: RuntimeDiagnosticEvent[] = []
 const queuedEvents: RuntimeDiagnosticEvent[] = []
 const activeOperations = new Map<string, { name: string; startedAt: number }>()

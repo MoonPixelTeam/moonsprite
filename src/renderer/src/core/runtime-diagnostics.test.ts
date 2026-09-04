@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   beginRuntimeDiagnosticOperation,
   configureRuntimeDiagnostics,
+  createRuntimeDiagnosticSessionId,
   mainThreadStallDuration,
   recordRuntimeDiagnostic,
   resetRuntimeDiagnosticsForTests,
@@ -11,7 +12,28 @@ import {
 describe('runtime diagnostics', () => {
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
     resetRuntimeDiagnosticsForTests()
+  })
+
+  it('creates diagnostic session ids from secure Web Crypto sources', () => {
+    const uuid = '01234567-89ab-4def-8123-456789abcdef'
+    expect(createRuntimeDiagnosticSessionId({ randomUUID: () => uuid })).toBe(uuid)
+
+    const getRandomValues = ((bytes: Uint8Array): Uint8Array => {
+      bytes.fill(0xab)
+      return bytes
+    }) as Crypto['getRandomValues']
+    expect(createRuntimeDiagnosticSessionId({ getRandomValues })).toBe('abababab-abab-4bab-abab-abababababab')
+  })
+
+  it('keeps diagnostic session ids unique when Web Crypto is unavailable', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const first = createRuntimeDiagnosticSessionId(null)
+    const second = createRuntimeDiagnosticSessionId(null)
+
+    expect(first).toMatch(/^runtime-[a-z0-9]+-[a-z0-9]+$/)
+    expect(second).not.toBe(first)
   })
 
   it('persists queued events and records operation stages without document data', () => {
