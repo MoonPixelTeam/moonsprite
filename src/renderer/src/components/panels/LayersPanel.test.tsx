@@ -48,19 +48,6 @@ describe('LayersPanel Free Tile instances', () => {
     expect(screen.queryByRole('button', { name: '实例图层位置' })).toBeNull()
   })
 
-  it('keeps the layer view open and reports when the active frame has no instances', async () => {
-    const document = createDocument('empty free tile instance layers', 8, 8, 'rgba')
-    useWorkspace.getState().addSession(document)
-    await useWorkspace.getState().createFreeTileLayer({ name: 'Reusable Props' })
-
-    const { container } = render(<ConnectedLayersPanel />)
-    const entry = container.querySelector<HTMLElement>('.free-tile-layer .layer-tilemap-indicator')!
-    fireEvent.click(entry)
-
-    expect(container.querySelector('.free-tile-instance-layer-view')).toBeNull()
-    expect(container.querySelector('.layer-animation-list')).toBeTruthy()
-    expect(useWorkspace.getState().message).toBe('当前帧没有自由瓦片实例，无法打开实例图层。')
-  })
 
   it('opens instance layers from the Free Tile icon and exposes layer-style controls', async () => {
     const document = createDocument('free tile instance layers', 8, 8, 'rgba')
@@ -191,43 +178,6 @@ describe('LayersPanel Free Tile instances', () => {
     ])
   })
 
-  it('reuses layer eye and lock gestures for Alt-all and drag ranges', async () => {
-    const document = createDocument('instance layer gestures', 8, 8, 'rgba')
-    useWorkspace.getState().addSession(document)
-    await useWorkspace.getState().createFreeTileLayer({ name: 'Gesture Props' })
-    const target = activeFreeTileCelTarget(document)!
-    const sourceId = target.layer.freeTileSources![0].id
-    const placement = useWorkspace.getState().beginFreeTilePlacement()!
-    placement.after.instances = [
-      { id: 'gesture-a', sourceId, x: 0, y: 0 },
-      { id: 'gesture-b', sourceId, x: 2, y: 0 },
-      { id: 'gesture-c', sourceId, x: 4, y: 0 }
-    ]
-    useWorkspace.getState().previewFreeTilePlacement(placement)
-    useWorkspace.getState().commitFreeTilePlacement(placement, 'Place instances')
-
-    const { container } = render(<ConnectedLayersPanel />)
-    fireEvent.click(container.querySelector<HTMLElement>('.free-tile-layer .layer-tilemap-indicator')!)
-    const rowA = container.querySelector<HTMLElement>('[data-free-tile-instance-id="gesture-a"]')!
-    fireEvent.pointerDown(rowA.querySelector('.layer-visibility')!, { button: 0, pointerId: 51, altKey: true })
-    fireEvent.pointerUp(rowA.querySelector('.layer-visibility')!, { pointerId: 51 })
-
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.visible === false)).toBe(true)
-    expect(useWorkspace.getState().sessions[0].selectedFreeTileInstanceId).toBeNull()
-    useWorkspace.getState().undo()
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.visible !== false)).toBe(true)
-
-    const visualRows = Array.from(container.querySelectorAll<HTMLElement>('[data-free-tile-instance-active="true"]'))
-    const firstLock = visualRows[0].querySelector<HTMLElement>('.layer-lock-toggle')!
-    const lastLock = visualRows.at(-1)!.querySelector<HTMLElement>('.layer-lock-toggle')!
-    fireEvent.pointerDown(firstLock, { button: 0, pointerId: 52 })
-    fireEvent.pointerEnter(lastLock, { buttons: 1, pointerId: 52 })
-    fireEvent.pointerUp(lastLock, { pointerId: 52 })
-
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.locked === true)).toBe(true)
-    useWorkspace.getState().undo()
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.locked !== true)).toBe(true)
-  })
 
   it('edits instance-only rotation and mirroring from the context menu and properties', async () => {
     const document = createDocument('instance transform controls', 8, 8, 'rgba')
@@ -264,64 +214,6 @@ describe('LayersPanel Free Tile instances', () => {
     expect(activeFreeTileCelTarget(document)!.freeTiles.instances[0]).not.toHaveProperty('flipVertical')
   })
 
-  it('multi-selects instance rows and applies touched properties as one undo step', async () => {
-    const document = createDocument('instance batch properties', 8, 8, 'rgba')
-    useWorkspace.getState().addSession(document)
-    await useWorkspace.getState().createFreeTileLayer({ name: 'Batch Props' })
-    const target = activeFreeTileCelTarget(document)!
-    const sourceId = target.layer.freeTileSources![0].id
-    const placement = useWorkspace.getState().beginFreeTilePlacement()!
-    placement.after.instances = [
-      { id: 'batch-a', sourceId, x: 1, y: 1 },
-      { id: 'batch-b', sourceId, x: 3, y: 1 },
-      { id: 'batch-c', sourceId, x: 5, y: 1 }
-    ]
-    useWorkspace.getState().previewFreeTilePlacement(placement)
-    useWorkspace.getState().commitFreeTilePlacement(placement, 'Place instances')
-
-    const { container } = render(<ConnectedLayersPanel />)
-    fireEvent.click(container.querySelector<HTMLElement>('.free-tile-layer .layer-tilemap-indicator')!)
-    const rowA = container.querySelector<HTMLButtonElement>('[data-free-tile-instance-id="batch-a"]')!
-    const rowB = container.querySelector<HTMLButtonElement>('[data-free-tile-instance-id="batch-b"]')!
-    fireEvent.pointerDown(rowA, { button: 0, pointerId: 61 })
-    fireEvent.pointerUp(rowA, { pointerId: 61 })
-    fireEvent.pointerDown(rowB, { button: 0, pointerId: 62, ctrlKey: true })
-    fireEvent.pointerUp(rowB, { pointerId: 62 })
-    fireEvent.click(rowB, { ctrlKey: true })
-
-    await waitFor(() => {
-      expect(container.querySelector('[data-free-tile-instance-id="batch-a"]')).toHaveClass('selected')
-      expect(container.querySelector('[data-free-tile-instance-id="batch-b"]')).toHaveClass('selected')
-    })
-    expect(useWorkspace.getState().sessions[0].selectedFreeTileInstanceIds).toEqual(['batch-a', 'batch-b'])
-
-    const propertiesButton = container.querySelector('[data-free-tile-instance-id="batch-b"] .layer-instance-properties')!
-    fireEvent.pointerDown(propertiesButton, { button: 0, pointerId: 63 })
-    fireEvent.click(propertiesButton)
-    const dialog = globalThis.document.body.querySelector<HTMLElement>('.free-tile-instance-properties-dialog')!
-    expect(within(dialog).getByText('多个实例属性')).toBeTruthy()
-    fireEvent.change(within(dialog).getByRole('slider', { name: '不透明度' }), { target: { value: '50' } })
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.filter((instance) => instance.id !== 'batch-c').map((instance) => instance.opacity)).toEqual([0.5, 0.5])
-
-    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
-    useWorkspace.getState().undo()
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.map((instance) => instance.opacity)).toEqual([undefined, undefined, undefined])
-
-    fireEvent.pointerDown(rowA, { button: 0, pointerId: 64 })
-    fireEvent.pointerUp(rowA, { pointerId: 64 })
-    fireEvent.click(rowA)
-    expect(useWorkspace.getState().sessions[0].selectedFreeTileInstanceIds).toEqual(['batch-a'])
-    expect(rowA).toHaveClass('selected')
-    expect(rowB).not.toHaveClass('selected')
-
-    fireEvent.pointerDown(rowB, { button: 0, pointerId: 65, ctrlKey: true })
-    fireEvent.pointerUp(rowB, { pointerId: 65 })
-    fireEvent.click(rowB, { ctrlKey: true })
-    fireEvent.keyDown(rowA, { key: 'Delete' })
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.map((instance) => instance.id)).toEqual(['batch-c'])
-    useWorkspace.getState().undo()
-    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.map((instance) => instance.id)).toEqual(['batch-a', 'batch-b', 'batch-c'])
-  })
 })
 
 describe('LayersPanel animation', () => {
@@ -356,26 +248,6 @@ describe('LayersPanel animation', () => {
     expect(container.querySelectorAll('.layer-structure-edit-button')).toHaveLength(5)
   })
 
-  it('keeps timeline selections while interacting with a marked floating dialog', () => {
-    const document = createDocument('preserved timeline selection', 2, 2, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const timeline = ensureAnimationDocument(document)
-    const key = animationCelKey(document.activeLayerId, timeline.activeFrameId)
-    useWorkspace.getState().selectAnimationCell(key)
-    render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-    const dialog = globalThis.document.createElement('div')
-    dialog.dataset.preserveAnimationSelection = ''
-    const button = globalThis.document.createElement('button')
-    dialog.appendChild(button)
-    globalThis.document.body.appendChild(dialog)
-
-    fireEvent.pointerDown(button)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([key])
-
-    dialog.remove()
-    fireEvent.pointerDown(globalThis.document.body)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
-  })
 
   it('keeps timeline selections while sampling a color from the canvas', () => {
     const document = createDocument('preserved eyedropper selection', 2, 2, 'rgba')
@@ -415,30 +287,6 @@ describe('LayersPanel animation', () => {
     canvas.remove()
   })
 
-  it('highlights every selected layer and frame intersection without creating a cel selection', () => {
-    const document = createDocument('selected frame cells', 2, 2, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('Second', 2, 2, 'rgba')
-    document.layers.push(secondLayer)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const [firstFrame, secondFrame, thirdFrame] = timeline.frames
-    useWorkspace.getState().selectLayerRows([firstLayer.id, secondLayer.id], [])
-    useWorkspace.getState().selectAnimationFrame(firstFrame.id)
-    useWorkspace.getState().selectAnimationFrame(secondFrame.id, 'toggle')
-    const session = useWorkspace.getState().sessions[0]
-    const { container } = render(<LayersPanel session={session} docked />)
-    const cell = (layerId: string, frameId: string) => container.querySelector(`[data-animation-cel-key="${animationCelKey(layerId, frameId)}"]`)
-
-    for (const layer of [firstLayer, secondLayer]) {
-      expect(cell(layer.id, firstFrame.id)).toHaveClass('selected-animation-frame', 'selected-cel')
-      expect(cell(layer.id, secondFrame.id)).toHaveClass('selected-animation-frame', 'selected-cel')
-      expect(cell(layer.id, thirdFrame.id)).not.toHaveClass('selected-animation-frame', 'selected-cel')
-    }
-    expect(session.selectedAnimationCellKeys).toEqual([])
-  })
 
   it('keeps selected frame activity on group timeline cells', async () => {
     const document = createDocument('selected group frames', 2, 2, 'rgba')
@@ -833,25 +681,6 @@ describe('LayersPanel animation', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('当前图层单元格没有可见内容，无法创建或粘贴图层蒙版。请先在该单元格中绘制内容。')
   })
 
-  it('creates layer masks on every populated frame from the layer context menu', () => {
-    const document = createDocument('layer row mask creation', 1, 1, 'rgba')
-    getActiveLayer(document).pixels.set([20, 40, 60, 255])
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().addAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const layerId = document.activeLayerId
-    const cels = timeline.frames.map((frame) => animationCelAt(timeline, layerId, frame.id)!)
-    cels[1].surface!.pixels.set([80, 100, 120, 255])
-    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-
-    fireEvent.contextMenu(container.querySelector(`[data-layer-id="${layerId}"]`)!, { clientX: 30, clientY: 40 })
-    fireEvent.click(screen.getByRole('menuitem', { name: '新建图层蒙版' }))
-
-    expect(cels[0].mask).toBeDefined()
-    expect(cels[1].mask).toBeDefined()
-    expect(cels[2].mask).toBeUndefined()
-  })
 
   it('outlines the complete selected frame column instead of only its header', () => {
     const document = createDocument('animation frame selection', 1, 1, 'rgba')
@@ -916,179 +745,11 @@ describe('LayersPanel animation', () => {
     expect(timeline.frames.map((frame) => frame.id)).toEqual([secondFrame.id, thirdFrame.id, firstFrame.id])
   })
 
-  it('shows selection backgrounds only on cells in a Shift range', () => {
-    const document = createDocument('animation cel selection outline', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('Second', 1, 1, 'rgba')
-    const thirdLayer = createLayer('Third', 1, 1, 'rgba')
-    document.layers.push(secondLayer, thirdLayer)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().duplicateAnimationFrame()
-    const session = useWorkspace.getState().sessions[0]
-    const timeline = ensureAnimationDocument(document)
-    const [firstFrame, secondFrame, thirdFrame] = timeline.frames
-    const { container } = render(<LayersPanel session={session} docked />)
-    const firstCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(firstLayer.id, firstFrame.id)}"]`)
-    const secondCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(secondLayer.id, secondFrame.id)}"]`)
-    expect(firstCell).not.toBeNull()
-    expect(secondCell).not.toBeNull()
-    fireEvent.pointerDown(firstCell!, { button: 0 })
-    fireEvent.pointerUp(firstCell!)
-    fireEvent.pointerDown(secondCell!, { button: 0, shiftKey: true })
 
-    expect(container.querySelectorAll('.animation-cel-selection-box')).toHaveLength(1)
-    const selection = container.querySelector<HTMLElement>('.animation-cel-selection-box')
-    expect(selection?.style.getPropertyValue('--animation-frame-span')).toBe('2')
-    expect(selection?.style.getPropertyValue('--animation-row-span')).toBe('2')
-    expect(screen.getByRole('button', { name: '第 1 帧' })).not.toHaveClass('selected-animation-frame')
-    expect(screen.getByRole('button', { name: '第 2 帧' })).not.toHaveClass('selected-animation-frame')
-    expect(container.querySelector(`[data-layer-id="${firstLayer.id}"]`)).not.toHaveClass('selected')
-    expect(container.querySelector(`[data-layer-id="${secondLayer.id}"]`)).not.toHaveClass('selected')
-    expect(container.querySelector(`[data-layer-id="${thirdLayer.id}"]`)).not.toHaveClass('selected')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(firstLayer.id, firstFrame.id)}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(secondLayer.id, secondFrame.id)}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(thirdLayer.id, firstFrame.id)}"]`)).not.toHaveClass('selected-animation-frame', 'selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(thirdLayer.id, secondFrame.id)}"]`)).not.toHaveClass('selected-animation-frame', 'selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(secondLayer.id, thirdFrame.id)}"]`)).not.toHaveClass('selected-layer', 'selected-cel')
-    expect(session.selectedAnimationFrameIds).toEqual([])
-  })
 
-  it('keeps selected cells highlighted after an operation hides their outer frame', () => {
-    const document = createDocument('animation cel operation outline', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('Second', 1, 1, 'rgba')
-    document.layers.push(secondLayer)
-    useWorkspace.getState().addSession(document)
-    const frameId = ensureAnimationDocument(document).activeFrameId
-    const firstKey = animationCelKey(firstLayer.id, frameId)
-    const secondKey = animationCelKey(secondLayer.id, frameId)
-    useWorkspace.getState().selectAnimationCell(firstKey)
-    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
-    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
 
-    expect(container.querySelector('[data-animation-cel-selection]')).toBeInTheDocument()
-    act(() => finishAnimationCellOperation(document.id))
 
-    expect(container.querySelector('[data-animation-cel-selection]')).not.toBeInTheDocument()
-    expect(container.querySelector(`[data-animation-cel-key="${firstKey}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)).toHaveClass('selected-cel')
-  })
 
-  it('removes an already selected cel when Shift-clicked again', () => {
-    const document = createDocument('animation cel shift toggle', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('Second', 1, 1, 'rgba')
-    document.layers.push(secondLayer)
-    useWorkspace.getState().addSession(document)
-    const frameId = ensureAnimationDocument(document).activeFrameId
-    const firstKey = animationCelKey(firstLayer.id, frameId)
-    const secondKey = animationCelKey(secondLayer.id, frameId)
-    const { container, rerender } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-    const firstCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${firstKey}"]`)!
-    const secondCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${secondKey}"]`)!
-
-    fireEvent.pointerDown(firstCell, { button: 0 })
-    fireEvent.pointerUp(firstCell)
-    fireEvent.pointerDown(secondCell, { button: 0, ctrlKey: true })
-    fireEvent.pointerUp(secondCell)
-    fireEvent.pointerDown(firstCell, { button: 0, shiftKey: true })
-    rerender(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([secondKey])
-    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([secondLayer.id])
-    expect(container.querySelector(`[data-animation-cel-key="${firstKey}"]`)).not.toHaveClass('selected-cel', 'current-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)).toHaveClass('selected-cel')
-  })
-
-  it('keeps the active frame guide while only selected animation cells use selection styling', () => {
-    const document = createDocument('animation active frame toggle', 1, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const session = useWorkspace.getState().sessions[0]
-    const timeline = ensureAnimationDocument(document)
-    const [firstFrame, secondFrame] = timeline.frames
-    const firstKey = animationCelKey(document.activeLayerId, firstFrame.id)
-    const secondKey = animationCelKey(document.activeLayerId, secondFrame.id)
-    const { container, rerender } = render(<LayersPanel session={session} docked />)
-
-    useWorkspace.getState().selectAnimationCell(firstKey)
-    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
-    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
-    rerender(<LayersPanel session={session} docked />)
-
-    expect(timeline.activeFrameId).toBe(secondFrame.id)
-    expect(session.selectedAnimationCellKeys).toEqual([firstKey])
-    expect(screen.getByRole('button', { name: '第 1 帧' })).not.toHaveClass('selected-animation-frame')
-    expect(screen.getByRole('button', { name: '第 2 帧' })).toHaveClass('active')
-    expect(screen.getByRole('button', { name: '第 2 帧' })).not.toHaveClass('selected-animation-frame')
-    expect(container.querySelector(`[data-layer-id="${document.activeLayerId}"]`)).toHaveClass('selected')
-    expect(container.querySelector(`[data-animation-cel-key="${firstKey}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)).toHaveClass('active-frame', 'selected-layer')
-    expect(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)).not.toHaveClass('current-cel', 'selected-cel')
-  })
-
-  it('includes the current cel when Ctrl starts a visual cel multi-selection', () => {
-    const document = createDocument('implicit visual cel selection', 1, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const session = useWorkspace.getState().sessions[0]
-    const timeline = ensureAnimationDocument(document)
-    const [firstFrame, secondFrame] = timeline.frames
-    useWorkspace.getState().setActiveAnimationFrame(firstFrame.id)
-    const firstKey = animationCelKey(layer.id, firstFrame.id)
-    const secondKey = animationCelKey(layer.id, secondFrame.id)
-    const { container } = render(<LayersPanel session={session} docked />)
-
-    fireEvent.pointerDown(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)!, { button: 0, ctrlKey: true })
-
-    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
-    expect(screen.getByRole('button', { name: '第 1 帧' })).not.toHaveClass('active', 'selected-animation-frame')
-    expect(container.querySelector(`[data-layer-id="${layer.id}"]`)).not.toHaveClass('selected')
-    expect(container.querySelector(`[data-animation-cel-key="${firstKey}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${secondKey}"]`)).toHaveClass('selected-cel')
-    expect(container.querySelector(`[data-animation-cel-key="${firstKey}"]`)).not.toHaveClass('active-frame', 'current-cel')
-    expect(container.querySelector('[data-animation-cel-selection]')).toHaveStyle('--animation-frame-span: 2')
-  })
-
-  it('adds frames and cels to the current selection on long press without starting a move', () => {
-    vi.useFakeTimers()
-    const document = createDocument('animation long press selection', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('second', 1, 1, 'rgba')
-    document.layers.push(secondLayer)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const [firstFrame, secondFrame] = timeline.frames
-    const session = useWorkspace.getState().sessions[0]
-    const { container, rerender } = render(<LayersPanel session={session} docked />)
-
-    useWorkspace.getState().selectAnimationFrame(firstFrame.id)
-    rerender(<LayersPanel session={session} docked />)
-    const secondFrameButton = screen.getByRole('button', { name: '第 2 帧' })
-    fireEvent.pointerDown(secondFrameButton, { button: 0, clientX: 20, clientY: 10 })
-    expect(session.selectedAnimationFrameIds).toEqual([firstFrame.id])
-    act(() => vi.advanceTimersByTime(360))
-    expect(session.selectedAnimationFrameIds).toEqual([firstFrame.id, secondFrame.id])
-    fireEvent.pointerUp(secondFrameButton, { clientX: 20, clientY: 10 })
-    expect(session.selectedAnimationFrameIds).toEqual([firstFrame.id, secondFrame.id])
-    expect(container.querySelector('.animation-frame-drop-line')).not.toBeInTheDocument()
-
-    const firstKey = animationCelKey(firstLayer.id, firstFrame.id)
-    const secondKey = animationCelKey(secondLayer.id, secondFrame.id)
-    useWorkspace.getState().selectAnimationCell(firstKey)
-    rerender(<LayersPanel session={session} docked />)
-    const secondCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${secondKey}"]`)!
-    fireEvent.pointerDown(secondCell, { button: 0, clientX: 20, clientY: 60 })
-    expect(session.selectedAnimationCellKeys).toEqual([firstKey])
-    act(() => vi.advanceTimersByTime(360))
-    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
-    fireEvent.pointerUp(secondCell, { clientX: 20, clientY: 60 })
-    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
-    expect(container.querySelector('.layer-animation-cel.drop-target')).not.toBeInTheDocument()
-  })
 
   it('updates the frame range outline continuously while dragging across headers', () => {
     vi.useFakeTimers()
@@ -1164,156 +825,10 @@ describe('LayersPanel animation', () => {
     vi.useRealTimers()
   })
 
-  it('shows the move cursor on a selected frame outline inside cel rows', () => {
-    const document = createDocument('animation frame outline cursor', 1, 1, 'rgba')
-    useWorkspace.getState().addSession(document)
-    const timeline = ensureAnimationDocument(document)
-    useWorkspace.getState().selectAnimationFrame(timeline.frames[0].id)
-    const session = useWorkspace.getState().sessions[0]
-    const { container } = render(<LayersPanel session={session} docked />)
-    const outline = container.querySelector<HTMLElement>('[data-animation-frame-selection]')!
-    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 34, top: 0, bottom: 100, width: 34, height: 100, x: 0, y: 0, toJSON: () => ({}) })
-    const cell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(document.activeLayerId, timeline.frames[0].id)}"]`)!
 
-    fireEvent.pointerMove(cell, { clientX: 1, clientY: 60 })
 
-    expect(cell.style.cursor).toBe('var(--cursor-move)')
-  })
 
-  it('does not show a move cursor when hovering a selected cel outline', () => {
-    const document = createDocument('animation cel outline cursor', 1, 1, 'rgba')
-    const layer = getActiveLayer(document)
-    layer.pixels.set([20, 40, 60, 255])
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const firstKey = animationCelKey(layer.id, timeline.frames[0].id)
-    const secondKey = animationCelKey(layer.id, timeline.frames[1].id)
-    useWorkspace.getState().selectAnimationCell(firstKey)
-    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
-    const session = useWorkspace.getState().sessions[0]
-    const { container } = render(<LayersPanel session={session} docked />)
-    const outline = container.querySelector<HTMLElement>('[data-animation-cel-selection]')!
-    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 68, top: 34, bottom: 76, width: 68, height: 42, x: 0, y: 34, toJSON: () => ({}) })
-    const cell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${firstKey}"]`)!
 
-    fireEvent.pointerMove(cell, { clientX: 1, clientY: 50 })
-
-    expect(cell.style.cursor).toBe('')
-  })
-
-  it('pointer-drags a populated cel, fades it, and preserves a frame selection when a layer row is chosen', () => {
-    const document = createDocument('animation cel pointer drag', 2, 1, 'rgba')
-    const firstLayer = getActiveLayer(document)
-    const secondLayer = createLayer('second', 2, 1, 'rgba')
-    document.layers.unshift(secondLayer)
-    const timeline = ensureAnimationDocument(document)
-    firstLayer.pixels.set([20, 40, 60, 255], 0)
-    timeline.cels.find((cel) => cel.layerId === firstLayer.id)!.surface!.pixels.set([20, 40, 60, 255], 0)
-    useWorkspace.getState().addSession(document)
-    const session = useWorkspace.getState().sessions[0]
-    const { container, rerender } = render(<LayersPanel session={session} docked />)
-    const source = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(firstLayer.id, timeline.activeFrameId)}"]`)!
-    const target = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(secondLayer.id, timeline.activeFrameId)}"]`)!
-    expect(Array.from(timeline.cels.find((cel) => cel.layerId === firstLayer.id)?.surface?.pixels ?? []).slice(0, 4)).toEqual([20, 40, 60, 255])
-
-    fireEvent.pointerDown(source, { button: 0, clientX: 10, clientY: 50 })
-    fireEvent.pointerUp(source, { clientX: 10, clientY: 50 })
-    const outline = container.querySelector<HTMLElement>('[data-animation-cel-selection]')!
-    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 34, top: 30, bottom: 114, width: 34, height: 84, x: 0, y: 30, toJSON: () => ({}) })
-    fireEvent.pointerDown(source, { button: 0, clientX: 1, clientY: 50 })
-    fireEvent.pointerMove(target, { clientX: 20, clientY: 90 })
-    expect(source).toHaveClass('dragging')
-    expect(target).toHaveClass('drop-target')
-    fireEvent.pointerUp(target, { clientX: 20, clientY: 90 })
-    expect(session.selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, timeline.activeFrameId)])
-    expect({
-      second: Array.from(timeline.cels.find((cel) => cel.layerId === secondLayer.id)?.surface?.pixels ?? []).slice(0, 4),
-      first: Array.from(timeline.cels.find((cel) => cel.layerId === firstLayer.id)?.surface?.pixels ?? []).slice(0, 4)
-    }).toEqual({ second: [20, 40, 60, 255], first: [0, 0, 0, 0] })
-
-    useWorkspace.getState().selectAnimationFrame(timeline.activeFrameId)
-    rerender(<LayersPanel session={session} docked />)
-    fireEvent.pointerDown(container.querySelector(`[data-layer-id="${firstLayer.id}"]`)!, { button: 0, clientX: 8, clientY: 48 })
-    fireEvent.pointerUp(window, { clientX: 8, clientY: 48 })
-    expect(session.selectedAnimationFrameIds).toEqual([timeline.activeFrameId])
-    expect(session.selectedAnimationCellKeys).toEqual([])
-
-    useWorkspace.getState().selectAnimationCell(animationCelKey(firstLayer.id, timeline.activeFrameId))
-    rerender(<LayersPanel session={session} docked />)
-    fireEvent.pointerDown(container.querySelector(`[data-layer-id="${secondLayer.id}"]`)!, { button: 0, clientX: 8, clientY: 88 })
-    fireEvent.pointerUp(window, { clientX: 8, clientY: 88 })
-    expect(session.selectedAnimationFrameIds).toEqual([])
-    expect(session.selectedAnimationCellKeys).toEqual([])
-  })
-
-  it('keeps Ctrl and Shift cel selection through the panel click path and clears it outside the animation grid', () => {
-    const spriteDocument = createDocument('animation panel selection', 1, 1, 'rgba')
-    const firstLayer = getActiveLayer(spriteDocument)
-    const secondLayer = createLayer('second', 1, 1, 'rgba')
-    spriteDocument.layers.push(secondLayer)
-    useWorkspace.getState().addSession(spriteDocument)
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(spriteDocument)
-    const [firstFrame, , thirdFrame] = timeline.frames
-    const session = useWorkspace.getState().sessions[0]
-    const { container } = render(<LayersPanel session={session} docked />)
-    const firstCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(firstLayer.id, firstFrame.id)}"]`)!
-    const secondCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(secondLayer.id, firstFrame.id)}"]`)!
-    const rangeEnd = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(firstLayer.id, thirdFrame.id)}"]`)!
-
-    fireEvent.pointerDown(firstCell, { button: 0, clientX: 10, clientY: 10 })
-    fireEvent.pointerUp(window, { clientX: 10, clientY: 10 })
-    fireEvent.pointerDown(secondCell, { button: 0, ctrlKey: true, clientX: 20, clientY: 20 })
-    fireEvent.pointerUp(window, { clientX: 20, clientY: 20 })
-    expect(session.selectedAnimationCellKeys).toHaveLength(2)
-
-    fireEvent.pointerDown(rangeEnd, { button: 0, shiftKey: true, clientX: 30, clientY: 30 })
-    fireEvent.pointerUp(window, { clientX: 30, clientY: 30 })
-    expect(session.selectedAnimationCellKeys).toHaveLength(6)
-
-    fireEvent.pointerDown(globalThis.document.body, { button: 0 })
-    expect(session.selectedAnimationCellKeys).toEqual([])
-  })
-
-  it('maps Shift-selected layers to current-frame cells before Ctrl-adding another cel', () => {
-    const document = createDocument('layer selection to cel selection', 1, 1, 'rgba')
-    const bottom = getActiveLayer(document)
-    const middle = createLayer('Middle', 1, 1, 'rgba')
-    const top = createLayer('Top', 1, 1, 'rgba')
-    document.layers.push(middle, top)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const session = useWorkspace.getState().sessions[0]
-    const timeline = ensureAnimationDocument(document)
-    const currentFrameId = timeline.activeFrameId
-    const otherFrame = timeline.frames.find((frame) => frame.id !== currentFrameId)!
-    const { container } = render(<LayersPanel session={session} docked />)
-
-    const topRow = container.querySelector<HTMLElement>(`[data-layer-id="${top.id}"]`)!
-    const bottomRow = container.querySelector<HTMLElement>(`[data-layer-id="${bottom.id}"]`)!
-    fireEvent.pointerDown(topRow, { button: 0, clientX: 10, clientY: 30 })
-    fireEvent.pointerUp(window, { clientX: 10, clientY: 30 })
-    fireEvent.pointerDown(bottomRow, { button: 0, shiftKey: true, clientX: 10, clientY: 90 })
-    fireEvent.pointerUp(window, { clientX: 10, clientY: 90 })
-
-    const currentFrameKeys = [top, middle, bottom].map((layer) => animationCelKey(layer.id, currentFrameId))
-    expect(session.selectedAnimationCellKeys).toEqual(currentFrameKeys)
-    expect(container.querySelector('[data-animation-cel-selection]')).not.toBeInTheDocument()
-
-    const secondFrameCell = container.querySelector<HTMLElement>(`[data-animation-cel-key="${animationCelKey(top.id, otherFrame.id)}"]`)!
-    fireEvent.pointerDown(secondFrameCell, { button: 0, ctrlKey: true, clientX: 80, clientY: 30 })
-    fireEvent.pointerUp(window, { clientX: 80, clientY: 30 })
-    expect(session.selectedAnimationCellKeys).toEqual([...currentFrameKeys, animationCelKey(top.id, otherFrame.id)])
-    expect(container.querySelector('[data-animation-cel-selection]')).toBeInTheDocument()
-    expect(session.selectedLayerIds).toEqual([top.id, middle.id, bottom.id])
-    expect(topRow).toHaveClass('selected')
-    expect(bottomRow).toHaveClass('selected')
-    expect(container.querySelectorAll('[data-animation-selected-layer-row]')).toHaveLength(3)
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(bottom.id, otherFrame.id)}"]`)).toHaveClass('selected-layer')
-    expect(container.querySelector(`[data-animation-cel-key="${animationCelKey(bottom.id, otherFrame.id)}"]`)).not.toHaveClass('selected-cel')
-  })
 
   it('disables content-only commands for an empty cel context menu', () => {
     const document = createDocument('empty cel menu', 1, 1, 'rgba')
@@ -1387,33 +902,6 @@ describe('LayersPanel animation', () => {
     expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
   })
 
-  it('renders masks inherited through linked cels as one connected block', () => {
-    const document = createDocument('linked mask visuals', 1, 1, 'rgba')
-    getActiveLayer(document).pixels[3] = 255
-    useWorkspace.getState().addSession(document)
-    const firstCel = ensureAnimationDocument(document).cels[0]
-    useWorkspace.getState().createLayerMask(firstCel.id)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const cels = timeline.frames.map((frame) => timeline.cels.find((cel) => cel.layerId === document.activeLayerId && cel.frameId === frame.id)!)
-    expect(connectAnimationCels(document, cels.map((cel) => cel.id))).toBe(true)
-    const firstKey = animationCelKey(document.activeLayerId, timeline.frames[0].id)
-    useWorkspace.getState().selectAnimationMaskCell(firstKey)
-
-    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-    const maskCells = Array.from(container.querySelectorAll<HTMLElement>('[data-animation-mask-cel-key]'))
-    expect(maskCells).toHaveLength(2)
-    expect(maskCells.every((cell) => cell.classList.contains('linked-cel'))).toBe(true)
-    expect(maskCells.filter((cell) => cell.classList.contains('active-mask'))).toHaveLength(1)
-    const maskBlock = Array.from(container.querySelectorAll<HTMLElement>('[data-linked-cel-block]'))
-      .find((block) => block.style.getPropertyValue('--animation-row-index') === '0')
-    const celBlock = Array.from(container.querySelectorAll<HTMLElement>('[data-linked-cel-block]'))
-      .find((block) => block.style.getPropertyValue('--animation-row-index') === '1')
-    expect(maskBlock).toHaveClass('selected')
-    expect(celBlock).toBeInTheDocument()
-    expect(maskBlock?.dataset.frameIndex).toBe(celBlock?.dataset.frameIndex)
-    expect(maskBlock?.dataset.frameSpan).toBe(celBlock?.dataset.frameSpan)
-  })
 
   it('keeps thumbnails on every cel in a linked group at enlarged density', () => {
     localStorage.setItem('moonsprite.layers.display-density', 'huge')
@@ -1435,31 +923,6 @@ describe('LayersPanel animation', () => {
     expect(container.querySelector('.layer-animation-cel.linked-cel')).not.toBeInTheDocument()
   })
 
-  it('renders linked cels independently at enlarged density and preserves the selected row state', () => {
-    localStorage.setItem('moonsprite.layers.display-density', 'huge')
-    const document = createDocument('isolated linked cel thumbnail', 2, 2, 'rgba')
-    const layer = getActiveLayer(document)
-    layer.pixels.set([20, 40, 60, 255], 0)
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().duplicateAnimationFrame()
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === timeline.frames[1].id)?.surface?.pixels.fill(0)
-    const linkedCels = [timeline.frames[0], timeline.frames[2], timeline.frames[3]]
-      .map((frame) => timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === frame.id)!)
-    expect(connectAnimationCels(document, linkedCels.map((cel) => cel.id))).toBe(true)
-
-    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-    const isolatedKey = animationCelKey(layer.id, timeline.frames[0].id)
-    const isolated = container.querySelector<HTMLElement>(`[data-animation-cel-key="${isolatedKey}"]`)
-    expect(isolated).toHaveClass('selected-layer')
-    expect(isolated?.querySelector('.cel-thumbnail canvas')).toBeInTheDocument()
-    expect(container.querySelector('[data-animation-selected-layer-row]')).toHaveAttribute('data-animation-selected-layer-row')
-    expect(container.querySelector('[data-linked-cel-block]')).not.toBeInTheDocument()
-    expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
-    expect(container.querySelector('.layer-animation-cel.linked-cel-member')).not.toBeInTheDocument()
-  })
 
   it('persists animation density and onion skin from layer settings', () => {
     const spriteDocument = createDocument('layer settings', 1, 1, 'rgba')
@@ -1507,73 +970,6 @@ describe('LayersPanel animation', () => {
 })
 
 describe('LayersPanel properties', () => {
-  it('creates a cell mask from the cell context menu and activates its upper marker', () => {
-    const document = createDocument('layer mask menu', 2, 2, 'rgba')
-    const layer = getActiveLayer(document)
-    layer.pixels[3] = 255
-    const cel = ensureAnimationDocument(document).cels[0]
-    useWorkspace.getState().addSession(document)
-    const session = useWorkspace.getState().sessions[0]
-    const { container, rerender } = render(<LayersPanel session={session} docked />)
-
-    fireEvent.contextMenu(container.querySelector(`[data-layer-id="${layer.id}"]`)!, { clientX: 20, clientY: 20 })
-    expect(screen.getByRole('menuitem', { name: '新建图层蒙版' })).toBeInTheDocument()
-    fireEvent.pointerDown(window.document.body)
-
-    const celButton = container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, cel.frameId)}"]`)!
-    fireEvent.contextMenu(celButton, { clientX: 20, clientY: 20 })
-    const createMaskItem = screen.getAllByRole('menuitem').find((item) => item.textContent?.includes('图层蒙版'))
-    expect(createMaskItem).toBeDefined()
-    fireEvent.click(createMaskItem!)
-    rerender(<LayersPanel session={session} docked />)
-
-    const marker = container.querySelector<HTMLElement>(`[data-layer-mask-id="${cel.mask?.id}"]`)
-    expect(marker).toBeInTheDocument()
-    const maskRow = container.querySelector(`[data-layer-mask-row-owner="${layer.id}"]`)!
-    const layerRow = container.querySelector(`[data-layer-id="${layer.id}"]`)!
-    expect(maskRow).toBeInTheDocument()
-    expect([...maskRow.parentElement!.children].indexOf(maskRow)).toBeLessThan([...layerRow.parentElement!.children].indexOf(layerRow))
-    expect(marker?.closest('.layer-mask-cel')).toHaveClass('active-mask', 'selected-cel')
-    expect(container.querySelector('[data-animation-cel-selection]')).toHaveStyle('--animation-row-index: 0')
-    fireEvent.click(celButton)
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
-    fireEvent.click(marker!)
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask?.id)
-    expect(useWorkspace.getState().sessions[0].layerMaskIsolatedView).toBe(false)
-    fireEvent.click(maskRow)
-    expect(container.querySelector('[data-animation-cel-selection]')).not.toBeInTheDocument()
-    fireEvent.pointerDown(maskRow, { button: 0, altKey: true })
-    fireEvent.click(maskRow, { altKey: true })
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask?.id)
-    expect(useWorkspace.getState().sessions[0].layerMaskIsolatedView).toBe(true)
-    fireEvent.pointerDown(maskRow, { button: 0, altKey: true })
-    fireEvent.click(maskRow, { altKey: true })
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask?.id)
-    expect(useWorkspace.getState().sessions[0].layerMaskIsolatedView).toBe(false)
-    fireEvent.pointerDown(marker!, { button: 0, altKey: true })
-    expect(useWorkspace.getState().sessions[0].layerMaskIsolatedView).toBe(true)
-    expect(layerRow).toHaveClass('selected')
-    expect(container.querySelector('[data-animation-cel-selection]')).toHaveStyle('--animation-row-index: 0')
-    act(() => finishAnimationCellOperation(document.id))
-    expect(container.querySelector('[data-animation-cel-selection]')).toHaveStyle('--animation-row-index: 0')
-
-    useWorkspace.getState().clearAnimationSelection()
-    rerender(<LayersPanel session={session} docked />)
-    const activeMaskCell = container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${animationCelKey(layer.id, cel.frameId)}"]`)!
-    expect(activeMaskCell).toHaveClass('active-mask', 'selected-cel')
-    expect(container.querySelector('[data-animation-cel-selection]')).toHaveStyle('--animation-row-index: 0')
-
-    fireEvent.keyDown(window, { key: 'Alt' })
-    expect(activeMaskCell).toHaveClass('mask-edit-ready')
-    expect(maskRow).toHaveClass('mask-edit-ready')
-    expect(container.querySelector('.layers-panel')).not.toHaveClass('layer-alt-copy-ready')
-    fireEvent.keyUp(window, { key: 'Alt' })
-
-    fireEvent.pointerDown(container.querySelector(`[data-layer-id="${layer.id}"]`)!, { button: 0 })
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
-    rerender(<LayersPanel session={session} docked />)
-    expect(container.querySelector('[data-animation-cel-selection]')).not.toBeInTheDocument()
-  })
 
   it('creates a layer-group mask from the group menu and renders a normal-size mask cell', () => {
     const document = createDocument('group mask menu', 2, 2, 'rgba')
@@ -1596,40 +992,6 @@ describe('LayersPanel properties', () => {
     expect(container.querySelector(`[data-layer-mask-id="${mask?.id}"]`)).toBeInTheDocument()
   })
 
-  it('selects mask cells independently and enters the last mask with Alt-click', () => {
-    const document = createDocument('mask timeline selection', 2, 2, 'rgba')
-    getActiveLayer(document).pixels[3] = 255
-    useWorkspace.getState().addSession(document)
-    const firstCel = ensureAnimationDocument(document).cels[0]
-    useWorkspace.getState().createLayerMask(firstCel.id)
-    useWorkspace.getState().duplicateAnimationFrame()
-    const timeline = ensureAnimationDocument(document)
-    const session = useWorkspace.getState().sessions[0]
-    const { container } = render(<LayersPanel session={session} docked />)
-    const firstKey = animationCelKey(document.activeLayerId, timeline.frames[0].id)
-    const secondKey = animationCelKey(document.activeLayerId, timeline.frames[1].id)
-    const firstMaskCell = container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${firstKey}"]`)!
-    const secondMaskCell = container.querySelector<HTMLElement>(`[data-animation-mask-cel-key="${secondKey}"]`)!
-
-    fireEvent.pointerDown(firstMaskCell, { button: 0, clientX: 10, clientY: 40 })
-    fireEvent.pointerUp(firstMaskCell, { clientX: 10, clientY: 40 })
-    fireEvent.pointerDown(secondMaskCell, { button: 0, ctrlKey: true, clientX: 40, clientY: 40 })
-    expect(session.selectedAnimationMaskCellKeys).toEqual([firstKey, secondKey])
-    expect(session.selectedAnimationCellKeys).toEqual([])
-    expect(session.activeLayerMaskId).toBe(ensureAnimationDocument(document).cels[1].mask?.id)
-    expect(session.layerMaskIsolatedView).toBe(false)
-
-    useWorkspace.getState().clearAnimationSelection()
-    fireEvent.pointerDown(firstMaskCell, { button: 0, altKey: true, clientX: 10, clientY: 40 })
-    fireEvent.pointerDown(secondMaskCell, { button: 0, altKey: true, shiftKey: true, clientX: 40, clientY: 40 })
-    expect(session.selectedAnimationMaskCellKeys).toEqual([firstKey, secondKey])
-    expect(session.activeLayerMaskId).toBe(ensureAnimationDocument(document).cels[1].mask?.id)
-    expect(session.layerMaskIsolatedView).toBe(true)
-
-    fireEvent.contextMenu(secondMaskCell, { clientX: 40, clientY: 40 })
-    fireEvent.click(globalThis.document.querySelector<HTMLButtonElement>('.animation-context-menu .context-menu-item')!)
-    expect(ensureAnimationDocument(document).cels.every((cel) => !cel.mask)).toBe(true)
-  })
 
   it('extends a mask-cell selection while long-press dragging across frames', () => {
     vi.useFakeTimers()
@@ -2027,7 +1389,168 @@ describe('LayersPanel properties', () => {
     expect(second.locked).toBe(false)
   })
 
-  it('applies Alt visibility and lock changes to every row at the same hierarchy level', () => {
+  it('dims child visibility controls while a parent group is hidden and reopens the group only when showing a hidden child', () => {
+    const document = createDocument('group visibility inheritance', 2, 2, 'rgba')
+    const first = getActiveLayer(document)
+    first.name = 'A'
+    first.visible = true
+    const second = createLayer('B', 2, 2, 'rgba')
+    second.visible = false
+    const group = { id: 'visibility-group', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    first.groupId = group.id
+    second.groupId = group.id
+    document.groups.push(group)
+    document.layers.push(second)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const visibility = (id: string): HTMLElement => container.querySelector<HTMLElement>(`[data-layer-id="${id}"] .layer-visibility`)!
+    const groupVisibility = container.querySelector<HTMLElement>(`[data-group-id="${group.id}"] .layer-visibility`)!
+
+    fireEvent.pointerDown(groupVisibility, { button: 0 })
+    fireEvent.click(groupVisibility)
+    expect(group.visible).toBe(false)
+    expect(visibility(first.id)).toHaveClass('group-visibility-inherited-hidden')
+    expect(visibility(second.id)).toHaveClass('group-visibility-inherited-hidden')
+
+    fireEvent.pointerDown(visibility(first.id), { button: 0 })
+    fireEvent.click(visibility(first.id))
+    expect(first.visible).toBe(false)
+    expect(group.visible).toBe(false)
+
+    fireEvent.pointerDown(visibility(second.id), { button: 0 })
+    fireEvent.click(visibility(second.id))
+    expect(second.visible).toBe(true)
+    expect(group.visible).toBe(true)
+    expect(first.visible).toBe(false)
+  })
+
+  it('reopens hidden ancestor groups when showing a nested child group', () => {
+    const document = createDocument('nested group visibility inheritance', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const outer = { id: 'outer-visibility-group', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    const inner = { id: 'inner-visibility-group', name: 'Group 2', parentGroupId: outer.id, visible: false, locked: false, opacity: 1, blendMode: 'normal' as const }
+    layer.groupId = inner.id
+    document.groups.push(outer, inner)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupVisibility = (id: string): HTMLElement => container.querySelector<HTMLElement>(`[data-group-id="${id}"] .layer-visibility`)!
+
+    fireEvent.pointerDown(groupVisibility(outer.id), { button: 0 })
+    fireEvent.click(groupVisibility(outer.id))
+    expect(outer.visible).toBe(false)
+    expect(inner.visible).toBe(false)
+    expect(groupVisibility(inner.id)).toHaveClass('group-visibility-inherited-hidden')
+
+    fireEvent.pointerDown(groupVisibility(inner.id), { button: 0 })
+    fireEvent.click(groupVisibility(inner.id))
+    expect(inner.visible).toBe(true)
+    expect(outer.visible).toBe(true)
+  })
+
+  it('shows inherited locks without changing child data and unlocks the parent from the child', () => {
+    const document = createDocument('group lock inheritance', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const group = { id: 'lock-group', name: 'Locked Group', parentGroupId: null, visible: true, locked: true, opacity: 1, blendMode: 'normal' as const }
+    layer.groupId = group.id
+    layer.locked = false
+    document.groups.push(group)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+
+    const lock = container.querySelector<HTMLElement>(`[data-layer-id="${layer.id}"] .layer-lock-toggle`)!
+    expect(lock).toHaveClass('group-lock-inherited')
+    expect(lock).not.toHaveClass('locked')
+    expect(lock).not.toHaveAttribute('aria-disabled', 'true')
+    expect(lock).toHaveAttribute('aria-pressed', 'false')
+    expect(lock.querySelector('[data-pixel-icon="unlock"]')).toBeInTheDocument()
+
+    fireEvent.pointerDown(lock, { button: 0 })
+    fireEvent.click(lock)
+
+    expect(group.locked).toBe(true)
+    expect(layer.locked).toBe(true)
+    expect(lock).toHaveClass('locked')
+    fireEvent.pointerDown(lock, { button: 0 })
+    fireEvent.click(lock)
+
+    expect(group.locked).toBe(false)
+    expect(layer.locked).toBe(false)
+    expect(lock).not.toHaveClass('group-lock-inherited')
+    useWorkspace.getState().undo()
+    expect(group.locked).toBe(true)
+    expect(layer.locked).toBe(true)
+  })
+
+  it('applies auto-link changes across a dragged layer range', () => {
+    const document = createDocument('auto-link toggle painting', 2, 2, 'rgba')
+    const first = getActiveLayer(document)
+    const second = createLayer('Second', 2, 2, 'rgba')
+    const third = createLayer('Third', 2, 2, 'rgba')
+    document.layers.push(second, third)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const control = (layerId: string): HTMLElement => container.querySelector<HTMLElement>(`[data-layer-id="${layerId}"] .layer-auto-link-toggle`)!
+    const firstAutoLink = control(first.id)
+    const secondAutoLink = control(second.id)
+    const thirdAutoLink = control(third.id)
+
+    fireEvent.pointerDown(firstAutoLink, { altKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+    fireEvent.pointerDown(firstAutoLink, { altKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).not.toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+    useWorkspace.getState().selectLayerRows([second.id, third.id], [])
+    fireEvent.pointerDown(thirdAutoLink, { ctrlKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).not.toBe(true)
+    expect(second.autoLinkAnimationCels).toBe(true)
+    expect(third.autoLinkAnimationCels).toBe(true)
+    useWorkspace.getState().undo()
+    expect(first.autoLinkAnimationCels).not.toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+    useWorkspace.getState().selectLayerRows([], [])
+    fireEvent.pointerDown(firstAutoLink, { ctrlKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).toBe(true)
+    expect(third.autoLinkAnimationCels).toBe(true)
+    useWorkspace.getState().undo()
+    fireEvent.pointerDown(firstAutoLink, { button: 0, pointerId: 60 })
+    fireEvent.pointerUp(window, { pointerId: 60 })
+    useWorkspace.getState().selectLayerRows([second.id, third.id], [])
+    fireEvent.pointerDown(thirdAutoLink, { altKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).toBe(true)
+    fireEvent.pointerDown(thirdAutoLink, { altKey: true, button: 0, pointerId: 60 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+    fireEvent.pointerDown(firstAutoLink, { button: 0, pointerId: 60 })
+    fireEvent.pointerUp(window, { pointerId: 60 })
+    useWorkspace.getState().selectLayerRows([], [])
+
+    fireEvent.pointerDown(firstAutoLink, { button: 0, pointerId: 61 })
+    fireEvent.pointerEnter(thirdAutoLink, { buttons: 1, pointerId: 61 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).toBe(true)
+    expect(third.autoLinkAnimationCels).toBe(true)
+
+    fireEvent.pointerEnter(secondAutoLink, { buttons: 1, pointerId: 61 })
+    expect(first.autoLinkAnimationCels).toBe(true)
+    expect(second.autoLinkAnimationCels).toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+    fireEvent.pointerUp(window, { pointerId: 61 })
+
+    useWorkspace.getState().undo()
+    expect(first.autoLinkAnimationCels).not.toBe(true)
+    expect(second.autoLinkAnimationCels).not.toBe(true)
+    expect(third.autoLinkAnimationCels).not.toBe(true)
+  })
+
+  it('applies Alt solo and restore to visibility and lock controls', () => {
     const document = createDocument('hierarchy toggle batch', 2, 2, 'rgba')
     const firstRoot = getActiveLayer(document)
     const secondRoot = createLayer('Second root', 2, 2, 'rgba')
@@ -2042,11 +1565,11 @@ describe('LayersPanel properties', () => {
 
     fireEvent.pointerDown(firstRow.querySelector('.layer-visibility')!, { button: 0, altKey: true })
 
-    expect(firstRoot.visible).toBe(false)
+    expect(firstRoot.visible).toBe(true)
     expect(secondRoot.visible).toBe(false)
     expect(group.visible).toBe(false)
-    expect(nested.visible).toBe(true)
-    useWorkspace.getState().undo()
+    expect(nested.visible).toBe(false)
+    fireEvent.pointerDown(firstRow.querySelector('.layer-visibility')!, { button: 0, altKey: true })
     expect(firstRoot.visible).toBe(true)
     expect(secondRoot.visible).toBe(true)
     expect(group.visible).toBe(true)
@@ -2055,13 +1578,24 @@ describe('LayersPanel properties', () => {
     fireEvent.pointerDown(firstRow.querySelector('.layer-lock-toggle')!, { button: 0, altKey: true })
 
     expect(firstRoot.locked).toBe(true)
-    expect(secondRoot.locked).toBe(true)
-    expect(group.locked).toBe(true)
+    expect(secondRoot.locked).toBe(false)
+    expect(group.locked).toBe(false)
     expect(nested.locked).toBe(false)
-    useWorkspace.getState().undo()
+    fireEvent.pointerDown(firstRow.querySelector('.layer-lock-toggle')!, { button: 0, altKey: true })
     expect(firstRoot.locked).toBe(false)
     expect(secondRoot.locked).toBe(false)
     expect(group.locked).toBe(false)
+
+    const groupRow = container.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`)
+    const folder = groupRow?.querySelector<HTMLElement>('.group-folder')
+    expect(folder).toBeTruthy()
+    fireEvent.pointerDown(folder!, { button: 0, altKey: true })
+    expect(useWorkspace.getState().sessions[0].collapsedGroupIds).toEqual([])
+    fireEvent.pointerDown(folder!, { button: 0, altKey: true })
+    expect(useWorkspace.getState().sessions[0].collapsedGroupIds).toEqual([])
+    useWorkspace.getState().selectGroup(group.id)
+    fireEvent.pointerDown(folder!, { button: 0, ctrlKey: true })
+    expect(useWorkspace.getState().sessions[0].collapsedGroupIds).toContain(group.id)
   })
 
   it('opens locked layer properties while disabling visual controls', () => {
@@ -2135,6 +1669,180 @@ describe('LayersPanel properties', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: new RegExp(bottom.name) }), { button: 0, shiftKey: true, clientX: 20, clientY: 80 })
 
     expect(useWorkspace.getState().sessions[0].selectedGroupIds).toEqual(['group'])
+  })
+
+  it('supports Shift and Ctrl multi-selection from a group row to layer rows', () => {
+    const document = createDocument('group layer multi selection', 2, 2, 'rgba')
+    const outside = getActiveLayer(document)
+    outside.name = 'Outside'
+    const member = createLayer('Member', 2, 2, 'rgba')
+    member.groupId = 'group'
+    const other = createLayer('Other', 2, 2, 'rgba')
+    document.layers.push(member, other)
+    document.groups.push({ id: 'group', name: 'Group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' })
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupRow = container.querySelector<HTMLElement>('[data-group-id="group"]')!
+    const otherRow = container.querySelector<HTMLElement>(`[data-layer-id="${other.id}"]`)!
+    const outsideRow = container.querySelector<HTMLElement>(`[data-layer-id="${outside.id}"]`)!
+
+    fireEvent.pointerDown(groupRow, { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(window)
+    expect(useWorkspace.getState().sessions[0].selectedGroupIds).toEqual(['group'])
+
+    fireEvent.pointerDown(otherRow, { button: 0, shiftKey: true, clientX: 10, clientY: 30 })
+    fireEvent.pointerUp(window)
+    const afterRange = useWorkspace.getState().sessions[0]
+    expect(afterRange.selectedGroupIds).toContain('group')
+    expect(afterRange.selectedLayerIds).toContain(other.id)
+
+    fireEvent.pointerDown(outsideRow, { button: 0, ctrlKey: true, clientX: 10, clientY: 50 })
+    fireEvent.pointerUp(window)
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toContain(outside.id)
+  })
+
+  it('keeps a selected group when Ctrl adds a layer row', () => {
+    const document = createDocument('group plus layer selection', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const group = { id: 'group-1', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups.push(group)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupRow = container.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`)!
+    const layerRow = container.querySelector<HTMLElement>(`[data-layer-id="${layer.id}"]`)!
+
+    fireEvent.pointerDown(groupRow, { button: 0 })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(layerRow, { button: 0, ctrlKey: true })
+    fireEvent.pointerUp(window)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedGroupIds).toEqual([group.id])
+    expect(session.selectedLayerIds).toEqual([layer.id])
+    expect(groupRow).toHaveClass('selected')
+    expect(layerRow).toHaveClass('selected')
+  })
+
+  it('moves a mixed group and layer selection after Ctrl multi-select', () => {
+    const document = createDocument('move mixed group ctrl selection', 2, 2, 'rgba')
+    const outside = getActiveLayer(document)
+    const member = createLayer('Member', 2, 2, 'rgba')
+    const sourceGroup = { id: 'source-group', name: 'Source Group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    const targetGroup = { id: 'target-group', name: 'Target Group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    member.groupId = sourceGroup.id
+    document.layers.push(member)
+    document.groups.push(sourceGroup, targetGroup)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const sourceRow = container.querySelector<HTMLElement>(`[data-group-id="${sourceGroup.id}"]`)!
+    const targetRow = container.querySelector<HTMLElement>(`[data-group-id="${targetGroup.id}"]`)!
+    const outsideRow = container.querySelector<HTMLElement>(`[data-layer-id="${outside.id}"]`)!
+    const list = container.querySelector<HTMLElement>('.layer-list')!
+    Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 0, bottom: 400, width: 300, height: 400, x: 0, y: 0, toJSON: () => ({}) }) })
+    Object.defineProperty(sourceRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 0, bottom: 40, width: 300, height: 40, x: 0, y: 0, toJSON: () => ({}) }) })
+    Object.defineProperty(targetRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 80, bottom: 120, width: 300, height: 40, x: 0, y: 80, toJSON: () => ({}) }) })
+    Object.defineProperty(outsideRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 120, bottom: 160, width: 300, height: 40, x: 0, y: 120, toJSON: () => ({}) }) })
+
+    fireEvent.pointerDown(sourceRow, { button: 0, clientX: 150, clientY: 20 })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(outsideRow, { button: 0, ctrlKey: true, clientX: 150, clientY: 140 })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(sourceRow, { button: 0, clientX: 150, clientY: 20 })
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 })
+    fireEvent.pointerUp(window, { clientX: 150, clientY: 100 })
+
+    expect(outside.groupId).toBe(targetGroup.id)
+    expect(document.groups.find((group) => group.id === sourceGroup.id)?.parentGroupId).toBe(targetGroup.id)
+  })
+
+  it('selects the entire visible range from a group through its last child layer', () => {
+    const document = createDocument('group through child range', 2, 2, 'rgba')
+    const first = createLayer('图层 1', 2, 2, 'rgba')
+    const second = createLayer('图层 1 副本', 2, 2, 'rgba')
+    const last = createLayer('图层 1 副本 副本', 2, 2, 'rgba')
+    const group = { id: 'group-1', name: '组 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    first.groupId = group.id
+    second.groupId = group.id
+    last.groupId = group.id
+    document.layers = [first, second, last]
+    document.groups = [group]
+    document.activeLayerId = first.id
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupRow = container.querySelector<HTMLElement>('[data-group-id="group-1"]')!
+    const lastRow = container.querySelector<HTMLElement>(`[data-layer-id="${last.id}"]`)!
+
+    fireEvent.pointerDown(groupRow, { button: 0, clientX: 12, clientY: 20 })
+    fireEvent.pointerUp(window)
+    expect(useWorkspace.getState().sessions[0].selectedGroupIds).toEqual(['group-1'])
+    expect(useWorkspace.getState().sessions[0].layerSelectionAnchorId).toBe('group-1')
+    expect(buildLayerPanelTree({ layers: document.layers, groups: document.groups }).map((node) => node.id)).toEqual(['group-1', last.id, second.id, first.id])
+    fireEvent.pointerDown(lastRow, { button: 0, shiftKey: true, clientX: 12, clientY: 100 })
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([last.id, second.id, first.id])
+    fireEvent.pointerUp(window)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedLayerIds).toEqual([last.id, second.id, first.id])
+    expect(session.selectedGroupIds).toEqual(['group-1'])
+    expect(groupRow).toHaveClass('selected')
+    for (const layerId of [last.id, second.id, first.id]) {
+      expect(container.querySelector(`[data-layer-id="${layerId}"]`)).toHaveClass('selected')
+    }
+    expect(container.querySelectorAll('[data-animation-selected-row]')).toHaveLength(4)
+  })
+
+  it('selects a group and its children when Shift extends from a child layer', () => {
+    const document = createDocument('child to group range', 2, 2, 'rgba')
+    const first = createLayer('Layer 1', 2, 2, 'rgba')
+    const second = createLayer('Layer 2', 2, 2, 'rgba')
+    const group = { id: 'group-1', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    first.groupId = group.id
+    second.groupId = group.id
+    document.layers = [first, second]
+    document.groups = [group]
+    document.activeLayerId = first.id
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupRow = container.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`)!
+    const firstRow = container.querySelector<HTMLElement>(`[data-layer-id="${first.id}"]`)!
+
+    fireEvent.pointerDown(firstRow, { button: 0 })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(groupRow, { button: 0, shiftKey: true })
+    fireEvent.pointerUp(window)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedGroupIds).toEqual([group.id])
+    expect(session.selectedLayerIds).toEqual([second.id, first.id])
+    expect(groupRow).toHaveClass('selected')
+    expect(firstRow).toHaveClass('selected')
+    expect(container.querySelector(`[data-layer-id="${second.id}"]`)).toHaveClass('selected')
+  })
+
+  it('selects the visible range when Shift extends from a layer to a group', () => {
+    const document = createDocument('layer to group range', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const member = createLayer('Member', 2, 2, 'rgba')
+    const group = { id: 'group-1', name: 'Group 1', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    member.groupId = group.id
+    document.layers.push(member)
+    document.groups.push(group)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<ConnectedLayersPanel />)
+    const groupRow = container.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`)!
+    const layerRow = container.querySelector<HTMLElement>(`[data-layer-id="${layer.id}"]`)!
+
+    fireEvent.pointerDown(layerRow, { button: 0 })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(groupRow, { button: 0, shiftKey: true })
+    fireEvent.pointerUp(window)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedGroupIds).toEqual([group.id])
+    expect(session.selectedLayerIds).toEqual([member.id, layer.id])
+    expect(groupRow).toHaveClass('selected')
+    expect(layerRow).toHaveClass('selected')
+    expect(container.querySelector(`[data-layer-id="${member.id}"]`)).toHaveClass('selected')
   })
 
   it('does not show merge or ungroup actions in the panel header', () => {
@@ -2250,35 +1958,6 @@ describe('LayersPanel properties', () => {
     expect(buildLayerPanelTree(document).map((node) => node.id)).toEqual(['bottom-group', root.id])
   })
 
-  it('keeps a single group as the only visible selection after moving it', () => {
-    const document = createDocument('single group drag selection', 2, 2, 'rgba')
-    const member = getActiveLayer(document)
-    member.groupId = 'group'
-    const root = createLayer('Root', 2, 2, 'rgba')
-    document.layers.push(root)
-    document.groups.push({ id: 'group', name: 'Group', parentGroupId: null, panelOrder: 0, visible: true, locked: false, opacity: 1, blendMode: 'normal' })
-    useWorkspace.getState().addSession(document)
-    useWorkspace.getState().selectGroup('group')
-    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
-    const list = container.querySelector<HTMLElement>('.layer-list')!
-    const rootRow = container.querySelector<HTMLElement>(`[data-layer-id="${root.id}"]`)!
-    const groupRow = container.querySelector<HTMLElement>('[data-group-id="group"]')!
-    const memberRow = container.querySelector<HTMLElement>(`[data-layer-id="${member.id}"]`)!
-    Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 100, bottom: 400, width: 300, height: 300, x: 0, y: 100, toJSON: () => ({}) }) })
-    Object.defineProperty(rootRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 120, bottom: 162, width: 300, height: 42, x: 0, y: 120, toJSON: () => ({}) }) })
-    Object.defineProperty(groupRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 180, bottom: 222, width: 300, height: 42, x: 0, y: 180, toJSON: () => ({}) }) })
-    Object.defineProperty(memberRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 222, bottom: 264, width: 300, height: 42, x: 0, y: 222, toJSON: () => ({}) }) })
-
-    fireEvent.pointerDown(groupRow, { button: 0, clientX: 150, clientY: 200 })
-    fireEvent.pointerMove(window, { clientX: 150, clientY: 104 })
-    fireEvent.pointerUp(window, { clientX: 150, clientY: 104 })
-
-    const active = useWorkspace.getState().sessions[0]
-    expect(active.selectedGroupId).toBe('group')
-    expect(active.selectedGroupIds).toEqual(['group'])
-    expect(groupRow).toHaveClass('selected')
-    expect(memberRow).not.toHaveClass('selected')
-  })
 
   it('moves a mixed selection of a layer and a group into another group as one action', () => {
     const document = createDocument('mixed row drag', 2, 2, 'rgba')

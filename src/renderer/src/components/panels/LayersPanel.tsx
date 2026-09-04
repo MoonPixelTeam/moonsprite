@@ -18,7 +18,7 @@ import { openTextToolDialog } from '@/components/text-tool-events'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { animationMaskAt, animationMaskSlotAt, createAnimationMaskLookup, getDescendantGroupIds, getGroupLockingAncestor, getLayerIdsInGroup, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, resolveAnimationMask } from '@/core/document'
 import { COMMAND_SCOPE_EVENT, EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
-import { buildLayerPanelTree, layerPanelRevealScrollTop, resolveLayerPanelDropTarget, resolveLayerPanelEdgeDropTarget, type LayerPanelNode } from '@/core/layer-panel-layout'
+import { buildLayerPanelTree, getLayerPanelAncestorGroupIds, layerPanelRevealScrollTop, resolveLayerPanelDropTarget, resolveLayerPanelEdgeDropTarget, type LayerPanelNode } from '@/core/layer-panel-layout'
 import { DEFAULT_ONION_SKIN_PREFERENCES, loadEditorPreferences, saveEditorPreferences, type OnionSkinPreferences } from '@/core/file-preferences'
 import { animationCelHasContent, animationCelKey, animationGroupMaskAt, createAnimationCelLookup, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { animationLoopSectionAtFrame, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
@@ -60,6 +60,8 @@ type LayerPanelToggleTarget =
   | { control: 'visibility'; ownerKind: 'group-mask'; id: string; frameId: string }
   | { control: 'lock'; ownerKind: 'layer'; id: string }
   | { control: 'lock'; ownerKind: 'group'; id: string }
+  | { control: 'group-expand'; ownerKind: 'group'; id: string }
+type LayerAutoLinkToggleTarget = { control: 'auto-link'; ownerKind: 'layer'; id: string }
 type LayerDisplayRow = { kind: 'node'; node: LayerTreeNode } | { kind: 'mask'; ownerKind: 'layer' | 'group'; owner: RasterLayer | LayerGroup; depth: number }
 type DropTarget = { kind: 'layer'; id: string; insertAfter?: boolean; depth: number } | { kind: 'group'; id: string; depth: number } | { kind: 'above-group'; id: string; insertAfter?: boolean; depth: number } | { kind: 'edge'; edge: 'top' | 'bottom'; offset?: number }
 interface LayerContextMenu { kind: 'layer' | 'group'; id: string; x: number; y: number }
@@ -1594,13 +1596,24 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setDropTarget(null)
     setDragGhost(null)
   }
-  const layerToggleHistoryLabel = (control: 'visibility' | 'lock'): string => t(control === 'visibility' ? 'workspace.history.showLayer' : 'workspace.history.layerProperties')
+  const layerToggleHistoryLabel = (control: 'visibility' | 'lock' | 'auto-link' | 'group-expand'): string => t(control === 'visibility' ? 'workspace.history.showLayer' : 'workspace.history.layerProperties')
   const layerToggleTargetKey = (target: LayerPanelToggleTarget): string => `${target.control}:${target.ownerKind}:${target.id}:${'frameId' in target ? target.frameId : ''}`
   const layerPanelToggleValue = (target: LayerPanelToggleTarget): boolean | null => {
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
     if (!active) return null
-    if (target.ownerKind === 'layer') return active.document.layers.find((candidate) => candidate.id === target.id)?.[target.control === 'visibility' ? 'visible' : 'locked'] ?? null
-    if (target.ownerKind === 'group') return active.document.groups.find((candidate) => candidate.id === target.id)?.[target.control === 'visibility' ? 'visible' : 'locked'] ?? null
+    if (target.ownerKind === 'layer') {
+      const layer = active.document.layers.find((candidate) => candidate.id === target.id)
+      if (!layer) return null
+      if (target.control === 'visibility') return layer.visible
+      return layer.locked
+    }
+    if (target.ownerKind === 'group') {
+      if (target.control === 'group-expand') return !active.collapsedGroupIds.includes(target.id)
+      const group = active.document.groups.find((candidate) => candidate.id === target.id)
+      if (!group) return null
+      if (target.control === 'visibility') return group.visible
+      return group.locked
+    }
     const timeline = ensureAnimationDocument(active.document)
     if (target.ownerKind === 'layer-mask') {
       const cel = timeline.cels.find((candidate) => candidate.id === target.id)
@@ -1618,19 +1631,47 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         if (layer.visible !== value) store.toggleLayerVisibility(layer.id)
         return
       }
-      if (getLayerLockingGroup(active.document, layer) || layer.locked === value) return
-      store.setLayerPropertiesWithBlend(layer.id, layer.name, layer.opacity, layer.blendMode, value, layer.displayColor, layer.description)
+      const lockingGroup = getLayerLockingGroup(active.document, layer)
+      if (value === false && lockingGroup) {
+        const lockingGroups = getLayerPanelAncestorGroupIds(active.document.groups, layer.groupId)
+          .map((groupId) => active.document.groups.find((candidate) => candidate.id === groupId))
+          .filter((group): group is NonNullable<typeof group> => Boolean(group?.locked))
+          .reverse()
+        for (const group of lockingGroups) {
+          store.setGroupProperties(group.id, group.name, group.opacity, group.blendMode, false, group.displayColor, group.description, group.cumulativeBlend)
+        }
+        store.setLayerLocked(layer.id, false)
+        return
+      }
+      if (layer.locked === value) return
+      store.setLayerLocked(layer.id, value)
       return
     }
     if (target.ownerKind === 'group') {
       const group = active.document.groups.find((candidate) => candidate.id === target.id)
       if (!group) return
+      if (target.control === 'group-expand') {
+        if (active.collapsedGroupIds.includes(group.id) === value) store.toggleGroupCollapsed(group.id)
+        return
+      }
       if (target.control === 'visibility') {
         if (group.visible !== value) store.toggleGroupVisibility(group.id)
         return
       }
-      if (getGroupLockingAncestor(active.document, group) || group.locked === value) return
-      store.setGroupProperties(group.id, group.name, group.opacity, group.blendMode, value, group.displayColor, group.description, group.cumulativeBlend)
+      const lockingAncestor = getGroupLockingAncestor(active.document, group)
+      if (value === false && lockingAncestor) {
+        const lockingGroups = getLayerPanelAncestorGroupIds(active.document.groups, group.parentGroupId)
+          .map((groupId) => active.document.groups.find((candidate) => candidate.id === groupId))
+          .filter((ancestor): ancestor is NonNullable<typeof ancestor> => Boolean(ancestor?.locked))
+          .reverse()
+        for (const ancestor of lockingGroups) {
+          store.setGroupProperties(ancestor.id, ancestor.name, ancestor.opacity, ancestor.blendMode, false, ancestor.displayColor, ancestor.description, ancestor.cumulativeBlend)
+        }
+        store.setGroupLocked(group.id, false)
+        return
+      }
+      if (group.locked === value) return
+      store.setGroupLocked(group.id, value)
       return
     }
     const timeline = ensureAnimationDocument(active.document)
@@ -1643,24 +1684,15 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const mask = animationGroupMaskAt(timeline, target.id, target.frameId)
     if (mask && mask.visible !== value) store.toggleGroupMaskVisibility(target.id, target.frameId)
   }
-  const sameHierarchyToggleTargets = (target: Extract<LayerPanelToggleTarget, { ownerKind: 'layer' | 'group' }>): LayerPanelToggleTarget[] => {
-    const document = session.document
-    const parentGroupId = target.ownerKind === 'layer'
-      ? document.layers.find((layer) => layer.id === target.id)?.groupId ?? null
-      : document.groups.find((group) => group.id === target.id)?.parentGroupId ?? null
-    const sameParent = (candidate: string | null | undefined): boolean => (candidate ?? null) === parentGroupId
-    return [
-      ...document.groups.filter((group) => sameParent(group.parentGroupId)).map((group) => ({ control: target.control, ownerKind: 'group' as const, id: group.id })),
-      ...document.layers.filter((layer) => sameParent(layer.groupId)).map((layer) => ({ control: target.control, ownerKind: 'layer' as const, id: layer.id }))
-    ] as LayerPanelToggleTarget[]
-  }
-  const visibleLayerPanelToggleTargets = (control: 'visibility' | 'lock'): LayerPanelToggleTarget[] => displayRows.flatMap((row): LayerPanelToggleTarget[] => {
+  const visibleLayerPanelToggleTargets = (control: 'visibility' | 'lock' | 'group-expand'): LayerPanelToggleTarget[] => {
+    return displayRows.flatMap((row): LayerPanelToggleTarget[] => {
     if (row.kind === 'node') {
+      if (control === 'group-expand') return row.node.kind === 'group' ? [{ control, ownerKind: 'group', id: row.node.group.id }] : []
       return row.node.kind === 'layer'
         ? [{ control, ownerKind: 'layer', id: row.node.layer.id } as LayerPanelToggleTarget]
         : [{ control, ownerKind: 'group', id: row.node.group.id } as LayerPanelToggleTarget]
     }
-    if (control === 'lock') return []
+    if (control === 'lock' || control === 'group-expand') return []
     if (row.ownerKind === 'layer') {
       const cel = celLookup.at(row.owner.id, timeline.activeFrameId)
       return cel && animationMaskAt(timeline, row.owner.id, timeline.activeFrameId)
@@ -1670,13 +1702,30 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return animationGroupMaskAt(timeline, row.owner.id, timeline.activeFrameId)
       ? [{ control: 'visibility' as const, ownerKind: 'group-mask' as const, id: row.owner.id, frameId: timeline.activeFrameId }]
       : []
-  })
+    })
+  }
+  const layerPanelModifierTargets = (target: LayerPanelToggleTarget, allTargets: readonly LayerPanelToggleTarget[]): LayerPanelToggleTarget[] | null => {
+    if (target.ownerKind !== 'layer' && target.ownerKind !== 'group') return null
+    const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+    if (!active) return [...allTargets]
+    const selectedGroups = active.selectedGroupIds.length > 0
+      ? active.selectedGroupIds
+      : active.selectedGroupId ? [active.selectedGroupId] : []
+    const selectedLayers = active.selectedGroupId && selectedGroups.length === 1
+      ? []
+      : active.selectedLayerIds.filter((id) => active.document.layers.some((layer) => layer.id === id))
+    const selectedCount = new Set([...selectedGroups.map((id) => `group:${id}`), ...selectedLayers.map((id) => `layer:${id}`)]).size
+    if (selectedCount <= 1) return [...allTargets]
+    const selectedKeys = new Set([...selectedGroups.map((id) => `group:${id}`), ...selectedLayers.map((id) => `layer:${id}`)])
+    return allTargets.filter((candidate) => selectedKeys.has(`${candidate.ownerKind}:${candidate.id}`))
+  }
   const layerToggleGesture = useLayerRowToggleGesture<LayerPanelToggleTarget>({
     targetKey: layerToggleTargetKey,
     readValue: layerPanelToggleValue,
     applyValue: applyLayerPanelToggle,
     visibleTargets: visibleLayerPanelToggleTargets,
-    altTargets: (target) => target.ownerKind === 'layer' || target.ownerKind === 'group' ? sameHierarchyToggleTargets(target) : null,
+    soloTargets: (target) => layerPanelModifierTargets(target, visibleLayerPanelToggleTargets(target.control)),
+    ctrlTargets: (target) => layerPanelModifierTargets(target, visibleLayerPanelToggleTargets(target.control)),
     beginTransaction: () => store.beginLayerPanelTransaction(session.document.id),
     commitTransaction: (control) => store.commitLayerPanelTransaction(session.document.id, layerToggleHistoryLabel(control)),
     blocked: (message) => store.setMessage(message)
@@ -1686,6 +1735,43 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const endLayerPanelToggle = layerToggleGesture.end
   const finishLayerPanelToggleClick = layerToggleGesture.click
   const finishLayerPanelToggle = layerToggleGesture.finish
+  const layerAutoLinkTargetKey = (target: LayerAutoLinkToggleTarget): string => `${target.control}:${target.id}`
+  const layerAutoLinkValue = (target: LayerAutoLinkToggleTarget): boolean | null => {
+    const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+    return active?.document.layers.find((layer) => layer.id === target.id)?.autoLinkAnimationCels === true ? true : active?.document.layers.some((layer) => layer.id === target.id) ? false : null
+  }
+  const selectedAutoLinkTargets = (target: LayerAutoLinkToggleTarget): LayerAutoLinkToggleTarget[] => {
+    const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+    const selectedIds = active?.selectedLayerIds.filter((id) => active.document.layers.some((layer) => layer.id === id)) ?? []
+    const ids = selectedIds.length > 1 ? selectedIds : visibleLayerAutoLinkTargets().map((candidate) => candidate.id)
+    return [...new Set(ids)].map((id) => ({ control: 'auto-link' as const, ownerKind: 'layer' as const, id }))
+  }
+  const applyLayerAutoLinkValue = (target: LayerAutoLinkToggleTarget, value: boolean): void => {
+    store.setLayerAutoLinkAnimationCels(target.id, value)
+  }
+  const visibleLayerAutoLinkTargets = (): LayerAutoLinkToggleTarget[] => displayRows.flatMap((row): LayerAutoLinkToggleTarget[] =>
+    row.kind === 'node' && row.node.kind === 'layer'
+      ? [{ control: 'auto-link', ownerKind: 'layer', id: row.node.layer.id }]
+      : [])
+  const layerAutoLinkGesture = useLayerRowToggleGesture<LayerAutoLinkToggleTarget>({
+    targetKey: layerAutoLinkTargetKey,
+    readValue: layerAutoLinkValue,
+    applyValue: applyLayerAutoLinkValue,
+    visibleTargets: visibleLayerAutoLinkTargets,
+    ctrlTargets: selectedAutoLinkTargets,
+    soloTargets: (target) => {
+      const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+      const selectedIds = active?.selectedLayerIds.filter((id) => active.document.layers.some((layer) => layer.id === id)) ?? []
+      const ids = selectedIds.length > 1 ? selectedIds : visibleLayerAutoLinkTargets().map((candidate) => candidate.id)
+      return ids.map((id) => ({ control: 'auto-link' as const, ownerKind: 'layer' as const, id }))
+    },
+    beginTransaction: () => store.beginLayerPanelTransaction(session.document.id),
+    commitTransaction: () => store.commitLayerPanelTransaction(session.document.id, t('workspace.history.layerProperties'))
+  })
+  const beginLayerAutoLinkToggle = layerAutoLinkGesture.begin
+  const continueLayerAutoLinkToggle = layerAutoLinkGesture.enter
+  const endLayerAutoLinkToggle = layerAutoLinkGesture.end
+  const finishLayerAutoLinkClick = layerAutoLinkGesture.click
   useEffect(() => {
     document.body.classList.toggle('animation-item-dragging', animationItemDragging)
     return () => { document.body.classList.remove('animation-item-dragging') }
@@ -1696,10 +1782,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       const target = event.target instanceof Element ? event.target : null
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       const list = layerListRef.current
-      if (!target || !list?.contains(target)) return
-      if (target.closest('.layer-animation-toolbar, .layer-animation-edit, .panel-actions, .layer-style-indicator, .layer-status-icon-tooltip, .layer-visibility, .layer-lock-toggle, .group-folder, .layer-tilemap-indicator, .layer-instance-properties')) return
+      if (!target) return
+      const insideList = Boolean(list?.contains(target))
+      if (insideList && target.closest('.layer-animation-toolbar, .layer-animation-edit, .panel-actions, .layer-style-indicator, .layer-status-icon-tooltip, .layer-visibility, .layer-lock-toggle, .group-folder, .layer-tilemap-indicator, .layer-instance-properties')) return
       if (target?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .animation-context-menu, .frame-properties-modal, .cel-properties-modal')) return
-      if (target.closest('[data-layer-id], [data-group-id], [data-layer-mask-row-owner]')) return
+      if (insideList && target.closest('[data-layer-id], [data-group-id], [data-layer-mask-row-owner]')) return
       const canvasTarget = target?.closest('.stage-canvas, .stage-surface')
       // Canvas interactions (drawing, panning, zooming, and selection edits)
       // keep the current frame/cel context. Only another timeline item changes
@@ -1965,11 +2052,16 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const visualContextGroupIds = effectiveSelectedGroupIds.length > 0
     ? effectiveSelectedGroupIds
     : contextGroupId ? [contextGroupId] : []
-  // A group selection remains the sole layer/timeline owner even while the
-  // active frame or frame-column selection changes.  selectedLayerIds mirrors
-  // the group's descendants for document commands, but those implicit members
-  // must never become visual active/selected cels in the timeline.
-  const groupVisualSelectionActive = effectiveSelectedGroupIds.length > 0 || contextGroupId !== null
+  // A group-only selection remains the sole layer/timeline owner even while
+  // the active frame or frame-column selection changes.  When layer ids are
+  // also explicitly selected, this is a mixed row selection and those rows
+  // must remain visible as selected in the timeline.
+  // A group-only selection uses the group row as the visual owner and keeps
+  // its implicit descendants out of the timeline.  Mixed group + layer
+  // selections are explicit row selections, so both sides must remain
+  // visible and receive the same selected styling.
+  const groupVisualSelectionActive = session.selectedLayerIds.length === 0
+    && (effectiveSelectedGroupIds.length > 0 || contextGroupId !== null)
   const hasNonRowAnimationItemSelection = Boolean(animationGestureSelection)
     || session.selectedAnimationFrameIds.length > 0
     || session.selectedAnimationCellKeys.length > 0
@@ -2463,10 +2555,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     store.setLayerAutoLinkAnimationCels(layerId, !(liveLayer?.autoLinkAnimationCels === true))
   }
   const handleLayerAutoLinkPointerDown = (event: React.PointerEvent<HTMLElement>, layerId: string): void => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    toggleLayerAutoLink(layerId)
+    const target = { control: 'auto-link' as const, ownerKind: 'layer' as const, id: layerId }
+    beginLayerAutoLinkToggle(event, target, layerAutoLinkValue(target) === true)
   }
   const handleLayerAutoLinkKeyDown = (event: React.KeyboardEvent<HTMLElement>, layerId: string): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -2503,8 +2593,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const beginLayerDrag = (event: React.PointerEvent<HTMLButtonElement>, layerId: string): void => {
     if (event.button !== 0) return
     if (isLayerRowControlTarget(event)) return
-    const target = event.target instanceof Element ? event.target : null
-    const selectOnClick = Boolean(target?.closest('.layer-name'))
+    // Every non-control part of a row is a selection target. Previously only
+    // the name span established a selection anchor, so clicking row whitespace
+    // (especially before a Shift/Ctrl click) lost the group/layer range anchor.
+    const selectOnClick = true
     const wasEditingLayerMask = Boolean(session.activeLayerMaskId)
     if (wasEditingLayerMask && selectOnClick) store.selectLayer(layerId)
     else if (event.ctrlKey) store.selectLayer(layerId, 'toggle')
@@ -2525,20 +2617,15 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const rows = active ? selectedRowsForDrag(active) : { ids: [layerId], groupIds: [] }
     const ids = rows.ids.includes(layerId) ? rows.ids : [layerId]
     const groupIds = rows.ids.includes(layerId) ? rows.groupIds : []
-    const selectionLocked = ids.some((id) => { const layer = session.document.layers.find((candidate) => candidate.id === id); return Boolean(layer && isLayerEffectivelyLocked(session.document, layer)) })
-      || groupIds.some((id) => { const group = session.document.groups.find((candidate) => candidate.id === id); return Boolean(group && isGroupEffectivelyLocked(session.document, group)) })
-    if (selectionLocked) {
-      if (!event.ctrlKey && !event.shiftKey && selectOnClick) store.selectLayer(layerId)
-      return
-    }
     dragRef.current = { ids, groupIds, groupId: groupIds.length === 1 && ids.length === 0 ? groupIds[0] : undefined, row: { id: layerId, kind: 'layer' }, preserveSelection: event.ctrlKey || event.shiftKey, selectOnClick: selectOnClick || event.ctrlKey || event.shiftKey, selectedLayerIds: [...(active?.selectedLayerIds ?? ids)], selectedGroupIds: [...(active?.selectedGroupIds ?? groupIds)], wholeGroupSelection: Boolean(active?.selectedGroupId), startX: event.clientX, startY: event.clientY, moved: false, copy: event.altKey }
     event.preventDefault()
   }
   const beginGroupDrag = (event: React.PointerEvent<HTMLButtonElement>, groupId: string): void => {
     if (event.button !== 0) return
     if (isLayerRowControlTarget(event)) return
-    const target = event.target instanceof Element ? event.target : null
-    const selectOnClick = Boolean(target?.closest('.layer-name'))
+    // Keep the whole non-control row clickable so group-to-layer Shift ranges
+    // work regardless of where inside the row the pointer lands.
+    const selectOnClick = true
     const wasEditingLayerMask = Boolean(session.activeLayerMaskId)
     if (wasEditingLayerMask && selectOnClick) store.selectGroup(groupId)
     else if (event.ctrlKey) store.selectGroup(groupId, 'toggle')
@@ -2560,14 +2647,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const rows = active ? selectedRowsForDrag(active) : { ids: [], groupIds: [groupId] }
     const ids = rows.groupIds.includes(groupId) ? rows.ids : []
     const groupIds = rows.groupIds.includes(groupId) ? rows.groupIds : [groupId]
-    const allGroupIds = new Set(groupIds.flatMap((id) => [id, ...getDescendantGroupIds(session.document, id)]))
-    const allLayerIds = new Set([...ids, ...groupIds.flatMap((id) => getLayerIdsInGroup(session.document, id))])
-    const selectionLocked = session.document.groups.some((group) => allGroupIds.has(group.id) && isGroupEffectivelyLocked(session.document, group))
-      || session.document.layers.some((layer) => allLayerIds.has(layer.id) && isLayerEffectivelyLocked(session.document, layer))
-    if (selectionLocked) {
-      if (!event.ctrlKey && !event.shiftKey && selectOnClick) store.selectGroup(groupId)
-      return
-    }
     dragRef.current = { ids, groupIds, groupId: groupIds.length === 1 && ids.length === 0 ? groupIds[0] : undefined, row: { id: groupId, kind: 'group' }, preserveSelection: event.ctrlKey || event.shiftKey, selectOnClick: selectOnClick || event.ctrlKey || event.shiftKey, selectedLayerIds: [...(active?.selectedLayerIds ?? ids)], selectedGroupIds: [...(active?.selectedGroupIds ?? groupIds)], wholeGroupSelection: Boolean(active?.selectedGroupId), startX: event.clientX, startY: event.clientY, moved: false, copy: event.altKey }
     event.preventDefault()
   }
@@ -3269,9 +3348,13 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
           active: Boolean(visualRow?.active && activeMaskOwnerKey !== groupOwnerKey),
           selected: Boolean(groupRowSelected || (timelineVisualState.selectionGuidesVisible && layerSelectionActive && visualRow?.selected)),
         }
-        return <button key={node.group.id} data-group-id={node.group.id} className={`layer-row group-row ${node.group.clippingMask === true ? 'clipping-mask' : ''} ${groupHasLayerStyles ? 'has-layer-style' : ''} ${groupRowVisualClasses.active ? 'active-layer' : ''} ${groupRowVisualClasses.selected ? 'selected' : ''} ${draggingGroupId === node.group.id ? 'dragging' : ''} ${groupInsideTarget ? 'group-drop-target' : ''} ${layerStyleDrag?.target?.kind === 'group' && layerStyleDrag.target.id === node.group.id ? 'layer-style-drop-target' : ''}`} style={{ '--layer-depth': node.depth } as React.CSSProperties} onPointerDown={(event) => beginGroupDrag(event, node.group.id)} onDoubleClick={() => editGroupRow(node.group)}>{groupIndicator}{displayColorSegments.map((segment, index) => <span key={`group-color-stripe-${node.group.id}-${index}`} className="layer-color-stripe" style={{ left: `${segment.left}px`, width: `${segment.width}px`, backgroundColor: `rgba(${segment.color.r}, ${segment.color.g}, ${segment.color.b}, ${segment.color.a / 255})` }} aria-hidden="true" />)}<span className="layer-visibility" role="button" tabIndex={-1} aria-label={t(node.group.visible ? 'layers.hideGroup' : 'layers.showGroup')} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id }, node.group.visible)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.group.visible ? <PixelUtilityIcon kind="eye" /> : <PixelUtilityIcon kind="eyeOff" />}</span><span className={`layer-lock-toggle ${node.group.locked || lockingAncestor ? 'locked' : ''}`} role="button" tabIndex={-1} title={lockingAncestor ? t('layers.lockedByGroup', { name: lockingAncestor.name }) : undefined} aria-label={lockingAncestor ? t('layers.unlockGroup') : t(node.group.locked ? 'layers.unlockGroup' : 'layers.lockGroup')} aria-disabled={Boolean(lockingAncestor)} aria-pressed={node.group.locked || Boolean(lockingAncestor)} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'lock', ownerKind: 'group', id: node.group.id }, node.group.locked, lockingAncestor?.name)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'lock', ownerKind: 'group', id: node.group.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.group.locked || lockingAncestor ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span><span className="group-folder" role="button" tabIndex={-1} aria-label={t(collapsed ? 'layers.expandGroup' : 'layers.collapseGroup')} title={t(collapsed ? 'layers.expandGroup' : 'layers.collapseGroup')} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); store.toggleGroupCollapsed(node.group.id) }}>{collapsed ? <PixelUtilityIcon kind="folder" /> : <PixelUtilityIcon kind="folderOpen" />}</span><Tooltip className="layer-name" content={node.group.description?.trim()}><span>{node.group.name}</span><small>{blendOptions.find((option) => option.value === node.group.blendMode)?.label} · {Math.round(node.group.opacity * 100)}%</small></Tooltip>{node.group.clippingMask === true && <Tooltip className="layer-status-icon-tooltip" content={clippingMaskTooltip}><span className="layer-clipping-mask-indicator" aria-hidden="true"><PixelUtilityIcon kind="clippingMask" /></span></Tooltip>}{groupHasLayerStyles && layerStyleIndicator({ kind: 'group', id: node.group.id })}</button>
+        const inheritedVisibilityHidden = getLayerPanelAncestorGroupIds(session.document.groups, node.group.parentGroupId)
+          .some((groupId) => session.document.groups.find((group) => group.id === groupId)?.visible === false)
+        return <button key={node.group.id} data-group-id={node.group.id} className={`layer-row group-row ${node.group.clippingMask === true ? 'clipping-mask' : ''} ${groupHasLayerStyles ? 'has-layer-style' : ''} ${groupRowVisualClasses.active ? 'active-layer' : ''} ${groupRowVisualClasses.selected ? 'selected' : ''} ${draggingGroupId === node.group.id ? 'dragging' : ''} ${groupInsideTarget ? 'group-drop-target' : ''} ${layerStyleDrag?.target?.kind === 'group' && layerStyleDrag.target.id === node.group.id ? 'layer-style-drop-target' : ''}`} style={{ '--layer-depth': node.depth } as React.CSSProperties} onPointerDown={(event) => beginGroupDrag(event, node.group.id)} onDoubleClick={() => editGroupRow(node.group)}>{groupIndicator}{displayColorSegments.map((segment, index) => <span key={`group-color-stripe-${node.group.id}-${index}`} className="layer-color-stripe" style={{ left: `${segment.left}px`, width: `${segment.width}px`, backgroundColor: `rgba(${segment.color.r}, ${segment.color.g}, ${segment.color.b}, ${segment.color.a / 255})` }} aria-hidden="true" />)}<span className={`layer-visibility ${inheritedVisibilityHidden ? 'group-visibility-inherited-hidden' : ''}`} role="button" tabIndex={-1} aria-label={t(node.group.visible ? 'layers.hideGroup' : 'layers.showGroup')} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id }, node.group.visible)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.group.visible ? <PixelUtilityIcon kind="eye" /> : <PixelUtilityIcon kind="eyeOff" />}</span><span className={`layer-lock-toggle ${node.group.locked ? 'locked' : ''} ${lockingAncestor ? 'group-lock-inherited' : ''}`} role="button" tabIndex={-1} title={lockingAncestor ? t('layers.lockedByGroup', { name: lockingAncestor.name }) : undefined} aria-label={t(node.group.locked ? 'layers.unlockGroup' : 'layers.lockGroup')} aria-pressed={node.group.locked} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'lock', ownerKind: 'group', id: node.group.id }, node.group.locked)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'lock', ownerKind: 'group', id: node.group.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.group.locked ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span><span className="group-folder" role="button" tabIndex={-1} aria-label={t(collapsed ? 'layers.expandGroup' : 'layers.collapseGroup')} title={t(collapsed ? 'layers.expandGroup' : 'layers.collapseGroup')} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'group-expand', ownerKind: 'group', id: node.group.id }, !collapsed)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'group-expand', ownerKind: 'group', id: node.group.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{collapsed ? <PixelUtilityIcon kind="folder" /> : <PixelUtilityIcon kind="folderOpen" />}</span><Tooltip className="layer-name" content={node.group.description?.trim()}><span>{node.group.name}</span><small>{blendOptions.find((option) => option.value === node.group.blendMode)?.label} · {Math.round(node.group.opacity * 100)}%</small></Tooltip>{node.group.clippingMask === true && <Tooltip className="layer-status-icon-tooltip" content={clippingMaskTooltip}><span className="layer-clipping-mask-indicator" aria-hidden="true"><PixelUtilityIcon kind="clippingMask" /></span></Tooltip>}{groupHasLayerStyles && layerStyleIndicator({ kind: 'group', id: node.group.id })}</button>
       }
       const lockingGroup = getLayerLockingGroup(session.document, node.layer)
+      const inheritedVisibilityHidden = getLayerPanelAncestorGroupIds(session.document.groups, node.layer.groupId)
+        .some((groupId) => session.document.groups.find((group) => group.id === groupId)?.visible === false)
       const displayColorSegments = displayColorStripeSegments(node.layer, 'layer', node.depth)
       const indicator = dropTarget?.kind === 'layer' && dropTarget.id === node.layer.id
         ? <span className={`layer-drop-indicator ${dropTarget.insertAfter ? 'above' : 'below'}`} style={{ left: `${8 + node.depth * 14}px` }} aria-hidden="true"><i /><b /><i /></span>
@@ -3283,7 +3366,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         active: Boolean(!maskVisualSelectionActive && visualRow?.active && activeMaskOwnerKey !== layerOwnerKey),
         selected: Boolean(timelineVisualState.selectionGuidesVisible && layerSelectionActive && visualRow?.selected),
       }
-      return <button key={node.layer.id} data-layer-id={node.layer.id} className={`layer-row ${node.layer.kind === 'text' ? 'text-layer' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-layer' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-layer' : ''} ${node.layer.background ? 'background-layer' : ''} ${node.layer.linkedContentId ? 'linked-layer' : ''} ${node.layer.clippingMask === true ? 'clipping-mask' : ''} ${layerHasLayerStyles ? 'has-layer-style' : ''} ${node.depth > 0 ? 'group-member' : ''} ${layerRowVisualClasses.selected ? 'selected' : ''} ${layerRowVisualClasses.active ? 'active-layer' : ''} ${!maskVisualSelectionActive && ordinaryCelSelectionVisible && visualRow?.selectedByCell ? 'cel-owner-active' : ''} ${draggingIds.includes(node.layer.id) ? 'dragging' : ''} ${layerStyleDrag?.target?.kind === 'layer' && layerStyleDrag.target.id === node.layer.id ? 'layer-style-drop-target' : ''}`} style={{ '--layer-depth': node.depth } as React.CSSProperties} onPointerDown={(event) => beginLayerDrag(event, node.layer.id)} onDoubleClick={() => editLayerRow(node.layer)}>{indicator}{displayColorSegments.map((segment, index) => <span key={`layer-color-stripe-${node.layer.id}-${index}`} className="layer-color-stripe" style={{ left: `${segment.left}px`, width: `${segment.width}px`, backgroundColor: `rgba(${segment.color.r}, ${segment.color.g}, ${segment.color.b}, ${segment.color.a / 255})` }} aria-hidden="true" />)}<span className="layer-visibility" role="button" tabIndex={-1} aria-label={t(node.layer.visible ? 'layers.hideLayer' : 'layers.showLayer')} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id }, node.layer.visible)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.layer.visible ? <PixelUtilityIcon kind="eye" /> : <PixelUtilityIcon kind="eyeOff" />}</span><span className={`layer-lock-toggle ${node.layer.locked || lockingGroup ? 'locked' : ''}`} role="button" tabIndex={-1} title={lockingGroup ? t('layers.lockedByGroup', { name: lockingGroup.name }) : undefined} aria-label={lockingGroup ? t('layers.lockedByGroup', { name: lockingGroup.name }) : t(node.layer.locked ? 'layers.unlockLayer' : 'layers.lockLayer')} aria-disabled={Boolean(lockingGroup)} aria-pressed={node.layer.locked || Boolean(lockingGroup)} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'lock', ownerKind: 'layer', id: node.layer.id }, node.layer.locked, lockingGroup?.name)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'lock', ownerKind: 'layer', id: node.layer.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.layer.locked || lockingGroup ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span><span className={liveAutoLinkById.get(node.layer.id) === true ? 'layer-auto-link-toggle enabled' : 'layer-auto-link-toggle'} role="button" tabIndex={0} title={t(liveAutoLinkById.get(node.layer.id) === true ? 'layers.autoLinkAnimationCelsOff' : 'layers.autoLinkAnimationCelsOn')} aria-label={t(liveAutoLinkById.get(node.layer.id) === true ? 'layers.autoLinkAnimationCelsOff' : 'layers.autoLinkAnimationCelsOn')} aria-pressed={liveAutoLinkById.get(node.layer.id) === true} onPointerDownCapture={(event) => handleLayerAutoLinkPointerDown(event, node.layer.id)} onDoubleClick={(event) => event.stopPropagation()} onKeyDown={(event) => handleLayerAutoLinkKeyDown(event, node.layer.id)}><PixelAutoLinkIcon enabled={liveAutoLinkById.get(node.layer.id) === true} /></span><Tooltip className="layer-name" content={node.layer.description?.trim()}><span>{node.layer.name}</span><small>{blendOptions.find((option) => option.value === node.layer.blendMode)?.label} · {Math.round(node.layer.opacity * 100)}%</small></Tooltip>{node.layer.kind === 'text' && <Tooltip className="layer-status-icon-tooltip" content={t('layers.textLayerHint')}><span className="layer-text-indicator" aria-hidden="true"><PixelUtilityIcon kind="text" /></span></Tooltip>}{node.layer.kind === 'tilemap' && <Tooltip className="layer-status-icon-tooltip" content={t('layers.tilemapLayerHint')}><span className="layer-tilemap-indicator" aria-hidden="true"><PixelUtilityIcon kind="tilemap" /></span></Tooltip>}{node.layer.kind === 'free-tile' && <Tooltip className="layer-status-icon-tooltip" content={<><strong>{t('layers.freeTileLayerHint')}</strong><span>{t('freeTiles.openInstanceLayers')}</span></>}><span className="layer-tilemap-indicator" role="button" tabIndex={0} aria-label={t('freeTiles.openInstanceLayers')} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation() }} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); openFreeTileInstanceLayers(node.layer.id) }} onKeyDown={(event) => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); event.stopPropagation(); openFreeTileInstanceLayers(node.layer.id) }}><PixelUtilityIcon kind="freeTile" /></span></Tooltip>}{node.layer.background && <Tooltip className="layer-status-icon-tooltip" content={t('layers.backgroundDescription')}><span className="layer-background-indicator" aria-hidden="true"><PixelUtilityIcon kind="image" /></span></Tooltip>}{node.layer.linkedContentId && <Tooltip className="layer-status-icon-tooltip" content={<><strong>{t('layers.linkedLayer')}</strong><span>{t('layers.linkedLayerDescription')}</span></>}><span className="layer-linked-indicator" aria-hidden="true"><PixelUtilityIcon kind="linkedLayer" /></span></Tooltip>}{node.layer.clippingMask === true && <Tooltip className="layer-status-icon-tooltip" content={clippingMaskTooltip}><span className="layer-clipping-mask-indicator" aria-hidden="true"><PixelUtilityIcon kind="clippingMask" /></span></Tooltip>}{layerHasLayerStyles && layerStyleIndicator({ kind: 'layer', id: node.layer.id })}</button>
+      return <button key={node.layer.id} data-layer-id={node.layer.id} className={`layer-row ${node.layer.kind === 'text' ? 'text-layer' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-layer' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-layer' : ''} ${node.layer.background ? 'background-layer' : ''} ${node.layer.linkedContentId ? 'linked-layer' : ''} ${node.layer.clippingMask === true ? 'clipping-mask' : ''} ${layerHasLayerStyles ? 'has-layer-style' : ''} ${node.depth > 0 ? 'group-member' : ''} ${layerRowVisualClasses.selected ? 'selected' : ''} ${layerRowVisualClasses.active ? 'active-layer' : ''} ${!maskVisualSelectionActive && ordinaryCelSelectionVisible && visualRow?.selectedByCell ? 'cel-owner-active' : ''} ${draggingIds.includes(node.layer.id) ? 'dragging' : ''} ${layerStyleDrag?.target?.kind === 'layer' && layerStyleDrag.target.id === node.layer.id ? 'layer-style-drop-target' : ''}`} style={{ '--layer-depth': node.depth } as React.CSSProperties} onPointerDown={(event) => beginLayerDrag(event, node.layer.id)} onDoubleClick={() => editLayerRow(node.layer)}>{indicator}{displayColorSegments.map((segment, index) => <span key={`layer-color-stripe-${node.layer.id}-${index}`} className="layer-color-stripe" style={{ left: `${segment.left}px`, width: `${segment.width}px`, backgroundColor: `rgba(${segment.color.r}, ${segment.color.g}, ${segment.color.b}, ${segment.color.a / 255})` }} aria-hidden="true" />)}<span className={`layer-visibility ${inheritedVisibilityHidden ? 'group-visibility-inherited-hidden' : ''}`} role="button" tabIndex={-1} aria-label={t(node.layer.visible ? 'layers.hideLayer' : 'layers.showLayer')} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id }, node.layer.visible)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.layer.visible ? <PixelUtilityIcon kind="eye" /> : <PixelUtilityIcon kind="eyeOff" />}</span><span className={`layer-lock-toggle ${node.layer.locked ? 'locked' : ''} ${lockingGroup ? 'group-lock-inherited' : ''}`} role="button" tabIndex={-1} title={lockingGroup ? t('layers.lockedByGroup', { name: lockingGroup.name }) : undefined} aria-label={t(node.layer.locked ? 'layers.unlockLayer' : 'layers.lockLayer')} aria-pressed={node.layer.locked} onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'lock', ownerKind: 'layer', id: node.layer.id }, node.layer.locked)} onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'lock', ownerKind: 'layer', id: node.layer.id })} onPointerUp={endLayerPanelToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerPanelToggleClick}>{node.layer.locked ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span><span className={liveAutoLinkById.get(node.layer.id) === true ? 'layer-auto-link-toggle enabled' : 'layer-auto-link-toggle'} role="button" tabIndex={0} title={t(liveAutoLinkById.get(node.layer.id) === true ? 'layers.autoLinkAnimationCelsOff' : 'layers.autoLinkAnimationCelsOn')} aria-label={t(liveAutoLinkById.get(node.layer.id) === true ? 'layers.autoLinkAnimationCelsOff' : 'layers.autoLinkAnimationCelsOn')} aria-pressed={liveAutoLinkById.get(node.layer.id) === true} onPointerDownCapture={(event) => handleLayerAutoLinkPointerDown(event, node.layer.id)} onPointerEnter={(event) => continueLayerAutoLinkToggle(event, { control: 'auto-link', ownerKind: 'layer', id: node.layer.id })} onPointerUp={endLayerAutoLinkToggle} onDoubleClick={(event) => event.stopPropagation()} onClick={finishLayerAutoLinkClick} onKeyDown={(event) => handleLayerAutoLinkKeyDown(event, node.layer.id)}><PixelAutoLinkIcon enabled={liveAutoLinkById.get(node.layer.id) === true} /></span><Tooltip className="layer-name" content={node.layer.description?.trim()}><span>{node.layer.name}</span><small>{blendOptions.find((option) => option.value === node.layer.blendMode)?.label} · {Math.round(node.layer.opacity * 100)}%</small></Tooltip>{node.layer.kind === 'text' && <Tooltip className="layer-status-icon-tooltip" content={t('layers.textLayerHint')}><span className="layer-text-indicator" aria-hidden="true"><PixelUtilityIcon kind="text" /></span></Tooltip>}{node.layer.kind === 'tilemap' && <Tooltip className="layer-status-icon-tooltip" content={t('layers.tilemapLayerHint')}><span className="layer-tilemap-indicator" aria-hidden="true"><PixelUtilityIcon kind="tilemap" /></span></Tooltip>}{node.layer.kind === 'free-tile' && <Tooltip className="layer-status-icon-tooltip" content={<><strong>{t('layers.freeTileLayerHint')}</strong><span>{t('freeTiles.openInstanceLayers')}</span></>}><span className="layer-tilemap-indicator" role="button" tabIndex={0} aria-label={t('freeTiles.openInstanceLayers')} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation() }} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); openFreeTileInstanceLayers(node.layer.id) }} onKeyDown={(event) => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); event.stopPropagation(); openFreeTileInstanceLayers(node.layer.id) }}><PixelUtilityIcon kind="freeTile" /></span></Tooltip>}{node.layer.background && <Tooltip className="layer-status-icon-tooltip" content={t('layers.backgroundDescription')}><span className="layer-background-indicator" aria-hidden="true"><PixelUtilityIcon kind="image" /></span></Tooltip>}{node.layer.linkedContentId && <Tooltip className="layer-status-icon-tooltip" content={<><strong>{t('layers.linkedLayer')}</strong><span>{t('layers.linkedLayerDescription')}</span></>}><span className="layer-linked-indicator" aria-hidden="true"><PixelUtilityIcon kind="linkedLayer" /></span></Tooltip>}{node.layer.clippingMask === true && <Tooltip className="layer-status-icon-tooltip" content={clippingMaskTooltip}><span className="layer-clipping-mask-indicator" aria-hidden="true"><PixelUtilityIcon kind="clippingMask" /></span></Tooltip>}{layerHasLayerStyles && layerStyleIndicator({ kind: 'layer', id: node.layer.id })}</button>
 })}</div><div className="layer-animation-grid" style={{ gridTemplateRows: displayRowGridTemplate, '--active-layer-row': Math.max(0, activeAnimationLayerRow) } as CSSProperties}>{selectedAnimationOutlineRows.map((row) => <span key={`selected-animation-row-${row}`} data-animation-selected-row className="animation-selected-layer-row" style={{ '--animation-row-index': row, '--animation-row-top': displayRowTop(row), '--animation-row-height': displayRowSpanHeight(row, 1) } as CSSProperties} aria-hidden="true" />)}{showLinkedCelVisuals && linkedCelBlocks.map((block) => <span key={block.key} data-linked-cel-block data-frame-index={block.start} data-frame-span={block.span} className={`animation-linked-cel-block ${block.selected ? 'selected' : ''} ${block.layerSelected ? 'layer-selected' : ''}`} style={{ '--animation-row-index': block.row, '--animation-row-top': displayRowTop(block.row), '--animation-row-height': displayRowSpanHeight(block.row, 1), '--animation-frame-index': block.start, '--animation-frame-span': block.span } as CSSProperties} aria-hidden="true" />)}{showLinkedCelVisuals && linkedCelConnectors.map((connector) => <span key={connector.key} data-linked-cel-connector data-start-frame-index={connector.start} data-end-frame-index={connector.end} className={`animation-linked-cel-connector ${connector.selected ? 'selected' : ''} ${connector.layerSelected ? 'layer-selected' : ''}`} style={{ '--animation-row-index': connector.row, '--animation-row-top': displayRowTop(connector.row), '--animation-row-height': displayRowSpanHeight(connector.row, 1), '--animation-link-start': connector.start, '--animation-link-end': connector.end } as CSSProperties} aria-hidden="true" />)}{animationFrameGridDecorations}{shouldShowAnimationCellSelectionOutline && selectedCelPositions.length > 0 && <span data-animation-cel-selection className={`animation-cel-selection-box ${animationCelDragPreview ? 'animation-cel-drag-preview' : ''}`} style={{ '--animation-frame-index': animationCelDragPreview?.column ?? selectedCelColumn, '--animation-frame-span': animationCelDragPreview?.columnSpan ?? selectedCelColumnSpan, '--animation-row-index': animationCelDragPreview?.row ?? selectedCelRow, '--animation-row-span': animationCelDragPreview?.rowSpan ?? selectedCelRowSpan, '--animation-row-top': displayRowTop(animationCelDragPreview?.row ?? selectedCelRow), '--animation-row-height': displayRowSpanHeight(animationCelDragPreview?.row ?? selectedCelRow, animationCelDragPreview?.rowSpan ?? selectedCelRowSpan) } as CSSProperties} aria-hidden="true" />}{animationFrameHeaders}{displayRows.flatMap((displayRow) => timeline.frames.map((frame, index) => {
       const visualRow = visualRowStateByKey.get(displayRow.kind === 'mask'
         ? timelineRowKey({ kind: 'mask', ownerKind: displayRow.ownerKind, ownerId: displayRow.owner.id })
@@ -3337,18 +3420,30 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         const maskName = t(displayRow.ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask')
         const maskFrameVisualSelection = frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected
         // Once a canvas selection is active, an ordinary-layer focus must not
-        // leak the current frame into the extra mask row. A focused mask is
-        // still allowed to display its own activity independently.
+        // leak the current frame into unrelated mask rows. The mask row
+        // belonging to the active layer is still part of that layer's current
+        // frame context and must retain its active background.
         // During playback the playhead is a column-wide activity indicator.
         // It must also paint every mask row, even when frame-copy/paste has
         // cleared the mask editing context. Otherwise the suppression layer
         // hides the current-frame background only on mask rows.
+        // Mask-row activity is driven by timeline focus, never by the canvas
+        // pixel-selection object. A canvas marquee must not silently toggle
+        // timeline mask backgrounds.
+        const maskOwnerIsActiveLayer = maskCellClasses.active
+          || (focusState.implicitCursor && displayRow.ownerKind === 'layer' && displayRow.owner.id === session.document.activeLayerId)
         const maskFrameActivityVisible = session.animationPlaying
-          || !session.selection
           || maskVisualSelectionActive
+          || (maskOwnerIsActiveLayer && (selectionOutlineVisible || !session.selection))
         const maskActiveFrameHighlighted = maskFrameActivityVisible
           && frameVisualEnabled
-          && (maskCellClasses.frameActive || maskCellClasses.selectedByFrame || (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
+          && ((session.animationPlaying && maskCellClasses.frameActive)
+            || (maskVisualSelectionActive && (maskCellClasses.frameActive || maskCellClasses.selected))
+            || (maskOwnerIsActiveLayer && selectionOutlineVisible && maskCellClasses.frameActive)
+            || (focusState.implicitCursor && maskOwnerIsActiveLayer && maskCellClasses.frameActive)
+            || maskCellClasses.selectedByFrame
+            || maskFrameSelected
+            || (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
         // The active/selected frame column is an ordinary-layer guide. Paint
         // over that guide on an unfocused mask row so it cannot look active
         // merely because its owner layer is active or being played.
@@ -3401,7 +3496,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // The pure visual index may omit empty cel slots; transient/formal key
       // selection still needs to paint those grid cells as selected.
       const keySelected = ordinaryCelSelectionVisible && renderedCellKeySet.has(key)
-      const cellSelected = keySelected || (hasContent && cellClasses.selected)
+      // Selection styling is structural and may target an empty cel slot;
+      // content presence only controls whether an interior marker is painted.
+      const cellSelected = keySelected || cellClasses.selected
       // Frame selection is represented by the column background/outline. Do
       // not promote every cel in that column to a solid selected-cel marker.
       // Linked-group emphasis remains owner-aware and independent.

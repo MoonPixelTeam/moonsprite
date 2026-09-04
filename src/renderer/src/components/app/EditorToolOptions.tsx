@@ -33,7 +33,7 @@ import { BRUSH_DITHER_TEMPLATES, DEFAULT_BRUSH_DITHER_SETTINGS, brushDitherConta
 import { interpolateRgbaColor } from '@/core/gradient-color'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { useWorkspace } from '@/store/workspace'
-import { PixelDownIcon as ChevronDown, PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { PixelPressureIcon } from '@/components/PixelPressureIcon'
 import { useFloatingWindowStack } from '@/components/floating-panel'
 import { GRADIENT_TYPE_ICONS, PixelAssetIcon, PixelShapeIcon, selectionModes, temporarySelectionModeForModifiers } from './editor-tools'
@@ -919,7 +919,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     </div>}
     {isBrushTool && <>
       {isStrokeBrushTool && <div className="brush-shape-selector">
-        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><PixelShapeIcon kind={session.brushShape} /><ChevronDown className="brush-shape-trigger-arrow" /></button>
+        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><PixelShapeIcon kind={session.brushShape} /></button>
         {basicBrushFlyoutOpen && <div className="brush-shape-popover" role="menu" aria-label={t('toolOptions.basicBrushes')}>
           {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <button key={shape} type="button" role="menuitemradio" className={`icon-button brush-preset ${!activeLibraryBrush && session.brushShape === shape ? 'selected' : ''}`} title={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-checked={!activeLibraryBrush && session.brushShape === shape} onClick={() => chooseBasicBrush(shape)}><PixelShapeIcon kind={shape} /></button>)}
         </div>}

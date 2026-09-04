@@ -509,6 +509,7 @@ export interface WorkspaceLayerCommands {
   toggleActiveClippingMask(): void
   setClippingMask(kind: 'layer' | 'group', id: string, enabled: boolean): void
   setGroupProperties(groupId: string, name: string, opacity: number, blendMode: BlendMode, locked: boolean, displayColor?: RgbaColor | null, description?: string, cumulativeBlend?: boolean): void
+  setGroupLocked(groupId: string, enabled: boolean): void
   toggleLayerVisibility(layerId: string): void
   selectLayer(layerId: string, mode?: boolean | 'replace' | 'toggle' | 'range'): void
   selectMoveToolLayer(layerId: string, additive?: boolean): void
@@ -516,6 +517,7 @@ export interface WorkspaceLayerCommands {
   setLayerOpacity(layerId: string, opacity: number): void
   setLayerProperties(layerId: string, name: string, opacity: number): void
   setLayerPropertiesWithBlend(layerId: string, name: string, opacity: number, blendMode: BlendMode, locked?: boolean, displayColor?: RgbaColor | null, description?: string): void
+  setLayerLocked(layerId: string, enabled: boolean): void
   beginLayerPropertiesTransaction(targets: readonly LayerPropertyTarget[]): string | null
   previewLayerPropertiesTransaction(id: string, values: LayerPropertyValues, changedFields: readonly LayerPropertyField[]): void
   commitLayerPropertiesTransaction(id: string, values: LayerPropertyValues, changedFields: readonly LayerPropertyField[]): void

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { LayerGroup } from '@shared/types'
-import { compositeRegion, createDocument, createLayer, createLayerMask, getActiveLayer, writeLayerColor } from '@/core/document'
+import { animationMaskAt, compositeRegion, createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
 import { ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { useWorkspace } from './workspace'
@@ -117,20 +117,49 @@ describe('layer style workspace history', () => {
     const styles = createDefaultLayerStyles()
     styles.stroke.enabled = true
     layer.layerStyles = styles
-    const cel = ensureAnimationDocument(document).cels[0]
-    cel.mask = createLayerMask(cel.id, document.width, document.height)
-    writeLayerColor(document, cel.mask, 2 * document.width + 2, { r: 128, g: 128, b: 128, a: 255 })
+    const timeline = ensureAnimationDocument(document)
+    const cel = timeline.cels[0]
     useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(timeline, layer.id, cel.frameId)
+    if (!mask) throw new Error('missing canonical test mask')
+    writeLayerColor(document, mask, 2 * document.width + 2, { r: 128, g: 128, b: 128, a: 255 })
     const before = compositeRegion(document, 0, 0, document.width, document.height)
+    const visiblePixelOffset = (2 * document.width + 2) * 4
+    const beforeVisiblePixel = Array.from(before.slice(visiblePixelOffset, visiblePixelOffset + 4))
+    const maskPixels = Array.from(mask.pixels)
 
     useWorkspace.getState().rasterizeLayer(layer.id)
     expect(layer.layerStyles).toBeUndefined()
-    expect(ensureAnimationDocument(document).cels[0].mask).toBeUndefined()
-    expect(Array.from(compositeRegion(document, 0, 0, document.width, document.height))).toEqual(Array.from(before))
+    const rasterizedMask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)
+    expect(rasterizedMask).toBeNull()
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      activeLayerMaskId: null,
+      layerMaskIsolatedView: false,
+      selectedAnimationMaskCellKeys: []
+    })
+    const after = compositeRegion(document, 0, 0, document.width, document.height)
+    expect(Array.from(after)).toEqual(Array.from(before))
+    expect(Array.from(after.slice(visiblePixelOffset, visiblePixelOffset + 4))).toEqual(beforeVisiblePixel)
 
     useWorkspace.getState().undo()
     expect(getActiveLayer(document).layerStyles?.stroke.enabled).toBe(true)
-    expect(ensureAnimationDocument(document).cels[0].mask).toBeDefined()
+    const restoredMask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)
+    expect(restoredMask?.id).toBe(mask.id)
+    expect(Array.from(restoredMask?.pixels ?? [])).toEqual(maskPixels)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(mask.id)
+    const restored = compositeRegion(document, 0, 0, document.width, document.height)
+    expect(Array.from(restored)).toEqual(Array.from(before))
+    expect(Array.from(restored.slice(visiblePixelOffset, visiblePixelOffset + 4))).toEqual(beforeVisiblePixel)
+
+    useWorkspace.getState().redo()
+    expect(getActiveLayer(document).layerStyles).toBeUndefined()
+    expect(animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)).toBeNull()
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      activeLayerMaskId: null,
+      layerMaskIsolatedView: false,
+      selectedAnimationMaskCellKeys: []
+    })
     expect(Array.from(compositeRegion(document, 0, 0, document.width, document.height))).toEqual(Array.from(before))
   })
 

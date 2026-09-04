@@ -1048,7 +1048,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
               <button className="icon-button" type="button" onClick={() => setSectionManagerOpen(true)} aria-label={t('home.manageSections')} title={t('home.manageSections')}><PixelUtilityIcon kind="properties" /></button>
             </div>
           </header>
-          <div ref={recentListRef} className={`recent-files-list component-scrollbar home-project-layout-${projectLayout}`}>
+          <div ref={recentListRef} className={`recent-files-list component-scrollbar home-project-layout-${projectLayout}${draggingProjectPath ? ' recent-files-list-reordering' : ''}`}>
             {loading && <div className="start-screen-state"><PixelUtilityIcon kind="refresh" className="spin" /><span>{t('home.readingProjects')}</span></div>}
             {!loading && loadError && <div className="start-screen-state error"><TriangleAlert size={22} /><strong>{t('home.readSectionFailed')}</strong><span>{loadError}</span><button className="quiet-button" type="button" onClick={() => void loadSection(activeSection)}>{t('home.retry')}</button></div>}
             {!loading && !loadError && ((activeSection.kind !== 'recovery' && projects.length === 0) || (activeSection.kind === 'recovery' && recoveryRecords.length === 0)) && <div className="start-screen-state">{emptyState.icon}<strong>{emptyState.title}</strong><span>{emptyState.detail}</span></div>}

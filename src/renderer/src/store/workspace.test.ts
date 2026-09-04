@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi, StoredPalette } from '@shared/types'
-import { animationMaskAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
+import { animationMaskAt, compositeDocument, createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel, revertPixelEdit } from '@/core/history'
 import { packColor, relativeLuminanceColor } from '@/core/raster'
 import { applySelectionTransform, applySelectionTranslationPreview, captureSelectionTransform, paintBrush, selectionTranslationPreviewEdit, type SelectionTransformSource } from '@/core/tools'
@@ -177,27 +177,28 @@ describe('automatic animation cel links', () => {
     layer.pixels[3] = 255
     const timeline = ensureAnimationDocument(document)
     const cel = animationCelAt(timeline, layer.id, timeline.activeFrameId)!
-    cel.mask = createLayerMask(cel.id, 1, 1)
     useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(timeline, layer.id, cel.frameId)!
 
     const maskKey = animationCelKey(layer.id, cel.frameId)
     useWorkspace.getState().selectAnimationMaskCell(maskKey)
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask.id)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(mask.id)
     useWorkspace.getState().setLayerMaskLocked(cel.id, true)
     expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
     useWorkspace.getState().undo()
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask.id)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(mask.id)
     useWorkspace.getState().redo()
     expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
     useWorkspace.getState().setLayerMaskAutoLinkAnimationCels(cel.id, true)
-    expect(cel.mask?.locked).toBe(true)
-    expect(cel.mask?.autoLinkAnimationCels).toBe(true)
+    expect(mask.locked).toBe(true)
+    expect(mask.autoLinkAnimationCels).toBe(true)
     useWorkspace.getState().undo()
-    expect(cel.mask?.autoLinkAnimationCels).toBeUndefined()
+    expect(mask.autoLinkAnimationCels).toBeUndefined()
     useWorkspace.getState().undo()
-    expect(cel.mask?.locked).toBe(false)
+    expect(mask.locked).toBe(false)
     useWorkspace.getState().redo()
-    expect(cel.mask?.locked).toBe(true)
+    expect(mask.locked).toBe(true)
   })
 
   it('stores the toggle per layer and supports undo/redo without affecting groups', () => {
@@ -833,12 +834,13 @@ describe('layer masks', () => {
     useWorkspace.getState().setPrimaryColor(red)
     useWorkspace.getState().setSecondaryColor(blue)
     useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)!
     let session = useWorkspace.getState().sessions[0]
     expect(session.primaryColor).toEqual({ r: 255, g: 255, b: 255, a: 255 })
     expect(session.secondaryColor).toEqual({ r: 0, g: 0, b: 0, a: 255 })
     useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
     useWorkspace.getState().deleteSelection()
-    expect(readLayerColor(document, cel.mask!, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 })
+    expect(readLayerColor(document, mask, 0)).toEqual({ r: 0, g: 0, b: 0, a: 255 })
     useWorkspace.getState().selectLayer(layer.id)
     session = useWorkspace.getState().sessions[0]
     expect(session.primaryColor).toEqual(red)
@@ -851,7 +853,7 @@ describe('layer masks', () => {
     const cel = ensureAnimationDocument(document).cels[0]
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().createLayerMask(cel.id)
-    const mask = cel.mask!
+    const mask = animationMaskAt(ensureAnimationDocument(document), cel.layerId, cel.frameId)!
     const maskKey = animationCelKey(cel.layerId, cel.frameId)
     useWorkspace.getState().selectAnimationMaskCell(maskKey)
     expect(readLayerColor(document, mask, 0)).toEqual(transparent)
@@ -872,11 +874,11 @@ describe('layer masks', () => {
     expect(readLayerColor(document, mask, 0)).toEqual({ r: 54, g: 54, b: 54, a: 255 })
 
     useWorkspace.getState().deleteLayerMask(cel.id)
-    expect(cel.mask).toBeUndefined()
+    expect(animationMaskAt(ensureAnimationDocument(document), cel.layerId, cel.frameId)).toBeNull()
     expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBeNull()
     useWorkspace.getState().undo()
     session = useWorkspace.getState().sessions[0]
-    expect(cel.mask?.id).toBe(mask.id)
+    expect(animationMaskAt(ensureAnimationDocument(document), cel.layerId, cel.frameId)?.id).toBe(mask.id)
     expect(session.activeLayerMaskId).toBe(mask.id)
   })
 
@@ -888,7 +890,7 @@ describe('layer masks', () => {
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().createLayerMask(cel.id)
     useWorkspace.getState().selectLayer(layer.id)
-    const mask = cel.mask!
+    const mask = animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)!
     const key = animationCelKey(layer.id, cel.frameId)
     const move = {
       layerId: layer.id,
@@ -923,10 +925,11 @@ describe('layer masks', () => {
     layer.pixels[3] = 255
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(timeline, layer.id, cel.frameId)!
     const key = animationCelKey(layer.id, cel.frameId)
     const initialActiveLayerId = document.activeLayerId
     useWorkspace.getState().selectAnimationMaskCell(key)
-    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(cel.mask?.id)
+    expect(useWorkspace.getState().sessions[0].activeLayerMaskId).toBe(mask.id)
     expect(document.activeLayerId).toBe(initialActiveLayerId)
     expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([])
     expect(useWorkspace.getState().sessions[0].selectedGroupIds).toEqual([])
@@ -963,7 +966,7 @@ describe('layer masks', () => {
     const session = useWorkspace.getState().sessions[0]!
     const frameId = timeline.activeFrameId
     const celKey = animationCelKey(ownerLayer.id, frameId)
-    const maskId = cel.mask!.id
+    const maskId = animationMaskAt(timeline, ownerLayer.id, frameId)!.id
     session.selectedAnimationMaskRowKeys = [`layer:${ownerLayer.id}`]
     session.selectedAnimationMaskCellKeys = [celKey]
     session.activeLayerMaskId = maskId
@@ -1007,7 +1010,7 @@ describe('layer masks', () => {
 
     // Simulate the stale active-mask target that can survive until the next
     // render while the mask row is still the formal selection.
-    session.activeLayerMaskId = cel.mask!.id
+    session.activeLayerMaskId = animationMaskAt(timeline, ownerLayer.id, frameId)!.id
     useWorkspace.setState({ sessions: [...useWorkspace.getState().sessions] })
     useWorkspace.getState().selectLayer(ownerLayer.id)
 
@@ -1029,6 +1032,7 @@ describe('layer masks', () => {
     const cel = timeline.cels[0]!
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().createLayerMask(cel.id)
+    const mask = animationMaskAt(timeline, layer.id, cel.frameId)!
 
     useWorkspace.getState().selectAnimationMaskRow('layer', layer.id)
     let session = useWorkspace.getState().sessions[0]
@@ -1041,9 +1045,9 @@ describe('layer masks', () => {
     const key = animationCelKey(layer.id, cel.frameId)
     useWorkspace.getState().selectAnimationMaskCell(key)
     session = useWorkspace.getState().sessions[0]
-    expect(session.selectedAnimationMaskRowKeys).toEqual([`layer:${layer.id}`])
+    expect(session.selectedAnimationMaskRowKeys).toEqual([])
     expect(session.selectedAnimationMaskCellKeys).toEqual([key])
-    expect(session.activeLayerMaskId).toBe(cel.mask?.id)
+    expect(session.activeLayerMaskId).toBe(mask.id)
     expect(session.selectedLayerIds).toEqual([])
   })
 
@@ -1108,7 +1112,7 @@ describe('layer masks', () => {
     const timeline = ensureAnimationDocument(session.document)
     const secondFrameId = timeline.frames.find((frame) => frame.id !== firstFrameId)!.id
     const secondCel = animationCelAt(timeline, layer.id, secondFrameId)!
-    if (!secondCel.mask) useWorkspace.getState().createLayerMask(secondCel.id)
+    if (!animationMaskAt(timeline, layer.id, secondFrameId)) useWorkspace.getState().createLayerMask(secondCel.id)
     useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layer.id, secondFrameId))
     useWorkspace.getState().selectAnimationMaskCell(animationCelKey(layer.id, firstFrameId), 'toggle')
 
@@ -1180,7 +1184,7 @@ describe('layer masks', () => {
     const cel = ensureAnimationDocument(document).cels[0]
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().createLayerMask(cel.id)
-    cel.mask!.pixels.set([0, 0, 0, 255])
+    animationMaskAt(ensureAnimationDocument(document), layer.id, cel.frameId)!.pixels.set([0, 0, 0, 255])
     expect(readLayerVisibleColorAt(document, layer, 0, 0).a).toBe(0)
   })
 })
@@ -1221,10 +1225,12 @@ describe('animation workspace', () => {
     const timeline = ensureAnimationDocument(document)
     const sourceCel = timeline.cels[0]!
     useWorkspace.getState().createLayerMask(sourceCel.id)
+    const sourceMask = animationMaskAt(timeline, layer.id, sourceCel.frameId)!
+    sourceMask.autoLinkAnimationCels = true
     useWorkspace.getState().duplicateAnimationFrame()
     const targetFrame = timeline.frames[1]!
-    const linkedCel = timeline.cels.find((cel) => cel.frameId === targetFrame.id && cel.layerId === layer.id)!
-    linkedCel.linkedCelId = sourceCel.id
+    const linkedMask = timeline.layerMasks?.find((entry) => entry.layerId === layer.id && entry.frameId === targetFrame.id)?.mask
+    expect(linkedMask?.linkedMaskId).toBe(sourceMask.id)
     const linkedKey = animationCelKey(layer.id, targetFrame.id)
     useWorkspace.getState().selectAnimationMaskCell(linkedKey)
     expect(useWorkspace.getState().sessions[0].selectedAnimationMaskCellKeys).toEqual([linkedKey])
@@ -1234,7 +1240,7 @@ describe('animation workspace', () => {
     const session = useWorkspace.getState().sessions[0]
     expect(session.selectedAnimationMaskCellKeys).toEqual([])
     expect(useWorkspace.getState().message).toBeTruthy()
-    expect(sourceCel.mask).toBeDefined()
+    expect(animationMaskAt(timeline, layer.id, sourceCel.frameId)).toBe(sourceMask)
   })
 
   it('keeps a white source mask slot when moving mask content across layers', () => {
@@ -1249,18 +1255,23 @@ describe('animation workspace', () => {
     const timeline = ensureAnimationDocument(document)
     const sourceCel = animationCelAt(timeline, sourceLayer.id, timeline.activeFrameId)!
     const targetCel = animationCelAt(timeline, targetLayer.id, timeline.activeFrameId)!
-    sourceCel.mask = createLayerMask(sourceCel.id, 1, 1)
-    sourceCel.mask.pixels.set([12, 12, 12, 255])
-    targetCel.mask = createLayerMask(targetCel.id, 1, 1)
+    useWorkspace.getState().createLayerMask(sourceCel.id)
+    useWorkspace.getState().createLayerMask(targetCel.id)
+    const sourceMask = animationMaskAt(timeline, sourceLayer.id, sourceCel.frameId)!
+    const targetMask = animationMaskAt(timeline, targetLayer.id, targetCel.frameId)!
+    sourceMask.pixels.set([12, 12, 12, 255])
 
     const sourceKey = animationCelKey(sourceLayer.id, sourceCel.frameId)
     const targetKey = animationCelKey(targetLayer.id, targetCel.frameId)
     useWorkspace.getState().selectAnimationMaskCell(sourceKey)
     useWorkspace.getState().moveSelectedAnimationMasks(targetLayer.id, targetCel.frameId, sourceKey)
 
-    expect(Array.from(sourceCel.mask!.pixels)).toEqual([255, 255, 255, 255])
-    expect(Array.from(targetCel.mask!.pixels)).toEqual([12, 12, 12, 255])
-    expect(sourceCel.mask!.id).not.toBe(targetCel.mask!.id)
+    const movedSourceMask = animationMaskAt(timeline, sourceLayer.id, sourceCel.frameId)!
+    const movedTargetMask = animationMaskAt(timeline, targetLayer.id, targetCel.frameId)!
+    expect(Array.from(movedSourceMask.pixels)).toEqual([255, 255, 255, 255])
+    expect(Array.from(movedTargetMask.pixels)).toEqual([12, 12, 12, 255])
+    expect(movedSourceMask.id).not.toBe(movedTargetMask.id)
+    expect(targetMask.id).not.toBe(movedTargetMask.id)
     expect(useWorkspace.getState().sessions[0].selectedAnimationMaskCellKeys).toEqual([targetKey])
     expect(useWorkspace.getState().sessions[0].document.activeLayerId).toBe(targetLayer.id)
     expect(useWorkspace.getState().sessions[0].document.animation?.activeFrameId).toBe(targetCel.frameId)
@@ -1412,7 +1423,7 @@ describe('animation workspace', () => {
     session.history.clear()
     const celKey = animationCelKey(layer.id, frameId)
     timeline = ensureAnimationDocument(document)
-    const mask = timeline.cels[0]!.mask!
+    const mask = animationMaskAt(timeline, layer.id, frameId)!
     session.selectedLayerIds = [layer.id]
     session.selectedGroupId = null
     session.selectedGroupIds = []

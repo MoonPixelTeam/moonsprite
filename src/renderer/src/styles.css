@@ -718,7 +718,6 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .brush-shape-control > .brush-preset { width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); min-width: var(--ui-icon-button-size); min-height: var(--ui-icon-button-size); padding: 0; }
 .brush-shape-selector { position: relative; display: inline-flex; flex: 0 0 var(--ui-icon-button-size); width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); }
 .brush-shape-selector > .brush-shape-trigger { position: relative; width: var(--ui-icon-button-size); min-width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); min-height: var(--ui-icon-button-size); padding: 0; }
-.brush-shape-trigger-arrow { position: absolute; right: 1px; bottom: 1px; width: 5px; height: 5px; }
 .brush-shape-popover { position: absolute; z-index: 32; top: calc(100% + 4px); left: 0; display: grid; grid-template-columns: repeat(3, var(--ui-icon-button-size)); gap: var(--ui-space-2); padding: var(--ui-space-2); color: var(--theme-text-secondary-strong); background: var(--theme-raised-surface); border: 1px solid var(--theme-border-strong); box-shadow: 0 7px 18px var(--theme-shadow); }
 .brush-shape-popover > .brush-preset { width: var(--ui-icon-button-size); min-width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); min-height: var(--ui-icon-button-size); padding: 0; }
 .brush-dither-control { position: relative; display: inline-flex; flex: 0 0 var(--ui-icon-button-size); width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); }
@@ -2237,7 +2236,9 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layer-style-indicator, .layer-instance-properties, .free-tile-layer .layer-tilemap-indicator { cursor: var(--cursor-pointer); }
 .layer-style-indicator:focus-visible, .layer-instance-properties:focus-visible, .free-tile-layer .layer-tilemap-indicator:focus-visible { outline: 1px solid var(--theme-accent); outline-offset: -2px; }
 .layer-row > :is(.layer-visibility, .layer-lock-toggle, .layer-auto-link-toggle, .group-folder) { align-self: stretch; height: auto; border-right: 1px solid var(--animation-grid-line, var(--theme-border)); }
+.layer-visibility.group-visibility-inherited-hidden { opacity: .38; }
 .layer-visibility:hover, .layer-lock-toggle:hover, .layer-auto-link-toggle:hover { color: var(--theme-text-primary); background: transparent; opacity: 1; }
+.layer-lock-toggle.group-lock-inherited { opacity: .38; }
 .layer-visibility:focus, .layer-lock-toggle:focus, .layer-auto-link-toggle:focus, .group-folder:focus { outline: 0; box-shadow: none; }
 .layer-lock-toggle.locked { color: inherit; }
 .layer-auto-link-toggle { cursor: var(--cursor-pointer); }
@@ -2247,8 +2248,10 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .pixel-auto-link-icon > svg { display: block; width: 22px; height: 22px; image-rendering: pixelated; shape-rendering: crispEdges; }
 .group-folder:hover { color: var(--theme-text-primary); background: transparent; opacity: 1; }
 .layer-row.selected :is(.layer-visibility, .layer-lock-toggle, .layer-auto-link-toggle, .group-folder, .layer-clipping-mask-indicator, .layer-mask-row-icon, .layer-style-indicator, .layer-background-indicator, .layer-tilemap-indicator, .layer-linked-indicator, .layer-instance-properties) { color: inherit; opacity: 1; }
+.layer-row.selected .layer-visibility.group-visibility-inherited-hidden { opacity: .38; }
 .layer-row.selected :is(.layer-visibility, .layer-lock-toggle, .group-folder, .layer-clipping-mask-indicator, .layer-mask-row-icon, .layer-style-indicator, .layer-background-indicator, .layer-tilemap-indicator, .layer-linked-indicator, .layer-instance-properties):hover { color: inherit; background: transparent; opacity: 1; }
 .layer-row.selected .layer-lock-toggle:hover { background: transparent; }
+.layer-row.selected .layer-lock-toggle.group-lock-inherited { opacity: .38; }
 .layer-row :is(.layer-visibility, .layer-lock-toggle, .layer-auto-link-toggle, .group-folder, .layer-clipping-mask-indicator, .layer-text-indicator, .layer-style-indicator, .layer-background-indicator, .layer-tilemap-indicator, .layer-linked-indicator, .layer-instance-properties) .pixel-utility-icon { display: block; width: var(--layer-row-icon-size); height: var(--layer-row-icon-size); }
 
 .text-tool-body { display: grid; flex: 1 1 auto; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
@@ -3212,6 +3215,14 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .recent-file-row.dragging.remove-pending { background: var(--theme-danger-soft); outline: 1px solid var(--theme-danger); outline-offset: -1px; opacity: .5; }
 .recent-file-open { display: grid; grid-template-columns: 84px minmax(0, 1fr) 78px; align-items: center; gap: var(--ui-space-4); min-width: 0; width: 100%; min-height: 78px; padding: var(--ui-space-3) var(--ui-space-4); color: var(--theme-text-primary); background: transparent; text-align: left; }
 .recent-file-open:hover:not(:disabled) { background: transparent; }
+.aseprite-home .recent-file-row > :is(.recent-file-open, .recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard) {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.aseprite-home .recent-file-row > :is(.recent-file-open, .recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard):hover:not(:disabled),
+.aseprite-home .recent-file-row > :is(.recent-file-open, .recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard):active:not(:disabled) {
+  background: transparent !important;
+}
 /* Preserve the error surface while hovering an unreadable project. The generic
    open-button hover layer otherwise replaces the status color with a dark
    neutral surface. */
@@ -3303,6 +3314,18 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .recent-files-list.home-project-layout-large .recovery-file-row .recovery-file-expiry { line-height: 1.35; white-space: normal; }
 .recent-files-list.home-project-layout-large .recovery-file-row .recent-file-open time { display: none; }
 .recent-files-list.home-project-layout-large .recent-file-row > :is(.recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard) { display: none; }
+/* While reordering, the pointer travels across other cards. Keep their base
+   surface and action-glyph colors stable so only the dragged card responds. */
+.recent-files-list.recent-files-list-reordering .recent-file-row:not(.dragging):not(.invalid):hover { background: transparent; }
+.recent-files-list.recent-files-list-reordering .recent-file-row.invalid:not(.dragging):hover { background: var(--theme-danger-soft); }
+.recent-files-list.home-project-layout-large.recent-files-list-reordering .recent-file-row:not(.dragging):hover { background: var(--theme-deep-surface); border-color: var(--theme-border); }
+:root[data-theme-mode='light'] .recent-files-list.home-project-layout-large.recent-files-list-reordering .recent-file-row:not(.dragging):hover { background: var(--theme-raised-surface); }
+.recent-files-list.recent-files-list-reordering .recent-file-row:not(.dragging) > :is(.recent-file-pin, .recent-file-delete, .recent-file-remove, .recent-file-reorder, .recent-file-discard):hover:not(:disabled) {
+  color: var(--theme-border-strong);
+  background: transparent;
+  border-color: transparent;
+}
+.recent-files-list.recent-files-list-reordering .recent-file-row.pinned:not(.dragging) > .recent-file-pin:hover:not(:disabled) { color: var(--theme-accent); }
 .resizable-modal.home-language-modal > .home-language-dialog-body { flex: 1 1 auto; min-height: 0; align-content: start; gap: var(--ui-space-4); padding: var(--ui-space-5); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .home-language-description { margin: 0; color: var(--theme-text-muted); font-size: var(--ui-font-regular); line-height: 1.5; }
 .home-language-options { display: grid; gap: var(--ui-space-2); }

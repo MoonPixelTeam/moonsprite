@@ -53,11 +53,13 @@ describe('PSD export', () => {
       opacity: inside.opacity,
       surface: { format: 'rgba', width: 2, height: 2, offsetX: 0, offsetY: 0, pixels: inside.pixels }
     }
-    const mask = createLayerMask(cel.id, 2, 2)
+    const mask = createLayerMask(inside.id, 2, 2)
     mask.visible = false
     mask.pixels.set([0, 0, 0, 255], 0)
-    cel.mask = mask
-    document.animation!.cels.push(cel)
+    const timeline = document.animation!
+    timeline.cels.push(cel)
+    timeline.layerMasks ??= []
+    timeline.layerMasks.push({ layerId: inside.id, frameId, mask })
 
     const bytes = encodePsd(document)
     expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe('8BPS')

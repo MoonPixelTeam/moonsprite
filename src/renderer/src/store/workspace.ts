@@ -1614,6 +1614,34 @@ const applyLayerRowSelection = (
   }
 }
 
+const hiddenAncestorGroupsForLayer = (document: SpriteDocument, layer: RasterLayer): LayerGroup[] => {
+  const groups: LayerGroup[] = []
+  const visited = new Set<string>()
+  let groupId = layer.groupId ?? null
+  while (groupId && !visited.has(groupId)) {
+    visited.add(groupId)
+    const group = document.groups.find((candidate) => candidate.id === groupId)
+    if (!group) break
+    if (group.visible === false) groups.push(group)
+    groupId = group.parentGroupId ?? null
+  }
+  return groups
+}
+
+const hiddenAncestorGroupsForGroup = (document: SpriteDocument, group: LayerGroup): LayerGroup[] => {
+  const groups: LayerGroup[] = []
+  const visited = new Set<string>()
+  let groupId = group.parentGroupId ?? null
+  while (groupId && !visited.has(groupId)) {
+    visited.add(groupId)
+    const ancestor = document.groups.find((candidate) => candidate.id === groupId)
+    if (!ancestor) break
+    if (ancestor.visible === false) groups.push(ancestor)
+    groupId = ancestor.parentGroupId ?? null
+  }
+  return groups
+}
+
 const layerOwnsTileset = (layer: RasterLayer, tilesetId: string): boolean =>
   (layer.kind === 'tilemap' && layer.tilemapTilesetId === tilesetId)
   || (layer.kind === 'free-tile' && layer.freeTileSources?.some((source) => source.tilesetId === tilesetId) === true)
@@ -1663,10 +1691,41 @@ const applyLayerRowRange = (
   const selectedNodes = selectedPanelRows
     ? selectedPanelRows.filter((row): row is Extract<AnimationLayerPanelSelectionRow, { kind: 'layer' | 'group' }> => row.kind !== 'mask')
     : nodes.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
+  // A group row is a selectable row in its own right, but its visible range
+  // also spans the group's descendants.  When Shift starts on a group and
+  // lands on one of its children, include the complete subtree; otherwise a
+  // collapsed row ordering (group followed by its topmost child) would leave
+  // the remaining children out of the selection.
+  const anchorRowId = session.layerSelectionAnchorId
+  const anchorGroupId = anchorRowId
+    && session.document.groups.some((group) => group.id === session.layerSelectionAnchorId)
+    ? session.layerSelectionAnchorId
+    : null
+  const targetGroupId = target.kind === 'group' ? target.id : null
+  const anchorGroupDescendants = anchorGroupId
+    ? new Set([anchorGroupId, ...getDescendantGroupIds(session.document, anchorGroupId)])
+    : null
+  const anchorGroupLayerIds = anchorGroupId ? new Set(getLayerIdsInGroup(session.document, anchorGroupId)) : null
+  const targetGroupLayerIds = targetGroupId ? new Set(getLayerIdsInGroup(session.document, targetGroupId)) : null
+  const rangeGroupId = anchorGroupId && target.kind === 'layer' && anchorGroupLayerIds?.has(target.id)
+    ? anchorGroupId
+    : targetGroupId && anchorRowId && targetGroupLayerIds?.has(anchorRowId)
+      ? targetGroupId
+      : anchorGroupId && targetGroupId && anchorGroupDescendants?.has(targetGroupId)
+        ? anchorGroupId
+        : null
+  const rangeGroupIds = rangeGroupId
+    ? new Set([rangeGroupId, ...getDescendantGroupIds(session.document, rangeGroupId)])
+    : null
+  const rangeLayerIds = rangeGroupId ? new Set(getLayerIdsInGroup(session.document, rangeGroupId)) : null
+  const expandedSelectedNodes = rangeGroupId
+    ? nodes.filter((node) => (node.kind === 'group' && rangeGroupIds?.has(node.id) === true)
+      || (node.kind === 'layer' && rangeLayerIds?.has(node.id) === true))
+    : selectedNodes
   applyLayerRowSelection(
     session,
-    selectedNodes.filter((node) => node.kind === 'layer').map((node) => node.id),
-    selectedNodes.filter((node) => node.kind === 'group').map((node) => node.id),
+    expandedSelectedNodes.filter((node) => node.kind === 'layer').map((node) => node.id),
+    expandedSelectedNodes.filter((node) => node.kind === 'group').map((node) => node.id),
     target,
     { preserveMaskRowSelection: options.preserveMaskRowSelection }
   )
@@ -1697,9 +1756,6 @@ const insertionTargetParent = (document: SpriteDocument, target: LayerPanelRowMo
     ? document.groups.find((group) => group.id === target.id)?.parentGroupId ?? null
     : document.layers.find((layer) => layer.id === target.id)?.groupId ?? null
 }
-
-const lockedLayerStructure = (document: SpriteDocument, layerIds: readonly string[]): boolean =>
-  document.layers.some((layer) => layerIds.includes(layer.id) && isLayerEffectivelyLocked(document, layer))
 
 const lockedGroupStructure = (document: SpriteDocument, groupId: string): boolean => {
   const groupIds = new Set([groupId, ...getDescendantGroupIds(document, groupId)])
@@ -7781,11 +7837,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!layer || (!layer.background && !layer.kind && !hasConfiguredLayerStyles(layer.layerStyles))) return
       const wasFreeTileLayer = layer.kind === 'free-tile'
       syncActiveAnimationFrame(document)
-      const before = captureLayerContentSnapshot(document, layerId)
+      const rasterizesStyles = hasEnabledLayerStyles(layer.layerStyles)
+      const beforeSelection = captureAnimationSelectionHistory(session)
+      const before = captureLayerContentSnapshot(document, layerId, { includeLayerMasks: rasterizesStyles })
       detachLinkedLayerContent(document, layerId)
       const timeline = ensureAnimationDocument(document)
       const rasterizedTilesets = removableOwnedTilesets(document, new Set([layerId]))
-      if (hasEnabledLayerStyles(layer.layerStyles)) {
+      if (rasterizesStyles) {
         const rasterizedByFrameId = new Map<string, AnimationCelSurface>()
         for (const frame of timeline.frames) {
           const preview = cloneDocumentForAnimationFrame(document, frame.id)
@@ -7828,6 +7886,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           cel.surface = surface
           delete cel.text
         }
+        const maskWasBaked = (entry: AnimationLayerMask): boolean => entry.layerId === layerId && rasterizedByFrameId.has(entry.frameId)
+        const removedMaskIds = new Set((timeline.layerMasks ?? []).filter(maskWasBaked).map((entry) => entry.mask.id))
+        timeline.layerMasks = (timeline.layerMasks ?? []).filter((entry) => !maskWasBaked(entry))
+        const consumesMaskContext = Boolean(session.activeLayerMaskId && removedMaskIds.has(session.activeLayerMaskId))
+          || session.selectedAnimationMaskCellKeys.some((key) => parseAnimationCelKey(key)?.layerId === layerId)
+          || session.selectedAnimationMaskRowKeys.includes(`layer:${layerId}`)
+        if (consumesMaskContext) clearAnimationMaskContext(session)
       }
       for (const cel of timeline.cels) if (cel.layerId === layerId) {
         delete cel.text
@@ -7844,8 +7909,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       delete layer.background
       removeTilesetSnapshots(document, rasterizedTilesets)
       refreshActiveAnimationFrame(document)
-      const after = captureLayerContentSnapshot(document, layerId)
-      session.history.push({ label: tr('workspace.history.convertToRasterLayer'), bytes: layerContentSnapshotBytes(before) + layerContentSnapshotBytes(after), undo: () => restoreLayerContentSnapshot(document, before), redo: () => restoreLayerContentSnapshot(document, after), invalidation: { kind: 'full' }, affectedLayerIds: [layerId], requiresAnimationSync: false })
+      const after = captureLayerContentSnapshot(document, layerId, { includeLayerMasks: rasterizesStyles })
+      const afterSelection = captureAnimationSelectionHistory(session)
+      const entry: HistoryEntry = { label: tr('workspace.history.convertToRasterLayer'), bytes: layerContentSnapshotBytes(before) + layerContentSnapshotBytes(after), undo: () => restoreLayerContentSnapshot(document, before), redo: () => restoreLayerContentSnapshot(document, after), invalidation: { kind: 'full' }, affectedLayerIds: [layerId], requiresAnimationSync: false }
+      session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, afterSelection))
       shouldHideTilesetPanel = wasFreeTileLayer && !documentUsesTilesetPanel(document)
     }, true, true)
     if (shouldHideTilesetPanel) requestTilesetPanelVisibility(false)
@@ -8369,7 +8436,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   reorderLayers(layerIds, targetLayerId, insertAfterTarget = true) {
     const current = activeSession(get())
-    if (current && lockedLayerStructure(current.document, layerIds)) { set({ message: tr('workspace.layer.lockedMove') }); return }
     const beforeRenderOrder = current ? normalCompositeLayers(current.document) : null
     get().mutateActive((session) => {
       const history = reorderLayersOperation(session, layerIds, targetLayerId, insertAfterTarget)
@@ -8403,8 +8469,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   assignLayersToGroup(layerIds, groupId, targetLayerId, insertAfterTarget = true) {
-    const current = activeSession(get())
-    if (current && lockedLayerStructure(current.document, layerIds)) { set({ message: tr('workspace.layer.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = assignLayersToGroupOperation(session, layerIds, groupId, targetLayerId, insertAfterTarget)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8412,8 +8476,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   assignLayersToRoot(layerIds, targetLayerId, insertAfterTarget = true) {
-    const current = activeSession(get())
-    if (current && lockedLayerStructure(current.document, layerIds)) { set({ message: tr('workspace.layer.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = assignLayersToRootOperation(session, layerIds, targetLayerId, insertAfterTarget)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8421,8 +8483,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   assignLayersAboveGroup(layerIds, groupId) {
-    const current = activeSession(get())
-    if (current && lockedLayerStructure(current.document, layerIds)) { set({ message: tr('workspace.layer.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = assignLayersAboveGroupOperation(session, layerIds, groupId)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8431,8 +8491,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   reorderGroup(groupId, targetGroupId, insertAfterTarget = true) {
     if (groupId === targetGroupId) return
-    const current = activeSession(get())
-    if (current && lockedGroupStructure(current.document, groupId)) { set({ message: tr('workspace.group.lockedMove') }); return }
     get().mutateActive((session) => {
       if (!canMoveGroupInto(session.document, groupId, targetGroupId)) {
         set({ message: tr('workspace.group.moveNextToChild') })
@@ -8444,8 +8502,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   positionGroupNextToLayer(groupId, targetLayerId, insertAfterTarget = true) {
-    const current = activeSession(get())
-    if (current && lockedGroupStructure(current.document, groupId)) { set({ message: tr('workspace.group.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = positionGroupNextToLayerOperation(session, groupId, targetLayerId, insertAfterTarget)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8454,8 +8510,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   assignGroupToGroup(groupId, parentGroupId) {
     if (groupId === parentGroupId) return
-    const current = activeSession(get())
-    if (current && lockedGroupStructure(current.document, groupId)) { set({ message: tr('workspace.group.lockedMove') }); return }
     get().mutateActive((session) => {
       if (!canMoveGroupInto(session.document, groupId, parentGroupId)) { set({ message: tr('workspace.group.moveIntoChild') }); return }
       const history = assignGroupToGroupOperation(session, groupId, parentGroupId)
@@ -8464,8 +8518,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   assignGroupToRoot(groupId) {
-    const current = activeSession(get())
-    if (current && lockedGroupStructure(current.document, groupId)) { set({ message: tr('workspace.group.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = assignGroupToRootOperation(session, groupId)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8473,8 +8525,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   moveLayersToRootEdge(layerIds, edge) {
-    const current = activeSession(get())
-    if (current && lockedLayerStructure(current.document, layerIds)) { set({ message: tr('workspace.layer.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = moveLayersToRootEdgeOperation(session, layerIds, edge)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8482,8 +8532,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   moveGroupToRootEdge(groupId, edge) {
-    const current = activeSession(get())
-    if (current && lockedGroupStructure(current.document, groupId)) { set({ message: tr('workspace.group.lockedMove') }); return }
     get().mutateActive((session) => {
       const history = moveGroupToRootEdgeOperation(session, groupId, edge)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8491,11 +8539,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   moveLayerRows(layerIds, groupIds, target) {
-    const current = activeSession(get())
-    if (current && (lockedLayerStructure(current.document, layerIds) || groupIds.some((groupId) => lockedGroupStructure(current.document, groupId)))) {
-      set({ message: tr('workspace.layer.lockedMove') })
-      return
-    }
     get().mutateActive((session) => {
       const history = moveLayerPanelRowsOperation(session, layerIds, groupIds, target)
       if (history) session.history.push({ ...history, requiresAnimationSync: false })
@@ -8537,6 +8580,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   toggleLayerVisibility(layerId) {
     get().mutateActive((session) => {
       const layer = getLayer(session.document, layerId)
+      const hiddenAncestors = layer.visible === false ? hiddenAncestorGroupsForLayer(session.document, layer) : []
+      if (hiddenAncestors.length > 0) {
+        const beforeLayerVisible = layer.visible
+        const beforeGroupVisible = hiddenAncestors.map((group) => ({ group, visible: group.visible }))
+        layer.visible = true
+        for (const { group } of beforeGroupVisible) group.visible = true
+        const invalidation = groupVisibilityInvalidation(session.document, hiddenAncestors[0].id)
+        const apply = (visible: boolean): void => {
+          layer.visible = visible
+          for (const { group } of beforeGroupVisible) group.visible = visible
+        }
+        session.history.push({
+          label: tr('workspace.history.showLayer'),
+          bytes: 8 * (beforeGroupVisible.length + 1),
+          undo: () => apply(beforeLayerVisible),
+          redo: () => apply(true),
+          invalidation,
+          affectedLayerIds: [layer.id],
+          requiresAnimationSync: false
+        })
+        touch(session, true, invalidation)
+        recordDocumentOperation(session)
+        return
+      }
       commitVisibilityChange(
         session,
         layer,
@@ -8562,8 +8629,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         applyLayerRowRange(session, { kind: 'layer', id: layerId }, { preserveMaskRowSelection })
       } else if (selectionMode === 'toggle') {
         const layers = selectedDirectLayerRows(session)
-        const toggledLayers = layers.includes(layerId) ? layers.filter((id) => id !== layerId) : [...layers, layerId]
-        const nextLayers = toggledLayers.length === 0 && selectedGroupRows(session).length === 0 ? [layerId] : toggledLayers
+        const wasSelected = layers.includes(layerId)
+        const toggledLayers = wasSelected ? layers.filter((id) => id !== layerId) : [...layers, layerId]
+        // A selected group is a valid row selection, not a reason to discard
+        // a Ctrl-added layer.  Keep the first toggled layer when the group
+        // was the only prior row, while still allowing the last layer to be
+        // toggled off when it was already selected.
+        const nextLayers = toggledLayers.length === 0 && !wasSelected ? [layerId] : toggledLayers
         applyLayerRowSelection(session, nextLayers, selectedGroupRows(session), { kind: 'layer', id: layerId }, { preserveMaskRowSelection })
         session.layerSelectionAnchorId = layerId
       } else {
@@ -8693,6 +8765,29 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   toggleGroupVisibility(groupId) {
     get().mutateActive((session) => {
       const group = getGroup(session.document, groupId)
+      const hiddenAncestors = group.visible === false ? hiddenAncestorGroupsForGroup(session.document, group) : []
+      if (hiddenAncestors.length > 0) {
+        const beforeGroupVisible = group.visible
+        const beforeAncestorVisibility = hiddenAncestors.map((ancestor) => ({ group: ancestor, visible: ancestor.visible }))
+        group.visible = true
+        for (const { group: ancestor } of beforeAncestorVisibility) ancestor.visible = true
+        const invalidation = groupVisibilityInvalidation(session.document, hiddenAncestors[0].id)
+        const apply = (visible: boolean): void => {
+          group.visible = visible
+          for (const { group: ancestor } of beforeAncestorVisibility) ancestor.visible = visible
+        }
+        session.history.push({
+          label: tr('workspace.history.showGroup'),
+          bytes: 8 * (beforeAncestorVisibility.length + 1),
+          undo: () => apply(beforeGroupVisible),
+          redo: () => apply(true),
+          invalidation,
+          requiresAnimationSync: false
+        })
+        touch(session, true, invalidation)
+        recordDocumentOperation(session)
+        return
+      }
       commitVisibilityChange(
         session,
         group,
@@ -9109,6 +9204,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })
   },
 
+  setGroupLocked(groupId, enabled) {
+    get().mutateActive((session) => {
+      const group = getGroup(session.document, groupId)
+      const before = group.locked
+      const after = Boolean(enabled)
+      if (before === after) return
+      group.locked = after
+      session.history.push({
+        label: tr('workspace.history.layerProperties'),
+        bytes: 8,
+        undo: () => { group.locked = before },
+        redo: () => { group.locked = after },
+        contentChanged: false,
+        requiresAnimationSync: false
+      })
+    }, 'metadata')
+  },
+
   setGroupProperties(groupId, name, opacity, blendMode, locked, displayColor, description, cumulativeBlend) {
     const trimmed = name.trim()
     if (!trimmed) return
@@ -9190,6 +9303,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (contentChanged) syncActiveAnimationLayer(session.document, layer.id)
       session.history.push({ label: tr('workspace.history.layerProperties'), bytes: 32 + before.name.length + after.name.length, undo: () => { applyLayerName(session.document, layer, before.name); layer.opacity = before.opacity }, redo: () => { applyLayerName(session.document, layer, after.name); layer.opacity = after.opacity }, contentChanged, affectedLayerIds: contentChanged ? [layer.id] : undefined, requiresAnimationSync: contentChanged })
     }, contentChanged ? 'content' : 'metadata')
+  },
+
+  setLayerLocked(layerId, enabled) {
+    get().mutateActive((session) => {
+      const layer = getLayer(session.document, layerId)
+      const before = layer.locked
+      const after = Boolean(enabled)
+      if (before === after) return
+      layer.locked = after
+      session.history.push({
+        label: tr('workspace.history.layerProperties'),
+        bytes: 8,
+        undo: () => { layer.locked = before },
+        redo: () => { layer.locked = after },
+        contentChanged: false,
+        requiresAnimationSync: false
+      })
+    }, 'metadata')
   },
 
   setLayerPropertiesWithBlend(layerId, name, opacity, blendMode, locked, displayColor, description) {

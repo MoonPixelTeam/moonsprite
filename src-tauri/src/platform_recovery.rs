@@ -123,9 +123,7 @@ pub(crate) fn mark_session(app: &AppHandle, clean: bool) -> Result<(), String> {
     atomic_write(&session_marker(app)?, payload.to_string().as_bytes())
 }
 
-pub(crate) fn initialize_session_marker(
-    app: &AppHandle,
-) -> Result<(), String> {
+pub(crate) fn initialize_session_marker(app: &AppHandle) -> Result<(), String> {
     if let Err(error) = migrate_legacy_data(app) {
         eprintln!("无法迁移恢复数据，继续启动 MoonSprite：{error}");
     }
@@ -254,10 +252,7 @@ pub(crate) fn read_recovery(app: AppHandle, id: String) -> Result<Vec<u8>, Strin
 }
 
 #[tauri::command]
-pub(crate) async fn write_recovery(
-    app: AppHandle,
-    request: Request<'_>,
-) -> Result<(), String> {
+pub(crate) async fn write_recovery(app: AppHandle, request: Request<'_>) -> Result<(), String> {
     let id = request_header(&request, RECOVERY_ID_HEADER)?;
     let name = request_header(&request, RECOVERY_NAME_HEADER)?;
     let data = request_data(&request)?;
@@ -334,7 +329,10 @@ mod tests {
 
     #[test]
     fn decodes_recovery_headers_without_accepting_malformed_percent_sequences() {
-        assert_eq!(decode_header("draft%20%E6%81%A2%E5%A4%8D").unwrap(), "draft 恢复");
+        assert_eq!(
+            decode_header("draft%20%E6%81%A2%E5%A4%8D").unwrap(),
+            "draft 恢复"
+        );
         assert!(decode_header("broken%ZZ").is_err());
         assert!(decode_header("broken%").is_err());
     }

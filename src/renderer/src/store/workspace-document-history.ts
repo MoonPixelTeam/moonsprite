@@ -146,6 +146,7 @@ export interface LayerContentSnapshot {
   layerId: string
   definition: LayerDefinitionSnapshot
   cels: AnimationCel[]
+  layerMasks?: AnimationLayerMask[]
   tilesets: Tileset[]
   palette: PaletteEntry[]
   paletteOrder: number[]
@@ -154,7 +155,11 @@ export interface LayerContentSnapshot {
   nextColorId: number
 }
 
-export const captureLayerContentSnapshot = (document: SpriteDocument, layerId: string): LayerContentSnapshot => {
+export const captureLayerContentSnapshot = (
+  document: SpriteDocument,
+  layerId: string,
+  options: { includeLayerMasks?: boolean } = {}
+): LayerContentSnapshot => {
   syncActiveAnimationFrame(document)
   const layer = document.layers.find((candidate) => candidate.id === layerId)
   if (!layer) throw new Error(`Layer not found: ${layerId}`)
@@ -172,6 +177,13 @@ export const captureLayerContentSnapshot = (document: SpriteDocument, layerId: s
       background: layer.background ? { ...layer.background } : undefined
     },
     cels: timeline.cels.filter((cel) => cel.layerId === layerId).map(cloneAnimationCel),
+    ...(options.includeLayerMasks === true ? {
+      layerMasks: (timeline.layerMasks ?? []).filter((entry) => entry.layerId === layerId).map((entry) => ({
+        layerId: entry.layerId,
+        frameId: entry.frameId,
+        mask: { ...entry.mask, pixels: new Uint8ClampedArray(entry.mask.pixels) }
+      }))
+    } : {}),
     tilesets: [...(document.tilesets ?? [])],
     palette: clonePalette(document.palette),
     paletteOrder: [...document.paletteOrder],
@@ -207,6 +219,17 @@ export const restoreLayerContentSnapshot = (document: SpriteDocument, snapshot: 
   document.paletteColumns = snapshot.paletteColumns
   document.nextColorId = snapshot.nextColorId
   restoreAnimationCels(document, snapshot.cels)
+  if (snapshot.layerMasks) {
+    const timeline = ensureAnimationDocument(document)
+    timeline.layerMasks = [
+      ...(timeline.layerMasks ?? []).filter((entry) => entry.layerId !== snapshot.layerId),
+      ...snapshot.layerMasks.map((entry) => ({
+        layerId: entry.layerId,
+        frameId: entry.frameId,
+        mask: { ...entry.mask, pixels: new Uint8ClampedArray(entry.mask.pixels) }
+      }))
+    ]
+  }
 }
 
 export const layerContentSnapshotBytes = (snapshot: LayerContentSnapshot): number => {
@@ -221,6 +244,10 @@ export const layerContentSnapshotBytes = (snapshot: LayerContentSnapshot): numbe
         bytes += runtime ? runtime.data.byteLength + runtime.tileOffsets.byteLength : cel.surface.pixels.byteLength
       }
     }
+  }
+  for (const entry of snapshot.layerMasks ?? []) if (!storage.has(entry.mask.pixels)) {
+    storage.add(entry.mask.pixels)
+    bytes += entry.mask.pixels.byteLength
   }
   for (const tileset of snapshot.tilesets) if (!storage.has(tileset.pixels)) {
     storage.add(tileset.pixels)

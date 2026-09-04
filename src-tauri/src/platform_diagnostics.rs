@@ -99,7 +99,9 @@ pub(crate) fn append_diagnostic_events(
         if encoded.len() > MAX_EVENT_BYTES {
             continue;
         }
-        writer.write_all(&encoded).map_err(|error| error.to_string())?;
+        writer
+            .write_all(&encoded)
+            .map_err(|error| error.to_string())?;
         writer.write_all(b"\n").map_err(|error| error.to_string())?;
     }
     writer.flush().map_err(|error| error.to_string())
@@ -134,8 +136,11 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("moonsprite-diagnostics-{timestamp}"));
         fs::create_dir_all(&directory).unwrap();
         for index in 0..(MAX_LOG_FILES + 3) {
-            fs::write(directory.join(format!("session-{index}.jsonl")), format!("{index}"))
-                .unwrap();
+            fs::write(
+                directory.join(format!("session-{index}.jsonl")),
+                format!("{index}"),
+            )
+            .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
 

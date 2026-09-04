@@ -33,7 +33,7 @@ describe('layer, frame, and cel selection modes', () => {
     }
   })
 
-  it('keeps frame and cel selection mutually exclusive while preserving layer selection', () => {
+  it('keeps frame and cel selection mutually exclusive while using the cel layer as implicit selection', () => {
     const document = createDocument('selection modes', 2, 2, 'rgba')
     const firstLayer = getActiveLayer(document)
     const secondLayer = createLayer('Second', 2, 2, 'rgba')
@@ -61,7 +61,7 @@ describe('layer, frame, and cel selection modes', () => {
     session = useWorkspace.getState().sessions[0]
     expect(session.selectedAnimationFrameIds).toEqual([])
     expect(session.selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, frameId)])
-    expect(session.selectedLayerIds).toEqual([firstLayer.id, secondLayer.id])
+    expect(session.selectedLayerIds).toEqual([secondLayer.id])
 
     useWorkspace.getState().selectAnimationFrame(frameId)
     useWorkspace.getState().selectLayer(firstLayer.id)
@@ -125,12 +125,13 @@ describe('layer, frame, and cel selection modes', () => {
   it('keeps ordinary cel and mask cel selection isolated', () => {
     const document = createDocument('mask selection', 2, 2, 'rgba')
     const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
     const timeline = ensureAnimationDocument(document)
     const frameId = timeline.activeFrameId
     const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === frameId)
     if (!cel) throw new Error('missing test cel')
-    cel.mask = createLayerMask(cel.id, 2, 2)
     useWorkspace.getState().addSession(document)
+    useWorkspace.getState().createLayerMask(cel.id)
 
     const key = animationCelKey(layer.id, frameId)
     useWorkspace.getState().selectAnimationCell(key)
@@ -138,14 +139,14 @@ describe('layer, frame, and cel selection modes', () => {
     expect(session.selectedAnimationCellKeys).toEqual([key])
     expect(session.selectedAnimationMaskCellKeys).toEqual([])
 
-    useWorkspace.getState().selectAnimationMaskCell(key)
+    useWorkspace.getState().selectAnimationMaskCell(key, 'replace')
     session = useWorkspace.getState().sessions[0]
     expect(session.selectedAnimationCellKeys).toEqual([])
     expect(session.selectedAnimationMaskCellKeys).toEqual([key])
     expect(session.animationCellSelectionExplicit).toBe(false)
   })
 
-  it('keeps a linked member mask selection valid when only the source cel owns the mask', () => {
+  it('keeps a linked member mask selection valid', () => {
     const document = createDocument('linked member mask selection', 2, 2, 'rgba')
     const sourceLayer = getActiveLayer(document)
     const memberLayer = createLayer('Member', 2, 2, 'rgba')
@@ -154,22 +155,19 @@ describe('layer, frame, and cel selection modes', () => {
     const frameId = timeline.activeFrameId
     const source = timeline.cels.find((cel) => cel.layerId === sourceLayer.id && cel.frameId === frameId)
     if (!source) throw new Error('missing source cel')
-    source.mask = createLayerMask(source.id, 2, 2)
     const member = timeline.cels.find((cel) => cel.layerId === memberLayer.id && cel.frameId === frameId)
     if (!member) throw new Error('missing member cel')
-    member.linkedCelId = source.id
-    delete member.mask
+    const sourceMask = createLayerMask(sourceLayer.id, 2, 2)
+    const memberMask = createLayerMask(memberLayer.id, 2, 2)
+    memberMask.linkedMaskId = sourceMask.id
+    timeline.layerMasks ??= []
+    timeline.layerMasks.push(
+      { layerId: sourceLayer.id, frameId, mask: sourceMask },
+      { layerId: memberLayer.id, frameId, mask: memberMask }
+    )
     useWorkspace.getState().addSession(document)
 
     const session = useWorkspace.getState().sessions[0]
-    const sessionTimeline = ensureAnimationDocument(session.document)
-    const sessionSource = sessionTimeline.cels.find((cel) => cel.layerId === sourceLayer.id && cel.frameId === frameId)
-    const sessionMember = sessionTimeline.cels.find((cel) => cel.layerId === memberLayer.id && cel.frameId === frameId)
-    if (!sessionSource || !sessionMember) throw new Error('missing session cels')
-    sessionSource.mask = createLayerMask(sessionSource.id, 2, 2)
-    sessionMember.linkedCelId = sessionSource.id
-    delete sessionMember.mask
-
     const memberKey = animationCelKey(memberLayer.id, frameId)
     useWorkspace.getState().mutateActive((session) => {
       session.selectedAnimationMaskCellKeys = [memberKey]

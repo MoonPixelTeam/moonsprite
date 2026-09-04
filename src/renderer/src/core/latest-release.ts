@@ -15,7 +15,7 @@ export interface LatestReleaseDefinition {
 
 const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
-  publishedAt: '2026-08-26',
+  publishedAt: '2026-09-05',
   homeSummary: 'home.newsReleaseSummary',
   sections: [
     {
