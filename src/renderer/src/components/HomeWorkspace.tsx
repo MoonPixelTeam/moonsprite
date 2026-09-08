@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus, TriangleAlert } from 'lucide-react'
 import type { ColorMode, ProjectPreview, RecoveryRecord } from '@shared/types'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'
-import { decodeDocumentFileAsync } from '@/core/document-files'
+import { decodeDocumentFileAsync, isMoonSpriteProjectPath } from '@/core/document-files'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { readProjectGalleryMetadataAsync } from '@/core/project-gallery'
 import { encodeProjectPreview } from '@/core/project-format'
@@ -162,9 +162,10 @@ const formatReleaseDate = (value: string, locale: AppLocale): string => new Intl
 }).format(new Date(`${value}T00:00:00`))
 
 const formatProjectType = (filePath: string): string => {
+  if (isMoonSpriteProjectPath(filePath)) return 'MoonSprite'
   const extension = filePath.match(/\.([^./\\]+)$/)?.[1]
   if (!extension) return 'FILE'
-  return extension.toLowerCase() === 'moonsprite' ? 'MoonSprite' : extension.toUpperCase()
+  return extension.toUpperCase()
 }
 
 function parseRecoveryTimestamp(value: string): number {
@@ -528,7 +529,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
           const bytes = await window.moonSprite.readBinary(record.filePath)
           const mimeType = rasterImageMimeType(record.filePath)
           let generated: ProjectPreview
-          if (/\.moonsprite$/i.test(record.filePath)) generated = await readProjectGalleryMetadataAsync(bytes)
+          if (isMoonSpriteProjectPath(record.filePath)) generated = await readProjectGalleryMetadataAsync(bytes)
           else if (mimeType) {
             const preview = await createRasterImagePreview(bytes, mimeType)
             generated = { ...preview, colorMode: 'rgba' }

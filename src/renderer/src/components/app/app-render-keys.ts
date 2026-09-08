@@ -101,6 +101,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.tool,
     session.brushSize,
     session.brushShape,
+    session.brushAngle,
     session.brushDither?.enabled ? 1 : 0,
     session.brushDither?.template ?? 'bayer-4',
     session.brushDither?.stage ?? 8,

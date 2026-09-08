@@ -1,11 +1,11 @@
 export const STANDARD_CANVAS_PERFORMANCE_SIZES = [128, 512, 1024]
-export const LARGE_CANVAS_PERFORMANCE_SIZES = [800, 2048, 4000]
+export const LARGE_CANVAS_PERFORMANCE_SIZES = [800, 2000, 2048, 4000]
 export const CANVAS_PERFORMANCE_SIZES = [...new Set([
   ...STANDARD_CANVAS_PERFORMANCE_SIZES,
   ...LARGE_CANVAS_PERFORMANCE_SIZES,
 ])]
-export const CANVAS_PERFORMANCE_SCENARIOS = ['pan', 'zoom', 'rotated-zoom', 'draw', 'shape', 'marquee', 'bucket-fill', 'gradient']
-export const COMPLEX_CANVAS_PERFORMANCE_SCENARIOS = ['complex-draw', 'complex-undo', 'complex-playback']
+export const CANVAS_PERFORMANCE_SCENARIOS = ['pan', 'zoom', 'rotated-zoom', 'draw', 'brush-128-zoom2', 'shape', 'marquee', 'bucket-fill', 'gradient']
+export const COMPLEX_CANVAS_PERFORMANCE_SCENARIOS = ['complex-draw', 'complex-brush-128-zoom2', 'complex-undo', 'complex-playback', 'complex-playback-pan']
 export const LARGE_CANVAS_PERFORMANCE_SCENARIOS = ['large-pan', 'large-zoom', 'large-draw', 'large-shape', 'large-marquee', 'large-bucket-fill', 'large-selection-fill', 'large-selection-delete', 'large-layer-visibility', 'large-group-visibility', 'large-layer-opacity', 'large-layer-reorder', 'large-layer-style-move', 'large-layer-style-shadow-size', 'large-layer-style-inner-glow-size', 'large-gradient', 'large-detail-pan', 'large-detail-draw', 'large-detail-draw-timelapse']
 const SUPPORTED_SCENARIOS = [...CANVAS_PERFORMANCE_SCENARIOS, ...COMPLEX_CANVAS_PERFORMANCE_SCENARIOS, ...LARGE_CANVAS_PERFORMANCE_SCENARIOS]
 const SUPPORTED_RUNTIMES = ['production', 'profile']

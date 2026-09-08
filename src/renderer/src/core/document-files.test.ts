@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDocument, createLayer } from './document'
-import { decodeDocumentFile, decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageKindForPath, shouldDecodeDocumentInWorker, sourceRasterImageKindForPath } from './document-files'
+import { decodeDocumentFile, decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, isMoonSpriteBackupPath, isMoonSpriteProjectPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageKindForPath, shouldDecodeDocumentInWorker, sourceRasterImageKindForPath } from './document-files'
 import { decodeProject, encodeProject } from './project-format'
 import { initialDocumentComposite, initialDocumentCompositePending } from './initial-document-composite'
 import { addBlankAnimationFrame } from './animation'
@@ -15,6 +15,18 @@ describe('document file rules', () => {
     expect(sanitizeFileStem('walk.gif', 'untitled')).toBe('walk')
     expect(sanitizeFileStem('tiles.bmp', 'untitled')).toBe('tiles')
     expect(sanitizeFileStem('layers.psd', 'untitled')).toBe('layers')
+  })
+
+  it('recognizes project backups without making them writable project paths', () => {
+    expect(isMoonSpriteProjectPath('D:/gallery/sprite.moonsprite')).toBe(true)
+    expect(isMoonSpriteProjectPath('D:/gallery/sprite.moonsprite.bak')).toBe(true)
+    expect(isMoonSpriteBackupPath('D:/gallery/sprite.moonsprite.bak')).toBe(true)
+    expect(isMoonSpriteBackupPath('D:/gallery/sprite.bak')).toBe(false)
+
+    const restored = decodeDocumentFile(encodeProject(createDocument('sprite', 2, 2, 'rgba')), 'D:/gallery/sprite.moonsprite.bak')
+    expect(restored.name).toBe('sprite.moonsprite')
+    expect(restored.filePath).toBeNull()
+    expect(restored.sourceFilePath).toBeUndefined()
   })
 
   it('keeps save dialog formats and suffixes consistent', () => {

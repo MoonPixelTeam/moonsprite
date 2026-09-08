@@ -162,16 +162,23 @@ const applyDenseGradient = (
     return edit
   }
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-    if (selection?.mask && !selectionContains(selection, x, y)) continue
-    if (paintRegion?.mask && !selectionContains(paintRegion, x, y)) continue
     const index = (y - layer.offsetY) * layer.width + x - layer.offsetX
     const current = rgbaWords ? rgbaWords[index] : readLayerPacked(document, layer, index)
+    const denseOffset = (y - top) * width + x - left
+    const selected = (!selection?.mask || selectionContains(selection, x, y))
+      && (!paintRegion?.mask || selectionContains(paintRegion, x, y))
+    // Dense history patches cover the complete rectangle. Preserve untouched
+    // pixels too, otherwise undo/redo writes zeroes outside a masked region.
+    if (!selected) {
+      before[denseOffset] = current
+      after[denseOffset] = current
+      continue
+    }
     const next = samplePacked
       ? samplePacked(x, y)
       : normalizeLayerPackedValue(document, layer, gradientPaintValue(document, layer, index, sampleColor(x, y)))
     if (current === next) continue
     if (count === 0) markLayerContentChanged(layer)
-    const denseOffset = (y - top) * width + x - left
     before[denseOffset] = current
     after[denseOffset] = next
     changed[denseOffset] = 1
@@ -222,12 +229,27 @@ export const applyGradient = (
   const right = Math.min(document.width, selection ? selection.x + selection.width : document.width, paintRegion ? paintRegion.x + paintRegion.width : document.width)
   const bottom = Math.min(document.height, selection ? selection.y + selection.height : document.height, paintRegion ? paintRegion.y + paintRegion.height : document.height)
   if (right <= left || bottom <= top) return null
+  const sparseBlank = layer.width === 1 && layer.height === 1 && (layer.format === 'rgba' ? layer.pixels[3] === 0 : layer.pixels[0] === 0)
+  const originalWidth = layer.width
+  const originalHeight = layer.height
+  const originalOffsetX = layer.offsetX
+  const originalOffsetY = layer.offsetY
   if (!expandLayerToRect(layer, left, top, right, bottom)) return null
+  const restoreEmptyExpansion = (): void => {
+    if (!sparseBlank) return
+    layer.width = originalWidth
+    layer.height = originalHeight
+    layer.offsetX = originalOffsetX
+    layer.offsetY = originalOffsetY
+    layer.pixels = layer.format === 'rgba' ? new Uint8ClampedArray([0, 0, 0, 0]) : new Uint32Array([0])
+  }
   const sampleColor = createGradientColorSampler(startColor, endColor, start, end, dither, type, geometryOptions, gradientStops)
   const samplePacked = createOpaqueRgbaGradientSampler(document, layer, startColor, endColor, start, end, dither, type, geometryOptions, gradientStops)
   const edit = beginPixelEdit(layer.id)
   if ((right - left) * (bottom - top) >= DENSE_GRADIENT_MIN_PIXELS) {
-    return applyDenseGradient(document, layer, edit, left, top, right, bottom, sampleColor, samplePacked, selection, paintRegion)
+    const denseEdit = applyDenseGradient(document, layer, edit, left, top, right, bottom, sampleColor, samplePacked, selection, paintRegion)
+    if (!denseEdit) restoreEmptyExpansion()
+    return denseEdit
   }
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
     if (selection?.mask && !selectionContains(selection, x, y)) continue
@@ -237,5 +259,7 @@ export const applyGradient = (
     const color = sampleColor(x, y)
     recordPixel(document, layer, edit, index, gradientPaintValue(document, layer, index, color))
   }
-  return edit.before.size > 0 ? edit : null
+  if (edit.before.size > 0) return edit
+  restoreEmptyExpansion()
+  return null
 }

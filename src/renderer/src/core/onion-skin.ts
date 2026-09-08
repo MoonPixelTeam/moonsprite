@@ -2,6 +2,22 @@ import type { AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types
 import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
 import { compositeDocument, compositeRegion } from './document'
 
+const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], layerId?: string): SpriteDocument => {
+  if (!layerId || !layers.some((layer) => layer.id === layerId)) return { ...document, layers }
+  const visibleGroups = new Set<string>()
+  let groupId = layers.find((layer) => layer.id === layerId)?.groupId ?? null
+  while (groupId) {
+    if (visibleGroups.has(groupId)) break
+    visibleGroups.add(groupId)
+    groupId = document.groups.find((group) => group.id === groupId)?.parentGroupId ?? null
+  }
+  return {
+    ...document,
+    layers: layers.map((layer) => ({ ...layer, visible: layer.id === layerId && layer.visible })),
+    groups: document.groups.map((group) => ({ ...group, visible: visibleGroups.has(group.id) && group.visible }))
+  }
+}
+
 export interface OnionSkinFrameRef { frameId: string; distance: number; side: 'previous' | 'next' }
 
 export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: number, nextFrames: number): OnionSkinFrameRef[] => {
@@ -19,10 +35,10 @@ export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: 
   return result
 }
 
-export const compositeAnimationFrame = (document: SpriteDocument, frameId: string): Uint8ClampedArray => {
+export const compositeAnimationFrame = (document: SpriteDocument, frameId: string, layerId?: string): Uint8ClampedArray => {
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
-  return compositeDocument({ ...document, layers })
+  return compositeDocument(documentForAnimationLayerComposite(document, layers, layerId))
 }
 
 export const compositeAnimationFrameRegion = (document: SpriteDocument, frameId: string, x: number, y: number, width: number, height: number): Uint8ClampedArray => {

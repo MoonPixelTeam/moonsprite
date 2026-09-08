@@ -54,6 +54,81 @@ describe('workspace animation loop sections', () => {
     })
   })
 
+  it('adds a dragged frame only from the boundary side facing a loop', () => {
+    const document = createDocument('reorder loop boundary', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame, thirdFrame] = timeline.frames
+    const loopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'First two',
+      startFrameId: firstFrame.id,
+      endFrameId: secondFrame.id,
+      direction: 'forward',
+      repeatCount: null
+    })!
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const [, , , fourthFrame, fifthFrame] = timeline.frames
+    const rightLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Last two',
+      startFrameId: fourthFrame.id,
+      endFrameId: fifthFrame.id,
+      direction: 'forward',
+      repeatCount: null
+    })!
+    const session = useWorkspace.getState().sessions[0]
+    useWorkspace.getState().selectAnimationFrame(thirdFrame.id)
+
+    // The UI may report the right boundary as the next frame's left edge.
+    useWorkspace.getState().moveSelectedAnimationFrames(fourthFrame.id, false)
+    expect(timeline.loopSections?.find((section) => section.id === loopId)).toMatchObject({
+      startFrameId: firstFrame.id,
+      endFrameId: secondFrame.id
+    })
+    expect(timeline.loopSections?.find((section) => section.id === rightLoopId)).toMatchObject({
+      startFrameId: thirdFrame.id,
+      endFrameId: fifthFrame.id
+    })
+
+    useWorkspace.getState().undo()
+    // Likewise, the left boundary may be reported as the previous frame's
+    // right edge.
+    useWorkspace.getState().moveSelectedAnimationFrames(secondFrame.id, true)
+
+    expect(timeline.frames.map((frame) => frame.id)).toEqual([firstFrame.id, secondFrame.id, thirdFrame.id, fourthFrame.id, fifthFrame.id])
+    expect(timeline.loopSections?.find((section) => section.id === loopId)).toMatchObject({
+      startFrameId: firstFrame.id,
+      endFrameId: thirdFrame.id
+    })
+    expect(timeline.loopSections?.find((section) => section.id === rightLoopId)).toMatchObject({
+      startFrameId: fourthFrame.id,
+      endFrameId: fifthFrame.id
+    })
+
+    useWorkspace.getState().undo()
+    expect(timeline.loopSections?.find((section) => section.id === loopId)).toMatchObject({
+      startFrameId: firstFrame.id,
+      endFrameId: secondFrame.id
+    })
+    expect(timeline.loopSections?.find((section) => section.id === rightLoopId)).toMatchObject({
+      startFrameId: fourthFrame.id,
+      endFrameId: fifthFrame.id
+    })
+
+    useWorkspace.getState().redo()
+    expect(timeline.loopSections?.find((section) => section.id === loopId)).toMatchObject({
+      startFrameId: firstFrame.id,
+      endFrameId: thirdFrame.id
+    })
+    expect(timeline.loopSections?.find((section) => section.id === rightLoopId)).toMatchObject({
+      startFrameId: fourthFrame.id,
+      endFrameId: fifthFrame.id
+    })
+    expect(session.selectedAnimationFrameIds).toEqual([thirdFrame.id])
+  })
+
   it('creates, edits, restores, and independently plays a named loop section', () => {
     const document = createDocument('animation loop section', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -121,14 +196,14 @@ describe('workspace animation loop sections', () => {
       startFrameId: secondFrame.id,
       endFrameId: fourthFrame.id,
       direction: 'forward',
-      repeatCount: 1
+      repeatCount: null
     })!
     const innerId = useWorkspace.getState().createAnimationLoopSection({
       name: 'Inner',
       startFrameId: secondFrame.id,
       endFrameId: thirdFrame.id,
       direction: 'forward',
-      repeatCount: 1
+      repeatCount: null
     })!
     document.dirty = false
 
@@ -166,6 +241,74 @@ describe('workspace animation loop sections', () => {
     expect(document.animation?.activeFrameId).toBe(firstFrame.id)
     expect(useWorkspace.getState().sessions[0].animationPlaying).toBe(true)
     expect(document.dirty).toBe(false)
+  })
+
+  it('honors a finite tag repeat before continuing through the timeline', () => {
+    const document = createDocument('finite tag repeat playback', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 5; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame, thirdFrame, fourthFrame, fifthFrame, sixthFrame] = timeline.frames
+    const finiteLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Finite',
+      startFrameId: secondFrame.id,
+      endFrameId: thirdFrame.id,
+      direction: 'forward',
+      repeatCount: 2
+    })!
+    const laterFiniteLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Later finite',
+      startFrameId: fourthFrame.id,
+      endFrameId: fifthFrame.id,
+      direction: 'forward',
+      repeatCount: 2
+    })!
+    const infiniteLoopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Later infinite',
+      startFrameId: sixthFrame.id,
+      endFrameId: sixthFrame.id,
+      direction: 'forward',
+      repeatCount: null
+    })!
+
+    useWorkspace.getState().setActiveAnimationFrame(secondFrame.id)
+    useWorkspace.getState().setAnimationPlaybackMode('tag')
+    useWorkspace.getState().setAnimationPlaying(true)
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      animationPlaybackLoopSectionId: finiteLoopId,
+      animationPlaybackTagCycleSectionId: finiteLoopId,
+      animationPlaybackLoopIteration: 0,
+      animationPlaybackLoopSectionRepeatIndefinitely: false
+    })
+
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(thirdFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopIteration).toBe(1)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(thirdFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(fourthFrame.id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaying: true, animationPlaybackLoopSectionId: laterFiniteLoopId, animationPlaybackTagCycleSectionId: finiteLoopId })
+
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(fifthFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(fourthFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(fifthFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(sixthFrame.id)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopSectionId).toBeNull()
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(firstFrame.id)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopSectionId).toBeNull()
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaying: true, animationPlaybackLoopSectionId: finiteLoopId, animationPlaybackTagCycleSectionId: finiteLoopId, animationPlaybackLoopIteration: 0 })
+    expect(infiniteLoopId).toBeTruthy()
   })
 
   it('retargets tag playback when a different timeline cel is clicked', () => {

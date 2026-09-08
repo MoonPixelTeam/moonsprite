@@ -1,5 +1,6 @@
 import type { CursorScale } from '@/core/file-preferences'
 import { translateCurrent as tr } from '@/core/localization'
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import cursorDefault from '@/assets/pixel-icons/01-Slice-1.png'
 import cursorBlack from '@/assets/pixel-icons/02-Slice-2.png'
@@ -166,6 +167,24 @@ const cursorImageValue = (source: string, resolution: number): string => {
     : `image-set(url('${source}') ${formatCursorNumber(normalizedResolution)}x)`
 }
 
+// A CSS image cursor must have a fallback keyword. `none` prevents WebView
+// from painting its own arrow while an image is decoding. In the desktop
+// runtime, the native fallback command installs the bundled pixel pointer on
+// the window and WebView child windows, so `none` never leaves the user with a
+// different Windows cursor during a renderer stall.
+const softwareCursorFallback = (): string => isTauriRuntime() ? 'none' : 'default'
+
+let nativeCursorSyncGeneration = 0
+let nativeCursorSyncQueue = Promise.resolve()
+function syncNativeSoftwareCursor(useLocalCursors: boolean): void {
+  if (!isTauriRuntime()) return
+  const generation = ++nativeCursorSyncGeneration
+  nativeCursorSyncQueue = nativeCursorSyncQueue.catch(() => undefined).then(async () => {
+    if (generation !== nativeCursorSyncGeneration) return
+    await invoke('set_native_cursor', { enabled: !useLocalCursors }).catch(() => undefined)
+  })
+}
+
 const scaledCursorUrl = (source: string, scale: number): Promise<string> => {
   const key = `${source}:${scale.toFixed(6)}`
   const cached = scaledCursorCache.get(key)
@@ -206,7 +225,7 @@ async function applyCursorPreferencesForDisplayScale(useLocalCursors: boolean, s
     const hotspotX = definition.hotspot[0] / fallbackResolution
     const hotspotY = definition.hotspot[1] / fallbackResolution
     if (!preserveCurrentValues || !root.getPropertyValue(definition.variable)) {
-      root.setProperty(definition.variable, `${cursorImageValue(preferredSource, fallbackResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${cursorImageValue(builtinSource, fallbackResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${definition.fallback}`)
+      root.setProperty(definition.variable, `${cursorImageValue(preferredSource, fallbackResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${cursorImageValue(builtinSource, fallbackResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${softwareCursorFallback()}`)
     }
   }
   const values = await Promise.all(cursorDefinitions.map(async (definition) => {
@@ -222,7 +241,7 @@ async function applyCursorPreferencesForDisplayScale(useLocalCursors: boolean, s
     const hotspotX = Math.round(definition.hotspot[0] * scale) / displayResolution
     const hotspotY = Math.round(definition.hotspot[1] * scale) / displayResolution
     const builtinValue = `${cursorImageValue(builtin, displayResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}`
-    return [definition.variable, `${cursorImageValue(source, displayResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${builtinValue}, ${definition.fallback}`] as const
+    return [definition.variable, `${cursorImageValue(source, displayResolution)} ${formatCursorNumber(hotspotX)} ${formatCursorNumber(hotspotY)}, ${builtinValue}, ${softwareCursorFallback()}`] as const
   }))
   if (generation !== applicationGeneration) return
   for (const [variable, value] of values) root.setProperty(variable, value)
@@ -237,6 +256,7 @@ function handleDisplayScaleChange(displayScaleFactor: number): void {
 export async function applyCursorPreferences(useLocalCursors: boolean, scale: CursorScale): Promise<void> {
   const request = { useLocalCursors, scale }
   requestedCursorPreferences = request
+  syncNativeSoftwareCursor(useLocalCursors)
   const displayScaleFactor = await observeDisplayScaleFactor(handleDisplayScaleChange)
   if (requestedCursorPreferences !== request) return
   await applyCursorPreferencesForDisplayScale(useLocalCursors, scale, displayScaleFactor, false)

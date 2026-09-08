@@ -188,6 +188,8 @@ const prepareTool = (tool: ToolId, fillKind: FillKind | null = null, shapeKind: 
   state.setGradientDither('none')
 }
 
+const setBrushSize = (size: number) => useWorkspace.getState().setBrushSize(size)
+
 const prepareCenteredSelection = (size: number) => {
   const session = activeSession()
   if (!session) return
@@ -320,6 +322,16 @@ async function playAnimation() {
   return frameIds.length
 }
 
+const setAnimationPlaying = (playing: boolean) => useWorkspace.getState().setAnimationPlaying(playing)
+
+function prepareMagicWand() {
+  const workspace = useWorkspace.getState()
+  workspace.setTool('selection')
+  workspace.setSelectionKind('magic')
+  workspace.setWandContiguous(true)
+  workspace.setWandGapClosing(false)
+}
+
 export function installPerformanceHarness() {
   window.__moonSpritePerformanceHarness = {
     createSimpleDocument,
@@ -328,6 +340,8 @@ export function installPerformanceHarness() {
     activeView,
     resetScenario,
     prepareTool,
+    setBrushSize,
+    prepareMagicWand,
     prepareCenteredSelection,
     prepareActiveLayerStyle,
     previewActiveLayerStyleSize,
@@ -339,6 +353,7 @@ export function installPerformanceHarness() {
     setTimelapseRecording,
     timelapseSnapshotCount,
     undoRedo,
+    setAnimationPlaying,
     playAnimation
   }
 }

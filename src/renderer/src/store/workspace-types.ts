@@ -167,6 +167,7 @@ export interface TextBoxTransformState {
 export interface BrushProfile {
   brushSize: number
   brushShape: BrushShape
+  brushAngle: number
   brushDither: BrushDitherSettings
   brushTexture: BrushTexture
   brushTextureScale: number
@@ -213,6 +214,7 @@ export interface DocumentSession {
   secondaryColor: RgbaColor
   brushSize: number
   brushShape: BrushShape
+  brushAngle: number
   brushDither: BrushDitherSettings
   brushTexture: BrushTexture
   brushTextureScale: number
@@ -301,6 +303,8 @@ export interface DocumentSession {
   animationPlaybackLoopSectionId: string | null
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
+  /** Finite tag section that anchors the current play-through cycle. */
+  animationPlaybackTagCycleSectionId: string | null
   animationReturnToStart: boolean
   /** Canonical active timeline row/cursor. Selection and playback never infer or overwrite this row. */
   timelineActiveContext: TimelineActiveContext

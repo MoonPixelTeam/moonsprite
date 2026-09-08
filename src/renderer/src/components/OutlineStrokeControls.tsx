@@ -35,9 +35,10 @@ interface OutlineStrokeControlsProps {
   position: OutlinePosition
   positions?: readonly OutlinePosition[]
   thickness: number
+  variant?: 'default' | 'dialog'
 }
 
-export function OutlineStrokeControls({ directions, kernel, maxThickness = 64, onPatternChange, onPositionChange, onThicknessChange, position, positions = ['outside', 'inside'], thickness }: OutlineStrokeControlsProps) {
+export function OutlineStrokeControls({ directions, kernel, maxThickness = 64, onPatternChange, onPositionChange, onThicknessChange, position, positions = ['outside', 'inside'], thickness, variant = 'default' }: OutlineStrokeControlsProps) {
   const { t } = useI18n()
   const activeQuickShape = outlineDirectionsMatchKernel(kernel, directions) ? kernel : null
   const applyQuickShape = (nextKernel: OutlineKernel): void => onPatternChange(nextKernel, outlineDirectionsForKernel(nextKernel))
@@ -46,7 +47,7 @@ export function OutlineStrokeControls({ directions, kernel, maxThickness = 64, o
 
   return <>
     <section className="outline-width-setting"><RangeField className="outline-width-row" label={t('outline.width')} min={1} max={maxThickness} suffix="px" value={thickness} onChange={onThicknessChange} /></section>
-    <fieldset className="outline-settings-fieldset"><legend>{t('outline.settings')}</legend>
+    <fieldset className={`outline-settings-fieldset${variant === 'dialog' ? ' outline-settings-fieldset-dialog' : ''}`}><legend>{t('outline.settings')}</legend>
       <div className="outline-setting-group"><span>{t('outline.position')}</span><SegmentedControl className={`outline-position-control positions-${positions.length}`} label={t('outline.position')} options={positions.map((value) => ({ value, label: t(`outline.${value}`) }))} value={position} onChange={onPositionChange} /></div>
       <div className="outline-pattern-layout">
         <div className="outline-setting-group"><span>{t('outline.quickShapes')}</span><div className="outline-quick-shapes">{quickShapes.map((shape) => <button key={shape.id} type="button" className={activeQuickShape === shape.id ? 'selected' : ''} title={shape.label} aria-label={shape.label} onClick={() => applyQuickShape(shape.id)}><OutlineKernelIcon kernel={shape.id} /></button>)}</div></div>

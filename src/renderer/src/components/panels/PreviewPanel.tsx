@@ -6,7 +6,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
-import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId } from '@/core/animation-loop-sections'
+import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { anchoredPreviewPan, followPreviewPosition, pixelAlignedPreviewFitScale, previewCheckerCellSize } from '@/core/preview-geometry'
 import { normalizeCanvasWheelDelta, steppedCanvasZoom, viewDragClientDelta } from '@/core/canvas-input'
 import { loadEditorPreferences, type CheckerboardPreferences } from '@/core/file-preferences'
@@ -24,6 +24,12 @@ import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/c
 interface FollowViewportSnapshot {
   viewportSize: { width: number; height: number }
   view: Pick<DocumentSession['view'], 'zoom' | 'panX' | 'panY' | 'rotation' | 'mirrored' | 'mirroredVertical'>
+}
+
+const previewLoopSectionContainsFrame = (timeline: ReturnType<typeof ensureAnimationDocument>, section: Parameters<typeof resolveAnimationLoopSectionRange>[1], frameId: string): boolean => {
+  const range = resolveAnimationLoopSectionRange(timeline, section)
+  const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
+  return Boolean(range && frameIndex >= range.startIndex && frameIndex <= range.endIndex)
 }
 
 const followViewportView = (view: DocumentSession['view']): FollowViewportSnapshot['view'] => ({
@@ -74,9 +80,12 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewPlaybackMode, setPreviewPlaybackMode] = useState<AnimationPlaybackMode>(timeline.loop ? 'all' : 'once')
   const [previewLoopSectionId, setPreviewLoopSectionId] = useState<string | null>(null)
   const [previewLoopIteration, setPreviewLoopIteration] = useState(0)
+  const [previewTagCycleSectionId, setPreviewTagCycleSectionId] = useState<string | null>(null)
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
-  const compositeCacheRef = useRef(new CanvasCompositeCache())
+  // This auxiliary canvas shares the UI thread with painting. Keep each
+  // catch-up slice small enough that it cannot consume the input frame.
+  const compositeCacheRef = useRef(new CanvasCompositeCache(undefined, 24 * 1024))
   const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
   const drawRef = useRef<() => void>(() => {})
@@ -84,6 +93,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const followFrameRef = useRef<number | null>(null)
   const panFrameRef = useRef<number | null>(null)
   const liveCanvasPreviewFrameRef = useRef<number | null>(null)
+  const compositeWorkFrameRef = useRef<number | null>(null)
   const pendingPanRef = useRef<{ x: number; y: number } | null>(null)
   const inheritedRelativeLuminance = session.view.relativeLuminance && relativeLuminanceInPreview
   const showRelativeLuminance = relativeLuminanceOverride ?? inheritedRelativeLuminance
@@ -145,6 +155,19 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       // synchronous blend work for every pointer event, so keep the panel at
       // its last committed image until the move ends.
       if (snapshot?.movingLayerIds?.length) return
+      // The editor is the latency-sensitive surface during freehand painting.
+      // Rebuilding the same full-size composite here for every pointer sample
+      // competes with it on the UI thread; the committed revision redraw below
+      // updates this panel once when the stroke ends.
+      if (snapshot?.deferAuxiliaryDraw) return
+      const previousSnapshot = liveCanvasPreviewRef.current
+      // The preview cache has already consumed the live stroke's precise
+      // invalidations. Preserve that surface across the following committed
+      // revision so the panel does not rebuild the stroke's large bounding
+      // box after pointer-up.
+      if (!snapshot && previousSnapshot) {
+        compositeCacheRef.current.retainLivePreview(previousSnapshot.document, previousSnapshot.frameId)
+      }
       liveCanvasPreviewRef.current = snapshot
       if (snapshot?.invalidation?.kind === 'region') {
         compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
@@ -218,13 +241,59 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       return
     }
     const loopStep = loopSection
-      ? advanceAnimationLoopSectionPlayback(timeline, { ...loopSection, repeatCount: null }, previewFrameId, previewLoopIteration)
+      ? advanceAnimationLoopSectionPlayback(timeline, loopSection, previewFrameId, previewLoopIteration)
       : null
     const loopAllFrames = previewPlaybackMode !== 'once'
     const nextFrameId = loopSection
       ? loopStep?.frameId ?? null
       : nextAnimationFrameId({ ...timeline, loop: loopAllFrames }, previewFrameId)
     const timer = window.setTimeout(() => {
+      if (loopStep?.completed) {
+        if (previewPlaybackMode === 'tag' && loopSection && loopSection.repeatCount !== null) {
+          const continuationFrameId = nextAnimationFrameId({ ...timeline, loop: true }, loopSection.endFrameId)
+          const cycleSection = previewTagCycleSectionId
+            ? (timeline.loopSections ?? []).find((section) => section.id === previewTagCycleSectionId) ?? null
+            : null
+          if (cycleSection && continuationFrameId && previewLoopSectionContainsFrame(timeline, cycleSection, continuationFrameId)) {
+            setPreviewLoopSectionId(cycleSection.id)
+            setPreviewLoopIteration(0)
+            setPreviewFrameId(animationLoopSectionStartFrameId(timeline, cycleSection) ?? continuationFrameId)
+          } else if (cycleSection) {
+            const continuationSection = continuationFrameId ? animationLoopSectionAtFrame(timeline, continuationFrameId) : null
+            if (continuationSection && continuationSection.repeatCount !== null && continuationFrameId) {
+              setPreviewLoopSectionId(continuationSection.id)
+              setPreviewLoopIteration(0)
+              setPreviewFrameId(animationLoopSectionStartFrameId(timeline, continuationSection) ?? continuationFrameId)
+            } else {
+              setPreviewLoopSectionId(null)
+              setPreviewLoopIteration(0)
+              if (continuationFrameId) setPreviewFrameId(continuationFrameId)
+            }
+          } else if (continuationFrameId) {
+            const continuationSection = animationLoopSectionAtFrame(timeline, continuationFrameId)
+            if (continuationSection) {
+              setPreviewLoopSectionId(continuationSection.id)
+              setPreviewLoopIteration(0)
+              setPreviewFrameId(animationLoopSectionStartFrameId(timeline, continuationSection) ?? continuationFrameId)
+            } else {
+              setPreviewLoopSectionId(null)
+              setPreviewLoopIteration(0)
+              setPreviewFrameId(continuationFrameId)
+            }
+          } else {
+            setPreviewLoopSectionId(null)
+            setPreviewLoopIteration(0)
+          }
+          return
+        }
+        const returnFrameId = previewReturnToStart ? previewStartFrameId : previewFrameId
+        setPreviewPlaying(false)
+        setPreviewStartFrameId(null)
+        setPreviewLoopSectionId(null)
+        setPreviewLoopIteration(0)
+        if (returnFrameId) setPreviewFrameId(returnFrameId)
+        return
+      }
       if (!nextFrameId || !loopSection && !loopAllFrames && nextFrameId === previewFrameId) {
         const returnFrameId = previewReturnToStart ? previewStartFrameId : previewFrameId
         setPreviewPlaying(false)
@@ -233,10 +302,37 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         return
       }
       if (loopStep) setPreviewLoopIteration(loopStep.completedIterations)
+      if (previewPlaybackMode === 'tag' && nextFrameId && !loopSection) {
+        if (previewTagCycleSectionId) {
+          const cycleSection = (timeline.loopSections ?? []).find((section) => section.id === previewTagCycleSectionId) ?? null
+          if (cycleSection && previewLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
+            setPreviewLoopSectionId(cycleSection.id)
+            setPreviewLoopIteration(0)
+            setPreviewFrameId(animationLoopSectionStartFrameId(timeline, cycleSection) ?? nextFrameId)
+            return
+          }
+          const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
+          if (nextSection && nextSection.repeatCount !== null) {
+            setPreviewLoopSectionId(nextSection.id)
+            setPreviewLoopIteration(0)
+            setPreviewFrameId(animationLoopSectionStartFrameId(timeline, nextSection) ?? nextFrameId)
+            return
+          }
+          setPreviewLoopSectionId(null)
+          setPreviewLoopIteration(0)
+        }
+        const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
+        if (nextSection && !previewTagCycleSectionId) {
+          setPreviewLoopSectionId(nextSection.id)
+          setPreviewLoopIteration(0)
+          setPreviewFrameId(animationLoopSectionStartFrameId(timeline, nextSection) ?? nextFrameId)
+          return
+        }
+      }
       setPreviewFrameId(nextFrameId)
     }, frame.duration / Math.max(0.01, previewRate))
     return () => window.clearTimeout(timer)
-  }, [previewFrameId, previewPlaying, previewRate, previewPlaybackMode, previewLoopIteration, previewLoopSectionId, previewReturnToStart, previewStartFrameId, timeline])
+  }, [previewFrameId, previewPlaying, previewRate, previewPlaybackMode, previewLoopIteration, previewLoopSectionId, previewReturnToStart, previewStartFrameId, previewTagCycleSectionId, timeline])
 
   const setPreviewPlayingState = (playing: boolean): void => {
     if (playing) {
@@ -249,6 +345,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       setPreviewStartFrameId(startFrameId)
       setPreviewLoopSectionId(null)
       setPreviewLoopIteration(0)
+      setPreviewTagCycleSectionId(null)
       const loopSection = previewPlaybackMode === 'tag' ? animationLoopSectionAtFrame(timeline, startFrameId) : null
       const targetFrameId = loopSection
         ? animationLoopSectionStartFrameId(timeline, loopSection)
@@ -261,13 +358,17 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         setPreviewPlaying(false)
         return
       }
-      if (loopSection) setPreviewLoopSectionId(loopSection.id)
+      if (loopSection) {
+        setPreviewLoopSectionId(loopSection.id)
+        if (previewPlaybackMode === 'tag' && loopSection.repeatCount !== null) setPreviewTagCycleSectionId(loopSection.id)
+      }
       if (targetFrameId && targetFrameId !== startFrameId) setPreviewFrameId(targetFrameId)
     } else {
       if (previewReturnToStart && previewStartFrameId) setPreviewFrameId(previewStartFrameId)
       setPreviewStartFrameId(null)
       setPreviewLoopSectionId(null)
       setPreviewLoopIteration(0)
+      setPreviewTagCycleSectionId(null)
     }
     setPreviewPlaying(playing)
   }
@@ -276,6 +377,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     setPreviewPlaybackMode(mode)
     setPreviewLoopSectionId(null)
     setPreviewLoopIteration(0)
+    setPreviewTagCycleSectionId(null)
     if (!previewPlaying || mode !== 'tag') return
     const loopSection = animationLoopSectionAtFrame(timeline, previewFrameId)
     const firstFrameId = loopSection ? animationLoopSectionStartFrameId(timeline, loopSection) : null
@@ -284,6 +386,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       return
     }
     setPreviewLoopSectionId(loopSection.id)
+    if (loopSection.repeatCount !== null) setPreviewTagCycleSectionId(loopSection.id)
     if (firstFrameId !== previewFrameId) setPreviewFrameId(firstFrameId)
   }
 
@@ -353,18 +456,23 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         || (storeSession.revision >= session.revision && storeSession.contentRevision >= session.contentRevision)
       ) ? storeSession : session
       const currentTimeline = currentSession.document.animation ?? ensureAnimationDocument(currentSession.document)
+      // Store propagation can leave the panel's local frame id one React
+      // commit behind the playback clock. Render the store's active frame
+      // directly while playing so the editor and preview consume the same
+      // shared composite instead of building adjacent frames independently.
+      const renderFrameId = currentSession.animationPlaying ? currentTimeline.activeFrameId : previewFrameId
       const livePreview = liveCanvasPreviewRef.current
       const livePreviewForFrame = !previewPlaying
         && livePreview
         && livePreview.document.id === currentSession.document.id
         && livePreview.frameId === currentTimeline.activeFrameId
-        && previewFrameId === currentTimeline.activeFrameId
+        && renderFrameId === currentTimeline.activeFrameId
         ? livePreview
         : null
       const sourceDocument = livePreviewForFrame?.document ?? currentSession.document
-      const previewDocument = previewFrameId === currentTimeline.activeFrameId
+      const previewDocument = renderFrameId === currentTimeline.activeFrameId
         ? sourceDocument
-        : cloneDocumentForAnimationFrame(sourceDocument, previewFrameId)
+        : cloneDocumentForAnimationFrame(sourceDocument, renderFrameId)
       const renderRevision = livePreviewForFrame?.revision ?? currentSession.revision
       const renderContentRevision = livePreviewForFrame?.contentRevision ?? currentSession.contentRevision
       const dpr = Math.max(1, window.devicePixelRatio || 1)
@@ -440,9 +548,18 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         revision: renderRevision,
         contentRevision: renderContentRevision,
         contentInvalidation: livePreviewForFrame ? null : currentSession.contentInvalidation,
-        frameId: previewFrameId,
+        frameId: renderFrameId,
         imageSmoothingEnabled: smoothPixelSampling,
+        animationPlayback: previewPlaying || currentSession.animationPlaying,
+        animationConsumerOnly: currentSession.animationPlaying,
         devicePixelRatio: dpr,
+        requestRedraw: () => {
+          if (compositeWorkFrameRef.current !== null) return
+          compositeWorkFrameRef.current = window.requestAnimationFrame(() => {
+            compositeWorkFrameRef.current = null
+            drawRef.current()
+          })
+        },
         movingLayerIds: livePreviewForFrame?.movingLayerIds,
         selectionPreview: livePreviewForFrame?.selectionPreview
       })
@@ -450,7 +567,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     }
     drawRef.current = draw
     draw()
-  }, [session.document, session.revision, session.contentRevision, previewFrameId, previewPlaying, timeline.activeFrameId, showRelativeLuminance, checkerboard, canvasSurround, rotationIndicatorPosition, zoom, pan, followViewport, initialCompositeReady])
+  }, [session.document, session.contentRevision, session.animationPlaying, previewFrameId, previewPlaying, timeline.activeFrameId, showRelativeLuminance, checkerboard, canvasSurround, rotationIndicatorPosition, zoom, pan, followViewport, initialCompositeReady])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -467,6 +584,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (panFrameRef.current !== null) window.cancelAnimationFrame(panFrameRef.current)
     if (followFrameRef.current !== null) window.cancelAnimationFrame(followFrameRef.current)
     if (liveCanvasPreviewFrameRef.current !== null) window.cancelAnimationFrame(liveCanvasPreviewFrameRef.current)
+    if (compositeWorkFrameRef.current !== null) window.cancelAnimationFrame(compositeWorkFrameRef.current)
   }, [])
 
   const schedulePan = (next: { x: number; y: number }): void => {

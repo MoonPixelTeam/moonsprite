@@ -9,6 +9,7 @@ import { LivePreviewToggle } from '@/components/LivePreviewToggle'
 import { PreferenceToggle } from '@/components/PreferenceToggle'
 import { RangeField } from '@/components/RangeField'
 import { defaultOutlineSettings, normalizeOutlineSettings } from '@/core/outline-settings'
+import { loadEditorPreferences } from '@/core/file-preferences'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { OutlineStrokeControls } from '@/components/OutlineStrokeControls'
 
@@ -31,7 +32,9 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
       setOutlinePreview(null)
       return
     }
-    const settings = normalizeOutlineSettings(session.document.outlineSettings, session.primaryColor) ?? defaultOutlineSettings(session.primaryColor)
+    const settings = (session.document.outlineSettings ? normalizeOutlineSettings(session.document.outlineSettings, session.primaryColor) : null)
+      ?? (loadEditorPreferences().outlineSettings ? normalizeOutlineSettings(loadEditorPreferences().outlineSettings, session.primaryColor) : null)
+      ?? defaultOutlineSettings(session.primaryColor)
     setColor({ ...settings.color })
     setBackgroundColor({ ...settings.backgroundColor })
     setThickness(settings.thickness)
@@ -84,7 +87,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
           <FormField className="outline-color-field" layout="inline" label={t('outline.backgroundColor')}><ColorValueControl color={backgroundColor} density="regular" onChange={setBackgroundColor} label={t('outline.backgroundColor')} storageKey="selection-outline-background" fillWithColor inPalette={false} /></FormField>
           {smartHue && <RangeField className="outline-smart-darkness" label={t('outline.smartHueDarkness')} min={0} max={100} suffix="%" value={smartHueDarkness} onChange={setSmartHueDarkness} />}
         </div>
-        <div className="outline-stroke-controls"><OutlineStrokeControls thickness={thickness} position={position} positions={['outside', 'inside', 'both']} kernel={kernel} directions={edgeDirections} onThicknessChange={setThickness} onPositionChange={setPosition} onPatternChange={(nextKernel, nextDirections) => { setKernel(nextKernel); setEdgeDirections(nextDirections) }} /></div>
+        <div className="outline-stroke-controls"><OutlineStrokeControls variant="dialog" thickness={thickness} position={position} positions={['outside', 'inside', 'both']} kernel={kernel} directions={edgeDirections} onThicknessChange={setThickness} onPositionChange={setPosition} onPatternChange={(nextKernel, nextDirections) => { setKernel(nextKernel); setEdgeDirections(nextDirections) }} /></div>
       </div>
       <footer><LivePreviewToggle checked={previewEnabled} onChange={setPreviewEnabled} /><span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={close}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('outline.apply')}</button></footer>
     </ModalShell>

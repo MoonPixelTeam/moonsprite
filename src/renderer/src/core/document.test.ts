@@ -3,7 +3,7 @@ import { BLEND_MODES } from '@shared/types'
 import { blendWithMode, blendWithModeInto, packColor, writeRgbaPixel } from './raster'
 import { createDefaultLayerStyles } from './layer-styles'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument } from './animation'
-import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
+import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, compositeRegionAsync, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
 import { assignRasterStorage, installRuntimeRaster, surfacePixelsMaterialized } from './runtime-raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
@@ -29,6 +29,16 @@ describe('document compositing', () => {
     writeLayerColor(document, top, 0, blue)
 
     expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual(Object.values(blendWithMode(red, blue, 1, 'normal')))
+  })
+
+  it('composites asynchronously in batches without changing pixel output', async () => {
+    const document = createDocument('async composite', 2, 2, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 0, red)
+    const progress: number[] = []
+    const asyncPixels = await compositeRegionAsync(document, 0, 0, 2, 2, (value) => progress.push(value), undefined, 1)
+    expect(Array.from(asyncPixels)).toEqual(Array.from(compositeRegion(document, 0, 0, 2, 2)))
+    expect(progress.at(-1)).toBe(100)
   })
 
   it('applies a frame-specific mask to the composited result of a layer group', () => {

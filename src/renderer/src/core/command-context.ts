@@ -88,8 +88,8 @@ export interface AnimationFrameStepKeyContext {
 export const animationFrameStepDirection = (context: AnimationFrameStepKeyContext): -1 | 1 | null => {
   if (context.ctrlKey || context.metaKey || context.altKey) return null
   const key = context.key.toLowerCase()
-  if (key === ',') return -1
-  if (key === '.') return 1
+  if (key === ',' || key === '，') return -1
+  if (key === '.' || key === '。') return 1
   if (context.hasSelection || context.shiftKey) return null
   if (key === 'arrowleft') return -1
   if (key === 'arrowright') return 1

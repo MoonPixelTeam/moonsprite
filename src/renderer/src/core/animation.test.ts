@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, animationCelContentSelection, animationCelHasContent, animationCelKey, animationCelOffsetsForKeys, connectAnimationCels, createAnimationCelLookup, createDefaultAnimationTimeline, deleteAnimationFrame, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, nextAnimationFrameId, normalizeAnimationTimeline, resizeAnimationCelsAt, resolveAnimationCel, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, syncActiveAnimationFrame, syncActiveAnimationLayer, syncActiveAnimationLayers } from './animation'
+import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, animationCelContentSelection, animationCelHasContent, animationCelKey, animationCelOffsetsForKeys, connectAnimationCels, createAnimationCelLookup, createDefaultAnimationTimeline, deleteAnimationFrame, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, nextAnimationFrameId, normalizeAnimationTimeline, resizeAnimationCelsAt, resolveAnimationCel, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, syncActiveAnimationLayers } from './animation'
 import { animationMaskAt, animationMaskSlotAt, compositeDocument, createDocument, createLayer, createLayerMask, ensureLayerCoversCanvas, getActiveLayer, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from './history'
 
@@ -288,6 +288,27 @@ describe('animation timeline boundary', () => {
     timeline.frames[2]!.disabled = true
     expect(firstPlayableAnimationFrameId(timeline)).toBeNull()
     expect(nextAnimationFrameId(timeline, 'second')).toBeNull()
+  })
+
+  it('skips disabled frames when stepping in either direction', () => {
+    const timeline = normalizeAnimationTimeline({
+      frames: [
+        { id: 'first', duration: 100 },
+        { id: 'second', duration: 100, disabled: true },
+        { id: 'third', duration: 100 },
+        { id: 'fourth', duration: 100, disabled: true }
+      ],
+      cels: [],
+      activeFrameId: 'first',
+      loop: true
+    })
+
+    expect(stepAnimationFrameId(timeline, 'first', 1)).toBe('third')
+    expect(stepAnimationFrameId(timeline, 'third', -1)).toBe('first')
+    expect(stepAnimationFrameId(timeline, 'second', 1)).toBe('third')
+    timeline.frames[0]!.disabled = true
+    timeline.frames[2]!.disabled = true
+    expect(stepAnimationFrameId(timeline, 'first', 1)).toBeNull()
   })
 
   it('undoes a pixel edit in its original frame after switching frames', () => {

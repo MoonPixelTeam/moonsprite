@@ -55,6 +55,8 @@ describe('command context', () => {
     expect(animationFrameStepDirection({ ...base, key: 'ArrowLeft', hasSelection: true })).toBeNull()
     expect(animationFrameStepDirection({ ...base, key: ',', hasSelection: true })).toBe(-1)
     expect(animationFrameStepDirection({ ...base, key: '.', hasSelection: true })).toBe(1)
+    expect(animationFrameStepDirection({ ...base, key: '，', hasSelection: true })).toBe(-1)
+    expect(animationFrameStepDirection({ ...base, key: '。', hasSelection: true })).toBe(1)
     expect(animationFrameStepDirection({ ...base, key: '<', hasSelection: true, shiftKey: true })).toBeNull()
     expect(animationFrameStepDirection({ ...base, key: '.', ctrlKey: true })).toBeNull()
   })

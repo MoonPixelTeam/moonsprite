@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
-import { createDocument, createLayerMask, getActiveLayer } from '@/core/document'
+import { createDocument, createLayer, createLayerMask, getActiveLayer } from '@/core/document'
 import { addBlankAnimationFrame, animationCelAt, ensureAnimationDocument, animationCelKey, linkAnimationFrameCels } from '@/core/animation'
 import { LayersPanel } from './LayersPanel'
 import { useWorkspace } from '@/store/workspace'
@@ -265,6 +265,32 @@ describe('LayersPanel timeline focus interactions', () => {
     const after = useWorkspace.getState().sessions[0]!
     expect(after.selectedLayerIds).toEqual([secondLayer.id])
     expect(after.selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, after.document.animation!.activeFrameId)])
+  })
+
+  it('keeps the timeline row active for multi-selected linked layers', () => {
+    const document = createDocument('multi selected linked layers', 2, 2, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    const secondLayer = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(secondLayer)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    for (const layer of [firstLayer, secondLayer]) {
+      const source = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === firstFrameId)!
+      const target = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === secondFrameId)!
+      target.linkedCelId = source.id
+      target.surface = source.surface
+    }
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectLayer(firstLayer.id)
+    useWorkspace.getState().selectLayer(secondLayer.id, 'toggle')
+
+    const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
+    for (const layer of [firstLayer, secondLayer]) {
+      expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, firstFrameId)}"]`)).toHaveClass('selected-layer')
+      expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)).toHaveClass('selected-layer')
+    }
+    expect(view.container.querySelectorAll('.animation-linked-cel-block.layer-selected')).toHaveLength(2)
   })
 
   it('dismisses a timeline selection made during playback on release', async () => {

@@ -12,6 +12,7 @@ mod close_coordinator;
 mod platform_background_presets;
 mod platform_brushes;
 mod platform_clipboard;
+mod platform_cursor;
 mod platform_diagnostics;
 mod platform_dialogs;
 mod platform_extensions;
@@ -39,24 +40,28 @@ fn supported_file_paths(arguments: impl IntoIterator<Item = OsString>) -> Vec<St
         .map(PathBuf::from)
         .filter(|path| {
             path.is_file()
-                && path
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| {
-                        matches!(
-                            value.to_ascii_lowercase().as_str(),
-                            "moonsprite"
-                                | "ase"
-                                | "aseprite"
-                                | "png"
-                                | "jpg"
-                                | "jpeg"
-                                | "webp"
-                                | "bmp"
-                                | "gif"
-                                | "msext"
-                        )
-                    })
+                && (path
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .ends_with(".moonsprite.bak")
+                    || path
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .is_some_and(|value| {
+                            matches!(
+                                value.to_ascii_lowercase().as_str(),
+                                "moonsprite"
+                                    | "ase"
+                                    | "aseprite"
+                                    | "png"
+                                    | "jpg"
+                                    | "jpeg"
+                                    | "webp"
+                                    | "bmp"
+                                    | "gif"
+                                    | "msext"
+                            )
+                        }))
         })
         .map(|path| path.to_string_lossy().to_string())
         .collect()
@@ -196,6 +201,7 @@ pub fn run() {
             platform_clipboard::read_clipboard_text,
             platform_clipboard::read_clipboard_image,
             platform_clipboard::read_clipboard_image_size,
+            platform_cursor::set_native_cursor,
             platform_resources::get_resource_info,
             platform_palette::list_palettes,
             platform_palette::save_palette,

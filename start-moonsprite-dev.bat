@@ -36,7 +36,23 @@ if defined PNPM_COMMAND goto :start_with_pnpm
 
 if exist "%ProgramFiles%\nodejs\corepack.cmd" (
   set "COREPACK_HOME=%LOCALAPPDATA%\MoonSprite\corepack"
+  set "PROJECT_DIRECTORY=%~dp0"
+  set "LOCAL_BIN_DIRECTORY=%PROJECT_DIRECTORY%node_modules\.bin"
+  set "PATH=%LOCAL_BIN_DIRECTORY%;%PATH%"
   echo [MoonSprite] pnpm was not found directly. Using Corepack.
+  if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+    echo [MoonSprite] Local Tauri CLI link is missing. Repairing dependencies...
+    call "%ProgramFiles%\nodejs\corepack.cmd" pnpm rebuild
+    if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+      call "%ProgramFiles%\nodejs\corepack.cmd" pnpm install --frozen-lockfile
+    )
+  )
+  if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+    echo [MoonSprite] Tauri CLI was not found in the project dependencies.
+    echo Run pnpm install in this directory, then try again.
+    set "MOONSPRITE_EXIT_CODE=1"
+    goto :finish
+  )
   call "%ProgramFiles%\nodejs\corepack.cmd" pnpm dev
   set "MOONSPRITE_EXIT_CODE=%ERRORLEVEL%"
   goto :finish
@@ -49,8 +65,29 @@ exit /b 1
 
 :start_with_pnpm
 for %%P in ("%PNPM_COMMAND%") do set "PNPM_DIRECTORY=%%~dpP"
-set "PATH=%PNPM_DIRECTORY%;%PATH%"
+set "PROJECT_DIRECTORY=%~dp0"
+set "LOCAL_BIN_DIRECTORY=%PROJECT_DIRECTORY%node_modules\.bin"
+set "PATH=%LOCAL_BIN_DIRECTORY%;%PNPM_DIRECTORY%;%PATH%"
 echo [MoonSprite] Using pnpm: %PNPM_COMMAND%
+
+rem pnpm can leave the workspace links without .bin entries after a copied or
+rem interrupted install. Rebuild the links before starting the Tauri script.
+if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+  echo [MoonSprite] Local Tauri CLI link is missing. Repairing dependencies...
+  call "%PNPM_COMMAND%" rebuild
+  if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+    echo [MoonSprite] Tauri CLI is still missing. Installing dependencies...
+    call "%PNPM_COMMAND%" install --frozen-lockfile
+  )
+)
+
+if not exist "%LOCAL_BIN_DIRECTORY%\tauri.cmd" (
+  echo [MoonSprite] Tauri CLI was not found in the project dependencies.
+  echo Run pnpm install in this directory, then try again.
+  set "MOONSPRITE_EXIT_CODE=1"
+  goto :finish
+)
+
 call "%PNPM_COMMAND%" dev
 set "MOONSPRITE_EXIT_CODE=%ERRORLEVEL%"
 

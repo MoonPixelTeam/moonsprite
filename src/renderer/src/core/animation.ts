@@ -1373,6 +1373,18 @@ export const nextAnimationFrameId = (timeline: AnimationTimeline, frameId: strin
   return timeline.frames[index]?.disabled === true ? null : frameId
 }
 
+export const stepAnimationFrameId = (timeline: Pick<AnimationTimeline, 'frames'>, frameId: string, direction: -1 | 1): string | null => {
+  if (timeline.frames.length === 0) return null
+  const currentIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
+  const startIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0
+  for (let offset = 1; offset <= timeline.frames.length; offset += 1) {
+    const index = (startIndex + direction * offset + timeline.frames.length) % timeline.frames.length
+    const frame = timeline.frames[index]
+    if (frame?.disabled !== true) return frame?.id ?? null
+  }
+  return null
+}
+
 export const cloneAnimationCelsForLayer = (document: SpriteDocument, sourceLayerId: string, targetLayer: RasterLayer): void => {
   const timeline = ensureAnimationDocument(document)
   timeline.cels = timeline.cels.filter((cel) => cel.layerId !== targetLayer.id)

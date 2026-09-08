@@ -33,6 +33,7 @@ export const saveHomeFileDisplayFormats = (formats: readonly HomeFileDisplayForm
 }
 
 export const homeFileDisplayFormatForPath = (filePath: string): HomeFileDisplayFormat | null => {
+  if (/\.moonsprite\.bak$/i.test(filePath)) return 'project'
   const extension = filePath.match(/\.([^./\\]+)$/)?.[1]?.toLowerCase()
   if (!extension) return null
   for (const format of HOME_FILE_DISPLAY_FORMATS) {

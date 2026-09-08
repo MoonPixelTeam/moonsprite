@@ -1,4 +1,6 @@
-use crate::platform_storage::{atomic_write, atomic_write_with};
+use crate::platform_storage::{
+    atomic_write, atomic_write_with, atomic_write_with_validation_and_backup,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -30,6 +32,7 @@ const SAVE_PLAN_ENTRY: &str = ".moonsprite-save-plan.json";
 const PNG_STREAM_BUFFER_BYTES: usize = 64 * 1024;
 const PNG_FILE_BUFFER_BYTES: usize = 1024 * 1024;
 const PNG_ROW_BATCH_BYTES: usize = 1024 * 1024;
+const PROJECT_BACKUP_DIRECTORY: &str = "project-backups";
 
 #[derive(Clone, Default)]
 pub struct ScaledPngCancellation {
@@ -71,9 +74,18 @@ struct ScaledPngProgress {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ProjectSaveReuseEntry {
     path: String,
     crc32: u32,
+    #[serde(default)]
+    byte_length: Option<u64>,
+    #[serde(default)]
+    encoding: Option<String>,
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +199,13 @@ fn request_source_format(request: &Request<'_>) -> Result<ScaledPngSourceFormat,
         }
         _ => Err("Invalid PNG source format.".to_string()),
     }
+}
+
+fn project_backup_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|directory| directory.join(PROJECT_BACKUP_DIRECTORY))
+        .map_err(|error| error.to_string())
 }
 
 fn parse_palette_hex(encoded: &str) -> Result<Vec<u32>, String> {
@@ -1058,7 +1077,7 @@ fn merge_project_archive<R: Read + Seek, W: Write + Seek>(
             .map_err(|error| error.to_string())?;
         serde_json::from_slice::<ProjectSavePlan>(&bytes).map_err(|error| error.to_string())?
     };
-    if plan.version != 1 || plan.entries.is_empty() {
+    if !(1..=2).contains(&plan.version) || plan.entries.is_empty() {
         return Err("Invalid incremental save plan.".to_string());
     }
     let mut names = HashSet::new();
@@ -1066,9 +1085,31 @@ fn merge_project_archive<R: Read + Seek, W: Write + Seek>(
         if entry.path.is_empty()
             || entry.path == SAVE_PLAN_ENTRY
             || !names.insert(entry.path.clone())
+            || entry.width == Some(0)
+            || entry.height == Some(0)
+            || entry
+                .encoding
+                .as_deref()
+                .is_some_and(|value| !matches!(value, "raw" | "sparse-tiles-v1"))
         {
             return Err("Invalid incremental save entry.".to_string());
         }
+    }
+    let mut patch_names = HashSet::new();
+    for index in 0..patch_archive.len() {
+        let entry = patch_archive
+            .by_index(index)
+            .map_err(|error| error.to_string())?;
+        if entry.name() == SAVE_PLAN_ENTRY {
+            continue;
+        }
+        if !patch_names.insert(entry.name().to_string()) {
+            return Err("Incremental patch contains duplicate entries.".to_string());
+        }
+        if names.contains(entry.name()) {
+            return Err("Incremental save entry conflicts with patch data.".to_string());
+        }
+        names.insert(entry.name().to_string());
     }
     let mut writer = zip::ZipWriter::new(output);
     for index in 0..patch_archive.len() {
@@ -1077,9 +1118,6 @@ fn merge_project_archive<R: Read + Seek, W: Write + Seek>(
             .map_err(|error| error.to_string())?;
         if entry.name() == SAVE_PLAN_ENTRY {
             continue;
-        }
-        if names.contains(entry.name()) {
-            return Err("Incremental save entry conflicts with patch data.".to_string());
         }
         writer
             .raw_copy_file(entry)
@@ -1092,6 +1130,13 @@ fn merge_project_archive<R: Read + Seek, W: Write + Seek>(
         if entry.crc32() != reuse.crc32 {
             return Err("Incremental save source changed.".to_string());
         }
+        if let Some(byte_length) = reuse.byte_length {
+            if entry.size() != byte_length {
+                return Err("Incremental save source length changed.".to_string());
+            }
+        } else if plan.version >= 2 {
+            return Err("Incremental save plan is missing resource length.".to_string());
+        }
         writer
             .raw_copy_file(entry)
             .map_err(|error| error.to_string())?;
@@ -1100,6 +1145,75 @@ fn merge_project_archive<R: Read + Seek, W: Write + Seek>(
         .finish()
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+fn collect_manifest_file_references(value: &serde_json::Value, references: &mut HashSet<String>) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, value) in object {
+                if matches!(key.as_str(), "dataFile" | "colorsFile") {
+                    if let Some(path) = value.as_str() {
+                        references.insert(path.to_string());
+                    }
+                }
+                collect_manifest_file_references(value, references);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_manifest_file_references(value, references);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_project_archive<R: Read + Seek>(source: R) -> Result<(), String> {
+    let mut archive = zip::ZipArchive::new(source).map_err(|error| error.to_string())?;
+    let mut names = HashSet::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| error.to_string())?;
+        let name = entry.name();
+        if name.is_empty() || name.contains('\\') || name.starts_with('/') || name.contains("..") {
+            return Err("工程压缩包包含无效资源路径。".to_string());
+        }
+        if !names.insert(name.to_string()) {
+            return Err("工程压缩包包含重复资源。".to_string());
+        }
+    }
+    let mut manifest_entry = archive
+        .by_name("manifest.json")
+        .map_err(|error| format!("工程压缩包缺少清单：{error}"))?;
+    if manifest_entry.size() > 16 * 1024 * 1024 {
+        return Err("工程清单过大。".to_string());
+    }
+    let mut manifest_bytes = Vec::with_capacity(manifest_entry.size() as usize);
+    manifest_entry
+        .read_to_end(&mut manifest_bytes)
+        .map_err(|error| error.to_string())?;
+    drop(manifest_entry);
+    let manifest = serde_json::from_slice::<serde_json::Value>(&manifest_bytes)
+        .map_err(|error| format!("工程清单无效：{error}"))?;
+    if manifest.get("app").and_then(serde_json::Value::as_str) != Some("MoonSprite")
+        || !manifest
+            .get("document")
+            .is_some_and(serde_json::Value::is_object)
+    {
+        return Err("工程清单不是有效的 MoonSprite 工程。".to_string());
+    }
+    let mut references = HashSet::new();
+    collect_manifest_file_references(&manifest, &mut references);
+    for path in references {
+        if !names.contains(&path) {
+            return Err(format!("工程清单引用了缺失资源：{path}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_project_archive_file(path: &Path) -> Result<(), String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    validate_project_archive(file)
 }
 
 #[derive(Debug, Serialize)]
@@ -1159,6 +1273,9 @@ fn source_fingerprint(path: &Path) -> Result<(u64, u64), String> {
 }
 
 fn supports_preview_cache(path: &Path) -> bool {
+    if is_moonsprite_backup_path(path) {
+        return true;
+    }
     path.extension()
         .and_then(|value| value.to_str())
         .is_some_and(|value| {
@@ -1167,6 +1284,20 @@ fn supports_preview_cache(path: &Path) -> bool {
                 "moonsprite" | "ase" | "aseprite" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
             )
         })
+}
+
+fn is_moonsprite_backup_path(path: &Path) -> bool {
+    path.to_string_lossy()
+        .to_ascii_lowercase()
+        .ends_with(".moonsprite.bak")
+}
+
+fn is_moonsprite_project_path(path: &Path) -> bool {
+    is_moonsprite_backup_path(path)
+        || path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("moonsprite"))
 }
 
 fn write_project_preview_cache(
@@ -1260,11 +1391,7 @@ pub fn read_project_preview(app: AppHandle, file_path: String) -> Result<Project
             }
         }
     }
-    if !path
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| value.eq_ignore_ascii_case("moonsprite"))
-    {
+    if !is_moonsprite_project_path(path) {
         return Err("该文件尚未生成首页缩略图。".to_string());
     }
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
@@ -1336,10 +1463,23 @@ pub fn cache_project_preview(
 }
 
 #[tauri::command]
-pub fn write_binary_atomic(request: Request<'_>) -> Result<(), String> {
+pub fn write_binary_atomic(app: AppHandle, request: Request<'_>) -> Result<(), String> {
     let file_path = request_path(&request, FILE_PATH_HEADER)?;
     let data = raw_request_data(&request)?;
-    atomic_write(Path::new(&file_path), data)
+    let path = Path::new(&file_path);
+    if is_moonsprite_backup_path(path) {
+        return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
+    }
+    if is_moonsprite_project_path(path) {
+        atomic_write_with_validation_and_backup(
+            path,
+            &project_backup_directory(&app)?,
+            |output| output.write_all(data).map_err(|error| error.to_string()),
+            validate_project_archive_file,
+        )
+    } else {
+        atomic_write(path, data)
+    }
 }
 
 #[tauri::command]
@@ -1417,22 +1557,33 @@ pub async fn write_scaled_png_atomic(
 }
 
 #[tauri::command]
-pub fn write_project_incremental(request: Request<'_>) -> Result<(), String> {
+pub async fn write_project_incremental(app: AppHandle, request: Request<'_>) -> Result<(), String> {
     let file_path = request_path(&request, FILE_PATH_HEADER)?;
     let source_path = request_path(&request, SOURCE_PATH_HEADER)?;
-    let patch = raw_request_data(&request)?;
-    let source = fs::File::open(&source_path).map_err(|error| error.to_string())?;
-    atomic_write_with(Path::new(&file_path), |output| {
-        merge_project_archive(source, patch, output)
+    if is_moonsprite_backup_path(Path::new(&file_path)) {
+        return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
+    }
+    let patch = raw_request_data(&request)?.to_vec();
+    let backup_directory = project_backup_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = fs::File::open(&source_path).map_err(|error| error.to_string())?;
+        atomic_write_with_validation_and_backup(
+            Path::new(&file_path),
+            &backup_directory,
+            |output| merge_project_archive(source, &patch, output),
+            validate_project_archive_file,
+        )
     })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         decode_file_path_header, merge_project_archive, parse_palette_hex, supports_preview_cache,
-        write_scaled_png, write_scaled_png_with_source, ScaledPngSourceFormat, SAVE_PLAN_ENTRY,
-        SCALED_PNG_EXPORT_CANCELED,
+        validate_project_archive, write_scaled_png, write_scaled_png_with_source,
+        ScaledPngSourceFormat, SAVE_PLAN_ENTRY, SCALED_PNG_EXPORT_CANCELED,
     };
     use std::io::{Cursor, Read, Write};
     use std::path::Path;
@@ -1480,6 +1631,7 @@ mod tests {
     fn accepts_every_supported_home_thumbnail_format() {
         for file_name in [
             "project.moonsprite",
+            "project.moonsprite.bak",
             "sprite.ase",
             "sprite.aseprite",
             "sprite.png",
@@ -1492,6 +1644,7 @@ mod tests {
             assert!(supports_preview_cache(Path::new(file_name)), "{file_name}");
         }
         assert!(!supports_preview_cache(Path::new("notes.txt")));
+        assert!(!supports_preview_cache(Path::new("notes.bak")));
     }
 
     #[test]
@@ -1862,5 +2015,37 @@ mod tests {
         assert!(
             merge_project_archive(Cursor::new(&source), &patch, Cursor::new(Vec::new())).is_err()
         );
+    }
+
+    #[test]
+    fn rejects_reuse_when_the_source_length_changed() {
+        let source = archive(&[("layers/a.rgba", b"changed size")]);
+        let plan =
+            br#"{"version":2,"entries":[{"path":"layers/a.rgba","crc32":0,"byteLength":1}]}"#;
+        let patch = archive(&[
+            ("manifest.json", br#"{"app":"MoonSprite","document":{}}"#),
+            (SAVE_PLAN_ENTRY, plan),
+        ]);
+        assert!(
+            merge_project_archive(Cursor::new(&source), &patch, Cursor::new(Vec::new())).is_err()
+        );
+    }
+
+    #[test]
+    fn validates_manifest_resource_references_without_reading_pixel_payloads() {
+        let valid = archive(&[
+            (
+                "manifest.json",
+                br#"{"app":"MoonSprite","document":{"layers":[{"dataFile":"layers/a.rgba"}]}}"#,
+            ),
+            ("layers/a.rgba", b"pixels"),
+        ]);
+        validate_project_archive(Cursor::new(&valid)).unwrap();
+
+        let missing = archive(&[(
+            "manifest.json",
+            br#"{"app":"MoonSprite","document":{"layers":[{"dataFile":"layers/missing.rgba"}]}}"#,
+        )]);
+        assert!(validate_project_archive(Cursor::new(&missing)).is_err());
     }
 }

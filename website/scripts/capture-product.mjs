@@ -49,7 +49,7 @@ try {
   if (!page) throw new Error('MoonSprite renderer page was not found.')
 
   await page.bringToFront()
-  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.setViewportSize({ width: 1920, height: 1080 })
   await page.locator('canvas.stage-canvas').waitFor({ state: 'visible', timeout: 60_000 })
   await delay(800)
 
@@ -62,8 +62,8 @@ try {
   if (layersBox && paletteBox) {
     const x = Math.max(0, Math.min(layersBox.x, paletteBox.x) - 12)
     const y = Math.max(0, Math.min(layersBox.y, paletteBox.y) - 12)
-    const right = Math.min(1440, Math.max(layersBox.x + layersBox.width, paletteBox.x + paletteBox.width) + 12)
-    const bottom = Math.min(900, Math.max(layersBox.y + layersBox.height, paletteBox.y + paletteBox.height) + 12)
+    const right = Math.min(1920, Math.max(layersBox.x + layersBox.width, paletteBox.x + paletteBox.width) + 12)
+    const bottom = Math.min(1080, Math.max(layersBox.y + layersBox.height, paletteBox.y + paletteBox.height) + 12)
     await page.screenshot({ path: join(outputDirectory, 'layers.png'), clip: { x, y, width: right - x, height: bottom - y } })
   } else {
     await page.locator('.layers-panel').screenshot({ path: join(outputDirectory, 'layers.png') })

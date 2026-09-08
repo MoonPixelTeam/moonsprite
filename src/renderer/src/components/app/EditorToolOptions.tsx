@@ -73,6 +73,7 @@ function BrushDitherPreview({ template, stage }: { template: BrushDitherTemplate
 
 const gradientStopCssColor = (color: RgbaColor): string => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
 const gradientStopIconContent = gradientStopIcon.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
+const gradientStopIdentity = (stop: GradientStop): string => `${stop.position.toFixed(6)}:${stop.color.r},${stop.color.g},${stop.color.b},${stop.color.a}`
 
 function GradientStopIcon({ color }: { color: RgbaColor }) {
   return <svg className="gradient-editor-stop-icon" width={11} height={16} viewBox="0 0 11 16" style={{ '--gradient-stop-color': gradientStopCssColor(color) } as React.CSSProperties} dangerouslySetInnerHTML={{ __html: gradientStopIconContent }} aria-hidden="true" />
@@ -81,10 +82,19 @@ function GradientStopIcon({ color }: { color: RgbaColor }) {
 function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryColor, onChange, onClose, t }: { open: boolean; stops: GradientStop[]; disabled: boolean; primaryColor: RgbaColor; secondaryColor: RgbaColor; onChange: (stops: GradientStop[]) => void; onClose: () => void; t: (key: TranslationKey, params?: Record<string, string | number>) => string }) {
   const barRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef<{ index: number; startX: number; startY: number; moved: boolean } | null>(null)
+  const suppressTrackClickRef = useRef(false)
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null)
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedStopKey, setSelectedStopKey] = useState(() => gradientStopIdentity(stops[0] ?? { position: 0, color: primaryColor }))
+  const selectedIndex = Math.max(0, stops.findIndex((stop) => gradientStopIdentity(stop) === selectedStopKey))
   const selectedStop = stops[selectedIndex] ?? stops[0]
+  const selectStop = (index: number): void => {
+    const stop = stops[index]
+    if (stop) setSelectedStopKey(gradientStopIdentity(stop))
+  }
+  // Keep the existing event handlers readable while selection is keyed by
+  // stop identity rather than by a position that can change after sorting.
+  const setSelectedIndex = selectStop
   const addStopAtPosition = (position: number): void => {
     const clampedPosition = Math.max(0.001, Math.min(0.999, position))
     const ordered = [...stops].sort((left, right) => left.position - right.position)
@@ -94,7 +104,8 @@ function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryCol
     if (!left || !right || Math.abs(right.position - left.position) < 0.002) return
     const amount = (clampedPosition - left.position) / (right.position - left.position)
     const next = [...ordered, { position: clampedPosition, color: interpolateRgbaColor(left.color, right.color, amount) }].sort((a, b) => a.position - b.position)
-    setSelectedIndex(next.findIndex((stop) => stop.position === clampedPosition))
+    const selected = next.find((stop) => stop.position === clampedPosition)
+    if (selected) setSelectedStopKey(gradientStopIdentity(selected))
     onChange(next)
   }
   const addStop = (): void => {
@@ -108,16 +119,31 @@ function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryCol
     addStopAtPosition(position)
   }
   const restoreColors = (): void => {
-    setSelectedIndex(0)
-    onChange([{ position: 0, color: { ...primaryColor } }, { position: 1, color: { ...secondaryColor } }])
+    const next = [{ position: 0, color: { ...primaryColor } }, { position: 1, color: { ...secondaryColor } }]
+    setSelectedStopKey(gradientStopIdentity(next[0]))
+    onChange(next)
   }
-  const updateStop = (index: number, patch: Partial<GradientStop>): void => onChange(stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, ...patch } : stop))
+  const updateStop = (index: number, patch: Partial<GradientStop>): void => {
+    const next = stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, ...patch } : stop)
+    const updated = next[index]
+    if (updated) setSelectedStopKey(gradientStopIdentity(updated))
+    onChange(next)
+  }
   useEffect(() => {
     const updateDraggedStop = (event: PointerEvent): void => {
       const drag = draggingRef.current
       const bar = barRef.current
       if (!drag || !bar || stops.length <= 2) return
-      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 3) return
+      // A click must never turn into a drag after pointer-up. Pointer capture
+      // and modal rerenders can deliver a late pointermove, so trust the
+      // native button state as the final guard and clear stale drag state.
+      if (event.buttons === 0) {
+        draggingRef.current = null
+        setDraggingIndex(null)
+        setPendingDeleteIndex(null)
+        return
+      }
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5) return
       drag.moved = true
       setDraggingIndex(drag.index)
       const bounds = bar.getBoundingClientRect()
@@ -132,17 +158,20 @@ function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryCol
     const finishDragging = (): void => {
       const drag = draggingRef.current
       if (drag && pendingDeleteIndex === drag.index && stops.length > 2) {
-        setSelectedIndex(Math.max(0, drag.index - 1))
-        onChange(stops.filter((_, stopIndex) => stopIndex !== drag.index))
+        const next = stops.filter((_, stopIndex) => stopIndex !== drag.index)
+        selectStop(Math.max(0, drag.index - 1))
+        onChange(next)
       }
       draggingRef.current = null
       setDraggingIndex(null)
       setPendingDeleteIndex(null)
+      window.setTimeout(() => { suppressTrackClickRef.current = false }, 0)
     }
     const cancelDragging = (): void => {
       draggingRef.current = null
       setDraggingIndex(null)
       setPendingDeleteIndex(null)
+      suppressTrackClickRef.current = false
     }
     window.addEventListener('pointermove', updateDraggedStop)
     window.addEventListener('pointerup', finishDragging)
@@ -154,8 +183,11 @@ function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryCol
     }
   }, [pendingDeleteIndex, stops])
   useEffect(() => {
-    if (selectedIndex >= stops.length) setSelectedIndex(Math.max(0, stops.length - 1))
-  }, [selectedIndex, stops.length])
+    if (stops.length === 0) return
+    if (stops.some((stop) => gradientStopIdentity(stop) === selectedStopKey)) return
+    const fallbackIndex = Math.min(selectedIndex, stops.length - 1)
+    setSelectedStopKey(gradientStopIdentity(stops[fallbackIndex]))
+  }, [selectedIndex, selectedStopKey, stops])
   if (!open || !selectedStop) return null
   const orderedStops = [...stops].sort((left, right) => left.position - right.position)
   const gradient = `linear-gradient(90deg, ${orderedStops.map((stop) => `${gradientStopCssColor(stop.color)} ${stop.position * 100}%`).join(', ')})`
@@ -163,10 +195,10 @@ function GradientStopsEditor({ open, stops, disabled, primaryColor, secondaryCol
     <ModalShell storageKey="gradient-stops-editor" defaultWidth={520} defaultHeight={210} fitContentKey="gradient-editor" minWidth={420} minHeight={180} maxWidth={680} maxHeight={480} resizable={false} className="gradient-stops-modal">
       <DialogHeader eyebrow="GRADIENT" title={t('toolOptions.gradientFreeform')} closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body gradient-editor-body">
-        <div className="gradient-editor-track-wrap" onClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; const bounds = barRef.current?.getBoundingClientRect(); if (!bounds || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom + 40) return; addStopAtPosition((event.clientX - bounds.left) / Math.max(1, bounds.width)) }}>
+        <div className="gradient-editor-track-wrap" onClick={(event) => { if (suppressTrackClickRef.current) { suppressTrackClickRef.current = false; return } if (event.target instanceof Element && event.target.closest('button')) return; const bounds = barRef.current?.getBoundingClientRect(); if (!bounds || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom + 40) return; addStopAtPosition((event.clientX - bounds.left) / Math.max(1, bounds.width)) }}>
           <div className="gradient-editor-scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
           <div ref={barRef} className="gradient-editor-track" style={{ background: gradient }} role="group" aria-label={t('toolOptions.gradientFreeform')}>
-            {stops.map((stop, index) => <button key={`${index}-${stop.position}`} type="button" className={`gradient-editor-stop ${selectedIndex === index ? 'selected' : ''} ${draggingIndex === index ? 'is-dragging' : ''} ${pendingDeleteIndex === index ? 'pending-delete' : ''}`.trim()} style={{ left: `${stop.position * 100}%` }} aria-label={`${t('toolOptions.gradientStopColor')} ${index + 1} ${Math.round(stop.position * 100)}%`} aria-pressed={selectedIndex === index} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setSelectedIndex(index); if (!disabled && stops.length > 2) draggingRef.current = { index, startX: event.clientX, startY: event.clientY, moved: false } }} onClick={(event) => { event.stopPropagation(); setSelectedIndex(index) }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setSelectedIndex(index); window.setTimeout(() => { document.querySelector<HTMLElement>('[data-gradient-selected-color] .color-value-trigger')?.click() }, 0) }}><GradientStopIcon color={stop.color} /></button>)}</div>
+            {stops.map((stop, index) => <button key={`gradient-stop-${index}`} type="button" className={`gradient-editor-stop ${selectedIndex === index ? 'selected' : ''} ${draggingIndex === index ? 'is-dragging' : ''} ${pendingDeleteIndex === index ? 'pending-delete' : ''}`.trim()} style={{ left: `calc(${stop.position * 100}% - 5.5px)` }} aria-label={`${t('toolOptions.gradientStopColor')} ${index + 1} ${Math.round(stop.position * 100)}%`} aria-pressed={selectedIndex === index} onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); event.stopPropagation(); suppressTrackClickRef.current = true; event.currentTarget.setPointerCapture?.(event.pointerId); setSelectedIndex(index); if (!disabled && stops.length > 2) draggingRef.current = { index, startX: event.clientX, startY: event.clientY, moved: false } }} onClick={(event) => { event.stopPropagation(); setSelectedIndex(index) }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setSelectedIndex(index); window.setTimeout(() => { document.querySelector<HTMLElement>('[data-gradient-selected-color] .color-value-trigger')?.click() }, 0) }}><GradientStopIcon color={stop.color} /></button>)}</div>
         </div>
         <div className="gradient-editor-controls">
           <div className="gradient-editor-value-controls"><span data-gradient-selected-color="true"><ColorValueControl color={selectedStop.color} density="compact" label={`${t('toolOptions.gradientStopColor')} ${selectedIndex + 1}`} roleLabel={t('toolOptions.gradientStopColor')} onChange={(color) => updateStop(selectedIndex, { color })} disabled={disabled} fillWithColor /></span>
@@ -551,6 +583,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
   ))
   const [brushSizeFlyoutOpen, setBrushSizeFlyoutOpen] = useState(false)
+  const [brushAngleFlyoutOpen, setBrushAngleFlyoutOpen] = useState(false)
   const [basicBrushFlyoutOpen, setBasicBrushFlyoutOpen] = useState(false)
   const [brushDitherFlyoutOpen, setBrushDitherFlyoutOpen] = useState(false)
   const [brushDitherResident, setBrushDitherResident] = useState(false)
@@ -630,6 +663,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     const closeOutside = (event: PointerEvent): void => {
       if (!(event.target instanceof Element)) return
       if (!event.target.closest('.brush-size-control')) setBrushSizeFlyoutOpen(false)
+      if (!event.target.closest('.brush-angle-control')) setBrushAngleFlyoutOpen(false)
       if (!event.target.closest('.brush-shape-selector')) setBasicBrushFlyoutOpen(false)
       if (!brushDitherResidentRef.current && !event.target.closest('.brush-dither-control, .brush-dither-popover')) closeBrushDitherFlyout()
       if (!event.target.closest('.fill-texture-control')) setFillTextureOpen(false)
@@ -640,12 +674,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       if (!(event.target instanceof Element)) return
       if (!keepsBrushDynamicsOpen(event.target)) setPressureFlyoutOpen(false)
     }
-    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false) }
-    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false) } }
+    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false) } }
     const closeAll = (event: Event): void => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (target && target !== 'popover') return
       setBrushSizeFlyoutOpen(false)
+      setBrushAngleFlyoutOpen(false)
       setBasicBrushFlyoutOpen(false)
       closeBrushDitherFlyout()
       setFillTextureOpen(false)
@@ -827,6 +862,10 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     }
   }, [session?.tool])
 
+  useEffect(() => {
+    if (!session || session.tool !== 'pencil' && session.tool !== 'eraser' && session.tool !== 'line' || session.brushShape !== 'square' && session.brushShape !== 'line' || session.brushImage?.intrinsicSize) setBrushAngleFlyoutOpen(false)
+  }, [session?.tool, session?.brushShape, session?.brushImage?.intrinsicSize])
+
   if (!session) return null
   const workspace = useWorkspace.getState()
   const fillKind = session.fillKind ?? 'bucket'
@@ -837,6 +876,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const isBrushTool = isStrokeBrushTool || isBucketBrushTool
   const activeProceduralBrush = session.brushImage && isProceduralBrushId(session.brushImage.id) ? session.brushImage : null
   const activeLibraryBrush = session.brushImage && !activeProceduralBrush ? session.brushImage : null
+  const showBrushAngle = isStrokeBrushTool && session.brushSize > 1 && !activeLibraryBrush?.intrinsicSize && (session.brushShape === 'square' || session.brushShape === 'line')
   const brushDither = session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
   const brushDitherMaximumStage = ditherStageCount(brushDither.template)
   const supportsSymmetry = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'selection' || session.tool === 'shape' || session.tool === 'line' || (session.tool === 'fill' && fillKind === 'bucket')
@@ -919,9 +959,9 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     </div>}
     {isBrushTool && <>
       {isStrokeBrushTool && <div className="brush-shape-selector">
-        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><PixelShapeIcon kind={session.brushShape} /></button>
+        <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><span className="brush-shape-preview" style={{ transform: `rotate(${showBrushAngle ? session.brushAngle : 0}deg)` }}><PixelShapeIcon kind={session.brushShape} /></span></button>
         {basicBrushFlyoutOpen && <div className="brush-shape-popover" role="menu" aria-label={t('toolOptions.basicBrushes')}>
-          {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <button key={shape} type="button" role="menuitemradio" className={`icon-button brush-preset ${!activeLibraryBrush && session.brushShape === shape ? 'selected' : ''}`} title={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-checked={!activeLibraryBrush && session.brushShape === shape} onClick={() => chooseBasicBrush(shape)}><PixelShapeIcon kind={shape} /></button>)}
+          {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <button key={shape} type="button" role="menuitemradio" className={`icon-button brush-preset ${!activeLibraryBrush && session.brushShape === shape ? 'selected' : ''}`} title={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-checked={!activeLibraryBrush && session.brushShape === shape} onClick={() => chooseBasicBrush(shape)}><span className="brush-shape-preview" style={{ transform: `rotate(${shape === 'square' || shape === 'line' ? session.brushAngle : 0}deg)` }}><PixelShapeIcon kind={shape} /></span></button>)}
         </div>}
       </div>}
       {isStrokeBrushTool && <>
@@ -985,6 +1025,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       </div>}
       <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail brush={activeLibraryBrush} /> : <PixelUtilityIcon kind="image" />}</button>
       {isStrokeBrushTool && !activeLibraryBrush?.intrinsicSize && <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.brushSizeValue')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushSize')}><RangeField ariaLabel={t('toolOptions.brushSizeSlider')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>}
+      {showBrushAngle && <div className="brush-size-control brush-angle-control" title={t('toolOptions.brushRotation')} onPointerDown={() => setBrushAngleFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
       {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
@@ -1051,8 +1092,8 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <ToleranceControl value={session.gradientTolerance} open={toleranceFlyoutOpen === 'gradient'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.gradientTolerance')} sliderLabel={t('toolOptions.gradientToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('gradient')} onChange={workspace.setGradientTolerance} />
       <CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousGradient')} checked={session.gradientContiguous} label={t('toolOptions.contiguous')} onChange={workspace.setGradientContiguous} />
       <GradientDitherSelect className="gradient-dither-select" value={gradientDither} density="compact" onChange={workspace.setGradientDither} />
-      {gradientDither === 'none' && <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>}
-      <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform) && gradientDither === 'none'} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
+      <div className="gradient-freeform-control"><button type="button" className="tool-text-button gradient-freeform-open" onClick={() => { if (!session.gradientFreeform) workspace.setGradientFreeform(true); setGradientStopsOpen(true) }}>{t('toolOptions.gradientFreeform')}</button></div>
+      <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform)} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     </>}
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
     {session.tool === 'move' && session.moveKind === 'move' && <CheckboxField className="tool-checkbox" checked={session.moveAutoSelect} label={t('toolOptions.autoSelectLayer')} onChange={workspace.setMoveAutoSelect} />}

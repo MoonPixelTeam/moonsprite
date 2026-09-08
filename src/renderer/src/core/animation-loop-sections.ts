@@ -139,6 +139,67 @@ export const reconcileAnimationLoopSectionsAfterFrameInsertion = (
   return { ...section }
 })
 
+/**
+ * Reconcile named ranges after a frame reorder. A frame dropped on a loop
+ * boundary is part of that loop even when the visual order does not change
+ * (for example, dropping the last frame on its own left edge).
+ */
+export const reconcileAnimationLoopSectionsAfterFrameReorder = (
+  sections: readonly AnimationLoopSection[] | undefined,
+  previousFrames: readonly AnimationFrame[],
+  remainingFrames: readonly AnimationFrame[],
+  reorderedFrames: readonly AnimationFrame[],
+  movingFrameIds: readonly string[],
+  insertionIndex: number,
+  dropSide: 'before' | 'after' | null = null
+): AnimationLoopSection[] => {
+  if (!sections?.length || !reorderedFrames.length || !movingFrameIds.length) return cloneAnimationLoopSections(sections)
+  const movingIds = new Set(movingFrameIds)
+  const orderUnchanged = previousFrames.length === reorderedFrames.length
+    && previousFrames.every((frame, index) => frame.id === reorderedFrames[index]?.id)
+  return normalizeAnimationLoopSections((sections ?? []).flatMap((section) => {
+    const range = resolveAnimationLoopSectionRange({ frames: [...previousFrames] }, section)
+    if (!range) return []
+    const sectionIds = previousFrames.slice(range.startIndex, range.endIndex + 1).map((frame) => frame.id)
+    const remainingSectionIds = sectionIds.filter((id) => !movingIds.has(id))
+    const selectedSectionIds = sectionIds.filter((id) => movingIds.has(id))
+    const movingIndexes = previousFrames
+      .map((frame, index) => movingIds.has(frame.id) ? index : -1)
+      .filter((index) => index >= 0)
+    const movingStartIndex = movingIndexes.length > 0 ? Math.min(...movingIndexes) : -1
+    const movingEndIndex = movingIndexes.length > 0 ? Math.max(...movingIndexes) : -1
+    const remainingIndexes = remainingFrames
+      .map((frame, index) => sectionIds.includes(frame.id) ? index : -1)
+      .filter((index) => index >= 0)
+    const includesDroppedFrames = orderUnchanged && dropSide
+      ? dropSide === 'before'
+        ? range.endIndex + 1 === movingStartIndex
+        : range.startIndex === movingEndIndex + 1
+      : remainingIndexes.length > 0
+        ? insertionIndex >= Math.min(...remainingIndexes) && insertionIndex <= Math.max(...remainingIndexes) + 1
+        : false
+    // When the drop target is one of the moving frames, the visual order can
+    // stay unchanged. In that case preserve the section's existing members;
+    // only the side of the boundary may add an outside frame to the range.
+    const memberIds = orderUnchanged
+      ? includesDroppedFrames
+        ? [...sectionIds, ...movingFrameIds]
+        : sectionIds
+      : remainingSectionIds.length === 0
+      ? selectedSectionIds
+      : includesDroppedFrames
+        ? [...remainingSectionIds, ...movingFrameIds]
+        : remainingSectionIds
+    const memberIndexes = memberIds
+      .map((id) => reorderedFrames.findIndex((frame) => frame.id === id))
+      .filter((index) => index >= 0)
+    if (memberIndexes.length === 0) return []
+    const startIndex = Math.min(...memberIndexes)
+    const endIndex = Math.max(...memberIndexes)
+    return [{ ...section, startFrameId: reorderedFrames[startIndex].id, endFrameId: reorderedFrames[endIndex].id }]
+  }), reorderedFrames)
+}
+
 export const reconcileAnimationLoopSectionsAfterFrameDeletion = (
   sections: readonly AnimationLoopSection[] | undefined,
   previousFrames: readonly AnimationFrame[],

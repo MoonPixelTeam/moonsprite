@@ -26,6 +26,7 @@ export type BrushTool = typeof BRUSH_TOOLS[number]
 export interface PersistedBrushProfile {
   brushSize: number
   brushShape: BrushShape
+  brushAngle: number
   brushDither: BrushDitherSettings
   brushTexture: BrushTexture
   brushTextureScale: number
@@ -85,6 +86,7 @@ const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, Proce
 export const defaultToolSettings: PersistedToolSettings = {
   brushSize: 1,
   brushShape: 'round',
+  brushAngle: 0,
   brushDither: { ...DEFAULT_BRUSH_DITHER_SETTINGS },
   brushTexture: 'solid',
   brushTextureScale: 1,
@@ -164,6 +166,7 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
   return {
     brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(128, Math.round(stored!.brushSize!))) : fallback.brushSize,
     brushShape: stored?.brushShape === 'square' || stored?.brushShape === 'round' || stored?.brushShape === 'line' ? stored.brushShape : fallback.brushShape,
+    brushAngle: Number.isFinite(stored?.brushAngle) ? Math.max(-180, Math.min(180, Math.round(stored!.brushAngle!))) : fallback.brushAngle,
     brushDither: normalizeBrushDitherSettings(stored?.brushDither, fallback.brushDither),
     brushTexture: stored?.brushTexture === 'cracks' || stored?.brushTexture === 'wood' || stored?.brushTexture === 'grain' || stored?.brushTexture === 'solid' ? stored.brushTexture : fallback.brushTexture,
     brushTextureScale: Number.isFinite(stored?.brushTextureScale) ? Math.max(1, Math.min(16, Math.round(stored!.brushTextureScale!))) : fallback.brushTextureScale,

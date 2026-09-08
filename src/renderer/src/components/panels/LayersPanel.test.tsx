@@ -6,7 +6,7 @@ import { animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationD
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { layersPanelRenderKey } from '@/core/panel-render-keys'
-import { ONION_SKIN_PREFERENCE_KEY, TIMELINE_HIDDEN_PREFERENCE_KEY } from '@/core/file-preferences'
+import { ONION_SKIN_PREFERENCE_KEY, SKIP_DISABLED_FRAMES_PREFERENCE_KEY, TIMELINE_HIDDEN_PREFERENCE_KEY } from '@/core/file-preferences'
 import { useWorkspace } from '@/store/workspace'
 import { finishAnimationCellOperation, revealLayerInPanel } from '@/components/layer-panel-reveal'
 import { FREE_TILE_INSTANCE_FLASH_EVENT } from '@/components/free-tile-instance-events'
@@ -902,6 +902,23 @@ describe('LayersPanel animation', () => {
     expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
   })
 
+  it('highlights the linked run at the active layer and frame by default', () => {
+    const document = createDocument('active linked cel visual', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const cels = timeline.frames.map((frame) => timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === frame.id)!).filter(Boolean)
+    expect(connectAnimationCels(document, cels.map((cel) => cel.id))).toBe(true)
+    useWorkspace.getState().clearAnimationSelection(true)
+
+    const { container } = render(<ConnectedLayersPanel />)
+
+    expect(container.querySelector('[data-linked-cel-block]')).toHaveClass('selected')
+  })
+
 
   it('keeps thumbnails on every cel in a linked group at enlarged density', () => {
     localStorage.setItem('moonsprite.layers.display-density', 'huge')
@@ -941,11 +958,15 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerLeave(densityLabel.parentElement!)
     expect(screen.queryByRole('tooltip')).toBeNull()
     expect(modal!.querySelector('.layer-settings-pair')).toBeNull()
+    const skipDisabledFrames = screen.getByRole('checkbox', { name: '左右切换时跳过停用帧' })
+    expect(skipDisabledFrames).toBeChecked()
+    fireEvent.click(skipDisabledFrames)
     fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     expect(modal!.querySelector('.layer-settings-pair')).not.toBeNull()
     fireEvent.submit(modal!)
 
     expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, previousFrames: 1, nextFrames: 1 })
+    expect(localStorage.getItem(SKIP_DISABLED_FRAMES_PREFERENCE_KEY)).toBe('false')
   })
 
   it('hides timeline editing and clears active animation interaction from layer settings', () => {
@@ -1988,6 +2009,56 @@ describe('LayersPanel properties', () => {
     useWorkspace.getState().undo()
     expect(root.groupId ?? null).toBeNull()
     expect(document.groups.find((group) => group.id === 'source-group')?.parentGroupId ?? null).toBeNull()
+  })
+
+  it('keeps the layer drag preview aligned with the pointer after scrolling', () => {
+    const document = createDocument('scrolled layer drag preview', 2, 2, 'rgba')
+    const first = getActiveLayer(document)
+    const second = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(second)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const list = container.querySelector<HTMLElement>('.layer-list')!
+    const firstRow = container.querySelector<HTMLElement>(`[data-layer-id="${first.id}"]`)!
+    Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 100, bottom: 300, width: 300, height: 200, x: 0, y: 100, toJSON: () => ({}) }) })
+    Object.defineProperty(list, 'scrollTop', { configurable: true, value: 160, writable: true })
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 900 })
+    Object.defineProperty(firstRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 120, bottom: 160, width: 300, height: 40, x: 0, y: 120, toJSON: () => ({}) }) })
+
+    fireEvent.pointerDown(firstRow, { button: 0, clientX: 150, clientY: 140 })
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 240 })
+
+    const ghost = container.querySelector<HTMLElement>('.layer-drag-ghost')
+    expect(ghost).toBeInTheDocument()
+    expect(ghost?.style.top).toBe('286.5px')
+    fireEvent.pointerUp(window, { clientX: 150, clientY: 240 })
+  })
+
+  it('auto-scrolls the layer list while dragging near an edge', () => {
+    vi.useFakeTimers()
+    try {
+      const document = createDocument('auto-scroll layer drag', 2, 2, 'rgba')
+      const first = getActiveLayer(document)
+      const second = createLayer('Second', 2, 2, 'rgba')
+      document.layers.push(second)
+      useWorkspace.getState().addSession(document)
+      const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+      const list = container.querySelector<HTMLElement>('.layer-list')!
+      const firstRow = container.querySelector<HTMLElement>(`[data-layer-id="${first.id}"]`)!
+      Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 100, bottom: 300, width: 300, height: 200, x: 0, y: 100, toJSON: () => ({}) }) })
+      Object.defineProperty(list, 'scrollTop', { configurable: true, value: 160, writable: true })
+      Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 900 })
+      Object.defineProperty(list, 'clientHeight', { configurable: true, value: 200 })
+
+      fireEvent.pointerDown(firstRow, { button: 0, clientX: 150, clientY: 140 })
+      fireEvent.pointerMove(window, { clientX: 150, clientY: 108 })
+      act(() => { vi.advanceTimersByTime(80) })
+
+      expect(list.scrollTop).toBeLessThan(160)
+      fireEvent.pointerUp(window, { clientX: 150, clientY: 108 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('applies right-click properties to a mixed selection as one action', () => {

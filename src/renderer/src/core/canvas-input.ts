@@ -9,7 +9,7 @@ import type { FreeTilePlacementEdit, FreeTileSourceEditSnapshot } from './free-t
 import type { FreeTileInstanceTransform } from './free-tile'
 import type { AlignmentGuide } from './alignment'
 import type { IsoLineDirection } from './isometric'
-import { POINTER_DEFAULT_PRESSURE, POINTER_PRESSURE_EPSILON, hasReliableBrushPressure, isPressurePointerType } from './pressure'
+import { hasReliableBrushPressure, isPressurePointerType } from './pressure'
 
 const selectionHitBoundaryCache = new WeakMap<SelectionMask, Int32Array>()
 
@@ -108,7 +108,18 @@ export interface CanvasPointerDeviceEvent {
   timeStamp: number
   pressure?: number
   buttons?: number
+  button?: number
 }
+
+export const isPenPointer = (pointerType: string | undefined): boolean => pointerType === 'pen'
+
+/** Windows Ink reports the pen tail as button 5. Some WebViews expose the
+ * same eraser as the pen's eraser bit instead. */
+export const isPenEraserEvent = (event: Pick<CanvasPointerDeviceEvent, 'pointerType' | 'button' | 'buttons'>): boolean =>
+  isPenPointer(event.pointerType) && (event.button === 5 || Boolean((event.buttons ?? 0) & 32))
+
+export const isPenBarrelButtonEvent = (event: Pick<CanvasPointerDeviceEvent, 'pointerType' | 'button' | 'buttons'>): boolean =>
+  isPenPointer(event.pointerType) && (event.button === 2 || Boolean((event.buttons ?? 0) & 2))
 
 export const PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS = 240
 
@@ -144,18 +155,15 @@ export class PointerPressureAdapter {
 
     // A few WebView/tablet combinations expose the pen path but report a
     // missing/zero pressure sample (and sometimes even `buttons=0`) while the
-    // tip is down. Some unsupported pen stacks instead repeat the browser's
-    // compatibility value (0.5) for the whole stroke. Keep both cases on the
-    // full-strength fallback until a non-default or changing sample proves
-    // that its pressure axis is working. Once proven, later zero samples are
-    // genuine light-pressure values and remain usable.
-    const pressureChanged = previous?.lastPressure !== undefined
-      && pressure !== undefined
-      && Math.abs(pressure - previous.lastPressure) > POINTER_PRESSURE_EPSILON
-    const pressureIsNonDefault = pressure !== undefined
-      && pressure > 0
-      && Math.abs(pressure - POINTER_DEFAULT_PRESSURE) > POINTER_PRESSURE_EPSILON
-    if (isPressurePointerType(pointerType)) pressureAvailable = pressureAvailable || pressureChanged || pressureIsNonDefault
+    // tip is down. The resolver keeps those individual samples on the
+    // full-strength fallback; once a finite sample arrives it can be used
+    // immediately because the pointer type already proves the device class.
+    // A pointer explicitly identified as a pen/stylus is already a trusted
+    // pressure device. Some Wacom/Windows Ink profiles emit the first samples
+    // with a missing or unchanged pressure value; waiting for a change would
+    // incorrectly disable pressure for the whole stroke. Missing samples are
+    // still handled by the pressure resolver's full-strength fallback.
+    if (isPressurePointerType(pointerType)) pressureAvailable = true
     else if (!pressureAvailable && hasReliableBrushPressure(pointerType, pressure, previous?.lastPressure)) pressureAvailable = true
 
     this.streams.set(event.pointerId, {
@@ -379,6 +387,7 @@ export interface CanvasDragState {
   tileRepeatStart?: CanvasPoint
   selectionStart?: SelectionMask | null
   selectionMode?: SelectionMode
+  magicWorkerPending?: boolean
   startPan?: CanvasPoint
   handle?: SelectionHandle
   shearHandle?: SelectionShearHandle
@@ -501,6 +510,9 @@ export interface CanvasDragState {
   gradientStops?: GradientStop[]
   gradientPaintRegion?: SelectionMask | null
   gradientFromCenter?: boolean
+  gradientAngle?: number
+  gradientRadialGeometry?: { center: CanvasPoint; radiusX: number; radiusY: number }
+  gradientRotationStart?: { pointer: CanvasPoint; angle: number; geometry: { center: CanvasPoint; radiusX: number; radiusY: number } }
   axisLock?: 'x' | 'y'
   sampleSecondary?: boolean
   tileSampling?: boolean
@@ -1024,6 +1036,9 @@ export class CanvasInputState {
   shiftHeld = false
   spaceHeld = false
   shiftLinePreview = false
+  temporaryEraserPointerId: number | null = null
+  temporaryToolPointerId: number | null = null
+  temporaryTool: ToolId | null = null
   modifierBrushSize: { x: number; y: number; size: number } | null = null
   private penPointerId: number | null = null
   private lastPenPointerTime = Number.NEGATIVE_INFINITY
@@ -1104,6 +1119,22 @@ export class CanvasInputState {
     this.modifierBrushSize = null
   }
 
+  setTemporaryEraser(pointerId: number): void { this.temporaryEraserPointerId = pointerId }
+  clearTemporaryEraser(pointerId?: number): void {
+    if (pointerId === undefined || this.temporaryEraserPointerId === pointerId) this.temporaryEraserPointerId = null
+  }
+
+  setTemporaryTool(pointerId: number, tool: ToolId): void {
+    this.temporaryToolPointerId = pointerId
+    this.temporaryTool = tool
+  }
+  clearTemporaryTool(pointerId?: number): void {
+    if (pointerId === undefined || this.temporaryToolPointerId === pointerId) {
+      this.temporaryToolPointerId = null
+      this.temporaryTool = null
+    }
+  }
+
   resetInteraction(): CanvasDragState | null {
     const drag = this.finish()
     this.pointer.visible = false
@@ -1114,6 +1145,9 @@ export class CanvasInputState {
     this.spaceHeld = false
     this.shiftLinePreview = false
     this.modifierBrushSize = null
+    this.temporaryEraserPointerId = null
+    this.temporaryToolPointerId = null
+    this.temporaryTool = null
     return drag
   }
 

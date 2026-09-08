@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
-import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints } from './tools'
+import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, outlineSelectionBoundary, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints, solidBrushPreviewRowSpans, solidBrushStampDifferenceRects } from './tools'
 import { combineSelection, ellipseSelection, lassoSelection, magicWandSelection, rasterLinePoints, rotatedSelectionBounds, selectionBoundarySegments, selectionContains, selectionQuadBounds, transformedSelectionBounds, transformedSelectionSourcePoint, transformSelectionMask } from './selection'
 import { resizeDocument } from './document'
 import { createProceduralBrush, createProceduralBrushes, createSelectionBrush, proceduralBrushCoverageAt } from './brushes'
@@ -126,6 +126,25 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(document, layer, 43, 39).a).toBe(0)
   })
 
+  it('records 128px solid strokes in typed point buffers and restores them exactly', () => {
+    const document = createDocument('typed large brush history', 256, 256, 'rgba')
+    const layer = getActiveLayer(document)
+    const edit = beginPixelEdit(layer.id)
+
+    paintBrush(document, layer, edit, 96, 128, 128, blue, 'square')
+    paintBrush(document, layer, edit, 100, 128, 128, blue, 'square')
+
+    expect(edit.before.size).toBe(0)
+    expect(edit.points?.count).toBe(132 * 128)
+    const history = commitPixelEdit(document, edit, '128px brush')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 40, 64).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 163, 191).a).toBe(0)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 40, 64)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 163, 191)).toEqual(blue)
+  })
+
 
 
   it('paints a selection brush with its captured source colors', () => {
@@ -219,7 +238,95 @@ describe('pixel tools', () => {
 
   it('rotates the line brush shape with the same angle semantics', () => {
     const mask = brushMaskOffsets(5, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 90)
-    expect(mask.map(({ x, y }) => `${x}:${y}`)).toEqual(['2:0', '2:1', '2:2', '2:3', '2:4'])
+    expect(new Set(mask.map(({ x, y }) => `${x}:${y}`))).toEqual(new Set(['2:0', '2:1', '2:2', '2:3', '2:4']))
+  })
+
+  it('keeps a rotated line brush centered on the pointer pixel', () => {
+    const angle = 45
+    const mask = brushMaskOffsets(5, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+    const stamp = brushStampDimensions(5, null, angle, 'line')
+    const anchor = brushStampAnchor(5, null, angle, 'line')
+    expect((Math.min(...mask.map(({ x }) => x)) + Math.max(...mask.map(({ x }) => x))) / 2).toBe(anchor.x)
+    expect((Math.min(...mask.map(({ y }) => y)) + Math.max(...mask.map(({ y }) => y))) / 2).toBe(anchor.y)
+    expect(stamp).toEqual({ width: 5, height: 5 })
+  })
+
+  it('keeps optimized rotated line brush pixels connected at every angle', () => {
+    for (const angle of [15, 30, 45, 60, 75, 120, 150, 210, 300]) {
+      const mask = brushMaskOffsets(9, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+      expect(mask.length).toBeGreaterThan(1)
+      for (let index = 1; index < mask.length; index += 1) {
+        expect(Math.max(Math.abs(mask[index].x - mask[index - 1].x), Math.abs(mask[index].y - mask[index - 1].y)), `line at ${angle} degrees`).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  it('ignores brush rotation for one-pixel square and line brushes', () => {
+    expect(brushMaskOffsets(1, 'square', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 37)).toEqual([{ x: 0, y: 0, coverage: 255 }])
+    expect(brushMaskOffsets(1, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 37)).toEqual([{ x: 0, y: 0, coverage: 255 }])
+  })
+
+  it('does not leave enclosed holes when a rotated line brush is moved quickly', () => {
+    for (const [angle, from, to] of [
+      [15, { x: 12, y: 48 }, { x: 116, y: 48 }],
+      [30, { x: 12, y: 20 }, { x: 116, y: 72 }],
+      [45, { x: 12, y: 48 }, { x: 116, y: 48 }],
+      [60, { x: 12, y: 72 }, { x: 116, y: 20 }],
+      [90, { x: 64, y: 12 }, { x: 64, y: 84 }],
+      [135, { x: 12, y: 48 }, { x: 116, y: 48 }]
+    ] as const) {
+      const document = createDocument(`fast rotated line brush ${angle}`, 128, 96, 'rgba')
+      const layer = getActiveLayer(document)
+      paintLine(document, layer, beginPixelEdit(layer.id), from.x, from.y, to.x, to.y, 32, blue, null, 'line', 'solid', 1, null, undefined, 0, 'paint', undefined, 'raster', undefined, undefined, undefined, { fromAngle: angle, toAngle: angle }, 'off', undefined, true)
+      const painted = new Set<string>()
+      for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+        if (readLayerColorAt(document, layer, x, y).a > 0) painted.add(`${x}:${y}`)
+      }
+      let enclosedHoles = 0
+      for (let y = 1; y < document.height - 1; y += 1) for (let x = 1; x < document.width - 1; x += 1) {
+        if (painted.has(`${x}:${y}`)) continue
+        if ([`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`].every((key) => painted.has(key))) enclosedHoles += 1
+      }
+      expect(enclosedHoles, `line at ${angle} degrees`).toBe(0)
+    }
+  })
+
+  it('rotates solid square brush stamps instead of keeping an axis-aligned block', () => {
+    const mask = brushMaskOffsets(5, 'square', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 45)
+    expect(Math.max(...mask.map(({ x }) => x))).toBeGreaterThan(4)
+    expect(Math.max(...mask.map(({ y }) => y))).toBeGreaterThan(4)
+    expect(mask.length).toBeLessThan(25)
+  })
+
+  it('compresses solid brush hover footprints without changing their raster pixels', () => {
+    for (const [size, shape, angle] of [
+      [17, 'round', 0],
+      [16, 'square', 0],
+      [17, 'square', 37],
+      [17, 'line', 63]
+    ] as const) {
+      const mask = brushMaskOffsets(size, shape, 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+      const previewPixels = new Set<string>()
+      for (const span of solidBrushPreviewRowSpans(size, shape, angle, true)) {
+        for (let x = span.left; x <= span.right; x += 1) previewPixels.add(`${x}:${span.y}`)
+      }
+      expect(previewPixels).toEqual(new Set(mask.map(({ x, y }) => `${x}:${y}`)))
+    }
+  })
+
+  it('keeps large solid hover footprints proportional to brush diameter and cached', () => {
+    const square = solidBrushPreviewRowSpans(1024, 'square')
+    const round = solidBrushPreviewRowSpans(1024, 'round')
+    expect(square).toHaveLength(1024)
+    expect(round.length).toBeLessThanOrEqual(1024)
+    expect(solidBrushPreviewRowSpans(1024, 'square')).toBe(square)
+    expect(solidBrushPreviewRowSpans(1024, 'round')).toBe(round)
+  })
+
+  it('invalidates only the newly exposed strip for adjacent solid stamps', () => {
+    const rects = solidBrushStampDifferenceRects({ x: 64, y: 64 }, { x: 65, y: 64 }, 32, 'square')
+    expect(rects.reduce((area, rect) => area + rect.width * rect.height, 0)).toBe(32)
+    expect(rects.every((rect) => rect.width === 1)).toBe(true)
   })
 
 
@@ -656,6 +763,14 @@ describe('pixel tools', () => {
     expect(readLayerColor(insideDocument, insideLayer, 4)).toEqual(blue)
   })
 
+  it('strokes an empty selection along its inside boundary', () => {
+    const document = createDocument('empty selection boundary', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const edit = outlineSelectionBoundary(document, layer, { x: 1, y: 1, width: 3, height: 3 }, { r: 255, g: 0, b: 0, a: 255 }, 1)
+    expect(edit).not.toBeNull()
+    expect(edit?.before.size).toBe(8)
+  })
+
   it('treats the configured background color as existing outline instead of source content', () => {
     const document = createDocument('background-aware outline', 5, 5, 'rgba')
     const layer = getActiveLayer(document)
@@ -717,6 +832,7 @@ describe('pixel tools', () => {
       { id: 2, name: 'second', color: second },
       { id: 3, name: 'midpoint', color: midpoint }
     ]
+    document.paletteOrder = [0, 1, 2, 3]
     paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
 
@@ -740,6 +856,7 @@ describe('pixel tools', () => {
       { id: 3, name: 'lower relative luminance', color: lowerRelativeLuminance },
       { id: 4, name: 'middle relative luminance', color: middleRelativeLuminance }
     ]
+    document.paletteOrder = [0, 1, 2, 3, 4]
     paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
     paintLine(document, layer, beginPixelEdit(layer.id), 4, 4, 4, 4, 1, lowerRelativeLuminance)
@@ -749,6 +866,30 @@ describe('pixel tools', () => {
 
     expect(edit).not.toBeNull()
     expect(readLayerColorAt(document, layer, 2, 1)).toEqual(middleRelativeLuminance)
+  })
+
+  it('uses only the current palette after switching away from an old palette', () => {
+    const document = createDocument('switched palette anti-alias color', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 0, g: 0, b: 0, a: 255 }
+    const second = { r: 255, g: 255, b: 255, a: 255 }
+    const oldPaletteMidpoint = { r: 120, g: 120, b: 120, a: 255 }
+    const currentPaletteColor = { r: 220, g: 40, b: 40, a: 255 }
+    document.palette = [
+      { id: 0, name: 'transparent', color: { r: 0, g: 0, b: 0, a: 0 } },
+      { id: 1, name: 'first', color: first },
+      { id: 2, name: 'second', color: second },
+      { id: 3, name: 'old midpoint', color: oldPaletteMidpoint },
+      { id: 4, name: 'current color', color: currentPaletteColor }
+    ]
+    document.paletteOrder = [0, 1, 2, 4]
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(currentPaletteColor)
   })
 
   it('keeps canvas-source anti-alias colors opaque regardless of the opacity setting', () => {
@@ -831,6 +972,7 @@ describe('pixel tools', () => {
       { id: 2, name: 'inner', color: inner },
       { id: 3, name: 'midpoint', color: midpoint }
     ]
+    document.paletteOrder = [0, 1, 2, 3]
     paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 5, height: 5 }, 'rectangle', outer)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 4, 4, 1, inner)
 

@@ -25,6 +25,8 @@ export interface CanvasPreviewSnapshot {
   invalidation?: CanvasPreviewInvalidation
   movingLayerIds?: readonly string[]
   selectionPreview?: CanvasPreviewSelection
+  /** High-frequency raster edits are shown by the editor immediately; auxiliary canvases catch up after commit. */
+  deferAuxiliaryDraw?: boolean
 }
 
 type CanvasPreviewListener = (snapshot: CanvasPreviewSnapshot | null) => void

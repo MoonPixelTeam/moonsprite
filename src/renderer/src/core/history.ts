@@ -302,11 +302,11 @@ const regionPatchFromDenseEdit = (layer: RasterLayer, dense: PixelEditDenseRegio
     y: dense.y,
     width: dense.width,
     height: dense.height,
-    before: dense.before,
-    after: dense.after
+    before: dense.before.slice(),
+    after: dense.after.slice()
   }
-  const before = new Uint8ClampedArray(dense.before.buffer as ArrayBuffer, dense.before.byteOffset, dense.before.byteLength)
-  const after = new Uint8ClampedArray(dense.after.buffer as ArrayBuffer, dense.after.byteOffset, dense.after.byteLength)
+  const before = new Uint8ClampedArray(dense.before.buffer as ArrayBuffer, dense.before.byteOffset, dense.before.byteLength).slice()
+  const after = new Uint8ClampedArray(dense.after.buffer as ArrayBuffer, dense.after.byteOffset, dense.after.byteLength).slice()
   return { format: layer.format, x: dense.x, y: dense.y, width: dense.width, height: dense.height, before, after }
 }
 

@@ -56,6 +56,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     secondaryColor: { ...source.secondaryColor },
     brushSize: source.brushSize,
     brushShape: source.brushShape,
+    brushAngle: source.brushAngle,
     brushDither: structuredClone(source.brushDither),
     brushTexture: source.brushTexture,
     brushTextureScale: source.brushTextureScale,
@@ -117,7 +118,11 @@ const MASK_WHITE: RgbaColor = { r: 255, g: 255, b: 255, a: 255 }
 const MASK_BLACK: RgbaColor = { r: 0, g: 0, b: 0, a: 255 }
 
 export const enterLayerMaskEditing = (session: DocumentSession): void => {
-  if (!session.layerMaskColorMemory) session.layerMaskColorMemory = { primary: { ...session.primaryColor }, secondary: { ...session.secondaryColor } }
+  // Entering the same mask context again happens during selection restoration
+  // (for example after undo/redo). Keep the user's current mask paint colors
+  // instead of resetting them to white/black on every re-entry.
+  if (session.layerMaskColorMemory) return
+  session.layerMaskColorMemory = { primary: { ...session.primaryColor }, secondary: { ...session.secondaryColor } }
   session.primaryColor = { ...MASK_WHITE }
   session.secondaryColor = { ...MASK_BLACK }
 }
@@ -162,6 +167,7 @@ export const selectedTransformLayersAreEditable = (
 export const brushProfileFromSession = (session: DocumentSession): BrushProfile => ({
   brushSize: session.brushSize,
   brushShape: session.brushShape,
+  brushAngle: session.brushAngle,
   brushDither: { ...(session.brushDither ?? defaultToolSettings.brushDither) },
   brushTexture: session.brushTexture,
   brushTextureScale: session.brushTextureScale,
@@ -180,6 +186,7 @@ export const brushProfileFromSession = (session: DocumentSession): BrushProfile 
 export const applyBrushProfile = (session: DocumentSession, profile: BrushProfile): void => {
   session.brushSize = profile.brushSize
   session.brushShape = profile.brushShape
+  session.brushAngle = profile.brushAngle
   session.brushDither = { ...profile.brushDither }
   session.brushTexture = profile.brushTexture
   session.brushTextureScale = profile.brushTextureScale
@@ -220,6 +227,7 @@ function persistedBrushProfileFromSession(profile: BrushProfile): PersistedBrush
   return {
     brushSize: profile.brushSize,
     brushShape: profile.brushShape,
+    brushAngle: profile.brushAngle,
     brushDither: { ...profile.brushDither },
     brushTexture: profile.brushTexture,
     brushTextureScale: profile.brushTextureScale,
@@ -353,6 +361,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     secondaryColor: defaultSecondary,
     brushSize: settings.brushSize,
     brushShape: settings.brushShape,
+    brushAngle: settings.brushAngle,
     brushDither: { ...settings.brushDither },
     brushTexture: settings.brushTexture,
     brushTextureScale: settings.brushTextureScale,
@@ -452,13 +461,14 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     layerSelectionAnchorId: document.activeLayerId,
     collapsedGroupIds: [],
     animationPlaying: false,
-    animationPlaybackRate: 1,
-    animationPlaybackMode: timeline.loop ? 'all' : 'once',
+    animationPlaybackRate: editorPreferences.animationPlaybackRate,
+    animationPlaybackMode: editorPreferences.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once'),
     animationPlaybackStartFrameId: null,
     animationPlaybackLoopSectionId: null,
     animationPlaybackLoopIteration: 0,
     animationPlaybackLoopSectionRepeatIndefinitely: false,
-    animationReturnToStart: false,
+    animationPlaybackTagCycleSectionId: null,
+    animationReturnToStart: editorPreferences.animationReturnToStart,
     timelineActiveContext: {
       row: { kind: 'layer', ownerKind: 'layer', ownerId: document.activeLayerId },
       frameId: timeline.activeFrameId,

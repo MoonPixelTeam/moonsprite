@@ -310,6 +310,29 @@ async function benchmarkScenarioPage(page, size, scenario) {
     }))
   }
 
+  if (actionKind === 'brush-128-zoom2') {
+    if (initialView) {
+      Object.assign(initialView, { zoom: 2, panX: 0, panY: 0 })
+      await prepareToolScenario(page, initialView, 'pencil')
+      await page.evaluate(() => {
+        const harness = window.__moonSpritePerformanceHarness
+        if (!harness) throw new Error('Performance harness is unavailable.')
+        harness.setBrushSize(128)
+      })
+      await page.waitForTimeout(50)
+    }
+    results.push(await runScenario(page, size, scenario, async () => {
+      await page.mouse.move(center.x - 180, center.y - 80)
+      await page.mouse.down({ button: 'left' })
+      for (let index = 0; index < 72; index += 1) {
+        const progress = index / 71
+        await page.mouse.move(center.x - 180 + progress * 360, center.y - 80 + Math.sin(progress * Math.PI * 4) * 95)
+        await page.waitForTimeout(12)
+      }
+      await page.mouse.up({ button: 'left' })
+    }))
+  }
+
   if (actionKind === 'shape') {
     if (initialView) await prepareToolScenario(page, initialView, 'shape', null, 'ellipse')
     results.push(await runScenario(page, size, scenario, async () => {
@@ -462,6 +485,30 @@ async function benchmarkScenarioPage(page, size, scenario) {
         const frames = await harness.playAnimation()
         if (frames < 2) throw new Error(`Expected an animated project, received ${frames} frame.`)
       })
+    }))
+  }
+
+  if (actionKind === 'playback-pan') {
+    if (initialView) await resetSimpleScenario(page, initialView)
+    results.push(await runScenario(page, size, 'complex-playback-pan', async () => {
+      await page.evaluate(() => {
+        const harness = window.__moonSpritePerformanceHarness
+        if (!harness) throw new Error('Performance harness is unavailable.')
+        harness.setAnimationPlaying(true)
+      })
+      try {
+        await page.waitForTimeout(50)
+        await page.mouse.move(center.x - 90, center.y - 45)
+        await page.mouse.down({ button: 'middle' })
+        for (let index = 0; index < 72; index += 1) {
+          const progress = index / 71
+          await page.mouse.move(center.x - 90 + progress * 180, center.y - 45 + Math.sin(progress * Math.PI * 2) * 70)
+          await page.waitForTimeout(12)
+        }
+        await page.mouse.up({ button: 'middle' })
+      } finally {
+        await page.evaluate(() => window.__moonSpritePerformanceHarness?.setAnimationPlaying(false))
+      }
     }))
   }
 

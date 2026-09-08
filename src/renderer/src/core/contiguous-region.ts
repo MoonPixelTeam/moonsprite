@@ -467,9 +467,9 @@ const floodBinaryRegion = (
   const selected = new Uint8Array(total)
   let stack = new Uint32Array(Math.min(total, 1024))
   let stackLength = 0
+  const allowed = (index: number): boolean => selected[index] === 0 && virtualBarrier?.[index] !== 1 && matches(index)
   const push = (index: number): void => {
-    if (selected[index] === 1 || virtualBarrier?.[index] === 1 || !matches(index)) return
-    selected[index] = 1
+    if (!allowed(index)) return
     if (stackLength === stack.length) {
       const expanded = new Uint32Array(Math.min(total, Math.max(stack.length * 2, 1024)))
       expanded.set(stack)
@@ -481,12 +481,24 @@ const floodBinaryRegion = (
   push(startIndex)
   while (stackLength > 0) {
     const index = stack[--stackLength]
-    const x = index % width
-    const y = Math.floor(index / width)
-    if (x > 0) push(index - 1)
-    if (x + 1 < width) push(index + 1)
-    if (y > 0) push(index - width)
-    if (y + 1 < height) push(index + width)
+    const rowStart = index - index % width
+    const rowEnd = rowStart + width
+    let left = index
+    let right = index + 1
+    while (left > rowStart && allowed(left - 1)) left -= 1
+    while (right < rowEnd && allowed(right)) right += 1
+    selected.fill(1, left, right)
+    for (const delta of [-width, width]) {
+      const neighborStart = left + delta
+      const neighborEnd = right + delta
+      if (neighborStart < 0 || neighborEnd > total) continue
+      let inRun = false
+      for (let neighbor = neighborStart; neighbor < neighborEnd; neighbor += 1) {
+        if (!allowed(neighbor)) { inRun = false; continue }
+        if (!inRun) push(neighbor)
+        inRun = true
+      }
+    }
   }
   return selected
 }

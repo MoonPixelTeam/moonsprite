@@ -27,6 +27,8 @@ export interface DecodeWorkerResponse {
 
 const fileNameFromPath = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath
 const fileExtension = (filePath: string): string => filePath.split('.').pop()?.toLowerCase() ?? ''
+const isMoonSpriteBackupPath = (filePath: string): boolean => /\.moonsprite\.bak$/i.test(filePath)
+const isMoonSpriteProjectPath = (filePath: string): boolean => /\.moonsprite(?:\.bak)?$/i.test(filePath)
 
 const collectTransferables = (root: unknown): Transferable[] => {
   const buffers = new Set<ArrayBuffer>()
@@ -86,15 +88,17 @@ export const processDocumentDecodeRequest = (
   try {
     const suffix = fileExtension(filePath)
     const fileName = fileNameFromPath(filePath)
+    const project = isMoonSpriteProjectPath(filePath)
+    const backup = isMoonSpriteBackupPath(filePath)
     const reportDecodeProgress = (progress: number): void => {
       if (reportProgress) postMessage({ id, progress: prepareInitialComposite ? progress * 0.9 : progress }, [])
     }
-    const document = suffix === 'moonsprite'
+    const document = project
       ? decodeProject(data, reportDecodeProgress)
       : decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), reportDecodeProgress)
-    document.filePath = suffix === 'moonsprite' ? filePath : null
-    document.sourceFilePath = filePath
-    document.name = fileName
+    document.filePath = project && !backup ? filePath : null
+    document.sourceFilePath = backup ? undefined : filePath
+    document.name = backup ? fileName.replace(/\.bak$/i, '') : fileName
 
     const shouldPrepareInitialComposite = prepareInitialComposite && canPrepareInitialDocumentComposite(document.width, document.height)
     prepareRuntimeRasterMetadata(document)

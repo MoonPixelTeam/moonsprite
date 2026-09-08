@@ -2719,6 +2719,36 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
   return output
 }
 
+/**
+ * Responsive counterpart used by long-running exports. The sampler is
+ * compiled once, then rows are processed in small batches so the renderer can
+ * repaint progress and react to cancellation while large canvases composite.
+ */
+export async function compositeRegionAsync(
+  document: SpriteDocument,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  onProgress?: (value: number) => void,
+  shouldCancel?: () => boolean,
+  rowsPerBatch = 8
+): Promise<Uint8ClampedArray> {
+  const output = new Uint8ClampedArray(width * height * 4)
+  const sample = createCompositePointSampler(document)
+  const yieldHost = (): Promise<void> => new Promise((resolve) => {
+    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') window.setTimeout(resolve, 0)
+    else setTimeout(resolve, 0)
+  })
+  for (let y = 0; y < height; y += 1) {
+    if (shouldCancel?.()) throw new Error('MoonSprite export canceled.')
+    for (let x = 0; x < width; x += 1) writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y))
+    onProgress?.((y + 1) / Math.max(1, height) * 100)
+    if ((y + 1) % Math.max(1, rowsPerBatch) === 0 && y + 1 < height) await yieldHost()
+  }
+  return output
+}
+
 export function compositePixel(document: SpriteDocument, index: number): RgbaColor {
   return compositePixelWithLayerColor(document, index)
 }

@@ -1,13 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from './view-geometry'
+import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from './view-geometry'
 
 describe('view rotation geometry', () => {
+  it('snaps Shift-constrained view rotation to sixteen directions', () => {
+    expect(snapViewRotation(11)).toBe(0)
+    expect(snapViewRotation(12)).toBe(22.5)
+    expect(snapViewRotation(33)).toBe(22.5)
+    expect(snapViewRotation(348)).toBe(337.5)
+  })
+
   it('uses the viewport center for a view-centered rotation indicator', () => {
     expect(viewRotationPivot(800, 600, 120, -45, 'view')).toEqual({ x: 400, y: 300 })
   })
 
   it('uses the panned canvas center for a canvas-centered rotation indicator', () => {
     expect(viewRotationPivot(800, 600, 120, -45, 'canvas')).toEqual({ x: 520, y: 255 })
+  })
+
+  it('places the rotation indicator to the left of the pointer', () => {
+    expect(rotationIndicatorPointLeftOfPointer(800, 600, { x: 500, y: 300 })).toEqual({ x: 340, y: 300 })
+  })
+
+  it('keeps a pointer-left rotation indicator inside the viewport', () => {
+    expect(rotationIndicatorPointLeftOfPointer(800, 600, { x: 20, y: 20 })).toEqual({ x: 64, y: 96 })
+    expect(rotationIndicatorPointLeftOfPointer(800, 600, { x: 780, y: 580 })).toEqual({ x: 620, y: 504 })
   })
 
   it('tracks the displayed canvas center through pan, mirror, and rotation', () => {

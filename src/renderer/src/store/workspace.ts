@@ -1,11 +1,11 @@
 import { create } from 'zustand'
 import type { SelectionQuad } from '@shared/types'
-import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
-import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
-import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
+import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
+import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
@@ -14,8 +14,8 @@ import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-f
 import { openProgress } from '@/core/open-progress'
 import { saveProgress } from '@/core/save-progress'
 import { createSelectionBrush, encodeBrushPng } from '@/core/brushes'
-import { createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
-import { antiAliasSelection, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, captureSelectionTransform, clampSelection, clearSelection, fillSelectionOrCanvas, flipLayer, flipSelection, flipSelectionTransformSource, moveSelection, outlineSelection, replaceLayerColor, restoreSelectionTranslationPreview, selectionTranslationPreviewEdit, transformSelectionCopy, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from '@/core/tools'
+import { buildSpriteSheetExportDocument, createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
+import { antiAliasSelection, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, captureSelectionTransform, clampSelection, clearSelection, fillSelectionOrCanvas, flipLayer, flipSelection, flipSelectionTransformSource, moveSelection, outlineSelection, outlineSelectionBoundary, replaceLayerColor, restoreSelectionTranslationPreview, selectionTranslationPreviewEdit, transformSelectionCopy, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from '@/core/tools'
 import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransformStates, selectionTransformLayerForState } from '@/core/selection-transform-targets'
 import { applyRelativeLuminance, colorEquals, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from '@/core/raster'
 import { combineSelection, flipSelectionMask, invertSelectionMask, rotateSelectionTargetAroundPivot, selectionContains, selectionQuadFromRect, shearTransformedSelection, shiftSelection, transformSelectionMask, transformSelectionMaskQuad, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from '@/core/selection'
@@ -37,7 +37,7 @@ import { resolveClipboardPlacement } from '@/core/clipboard-placement'
 import { cloneProceduralSettings, defaultToolSettings, loadToolSettings, normalizePersistedBrushProfile, saveToolSettings, type BrushTool, type PersistedBrushProfile, type PersistedToolSettings } from '@/core/tool-preferences'
 import { normalizeGapClosingThreshold } from '@/core/contiguous-region'
 import { normalizeBrushDitherSettings } from '@/core/gradient-color'
-import { cloneOutlineSettings, normalizeOutlineSettings } from '@/core/outline-settings'
+import { cloneOutlineSettings, defaultOutlineSettings, normalizeOutlineSettings } from '@/core/outline-settings'
 import { readStoredString } from '@/core/storage'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY } from '@/core/panel-preferences'
 import { normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots } from '@/core/palette-layout'
@@ -58,9 +58,9 @@ import { cloneFreeTileCelData, createFreeTileCelData, freeTileCelDataEqual, free
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, applyFreeTileReferences, applyFreeTileSourceLayerSnapshot, applyFreeTileSourceSnapshot, captureFreeTileImageResizeState, captureFreeTileReferences, captureFreeTileSourceReferences, captureFreeTileSourceSnapshot, ensureFreeTileTilesetOwnership, freeTileCelTargetAt, freeTileLayerIdsForSource, freeTileLayersForSet, freeTileLayerTilesets, freeTileSetIdForLayer, freeTileSourceEditSnapshotBytes, freeTileSourceEditSnapshotsEqual, freeTileSourceOwnerForId, freeTileSourcesForLayer, rasterSurfaceToFreeTileStamps, replaceFreeTileSetSources, rerenderFreeTileReferences, rerenderFreeTileSourceReferences, resizeFreeTileDocumentImage, validateFreeTileImageResize, type FreeTileCelTarget, type FreeTilePlacementEdit, type FreeTileSourceEditSnapshot } from '@/core/free-tile-document'
 import { createFreeTileSourceEditRaster, freeTileSelectionToEditRaster, freeTileSourceSnapshotFromEditRaster, freeTileTransformTargetToEditRaster } from '@/core/free-tile-edit'
 import { filterPresetById, lcdChannelColorAtNormalized, lcdChannelOffset, lcdScanlineColorAtNormalized, normalizeLcdScreenFilterOptions, renderFilterPreset, type FilterPresetId, type LcdScreenFilterOptions } from '@/core/filter-presets'
-import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, openDocumentFile, saveDocumentFile, type ExportOptions, type SaveAsOptions } from './document-file-service'
+import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, openDocumentFile, saveDocumentFile, type ExportOptions, type FileOperationLifecycle, type SaveAsOptions } from './document-file-service'
 import { RecoveryService } from './recovery-service'
-import { clipboardService, selectionClipboardImage, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
+import { clipboardService, selectionClipboardImage, type AnimationCelClipboardSnapshot, type AnimationFrameClipboardSnapshot, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
 import { captureAdjustmentSnapshot, captureLayerUi, commitLayerMerge, prepareAdjustmentSnapshotTargets, restoreAdjustmentSnapshot, restoreAdjustmentSnapshotRegions, restorePreparedAdjustmentSnapshotLayer } from './workspace-history'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, captureDocumentStructureSnapshot, captureLayerContentSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, documentStructureDeltaBytes, layerContentSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot, restoreDocumentStructureSnapshot, restoreLayerContentSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
 import { activeLayerMask, activePaintLayer, applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, cloneSelectionMask, copyCanvasToolSettings, enterLayerMaskEditing, exitLayerMaskEditing, isBrushTool, isToolAvailableForSession, persistToolSettings, remapSelectionBrushColors, rememberBrushProfile, selectedTransformLayersForSession, sessionFromDocument, touch, touchMetadata } from './workspace-session'
@@ -82,6 +82,59 @@ export type { AntiAliasPreview, ColorReplacementPreview, ColorReplacementTarget,
 
 function activeSession(state: WorkspaceState): DocumentSession | null {
   return state.sessions.find((session) => session.document.id === state.activeId) ?? null
+}
+
+type ExportConflictPolicy = 'overwrite' | 'rename' | null
+
+const createExportConflictHandler = (
+  requestDialog: WorkspaceState['requestDialog'],
+  allowBulk: boolean
+): NonNullable<FileOperationLifecycle['onConflict']> => {
+  let policy: ExportConflictPolicy = null
+
+  return async (filePath, suggestedPath) => {
+    if (policy) return policy
+
+    const choice = await requestDialog({
+      title: tr('file.export.conflictTitle'),
+      message: tr('file.export.conflictMessage', { name: fileNameFromPath(filePath) }),
+      detail: tr('file.export.conflictDetail', { suggestedName: fileNameFromPath(suggestedPath) }),
+      choices: [
+        { id: 'overwrite', label: tr('file.export.conflictOverwrite'), tone: 'danger' },
+        { id: 'rename', label: tr('file.export.conflictRename'), tone: 'primary' },
+        ...(allowBulk ? [
+          { id: 'overwrite-all', label: tr('file.export.conflictOverwriteAll'), tone: 'danger' as const },
+          { id: 'rename-all', label: tr('file.export.conflictRenameAll'), tone: 'primary' as const }
+        ] : []),
+        { id: 'cancel', label: tr('file.export.conflictCancel'), tone: 'quiet' }
+      ]
+    })
+
+    if (choice === 'overwrite-all') {
+      policy = 'overwrite'
+      return policy
+    }
+    if (choice === 'rename-all') {
+      policy = 'rename'
+      return policy
+    }
+    return choice === 'overwrite' || choice === 'rename' ? choice : 'cancel'
+  }
+}
+
+const exportTaskCount = (document: SpriteDocument, options?: ExportOptions): number => {
+  switch (options?.target) {
+    case 'frames':
+      return Math.max(1, document.animation?.frames.length ?? 1)
+    case 'slices': {
+      const slices = document.slices ?? []
+      return options.sliceId ? (slices.some((slice) => slice.id === options.sliceId) ? 1 : 0) : slices.length
+    }
+    case 'layer':
+      return options.layerId && document.layers.some((layer) => layer.id === options.layerId) ? 1 : document.layers.length
+    default:
+      return 1
+  }
 }
 
 const applyStoredPaletteToNewDocument = (document: SpriteDocument, palette: StoredPalette): void => {
@@ -1357,6 +1410,13 @@ const clearAnimationLoopPlayback = (session: DocumentSession): void => {
   session.animationPlaybackLoopSectionId = null
   session.animationPlaybackLoopIteration = 0
   session.animationPlaybackLoopSectionRepeatIndefinitely = false
+  session.animationPlaybackTagCycleSectionId = null
+}
+
+const setAnimationLoopPlaybackSection = (session: DocumentSession, section: AnimationLoopSection): void => {
+  session.animationPlaybackLoopSectionId = section.id
+  session.animationPlaybackLoopIteration = 0
+  session.animationPlaybackLoopSectionRepeatIndefinitely = section.repeatCount === null
 }
 
 const retargetAnimationLoopPlaybackAtFrame = (session: DocumentSession, frameId: string): void => {
@@ -1365,8 +1425,28 @@ const retargetAnimationLoopPlaybackAtFrame = (session: DocumentSession, frameId:
   const loopSection = timeline ? animationLoopSectionAtFrame(timeline, frameId) : null
   clearAnimationLoopPlayback(session)
   if (!loopSection) return
-  session.animationPlaybackLoopSectionId = loopSection.id
-  session.animationPlaybackLoopSectionRepeatIndefinitely = true
+  setAnimationLoopPlaybackSection(session, loopSection)
+}
+
+const activateAnimationPlaybackFrame = (session: DocumentSession, frameId: string): boolean => {
+  if (!activateAnimationFrame(session.document, frameId)) return false
+  const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0
+    || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0
+    || session.activeLayerMaskId !== null
+  if (!preserveMaskContext) {
+    session.activeLayerMaskId = null
+    session.layerMaskIsolatedView = false
+  }
+  session.lastPencilPoint = null
+  session.lastEraserPoint = null
+  session.revision += 1
+  return true
+}
+
+const animationLoopSectionContainsFrame = (timeline: AnimationTimeline, section: AnimationLoopSection, frameId: string): boolean => {
+  const range = resolveAnimationLoopSectionRange(timeline, section)
+  const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
+  return Boolean(range && frameIndex >= range.startIndex && frameIndex <= range.endIndex)
 }
 
 const updateSelectedAnimationFramesDisabled = (session: DocumentSession, update: boolean | 'toggle'): void => {
@@ -1404,7 +1484,8 @@ const updateSelectedAnimationFramesDisabled = (session: DocumentSession, update:
 
 const setAnimationLoopSections = (session: DocumentSession, sections: readonly AnimationLoopSection[]): void => {
   ensureAnimationDocument(session.document).loopSections = cloneAnimationLoopSections(sections)
-  if (session.animationPlaybackLoopSectionId && !sections.some((section) => section.id === session.animationPlaybackLoopSectionId)) {
+  if ((session.animationPlaybackLoopSectionId && !sections.some((section) => section.id === session.animationPlaybackLoopSectionId))
+    || (session.animationPlaybackTagCycleSectionId && !sections.some((section) => section.id === session.animationPlaybackTagCycleSectionId))) {
     session.animationPlaying = false
     session.animationPlaybackStartFrameId = null
     clearAnimationLoopPlayback(session)
@@ -1567,6 +1648,12 @@ const applyLayerRowSelection = (
 ): void => {
   session.layerSelectionExplicit = true
   clearAnimationMaskContext(session, options.preserveMaskRowSelection === true)
+  // Selecting a normal layer row leaves Free Tile instance editing. Instance
+  // selection is entered explicitly through the instance-layer view or an
+  // instance row, so it must not change the meaning of layer-level commands
+  // such as Delete.
+  session.freeTileInstanceLayerId = null
+  clearFreeTileInstanceSelection(session)
   const selectedLayers = [...new Set(layerIds)].filter((id) => session.document.layers.some((layer) => layer.id === id))
   const selectedGroups = [...new Set(groupIds)].filter((id) => session.document.groups.some((group) => group.id === id))
   session.selectedGroupIds = selectedGroups
@@ -1597,20 +1684,6 @@ const applyLayerRowSelection = (
     session.selectedTilesetId = ownedTileset.id
     session.selectedTileId = ownedTileset.tileIds.includes(session.selectedTileId ?? '') ? session.selectedTileId : ownedTileset.tileIds[0] ?? null
     session.secondaryTileId = ownedTileset.tileIds.includes(session.secondaryTileId ?? '') ? session.secondaryTileId : ownedTileset.tileIds[0] ?? null
-  }
-  // Selecting a single free-tile layer selects all of its instances in the
-  // active cel, so layer-level move operations have an explicit instance set
-  // to operate on. Multi-layer selections keep their existing layer semantics.
-  if (selectedLayers.length === 1) {
-    const selectedLayer = session.document.layers.find((layer) => layer.id === selectedLayers[0])
-    if (selectedLayer?.kind === 'free-tile') {
-      const target = activeFreeTileCelTarget(session.document)
-      const instanceIds = target?.layer.id === selectedLayer.id
-        ? target.freeTiles.instances.map((instance) => instance.id)
-        : []
-      session.freeTileInstanceLayerId = selectedLayer.id
-      setFreeTileInstanceSelectionState(session, instanceIds, instanceIds.at(-1) ?? null, instanceIds.at(-1) ?? null)
-    }
   }
 }
 
@@ -1879,6 +1952,25 @@ const invalidateAntiAliasPreview = (session: DocumentSession): void => {
 }
 
 const tr = (key: TranslationKey, params?: TranslationParams): string => translate(loadEditorPreferences().language, key, params)
+const persistAnimationPlaybackPreferences = (patch: { animationPlaybackRate?: number; animationPlaybackMode?: AnimationPlaybackMode | null; animationReturnToStart?: boolean }): void => {
+  const preferences = loadEditorPreferences()
+  saveEditorPreferences({ ...preferences, ...patch })
+}
+const persistOutlineSettings = (settings: OutlineSettings): void => {
+  const preferences = loadEditorPreferences()
+  saveEditorPreferences({ ...preferences, outlineSettings: cloneOutlineSettings(settings) })
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+}
+const savedOutlineSettingsForSession = (session: DocumentSession): OutlineSettings => {
+  const projectSettings = session.document.outlineSettings
+    ? normalizeOutlineSettings(session.document.outlineSettings, session.primaryColor)
+    : null
+  const softwarePreference = loadEditorPreferences().outlineSettings
+  const softwareSettings = softwarePreference
+    ? normalizeOutlineSettings(softwarePreference, session.primaryColor)
+    : null
+  return projectSettings ?? softwareSettings ?? defaultOutlineSettings(session.primaryColor)
+}
 const paletteEditSynchronizationLocked = (): boolean => readStoredString('moonsprite.palette-edit-locked') !== 'false'
 const paletteColorSynchronizationEnabled = (): boolean => readStoredString('moonsprite.palette-sync-colors') === 'true'
 
@@ -2461,6 +2553,54 @@ function layerClipboardFromDocument(document: SpriteDocument, layer: RasterLayer
   }
 }
 
+/** Convert an animation cel to a document-independent RGBA snapshot. Indexed palette
+ * ids are meaningful only in the source document, so cross-document payloads never
+ * retain them. */
+function animationCelClipboardSnapshot(document: SpriteDocument, cel: AnimationCel): AnimationCel {
+  const snapshot = cloneAnimationCel(cel)
+  if (snapshot.surface?.format === 'indexed') {
+    const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
+    const pixels = new Uint8ClampedArray(snapshot.surface.pixels.length * 4)
+    for (let index = 0; index < snapshot.surface.pixels.length; index += 1) {
+      const color = paletteById.get(snapshot.surface.pixels[index]) ?? { r: 0, g: 0, b: 0, a: 0 }
+      const offset = index * 4
+      pixels[offset] = color.r
+      pixels[offset + 1] = color.g
+      pixels[offset + 2] = color.b
+      pixels[offset + 3] = color.a
+    }
+    snapshot.surface = { ...snapshot.surface, format: 'rgba', pixels, runtimeRaster: undefined }
+  }
+  return snapshot
+}
+
+function animationCelForTarget(document: SpriteDocument, layer: RasterLayer, source: AnimationCel): AnimationCel {
+  const cel = cloneAnimationCel(source)
+  cel.linkedCelId = null
+  if (cel.surface?.format === 'rgba' && layer.format === 'rgba' && document.colorMode === 'grayscale') {
+    cel.surface = { ...cel.surface, pixels: applyRelativeLuminance(cel.surface.pixels.slice()), runtimeRaster: undefined }
+  }
+  if (cel.surface?.format === 'rgba' && layer.format === 'indexed') {
+    const pixels = Uint32Array.from({ length: cel.surface.width * cel.surface.height }, (_, index) => {
+      const offset = index * 4
+      return paletteColorIdForCanvas(document, {
+        r: cel.surface?.format === 'rgba' ? cel.surface.pixels[offset] : 0,
+        g: cel.surface?.format === 'rgba' ? cel.surface.pixels[offset + 1] : 0,
+        b: cel.surface?.format === 'rgba' ? cel.surface.pixels[offset + 2] : 0,
+        a: cel.surface?.format === 'rgba' ? cel.surface.pixels[offset + 3] : 0
+      })
+    })
+    cel.surface = { ...cel.surface, format: 'indexed', pixels, runtimeRaster: undefined }
+  }
+  // A cross-file paste may target a different layer kind. Keep the rendered
+  // surface as the portable representation, but do not leave special payload
+  // metadata attached to an incompatible destination cel.
+  if (layer.kind !== 'text') delete cel.text
+  if (layer.kind !== 'tilemap') delete cel.tilemap
+  if (layer.kind !== 'free-tile') delete cel.freeTiles
+  return cel
+}
+
 function applyLayerClipboardAnimationCel(
   document: SpriteDocument,
   layer: RasterLayer,
@@ -2497,6 +2637,209 @@ function applyLayerClipboardAnimationCel(
         })
       }
   setAnimationMaskSlot(document, layer.id, frame.id, layerMaskFromClipboard(source.mask, layer.id) ?? null)
+}
+
+function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: AnimationCelClipboardSnapshot): void {
+  const timeline = ensureAnimationDocument(session.document)
+  const targetKey = session.selectedAnimationCellKeys.at(-1) ?? animationCelKey(session.document.activeLayerId, timeline.activeFrameId)
+  const target = parseAnimationCelKey(targetKey)
+  if (!target) return
+  const targetLayerIndex = session.document.layers.findIndex((layer) => layer.id === target.layerId)
+  const targetFrameIndex = timeline.frames.findIndex((frame) => frame.id === target.frameId)
+  if (targetLayerIndex < 0 || targetFrameIndex < 0) return
+  const previousActiveFrameId = timeline.activeFrameId
+  const previousSelection = [...session.selectedAnimationCellKeys]
+  const previousSelectedFrameIds = [...session.selectedAnimationFrameIds]
+  const previousSelectionExplicit = session.animationCellSelectionExplicit
+  const maxFrameIndex = Math.max(...snapshot.items.map((item) => targetFrameIndex + item.frameIndex - snapshot.anchorFrameIndex))
+  const minFrameIndex = Math.min(...snapshot.items.map((item) => targetFrameIndex + item.frameIndex - snapshot.anchorFrameIndex))
+  if (minFrameIndex < 0) return
+  const appendedFrames = Array.from({ length: Math.max(0, maxFrameIndex - timeline.frames.length + 1) }, () => ({ id: createId('frame'), duration: 100 }))
+  if (appendedFrames.length > 0) timeline.frames.push(...appendedFrames)
+  ensureAnimationDocument(session.document)
+  const destinations = snapshot.items.map((item) => ({
+    item,
+    layer: session.document.layers[targetLayerIndex + item.layerIndex - snapshot.anchorLayerIndex],
+    frame: timeline.frames[targetFrameIndex + item.frameIndex - snapshot.anchorFrameIndex]
+  }))
+  const resolvedDestinations = destinations.flatMap((destination) => {
+    if (!destination.layer || !destination.frame) return []
+    const cel = timeline.cels.find((candidate) => candidate.layerId === destination.layer!.id && candidate.frameId === destination.frame!.id)
+    return cel ? [{ ...destination, cel }] : []
+  })
+  if (resolvedDestinations.length !== snapshot.items.length) {
+    if (appendedFrames.length > 0) timeline.frames.splice(-appendedFrames.length, appendedFrames.length)
+    return
+  }
+  const before = resolvedDestinations.map(({ cel }) => cloneAnimationCel(cel))
+  const beforeMasks = resolvedDestinations.map(({ cel }) => animationMaskSlotSnapshot(session.document, cel.layerId, cel.frameId)).filter((entry): entry is AnimationMaskSlotSnapshot => Boolean(entry))
+  const destinationBySourceId = new Map(resolvedDestinations.map(({ item, cel }) => [item.cel.id, cel]))
+  const destinationMaskIdBySourceId = new Map(resolvedDestinations.flatMap(({ item }) => item.mask ? [[item.mask.mask.id, createId('mask')] as const] : []))
+  for (const { item, layer, cel } of resolvedDestinations) {
+    const next = animationCelForTarget(session.document, layer, item.cel)
+    cel.linkedCelId = item.cel.linkedCelId ? destinationBySourceId.get(item.cel.linkedCelId)?.id ?? null : null
+    cel.surface = next.surface
+    cel.opacity = next.opacity
+    cel.text = next.text
+    cel.tilemap = next.tilemap
+    cel.freeTiles = next.freeTiles
+    if (item.mask) {
+      const mask = cloneAnimationMaskForOwner(item.mask.mask, 'layer', cel.layerId, { id: destinationMaskIdBySourceId.get(item.mask.mask.id) ?? createId('mask'), preserveLink: false })
+      mask.linkedMaskId = item.mask.mask.linkedMaskId ? destinationMaskIdBySourceId.get(item.mask.mask.linkedMaskId) ?? null : null
+      setAnimationMaskSlot(session.document, cel.layerId, cel.frameId, mask)
+    }
+  }
+  refreshActiveAnimationFrame(session.document)
+  session.activeLayerMaskId = null
+  session.selectedAnimationFrameIds = []
+  session.animationFrameSelectionAnchorId = null
+  session.selectedAnimationCellKeys = resolvedDestinations.map(({ cel }) => animationCelKey(cel.layerId, cel.frameId))
+  session.animationCellSelectionAnchorKey = session.selectedAnimationCellKeys.at(-1) ?? null
+  session.animationCellSelectionExplicit = true
+  const after = resolvedDestinations.map(({ cel }) => cloneAnimationCel(cel))
+  const afterMasks = resolvedDestinations.map(({ cel }) => animationMaskSlotSnapshot(session.document, cel.layerId, cel.frameId)).filter((entry): entry is AnimationMaskSlotSnapshot => Boolean(entry))
+  const appendedIds = new Set(appendedFrames.map((frame) => frame.id))
+  const restore = (snapshotCels: readonly AnimationCel[], masks: readonly AnimationMaskSlotSnapshot[], selection: readonly string[], frameSelection: readonly string[], explicit: boolean): void => {
+    const current = ensureAnimationDocument(session.document)
+    restoreAnimationCels(session.document, snapshotCels)
+    restoreAnimationMaskSlots(session.document, masks)
+    current.frames = current.frames.filter((frame) => !appendedIds.has(frame.id))
+    current.cels = current.cels.filter((cel) => !appendedIds.has(cel.frameId))
+    const fallback = current.frames.find((frame) => frame.id === previousActiveFrameId)?.id ?? current.frames[0]?.id
+    if (fallback) activateAnimationFrame(session.document, fallback)
+    session.selectedAnimationCellKeys = [...selection]
+    session.selectedAnimationFrameIds = [...frameSelection]
+    session.animationCellSelectionExplicit = explicit
+    refreshActiveAnimationFrame(session.document)
+  }
+  const selectionAfter = [...session.selectedAnimationCellKeys]
+  session.history.push({
+    label: tr('workspace.history.pasteAnimationCel'),
+    bytes: [...before, ...after].reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0) + appendedFrames.length * 32,
+    undo: () => restore(before, beforeMasks, previousSelection, previousSelectedFrameIds, previousSelectionExplicit),
+    redo: () => {
+      const current = ensureAnimationDocument(session.document)
+      const index = Math.min(maxFrameIndex, current.frames.length)
+      for (const frame of appendedFrames) if (!current.frames.some((candidate) => candidate.id === frame.id)) current.frames.splice(Math.min(index, current.frames.length), 0, { ...frame })
+      restoreAnimationCels(session.document, after)
+      restoreAnimationMaskSlots(session.document, afterMasks)
+      session.selectedAnimationCellKeys = selectionAfter
+      session.selectedAnimationFrameIds = []
+      session.animationCellSelectionExplicit = true
+      refreshActiveAnimationFrame(session.document)
+    }
+  })
+}
+
+function pasteCrossDocumentAnimationFrames(session: DocumentSession, snapshot: AnimationFrameClipboardSnapshot): void {
+  const timeline = ensureAnimationDocument(session.document)
+  const targetLayers = [...session.document.layers]
+  const createdLayers: RasterLayer[] = []
+  for (let index = targetLayers.length; index < snapshot.layers.length; index += 1) {
+    const source = snapshot.layers[index]
+    const layer = createLayer(source.name, source.width, source.height, session.document.colorMode)
+    layer.id = createId('layer')
+    layer.kind = source.kind
+    layer.offsetX = source.offsetX
+    layer.offsetY = source.offsetY
+    layer.visible = source.visible
+    layer.locked = source.locked
+    layer.opacity = source.opacity
+    layer.blendMode = source.blendMode
+    if (source.clippingMask === true) layer.clippingMask = true
+    targetLayers.push(layer)
+    createdLayers.push(layer)
+  }
+  if (createdLayers.length > 0) {
+    session.document.layers.push(...createdLayers)
+    ensureAnimationDocument(session.document)
+  }
+  const selectedIds = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId])
+  const anchorIndex = Math.max(-1, ...timeline.frames.map((frame, index) => selectedIds.has(frame.id) ? index : -1))
+  const insertIndex = anchorIndex + 1
+  const insertedFrames = snapshot.frames.map((frame) => ({ id: createId('frame'), duration: frame.duration, ...(frame.disabled === true ? { disabled: true } : {}) }))
+  const insertedCelIdBySourceId = new Map<string, string>()
+  const insertedCelItems = snapshot.frames.flatMap((sourceFrame, index) => sourceFrame.cels.flatMap((item) => {
+    const layer = targetLayers[item.layerIndex]
+    if (!layer) return []
+    const cel = animationCelForTarget(session.document, layer, item.cel)
+    const id = createId('cel')
+    insertedCelIdBySourceId.set(item.cel.id, id)
+    return [{ source: item.cel, cel: { ...cel, id, layerId: layer.id, frameId: insertedFrames[index].id, linkedCelId: null } }]
+  }))
+  const insertedCels = insertedCelItems.map(({ source, cel }) => ({
+    ...cel,
+    linkedCelId: source.linkedCelId ? insertedCelIdBySourceId.get(source.linkedCelId) ?? null : null
+  }))
+  const destinationLayerMaskIdBySourceId = new Map(snapshot.frames.flatMap((sourceFrame) => sourceFrame.layerMasks.map((item) => [item.mask.mask.id, createId('mask')] as const)))
+  const destinationGroupMaskIdBySourceId = new Map(snapshot.frames.flatMap((sourceFrame) => sourceFrame.groupMasks.map((item) => [item.mask.mask.id, createId('mask')] as const)))
+  const insertedLayerMasks = snapshot.frames.flatMap((sourceFrame, index) => sourceFrame.layerMasks.flatMap((item) => {
+    const layer = targetLayers[item.layerIndex]
+    if (!layer) return []
+    const mask = cloneAnimationLayerMask(item.mask, layer.id, insertedFrames[index].id, destinationLayerMaskIdBySourceId.get(item.mask.mask.id))
+    mask.mask.linkedMaskId = item.mask.mask.linkedMaskId ? destinationLayerMaskIdBySourceId.get(item.mask.mask.linkedMaskId) ?? null : null
+    return [mask]
+  }))
+  const insertedGroupMasks = snapshot.frames.flatMap((sourceFrame, index) => sourceFrame.groupMasks.flatMap((item) => {
+    const group = session.document.groups[item.groupIndex]
+    if (!group) return []
+    const mask = cloneAnimationGroupMask(item.mask, group.id, insertedFrames[index].id, destinationGroupMaskIdBySourceId.get(item.mask.mask.id))
+    mask.mask.linkedMaskId = item.mask.mask.linkedMaskId ? destinationGroupMaskIdBySourceId.get(item.mask.mask.linkedMaskId) ?? null : null
+    return [mask]
+  }))
+  const previousActiveFrameId = timeline.activeFrameId
+  const previousSelectedFrameIds = [...session.selectedAnimationFrameIds]
+  const insertedIds = new Set(insertedFrames.map((frame) => frame.id))
+  const restoreCreatedLayers = (present: boolean): void => {
+    if (present) {
+      const missing = createdLayers.filter((layer) => !session.document.layers.some((candidate) => candidate.id === layer.id))
+      if (missing.length > 0) session.document.layers.push(...missing)
+      ensureAnimationDocument(session.document)
+    } else if (createdLayers.length > 0) {
+      const createdIds = new Set(createdLayers.map((layer) => layer.id))
+      session.document.layers = session.document.layers.filter((layer) => !createdIds.has(layer.id))
+      const currentTimeline = ensureAnimationDocument(session.document)
+      currentTimeline.cels = currentTimeline.cels.filter((cel) => !createdIds.has(cel.layerId))
+    }
+  }
+  const applyInserted = (): void => {
+    const current = ensureAnimationDocument(session.document)
+    current.frames.splice(Math.min(insertIndex, current.frames.length), 0, ...insertedFrames.map((frame) => ({ ...frame })))
+    current.cels.push(...insertedCels.map((cel) => cloneAnimationCel(cel)))
+    current.layerMasks ??= []
+    current.layerMasks.push(...insertedLayerMasks.map((entry) => cloneAnimationLayerMask(entry)))
+    current.groupMasks ??= []
+    current.groupMasks.push(...insertedGroupMasks.map((entry) => cloneAnimationGroupMask(entry)))
+    activateAnimationFrame(session.document, insertedFrames[0]?.id ?? current.activeFrameId)
+    session.activeLayerMaskId = null
+    session.selectedAnimationFrameIds = [...insertedIds]
+    session.animationFrameSelectionAnchorId = insertedFrames.at(-1)?.id ?? null
+    session.selectedAnimationCellKeys = []
+    session.animationCellSelectionExplicit = false
+  }
+  applyInserted()
+  session.history.push({
+    label: tr('workspace.history.pasteAnimationFrame'),
+    bytes: insertedCels.reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0) + insertedFrames.length * 64,
+    undo: () => {
+      const current = ensureAnimationDocument(session.document)
+      current.frames = current.frames.filter((frame) => !insertedIds.has(frame.id))
+      current.cels = current.cels.filter((cel) => !insertedIds.has(cel.frameId))
+      current.layerMasks = (current.layerMasks ?? []).filter((entry) => !insertedIds.has(entry.frameId))
+      current.groupMasks = (current.groupMasks ?? []).filter((entry) => !insertedIds.has(entry.frameId))
+      restoreCreatedLayers(false)
+      const fallback = current.frames.find((frame) => frame.id === previousActiveFrameId)?.id ?? current.frames[0]?.id
+      if (fallback) activateAnimationFrame(session.document, fallback)
+      session.selectedAnimationFrameIds = previousSelectedFrameIds
+      session.selectedAnimationCellKeys = []
+      session.animationCellSelectionExplicit = false
+      refreshActiveAnimationFrame(session.document)
+    },
+    redo: () => {
+      restoreCreatedLayers(true)
+      applyInserted()
+    }
+  })
 }
 
 const initialColorRoles = loadColorRolePreferences()
@@ -2572,22 +2915,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       : activeSession(get())
     if (!sourceSession) return false
     try {
+      if (options.outputFile && typeof Worker !== 'undefined') {
+        const names = {
+          document: tr('workspace.spriteSheet.documentName', { name: sourceSession.document.name }),
+          layer: tr('workspace.spriteSheet.layerName')
+        }
+        const path = await exportSpriteSheetFile(window.moonSprite, sourceSession.document, options.name, options.directory, {
+          onConflict: createExportConflictHandler(get().requestDialog, false)
+        }, {
+          options,
+          selection: {
+            selectedLayerIds: sourceSession.selectedLayerIds,
+            selectedGroupIds: sourceSession.selectedGroupIds,
+            selectedFrameIds: sourceSession.selectedAnimationFrameIds,
+            selection: sourceSession.selection
+          },
+          names
+        })
+        if (!path) return false
+        set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
+        return true
+      }
       const result = await buildSpriteSheetResult(sourceSession, options)
       if (options.outputFile) {
         const path = await exportSpriteSheetFile(window.moonSprite, result.document, options.name, options.directory, {
-          onConflict: async (filePath, suggestedPath) => {
-            const choice = await get().requestDialog({
-              title: tr('file.export.conflictTitle'),
-              message: tr('file.export.conflictMessage', { name: fileNameFromPath(filePath) }),
-              detail: tr('file.export.conflictDetail', { suggestedName: fileNameFromPath(suggestedPath) }),
-              choices: [
-                { id: 'overwrite', label: tr('file.export.conflictOverwrite'), tone: 'danger' },
-                { id: 'rename', label: tr('file.export.conflictRename'), tone: 'primary' },
-                { id: 'cancel', label: tr('file.export.conflictCancel'), tone: 'quiet' }
-              ]
-            })
-            return choice === 'overwrite' || choice === 'rename' ? choice : 'cancel'
-          }
+          onConflict: createExportConflictHandler(get().requestDialog, false)
         })
         if (!path) return false
         set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
@@ -3008,6 +3360,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }, 'metadata')
   },
   setBrushSize(size) { get().mutateActive((session) => { if (session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
+  setBrushAngle(angle) { get().mutateActive((session) => { session.brushAngle = Math.max(-180, Math.min(180, Math.round(angle))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setAirbrushParticleRadius(radius) { get().mutateActive((session) => { session.airbrushParticleRadius = Math.max(1, Math.min(16, Math.round(radius))); persistToolSettings(session) }, false) },
   setAirbrushParticleShape(shape) { get().mutateActive((session) => { session.airbrushParticleShape = shape; persistToolSettings(session) }, false) },
   setAirbrushScatterRadius(radius) { get().mutateActive((session) => { session.airbrushScatterRadius = Math.max(1, Math.min(64, Math.round(radius))); persistToolSettings(session) }, false) },
@@ -3184,7 +3537,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setGradientContiguous(contiguous) { get().mutateActive((session) => { session.gradientContiguous = contiguous; persistToolSettings(session) }, false) },
   setGradientType(type) { get().mutateActive((session) => { session.gradientType = type; persistToolSettings(session) }, false) },
   setGradientDither(dither) { get().mutateActive((session) => { session.gradientDither = dither; persistToolSettings(session) }, false) },
-  setGradientFreeform(enabled) { get().mutateActive((session) => { session.gradientFreeform = enabled && session.gradientDither === 'none'; if (session.gradientFreeform) session.gradientStops = [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]; persistToolSettings(session) }, false) },
+  setGradientFreeform(enabled) { get().mutateActive((session) => { session.gradientFreeform = enabled; if (session.gradientFreeform) session.gradientStops = [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]; persistToolSettings(session) }, false) },
   setGradientStops(stops: GradientStop[]) { get().mutateActive((session) => { session.gradientStops = stops.map((stop) => ({ position: Math.max(0, Math.min(1, stop.position)), color: { ...stop.color } })); persistToolSettings(session) }, false) },
   setMoveAutoSelect(enabled) { get().mutateActive((session) => { session.moveAutoSelect = enabled; persistToolSettings(session) }, false) },
   setPrimaryColor(color) {
@@ -3825,9 +4178,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => { session.outlinePreview = preview ? { ...preview, color: { ...preview.color }, backgroundColor: { ...preview.backgroundColor }, directions: { ...preview.directions } } : null }, false)
   },
   commitSelectionChange(before, after, label, options = {}) {
-    const sameMask = before?.mask === after?.mask || (before?.mask?.length === after?.mask?.length && before?.mask?.every((value, index) => value === after?.mask?.[index]))
+    const selectionCommitStartedAt = typeof window !== 'undefined' && window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
+    const sameMask = before?.mask === after?.mask
+      || (before?.mask?.length === after?.mask?.length
+        && (before?.mask?.length ?? 0) < 1_000_000
+        && before?.mask?.every((value, index) => value === after?.mask?.[index]))
     const same = before?.x === after?.x && before?.y === after?.y && before?.width === after?.width && before?.height === after?.height && sameMask
-    if (same || (!before && !after)) return
+    if (same || (!before && !after)) {
+      if (selectionCommitStartedAt) window.__moonSpriteCanvasProbe?.recordOperationStage?.('selection.commit-skip', performance.now() - selectionCommitStartedAt)
+      return
+    }
     get().mutateActive((session) => {
       const resetTimelineSelection = options.resetTimelineSelection === true
         && !session.activeLayerMaskId
@@ -3871,6 +4231,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // selection must not resurrect the stale multi-target editing context.
       session.history.push(entry)
     }, false)
+    if (selectionCommitStartedAt) window.__moonSpriteCanvasProbe?.recordOperationStage?.('selection.commit-total', performance.now() - selectionCommitStartedAt, {
+      beforeBytes: before?.mask?.byteLength ?? 0,
+      afterBytes: after?.mask?.byteLength ?? 0
+    })
   },
   commitFloatingSelectionBoxMove(before, after, beforePivot, afterPivot) {
     if (selectionMasksEqual(before, after) && beforePivot?.x === afterPivot?.x && beforePivot?.y === afterPivot?.y) return
@@ -4068,7 +4432,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const invalidationStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
         touch(session, true, entry.invalidation)
         operationProbe?.recordOperationStage?.('commit.cache-invalidation', performance.now() - invalidationStartedAt, {
-          dirtyPixels: edit.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0
+          dirtyPixels: edit.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0,
+          dirtyWidth: edit.dirtyRect?.width ?? 0,
+          dirtyHeight: edit.dirtyRect?.height ?? 0
         })
         const documentRecordStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
         recordDocumentOperation(session, activity)
@@ -5054,6 +5420,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!session) return false
     await flushTimelapseCapture(session)
     let progressStarted = false
+    let exportTaskCurrent = 1
+    let exportTaskTotal = 1
     let canceled = false
     let nativeCancel: (() => void) | null = null
     const cancel = (): void => {
@@ -5067,36 +5435,34 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (canceled) nextCancel()
     }
     activeExportCancellation = cancel
+    const exportProgressTitle = (): string => exportTaskTotal > 1
+      ? `${tr('workspace.export.progressTitle')} (${exportTaskCurrent}/${exportTaskTotal})`
+      : tr('workspace.export.progressTitle')
     const updateProgress = (value: number, label: string): void => {
       if (progressStarted && !get().saveProgress) return
       progressStarted = true
-      set({ saveProgress: { title: tr('workspace.export.progressTitle'), value: Math.max(0, Math.min(100, Math.round(value))), label } })
+      set({ saveProgress: { title: exportProgressTitle(), value: Math.max(0, Math.min(100, Math.round(value))), label } })
     }
     try {
       const videoExport = isTimelapseVideoFormat(format)
+      exportTaskTotal = videoExport ? 1 : normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? []).snapshots.length
       const encodingLabel = tr(videoExport ? 'workspace.export.videoEncoding' : 'workspace.export.encoding')
       const message = await exportTimelapseFile(window.moonSprite, session.document, format, options, {
         onEncodeStart: () => updateProgress(8, encodingLabel),
         onEncodeProgress: (value) => updateProgress(8 + value * (videoExport ? 0.7 : 0.84), encodingLabel),
         onWriteStart: () => updateProgress(82, tr('workspace.save.writing')),
-        onConflict: async (filePath, suggestedPath) => {
-          const choice = await get().requestDialog({
-            title: tr('file.export.conflictTitle'),
-            message: tr('file.export.conflictMessage', { name: fileNameFromPath(filePath) }),
-            detail: tr('file.export.conflictDetail', { suggestedName: fileNameFromPath(suggestedPath) }),
-            choices: [
-              { id: 'overwrite', label: tr('file.export.conflictOverwrite'), tone: 'danger' },
-              { id: 'rename', label: tr('file.export.conflictRename'), tone: 'primary' },
-              { id: 'cancel', label: tr('file.export.conflictCancel'), tone: 'quiet' }
-            ]
-          })
-          return choice === 'overwrite' || choice === 'rename' ? choice : 'cancel'
+        onExportTaskStart: (current, total) => {
+          exportTaskCurrent = current
+          exportTaskTotal = total
+          const progress = get().saveProgress
+          if (progress) set({ saveProgress: { ...progress, title: exportProgressTitle() } })
         },
+        onConflict: createExportConflictHandler(get().requestDialog, exportTaskTotal > 1),
         onCancelReady,
         isCanceled: () => canceled
       })
       if (!message) return false
-      set({ message, saveProgress: progressStarted ? { title: tr('workspace.export.progressTitle'), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
+      set({ message, saveProgress: progressStarted ? { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
       return true
     } catch (error) {
       if (canceled) {
@@ -5266,10 +5632,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (timeline.frames.length < 2 || Math.sign(delta) === 0) return
     const current = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
     const direction = Math.sign(delta)
-    const target = current < 0
-      ? (direction > 0 ? 0 : timeline.frames.length - 1)
-      : (current + direction + timeline.frames.length) % timeline.frames.length
-    const frame = timeline.frames[target]
+    const skipDisabledFrames = loadEditorPreferences().skipDisabledFrames
+    const frameId = skipDisabledFrames
+      ? stepAnimationFrameId(timeline, current < 0 ? '' : timeline.activeFrameId, direction > 0 ? 1 : -1)
+      : null
+    const frame = skipDisabledFrames
+      ? frameId ? timeline.frames.find((candidate) => candidate.id === frameId) : null
+      : timeline.frames[current < 0
+        ? direction > 0 ? 0 : timeline.frames.length - 1
+        : (current + direction + timeline.frames.length) % timeline.frames.length]
     if (!frame || frame.id === timeline.activeFrameId) return
     if (session.selectedAnimationFrameIds.length > 0) {
       get().selectAnimationFrame(frame.id)
@@ -5749,18 +6120,38 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const keys = new Set(session.selectedAnimationCellKeys)
       const layerIndexes = new Map(session.document.layers.map((layer, index) => [layer.id, index]))
       const frameIndexes = new Map(timeline.frames.map((frame, index) => [frame.id, index]))
-      const cels = timeline.cels
+      const selectedCels = timeline.cels
         .filter((cel) => keys.has(animationCelKey(cel.layerId, cel.frameId)))
         .sort((left, right) => (layerIndexes.get(left.layerId) ?? 0) - (layerIndexes.get(right.layerId) ?? 0) || (frameIndexes.get(left.frameId) ?? 0) - (frameIndexes.get(right.frameId) ?? 0))
-        .map((cel) => ({ ...cloneAnimationCel(cel), linkedCelId: null }))
+        .map(cloneAnimationCel)
+      const cels = selectedCels.map((cel) => ({ ...cel, linkedCelId: null }))
       session.animationCellClipboard = cels
       session.animationCellClipboardAnchorKey = cels[0] ? animationCelKey(cels[0].layerId, cels[0].frameId) : null
       if (cels.length > 0) {
+        const layerIndexById = new Map(session.document.layers.map((layer, index) => [layer.id, index]))
+        const frameIndexById = new Map(timeline.frames.map((frame, index) => [frame.id, index]))
+        const anchor = cels[0]
+        const anchorLayerIndex = layerIndexById.get(anchor.layerId) ?? 0
+        const anchorFrameIndex = frameIndexById.get(anchor.frameId) ?? 0
+        const crossDocumentSnapshot: AnimationCelClipboardSnapshot = {
+          sourceDocumentId: session.document.id,
+          anchorLayerIndex,
+          anchorFrameIndex,
+          items: selectedCels.flatMap((cel) => {
+            const layerIndex = layerIndexById.get(cel.layerId)
+            const frameIndex = frameIndexById.get(cel.frameId)
+            const mask = timeline.layerMasks?.find((entry) => entry.layerId === cel.layerId && entry.frameId === cel.frameId)
+            return layerIndex === undefined || frameIndex === undefined
+              ? []
+              : [{ layerIndex, frameIndex, cel: animationCelClipboardSnapshot(session.document, cel), mask: mask ? cloneAnimationLayerMask(mask) : undefined }]
+          })
+        }
+        clipboardService.setAnimationCells(crossDocumentSnapshot)
         session.animationFrameClipboard = []
         session.animationMaskClipboard = []
         session.animationMaskClipboardAnchorKey = null
         clipboardService.captureAnimationCopySystemBaseline(typeof window.moonSprite?.readClipboardImage === 'function' ? () => window.moonSprite.readClipboardImage() : undefined)
-      }
+      } else clipboardService.clearAnimation()
     }, false)
   },
 
@@ -5778,18 +6169,58 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         groupMasks: (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frame.id).map((entry) => cloneAnimationGroupMask(entry))
       }))
       if (session.animationFrameClipboard.length > 0) {
+        const layerIndexById = new Map(session.document.layers.map((layer, index) => [layer.id, index]))
+        const groupIndexById = new Map(session.document.groups.map((group, index) => [group.id, index]))
+        const crossDocumentSnapshot: AnimationFrameClipboardSnapshot = {
+          sourceDocumentId: session.document.id,
+          layers: session.document.layers.map((layer) => ({
+            name: layer.name,
+            kind: layer.kind,
+            width: layer.width,
+            height: layer.height,
+            offsetX: layer.offsetX,
+            offsetY: layer.offsetY,
+            visible: layer.visible,
+            locked: layer.locked,
+            opacity: layer.opacity,
+            blendMode: layer.blendMode,
+            ...(layer.clippingMask === true ? { clippingMask: true } : {})
+          })),
+          frames: timeline.frames.filter((frame) => selectedIds.has(frame.id)).map((frame) => ({
+            duration: frame.duration,
+            ...(frame.disabled === true ? { disabled: true } : {}),
+            cels: timeline.cels.filter((cel) => cel.frameId === frame.id).flatMap((cel) => {
+              const layerIndex = layerIndexById.get(cel.layerId)
+              return layerIndex === undefined ? [] : [{ layerIndex, cel: animationCelClipboardSnapshot(session.document, cel) }]
+            }),
+            layerMasks: (timeline.layerMasks ?? []).filter((entry) => entry.frameId === frame.id).flatMap((entry) => {
+              const layerIndex = layerIndexById.get(entry.layerId)
+              return layerIndex === undefined ? [] : [{ layerIndex, mask: cloneAnimationLayerMask(entry) }]
+            }),
+            groupMasks: (timeline.groupMasks ?? []).filter((entry) => entry.frameId === frame.id).flatMap((entry) => {
+              const groupIndex = groupIndexById.get(entry.groupId)
+              return groupIndex === undefined ? [] : [{ groupIndex, mask: cloneAnimationGroupMask(entry) }]
+            })
+          }))
+        }
+        clipboardService.setAnimationFrames(crossDocumentSnapshot)
         session.animationCellClipboard = []
         session.animationCellClipboardAnchorKey = null
         session.animationMaskClipboard = []
         session.animationMaskClipboardAnchorKey = null
         clipboardService.captureAnimationCopySystemBaseline(typeof window.moonSprite?.readClipboardImage === 'function' ? () => window.moonSprite.readClipboardImage() : undefined)
-      }
+      } else clipboardService.clearAnimation()
     }, false)
   },
 
   pasteAnimationFrames() {
     get().mutateActive((session) => {
       const timeline = ensureAnimationDocument(session.document)
+      const crossDocumentClipboard = clipboardService.getAnimationFrames()
+      if (crossDocumentClipboard && crossDocumentClipboard.sourceDocumentId !== session.document.id) {
+        pasteCrossDocumentAnimationFrames(session, crossDocumentClipboard)
+        return
+      }
       const clipboard = session.animationFrameClipboard
       if (!clipboard.length) return
       const selectedIds = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId])
@@ -5874,29 +6305,67 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => {
       const timeline = ensureAnimationDocument(session.document)
       const selected = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId])
-      if (selected.has(targetFrameId)) return
       const beforeIds = timeline.frames.map((frame) => frame.id)
+      const beforeLoopSections = cloneAnimationLoopSections(timeline.loopSections)
       const moving = timeline.frames.filter((frame) => selected.has(frame.id))
       const remaining = timeline.frames.filter((frame) => !selected.has(frame.id))
+      if (moving.length === 0) return
       const targetIndex = remaining.findIndex((frame) => frame.id === targetFrameId)
-      if (targetIndex < 0 || moving.length === 0) return
-      remaining.splice(targetIndex + (insertAfter ? 1 : 0), 0, ...moving)
+      const selectedTarget = selected.has(targetFrameId)
+      const selectedTargetIndex = timeline.frames.findIndex((frame) => frame.id === targetFrameId)
+      const movingIndexes = timeline.frames
+        .map((frame, index) => selected.has(frame.id) ? index : -1)
+        .filter((index) => index >= 0)
+      const movingStartIndex = movingIndexes.length > 0 ? Math.min(...movingIndexes) : -1
+      const movingEndIndex = movingIndexes.length > 0 ? Math.max(...movingIndexes) : -1
+      const insertionIndex = targetIndex >= 0
+        ? targetIndex + (insertAfter ? 1 : 0)
+        : selectedTarget
+          ? timeline.frames.slice(0, selectedTargetIndex).filter((frame) => !selected.has(frame.id)).length
+          : -1
+      if (insertionIndex < 0) return
+      const dropBoundaryIndex = selectedTarget ? insertionIndex : Math.min(insertionIndex, remaining.length)
+      // A boundary can be reported by either adjacent header (the previous
+      // frame's right edge or the next frame's left edge). Normalize those
+      // equivalent DOM targets to the selected block's actual side so loop
+      // membership does not depend on which header received the pointer.
+      const targetOriginalIndex = timeline.frames.findIndex((frame) => frame.id === targetFrameId)
+      const dropSide = selectedTarget
+        ? insertAfter ? 'after' as const : 'before' as const
+        : targetOriginalIndex === movingStartIndex - 1 && insertAfter
+          ? 'before' as const
+          : targetOriginalIndex === movingEndIndex + 1 && !insertAfter
+            ? 'after' as const
+            : null
+      remaining.splice(insertionIndex, 0, ...moving)
       const afterIds = remaining.map((frame) => frame.id)
-      if (beforeIds.join('|') === afterIds.join('|')) return
+      const afterLoopSections = reconcileAnimationLoopSectionsAfterFrameReorder(beforeLoopSections, timeline.frames, remaining.filter((frame) => !selected.has(frame.id)), remaining, moving.map((frame) => frame.id), dropBoundaryIndex, dropSide)
+      const sectionsChanged = beforeLoopSections.length !== afterLoopSections.length
+        || beforeLoopSections.some((section, index) => {
+          const next = afterLoopSections[index]
+          return !next || section.startFrameId !== next.startFrameId || section.endFrameId !== next.endFrameId
+        })
+      if (beforeIds.join('|') === afterIds.join('|') && !sectionsChanged) return
       const apply = (ids: readonly string[]): void => {
         const current = ensureAnimationDocument(session.document)
         const byId = new Map(current.frames.map((frame) => [frame.id, frame]))
         current.frames = ids.flatMap((id) => { const frame = byId.get(id); return frame ? [frame] : [] })
       }
       apply(afterIds)
+      setAnimationLoopSections(session, afterLoopSections)
       session.selectedAnimationFrameIds = afterIds.filter((id) => selected.has(id))
-      session.history.push({ label: tr('workspace.history.moveAnimationFrame'), bytes: 64, undo: () => apply(beforeIds), redo: () => apply(afterIds) })
+      session.history.push({ label: tr('workspace.history.moveAnimationFrame'), bytes: 64, undo: () => { apply(beforeIds); setAnimationLoopSections(session, beforeLoopSections) }, redo: () => { apply(afterIds); setAnimationLoopSections(session, afterLoopSections) } })
     }, 'metadata', true)
   },
 
   pasteAnimationCels() {
     get().mutateActive((session) => {
       const timeline = ensureAnimationDocument(session.document)
+      const crossDocumentClipboard = clipboardService.getAnimationCells()
+      if (crossDocumentClipboard && crossDocumentClipboard.sourceDocumentId !== session.document.id) {
+        pasteCrossDocumentAnimationCels(session, crossDocumentClipboard)
+        return
+      }
       if (!session.animationCellClipboard.length) return
       const targetKey = session.selectedAnimationCellKeys.at(-1) ?? animationCelKey(session.document.activeLayerId, timeline.activeFrameId)
       const target = parseAnimationCelKey(targetKey)
@@ -6103,6 +6572,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationMaskClipboard = clipboard
       session.animationMaskClipboardAnchorKey = clipboard[0]?.key ?? null
       if (clipboard.length > 0) {
+        clipboardService.clearAnimation()
         session.animationCellClipboard = []
         session.animationCellClipboardAnchorKey = null
         session.animationFrameClipboard = []
@@ -6442,8 +6912,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               : timeline.activeFrameId
         if (!targetFrameId) return
         if (loopSection) {
-          session.animationPlaybackLoopSectionId = loopSection.id
-          session.animationPlaybackLoopSectionRepeatIndefinitely = true
+          setAnimationLoopPlaybackSection(session, loopSection)
+          session.animationPlaybackTagCycleSectionId = playbackMode === 'tag' && loopSection.repeatCount !== null ? loopSection.id : null
         }
         if (targetFrameId && targetFrameId !== timeline.activeFrameId) {
           activateAnimationFrame(session.document, targetFrameId)
@@ -6495,12 +6965,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setAnimationPlaybackRate(rate) {
     const normalized = [0.25, 0.5, 1, 1.5, 2, 3].includes(rate) ? rate : 1
     get().mutateActive((session) => { session.animationPlaybackRate = normalized }, false)
+    persistAnimationPlaybackPreferences({ animationPlaybackRate: normalized })
   },
 
   setAnimationPlaybackMode(mode) {
     const normalized: AnimationPlaybackMode = mode === 'tag' ? 'tag' : mode === 'all' ? 'all' : 'once'
     if (normalized !== 'tag') {
       get().setAnimationLoop(normalized === 'all')
+      persistAnimationPlaybackPreferences({ animationPlaybackMode: normalized })
       return
     }
     get().mutateActive((session) => {
@@ -6518,8 +6990,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         session.animationPlaying = false
         return
       }
-      session.animationPlaybackLoopSectionId = section.id
-      session.animationPlaybackLoopSectionRepeatIndefinitely = true
+      setAnimationLoopPlaybackSection(session, section)
+      session.animationPlaybackTagCycleSectionId = section.repeatCount !== null ? section.id : null
       if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
         session.selection = null
         session.selectionPivot = null
@@ -6532,10 +7004,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         session.revision += 1
       }
     }, false)
+    persistAnimationPlaybackPreferences({ animationPlaybackMode: normalized })
   },
 
   setAnimationReturnToStart(enabled) {
     get().mutateActive((session) => { session.animationReturnToStart = enabled }, false)
+    persistAnimationPlaybackPreferences({ animationReturnToStart: enabled })
   },
 
   advanceAnimationFrame() {
@@ -6552,6 +7026,40 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (loopSection) {
       const playbackSection = session.animationPlaybackLoopSectionRepeatIndefinitely ? { ...loopSection, repeatCount: null } : loopSection
       const step = advanceAnimationLoopSectionPlayback(timeline, playbackSection, timeline.activeFrameId, session.animationPlaybackLoopIteration)
+      const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
+      if (step?.completed && playbackMode === 'tag' && !session.animationPlaybackLoopSectionRepeatIndefinitely && loopSection.repeatCount !== null) {
+        const nextFrameId = nextAnimationFrameId({ ...timeline, loop: true }, loopSection.endFrameId)
+        if (nextFrameId) {
+          const cycleSectionId = session.animationPlaybackTagCycleSectionId
+          const cycleSection = cycleSectionId
+            ? (timeline.loopSections ?? []).find((section) => section.id === cycleSectionId) ?? null
+            : null
+          if (cycleSection && animationLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
+            get().mutateActive((current) => {
+              setAnimationLoopPlaybackSection(current, cycleSection)
+              const cycleStartFrameId = animationLoopSectionStartFrameId(timeline, cycleSection)
+              if (cycleStartFrameId) activateAnimationPlaybackFrame(current, cycleStartFrameId)
+            }, false)
+          } else if (cycleSectionId) {
+            get().mutateActive((current) => {
+              const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
+              if (nextSection && nextSection.repeatCount !== null) {
+                setAnimationLoopPlaybackSection(current, nextSection)
+                const nextSectionStartFrameId = animationLoopSectionStartFrameId(timeline, nextSection)
+                if (nextSectionStartFrameId) activateAnimationPlaybackFrame(current, nextSectionStartFrameId)
+              } else {
+                current.animationPlaybackLoopSectionId = null
+                current.animationPlaybackLoopIteration = 0
+                current.animationPlaybackLoopSectionRepeatIndefinitely = false
+                activateAnimationPlaybackFrame(current, nextFrameId)
+              }
+            }, false)
+          } else {
+            get().setActiveAnimationFrame(nextFrameId)
+          }
+          return
+        }
+      }
       if (!step || step.completed) {
         get().setAnimationPlaying(false, Boolean(step?.completed))
         return
@@ -6577,7 +7085,32 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const playbackTimeline = loopAllFrames === timeline.loop ? timeline : { ...timeline, loop: loopAllFrames }
     const nextFrameId = nextAnimationFrameId(playbackTimeline, timeline.activeFrameId)
     if (!nextFrameId || !loopAllFrames && nextFrameId === timeline.activeFrameId) get().setAnimationPlaying(false, true)
-    else get().setActiveAnimationFrame(nextFrameId)
+    else if (playbackMode === 'tag' && session.animationPlaybackTagCycleSectionId) {
+      const cycleSection = (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackTagCycleSectionId) ?? null
+      if (!cycleSection) {
+        get().setAnimationPlaying(false)
+        return
+      }
+      get().mutateActive((current) => {
+        if (animationLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
+          setAnimationLoopPlaybackSection(current, cycleSection)
+          const cycleStartFrameId = animationLoopSectionStartFrameId(timeline, cycleSection)
+          if (cycleStartFrameId) activateAnimationPlaybackFrame(current, cycleStartFrameId)
+        } else {
+          const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
+          if (nextSection && nextSection.repeatCount !== null) {
+            setAnimationLoopPlaybackSection(current, nextSection)
+            const nextSectionStartFrameId = animationLoopSectionStartFrameId(timeline, nextSection)
+            if (nextSectionStartFrameId) activateAnimationPlaybackFrame(current, nextSectionStartFrameId)
+          } else {
+            current.animationPlaybackLoopSectionId = null
+            current.animationPlaybackLoopIteration = 0
+            current.animationPlaybackLoopSectionRepeatIndefinitely = false
+            activateAnimationPlaybackFrame(current, nextFrameId)
+          }
+        }
+      }, false)
+    } else get().setActiveAnimationFrame(nextFrameId)
   },
 
   createAnimationLoopSection(options) {
@@ -6615,7 +7148,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const timeline = ensureAnimationDocument(session.document)
       const before = cloneAnimationLoopSections(timeline.loopSections)
       const after = before.map((section) => section.id === id ? normalized : section)
-      if (session.animationPlaybackLoopSectionId === id) {
+      if (session.animationPlaybackLoopSectionId === id || session.animationPlaybackTagCycleSectionId === id) {
         session.animationPlaying = false
         session.animationPlaybackStartFrameId = null
         clearAnimationLoopPlayback(session)
@@ -6639,7 +7172,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const timeline = ensureAnimationDocument(session.document)
       const before = cloneAnimationLoopSections(timeline.loopSections)
       const after = before.filter((section) => section.id !== id)
-      if (session.animationPlaybackLoopSectionId === id) {
+      if (session.animationPlaybackLoopSectionId === id || session.animationPlaybackTagCycleSectionId === id) {
         session.animationPlaying = false
         session.animationPlaybackStartFrameId = null
         clearAnimationLoopPlayback(session)
@@ -6674,7 +7207,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationPlaybackStartFrameId = timeline.activeFrameId
       session.animationPlaybackLoopSectionId = id
       session.animationPlaybackLoopIteration = 0
-      session.animationPlaybackLoopSectionRepeatIndefinitely = false
+      session.animationPlaybackLoopSectionRepeatIndefinitely = section.repeatCount === null
+      session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null
       session.animationPlaying = true
       if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
         session.selection = null
@@ -9766,6 +10300,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const edit = outlineSelection(session.document, layer, session.selection, normalized.color, normalized.thickness, normalized.position, normalized.directions, normalized.kernel, normalized.smartHue, normalized.smartHueDarkness, normalized.backgroundColor)
       if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
       session.document.outlineSettings = cloneOutlineSettings(normalized)
+      persistOutlineSettings(normalized)
       const historyLabel = normalized.position === 'inside'
         ? tr('workspace.history.outlineInside')
         : normalized.position === 'both'
@@ -9778,6 +10313,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : tr('outline.outside')
       get().commitPixelEdit(edit, historyLabel)
       set({ message: tr('workspace.outline.applied', { thickness: normalized.thickness, position: positionLabel }) })
+      return true
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : tr('workspace.outline.applyError') })
+      return false
+    }
+  },
+
+  quickOutlineActiveSelection() {
+    const session = activeSession(get())
+    if (!session) return false
+    const settings = savedOutlineSettingsForSession(session)
+    // Quick outline follows geometry/direction preferences but always uses
+    // the foreground color at the moment the shortcut is pressed.
+    return get().outlineActiveSelection({ ...settings, color: { ...session.primaryColor }, smartHue: false })
+  },
+
+  outlineSelectionInside() {
+    const session = activeSession(get())
+    if (!session) return false
+    if (!session.selection) { set({ message: tr('app.selection.required') }); return false }
+    const settings = savedOutlineSettingsForSession(session)
+    // The S command is deliberately a one-shot inside stroke; it does not
+    // change the user's saved Shift+O position preference.
+    const insideSettings = {
+      ...settings,
+      position: 'inside' as const,
+      color: { ...session.primaryColor },
+      smartHue: false
+    }
+    const layer = activePaintLayer(session)
+    if (isLayerEffectivelyLocked(session.document, layer)) { set({ message: tr('workspace.clipboard.layerLocked') }); return false }
+    try {
+      const edit = outlineSelectionBoundary(session.document, layer, session.selection, insideSettings.color, insideSettings.thickness, insideSettings.directions, insideSettings.kernel, insideSettings.smartHue, insideSettings.smartHueDarkness)
+      if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
+      get().commitPixelEdit(edit, tr('workspace.history.outlineInside'))
+      set({ message: tr('workspace.outline.applied', { thickness: insideSettings.thickness, position: tr('outline.inside') }) })
       return true
     } catch (error) {
       set({ message: error instanceof Error ? error.message : tr('workspace.outline.applyError') })
@@ -10172,7 +10743,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   async pasteClipboard() {
     if (isCanvasToolGestureLocked()) return
     const current = activeSession(get())
-    const hasAnimationTarget = Boolean(current && (current.selectedAnimationMaskCellKeys.length || current.selectedAnimationCellKeys.length || current.selectedAnimationFrameIds.length))
+    const globalAnimationCells = clipboardService.getAnimationCells()
+    const globalAnimationFrames = clipboardService.getAnimationFrames()
+    const hasGlobalAnimationClipboard = Boolean(globalAnimationCells || globalAnimationFrames)
+    const hasAnimationTarget = Boolean(current && (
+      current.selectedAnimationMaskCellKeys.length
+      || current.selectedAnimationCellKeys.length
+      || current.selectedAnimationFrameIds.length
+      // A newly opened document has a valid active layer/frame context even
+      // though no timeline item is explicitly selected yet. Allow a global
+      // animation payload to use that context as its paste target.
+      || hasGlobalAnimationClipboard
+    ))
     if (!current || (!hasAnimationTarget && !current.activeLayerMaskId && current.selectedLayerIds.length === 0 && current.selectedGroupIds.length === 0 && !current.selectedGroupId)) {
       set({ message: tr('workspace.clipboard.selectTarget') })
       return
@@ -10184,13 +10766,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const active = activeSession(get())
     const hasAnimationClipboardTarget = Boolean(active && (
       active.selectedAnimationMaskCellKeys.length && active.animationMaskClipboard.length
-      || active.selectedAnimationCellKeys.length && active.animationCellClipboard.length
-      || active.selectedAnimationFrameIds.length && active.animationFrameClipboard.length
+      || active.selectedAnimationCellKeys.length && (active.animationCellClipboard.length || globalAnimationCells)
+      || active.selectedAnimationFrameIds.length && (active.animationFrameClipboard.length || globalAnimationFrames)
+      || !active.selectedAnimationMaskCellKeys.length && !active.selectedAnimationCellKeys.length && !active.selectedAnimationFrameIds.length && hasGlobalAnimationClipboard
     ))
     if (hasAnimationClipboardTarget && await clipboardService.preferInternalAnimation(externalImage)) {
       if (active!.selectedAnimationMaskCellKeys.length && active!.animationMaskClipboard.length) { get().pasteAnimationMasks(); return }
-      if (active!.selectedAnimationCellKeys.length && active!.animationCellClipboard.length) { get().pasteAnimationCels(); return }
-      if (active!.selectedAnimationFrameIds.length && active!.animationFrameClipboard.length) { get().pasteAnimationFrames(); return }
+      if (active!.selectedAnimationCellKeys.length && (active!.animationCellClipboard.length || globalAnimationCells)) { get().pasteAnimationCels(); return }
+      if (active!.selectedAnimationFrameIds.length && (active!.animationFrameClipboard.length || globalAnimationFrames)) { get().pasteAnimationFrames(); return }
+      if (globalAnimationCells) { get().pasteAnimationCels(); return }
+      if (globalAnimationFrames) { get().pasteAnimationFrames(); return }
     }
     if (clipboardService.getLayers() && await clipboardService.preferInternalLayers(externalImage)) {
       get().pasteLayersFromClipboard()
@@ -10204,8 +10789,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!session) return
     if (session.selectedAnimationMaskCellKeys.length && session.animationMaskClipboard.length) { get().pasteAnimationMasks(); return }
     if (session.activeLayerMaskId) { await get().pasteSelection(); return }
-    if (session.selectedAnimationCellKeys.length && session.animationCellClipboard.length) { get().pasteAnimationCels(); return }
-    if (session.selectedAnimationFrameIds.length && session.animationFrameClipboard.length) { get().pasteAnimationFrames(); return }
+    if (session.selectedAnimationCellKeys.length && (session.animationCellClipboard.length || globalAnimationCells)) { get().pasteAnimationCels(); return }
+    if (session.selectedAnimationFrameIds.length && (session.animationFrameClipboard.length || globalAnimationFrames)) { get().pasteAnimationFrames(); return }
+    if (globalAnimationCells) { get().pasteAnimationCels(); return }
+    if (globalAnimationFrames) { get().pasteAnimationFrames(); return }
     if (clipboardService.getLayers()) { get().pasteLayersFromClipboard(); return }
     await get().pasteSelection()
   },
@@ -11527,6 +12114,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const session = activeSession(get())
     if (!session) return false
     let progressStarted = false
+    let exportTaskCurrent = 1
+    let exportTaskTotal = 1
     let canceled = false
     let nativeCancel: (() => void) | null = null
     const cancel = (): void => {
@@ -11540,39 +12129,37 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (canceled) nextCancel()
     }
     activeExportCancellation = cancel
+    const exportProgressTitle = (): string => exportTaskTotal > 1
+      ? `${tr('workspace.export.progressTitle')} (${exportTaskCurrent}/${exportTaskTotal})`
+      : tr('workspace.export.progressTitle')
     const updateProgress = (value: number, label: string): void => {
       if (progressStarted && !get().saveProgress) return
       progressStarted = true
-      set({ saveProgress: { title: tr('workspace.export.progressTitle'), value: Math.max(0, Math.min(100, Math.round(value))), label } })
+      set({ saveProgress: { title: exportProgressTitle(), value: Math.max(0, Math.min(100, Math.round(value))), label } })
     }
     try {
       const encodingLabel = tr('workspace.export.encoding')
       const exportOptions: ExportOptions | undefined = options
         ? { ...options, selection: options.target === 'selection' ? session.selection : undefined }
         : options
+      exportTaskTotal = exportTaskCount(session.document, exportOptions)
       const message = await exportDocumentFile(window.moonSprite, session.document, exportOptions, {
         onEncodeStart: () => updateProgress(12, encodingLabel),
         onEncodeProgress: (value) => updateProgress(12 + value * 0.86, encodingLabel),
         onWriteStart: () => updateProgress(72, tr('workspace.save.writing')),
-        onConflict: async (filePath, suggestedPath) => {
-          const choice = await get().requestDialog({
-            title: tr('file.export.conflictTitle'),
-            message: tr('file.export.conflictMessage', { name: fileNameFromPath(filePath) }),
-            detail: tr('file.export.conflictDetail', { suggestedName: fileNameFromPath(suggestedPath) }),
-            choices: [
-              { id: 'overwrite', label: tr('file.export.conflictOverwrite'), tone: 'danger' },
-              { id: 'rename', label: tr('file.export.conflictRename'), tone: 'primary' },
-              { id: 'cancel', label: tr('file.export.conflictCancel'), tone: 'quiet' }
-            ]
-          })
-          return choice === 'overwrite' || choice === 'rename' ? choice : 'cancel'
+        onExportTaskStart: (current, total) => {
+          exportTaskCurrent = current
+          exportTaskTotal = total
+          const progress = get().saveProgress
+          if (progress) set({ saveProgress: { ...progress, title: exportProgressTitle() } })
         },
+        onConflict: createExportConflictHandler(get().requestDialog, exportTaskTotal > 1),
         onCancelReady,
         isCanceled: () => canceled
       })
       if (!message) { if (progressStarted) set({ saveProgress: null }); return false }
       const progressVisible = progressStarted && Boolean(get().saveProgress)
-      set({ message, ...(progressVisible ? { saveProgress: { title: tr('workspace.export.progressTitle'), value: 100, label: tr('workspace.export.done') } } : {}) })
+      set({ message, ...(progressVisible ? { saveProgress: { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done') } } : {}) })
       if (progressVisible) window.setTimeout(() => { if (get().saveProgress?.value === 100) set({ saveProgress: null }) }, 180)
       return true
     } catch (error) {

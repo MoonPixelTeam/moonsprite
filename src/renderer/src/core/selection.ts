@@ -1,7 +1,7 @@
 import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
 import { getPaletteEntry, rasterLayerPackedValueIsUniform } from './document'
 import { isInBounds, packColor, pixelIndex } from './raster'
-import { contiguousMatchingRegion } from './contiguous-region'
+import { contiguousMatchingRegion, contiguousMatchingRegionInBounds } from './contiguous-region'
 import { balancedStairLinePoints } from './pixel-line'
 
 export const forEachRasterLinePoint = (
@@ -28,6 +28,65 @@ export const forEachRasterLinePoint = (
 export const rasterLinePoints = (from: { x: number; y: number }, to: { x: number; y: number }): Array<{ x: number; y: number }> => {
   const points: Array<{ x: number; y: number }> = []
   forEachRasterLinePoint(from, to, (x, y) => points.push({ x, y }))
+  return points
+}
+
+/** Aseprite's continuous line rasterizer, including its tie-breaking rules. */
+export const continuousLinePoints = (from: { x: number; y: number }, to: { x: number; y: number }): Array<{ x: number; y: number }> => {
+  const points: Array<{ x: number; y: number }> = []
+  let x = from.x
+  let y = from.y
+  const dx = Math.abs(to.x - x)
+  const sx = x < to.x ? 1 : -1
+  const dy = -Math.abs(to.y - y)
+  const sy = y < to.y ? 1 : -1
+  let error = dx + dy
+
+  for (;;) {
+    points.push({ x, y })
+    const doubled = 2 * error
+    if (doubled >= dy) {
+      if (x === to.x) break
+      error += dy
+      x += sx
+    }
+    if (doubled <= dx) {
+      if (y === to.y) break
+      error += dx
+      y += sy
+    }
+  }
+  return points
+}
+
+/** Aseprite's line-brush variant, which emits the intermediate diagonal step. */
+export const continuousLinePointsWithFixForLineBrush = (from: { x: number; y: number }, to: { x: number; y: number }): Array<{ x: number; y: number }> => {
+  const points: Array<{ x: number; y: number }> = []
+  let x = from.x
+  let y = from.y
+  const dx = Math.abs(to.x - x)
+  const sx = x < to.x ? 1 : -1
+  const dy = -Math.abs(to.y - y)
+  const sy = y < to.y ? 1 : -1
+  let error = dx + dy
+
+  for (;;) {
+    let xChanged = false
+    points.push({ x, y })
+    const doubled = 2 * error
+    if (doubled >= dy) {
+      if (x === to.x) break
+      error += dy
+      x += sx
+      xChanged = true
+    }
+    if (doubled <= dx) {
+      if (y === to.y) break
+      error += dx
+      if (xChanged) points.push({ x, y })
+      y += sy
+    }
+  }
   return points
 }
 
@@ -77,6 +136,10 @@ export const flipSelectionMask = (selection: SelectionMask, axis: SelectionFlipA
 export const selectionBoundarySegments = (selection: SelectionMask): Int32Array => {
   const { width, height, mask } = selection
   if (!mask) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, height, 0, 0])
+  // Aseprite keeps solid flood-filled spans as spans.  A full mask is the
+  // common case for background selections; avoid the two complete edge scans
+  // and return its four sides immediately.
+  if (!mask.includes(0)) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, height, 0, 0])
   const maxCoordinates = Math.max(16, width * height * 8 + (width + height) * 8)
   let segments = new Int32Array(Math.min(maxCoordinates, Math.max(256, (width + height) * 16)))
   let length = 0
@@ -1042,12 +1105,16 @@ export const combineSelection = (current: SelectionMask | null, incoming: Select
   if (!incoming) return mode === 'subtract' ? { ...current, mask: current.mask?.slice() } : null
   const minX = Math.min(current.x, incoming.x); const minY = Math.min(current.y, incoming.y)
   const maxX = Math.max(current.x + current.width, incoming.x + incoming.width); const maxY = Math.max(current.y + current.height, incoming.y + incoming.height)
-  const width = maxX - minX; const height = maxY - minY; const points: Array<{ x: number; y: number }> = []
+  const width = maxX - minX; const height = maxY - minY; const mask = new Uint8Array(width * height)
+  let selected = 0
   for (let y = minY; y < maxY; y += 1) for (let x = minX; x < maxX; x += 1) {
     const a = selectionContains(current, x, y); const b = selectionContains(incoming, x, y)
-    if ((mode === 'add' && (a || b)) || (mode === 'subtract' && a && !b) || (mode === 'intersect' && a && b)) points.push({ x, y })
+    if ((mode === 'add' && (a || b)) || (mode === 'subtract' && a && !b) || (mode === 'intersect' && a && b)) {
+      mask[(y - minY) * width + x - minX] = 1
+      selected += 1
+    }
   }
-  return maskFromPoints(points)
+  return trimSelectionMaskBounds(minX, minY, width, height, mask, selected)
 }
 
 export const packedColorMatchesTolerance = (a: number, b: number, tolerance: number): boolean =>
@@ -1070,7 +1137,10 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
   const packedPixels = layer.format === 'rgba'
     ? new Uint32Array(layer.pixels.buffer, layer.pixels.byteOffset, layer.pixels.byteLength / 4)
     : null
+  const directCanvasPixels = layer.offsetX === 0 && layer.offsetY === 0
+    && layer.width === document.width && layer.height === document.height
   const packedAt = (index: number): number => {
+    if (directCanvasPixels) return packedPixels ? packedPixels[index] : palette!.get(layer.pixels[index]) ?? 0
     const documentX = index % document.width
     const documentY = Math.floor(index / document.width)
     const localX = documentX - layer.offsetX
@@ -1093,25 +1163,49 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
     }
   }
   const total = document.width * document.height
-  const selected = new Uint8Array(total)
+  let selected: Uint8Array<ArrayBufferLike> = new Uint8Array(total)
+  let selectedWidth = document.width
+  let selectedHeight = document.height
+  let selectedOriginX = 0
+  let selectedOriginY = 0
   let minX = document.width; let maxX = -1; let minY = document.height; let maxY = -1
   const add = (index: number): void => {
     selected[index] = 1
-    const x = index % document.width; const y = Math.floor(index / document.width)
+    const x = selectedOriginX + index % selectedWidth; const y = selectedOriginY + Math.floor(index / selectedWidth)
     if (x < minX) minX = x; if (x > maxX) maxX = x
     if (y < minY) minY = y; if (y > maxY) maxY = y
   }
   if (!contiguous) {
     for (let index = 0; index < total; index += 1) if (matches(index)) add(index)
   } else {
-    const region = contiguousMatchingRegion(document.width, document.height, startX, startY, matches, gapClosingThreshold)
-    if (region) for (let index = 0; index < total; index += 1) if (region[index] === 1) add(index)
+    const targetAlpha = target >>> 24
+    const left = Math.max(0, layer.offsetX)
+    const top = Math.max(0, layer.offsetY)
+    const right = Math.min(document.width, layer.offsetX + layer.width)
+    const bottom = Math.min(document.height, layer.offsetY + layer.height)
+    const bounds = targetAlpha > normalizedTolerance && right > left && bottom > top
+      ? { x: left, y: top, width: right - left, height: bottom - top }
+      : undefined
+    const local = bounds
+      ? contiguousMatchingRegionInBounds(document.width, document.height, startX, startY, matches, gapClosingThreshold, bounds)
+      : null
+    if (local) {
+      selected = local.region
+      selectedWidth = local.bounds.width
+      selectedHeight = local.bounds.height
+      selectedOriginX = local.bounds.x
+      selectedOriginY = local.bounds.y
+      for (let index = 0; index < selected.length; index += 1) if (selected[index] === 1) add(index)
+    } else {
+      const region = contiguousMatchingRegion(document.width, document.height, startX, startY, matches, gapClosingThreshold)
+      if (region) for (let index = 0; index < total; index += 1) if (region[index] === 1) add(index)
+    }
   }
   if (maxX < minX || maxY < minY) return null
   const width = maxX - minX + 1; const height = maxY - minY + 1
   const mask = new Uint8Array(width * height)
   for (let y = minY; y <= maxY; y += 1) {
-    const sourceStart = y * document.width + minX
+    const sourceStart = (y - selectedOriginY) * selectedWidth + minX - selectedOriginX
     const targetStart = (y - minY) * width
     for (let x = 0; x < width; x += 1) mask[targetStart + x] = selected[sourceStart + x]
   }

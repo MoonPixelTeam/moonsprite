@@ -20,6 +20,8 @@ declare global {
       activeView(): ViewState | null
       resetScenario(view: ViewState): void
       prepareTool(tool: ToolId, fillKind?: FillKind | null, shapeKind?: ShapeKind | null): void
+      setBrushSize(size: number): void
+      prepareMagicWand(): void
       prepareCenteredSelection(size: number): void
       prepareActiveLayerStyle(shadowBlur: number, innerGlowSize: number): void
       previewActiveLayerStyleSize(effect: 'shadow' | 'innerGlow', size: number): void
@@ -32,6 +34,7 @@ declare global {
       timelapseSnapshotCount(): number
       undoRedo(count: number): Promise<number>
       playAnimation(): Promise<number>
+      setAnimationPlaying(playing: boolean): void
     }
   }
 }

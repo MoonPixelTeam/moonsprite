@@ -40,6 +40,7 @@ describe('home file display formats', () => {
 
   it('groups project and jpeg extensions and ignores case', () => {
     expect(homeFileDisplayFormatForPath('C:\\art\\sprite.MOONSPRITE')).toBe('project')
+    expect(homeFileDisplayFormatForPath('C:\\art\\sprite.MOONSPRITE.BAK')).toBe('project')
     expect(homeFileDisplayFormatForPath('sprite.ASE')).toBe('project')
     expect(homeFileDisplayFormatForPath('sprite.aseprite')).toBe('project')
     expect(homeFileDisplayFormatForPath('photo.JPEG')).toBe('jpg')

@@ -86,7 +86,7 @@ type AnimationPointerDrag =
 type AnimationGestureSelection = { kind: 'frame'; ids: string[] } | { kind: 'cel' | 'mask'; keys: string[] }
 type AnimationGestureActiveTarget = { kind: 'frame'; frameId: string } | { kind: 'cel' | 'mask'; layerId: string; frameId: string }
 type LayerTreeNode = LayerPanelNode & ({ kind: 'layer'; layer: RasterLayer } | { kind: 'group'; group: LayerGroup })
-interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean }
+interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean; skipDisabledFrames: boolean }
 
 const layoutAnimationLoopSections = (timeline: AnimationTimeline): { items: AnimationLoopSectionLayout[]; laneCount: number } => {
   const candidates = (timeline.loopSections ?? []).flatMap((section) => {
@@ -449,6 +449,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const propertyPreviewTimerRef = useRef<number | null>(null)
   const dragRef = useRef<LayerDragState | null>(null)
   const layerDragFrameRef = useRef<number | null>(null)
+  const layerDragAutoScrollFrameRef = useRef<number | null>(null)
+  const layerDragPointerRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null)
   const pendingLayerDragRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null)
   const layerListRef = useRef<HTMLDivElement>(null)
   const layerAnimationToolbarRef = useRef<HTMLDivElement>(null)
@@ -523,7 +525,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const [layerSettingsOpen, setLayerSettingsOpen] = useState(false)
   const [layerSettings, setLayerSettings] = useState<LayerSettingsState>(() => {
     const preferences = loadEditorPreferences()
-    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide() }
+    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames }
   })
   const [layerSettingsSlider, setLayerSettingsSlider] = useState<'previousOpacity' | 'nextOpacity' | null>(null)
   const [layerLabelWidth, setLayerLabelWidth] = useState(loadLayerLabelWidth)
@@ -786,7 +788,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openLayerSettings = (): void => {
     const preferences = loadEditorPreferences()
-    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide() })
+    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames })
     setLayerSettingsSlider(null)
     setLayerSettingsOpen(true)
   }
@@ -796,7 +798,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setLayerDensity(next.density)
     saveLayerDensity(next.density)
     saveLayerSideDockAutoHide(next.sideDockAutoHide)
-    saveEditorPreferences({ ...loadEditorPreferences(), onionSkin: next.onionSkin, timelineHidden: next.timelineHidden })
+    saveEditorPreferences({ ...loadEditorPreferences(), onionSkin: next.onionSkin, timelineHidden: next.timelineHidden, skipDisabledFrames: next.skipDisabledFrames })
     if (next.timelineHidden) {
       setLayerSettingsSlider(null)
       store.setAnimationPlaying(false)
@@ -813,6 +815,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     density: defaultLayerDensity,
     timelineHidden: false,
     sideDockAutoHide: true,
+    skipDisabledFrames: true,
     onionSkin: {
       ...DEFAULT_ONION_SKIN_PREFERENCES,
       previousColor: { ...DEFAULT_ONION_SKIN_PREFERENCES.previousColor },
@@ -821,7 +824,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   })
   const toggleOnionSkin = (): void => {
     const current = loadEditorPreferences().onionSkin
-    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide })
+    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide, skipDisabledFrames: layerSettings.skipDisabledFrames })
   }
   const selectAnimationFrame = (frameId: string, mode: 'replace' | 'toggle' | 'range' = 'replace'): void => {
     store.selectAnimationFrame(frameId, mode)
@@ -2203,17 +2206,36 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const selectedMaskCellFrameIds = new Set(maskCellTargets.map((target) => target.frameId))
   const selectedActivityFrameIds = new Set([...selectedCellFrameIds, ...selectedMaskCellFrameIds])
   const selectedCellLayerIds = new Set(ordinaryCellTargets.map((target) => target.layerId))
+  const selectedMaskCellLayerIds = new Set(maskCellTargets.map((target) => target.layerId))
+  // Masks are rendered on separate rows, so retain the complete selected
+  // owner/frame domain when projecting cel activity onto mask rows.
+  const selectedMaskActivityLayerIds = new Set([...selectedCellLayerIds, ...selectedMaskCellLayerIds])
   const cellSelectionActive = selectionOutlineVisible && selectedCellTargets.length > 0
   const ordinaryCelSelectionVisible = cellSelectionActive && renderedCellKeys.length > 0
     && (session.animationCellSelectionExplicit || animationGestureSelection?.kind === 'cel')
   const hasMultipleCellSelection = renderedCellKeys.length + renderedMaskCellKeys.length > 1
   const hasMultipleLayerSelection = session.selectedLayerIds.length > 1
+  const implicitLayerCellKeys = new Set(session.selectedLayerIds.map((layerId) => animationCelKey(layerId, visualActiveFrameId)))
+  // Selecting multiple layers also mirrors their active-frame cels into the
+  // session. Those keys are an implementation detail of row selection, not a
+  // real cel selection, so they must not suppress the full-row highlight.
+  const onlyImplicitLayerCellSelection = session.layerSelectionExplicit === true
+    && animationGestureSelection === null
+    && hasMultipleLayerSelection
+    && renderedMaskCellKeys.length === 0
+    && renderedCellKeys.length === implicitLayerCellKeys.size
+    && renderedCellKeys.every((key) => implicitLayerCellKeys.has(key))
+  const explicitMultiLayerSelection = session.layerSelectionExplicit === true
+    && hasMultipleLayerSelection
+    && session.selectedLayerIds.length > 1
+    && session.selectedGroupIds.length === 0
+    && session.selectedGroupId === null
   // Suppress the active-frame guide only while the multi-cel selection is
   // visibly shown. Hidden formal selections must still leave the normal
   // active frame/cel context visible.
   const suppressCellSelectionGuides = selectionOutlineVisible && hasMultipleCellSelection && !hasMultipleLayerSelection
   const layerSelectionActive = session.layerSelectionExplicit && selectionOutlineVisible && renderedFrameIds.length === 0 && renderedCellKeys.length === 0 && renderedMaskCellKeys.length === 0
-  const showLayerSelectionAcrossTimeline = layerSelectionActive
+  const showLayerSelectionAcrossTimeline = layerSelectionActive || onlyImplicitLayerCellSelection || explicitMultiLayerSelection
   const selectedFrameIndexes = timeline.frames
     .map((frame, index) => renderedFrameIdSet.has(frame.id) ? index : -1)
     .filter((index) => index >= 0)
@@ -2312,12 +2334,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     }
   })()
   const animationCelDragActive = animationCelDragPreview !== null
-  const implicitLayerCellKeys = new Set(session.selectedLayerIds.map((layerId) => animationCelKey(layerId, visualActiveFrameId)))
-  const onlyImplicitLayerCellSelection = animationGestureSelection === null
-    && hasMultipleLayerSelection
-    && renderedMaskCellKeys.length === 0
-    && renderedCellKeys.length === implicitLayerCellKeys.size
-    && renderedCellKeys.every((key) => implicitLayerCellKeys.has(key))
   const shouldShowAnimationCellSelectionOutline = selectionOutlineVisible && !onlyImplicitLayerCellSelection
     && (session.layerMaskIsolatedView || animationCellSelectionOutlineVisible || animationGestureSelection?.kind === 'cel' || animationGestureSelection?.kind === 'mask')
   const linkedCelGroups = displayRows.flatMap((displayRow, row) => {
@@ -2366,7 +2382,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const highlightedLinkedCelGroups = new Set([
     ...selectedLinkedCelGroups,
     ...linkedCelGroups
-      .filter((group) => group.layerSelected && group.frameIndexSet.has(visualActiveFrameIndex))
+      // The active layer/frame is an implicit visual focus. When that slot is
+      // part of a linked run, keep the run highlighted even before the user
+      // explicitly selects a cel or layer row.
+      .filter((group) => (group.layerSelected || (group.kind === 'cel' && group.layerId === playbackActiveLayerId)) && group.frameIndexSet.has(visualActiveFrameIndex))
       .map(linkedGroupKey)
   ])
   const linkedMaskSlotVisuals = new Map<string, { withPrevious: boolean; withNext: boolean }>()
@@ -2712,6 +2731,42 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const targetLayer = session.document.layers.find((layer) => layer.id === target.id)
     return Boolean(targetLayer?.groupId && blockedTargets.has(targetLayer.groupId))
   }
+  const stopLayerDragAutoScroll = (): void => {
+    if (layerDragAutoScrollFrameRef.current !== null) window.cancelAnimationFrame(layerDragAutoScrollFrameRef.current)
+    layerDragAutoScrollFrameRef.current = null
+  }
+  const scheduleLayerDragAutoScroll = (): void => {
+    if (layerDragAutoScrollFrameRef.current !== null) return
+    const tick = (): void => {
+      layerDragAutoScrollFrameRef.current = null
+      const drag = dragRef.current
+      const pointer = layerDragPointerRef.current
+      const list = layerListRef.current
+      const bounds = list?.getBoundingClientRect()
+      if (!drag?.moved || !pointer || !list || !bounds) return
+      const viewportHeight = list.clientHeight || bounds.height
+      const maxScrollTop = Math.max(0, list.scrollHeight - viewportHeight)
+      if (maxScrollTop <= 0 || pointer.clientX < bounds.left || pointer.clientX > bounds.right) return
+      const edgeThreshold = Math.min(48, Math.max(24, viewportHeight * 0.15))
+      const distanceFromTop = pointer.clientY - bounds.top
+      const distanceFromBottom = bounds.bottom - pointer.clientY
+      let delta = 0
+      if (distanceFromTop >= 0 && distanceFromTop < edgeThreshold && list.scrollTop > 0) {
+        delta = -Math.max(2, Math.round((edgeThreshold - distanceFromTop) * 0.5))
+      } else if (distanceFromBottom >= 0 && distanceFromBottom < edgeThreshold && list.scrollTop < maxScrollTop) {
+        delta = Math.max(2, Math.round((edgeThreshold - distanceFromBottom) * 0.5))
+      }
+      if (delta === 0) return
+      const nextScrollTop = Math.max(0, Math.min(maxScrollTop, list.scrollTop + delta))
+      if (nextScrollTop === list.scrollTop) return
+      list.scrollTop = nextScrollTop
+      // Recompute the ghost and drop target against the newly scrolled rows
+      // even when the pointer itself is stationary at the edge.
+      moveLayerDrag(pointer.clientX, pointer.clientY, pointer.altKey)
+      layerDragAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+    }
+    layerDragAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+  }
   const moveLayerDrag = (clientX: number, clientY: number, altKey: boolean): void => {
     const drag = dragRef.current
     if (!drag) return
@@ -2726,13 +2781,20 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       if (node.kind === 'layer' && draggedLayerIds.has(node.id)) return [{ id: node.id, kind: 'layer', name: node.layer.name }]
       return []
     })
-    const listBounds = layerListRef.current?.getBoundingClientRect()
+    const list = layerListRef.current
+    const listBounds = list?.getBoundingClientRect()
     const selectedCount = drag.wholeGroupSelection
       ? Math.max(1, drag.selectedGroupIds.length)
       : new Set([...drag.selectedLayerIds.map((id) => `layer:${id}`), ...drag.selectedGroupIds.map((id) => `group:${id}`)]).size
     const count = Math.max(items.length, selectedCount)
     const ghostHeight = Math.min(4, Math.max(1, items.length)) * 27 + (count > Math.min(4, items.length) ? 20 : 0)
-    const y = listBounds ? Math.max(0, Math.min(listBounds.height - ghostHeight, clientY - listBounds.top - ghostHeight / 2)) : 0
+    // The ghost is absolutely positioned in the scrollable layer list. Its
+    // `top` therefore uses content coordinates, while pointer events report
+    // viewport coordinates. Include the current scroll offset so the preview
+    // stays under the pointer after the list has been scrolled.
+    const y = listBounds
+      ? Math.max(0, Math.min(Math.max(0, (list?.scrollHeight ?? listBounds.height) - ghostHeight), clientY - listBounds.top + (list?.scrollTop ?? 0) - ghostHeight / 2))
+      : 0
     setDragGhost({ y, items: items.length > 0 ? items : [{ id: drag.row.id, kind: drag.row.kind, name: t('layers.fallbackName') }], count })
     let target = resolveDropTarget(clientX, clientY, drag.ids, drag.groupIds, drag.copy)
     if (target && dropTargetBlockedByGroups(target, drag.groupIds)) target = null
@@ -2753,6 +2815,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     if (pending) moveLayerDrag(pending.clientX, pending.clientY, pending.altKey)
   }
   const finishLayerDrag = (clientX: number, clientY: number): void => {
+    stopLayerDragAutoScroll()
+    layerDragPointerRef.current = null
     if (layerDragFrameRef.current !== null) window.cancelAnimationFrame(layerDragFrameRef.current)
     layerDragFrameRef.current = null
     flushPendingLayerDrag()
@@ -2796,6 +2860,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   useEffect(() => {
     const move = (event: PointerEvent): void => {
       if (dragRef.current) {
+        layerDragPointerRef.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey }
         if (!dragRef.current.moved) moveLayerDrag(event.clientX, event.clientY, event.altKey)
         else {
           pendingLayerDragRef.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey }
@@ -2804,6 +2869,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
             flushPendingLayerDrag()
           })
         }
+        scheduleLayerDragAutoScroll()
       }
       moveAnimationPointerDragRef.current(event)
     }
@@ -2814,6 +2880,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return () => {
       if (layerDragFrameRef.current !== null) window.cancelAnimationFrame(layerDragFrameRef.current)
       layerDragFrameRef.current = null
+      stopLayerDragAutoScroll()
+      layerDragPointerRef.current = null
       pendingLayerDragRef.current = null
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', finish)
@@ -3210,6 +3278,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       case 'enableAnimationFrames': updateAnimationFrameDisabled(false); break
       case 'disableAnimationFrames': updateAnimationFrameDisabled(true); break
       case 'toggleAnimationFramesDisabled': updateAnimationFrameDisabled('toggle'); break
+      case 'toggleOnionSkin': toggleOnionSkin(); break
       case 'copyAnimationFrames': store.copySelectedAnimationFrames(); break
       case 'pasteAnimationFrames': store.pasteAnimationFrames(); break
       case 'pasteAnimationCels': store.pasteAnimationCels(); break
@@ -3419,28 +3488,38 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
           : null
         const maskName = t(displayRow.ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask')
         const maskFrameVisualSelection = frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected
-        // Once a canvas selection is active, an ordinary-layer focus must not
-        // leak the current frame into unrelated mask rows. The mask row
-        // belonging to the active layer is still part of that layer's current
-        // frame context and must retain its active background.
-        // During playback the playhead is a column-wide activity indicator.
-        // It must also paint every mask row, even when frame-copy/paste has
-        // cleared the mask editing context. Otherwise the suppression layer
-        // hides the current-frame background only on mask rows.
-        // Mask-row activity is driven by timeline focus, never by the canvas
-        // pixel-selection object. A canvas marquee must not silently toggle
-        // timeline mask backgrounds.
-        const maskOwnerIsActiveLayer = maskCellClasses.active
+        // Ordinary timeline focus is shared by all attached mask rows. Mask
+        // editing remains independent; only ordinary-layer/cel/frame focus
+        // should project the current or selected frames onto every mask row.
+        const ordinaryTimelineContextActive = !maskVisualSelectionActive && session.activeLayerMaskId === null
+        const maskOwnerIsActiveLayer = ordinaryTimelineContextActive && (
+          (displayRow.ownerKind === 'layer' && displayRow.owner.id === playbackActiveLayerId)
           || (focusState.implicitCursor && displayRow.ownerKind === 'layer' && displayRow.owner.id === session.document.activeLayerId)
+          || (session.layerSelectionExplicit === true
+            && displayRow.ownerKind === 'layer'
+            && session.selectedLayerIds.includes(displayRow.owner.id))
+        )
+        const ordinaryFrameActivityHighlighted = ordinaryTimelineContextActive
+          && (maskCellClasses.frameActive
+            || selectedCellFrameIds.has(frame.id)
+            || (renderedFrameIds.length > 0 && visualSelectedFrameIdSet.has(frame.id)))
+        const selectedMaskActivityHighlighted = selectedCellTargets.length > 0
+          && displayRow.ownerKind === 'layer'
+          && selectedMaskActivityLayerIds.has(displayRow.owner.id)
+          && selectedActivityFrameIds.has(frame.id)
         const maskFrameActivityVisible = session.animationPlaying
           || maskVisualSelectionActive
-          || (maskOwnerIsActiveLayer && (selectionOutlineVisible || !session.selection))
+          || maskOwnerIsActiveLayer
+          || ordinaryFrameActivityHighlighted
+          || selectedMaskActivityHighlighted
         const maskActiveFrameHighlighted = maskFrameActivityVisible
           && frameVisualEnabled
           && ((session.animationPlaying && maskCellClasses.frameActive)
             || (maskVisualSelectionActive && (maskCellClasses.frameActive || maskCellClasses.selected))
-            || (maskOwnerIsActiveLayer && selectionOutlineVisible && maskCellClasses.frameActive)
+            || (maskOwnerIsActiveLayer && maskCellClasses.frameActive)
             || (focusState.implicitCursor && maskOwnerIsActiveLayer && maskCellClasses.frameActive)
+            || ordinaryFrameActivityHighlighted
+            || selectedMaskActivityHighlighted
             || maskCellClasses.selectedByFrame
             || maskFrameSelected
             || (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
@@ -3471,8 +3550,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // a canvas marquee or frame switch, especially when mask rows are
       // inserted between ordinary rows. The column background still carries
       // frame selection for every row; this marker must not leak to siblings.
-      const currentFrameCellHighlighted = Boolean(cellClasses.frameActive || cellClasses.selectedByFrame)
-        && node.layer.id === playbackActiveLayerId
+      const selectedCellActivityHighlighted = selectedCellTargets.length > 0
+        && selectedCellLayerIds.has(node.layer.id)
+        && selectedCellFrameIds.has(frame.id)
+      const currentFrameCellHighlighted = Boolean(cellClasses.frameActive || cellClasses.selectedByFrame || selectedCellActivityHighlighted)
+        && (node.layer.id === playbackActiveLayerId || selectedCellActivityHighlighted)
       const cel = celLookup.at(node.layer.id, frame.id)
       const resolvedCel = celLookup.resolve(cel)
       const key = animationCelKey(node.layer.id, frame.id)
@@ -3509,14 +3591,19 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // active, the owner row must keep only its ambient frame background and
       // must not render a second current-cel content marker.
       const defaultActiveCell = Boolean(!focusState.frameFocus && !maskVisualSelectionActive && hasContent && cellClasses.current)
-      const currentCell = Boolean(!animationCelDragActive && !focusState.frameFocus && !maskVisualSelectionActive && hasContent && (defaultActiveCell || (!suppressCellSelectionGuides && currentFrameCellHighlighted
+      // Drawing hides the selection guides but keeps the active frame/cel
+      // context. Once guides are hidden, frame focus must no longer suppress
+      // the current cel marker; otherwise the marker disappears while the
+      // active frame background remains visible.
+      const frameFocusVisualSuppressed = focusState.frameFocus && selectionOutlineVisible
+      const currentCell = Boolean(!animationCelDragActive && !frameFocusVisualSuppressed && !maskVisualSelectionActive && hasContent && (defaultActiveCell || (!suppressCellSelectionGuides && currentFrameCellHighlighted
         && (!selectionOutlineVisible || renderedCellKeys.length === 0 || cellVisuallySelected))))
       // Explicit layer selection highlights every cel in those layers;
       // frame/cel selection modes remain mutually exclusive.
-      const layerSelectionModeActive = !hasNonRowAnimationItemSelection
+      const layerSelectionModeActive = !hasNonRowAnimationItemSelection || onlyImplicitLayerCellSelection || explicitMultiLayerSelection
       // The active layer is only the interaction context on project startup;
       // show the full-row selection after the user explicitly selects a layer.
-      const layerSelectedAcrossTimeline = Boolean(timelineVisualState.selectionGuidesVisible && session.layerSelectionExplicit && layerSelectionModeActive && visualCell?.selectedByLayer)
+      const layerSelectedAcrossTimeline = Boolean((timelineVisualState.selectionGuidesVisible || explicitMultiLayerSelection) && session.layerSelectionExplicit && layerSelectionModeActive && visualCell?.selectedByLayer)
       // A selection marker is an interior cel indicator, not the selection
       // highlight itself. Empty/transparent slots must keep their grid or
       // selection-box state without looking like visible cels.
@@ -3644,6 +3731,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
               </div>
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.sideDockAutoHide')} tooltip={t('layers.sideDockAutoHideDescription')} aria-label={t('layers.sideDockAutoHide')} checked={layerSettings.sideDockAutoHide} onChange={(sideDockAutoHide) => applyLayerSettings({ ...layerSettings, sideDockAutoHide })} />
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.hideTimeline')} tooltip={t('layers.hideTimelineDescription')} aria-label={t('layers.hideTimeline')} checked={layerSettings.timelineHidden} onChange={(timelineHidden) => applyLayerSettings({ ...layerSettings, timelineHidden })} />
+              <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
             </div>
           </section>
           <section className="layer-settings-section layer-settings-onion-section">

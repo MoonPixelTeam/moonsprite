@@ -151,6 +151,7 @@ export interface WorkspaceToolCommands {
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
+  setBrushAngle(angle: number): void
   setAirbrushParticleRadius(radius: number): void
   setAirbrushParticleShape(shape: BrushShape): void
   setAirbrushScatterRadius(radius: number): void
@@ -262,6 +263,8 @@ export interface WorkspaceViewSelectionCommands {
   restoreAntiAliasPreview(preview: AntiAliasPreview | null): void
   setOutlinePreview(preview: OutlinePreview | null): void
   outlineActiveSelection(settings: OutlineSettings): boolean
+  quickOutlineActiveSelection(): boolean
+  outlineSelectionInside(): boolean
   beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   beginFreeTileFloatingSelectionTransform(options: {
     sourceId: string

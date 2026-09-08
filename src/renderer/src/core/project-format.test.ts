@@ -198,6 +198,64 @@ describe('project manifest migration boundary', () => {
     expect(Array.from(patchFiles[repairedCelEntry.dataFile].subarray(0, 4))).toEqual([220, 30, 40, 255])
   })
 
+  it('does not reuse a tileset resource after its layout grows', async () => {
+    const document = createDocument('incremental tileset layout change', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    document.tilesets = [tileset]
+    const archive = encodeProject(document)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-tileset-layout-change.moonsprite', archive)).toBe(true)
+
+    tileset.rows = 2
+    tileset.pixels = new Uint8ClampedArray(tileset.columns * tileset.rows * tileset.tileWidth * tileset.tileHeight * 4)
+    const encoded = await encodeProjectSaveAsync(document)
+    const files = unzipSync(encoded.data)
+
+    expect(files['tilesets/tileset-1.rgba']).toHaveLength(32)
+    expect(encoded.reusableEntries.some((entry) => entry.path === 'tilesets/tileset-1.rgba')).toBe(false)
+    expect(() => decodeProject(encodeProject(document))).not.toThrow()
+  })
+
+  it('does not reuse a corrupt tileset resource from an incremental baseline', async () => {
+    const document = createDocument('incremental corrupt tileset baseline', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    document.tilesets = [tileset]
+    const files = unzipSync(encodeProject(document))
+    files['tilesets/tileset-1.rgba'] = files['tilesets/tileset-1.rgba'].subarray(0, 12)
+    const corruptArchive = zipSync(files)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-corrupt-tileset-baseline.moonsprite', corruptArchive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const repairedFiles = unzipSync(encoded.data)
+
+    expect(repairedFiles['tilesets/tileset-1.rgba']).toHaveLength(16)
+    expect(encoded.reusableEntries.some((entry) => entry.path === 'tilesets/tileset-1.rgba')).toBe(false)
+    expect(() => decodeProject(encodeProject(document))).not.toThrow()
+  })
+
+  it('records reusable resource lengths and raster metadata in the save plan', async () => {
+    const document = createDocument('incremental save plan metadata', 4, 3, 'rgba')
+    const archive = encodeProject(document)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-save-plan-metadata.moonsprite', archive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const files = unzipSync(encoded.data)
+    const plan = JSON.parse(strFromU8(files['.moonsprite-save-plan.json'])) as { version: number; entries: Array<{ path: string; crc32: number; byteLength: number; encoding?: string; width?: number; height?: number }> }
+
+    expect(plan.version).toBe(2)
+    expect(plan.entries.length).toBeGreaterThan(0)
+    expect(plan.entries.every((entry) => entry.crc32 >= 0 && entry.byteLength > 0)).toBe(true)
+    expect(plan.entries.some((entry) => (entry.encoding === 'raw' || entry.encoding === 'sparse-tiles-v1') && entry.width === 4 && entry.height === 3)).toBe(true)
+  })
+
+  it('refuses to save a tileset whose pixels do not match its declared layout', () => {
+    const document = createDocument('invalid tileset storage', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    tileset.rows = 2
+    document.tilesets = [tileset]
+
+    expect(() => encodeProject(document)).toThrow()
+  })
+
   it('rejects a raw raster size mismatch instead of substituting another frame resource', () => {
     const document = createDocument('ambiguous raster corruption', 4, 4, 'rgba')
     const files = unzipSync(encodeProject(document))

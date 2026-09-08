@@ -2,12 +2,29 @@ import { describe, expect, it } from 'vitest'
 import { BRUSH_SPEED_STOP_MS, CanvasInputState, PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS, PointerPressureAdapter, SELECTION_CORNER_RESIZE_HIT_RADIUS, SELECTION_RESIZE_HIT_RADIUS, appendCanvasPathStep, appendPolygonLassoVertex, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, cachedSelectionTransformSource, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom, coalescedPointerClientPoints, constrainedTranslation, consumePendingCanvasGestureHistory, createCanvasPanDrag, createMarqueeResizeStart, createPolygonPathRasterCache, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, finalizeMarqueeSelection, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, marqueePreviewTargetForDrag, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, quickSelectCellSelection, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, rotationHandles, sampledForegroundColorToAdd, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionInteractionOverridesTemporaryMove, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionOverlayMaskForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionRotationHit, selectionShearHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, shouldUseTemporaryMoveForCanvasInteraction, shouldUseTemporaryMoveTool, snapSelectionRotation, steppedCanvasZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, undoCanvasPathStep, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState } from './canvas-input'
 import { balancedStairLinePoints } from './pixel-line'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
+import { isPenBarrelButtonEvent, isPenEraserEvent } from './canvas-input'
 import { beginPixelEdit } from './history'
 import { applySelectionTransform, captureSelectionTransform, paintBrush } from './tools'
-import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture, isCanvasToolGestureLocked } from './canvas-tool-gesture-lock'
+import { beginCanvasToolGesture, clearCanvasToolGestures, deferCanvasShortcut, endCanvasToolGesture, isCanvasToolGestureLocked } from './canvas-tool-gesture-lock'
 const drag = (): CanvasDragState => ({ kind: 'move-content', start: { x: 0, y: 0 }, last: { x: 0, y: 0 } })
 
 describe('canvas input helpers', () => {
+  it('recognizes Windows Ink eraser and barrel-button events without treating mouse input as pen input', () => {
+    expect(isPenEraserEvent({ pointerType: 'pen', button: 5, buttons: 0 })).toBe(true)
+    expect(isPenEraserEvent({ pointerType: 'mouse', button: 5, buttons: 32 })).toBe(false)
+    expect(isPenBarrelButtonEvent({ pointerType: 'pen', button: 2, buttons: 2 })).toBe(true)
+    expect(isPenBarrelButtonEvent({ pointerType: 'mouse', button: 2, buttons: 2 })).toBe(false)
+  })
+
+  it('clears temporary tablet tool state with the owning pointer', () => {
+    const input = new CanvasInputState()
+    input.setTemporaryTool(11, 'eraser')
+    input.clearTemporaryTool(12)
+    expect(input.temporaryTool).toBe('eraser')
+    input.clearTemporaryTool(11)
+    expect(input.temporaryTool).toBeNull()
+  })
+
   it('hits only corner handles in free transform mode', () => {
     const target = { x: 4, y: 6, width: 12, height: 8 }
     expect(selectionFreeTransformHit(target, 0, undefined, { x: 4, y: 6 }, 1)).toBe('nw')
@@ -127,6 +144,12 @@ describe('canvas input helpers', () => {
     expect(input.penPointerIsActive()).toBe(true)
     expect(input.acceptPointerDeviceEvent({ pointerId: 1, pointerType: 'mouse', timeStamp: 101 }, true)).toBe(true)
     expect(input.penPointerIsActive()).toBe(false)
+  })
+
+  it('latches pressure capability for a pen stream before the first changing sample', () => {
+    const adapter = new PointerPressureAdapter()
+    expect(adapter.adapt({ pointerId: 12, pointerType: 'pen', pressure: 0, buttons: 1 }).pressureAvailable).toBe(true)
+    expect(adapter.adapt({ pointerId: 12, pointerType: 'pen', pressure: 0.5, buttons: 1 }).pressureAvailable).toBe(true)
   })
 
 
@@ -417,6 +440,24 @@ describe('canvas input helpers', () => {
       expect(isCanvasToolGestureLocked()).toBe(true)
       endCanvasToolGesture(7)
       expect(isCanvasToolGestureLocked()).toBe(false)
+    } finally {
+      clearCanvasToolGestures()
+    }
+  })
+
+  it('replays deferred shortcuts in order after pointer release', async () => {
+    clearCanvasToolGestures()
+    const changes: string[] = []
+    try {
+      beginCanvasToolGesture(7)
+      deferCanvasShortcut(() => changes.push('pencil'))
+      deferCanvasShortcut(() => changes.push('eraser'))
+      expect(changes).toEqual([])
+
+      endCanvasToolGesture(7)
+      expect(changes).toEqual([])
+      await Promise.resolve()
+      expect(changes).toEqual(['pencil', 'eraser'])
     } finally {
       clearCanvasToolGestures()
     }

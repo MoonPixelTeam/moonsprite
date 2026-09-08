@@ -37,6 +37,7 @@ export interface SpriteSheetExportSelection {
   selectedLayerIds: readonly string[]
   selectedGroupIds: readonly string[]
   selectedFrameIds: readonly string[]
+  selection?: SelectionMask | null
 }
 
 export interface SpriteSheetExportTarget {
@@ -62,6 +63,11 @@ export interface SpriteSheetBuildResult {
   document: SpriteDocument
   itemCount: number
   sourceItemCount: number
+}
+
+export interface SpriteSheetBuildNames {
+  document: string
+  layer: string
 }
 
 export interface SpriteSheetLayoutMetrics {
@@ -219,6 +225,32 @@ export function createSpriteSheetExportTargets(
     layerIds: layerTarget.layerIds,
     suffixes: [layerTarget.suffix, frameTarget.suffix].filter((value): value is string => Boolean(value))
   })))
+}
+
+export function buildSpriteSheetExportDocument(
+  source: SpriteDocument,
+  options: SpriteSheetExportOptions,
+  selection: SpriteSheetExportSelection,
+  names: SpriteSheetBuildNames
+): SpriteSheetBuildResult {
+  const area = resolveSpriteSheetArea(source, options.area, selection.selection)
+  const targets = createSpriteSheetExportTargets(source, selection, options)
+  if (targets.length === 0) throw new Error(tr('core.spriteSheet.noItems'))
+  const parts = targets.flatMap((target) => {
+    try {
+      return [createSpriteSheetDocument(source, names, {
+        ...options,
+        area,
+        selection: options.area === 'selection' ? selection.selection : null,
+        frameIds: target.frameIds,
+        layerIds: target.layerIds
+      })]
+    } catch (error) {
+      if (options.ignoreEmpty && error instanceof EmptySpriteSheetError) return []
+      throw error
+    }
+  })
+  return stackSpriteSheetDocuments(parts, names)
 }
 
 const renderSpriteSheetItem = (
