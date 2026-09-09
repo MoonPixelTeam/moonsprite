@@ -8,6 +8,9 @@ import {
   SKIP_DISABLED_FRAMES_PREFERENCE_KEY,
   EXPORT_FORMAT_PREFERENCE_KEY,
   EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY,
+  PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY,
+  PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY,
+  PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY,
   MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY,
   SAVE_FORMAT_PREFERENCE_KEY,
   imageExportKindForPreference,
@@ -67,6 +70,9 @@ describe('editor preferences boundary', () => {
       gradientLineVisible: true,
       gradientLineColor: DEFAULT_EDITOR_PREFERENCES.gradientLineColor,
       eyedropperQuickSelect: false,
+      projectBackupVersions: 10,
+      projectBackupRetentionDays: 30,
+      projectBackupDirectory: '',
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
     expect(parseUiScale('1.25')).toBe(1)
@@ -128,6 +134,9 @@ describe('editor preferences boundary', () => {
       gradientLineVisible: false,
       gradientLineColor: { r: 12, g: 34, b: 56, a: 78 },
       eyedropperQuickSelect: true,
+      projectBackupVersions: 6,
+      projectBackupRetentionDays: 90,
+      projectBackupDirectory: 'D:/MoonSprite backups',
       animationPlaybackRate: 1.5,
       animationPlaybackMode: 'tag',
       animationReturnToStart: true,
@@ -144,6 +153,9 @@ describe('editor preferences boundary', () => {
     expect(loaded.gradientLineVisible).toBe(false)
     expect(loaded.gradientLineColor).toEqual({ r: 12, g: 34, b: 56, a: 78 })
     expect(loaded.eyedropperQuickSelect).toBe(true)
+    expect(loaded.projectBackupVersions).toBe(6)
+    expect(loaded.projectBackupRetentionDays).toBe(90)
+    expect(loaded.projectBackupDirectory).toBe('D:/MoonSprite backups')
     expect(loaded.animationPlaybackRate).toBe(1.5)
     expect(loaded.animationPlaybackMode).toBe('tag')
     expect(loaded.animationReturnToStart).toBe(true)
@@ -153,6 +165,9 @@ describe('editor preferences boundary', () => {
     expect(storage.getItem(EXPORT_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)).toBe('80')
     expect(storage.getItem(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY)).toBe('true')
+    expect(storage.getItem(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)).toBe('6')
+    expect(storage.getItem(PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY)).toBe('90')
+    expect(storage.getItem(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)).toBe('D:/MoonSprite backups')
     expect(storage.getItem(ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY)).toBe('1.5')
     expect(storage.getItem(ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY)).toBe('tag')
     expect(storage.getItem(ANIMATION_RETURN_TO_START_PREFERENCE_KEY)).toBe('true')

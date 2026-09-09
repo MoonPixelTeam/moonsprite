@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
+import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 
 describe('shortcut persistence boundary', () => {
   it('recognizes only F1 through F12 as native function keys', () => {
@@ -96,6 +96,7 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS['tool.airbrush']).toBe('J')
     expect(DEFAULT_SHORTCUTS['tool.slice']).toBe('Shift+C')
     expect(normalizeShortcut('Ctrl+Shift+Alt+M')).toBe('Ctrl+Alt+Shift+M')
+    expect(normalizeShortcut('Win+Space+MouseLeft')).toBe('Win+Space+MouseLeft')
   })
 
   it('tracks press and release for a held command shortcut', () => {
@@ -108,6 +109,7 @@ describe('shortcut persistence boundary', () => {
     expect(shortcutReleasedByEvent(releasedModifier, 'Alt+S')).toBe(true)
     expect(shortcutMatchesEvent({ key: 'S', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent, DEFAULT_SHORTCUTS.quickOutline)).toBe(true)
     expect(shortcutMatchesEvent({ key: 's', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.outlineSelectionInside)).toBe(true)
+    expect(shortcutText({ key: 'k', code: 'KeyK', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent)).toBe('Win+K')
   })
 
 
@@ -124,6 +126,22 @@ describe('shortcut persistence boundary', () => {
     expect(dispatchWheelShortcutInput(target, { ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, -120)).toBe(true)
     expect(phases).toEqual(['keydown:WheelUp', 'keyup:WheelUp'])
     expect(dispatchWheelShortcutInput(target, { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, 0)).toBe(false)
+  })
+
+  it('records and dispatches primary mouse interactions', () => {
+    const target = document.createElement('div')
+    const phases: string[] = []
+    target.addEventListener('keydown', (event) => phases.push(`${event.type}:${event.key}`))
+    target.addEventListener('keyup', (event) => phases.push(`${event.type}:${event.key}`))
+
+    expect(mouseShortcutText({ button: 0, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe('Ctrl+MouseLeft')
+    expect(mouseShortcutText({ button: 0, ctrlKey: false, metaKey: true, altKey: false, shiftKey: false })).toBe('Win+MouseLeft')
+    expect(mouseShortcutText({ button: 0, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, new Set(['Space']))).toBe('Space+MouseLeft')
+    expect(mouseShortcutText({ button: 2, ctrlKey: false, metaKey: false, altKey: true, shiftKey: false })).toBe('Alt+MouseRight')
+    expect(mouseDoubleClickShortcutText({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: true })).toBe('Shift+MouseDoubleLeft')
+    expect(dispatchMouseShortcutInput(target, { button: 0, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, 'keydown')).toBe(false)
+    expect(dispatchMouseDoubleClickShortcutInput(target, { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBe(false)
+    expect(phases).toEqual(['keydown:MouseLeft', 'keydown:MouseDoubleLeft', 'keyup:MouseDoubleLeft'])
   })
 
 

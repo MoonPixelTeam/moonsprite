@@ -1742,6 +1742,8 @@ export const zhCNMessages = {
   'layers.rasterizeLayer': '栅格化图层',
   'layers.rasterizeLayerDescription': '将可编辑文本、Tilemap 格子或图层样式转换为普通像素内容。完成后可以直接绘制，但原始源数据无法再单独编辑。',
   'layers.settings': '图层设置',
+  'layers.quickActions': '图层快捷操作',
+  'layers.quickActionsDescription': '选择最多 5 项并调整顺序，它们会显示在图层面板右上角。',
   'layers.panelDisplay': '栏目显示',
   'layers.thumbnailSize': '缩略图与帧信息大小',
   'layers.freeTileInstancePanelLayout': '实例图层位置',

@@ -15,7 +15,7 @@ import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture }
 import { blendOver, hexToColor, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, resolveRadialGradientGeometry, type GradientGeometryOptions } from '@/core/gradient'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
-import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
+import { applyLiquifyPushPath, applyLiquifyHoldStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
 import { accumulateLiquifyHoldStrength, applyAccumulatedLiquifyPush, createLiquifyHoldClock, type LiquifyHoldClock } from '@/components/canvas-liquify-interaction'
 import { DEFAULT_GRID_SETTINGS, gridCellBoundsAt, gridLinePositions, shouldRenderPixelGrid, snapPointToGrid, snapSelectionBoundsToGrid, snapSelectionTranslationToGrid } from '@/core/grid'
 import { alignmentThresholdForZoom, resolveAlignment } from '@/core/alignment'
@@ -1298,18 +1298,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   applyLiquifyHoldRef.current = (drag) => {
     const current = liveInputSession()
     if ((drag.liquifyMode ?? current.liquifyMode) === 'push') return
-    const strength = accumulateLiquifyHoldStrength(drag.liquifyHoldStrength ?? 0, current.liquifyStrength)
+    const strength = accumulateLiquifyHoldStrength(0, current.liquifyStrength)
     const timeline = current.document.animation
     const layer = activePaintLayer(current)
     const mask = timeline ? animationMaskAt(timeline, layer.id, timeline.activeFrameId) : null
-    const changed = applyLiquifyStep(current.document, layer, drag.edit!, drag.last, drag.last, {
+    const changed = applyLiquifyHoldStep(current.document, layer, drag.edit!, drag.last, {
       mode: drag.liquifyMode ?? current.liquifyMode,
       radius: current.liquifyRadius,
       strength,
       selection: current.selection,
       mask
     })
-    drag.liquifyHoldStrength = strength
     if (changed) {
       const radius = Math.max(1, Math.round(current.liquifyRadius))
       const left = Math.max(0, Math.floor(drag.last.x - radius))
@@ -4956,7 +4955,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const nextMode = temporaryLiquifyModeForShift(liveInputSession().liquifyMode, inputRef.current.shiftHeld)
       if (drag.liquifyMode === nextMode) return
       drag.liquifyMode = nextMode
-      drag.liquifyHoldStrength = 0
     }
     const cancelQuickEyedropperForChord = (): void => {
       if (!eyedropperQuickSelect || !inputRef.current.altHeld) return
@@ -7821,7 +7819,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         last: liquifyPoint,
         edit: beginPixelEdit(editableLayer.id),
         liquifyMode,
-        liquifyHoldStrength: 0,
         liquifyPushStroke: createLiquifyPushStroke(),
         liquifyCompound: state.beginLiquifyStroke(editableLayer.id),
         startedAt: Date.now()
@@ -9215,12 +9212,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.last = result.pointerPoint
       } else {
         const next = points.at(-1)!
-        // Stationary modes are driven only by the hold clock. Pointer motion
-        // relocates the center and restarts the gradual buildup; applying the
-        // configured strength here caused a full-strength jump on every tiny
-        // move in addition to the timed hold deformation.
+        // The hold engine owns anchor changes and buildup. Subpixel jitter
+        // must not erase strength or restore pixels from the original gesture.
         drag.last = next
-        drag.liquifyHoldStrength = 0
       }
       scheduleDraw()
       return

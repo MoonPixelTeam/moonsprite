@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDocument, readLayerColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit } from '@/core/history'
-import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke } from '@/core/liquify'
+import { applyLiquifyPushPath, applyLiquifyHoldStep, createLiquifyPushStroke } from '@/core/liquify'
 import { useWorkspace } from '@/store/workspace'
 import { accumulateLiquifyHoldStrength, applyAccumulatedLiquifyPush, createLiquifyHoldClock, LIQUIFY_HOLD_STEP_MS } from './canvas-liquify-interaction'
 
@@ -114,7 +114,6 @@ describe('CanvasStage liquify interactions', () => {
     const center = { x: 4, y: 4 }
     const driver = createFrameDriver()
     let holding = true
-    let pendingStrength = 0
     let steps = 0
     const clock = createLiquifyHoldClock({
       requestFrame: driver.requestFrame,
@@ -123,8 +122,7 @@ describe('CanvasStage liquify interactions', () => {
       shouldRun: () => holding,
       onStep: () => {
         steps += 1
-        pendingStrength = accumulateLiquifyHoldStrength(pendingStrength, 80)
-        applyLiquifyStep(document, layer, edit, center, center, { mode: 'inflate', radius: 4, strength: pendingStrength })
+        applyLiquifyHoldStep(document, layer, edit, center, { mode: 'inflate', radius: 4, strength: accumulateLiquifyHoldStrength(0, 80) })
       }
     })
 
@@ -159,7 +157,7 @@ describe('CanvasStage liquify interactions', () => {
       cancelFrame: driver.cancelFrame,
       now: driver.now,
       shouldRun: () => true,
-      onStep: () => { applyLiquifyStep(document, layer, edit, center, center, { mode: 'twist-clockwise', radius: 4, strength: 100 }) }
+      onStep: () => { applyLiquifyHoldStep(document, layer, edit, center, { mode: 'twist-clockwise', radius: 4, strength: 100 }) }
     })
 
     clock.start()

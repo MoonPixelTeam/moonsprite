@@ -77,6 +77,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   readProjectPreview: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   cacheProjectPreview: async () => {},
   writeBinaryAtomic: async () => { throw new Error(tr('platform.browser.writeUnsupported')) },
+  openProjectBackupFolder: async () => {},
   writeProjectIncremental: async () => { throw new Error(tr('platform.browser.writeUnsupported')) },
   writeClipboardImage: async () => {},
   readClipboardText: async () => null,
@@ -283,7 +284,12 @@ const writeBinaryAtomic = (filePath: string, data: Uint8Array): Promise<void> =>
   () => invoke(
     'write_binary_atomic',
     data,
-    { headers: { 'x-moonsprite-file-path': encodeURIComponent(filePath) } }
+    { headers: {
+      'x-moonsprite-file-path': encodeURIComponent(filePath),
+      'x-moonsprite-project-backup-versions': String(loadEditorPreferences().projectBackupVersions),
+      'x-moonsprite-project-backup-retention-days': String(loadEditorPreferences().projectBackupRetentionDays),
+      'x-moonsprite-project-backup-directory': encodeURIComponent(loadEditorPreferences().projectBackupDirectory)
+    } }
   )
 )
 
@@ -342,7 +348,10 @@ const writeProjectIncremental = (filePath: string, sourcePath: string, data: Uin
     data,
     { headers: {
       'x-moonsprite-file-path': encodeURIComponent(filePath),
-      'x-moonsprite-source-path': encodeURIComponent(sourcePath)
+      'x-moonsprite-source-path': encodeURIComponent(sourcePath),
+      'x-moonsprite-project-backup-versions': String(loadEditorPreferences().projectBackupVersions),
+      'x-moonsprite-project-backup-retention-days': String(loadEditorPreferences().projectBackupRetentionDays),
+      'x-moonsprite-project-backup-directory': encodeURIComponent(loadEditorPreferences().projectBackupDirectory)
     } }
   )
 )
@@ -389,6 +398,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
     colorMode: preview.colorMode
   }),
   writeBinaryAtomic,
+  openProjectBackupFolder: () => invoke('open_project_backup_folder', { directoryPath: loadEditorPreferences().projectBackupDirectory }),
   writeScaledPngAtomic,
   writeProjectIncremental,
   writeClipboardImage: (image) => invoke('write_clipboard_image', { width: image.width, height: image.height, data: Array.from(image.data) }),

@@ -1,5 +1,6 @@
 use crate::platform_storage::{
     atomic_write, atomic_write_with, atomic_write_with_validation_and_backup,
+    DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,7 +10,7 @@ use std::{
     io::{BufWriter, Cursor, Read, Seek, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::UNIX_EPOCH,
+    time::{Duration, UNIX_EPOCH},
 };
 use tauri::{
     ipc::{Channel, InvokeBody, Request, Response},
@@ -33,6 +34,10 @@ const PNG_STREAM_BUFFER_BYTES: usize = 64 * 1024;
 const PNG_FILE_BUFFER_BYTES: usize = 1024 * 1024;
 const PNG_ROW_BATCH_BYTES: usize = 1024 * 1024;
 const PROJECT_BACKUP_DIRECTORY: &str = "project-backups";
+const PROJECT_BACKUP_VERSIONS_HEADER: &str = "x-moonsprite-project-backup-versions";
+const PROJECT_BACKUP_RETENTION_DAYS_HEADER: &str = "x-moonsprite-project-backup-retention-days";
+const PROJECT_BACKUP_DIRECTORY_HEADER: &str = "x-moonsprite-project-backup-directory";
+const DEFAULT_PROJECT_BACKUP_RETENTION_DAYS: u64 = 30;
 
 #[derive(Clone, Default)]
 pub struct ScaledPngCancellation {
@@ -153,6 +158,28 @@ fn request_positive_u32_header(request: &Request<'_>, header: &str) -> Result<u3
     Ok(value)
 }
 
+fn project_backup_policy(request: &Request<'_>) -> (usize, Duration) {
+    let versions = request.headers().get(PROJECT_BACKUP_VERSIONS_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .map(|value| value.clamp(1, DEFAULT_PROJECT_BACKUPS_PER_PROJECT))
+        .unwrap_or(DEFAULT_PROJECT_BACKUPS_PER_PROJECT);
+    let days = request.headers().get(PROJECT_BACKUP_RETENTION_DAYS_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|value| value.clamp(1, 365))
+        .unwrap_or(DEFAULT_PROJECT_BACKUP_RETENTION_DAYS);
+    (versions, Duration::from_secs(days.saturating_mul(24 * 60 * 60)))
+}
+
+fn project_backup_directory_from_request(app: &AppHandle, request: &Request<'_>) -> Result<PathBuf, String> {
+    let directory_path = request.headers().get(PROJECT_BACKUP_DIRECTORY_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(decode_file_path_header)
+        .transpose()?;
+    configured_project_backup_directory(app, directory_path.as_deref())
+}
+
 fn request_boolean_header(request: &Request<'_>, header: &str) -> Result<bool, String> {
     match request
         .headers()
@@ -206,6 +233,34 @@ fn project_backup_directory(app: &AppHandle) -> Result<std::path::PathBuf, Strin
         .app_data_dir()
         .map(|directory| directory.join(PROJECT_BACKUP_DIRECTORY))
         .map_err(|error| error.to_string())
+}
+
+fn configured_project_backup_directory(app: &AppHandle, directory_path: Option<&str>) -> Result<PathBuf, String> {
+    let Some(directory_path) = directory_path.map(str::trim).filter(|value| !value.is_empty()) else {
+        return project_backup_directory(app);
+    };
+    let directory = PathBuf::from(directory_path);
+    if !directory.is_absolute() {
+        return Err("工程备份目录必须是绝对路径。".to_string());
+    }
+    Ok(directory)
+}
+
+#[tauri::command]
+pub fn open_project_backup_folder(app: AppHandle, directory_path: Option<String>) -> Result<(), String> {
+    let directory = configured_project_backup_directory(&app, directory_path.as_deref())?;
+    fs::create_dir_all(&directory).map_err(|error| format!("无法创建工程备份文件夹：{error}"))?;
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+    command
+        .arg(&directory)
+        .spawn()
+        .map_err(|error| format!("无法打开工程备份文件夹：{error}"))?;
+    Ok(())
 }
 
 fn parse_palette_hex(encoded: &str) -> Result<Vec<u32>, String> {
@@ -1467,13 +1522,20 @@ pub fn write_binary_atomic(app: AppHandle, request: Request<'_>) -> Result<(), S
     let file_path = request_path(&request, FILE_PATH_HEADER)?;
     let data = raw_request_data(&request)?;
     let path = Path::new(&file_path);
+    let (backup_versions, backup_retention) = project_backup_policy(&request);
+    let backup_directory = project_backup_directory_from_request(&app, &request)?;
     if is_moonsprite_backup_path(path) {
+        return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
+    }
+    if path.starts_with(&backup_directory) {
         return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
     }
     if is_moonsprite_project_path(path) {
         atomic_write_with_validation_and_backup(
             path,
-            &project_backup_directory(&app)?,
+            &backup_directory,
+            backup_versions,
+            backup_retention,
             |output| output.write_all(data).map_err(|error| error.to_string()),
             validate_project_archive_file,
         )
@@ -1564,12 +1626,18 @@ pub async fn write_project_incremental(app: AppHandle, request: Request<'_>) -> 
         return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
     }
     let patch = raw_request_data(&request)?.to_vec();
-    let backup_directory = project_backup_directory(&app)?;
+    let (backup_versions, backup_retention) = project_backup_policy(&request);
+    let backup_directory = project_backup_directory_from_request(&app, &request)?;
+    if Path::new(&file_path).starts_with(&backup_directory) {
+        return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let source = fs::File::open(&source_path).map_err(|error| error.to_string())?;
         atomic_write_with_validation_and_backup(
             Path::new(&file_path),
             &backup_directory,
+            backup_versions,
+            backup_retention,
             |output| merge_project_archive(source, &patch, output),
             validate_project_archive_file,
         )

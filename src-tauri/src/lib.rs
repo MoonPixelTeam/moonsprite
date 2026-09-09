@@ -195,6 +195,7 @@ pub fn run() {
             platform_files::read_project_preview,
             platform_files::cache_project_preview,
             platform_files::write_binary_atomic,
+            platform_files::open_project_backup_folder,
             platform_files::cancel_scaled_png_export,
             platform_files::write_scaled_png_atomic,
             platform_files::write_project_incremental,

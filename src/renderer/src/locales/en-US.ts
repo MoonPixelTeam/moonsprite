@@ -1740,6 +1740,8 @@ export const enUSMessages = {
   'layers.rasterizeLayer': 'Rasterize Layer',
   'layers.rasterizeLayerDescription': 'Converts editable text, Tilemap cells, or layer styles into regular pixel content. You can paint the result directly, but the original source settings can no longer be edited separately.',
   'layers.settings': 'Layer Settings',
+  'layers.quickActions': 'Layer Quick Actions',
+  'layers.quickActionsDescription': 'Choose up to five actions and arrange their order in the top-right of the Layers panel.',
   'layers.panelDisplay': 'Panel Display',
   'layers.thumbnailSize': 'Thumbnail and Frame Detail',
   'layers.freeTileInstancePanelLayout': 'Instance Layer Location',

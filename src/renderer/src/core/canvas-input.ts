@@ -358,7 +358,6 @@ export interface CanvasDragState {
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint
-  liquifyHoldStrength?: number
   liquifyPushStroke?: LiquifyPushStroke
   tilemapEdit?: TilemapEdit
   tilemapCell?: TilemapCell | null

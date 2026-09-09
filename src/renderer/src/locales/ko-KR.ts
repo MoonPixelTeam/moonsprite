@@ -1719,6 +1719,8 @@ export const koKRMessages = {
   'layers.rasterizeLayer': '데이터 레이어',
   'layers.rasterizeLayerDescription': '데이터 데이터 텍스트, 데이터 셀, 또는 레이어 데이터 으로 데이터 픽셀 데이터. 사용자 할 수 있음 데이터 결과 데이터, 데이터 데이터 원본 설정 할 수 있음 no 데이터 데이터 데이터.',
   'layers.settings': '레이어 설정',
+  'layers.quickActions': '레이어 빠른 작업',
+  'layers.quickActionsDescription': '최대 5개의 작업을 선택하고 레이어 패널 오른쪽 위의 순서를 조정합니다.',
   'layers.panelDisplay': '패널 데이터',
   'layers.thumbnailSize': '데이터 및 프레임 데이터',
   'layers.freeTileInstancePanelLayout': '데이터 레이어 데이터',

@@ -1,19 +1,38 @@
 import type { LayerMask, LiquifyMode, RasterLayer, SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
-import { layerIndexAt, readLayerColor, readLayerPacked, writeLayerPacked } from './document'
+import { layerIndexAt, readLayerPacked, writeLayerPacked } from './document'
 import { recordPixelKnownCurrent, type PixelEdit } from './history'
 import { selectionContains } from './selection'
 
 const PUSH_DAB_SPACING_RATIO = 0.125
-export const LIQUIFY_MAX_PUSH_DABS_PER_BATCH = 128
 
 export interface LiquifyPushStroke {
   dabCount: number
-  displacements: Map<number, { x: number; y: number }>
   maxDisplacement: number
   axisMode: 'horizontal' | 'vertical' | 'diagonal' | 'free' | null
   horizontalDisplacements: Map<number, number>
   verticalDisplacements: Map<number, number>
+  path?: { sample: Point; remaining: number; spacing: number }
+  provisional?: PushPreview
 }
+
+type Point = { x: number; y: number }
+interface PushPreview {
+  rect: SelectionRect
+  pixels: Uint32Array
+  horizontal: Map<number, number>
+  vertical: Map<number, number>
+  axisMode: LiquifyPushStroke['axisMode']
+  maxDisplacement: number
+}
+
+interface HoldStroke {
+  center: Point
+  mode: LiquifyMode
+  radius: number
+  strength: number
+  source: { rect: SelectionRect; pixels: Uint32Array }
+}
+const holdStrokes = new WeakMap<PixelEdit, HoldStroke>()
 
 export interface LiquifyStepOptions {
   mode: LiquifyMode
@@ -41,7 +60,6 @@ export const temporaryLiquifyModeForShift = (mode: LiquifyMode, shiftHeld: boole
 
 export const createLiquifyPushStroke = (): LiquifyPushStroke => ({
   dabCount: 0,
-  displacements: new Map(),
   maxDisplacement: 0,
   axisMode: null,
   horizontalDisplacements: new Map(),
@@ -58,6 +76,7 @@ export const resetLiquifyStroke = (document: SpriteDocument, edit: PixelEdit, pu
       if (current !== packed) writeLayerPacked(document, layer, index, packed)
     }
   }
+  holdStrokes.delete(edit)
   edit.before.clear()
   edit.after.clear()
   edit.points = undefined
@@ -66,7 +85,8 @@ export const resetLiquifyStroke = (document: SpriteDocument, edit: PixelEdit, pu
   edit.dirtyRect = undefined
   if (pushStroke) {
     pushStroke.dabCount = 0
-    pushStroke.displacements.clear()
+    pushStroke.path = undefined
+    pushStroke.provisional = undefined
     pushStroke.maxDisplacement = 0
     pushStroke.axisMode = null
     pushStroke.horizontalDisplacements.clear()
@@ -93,37 +113,124 @@ const ensureSourceScratch = (length: number): Uint32Array => {
 const baselinePacked = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number): number =>
   edit.before.get(index) ?? readLayerPacked(document, layer, index)
 
-const axisModeForDelta = (delta: { x: number; y: number }): 'horizontal' | 'vertical' | 'diagonal' | 'free' => {
-  const absX = Math.abs(delta.x)
-  const absY = Math.abs(delta.y)
-  if (absX >= absY * 1.75) return 'horizontal'
-  if (absY >= absX * 1.75) return 'vertical'
-  if (absX > 0.0001 && absY > 0.0001) return 'diagonal'
-  return 'free'
+// Axis fast paths are valid only for genuinely axial motion. Tiny cross-axis
+// deltas must not disappear just because a device dispatches more events.
+const updatePushAxisMode = (stroke: LiquifyPushStroke, delta: Point): void => {
+  const hasX = Math.abs(delta.x) > 1e-9
+  const hasY = Math.abs(delta.y) > 1e-9
+  if (!hasX && !hasY) return
+  const axis = hasX && hasY ? 'diagonal' : hasX ? 'horizontal' : 'vertical'
+  if (stroke.axisMode === null || stroke.axisMode === 'free') stroke.axisMode = axis
+  else if (stroke.axisMode !== axis) stroke.axisMode = 'diagonal'
 }
 
-/**
- * Keep a push stroke coherent while still allowing the pointer to bend.
- *
- * The first segment chooses the efficient scanline path. Once that path has
- * a meaningful component on the other axis, it must be upgraded to the
- * diagonal displacement field; otherwise a shallow diagonal bend (for
- * example, four pixels right and one pixel up) is silently discarded by the
- * axial ratio heuristic.
+/** Categorical corner sampling: refine a supported corner without mixing colors.
+ * Equal opposite neighbours protect thin strokes, isolated pixels and holes.
+ * Integer/axial sampling remains exact, including coherent scanline pushes.
  */
-const updatePushAxisMode = (stroke: LiquifyPushStroke, delta: { x: number; y: number }): void => {
-  const absX = Math.abs(delta.x)
-  const absY = Math.abs(delta.y)
-  if (absX <= 0.0001 && absY <= 0.0001) return
-  if (stroke.axisMode === null || stroke.axisMode === 'free') {
-    stroke.axisMode = axisModeForDelta(delta)
-    return
+export function sampleLiquifyPixel(read: (x: number, y: number) => number | undefined, x: number, y: number): number | undefined {
+  const ix = Math.round(x), iy = Math.round(y)
+  const center = read(ix, iy)
+  const dx = x - ix, dy = y - iy
+  if (center === undefined || Math.abs(dx) < 0.25 || Math.abs(dy) < 0.25) return center
+  const north = read(ix, iy - 1), south = read(ix, iy + 1)
+  const west = read(ix - 1, iy), east = read(ix + 1, iy)
+  if (north === undefined || south === undefined || west === undefined || east === undefined || north === south || west === east) return center
+  const horizontal = dx < 0 ? west : east
+  const vertical = dy < 0 ? north : south
+  return horizontal === vertical ? horizontal : center
+}
+
+// Preserve actual source connectivity of thin marks on transparency. This is
+// not a destination hole-fill: disconnected marks have no edge to bridge.
+function preserveThinSourceEdges(
+  document: SpriteDocument, layer: RasterLayer, edit: PixelEdit,
+  read: (x: number, y: number) => number | undefined,
+  center: Point, radius: number, strength: number, options: LiquifyStepOptions
+): boolean {
+  const paletteAlpha = layer.format === 'indexed' ? new Map(document.palette.map(entry => [entry.id, entry.color.a])) : null
+  const alpha = (packed: number | undefined): number => packed === undefined ? 0
+    : paletteAlpha ? paletteAlpha.get(packed) ?? 0 : packed >>> 24
+  const occupied = (x: number, y: number): boolean => alpha(read(x, y)) > 0
+  const thin = (x: number, y: number): boolean => {
+    if (!occupied(x, y)) return false
+    // A pixel belonging to a filled 2x2 cluster is already represented by the
+    // area sampler. Only one-pixel features need a connectivity supplement.
+    for (const dy of [-1, 1]) for (const dx of [-1, 1]) {
+      if (occupied(x + dx, y) && occupied(x, y + dy) && occupied(x + dx, y + dy)) return false
+    }
+    return true
   }
-  if (stroke.axisMode === 'horizontal' && absY > 0.25) {
-    stroke.axisMode = 'diagonal'
-    return
+  const transformed = new Map<number, Point>()
+  const forward = (x: number, y: number): Point => {
+    const key = (y - layer.offsetY) * layer.width + x - layer.offsetX
+    const cached = transformed.get(key)
+    if (cached) return cached
+    const dx = x - center.x, dy = y - center.y, distance = Math.hypot(dx, dy)
+    let result = { x, y }
+    if (distance > 0 && distance < radius) {
+      if (options.mode === 'inflate' || options.mode === 'deflate') {
+        // The radial inverse mapping is monotone at all supported strengths.
+        // Solve its inverse once per thin source pixel, not per output pixel.
+        let low = 0, high = radius
+        for (let i = 0; i < 20; i++) {
+          const mid = (low + high) / 2
+          const influence = brushFalloff(mid, radius) * strength
+          const mapped = mid * (options.mode === 'inflate' ? 1 - influence * 0.75 : 1 + influence)
+          if (mapped < distance) low = mid
+          else high = mid
+        }
+        const scale = (low + high) / (2 * distance)
+        result = { x: center.x + dx * scale, y: center.y + dy * scale }
+      } else {
+        const angle = brushFalloff(distance, radius) * strength * (options.mode === 'twist-clockwise' ? Math.PI / 2 : -Math.PI / 2)
+        result = { x: center.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: center.y + dx * Math.sin(angle) + dy * Math.cos(angle) }
+      }
+    }
+    transformed.set(key, result)
+    return result
   }
-  if (stroke.axisMode === 'vertical' && absX > 0.25) stroke.axisMode = 'diagonal'
+  let changed = false
+  const paint = (x: number, y: number, color: number): void => {
+    if (Math.hypot(x - center.x, y - center.y) > radius || (options.selection && !selectionContains(options.selection, x, y)) || (options.mask && maskCoverageAt(options.mask, x, y) <= 0)) return
+    const index = layerIndexAt(layer, x, y)
+    if (index === null) return
+    const current = readLayerPacked(document, layer, index)
+    // Retain the inverse warp's existing colors and its overlap ordering.
+    if (alpha(current) === 0 && recordPixelKnownCurrent(document, layer, edit, index, current, color)) changed = true
+  }
+  const left = Math.max(layer.offsetX, Math.floor(center.x - radius))
+  const right = Math.min(layer.offsetX + layer.width - 1, Math.ceil(center.x + radius))
+  const top = Math.max(layer.offsetY, Math.floor(center.y - radius))
+  const bottom = Math.min(layer.offsetY + layer.height - 1, Math.ceil(center.y + radius))
+  for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+    if (Math.hypot(x - center.x, y - center.y) > radius || !thin(x, y)) continue
+    const color = read(x, y)!
+    const from = forward(x, y)
+    paint(Math.round(from.x), Math.round(from.y), color)
+    // Each undirected source edge is emitted once. No new connection is
+    // inferred from two nearby but originally disconnected output pixels.
+    for (const [dx, dy] of [[1, 0], [-1, 1], [0, 1], [1, 1]]) {
+      const nx = x + dx, ny = y + dy
+      if (!thin(nx, ny)) continue
+      const to = forward(nx, ny)
+      let px = Math.round(from.x), py = Math.round(from.y)
+      const tx = Math.round(to.x), ty = Math.round(to.y)
+      const sx = px < tx ? 1 : -1, sy = py < ty ? 1 : -1
+      const ax = Math.abs(tx - px), ay = -Math.abs(ty - py)
+      let error = ax + ay, step = 0
+      const total = Math.max(ax, -ay)
+      for (;;) {
+        paint(px, py, step * 2 <= total ? color : read(nx, ny)!)
+        if (px === tx && py === ty) break
+        const twice = error * 2
+        if (twice >= ay) { error += ay; px += sx }
+        if (twice <= ax) { error += ax; py += sy }
+        step++
+      }
+    }
+  }
+  return changed
 }
 
 function applyAxisPushDab(
@@ -141,8 +248,8 @@ function applyAxisPushDab(
   mask?: LayerMask | null
 ): { changed: boolean; dirtyRect: SelectionRect | null } {
   const horizontal = axis === 'horizontal'
-  const lineStart = Math.max(horizontal ? layer.offsetY : layer.offsetX, Math.floor((horizontal ? center.y : center.x) - radius))
-  const lineEnd = Math.min(horizontal ? layer.offsetY + layer.height - 1 : layer.offsetX + layer.width - 1, Math.ceil((horizontal ? center.y : center.x) + radius))
+  const lineStart = Math.max(horizontal ? layer.offsetY : layer.offsetX, Math.ceil((horizontal ? center.y : center.x) - radius))
+  const lineEnd = Math.min(horizontal ? layer.offsetY + layer.height - 1 : layer.offsetX + layer.width - 1, Math.floor((horizontal ? center.y : center.x) + radius))
   if (lineStart > lineEnd) return { changed: false, dirtyRect: null }
   let changed = false
   let dirtyRect: SelectionRect | null = null
@@ -166,8 +273,8 @@ function applyAxisPushDab(
     // inside the circular brush footprint. This prevents pushed pixels from
     // leaking into a tail outside the visible brush radius.
     const halfSpan = Math.sqrt(Math.max(0, radius * radius - perpendicularDistance * perpendicularDistance))
-    const alongStart = Math.max(horizontal ? layer.offsetX : layer.offsetY, Math.floor((horizontal ? center.x : center.y) - halfSpan))
-    const alongEnd = Math.min(horizontal ? layer.offsetX + layer.width - 1 : layer.offsetY + layer.height - 1, Math.ceil((horizontal ? center.x : center.y) + halfSpan))
+    const alongStart = Math.max(horizontal ? layer.offsetX : layer.offsetY, Math.ceil((horizontal ? center.x : center.y) - halfSpan))
+    const alongEnd = Math.min(horizontal ? layer.offsetX + layer.width - 1 : layer.offsetY + layer.height - 1, Math.floor((horizontal ? center.x : center.y) + halfSpan))
     for (let along = alongStart; along <= alongEnd; along += 1) {
       const x = horizontal ? along : line
       const y = horizontal ? line : along
@@ -204,10 +311,10 @@ function applyDiagonalAxisPushDab(
   selection?: SelectionMask | null,
   mask?: LayerMask | null
 ): { changed: boolean; dirtyRect: SelectionRect | null } {
-  const rowStart = Math.max(layer.offsetY, Math.floor(center.y - radius))
-  const rowEnd = Math.min(layer.offsetY + layer.height - 1, Math.ceil(center.y + radius))
-  const columnStart = Math.max(layer.offsetX, Math.floor(center.x - radius))
-  const columnEnd = Math.min(layer.offsetX + layer.width - 1, Math.ceil(center.x + radius))
+  const rowStart = Math.max(layer.offsetY, Math.ceil(center.y - radius))
+  const rowEnd = Math.min(layer.offsetY + layer.height - 1, Math.floor(center.y + radius))
+  const columnStart = Math.max(layer.offsetX, Math.ceil(center.x - radius))
+  const columnEnd = Math.min(layer.offsetX + layer.width - 1, Math.floor(center.x + radius))
   for (let y = rowStart; y <= rowEnd; y += 1) {
     const influence = (0.62 + brushFalloff(Math.abs(y - center.y), radius) * 0.38) * strength
     const previous = stroke.horizontalDisplacements.get(y) ?? 0
@@ -222,31 +329,32 @@ function applyDiagonalAxisPushDab(
     stroke.verticalDisplacements.set(x, next)
     stroke.maxDisplacement = Math.max(stroke.maxDisplacement, Math.abs(next))
   }
-  const reach = Math.ceil(Math.min(stroke.maxDisplacement, radius * 2)) + 1
-  const renderLeft = Math.max(layer.offsetX, Math.floor(center.x - radius - reach))
-  const renderTop = Math.max(layer.offsetY, Math.floor(center.y - radius - reach))
-  const renderRight = Math.min(layer.offsetX + layer.width - 1, Math.ceil(center.x + radius + reach))
-  const renderBottom = Math.min(layer.offsetY + layer.height - 1, Math.ceil(center.y + radius + reach))
+  const renderLeft = columnStart
+  const renderTop = rowStart
+  const renderRight = columnEnd
+  const renderBottom = rowEnd
+  const readSource = (x: number, y: number): number | undefined => {
+    const index = layerIndexAt(layer, x, y)
+    return index === null ? undefined : baselinePacked(document, layer, edit, index)
+  }
   let changed = false
   for (let y = renderTop; y <= renderBottom; y += 1) for (let x = renderLeft; x <= renderRight; x += 1) {
     if (Math.hypot(x - center.x, y - center.y) > radius) continue
     if ((selection && !selectionContains(selection, x, y)) || (mask && mask.visible !== false && maskCoverageAt(mask, x, y) <= 0)) continue
     const destinationIndex = layerIndexAt(layer, x, y)
-    const sourceX = Math.round(x - (stroke.horizontalDisplacements.get(y) ?? 0))
-    const sourceY = Math.round(y - (stroke.verticalDisplacements.get(x) ?? 0))
-    const sourceIndex = layerIndexAt(layer, sourceX, sourceY)
-    if (destinationIndex === null || sourceIndex === null) continue
+    const sourceX = x - (stroke.horizontalDisplacements.get(y) ?? 0)
+    const sourceY = y - (stroke.verticalDisplacements.get(x) ?? 0)
+    const next = sampleLiquifyPixel(readSource, sourceX, sourceY)
+    if (destinationIndex === null || next === undefined) continue
     const current = readLayerPacked(document, layer, destinationIndex)
-    const next = baselinePacked(document, layer, edit, sourceIndex)
     if (recordPixelKnownCurrent(document, layer, edit, destinationIndex, current, next)) changed = true
   }
   return { changed, dirtyRect: changed ? { x: renderLeft, y: renderTop, width: renderRight - renderLeft + 1, height: renderBottom - renderTop + 1 } : null }
 }
 
 /**
- * Applies one inverse-warp dab from a local snapshot. Every destination pixel
- * samples a source pixel shifted opposite to the pointer delta, with a strong
- * Gaussian influence at the brush centre and a fast falloff at the edge.
+ * Applies a circular inverse-warp dab. Coherent row/column fields retain the
+ * pixel-art strip behavior, sampling original colors instead of blending them.
  */
 const applyPushDab = (
   document: SpriteDocument,
@@ -260,10 +368,10 @@ const applyPushDab = (
   selection?: SelectionMask | null,
   mask?: LayerMask | null
 ): { changed: boolean; dirtyRect: SelectionRect | null } => {
-  const left = Math.max(layer.offsetX, Math.floor(center.x - radius))
-  const top = Math.max(layer.offsetY, Math.floor(center.y - radius))
-  const right = Math.min(layer.offsetX + layer.width - 1, Math.ceil(center.x + radius))
-  const bottom = Math.min(layer.offsetY + layer.height - 1, Math.ceil(center.y + radius))
+  const left = Math.max(layer.offsetX, Math.ceil(center.x - radius))
+  const top = Math.max(layer.offsetY, Math.ceil(center.y - radius))
+  const right = Math.min(layer.offsetX + layer.width - 1, Math.floor(center.x + radius))
+  const bottom = Math.min(layer.offsetY + layer.height - 1, Math.floor(center.y + radius))
   if (left > right || top > bottom) return { changed: false, dirtyRect: null }
   updatePushAxisMode(stroke, delta)
   if (stroke.axisMode === 'horizontal') {
@@ -276,136 +384,12 @@ const applyPushDab = (
     return applyDiagonalAxisPushDab(document, layer, edit, stroke, center, delta, radius, strength, selection, mask)
   }
 
-  const maxSearchPadding = Math.ceil(stroke.maxDisplacement) + 2
-  const sourceLeft = Math.max(layer.offsetX, left - maxSearchPadding)
-  const sourceTop = Math.max(layer.offsetY, top - maxSearchPadding)
-  const sourceRight = Math.min(layer.offsetX + layer.width - 1, right + maxSearchPadding)
-  const sourceBottom = Math.min(layer.offsetY + layer.height - 1, bottom + maxSearchPadding)
-  const touched = new Map<number, { oldX: number; oldY: number; newX: number; newY: number }>()
-  for (let y = sourceTop; y <= sourceBottom; y += 1) for (let x = sourceLeft; x <= sourceRight; x += 1) {
-    if ((selection && !selectionContains(selection, x, y)) || (mask && mask.visible !== false && maskCoverageAt(mask, x, y) <= 0)) continue
-    const index = layerIndexAt(layer, x, y)
-    if (index === null) continue
-    const previous = stroke.displacements.get(index) ?? { x: 0, y: 0 }
-    const transformedX = x + previous.x
-    const transformedY = y + previous.y
-    const distance = pixelPushInfluenceDistance(center, { x: transformedX, y: transformedY }, delta, radius)
-    if (distance >= radius) continue
-    const influence = brushFalloff(distance, radius) * strength
-    if (influence <= 0.0001) continue
-    const next = { x: previous.x + delta.x * influence, y: previous.y + delta.y * influence }
-    stroke.displacements.set(index, next)
-    stroke.maxDisplacement = Math.max(stroke.maxDisplacement, Math.abs(next.x), Math.abs(next.y))
-    touched.set(index, { oldX: transformedX, oldY: transformedY, newX: x + next.x, newY: y + next.y })
-  }
-  if (touched.size === 0) return { changed: false, dirtyRect: null }
-  let renderLeft = left
-  let renderTop = top
-  let renderRight = right
-  let renderBottom = bottom
-  for (const point of touched.values()) {
-    renderLeft = Math.min(renderLeft, Math.floor(point.oldX), Math.floor(point.newX))
-    renderTop = Math.min(renderTop, Math.floor(point.oldY), Math.floor(point.newY))
-    renderRight = Math.max(renderRight, Math.ceil(point.oldX), Math.ceil(point.newX))
-    renderBottom = Math.max(renderBottom, Math.ceil(point.oldY), Math.ceil(point.newY))
-  }
-  renderLeft = Math.max(layer.offsetX, renderLeft - 1)
-  renderTop = Math.max(layer.offsetY, renderTop - 1)
-  renderRight = Math.min(layer.offsetX + layer.width - 1, renderRight + 1)
-  renderBottom = Math.min(layer.offsetY + layer.height - 1, renderBottom + 1)
-  // A long gesture may accumulate a large absolute displacement, but each
-  // dab only needs the nearby source neighborhood. Older, already-rendered
-  // parts of the stroke are left untouched, keeping large-canvas pushes local.
-  const localDisplacement = Math.min(stroke.maxDisplacement, radius * 2)
-  const sourceRenderLeft = Math.max(layer.offsetX, renderLeft - Math.ceil(localDisplacement) - 1)
-  const sourceRenderTop = Math.max(layer.offsetY, renderTop - Math.ceil(localDisplacement) - 1)
-  const sourceRenderRight = Math.min(layer.offsetX + layer.width - 1, renderRight + Math.ceil(localDisplacement) + 1)
-  const sourceRenderBottom = Math.min(layer.offsetY + layer.height - 1, renderBottom + Math.ceil(localDisplacement) + 1)
-  const winners = new Map<number, { sourceIndex: number; score: number; alpha: number; moved: boolean }>()
-  for (let y = sourceRenderTop; y <= sourceRenderBottom; y += 1) for (let x = sourceRenderLeft; x <= sourceRenderRight; x += 1) {
-    const sourceIndex = layerIndexAt(layer, x, y)
-    if (sourceIndex === null) continue
-    const displacement = stroke.displacements.get(sourceIndex) ?? { x: 0, y: 0 }
-    const destinationX = Math.round(x + displacement.x)
-    const destinationY = Math.round(y + displacement.y)
-    if (destinationX < renderLeft || destinationX > renderRight || destinationY < renderTop || destinationY > renderBottom) continue
-    if ((selection && !selectionContains(selection, destinationX, destinationY)) || (mask && mask.visible !== false && maskCoverageAt(mask, destinationX, destinationY) <= 0)) continue
-    const destinationIndex = layerIndexAt(layer, destinationX, destinationY)
-    if (destinationIndex === null) continue
-    const sourcePacked = baselinePacked(document, layer, edit, sourceIndex)
-    const alpha = layer.format === 'rgba' ? (sourcePacked >>> 24) & 0xff : readLayerColor(document, layer, sourceIndex).a
-    const moved = displacement.x !== 0 || displacement.y !== 0
-    const score = (destinationX - (x + displacement.x)) ** 2 + (destinationY - (y + displacement.y)) ** 2
-    const winner = winners.get(destinationIndex)
-    if (!winner || (moved && !winner.moved) || (moved === winner.moved && (alpha > winner.alpha || (alpha === winner.alpha && score < winner.score)))) {
-      winners.set(destinationIndex, { sourceIndex, score, alpha, moved })
-    }
-  }
-  // Nearest-neighbour rasterization can leave a one-pixel crack between two
-  // otherwise connected transformed pixels. Fill only holes with at least two
-  // opaque winner neighbours; large transparent regions remain untouched.
-  const filledWinners = new Map(winners)
-  if (winners.size <= 20_000) {
-    const holeNeighbors = new Map<number, Array<{ sourceIndex: number; score: number; alpha: number; moved: boolean }>>()
-    for (const [winnerIndex, winner] of winners) {
-      if (winner.alpha <= 0) continue
-      const winnerX = layer.offsetX + (winnerIndex % layer.width)
-      const winnerY = layer.offsetY + Math.floor(winnerIndex / layer.width)
-      for (let offsetY = -1; offsetY <= 1; offsetY += 1) for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-        if (offsetX === 0 && offsetY === 0) continue
-        const holeIndex = layerIndexAt(layer, winnerX + offsetX, winnerY + offsetY)
-        if (holeIndex === null || winners.has(holeIndex)) continue
-        const neighbors = holeNeighbors.get(holeIndex) ?? []
-        neighbors.push(winner)
-        holeNeighbors.set(holeIndex, neighbors)
-      }
-    }
-    for (const [holeIndex, neighbors] of holeNeighbors) {
-      if (neighbors.length < 2) continue
-      neighbors.sort((a, b) => b.alpha - a.alpha || a.score - b.score)
-      filledWinners.set(holeIndex, neighbors[0])
-    }
-  }
-  let changed = false
-  for (let y = renderTop; y <= renderBottom; y += 1) for (let x = renderLeft; x <= renderRight; x += 1) {
-    if (Math.hypot(x - center.x, y - center.y) > radius) continue
-    if ((selection && !selectionContains(selection, x, y)) || (mask && mask.visible !== false && maskCoverageAt(mask, x, y) <= 0)) continue
-    const destinationIndex = layerIndexAt(layer, x, y)
-    if (destinationIndex === null) continue
-    const winner = filledWinners.get(destinationIndex)
-    const current = readLayerPacked(document, layer, destinationIndex)
-    const next = winner ? baselinePacked(document, layer, edit, winner.sourceIndex) : 0
-    if (recordPixelKnownCurrent(document, layer, edit, destinationIndex, current, next)) changed = true
-  }
-  return { changed, dirtyRect: changed ? { x: renderLeft, y: renderTop, width: renderRight - renderLeft + 1, height: renderBottom - renderTop + 1 } : null }
+  return { changed: false, dirtyRect: null }
 }
 
 const brushFalloff = (distance: number, radius: number): number => {
   const normalized = Math.min(1, distance / radius)
   return 1 - normalized * normalized * (3 - 2 * normalized)
-}
-
-/**
- * Pixel-art push uses a strip-like influence instead of applying a different
- * displacement to every pixel by radial distance. A horizontal drag keeps a
- * scanline coherent, and a vertical drag keeps a column coherent. For a
- * diagonal drag the falloff is measured perpendicular to the stroke vector.
- */
-const pixelPushInfluenceDistance = (
-  center: { x: number; y: number },
-  point: { x: number; y: number },
-  delta: { x: number; y: number },
-  radius: number
-): number => {
-  const length = Math.hypot(delta.x, delta.y)
-  if (length <= 0.0001) return Math.hypot(point.x - center.x, point.y - center.y)
-  const directionX = delta.x / length
-  const directionY = delta.y / length
-  const perpendicular = Math.abs((point.x - center.x) * directionY - (point.y - center.y) * directionX)
-  const along = Math.abs((point.x - center.x) * directionX + (point.y - center.y) * directionY)
-  // Keep the strip bounded, but make the longitudinal falloff much wider than
-  // the perpendicular one so a straight pixel-art edge does not fragment.
-  return Math.max(perpendicular, Math.max(0, along - radius * 1.5) * 0.35)
 }
 
 const unionRect = (rect: SelectionRect | null, next: SelectionRect): SelectionRect => {
@@ -417,47 +401,36 @@ const unionRect = (rect: SelectionRect | null, next: SelectionRect): SelectionRe
   return { x: left, y: top, width: right - left, height: bottom - top }
 }
 
-const resamplePushPath = (
-  from: { x: number; y: number },
-  points: readonly { x: number; y: number }[],
-  radius: number
-): Array<{ point: { x: number; y: number }; delta: { x: number; y: number } }> => {
-  const vertices = [from, ...points]
-  let totalLength = 0
-  for (let index = 1; index < vertices.length; index += 1) {
-    totalLength += Math.hypot(vertices[index].x - vertices[index - 1].x, vertices[index].y - vertices[index - 1].y)
+// The last, incomplete dab is a live preview. Replacing it on the next event
+// preserves immediate feedback without making event frequency part of the warp.
+const restorePushPreview = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, stroke: LiquifyPushStroke): SelectionRect | null => {
+  const preview = stroke.provisional
+  if (!preview) return null
+  let changed = false
+  const { rect, pixels } = preview
+  for (let y = 0; y < rect.height; y++) for (let x = 0; x < rect.width; x++) {
+    const index = layerIndexAt(layer, rect.x + x, rect.y + y)!
+    if (recordPixelKnownCurrent(document, layer, edit, index, readLayerPacked(document, layer, index), pixels[y * rect.width + x])) changed = true
   }
-  if (totalLength === 0) return []
-  const spacing = Math.max(1, radius * PUSH_DAB_SPACING_RATIO, totalLength / LIQUIFY_MAX_PUSH_DABS_PER_BATCH)
-  const samples: Array<{ x: number; y: number }> = []
-  let distanceUntilSample = spacing
-  for (let index = 1; index < vertices.length; index += 1) {
-    const start = vertices[index - 1]
-    const end = vertices[index]
-    const deltaX = end.x - start.x
-    const deltaY = end.y - start.y
-    const length = Math.hypot(deltaX, deltaY)
-    if (length === 0) continue
-    let consumed = 0
-    while (consumed + distanceUntilSample <= length && samples.length < LIQUIFY_MAX_PUSH_DABS_PER_BATCH) {
-      consumed += distanceUntilSample
-      const ratio = consumed / length
-      samples.push({ x: start.x + deltaX * ratio, y: start.y + deltaY * ratio })
-      distanceUntilSample = spacing
-    }
-    distanceUntilSample -= length - consumed
+  stroke.horizontalDisplacements = preview.horizontal
+  stroke.verticalDisplacements = preview.vertical
+  stroke.axisMode = preview.axisMode
+  stroke.maxDisplacement = preview.maxDisplacement
+  stroke.provisional = undefined
+  return changed ? rect : null
+}
+
+const capturePushPreview = (document: SpriteDocument, layer: RasterLayer, stroke: LiquifyPushStroke, center: Point, radius: number): void => {
+  const x = Math.max(layer.offsetX, Math.ceil(center.x - radius))
+  const y = Math.max(layer.offsetY, Math.ceil(center.y - radius))
+  const right = Math.min(layer.offsetX + layer.width - 1, Math.floor(center.x + radius))
+  const bottom = Math.min(layer.offsetY + layer.height - 1, Math.floor(center.y + radius))
+  const rect = { x, y, width: Math.max(0, right - x + 1), height: Math.max(0, bottom - y + 1) }
+  const pixels = new Uint32Array(rect.width * rect.height)
+  for (let row = 0; row < rect.height; row++) for (let col = 0; col < rect.width; col++) {
+    pixels[row * rect.width + col] = readLayerPacked(document, layer, layerIndexAt(layer, x + col, y + row)!)
   }
-  const end = vertices.at(-1)!
-  const last = samples.at(-1)
-  if ((!last || last.x !== end.x || last.y !== end.y) && samples.length < LIQUIFY_MAX_PUSH_DABS_PER_BATCH) samples.push({ ...end })
-  if (samples.length === 0) samples.push({ ...end })
-  const dabs: Array<{ point: { x: number; y: number }; delta: { x: number; y: number } }> = []
-  let previous = from
-  for (const point of samples) {
-    dabs.push({ point, delta: { x: point.x - previous.x, y: point.y - previous.y } })
-    previous = point
-  }
-  return dabs
+  stroke.provisional = { rect, pixels, horizontal: new Map(stroke.horizontalDisplacements), vertical: new Map(stroke.verticalDisplacements), axisMode: stroke.axisMode, maxDisplacement: stroke.maxDisplacement }
 }
 
 export function applyLiquifyPushPath(
@@ -465,28 +438,79 @@ export function applyLiquifyPushPath(
   layer: RasterLayer,
   edit: PixelEdit,
   stroke: LiquifyPushStroke,
-  from: { x: number; y: number },
-  points: readonly { x: number; y: number }[],
+  from: Point,
+  points: readonly Point[],
   options: Omit<LiquifyStepOptions, 'mode' | 'pushStroke'>
 ): LiquifyPushPathResult {
   const radius = Math.max(1, Math.round(options.radius))
   const strength = Math.max(0, Math.min(1, options.strength / 100))
   if (strength === 0 || points.length === 0) return { changed: false, dabCount: 0, dirtyRect: null }
-  const pathEnd = points.at(-1)!
-  updatePushAxisMode(stroke, { x: pathEnd.x - from.x, y: pathEnd.y - from.y })
-  const dabs = resamplePushPath(from, points, radius)
-  let dirtyRect: SelectionRect | null = null
-  // A later dab commonly rewrites indices already present in PixelEdit. Map
-  // size is therefore not a valid change signal; use the actual write result
-  // from each dab so the composite cache is invalidated on every visible warp.
-  let changed = false
-  for (const dab of dabs) {
-    const applied = applyPushDab(document, layer, edit, stroke, dab.point, dab.delta, radius, strength, options.selection, options.mask)
-    stroke.dabCount += 1
+  if (points.every(point => Math.hypot(point.x - from.x, point.y - from.y) <= 1e-9)) return { changed: false, dabCount: 0, dirtyRect: null }
+  const spacing = Math.max(1, radius * PUSH_DAB_SPACING_RATIO)
+  let dirtyRect = restorePushPreview(document, layer, edit, stroke)
+  let changed = dirtyRect !== null
+  const path = stroke.path ??= { sample: { ...from }, remaining: spacing, spacing }
+  if (path.spacing !== spacing) { path.remaining = spacing; path.spacing = spacing }
+  let dabCount = 0
+  const apply = (point: Point): void => {
+    const delta = { x: point.x - path.sample.x, y: point.y - path.sample.y }
+    const applied = applyPushDab(document, layer, edit, stroke, point, delta, radius, strength, options.selection, options.mask)
     changed = applied.changed || changed
     if (applied.dirtyRect) dirtyRect = unionRect(dirtyRect, applied.dirtyRect)
+    dabCount++
+    stroke.dabCount++
   }
-  return { changed, dabCount: dabs.length, dirtyRect }
+  let previous = from
+  for (const end of points) {
+    const dx = end.x - previous.x, dy = end.y - previous.y
+    const length = Math.hypot(dx, dy)
+    let consumed = 0
+    // Fixed arc-length samples span event boundaries. Long segments are fully
+    // traversed; truncating at a per-event cap changes the visible stroke.
+    while (length > 1e-9 && consumed + path.remaining <= length + 1e-9) {
+      consumed = Math.min(length, consumed + path.remaining)
+      const ratio = consumed / length
+      const point = { x: Math.round((previous.x + dx * ratio) * 1e9) / 1e9, y: Math.round((previous.y + dy * ratio) * 1e9) / 1e9 }
+      apply(point)
+      path.sample = point
+      path.remaining = spacing
+    }
+    path.remaining -= Math.max(0, length - consumed)
+    previous = end
+  }
+  const end = points.at(-1)!
+  if (Math.hypot(end.x - path.sample.x, end.y - path.sample.y) > 1e-9) {
+    capturePushPreview(document, layer, stroke, end, radius)
+    apply(end)
+  }
+  return { changed, dabCount, dirtyRect }
+}
+
+/** Timed hold impulse. A relocated/reversed brush starts from the current shape,
+ * while repeated ticks at one anchor sample one stable source to avoid erosion.
+ */
+export function applyLiquifyHoldStep(document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, to: Point, options: LiquifyStepOptions): boolean {
+  if (options.mode === 'push') return false
+  let stroke = holdStrokes.get(edit)
+  const radius = Math.max(1, Math.round(options.radius))
+  if (!stroke || stroke.mode !== options.mode || stroke.radius !== radius || Math.hypot(to.x - stroke.center.x, to.y - stroke.center.y) >= 0.5) {
+    const extent = (options.mode === 'deflate' ? radius * 2 : radius) + 1
+    const x = Math.max(layer.offsetX, Math.floor(to.x - extent))
+    const y = Math.max(layer.offsetY, Math.floor(to.y - extent))
+    const right = Math.min(layer.offsetX + layer.width - 1, Math.ceil(to.x + extent))
+    const bottom = Math.min(layer.offsetY + layer.height - 1, Math.ceil(to.y + extent))
+    const rect = { x, y, width: Math.max(0, right - x + 1), height: Math.max(0, bottom - y + 1) }
+    const pixels = new Uint32Array(rect.width * rect.height)
+    for (let row = 0; row < rect.height; row++) for (let col = 0; col < rect.width; col++) {
+      pixels[row * rect.width + col] = readLayerPacked(document, layer, layerIndexAt(layer, x + col, y + row)!)
+    }
+    stroke = { center: { ...to }, mode: options.mode, radius, strength: 0, source: { rect, pixels } }
+    holdStrokes.set(edit, stroke)
+  }
+  const nextStrength = Math.min(100, stroke.strength + Math.max(0, options.strength))
+  if (nextStrength === stroke.strength) return false
+  stroke.strength = nextStrength
+  return applyLiquifyStep(document, layer, edit, stroke.center, stroke.center, { ...options, strength: stroke.strength }, stroke.source)
 }
 
 /** Applies a nearest-neighbor local warp while retaining one PixelEdit for the full gesture. */
@@ -496,7 +520,8 @@ export function applyLiquifyStep(
   edit: PixelEdit,
   from: { x: number; y: number },
   to: { x: number; y: number },
-  options: LiquifyStepOptions
+  options: LiquifyStepOptions,
+  sourceBaseline?: HoldStroke['source']
 ): boolean {
   const radius = Math.max(1, Math.round(options.radius))
   const strength = Math.max(0, Math.min(1, options.strength / 100))
@@ -509,7 +534,7 @@ export function applyLiquifyStep(
   const top = Math.floor(to.y - radius)
   const right = Math.ceil(to.x + radius)
   const bottom = Math.ceil(to.y + radius)
-  const radialPadding = options.mode === 'deflate' ? radius : 0
+  const radialPadding = (options.mode === 'deflate' ? radius : 0) + 1
   const sourceLeft = Math.max(layer.offsetX, left - radialPadding)
   const sourceTop = Math.max(layer.offsetY, top - radialPadding)
   const sourceRight = Math.min(layer.offsetX + layer.width - 1, right + radialPadding)
@@ -517,8 +542,8 @@ export function applyLiquifyStep(
   const sourceWidth = Math.max(0, sourceRight - sourceLeft + 1)
   const sourceHeight = Math.max(0, sourceBottom - sourceTop + 1)
   if (sourceWidth === 0 || sourceHeight === 0) return false
-  const source = ensureSourceScratch(sourceWidth * sourceHeight)
-  for (let y = sourceTop; y <= sourceBottom; y += 1) {
+  const source = sourceBaseline?.pixels ?? ensureSourceScratch(sourceWidth * sourceHeight)
+  if (!sourceBaseline) for (let y = sourceTop; y <= sourceBottom; y += 1) {
     const sourceRow = (y - sourceTop) * sourceWidth
     for (let x = sourceLeft; x <= sourceRight; x += 1) {
       const index = (y - layer.offsetY) * layer.width + x - layer.offsetX
@@ -564,8 +589,9 @@ export function applyLiquifyStep(
       sourceX = to.x + offsetX * cosine - offsetY * sine
       sourceY = to.y + offsetX * sine + offsetY * cosine
     }
-    const next = sampleSource(Math.round(sourceX), Math.round(sourceY))
+    const next = sampleLiquifyPixel(sampleSource, sourceX, sourceY)
     if (next !== undefined && recordPixelKnownCurrent(document, layer, edit, index, current, next)) changed = true
   }
+  changed = preserveThinSourceEdges(document, layer, edit, sampleSource, to, radius, strength, options) || changed
   return changed
 }

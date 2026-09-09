@@ -281,9 +281,9 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     }
   }, [])
   const recoveryValue = preferences.recovery ? String(preferences.recoveryMinutes) : 'off'
-  const choosePreferenceDirectory = async (kind: 'saveDirectory' | 'exportDirectory'): Promise<void> => {
+  const choosePreferenceDirectory = async (kind: 'saveDirectory' | 'exportDirectory' | 'projectBackupDirectory'): Promise<void> => {
     if (typeof window.moonSprite?.chooseDirectory !== 'function') return
-    const currentPath = preferences[kind] || defaultDirectories[kind]
+    const currentPath = preferences[kind] || (kind === 'projectBackupDirectory' ? undefined : defaultDirectories[kind])
     try {
       const result = await window.moonSprite.chooseDirectory(currentPath)
       if (!result.canceled && result.directoryPath) update(kind, result.directoryPath)
@@ -511,6 +511,11 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title={t('preferences.groups.recovery')}>
         <FormField className="preference-field" label={t('preferences.recovery')}><ThemedSelect value={recoveryValue} groups={[{ label: t('preferences.recoveryGroup'), options: [{ value: 'off', label: t('preferences.recovery.off') }, { value: '0.5', label: t('preferences.recovery.seconds30') }, { value: '1', label: t('preferences.recovery.minutes1') }, { value: '2', label: t('preferences.recovery.minutes2') }, { value: '5', label: t('preferences.recovery.minutes5') }, { value: '10', label: t('preferences.recovery.minutes10') }] }]} label={t('preferences.recovery')} onChange={(value) => setPreferences((current) => value === 'off' ? { ...current, recovery: false } : { ...current, recovery: true, recoveryMinutes: Number(value) })} /></FormField>
         <FormField className="preference-field" label={t('preferences.recoveryRetentionDays')} hint={t('preferences.recoveryRetentionDaysHint')}><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} value={preferences.recoveryRetentionDays} onValueChange={(value) => update('recoveryRetentionDays', Math.round(value))} /></FormField>
+        </PreferenceGroup>
+        <PreferenceGroup title="工程备份">
+        <FormField className="preference-field" label="每个工程保留版本" hint="保存前保留旧版本；备份位于软件数据目录，不会写入工程所在文件夹。"><NumberInput min={1} max={10} suffix="个" value={preferences.projectBackupVersions} onValueChange={(value) => update('projectBackupVersions', Math.round(value))} /></FormField>
+        <FormField className="preference-field" label="工程备份保留时间"><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} value={preferences.projectBackupRetentionDays} onValueChange={(value) => update('projectBackupRetentionDays', Math.round(value))} /></FormField>
+        <FormField className="preference-field preference-path-field" label="工程备份目录" hint={preferences.projectBackupDirectory ? '使用自定义目录。' : '默认保存到软件数据目录。'}><div className="preference-path-control"><TextInput readOnly value={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} title={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} /><button type="button" className="icon-button" title={t('preferences.chooseDirectory')} aria-label="选择工程备份目录" onClick={() => void choosePreferenceDirectory('projectBackupDirectory')}><PixelUtilityIcon kind="folderOpen" /></button><button type="button" className="icon-button" title={t('preferences.restoreDefaultDirectory')} aria-label="恢复默认工程备份目录" disabled={!preferences.projectBackupDirectory} onClick={() => update('projectBackupDirectory', '')}><PixelUtilityIcon kind="restore" /></button></div></FormField>
         </PreferenceGroup>
       </>}
       {section === 'colorLayers' && <div className="preference-presets preference-color-layer-settings"><section className="preference-color-settings"><SettingsSectionHeader title={t('preferences.colorModes')} actions={<button type="button" className="quiet-button" onClick={() => update('colorEditorModes', DEFAULT_COLOR_EDITOR_MODES.map((item) => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>} /><div className="preference-color-mode-list">{preferences.colorEditorModes.map((item, index) => {

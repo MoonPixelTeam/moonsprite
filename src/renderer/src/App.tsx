@@ -72,7 +72,7 @@ import { getRecentProjects, type RecentProject } from '@/core/home-history'
 import { RECENT_EXPORTS_CHANGED_EVENT, loadDocumentExportSettings, loadExportPresets, loadRecentExportPaths, parentDirectoryFromPath, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
 import { EXPORT_FORMAT_PREFERENCE_KEY, EXPORT_SCALE_PRESETS_KEY, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, NEW_DOCUMENT_SIZE_PRESETS_KEY, RELATIVE_LUMINANCE_SCOPE_KEY, SAVE_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences, parseDocumentSizePresets, parseExportScalePresets, parseRelativeLuminanceScope, saveEditorPreferences, type IsoViewPreferences, type RelativeLuminanceScope } from '@/core/file-preferences'
 import { applyThemeToDocument } from '@/core/theme'
-import { CYCLING_TOOL_SHORTCUT_IDS, QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseShortcutInput, findShortcutBindingOwners, isFunctionKey, keyboardEventKey, loadShortcutBindings, mouseShortcutText, saveShortcutBindings as persistShortcutBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutDisplayText, shortcutMatchesEvent, shortcutPrimary, shortcutReleasedByBindings, shortcutText, type ShortcutBindings, type ShortcutId } from '@/core/shortcuts'
+import { CYCLING_TOOL_SHORTCUT_IDS, QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, findShortcutBindingOwners, isFunctionKey, keyboardEventKey, loadShortcutBindings, mouseDoubleClickShortcutText, mouseShortcutText, saveShortcutBindings as persistShortcutBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutDisplayText, shortcutKeyPart, shortcutMatchesEvent, shortcutPrimary, shortcutReleasedByBindings, shortcutText, wheelShortcutText, type ShortcutBindings, type ShortcutId } from '@/core/shortcuts'
 import { beginPaletteSamplingShortcut, endPaletteSamplingShortcut } from '@/core/palette-sampling-shortcut'
 import { readStoredString, writeStoredString } from '@/core/storage'
 import { flushColorRolePreferences } from '@/core/color-role-preferences'
@@ -217,6 +217,7 @@ export default function App() {
   const [shortcuts, setShortcuts] = useState<ShortcutBindings>(loadShortcutBindings)
   const shortcutToolCycleRef = useRef<{ signature: string; index: number }>({ signature: '', index: -1 })
   const activeMouseShortcutPointersRef = useRef(new Set<number>())
+  const pendingDoubleClickShortcutPointersRef = useRef(new Set<number>())
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
   const [adjustmentKind, setAdjustmentKind] = useState<AdjustmentKind>('brightness-contrast')
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -1487,14 +1488,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const heldShortcutParts = new Set<string>()
     const keydown = (event: KeyboardEvent): void => {
+      heldShortcutParts.add(shortcutKeyPart(event))
       const key = keyboardEventKey(event).toLowerCase()
       const target = event.target as HTMLElement | null
       if (shortcutOpen && target?.closest('[data-shortcut-recorder="true"]')) return
       const matches = (action: ShortcutId): boolean => {
         return shortcutBindingsFor(shortcuts, action).some((shortcut) => (
           !shortcutBindingBlocked(shortcutConflictState, action, shortcut)
-          && shortcutMatchesEvent(event, shortcut)
+          && shortcutMatchesEvent(event, shortcut, heldShortcutParts)
         ))
       }
       if (key === 'escape') {
@@ -1566,8 +1569,8 @@ export default function App() {
         || (target?.tagName === 'INPUT' && !['range', 'number', 'checkbox', 'radio', 'button', 'submit', 'reset'].includes(inputType))
       const isHeldKey = key === 'control' || key === 'meta' || key === 'alt' || key === 'shift' || key === 'space'
       if (isCanvasToolGestureLocked() && !isTextEntry && !isHeldKey) {
-        const deferredOwners = findShortcutBindingOwners(shortcuts, shortcutText(event)).filter((id) => (
-          !heldCanvasShortcutIds.has(id) && !shortcutBindingBlocked(shortcutConflictState, id, shortcutText(event))
+        const deferredOwners = findShortcutBindingOwners(shortcuts, shortcutText(event, heldShortcutParts)).filter((id) => (
+          !heldCanvasShortcutIds.has(id) && !shortcutBindingBlocked(shortcutConflictState, id, shortcutText(event, heldShortcutParts))
         ))
         if (deferredOwners.length > 0) {
           const originalTarget = event.target
@@ -2050,7 +2053,7 @@ export default function App() {
                     : currentSession.tool === 'move' && currentSession.moveKind === 'slice'
                       ? 'tool.slice'
                       : TOOL_DEFINITIONS.find((tool) => tool.id === currentSession.tool)?.shortcutId as (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | undefined ?? null
-          const signature = `${shortcutText(event).toLowerCase()}:${matchingToolShortcuts.join('|')}`
+          const signature = `${shortcutText(event, heldShortcutParts).toLowerCase()}:${matchingToolShortcuts.join('|')}`
           const previous = shortcutToolCycleRef.current
           const activeIndex = activeToolShortcut ? matchingToolShortcuts.indexOf(activeToolShortcut) : -1
           const index = previous.signature === signature && activeIndex === previous.index
@@ -2201,40 +2204,72 @@ export default function App() {
     const keyup = (event: KeyboardEvent): void => {
       if (event.key === 'Alt') event.preventDefault()
       if (shortcutReleasedByBindings(event, shortcutBindingsFor(shortcuts, 'addForegroundToPalette'))) endPaletteSamplingShortcut()
+      heldShortcutParts.delete(shortcutKeyPart(event))
     }
     const targetsShortcutRecorder = (target: EventTarget | null): boolean => target instanceof Element
       && Boolean(target.closest('[data-shortcut-recorder="true"]'))
+    const targetsStageCanvas = (target: EventTarget | null): boolean => target instanceof Element
+      && Boolean(target.closest('canvas.stage-canvas'))
     const hasMouseShortcutBinding = (shortcut: string): boolean => findShortcutBindingOwners(shortcuts, shortcut).some((id) => (
       !shortcutBindingBlocked(shortcutConflictState, id, shortcut)
     ))
     const pointerdown = (event: PointerEvent): void => {
-      if (targetsShortcutRecorder(event.target)) return
-      const shortcut = mouseShortcutText(event)
-      if (!shortcut) return
+      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
+      const shortcut = mouseShortcutText(event, heldShortcutParts)
       const assigned = hasMouseShortcutBinding(shortcut)
-      if (!assigned) return
-      dispatchMouseShortcutInput(event.target ?? window, event, 'keydown')
-      activeMouseShortcutPointersRef.current.add(event.pointerId)
+      const doubleClickAssigned = event.button === 0 && hasMouseShortcutBinding(mouseDoubleClickShortcutText(event, heldShortcutParts))
+      if (!assigned && !doubleClickAssigned) return
+      if (assigned) {
+        dispatchMouseShortcutInput(event.target ?? window, event, 'keydown')
+        activeMouseShortcutPointersRef.current.add(event.pointerId)
+      } else {
+        pendingDoubleClickShortcutPointersRef.current.add(event.pointerId)
+      }
       event.preventDefault()
       event.stopPropagation()
     }
     const releasePointerShortcut = (event: PointerEvent): void => {
-      if (!mouseShortcutText(event)) return
       const active = activeMouseShortcutPointersRef.current.delete(event.pointerId)
-      if (!active) return
-      dispatchMouseShortcutInput(window, event, 'keyup')
+      const pendingDoubleClick = pendingDoubleClickShortcutPointersRef.current.delete(event.pointerId)
+      if (!active && !pendingDoubleClick) return
+      if (active) dispatchMouseShortcutInput(window, event, 'keyup')
       event.preventDefault()
       event.stopPropagation()
     }
     const auxclick = (event: PointerEvent): void => {
-      if (targetsShortcutRecorder(event.target)) return
-      const shortcut = mouseShortcutText(event)
+      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
+      const shortcut = mouseShortcutText(event, heldShortcutParts)
       if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
       event.preventDefault()
       event.stopPropagation()
     }
+    const dblclick = (event: MouseEvent): void => {
+      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
+      const shortcut = mouseDoubleClickShortcutText(event, heldShortcutParts)
+      if (!hasMouseShortcutBinding(shortcut)) return
+      dispatchMouseDoubleClickShortcutInput(event.target ?? window, event)
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const contextmenu = (event: MouseEvent): void => {
+      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
+      const shortcut = mouseShortcutText(event, heldShortcutParts)
+      if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const wheel = (event: WheelEvent): void => {
+      if (targetsShortcutRecorder(event.target) || !targetsStageCanvas(event.target)) return
+      const shortcut = wheelShortcutText(event, event.deltaY, heldShortcutParts)
+      if (!shortcut || !hasMouseShortcutBinding(shortcut)) return
+      dispatchWheelShortcutInput(event.target ?? window, event, event.deltaY)
+      event.preventDefault()
+      event.stopPropagation()
+    }
     const blur = (): void => {
+      heldShortcutParts.clear()
       activeMouseShortcutPointersRef.current.clear()
+      pendingDoubleClickShortcutPointersRef.current.clear()
       endPaletteSamplingShortcut()
     }
     window.addEventListener('keydown', keydown, true)
@@ -2243,6 +2278,9 @@ export default function App() {
     window.addEventListener('pointerup', releasePointerShortcut, true)
     window.addEventListener('pointercancel', releasePointerShortcut, true)
     window.addEventListener('auxclick', auxclick, true)
+    window.addEventListener('dblclick', dblclick, true)
+    window.addEventListener('contextmenu', contextmenu, true)
+    window.addEventListener('wheel', wheel, { capture: true, passive: false })
     window.addEventListener('blur', blur)
     return () => {
       window.removeEventListener('keydown', keydown, true)
@@ -2251,6 +2289,9 @@ export default function App() {
       window.removeEventListener('pointerup', releasePointerShortcut, true)
       window.removeEventListener('pointercancel', releasePointerShortcut, true)
       window.removeEventListener('auxclick', auxclick, true)
+      window.removeEventListener('dblclick', dblclick, true)
+      window.removeEventListener('contextmenu', contextmenu, true)
+      window.removeEventListener('wheel', wheel, true)
       window.removeEventListener('blur', blur)
     }
   }, [adjustmentOpen, advancedMode, aboutOpen, canvasResizeOpen, colorReplacementOpen, componentLibraryOpen, cycleAdvancedMode, exportOpen, gridSettingsOpen, homeOpen, imageResizeOpen, isoViewSettingsOpen, lcdScreenOpen, latestReleaseOpen, loadSavedWorkspaces, luaScriptReport, luaScriptSession, newOpen, openLuaScriptFolder, openMenu, openPreferences, openSaveAs, outlineOpen, panelVisibility, popupPanelId, preferencesOpen, projectInfoOpen, publishShortcutCommand, resetCurrentWorkspace, runtimePreferences.timelineHidden, saveAsOpen, shortcutConflictState, shortcutOpen, spriteSheetExportOpen, timelapseOpen, toggleMirrorView, togglePopupPanel, toggleSliceOutlinesVisibility, toggleTimelineVisibility, updatePanelVisibility, updateToolRailSide, workspace, workspaceManagerOpen, workspaceSaveOpen, session?.brushSize, session?.document.id, session?.moveKind, session?.selectedFreeTileInstanceId, session?.selectedSliceId, session?.selectedSliceIds, session?.selection, session?.textBoxTransform, session?.tool, shortcuts])

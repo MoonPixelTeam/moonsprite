@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { LiquifyMode } from '@shared/types'
 import { createDocument, createLayerMask, readLayerColorAt, writeLayerColor } from './document'
 import { beginPixelEdit, revertPixelEdit } from './history'
-import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, LIQUIFY_MAX_PUSH_DABS_PER_BATCH, temporaryLiquifyModeForShift } from './liquify'
+import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from './liquify'
 
 const createFixture = (size = 9) => {
   const document = createDocument('liquify', size, size, 'rgba')
@@ -244,13 +244,13 @@ describe('liquify', () => {
     expect(readLayerColorAt(document, layer, 5, 8).r).toBeLessThanOrEqual(50)
   })
 
-  it('interpolates a fast path continuously while bounding dab work', () => {
+  it('interpolates a fast path at fixed brush spacing', () => {
     const { document, layer } = createFixture(129)
     const edit = beginPixelEdit(layer.id)
     const stroke = createLiquifyPushStroke()
     const result = applyLiquifyPushPath(document, layer, edit, stroke, { x: 8, y: 64 }, [{ x: 120, y: 64 }], { radius: 8, strength: 100 })
 
-    expect(result.dabCount).toBeLessThanOrEqual(LIQUIFY_MAX_PUSH_DABS_PER_BATCH)
+    expect(result.dabCount).toBe(112)
     expect(stroke.dabCount).toBeGreaterThan(0)
   })
 

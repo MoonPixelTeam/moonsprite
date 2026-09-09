@@ -1719,6 +1719,8 @@ export const jaJPMessages = {
   'layers.rasterizeLayer': 'データ レイヤー',
   'layers.rasterizeLayerDescription': 'データ データ テキスト, データ セル, または レイヤー データ へ データ ピクセル データ. あなた できます データ 結果 データ, データ データ ソース 設定 できます なし データ データ データ.',
   'layers.settings': 'レイヤー 設定',
+  'layers.quickActions': 'レイヤークイック操作',
+  'layers.quickActionsDescription': '最大 5 項目を選択し、レイヤーパネル右上の表示順を調整します。',
   'layers.panelDisplay': 'パネル データ',
   'layers.thumbnailSize': 'データ と フレーム データ',
   'layers.freeTileInstancePanelLayout': 'データ レイヤー データ',

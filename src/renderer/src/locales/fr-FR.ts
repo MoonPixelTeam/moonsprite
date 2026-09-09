@@ -1719,6 +1719,8 @@ export const frFRMessages = {
   'layers.rasterizeLayer': 'Rasterize Calque',
   'layers.rasterizeLayerDescription': 'Converts editable Texte, Tilemap cells, ou Calque styles into regular pixel content. You can paint le result directly, but le original source Paramètres can aucun longer be edited separately.',
   'layers.settings': 'Calque Paramètres',
+  'layers.quickActions': 'Actions rapides de calque',
+  'layers.quickActionsDescription': 'Choisissez jusqu’à cinq actions et ajustez leur ordre dans le coin supérieur droit du panneau des calques.',
   'layers.panelDisplay': 'Panel Display',
   'layers.thumbnailSize': 'Thumbnail et Frame Detail',
   'layers.freeTileInstancePanelLayout': 'Instance Calque Location',

@@ -1719,6 +1719,8 @@ export const esESMessages = {
   'layers.rasterizeLayer': 'Rasterize Capa',
   'layers.rasterizeLayerDescription': 'Converts editable Texto, Tilemap cells, o Capa styles into regular pixel content. You can paint el result directly, but el original source Configuración can ningún longer be edited separately.',
   'layers.settings': 'Capa Configuración',
+  'layers.quickActions': 'Acciones rápidas de capa',
+  'layers.quickActionsDescription': 'Elige hasta cinco acciones y ajusta su orden en la esquina superior derecha del panel de capas.',
   'layers.panelDisplay': 'Panel Display',
   'layers.thumbnailSize': 'Thumbnail y Frame Detail',
   'layers.freeTileInstancePanelLayout': 'Instance Capa Location',

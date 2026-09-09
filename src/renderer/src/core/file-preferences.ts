@@ -21,6 +21,9 @@ export const LANGUAGE_PREFERENCE_KEY = APP_LANGUAGE_PREFERENCE_KEY
 export const RECOVERY_PREFERENCE_KEY = 'moonsprite.preference.recovery'
 export const RECOVERY_MINUTES_PREFERENCE_KEY = 'moonsprite.preference.recovery-minutes'
 export const RECOVERY_RETENTION_DAYS_PREFERENCE_KEY = 'moonsprite.preference.recovery-retention-days'
+export const PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY = 'moonsprite.preference.project-backup-versions'
+export const PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY = 'moonsprite.preference.project-backup-retention-days'
+export const PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.project-backup-directory'
 export const ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY = 'moonsprite.preference.zoom-tool-drag-mode'
 export const VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY = 'moonsprite.preference.view-drag-sensitivity'
 export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-mode'
@@ -581,6 +584,9 @@ export interface EditorPreferences {
   recovery: boolean
   recoveryMinutes: number
   recoveryRetentionDays: number
+  projectBackupVersions: number
+  projectBackupRetentionDays: number
+  projectBackupDirectory: string
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
@@ -660,6 +666,9 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   recovery: true,
   recoveryMinutes: 5,
   recoveryRetentionDays: 7,
+  projectBackupVersions: 10,
+  projectBackupRetentionDays: 30,
+  projectBackupDirectory: '',
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
@@ -1028,6 +1037,18 @@ export function parseRecoveryRetentionDays(value: string | null): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.recoveryRetentionDays
 }
 
+export function parseProjectBackupVersions(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.projectBackupVersions
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.projectBackupVersions
+}
+
+export function parseProjectBackupRetentionDays(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.projectBackupRetentionDays
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.projectBackupRetentionDays
+}
+
 export function parseMoveLayerClickFlashDuration(value: string | null): MoveLayerClickFlashDuration {
   const parsed = Number(value)
   return MOVE_LAYER_CLICK_FLASH_DURATIONS.includes(parsed as MoveLayerClickFlashDuration)
@@ -1105,6 +1126,9 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     recovery: get(RECOVERY_PREFERENCE_KEY) !== 'false',
     recoveryMinutes: parseRecoveryMinutes(get(RECOVERY_MINUTES_PREFERENCE_KEY)),
     recoveryRetentionDays: parseRecoveryRetentionDays(get(RECOVERY_RETENTION_DAYS_PREFERENCE_KEY)),
+    projectBackupVersions: parseProjectBackupVersions(get(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)),
+    projectBackupRetentionDays: parseProjectBackupRetentionDays(get(PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY)),
+    projectBackupDirectory: parseDirectoryPreference(get(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)),
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
@@ -1190,6 +1214,9 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [RECOVERY_PREFERENCE_KEY]: String(preferences.recovery),
     [RECOVERY_MINUTES_PREFERENCE_KEY]: String(parseRecoveryMinutes(String(preferences.recoveryMinutes))),
     [RECOVERY_RETENTION_DAYS_PREFERENCE_KEY]: String(parseRecoveryRetentionDays(String(preferences.recoveryRetentionDays))),
+    [PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY]: String(parseProjectBackupVersions(String(preferences.projectBackupVersions))),
+    [PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY]: String(parseProjectBackupRetentionDays(String(preferences.projectBackupRetentionDays))),
+    [PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.projectBackupDirectory),
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,

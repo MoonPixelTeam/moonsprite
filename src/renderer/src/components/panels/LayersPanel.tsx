@@ -31,9 +31,10 @@ import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import { CheckboxField } from '@/components/CheckboxField'
+import { PixelCheckbox } from '@/components/PixelCheckbox'
 import { CANVAS_SELECTION_PRESERVE_EVENT, CANVAS_SELECTION_STARTED_EVENT, LAYER_PANEL_REVEAL_EVENT, type CanvasSelectionPreserveDetail, type CanvasSelectionStartedDetail, type LayerPanelRevealDetail } from '@/components/layer-panel-reveal'
 import { rasterStorageIdentity } from '@/core/runtime-raster'
-import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, LAYER_DENSITY_ORDER as layerDensityOrder, loadFreeTileInstancePanelLayout, loadLayerDensity, loadLayerSideDockAutoHide, saveLayerDensity, saveLayerSideDockAutoHide, type FreeTileInstancePanelLayout, type LayerDisplayDensity } from '@/core/layer-panel-preferences'
+import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, DEFAULT_LAYER_QUICK_ACTIONS, LAYER_DENSITY_ORDER as layerDensityOrder, LAYER_QUICK_ACTION_LIMIT, loadFreeTileInstancePanelLayout, loadLayerDensity, loadLayerQuickActions, loadLayerSideDockAutoHide, saveLayerDensity, saveLayerQuickActions, saveLayerSideDockAutoHide, type FreeTileInstancePanelLayout, type LayerDisplayDensity, type LayerQuickAction, type LayerQuickActionId } from '@/core/layer-panel-preferences'
 import { LayerStyleDialog } from '@/components/LayerStyleDialog'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles } from '@/core/layer-styles'
 import { BackgroundLayerDialog } from '@/components/BackgroundLayerDialog'
@@ -48,6 +49,7 @@ import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
 import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
 import { notifyAnimationCelThumbnailPreview, notifyLayerMaskThumbnailPreview, registerAnimationCelThumbnailPreviewListener, registerLayerMaskThumbnailPreviewListener } from '@/core/canvas-preview-lifecycle'
+import type { TranslationKey } from '@/core/localization'
 
 type LayerFormTarget = LayerPropertyTarget
 type BatchProperty = LayerPropertyField
@@ -69,6 +71,7 @@ interface LayerContextMenu { kind: 'layer' | 'group'; id: string; x: number; y: 
 interface LayerCreateContextMenu { x: number; y: number }
 interface LayerStyleDialogState { source: LayerFormTarget; targets: LayerFormTarget[] }
 interface LayerStyleDragState { source: LayerFormTarget; target: LayerFormTarget | null; startX: number; startY: number; x: number; y: number; moved: boolean }
+interface LayerQuickActionPointerDrag { id: LayerQuickActionId; pointerId: number; captureTarget: HTMLElement }
 function LayerContextMenuItem({ icon, label, shortcut, onClick, danger = false, disabled = false }: { icon: PixelUtilityIconKind; label: ReactNode; shortcut?: ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean }) {
   return <button role="menuitem" className={danger ? 'danger' : undefined} disabled={disabled} onClick={onClick}><span className="layer-context-icon"><PixelUtilityIcon kind={icon} /></span><span className="layer-context-label">{label}</span>{shortcut}</button>
 }
@@ -87,7 +90,35 @@ type AnimationPointerDrag =
 type AnimationGestureSelection = { kind: 'frame'; ids: string[] } | { kind: 'cel' | 'mask'; keys: string[] }
 type AnimationGestureActiveTarget = { kind: 'frame'; frameId: string } | { kind: 'cel' | 'mask'; layerId: string; frameId: string }
 type LayerTreeNode = LayerPanelNode & ({ kind: 'layer'; layer: RasterLayer } | { kind: 'group'; group: LayerGroup })
-interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean; skipDisabledFrames: boolean }
+interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean; skipDisabledFrames: boolean; quickActions: LayerQuickAction[] }
+
+const layerQuickActionMetadata = {
+  newLayer: { icon: 'plus', label: 'layers.new' },
+  newTilemapLayer: { icon: 'tilemap', label: 'layers.newTilemap' },
+  newFreeTileLayer: { icon: 'freeTile', label: 'layers.newFreeTile' },
+  newBackgroundLayer: { icon: 'image', label: 'layers.newBackground' },
+  createLayerGroup: { icon: 'newFolder', label: 'layers.newGroup' },
+  duplicateLayer: { icon: 'copy', label: 'layers.duplicate' },
+  deleteLayer: { icon: 'delete', label: 'layers.deleteSelected' },
+  createLinkedLayer: { icon: 'linkedLayer', label: 'layers.createLinkedLayer' },
+  mergeLayerDown: { icon: 'mergeDown', label: 'app.menu.layer.mergeDown' },
+  mergeSelectedLayers: { icon: 'mergeDown', label: 'app.menu.layer.mergeSelected' },
+  mergeLayerGroup: { icon: 'mergeDown', label: 'app.menu.layer.mergeGroup' },
+  mergeVisibleLayers: { icon: 'mergeVisible', label: 'app.menu.layer.mergeVisible' },
+  ungroupLayers: { icon: 'ungroupFolder', label: 'app.menu.layer.ungroup' },
+  toggleClippingMask: { icon: 'clippingMask', label: 'layers.clippingMask' },
+  toggleLayerMask: { icon: 'layerMask', label: 'layers.createLayerMask' },
+  toggleGroupMask: { icon: 'layerMask', label: 'layers.createLayerGroupMask' },
+  openLayerProperties: { icon: 'properties', label: 'layers.layerProperties' },
+  openLayerStyles: { icon: 'layerStyle', label: 'layers.openLayerStyle' },
+  toggleLayerStyles: { icon: 'layerStyle', label: 'layers.layerStyle' },
+  copyLayerStyles: { icon: 'copy', label: 'layers.copyLayerStyle' },
+  pasteLayerStyles: { icon: 'paste', label: 'layers.pasteLayerStyle' },
+  clearLayerStyles: { icon: 'delete', label: 'layers.clearLayerStyle' },
+  convertLayerToBackground: { icon: 'image', label: 'layers.convertToBackground' },
+  convertLayerToTilemap: { icon: 'tilemap', label: 'layers.convertToTilemap' },
+  convertLayerToRaster: { icon: 'image', label: 'layers.convertToRaster' }
+} satisfies Record<LayerQuickActionId, { icon: PixelUtilityIconKind; label: TranslationKey }>
 
 const layoutAnimationLoopSections = (timeline: AnimationTimeline): { items: AnimationLoopSectionLayout[]; laneCount: number } => {
   const candidates = (timeline.loopSections ?? []).flatMap((section) => {
@@ -524,9 +555,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
   const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; opacity: number } | null>(null)
   const [layerSettingsOpen, setLayerSettingsOpen] = useState(false)
+  const [draggedLayerQuickAction, setDraggedLayerQuickAction] = useState<LayerQuickActionId | null>(null)
+  const layerQuickActionPointerDragRef = useRef<LayerQuickActionPointerDrag | null>(null)
   const [layerSettings, setLayerSettings] = useState<LayerSettingsState>(() => {
     const preferences = loadEditorPreferences()
-    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames }
+    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() }
   })
   const [layerSettingsSlider, setLayerSettingsSlider] = useState<'previousOpacity' | 'nextOpacity' | null>(null)
   const [layerLabelWidth, setLayerLabelWidth] = useState(loadLayerLabelWidth)
@@ -789,7 +822,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openLayerSettings = (): void => {
     const preferences = loadEditorPreferences()
-    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames })
+    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() })
     setLayerSettingsSlider(null)
     setLayerSettingsOpen(true)
   }
@@ -799,6 +832,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setLayerDensity(next.density)
     saveLayerDensity(next.density)
     saveLayerSideDockAutoHide(next.sideDockAutoHide)
+    saveLayerQuickActions(next.quickActions)
     saveEditorPreferences({ ...loadEditorPreferences(), onionSkin: next.onionSkin, timelineHidden: next.timelineHidden, skipDisabledFrames: next.skipDisabledFrames })
     if (next.timelineHidden) {
       setLayerSettingsSlider(null)
@@ -817,6 +851,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     timelineHidden: false,
     sideDockAutoHide: true,
     skipDisabledFrames: true,
+    quickActions: DEFAULT_LAYER_QUICK_ACTIONS.map((action) => ({ ...action })),
     onionSkin: {
       ...DEFAULT_ONION_SKIN_PREFERENCES,
       previousColor: { ...DEFAULT_ONION_SKIN_PREFERENCES.previousColor },
@@ -825,7 +860,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   })
   const toggleOnionSkin = (): void => {
     const current = loadEditorPreferences().onionSkin
-    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide, skipDisabledFrames: layerSettings.skipDisabledFrames })
+    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide, skipDisabledFrames: layerSettings.skipDisabledFrames, quickActions: layerSettings.quickActions })
   }
   const selectAnimationFrame = (frameId: string, mode: 'replace' | 'toggle' | 'range' = 'replace'): void => {
     store.selectAnimationFrame(frameId, mode)
@@ -3249,9 +3284,13 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const targets = shortcutLayerTargets()
     const primaryTarget = targets[0] ?? null
     switch (id) {
+      case 'newLayer': void store.addLayer(); break
+      case 'createLayerGroup': store.createLayerGroup(); break
       case 'newTilemapLayer': openTilemapLayerDialog(); break
       case 'newFreeTileLayer': openFreeTileLayerDialog(); break
       case 'newBackgroundLayer': openBackgroundLayerDialog(); break
+      case 'duplicateLayer': store.duplicateSelectedLayerRows(); break
+      case 'deleteLayer': store.deleteSelectedLayers(); break
       case 'createLinkedLayer': if (activeLayer && !activeLayer.kind && !activeLayer.background) store.createLinkedLayer(activeLayer.id); break
       case 'convertLayerToBackground': if (activeLayer && !activeLayer.kind && !activeLayer.background) store.setLayerBackground(activeLayer.id, true); break
       case 'convertLayerToTilemap': if (activeLayer && !activeLayer.kind && !activeLayer.background && !hasConfiguredLayerStyles(activeLayer.layerStyles)) setTilemapLayerDialog({ mode: 'convert', layerId: activeLayer.id }); break
@@ -3281,6 +3320,19 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       case 'copyLayerStyles': if (primaryTarget) store.copyLayerStyles(primaryTarget.kind, primaryTarget.id); break
       case 'pasteLayerStyles': if (targets.length > 0) store.pasteLayerStyles(targets); break
       case 'clearLayerStyles': if (targets.length > 0) store.clearLayerStyles(targets); break
+      case 'mergeLayerDown': store.mergeActiveLayerDown(); break
+      case 'mergeSelectedLayers': store.mergeSelectedLayers(); break
+      case 'mergeLayerGroup': store.mergeSelectedGroup(); break
+      case 'mergeVisibleLayers': store.mergeVisibleLayers(); break
+      case 'ungroupLayers': store.ungroupSelected(); break
+      case 'toggleClippingMask': {
+        if (!primaryTarget) break
+        const owner = primaryTarget.kind === 'layer'
+          ? active.document.layers.find((layer) => layer.id === primaryTarget.id)
+          : active.document.groups.find((group) => group.id === primaryTarget.id)
+        store.setClippingMask(primaryTarget.kind, primaryTarget.id, owner?.clippingMask !== true)
+        break
+      }
       case 'openLayerSettings': openLayerSettings(); break
       case 'enableAnimationFrames': updateAnimationFrameDisabled(false); break
       case 'disableAnimationFrames': updateAnimationFrameDisabled(true); break
@@ -3320,6 +3372,60 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       }
     }
   }
+  const updateLayerQuickAction = (id: LayerQuickActionId, enabled: boolean): void => {
+    const enabledCount = layerSettings.quickActions.filter((action) => action.enabled).length
+    if (enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT) return
+    applyLayerSettings({ ...layerSettings, quickActions: layerSettings.quickActions.map((action) => action.id === id ? { ...action, enabled } : action) })
+  }
+  const moveLayerQuickAction = (id: LayerQuickActionId, targetId: LayerQuickActionId, insertAfter: boolean): void => {
+    const from = layerSettings.quickActions.findIndex((action) => action.id === id)
+    if (from < 0 || id === targetId) return
+    const quickActions = [...layerSettings.quickActions]
+    const [action] = quickActions.splice(from, 1)
+    const target = quickActions.findIndex((candidate) => candidate.id === targetId)
+    if (target < 0) return
+    quickActions.splice(target + (insertAfter ? 1 : 0), 0, action)
+    applyLayerSettings({ ...layerSettings, quickActions })
+  }
+  const beginLayerQuickActionPointerDrag = (event: React.PointerEvent<HTMLElement>, id: LayerQuickActionId): void => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    layerQuickActionPointerDragRef.current = { id, pointerId: event.pointerId, captureTarget: event.currentTarget }
+    setDraggedLayerQuickAction(id)
+  }
+  useEffect(() => {
+    const move = (event: PointerEvent): void => {
+      const drag = layerQuickActionPointerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      const row = (typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(event.clientX, event.clientY) : [])
+        .map((element) => element.closest<HTMLElement>('[data-layer-quick-action-id]'))
+        .find((element): element is HTMLElement => Boolean(element))
+        ?? (event.target instanceof Element ? event.target.closest<HTMLElement>('[data-layer-quick-action-id]') : null)
+      const targetId = row?.dataset.layerQuickActionId as LayerQuickActionId | undefined
+      if (!row || !targetId || targetId === drag.id) return
+      const bounds = row.getBoundingClientRect()
+      moveLayerQuickAction(drag.id, targetId, event.clientY >= bounds.top + bounds.height / 2)
+      event.preventDefault()
+    }
+    const end = (event: PointerEvent): void => {
+      const drag = layerQuickActionPointerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId)
+      layerQuickActionPointerDragRef.current = null
+      setDraggedLayerQuickAction(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+    }
+  }, [layerSettings])
+  const runLayerQuickAction = (id: LayerQuickActionId): void => shortcutCommandHandlerRef.current(id)
   const animationColumnResizer = <span className="layer-animation-column-resizer" role="separator" aria-label={t('timeline.resizeLayerArea')} aria-orientation="vertical" aria-valuemin={layerLabelWidthLimits.min} aria-valuemax={layerLabelWidthLimits.max} aria-valuenow={layerLabelWidth} tabIndex={0} onPointerDown={beginLayerLabelResize} onKeyDown={(event) => { if (event.key === 'ArrowLeft') { event.preventDefault(); setStoredLayerLabelWidth(layerLabelWidth - 12) } else if (event.key === 'ArrowRight') { event.preventDefault(); setStoredLayerLabelWidth(layerLabelWidth + 12) } }} />
   const animationLoopSectionBars = loopSectionLayout.items.map(({ section, startIndex, span, lane, laneSpan }) => {
     const rangeFrameIds = timeline.frames.slice(startIndex, startIndex + span).map((frame) => frame.id)
@@ -3350,6 +3456,12 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return <button type="button" data-animation-frame-id={frame.id} data-frame-index={index} key={`header-${frame.id}`} className={`layer-animation-frame-header ${frameActive ? 'active' : ''} ${frameSelected ? 'selected-animation-frame' : ''} ${frame.disabled === true ? 'disabled-frame' : ''} ${draggingAnimationFrameIds.includes(frame.id) ? 'dragging' : ''}`} aria-label={t('timeline.frameNumber', { number: index + 1 })} title={`${t('timeline.frameNumber', { number: index + 1 })} · ${frame.duration} ms`} onPointerDown={(event) => beginAnimationFrameDrag(event, frame.id)} onPointerMove={(event) => updateAnimationItemCursor(event, frame.id)} onPointerLeave={(event) => { event.currentTarget.style.cursor = '' }} onClick={(event) => { if (suppressAnimationClickRef.current) { event.preventDefault(); event.stopPropagation(); return } if (event.detail === 0) selectAnimationFrame(frame.id, event.shiftKey ? 'range' : event.ctrlKey ? 'toggle' : 'replace') }} onDoubleClick={() => openFramePropertiesFor(frame.id)} onContextMenu={(event) => openFrameMenu(event, frame.id)}>{frame.disabled === true && <svg className="layer-animation-frame-disabled-mark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="100" x2="100" y2="0" vectorEffect="non-scaling-stroke" /></svg>}<strong>{index + 1}</strong>{layerDensity !== 'compact' && <small>{frame.duration}</small>}</button>
   })
   const hideSideDockActions = sideDocked && layerSettings.sideDockAutoHide
+  const visibleLayerQuickActions = layerSettings.quickActions.filter((action) => action.enabled).slice(0, LAYER_QUICK_ACTION_LIMIT)
+  const layerQuickActionButtons = !hideSideDockActions && visibleLayerQuickActions.map((action) => {
+    const metadata = layerQuickActionMetadata[action.id]
+    const label = t(metadata.label)
+    return <button type="button" className="layer-structure-edit-button" key={action.id} title={label} aria-label={label} onClick={() => runLayerQuickAction(action.id)}><PixelUtilityIcon kind={metadata.icon} /></button>
+  })
   const densityLabel = t(layerDensityLabelKeys[layerSettings.density])
   const densityDescription = t(layerDensityDescriptionKeys[layerSettings.density])
   const renderAnimationMaskRow = (
@@ -3393,7 +3505,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     </button>
   }
   return <><section ref={floating.ref} className={`panel layers-panel layer-density-${layerDensity} ${layerSettings.timelineHidden ? 'timeline-hidden' : ''} ${visibleLoopSectionLaneCount > 0 ? 'has-animation-loop-sections' : ''} ${loopSectionResizePreview ? 'loop-section-resizing' : ''} ${session.animationPlaying ? 'animation-playing' : ''} ${animationItemDragging ? 'animation-item-dragging' : ''} ${floating.style ? 'floating-panel' : ''} ${draggingCopy ? 'layer-copy-drag' : ''} ${layerStyleDrag ? 'layer-style-copy-drag' : ''}`} data-command-scope="layers" style={{ ...floating.style, '--layer-label-width': `${layerLabelWidth}px`, '--layer-frame-count': timeline.frames.length, '--animation-loop-section-lanes': visibleLoopSectionLaneCount, '--animation-loop-section-track-height': `${visibleLoopSectionLaneCount * 20}px`, '--animation-toolbar-extent': `${animationToolbarExtent}px` } as CSSProperties} onPointerDown={floating.bringToFront} onWheel={handleLayerPanelWheel} onContextMenu={onPanelContextMenu}>
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>{integratedFreeTileInstanceLayer ? <><span className="free-tile-instance-header" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('freeTiles.backToLayers')} aria-label={t('freeTiles.backToLayers')} onClick={() => store.setFreeTileInstanceLayerView(null)}><PixelUtilityIcon kind="left" /></button><strong className="layer-panel-title">{t('freeTiles.instanceLayersTitle', { name: integratedFreeTileInstanceLayer.name })}</strong></span><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}><FreeTileInstancePanelSettings /></span></> : <>{layerSettings.timelineHidden && <strong className="layer-panel-title">{t('panel.layers')}</strong>}<div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}><span className="layer-animation-playback">
+    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>{integratedFreeTileInstanceLayer ? <><span className="free-tile-instance-header" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('freeTiles.backToLayers')} aria-label={t('freeTiles.backToLayers')} onClick={() => store.setFreeTileInstanceLayerView(null)}><PixelUtilityIcon kind="left" /></button><strong className="layer-panel-title">{t('freeTiles.instanceLayersTitle', { name: integratedFreeTileInstanceLayer.name })}</strong></span><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}><FreeTileInstancePanelSettings /></span></> : <>{layerSettings.timelineHidden && <span className="panel-actions layer-quick-actions layer-quick-actions-timeline-hidden" role="toolbar" aria-label={t('layers.quickActions')} onPointerDown={(event) => event.stopPropagation()}>{layerQuickActionButtons}</span>}<div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}><span className="layer-animation-playback">
         <button type="button" title={t('timeline.firstFrame')} aria-label={t('timeline.firstFrame')} onClick={() => selectAnimationEdge('first')}><PlaybackPixelIcon kind="first" /></button>
         <button type="button" title={t('timeline.previousFrame')} aria-label={t('timeline.previousFrame')} onClick={() => selectAnimationStep(-1)}><PlaybackPixelIcon kind="previous" /></button>
         <button type="button" className={session.animationPlaying ? 'active' : ''} title={session.animationPlaying ? t('timeline.pause') : t('timeline.play')} aria-label={session.animationPlaying ? t('timeline.pause') : t('timeline.play')} onClick={() => store.setAnimationPlaying(!session.animationPlaying)} onContextMenu={(event) => openAnimationMenu(event, { kind: 'playback', x: event.clientX, y: event.clientY })}><PlaybackPixelIcon kind={session.animationPlaying ? 'pause' : 'play'} /></button>
@@ -3403,7 +3515,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <button type="button" className={layerSettings.onionSkin.enabled ? 'active' : ''} title={t('layers.onionSkinEnabled')} aria-label={t('layers.onionSkinEnabled')} aria-pressed={layerSettings.onionSkin.enabled} onClick={toggleOnionSkin}><PixelUtilityIcon kind="onion" /></button>
         {!hideSideDockActions && <button type="button" className="timeline-frame-edit-button" title={t('timeline.addFrame')} aria-label={t('timeline.addFrame')} onClick={() => store.duplicateAnimationFrame()}><PixelUtilityIcon kind="plus" /></button>}
         {!hideSideDockActions && <button type="button" className="timeline-frame-edit-button" title={t('timeline.deleteFrame')} aria-label={t('timeline.deleteFrame')} disabled={timeline.frames.length <= 1} onClick={() => store.deleteSelectedAnimationItems()}><PixelUtilityIcon kind="delete" /></button>}
-      </span></div><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.new')} aria-label={t('layers.new')} onClick={() => void store.addLayer()}><PixelUtilityIcon kind="plus" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newTilemap')} aria-label={t('layers.newTilemap')} onClick={openTilemapLayerDialog}><PixelUtilityIcon kind="tilemap" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newFreeTile')} aria-label={t('layers.newFreeTile')} onClick={openFreeTileLayerDialog}><PixelUtilityIcon kind="freeTile" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newGroupShortcut')} aria-label={t('layers.newGroup')} onClick={() => store.createLayerGroup()}><PixelUtilityIcon kind="newFolder" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.deleteSelected')} aria-label={t('layers.deleteSelected')} onClick={() => store.deleteSelectedLayers()}><PixelUtilityIcon kind="delete" /></button>}<button title={t('layers.settings')} aria-label={t('layers.settings')} onClick={openLayerSettings}><PixelUtilityIcon kind="properties" /></button></span></>}{animationLoopSectionHeader}</header>
+      </span></div><span className="panel-actions layer-quick-actions" role="toolbar" aria-label={t('layers.quickActions')} onPointerDown={(event) => event.stopPropagation()}>{!layerSettings.timelineHidden && layerQuickActionButtons}<button type="button" title={t('layers.settings')} aria-label={t('layers.settings')} onClick={openLayerSettings}><PixelUtilityIcon kind="properties" /></button></span></>}{animationLoopSectionHeader}</header>
     {integratedFreeTileInstanceLayer ? <FreeTileInstanceLayers session={session} layer={integratedFreeTileInstanceLayer} listRef={layerListRef} /> : <div ref={layerListRef} className={`layer-list layer-animation-list component-scrollbar ${selectedAnimationOutlineRows.length > 0 ? 'has-layer-selection-outline' : ''}`} style={{ '--layer-frame-count': timeline.frames.length, '--layer-selection-start': layerSelectionStart, '--layer-selection-span': layerSelectionSpan } as CSSProperties} onScroll={syncAnimationLoopSectionScroll} onPointerDown={(event) => { if (event.target === event.currentTarget) clearSelectionFromBlank() }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>('[data-layer-id], [data-group-id]'); if (target?.dataset.layerId) openLayerContextMenu(event, 'layer', target.dataset.layerId); else if (target?.dataset.groupId) openLayerContextMenu(event, 'group', target.dataset.groupId); else openLayerCreateContextMenu(event) }}><div className="layer-animation-tree"><div className="layer-animation-corner"><ActiveFrameSync documentId={session.document.id} frameIds={timeline.frames.map((frame) => frame.id)} containerRef={layerListRef} suppressActiveGuide={suppressCellSelectionGuides} activeFrameIdOverride={gestureActiveFrameId} /></div>{animationColumnResizer}{displayRows.map((displayRow, rowIndex) => {
       const visualRow = timelineVisualState.rows[rowIndex]
       if (displayRow.kind === 'mask') return renderAnimationMaskRow(displayRow, visualRow)
@@ -3739,6 +3851,23 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.sideDockAutoHide')} tooltip={t('layers.sideDockAutoHideDescription')} aria-label={t('layers.sideDockAutoHide')} checked={layerSettings.sideDockAutoHide} onChange={(sideDockAutoHide) => applyLayerSettings({ ...layerSettings, sideDockAutoHide })} />
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.hideTimeline')} tooltip={t('layers.hideTimelineDescription')} aria-label={t('layers.hideTimeline')} checked={layerSettings.timelineHidden} onChange={(timelineHidden) => applyLayerSettings({ ...layerSettings, timelineHidden })} />
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
+            </div>
+          </section>
+          <section className="layer-settings-section layer-quick-actions-settings">
+            <div className="layer-settings-section-heading"><h3>{t('layers.quickActions')}</h3></div>
+            <p className="layer-quick-actions-description">{t('layers.quickActionsDescription')}</p>
+            <div className="preference-quick-command-list">
+              {layerSettings.quickActions.map((action) => {
+                const metadata = layerQuickActionMetadata[action.id]
+                const label = t(metadata.label)
+                const enabledCount = layerSettings.quickActions.filter((candidate) => candidate.enabled).length
+                return <div className={`preference-quick-command-row reorderable-list-row ${draggedLayerQuickAction === action.id ? 'dragging' : ''}`} data-layer-quick-action-id={action.id} key={action.id} title={label}>
+                  <button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginLayerQuickActionPointerDrag(event, action.id)}><PixelUtilityIcon kind="move" /></button>
+                  <span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span>
+                  <span className="preference-quick-command-name">{label}</span>
+                  <PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={action.enabled} disabled={!action.enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT} onChange={(event) => updateLayerQuickAction(action.id, event.currentTarget.checked)} />
+                </div>
+              })}
             </div>
           </section>
           <section className="layer-settings-section layer-settings-onion-section">

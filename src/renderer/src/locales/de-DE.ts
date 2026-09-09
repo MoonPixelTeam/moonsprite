@@ -1719,6 +1719,8 @@ export const deDEMessages = {
   "layers.rasterizeLayer": "Rasterize Ebene",
   "layers.rasterizeLayerDescription": "Konvertierens Bearbeitenable Text, Kachelmap Zellen, oder Ebene styles into regular Pixel Inhalt. You can paint Die result directly, but Die Original Quelle Einstellungen can Keine longer be Bearbeitened separately.",
   "layers.settings": "Ebene Einstellungen",
+  "layers.quickActions": "Schnelle Ebenenaktionen",
+  "layers.quickActionsDescription": "Wählen Sie bis zu fünf Aktionen und ordnen Sie sie oben rechts im Ebenenpanel an.",
   "layers.panelDisplay": "Panel Anzeige",
   "layers.thumbnailSize": "Thumbnail und Frame Detail",
   "layers.freeTileInstancePanelLayout": "Instance Ebene Speicherort",

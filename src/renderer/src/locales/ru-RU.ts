@@ -1719,6 +1719,8 @@ export const ruRUMessages = {
   "layers.rasterizeLayer": "Rasterize Слой",
   "layers.rasterizeLayerDescription": "Преобразоватьs Изменитьable Текст, Плиткаmap ячейки, или Слой styles into regular Пиксель Содержимое. You can paint Этот result directly, but Этот Исходный Источник Настройки can Нет longer be Изменитьed separately.",
   "layers.settings": "Слой Настройки",
+  "layers.quickActions": "Быстрые действия слоя",
+  "layers.quickActionsDescription": "Выберите до пяти действий и настройте их порядок в правом верхнем углу панели слоев.",
   "layers.panelDisplay": "Panel Отображение",
   "layers.thumbnailSize": "Thumbnail и Кадр детали",
   "layers.freeTileInstancePanelLayout": "Instance Слой Расположение",

@@ -1719,6 +1719,8 @@ export const ptBRMessages = {
   "layers.rasterizeLayer": "Rasterize Camada",
   "layers.rasterizeLayerDescription": "Converters Editarable Texto, Blocomap células, ou Camada styles into regular pixel Conteúdo. You can paint O result directly, but O Original Origem Configurações can Nenhum longer be Editared separately.",
   "layers.settings": "Camada Configurações",
+  "layers.quickActions": "Ações rápidas da camada",
+  "layers.quickActionsDescription": "Escolha até cinco ações e ajuste a ordem no canto superior direito do painel de camadas.",
   "layers.panelDisplay": "Panel Exibição",
   "layers.thumbnailSize": "Thumbnail e Quadro detalhe",
   "layers.freeTileInstancePanelLayout": "Instance Camada Localização",

@@ -1031,6 +1031,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
           <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
+          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : '无法打开工程备份文件夹。')) }}><PixelUtilityIcon kind="folderOpen" /><span><strong>工程备份</strong><small>打开工程备份文件夹</small></span></button>
           <section className="start-screen-news" aria-label={t('home.news')}>
             {homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
               <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: release.version })}</strong><time dateTime={release.publishedAt}>{formatReleaseDate(release.publishedAt, locale)}</time></span>

@@ -1123,6 +1123,7 @@ export interface MoonSpriteApi {
   readProjectPreview(filePath: string): Promise<ProjectPreview>
   cacheProjectPreview(filePath: string, preview: ProjectPreview): Promise<void>
   writeBinaryAtomic(filePath: string, data: Uint8Array): Promise<void>
+  openProjectBackupFolder(): Promise<void>
   writeScaledPngAtomic?(filePath: string, source: Uint8Array, options: ScaledPngWriteOptions, onProgress?: (value: number) => void, onCancelReady?: (cancel: () => void) => void): Promise<ScaledPngWriteResult>
   writeProjectIncremental(filePath: string, sourcePath: string, data: Uint8Array): Promise<void>
   writeClipboardImage(image: ClipboardImage): Promise<void>
