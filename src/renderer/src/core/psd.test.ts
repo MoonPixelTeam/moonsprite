@@ -3,7 +3,7 @@ import { initializeCanvas, readPsd } from 'ag-psd'
 import type { AnimationCel, LayerGroup } from '@shared/types'
 import { createLayer, createLayerMask, createDocument, getActiveLayer, writeLayerColor } from './document'
 import { createDefaultLayerStyles } from './layer-styles'
-import { encodePsd } from './psd'
+import { decodePsd, encodePsd } from './psd'
 
 beforeAll(() => {
   initializeCanvas(
@@ -126,5 +126,55 @@ describe('PSD export', () => {
 
   it('rejects dimensions above the PSD canvas limit', () => {
     expect(() => encodePsd(createDocument('Too large', 500, 1, 'rgba'), 6400)).toThrow('PSD')
+  })
+})
+
+describe('PSD import', () => {
+  it('imports editable layers, nested groups, properties, pixels, and masks', () => {
+    const source = createDocument('PSD source', 3, 2, 'rgba')
+    const bottom = getActiveLayer(source)
+    bottom.name = 'Bottom'
+    writeLayerColor(source, bottom, 0, { r: 240, g: 20, b: 30, a: 255 })
+
+    const group: LayerGroup = { id: 'import-group', name: 'Imported group', visible: true, locked: false, opacity: 0.8, blendMode: 'screen' }
+    const top = createLayer('Top', 2, 1, 'rgba')
+    if (top.format !== 'rgba') throw new Error('Expected RGBA test layer')
+    top.groupId = group.id
+    top.offsetX = 1
+    top.offsetY = 1
+    top.visible = false
+    top.locked = true
+    top.opacity = 0.5
+    top.blendMode = 'multiply'
+    top.clippingMask = true
+    top.pixels.set([10, 20, 30, 255, 40, 50, 60, 128])
+    source.layers.push(top)
+    source.groups.push(group)
+    const frameId = source.animation!.activeFrameId
+    source.animation!.cels.push({
+      id: 'top-cel',
+      layerId: top.id,
+      frameId,
+      surface: { format: 'rgba', width: top.width, height: top.height, offsetX: top.offsetX, offsetY: top.offsetY, pixels: top.pixels }
+    })
+    const mask = createLayerMask(top.id, 2, 1)
+    mask.offsetX = 1
+    mask.offsetY = 1
+    mask.pixels.set([0, 0, 0, 255, 255, 255, 255, 255])
+    source.animation!.layerMasks!.push({ layerId: top.id, frameId, mask })
+
+    const imported = decodePsd(encodePsd(source), 'Imported')
+    expect(imported).toMatchObject({ name: 'Imported', width: 3, height: 2, colorMode: 'rgba' })
+    expect(imported.layers.map((layer) => layer.name)).toEqual(['Bottom', 'Top'])
+    expect(imported.groups).toHaveLength(1)
+    expect(imported.groups[0]).toMatchObject({ name: 'Imported group', opacity: 0.8, blendMode: 'screen' })
+    const importedTop = imported.layers[1]
+    expect(importedTop).toMatchObject({ groupId: imported.groups[0].id, visible: false, locked: true, blendMode: 'multiply', clippingMask: true, width: 2, height: 1, offsetX: 1, offsetY: 1 })
+    expect(importedTop.opacity).toBeCloseTo(0.5, 2)
+    expect([...importedTop.pixels]).toEqual([...top.pixels])
+    const importedMask = imported.animation?.layerMasks?.[0]
+    expect(importedMask).toMatchObject({ layerId: importedTop.id, frameId: 'frame-1' })
+    expect(importedMask?.mask).toMatchObject({ ownerKind: 'cel', ownerId: importedTop.id, width: 2, height: 1, offsetX: 1, offsetY: 1 })
+    expect([...importedMask!.mask.pixels]).toEqual([0, 0, 0, 255, 255, 255, 255, 255])
   })
 })

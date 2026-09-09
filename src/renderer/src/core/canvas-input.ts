@@ -1,5 +1,5 @@
-import type { AnimationCel, GradientStop, MoveKind, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, ShapeRatio, SpriteDocument, TilemapCell, ToolId } from '@shared/types'
-import { revertPixelEdit, type PixelEdit } from './history'
+import type { AnimationCel, GradientStop, LiquifyMode, MoveKind, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, ShapeRatio, SpriteDocument, TilemapCell, ToolId } from '@shared/types'
+import { pixelEditHasChanges, revertPixelEdit, type PixelEdit } from './history'
 import { restoreSelectionTranslationPreview, type BrushGradientSample, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from './tools'
 import { combineSelection, inverseSelectionQuadPoint, inverseTransformedSelectionPoint, rasterLinePoints, rectSelection, remapTransformedSelectionPoint, selectionBoundarySegments, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from './selection'
 import { balancedStairLinePoints } from './pixel-line'
@@ -10,6 +10,7 @@ import type { FreeTileInstanceTransform } from './free-tile'
 import type { AlignmentGuide } from './alignment'
 import type { IsoLineDirection } from './isometric'
 import { hasReliableBrushPressure, isPressurePointerType } from './pressure'
+import type { LiquifyPushStroke } from './liquify'
 
 const selectionHitBoundaryCache = new WeakMap<SelectionMask, Int32Array>()
 
@@ -350,10 +351,15 @@ export const selectionResizeHit = (
 }
 
 export interface CanvasDragState {
-  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
+  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
+  liquifyCompound?: boolean
+  liquifyMode?: LiquifyMode
+  liquifySamplePoint?: CanvasPoint
+  liquifyHoldStrength?: number
+  liquifyPushStroke?: LiquifyPushStroke
   tilemapEdit?: TilemapEdit
   tilemapCell?: TilemapCell | null
   tilemapCellIndex?: number
@@ -388,6 +394,12 @@ export interface CanvasDragState {
   selectionStart?: SelectionMask | null
   selectionMode?: SelectionMode
   magicWorkerPending?: boolean
+  magicRequest?: (point: { x: number; y: number }) => void
+  magicRelease?: () => void
+  magicPreviewRectangles?: Int32Array | null
+  magicPreviewBitmap?: ImageBitmap | null
+  magicRequestToken?: number
+  magicCommitOnResolve?: boolean
   startPan?: CanvasPoint
   handle?: SelectionHandle
   shearHandle?: SelectionShearHandle
@@ -505,6 +517,7 @@ export interface CanvasDragState {
   lastOpacityScale?: number
   lastBrushColor?: RgbaColor
   lastBrushGradientActive?: boolean
+  preserveLineAnchorOnNoop?: boolean
   brushSpeed?: BrushSpeedState
   gradientEndColor?: RgbaColor
   gradientStops?: GradientStop[]
@@ -525,6 +538,18 @@ export interface CanvasDragState {
   /** Raw pointer endpoint retained while gradient geometry modifiers change. */
   rawLast?: CanvasPoint
 }
+
+export const layerMovePreviewActive = (
+  drag: CanvasDragState | null | undefined
+): drag is CanvasDragState & {
+  kind: 'move-layer'
+  moved: true
+  layerContentBounds: NonNullable<CanvasDragState['layerContentBounds']>
+  layerPreviewOffset: CanvasPoint
+} => drag?.kind === 'move-layer'
+  && drag.moved === true
+  && Boolean(drag.layerContentBounds)
+  && Boolean(drag.layerPreviewOffset)
 
 export const sampledForegroundColorToAdd = (drag: Pick<CanvasDragState, 'kind' | 'sampleSecondary' | 'sampledColor'>, shortcutHeld: boolean): RgbaColor | null =>
   shortcutHeld && drag.kind === 'sample-color' && !drag.sampleSecondary && drag.sampledColor ? { ...drag.sampledColor } : null
@@ -599,12 +624,14 @@ export const revertCancelledCanvasDragPixelChanges = (document: SpriteDocument, 
     restoreSelectionTranslationPreview(document, drag.translationPreview)
     return changed
   }
-  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' ? drag.edit : drag.previewEdit
+  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' || drag.kind === 'liquify' ? drag.edit : drag.previewEdit
   if (!edit) return false
-  const changed = edit.before.size > 0 || Boolean(edit.runs?.length)
+  const changed = pixelEditHasChanges(edit)
   revertPixelEdit(document, edit)
   return changed
 }
+
+export const shouldPreserveLineAnchorAfterNoopDrag = (drag: Pick<CanvasDragState, 'kind' | 'preserveLineAnchorOnNoop'>, committed: boolean): boolean => !committed && drag.kind === 'draw' && drag.preserveLineAnchorOnNoop === true
 
 export const selectionGestureMoved = (start: CanvasPoint | undefined, end: CanvasPoint, threshold = 3): boolean =>
   Boolean(start && (Math.abs(end.x - start.x) > threshold || Math.abs(end.y - start.y) > threshold))
@@ -1215,6 +1242,9 @@ export const zoomDragModeForModifiers = (defaultMode: 'smooth' | 'stepped', shif
 
 export const isCanvasViewNavigationTool = (tool: ToolId): boolean => tool === 'hand' || tool === 'zoom' || tool === 'rotate'
 
+export const playbackCanvasNavigationTool = (tool: ToolId): 'hand' | 'zoom' | 'rotate' =>
+  tool === 'zoom' || tool === 'rotate' ? tool : 'hand'
+
 export const isCanvasViewNavigationDrag = (drag: Pick<CanvasDragState, 'kind'> | null | undefined): boolean =>
   drag?.kind === 'pan' || drag?.kind === 'zoom-drag' || drag?.kind === 'rotate-view'
 
@@ -1462,14 +1492,36 @@ export const selectionFreeTransformContentHit = (
 }
 
 export const selectionTransformModifiers = (
-  modifiers: { ctrlKey: boolean; metaKey?: boolean; altKey?: boolean; shiftKey: boolean }
+  modifiers: { ctrlKey: boolean; metaKey?: boolean; altKey?: boolean; shiftKey: boolean; proportionalLocked?: boolean }
 ): { proportional: boolean; integerScale: boolean; fromCenter: boolean; copy: false } => {
   return {
-    proportional: modifiers.shiftKey,
+    proportional: modifiers.shiftKey || modifiers.proportionalLocked === true,
     integerScale: Boolean(modifiers.ctrlKey || modifiers.metaKey),
     fromCenter: Boolean(modifiers.altKey),
     copy: false
   }
+}
+
+export const constrainFreeTransformCornerToAspectRatio = (
+  startQuad: SelectionQuad,
+  handle: 'nw' | 'ne' | 'se' | 'sw',
+  point: CanvasPoint,
+  aspectRatio: number
+): CanvasPoint => {
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) return { x: Math.round(point.x), y: Math.round(point.y) }
+  const oppositeHandle = ({ nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' } as const)[handle]
+  const opposite = startQuad[oppositeHandle]
+  const start = startQuad[handle]
+  const rawX = point.x - opposite.x
+  const rawY = point.y - opposite.y
+  const signX = rawX === 0 ? Math.sign(start.x - opposite.x) || 1 : Math.sign(rawX)
+  const signY = rawY === 0 ? Math.sign(start.y - opposite.y) || 1 : Math.sign(rawY)
+  const absoluteX = Math.abs(rawX)
+  const absoluteY = Math.abs(rawY)
+  const widthDriven = absoluteX / aspectRatio >= absoluteY
+  const width = Math.max(1, Math.round(widthDriven ? absoluteX : absoluteY * aspectRatio))
+  const height = Math.max(1, Math.round(widthDriven ? absoluteX / aspectRatio : absoluteY))
+  return { x: opposite.x + signX * width, y: opposite.y + signY * height }
 }
 
 export const selectionTransformPreviewChanged = (drag: CanvasDragState): boolean => {

@@ -6,10 +6,15 @@ export const COMMAND_SCOPE_EVENT = 'moonsprite:command-scope'
 export const TILESET_DELETE_COMMAND_EVENT = 'moonsprite:delete-tileset-selection'
 export const BRUSH_LIBRARY_DELETE_COMMAND_EVENT = 'moonsprite:delete-brush-selection'
 export const EDITOR_SHORTCUT_COMMAND_EVENT = 'moonsprite:editor-shortcut-command'
+export const LIQUIFY_RESET_COMMAND_EVENT = 'moonsprite:liquify-reset'
 
 export interface EditorShortcutCommandDetail {
   documentId: string
   id: ShortcutId
+}
+
+export interface LiquifyResetCommandDetail {
+  documentId: string
 }
 
 export type DeleteCommandTarget = 'selection' | 'animation' | 'free-tile-instance' | 'layers' | 'palette' | 'tileset' | 'brushes' | null
@@ -31,6 +36,10 @@ export const hasAnimationDeleteSelection = (context: AnimationDeleteSelectionCon
 
 export function resolveDeleteCommand(scope: EditorCommandScope, hasSelection: boolean, hasAnimationSelection = false, hasFreeTileInstanceSelection = false): DeleteCommandTarget {
   if (scope === 'layers' && hasFreeTileInstanceSelection) return 'free-tile-instance'
+  // A canvas selection owns Delete even when the last focused surface is the
+  // timeline and one or more cels/frames are selected. The timeline selection
+  // remains available for deletion when no canvas selection is active.
+  if (scope === 'layers' && hasSelection && hasAnimationSelection) return 'selection'
   if (scope === 'layers' && hasAnimationSelection) return 'animation'
   if (scope === 'layers') return 'layers'
   if (scope === 'palette') return 'palette'

@@ -47,6 +47,7 @@ export const SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.
 export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-visible'
 export const GRADIENT_LINE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-color'
 export const LASSO_PREVIEW_CLOSED_PREFERENCE_KEY = 'moonsprite.preference.lasso-preview-closed'
+export const EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-quick-select'
 export const EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-switch-to-pencil'
 export const EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-enabled'
 export const EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-style'
@@ -609,6 +610,7 @@ export interface EditorPreferences {
   gradientLineVisible: boolean
   gradientLineColor: RgbaColor
   lassoPreviewClosed: boolean
+  eyedropperQuickSelect: boolean
   eyedropperSwitchToPencil: boolean
   eyedropperMagnifierEnabled: boolean
   eyedropperMagnifierStyle: EyedropperMagnifierStyle
@@ -687,6 +689,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   gradientLineVisible: true,
   gradientLineColor: DEFAULT_GRADIENT_LINE_COLOR,
   lassoPreviewClosed: false,
+  eyedropperQuickSelect: false,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
   eyedropperMagnifierStyle: 'pixel',
@@ -1131,6 +1134,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     gradientLineVisible: get(GRADIENT_LINE_VISIBLE_PREFERENCE_KEY) !== 'false',
     gradientLineColor: parseHexColor(get(GRADIENT_LINE_COLOR_PREFERENCE_KEY), DEFAULT_GRADIENT_LINE_COLOR),
     lassoPreviewClosed: get(LASSO_PREVIEW_CLOSED_PREFERENCE_KEY) === 'true',
+    eyedropperQuickSelect: get(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY) === 'true',
     eyedropperSwitchToPencil: get(EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY) === 'true',
     eyedropperMagnifierEnabled: get(EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY) !== 'false',
     eyedropperMagnifierStyle: parseEyedropperMagnifierStyle(get(EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY)),
@@ -1217,6 +1221,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [GRADIENT_LINE_VISIBLE_PREFERENCE_KEY]: String(preferences.gradientLineVisible),
     [GRADIENT_LINE_COLOR_PREFERENCE_KEY]: colorHex(preferences.gradientLineColor),
     [LASSO_PREVIEW_CLOSED_PREFERENCE_KEY]: String(preferences.lassoPreviewClosed),
+    [EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY]: String(preferences.eyedropperQuickSelect),
     [EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY]: String(preferences.eyedropperSwitchToPencil),
     [EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY]: String(preferences.eyedropperMagnifierEnabled),
     [EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY]: preferences.eyedropperMagnifierStyle,

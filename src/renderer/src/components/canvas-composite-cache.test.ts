@@ -6,6 +6,7 @@ import { beginPixelEdit, commitPixelEdit } from '@/core/history'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from '@/core/initial-document-composite'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { useWorkspace } from '@/store/workspace'
 import { CanvasCompositeCache } from './canvas-composite-cache'
 import { installRuntimeRaster } from '@/core/runtime-raster'
 
@@ -221,7 +222,7 @@ describe('CanvasCompositeCache', () => {
     draw(cache, document, context)
     const entry = commitPixelEdit(document, edit, 'brush')
     expect(entry).not.toBeNull()
-    cache.retainLivePreview(document, frameId)
+    cache.retainLivePreview(document, frameId, 2)
     const beforeUploads = (context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas).context.putImageData.mock.calls.length
     draw(cache, document, context, {
       revision: 2,
@@ -785,4 +786,83 @@ describe('CanvasCompositeCache', () => {
     const offset = (5 * document.width + 6) * 4
     expect(Array.from(pixels.data.slice(offset, offset + 4))).toEqual([0, 96, 255, 255])
   })
+})
+
+
+describe.each([{ name: 'full surface', bytes: 64, budget: 64 }, { name: 'region surface', bytes: 1, budget: 64 }, { name: 'deferred surface', bytes: 64, budget: 1 }])('history invalidation: $name', ({ bytes, budget }) => {
+  it('preserves an erase queued when pointer-up precedes the next draw', () => {
+    const document = createDocument('erase before RAF', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 5, { r: 255, g: 0, b: 0, a: 255 })
+    const cache = new CanvasCompositeCache(bytes, budget)
+    const context = makeContext()
+    const frameId = document.animation!.activeFrameId
+    draw(cache, document, context)
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 1, 1, 1, { r: 0, g: 0, b: 0, a: 0 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    cache.retainLivePreview(document, frameId, 2)
+    commitPixelEdit(document, edit, 'erase')
+    for (let index = 0; index < 16; index += 1) draw(cache, document, context, {
+      contentRevision: 2, revision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
+    })
+    const surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(readLayerColor(document, layer, 5).a).toBe(0)
+    expect(surface.pixels[23]).toBe(0)
+  })
+
+  it('does not let a retained commit hide undo and redo before the next draw', () => {
+    const document = createDocument('undo before RAF', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache(bytes, budget)
+    const context = makeContext()
+    const frameId = document.animation!.activeFrameId
+    draw(cache, document, context)
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 1, 1, 1, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context)
+    cache.retainLivePreview(document, frameId, 2)
+    const entry = commitPixelEdit(document, edit, 'draw')!
+    entry.undo()
+    for (let index = 0; index < 16; index += 1) draw(cache, document, context, {
+      revision: 3, contentRevision: 3,
+      contentInvalidation: { kind: 'region', fromRevision: 2, revision: 3, frameId, rect: edit.dirtyRect }
+    })
+    let surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(readLayerColor(document, layer, 5).a).toBe(0)
+    expect(surface.pixels[23]).toBe(0)
+    entry.redo()
+    draw(cache, document, context, { revision: 4, contentRevision: 4,
+      contentInvalidation: { kind: 'region', fromRevision: 3, revision: 4, frameId, rect: edit.dirtyRect } })
+    surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(surface.pixels[23]).toBe(255)
+  })
+})
+
+
+it('refreshes a cancelled liquify preview through Store invalidation without adding history or dirtying the document', () => {
+  useWorkspace.setState({ sessions: [], activeId: null })
+  const document = createDocument('liquify rollback surface', 4, 4, 'rgba')
+  useWorkspace.getState().addSession(document)
+  const session = useWorkspace.getState().sessions[0]
+  const layer = document.layers[0]
+  const cache = new CanvasCompositeCache()
+  const context = makeContext()
+  const frameId = document.animation!.activeFrameId
+  const dirty = document.dirty
+  const revision = session.contentRevision
+  draw(cache, document, context, { revision, contentRevision: revision })
+  const edit = beginPixelEdit(layer.id)
+  paintBrush(document, layer, edit, 1, 1, 1, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+  cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+  draw(cache, document, context, { revision, contentRevision: revision })
+  expect((context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas).pixels[23]).toBe(255)
+  useWorkspace.getState().cancelLiquifyStroke(edit, false)
+  draw(cache, document, context, { revision: session.revision, contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+  expect((context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas).pixels[23]).toBe(0)
+  expect(readLayerColor(document, layer, 5).a).toBe(0)
+  expect(session.history.position).toBe(0)
+  expect(document.dirty).toBe(dirty)
 })

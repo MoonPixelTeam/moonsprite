@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type InputHTMLAttributes } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type InputHTMLAttributes } from 'react'
 import { evaluateNumericExpression } from '@/core/numeric-expression'
 import { useI18n } from './I18nProvider'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
+import { NumberScrubContext, type NumberScrubController } from './FormField'
 
 interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange' | 'min' | 'max' | 'step'> {
   value: number | ''
@@ -30,6 +31,7 @@ const filterNumericExpression = (source: string): string => {
 
 export function NumberInput({ value, onValueChange, live = false, min, max, density = 'regular', step = 1, suffix, className = '', onFocus, onBlur, onKeyDown, ...inputProps }: NumberInputProps) {
   const { t } = useI18n()
+  const registerScrubController = useContext(NumberScrubContext)
   const [draft, setDraft] = useState(String(value))
   const currentValueRef = useRef<number | ''>(value)
   const lastPropValueRef = useRef<number | ''>(value)
@@ -40,6 +42,15 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
   const repeatTargetRef = useRef<HTMLButtonElement | null>(null)
   const stepperPressTokenRef = useRef(0)
   const suppressStepperClickTargetsRef = useRef(new Map<HTMLButtonElement, number>())
+  const scrubStepRef = useRef(step)
+  const scrubDisabledRef = useRef(Boolean(inputProps.disabled || inputProps.readOnly))
+  const adjustRef = useRef<(delta: number) => boolean>(() => false)
+  const scrubController = useMemo<NumberScrubController>(() => ({
+    adjustByPixels: (pixels, multiplier) => adjustRef.current(pixels * scrubStepRef.current * multiplier),
+    isDisabled: () => scrubDisabledRef.current
+  }), [inputProps.disabled, inputProps.readOnly])
+  scrubStepRef.current = Number.isFinite(step) && step !== 0 ? Math.abs(step) : 1
+  scrubDisabledRef.current = Boolean(inputProps.disabled || inputProps.readOnly)
   useLayoutEffect(() => setDraft(String(value)), [value])
   useEffect(() => {
     // A controlled parent may briefly render the previous value while the
@@ -65,6 +76,8 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
     onValueChangeRef.current(next)
     return true
   }
+  adjustRef.current = adjust
+  useLayoutEffect(() => registerScrubController?.(scrubController), [registerScrubController, scrubController])
   const hasStepperRoom = (delta: number): boolean => {
     const current = currentValueRef.current
     if (typeof current !== 'number') return true

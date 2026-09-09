@@ -1,5 +1,6 @@
 import type { SpriteDocument } from '@shared/types'
 import { decodeAseprite } from '@/core/aseprite'
+import { decodePsd } from '@/core/psd'
 import { setRuntimeAppLocale, type AppLocale } from '@/core/localization'
 import { decodeProject } from '@/core/project-format'
 import { compositeDocument } from '@/core/document'
@@ -95,6 +96,8 @@ export const processDocumentDecodeRequest = (
     }
     const document = project
       ? decodeProject(data, reportDecodeProgress)
+      : suffix === 'psd'
+        ? decodePsd(data, fileName.replace(/\.psd$/i, ''), reportDecodeProgress)
       : decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), reportDecodeProgress)
     document.filePath = project && !backup ? filePath : null
     document.sourceFilePath = backup ? undefined : filePath

@@ -161,12 +161,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       // updates this panel once when the stroke ends.
       if (snapshot?.deferAuxiliaryDraw) return
       const previousSnapshot = liveCanvasPreviewRef.current
-      // The preview cache has already consumed the live stroke's precise
-      // invalidations. Preserve that surface across the following committed
-      // revision so the panel does not rebuild the stroke's large bounding
-      // box after pointer-up.
+      // A null snapshot can mean either commit or cancellation. It carries no
+      // commit revision, so discard the transient composite rather than
+      // retaining pixels which may just have been rolled back.
       if (!snapshot && previousSnapshot) {
-        compositeCacheRef.current.retainLivePreview(previousSnapshot.document, previousSnapshot.frameId)
+        compositeCacheRef.current.invalidateAll()
       }
       liveCanvasPreviewRef.current = snapshot
       if (snapshot?.invalidation?.kind === 'region') {

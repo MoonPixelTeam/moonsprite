@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { RgbaColor } from '@shared/types'
 import { clampByte, hsvToRgb, rgbToHsv } from '@/core/raster'
 import { hslToRgb, rgbToHsl } from '@/core/color-values'
+import { rangeValueWithShiftStep } from '@/core/range-step'
 import { ColorValueControl } from './ColorValueControl'
 import { useI18n } from '@/components/I18nProvider'
 
@@ -12,7 +13,7 @@ interface TriangleVertices { tip: { x: number; y: number }; white: { x: number; 
 export interface TriangleWeights { tip: number; white: number; black: number }
 export const MOON_RING_HUE_ROTATION = 150
 export const moonRingDragZone = (radius: number, innerRadius: number): 'hue' | 'sv' => radius >= innerRadius ? 'hue' : 'sv'
-export type ColorPickerScheme = 'moon-ring' | 'sv-square' | 'hs-square' | 'wheel'
+export type ColorPickerScheme = 'moon-ring' | 'sv-square' | 'hs-square' | 'wheel' | 'normal-map'
 export interface ColorPickerConfig {
   scheme: ColorPickerScheme
   hueSteps: number
@@ -96,6 +97,45 @@ export const quantizedWheelVector = (dx: number, dy: number, steps: number, safe
 export const wheelCellIsInside = (dx: number, dy: number, steps: number): boolean => {
   const point = quantizedWheelVector(dx, dy, steps, Number.POSITIVE_INFINITY)
   return Math.hypot(point.dx, point.dy) <= 1
+}
+
+export const normalMapColorAt = (dx: number, dy: number, alpha = 255): RgbaColor => {
+  const radius = Math.hypot(dx, dy)
+  const normalizedX = radius > 1 && radius > 0 ? dx / radius : dx
+  const normalizedY = radius > 1 && radius > 0 ? dy / radius : dy
+  const normalizedRadius = Math.min(1, Math.hypot(normalizedX, normalizedY))
+  const z = Math.sqrt(Math.max(0, 1 - normalizedRadius * normalizedRadius))
+  return {
+    r: clampByte(Math.round((normalizedX * 0.5 + 0.5) * 255)),
+    g: clampByte(Math.round((-normalizedY * 0.5 + 0.5) * 255)),
+    b: clampByte(Math.round(z * 255)),
+    a: clampByte(alpha)
+  }
+}
+
+export const normalMapVectorFromColor = (color: RgbaColor): { dx: number; dy: number } => {
+  const rawX = color.r / 127.5 - 1
+  const rawY = 1 - color.g / 127.5
+  const radius = Math.hypot(rawX, rawY)
+  if (radius > 1 && radius > 0) {
+    const scale = 1 / radius
+    return { dx: rawX * scale, dy: rawY * scale }
+  }
+  return { dx: rawX, dy: rawY }
+}
+
+export const quantizeNormalMapVector = (dx: number, dy: number, hueSteps: number, colorSteps: number): { dx: number; dy: number } => {
+  const clampedRadius = Math.max(0, Math.min(1, Math.hypot(dx, dy)))
+  const normalizedAngle = Math.atan2(dy, dx)
+  const angle = hueSteps > 0 ? Math.round((((normalizedAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2 / hueSteps)) * (Math.PI * 2 / hueSteps) : normalizedAngle
+  const radius = colorSteps > 1 ? Math.round(clampedRadius * (colorSteps - 1)) / (colorSteps - 1) : colorSteps === 1 ? 0 : clampedRadius
+  return { dx: Math.cos(angle) * radius, dy: Math.sin(angle) * radius }
+}
+
+const projectToUnitCircle = (dx: number, dy: number): { dx: number; dy: number } => {
+  const radius = Math.hypot(dx, dy)
+  if (radius <= 1 || radius === 0) return { dx, dy }
+  return { dx: dx / radius, dy: dy / radius }
 }
 
 export const applyWheelOuterOutline = (pixels: Uint8ClampedArray, mask: Uint8Array, width: number, height: number): void => {
@@ -337,7 +377,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
     const image = context.createImageData(canvas.width, canvas.height)
-    const wheelHitMask = scheme === 'wheel' ? new Uint8Array(canvas.width * canvas.height) : null
+    const wheelHitMask = scheme === 'wheel' || scheme === 'normal-map' ? new Uint8Array(canvas.width * canvas.height) : null
     for (let y = 0; y < canvas.height; y += 1) for (let x = 0; x < canvas.width; x += 1) {
       const rawRelativeX = x / (canvas.width - 1)
       const rawRelativeY = y / (canvas.height - 1)
@@ -362,6 +402,27 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
         if (Math.hypot(dx, dy) > 1) { image.data[offset + 3] = 0; continue }
         if (wheelHitMask) wheelHitMask[y * canvas.width + x] = 1
         sample = { h: actualHue(Math.atan2(dy, dx) * 180 / Math.PI), s: Math.min(1, Math.sqrt(dx * dx + dy * dy)), v: fieldValue }
+      } else if (scheme === 'normal-map') {
+        const normalRawRelativeX = (x - wheelOutlineInset) / (canvas.width - 1 - wheelOutlineInset * 2)
+        const normalRawRelativeY = (y - wheelOutlineInset) / (canvas.height - 1 - wheelOutlineInset * 2)
+        if (normalRawRelativeX < 0 || normalRawRelativeX > 1 || normalRawRelativeY < 0 || normalRawRelativeY > 1) {
+          image.data[offset + 3] = 0
+          continue
+        }
+        const rawDx = (normalRawRelativeX - 0.5) * 2
+        const rawDy = (normalRawRelativeY - 0.5) * 2
+        if (Math.hypot(rawDx, rawDy) > 1) {
+          image.data[offset + 3] = 0
+          continue
+        }
+        if (wheelHitMask) wheelHitMask[y * canvas.width + x] = 1
+        const normalVector = quantizeNormalMapVector(rawDx, rawDy, hueSteps, colorSteps)
+        const normalColor = normalMapColorAt(normalVector.dx, normalVector.dy, 255)
+        image.data[offset] = normalColor.r
+        image.data[offset + 1] = normalColor.g
+        image.data[offset + 2] = normalColor.b
+        image.data[offset + 3] = 255
+        continue
       } else if (scheme === 'moon-ring') {
         const rawDx = (rawRelativeX - 0.5) * 2
         const rawDy = (rawRelativeY - 0.5) * 2
@@ -394,8 +455,8 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
       image.data[offset + 2] = next.b
       image.data[offset + 3] = 255
     }
-    if (scheme === 'wheel' && colorSteps > 0 && wheelHitMask) applyWheelOuterOutline(image.data, wheelHitMask, canvas.width, canvas.height)
-    wheelHitMaskRef.current = scheme === 'wheel' && wheelHitMask ? { width: canvas.width, height: canvas.height, data: wheelHitMask } : null
+    if ((scheme === 'wheel' || scheme === 'normal-map') && colorSteps > 0 && wheelHitMask) applyWheelOuterOutline(image.data, wheelHitMask, canvas.width, canvas.height)
+    wheelHitMaskRef.current = (scheme === 'wheel' || scheme === 'normal-map') && wheelHitMask ? { width: canvas.width, height: canvas.height, data: wheelHitMask } : null
     context.putImageData(image, 0, 0)
   }, [fieldHue, fieldValue, compact, scheme, moonTriangle, hueSteps, colorSteps])
 
@@ -438,6 +499,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const activeRole = activeFieldRoleRef.current ?? (editingSecondaryRef.current ? 'secondary' : 'primary')
     const secondaryEditing = activeRole === 'secondary' && Boolean(secondaryColor && onSecondaryChange)
     const currentHsv = activeFieldHsvRef.current ?? (secondaryEditing ? secondaryPickerHsvRef.current : pickerHsvRef.current)
+    const sourceColor = secondaryEditing ? secondaryColor! : color
     let nextHsv = { ...currentHsv, s: relativeX, v: valueFromPosition(1 - relativeY) }
     if (scheme === 'hs-square') {
       nextHsv = { h: actualHue(relativeX * 360), s: 1 - relativeY, v: currentHsv.v }
@@ -453,12 +515,20 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
       const hitValid = !hitMask || hitMask.data[canvasY * hitMask.width + canvasX] === 1
       if (begin) wheelDragRef.current = rawRadius <= 1 && hitValid
       if (!wheelDragRef.current) return
-      if (!hitValid) return
-      const scale = rawRadius > 1 ? 1 / rawRadius : 1
-      const wheelPoint = wheelVector(rawDx * scale, rawDy * scale)
+      const projectedWheelPoint = projectToUnitCircle(rawDx, rawDy)
+      const wheelPoint = wheelVector(projectedWheelPoint.dx, projectedWheelPoint.dy)
       const dx = wheelPoint.dx
       const dy = wheelPoint.dy
       nextHsv = { h: actualHue(Math.atan2(dy, dx) * 180 / Math.PI), s: Math.min(1, Math.sqrt(dx * dx + dy * dy)), v: currentHsv.v }
+    } else if (scheme === 'normal-map') {
+      const normalX = (pointerX - 0.5) * 2
+      const normalY = (pointerY - 0.5) * 2
+      const normalRadius = Math.hypot(normalX, normalY)
+      if (begin) wheelDragRef.current = normalRadius <= 1
+      if (!wheelDragRef.current) return
+      const normalPoint = projectToUnitCircle(normalX, normalY)
+      const normalVector = quantizeNormalMapVector(normalPoint.dx, normalPoint.dy, hueSteps, colorSteps)
+      nextHsv = rgbToHsv(normalMapColorAt(normalVector.dx, normalVector.dy, sourceColor.a))
     } else if (scheme === 'moon-ring') {
       const rawDx = (rawX - 0.5) * 2
       const rawDy = (rawY - 0.5) * 2
@@ -524,7 +594,8 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const bounds = event.currentTarget.getBoundingClientRect()
     const thumbRadius = 4.5
     const trackWidth = Math.max(1, bounds.width - thumbRadius * 2)
-    const position = Math.max(0, Math.min(1, (event.clientX - bounds.left - thumbRadius) / trackWidth))
+    const rawPosition = Math.max(0, Math.min(1, (event.clientX - bounds.left - thumbRadius) / trackWidth))
+    const position = rangeValueWithShiftStep(rawPosition * 100, 0, 100, 1, 'percentage', event.shiftKey) / 100
     const secondary = stripRoleRef.current === 'secondary' && Boolean(secondaryColor && onSecondaryChange)
     const sourceColor = activeStripColorRef.current ?? (secondary ? secondaryColor! : color)
     let nextColor: RgbaColor
@@ -565,7 +636,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const secondary = stripRoleRef.current === 'secondary' && Boolean(secondaryColor && onSecondaryChange)
     const sourceColor = activeStripColorRef.current ?? (secondary ? secondaryColor! : color)
     const sourceHsv = activeStripHsvRef.current ?? (secondary ? secondaryPickerHsvRef.current : pickerHsvRef.current)
-    const nextHsv = { ...sourceHsv, h: actualHue(position * 359) }
+    const nextHsv = { ...sourceHsv, h: actualHue(rangeValueWithShiftStep(position * 359, 0, 359, 1, 'number', event.shiftKey)) }
     const nextColor = hsvToRgb(nextHsv, sourceColor.a)
     emitPointerColor(nextColor, secondary, nextHsv)
   }
@@ -618,6 +689,12 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     ? { left: `${steppedCellCenter(cursorHue / 360) * 100}%`, top: `${steppedCellCenter(1 - displayHsv.s) * 100}%` }
     : scheme === 'wheel'
       ? { left: `${(wheelInsetPosition + (wheelCursor.dx + 1) / 2 * wheelContentScale) * 100}%`, top: `${(wheelInsetPosition + (wheelCursor.dy + 1) / 2 * wheelContentScale) * 100}%` }
+      : scheme === 'normal-map'
+        ? (() => {
+            const sourceVector = normalMapVectorFromColor(hsvToRgb(displayHsv, stripColor.a))
+            const vector = quantizeNormalMapVector(sourceVector.dx, sourceVector.dy, hueSteps, colorSteps)
+            return { left: `${(wheelInsetPosition + (vector.dx + 1) / 2 * wheelContentScale) * 100}%`, top: `${(wheelInsetPosition + (vector.dy + 1) / 2 * wheelContentScale) * 100}%` }
+          })()
       : scheme === 'moon-ring' && moonTriangle
         ? (() => {
             const weights = quantizeTriangleWeights(triangleWeightsFromColor(hsvToRgb(displayHsv, stripColor.a)), colorSteps)
@@ -633,8 +710,8 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
   const fullValueColor = hsvToRgb({ h: stripHsv.h, s: stripHsv.s, v: 1 })
   const valueSliderValue = Math.round((colorSteps > 0 ? steppedCellCenter(positionFromValue(stripHsv.v)) : positionFromValue(stripHsv.v)) * 1000)
   const alphaSliderValue = Math.round((colorSteps > 0 ? steppedCellCenter(stripColor.a / 255) : stripColor.a / 255) * 255)
-  const squareField = scheme === 'moon-ring' || scheme === 'wheel'
-  const quantizedField = colorSteps > 0 || (hueSteps > 0 && scheme !== 'moon-ring')
+  const squareField = scheme === 'moon-ring' || scheme === 'wheel' || scheme === 'normal-map'
+  const quantizedField = scheme !== 'normal-map' && (colorSteps > 0 || (hueSteps > 0 && scheme !== 'moon-ring'))
   const triangleClipStyle = moonTriangle ? {
     '--triangle-tip-x': `${moonTriangleVertices.tip.x * 100}%`, '--triangle-tip-y': `${moonTriangleVertices.tip.y * 100}%`,
     '--triangle-white-x': `${moonTriangleVertices.white.x * 100}%`, '--triangle-white-y': `${moonTriangleVertices.white.y * 100}%`,

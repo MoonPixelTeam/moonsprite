@@ -4,6 +4,7 @@ import { decodeDocumentFile, decodeDocumentFileAsync, directSourceImageSaveTarge
 import { decodeProject, encodeProject } from './project-format'
 import { initialDocumentComposite, initialDocumentCompositePending } from './initial-document-composite'
 import { addBlankAnimationFrame } from './animation'
+import { encodePsd } from './psd'
 
 describe('document file rules', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -87,6 +88,15 @@ describe('document file rules', () => {
     const encoded = await encodeDocumentForPath(document, 'D:\\gallery\\layered.psd', null, 100)
 
     expect(new TextDecoder().decode(encoded.subarray(0, 4))).toBe('8BPS')
+  })
+
+  it('opens PSD as an imported source that must be saved as a MoonSprite project', () => {
+    const source = createDocument('layered', 2, 2, 'rgba')
+    const imported = decodeDocumentFile(encodePsd(source), 'D:\\imports\\layered.psd')
+
+    expect(imported).toMatchObject({ name: 'layered.psd', filePath: null, sourceFilePath: 'D:\\imports\\layered.psd', width: 2, height: 2 })
+    expect(imported.layers).toHaveLength(1)
+    expect(shouldDecodeDocumentInWorker(new Uint8Array(16), 'layered.psd')).toBe(true)
   })
 
 

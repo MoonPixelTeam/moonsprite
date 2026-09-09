@@ -1,17 +1,25 @@
+import { drawMagicWandPreview } from './canvas-magic-preview'
+import { MagicWandGesture } from '@/core/magic-wand-gesture'
+import { prepareSelectionBoundary } from '@/core/selection-boundary'
+import type { MagicWandWorkerResult } from '@/core/magic-wand-worker'
+import type { MagicWandOperation } from '@/core/magic-wand-operation'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FreeTileInstance, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, TilemapCell } from '@shared/types'
-import { compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
+import { animationMaskAt, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
 import { beginPixelEdit, revertPixelEdit, type HistoryEntry } from '@/core/history'
 import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture } from '@/core/canvas-tool-gesture-lock'
 import { blendOver, hexToColor, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, resolveRadialGradientGeometry, type GradientGeometryOptions } from '@/core/gradient'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
+import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
+import { accumulateLiquifyHoldStrength, applyAccumulatedLiquifyPush, createLiquifyHoldClock, type LiquifyHoldClock } from '@/components/canvas-liquify-interaction'
 import { DEFAULT_GRID_SETTINGS, gridCellBoundsAt, gridLinePositions, shouldRenderPixelGrid, snapPointToGrid, snapSelectionBoundsToGrid, snapSelectionTranslationToGrid } from '@/core/grid'
 import { alignmentThresholdForZoom, resolveAlignment } from '@/core/alignment'
 import { appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStrokeInvalidationRects, captureSelectionTransform, filledPolygonPathPixelPoints, filledShapePathPixelPoints, floodFillSymmetric, inheritBrushPaintBaseline, interpolateBrushAngle, lineShapePixelPoints, outlinePixelSamples, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, restoreSelectionTranslationPreview, shapeBoundaryPixelPoints, solidBrushPreviewRowSpans, solidBrushStampDifferenceRects, selectionTranslationPreviewEdit, type BrushGradientSample, type OutlinePixelSample, type SelectionTransformLayerState, type SelectionTransformSource } from '@/core/tools'
 import { resolveOutlineStrokeColor } from '@/core/outline-settings'
 import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransformStates, selectionTransformLayerForState } from '@/core/selection-transform-targets'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
+import { LIQUIFY_RESET_COMMAND_EVENT, type LiquifyResetCommandDetail } from '@/core/command-context'
 import { activeLayerMask, activePaintLayer, isToolAvailableForSession, selectedTransformLayersAreEditable, selectedTransformLayersForSession } from '@/store/workspace-session'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
 import { DEFAULT_GRID_COLOR, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, loadEditorPreferences, parseIsoViewPreferences, type BrushPreviewMode, type CheckerboardPreferences, type CursorScale, type EyedropperMagnifierStyle, type GridColorPreferences, type IsoViewPreferences, type OnionSkinPreferences, type RotationIndicatorPosition, type SelectionPreviewColorMode, type SymmetryAxisPreferences, type TabletPreferences, type WheelZoomMode, type ZoomToolDragMode } from '@/core/file-preferences'
@@ -20,13 +28,13 @@ import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinat
 import { canvasBackingRatioForInterfaceScale, canvasClientDeltaForInterfaceScale, canvasViewportPointForInterfaceScale, canvasViewportPointToCss, canvasViewportSizeForInterfaceScale } from '@/core/canvas-interface-scale'
 import { balancedStairLinePoints, constrainLineEndpoint } from '@/core/pixel-line'
 import { advanceIsoAlignedStrokeSegment, isoGridLineSegment, isoGuidePixelPattern, isoGuideSegments, isoGuideSpacingForZoom, isoLineEndpoint, snapIsoPointToGridVertex, traceIsoGridPointerEdges, updateIsoAlignedStrokePath } from '@/core/isometric'
-import { cloneSelection, combineSelection, lassoSelection, magicWandSelection, polygonSelection, rasterLinePoints, rectSelection, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadTransform, shearTransformedSelection, shiftSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad, type SelectionShearTransform } from '@/core/selection'
+import { cloneSelection, combineSelection, lassoSelection, polygonSelection, rasterLinePoints, rectSelection, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadTransform, shearTransformedSelection, shiftSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad, type SelectionShearTransform } from '@/core/selection'
 import { CANVAS_RESIZE_PREVIEW_EVENT, canvasResizePreviewClippedRects, canvasResizePreviewExposedRects, drawCanvasResizePreviewLayers } from '@/core/canvas-resize-preview'
 import { SLICE_PREVIEW_EVENT } from '@/core/slice-preview'
 import { deriveShortcutConflicts, dispatchWheelShortcutInput, loadShortcutBindings, matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutMatchesAnyEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { beginCanvasColorSampling, canvasColorSamplingActiveFor, canvasColorSamplingIntentActive, clearCanvasColorSamplingIntentFor, endCanvasColorSampling, registerCanvasColorSamplingSurface, routeCanvasColorSampling, routeCanvasColorSamplingIntent, setCanvasColorSamplingIntent } from '@/core/canvas-color-sampling'
-import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom as clampZoom, coalescedPointerClientPoints, constrainedTranslation, createCanvasPanDrag, createMarqueeResizeStart, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, sampledForegroundColorToAdd, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, snapSelectionRotation, steppedCanvasZoom as steppedZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState as DragState, type CanvasPoint as Point, type QuickSelectionPress, type SelectionHandle, type SelectionHit, type SelectionRotationHandle, type SelectionShearHandle } from '@/core/canvas-input'
+import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom as clampZoom, coalescedPointerClientPoints, constrainFreeTransformCornerToAspectRatio, constrainedTranslation, createCanvasPanDrag, createMarqueeResizeStart, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, layerMovePreviewActive, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, playbackCanvasNavigationTool, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, sampledForegroundColorToAdd, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldPreserveLineAnchorAfterNoopDrag, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, snapSelectionRotation, steppedCanvasZoom as steppedZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState as DragState, type CanvasPoint as Point, type QuickSelectionPress, type SelectionHandle, type SelectionHit, type SelectionRotationHandle, type SelectionShearHandle } from '@/core/canvas-input'
 import { canvasCursors, canvasStatusTextColor, canvasToolCursor, colorLuminance, directionalResizeCursors, directionalShearCursors, previewCursorTools, resizeCursors, rotationCursors, selectionCornerResizeCursorForPoints, selectionResizeCursorForHandle, selectionRotationCursorForPosition, selectionShearCursorForDirection, shearCursors, selectionCreationCursor, selectionCursorCornerRects, selectionPathPreviewPixelVisible, selectionPreviewPixels, selectionTransformDragCursor, transparencyColorAt } from '@/core/canvas-visuals'
 import { MagicWandWorkerClient } from '@/core/magic-wand-worker'
 import { defaultSymmetryCenter, hasSymmetry, moveSymmetryCenter, symmetryAxisDragAllowed, symmetryAxisSegment, symmetryPoints, symmetrySelection, symmetrySelectionDragDelta, transformSymmetrySelection, type SymmetryAxes, type SymmetryAxis } from '@/core/symmetry'
@@ -48,6 +56,7 @@ import { preserveCanvasSelection, revealLayerInPanel } from '@/components/layer-
 import { layerIdsInVisualStackOrder } from '@/core/layer-panel-layout'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { eyedropperMagnifierContentPoint, eyedropperMagnifierPixelScale, eyedropperMagnifierViewTransform } from '@/core/eyedropper-magnifier'
+import { shouldQuickSelectEyedropper } from '@/core/eyedropper-quick-select'
 import { isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
 import { airbrushParticleSize, airbrushSymmetryPoints, generateAirbrushParticles } from '@/core/airbrush'
 import { activeBrushInputsForTool } from '@/core/brushes'
@@ -316,8 +325,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const gradientPreviewSurfaceRef = useRef<GradientPreviewSurface | null>(null)
   const brushPreviewCompositeCacheRef = useRef<BrushPreviewCompositeCache | null>(null)
   const brushPreviewStackCacheRef = useRef<BrushPreviewStackCache | null>(null)
+  const magicGestureRef = useRef<{ cancel: (redraw?: boolean) => void; drag: DragState } | null>(null)
   const magicWandWorkerRef = useRef<MagicWandWorkerClient | null>(null)
-  useEffect(() => () => { magicWandWorkerRef.current?.dispose(); magicWandWorkerRef.current = null }, [])
+  useEffect(() => () => { magicGestureRef.current?.cancel(false); magicWandWorkerRef.current?.dispose(); magicWandWorkerRef.current = null }, [])
   const gradientCompositePreviewCacheRef = useRef<GradientCompositePreviewCache | null>(null)
   const gradientPreviewCoverageCacheRef = useRef<GradientPreviewCoverageCache | null>(null)
   const compositeReplacementSamplerRef = useRef<{ document: DocumentSession['document']; revision: number; layerId: string; sampler: (x: number, y: number, replacement: RgbaColor) => RgbaColor } | null>(null)
@@ -337,6 +347,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const eyedropperPointerDarkRef = useRef<HTMLImageElement>(null)
   const eyedropperPointerLightRef = useRef<HTMLImageElement>(null)
   const eyedropperOriginalColorRef = useRef<RgbaColor | null>(null)
+  const quickEyedropperOriginalColorRef = useRef<RgbaColor | null>(null)
+  const quickEyedropperSuppressedRef = useRef(false)
   const canvasColorSampleAtClientPointRef = useRef<(clientX: number, clientY: number) => RgbaColor | null>(() => null)
   const [rotationIndicatorPosition, setRotationIndicatorPosition] = useState<RotationIndicatorPosition>(() => loadEditorPreferences().rotationIndicatorPosition)
   const [interfaceScale, setInterfaceScale] = useState(() => loadEditorPreferences().uiScale)
@@ -370,6 +382,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const [gradientLineVisible, setGradientLineVisible] = useState(() => loadEditorPreferences().gradientLineVisible)
   const [gradientLineColor, setGradientLineColor] = useState<RgbaColor>(() => loadEditorPreferences().gradientLineColor)
   const [lassoPreviewClosed, setLassoPreviewClosed] = useState(() => loadEditorPreferences().lassoPreviewClosed)
+  const [eyedropperQuickSelect, setEyedropperQuickSelect] = useState(() => loadEditorPreferences().eyedropperQuickSelect)
   const [eyedropperSwitchToPencil, setEyedropperSwitchToPencil] = useState(() => loadEditorPreferences().eyedropperSwitchToPencil)
   const [eyedropperMagnifierEnabled, setEyedropperMagnifierEnabled] = useState(() => loadEditorPreferences().eyedropperMagnifierEnabled)
   const [eyedropperMagnifierStyle, setEyedropperMagnifierStyle] = useState<EyedropperMagnifierStyle>(() => loadEditorPreferences().eyedropperMagnifierStyle)
@@ -398,7 +411,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const activeToolSession = useWorkspace((state) => state.sessions.find((item) => item.document.id === state.activeId) ?? null)
   // Sessions are updated in place, so subscribe to the scalar that drives the
   // hover preview as well as the active session reference.
-  const activeToolBrushSize = useWorkspace((state) => state.sessions.find((item) => item.document.id === state.activeId)?.brushSize ?? null)
+  const activeToolBrushSize = useWorkspace((state) => {
+    const active = state.sessions.find((item) => item.document.id === state.activeId)
+    return active ? active.tool === 'liquify' ? active.liquifyRadius : active.brushSize : null
+  })
   const localSession = applyQuickToolTarget(storedSession, directQuickToolTarget)
   const session = activeToolSession && activeToolSession.document.id !== storedSession.document.id
     ? shareCanvasToolSettings(localSession, applyQuickToolTarget(activeToolSession, directQuickToolTarget))
@@ -471,6 +487,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const publishedSelectionSizePreviewRef = useRef<{ width: number; height: number } | null>(null)
   const airbrushFrameRef = useRef<number | null>(null)
   const sprayAirbrushRef = useRef<(drag: DragState) => void>(() => {})
+  const liquifyHoldClockRef = useRef<LiquifyHoldClock | null>(null)
+  const applyLiquifyHoldRef = useRef<(drag: DragState) => void>(() => {})
   const adjustmentPreviewEditRef = useRef(false)
   const canvasResizePreviewRef = useRef(session.canvasResizePreview)
   const autoSlicePreviewRef = useRef<SelectionRect[] | null>(null)
@@ -542,13 +560,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const groupSelectionActive = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
   const hasSelectedRasterLayer = Boolean(selectedLayerMask) || (session.selectedGroupIds.length === 0 && session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id)))
   const activeLayer = activePaintLayer(session)
-  const magicWandSourceKey = `${session.document.id}:${session.document.animation?.activeFrameId ?? 'static'}:${activeLayer.id}`
   useEffect(() => {
-    if (activeLayer.format && session.wandContiguous && !session.wandGapClosing) {
-      magicWandWorkerRef.current ??= new MagicWandWorkerClient()
-      magicWandWorkerRef.current.initialize(activeLayer, session.contentRevision, session.document.palette, magicWandSourceKey)
-    }
-  }, [activeLayer, session.contentRevision, session.document.animation?.activeFrameId, session.wandContiguous, session.wandGapClosing, magicWandSourceKey])
+    if (session.tool !== 'selection' || session.selectionKind !== 'magic') return
+    magicWandWorkerRef.current ??= new MagicWandWorkerClient()
+    // Start the thread when choosing the tool, without copying any image data.
+    magicWandWorkerRef.current.start()
+  }, [session.tool, session.selectionKind])
   const selectedFreeTileSelectionTarget = (current: DocumentSession = session) => {
     const layer = activePaintLayer(current)
     if (layer.kind !== 'free-tile' || !current.selectedFreeTileInstanceId) return null
@@ -940,7 +957,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const selectionTransformModifierState = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>) => selectionTransformModifiers({
     ctrlKey: modifierActive(event, 'integerSelectionScale'),
     altKey: event.altKey,
-    shiftKey: modifierActive(event, 'proportionalSelectionTransform')
+    shiftKey: modifierActive(event, 'proportionalSelectionTransform'),
+    proportionalLocked: session.selectionAspectRatio != null
   })
   const currentSelectionTransformModifierState = () => selectionTransformModifierState({
     ctrlKey: inputRef.current.ctrlHeld,
@@ -1042,6 +1060,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       setGradientLineVisible(preferences.gradientLineVisible)
       setGradientLineColor(preferences.gradientLineColor)
       setLassoPreviewClosed(preferences.lassoPreviewClosed)
+      setEyedropperQuickSelect(preferences.eyedropperQuickSelect)
       setEyedropperSwitchToPencil(preferences.eyedropperSwitchToPencil)
       setEyedropperMagnifierEnabled(preferences.eyedropperMagnifierEnabled)
       setEyedropperMagnifierStyle(preferences.eyedropperMagnifierStyle)
@@ -1242,6 +1261,53 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     airbrushFrameRef.current = window.requestAnimationFrame(tick)
   }
 
+  const stopLiquifyTimer = (): void => {
+    liquifyHoldClockRef.current?.stop()
+  }
+
+  const scheduleLiquifyTimer = (): void => {
+    if (!liquifyHoldClockRef.current) liquifyHoldClockRef.current = createLiquifyHoldClock({
+      requestFrame: (callback) => window.requestAnimationFrame(callback),
+      cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
+      now: () => performance.now(),
+      shouldRun: () => {
+        const drag = inputRef.current.drag
+        return drag?.kind === 'liquify' && Boolean(drag.edit)
+      },
+      onStep: () => {
+        const drag = inputRef.current.drag
+        if (drag?.kind === 'liquify' && drag.edit) applyLiquifyHoldRef.current(drag)
+      }
+    })
+    liquifyHoldClockRef.current.start()
+  }
+
+  applyLiquifyHoldRef.current = (drag) => {
+    const current = liveInputSession()
+    if ((drag.liquifyMode ?? current.liquifyMode) === 'push') return
+    const strength = accumulateLiquifyHoldStrength(drag.liquifyHoldStrength ?? 0, current.liquifyStrength)
+    const timeline = current.document.animation
+    const layer = activePaintLayer(current)
+    const mask = timeline ? animationMaskAt(timeline, layer.id, timeline.activeFrameId) : null
+    const changed = applyLiquifyStep(current.document, layer, drag.edit!, drag.last, drag.last, {
+      mode: drag.liquifyMode ?? current.liquifyMode,
+      radius: current.liquifyRadius,
+      strength,
+      selection: current.selection,
+      mask
+    })
+    drag.liquifyHoldStrength = strength
+    if (changed) {
+      const radius = Math.max(1, Math.round(current.liquifyRadius))
+      const left = Math.max(0, Math.floor(drag.last.x - radius))
+      const top = Math.max(0, Math.floor(drag.last.y - radius))
+      const right = Math.min(current.document.width - 1, Math.ceil(drag.last.x + radius))
+      const bottom = Math.min(current.document.height - 1, Math.ceil(drag.last.y + radius))
+      if (right >= left && bottom >= top) invalidateCompositeRect({ x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, [layer.id])
+    }
+    requestDrawRef.current()
+  }
+
   const cloneSelectionLayerStates = (layers: readonly SelectionTransformLayerState[] | undefined): SelectionTransformLayerState[] | undefined =>
     layers?.map((layer) => ({ ...layer }))
 
@@ -1366,7 +1432,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             undefined,
             sourceEdit.layer,
             symmetryStartPoint,
-            localQuad
+            localQuad,
+            false,
+            session.selectionRotationAlgorithm === 'rotsprite'
           )
           const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit)
           drag.appliedSelection = previewSelection
@@ -1407,7 +1475,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 layerState.translationPreview = null
               }
               if (layerState.previewEdit) revertPixelEdit(session.document, layerState.previewEdit)
-              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, symmetryStartPoint, quad)
+              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, symmetryStartPoint, quad, session.selectionRotationAlgorithm === 'rotsprite')
             }
           }
           syncPrimarySelectionLayerState(drag)
@@ -1422,7 +1490,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             drag.translationPreview = null
           }
           if (drag.previewEdit) revertPixelEdit(session.document, drag.previewEdit)
-          drag.previewEdit = applySelectionTransform(session.document, drag.selectionSource, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, activePaintLayer(session), symmetryStartPoint, quad)
+          drag.previewEdit = applySelectionTransform(session.document, drag.selectionSource, target, angle, drag.copy, drag.previewShear, session.symmetryAxes, symmetryCenter, activePaintLayer(session), symmetryStartPoint, quad, false, session.selectionRotationAlgorithm === 'rotsprite')
         }
         drag.appliedSelection = drag.previewSelection
         drag.appliedPreviewQuad = cloneSelectionQuad(quad) ?? undefined
@@ -1491,7 +1559,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       session.symmetryAxes,
       symmetryCenter,
       activePaintLayer(session),
-      symmetryStartPointForDrag(drag)
+      symmetryStartPointForDrag(drag),
+      undefined,
+      false,
+      session.selectionRotationAlgorithm === 'rotsprite'
     )
     invalidateCompositeRect(drag.selectionSource.selection)
     invalidateCompositeRect(drag.selectionStart)
@@ -1658,8 +1729,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       sw: { ...startQuad.sw }
     }
     // Keep the frame pixel-aligned while allowing the selected corner to move
-    // independently. The other three corners are copied verbatim.
-    nextQuad[drag.handle] = { x: Math.round(point.x), y: Math.round(point.y) }
+    // independently. A linked aspect ratio constrains that corner against its
+    // opposite corner; the other three corners are still copied verbatim.
+    nextQuad[drag.handle] = session.selectionAspectRatio == null
+      ? { x: Math.round(point.x), y: Math.round(point.y) }
+      : constrainFreeTransformCornerToAspectRatio(startQuad, drag.handle, point, session.selectionAspectRatio)
     if (!selectionQuadTransform(nextQuad)) return
     const target = selectionQuadBounds(nextQuad)
     const previousQuad = drag.previewQuad ?? startQuad
@@ -1859,9 +1933,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const cancelActiveCanvasInteraction = (): void => {
+    magicGestureRef.current?.cancel()
     if (canvasColorSamplingActiveFor(canvasRef.current)) endCanvasColorSampling()
     clearCanvasToolGestures()
     stopAirbrushTimer()
+    stopLiquifyTimer()
     // The rotation indicator is a DOM overlay shown only while a rotate-view
     // gesture is active. Blur/cancel paths do not receive pointer-up, so hide
     // it here as part of the common interaction cleanup instead of leaving a
@@ -1883,7 +1959,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (adjustmentPreviewEditRef.current) prepareAdjustmentPreviewEdit(session.document.id)
     const state = useWorkspace.getState()
     let documentChanged = false
-    if (drag.selectionPreparationPending) {
+    if (drag.kind === 'liquify' && drag.edit) {
+      state.setLiquifyGestureActive(false)
+      state.cancelLiquifyStroke(drag.edit, Boolean(drag.liquifyCompound))
+      documentChanged = true
+    } else if (drag.selectionPreparationPending) {
       // A press without a real transform never touched document pixels.
     } else if (drag.floatingPaste && drag.deferredSelectionPreview) {
       restoreDeferredFloatingSelectionPreview(drag)
@@ -1942,6 +2022,16 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     return () => window.removeEventListener('keydown', prepareEscapeCancellation, true)
   // The capture phase updates floating preview ownership before App handles Escape.
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.document.id])
+
+  useEffect(() => {
+    const reset = (event: Event): void => {
+      const detail = (event as CustomEvent<LiquifyResetCommandDetail>).detail
+      if (!detail || detail.documentId !== session.document.id) return
+      useWorkspace.getState().resetLiquify()
+    }
+    window.addEventListener(LIQUIFY_RESET_COMMAND_EVENT, reset)
+    return () => window.removeEventListener(LIQUIFY_RESET_COMMAND_EVENT, reset)
   }, [session.document.id])
 
   useEffect(() => () => {
@@ -2216,7 +2306,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       shiftKey: inputRef.current.shiftHeld
     }, currentSession)
     const brushSizeAdjustmentPreviewActive = wheelBrushSizePreviewRef.current || brushSizeAdjustmentActive
-    const canRenderToolPreview = !temporaryMoveSuppressesToolPreview(temporaryMovePreviewActive, brushSizeAdjustmentPreviewActive)
+    const canRenderToolPreview = !currentSession.animationPlaying
+      && !temporaryMoveSuppressesToolPreview(temporaryMovePreviewActive, brushSizeAdjustmentPreviewActive)
       && !canvasResizePreviewRef.current
       && (currentSession.tool === 'selection'
         ? currentSelectionLayersEditable
@@ -2511,7 +2602,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         fastViewPreview: viewPreviewActive,
         animationPlayback: currentSession.animationPlaying,
         devicePixelRatio: deviceScale,
-        movingLayerIds: activeDrag?.kind === 'move-layer' && !activeDrag.duplicatedLayer && activeDrag.layerContentBounds
+        movingLayerIds: layerMovePreviewActive(activeDrag) && !activeDrag.duplicatedLayer
           ? activeDrag.animationCellKeys?.length
             ? [...new Set(activeDrag.animationCellKeys.map((key) => parseAnimationCelKey(key)?.layerId).filter((id): id is string => Boolean(id)))]
             : activeDrag.layerIds
@@ -2524,7 +2615,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               angle: activeDrag.previewAngle ?? 0,
               shear: activeDrag.previewShear,
               quad: activeDrag.previewQuad,
-              copy: Boolean(activeDrag.copy)
+              copy: Boolean(activeDrag.copy),
+              optimizedRotation: currentSession.selectionRotationAlgorithm === 'rotsprite'
             }
           : selectionPreviewOwner === 'pending' && currentSession.pendingPaste
             ? {
@@ -2534,7 +2626,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 angle: currentSession.pendingPaste.transformAngle ?? 0,
                 shear: currentSession.pendingPaste.transformShear,
                 quad: currentSession.pendingPaste.transformQuad,
-                copy: currentSession.pendingPaste.copy
+                copy: currentSession.pendingPaste.copy,
+                optimizedRotation: currentSession.selectionRotationAlgorithm === 'rotsprite'
               }
             : undefined
       })
@@ -2886,38 +2979,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const selectionPreviewColorForBackground = (background: RgbaColor): string =>
       customSelectionPreviewColor
         ?? (colorLuminance(background) > 145 ? '#000000' : '#ffffff')
-    const drawSelectionRegionPreview = (selection: SelectionMask): void => {
-      const left = Math.max(selection.x, fromX)
-      const top = Math.max(selection.y, fromY)
-      const right = Math.min(selection.x + selection.width, toX)
-      const bottom = Math.min(selection.y + selection.height, toY)
-      if (right <= left || bottom <= top) return
-      context.save()
-      clipBaseCanvas(context)
-      const paths = new Map<string, Path2D>()
-      for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-        if (!selectionContains(selection, x, y)) continue
-        const sampled = sampleCompositeForPreview(x, y)
-        // A transparent magic-wand match is based on the layer/composite alpha,
-        // never on the display checkerboard. Keep it deterministic (black in
-        // automatic mode) instead of alternating with checkerboard squares.
-        const color = sampled.a === 0
-          ? (customSelectionPreviewColor ?? '#000000')
-          : selectionPreviewColorForBackground(sampled)
-        let path = paths.get(color)
-        if (!path) {
-          path = new Path2D()
-          paths.set(color, path)
-        }
-        const pixelRect = previewPixelRect(x, y)
-        path.rect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
-      }
-      for (const [color, path] of paths) {
-        context.fillStyle = color
-        context.fill(path)
-      }
-      context.restore()
-    }
     const drawSelectionPathPreview = (
       previewPixels: Iterable<string>,
       copies = [repeatCopies.find((copy) => copy.x === 0 && copy.y === 0) ?? repeatCopies[0]],
@@ -3611,7 +3672,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         context.restore()
       }
     }
-    if ((currentActiveLayer.kind !== 'tilemap' || currentSession.tilemapMode !== 'paint') && (currentActiveLayer.kind !== 'free-tile' || currentSession.freeTileMode !== 'paint') && shiftLinePreviewEnabled && lineConnectionConfigured && canRenderToolPreview && !inputRef.current.spaceHeld && !inputRef.current.sampling && (session.tool === 'pencil' || session.tool === 'eraser') && inputRef.current.shiftLinePreview && inputRef.current.pointer.visible && lineAnchor) {
+    if ((currentActiveLayer.kind !== 'tilemap' || currentSession.tilemapMode !== 'paint') && (currentActiveLayer.kind !== 'free-tile' || currentSession.freeTileMode !== 'paint') && shiftLinePreviewEnabled && lineConnectionConfigured && canRenderToolPreview && !inputRef.current.spaceHeld && !inputRef.current.sampling && !inputRef.current.drag && (session.tool === 'pencil' || session.tool === 'eraser') && inputRef.current.shiftLinePreview && inputRef.current.pointer.visible && lineAnchor) {
       const modifiers = { ctrlKey: inputRef.current.ctrlHeld, metaKey: false, altKey: inputRef.current.altHeld, shiftKey: inputRef.current.shiftHeld }
       const repeatedPointer = tileRepeatPointAt(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY) ?? inputRef.current.pointer.point
       const repeatedAnchor = nearestTileRepeatEquivalent(lineAnchor, repeatedPointer, document.width, document.height, view.tileRepeatMode ?? 'off')
@@ -3802,11 +3863,28 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         context.restore()
       }
     }
-    if (inputRef.current.drag?.kind === 'magic-preview' && inputRef.current.drag.previewSelection) {
-      // Magic wand previews every pixel that will be selected. It deliberately
-      // uses the same black/white (or custom) contrast resolver as selection
-      // path previews, but never draws a dashed marching-ant outline.
-      drawSelectionRegionPreview(inputRef.current.drag.previewSelection)
+    const magicPreview = inputRef.current.drag
+    if (magicPreview?.kind === 'magic-preview' && magicPreview.previewSelection) {
+      const startedAt = performance.now()
+      const previewPoint = magicPreview.last
+      const sampled = sampleCompositeForPreview(previewPoint.x, previewPoint.y)
+      const background = sampled.a > 0 ? sampled : transparencyColorAt(previewPoint.x, previewPoint.y, checkerboard)
+      const magicPreviewColor = customSelectionPreviewColor ?? selectionPreviewColorForBackground(background)
+      context.save()
+      clipBaseCanvas(context)
+      drawMagicWandPreview(
+        context,
+        magicPreview.previewSelection,
+        magicPreview.magicPreviewRectangles,
+        magicPreview.magicPreviewBitmap,
+        previewOriginX,
+        previewOriginY,
+        view.zoom,
+        magicPreviewColor,
+        selectionPreviewColorMode !== 'custom'
+      )
+      context.restore()
+      window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.preview-render', performance.now() - startedAt)
     }
 
     const activeSelectionCreation = selectionDrag?.kind === 'marquee' || selectionDrag?.kind === 'lasso' || selectionDrag?.kind === 'polygon-lasso'
@@ -4473,7 +4551,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     // Keep the brush cursor on its own surface. This call is cheap and also
     // clears the overlay when a tool/view change makes the fast path invalid.
     brushPreviewDrawRef.current()
-    const movingLayerIds = activeDrag?.kind === 'move-layer' && !activeDrag.duplicatedLayer && activeDrag.layerContentBounds
+    const movingLayerIds = layerMovePreviewActive(activeDrag) && !activeDrag.duplicatedLayer
       ? activeDrag.animationCellKeys?.length
         ? [...new Set(activeDrag.animationCellKeys.map((key) => parseAnimationCelKey(key)?.layerId).filter((id): id is string => Boolean(id)))]
         : activeDrag.layerIds
@@ -4486,7 +4564,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           angle: activeDrag.previewAngle ?? 0,
           shear: activeDrag.previewShear ? { ...activeDrag.previewShear } : undefined,
           quad: activeDrag.previewQuad ? cloneSelectionQuad(activeDrag.previewQuad) ?? undefined : undefined,
-          copy: Boolean(activeDrag.copy)
+          copy: Boolean(activeDrag.copy),
+          optimizedRotation: currentSession.selectionRotationAlgorithm === 'rotsprite'
         }
       : selectionPreviewOwner === 'pending' && currentSession.pendingPaste
         ? {
@@ -4496,7 +4575,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             angle: currentSession.pendingPaste.transformAngle ?? 0,
             shear: currentSession.pendingPaste.transformShear ? { ...currentSession.pendingPaste.transformShear } : undefined,
             quad: currentSession.pendingPaste.transformQuad ? cloneSelectionQuad(currentSession.pendingPaste.transformQuad) ?? undefined : undefined,
-            copy: currentSession.pendingPaste.copy
+            copy: currentSession.pendingPaste.copy,
+            optimizedRotation: currentSession.selectionRotationAlgorithm === 'rotsprite'
           }
         : undefined
     const publishesContentPreview = Boolean(
@@ -4550,6 +4630,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
+    if (currentSession.animationPlaying) return false
+    if (currentSession.tool === 'liquify') {
+      const drag = inputRef.current.drag
+      return brushPreviewMode !== 'none'
+        && (!drag || (drag.kind === 'liquify' && drawingBrushPreviewEnabled))
+        && inputRef.current.pointer.visible
+        && !inputRef.current.sampling
+        && !inputRef.current.spaceHeld
+    }
     if (brushPreviewMode !== 'full-edge' || currentSession.tool !== 'pencil') return false
     if (inputRef.current.drag || !inputRef.current.pointer.visible || inputRef.current.sampling || inputRef.current.spaceHeld) return false
     const inputs = activeBrushInputsForTool(currentSession.tool, currentSession.fillKind ?? 'bucket', currentSession.brushImage, currentSession.brushTexture)
@@ -4579,6 +4668,62 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!point) return
     const view = liveViewRef.current
     const renderPlan = createCanvasRenderPlan(rect.width, rect.height, currentSession.document, view, rotationIndicatorPosition)
+    if (currentSession.tool === 'liquify') {
+      // The preview is drawn on a separate overlay surface. Apply the same
+      // view transform as the document surface so mirrored and rotated views
+      // keep the brush region under the pointer.
+      context.save()
+      applyViewRotation(context, rect.width, rect.height, view)
+      const previewSize = Math.max(3, Math.round(currentSession.liquifyRadius) * 2 + 1)
+      const anchor = brushStampAnchor(previewSize, null, 0, 'round')
+      const brushPoint = snapBrushPointToGrid(point, previewSize, null, 0, currentSession)
+      const rows = solidBrushPreviewRowSpans(previewSize, 'round', 0, optimizedRotationEnabled).map((span) => ({
+        y: brushPoint.y - anchor.y + span.y,
+        left: brushPoint.x - anchor.x + span.left,
+        right: brushPoint.x - anchor.x + span.right
+      }))
+      const sampled = cursorCompositePointSamplerFor(currentSession)(point.x, point.y)
+      context.strokeStyle = colorLuminance(sampled) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
+      context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+      context.beginPath()
+      const horizontalSegment = (left: number, right: number, y: number, bottom: boolean): void => {
+        if (right < left || y < 0 || y >= currentSession.document.height) return
+        const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, Math.max(0, left), y, deviceScale)
+        const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, Math.min(currentSession.document.width - 1, right), y, deviceScale)
+        if (last.x < first.x) return
+        const edgeY = bottom ? first.y + first.height : first.y
+        context.moveTo(first.x, edgeY)
+        context.lineTo(last.x + last.width, edgeY)
+      }
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index]
+        if (row.y < 0 || row.y >= currentSession.document.height) continue
+        const left = Math.max(0, row.left)
+        const right = Math.min(currentSession.document.width - 1, row.right)
+        if (right < left) continue
+        const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, left, row.y, deviceScale)
+        const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, right, row.y, deviceScale)
+        context.moveTo(first.x, first.y)
+        context.lineTo(first.x, first.y + first.height)
+        context.moveTo(last.x + last.width, last.y)
+        context.lineTo(last.x + last.width, last.y + last.height)
+        const previous = rows[index - 1]
+        const next = rows[index + 1]
+        if (!previous) horizontalSegment(row.left, row.right, row.y, false)
+        else {
+          if (previous.left > row.left) horizontalSegment(row.left, Math.min(row.right, previous.left - 1), row.y, false)
+          if (previous.right < row.right) horizontalSegment(Math.max(row.left, previous.right + 1), row.right, row.y, false)
+        }
+        if (!next) horizontalSegment(row.left, row.right, row.y, true)
+        else {
+          if (next.left > row.left) horizontalSegment(row.left, Math.min(row.right, next.left - 1), row.y, true)
+          if (next.right < row.right) horizontalSegment(Math.max(row.left, next.right + 1), row.right, row.y, true)
+        }
+      }
+      context.stroke()
+      context.restore()
+      return
+    }
     const previewAngle = brushBaseAngle(currentSession)
     const before = brushStampAnchor(currentSession.brushSize, null, previewAngle, currentSession.brushShape)
     const brushPoint = snapBrushPointToGrid(point, currentSession.brushSize, null, previewAngle, currentSession)
@@ -4658,6 +4803,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     session.brushTextureScale,
     session.brushImage?.id,
     session.brushPaintMode,
+    session.tool,
+    session.liquifyRadius,
     brushPreviewMode,
   ])
 
@@ -4750,14 +4897,45 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       })
       scheduleDraw()
     }
+    const updateLiquifyModifierMode = (): void => {
+      const drag = inputRef.current.drag
+      if (drag?.kind !== 'liquify') return
+      const nextMode = temporaryLiquifyModeForShift(liveInputSession().liquifyMode, inputRef.current.shiftHeld)
+      if (drag.liquifyMode === nextMode) return
+      drag.liquifyMode = nextMode
+      drag.liquifyHoldStrength = 0
+    }
+    const cancelQuickEyedropperForChord = (): void => {
+      if (!eyedropperQuickSelect || !inputRef.current.altHeld) return
+      quickEyedropperSuppressedRef.current = true
+      const original = quickEyedropperOriginalColorRef.current
+      quickEyedropperOriginalColorRef.current = null
+      eyedropperPendingSampleColorRef.current = null
+      eyedropperOriginalColorRef.current = null
+      hideEyedropperMagnifier()
+      if (!original) return
+      const workspace = useWorkspace.getState()
+      const liveSession = workspace.sessions.find((item) => item.document.id === session.document.id)
+      if (liveSession && !sameRgbaColor(liveSession.primaryColor, original)) {
+        workspace.setPrimaryColor(original)
+        publishCanvasColorSample(original, false)
+      }
+    }
+    const quickSelectChordKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Alt') cancelQuickEyedropperForChord()
+    }
     const keyDown = (event: KeyboardEvent): void => {
       const controlWasHeld = inputRef.current.ctrlHeld
-      if (event.key === 'Alt') inputRef.current.altHeld = true
+      if (event.key === 'Alt') {
+        inputRef.current.altHeld = true
+        if (!event.repeat) quickEyedropperSuppressedRef.current = false
+      }
       if (event.key === 'Control') {
         inputRef.current.ctrlHeld = true
       }
       if (event.key === 'Shift') {
         inputRef.current.shiftHeld = true
+        updateLiquifyModifierMode()
       }
       if (event.key === 'Alt' || event.key === 'Control' || event.key === 'Shift') updateGradientModifiers()
       const rotatableDrag = inputRef.current.drag
@@ -4854,7 +5032,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         altKey: event.altKey || inputRef.current.altHeld,
         shiftKey: event.shiftKey || inputRef.current.shiftHeld
       }
-      const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive(modifierEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser')
+      const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive(modifierEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
       if (modifierSizing) {
         inputRef.current.sampling = false
         event.preventDefault()
@@ -4864,7 +5042,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             inputRef.current.modifierBrushSize = {
               x: pointer.clientX,
               y: pointer.clientY,
-              size: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.brushSize
+              size: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize
             }
           }
           // Sizing only changes the transient brush cursor. Avoid sampling the
@@ -4874,7 +5052,42 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
         else scheduleDraw()
       } else if (event.key === 'Alt' && inputRef.current.pointer.visible) {
+        // App-level shortcut handling prevents the native Alt menu before this
+        // listener runs. That is expected and must not suppress quick sampling.
+        const interactionBlocked = Boolean(target?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop, .themed-select'))
+          || Boolean(document.querySelector('.modal-backdrop'))
         event.preventDefault()
+        if (shouldQuickSelectEyedropper({
+          enabled: eyedropperQuickSelect,
+          key: event.key,
+          altHeld: inputRef.current.altHeld,
+          repeat: event.repeat,
+          pointerVisible: inputRef.current.pointer.visible,
+          activeDocument: useWorkspace.getState().activeId === session.document.id,
+          dragActive: Boolean(inputRef.current.drag),
+          spaceHeld: inputRef.current.spaceHeld,
+          modifierChordActive: event.ctrlKey || event.metaKey || event.shiftKey,
+          canvasContextBlocked: quickEyedropperSuppressedRef.current
+            || session.tool === 'move'
+            || session.animationPlaying
+            || session.freeTransformActive === true
+            || Boolean(canvasResizePreviewRef.current),
+          interactionBlocked
+        })) {
+          const sampled = canvasColorSampleAtClientPointRef.current(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY)
+          const workspace = useWorkspace.getState()
+          const liveSession = workspace.sessions.find((item) => item.document.id === session.document.id)
+          if (sampled) {
+            const previous = liveSession?.primaryColor ?? session.primaryColor
+            if (!quickEyedropperOriginalColorRef.current) quickEyedropperOriginalColorRef.current = { ...previous }
+            eyedropperOriginalColorRef.current = { ...quickEyedropperOriginalColorRef.current }
+            if (!sameRgbaColor(previous, sampled)) {
+              workspace.setPrimaryColor(sampled)
+              publishCanvasColorSample(sampled, false)
+            }
+            updateEyedropperMagnifier(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY, sampled)
+          }
+        }
         if (session.tool === 'rotate' && quickToolActive('eyedropper')) updateRotationIndicator(liveViewRef.current.rotation, false)
         updateCursorAt(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY, inputRef.current.ctrlHeld, true, inputRef.current.shiftHeld)
         scheduleDraw()
@@ -4904,6 +5117,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         if (event.key === 'Control') inputRef.current.ctrlHeld = false
         if (event.key === 'Shift') {
           inputRef.current.shiftHeld = false
+          updateLiquifyModifierMode()
         }
         if (event.key === 'Alt' || event.key === 'Control' || event.key === 'Shift') updateGradientModifiers()
         const rotatableDrag = inputRef.current.drag
@@ -4929,6 +5143,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           }
         }
         inputRef.current.sampling = session.tool === 'eyedropper' || quickToolActive('eyedropper')
+        if (event.key === 'Alt' && eyedropperQuickSelect && inputRef.current.drag?.kind !== 'sample-color') {
+          flushEyedropperSampleColor()
+          quickEyedropperOriginalColorRef.current = null
+          quickEyedropperSuppressedRef.current = false
+          eyedropperOriginalColorRef.current = null
+          hideEyedropperMagnifier()
+        }
         inputRef.current.modifierBrushSize = null
         if (event.key === 'Alt' && (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'shape')) {
           const drag = inputRef.current.drag
@@ -4966,6 +5187,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const cancelSampling = (): void => {
       if (inputRef.current.drag?.kind === 'sample-color') inputRef.current.finish()
       inputRef.current.sampling = false
+      quickEyedropperOriginalColorRef.current = null
+      quickEyedropperSuppressedRef.current = false
       eyedropperOriginalColorRef.current = null
       hideEyedropperMagnifier()
     }
@@ -4981,13 +5204,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       cancelSampling()
       if (canvasRef.current) canvasRef.current.style.cursor = canvasToolCursor(session.tool, session.primaryColor)
     }
+    window.addEventListener('keydown', quickSelectChordKeyDown, true)
     window.addEventListener('keydown', keyDown)
     window.addEventListener('keyup', keyUp)
     window.addEventListener('blur', blur)
     window.addEventListener('focus', focus)
     document.addEventListener('visibilitychange', visibilityChange)
-    return () => { window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', visibilityChange) }
-  }, [session.tool, gradientType, lineAnchor, lineConnectionShortcut, shortcuts.brushSizeAdjust, shortcuts.resetViewRotation, shortcuts['tool.hand.quick']])
+    return () => { window.removeEventListener('keydown', quickSelectChordKeyDown, true); window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', visibilityChange) }
+  }, [session.tool, gradientType, lineAnchor, lineConnectionShortcut, eyedropperQuickSelect, shortcuts.brushSizeAdjust, shortcuts.resetViewRotation, shortcuts['tool.hand.quick']])
 
   useEffect(() => {
     // Every dependency in this effect contributes to the canvas appearance.
@@ -5906,6 +6130,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     const liveCursorSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const playbackNavigationTool = liveCursorSession.animationPlaying ? playbackCanvasNavigationTool(liveCursorSession.tool) : null
+    if (playbackNavigationTool === 'hand') {
+      inputRef.current.sampling = false
+      canvas.style.cursor = inputRef.current.drag?.kind === 'pan' ? canvasCursors.grabbing : canvasCursors.grab
+      return
+    }
     const liveCursorGroupSelected = liveCursorSession.selectedGroupIds.length > 0 || Boolean(liveCursorSession.selectedGroupId)
     if (liveCursorGroupSelected && !isToolAvailableForSession(liveCursorSession, liveCursorSession.tool) && !isCanvasViewNavigationDrag(inputRef.current.drag)) {
       inputRef.current.sampling = false
@@ -6034,7 +6264,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (insideDocument && point && contrastColor.a < 255) contrastColor = blendOver(transparencyColorAt(point.x, point.y, checkerboard), contrastColor)
     const altActive = inputRef.current.altHeld || altKey
     const ctrlActive = inputRef.current.ctrlHeld || ctrlKey
-    const brushSizeTool = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser'
+    const brushSizeTool = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify'
     const modifierSizing = brushSizeAdjustmentPreviewActive || ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive({ ctrlKey, metaKey: false, altKey, shiftKey }, 'brushSizeAdjust') && brushSizeTool)
     const wheelSizing = wheelBrushSizePreviewRef.current && brushSizeTool
     const selectedTextBox = selectedTextBoxForSession(session)
@@ -6112,7 +6342,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   useEffect(() => {
     const pointer = inputRef.current.pointer
     if (!pointer.visible) {
-      if (!inputRef.current.drag && canvasRef.current) canvasRef.current.style.cursor = inputRef.current.spaceHeld ? canvasCursors.grab : canvasToolCursor(session.tool, session.primaryColor)
+      if (!inputRef.current.drag && canvasRef.current) {
+        const playbackNavigationTool = session.animationPlaying ? playbackCanvasNavigationTool(session.tool) : null
+        canvasRef.current.style.cursor = inputRef.current.spaceHeld || playbackNavigationTool === 'hand'
+          ? canvasCursors.grab
+          : canvasToolCursor(playbackNavigationTool ?? session.tool, session.primaryColor)
+      }
       return
     }
     updateCursorAt(pointer.clientX, pointer.clientY, inputRef.current.ctrlHeld, inputRef.current.altHeld, inputRef.current.shiftHeld)
@@ -6419,6 +6654,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    magicGestureRef.current?.cancel()
     // Keyboard tool changes can land before React commits the next render.
     // Resolve the session at event time so the first pointer event sees them.
     let session = liveInputSession()
@@ -6467,19 +6703,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const state = useWorkspace.getState()
     if (zoomPreviewStartRef.current) finishZoomPreview()
     if (state.activeId !== session.document.id) { state.setActive(session.document.id); return }
-    // Playback blocks document edits, but viewport navigation must remain
-    // available so the canvas can still be inspected while it is playing.
-    if (session.animationPlaying && event.button !== 1) return
+    const playbackNavigationTool = session.animationPlaying ? playbackCanvasNavigationTool(session.tool) : null
     const preflightSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     const preflightGroupSelected = preflightSession.selectedGroupIds.length > 0 || Boolean(preflightSession.selectedGroupId)
-    const preflightToolAllowed = preflightSession.tool === 'move' || preflightSession.tool === 'hand' || preflightSession.tool === 'zoom' || preflightSession.tool === 'rotate'
+    const preflightToolAllowed = Boolean(playbackNavigationTool) || preflightSession.tool === 'move' || preflightSession.tool === 'hand' || preflightSession.tool === 'zoom' || preflightSession.tool === 'rotate'
     if (preflightGroupSelected && !preflightToolAllowed && event.button !== 1 && !(event.button === 0 && inputRef.current.spaceHeld)) {
       event.currentTarget.style.cursor = canvasCursors.unavailable
       event.preventDefault()
       return
     }
     beginCanvasToolGesture(event.pointerId)
-    if (event.button === 1 || (event.button === 0 && inputRef.current.spaceHeld)) {
+    if (event.button === 1 || (event.button === 0 && (inputRef.current.spaceHeld || playbackNavigationTool === 'hand'))) {
       const view = liveViewRef.current
       inputRef.current.drag = createCanvasPanDrag(
         { x: view.panX, y: view.panY },
@@ -6492,6 +6726,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.preventDefault()
       return
     }
+    if (playbackNavigationTool === 'hand') return
     // Resolve the live free-transform session before any auxiliary canvas
     // interaction (such as symmetry-axis dragging) can claim the pointer.
     // Corner handles reshape the frame; the selected content itself remains
@@ -6550,7 +6785,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint')
       && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint')
       && modifierActive(event.nativeEvent, 'brushSizeAdjust')
-      && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser')
+      && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
     // Modifier sizing has no cursor hit-test or composited color sample to
     // resolve. Avoid updateCursor's layer-tree sampling on every mouse move.
     if (!modifierSizingActive) updateCursor(event)
@@ -6724,9 +6959,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && !session.activeLayerMaskId
       && (session.selectedGroupIds.length > 0 || session.selectedLayerIds.length > 1)
     const hasRasterFocus = hasSelectedRasterLayer || focusesRasterLayer || (session.tool === 'selection' && selectionLayersEditable)
-    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser') && (session.tool === 'airbrush' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize) && event.button === 0) {
+    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify') && (session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize) && event.button === 0) {
       inputRef.current.sampling = false
-      inputRef.current.drag = { kind: 'brush-size', start: point, last: point, startClient: { x: event.clientX, y: event.clientY }, startBrushSize: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.brushSize }
+      inputRef.current.drag = { kind: 'brush-size', start: point, last: point, startClient: { x: event.clientX, y: event.clientY }, startBrushSize: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize }
       event.currentTarget.style.cursor = canvasToolCursor('pencil', session.primaryColor)
       return
     }
@@ -6983,7 +7218,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       inputRef.current.drag = {
         kind: 'move-layer', start: point, last: point, layerId: target.id,
         layerOffset: { x: target.offsetX, y: target.offsetY }, layerIds, layerOffsets,
-        layerContentBounds: layerContentBoundsById, layerPreviewOffset: { x: 0, y: 0 }, layerFrameId: currentFrameId,
+        layerContentBounds: layerContentBoundsById, layerFrameId: currentFrameId,
         ...alignmentDragFields(alignmentMovingBounds, layerIds),
         animationCellKeys, animationCellOffsets, animationMaskOffsets: animationMaskOffsetsForLayerMove(activeSession, layerIds, currentFrameId, animationCellKeys), duplicateOnDrag: copyLayerHeld && layerIds.length === 1 && animationCellKeys.length <= 1,
         originalSelectedLayerIds: [...selectedLayerIds], selectionStart,
@@ -7117,6 +7352,28 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         } : null
         if (session.tool === 'eraser') state.setLastEraserPoint(target)
         else state.setLastPencilPoint(target)
+        // Shift+click commits the connecting line immediately. Keep the
+        // pointer gesture alive from its endpoint so the user can continue
+        // with an ordinary freehand stroke while still holding the mouse;
+        // an unchanged continuation edit commits nothing on pointer-up.
+        inputRef.current.drag = {
+          kind: 'draw',
+          start: target,
+          last: target,
+          edit: beginPixelEdit(editableLayer.id),
+          path: [{ ...target, size: dynamics.size, opacityScale: dynamics.opacityScale, angle: brushAngleWithDynamics(session, dynamics.angle), color: lineColor, gradient }],
+          tileRepeatPoint: repeatedTarget,
+          tileRepeatStart: repeatedTarget,
+          patternOrigin: brushPatternOrigin(target, dynamics.size, activeBrushImage),
+          color: lineColor,
+          lastBrushSize: dynamics.size,
+          lastOpacityScale: dynamics.opacityScale,
+          lastBrushColor: lineColor,
+          lastBrushGradientActive: Boolean(gradient),
+          preserveLineAnchorOnNoop: true,
+          brushSpeed: beginBrushSpeedTracking({ clientX: event.clientX, clientY: event.clientY, timeStamp: event.timeStamp }),
+          startedAt: Date.now()
+        }
       }
       return
     }
@@ -7387,82 +7644,93 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
       if (session.pendingPaste) state.commitFloatingPaste()
       if (session.selectionKind === 'magic') {
-        const before = cloneSelection(currentSelection)
-        if (!freeTileSelectionTarget && session.wandContiguous && !session.wandGapClosing && (editableLayer.format === 'rgba' || editableLayer.format === 'indexed')) {
-          const requestPoint = { ...point }
-          const dragState: DragState = { kind: 'magic-preview', start: requestPoint, last: requestPoint, selectionStart: before, selectionMode: mode, previewSelection: before, magicWorkerPending: true }
-          inputRef.current.drag = dragState
-          event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
-          // The worker preview is rendered on the main canvas. Clear the
-          // previous overlay bitmap immediately instead of leaving its old
-          // marching-ant path visible until the next animation tick.
-          drawSelectionOverlay()
-          scheduleDraw()
-          // Keep the current frame visible while the worker computes.  A redraw
-          // here would still spend the frame budget on the full layer composite
-          // before the pointer event returns.
-          magicWandWorkerRef.current ??= new MagicWandWorkerClient()
-          const workerStartedAt = performance.now()
-          const requestSourceKey = `${session.document.id}:${session.document.animation?.activeFrameId ?? 'static'}:${editableLayer.id}`
-          void magicWandWorkerRef.current.request(editableLayer, session.document.width, session.document.height, point.x, point.y, session.wandTolerance, session.contentRevision, session.document.palette, requestSourceKey).then((region) => {
-            window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.worker-roundtrip', performance.now() - workerStartedAt, {
-              width: session.document.width,
-              height: session.document.height,
-              selected: Boolean(region)
-            })
-            const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
-            const currentSourceKey = currentSession
-              ? `${currentSession.document.id}:${currentSession.document.animation?.activeFrameId ?? 'static'}:${activePaintLayer(currentSession).id}`
-              : ''
-            if (inputRef.current.drag !== dragState || currentSourceKey !== requestSourceKey || !region) return
-            dragState.magicWorkerPending = false
-            const combineStartedAt = performance.now()
-            dragState.previewSelection = mode === 'replace' ? region : combineSelection(before, region, mode)
-            window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.combine', performance.now() - combineStartedAt)
+        if (freeTileSelectionBounds && !selectionContains(rectSelection(freeTileSelectionBounds.x, freeTileSelectionBounds.y, freeTileSelectionBounds.width, freeTileSelectionBounds.height), point.x, point.y)) return
+        const before = currentSelection
+        const initialSelection = session.selection
+        const contentRevision = session.contentRevision
+        const initialPalette = session.document.palette
+        const initialTool = session.tool
+        const sourceKey = `${session.document.id}:${session.document.animation?.activeFrameId ?? 'static'}:${editableLayer.id}`
+        const tilemap = editableLayer.kind === 'tilemap' && session.tilemapMode === 'paint' ? activeTilemapCelTarget(session.document) : null
+        const operation: MagicWandOperation = {
+          before: mode === 'replace' ? null : before, mode, axes: session.symmetryAxes, center: symmetryCenter,
+          previewColor: selectionPreviewColorMode === 'custom' ? `rgb(${selectionPreviewColor.r} ${selectionPreviewColor.g} ${selectionPreviewColor.b} / ${selectionPreviewColor.a / 255})` : undefined,
+          ...(tilemap ? { tilemap: { grid: { ...tilemap.tilemap, cells: [] }, offsetX: tilemap.surface.offsetX, offsetY: tilemap.surface.offsetY } } : {}),
+          ...(freeTileSelectionTarget && freeTileSelectionBounds ? { freeTile: {
+            source: freeTileSelectionTarget.source, bounds: freeTileSelectionBounds, instance: freeTileSelectionTarget.instance,
+            document: { width: session.document.width, height: session.document.height, colorMode: session.document.colorMode, palette: session.document.palette }
+          } } : {})
+        }
+        const drag: DragState = { kind: 'magic-preview', start: { ...point }, last: { ...point }, selectionStart: before, selectionMode: mode, previewSelection: null }
+        inputRef.current.drag = drag
+        const valid = () => {
+          const state = useWorkspace.getState()
+          const current = state.sessions.find((item) => item.document.id === session.document.id)
+          return state.activeId === session.document.id && current && current.selection === initialSelection
+            && current.contentRevision === contentRevision && current.tool === initialTool && current.selectionKind === 'magic'
+            && current.document.palette === initialPalette
+            && `${current.document.id}:${current.document.animation?.activeFrameId ?? 'static'}:${activePaintLayer(current).id}` === sourceKey
+        }
+        let unsubscribe = () => {}
+        const clearPreview = () => { drag.magicPreviewBitmap?.close(); drag.magicPreviewBitmap = null; drag.magicPreviewRectangles = null }
+        const cleanup = () => {
+          unsubscribe()
+          if (magicGestureRef.current?.drag === drag) magicGestureRef.current = null
+          clearPreview()
+        }
+        const accept = (result: MagicWandWorkerResult) => {
+          clearPreview()
+          drag.previewSelection = result.selection
+          drag.magicPreviewRectangles = result.previewRectangles
+          drag.magicPreviewBitmap = result.previewBitmap
+          if (result.selection && result.boundarySegments) prepareSelectionBoundary(result.selection, result.boundarySegments)
+        }
+        const gesture = new MagicWandGesture<MagicWandWorkerResult>(
+          (result) => { accept(result); scheduleDraw() },
+          (result) => {
+            accept(result)
+            cleanup()
+            const startedAt = performance.now()
+            useWorkspace.getState().commitSelectionChange(before, result.selection, t('canvas.history.magicSelection'))
+            window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.commit-selection', performance.now() - startedAt)
+            drawSelectionOverlay()
             scheduleDraw()
+          },
+          (result) => result.previewBitmap?.close()
+        )
+        const cancel = (redraw = true) => {
+          gesture.cancel()
+          if (magicGestureRef.current?.drag !== drag) { cleanup(); return }
+          if (inputRef.current.drag === drag) inputRef.current.finish()
+          cleanup()
+          magicWandWorkerRef.current?.dispose()
+          if (redraw) scheduleDraw()
+        }
+        magicGestureRef.current = { cancel, drag }
+        unsubscribe = useWorkspace.subscribe(() => { if (!valid()) cancel() })
+        drag.magicRelease = () => gesture.release()
+        drag.magicRequest = (requestPoint) => {
+          drag.last = { ...requestPoint }
+          const receive = gesture.request()
+          drag.magicWorkerPending = true
+          magicWandWorkerRef.current ??= new MagicWandWorkerClient()
+          const startedAt = performance.now()
+          void magicWandWorkerRef.current.request(editableLayer, session.document.width, session.document.height, requestPoint.x, requestPoint.y, session.wandTolerance, contentRevision, initialPalette, sourceKey, session.wandContiguous, session.wandGapClosing ? session.wandGapThreshold : 0, operation).then((result) => {
+            if (!result) return
+            window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.worker-roundtrip', performance.now() - startedAt, { computeMs: result.computeMs, boundaryMs: result.boundaryMs })
+            window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.worker-compute', result.computeMs)
+            if (!valid()) { result.previewBitmap?.close(); cancel(); return }
+            drag.magicWorkerPending = false
+            receive(result)
+          }).catch((error: unknown) => {
+            cancel()
+            useWorkspace.setState({ message: `Magic wand: ${error instanceof Error ? error.message : String(error)}` })
           })
-          return
         }
-        let sourceEdit: FreeTileSourceEditRaster | null = null
-        let rawIncoming: SelectionMask | null = null
-        if (freeTileSelectionTarget && freeTileSelectionBounds) {
-          if (!selectionContains(rectSelection(freeTileSelectionBounds.x, freeTileSelectionBounds.y, freeTileSelectionBounds.width, freeTileSelectionBounds.height), point.x, point.y)) return
-          sourceEdit = createFreeTileSourceEditRaster(session.document, freeTileSelectionTarget.source, freeTileSelectionBounds, point, freeTileSelectionTarget.instance)
-          if (!sourceEdit) return
-          const localIncoming = magicWandSelection(
-            sourceEdit.document,
-            sourceEdit.layer,
-            point.x - sourceEdit.origin.x,
-            point.y - sourceEdit.origin.y,
-            session.wandTolerance,
-            session.wandContiguous,
-            session.wandGapClosing ? session.wandGapThreshold : 0
-          )
-          rawIncoming = freeTileSelectionFromEditRaster(sourceEdit, localIncoming, session.document.width, session.document.height)
-        } else rawIncoming = magicWandSelection(session.document, editableLayer, point.x, point.y, session.wandTolerance, session.wandContiguous, session.wandGapClosing ? session.wandGapThreshold : 0)
-        const incoming = tilemapPaintSelectionForIncoming(symmetrySelection(rawIncoming, session.document.width, session.document.height, session.symmetryAxes, symmetryCenter))
-        const next = combineSelection(before, incoming, mode)
-        inputRef.current.drag = {
-          kind: 'magic-preview',
-          start: point,
-          last: point,
-          selectionStart: before,
-          selectionMode: mode,
-          previewSelection: next,
-          ...(freeTileSelectionBounds ? { freeTileSelectionBounds: { ...freeTileSelectionBounds } } : {}),
-          ...(sourceEdit ? {
-            freeTileEditDocument: sourceEdit.document,
-            freeTileEditLayer: sourceEdit.layer,
-            freeTileSourceBefore: sourceEdit.before,
-            freeTileEditOrigin: sourceEdit.origin,
-            freeTileEditSourceOffset: sourceEdit.sourceOffset,
-            freeTileEditInstanceTransform: sourceEdit.instanceTransform,
-            freeTileEditTransformedSourceBounds: sourceEdit.transformedSourceBounds
-          } : {})
-        }
+        drag.magicRequest(point)
         event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
         drawSelectionOverlay()
-        draw()
+        scheduleDraw()
         return
       }
       if (session.selectionKind === 'lasso') { inputRef.current.drag = { kind: 'lasso', start: point, last: point, selectionStart: cloneSelection(currentSelection), selectionMode: mode, previewSelection: cloneSelection(currentSelection), path: [point] }; event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true); return }
@@ -7483,6 +7751,37 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (session.tool === 'zoom') {
       const view = liveViewRef.current
       inputRef.current.drag = { kind: 'zoom-drag', start: point, last: point, startClient: { x: event.clientX, y: event.clientY }, startZoom: view.zoom }
+      return
+    }
+    if (session.tool === 'liquify' && (event.button === 0 || event.button === 2)) {
+      if (!hasRasterFocus || !canEditLayer || tilemapPixelEditBlocked || editableLayer.kind) return
+      // A liquify gesture must start and continue in the same continuous
+      // document coordinate space. Falling back to the integer `point` when
+      // the continuous conversion fails injects a positive subpixel delta on
+      // the first move, which makes every stroke drift toward bottom-right.
+      const liquifyPoint = localContinuousPointAt(event.clientX, event.clientY)
+      if (!liquifyPoint) return
+      const liquifyMode = temporaryLiquifyModeForShift(session.liquifyMode, event.shiftKey || inputRef.current.shiftHeld)
+      const drag: DragState = {
+        kind: 'liquify',
+        start: liquifyPoint,
+        last: liquifyPoint,
+        edit: beginPixelEdit(editableLayer.id),
+        liquifyMode,
+        liquifyHoldStrength: 0,
+        liquifyPushStroke: createLiquifyPushStroke(),
+        liquifyCompound: state.beginLiquifyStroke(editableLayer.id),
+        startedAt: Date.now()
+      }
+      inputRef.current.drag = drag
+      state.setLiquifyGestureActive(true)
+      if (liquifyMode !== 'push') {
+        // Apply the first stationary liquify impulse immediately. The hold
+        // clock intentionally starts after one step, so inflate/deflate/twist
+        // must not wait for its first RAF tick before producing any effect.
+        applyLiquifyHoldRef.current(drag)
+        scheduleLiquifyTimer()
+      }
       return
     }
     if (editableLayer.kind === 'free-tile' && session.freeTileMode === 'edit' && (session.tool === 'fill' || session.tool === 'shape' || session.tool === 'line' || session.tool === 'airbrush')) {
@@ -7888,7 +8187,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     const session = liveInputSession()
-    const navigationShortcutActive = event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)
+    const navigationShortcutActive = session.animationPlaying || event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)
     if (canvasColorSamplingIntentActive() && !canvasColorSamplingActiveFor(canvasRef.current) && !inputRef.current.drag && !navigationShortcutActive) {
       event.currentTarget.style.cursor = canvasCursors.eyedropper
       return
@@ -8018,13 +8317,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'lasso' || inputRef.current.drag?.kind === 'polygon-lasso') {
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true)
     }
-    const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser')
+    const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
     if (modifierSizing && !inputRef.current.drag) {
-      if (!inputRef.current.modifierBrushSize) inputRef.current.modifierBrushSize = { x: event.clientX, y: event.clientY, size: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.brushSize }
+      if (!inputRef.current.modifierBrushSize) inputRef.current.modifierBrushSize = { x: event.clientX, y: event.clientY, size: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize }
       else {
         const delta = canvasClientDeltaForInterfaceScale(event.clientX - inputRef.current.modifierBrushSize.x, interfaceScale)
         const nextSize = inputRef.current.modifierBrushSize.size + Math.round(delta / 4)
         if (session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(nextSize)
+        else if (session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(nextSize)
         else useWorkspace.getState().setBrushSize(nextSize)
       }
       // The first move can initialize the modifier state after the cursor
@@ -8038,6 +8338,34 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!modifierSizing) inputRef.current.modifierBrushSize = null
     if (!point) return
     const drag = inputRef.current.drag
+    if (!drag && shouldQuickSelectEyedropper({
+      enabled: eyedropperQuickSelect,
+      key: 'Alt',
+      altHeld: inputRef.current.altHeld,
+      repeat: false,
+      pointerVisible: inputRef.current.pointer.visible,
+      activeDocument: useWorkspace.getState().activeId === session.document.id,
+      dragActive: false,
+      spaceHeld: inputRef.current.spaceHeld,
+      modifierChordActive: event.ctrlKey || event.metaKey || event.shiftKey,
+      canvasContextBlocked: quickEyedropperSuppressedRef.current
+        || session.tool === 'move'
+        || session.animationPlaying
+        || session.freeTransformActive === true
+        || Boolean(canvasResizePreviewRef.current),
+      interactionBlocked: false
+    })) {
+      const sampled = canvasColorSampleAtClientPointRef.current(event.clientX, event.clientY)
+      if (sampled) {
+        const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+        if (!quickEyedropperOriginalColorRef.current) quickEyedropperOriginalColorRef.current = { ...liveSession.primaryColor }
+        eyedropperOriginalColorRef.current = { ...quickEyedropperOriginalColorRef.current }
+        queueEyedropperSampleColor(sampled, false)
+        updateEyedropperMagnifier(event.clientX, event.clientY, sampled)
+        event.currentTarget.style.cursor = canvasCursors.eyedropper
+        return
+      }
+    }
     if (!drag) {
       if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
       else scheduleDraw()
@@ -8048,8 +8376,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag.kind === 'brush-size' && drag.startClient) {
       drag.last = point
       const delta = canvasClientDeltaForInterfaceScale(event.clientX - drag.startClient.x, interfaceScale)
-      const nextSize = (drag.startBrushSize ?? (session.tool === 'airbrush' ? session.airbrushScatterRadius : session.brushSize)) + Math.round(delta / 4)
+      const nextSize = (drag.startBrushSize ?? (session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize)) + Math.round(delta / 4)
       if (session.tool === 'airbrush') state.setAirbrushScatterRadius(nextSize)
+      else if (session.tool === 'liquify') state.setLiquifyRadius(nextSize)
       else state.setBrushSize(nextSize)
       event.currentTarget.style.cursor = canvasCursors.ewResize
       return
@@ -8071,7 +8400,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       scheduleDraw()
       return
     }
-    drag.last = point
+    // Liquify uses continuous document coordinates in its own branch below.
+    // Do not overwrite its previous point with the integer-snapped `point`.
+    if (drag.kind !== 'liquify') drag.last = point
     if (drag.kind === 'sample-color') {
       if (point.x >= 0 && point.y >= 0 && point.x < session.document.width && point.y < session.document.height) {
         if (drag.tileSampling) {
@@ -8801,6 +9132,42 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       scheduleDraw()
       return
     }
+    if (drag.kind === 'liquify' && drag.edit) {
+      // Liquify already resamples the segment between dispatched pointer
+      // events. Using the browser/driver coalesced list here can replay stale
+      // or out-of-order coordinates and corrupt the deformation direction.
+      const currentPoint = localContinuousPointAt(event.clientX, event.clientY)
+      if (!currentPoint) return
+      const points: Point[] = [currentPoint]
+      if ((drag.liquifyMode ?? session.liquifyMode) === 'push') {
+        const timeline = session.document.animation
+        const layer = activePaintLayer(session)
+        const mask = timeline ? animationMaskAt(timeline, layer.id, timeline.activeFrameId) : null
+        let dirtyRect: SelectionRect | null = null
+        const result = applyAccumulatedLiquifyPush(drag.last, points, (from, path) => {
+          const applied = applyLiquifyPushPath(session.document, layer, drag.edit!, drag.liquifyPushStroke ??= createLiquifyPushStroke(), from, path, {
+            radius: session.liquifyRadius,
+            strength: session.liquifyStrength,
+            selection: session.selection,
+            mask
+          })
+          dirtyRect = applied.dirtyRect
+          return applied.changed
+        })
+        if (result.changed && dirtyRect) invalidateCompositeRect(dirtyRect, [layer.id])
+        drag.last = result.pointerPoint
+      } else {
+        const next = points.at(-1)!
+        // Stationary modes are driven only by the hold clock. Pointer motion
+        // relocates the center and restarts the gradual buildup; applying the
+        // configured strength here caused a full-strength jump on every tiny
+        // move in addition to the timed hold deformation.
+        drag.last = next
+        drag.liquifyHoldStrength = 0
+      }
+      scheduleDraw()
+      return
+    }
     if (drag.kind === 'shape') {
       const modifiers = currentSelectionMarqueeModifierState()
       drag.constrain = modifiers.proportional
@@ -8884,43 +9251,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     if (drag.kind === 'magic-preview') {
-      if (point.x === previousPoint.x && point.y === previousPoint.y) return
-      // The worker owns the expensive flood fill for full-canvas RGBA layers.
-      // Pointer jitter must not fall back to a synchronous second flood fill on
-      // the UI thread while that request is still pending.
-      const workerBackedMagic = !drag.freeTileEditDocument
-        && activePaintLayer(session).format === 'rgba'
-        && activePaintLayer(session).offsetX === 0
-        && activePaintLayer(session).offsetY === 0
-        && activePaintLayer(session).width === session.document.width
-        && activePaintLayer(session).height === session.document.height
-        && session.wandContiguous
-        && !session.wandGapClosing
-      if (workerBackedMagic) return
-      const mode = drag.selectionMode ?? session.selectionMode
-      let rawIncoming: SelectionMask | null
-      if (drag.freeTileEditDocument && drag.freeTileEditLayer && drag.freeTileEditOrigin) {
-        const bounds = drag.freeTileSelectionBounds
-        const insideBounds = !bounds || (point.x >= bounds.x && point.y >= bounds.y && point.x < bounds.x + bounds.width && point.y < bounds.y + bounds.height)
-        const localIncoming = insideBounds
-          ? magicWandSelection(
-              drag.freeTileEditDocument,
-              drag.freeTileEditLayer,
-              point.x - drag.freeTileEditOrigin.x,
-              point.y - drag.freeTileEditOrigin.y,
-              session.wandTolerance,
-              session.wandContiguous,
-              session.wandGapClosing ? session.wandGapThreshold : 0
-            )
-          : null
-        const sourceEdit = freeTileSourceEditForDrag(drag)
-        rawIncoming = sourceEdit
-          ? freeTileSelectionFromEditRaster(sourceEdit, localIncoming, session.document.width, session.document.height)
-          : null
-      } else rawIncoming = magicWandSelection(session.document, activePaintLayer(session), point.x, point.y, session.wandTolerance, session.wandContiguous, session.wandGapClosing ? session.wandGapThreshold : 0)
-      const incoming = tilemapPaintSelectionForIncoming(symmetrySelection(rawIncoming, session.document.width, session.document.height, session.symmetryAxes, symmetryCenter))
-      drag.previewSelection = combineSelection(drag.selectionStart ?? null, incoming, mode)
-      scheduleDraw()
+      if (point.x !== previousPoint.x || point.y !== previousPoint.y) drag.magicRequest?.(point)
       return
     }
     if (drag.kind === 'lasso') {
@@ -9136,6 +9467,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const session = liveInputSession()
     syncHeldShortcutModifiers(event.nativeEvent)
     stopAirbrushTimer()
+    stopLiquifyTimer()
     const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     if (currentInteractionSession.freeTransformActive === true) {
       const staleSymmetryDrag = symmetryDragRef.current
@@ -9388,8 +9720,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // Zustand notifies subscribers synchronously from commitPixelEdit().
       // Mark the live surface before committing so that the resulting draw
       // cannot promote the stroke's large bounding box to a full recompose.
-      const committedDirtyRect = drag.edit.dirtyRect
-      compositeCacheRef.current.retainLivePreview(session.document, session.document.animation?.activeFrameId, committedDirtyRect)
+      compositeCacheRef.current.retainLivePreview(session.document, session.document.animation?.activeFrameId, session.contentRevision + 1)
       const entry = state.commitPixelEdit(drag.edit, session.tool === 'eraser' ? t('canvas.history.eraser') : t('canvas.history.draw'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
       if (!entry) compositeCacheRef.current.clearLivePreview(session.document)
       // `commitPixelEdit` already publishes the edit's dirty rectangle through
@@ -9399,7 +9730,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // rebuild (the dominant source of the DEV.5 regression).
       const firstPathPoint = drag.path?.[0]
       const singlePoint = Boolean(firstPathPoint && drag.path?.every((point) => point.x === firstPathPoint.x && point.y === firstPathPoint.y))
-      lineAnchorHistoryRef.current = entry && singlePoint ? {
+      if (!shouldPreserveLineAnchorAfterNoopDrag(drag, Boolean(entry))) lineAnchorHistoryRef.current = entry && singlePoint ? {
         documentId: session.document.id,
         layerId: drag.edit.layerId,
         tool: session.tool === 'eraser' ? 'eraser' : 'pencil',
@@ -9414,6 +9745,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag.kind === 'airbrush' && drag.edit) {
       if (freeTileSourceEditForDrag(drag)) commitFreeTileSourceDrag(drag, t('canvas.history.airbrush'))
       else state.commitPixelEdit(drag.edit, t('canvas.history.airbrush'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
+    }
+    if (drag.kind === 'liquify' && drag.edit) {
+      state.setLiquifyGestureActive(false)
+      state.commitLiquifyStroke(
+        drag.edit,
+        t('canvas.history.liquify'),
+        Boolean(drag.liquifyCompound),
+        { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) }
+      )
     }
     if (drag.kind === 'move-layer') state.commitLayerMove(session.document.id, drag)
     if (drag.kind === 'move-layer' && drag.collapseLayerSelectionOnClick && !drag.moved && drag.clickLayerId) {
@@ -9533,11 +9873,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const after = combineSelection(before, incoming, mode)
       state.commitSelectionChange(before, after, t('canvas.history.lassoSelection'))
     }
-    if (drag.kind === 'magic-preview' && drag.selectionStart !== undefined) {
-      const commitStartedAt = performance.now()
-      state.commitSelectionChange(drag.selectionStart ?? null, drag.previewSelection ?? null, t('canvas.history.magicSelection'))
-      window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.commit-selection', performance.now() - commitStartedAt)
-    }
+    if (drag.kind === 'magic-preview') drag.magicRelease?.()
     if (drag.kind === 'move-selection' && drag.selectionStart && drag.previewSelection) {
       if (drag.floatingPasteSelectionBox) state.commitFloatingSelectionBoxMove(
         drag.selectionStart,
@@ -9572,7 +9908,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             symmetryCenter,
             activePaintLayer(session),
             symmetryStartPointForDrag(drag),
-            drag.previewQuad
+            drag.previewQuad,
+            false,
+            session.selectionRotationAlgorithm === 'rotsprite'
           )
           drag.deferredSelectionPreview = false
           for (const rect of deferredSelectionCommitInvalidationRects(drag)) invalidateCompositeRect(rect)
@@ -9608,6 +9946,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent): void => {
+      const magic = magicGestureRef.current
+      if (magic && (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd'))) magic.cancel()
+      if (magic && event.key === 'Enter') {
+        if (inputRef.current.drag === magic.drag) inputRef.current.finish()
+        magic.drag.magicRelease?.()
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
       const drag = inputRef.current.drag
       if (drag?.kind !== 'polygon-lasso' && drag?.kind !== 'polygon-shape' && drag?.kind !== 'curve-shape') return
       if (event.key === 'Enter') {
@@ -9657,11 +10004,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.stopImmediatePropagation()
       return
     }
-    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && !canvasResizePreviewRef.current && modifierActive(wheelModifiers, 'brushSizeWheelAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser') && (session.tool === 'airbrush' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize)) {
+    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && !canvasResizePreviewRef.current && modifierActive(wheelModifiers, 'brushSizeWheelAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify') && (session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize)) {
       event.preventDefault()
       event.stopImmediatePropagation()
       wheelBrushSizePreviewRef.current = true
       if (session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(session.airbrushScatterRadius + (delta < 0 ? 1 : -1))
+      else if (session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(session.liquifyRadius + (delta < 0 ? 1 : -1))
       else useWorkspace.getState().setBrushSize(session.brushSize + (delta < 0 ? 1 : -1))
       updateCursorAt(clientX, clientY, wheelModifiers.ctrlKey, wheelModifiers.altKey, wheelModifiers.shiftKey)
       scheduleDraw()
@@ -9808,7 +10156,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent, event.pointerType === 'mouse')) return
     const session = liveInputSession()
     const navigationGesture = event.button === 1
-      || (event.button === 0 && (event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)))
+      || (event.button === 0 && (session.animationPlaying || event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)))
     if (!navigationGesture && routeCanvasColorSamplingIntent(event.clientX, event.clientY, event.button === 2)) {
       event.preventDefault()
       event.stopPropagation()
@@ -9913,7 +10261,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     inputRef.current.altHeld = false
     inputRef.current.ctrlHeld = false
     inputRef.current.shiftHeld = false
+    if (quickEyedropperOriginalColorRef.current) flushEyedropperSampleColor()
     hideEyedropperMagnifier()
+    quickEyedropperOriginalColorRef.current = null
+    quickEyedropperSuppressedRef.current = false
     if (!inputRef.current.drag) event.currentTarget.style.cursor = canvasResizePreviewRef.current ? canvasCursors.unavailable : inputRef.current.spaceHeld ? canvasCursors.grab : canvasToolCursor(session.tool, session.primaryColor)
     if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
     else draw()
@@ -9931,7 +10282,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const pointerEnter = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const session = liveInputSession()
-    const navigationShortcutActive = event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)
+    const navigationShortcutActive = session.animationPlaying || event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)
     if (canvasColorSamplingIntentActive() && !navigationShortcutActive) {
       event.currentTarget.style.cursor = canvasCursors.eyedropper
       draw()

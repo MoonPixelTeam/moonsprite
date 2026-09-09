@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, LineKind, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
 import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
 import { readStoredJson, writeStoredJson } from './storage'
@@ -64,6 +64,7 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   moveAutoSelect: boolean
   selectionKind: SelectionKind
   selectionMode: SelectionMode
+  selectionRotationAlgorithm: 'fast' | 'rotsprite'
   selectionRounded: boolean
   selectionCornerRadius: number
   wandTolerance: number
@@ -77,6 +78,9 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   airbrushScatterRadius: number
   airbrushDensity: number
   airbrushIntervalMs: number
+  liquifyMode: LiquifyMode
+  liquifyRadius: number
+  liquifyStrength: number
 }
 
 const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, ProceduralBrushSettings> => Object.fromEntries(
@@ -124,6 +128,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   moveAutoSelect: true,
   selectionKind: 'rectangle',
   selectionMode: 'replace',
+  selectionRotationAlgorithm: 'fast',
   selectionRounded: false,
   selectionCornerRadius: 4,
   wandTolerance: 0,
@@ -136,7 +141,10 @@ export const defaultToolSettings: PersistedToolSettings = {
   airbrushParticleShape: 'round',
   airbrushScatterRadius: 12,
   airbrushDensity: 8,
-  airbrushIntervalMs: 50
+  airbrushIntervalMs: 50,
+  liquifyMode: 'push',
+  liquifyRadius: 16,
+  liquifyStrength: 50
 }
 
 export const cloneProceduralSettings = (settings: Record<ProceduralBrushId, ProceduralBrushSettings>): Record<ProceduralBrushId, ProceduralBrushSettings> => Object.fromEntries(
@@ -231,6 +239,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       moveAutoSelect: typeof stored.moveAutoSelect === 'boolean' ? stored.moveAutoSelect : defaultToolSettings.moveAutoSelect,
       selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' ? stored.selectionKind : defaultToolSettings.selectionKind,
       selectionMode: stored.selectionMode === 'add' || stored.selectionMode === 'subtract' || stored.selectionMode === 'intersect' || stored.selectionMode === 'replace' ? stored.selectionMode : defaultToolSettings.selectionMode,
+      selectionRotationAlgorithm: stored.selectionRotationAlgorithm === 'rotsprite' ? 'rotsprite' : 'fast',
       selectionRounded: typeof stored.selectionRounded === 'boolean' ? stored.selectionRounded : defaultToolSettings.selectionRounded,
       selectionCornerRadius: Number.isFinite(stored.selectionCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.selectionCornerRadius!))) : defaultToolSettings.selectionCornerRadius,
       wandTolerance: Number.isFinite(stored.wandTolerance) ? Math.max(0, Math.min(255, Math.round(stored.wandTolerance!))) : defaultToolSettings.wandTolerance,
@@ -243,6 +252,9 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       airbrushScatterRadius: Number.isFinite(stored.airbrushScatterRadius) ? Math.max(1, Math.min(64, Math.round(stored.airbrushScatterRadius!))) : defaultToolSettings.airbrushScatterRadius,
       airbrushDensity: Number.isFinite(stored.airbrushDensity) ? Math.max(1, Math.min(128, Math.round(stored.airbrushDensity!))) : defaultToolSettings.airbrushDensity,
       airbrushIntervalMs: Number.isFinite(stored.airbrushIntervalMs) ? Math.max(16, Math.min(1000, Math.round(stored.airbrushIntervalMs!))) : defaultToolSettings.airbrushIntervalMs,
+      liquifyMode: stored.liquifyMode === 'inflate' || stored.liquifyMode === 'deflate' || stored.liquifyMode === 'twist-clockwise' || stored.liquifyMode === 'twist-counter-clockwise' || stored.liquifyMode === 'push' ? stored.liquifyMode : defaultToolSettings.liquifyMode,
+      liquifyRadius: Number.isFinite(stored.liquifyRadius) ? Math.max(1, Math.min(128, Math.round(stored.liquifyRadius!))) : defaultToolSettings.liquifyRadius,
+      liquifyStrength: Number.isFinite(stored.liquifyStrength) ? Math.max(1, Math.min(100, Math.round(stored.liquifyStrength!))) : defaultToolSettings.liquifyStrength,
       symmetryAxes: {
         horizontal: storedSymmetryAxes?.horizontal === true,
         vertical: storedSymmetryAxes?.vertical === true,

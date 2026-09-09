@@ -4,6 +4,7 @@ import type {
   ColorMode,
   FreeTileInstance,
   LuaScriptOperation,
+  LuaScriptSurfaceSnapshot,
   MoonSpriteApi,
   RgbaColor,
   SelectionMask,
@@ -12,9 +13,9 @@ import type {
   WorkspacePanelDock,
   WorkspacePanelId
 } from '@shared/types'
-import { ensureAnimationDocument } from '@/core/animation'
+import { animationLayerAtFrame, ensureAnimationDocument, refreshActiveAnimationFrame, syncAnimationLayerAtFrame } from '@/core/animation'
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
-import { createId, getActiveLayer } from '@/core/document'
+import { createId, getActiveLayer, markLayerContentChanged, readLayerPacked, setLayerStorageOrigin } from '@/core/document'
 import {
   captureFreeTileSourceSnapshot,
   freeTileSourceOwnerForId
@@ -41,6 +42,7 @@ import type { DocumentSession } from './workspace-types'
 import { useWorkspace } from './workspace'
 
 const MAX_RESOURCE_SNAPSHOT_PIXELS = 1_048_576
+const MAX_LUA_SURFACE_PIXELS = 4_194_304
 const PANEL_IDS = Object.keys(DEFAULT_PANEL_DOCKS) as WorkspacePanelId[]
 const COLOR_MODES: readonly ColorMode[] = ['rgba', 'grayscale', 'indexed']
 const BLEND_MODES: readonly BlendMode[] = [
@@ -129,8 +131,13 @@ export function buildLuaMseSnapshot(session: DocumentSession, storedBrushes: rea
     },
     layers: document.layers.map(layerInfo),
     animation: {
-      frames: timeline.frames.map((frame, index) => ({ id: frame.id, number: index + 1, duration: frame.duration, active: frame.id === timeline.activeFrameId })),
+      frames: timeline.frames.map((frame, index) => ({ id: frame.id, number: index + 1, duration: frame.duration, disabled: frame.disabled === true, active: frame.id === timeline.activeFrameId })),
       loops: (timeline.loopSections ?? []).map((loop) => ({ ...loop }))
+    },
+    range: {
+      layerIds: session.selectedLayerIds.length > 0 ? [...session.selectedLayerIds] : [activeLayer.id],
+      frameIds: session.selectedAnimationFrameIds.length > 0 ? [...session.selectedAnimationFrameIds] : [timeline.activeFrameId],
+      cellKeys: [...session.selectedAnimationCellKeys]
     },
     palette: {
       entries: document.palette.map((entry) => ({ id: entry.id, name: entry.name, color: { ...entry.color } })),
@@ -196,6 +203,76 @@ const stringValue = (value: unknown, fallback = ''): string => typeof value === 
 const finiteNumber = (value: unknown, fallback = 0): number => typeof value === 'number' && Number.isFinite(value) ? value : fallback
 const integer = (value: unknown, fallback = 0): number => Math.trunc(finiteNumber(value, fallback))
 const booleanValue = (value: unknown, fallback = false): boolean => typeof value === 'boolean' ? value : fallback
+
+const surfaceSnapshotValue = (value: unknown, format: LuaScriptSurfaceSnapshot['format']): LuaScriptSurfaceSnapshot => {
+  const source = recordValue(value)
+  if (!source) throw new Error('surface must be an object')
+  const width = integer(source.width)
+  const height = integer(source.height)
+  const pixelCount = width * height
+  if (source.format !== format
+    || !Number.isSafeInteger(width)
+    || !Number.isSafeInteger(height)
+    || width < 1
+    || height < 1
+    || !Number.isSafeInteger(pixelCount)
+    || pixelCount > MAX_LUA_SURFACE_PIXELS
+    || !Array.isArray(source.pixels)
+    || source.pixels.length !== pixelCount
+    || source.pixels.some((pixel) => !Number.isSafeInteger(pixel))) {
+    throw new Error('surface is invalid')
+  }
+  return {
+    format,
+    width,
+    height,
+    offsetX: integer(source.offsetX),
+    offsetY: integer(source.offsetY),
+    pixels: source.pixels.map((pixel) => (pixel as number) >>> 0)
+  }
+}
+
+const snapshotForLayer = (document: DocumentSession['document'], layer: DocumentSession['document']['layers'][number]): LuaScriptSurfaceSnapshot => ({
+  format: layer.format,
+  width: layer.width,
+  height: layer.height,
+  offsetX: layer.offsetX,
+  offsetY: layer.offsetY,
+  pixels: Array.from({ length: layer.width * layer.height }, (_, index) => readLayerPacked(document, layer, index) >>> 0)
+})
+
+const equalSurfaceSnapshots = (left: LuaScriptSurfaceSnapshot, right: LuaScriptSurfaceSnapshot): boolean => (
+  left.format === right.format
+  && left.width === right.width
+  && left.height === right.height
+  && left.offsetX === right.offsetX
+  && left.offsetY === right.offsetY
+  && left.pixels.length === right.pixels.length
+  && left.pixels.every((pixel, index) => (pixel >>> 0) === (right.pixels[index] >>> 0))
+)
+
+const applySurfaceSnapshot = (layer: DocumentSession['document']['layers'][number], snapshot: LuaScriptSurfaceSnapshot): void => {
+  markLayerContentChanged(layer)
+  layer.width = snapshot.width
+  layer.height = snapshot.height
+  layer.offsetX = snapshot.offsetX
+  layer.offsetY = snapshot.offsetY
+  setLayerStorageOrigin(layer, { x: 0, y: 0 })
+  if (layer.format === 'indexed') {
+    layer.pixels = Uint32Array.from(snapshot.pixels, (pixel) => pixel >>> 0)
+  } else {
+    const pixels = new Uint8ClampedArray(snapshot.pixels.length * 4)
+    snapshot.pixels.forEach((pixel, index) => {
+      const value = pixel >>> 0
+      const offset = index * 4
+      pixels[offset] = value & 0xff
+      pixels[offset + 1] = value >>> 8 & 0xff
+      pixels[offset + 2] = value >>> 16 & 0xff
+      pixels[offset + 3] = value >>> 24 & 0xff
+    })
+    layer.pixels = pixels
+  }
+}
 
 const colorValue = (value: unknown, fallback?: RgbaColor): RgbaColor => {
   const source = recordValue(value)
@@ -373,9 +450,72 @@ export async function applyLuaScriptOperation(
         workspace.setActiveAnimationFrame(resolveFrameId(session, spec.id ?? spec.frame ?? spec.value))
         break
       }
+      case 'animation.setFrameDuration': {
+        const session = activeSession()
+        const timeline = ensureAnimationDocument(session.document)
+        const frameId = resolveFrameId(session, spec.id ?? spec.frame ?? spec.value)
+        const frame = timeline.frames.find((candidate) => candidate.id === frameId)
+        if (!frame) throw new Error('frame does not exist')
+        const before = frame.duration
+        const after = Math.max(1, Math.min(60_000, integer(spec.duration, before)))
+        if (before !== after) {
+          frame.duration = after
+          workspace.pushHistory({
+            label: 'Lua: set frame duration',
+            bytes: 32,
+            undo: () => { frame.duration = before },
+            redo: () => { frame.duration = after },
+            contentChanged: false,
+            requiresAnimationSync: false
+          })
+        }
+        break
+      }
+      case 'animation.setCelSurface': {
+        const session = activeSession()
+        const timeline = ensureAnimationDocument(session.document)
+        const layerId = resolveLayerId(session, spec.layerId)
+        const frameId = resolveFrameId(session, spec.frameId)
+        const cel = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === frameId)
+        if (!cel || (typeof spec.celId === 'string' && cel.id !== spec.celId)) throw new Error('cel does not exist')
+        const layer = session.document.layers.find((candidate) => candidate.id === layerId)!
+        const before = surfaceSnapshotValue(spec.before, layer.format)
+        const after = surfaceSnapshotValue(spec.after, layer.format)
+        const current = animationLayerAtFrame(session.document, layerId, frameId)
+        if (!current || !equalSurfaceSnapshots(snapshotForLayer(session.document, current), before)) {
+          throw new Error('cel surface changed before the script result was applied')
+        }
+        const apply = (snapshot: LuaScriptSurfaceSnapshot): void => {
+          const target = animationLayerAtFrame(session.document, layerId, frameId)
+          if (!target) return
+          applySurfaceSnapshot(target, snapshot)
+          syncAnimationLayerAtFrame(session.document, target, frameId)
+          refreshActiveAnimationFrame(session.document)
+        }
+        apply(after)
+        workspace.pushHistory({
+          label: 'Lua: set cel surface',
+          bytes: (before.pixels.length + after.pixels.length) * 4 + 96,
+          undo: () => apply(before),
+          redo: () => apply(after),
+          invalidation: { kind: 'full' },
+          affectedLayerIds: [layerId],
+          contentChanged: true,
+          requiresAnimationSync: false
+        })
+        changedPixelCount = before.width !== after.width || before.height !== after.height
+          ? Math.max(before.pixels.length, after.pixels.length)
+          : before.pixels.reduce((count, pixel, index) => count + Number((pixel >>> 0) !== (after.pixels[index] >>> 0)), 0)
+        break
+      }
       case 'animation.createLoop': {
         const session = activeSession()
-        workspace.createAnimationLoopSection(loopOptions(session, spec))
+        const createdId = workspace.createAnimationLoopSection(loopOptions(session, spec))
+        const requestedId = stringValue(spec.id)
+        if (createdId && requestedId && requestedId !== createdId) {
+          const created = ensureAnimationDocument(session.document).loopSections?.find((loop) => loop.id === createdId)
+          if (created) created.id = requestedId
+        }
         break
       }
       case 'animation.updateLoop': {

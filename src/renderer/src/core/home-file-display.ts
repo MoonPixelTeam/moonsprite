@@ -7,7 +7,7 @@ export type HomeFileDisplayFormat = (typeof HOME_FILE_DISPLAY_FORMATS)[number]
 export const HOME_FILE_DISPLAY_FORMATS_STORAGE_KEY = 'moonsprite.home-file-display-formats.v1'
 
 const extensionsByFormat: Readonly<Record<HomeFileDisplayFormat, readonly string[]>> = {
-  project: ['moonsprite', 'ase', 'aseprite'],
+  project: ['moonsprite', 'ase', 'aseprite', 'psd'],
   png: ['png'],
   jpg: ['jpg', 'jpeg'],
   webp: ['webp'],

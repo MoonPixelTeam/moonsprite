@@ -1281,7 +1281,7 @@ fn supports_preview_cache(path: &Path) -> bool {
         .is_some_and(|value| {
             matches!(
                 value.to_ascii_lowercase().as_str(),
-                "moonsprite" | "ase" | "aseprite" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
+                "moonsprite" | "ase" | "aseprite" | "psd" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
             )
         })
 }
@@ -1634,6 +1634,7 @@ mod tests {
             "project.moonsprite.bak",
             "sprite.ase",
             "sprite.aseprite",
+            "sprite.psd",
             "sprite.png",
             "sprite.jpg",
             "sprite.jpeg",

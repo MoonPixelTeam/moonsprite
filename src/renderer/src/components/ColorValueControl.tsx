@@ -8,6 +8,7 @@ import { PanelResizeHandles, useFloatingWindowStack, type ResizeDirection } from
 import { useI18n } from '@/components/I18nProvider'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { paletteMarkerColor } from '@/core/palette-layout'
+import { rangeValueWithShiftStep } from '@/core/range-step'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { CANVAS_COLOR_SAMPLED_EVENT, CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, type CanvasColorSampledDetail } from './color-sampling-events'
 import { normalEditorToolIconFor, PixelAssetIcon, TOOL_DEFINITIONS } from './app/editor-tools'
@@ -132,6 +133,7 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
   const samplingReturnToolRef = useRef<{ documentId: string; tool: ToolId } | null>(null)
   const sampledColorHandlerRef = useRef<(color: RgbaColor) => void>(() => undefined)
   const finishSamplingRef = useRef<(updateState?: boolean) => void>(() => undefined)
+  const rangeShiftHeldRef = useRef(false)
 
   useEffect(() => () => {
     if (copyFeedbackTimeoutRef.current !== null) window.clearTimeout(copyFeedbackTimeoutRef.current)
@@ -458,7 +460,8 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
       </div> : fields.map((field) => {
         const gradient = colorGradient(mode, values, color, field)
         const background = field.key === 'a' ? `${gradient}, repeating-conic-gradient(var(--theme-checker-dark) 0 25%, var(--theme-checker-light) 0 50%) 50% / 20px 20px` : gradient
-        return <label key={field.key} className="color-editor-field"><span className="color-editor-field-label">{field.label}</span><input aria-label={t('colorEditor.slider', { label, field: field.label })} className="color-editor-range" style={{ background }} type="range" min={field.min} max={field.max} step={field.step} value={values[field.key] ?? 0} disabled={disabled} onChange={(event) => updateValue(field.key, Number(event.target.value))} onPointerUp={(event) => { confirmWorkingColor(); event.currentTarget.blur() }} onPointerCancel={(event) => { confirmWorkingColor(); event.currentTarget.blur() }} onBlur={confirmWorkingColor} /><NumberInput aria-label={`${label} ${field.label}`} min={field.min} max={field.max} step={field.step} value={Math.round(values[field.key] ?? 0)} disabled={disabled} onValueChange={(value) => { const next = updateValue(field.key, value); commitEditorColor(next) }} /></label>
+        const percentage = field.key === 's' || field.key === 'v' || field.key === 'l' || field.key === 'labL' || field.key === 'c' || field.key === 'm' || field.key === 'y' || field.key === 'k'
+        return <label key={field.key} className="color-editor-field"><span className="color-editor-field-label">{field.label}</span><input aria-label={t('colorEditor.slider', { label, field: field.label })} className="color-editor-range" style={{ background }} type="range" min={field.min} max={field.max} step={field.step} value={values[field.key] ?? 0} disabled={disabled} onPointerDown={(event) => { rangeShiftHeldRef.current = event.shiftKey }} onPointerMove={(event) => { rangeShiftHeldRef.current = event.shiftKey }} onChange={(event) => updateValue(field.key, rangeValueWithShiftStep(Number(event.target.value), field.min, field.max, field.step, percentage ? 'percentage' : 'number', rangeShiftHeldRef.current))} onPointerUp={(event) => { rangeShiftHeldRef.current = false; confirmWorkingColor(); event.currentTarget.blur() }} onPointerCancel={(event) => { rangeShiftHeldRef.current = false; confirmWorkingColor(); event.currentTarget.blur() }} onBlur={() => { rangeShiftHeldRef.current = false; confirmWorkingColor() }} /><NumberInput aria-label={`${label} ${field.label}`} min={field.min} max={field.max} step={field.step} value={Math.round(values[field.key] ?? 0)} disabled={disabled} onValueChange={(value) => { const next = updateValue(field.key, value); commitEditorColor(next) }} /></label>
       })}
     </div>
     <PanelResizeHandles onResize={(event, direction) => {

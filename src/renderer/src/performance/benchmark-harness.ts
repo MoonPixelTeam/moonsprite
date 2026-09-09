@@ -20,6 +20,12 @@ async function createSimpleDocument(size: number) {
   return { uniquePixelBytes: document.layers[0].pixels.byteLength, layerCount: 1, frameCount: 1 }
 }
 
+async function createSparseMagicWandDocument(size: number) {
+  const document = createDocument('Sparse magic wand performance project', size, size, 'rgba')
+  addDocument(document)
+  return { uniquePixelBytes: document.layers[0].pixels.byteLength, layerCount: 1, frameCount: 1 }
+}
+
 async function createComplexDocument(size: number) {
   const document = createDocument('Complex performance project', 1, 1, 'rgba')
   document.width = size
@@ -335,6 +341,7 @@ function prepareMagicWand() {
 export function installPerformanceHarness() {
   window.__moonSpritePerformanceHarness = {
     createSimpleDocument,
+    createSparseMagicWandDocument,
     createComplexDocument,
     createLargeDocument,
     activeView,
@@ -342,6 +349,10 @@ export function installPerformanceHarness() {
     prepareTool,
     setBrushSize,
     prepareMagicWand,
+    selectionState: () => {
+      const selection = activeSession()?.selection
+      return selection ? { x: selection.x, y: selection.y, width: selection.width, height: selection.height } : null
+    },
     prepareCenteredSelection,
     prepareActiveLayerStyle,
     previewActiveLayerStyleSize,

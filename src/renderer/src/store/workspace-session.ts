@@ -1,4 +1,4 @@
-import type { ImageBrush, LayerMask, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
+import type { ImageBrush, LayerMask, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
 import { HistoryStack, type ContentInvalidationHint } from '@/core/history'
 import { PROCEDURAL_BRUSH_IDS } from '@/core/brushes'
 import { packColor, unpackColor } from '@/core/raster'
@@ -91,6 +91,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     moveAutoSelect: source.moveAutoSelect,
     selectionKind: source.selectionKind,
     selectionMode: source.selectionMode,
+    selectionRotationAlgorithm: source.selectionRotationAlgorithm,
     selectionRounded: source.selectionRounded,
     selectionCornerRadius: source.selectionCornerRadius,
     wandTolerance: source.wandTolerance,
@@ -104,7 +105,10 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     airbrushParticleShape: source.airbrushParticleShape,
     airbrushScatterRadius: source.airbrushScatterRadius,
     airbrushDensity: source.airbrushDensity,
-    airbrushIntervalMs: source.airbrushIntervalMs
+    airbrushIntervalMs: source.airbrushIntervalMs,
+    liquifyMode: source.liquifyMode,
+    liquifyRadius: source.liquifyRadius,
+    liquifyStrength: source.liquifyStrength
   })
 }
 
@@ -288,6 +292,7 @@ export function persistToolSettings(session: DocumentSession): void {
     moveAutoSelect: session.moveAutoSelect,
     selectionKind: session.selectionKind,
     selectionMode: session.selectionMode,
+    selectionRotationAlgorithm: session.selectionRotationAlgorithm,
     selectionRounded: session.selectionRounded,
     selectionCornerRadius: session.selectionCornerRadius,
     wandTolerance: session.wandTolerance,
@@ -300,6 +305,9 @@ export function persistToolSettings(session: DocumentSession): void {
     airbrushScatterRadius: session.airbrushScatterRadius,
     airbrushDensity: session.airbrushDensity,
     airbrushIntervalMs: session.airbrushIntervalMs,
+    liquifyMode: session.liquifyMode,
+    liquifyRadius: session.liquifyRadius,
+    liquifyStrength: session.liquifyStrength,
     symmetryAxes: { ...session.symmetryAxes }
   }
   try {
@@ -396,7 +404,9 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     moveAutoSelect: settings.moveAutoSelect,
     selection: null,
     selectionPropertiesActive: false,
+    selectionAspectRatio: null,
     selectionAngle: 0,
+    selectionRotationAlgorithm: settings.selectionRotationAlgorithm,
     freeTransformQuad: null,
     selectionPivot: null,
     selectionKind: settings.selectionKind,
@@ -413,6 +423,11 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     airbrushScatterRadius: settings.airbrushScatterRadius,
     airbrushDensity: settings.airbrushDensity,
     airbrushIntervalMs: settings.airbrushIntervalMs,
+    liquifyMode: settings.liquifyMode,
+    liquifyRadius: settings.liquifyRadius,
+    liquifyStrength: settings.liquifyStrength,
+    liquifyResetHistoryPosition: null,
+    liquifyResetHistoryRevision: null,
     symmetryAxes: { ...settings.symmetryAxes },
     symmetryAxesInitialized: {
       horizontal: settings.symmetryAxes.horizontal,
@@ -501,17 +516,22 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   return session
 }
 
+/** Refreshes changed pixels without declaring an edit (e.g. preview rollback). */
+export function invalidateSessionContent(session: DocumentSession, invalidation: ContentInvalidationHint = { kind: 'full' }): void {
+  const fromRevision = session.contentRevision
+  session.revision += 1
+  session.contentRevision += 1
+  if (invalidation.kind === 'full') session.layersPanelRevision += 1
+  session.contentInvalidation = invalidation.kind === 'region'
+    ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
+    : { kind: 'full', fromRevision, revision: session.contentRevision }
+}
+
 export function touch(session: DocumentSession, dirty = true, invalidation: ContentInvalidationHint = { kind: 'full' }): void {
   if (dirty) {
-    const fromRevision = session.contentRevision
     session.document.dirty = true
     session.document.updatedAt = new Date().toISOString()
-    session.revision += 1
-    session.contentRevision += 1
-    if (invalidation.kind === 'full') session.layersPanelRevision += 1
-    session.contentInvalidation = invalidation.kind === 'region'
-      ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
-      : { kind: 'full', fromRevision, revision: session.contentRevision }
+    invalidateSessionContent(session, invalidation)
     session.recoverySuppressed = false
   }
 }

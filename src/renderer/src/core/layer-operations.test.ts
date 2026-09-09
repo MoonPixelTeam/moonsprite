@@ -40,6 +40,27 @@ describe('layer operations', () => {
     expect(layer.groupId).toBe('group-created')
   })
 
+  it('wraps all explicitly selected layers even when an active group is also present', () => {
+    const state = createState()
+    const first = getActiveLayer(state.document)
+    const second = createLayer('Second', 2, 2, 'rgba')
+    state.document.layers.push(second)
+    state.document.groups.push(group('existing'))
+    state.selectedLayerIds = [first.id, second.id]
+    state.selectedGroupId = 'existing'
+    state.selectedGroupIds = ['existing']
+
+    const create = createLayerGroup(state, 'group-created', 'Created')
+
+    expect(create).not.toBeNull()
+    expect(first.groupId).toBe('group-created')
+    expect(second.groupId).toBe('group-created')
+    expect(state.selectedGroupId).toBe('group-created')
+    create?.undo()
+    expect(first.groupId).toBeNull()
+    expect(second.groupId).toBeNull()
+  })
+
 
 
   it('moves mixed panel rows atomically without changing their visible order or selection', () => {

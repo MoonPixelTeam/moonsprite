@@ -65,6 +65,15 @@ pub(super) struct LuaScriptSelectionContext {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct LuaScriptCelContext {
+    pub(super) id: String,
+    pub(super) frame_id: String,
+    pub(super) frame_number: u32,
+    pub(super) surface: LuaScriptSurfaceSnapshot,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct LuaScriptContext {
     pub(super) document_id: String,
     pub(super) document_name: String,
@@ -82,8 +91,12 @@ pub(crate) struct LuaScriptContext {
     pub(super) layer_visible: bool,
     pub(super) layer_locked: bool,
     pub(super) layer_format: String,
+    pub(super) layer_group_id: Option<String>,
+    pub(super) layer_stack_index: u32,
     pub(super) frame_number: u32,
     pub(super) pixels: Vec<u32>,
+    #[serde(default)]
+    pub(super) active_layer_cels: Vec<LuaScriptCelContext>,
     pub(super) selection: Option<LuaScriptSelectionContext>,
     pub(super) transparent_color: u32,
     pub(super) foreground: u32,
@@ -100,7 +113,7 @@ pub(super) struct LuaScriptPixelChange {
     pub(super) after: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct LuaScriptSurfaceSnapshot {
     pub(super) format: String,
@@ -143,6 +156,9 @@ pub(super) struct LuaScriptCreatedLayer {
     pub(super) visible: bool,
     pub(super) locked: bool,
     pub(super) frame_number: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) parent_group_id: Option<String>,
+    pub(super) stack_index: u32,
     pub(super) surface: LuaScriptSurfaceSnapshot,
 }
 
@@ -202,6 +218,8 @@ pub(crate) struct LuaScriptRunResult {
     created_layers: Vec<LuaScriptCreatedLayer>,
     created_documents: Vec<LuaScriptCreatedDocument>,
     dialogs: Vec<LuaScriptDialog>,
+    active_layer_id: Option<String>,
+    active_frame_number: Option<u32>,
     finished: bool,
     elapsed_ms: u64,
 }
@@ -426,6 +444,8 @@ fn run_result(
         created_layers: invocation.created_layers,
         created_documents: invocation.created_documents,
         dialogs: invocation.dialogs,
+        active_layer_id: invocation.active_layer_id,
+        active_frame_number: invocation.active_frame_number,
         finished,
         elapsed_ms: invocation.elapsed_ms,
     }

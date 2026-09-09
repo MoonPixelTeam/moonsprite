@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { strFromU8, unzipSync, zipSync, type Zippable } from 'fflate'
 import { activateAnimationFrame, addBlankAnimationFrame, cloneAnimationCelsForLayer, connectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, refreshActiveAnimationFrame, resizeAnimationCelsAt, syncActiveAnimationFrame, syncActiveAnimationLayer } from './animation'
-import { animationMaskAt, createDocument, createLayer, createLayerMask, duplicateLayer, getActiveLayer, getLayerStorageOrigin, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
+import { animationMaskAt, cachedLayerContentBounds, createDocument, createLayer, createLayerMask, duplicateLayer, getActiveLayer, getLayerStorageOrigin, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { applySelectionTranslationPreview, captureSelectionTransform, restoreSelectionTranslationPreview } from './tools'
 import { acceptProjectSaveBaseline, compactProjectRasterStorage, decodeProject, encodeProject, encodeProjectAsync, encodeProjectSaveAsync, encodeProjectWorkerPayload, PROJECT_SCHEMA_VERSION, migrateProjectManifest, readProjectGalleryMetadata, registerProjectSaveBaseline, type ProjectEncodeWorkerPayload } from './project-format'
 import { rasterStorageIdentity, runtimeRasterForSurface, surfacePixelsMaterialized } from './runtime-raster'
@@ -702,6 +702,17 @@ describe('project manifest migration boundary', () => {
     expect(entry.dataEncoding).toBe('sparse-tiles-v1')
     expect(entry.dataFile).toMatch(/\.tiles$/)
     expect(getActiveLayer(restored).pixels).toEqual(pixels)
+  })
+
+  it('prewarms sparse visible bounds for magic wand', () => {
+    const document = createDocument('sparse visible bounds', 128, 128, 'rgba')
+    const pixels = getActiveLayer(document).pixels as Uint8ClampedArray
+    pixels[(80 * 128 + 96) * 4 + 3] = 255
+
+    const restored = decodeProject(encodeProject(document))
+    const layer = getActiveLayer(restored)
+
+    expect(cachedLayerContentBounds(restored, layer)).toEqual({ x: 64, y: 64, width: 64, height: 64 })
   })
 
   it('rejects malformed sparse raster containers', () => {

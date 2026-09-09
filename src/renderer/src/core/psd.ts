@@ -1,4 +1,6 @@
 import {
+  initializeCanvas,
+  readPsd,
   writePsdUint8Array,
   type BlendMode as PsdBlendMode,
   type Layer as PsdLayer,
@@ -7,9 +9,10 @@ import {
   type PixelData,
   type Psd
 } from 'ag-psd'
-import type { BlendMode, LayerGroup, LayerStyles, RasterLayer, RgbaColor, SpriteDocument } from '@shared/types'
-import { cloneDocumentForAnimationFrame } from './animation'
-import { animationMaskAt, compositeDocument, getPaletteEntry, layerContentBounds, readLayerPacked } from './document'
+import { BLEND_MODES, type AnimationCel, type BlendMode, type LayerGroup, type LayerMask, type LayerStyles, type RasterLayer, type RgbaColor, type SpriteDocument } from '@shared/types'
+import { cloneDocumentForAnimationFrame, refreshActiveAnimationFrame } from './animation'
+import { animationMaskAt, compositeDocument, createDocument, createId, createLayer, createLayerMask, getPaletteEntry, layerContentBounds, readLayerPacked } from './document'
+import { applyImportedRgbaPalette } from './imported-palette'
 import { buildLayerPanelTree } from './layer-panel-layout'
 import { hasEnabledLayerStyles } from './layer-styles'
 import { translateCurrent as tr } from './localization'
@@ -23,6 +26,186 @@ const effectColor = (color: RgbaColor): { r: number; g: number; b: number } => (
 const normalizedAngle = (angle: number): number => (angle % 360 + 360) % 360
 
 const psdBlendMode = (blendMode: BlendMode): PsdBlendMode => blendMode.replace(/-/g, ' ') as PsdBlendMode
+const moonSpriteBlendMode = (blendMode: PsdBlendMode | undefined): BlendMode => {
+  const normalized = (blendMode ?? 'normal').replace(/ /g, '-') as BlendMode
+  return BLEND_MODES.includes(normalized) ? normalized : 'normal'
+}
+
+const unitOpacity = (value: number | undefined): number => Math.max(0, Math.min(1, value ?? 1))
+const isPsdLayerLocked = (layer: PsdLayer): boolean => layer.transparencyProtected === true
+  || Boolean(layer.protected && Object.values(layer.protected).some(Boolean))
+
+const initializePsdImageData = (): void => initializeCanvas(
+  (width, height) => ({ width, height } as HTMLCanvasElement),
+  (width, height) => ({ data: new Uint8ClampedArray(width * height * 4), width, height, colorSpace: 'srgb' } as ImageData)
+)
+
+function rgbaPixels(imageData: PixelData): Uint8ClampedArray {
+  const pixelCount = imageData.width * imageData.height
+  if (!Number.isSafeInteger(pixelCount) || pixelCount < 1 || imageData.data.length < pixelCount * 4) {
+    throw new Error('PSD image data is incomplete.')
+  }
+  if (imageData.data instanceof Uint8ClampedArray) return imageData.data.slice(0, pixelCount * 4)
+  const output = new Uint8ClampedArray(pixelCount * 4)
+  if (imageData.data instanceof Uint16Array) {
+    for (let index = 0; index < output.length; index += 1) output[index] = Math.round(imageData.data[index] / 257)
+  } else if (imageData.data instanceof Float32Array) {
+    for (let index = 0; index < output.length; index += 1) output[index] = Math.round(clampUnit(imageData.data[index]) * 255)
+  } else output.set(imageData.data.subarray(0, output.length))
+  return output
+}
+
+function importedMask(ownerId: string, ownerKind: LayerMask['ownerKind'], source: PsdLayer, documentWidth: number, documentHeight: number): LayerMask | null {
+  const psdMask = source.mask ?? source.realMask
+  if (!psdMask) return null
+  const imageData = psdMask.imageData
+  const relativeX = psdMask.positionRelativeToLayer ? source.left ?? 0 : 0
+  const relativeY = psdMask.positionRelativeToLayer ? source.top ?? 0 : 0
+  const offsetX = Math.trunc((psdMask.left ?? 0) + relativeX)
+  const offsetY = Math.trunc((psdMask.top ?? 0) + relativeY)
+  const defaultBlack = psdMask.defaultColor === 0
+  const width = defaultBlack ? documentWidth : Math.max(1, imageData?.width ?? 1)
+  const height = defaultBlack ? documentHeight : Math.max(1, imageData?.height ?? 1)
+  const mask = createLayerMask(ownerId, width, height, ownerKind)
+  mask.visible = psdMask.disabled !== true
+  mask.offsetX = defaultBlack ? 0 : offsetX
+  mask.offsetY = defaultBlack ? 0 : offsetY
+  if (defaultBlack) {
+    for (let index = 3; index < mask.pixels.length; index += 4) mask.pixels[index] = 255
+  }
+  if (!imageData) return mask
+  const sourcePixels = rgbaPixels(imageData)
+  for (let y = 0; y < imageData.height; y += 1) for (let x = 0; x < imageData.width; x += 1) {
+    const targetX = defaultBlack ? offsetX + x : x
+    const targetY = defaultBlack ? offsetY + y : y
+    if (targetX < 0 || targetY < 0 || targetX >= width || targetY >= height) continue
+    const sourceOffset = (y * imageData.width + x) * 4
+    const targetOffset = (targetY * width + targetX) * 4
+    const alpha = sourcePixels[sourceOffset + 3]
+    const gray = alpha === 0
+      ? (psdMask.defaultColor ?? 255)
+      : Math.round((sourcePixels[sourceOffset] * 2126 + sourcePixels[sourceOffset + 1] * 7152 + sourcePixels[sourceOffset + 2] * 722) / 10000)
+    mask.pixels[targetOffset] = gray
+    mask.pixels[targetOffset + 1] = gray
+    mask.pixels[targetOffset + 2] = gray
+    mask.pixels[targetOffset + 3] = 255
+  }
+  return mask
+}
+
+export function decodePsd(input: Uint8Array, fallbackName = 'Imported PSD', onProgress?: (value: number) => void): SpriteDocument {
+  const reportProgress = (value: number): void => onProgress?.(Math.max(0, Math.min(1, value)))
+  reportProgress(0)
+  initializePsdImageData()
+  const parsed = readPsd(input, {
+    useImageData: true,
+    skipThumbnail: true,
+    skipLinkedFilesData: true,
+    logMissingFeatures: false
+  })
+  if (!Number.isSafeInteger(parsed.width) || !Number.isSafeInteger(parsed.height)
+    || parsed.width < 1 || parsed.height < 1 || parsed.width > MAX_PSD_DIMENSION || parsed.height > MAX_PSD_DIMENSION) {
+    throw new Error(tr('core.psd.canvasSizeRange'))
+  }
+
+  const document = createDocument(fallbackName, 1, 1, 'rgba')
+  document.width = parsed.width
+  document.height = parsed.height
+  document.layers = []
+  document.groups = []
+  const masks: Array<{ ownerKind: LayerMask['ownerKind']; ownerId: string; mask: LayerMask }> = []
+  let visited = 0
+  const total = Math.max(1, (() => {
+    const count = (children: readonly PsdLayer[] | undefined): number => (children ?? []).reduce((sum, child) => sum + 1 + count(child.children), 0)
+    return count(parsed.children)
+  })())
+
+  const appendChildren = (children: readonly PsdLayer[] | undefined, parentGroupId: string | null): void => {
+    for (const source of children ?? []) {
+      if (source.children) {
+        const id = createId('group')
+        const blendMode = source.blendMode === 'pass through' ? 'normal' : moonSpriteBlendMode(source.blendMode)
+        const group: LayerGroup = {
+          id,
+          name: source.name?.trim() || tr('core.document.group'),
+          parentGroupId,
+          panelOrder: document.layers.length + 0.5,
+          visible: source.hidden !== true,
+          locked: isPsdLayerLocked(source),
+          opacity: unitOpacity(source.opacity),
+          blendMode,
+          ...(source.clipping === true ? { clippingMask: true } : {}),
+          ...(source.blendMode !== undefined && source.blendMode !== 'pass through' ? { cumulativeBlend: true } : {})
+        }
+        document.groups.push(group)
+        const mask = importedMask(id, 'group', source, parsed.width, parsed.height)
+        if (mask) masks.push({ ownerKind: 'group', ownerId: id, mask })
+        appendChildren(source.children, id)
+      } else {
+        const imageData = source.imageData
+        const layer = createLayer(source.name?.trim() || tr('core.document.layer'), Math.max(1, imageData?.width ?? 1), Math.max(1, imageData?.height ?? 1), 'rgba')
+        if (layer.format !== 'rgba') continue
+        layer.groupId = parentGroupId
+        layer.visible = source.hidden !== true
+        layer.locked = isPsdLayerLocked(source)
+        layer.opacity = unitOpacity(source.opacity)
+        layer.blendMode = moonSpriteBlendMode(source.blendMode)
+        layer.clippingMask = source.clipping === true
+        layer.offsetX = Math.trunc(source.left ?? 0)
+        layer.offsetY = Math.trunc(source.top ?? 0)
+        if (imageData) layer.pixels = rgbaPixels(imageData)
+        document.layers.push(layer)
+        const mask = importedMask(layer.id, 'cel', source, parsed.width, parsed.height)
+        if (mask) masks.push({ ownerKind: 'cel', ownerId: layer.id, mask })
+      }
+      visited += 1
+      reportProgress(0.1 + 0.75 * visited / total)
+    }
+  }
+  appendChildren(parsed.children, null)
+
+  const layersHaveVisiblePixels = document.layers.some((layer) => {
+    if (layer.format !== 'rgba') return false
+    for (let index = 3; index < layer.pixels.length; index += 4) if (layer.pixels[index] !== 0) return true
+    return false
+  })
+  const compositePixels = parsed.imageData ? rgbaPixels(parsed.imageData) : null
+  const compositeHasVisiblePixels = compositePixels?.some((value, index) => index % 4 === 3 && value !== 0) === true
+  if (document.layers.length === 0 || (!layersHaveVisiblePixels && compositeHasVisiblePixels)) {
+    if (!parsed.imageData) throw new Error('PSD does not contain importable pixel data.')
+    const layer = createLayer(fallbackName, parsed.width, parsed.height, 'rgba')
+    if (layer.format !== 'rgba') throw new Error('Unable to create PSD raster layer.')
+    layer.pixels = compositePixels!
+    document.layers = [layer]
+    document.groups = []
+    masks.length = 0
+  }
+
+  const frameId = 'frame-1'
+  const cels: AnimationCel[] = document.layers.flatMap((layer) => layer.format === 'rgba' ? [{
+    id: createId('cel'),
+    layerId: layer.id,
+    frameId,
+    opacity: layer.opacity,
+    surface: { format: 'rgba', width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: layer.pixels }
+  }] : [])
+  document.animation = {
+    frames: [{ id: frameId, duration: 100 }],
+    cels,
+    layerMasks: masks.flatMap((entry) => entry.ownerKind === 'cel' ? [{ layerId: entry.ownerId, frameId, mask: entry.mask }] : []),
+    groupMasks: masks.flatMap((entry) => entry.ownerKind === 'group' ? [{ groupId: entry.ownerId, frameId, mask: entry.mask }] : []),
+    loopSections: [],
+    activeFrameId: frameId,
+    loop: true
+  }
+  document.activeLayerId = document.layers[document.layers.length - 1].id
+  document.name = fallbackName
+  refreshActiveAnimationFrame(document)
+  reportProgress(0.9)
+  applyImportedRgbaPalette(document)
+  reportProgress(1)
+  return document
+}
 
 function shadowAngle(offsetX: number, offsetY: number): number {
   if (offsetX === 0 && offsetY === 0) return 90

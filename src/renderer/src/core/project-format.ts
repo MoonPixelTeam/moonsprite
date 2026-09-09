@@ -1,6 +1,6 @@
 import { inflateSync, strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
 import { BLEND_MODES, type AnimationCelSurface, type AnimationFrame, type AnimationLoopSection, type BackgroundLayerSettings, type BlendMode, type ColorMode, type FreeTileCelData, type FreeTileInstance, type FreeTileSourceLayer, type LayerGroup, type LayerMask, type LayerStyles, type PaletteEntry, type ProjectBrush, type RasterFormat, type RasterLayer, type RgbaColor, type RuntimeRasterTiles, type SpriteDocument, type TextCelData, type TilemapCelData, type TilemapCell, type Tileset, type TimelapseSettings } from '@shared/types'
-import { compositeDocument, createCompositePointSampler, createId, createNormalCompositePointSampler, getLayerStorageOrigin, getRasterContentRevision, paletteColorIdForCanvas, remapIndexedDocumentToVisiblePalette, setLayerStorageOrigin } from './document'
+import { compositeDocument, createCompositePointSampler, createId, createNormalCompositePointSampler, getLayerStorageOrigin, getRasterContentRevision, paletteColorIdForCanvas, rasterContentBounds, remapIndexedDocumentToVisiblePalette, setLayerStorageOrigin } from './document'
 import { createAnimationCelLookup, createDefaultAnimationTimeline, ensureAnimationDocument, normalizeAnimationTimeline, refreshActiveAnimationFrame, syncActiveAnimationLayers } from './animation'
 import { normalizeOutlineSettings } from './outline-settings'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from './project-metadata'
@@ -318,6 +318,10 @@ const decodeSparseRasterData = (data: Uint8Array, format: RasterFormat, width: n
   if (!Number.isSafeInteger(outputByteLength) || outputByteLength < 0 || tileCount > tileColumns * tileRows) return null
   const tileOffsets = new Int32Array(tileColumns * tileRows)
   let expectedDataOffset = entriesEnd
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
   for (let index = 0; index < tileCount; index += 1) {
     const entryOffset = SPARSE_TILE_HEADER_BYTES + index * SPARSE_TILE_ENTRY_BYTES
     const x = view.getUint32(entryOffset, true)
@@ -333,6 +337,10 @@ const decodeSparseRasterData = (data: Uint8Array, format: RasterFormat, width: n
     if (dataOffset + tileBytes > data.byteLength) return null
     tileOffsets[slot] = dataOffset - entriesEnd + 1
     expectedDataOffset += tileBytes
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + tileWidth - 1)
+    maxY = Math.max(maxY, y + tileHeight - 1)
   }
   if (expectedDataOffset !== data.byteLength) return null
   const runtimeRaster: RuntimeRasterTiles = {
@@ -342,7 +350,8 @@ const decodeSparseRasterData = (data: Uint8Array, format: RasterFormat, width: n
     height,
     tileSize: SPARSE_TILE_SIZE,
     data: data.slice(entriesEnd),
-    tileOffsets
+    tileOffsets,
+    visibleBounds: maxX < minX || maxY < minY ? null : { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
   }
   return {
     pixels: format === 'rgba' ? new Uint8ClampedArray(4) : new Uint32Array(1),
@@ -2046,6 +2055,8 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
   ensureAnimationDocument(document)
   refreshActiveAnimationFrame(document)
   remapIndexedDocumentToVisiblePalette(document)
+  const activeLayer = document.layers.find((layer) => layer.id === document.activeLayerId)
+  if (activeLayer) rasterContentBounds(activeLayer, document.palette)
   reportProgress(1)
   return document
 }

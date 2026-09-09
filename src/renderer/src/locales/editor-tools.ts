@@ -16,7 +16,8 @@ const zhTools: Record<ToolId, ToolCopy> = {
   eyedropper: { label: '吸管工具', description: '单击或拖动读取画布颜色；右键设置背景色。' },
   hand: { label: '抓手工具', description: '按住拖动画布视图，不会修改像素内容。' },
   zoom: { label: '缩放工具', description: '拖动或单击调整视图缩放，右键执行反向缩放。' },
-  rotate: { label: '旋转视图工具', description: '围绕旋转指向标拖动，只旋转当前画布视图。' }
+  rotate: { label: '旋转视图工具', description: '围绕旋转指向标拖动，只旋转当前画布视图。' },
+  liquify: { label: '液化工具', description: '拖动推动当前栅格层像素；半径和强度可在属性栏调整。' }
 }
 
 const enTools: Record<ToolId, ToolCopy> = {
@@ -32,7 +33,8 @@ const enTools: Record<ToolId, ToolCopy> = {
   eyedropper: { label: 'Eyedropper Tool', description: 'Click or drag to sample canvas colors. Right-click to set the background color.' },
   hand: { label: 'Hand Tool', description: 'Drag the canvas view without changing pixel content.' },
   zoom: { label: 'Zoom Tool', description: 'Drag or click to zoom the view. Right-click to zoom in the opposite direction.' },
-  rotate: { label: 'Rotate View Tool', description: 'Drag around the rotation indicator to rotate only the current canvas view.' }
+  rotate: { label: 'Rotate View Tool', description: 'Drag around the rotation indicator to rotate only the current canvas view.' },
+  liquify: { label: 'Liquify Tool', description: 'Drag to push pixels on the current raster layer. Adjust radius and strength in the options bar.' }
 }
 
 const zhMoves: Record<MoveKind, ToolCopy> = {
@@ -107,13 +109,13 @@ const localizedCopies = <T extends string>(base: Record<T, ToolCopy>, labels: Pa
   return [id, { label, description: localizedToolDescription(locale, label) }]
 })) as Record<T, ToolCopy>
 
-const jaTools = localizedCopies(enTools, { pencil: '鉛筆ツール', airbrush: 'エアブラシツール', eraser: '消しゴムツール', selection: '選択ツール', move: '移動ツール', shape: '図形ツール', line: '直線ツール', text: 'テキストツール', fill: '塗りつぶしツール', eyedropper: 'スポイトツール', hand: '手のひらツール', zoom: 'ズームツール', rotate: 'ビュー回転ツール' }, 'ja-JP')
-const koTools = localizedCopies(enTools, { pencil: '연필 도구', airbrush: '에어브러시 도구', eraser: '지우개 도구', selection: '선택 도구', move: '이동 도구', shape: '도형 도구', line: '직선 도구', text: '텍스트 도구', fill: '페인트 통 도구', eyedropper: '스포이트 도구', hand: '손 도구', zoom: '확대/축소 도구', rotate: '보기 회전 도구' }, 'ko-KR')
-const esTools = localizedCopies(enTools, { pencil: 'Herramienta lápiz', airbrush: 'Herramienta aerógrafo', eraser: 'Herramienta borrador', selection: 'Herramienta selección', move: 'Herramienta mover', shape: 'Herramienta formas', line: 'Herramienta línea', text: 'Herramienta texto', fill: 'Bote de pintura', eyedropper: 'Cuentagotas', hand: 'Herramienta mano', zoom: 'Herramienta zoom', rotate: 'Rotar vista' }, 'es-ES')
-const frTools = localizedCopies(enTools, { pencil: 'Outil crayon', airbrush: 'Aérographe', eraser: 'Gomme', selection: 'Outil de sélection', move: 'Outil déplacement', shape: 'Outil forme', line: 'Outil ligne', text: 'Outil texte', fill: 'Pot de peinture', eyedropper: 'Pipette', hand: 'Main', zoom: 'Zoom', rotate: 'Rotation de la vue' }, 'fr-FR')
-const deTools = localizedCopies(enTools, { pencil: 'Bleistift', airbrush: 'Airbrush', eraser: 'Radierer', selection: 'Auswahlwerkzeug', move: 'Verschieben', shape: 'Formwerkzeug', line: 'Linie', text: 'Textwerkzeug', fill: 'Füllwerkzeug', eyedropper: 'Pipette', hand: 'Hand', zoom: 'Zoom', rotate: 'Ansicht drehen' }, 'de-DE')
-const ptTools = localizedCopies(enTools, { pencil: 'Ferramenta lápis', airbrush: 'Aerógrafo', eraser: 'Borracha', selection: 'Ferramenta de seleção', move: 'Ferramenta mover', shape: 'Ferramenta forma', line: 'Ferramenta linha', text: 'Ferramenta texto', fill: 'Balde de tinta', eyedropper: 'Conta-gotas', hand: 'Mão', zoom: 'Zoom', rotate: 'Girar visualização' }, 'pt-BR')
-const ruTools = localizedCopies(enTools, { pencil: 'Карандаш', airbrush: 'Аэрограф', eraser: 'Ластик', selection: 'Выделение', move: 'Перемещение', shape: 'Фигуры', line: 'Линия', text: 'Текст', fill: 'Заливка', eyedropper: 'Пипетка', hand: 'Рука', zoom: 'Масштаб', rotate: 'Поворот вида' }, 'ru-RU')
+const jaTools = localizedCopies(enTools, { pencil: '鉛筆ツール', airbrush: 'エアブラシツール', eraser: '消しゴムツール', selection: '選択ツール', move: '移動ツール', shape: '図形ツール', line: '直線ツール', text: 'テキストツール', fill: '塗りつぶしツール', eyedropper: 'スポイトツール', hand: '手のひらツール', zoom: 'ズームツール', rotate: 'ビュー回転ツール', liquify: 'ゆがみツール' }, 'ja-JP')
+const koTools = localizedCopies(enTools, { pencil: '연필 도구', airbrush: '에어브러시 도구', eraser: '지우개 도구', selection: '선택 도구', move: '이동 도구', shape: '도형 도구', line: '직선 도구', text: '텍스트 도구', fill: '페인트 통 도구', eyedropper: '스포이트 도구', hand: '손 도구', zoom: '확대/축소 도구', rotate: '보기 회전 도구', liquify: '픽셀 유동화 도구' }, 'ko-KR')
+const esTools = localizedCopies(enTools, { pencil: 'Herramienta lápiz', airbrush: 'Herramienta aerógrafo', eraser: 'Herramienta borrador', selection: 'Herramienta selección', move: 'Herramienta mover', shape: 'Herramienta formas', line: 'Herramienta línea', text: 'Herramienta texto', fill: 'Bote de pintura', eyedropper: 'Cuentagotas', hand: 'Herramienta mano', zoom: 'Herramienta zoom', rotate: 'Rotar vista', liquify: 'Herramienta Licuar' }, 'es-ES')
+const frTools = localizedCopies(enTools, { pencil: 'Outil crayon', airbrush: 'Aérographe', eraser: 'Gomme', selection: 'Outil de sélection', move: 'Outil déplacement', shape: 'Outil forme', line: 'Outil ligne', text: 'Outil texte', fill: 'Pot de peinture', eyedropper: 'Pipette', hand: 'Main', zoom: 'Zoom', rotate: 'Rotation de la vue', liquify: 'Outil Fluidité' }, 'fr-FR')
+const deTools = localizedCopies(enTools, { pencil: 'Bleistift', airbrush: 'Airbrush', eraser: 'Radierer', selection: 'Auswahlwerkzeug', move: 'Verschieben', shape: 'Formwerkzeug', line: 'Linie', text: 'Textwerkzeug', fill: 'Füllwerkzeug', eyedropper: 'Pipette', hand: 'Hand', zoom: 'Zoom', rotate: 'Ansicht drehen', liquify: 'Verflüssigen' }, 'de-DE')
+const ptTools = localizedCopies(enTools, { pencil: 'Ferramenta lápis', airbrush: 'Aerógrafo', eraser: 'Borracha', selection: 'Ferramenta de seleção', move: 'Ferramenta mover', shape: 'Ferramenta forma', line: 'Ferramenta linha', text: 'Ferramenta texto', fill: 'Balde de tinta', eyedropper: 'Conta-gotas', hand: 'Mão', zoom: 'Zoom', rotate: 'Girar visualização', liquify: 'Ferramenta Dissolver' }, 'pt-BR')
+const ruTools = localizedCopies(enTools, { pencil: 'Карандаш', airbrush: 'Аэрограф', eraser: 'Ластик', selection: 'Выделение', move: 'Перемещение', shape: 'Фигуры', line: 'Линия', text: 'Текст', fill: 'Заливка', eyedropper: 'Пипетка', hand: 'Рука', zoom: 'Масштаб', rotate: 'Поворот вида', liquify: 'Пластика' }, 'ru-RU')
 
 const jaMoves = localizedCopies(enMoves, { move: '移動ツール', slice: 'スライスツール' }, 'ja-JP'); const koMoves = localizedCopies(enMoves, { move: '이동 도구', slice: '슬라이스 도구' }, 'ko-KR'); const esMoves = localizedCopies(enMoves, { move: 'Mover', slice: 'Cortar' }, 'es-ES'); const frMoves = localizedCopies(enMoves, { move: 'Déplacement', slice: 'Tranche' }, 'fr-FR'); const deMoves = localizedCopies(enMoves, { move: 'Verschieben', slice: 'Slice' }, 'de-DE'); const ptMoves = localizedCopies(enMoves, { move: 'Mover', slice: 'Fatia' }, 'pt-BR'); const ruMoves = localizedCopies(enMoves, { move: 'Перемещение', slice: 'Срез' }, 'ru-RU')
 const jaLines = localizedCopies(enLines, { line: '直線ツール', curve: '曲線ツール' }, 'ja-JP'); const koLines = localizedCopies(enLines, { line: '직선 도구', curve: '곡선 도구' }, 'ko-KR'); const esLines = localizedCopies(enLines, { line: 'Línea', curve: 'Curva' }, 'es-ES'); const frLines = localizedCopies(enLines, { line: 'Ligne', curve: 'Courbe' }, 'fr-FR'); const deLines = localizedCopies(enLines, { line: 'Linie', curve: 'Kurve' }, 'de-DE'); const ptLines = localizedCopies(enLines, { line: 'Linha', curve: 'Curva' }, 'pt-BR'); const ruLines = localizedCopies(enLines, { line: 'Линия', curve: 'Кривая' }, 'ru-RU')

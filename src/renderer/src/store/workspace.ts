@@ -1,14 +1,14 @@
 import { create } from 'zustand'
 import type { SelectionQuad } from '@shared/types'
-import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
-import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
+import { beginPixelEdit, commitPixelEdit, HistoryStack, pixelEditHasChanges, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
-import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
+import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { consumeCanvasResizePreviewHistory } from '@/core/canvas-resize-preview'
 import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
 import { openProgress } from '@/core/open-progress'
@@ -63,7 +63,7 @@ import { RecoveryService } from './recovery-service'
 import { clipboardService, selectionClipboardImage, type AnimationCelClipboardSnapshot, type AnimationFrameClipboardSnapshot, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
 import { captureAdjustmentSnapshot, captureLayerUi, commitLayerMerge, prepareAdjustmentSnapshotTargets, restoreAdjustmentSnapshot, restoreAdjustmentSnapshotRegions, restorePreparedAdjustmentSnapshotLayer } from './workspace-history'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, captureDocumentStructureSnapshot, captureLayerContentSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, documentStructureDeltaBytes, layerContentSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot, restoreDocumentStructureSnapshot, restoreLayerContentSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
-import { activeLayerMask, activePaintLayer, applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, cloneSelectionMask, copyCanvasToolSettings, enterLayerMaskEditing, exitLayerMaskEditing, isBrushTool, isToolAvailableForSession, persistToolSettings, remapSelectionBrushColors, rememberBrushProfile, selectedTransformLayersForSession, sessionFromDocument, touch, touchMetadata } from './workspace-session'
+import { activeLayerMask, activePaintLayer, applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, cloneSelectionMask, copyCanvasToolSettings, enterLayerMaskEditing, exitLayerMaskEditing, isBrushTool, isToolAvailableForSession, persistToolSettings, remapSelectionBrushColors, rememberBrushProfile, selectedTransformLayersForSession, sessionFromDocument, invalidateSessionContent, touch, touchMetadata } from './workspace-session'
 import { addPaletteColor as addPaletteColorCommand, applyPalette as applyPaletteCommand, deletePaletteColors as deletePaletteColorsCommand, gradientPaletteColors as gradientPaletteColorsCommand, gradientPaletteSlots as gradientPaletteSlotsCommand, movePaletteColor as movePaletteColorCommand, reorderPaletteColors as reorderPaletteColorsCommand, reversePaletteColors as reversePaletteColorsCommand, selectPaletteColor as selectPaletteColorCommand, selectPaletteColors as selectPaletteColorsCommand, sortPaletteColors as sortPaletteColorsCommand, updatePaletteColor as updatePaletteColorCommand } from './workspace-palette'
 import { DocumentTransactionRegistry } from './document-transactions'
 import { beginFreeTileInstancePropertiesTransaction as beginFreeTileInstancePropertiesTransactionCommand, beginFreeTileSourcePropertiesTransaction as beginFreeTileSourcePropertiesTransactionCommand, cancelFreeTileInstancePropertiesTransaction as cancelFreeTileInstancePropertiesTransactionCommand, cancelFreeTileSourcePropertiesTransaction as cancelFreeTileSourcePropertiesTransactionCommand, commitFreeTileInstancePropertiesTransaction as commitFreeTileInstancePropertiesTransactionCommand, commitFreeTileSourcePropertiesTransaction as commitFreeTileSourcePropertiesTransactionCommand, previewFreeTileInstancePropertiesTransaction as previewFreeTileInstancePropertiesTransactionCommand, previewFreeTileSourcePropertiesTransaction as previewFreeTileSourcePropertiesTransactionCommand } from './workspace-free-tile-properties'
@@ -907,7 +907,15 @@ const selectedGroupRows = (session: DocumentSession): string[] =>
   session.selectedGroupIds.length > 0 ? [...session.selectedGroupIds] : session.selectedGroupId ? [session.selectedGroupId] : []
 
 const selectedDirectLayerRows = (session: DocumentSession): string[] =>
-  session.selectedGroupId && selectedGroupRows(session).length === 1 ? [] : [...session.selectedLayerIds]
+  // Descendant layers are implicit only for a pure single-group selection.
+  // Mixed group + layer selections keep their explicit layer ids; an active
+  // group context must never hide those ids from grouping, moving, or range
+  // insertion commands.
+  session.selectedGroupId
+    && selectedGroupRows(session).length === 1
+    && session.selectedLayerIds.length === 0
+    ? []
+    : [...session.selectedLayerIds]
 
 const ensureTileSelection = (session: DocumentSession): void => {
   if (session.tilemapMode !== 'create' && session.tilemapMode !== 'hybrid' && session.tilemapMode !== 'paint' && session.tilemapMode !== 'edit') session.tilemapMode = 'hybrid'
@@ -3182,10 +3190,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (current?.textBoxTransform && tool !== 'selection') get().cancelTextBoxTransform()
     get().mutateActive((session) => {
       if (session.tool === tool) return
+      if (session.tool === 'liquify' && tool !== 'liquify') {
+        session.liquifyGestureActive = false
+        session.liquifyResetHistoryPosition = null
+        session.liquifyResetHistoryRevision = null
+      }
       if (isBrushTool(session.tool)) rememberBrushProfile(session)
       session.tool = tool
       if (tool !== 'selection') {
         session.selectionPropertiesActive = false
+        session.selectionAspectRatio = null
         session.freeTransformActive = false
         session.freeTransformQuad = null
       }
@@ -3366,6 +3380,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setAirbrushScatterRadius(radius) { get().mutateActive((session) => { session.airbrushScatterRadius = Math.max(1, Math.min(64, Math.round(radius))); persistToolSettings(session) }, false) },
   setAirbrushDensity(density) { get().mutateActive((session) => { session.airbrushDensity = Math.max(1, Math.min(128, Math.round(density))); persistToolSettings(session) }, false) },
   setAirbrushIntervalMs(intervalMs) { get().mutateActive((session) => { session.airbrushIntervalMs = Math.max(16, Math.min(1000, Math.round(intervalMs))); persistToolSettings(session) }, false) },
+  setLiquifyMode(mode: LiquifyMode) { get().mutateActive((session) => { session.liquifyMode = mode; persistToolSettings(session) }, false) },
+  setLiquifyRadius(radius) { get().mutateActive((session) => { session.liquifyRadius = Math.max(1, Math.min(128, Math.round(radius))); persistToolSettings(session) }, false) },
+  setLiquifyStrength(strength) { get().mutateActive((session) => { session.liquifyStrength = Math.max(1, Math.min(100, Math.round(strength))); persistToolSettings(session) }, false) },
+  setLiquifyGestureActive(active) { get().mutateActive((session) => { session.liquifyGestureActive = active }, false) },
+  setLiquifyResetHistoryPosition(position, revision) { get().mutateActive((session) => { session.liquifyResetHistoryPosition = position; session.liquifyResetHistoryRevision = revision }, false) },
+  resetLiquify() {
+    const session = activeSession(get())
+    if (!session || session.tool !== 'liquify' || session.liquifyResetHistoryPosition == null) return false
+    const position = session.liquifyResetHistoryPosition
+    if (session.history.position <= position) return false
+    get().setHistoryPosition(position)
+    get().mutateActive((current) => {
+      current.liquifyResetHistoryPosition = current.history.position
+      current.liquifyResetHistoryRevision = current.history.revision
+    }, false)
+    return true
+  },
   setBrushShape(shape) { get().mutateActive((session) => { session.brushShape = shape; rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushDither(settings: BrushDitherSettings) { get().mutateActive((session) => { session.brushDither = normalizeBrushDitherSettings(settings, session.brushDither ?? defaultToolSettings.brushDither); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushTexture(texture) { get().mutateActive((session) => { session.brushTexture = texture; rememberBrushProfile(session); persistToolSettings(session) }, false) },
@@ -3778,8 +3809,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     set({ sessions: [...state.sessions] })
   },
-  setSelection(selection) { get().mutateActive((session) => { session.selection = selection ? { ...selection, mask: selection.mask?.slice() } : null; session.selectionPropertiesActive = false; session.selectionAngle = 0; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null }, false) },
-  setSelectionPropertiesActive(active) { get().mutateActive((session) => { session.selectionPropertiesActive = Boolean(active) }, false) },
+  setSelection(selection) { get().mutateActive((session) => { session.selection = selection ? { ...selection, mask: selection.mask?.slice() } : null; session.selectionPropertiesActive = false; session.selectionAspectRatio = null; session.selectionAngle = 0; session.selectionPivot = null; session.freeTransformActive = false; session.freeTransformQuad = null }, false) },
+  setSelectionPropertiesActive(active) { get().mutateActive((session) => { session.selectionPropertiesActive = Boolean(active); if (!active) session.selectionAspectRatio = null }, false) },
+  setSelectionAspectRatio(ratio) { get().mutateActive((session) => { session.selectionAspectRatio = session.freeTransformActive ? null : (typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0 ? ratio : null) }, false) },
+  setSelectionRotationAlgorithm(algorithm: 'fast' | 'rotsprite') { get().mutateActive((session) => { session.selectionRotationAlgorithm = algorithm === 'rotsprite' ? 'rotsprite' : 'fast'; persistToolSettings(session) }, false) },
   updateSelectionProperties(patch) {
     const current = activeSession(get())
     if (!current?.selection) return
@@ -3875,7 +3908,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (pending) restoreFloatingPreview(current)
     if (states.length > 0) {
       const edits = states.flatMap((state) => {
-        const edit = applySelectionTransformLayerState(current.document, state, target, angle, false, shear)
+        const edit = applySelectionTransformLayerState(current.document, state, target, angle, false, shear, undefined, undefined, undefined, undefined, current.selectionRotationAlgorithm === 'rotsprite')
         return edit ? [edit] : []
       })
       const primaryEdit = edits[0] ?? null
@@ -3887,7 +3920,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       get().mutateActive((session) => { session.selectionPropertiesActive = true }, false)
       return
     }
-    const edit = applySelectionTransform(current.document, source, target, angle, false, shear, undefined, undefined, layer, undefined, undefined, true)
+    const edit = applySelectionTransform(current.document, source, target, angle, false, shear, undefined, undefined, layer, undefined, undefined, true, current.selectionRotationAlgorithm === 'rotsprite')
     if (pending) {
       get().updateFloatingPastePreview(edit, after, null, target, angle, shear, false)
     } else {
@@ -4035,6 +4068,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((active) => {
       active.tool = 'selection'
       active.freeTransformActive = true
+      active.selectionAspectRatio = null
       active.freeTransformQuad = selectionQuadFromRect(active.selection!)
     }, false)
     set({ message: tr('workspace.transform.freeStarted') })
@@ -4203,6 +4237,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const afterSnapshot = snapshot(after)
       session.selection = afterSnapshot
       session.selectionPropertiesActive = false
+      session.selectionAspectRatio = null
       session.selectionAngle = 0
       session.selectionPivot = null
       session.freeTransformActive = false
@@ -4354,6 +4389,63 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     else touch(session, dirty === true || dirty === 'content', invalidation)
     if (dirty === true || dirty === 'content' || dirty === 'metadata') recordDocumentOperation(session, undefined, dirty !== 'metadata')
     set({ sessions: [...state.sessions] })
+  },
+
+  beginLiquifyStroke(layerId) {
+    let compound = false
+    get().mutateActive((session) => {
+      const timeline = session.document.animation
+      if (!timeline) return
+      if (session.liquifyResetHistoryPosition == null || session.liquifyResetHistoryRevision !== session.history.revision) {
+        session.liquifyResetHistoryPosition = session.history.position
+        session.liquifyResetHistoryRevision = session.history.revision
+      }
+      const cel = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === timeline.activeFrameId)
+      if (!cel) return
+      syncActiveAnimationFrame(session.document)
+      const before = timeline.cels.map(cloneAnimationCel)
+      session.history.beginCompound()
+      if (!disconnectAnimationCels(session.document, [cel.id])) {
+        session.history.abortCompound()
+        return
+      }
+      const after = ensureAnimationDocument(session.document).cels.map(cloneAnimationCel)
+      const restore = (snapshot: AnimationCel[]): void => {
+        restoreAnimationCels(session.document, snapshot)
+        refreshActiveAnimationFrame(session.document)
+      }
+      session.history.push({
+        label: tr('workspace.history.animationCelUnlink'),
+        bytes: [...before, ...after].reduce((sum, item) => sum + (item.surface?.pixels.byteLength ?? 0) + 24, 0),
+        undo: () => restore(before),
+        redo: () => restore(after),
+        invalidation: { kind: 'full' },
+        affectedLayerIds: [layerId],
+        requiresAnimationSync: false
+      })
+      compound = true
+    }, false)
+    return compound
+  },
+
+  cancelLiquifyStroke(edit, compound) {
+    get().mutateActive((session) => {
+      const changed = pixelEditHasChanges(edit) || compound
+      revertPixelEdit(session.document, edit)
+      if (compound) session.history.abortCompound()
+      if (changed) invalidateSessionContent(session)
+    }, false)
+  },
+
+  commitLiquifyStroke(edit, label, compound, activity) {
+    const entry = get().commitPixelEdit(edit, label, activity)
+    if (compound) get().mutateActive((session) => {
+      if (entry) session.history.endCompound(label)
+      else session.history.abortCompound()
+      if (entry) session.liquifyResetHistoryRevision = session.history.revision
+    }, false)
+    else if (entry) get().mutateActive((session) => { session.liquifyResetHistoryRevision = session.history.revision }, false)
+    return entry
   },
 
   commitPixelEdit(edit, label, activity) {
@@ -5499,6 +5591,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   undo() {
     let session = activeSession(get())
+    if (session && isCanvasToolGestureLocked()) {
+      const documentId = session.document.id
+      deferCanvasShortcut(() => { if (get().activeId === documentId) get().undo() })
+      return
+    }
     if (session) flushViewPreview(session.document.id)
     session = activeSession(get())
     if (session && consumeCanvasResizePreviewHistory(session.document.id, 'undo')) return
@@ -5531,6 +5628,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const entry = session.history.undo()
       Object.assign(session.view, view)
       if (!entry) return
+      session.liquifyResetHistoryPosition = null
+      session.liquifyResetHistoryRevision = null
       if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
       if (entry.documentChanged !== false && entry.requiresAnimationSync !== false) {
         if (entry.affectedLayerIds?.length) for (const layerId of entry.affectedLayerIds) syncActiveAnimationLayer(session.document, layerId)
@@ -5549,6 +5648,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   redo() {
     let session = activeSession(get())
+    if (session && isCanvasToolGestureLocked()) {
+      const documentId = session.document.id
+      deferCanvasShortcut(() => { if (get().activeId === documentId) get().redo() })
+      return
+    }
     if (session) flushViewPreview(session.document.id)
     session = activeSession(get())
     if (session && consumeCanvasResizePreviewHistory(session.document.id, 'redo')) return
@@ -5566,6 +5670,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const entry = session.history.redo()
       Object.assign(session.view, view)
       if (!entry) return
+      session.liquifyResetHistoryPosition = null
+      session.liquifyResetHistoryRevision = null
       if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
       if (entry.documentChanged !== false && entry.requiresAnimationSync !== false) {
         if (entry.affectedLayerIds?.length) for (const layerId of entry.affectedLayerIds) syncActiveAnimationLayer(session.document, layerId)
@@ -5585,6 +5691,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setHistoryPosition(position) {
     const initial = activeSession(get())
     if (!initial || !Number.isFinite(position)) return
+    if (isCanvasToolGestureLocked()) {
+      const documentId = initial.document.id
+      deferCanvasShortcut(() => { if (get().activeId === documentId) get().setHistoryPosition(position) })
+      return
+    }
     if (consumeCanvasResizePreviewHistory(initial.document.id, position < initial.history.position ? 'undo' : 'redo')) return
     const documentId = initial.document.id
     const target = Math.max(0, Math.min(initial.history.length, Math.trunc(position)))
@@ -5626,6 +5737,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   stepAnimationFrame(delta) {
+    // Frame stepping has the same transaction boundary as clicking a frame:
+    // finish the floating transform on its originating frame first, while
+    // retaining the resulting selection mask for the destination frame.
+    get().commitFloatingPaste()
     const session = activeSession(get())
     if (!session) return
     const timeline = ensureAnimationDocument(session.document)
@@ -5844,6 +5959,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   selectAnimationMaskCell(key, mode = 'replace') {
+    // Mask cells activate their frame directly instead of going through
+    // setActiveAnimationFrame(), so they must close a floating transform here
+    // before switching the document surface.
+    get().commitFloatingPaste()
     const current = activeSession(get())
     const parsed = parseAnimationCelKey(key)
     const timeline = current ? ensureAnimationDocument(current.document) : null
@@ -6890,6 +7009,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   setAnimationPlaying(playing, completed = false) {
+    // A floating selection belongs to the frame on which the transform was
+    // started. Commit it before playback can advance the document surface;
+    // the committed selection geometry remains available on later frames.
+    if (playing) get().commitFloatingPaste()
     get().mutateActive((session) => {
       if (session.animationPlaying === playing) return
       const timeline = ensureAnimationDocument(session.document)
@@ -6917,8 +7040,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
         if (targetFrameId && targetFrameId !== timeline.activeFrameId) {
           activateAnimationFrame(session.document, targetFrameId)
-          session.selection = null
-          session.selectionPivot = null
           if (!preserveMaskContext) {
             session.activeLayerMaskId = null
             session.layerMaskIsolatedView = false
@@ -6939,8 +7060,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ? startFrameId
         : completed && !loopSectionId && playbackMode === 'once' ? firstPlayableAnimationFrameId(timeline) : null
       if (returnFrameId && returnFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, returnFrameId)) {
-        session.selection = null
-        session.selectionPivot = null
         session.lastPencilPoint = null
         session.lastEraserPoint = null
         session.revision += 1
@@ -6993,8 +7112,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       setAnimationLoopPlaybackSection(session, section)
       session.animationPlaybackTagCycleSectionId = section.repeatCount !== null ? section.id : null
       if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
-        session.selection = null
-        session.selectionPivot = null
         if (!preserveMaskContext) {
           session.activeLayerMaskId = null
           session.layerMaskIsolatedView = false
@@ -7211,8 +7328,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null
       session.animationPlaying = true
       if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
-        session.selection = null
-        session.selectionPivot = null
         if (!preserveMaskContext) {
           session.activeLayerMaskId = null
           session.layerMaskIsolatedView = false
@@ -9082,7 +9197,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   createLayerGroup() {
     get().mutateActive((session) => {
       const placement = selectedRowInsertionTarget(session)
-      const placeRelativeToSelectedGroup = Boolean(session.selectedGroupId)
+      const placeRelativeToSelectedGroup = Boolean(session.selectedGroupId && selectedDirectLayerRows(session).length === 0)
       session.history.beginCompound()
       const history = createLayerGroupOperation(session, createId('group'), tr('workspace.group.defaultName', { index: session.document.groups.length + 1 }))
       if (history) session.history.push(history)
@@ -11141,10 +11256,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (!layer || layer.kind) continue
           const edit = pending.previewDeferred
             ? layerState.frameId
-              ? applySelectionTransformLayerState(session.document, layerState, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, undefined, pending.transformQuad)
+              ? applySelectionTransformLayerState(session.document, layerState, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, undefined, pending.transformQuad, session.selectionRotationAlgorithm === 'rotsprite')
               : simpleTranslation
               ? applySelectionTranslationCommit(session.document, layerState.source, transformTarget, pending.copy, layer, session.view.tileRepeatMode)
-              : applySelectionTransform(session.document, layerState.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, layer, undefined, pending.transformQuad)
+              : applySelectionTransform(session.document, layerState.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, layer, undefined, pending.transformQuad, false, session.selectionRotationAlgorithm === 'rotsprite')
             : layerState.previewEdit ?? (layerState.translationPreview ? selectionTranslationPreviewEdit(session.document, layerState.translationPreview) : null)
           const entry = edit ? commitPixelEdit(session.document, edit, pending.label) : null
           if (entry) entries.push(entry)
@@ -11246,7 +11361,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         : pending.previewDeferred && activeLayer && (!activeLayer.kind || activeLayer.kind === 'tilemap')
           ? simpleTranslation
             ? applySelectionTranslationCommit(session.document, pending.source, transformTarget, pending.copy, activeLayer, session.view.tileRepeatMode)
-            : applySelectionTransform(session.document, pending.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, activeLayer, undefined, pending.transformQuad)
+            : applySelectionTransform(session.document, pending.source, transformTarget, pending.transformAngle ?? 0, pending.copy, pending.transformShear, undefined, undefined, activeLayer, undefined, pending.transformQuad, false, session.selectionRotationAlgorithm === 'rotsprite')
           : pending.previewEdit ?? (pending.translationPreview ? selectionTranslationPreviewEdit(session.document, pending.translationPreview) : null)
       const timeline = ensureAnimationDocument(session.document)
       const activeCel = activeLayer?.kind === 'text' ? timeline.cels.find((cel) => cel.layerId === activeLayer.id && cel.frameId === timeline.activeFrameId) : null
@@ -11550,7 +11665,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
                   se: { x: nextTransformQuad.se.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.se.y - pending.freeTile.edit.origin.y },
                   sw: { x: nextTransformQuad.sw.x - pending.freeTile.edit.origin.x, y: nextTransformQuad.sw.y - pending.freeTile.edit.origin.y }
                 }
-              : undefined
+              : undefined,
+            false,
+            session.selectionRotationAlgorithm === 'rotsprite'
           )
           pending.target = cloneSelectionMask(nextSelection)!
           pending.transformTarget = nextTransformTarget
@@ -11581,7 +11698,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               layerState.translationPreview = applySelectionTranslationPreview(session.document, layerState.source, nextTransformTarget, pending.copy, layerState.translationPreview, layer, undefined, session.view.tileRepeatMode)
             } else {
               layerState.translationPreview = null
-              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, undefined, nextTransformQuad ?? undefined)
+              layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, undefined, nextTransformQuad ?? undefined, session.selectionRotationAlgorithm === 'rotsprite')
             }
           }
           syncFloatingPrimaryLayerState(pending)
@@ -11598,7 +11715,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         pending.translationPreview = simpleTranslation
           ? applySelectionTranslationPreview(session.document, pending.source, nextTransformTarget, pending.copy, pending.translationPreview, layer, tilemapEditClipForCell(session, pending.tilemapEditCellIndex), session.view.tileRepeatMode)
           : null
-        if (!simpleTranslation) pending.previewEdit = applySelectionTransform(session.document, pending.source, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, layer, undefined, nextTransformQuad ?? undefined)
+        if (!simpleTranslation) pending.previewEdit = applySelectionTransform(session.document, pending.source, nextTransformTarget, angle, pending.copy, shear, undefined, undefined, layer, undefined, nextTransformQuad ?? undefined, false, session.selectionRotationAlgorithm === 'rotsprite')
         pending.target = cloneSelectionMask(nextSelection)!
         pending.transformTarget = nextTransformTarget
         if (nextTransformQuad) pending.transformQuad = nextTransformQuad
@@ -11723,7 +11840,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (previewDeferred) markFloatingOverlayChanged(session)
         else if (pending.layers?.length) {
           for (const layerState of pending.layers) {
-            layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, transformTarget, angle, pending.copy, shear)
+            layerState.previewEdit = applySelectionTransformLayerState(session.document, layerState, transformTarget, angle, pending.copy, shear, undefined, undefined, undefined, undefined, session.selectionRotationAlgorithm === 'rotsprite')
             layerState.translationPreview = null
           }
           syncFloatingPrimaryLayerState(pending)
@@ -11739,12 +11856,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             shear,
             undefined,
             undefined,
-            pending.freeTile.edit.layer
+            pending.freeTile.edit.layer,
+            undefined,
+            undefined,
+            false,
+            session.selectionRotationAlgorithm === 'rotsprite'
           )
           if (!previewFloatingFreeTileSource(session, pending)) markFloatingOverlayChanged(session)
         }
         else {
-          const preview = applySelectionTransform(session.document, pending.source, transformTarget, angle, pending.copy, shear, undefined, undefined, activePaintLayer(session))
+          const preview = applySelectionTransform(session.document, pending.source, transformTarget, angle, pending.copy, shear, undefined, undefined, activePaintLayer(session), undefined, undefined, false, session.selectionRotationAlgorithm === 'rotsprite')
           if (preview) pending.previewEdit = preview
           markFloatingPreviewChanged(session, previousTarget, transformed)
         }
@@ -11873,7 +11994,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   transformActiveSelection(beforeSelection, afterSelection, angle = 0) {
     get().mutateActive((session) => {
-      const edit = transformSelectionCopy(session.document, beforeSelection, afterSelection, angle, undefined, undefined, undefined, activePaintLayer(session))
+      const edit = transformSelectionCopy(session.document, beforeSelection, afterSelection, angle, undefined, undefined, undefined, activePaintLayer(session), undefined, session.selectionRotationAlgorithm === 'rotsprite')
       const entry = edit && commitPixelEdit(session.document, edit, angle === 0 ? tr('workspace.history.transformSelectionContent') : tr('workspace.history.rotateSelectionContent'))
       const before = { ...beforeSelection }
       const after = { ...afterSelection }

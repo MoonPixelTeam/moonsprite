@@ -465,4 +465,5 @@ mod tests {
     fn rejects_unknown_palette_schema() {
         assert!(stored_palette_from_file(palette_file(99), String::new(), false, "test").is_err());
     }
+
 }

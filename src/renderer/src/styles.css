@@ -916,6 +916,7 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .selection-mode-control { display: inline-flex; align-items: center; gap: var(--action-button-gap, var(--ui-space-2)); height: var(--ui-command-button-height); }
 .selection-mode-control button { width: var(--ui-command-button-height); height: var(--ui-command-button-height); padding: 0; }
 .selection-mode-control .pixel-asset-icon { width: 22px; height: 22px; }
+.liquify-mode-control[data-temporary='true'] > button:not(.selected):is(:active, :focus-visible) { color: var(--theme-text-muted); background: var(--theme-raised-surface); border-color: var(--theme-border); box-shadow: none; }
 .selection-properties { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2) var(--ui-space-3); min-width: 0; }
 .selection-properties-field.ui-field-inline { display: inline-grid; grid-template-columns: max-content 62px; width: max-content; align-items: center; gap: var(--ui-space-2); color: var(--theme-text-soft); }
 .selection-properties-field.ui-field-inline > .ui-field-control { width: 62px; }
@@ -927,6 +928,9 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .selection-pivot-inputs { display: inline-grid; grid-template-columns: max-content 58px 58px; align-items: center; gap: var(--ui-space-2); color: var(--theme-text-soft); }
 .selection-pivot-inputs .number-input { width: 58px; }
 .selection-properties-label { white-space: nowrap; }
+.tool-options .selection-algorithm-control.ui-field-inline { display: inline-grid; flex: 0 0 auto; grid-template-columns: max-content 156px; width: max-content; align-items: center; gap: var(--ui-space-2); color: var(--theme-text-soft); }
+.tool-options .selection-algorithm-control .ui-field-control,
+.tool-options .selection-algorithm-control .themed-select { width: 156px; min-width: 156px; max-width: 156px; }
 .selection-shrink-button { width: var(--ui-command-button-height); height: var(--ui-command-button-height); padding: 0; }
 .selection-shrink-button .pixel-asset-icon { width: 22px; height: 22px; }
 .selection-pivot-control { display: inline-flex; flex: 0 0 auto; align-items: center; }
@@ -1556,6 +1560,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 :lang(zh-CN) .canvas-resize-body { --canvas-resize-label-width: 14px; }
 .canvas-resize-body section { display: grid; gap: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px dashed var(--theme-border-strong); }
 .canvas-resize-body h3 { margin: 0; color: var(--theme-accent); font-size: var(--ui-font-regular); font-weight: 700; }
+.canvas-resize-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); }
 .canvas-size-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: var(--ui-space-4); }
 .resize-fields { display: grid; gap: var(--ui-space-4); min-width: 0; }
 .modal-body.canvas-resize-body .canvas-resize-number-row.ui-field-inline { grid-template-columns: var(--canvas-resize-label-width) minmax(0, 1fr); gap: var(--ui-space-2); }
@@ -1612,6 +1617,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .color-scheme-preview.preview-sv-square { background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--theme-accent)); }
 .color-scheme-preview.preview-hs-square { background: linear-gradient(to bottom, transparent, #888), linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
 .color-scheme-preview.preview-wheel { width: 24px; height: 24px; margin-left: var(--ui-space-1); border-radius: 50%; background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.color-scheme-preview.preview-normal-map { width: 24px; height: 24px; margin-left: var(--ui-space-1); border-radius: 50%; background: radial-gradient(circle at 50% 44%, #c9f5ff 0 10%, #7ad7ff 18%, #3fa0f4 35%, #2953b0 54%, #1f347d 72%, #0b1026 100%); }
+.scheme-normal-map .color-field-wrap { background: #7d7df9; }
 .color-scheme-settings { display: grid; gap: var(--ui-space-4); margin-top: var(--ui-space-2); padding: var(--ui-space-4) var(--ui-space-3) var(--ui-space-3); border-top: 1px solid var(--theme-border-strong); }
 .color-preset-group { position: relative; display: grid; gap: var(--ui-space-2); }
 .color-preset-label { width: max-content; color: var(--theme-text-muted); font-size: var(--ui-font-small); }
@@ -2020,7 +2027,6 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .animation-loop-section.selected > span { font-weight: 700; }
 .animation-loop-section.playing { color: var(--theme-accent-hover); }
 .animation-loop-section.playing::before { opacity: 1; }
-.animation-loop-section:focus-visible { outline: 1px solid var(--theme-accent); outline-offset: -1px; }
 .layers-panel.loop-section-resizing,
 .layers-panel.loop-section-resizing * { cursor: var(--cursor-ew-resize) !important; }
 .layer-animation-cel.selected-cel { background: var(--theme-surface-active); }
@@ -2762,6 +2768,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .ui-field-inline { grid-template-columns: max-content minmax(0, 1fr); align-items: center; }
 .modal-body .ui-field-inline { grid-template-columns: var(--ui-dialog-label-width) minmax(0, 1fr); gap: var(--ui-space-4); }
 .ui-field-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-field-label[data-number-scrubbable="true"] { cursor: var(--cursor-ew-resize); user-select: none; }
 .ui-field-control { min-width: 0; }
 .ui-field-control > :is(.number-input, .themed-select, .color-value-action-row, input, textarea) { width: 100%; min-width: 0; }
 .ui-field-hint { color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
@@ -3603,11 +3610,6 @@ body :is(
     box-shadow: none;
   }
 
-  &:focus-visible {
-    border-color: var(--theme-accent);
-    outline: 0;
-    box-shadow: inset 0 0 0 1px var(--theme-accent);
-  }
 }
 body :is(.icon-button, .primary-icon-button, button[aria-label]:has(> :is(svg, .pixel-asset-icon, img):only-child):not(.segmented-control button)):not(.aseprite-home button):not(.primary-button):not(.quiet-button):not(.danger-button):not(.top-export-button):not(.delete-icon-button):not(.home-section-drag-handle):not(.quick-command-toggle):not(.quick-command-button):not(.quick-command-drag-handle):not(.color-value-add-button):not(.text-tool-local-font-button):not(.start-action):not(.new-tab-button):not(.recent-file-pin):not(.recent-file-delete):not(.recent-file-remove):not(.recent-file-reorder):not(.recent-file-discard):not(.color-mode-drag-handle):not(.document-pane > header > button):not(.floating-document-window > header > button):not(.workspace-tab-control > .icon-button):not(.news-item > button):not(.tool-rail-grip):not(.tool-rail .tool-slot > button):not(.tool-rail .tool-slot > .rail-tool-tooltip > button):not(.tool-flyout button):not(.layer-animation-toolbar button):not(.export-file-control > .icon-button):not(.preset-row > .preset-delete):not(.number-input-stepper > button):not(.rgba-number-stepper > button):not(.brush-dither-stage-stepper > button):not(.showcase-dots button):not(.swatch) {
   width: var(--action-icon-button-size);

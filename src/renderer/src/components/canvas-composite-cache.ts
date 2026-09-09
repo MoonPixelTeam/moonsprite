@@ -75,6 +75,10 @@ interface GpuMovePreviewSurface {
 
 export type SelectionTransformCompositePreview = CanvasPreviewSelection
 
+const selectionOptimizedRotationEnabled = (selection: SelectionTransformCompositePreview): boolean => (
+  selection.optimizedRotation === true
+)
+
 interface SelectionPreviewSurface {
   key: string
   x: number
@@ -377,6 +381,7 @@ const selectionPreviewRasterKey = (selection: SelectionTransformCompositePreview
     shear?.amount ?? '',
     selectionQuadKey(selection.quad),
     selectionQuadKey(selection.source.sourceQuad),
+    selectionOptimizedRotationEnabled(selection) ? 1 : 0,
     layerFormat
   ].join(':')
 }
@@ -427,6 +432,7 @@ const selectionPreviewTransformKey = (selection: SelectionTransformCompositePrev
     shear?.amount ?? '',
     selectionQuadKey(selection.quad),
     selectionQuadKey(selection.source.sourceQuad),
+    selectionOptimizedRotationEnabled(selection) ? 1 : 0,
     selection.copy ? 1 : 0,
     tileRepeatMode
   ].join(':')
@@ -483,6 +489,7 @@ export class CanvasCompositeCache {
   private sourceDirtyHints = new Map<string, { rect: SelectionRect; used: boolean }>()
   /** A live stroke may already have been painted into the cached surface. */
   private livePreviewPending = new Set<string>()
+  private livePreviewCommitRevisions = new Map<string, number>()
   private fullPreviewInvalidationPending = false
   private compositeCache = new DocumentCompositeCache()
   private pendingCompositeWork = false
@@ -513,6 +520,7 @@ export class CanvasCompositeCache {
     this.dirtyRects.clear()
     this.sourceDirtyHints.clear()
     this.livePreviewPending.clear()
+    this.livePreviewCommitRevisions.clear()
     this.compositeCache.invalidateAll()
     this.movePreview = null
     this.gpuMovePreview = null
@@ -530,33 +538,19 @@ export class CanvasCompositeCache {
   /** Ends a live stroke that produced no committed content change. */
   clearLivePreview(document: SpriteDocument, frameId = this.lastDrawnFrameId): void {
     this.livePreviewPending.delete(`${document.id}:${frameId}`)
+    this.livePreviewCommitRevisions.delete(`${document.id}:${frameId}`)
   }
 
   /** Keeps the already-painted live surface authoritative for the commit draw.
    * The following draw still consumes any queued dirty strips when pointer-up
    * wins the RAF race, but it does not expand the edit into the whole stroke
    * bounding box a second time. */
-  retainLivePreview(document: SpriteDocument, frameId = this.lastDrawnFrameId, committedRect?: SelectionRect): void {
-    this.livePreviewPending.add(`${document.id}:${frameId}`)
-    if (!committedRect) return
-    const area = Math.max(1, committedRect.width * committedRect.height)
-    const right = committedRect.x + committedRect.width
-    const bottom = committedRect.y + committedRect.height
-    const pending = this.dirtyRects.get(frameId)
-    if (pending?.length) {
-      const filtered = pending.filter((rect) => {
-        const rectRight = rect.x + rect.width
-        const rectBottom = rect.y + rect.height
-        const contains = rect.x <= committedRect.x && rect.y <= committedRect.y && rectRight >= right && rectBottom >= bottom
-        return !(contains && rect.width * rect.height >= area * 0.8)
-      })
-      if (filtered.length) this.dirtyRects.set(frameId, filtered)
-      else this.dirtyRects.delete(frameId)
-    }
-    const hint = this.sourceDirtyHints.get(frameId)
-    if (hint && hint.rect.x <= committedRect.x && hint.rect.y <= committedRect.y
-      && hint.rect.x + hint.rect.width >= right && hint.rect.y + hint.rect.height >= bottom
-      && hint.rect.width * hint.rect.height >= area * 0.8) this.sourceDirtyHints.delete(frameId)
+  retainLivePreview(document: SpriteDocument, frameId: string | undefined, committedRevision: number): void {
+    const key = `${document.id}:${frameId ?? this.lastDrawnFrameId}`
+    this.livePreviewPending.add(key)
+    this.livePreviewCommitRevisions.set(key, committedRevision)
+    // Pending dirty strips have not necessarily reached the surface yet.
+    // Keep them even when their bounds equal the entire committed stroke.
   }
 
   invalidateRect(selection: SelectionRect | null | undefined, documentWidth: number, documentHeight: number, frameId = this.lastDrawnFrameId): void {
@@ -757,7 +751,8 @@ export class CanvasCompositeCache {
       selection.angle,
       selection.shear,
       activeLayer,
-      selection.quad
+      selection.quad,
+      selectionOptimizedRotationEnabled(selection)
     )
     const next = { source: selection.source, key, ...raster }
     this.selectionTransformRaster = next
@@ -1399,7 +1394,7 @@ export class CanvasCompositeCache {
           const overlap = intersectRect(transformedRect, patchRect)
           if (!overlap) continue
           if (transformedRaster.width !== transformedRect.width || transformedRaster.height !== transformedRect.height) {
-            const transformed = selectionTransformPreviewPacked(document, selection.source, selectionTargets[targetIndex], patchRect.x, patchRect.y, patchRect.width, patchRect.height, selection.angle, selection.shear, activeLayer, undefined, selectionQuads[targetIndex])
+            const transformed = selectionTransformPreviewPacked(document, selection.source, selectionTargets[targetIndex], patchRect.x, patchRect.y, patchRect.width, patchRect.height, selection.angle, selection.shear, activeLayer, undefined, selectionQuads[targetIndex], selectionOptimizedRotationEnabled(selection))
             for (let offset = 0; offset < transformed.length; offset += 1) {
               const outputOffset = offset * 4
               compositePreviewPixel(patchPixels, outputOffset, transformed[offset], activeLayer.format, activeLayer.opacity, palette)
@@ -1668,19 +1663,14 @@ export class CanvasCompositeCache {
       && invalidation.fromRevision === surface.revision
     const liveKey = `${document.id}:${frameId}`
     const livePreviewAlreadyPainted = !isolatedLayerMask && this.livePreviewPending.has(liveKey)
+      && (surface?.revision === contentRevision || (canApplyInvalidation && invalidation?.kind === 'region'
+        && this.livePreviewCommitRevisions.get(liveKey) === contentRevision))
     if (surface && surface.revision !== contentRevision) {
       if (canApplyInvalidation && invalidation?.kind === 'region') {
         if (!livePreviewAlreadyPainted && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId) && invalidation.rect) {
           if (isolatedLayerMask) this.invalidateRect(invalidation.rect, document.width, document.height, frameId)
           else this.invalidateDocumentRect(invalidation.rect, document, frameId)
         }
-      } else if (livePreviewAlreadyPainted && !isolatedLayerMask) {
-        // A live stroke mutates the document before the history entry is
-        // committed, so its contentRevision may advance without carrying the
-        // normal fromRevision/toRevision invalidation metadata. The pointer
-        // path has already queued precise dirty rects; promoting the whole
-        // surface here would recompose the entire large canvas every frame.
-        // Keep those local dirty rects and consume them below.
       } else {
         surface.pendingDirtyRects = [{ x: 0, y: 0, width: document.width, height: document.height }]
         this.dirtyRects.delete(frameId)
@@ -1725,7 +1715,7 @@ export class CanvasCompositeCache {
       surface = { canvas, revision: contentRevision, transient: transientFallback }
       if (!transientFallback) this.remember(this.surfaces, key, surface)
       this.dirtyRects.delete(frameId)
-      this.livePreviewPending.delete(`${document.id}:${frameId}`)
+      this.clearLivePreview(document, frameId)
     } else {
       const invalidationStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
       const visibleRect = visibleDocumentRect(document, fromX, fromY, toX, toY)
@@ -1783,7 +1773,7 @@ export class CanvasCompositeCache {
       // the surface has consumed its dirty rectangles, clear that guard;
       // otherwise a later undo/redo invalidation can be skipped and leave the
       // old pixels visible even though the document has been restored.
-      this.livePreviewPending.delete(`${document.id}:${frameId}`)
+      this.clearLivePreview(document, frameId)
     }
     // Building an ImageBitmap copies the whole surface to the GPU. During a
     // live brush stroke that copy competes with the small dirty-rect upload on
@@ -1830,6 +1820,9 @@ export class CanvasCompositeCache {
     let region = this.regions.get(key)
     const liveKey = `${document.id}:${frameId}`
     const livePreviewAlreadyPainted = !isolatedLayerMask && this.livePreviewPending.has(liveKey)
+      && (region?.revision === contentRevision || (invalidation?.kind === 'region'
+        && invalidation.fromRevision === region?.revision && invalidation.revision === contentRevision
+        && this.livePreviewCommitRevisions.get(liveKey) === contentRevision))
     const sameGeometry = region && region.x === x && region.y === y && region.width === width && region.height === height
     if (!sameGeometry) {
       const animationSurface = animationPlayback && !isolatedLayerMask && !view.relativeLuminance
@@ -1856,6 +1849,7 @@ export class CanvasCompositeCache {
       region = { canvas, revision: contentRevision, x, y, width, height }
       this.remember(this.regions, key, region)
       this.dirtyRects.delete(frameId)
+      this.clearLivePreview(document, frameId)
     } else if (region) {
       const invalidationStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
       const invalidationRect = invalidation?.kind === 'region' ? invalidation.rect : undefined
@@ -1866,10 +1860,12 @@ export class CanvasCompositeCache {
         && Boolean(invalidationRect)
         && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId)
       if (region.revision !== contentRevision) {
-        if (canApplyInvalidation && invalidationRect && !livePreviewAlreadyPainted) {
-          const pending = this.dirtyRects.get(frameId) ?? []
-          pending.push(isolatedLayerMask ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
-          this.dirtyRects.set(frameId, pending)
+        if (canApplyInvalidation && invalidationRect) {
+          if (!livePreviewAlreadyPainted) {
+            const pending = this.dirtyRects.get(frameId) ?? []
+            pending.push(isolatedLayerMask ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
+            this.dirtyRects.set(frameId, pending)
+          }
         } else {
           this.dirtyRects.set(frameId, [{ x, y, width, height }])
         }
@@ -1910,7 +1906,7 @@ export class CanvasCompositeCache {
       }
       if (limited.deferred.length > 0) this.dirtyRects.set(frameId, limited.deferred)
       else this.dirtyRects.delete(frameId)
-      this.livePreviewPending.delete(`${document.id}:${frameId}`)
+      this.clearLivePreview(document, frameId)
     }
     if (!region) return null
     if (!livePreviewAlreadyPainted) this.scheduleSurfaceBitmap(region)

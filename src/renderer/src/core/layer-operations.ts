@@ -497,10 +497,13 @@ export const moveGroupToRootEdge = (state: LayerOperationState, groupId: string,
 export const createLayerGroup = (state: LayerOperationState, id: string, name: string): HistoryEntry | null => {
   const { document } = state
   if (document.groups.some((group) => group.id === id)) return null
-  const selected = state.selectedGroupId ? [] : document.layers.filter((layer) => state.selectedLayerIds.includes(layer.id))
+  // Keep explicit layer multi-selection even if the UI still has an active
+  // group context. Only the pure group-selection case should suppress layers.
+  const selected = document.layers.filter((layer) => state.selectedLayerIds.includes(layer.id))
   const layers = selected
-  const selectedGroupParent = state.selectedGroupId ? getGroup(document, state.selectedGroupId).parentGroupId ?? null : null
-  const commonParent = state.selectedGroupId ? selectedGroupParent : (layers.length > 0 && layers.every((layer) => (layer.groupId ?? null) === (layers[0].groupId ?? null)) ? layers[0].groupId ?? null : null)
+  const groupOnly = Boolean(state.selectedGroupId && layers.length === 0)
+  const selectedGroupParent = groupOnly ? getGroup(document, state.selectedGroupId!).parentGroupId ?? null : null
+  const commonParent = groupOnly ? selectedGroupParent : (layers.length > 0 && layers.every((layer) => (layer.groupId ?? null) === (layers[0].groupId ?? null)) ? layers[0].groupId ?? null : null)
   const highestSelectedIndex = layers.reduce((highest, layer) => Math.max(highest, document.layers.indexOf(layer)), -1)
   const group: LayerGroup = { id, name, description: '', parentGroupId: commonParent, panelOrder: document.layers.length + document.groups.length + 1, visible: true, locked: false, opacity: 1, blendMode: 'normal' }
   const beforeGroupIds = new Map(layers.map((layer) => [layer.id, layer.groupId ?? null]))

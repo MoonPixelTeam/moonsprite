@@ -11,6 +11,8 @@ export interface CanvasPreviewSelection {
   /** Exact projective frame used by free transform previews. */
   quad?: SelectionQuad
   copy: boolean
+  /** Whether non-right-angle selection rotations use the RotSprite path. */
+  optimizedRotation?: boolean
 }
 
 export type CanvasPreviewInvalidation =

@@ -23,6 +23,7 @@ import type {
   ImageResizeInterpolation,
   LayerStyles,
   LineKind,
+  LiquifyMode,
   MoveKind,
   OutlineSettings,
   PaletteEntry,
@@ -157,6 +158,12 @@ export interface WorkspaceToolCommands {
   setAirbrushScatterRadius(radius: number): void
   setAirbrushDensity(density: number): void
   setAirbrushIntervalMs(intervalMs: number): void
+  setLiquifyMode(mode: LiquifyMode): void
+  setLiquifyRadius(radius: number): void
+  setLiquifyStrength(strength: number): void
+  setLiquifyGestureActive(active: boolean): void
+  setLiquifyResetHistoryPosition(position: number | null, revision: number | null): void
+  resetLiquify(): boolean
   setBrushShape(shape: BrushShape): void
   setBrushDither(settings: BrushDitherSettings): void
   setBrushTexture(texture: BrushTexture): void
@@ -231,6 +238,8 @@ export interface WorkspaceViewSelectionCommands {
   setTileRepeatMode(mode: TileRepeatMode): void
   setSelection(selection: SelectionMask | null): void
   setSelectionPropertiesActive(active: boolean): void
+  setSelectionAspectRatio(ratio: number | null): void
+  setSelectionRotationAlgorithm(algorithm: 'fast' | 'rotsprite'): void
   updateSelectionProperties(patch: Partial<SelectionRect> & { angle?: number; shearAngle?: number }): void
   shrinkSelectionToContent(): void
   setSelectionPivot(pivot: SelectionPivot | null): void
@@ -295,6 +304,9 @@ export interface WorkspaceViewSelectionCommands {
 }
 
 export interface WorkspaceHistoryCommands {
+  beginLiquifyStroke(layerId: string): boolean
+  cancelLiquifyStroke(edit: PixelEdit, compound: boolean): void
+  commitLiquifyStroke(edit: PixelEdit, label: string, compound: boolean, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitPixelEdit(edit: PixelEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapEdit(edit: TilemapEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapTilesetEdit(edit: TilemapTilesetEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null

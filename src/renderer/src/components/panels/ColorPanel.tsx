@@ -49,7 +49,8 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
     { value: 'moon-ring', label: t('color.scheme.moonRing') },
     { value: 'sv-square', label: t('color.scheme.svSquare') },
     { value: 'hs-square', label: t('color.scheme.hsSquare') },
-    { value: 'wheel', label: t('color.scheme.wheel') }
+    { value: 'wheel', label: t('color.scheme.wheel') },
+    { value: 'normal-map', label: t('color.scheme.normalMap') }
   ]
   const currentSchemeName = schemeOptions.find((option) => option.value === pickerConfig.scheme)?.label ?? t('panel.color')
   const paletteColors = visiblePaletteColors(session.document.palette, session.document.paletteOrder)

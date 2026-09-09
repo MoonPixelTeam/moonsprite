@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BRUSH_SPEED_STOP_MS, CanvasInputState, PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS, PointerPressureAdapter, SELECTION_CORNER_RESIZE_HIT_RADIUS, SELECTION_RESIZE_HIT_RADIUS, appendCanvasPathStep, appendPolygonLassoVertex, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, cachedSelectionTransformSource, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom, coalescedPointerClientPoints, constrainedTranslation, consumePendingCanvasGestureHistory, createCanvasPanDrag, createMarqueeResizeStart, createPolygonPathRasterCache, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, finalizeMarqueeSelection, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, marqueePreviewTargetForDrag, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, quickSelectCellSelection, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, rotationHandles, sampledForegroundColorToAdd, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionInteractionOverridesTemporaryMove, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionOverlayMaskForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionRotationHit, selectionShearHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, shouldUseTemporaryMoveForCanvasInteraction, shouldUseTemporaryMoveTool, snapSelectionRotation, steppedCanvasZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, undoCanvasPathStep, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState } from './canvas-input'
+import { BRUSH_SPEED_STOP_MS, CanvasInputState, PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS, PointerPressureAdapter, SELECTION_CORNER_RESIZE_HIT_RADIUS, SELECTION_RESIZE_HIT_RADIUS, appendCanvasPathStep, appendPolygonLassoVertex, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, cachedSelectionTransformSource, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom, coalescedPointerClientPoints, constrainFreeTransformCornerToAspectRatio, constrainedTranslation, consumePendingCanvasGestureHistory, createCanvasPanDrag, createMarqueeResizeStart, createPolygonPathRasterCache, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, finalizeMarqueeSelection, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, layerMovePreviewActive, marqueePreviewTargetForDrag, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, playbackCanvasNavigationTool, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, quickSelectCellSelection, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, rotationHandles, sampledForegroundColorToAdd, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionInteractionOverridesTemporaryMove, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionOverlayMaskForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionRotationHit, selectionShearHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, shouldUseTemporaryMoveForCanvasInteraction, shouldUseTemporaryMoveTool, snapSelectionRotation, steppedCanvasZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, undoCanvasPathStep, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState } from './canvas-input'
 import { balancedStairLinePoints } from './pixel-line'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 import { isPenBarrelButtonEvent, isPenEraserEvent } from './canvas-input'
@@ -9,6 +9,49 @@ import { beginCanvasToolGesture, clearCanvasToolGestures, deferCanvasShortcut, e
 const drag = (): CanvasDragState => ({ kind: 'move-content', start: { x: 0, y: 0 }, last: { x: 0, y: 0 } })
 
 describe('canvas input helpers', () => {
+  it('keeps selection transforms proportional while the aspect link is locked', () => {
+    expect(selectionTransformModifiers({ ctrlKey: false, altKey: false, shiftKey: false }).proportional).toBe(false)
+    expect(selectionTransformModifiers({ ctrlKey: false, altKey: false, shiftKey: false, proportionalLocked: true }).proportional).toBe(true)
+    expect(selectionTransformModifiers({ ctrlKey: false, altKey: false, shiftKey: true }).proportional).toBe(true)
+  })
+
+  it('constrains only the dragged free-transform corner to the linked aspect ratio', () => {
+    const quad = {
+      nw: { x: 0, y: 0 }, ne: { x: 4, y: 0 },
+      se: { x: 4, y: 2 }, sw: { x: 0, y: 2 }
+    }
+    expect(constrainFreeTransformCornerToAspectRatio(quad, 'nw', { x: -4, y: -1 }, 2)).toEqual({ x: -4, y: -2 })
+    expect(constrainFreeTransformCornerToAspectRatio(quad, 'nw', { x: -1, y: -4 }, 2)).toEqual({ x: -8, y: -4 })
+    expect(constrainFreeTransformCornerToAspectRatio(quad, 'se', { x: 8, y: 3 }, 2)).toEqual({ x: 8, y: 4 })
+  })
+
+  it('keeps a pressed move layer in the base composite until a real preview starts', () => {
+    const pressed: CanvasDragState = {
+      kind: 'move-layer',
+      start: { x: 2, y: 3 },
+      last: { x: 2, y: 3 },
+      layerContentBounds: { layer: { x: 1, y: 1, width: 4, height: 4 } }
+    }
+
+    expect(layerMovePreviewActive(pressed)).toBe(false)
+    expect(layerMovePreviewActive({ ...pressed, moved: true })).toBe(false)
+    expect(layerMovePreviewActive({ ...pressed, moved: true, layerPreviewOffset: { x: 1, y: 0 } })).toBe(true)
+    expect(layerMovePreviewActive({ ...pressed, moved: true, layerPreviewOffset: { x: 0, y: 0 } })).toBe(true)
+  })
+
+  it('exposes an asynchronous magic-wand preview through the selection overlay frame', () => {
+    const current = { x: 0, y: 0, width: 1, height: 1 }
+    const preview = { x: 4, y: 5, width: 8, height: 9, mask: new Uint8Array(72).fill(1) }
+    const frame = selectionOverlayFrameForDrag(current, {
+      kind: 'magic-preview',
+      start: { x: 4, y: 5 },
+      last: { x: 4, y: 5 },
+      previewSelection: preview
+    })
+
+    expect(frame.selection).toBe(preview)
+  })
+
   it('recognizes Windows Ink eraser and barrel-button events without treating mouse input as pen input', () => {
     expect(isPenEraserEvent({ pointerType: 'pen', button: 5, buttons: 0 })).toBe(true)
     expect(isPenEraserEvent({ pointerType: 'mouse', button: 5, buttons: 32 })).toBe(false)
@@ -341,6 +384,15 @@ describe('canvas input helpers', () => {
     expect(isCanvasViewNavigationTool('pencil')).toBe(false)
   })
 
+  it('routes playback tools to viewport navigation without changing dedicated zoom and rotation', () => {
+    expect(playbackCanvasNavigationTool('hand')).toBe('hand')
+    expect(playbackCanvasNavigationTool('zoom')).toBe('zoom')
+    expect(playbackCanvasNavigationTool('rotate')).toBe('rotate')
+    expect(playbackCanvasNavigationTool('move')).toBe('hand')
+    expect(playbackCanvasNavigationTool('pencil')).toBe('hand')
+    expect(playbackCanvasNavigationTool('selection')).toBe('hand')
+  })
+
   it('keeps temporary viewport drags active regardless of the selected drawing tool', () => {
     expect(isCanvasViewNavigationDrag({ kind: 'pan' })).toBe(true)
     expect(isCanvasViewNavigationDrag({ kind: 'zoom-drag' })).toBe(true)
@@ -461,5 +513,20 @@ describe('canvas input helpers', () => {
     } finally {
       clearCanvasToolGestures()
     }
+  })
+})
+
+
+describe('compact pixel gesture cancellation', () => {
+  it('reports and restores all pixels from a large brush compact record', () => {
+    const document = createDocument('cancel large stroke', 128, 128, 'rgba')
+    const layer = getActiveLayer(document)
+    const baseline = layer.pixels.slice()
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 64, 64, 64, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+    expect(edit.before.size).toBe(0)
+    expect(edit.points!.count).toBeGreaterThan(0)
+    expect(revertCancelledCanvasDragPixelChanges(document, { kind: 'draw', start: { x: 64, y: 64 }, last: { x: 64, y: 64 }, edit })).toBe(true)
+    expect(layer.pixels).toEqual(baseline)
   })
 })

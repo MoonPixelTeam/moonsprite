@@ -6,7 +6,7 @@ test('画布性能参数默认运行完整场景', () => {
   assert.deepEqual(parseCanvasPerformanceOptions([]), {
     full: false,
     sizes: [128, 512, 1024],
-    scenarios: ['pan', 'zoom', 'rotated-zoom', 'draw', 'brush-128-zoom2', 'shape', 'marquee', 'bucket-fill', 'gradient'],
+    scenarios: ['pan', 'zoom', 'rotated-zoom', 'draw', 'brush-128-zoom2', 'shape', 'marquee', 'magic-wand', 'bucket-fill', 'gradient'],
     repetitions: 1,
     outputJson: undefined,
     runtime: 'production',

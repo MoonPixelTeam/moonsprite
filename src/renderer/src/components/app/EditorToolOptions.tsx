@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftRight } from 'lucide-react'
-import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientStop, GradientType, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
+import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientStop, GradientType, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { NumberInput } from '@/components/NumberInput'
 import { ColorValueControl } from '@/components/ColorValueControl'
@@ -28,16 +27,18 @@ import { autoSliceCount, autoSliceRects, MAX_AUTO_SLICES, type AutoSliceSettings
 import { publishSlicePreview } from '@/core/slice-preview'
 import { BRUSH_SPEED_INPUT_LIMIT, DEFAULT_PRESSURE_INPUT_RANGE, DEFAULT_SPEED_INPUT_RANGE, type BrushDynamicsCurve, type BrushDynamicsDirection, type BrushDynamicsEffect, type BrushDynamicsMapping, type BrushDynamicsSensor, type BrushDynamicsSettings } from '@/core/pressure'
 import { getBrushDynamicsTelemetry, subscribeBrushDynamicsTelemetry, type BrushDynamicsTelemetrySnapshot } from '@/core/brush-dynamics-telemetry'
+import { rangeValueWithShiftStep } from '@/core/range-step'
 import { MAX_GAP_CLOSING_THRESHOLD, MIN_GAP_CLOSING_THRESHOLD } from '@/core/contiguous-region'
 import { BRUSH_DITHER_TEMPLATES, DEFAULT_BRUSH_DITHER_SETTINGS, brushDitherContains, brushDitherSettingsForTemplate, ditherStageCount } from '@/core/gradient-color'
 import { interpolateRgbaColor } from '@/core/gradient-color'
-import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
+import { temporaryLiquifyModeForShift } from '@/core/liquify'
+import { EDITOR_SHORTCUT_COMMAND_EVENT, LIQUIFY_RESET_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { useWorkspace } from '@/store/workspace'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { PixelPressureIcon } from '@/components/PixelPressureIcon'
 import { useFloatingWindowStack } from '@/components/floating-panel'
-import { GRADIENT_TYPE_ICONS, PixelAssetIcon, PixelShapeIcon, selectionModes, temporarySelectionModeForModifiers } from './editor-tools'
-import { SelectionPivotControls } from './SelectionPivotControls'
+import { GRADIENT_TYPE_ICONS, LIQUIFY_MODE_ICONS, PixelAssetIcon, PixelShapeIcon, selectionModes, temporarySelectionModeForModifiers } from './editor-tools'
+import { SelectionPivotControls, selectionPivotControlTarget } from './SelectionPivotControls'
 import { SymmetryControls } from './SymmetryControls'
 import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
 import gradientStopIcon from '@/assets/pixel-icons/gradient-stop.svg?raw'
@@ -367,11 +368,12 @@ export const nearestBrushDynamicsRangeEndpoint = (
   return minimumDistance < maximumDistance ? 'min' : 'max'
 }
 
-function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, rangeEnd, liveSensorPosition, liveSensorValue, liveActive, minimumLabel, maximumLabel, onChange }: {
+function BrushDynamicsRangeControl({ minimum, maximum, limit, step, percentage, rangeStart, rangeEnd, liveSensorPosition, liveSensorValue, liveActive, minimumLabel, maximumLabel, onChange }: {
   minimum: number
   maximum: number
   limit: number
   step: number
+  percentage: boolean
   rangeStart: number
   rangeEnd: number
   liveSensorPosition: number
@@ -384,13 +386,15 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, 
   const minimumRef = useRef<HTMLInputElement>(null)
   const maximumRef = useRef<HTMLInputElement>(null)
   const draggedEndpointRef = useRef<BrushDynamicsRangeEndpoint | null>(null)
+  const shiftHeldRef = useRef(false)
   const lastEndpointRef = useRef<BrushDynamicsRangeEndpoint>('max')
   const [activeEndpoint, setActiveEndpoint] = useState<BrushDynamicsRangeEndpoint>('max')
-  const valueAtClientX = (clientX: number, surface: HTMLDivElement): number => {
+  const valueAtClientX = (clientX: number, surface: HTMLDivElement, shiftKey: boolean): number => {
     const bounds = surface.getBoundingClientRect()
     const progress = bounds.width > 0 ? Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width)) : 0
     const rawValue = progress * limit
-    return Math.max(0, Math.min(limit, Math.round(rawValue / step) * step))
+    const nativeValue = Math.max(0, Math.min(limit, Math.round(rawValue / step) * step))
+    return rangeValueWithShiftStep(nativeValue, 0, limit, step, percentage ? 'percentage' : 'number', shiftKey)
   }
   const selectEndpoint = (endpoint: BrushDynamicsRangeEndpoint): void => {
     lastEndpointRef.current = endpoint
@@ -403,7 +407,7 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, 
   }
   const handleSurfacePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
-    const value = valueAtClientX(event.clientX, event.currentTarget)
+    const value = valueAtClientX(event.clientX, event.currentTarget, event.shiftKey)
     const endpoint = nearestBrushDynamicsRangeEndpoint(value, minimum, maximum, lastEndpointRef.current)
     draggedEndpointRef.current = endpoint
     selectEndpoint(endpoint)
@@ -414,7 +418,7 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, 
   const handleSurfacePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
     const endpoint = draggedEndpointRef.current
     if (!endpoint || !event.currentTarget.hasPointerCapture(event.pointerId)) return
-    updateEndpoint(endpoint, valueAtClientX(event.clientX, event.currentTarget))
+    updateEndpoint(endpoint, valueAtClientX(event.clientX, event.currentTarget, event.shiftKey))
   }
   const finishSurfaceDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
     draggedEndpointRef.current = null
@@ -428,8 +432,8 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, rangeStart, 
       <span className={`pressure-range-live-marker ${liveSensorValue === null ? 'is-empty' : liveActive ? 'is-active' : 'is-inactive'}`} style={{ left: `${liveSensorPosition}%` }} />
     </span>
     <div className="pressure-range-hit-surface" aria-hidden="true" onPointerDown={handleSurfacePointerDown} onPointerMove={handleSurfacePointerMove} onPointerUp={finishSurfaceDrag} onPointerCancel={finishSurfaceDrag} />
-    <input ref={minimumRef} className={`pressure-range-min ${activeEndpoint === 'min' ? 'is-active' : ''}`} aria-label={minimumLabel} type="range" min={0} max={limit} step={step} value={minimum} onFocus={() => selectEndpoint('min')} onPointerDown={() => selectEndpoint('min')} onChange={(event) => updateEndpoint('min', Number(event.target.value))} />
-    <input ref={maximumRef} className={`pressure-range-max ${activeEndpoint === 'max' ? 'is-active' : ''}`} aria-label={maximumLabel} type="range" min={0} max={limit} step={step} value={maximum} onFocus={() => selectEndpoint('max')} onPointerDown={() => selectEndpoint('max')} onChange={(event) => updateEndpoint('max', Number(event.target.value))} />
+    <input ref={minimumRef} className={`pressure-range-min ${activeEndpoint === 'min' ? 'is-active' : ''}`} aria-label={minimumLabel} type="range" min={0} max={limit} step={step} value={minimum} onFocus={() => selectEndpoint('min')} onPointerDown={(event) => { shiftHeldRef.current = event.shiftKey; selectEndpoint('min') }} onPointerMove={(event) => { shiftHeldRef.current = event.shiftKey }} onPointerUp={() => { shiftHeldRef.current = false }} onPointerCancel={() => { shiftHeldRef.current = false }} onChange={(event) => updateEndpoint('min', rangeValueWithShiftStep(Number(event.target.value), 0, limit, step, percentage ? 'percentage' : 'number', shiftHeldRef.current))} />
+    <input ref={maximumRef} className={`pressure-range-max ${activeEndpoint === 'max' ? 'is-active' : ''}`} aria-label={maximumLabel} type="range" min={0} max={limit} step={step} value={maximum} onFocus={() => selectEndpoint('max')} onPointerDown={(event) => { shiftHeldRef.current = event.shiftKey; selectEndpoint('max') }} onPointerMove={(event) => { shiftHeldRef.current = event.shiftKey }} onPointerUp={() => { shiftHeldRef.current = false }} onPointerCancel={() => { shiftHeldRef.current = false }} onChange={(event) => updateEndpoint('max', rangeValueWithShiftStep(Number(event.target.value), 0, limit, step, percentage ? 'percentage' : 'number', shiftHeldRef.current))} />
   </div>
 }
 
@@ -562,7 +566,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
         </div>
         <div className="pressure-detail-section pressure-detail-group">
           <div className="pressure-detail-heading"><span className="pressure-detail-label">{t('toolOptions.pressureSensorRange')}</span><span className={`pressure-live-value ${liveSensorValue === null ? 'is-empty' : liveTelemetry?.active ? 'is-active' : 'is-inactive'}`}>{t('toolOptions.pressureSensorLive')}: {liveSensorText}</span></div>
-          <BrushDynamicsRangeControl minimum={activeMapping.inputMin} maximum={activeMapping.inputMax} limit={sensorBounds.max} step={sensorBounds.step} rangeStart={rangeStart} rangeEnd={rangeEnd} liveSensorPosition={liveSensorPosition} liveSensorValue={liveSensorValue} liveActive={Boolean(liveTelemetry?.active)} minimumLabel={t('toolOptions.pressureSensorMin')} maximumLabel={t('toolOptions.pressureSensorMax')} onChange={(endpoint, value) => onChange(activeEffect!, endpoint === 'min' ? { inputMin: value } : { inputMax: value })} />
+          <BrushDynamicsRangeControl minimum={activeMapping.inputMin} maximum={activeMapping.inputMax} limit={sensorBounds.max} step={sensorBounds.step} percentage={sensorBounds.suffix === '%'} rangeStart={rangeStart} rangeEnd={rangeEnd} liveSensorPosition={liveSensorPosition} liveSensorValue={liveSensorValue} liveActive={Boolean(liveTelemetry?.active)} minimumLabel={t('toolOptions.pressureSensorMin')} maximumLabel={t('toolOptions.pressureSensorMax')} onChange={(endpoint, value) => onChange(activeEffect!, endpoint === 'min' ? { inputMin: value } : { inputMax: value })} />
           <div className="pressure-range-values">
             <FormField layout="inline" label={t('toolOptions.pressureSensorMin')}><NumberInput density="compact" min={0} max={activeMapping.inputMax} step={sensorBounds.step} suffix={sensorBounds.suffix} value={activeMapping.inputMin} onValueChange={(inputMin) => onChange(activeEffect!, { inputMin })} /></FormField>
             <FormField layout="inline" label={t('toolOptions.pressureSensorMax')}><NumberInput density="compact" min={activeMapping.inputMin} max={sensorBounds.max} step={sensorBounds.step} suffix={sensorBounds.suffix} value={activeMapping.inputMax} onValueChange={(inputMax) => onChange(activeEffect!, { inputMax })} /></FormField>
@@ -583,6 +587,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
   ))
   const [brushSizeFlyoutOpen, setBrushSizeFlyoutOpen] = useState(false)
+  const [liquifyFlyoutOpen, setLiquifyFlyoutOpen] = useState<'radius' | 'strength' | null>(null)
   const [brushAngleFlyoutOpen, setBrushAngleFlyoutOpen] = useState(false)
   const [basicBrushFlyoutOpen, setBasicBrushFlyoutOpen] = useState(false)
   const [brushDitherFlyoutOpen, setBrushDitherFlyoutOpen] = useState(false)
@@ -592,6 +597,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const [gradientStopsOpen, setGradientStopsOpen] = useState(false)
   const [toleranceFlyoutOpen, setToleranceFlyoutOpen] = useState<'wand' | 'wand-gap' | 'fill' | 'fill-gap' | 'gradient' | null>(null)
   const [temporarySelectionMode, setTemporarySelectionMode] = useState<SelectionMode | null>(null)
+  const [temporaryLiquifyMode, setTemporaryLiquifyMode] = useState<LiquifyMode | null>(null)
   const [pressureFlyoutOpen, setPressureFlyoutOpen] = useState(false)
   const [sliceProperties, setSliceProperties] = useState<(SelectionRect & { id: string }) | null>(null)
   const [autoSliceSettings, setAutoSliceSettings] = useState<AutoSliceSettings | null>(null)
@@ -663,6 +669,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     const closeOutside = (event: PointerEvent): void => {
       if (!(event.target instanceof Element)) return
       if (!event.target.closest('.brush-size-control')) setBrushSizeFlyoutOpen(false)
+      if (!event.target.closest('.liquify-value-control')) setLiquifyFlyoutOpen(null)
       if (!event.target.closest('.brush-angle-control')) setBrushAngleFlyoutOpen(false)
       if (!event.target.closest('.brush-shape-selector')) setBasicBrushFlyoutOpen(false)
       if (!brushDitherResidentRef.current && !event.target.closest('.brush-dither-control, .brush-dither-popover')) closeBrushDitherFlyout()
@@ -674,12 +681,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       if (!(event.target instanceof Element)) return
       if (!keepsBrushDynamicsOpen(event.target)) setPressureFlyoutOpen(false)
     }
-    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false) }
-    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false) } }
+    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setLiquifyFlyoutOpen(null) }
+    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setLiquifyFlyoutOpen(null) } }
     const closeAll = (event: Event): void => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (target && target !== 'popover') return
       setBrushSizeFlyoutOpen(false)
+      setLiquifyFlyoutOpen(null)
       setBrushAngleFlyoutOpen(false)
       setBasicBrushFlyoutOpen(false)
       closeBrushDitherFlyout()
@@ -863,11 +871,43 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [session?.tool])
 
   useEffect(() => {
+    if (session?.tool !== 'liquify') {
+      setTemporaryLiquifyMode(null)
+      return
+    }
+    let shiftHeld = false
+    const refresh = (): void => setTemporaryLiquifyMode(shiftHeld ? temporaryLiquifyModeForShift(session.liquifyMode, true) : null)
+    const keyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Shift') return
+      shiftHeld = true
+      refresh()
+    }
+    const keyUp = (event: KeyboardEvent): void => {
+      if (event.key !== 'Shift') return
+      shiftHeld = false
+      refresh()
+    }
+    const reset = (): void => {
+      shiftHeld = false
+      refresh()
+    }
+    window.addEventListener('keydown', keyDown, true)
+    window.addEventListener('keyup', keyUp, true)
+    window.addEventListener('blur', reset)
+    return () => {
+      window.removeEventListener('keydown', keyDown, true)
+      window.removeEventListener('keyup', keyUp, true)
+      window.removeEventListener('blur', reset)
+    }
+  }, [session?.tool, session?.liquifyMode])
+
+  useEffect(() => {
     if (!session || session.tool !== 'pencil' && session.tool !== 'eraser' && session.tool !== 'line' || session.brushShape !== 'square' && session.brushShape !== 'line' || session.brushImage?.intrinsicSize) setBrushAngleFlyoutOpen(false)
   }, [session?.tool, session?.brushShape, session?.brushImage?.intrinsicSize])
 
   if (!session) return null
   const workspace = useWorkspace.getState()
+  const displayedLiquifyMode = temporaryLiquifyMode ?? session.liquifyMode
   const fillKind = session.fillKind ?? 'bucket'
   const gradientDither = session.gradientDither ?? 'none'
   const gradientStops = session.gradientStops ?? [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]
@@ -889,6 +929,14 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       { value: 'pattern-target' as const, label: t('toolOptions.brushMode.patternTarget'), description: t('toolOptions.brushMode.patternTargetDescription') }
     ]
   }]
+  const selectionRotationAlgorithmGroups = [{
+    label: t('toolOptions.selectionRotationAlgorithm'),
+    options: [
+      { value: 'fast' as const, label: t('toolOptions.selectionRotationAlgorithm.fast') },
+      { value: 'rotsprite' as const, label: t('toolOptions.selectionRotationAlgorithm.rotsprite') }
+    ]
+  }]
+  const selectionRotationAlgorithmControl = <FormField className="selection-algorithm-control" layout="inline" label={t('toolOptions.selectionRotationAlgorithm')}><ThemedSelect<'fast' | 'rotsprite'> density="compact" value={session.selectionRotationAlgorithm} groups={selectionRotationAlgorithmGroups} label={t('toolOptions.selectionRotationAlgorithm')} popoverWidth={190} onChange={workspace.setSelectionRotationAlgorithm} /></FormField>
   const selectedSliceIds = session.selectedSliceIds?.length ? session.selectedSliceIds : session.selectedSliceId ? [session.selectedSliceId] : []
   const selectedSlice = selectedSliceIds.length === 1 ? session.document.slices?.find((slice) => slice.id === selectedSliceIds[0]) ?? null : null
   const openSliceProperties = (): void => {
@@ -956,6 +1004,23 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.airbrushParticleRadius')} tooltip={t('toolOptions.airbrushParticleRadiusHint')}><NumberInput aria-label={t('toolOptions.airbrushParticleRadius')} density="compact" min={1} max={16} suffix="px" value={session.airbrushParticleRadius} onValueChange={workspace.setAirbrushParticleRadius} /></FormField>
       <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.airbrushDensity')} tooltip={t('toolOptions.airbrushDensityHint')}><NumberInput aria-label={t('toolOptions.airbrushDensity')} density="compact" min={1} max={128} value={session.airbrushDensity} onValueChange={workspace.setAirbrushDensity} /></FormField>
       <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.airbrushInterval')} tooltip={t('toolOptions.airbrushIntervalHint')}><NumberInput aria-label={t('toolOptions.airbrushInterval')} density="compact" min={16} max={1000} suffix="ms" value={session.airbrushIntervalMs} onValueChange={workspace.setAirbrushIntervalMs} /></FormField>
+    </div>}
+    {session.tool === 'liquify' && <div className="airbrush-options">
+      <div className="selection-mode-control liquify-mode-control" data-temporary={temporaryLiquifyMode !== null && temporaryLiquifyMode !== session.liquifyMode ? 'true' : undefined} role="group" aria-label={t('toolOptions.liquifyMode')}>
+        {([
+          ['push', 'toolOptions.liquifyPush'],
+          ['inflate', 'toolOptions.liquifyInflate'],
+          ['deflate', 'toolOptions.liquifyDeflate'],
+          ['twist-clockwise', 'toolOptions.liquifyTwistClockwise'],
+          ['twist-counter-clockwise', 'toolOptions.liquifyTwistCounterClockwise']
+        ] as const).map(([value, labelKey]) => {
+          const label = t(labelKey)
+          return <button key={value} type="button" className={`icon-button ${displayedLiquifyMode === value ? 'selected' : ''}`} title={label} aria-label={label} aria-pressed={displayedLiquifyMode === value} onPointerDown={(event) => { if (event.pointerType === 'mouse') event.preventDefault() }} onClick={() => workspace.setLiquifyMode(value)}><PixelAssetIcon src={LIQUIFY_MODE_ICONS[value]} /></button>
+        })}
+      </div>
+      <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.liquifyRadius')}><div className="brush-size-control liquify-value-control" onPointerDown={() => setLiquifyFlyoutOpen('radius')}><NumberInput aria-label={t('toolOptions.liquifyRadius')} density="compact" min={1} max={128} suffix="px" value={session.liquifyRadius} onValueChange={workspace.setLiquifyRadius} onFocus={() => setLiquifyFlyoutOpen('radius')} />{liquifyFlyoutOpen === 'radius' && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.liquifyRadius')}><RangeField ariaLabel={t('toolOptions.liquifyRadius')} density="compact" min={1} max={128} suffix="px" value={session.liquifyRadius} onChange={workspace.setLiquifyRadius} /></div>}</div></FormField>
+      <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.pressureEffectStrength')}><div className="brush-size-control liquify-value-control" onPointerDown={() => setLiquifyFlyoutOpen('strength')}><NumberInput aria-label={t('toolOptions.pressureEffectStrength')} density="compact" min={1} max={100} suffix="%" value={session.liquifyStrength} onValueChange={workspace.setLiquifyStrength} onFocus={() => setLiquifyFlyoutOpen('strength')} />{liquifyFlyoutOpen === 'strength' && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.pressureEffectStrength')}><RangeField ariaLabel={t('toolOptions.pressureEffectStrength')} density="compact" min={1} max={100} suffix="%" value={session.liquifyStrength} onChange={workspace.setLiquifyStrength} /></div>}</div></FormField>
+      <button type="button" className="quiet-button" disabled={session.liquifyResetHistoryPosition == null || session.history.position <= session.liquifyResetHistoryPosition} onClick={() => window.dispatchEvent(new CustomEvent(LIQUIFY_RESET_COMMAND_EVENT, { detail: { documentId: session.document.id } }))}>{t('common.reset')}</button>
     </div>}
     {isBrushTool && <>
       {isStrokeBrushTool && <div className="brush-shape-selector">
@@ -1034,7 +1099,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} /></div>, document.body)}
       </div>}
     </>}
-    {session.tool === 'selection' && session.selectionPropertiesActive && session.selection ? (() => {
+    {session.tool === 'selection' && (session.selectionPropertiesActive || session.freeTransformActive) && session.selection ? (() => {
       const target = session.pendingPaste?.transformTarget ?? session.selection
       const angle = session.pendingPaste?.transformAngle ?? session.selectionAngle ?? 0
       const shear = session.pendingPaste?.transformShear
@@ -1043,12 +1108,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       return <div className="selection-properties" aria-label={t('toolOptions.selectionProperties')}>
         <FormField className="selection-properties-field" layout="inline" label="X"><NumberInput aria-label="X" density="compact" value={target.x} onValueChange={(x) => workspace.updateSelectionProperties({ x })} /></FormField>
         <FormField className="selection-properties-field" layout="inline" label="Y"><NumberInput aria-label="Y" density="compact" value={target.y} onValueChange={(y) => workspace.updateSelectionProperties({ y })} /></FormField>
-        <FormField className="selection-properties-field" layout="inline" label={t('common.width')}><NumberInput aria-label={t('common.width')} density="compact" min={1} value={target.width} onValueChange={(width) => workspace.updateSelectionProperties({ width })} /></FormField>
-        <FormField className="selection-properties-field" layout="inline" label={t('common.height')}><NumberInput aria-label={t('common.height')} density="compact" min={1} value={target.height} onValueChange={(height) => workspace.updateSelectionProperties({ height })} /></FormField>
+        <FormField className="selection-properties-field" layout="inline" label={t('common.width')}><NumberInput aria-label={t('common.width')} density="compact" min={1} value={target.width} onValueChange={(width) => workspace.updateSelectionProperties(session.selectionAspectRatio == null ? { width } : { width, height: Math.max(1, Math.round(width / session.selectionAspectRatio)) })} /></FormField>
+        <button type="button" className={`icon-button selection-aspect-link ${session.selectionAspectRatio != null && !session.freeTransformActive ? 'selected' : ''}`.trim()} title={t(session.selectionAspectRatio != null ? 'imageResize.unlockRatio' : 'imageResize.lockRatio')} aria-label={t(session.freeTransformActive ? 'imageResize.lockRatio' : session.selectionAspectRatio != null ? 'imageResize.unlockRatio' : 'imageResize.lockRatio')} aria-pressed={session.selectionAspectRatio != null && !session.freeTransformActive} disabled={session.freeTransformActive} onClick={() => workspace.setSelectionAspectRatio(session.selectionAspectRatio == null ? target.width / Math.max(1, target.height) : null)}><PixelUtilityIcon kind="aspectLink" /></button>
+        <FormField className="selection-properties-field" layout="inline" label={t('common.height')}><NumberInput aria-label={t('common.height')} density="compact" min={1} value={target.height} onValueChange={(height) => workspace.updateSelectionProperties(session.selectionAspectRatio == null ? { height } : { width: Math.max(1, Math.round(height * session.selectionAspectRatio)), height })} /></FormField>
         <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionRotation')}><SelectionAngleControl value={angle} inputLabel={t('toolOptions.selectionRotation')} sliderLabel={t('toolOptions.selectionRotation')} min={-180} max={180} onChange={(nextAngle) => workspace.updateSelectionProperties({ angle: nextAngle })} /></FormField>
         <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionShearAngle')}><SelectionAngleControl value={shearAngle} inputLabel={t('toolOptions.selectionShearAngle')} sliderLabel={t('toolOptions.selectionShearAngle')} min={-89} max={89} onChange={(nextAngle) => workspace.updateSelectionProperties({ shearAngle: nextAngle })} /></FormField>
         <SelectionPivotControls
-          target={target}
+          target={selectionPivotControlTarget(target)}
           angle={angle}
           shear={shear}
           pivot={session.selectionPivot ?? null}
@@ -1057,11 +1123,12 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           onVisibleChange={(showSelectionPivot) => workspace.setView({ showSelectionPivot })}
         />
         <button type="button" className="icon-button selection-shrink-button" title={t('toolOptions.shrinkSelection')} aria-label={t('toolOptions.shrinkSelection')} onClick={workspace.shrinkSelectionToContent}><PixelAssetIcon src={selectionShrinkIcon} /></button>
+        {selectionRotationAlgorithmControl}
       </div>
     })() : session.tool === 'selection' && <>
       <div className="selection-mode-control" aria-label={t('toolOptions.selectionMode')}>{selectionModeItems.map((mode) => <button key={mode.id} title={mode.label} aria-label={mode.label} className={`icon-button ${(temporarySelectionMode ?? session.selectionMode) === mode.id ? 'selected' : ''}`} onClick={() => workspace.setSelectionMode(mode.id)}><PixelAssetIcon src={mode.icon} /></button>)}</div>
       <SelectionPivotControls
-        target={session.pendingPaste?.transformTarget ?? session.selection}
+        target={selectionPivotControlTarget(session.pendingPaste?.transformTarget ?? session.selection)}
         angle={session.pendingPaste?.transformAngle ?? 0}
         shear={session.pendingPaste?.transformShear}
         pivot={session.selectionPivot ?? null}
@@ -1079,9 +1146,10 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       ><PixelAssetIcon src={selectionShrinkIcon} /></button>
       {session.selectionKind === 'rectangle' && <div className="corner-radius-control"><CheckboxField className="tool-checkbox" checked={session.selectionRounded} label={t('toolOptions.roundedCorners')} onChange={workspace.setSelectionRounded} />{session.selectionRounded && <NumberInput aria-label={t('toolOptions.cornerRadius')} density="compact" min={0} max={256} suffix="px" value={session.selectionCornerRadius} onValueChange={workspace.setSelectionCornerRadius} />}</div>}
       {session.selectionKind === 'magic' && <><ToleranceControl value={session.wandTolerance} open={toleranceFlyoutOpen === 'wand'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.magicWandTolerance')} sliderLabel={t('toolOptions.magicWandToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('wand')} onChange={workspace.setWandTolerance} /><CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousSelection')} checked={session.wandContiguous} label={t('toolOptions.contiguous')} onChange={workspace.setWandContiguous} />{session.wandContiguous && <GapClosingControls enabled={session.wandGapClosing} threshold={session.wandGapThreshold} open={toleranceFlyoutOpen === 'wand-gap'} onEnabledChange={workspace.setWandGapClosing} onThresholdChange={workspace.setWandGapThreshold} onOpen={() => setToleranceFlyoutOpen('wand-gap')} />}</>}
+      {selectionRotationAlgorithmControl}
     </>}
     {session.tool === 'shape' && (session.shapeKind === 'rectangle' || session.shapeKind === 'rectangle-outline') && <div className="corner-radius-control"><CheckboxField className="tool-checkbox" checked={session.shapeRounded} label={t('toolOptions.roundedCorners')} onChange={workspace.setShapeRounded} />{session.shapeRounded && <NumberInput aria-label={t('toolOptions.cornerRadius')} density="compact" min={0} max={256} suffix="px" value={session.shapeCornerRadius} onValueChange={workspace.setShapeCornerRadius} />}</div>}
-    {session.tool === 'shape' && (session.shapeKind === 'rectangle' || session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse' || session.shapeKind === 'ellipse-outline') && <div className="shape-ratio-control"><CheckboxField className="tool-checkbox" checked={session.shapeRatio !== null} label={t('toolOptions.fixedRatio')} onChange={(checked) => workspace.setShapeRatio(checked ? { width: 1, height: 1 } : null)} />{session.shapeRatio !== null && <div className="shape-ratio-inputs"><NumberInput aria-label={t('toolOptions.shapeWidthRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.width} onValueChange={(width) => workspace.setShapeRatio({ ...session.shapeRatio!, width })} /><span>:</span><NumberInput aria-label={t('toolOptions.shapeHeightRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.height} onValueChange={(height) => workspace.setShapeRatio({ ...session.shapeRatio!, height })} /><button type="button" className="icon-button shape-ratio-swap" title={t('toolOptions.swapRatio')} aria-label={t('toolOptions.swapRatio')} onClick={() => workspace.setShapeRatio({ width: session.shapeRatio!.height, height: session.shapeRatio!.width })}><ArrowLeftRight size={13} /></button></div>}</div>}
+    {session.tool === 'shape' && (session.shapeKind === 'rectangle' || session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse' || session.shapeKind === 'ellipse-outline') && <div className="shape-ratio-control"><CheckboxField className="tool-checkbox" checked={session.shapeRatio !== null} label={t('toolOptions.fixedRatio')} onChange={(checked) => workspace.setShapeRatio(checked ? { width: 1, height: 1 } : null)} />{session.shapeRatio !== null && <div className="shape-ratio-inputs"><NumberInput aria-label={t('toolOptions.shapeWidthRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.width} onValueChange={(width) => workspace.setShapeRatio({ ...session.shapeRatio!, width })} /><span>:</span><NumberInput aria-label={t('toolOptions.shapeHeightRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.height} onValueChange={(height) => workspace.setShapeRatio({ ...session.shapeRatio!, height })} /><button type="button" className="icon-button shape-ratio-swap" title={t('toolOptions.swapRatio')} aria-label={t('toolOptions.swapRatio')} onClick={() => workspace.setShapeRatio({ width: session.shapeRatio!.height, height: session.shapeRatio!.width })}><PixelUtilityIcon kind="swap" /></button></div>}</div>}
     {session.tool === 'line' && session.lineKind === 'curve' && <FormField className="curve-anchor-count-control" layout="inline" label={t('toolOptions.curveAnchorCount')} tooltip={t('toolOptions.curveAnchorCountHint')}><NumberInput aria-label={t('toolOptions.curveAnchorCount')} density="compact" min={1} max={8} value={session.curveAnchorCount} onValueChange={workspace.setCurveAnchorCount} /></FormField>}
     {session.tool === 'fill' && fillKind === 'bucket' && <><ToleranceControl value={session.fillTolerance} open={toleranceFlyoutOpen === 'fill'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.fillTolerance')} sliderLabel={t('toolOptions.fillToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('fill')} onChange={workspace.setFillTolerance} /><CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousFill')} checked={session.fillMode === 'contiguous'} label={t('toolOptions.contiguous')} onChange={(checked) => workspace.setFillMode(checked ? 'contiguous' : 'global')} />{session.fillMode === 'contiguous' && <GapClosingControls enabled={session.fillGapClosing} threshold={session.fillGapThreshold} open={toleranceFlyoutOpen === 'fill-gap'} onEnabledChange={workspace.setFillGapClosing} onThresholdChange={workspace.setFillGapThreshold} onOpen={() => setToleranceFlyoutOpen('fill-gap')} />}</>}
     {session.tool === 'fill' && fillKind === 'gradient' && <>

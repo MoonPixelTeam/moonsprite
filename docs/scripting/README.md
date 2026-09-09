@@ -70,7 +70,12 @@ end)
 - `app.*` 是 Aseprite 兼容 API。它用于迁移已有脚本，当前只实现项目明确列出的兼容子集。
 - `mse.*` 是 MoonSprite 专属 API。它不会伪装成 Aseprite API，也不会暴露内部 `SpriteDocument` 或 Renderer 状态。
 
-当前兼容子集支持常见的图层与 Cel 用法，包括 `Sprite:newCel(layer, frame, image, position)` 的可选图像和位置参数，以及 `Layer.isEditable`、`Layer.isContinuous` 的读写。兼容脚本仍运行在 Lua 沙箱的图像、内存、指令数和执行时间预算内；逐像素邻域扫描等高计算量脚本在较大画布上可能因预算耗尽而停止，这不是 API 语法错误。
+当前 Aseprite 兼容子集分为两层：
+
+- 基础像素与图层：`Point`、`Rectangle`、`Color`、`Image`、`Palette`、活动 `Sprite/Layer/Cel`、图层类型/父级/堆叠位置、`Layer:cel(frame)`、`Sprite:newLayer()` 和 `Sprite:newCel(layer, frame, image, position)`。
+- 动画读取与编辑：`Sprite.frames/tags`、`Frame` 的序号/时长/停用状态、`Tag` 的范围/方向/重复次数、`app.range`，以及活动图层中已有多帧 Cel 的图像和位置读写。跨帧 Cel 写入与当前帧写入进入同一个脚本事务，并支持撤销/重做。
+
+该子集不等于完整 Aseprite API。脚本创建、复制或删除 Frame，以及在现有图层的空帧中创建 Cel，尚未作为兼容接口开放；脚本应先用能力范围内的已有帧/Cel，或改用 MoonSprite 的 `mse.*` 类型化接口。兼容脚本仍运行在 Lua 沙箱的图像、内存、指令数和执行时间预算内；逐像素邻域扫描等高计算量脚本在较大画布上可能因预算耗尽而停止，这不是 API 语法错误。
 
 完整的 MSE API 外形、端点状态和错误约定见 [mse-api.md](mse-api.md)。编辑器类型提示见 [mse-api.lua](mse-api.lua)，可以将它加入 VS Code 的 LuaLS 工作区库路径。
 

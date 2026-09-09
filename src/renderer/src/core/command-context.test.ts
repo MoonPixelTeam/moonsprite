@@ -10,9 +10,9 @@ describe('command context', () => {
     expect(resolveDeleteCommand('brushes', true)).toBe('brushes')
   })
 
-  it('routes Delete to a timeline selection before the selected layer', () => {
+  it('routes Delete to a timeline selection when no canvas selection is active', () => {
     expect(resolveDeleteCommand('layers', false, true)).toBe('animation')
-    expect(resolveDeleteCommand('layers', true, true)).toBe('animation')
+    expect(resolveDeleteCommand('layers', true, true)).toBe('selection')
     expect(resolveDeleteCommand('canvas', true, true)).toBe('selection')
     expect(resolveDeleteCommand('palette', false, true)).toBe('palette')
   })

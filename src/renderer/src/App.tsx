@@ -1565,12 +1565,13 @@ export default function App() {
         || target?.tagName === 'SELECT'
         || (target?.tagName === 'INPUT' && !['range', 'number', 'checkbox', 'radio', 'button', 'submit', 'reset'].includes(inputType))
       const isHeldKey = key === 'control' || key === 'meta' || key === 'alt' || key === 'shift' || key === 'space'
-      if (isCanvasToolGestureLocked() && !event.repeat && !isTextEntry && !isHeldKey) {
+      if (isCanvasToolGestureLocked() && !isTextEntry && !isHeldKey) {
         const deferredOwners = findShortcutBindingOwners(shortcuts, shortcutText(event)).filter((id) => (
           !heldCanvasShortcutIds.has(id) && !shortcutBindingBlocked(shortcutConflictState, id, shortcutText(event))
         ))
         if (deferredOwners.length > 0) {
           const originalTarget = event.target
+          const originalDocumentId = useWorkspace.getState().activeId
           const init: KeyboardEventInit = {
             key: event.key,
             code: event.code,
@@ -1584,6 +1585,7 @@ export default function App() {
             composed: true
           }
           deferCanvasShortcut(() => {
+            if (useWorkspace.getState().activeId !== originalDocumentId) return
             const replayTarget = originalTarget instanceof Node && originalTarget.isConnected ? originalTarget : window
             replayTarget.dispatchEvent(new KeyboardEvent('keydown', init))
             replayTarget.dispatchEvent(new KeyboardEvent('keyup', init))

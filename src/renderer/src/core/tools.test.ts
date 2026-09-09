@@ -1045,6 +1045,136 @@ describe('pixel tools', () => {
     expect(opaqueCount).toBe(23)
   })
 
+  it('uses the RotSprite selection path only while optimized rotation is enabled', () => {
+    const document = createDocument('selection RotSprite switch', 16, 16, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 5, y: 5, width: 5, height: 5 }
+    const pattern = [
+      [0, 1, 2, 0, 0],
+      [1, 1, 0, 0, 2],
+      [0, 2, 1, 1, 0],
+      [0, 0, 2, 0, 1],
+      [1, 0, 0, 2, 1]
+    ]
+    for (let localY = 0; localY < pattern.length; localY += 1) for (let localX = 0; localX < pattern[localY].length; localX += 1) {
+      if (pattern[localY][localX] !== 0) writeLayerColor(document, layer, (selection.y + localY) * document.width + selection.x + localX, pattern[localY][localX] === 1 ? red : blue)
+    }
+    const source = captureSelectionTransform(document, selection, layer)!
+    let differs = false
+    let optimized: Uint32Array<ArrayBufferLike> = new Uint32Array(0)
+    for (let angle = 1; angle < 90 && !differs; angle += 1) {
+      optimized = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, angle, undefined, layer, undefined, undefined, true)
+      const regular = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, angle, undefined, layer, undefined, undefined, false)
+      differs = !Array.from(optimized).every((value, index) => value === regular[index])
+    }
+
+    expect(differs).toBe(true)
+    expect(Array.from(optimized).some((value) => value !== 0)).toBe(true)
+  })
+
+  it('keeps padded selections from changing the rotated content raster', () => {
+    const pattern = [
+      [0, 1, 0, 0, 2],
+      [1, 1, 1, 2, 0],
+      [0, 2, 1, 1, 0],
+      [0, 0, 2, 1, 1],
+      [2, 0, 0, 1, 0]
+    ]
+    const render = (selection: { x: number; y: number; width: number; height: number }): number[] => {
+      const document = createDocument('RotSprite tight content bounds', 32, 32, 'rgba')
+      const layer = getActiveLayer(document)
+      for (let localY = 0; localY < 5; localY += 1) for (let localX = 0; localX < 5; localX += 1) {
+        const value = pattern[localY][localX]
+        if (value !== 0) writeLayerColor(document, layer, (12 + localY) * document.width + 12 + localX, value === 1 ? red : blue)
+      }
+      const source = captureSelectionTransform(document, selection, layer)!
+      applySelectionTransform(document, source, selection, 45, false, undefined, undefined, undefined, layer, undefined, undefined, false, true)
+      return Array.from({ length: document.width * document.height }, (_, index) => packColor(readLayerColorAt(document, layer, index % document.width, Math.floor(index / document.width))))
+    }
+
+    expect(render({ x: 12, y: 12, width: 5, height: 5 }))
+      .toEqual(render({ x: 10, y: 10, width: 9, height: 9 }))
+  })
+
+  it('keeps Aseprite-style 45-degree solid rotations connected', () => {
+    const document = createDocument('RotSprite solid 45 degrees', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7 }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) {
+      for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const painted = new Set<string>()
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+      if (preview[y * document.width + x] !== 0) painted.add(`${x}:${y}`)
+    }
+    expect(painted.size).toBeGreaterThan(0)
+    for (const key of painted) {
+      const [x, y] = key.split(':').map(Number)
+      const connected = painted.has(`${x - 1}:${y}`) || painted.has(`${x + 1}:${y}`)
+        || painted.has(`${x}:${y - 1}`) || painted.has(`${x}:${y + 1}`)
+      expect(connected, `isolated pixel at ${key}`).toBe(true)
+    }
+  })
+
+  it('keeps RotSprite thin lines continuous at 45 degrees', () => {
+    const document = createDocument('RotSprite thin line 45 degrees', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 10, y: 14, width: 9, height: 1 }
+    for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, selection.y * document.width + x, red)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const painted = new Set<string>()
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+      if (preview[y * document.width + x] !== 0) painted.add(`${x}:${y}`)
+    }
+    expect(painted.size).toBeGreaterThan(1)
+    let edgeCount = 0
+    for (const key of painted) {
+      const [x, y] = key.split(':').map(Number)
+      const neighbors = [
+        painted.has(`${x - 1}:${y - 1}`), painted.has(`${x}:${y - 1}`), painted.has(`${x + 1}:${y - 1}`),
+        painted.has(`${x - 1}:${y}`), painted.has(`${x + 1}:${y}`),
+        painted.has(`${x - 1}:${y + 1}`), painted.has(`${x}:${y + 1}`), painted.has(`${x + 1}:${y + 1}`)
+      ].filter(Boolean).length
+      if (neighbors === 1) edgeCount += 1
+      expect(neighbors).toBeGreaterThan(0)
+    }
+    expect(edgeCount).toBe(2)
+  })
+
+  it('does not rotate pixels outside the selection mask', () => {
+    const document = createDocument('RotSprite masked selection', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7, mask: new Uint8Array(49).fill(1) }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) {
+      for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    }
+    const fullSource = captureSelectionTransform(document, selection, layer)!
+    const fullPreview = selectionTransformPreviewPacked(document, fullSource, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    selection.mask.fill(0)
+    for (let y = 2; y < 5; y += 1) for (let x = 2; x < 5; x += 1) selection.mask[y * selection.width + x] = 1
+    const maskedSource = captureSelectionTransform(document, selection, layer)!
+    const maskedPreview = selectionTransformPreviewPacked(document, maskedSource, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const count = (pixels: Uint32Array): number => Array.from(pixels).filter((value) => value !== 0).length
+    expect(count(maskedPreview)).toBeGreaterThan(0)
+    expect(count(maskedPreview)).toBeLessThan(count(fullPreview))
+  })
+
+  it('keeps a RotSprite interior marker at the rotation centre', () => {
+    const document = createDocument('RotSprite interior marker', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7 }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    writeLayerColor(document, layer, 15 * document.width + 15, blue)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const bluePixels: string[] = []
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) if (preview[y * document.width + x] === packColor(blue)) bluePixels.push(`${x}:${y}`)
+    expect(bluePixels).toEqual(['15:15'])
+  })
+
   it('commits a four-corner transform from captured pixels without retaining the source', () => {
     const document = createDocument('quad transform content', 12, 12, 'rgba')
     const layer = getActiveLayer(document)

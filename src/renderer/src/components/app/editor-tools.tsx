@@ -1,4 +1,4 @@
-import type { FillKind, GradientType, LineKind, MoveKind, SelectionKind, SelectionMode, ShapeKind, ToolId } from '@shared/types'
+import type { FillKind, GradientType, LineKind, LiquifyMode, MoveKind, SelectionKind, SelectionMode, ShapeKind, ToolId } from '@shared/types'
 import type { CSSProperties } from 'react'
 import type { ShortcutId } from '@/core/shortcuts'
 import { DEFAULT_APP_LOCALE, type AppLocale } from '@/core/localization'
@@ -7,6 +7,8 @@ import toolSelectionIcon from '@/assets/tool-icons/tool-selection.svg'
 import toolPencilIcon from '@/assets/tool-icons/tool-pencil.svg'
 import toolAirbrushIcon from '@/assets/tool-icons/tool-airbrush.svg'
 import toolEraserIcon from '@/assets/tool-icons/tool-eraser.svg'
+import toolLiquifyIcon from '@/assets/tool-icons/tool-liquify.svg'
+import toolLiquifyNormalIcon from '@/assets/tool-icons/tool-liquify-normal.svg'
 import toolFillIcon from '@/assets/tool-icons/tool-fill.svg'
 import toolEyedropperIcon from '@/assets/tool-icons/tool-eyedropper.svg'
 import toolHandIcon from '@/assets/tool-icons/tool-hand.svg'
@@ -36,6 +38,11 @@ import shapeCurveIcon from '@/assets/tool-icons/shape-curve.svg'
 import toolGradientIcon from '@/assets/tool-icons/tool-gradient-6-6.svg'
 import gradientLinearIcon from '@/assets/tool-icons/gradient-linear.svg'
 import gradientRadialIcon from '@/assets/tool-icons/gradient-radial.svg'
+import liquifyModePushIcon from '@/assets/tool-icons/liquify-mode-push.svg'
+import liquifyModeInflateIcon from '@/assets/tool-icons/liquify-mode-inflate.svg'
+import liquifyModeDeflateIcon from '@/assets/tool-icons/liquify-mode-deflate.svg'
+import liquifyModeTwistClockwiseIcon from '@/assets/tool-icons/liquify-mode-twist-clockwise.svg'
+import liquifyModeTwistCounterClockwiseIcon from '@/assets/tool-icons/liquify-mode-twist-counter-clockwise.svg'
 import toolGradientNormalIcon from '@/assets/tool-icons/tool-gradient-normal.svg'
 import toolPencilNormalIcon from '@/assets/tool-icons/tool-pencil-normal.svg'
 import toolAirbrushNormalIcon from '@/assets/tool-icons/tool-airbrush-normal.svg'
@@ -66,6 +73,7 @@ const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
   [toolPencilIcon, toolPencilNormalIcon],
   [toolAirbrushIcon, toolAirbrushNormalIcon],
   [toolEraserIcon, toolEraserNormalIcon],
+  [toolLiquifyIcon, toolLiquifyNormalIcon],
   [selectionRectangleIcon, selectionRectangleNormalIcon],
   [selectionEllipseIcon, selectionEllipseNormalIcon],
   [selectionLassoIcon, selectionLassoNormalIcon],
@@ -92,7 +100,7 @@ const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
 export const normalEditorToolIconFor = (source: string): string | undefined => NORMAL_EDITOR_TOOL_ICON_BY_SOURCE.get(source)
 
 const TOOL_BASE: Array<{ id: ToolId; icon: string; shortcutId: ShortcutId }> = [
-  { id: 'pencil', icon: toolPencilIcon, shortcutId: 'tool.pencil' }, { id: 'airbrush', icon: toolAirbrushIcon, shortcutId: 'tool.airbrush' }, { id: 'eraser', icon: toolEraserIcon, shortcutId: 'tool.eraser' }, { id: 'selection', icon: toolSelectionIcon, shortcutId: 'tool.selection' }, { id: 'shape', icon: toolShapeIcon, shortcutId: 'tool.shape' }, { id: 'line', icon: shapeLineIcon, shortcutId: 'tool.line' }, { id: 'fill', icon: toolFillIcon, shortcutId: 'tool.fill' }, { id: 'text', icon: toolTextIcon, shortcutId: 'tool.text' }, { id: 'move', icon: toolMoveIcon, shortcutId: 'tool.move' }, { id: 'eyedropper', icon: toolEyedropperIcon, shortcutId: 'tool.eyedropper' }, { id: 'hand', icon: toolHandIcon, shortcutId: 'tool.hand' }, { id: 'zoom', icon: toolZoomIcon, shortcutId: 'tool.zoom' }, { id: 'rotate', icon: toolRotateIcon, shortcutId: 'tool.rotate' }
+  { id: 'pencil', icon: toolPencilIcon, shortcutId: 'tool.pencil' }, { id: 'airbrush', icon: toolAirbrushIcon, shortcutId: 'tool.airbrush' }, { id: 'eraser', icon: toolEraserIcon, shortcutId: 'tool.eraser' }, { id: 'liquify', icon: toolLiquifyIcon, shortcutId: 'tool.liquify' }, { id: 'selection', icon: toolSelectionIcon, shortcutId: 'tool.selection' }, { id: 'shape', icon: toolShapeIcon, shortcutId: 'tool.shape' }, { id: 'line', icon: shapeLineIcon, shortcutId: 'tool.line' }, { id: 'fill', icon: toolFillIcon, shortcutId: 'tool.fill' }, { id: 'text', icon: toolTextIcon, shortcutId: 'tool.text' }, { id: 'move', icon: toolMoveIcon, shortcutId: 'tool.move' }, { id: 'eyedropper', icon: toolEyedropperIcon, shortcutId: 'tool.eyedropper' }, { id: 'hand', icon: toolHandIcon, shortcutId: 'tool.hand' }, { id: 'zoom', icon: toolZoomIcon, shortcutId: 'tool.zoom' }, { id: 'rotate', icon: toolRotateIcon, shortcutId: 'tool.rotate' }
 ]
 
 export const toolDefinitions = (locale: AppLocale) => TOOL_BASE.map((item) => ({ ...item, ...editorToolCopyByLocale[locale][item.id] }))
@@ -147,6 +155,13 @@ export const FILL_KIND_ICONS = Object.fromEntries(FILL_KIND_BASE.map((item) => [
 export const GRADIENT_TYPE_ICONS: Record<GradientType, string> = {
   linear: gradientLinearIcon,
   radial: gradientRadialIcon
+}
+export const LIQUIFY_MODE_ICONS: Record<LiquifyMode, string> = {
+  push: liquifyModePushIcon,
+  inflate: liquifyModeInflateIcon,
+  deflate: liquifyModeDeflateIcon,
+  'twist-clockwise': liquifyModeTwistClockwiseIcon,
+  'twist-counter-clockwise': liquifyModeTwistCounterClockwiseIcon
 }
 export const SHAPE_KIND_DEFINITIONS = shapeKindDefinitions(DEFAULT_APP_LOCALE)
 
@@ -208,6 +223,7 @@ export const ALL_EDITOR_TOOL_ICONS = [...new Set([
   ...LINE_KIND_BASE.map((item) => item.icon),
   ...FILL_KIND_BASE.map((item) => item.icon),
   ...Object.values(GRADIENT_TYPE_ICONS),
+  ...Object.values(LIQUIFY_MODE_ICONS),
   ...NORMAL_EDITOR_TOOL_ICON_BY_SOURCE.values()
 ])]
 

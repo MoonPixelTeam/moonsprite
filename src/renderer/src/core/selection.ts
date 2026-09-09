@@ -1,5 +1,6 @@
 import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
 import { getPaletteEntry, rasterLayerPackedValueIsUniform } from './document'
+export { selectionBoundarySegments } from './selection-boundary'
 import { isInBounds, packColor, pixelIndex } from './raster'
 import { contiguousMatchingRegion, contiguousMatchingRegionInBounds } from './contiguous-region'
 import { balancedStairLinePoints } from './pixel-line'
@@ -130,54 +131,6 @@ export const flipSelectionMask = (selection: SelectionMask, axis: SelectionFlipA
     }
   }
   return { ...selection, mask }
-}
-
-/** Returns merged local-space boundary segments as x1, y1, x2, y2 tuples. */
-export const selectionBoundarySegments = (selection: SelectionMask): Int32Array => {
-  const { width, height, mask } = selection
-  if (!mask) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, height, 0, 0])
-  // Aseprite keeps solid flood-filled spans as spans.  A full mask is the
-  // common case for background selections; avoid the two complete edge scans
-  // and return its four sides immediately.
-  if (!mask.includes(0)) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, height, 0, 0])
-  const maxCoordinates = Math.max(16, width * height * 8 + (width + height) * 8)
-  let segments = new Int32Array(Math.min(maxCoordinates, Math.max(256, (width + height) * 16)))
-  let length = 0
-  const append = (x1: number, y1: number, x2: number, y2: number): void => {
-    if (length + 4 > segments.length) {
-      const expanded = new Int32Array(Math.min(maxCoordinates, segments.length * 2))
-      expanded.set(segments)
-      segments = expanded
-    }
-    segments[length++] = x1
-    segments[length++] = y1
-    segments[length++] = x2
-    segments[length++] = y2
-  }
-
-  for (let y = 0; y <= height; y += 1) {
-    let start = -1
-    for (let x = 0; x <= width; x += 1) {
-      const above = x < width && y > 0 && mask[(y - 1) * width + x] === 1
-      const below = x < width && y < height && mask[y * width + x] === 1
-      const boundary = x < width && above !== below
-      if (boundary && start < 0) start = x
-      else if (!boundary && start >= 0) { append(start, y, x, y); start = -1 }
-    }
-  }
-
-  for (let x = 0; x <= width; x += 1) {
-    let start = -1
-    for (let y = 0; y <= height; y += 1) {
-      const left = y < height && x > 0 && mask[y * width + x - 1] === 1
-      const right = y < height && x < width && mask[y * width + x] === 1
-      const boundary = y < height && left !== right
-      if (boundary && start < 0) start = y
-      else if (!boundary && start >= 0) { append(x, start, x, y); start = -1 }
-    }
-  }
-
-  return segments.slice(0, length)
 }
 
 export const rectSelection = (x: number, y: number, width: number, height: number): SelectionMask => ({ x, y, width, height })

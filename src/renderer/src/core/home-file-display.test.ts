@@ -43,13 +43,14 @@ describe('home file display formats', () => {
     expect(homeFileDisplayFormatForPath('C:\\art\\sprite.MOONSPRITE.BAK')).toBe('project')
     expect(homeFileDisplayFormatForPath('sprite.ASE')).toBe('project')
     expect(homeFileDisplayFormatForPath('sprite.aseprite')).toBe('project')
+    expect(homeFileDisplayFormatForPath('sprite.psd')).toBe('project')
     expect(homeFileDisplayFormatForPath('photo.JPEG')).toBe('jpg')
     expect(matchesHomeFileDisplayFormats('photo.jpg', ['jpg'])).toBe(true)
     expect(matchesHomeFileDisplayFormats('photo.jpeg', ['jpg'])).toBe(true)
   })
 
   it('filters unsupported paths and paths without an extension', () => {
-    expect(homeFileDisplayFormatForPath('sprite.psd')).toBeNull()
+    expect(homeFileDisplayFormatForPath('sprite.txt')).toBeNull()
     expect(homeFileDisplayFormatForPath('README')).toBeNull()
     expect(matchesHomeFileDisplayFormats('sprite.png', ['project', 'jpg'])).toBe(false)
   })

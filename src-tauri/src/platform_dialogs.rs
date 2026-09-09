@@ -158,6 +158,7 @@ pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialog
                 "moonsprite",
                 "ase",
                 "aseprite",
+                "psd",
                 "png",
                 "jpg",
                 "jpeg",
@@ -167,6 +168,7 @@ pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialog
             ],
         )
         .add_filter("Aseprite files", &["ase", "aseprite"])
+        .add_filter("Photoshop files", &["psd"])
         .add_filter(
             if english {
                 "MoonSprite project"

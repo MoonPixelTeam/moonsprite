@@ -11,6 +11,7 @@ import { decodeGifAnimation } from './gif-import'
 import { compositeDocument } from './document'
 import { encodeBmp } from './bmp'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
+import { decodePsd } from './psd'
 
 export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
 
@@ -141,6 +142,8 @@ const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProg
     ? decodeProject(data, onProgress)
     : suffix === 'ase' || suffix === 'aseprite'
       ? decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), onProgress)
+      : suffix === 'psd'
+        ? decodePsd(data, fileName.replace(/\.psd$/i, ''), onProgress)
       : decodePng(data, fileName.replace(/\.png$/i, ''))
   onProgress?.(1)
   document.filePath = isMoonSpriteProjectPath(filePath) && !backup ? filePath : null
@@ -221,6 +224,7 @@ export const shouldDecodeDocumentInWorker = (data: Uint8Array, filePath: string)
     const height = view.getUint16(10, true)
     return frames * width * height > DIRECT_ASEPRITE_MAX_FRAME_PIXELS
   }
+  if (suffix === 'psd') return true
   return false
 }
 
@@ -349,7 +353,7 @@ export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string
   const suffix = fileExtension(filePath)
   const project = isMoonSpriteProjectPath(filePath)
   const backup = isMoonSpriteBackupPath(filePath)
-  if ((project || suffix === 'ase' || suffix === 'aseprite') && typeof Worker !== 'undefined' && shouldDecodeDocumentInWorker(data, filePath)) {
+  if ((project || suffix === 'ase' || suffix === 'aseprite' || suffix === 'psd') && typeof Worker !== 'undefined' && shouldDecodeDocumentInWorker(data, filePath)) {
     const source = data.slice()
     try {
       const result = await decodeDocumentFileInWorker(data, filePath, onProgress, project)

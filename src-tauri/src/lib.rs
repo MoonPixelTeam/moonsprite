@@ -53,6 +53,7 @@ fn supported_file_paths(arguments: impl IntoIterator<Item = OsString>) -> Vec<St
                                 "moonsprite"
                                     | "ase"
                                     | "aseprite"
+                                    | "psd"
                                     | "png"
                                     | "jpg"
                                     | "jpeg"

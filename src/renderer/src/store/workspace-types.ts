@@ -14,6 +14,7 @@ import type {
   GradientType,
   ImageBrush,
   LayerMask,
+  LiquifyMode,
   ImageBrushSettings,
   LineKind,
   MoveKind,
@@ -250,8 +251,12 @@ export interface DocumentSession {
   selection: SelectionMask | null
   /** View-only flag set when the user clicks an existing selection to edit its properties. */
   selectionPropertiesActive?: boolean
+  /** View-only aspect ratio shared by selection property inputs and canvas transform handles. */
+  selectionAspectRatio?: number | null
   /** Rotation displayed and edited by the selection properties bar. */
   selectionAngle?: number
+  /** Pixel rotation algorithm used by the current selection transform. */
+  selectionRotationAlgorithm: 'fast' | 'rotsprite'
   /** View-only mode that exposes only the four corner transform handles. */
   freeTransformActive?: boolean
   /** Current free-transform frame, kept after a committed corner drag. */
@@ -275,6 +280,12 @@ export interface DocumentSession {
   airbrushScatterRadius: number
   airbrushDensity: number
   airbrushIntervalMs: number
+  liquifyMode: LiquifyMode
+  liquifyRadius: number
+  liquifyStrength: number
+  liquifyGestureActive?: boolean
+  liquifyResetHistoryPosition: number | null
+  liquifyResetHistoryRevision: number | null
   lastPencilPoint: { x: number; y: number } | null
   lastEraserPoint: { x: number; y: number } | null
   canvasResizePreview: CanvasResizePreview | null

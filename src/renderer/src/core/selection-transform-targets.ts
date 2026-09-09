@@ -106,11 +106,12 @@ export const applySelectionTransformLayerState = (
   symmetryAxes?: SymmetryAxes,
   symmetryCenter?: SymmetryCenter,
   symmetryStartPoint?: SymmetryPoint,
-  quad?: SelectionQuad
+  quad?: SelectionQuad,
+  optimizedRotation = false
 ): PixelEdit | null => {
   const layer = selectionTransformLayerForState(document, state)
   if (!layer || layer.kind) return null
-  const edit = applySelectionTransform(document, state.source, target, angle, copy, shear, symmetryAxes, symmetryCenter, layer, symmetryStartPoint, quad)
+  const edit = applySelectionTransform(document, state.source, target, angle, copy, shear, symmetryAxes, symmetryCenter, layer, symmetryStartPoint, quad, false, optimizedRotation)
   if (state.frameId) {
     if (edit) edit.frameId = state.frameId
     syncAnimationLayerAtFrame(document, layer, state.frameId)

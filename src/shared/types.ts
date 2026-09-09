@@ -2,7 +2,8 @@ export type ColorMode = 'rgba' | 'indexed' | 'grayscale'
 export type RasterFormat = 'rgba' | 'indexed'
 export type ImageResizeInterpolation = 'nearest' | 'smooth'
 export type TileRepeatMode = 'off' | 'x' | 'y' | 'both'
-export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate'
+export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify'
+export type LiquifyMode = 'push' | 'inflate' | 'deflate' | 'twist-clockwise' | 'twist-counter-clockwise'
 export type MoveKind = 'move' | 'slice'
 export type BrushShape = 'round' | 'square' | 'line'
 export type BrushTexture = 'solid' | 'cracks' | 'wood' | 'grain'
@@ -966,8 +967,18 @@ export interface LuaScriptExecutionContext {
   layerVisible: boolean
   layerLocked: boolean
   layerFormat: RasterLayer['format']
+  /** Aseprite-compatible parent group and bottom-to-top stack position. */
+  layerGroupId: string | null
+  layerStackIndex: number
   frameNumber: number
   pixels: number[]
+  /** Raster cels from the active layer, bounded by the Lua image budget. */
+  activeLayerCels: Array<{
+    id: string
+    frameId: string
+    frameNumber: number
+    surface: LuaScriptSurfaceSnapshot
+  }>
   selection: {
     x: number
     y: number
@@ -1052,6 +1063,8 @@ export interface LuaScriptCreatedLayer {
   visible: boolean
   locked: boolean
   frameNumber: number
+  parentGroupId?: string | null
+  stackIndex?: number
   surface: LuaScriptSurfaceSnapshot
 }
 
@@ -1072,6 +1085,8 @@ export interface LuaScriptRunResult {
   createdLayers: LuaScriptCreatedLayer[]
   createdDocuments: LuaScriptCreatedDocument[]
   dialogs: LuaScriptDialog[]
+  activeLayerId?: string | null
+  activeFrameNumber?: number | null
   finished: boolean
   elapsedMs: number
 }

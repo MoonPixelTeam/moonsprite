@@ -2951,7 +2951,13 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     event.preventDefault()
     event.stopPropagation()
     const wasEditingLayerMask = Boolean(session.activeLayerMaskId)
-    if (kind === 'layer' && (wasEditingLayerMask || session.selectedGroupId || !session.selectedLayerIds.includes(id))) store.selectLayer(id)
+    // Preserve an existing mixed/multi row selection when the context menu is
+    // opened on one of its members.  The previous selectedGroupId check
+    // forced a replace-selection whenever a group was still the active row,
+    // so creating a group from the context menu silently dropped the other
+    // explicitly selected layers.  A non-selected target still becomes the
+    // sole context selection, and mask editing keeps its existing escape path.
+    if (kind === 'layer' && (wasEditingLayerMask || !session.selectedLayerIds.includes(id))) store.selectLayer(id)
     if (kind === 'group' && (wasEditingLayerMask || !session.selectedGroupIds.includes(id))) store.selectGroup(id)
     setLayerCreateMenu(null)
     setContextMenu({ kind, id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 540)) })
