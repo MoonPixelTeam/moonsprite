@@ -556,6 +556,8 @@ export function sampleLayerStyleParts(
 export interface LayerStyleCoverageOverrides {
   shadow?: number
   innerGlow?: number
+  outsideStroke?: number
+  insideStroke?: number
 }
 
 export function applyLayerStylesAt(
@@ -597,8 +599,10 @@ export function applyLayerStylesAt(
     if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(shadowColor(styles.shadow), coverage), 1, 'normal')
   }
   if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
-    const sample = outsideStrokeSample(readGeometry, x, y, styles.stroke)
-    const coverage = sample.alpha / 255
+    const sample = coverageOverrides?.outsideStroke !== undefined && !styles.stroke.smartHue
+      ? { alpha: coverageOverrides.outsideStroke * 255, referenceColor: TRANSPARENT }
+      : outsideStrokeSample(readGeometry, x, y, styles.stroke)
+    const coverage = !styles.stroke.smartHue ? coverageOverrides?.outsideStroke ?? sample.alpha / 255 : sample.alpha / 255
     if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(resolveOutlineStrokeColor(styles.stroke, sample.referenceColor, resolveDynamicColor), coverage), 1, 'normal')
   }
 
@@ -610,6 +614,6 @@ export function applyLayerStylesAt(
     styles.innerGlow.color,
     coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
   )
-  if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor(styles.stroke, styledSource, resolveDynamicColor), innerStrokeCoverage(readGeometry, x, y, styles.stroke))
+  if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor(styles.stroke, styledSource, resolveDynamicColor), coverageOverrides?.insideStroke ?? innerStrokeCoverage(readGeometry, x, y, styles.stroke))
   return styledSource.a > 0 ? blendWithMode(backdrop, styledSource, 1, 'normal') : backdrop
 }

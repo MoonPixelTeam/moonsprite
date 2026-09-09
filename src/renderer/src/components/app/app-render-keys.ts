@@ -178,6 +178,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.liquifyMode,
     session.liquifyRadius,
     session.liquifyStrength,
+    session.smoothStrength,
     session.liquifyResetHistoryPosition ?? -1,
     session.liquifyResetHistoryRevision ?? -1,
     session.symmetryAxes?.horizontal ? 1 : 0,

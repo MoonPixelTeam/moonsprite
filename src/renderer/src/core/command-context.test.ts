@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { animationFrameStepDirection, hasAnimationDeleteSelection, resolveCopyCommand, resolveDeleteCommand, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand } from './command-context'
+import { animationFrameStepDirection, hasAnimationDeleteSelection, resolveCopyCommand, resolveDeleteCommand, shouldDeleteActiveAnimationCel, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand } from './command-context'
 
 describe('command context', () => {
   it('routes Delete to the last active editor surface', () => {
@@ -21,6 +21,17 @@ describe('command context', () => {
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: true })).toBe(true)
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: false })).toBe(false)
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 0, selectedMaskCellCount: 0, selectedMaskRowCount: 1, cellSelectionExplicit: false })).toBe(true)
+  })
+
+  it('clears the active cel only when no explicit selection owns Delete', () => {
+    const base = { scope: 'canvas' as const, hasCanvasSelection: false, hasAnimationSelection: false, hasExplicitLayerSelection: false, hasFreeTileInstanceSelection: false, hasAnimation: true }
+    expect(shouldDeleteActiveAnimationCel(base)).toBe(true)
+    expect(shouldDeleteActiveAnimationCel({ ...base, scope: 'layers' })).toBe(true)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasCanvasSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasAnimationSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasExplicitLayerSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasFreeTileInstanceSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, scope: 'palette' })).toBe(false)
   })
 
 

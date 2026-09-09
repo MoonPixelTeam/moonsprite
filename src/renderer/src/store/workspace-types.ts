@@ -283,6 +283,7 @@ export interface DocumentSession {
   liquifyMode: LiquifyMode
   liquifyRadius: number
   liquifyStrength: number
+  smoothStrength: number
   liquifyGestureActive?: boolean
   liquifyResetHistoryPosition: number | null
   liquifyResetHistoryRevision: number | null

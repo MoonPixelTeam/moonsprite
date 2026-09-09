@@ -2,7 +2,7 @@ export type ColorMode = 'rgba' | 'indexed' | 'grayscale'
 export type RasterFormat = 'rgba' | 'indexed'
 export type ImageResizeInterpolation = 'nearest' | 'smooth'
 export type TileRepeatMode = 'off' | 'x' | 'y' | 'both'
-export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify'
+export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify' | 'smooth'
 export type LiquifyMode = 'push' | 'inflate' | 'deflate' | 'twist-clockwise' | 'twist-counter-clockwise'
 export type MoveKind = 'move' | 'slice'
 export type BrushShape = 'round' | 'square' | 'line'
@@ -271,6 +271,9 @@ export interface TextCelData {
   spacingMode: TextSpacingMode
   antialias: TextAntialiasMode
   color: RgbaColor
+  /** Free text sizes to its content; box text wraps and aligns inside its rectangle. */
+  layoutMode?: 'free' | 'box'
+  textAlign?: 'left' | 'center' | 'right'
   styleRuns?: TextStyleRun[]
   /** Original insertion point used when editable text is rasterized again. */
   originX?: number

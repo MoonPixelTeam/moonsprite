@@ -351,10 +351,11 @@ export const selectionResizeHit = (
 }
 
 export interface CanvasDragState {
-  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
+  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'smooth' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
+  smoothStroke?: { visited: Set<number> }
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint
@@ -623,7 +624,7 @@ export const revertCancelledCanvasDragPixelChanges = (document: SpriteDocument, 
     restoreSelectionTranslationPreview(document, drag.translationPreview)
     return changed
   }
-  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' || drag.kind === 'liquify' ? drag.edit : drag.previewEdit
+  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' || drag.kind === 'liquify' || drag.kind === 'smooth' ? drag.edit : drag.previewEdit
   if (!edit) return false
   const changed = pixelEditHasChanges(edit)
   revertPixelEdit(document, edit)

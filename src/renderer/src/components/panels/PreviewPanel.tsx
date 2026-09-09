@@ -1,3 +1,4 @@
+import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage } from '@/components/workspace-resize'
 import { useEffect, useRef, useState } from 'react'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
@@ -444,6 +445,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     const canvas = canvasRef.current
     if (!canvas || !initialCompositeReady) return
     const draw = (): void => {
+      const previewStarted = isWorkspaceResizing() ? performance.now() : 0
       const context = canvas.getContext('2d')
       const bounds = canvas.getBoundingClientRect()
       if (!context || bounds.width < 1 || bounds.height < 1) return
@@ -525,7 +527,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         }
       }
       context.imageSmoothingEnabled = smoothPixelSampling
-      if (smoothPixelSampling) context.imageSmoothingQuality = 'high'
+      if (smoothPixelSampling) context.imageSmoothingQuality = isWorkspaceResizing() ? 'low' : 'high'
       const fromX = Math.max(0, Math.floor((0 - originX) / scale))
       const fromY = Math.max(0, Math.floor((0 - originY) / scale))
       const toX = Math.min(sourceDocument.width, Math.ceil((displayWidth - originX) / scale))
@@ -547,6 +549,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         contentInvalidation: livePreviewForFrame ? null : currentSession.contentInvalidation,
         frameId: renderFrameId,
         imageSmoothingEnabled: smoothPixelSampling,
+        fastViewPreview: isWorkspaceResizing(),
+        imageSmoothingQuality: isWorkspaceResizing() ? 'low' : 'high',
         animationPlayback: previewPlaying || currentSession.animationPlaying,
         animationConsumerOnly: currentSession.animationPlaying,
         devicePixelRatio: dpr,
@@ -561,6 +565,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         selectionPreview: livePreviewForFrame?.selectionPreview
       })
       context.restore()
+      if (previewStarted) recordWorkspaceResizeStage('preview', performance.now() - previewStarted)
     }
     drawRef.current = draw
     draw()
@@ -569,10 +574,12 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const stopListening = onWorkspaceResizeEnd(() => drawRef.current())
     const observer = new ResizeObserver(() => drawRef.current())
     observer.observe(canvas)
     return () => {
       observer.disconnect()
+      stopListening()
       drawRef.current = () => {}
     }
   }, [session.document.id])

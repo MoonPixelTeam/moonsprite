@@ -13,6 +13,7 @@ import { AppWindowTitleBar } from '@/components/app/AppWindowTitleBar'
 import { DocumentTabs } from '@/components/app/DocumentTabs'
 import { EditorStatusBar } from '@/components/app/EditorStatusBar'
 import { BrushDynamicsTelemetryCapture } from '@/components/app/BrushDynamicsTelemetryCapture'
+import { beginWorkspaceResize, endWorkspaceResize, createResizeFrame } from '@/components/workspace-resize'
 import { EditorWorkspaceShell } from '@/components/app/EditorWorkspaceShell'
 import { FloatingDocumentWindow } from '@/components/app/FloatingDocumentWindow'
 import { resolveFloatingDocumentReturnTarget } from '@/components/app/floating-document-return'
@@ -56,7 +57,8 @@ import { ModalShell } from '@/components/ModalShell'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
-import { animationFrameStepDirection, BRUSH_LIBRARY_DELETE_COMMAND_EVENT, COMMAND_SCOPE_EVENT, EDITOR_SHORTCUT_COMMAND_EVENT, hasAnimationDeleteSelection, TILESET_DELETE_COMMAND_EVENT, resolveCopyCommand, resolveDeleteCommand, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand, type EditorCommandScope, type EditorShortcutCommandDetail } from '@/core/command-context'
+import { animationCelKey, resolveAnimationCel } from '@/core/animation'
+import { animationFrameStepDirection, BRUSH_LIBRARY_DELETE_COMMAND_EVENT, COMMAND_SCOPE_EVENT, EDITOR_SHORTCUT_COMMAND_EVENT, hasAnimationDeleteSelection, TILESET_DELETE_COMMAND_EVENT, resolveCopyCommand, resolveDeleteCommand, shouldDeleteActiveAnimationCel, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand, type EditorCommandScope, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { formatBytes } from '@/core/resource-policy'
 import { adjacentFormInput } from '@/core/form-focus'
 import { saveProgress } from '@/core/save-progress'
@@ -65,7 +67,7 @@ import { isExtensionPackagePath } from '@/core/extension-packages'
 import { listExtensionPanelContributions, listExtensionTopMenuContributions, reconcileExtensionPanelVisibility, saveExtensionPanelVisibility } from '@/core/extension-contributions'
 import { startDocumentDropService } from '@/platform/document-drop-service'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'
-import type { LatestReleaseDefinition } from '@/core/latest-release'
+import { latestRelease, shouldShowLatestRelease, type LatestReleaseDefinition } from '@/core/latest-release'
 import moonspriteLogo from '@/assets/moonsprite-logo.svg'
 import { cloneTextCelData, normalizeTextCelData, rasterizeText } from '@/core/text-raster'
 import { getRecentProjects, type RecentProject } from '@/core/home-history'
@@ -93,6 +95,19 @@ const LazyComponentLibrary = lazy(() => import('@/components/ComponentLibrary').
 
 type AdvancedMode = 'tool-options' | 'canvas-only'
 type AlignmentPreferenceKey = 'gridAlignmentEnabled' | 'smartAlignmentEnabled' | 'alignmentGuidesVisible'
+
+const textToolValueAtCurrentPlacement = (request: TextToolDialogDetail, value: TextCelData): { value: TextCelData; x: number; y: number } => {
+  const fallbackX = value.originX ?? request.x
+  const fallbackY = value.originY ?? request.y
+  if (!request.layerId || !request.frameId) return { value, x: fallbackX, y: fallbackY }
+  const document = useWorkspace.getState().sessions.find((session) => session.document.id === request.documentId)?.document
+  const timeline = document?.animation
+  const cel = timeline?.cels.find((candidate) => candidate.layerId === request.layerId && candidate.frameId === request.frameId)
+  const source = timeline ? resolveAnimationCel(timeline, cel ?? null) ?? cel : cel
+  const x = source?.surface?.offsetX ?? source?.text?.originX ?? fallbackX
+  const y = source?.surface?.offsetY ?? source?.text?.originY ?? fallbackY
+  return { value: { ...value, originX: x, originY: y }, x, y }
+}
 
 const heldCanvasShortcutIds = new Set<ShortcutId>(['addForegroundToPalette', ...QUICK_TOOL_SHORTCUT_IDS])
 
@@ -224,10 +239,16 @@ export default function App() {
   const [componentLibraryOpen, setComponentLibraryOpen] = useState(false)
   const [latestReleaseOpen, setLatestReleaseOpen] = useState(false)
   const [latestReleaseSelection, setLatestReleaseSelection] = useState<LatestReleaseDefinition | null>(null)
+  const latestReleaseNoticeHandledRef = useRef(false)
   const openLatestRelease = useCallback((release?: LatestReleaseDefinition): void => {
     setLatestReleaseSelection(release ?? null)
     setLatestReleaseOpen(true)
   }, [])
+  useEffect(() => {
+    if (latestReleaseNoticeHandledRef.current) return
+    latestReleaseNoticeHandledRef.current = true
+    if (shouldShowLatestRelease()) openLatestRelease(latestRelease)
+  }, [openLatestRelease])
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [isoViewSettingsOpen, setIsoViewSettingsOpen] = useState(false)
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
@@ -296,12 +317,12 @@ export default function App() {
   const [paneOnlyDocumentIds, setPaneOnlyDocumentIds] = useState<string[]>([])
   const [workspaceDocumentId, setWorkspaceDocumentId] = useState<string | null>(() => useWorkspace.getState().activeId)
   const [floatingDocuments, setFloatingDocuments] = useState<FloatingDocumentEntry[]>([])
-  const resizeStart = useRef<{ x: number; width: number } | null>(null)
-  const bottomLayersResizeStart = useRef<{ y: number; height: number } | null>(null)
+  const resizeStart = useRef<{ x: number; width: number; parentWidth: number } | null>(null)
+  const bottomLayersResizeStart = useRef<{ y: number; height: number; parentHeight: number } | null>(null)
   const bottomLayersHeightRef = useRef(bottomLayersHeight)
   const preferredBottomLayersHeightRef = useRef(bottomLayersHeight)
   const bottomLayersHeightRatioRef = useRef(resolveDockSizeRatio(readStoredString(BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY), bottomLayersHeight, initialDockParentSize.height, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO))
-  const leftDockResizeStart = useRef<{ x: number; width: number } | null>(null)
+  const leftDockResizeStart = useRef<{ x: number; width: number; parentWidth: number } | null>(null)
   const leftDockWidthRef = useRef(leftDockWidth)
   const preferredLeftDockWidthRef = useRef(leftDockWidth)
   const leftDockWidthRatioRef = useRef(dockSizeRatio(leftDockWidth, initialDockParentSize.width, DEFAULT_LEFT_DOCK_WIDTH_RATIO))
@@ -422,7 +443,23 @@ export default function App() {
   useEffect(() => {
     const openTextDialog = (event: Event): void => {
       const detail = (event as CustomEvent<TextToolDialogDetail>).detail
-      if (detail?.documentId) setTextToolRequest(detail)
+      if (!detail?.documentId) return
+      setTextToolRequest((current) => {
+        const switchingTarget = current?.documentId !== detail.documentId
+          || current?.layerId !== detail.layerId
+          || current?.frameId !== detail.frameId
+        // A live preview belongs to its original cel. Restore it before the
+        // next target is opened so its temporary surface cannot overwrite the
+        // text we are switching to.
+        if (switchingTarget && current?.layerId && current.frameId && textPreviewSurfaceRef.current) {
+          const state = useWorkspace.getState()
+          state.setActive(current.documentId)
+          state.restoreTextCelPreview(current.layerId, current.frameId, textPreviewSurfaceRef.current)
+          textPreviewSurfaceRef.current = null
+          publishTextToolPreview({ documentId: current.documentId, surface: null, box: null })
+        }
+        return detail
+      })
     }
     window.addEventListener(TEXT_TOOL_DIALOG_EVENT, openTextDialog)
     return () => window.removeEventListener(TEXT_TOOL_DIALOG_EVENT, openTextDialog)
@@ -438,9 +475,14 @@ export default function App() {
       ...(textToolRequest.height ? { boxHeight: textToolRequest.height } : {})
     }
     const cel = target?.document.animation?.cels.find((candidate) => candidate.layerId === textToolRequest.layerId && candidate.frameId === textToolRequest.frameId)
-    return cel?.text ? cloneTextCelData(cel.text) : { color: { ...target.primaryColor } }
+    // The dialog's origin is the cel placement captured by the caller, not a
+    // possibly older text-data origin. This keeps an Alt-dragged text duplicate
+    // at its copied position when it is subsequently edited.
+    return cel?.text
+      ? { ...cloneTextCelData(cel.text), originX: textToolRequest.x, originY: textToolRequest.y }
+      : { color: { ...target.primaryColor } }
   }, [coordinatorRenderKey, textToolRequest, workspace.sessions])
-  const textToolBox = textToolRequest && textToolInitial?.boxWidth && textToolInitial.boxHeight ? {
+  const textToolBox = textToolRequest && textToolInitial?.layoutMode === 'box' && textToolInitial.boxWidth && textToolInitial.boxHeight ? {
     x: textToolInitial.originX ?? textToolRequest.x,
     y: textToolInitial.originY ?? textToolRequest.y,
     width: textToolInitial.boxWidth,
@@ -462,16 +504,15 @@ export default function App() {
     const state = useWorkspace.getState()
     state.setActive(request.documentId)
     const draft = textLayerDraftRef.current
-    const x = value.originX ?? request.x
-    const y = value.originY ?? request.y
-    const box = value.boxWidth && value.boxHeight ? { x, y, width: value.boxWidth, height: value.boxHeight } : null
+    const current = textToolValueAtCurrentPlacement(request, value)
+    const box = current.value.layoutMode === 'box' && current.value.boxWidth && current.value.boxHeight ? { x: current.x, y: current.y, width: current.value.boxWidth, height: current.value.boxHeight } : null
     if (draft?.documentId === request.documentId) {
-      state.updateTextLayerDraft(draft.layerId, draft.frameId, value, x, y)
+      state.updateTextLayerDraft(draft.layerId, draft.frameId, current.value, current.x, current.y)
       publishTextToolPreview({ documentId: request.documentId, surface: null, box })
       return
     }
-    if (request.layerId || !value.text.length) return
-    const target = state.beginTextLayerDraft(value, x, y)
+    if (request.layerId || !current.value.text.length) return
+    const target = state.beginTextLayerDraft(current.value, current.x, current.y)
     if (!target) return
     textLayerDraftRef.current = { ...target, documentId: request.documentId }
     setTextToolRequest((current) => current?.documentId === request.documentId ? { ...current, ...target } : current)
@@ -483,10 +524,12 @@ export default function App() {
     const state = useWorkspace.getState()
     state.setActive(request.documentId)
     const draft = textLayerDraftRef.current
-    const x = value?.originX ?? request.x
-    const y = value?.originY ?? request.y
-    const boxWidth = value?.boxWidth ?? request.width
-    const boxHeight = value?.boxHeight ?? request.height
+    const current = value ? textToolValueAtCurrentPlacement(request, value) : null
+    const previewValue = current?.value ?? value
+    const x = current?.x ?? request.x
+    const y = current?.y ?? request.y
+    const boxWidth = previewValue?.layoutMode === 'box' ? previewValue.boxWidth ?? request.width : undefined
+    const boxHeight = previewValue?.layoutMode === 'box' ? previewValue.boxHeight ?? request.height : undefined
     const box = boxWidth && boxHeight ? { x, y, width: boxWidth, height: boxHeight } : null
     if (draft?.documentId === request.documentId) {
       publishTextToolPreview({ documentId: request.documentId, surface: null, box })
@@ -494,12 +537,12 @@ export default function App() {
     }
     if (request.layerId && request.frameId) {
       if (textPreviewSurfaceRef.current) state.restoreTextCelPreview(request.layerId, request.frameId, textPreviewSurfaceRef.current)
-      textPreviewSurfaceRef.current = value ? state.previewTextCel(request.layerId, request.frameId, value, x, y) : null
+      textPreviewSurfaceRef.current = previewValue ? state.previewTextCel(request.layerId, request.frameId, previewValue, x, y) : null
       return
     }
     const target = state.sessions.find((item) => item.document.id === request.documentId)
     const preview = value && target
-      ? rasterizeText(normalizeTextCelData({ ...value, originX: x, originY: y }, target.primaryColor), x, y).rgba
+      ? rasterizeText(normalizeTextCelData({ ...previewValue, originX: x, originY: y }, target.primaryColor), x, y).rgba
       : null
     publishTextToolPreview({ documentId: request.documentId, surface: preview, box })
   }, [textToolRequest])
@@ -1392,69 +1435,66 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const frame = createResizeFrame((event) => {
+      const workArea = workAreaRef.current
+      const layout = workArea?.parentElement
+      const right = resizeStart.current
+      const left = leftDockResizeStart.current
+      const bottom = bottomLayersResizeStart.current
+      if (right) {
+        const next = constrainInspectorWidth(right.width - (event.clientX - right.x), right.parentWidth)
+        inspectorWidthRef.current = preferredInspectorWidthRef.current = next
+        inspectorWidthRatioRef.current = dockSizeRatio(next, right.parentWidth, DEFAULT_INSPECTOR_WIDTH_RATIO)
+        layout?.style.setProperty('--inspector-width', `${next}px`)
+      } else if (left) {
+        const next = constrainLeftDockWidth(left.width + event.clientX - left.x, left.parentWidth)
+        leftDockWidthRef.current = preferredLeftDockWidthRef.current = next
+        leftDockWidthRatioRef.current = dockSizeRatio(next, left.parentWidth, DEFAULT_LEFT_DOCK_WIDTH_RATIO)
+        layout?.style.setProperty('--left-dock-width', `${next}px`)
+      } else if (bottom) {
+        const next = constrainBottomDockHeight(bottom.height - (event.clientY - bottom.y), bottom.parentHeight)
+        bottomLayersHeightRef.current = preferredBottomLayersHeightRef.current = next
+        bottomLayersHeightRatioRef.current = dockSizeRatio(next, bottom.parentHeight, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO)
+        workArea?.style.setProperty('--bottom-layers-height', `${next}px`)
+      }
+    })
     const move = (event: PointerEvent): void => {
-      if (!resizeStart.current) return
-      const parentWidth = workspaceDockParentSize(workAreaRef.current).width
-      const next = constrainInspectorWidth(resizeStart.current.width - (event.clientX - resizeStart.current.x), parentWidth)
-      inspectorWidthRef.current = next
-      preferredInspectorWidthRef.current = next
-      inspectorWidthRatioRef.current = dockSizeRatio(next, parentWidth, DEFAULT_INSPECTOR_WIDTH_RATIO)
-      setInspectorWidth(next)
+      if (resizeStart.current || leftDockResizeStart.current || bottomLayersResizeStart.current) frame.push(event)
     }
     const up = (): void => {
+      const resizing = Boolean(resizeStart.current || leftDockResizeStart.current || bottomLayersResizeStart.current)
+      frame.flush()
       if (resizeStart.current) {
+        setInspectorWidth(inspectorWidthRef.current)
         writeStoredString(INSPECTOR_WIDTH_STORAGE_KEY, String(Math.round(inspectorWidthRef.current)))
         writeStoredString(INSPECTOR_WIDTH_RATIO_STORAGE_KEY, String(inspectorWidthRatioRef.current))
       }
-      resizeStart.current = null
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
-  }, [])
-
-  useEffect(() => {
-    const move = (event: PointerEvent): void => {
-      const drag = leftDockResizeStart.current
-      if (!drag) return
-      const parentWidth = workspaceDockParentSize(workAreaRef.current).width
-      const next = constrainLeftDockWidth(drag.width + event.clientX - drag.x, parentWidth)
-      leftDockWidthRef.current = next
-      preferredLeftDockWidthRef.current = next
-      leftDockWidthRatioRef.current = dockSizeRatio(next, parentWidth, DEFAULT_LEFT_DOCK_WIDTH_RATIO)
-      setLeftDockWidth(next)
-    }
-    const up = (): void => {
-      if (!leftDockResizeStart.current) return
-      leftDockResizeStart.current = null
-      writeStoredString(LEFT_DOCK_WIDTH_STORAGE_KEY, String(Math.round(leftDockWidthRef.current)))
-      writeStoredString(LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, String(leftDockWidthRatioRef.current))
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
-  }, [])
-
-  useEffect(() => {
-    const move = (event: PointerEvent): void => {
-      const drag = bottomLayersResizeStart.current
-      const workArea = workAreaRef.current?.getBoundingClientRect()
-      if (!drag || !workArea) return
-      const next = constrainBottomDockHeight(drag.height - (event.clientY - drag.y), workArea.height)
-      bottomLayersHeightRef.current = next
-      preferredBottomLayersHeightRef.current = next
-      bottomLayersHeightRatioRef.current = dockSizeRatio(next, workArea.height, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO)
-      setBottomLayersHeight(next)
-    }
-    const up = (): void => {
-      if (!bottomLayersResizeStart.current) return
+      if (leftDockResizeStart.current) {
+        setLeftDockWidth(leftDockWidthRef.current)
+        writeStoredString(LEFT_DOCK_WIDTH_STORAGE_KEY, String(Math.round(leftDockWidthRef.current)))
+        writeStoredString(LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, String(leftDockWidthRatioRef.current))
+      }
+      if (bottomLayersResizeStart.current) {
+        setBottomLayersHeight(bottomLayersHeightRef.current)
+        writeStoredString(BOTTOM_DOCK_HEIGHT_STORAGE_KEY, String(Math.round(bottomLayersHeightRef.current)))
+        writeStoredString(BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, String(bottomLayersHeightRatioRef.current))
+      }
+      resizeStart.current = leftDockResizeStart.current = null
       bottomLayersResizeStart.current = null
-      writeStoredString(BOTTOM_DOCK_HEIGHT_STORAGE_KEY, String(Math.round(bottomLayersHeightRef.current)))
-      writeStoredString(BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, String(bottomLayersHeightRatioRef.current))
+      if (resizing) endWorkspaceResize()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    window.addEventListener('pointercancel', up)
+    window.addEventListener('blur', up)
+    return () => {
+      frame.cancel()
+      if (resizeStart.current || leftDockResizeStart.current || bottomLayersResizeStart.current) endWorkspaceResize()
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('blur', up)
+    }
   }, [])
 
   useEffect(() => {
@@ -2165,6 +2205,19 @@ export default function App() {
           selectedMaskRowCount: session.selectedAnimationMaskRowKeys.length,
           cellSelectionExplicit: session.animationCellSelectionExplicit
         }))
+        if (session && shouldDeleteActiveAnimationCel({
+          scope: commandScopeRef.current,
+          hasCanvasSelection: Boolean(session.selection),
+          hasAnimationSelection,
+          hasExplicitLayerSelection: session.layerSelectionExplicit === true,
+          hasFreeTileInstanceSelection: Boolean(session.selectedFreeTileInstanceId),
+          hasAnimation: Boolean(session.document.animation)
+        })) {
+          const frameId = session.document.animation!.activeFrameId
+          workspace.selectAnimationCell(animationCelKey(session.document.activeLayerId, frameId))
+          workspace.deleteSelectedAnimationItems()
+          return
+        }
         const target = resolveDeleteCommand(commandScopeRef.current, Boolean(session?.selection), hasAnimationSelection, Boolean(session?.selectedFreeTileInstanceId))
         if (target === 'free-tile-instance' && session?.selectedFreeTileInstanceId) {
           workspace.deleteFreeTileInstances(session.selectedFreeTileInstanceIds.length > 0 ? session.selectedFreeTileInstanceIds : [session.selectedFreeTileInstanceId])
@@ -2479,26 +2532,32 @@ export default function App() {
     event.preventDefault()
   }, [toolRailSide])
   const beginLeftDockResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
-    leftDockResizeStart.current = { x: event.clientX, width: leftDockWidth }
+    if (event.button !== 0) return
+    beginWorkspaceResize()
+    leftDockResizeStart.current = { x: event.clientX, width: leftDockWidthRef.current, parentWidth: workspaceDockParentSize(workAreaRef.current).width }
     event.currentTarget.setPointerCapture?.(event.pointerId)
     event.preventDefault()
   }, [leftDockWidth])
   const beginBottomDockResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
-    bottomLayersResizeStart.current = { y: event.clientY, height: bottomLayersHeight }
+    if (event.button !== 0) return
+    beginWorkspaceResize()
+    bottomLayersResizeStart.current = { y: event.clientY, height: bottomLayersHeightRef.current, parentHeight: workspaceDockParentSize(workAreaRef.current).height }
     event.currentTarget.setPointerCapture?.(event.pointerId)
     event.preventDefault()
   }, [bottomLayersHeight])
   const beginInspectorResize = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
-    resizeStart.current = { x: event.clientX, width: inspectorWidth }
+    if (event.button !== 0) return
+    beginWorkspaceResize()
+    resizeStart.current = { x: event.clientX, width: inspectorWidthRef.current, parentWidth: workspaceDockParentSize(workAreaRef.current).width }
     event.currentTarget.setPointerCapture(event.pointerId)
   }, [inspectorWidth])
   const closePreviewPanel = useCallback((): void => updatePanelVisibility('preview', false), [updatePanelVisibility])
 
   const editorAreaColumns = [
     ...(toolRailSide === 'left' ? ['var(--tool-rail-column-size)'] : []),
-    ...(hasLeftDock ? [`${leftDockWidth}px`, '6px'] : []),
+    ...(hasLeftDock ? ['var(--left-dock-width)', '6px'] : []),
     'minmax(0, 1fr)',
-    ...(hasRightDock ? ['6px', `${inspectorWidth}px`] : []),
+    ...(hasRightDock ? ['6px', 'var(--inspector-width)'] : []),
     ...(toolRailSide === 'right' ? ['var(--tool-rail-column-size)'] : [])
   ]
   const editorAreaNames = [
@@ -2634,6 +2693,8 @@ export default function App() {
     {session && !homeOpen ? <EditorWorkspaceShell
       editorOnly={editorOnly}
       editorColumns={editorColumns}
+      leftDockWidth={leftDockWidth}
+      inspectorWidth={inspectorWidth}
       editorRows={editorRows}
       editorAreas={editorAreas}
       toolRailSide={toolRailSide}
@@ -2760,7 +2821,7 @@ export default function App() {
     {luaScriptSession && <LuaScriptDialogs busy={luaScriptRunning} dialogs={luaScriptSession.dialogs} sessionId={luaScriptSession.sessionId} onAction={(action) => { void dispatchLuaScriptDialog(action) }} />}
     {luaScriptReport && <LuaScriptResultDialog report={luaScriptReport} onClose={() => setLuaScriptReport(null)} />}
     {session && timelapseOpen && <TimelapseDialog settings={session.document.timelapse!} onChange={(settings) => workspace.setTimelapseSettings(settings)} onClear={() => workspace.clearTimelapse()} onExport={(format, options) => workspace.exportTimelapse(format, options)} onClose={() => setTimelapseOpen(false)} />}
-    {textToolRequest && <TextToolDialog editing={Boolean(textToolRequest.layerId && !textLayerDraftRef.current)} initial={textToolInitial} box={textToolBox} onChange={changeTextTool} onPreview={previewTextTool} onClose={() => {
+    {textToolRequest && <TextToolDialog key={`${textToolRequest.documentId}\0${textToolRequest.layerId ?? 'new'}\0${textToolRequest.frameId ?? 'new'}\0${textToolRequest.x}\0${textToolRequest.y}`} editing={Boolean(textToolRequest.layerId && !textLayerDraftRef.current)} initial={textToolInitial} box={textToolBox} onChange={changeTextTool} onPreview={previewTextTool} onClose={() => {
       const draft = textLayerDraftRef.current
       clearTextToolPreview()
       if (draft) {
@@ -2771,17 +2832,19 @@ export default function App() {
       setTextToolRequest(null)
     }} onSubmit={(value) => {
       const request = textToolRequest
+      // Preview cleanup restores the pre-dialog surface. Capture the latest
+      // live placement first so an intervening move is not written back to the
+      // position where this dialog was opened.
+      const current = textToolValueAtCurrentPlacement(request, value)
       clearTextToolPreview()
       useWorkspace.getState().setActive(request.documentId)
       const draft = textLayerDraftRef.current
-      const x = value.originX ?? request.x
-      const y = value.originY ?? request.y
       if (draft?.documentId === request.documentId) {
-        workspace.updateTextLayerDraft(draft.layerId, draft.frameId, value, x, y)
+        workspace.updateTextLayerDraft(draft.layerId, draft.frameId, current.value, current.x, current.y)
         workspace.commitTextLayerDraft(draft.layerId)
         textLayerDraftRef.current = null
-      } else if (request.layerId && request.frameId) workspace.setTextCel(request.layerId, request.frameId, value, x, y)
-      else workspace.createTextLayer(value, x, y)
+      } else if (request.layerId && request.frameId) workspace.setTextCel(request.layerId, request.frameId, current.value, current.x, current.y)
+      else workspace.createTextLayer(current.value, current.x, current.y)
       setTextToolRequest(null)
     }} />}
     {workspaceSaveOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !workspaceBusy) setWorkspaceSaveOpen(false) }}><ModalShell as="form" storageKey="workspace-save" defaultWidth={420} defaultHeight={330} className="workspace-save-dialog" onSubmit={(event) => { event.preventDefault(); void saveWorkspace(workspaceSaveName) }}><DialogHeader eyebrow="WORKSPACE" title={t('app.workspace.saveTitle')} closeLabel={t('common.close')} closeDisabled={workspaceBusy} onClose={() => setWorkspaceSaveOpen(false)} /><div className="modal-body"><FormField label={t('app.workspace.name')}><TextInput autoFocus maxLength={96} value={workspaceSaveName} placeholder={t('app.workspace.namePlaceholder')} onChange={(event) => setWorkspaceSaveName(event.target.value)} /></FormField><p className="modal-note">{t('app.workspace.saveHint')}</p><p className="modal-note">{t('app.workspace.folder', { path: workspaceDirectory || 'workspaces' })}</p></div><footer><button type="button" className="quiet-button" disabled={workspaceBusy} onClick={() => setWorkspaceSaveOpen(false)}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={workspaceBusy || !workspaceSaveName.trim()}><PixelUtilityIcon kind="save" />{t('common.save')}</button></footer></ModalShell></div>}

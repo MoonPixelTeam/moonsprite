@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { canvasCursors, resizeCursors, selectionCreationCursor, selectionCursorCornerRects } from './canvas-visuals'
+import { canvasCursors, canvasToolCursor, resizeCursors, selectionCreationCursor, selectionCursorCornerRects } from './canvas-visuals'
+
+describe('text cursor contrast', () => {
+  it('uses the contrasting canvas cursor color for the text tool', () => {
+    expect(canvasToolCursor('text', { r: 8, g: 8, b: 8, a: 255 })).toBe(canvasCursors.pencilWhite)
+    expect(canvasToolCursor('text', { r: 248, g: 248, b: 248, a: 255 })).toBe(canvasCursors.pencilBlack)
+  })
+})
 
 describe('selection resize cursors', () => {
   it('keeps the regular marquee corner directions stable', () => {

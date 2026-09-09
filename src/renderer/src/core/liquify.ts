@@ -1,5 +1,5 @@
 import type { LayerMask, LiquifyMode, RasterLayer, SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
-import { layerIndexAt, readLayerPacked, writeLayerPacked } from './document'
+import { ensureLayerCoversCanvas, layerIndexAt, readLayerPacked, writeLayerPacked } from './document'
 import { recordPixelKnownCurrent, type PixelEdit } from './history'
 import { selectionContains } from './selection'
 
@@ -442,6 +442,11 @@ export function applyLiquifyPushPath(
   points: readonly Point[],
   options: Omit<LiquifyStepOptions, 'mode' | 'pushStroke'>
 ): LiquifyPushPathResult {
+  // Canvas resizing keeps raster layers independent, so a previously 32×32
+  // layer can remain smaller than the expanded document. Unlike ordinary
+  // brush paths, liquify used to skip this materialization and consequently
+  // clipped every deformation to the former layer bounds.
+  if (!ensureLayerCoversCanvas(document, layer)) return { changed: false, dabCount: 0, dirtyRect: null }
   const radius = Math.max(1, Math.round(options.radius))
   const strength = Math.max(0, Math.min(1, options.strength / 100))
   if (strength === 0 || points.length === 0) return { changed: false, dabCount: 0, dirtyRect: null }
@@ -491,6 +496,7 @@ export function applyLiquifyPushPath(
  */
 export function applyLiquifyHoldStep(document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, to: Point, options: LiquifyStepOptions): boolean {
   if (options.mode === 'push') return false
+  if (!ensureLayerCoversCanvas(document, layer)) return false
   let stroke = holdStrokes.get(edit)
   const radius = Math.max(1, Math.round(options.radius))
   if (!stroke || stroke.mode !== options.mode || stroke.radius !== radius || Math.hypot(to.x - stroke.center.x, to.y - stroke.center.y) >= 0.5) {
@@ -523,6 +529,7 @@ export function applyLiquifyStep(
   options: LiquifyStepOptions,
   sourceBaseline?: HoldStroke['source']
 ): boolean {
+  if (!ensureLayerCoversCanvas(document, layer)) return false
   const radius = Math.max(1, Math.round(options.radius))
   const strength = Math.max(0, Math.min(1, options.strength / 100))
   if (strength === 0) return false

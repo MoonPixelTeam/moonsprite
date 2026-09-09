@@ -74,6 +74,8 @@ export const DEFAULT_SHORTCUTS = {
   'tool.zoom.quick': '',
   'tool.rotate': 'R',
   'tool.rotate.quick': '',
+  'tool.smooth': '',
+  'tool.smooth.quick': '',
   'tool.liquify': 'Y',
   'tool.liquify.quick': '',
   lasso: 'Q',

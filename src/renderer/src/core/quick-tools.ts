@@ -61,6 +61,7 @@ export const QUICK_TOOL_TARGETS: Record<QuickToolShortcutId, QuickToolTarget> = 
   'tool.hand.quick': { tool: 'hand' },
   'tool.zoom.quick': { tool: 'zoom' },
   'tool.rotate.quick': { tool: 'rotate' },
+  'tool.smooth.quick': { tool: 'smooth' },
   'tool.liquify.quick': { tool: 'liquify' }
 }
 

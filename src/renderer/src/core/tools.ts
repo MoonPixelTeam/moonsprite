@@ -3,6 +3,7 @@ import { cachedLayerContentBounds, compositeRegion, ensureLayerCoversCanvas, exp
 import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
 import { blendOver, colorEquals, isInBounds, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from './raster'
 import { continuousLinePoints, continuousLinePointsWithFixForLineBrush, flipSelectionMask, lassoSelection, packedColorMatchesTolerance, polygonSelection, rasterLinePoints, rotatedEllipseSelection, rotatedRectSelection, rotatedSelectionBounds, roundedRectContainsPoint, roundedRectRadius, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionDestinationPoint, transformedSelectionSourcePoint, type SelectionFlipAxis, type SelectionShearTransform } from './selection'
+import { RotSpriteSource, ROTSPRITE_SCALE } from './rotsprite-source'
 import { proceduralBrushCoverageAt } from './brushes'
 import { balancedStairLinePoints } from './pixel-line'
 import { hasSymmetry, symmetryPoints, symmetrySelectionDragRegion, type SymmetryAxes, type SymmetryCenter, type SymmetryPoint } from './symmetry'
@@ -3019,51 +3020,18 @@ const SELECTION_TRANSLATION_POINT_HISTORY_THRESHOLD = 65_536
 
 interface TransformCell { x: number; y: number; sourceIndex: number; value: number }
 
-const ROTSPRITE_SCALE = 8
-// The final 8x working surface is 64 times the source area. Keep the fallback
-// bounded so a large selection never allocates an unbounded raster.
-const ROTSPRITE_MAX_SOURCE_PIXELS = 4_096
-
 interface RotSpriteScaledSource {
-  pixels: Uint32Array
-  width: number
-  height: number
+  sampler: RotSpriteSource
   sourceOffsetX: number
   sourceOffsetY: number
+  paletteKey: string
 }
 
-// A selection source is immutable for the lifetime of a transform gesture.
-// Reuse its scaled raster across pointer-move previews, like Aseprite reuses
-// its temporary ImageBuffers instead of rebuilding the same source each frame.
+// Captured pixels/mask are immutable for a transform gesture; palette alpha
+// can change independently and determines which indexed pixels form the bounds.
 const rotSpriteScaledSourceCache = new WeakMap<SelectionTransformSource, RotSpriteScaledSource>()
 
-const scale2xPacked = (source: Uint32Array, width: number, height: number): { pixels: Uint32Array; width: number; height: number } => {
-  const nextWidth = width * 2
-  const nextHeight = height * 2
-  const pixels = new Uint32Array(nextWidth * nextHeight)
-  for (let y = 0; y < height; y += 1) {
-    const row = y * width
-    const previousRow = y > 0 ? row - width : row
-    const nextRow = y + 1 < height ? row + width : row
-    for (let x = 0; x < width; x += 1) {
-      const left = x > 0 ? x - 1 : x
-      const right = x + 1 < width ? x + 1 : x
-      const p = source[row + x]
-      const a = source[previousRow + x]
-      const b = source[row + right]
-      const c = source[row + left]
-      const d = source[nextRow + x]
-      const output = y * 2 * nextWidth + x * 2
-      pixels[output] = c === a && c !== d && a !== b ? a : p
-      pixels[output + 1] = a === b && a !== c && b !== d ? b : p
-      pixels[output + nextWidth] = d === c && d !== b && c !== a ? c : p
-      pixels[output + nextWidth + 1] = b === d && b !== a && d !== c ? d : p
-    }
-  }
-  return { pixels, width: nextWidth, height: nextHeight }
-}
-
-/** Aseprite-compatible RotSprite raster path for pure rotations.
+/** RotSprite raster path with bounded Scale2x sampling.
  *
  * RotSprite is deliberately a two-stage raster operation. Aseprite first
  * builds an 8x EPX/Scale2x source, maps it to a fixed-point parallelogram by
@@ -3077,13 +3045,25 @@ const rotSpriteSelectionCells = (
   sourceData: SelectionTransformSource,
   target: SelectionRect,
   angle: number,
-  layer: RasterLayer
+  layer: RasterLayer,
+  shear?: SelectionShearTransform,
+  quad?: SelectionQuad
 ): TransformCell[] | null => {
   const source = sourceData.selection
   const normalizedAngle = ((angle % 360) + 360) % 360
   const rightAngle = Math.abs(normalizedAngle % 90) < 1e-9
     || Math.abs(normalizedAngle % 90 - 90) < 1e-9
-  if (rightAngle || source.width < 1 || source.height < 1) return null
+  if ((rightAngle && !shear && !quad) || source.width < 1 || source.height < 1) return null
+  if (quad && !sourceData.sourceQuad) {
+    const equal = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9
+    const aligned = (equal(quad.nw.y, quad.ne.y) && equal(quad.ne.x, quad.se.x)
+      && equal(quad.se.y, quad.sw.y) && equal(quad.sw.x, quad.nw.x))
+      || (equal(quad.nw.x, quad.ne.x) && equal(quad.ne.y, quad.se.y)
+        && equal(quad.se.x, quad.sw.x) && equal(quad.sw.y, quad.nw.y))
+    // Orthogonal transforms already have an exact pixel mapping. EPX should
+    // not reshape corners during identity, axis-aligned resizing or flipping.
+    if (aligned) return null
+  }
 
   const opaquePaletteIds = layer.format === 'indexed'
     ? new Set(document.palette.filter((entry) => entry.id !== 0 && entry.color.a !== 0).map((entry) => entry.id))
@@ -3092,73 +3072,47 @@ const rotSpriteSelectionCells = (
     ? (value >>> 24) !== 0
     : value !== 0 && opaquePaletteIds!.has(value)
 
-  // Transparent selection padding must not participate in RotSprite's source
-  // surface. Keep the selection centre as the rotation pivot, but rasterize
-  // only the tight frame occupied by selected opaque pixels.
-  let contentLeft = source.width
-  let contentTop = source.height
-  let contentRight = -1
-  let contentBottom = -1
-  const includeOpaqueOffset = (offset: number): void => {
-    const localX = offset % source.width
-    const localY = Math.floor(offset / source.width)
-    contentLeft = Math.min(contentLeft, localX)
-    contentTop = Math.min(contentTop, localY)
-    contentRight = Math.max(contentRight, localX)
-    contentBottom = Math.max(contentBottom, localY)
-  }
-  if (sourceData.opaqueOffsets.length > 0) {
-    for (const offset of sourceData.opaqueOffsets) includeOpaqueOffset(offset)
-  } else {
-    for (let localY = 0; localY < source.height; localY += 1) {
-      for (let localX = 0; localX < source.width; localX += 1) {
-        const offset = localY * source.width + localX
+  const paletteKey = opaquePaletteIds ? [...opaquePaletteIds].join(',') : 'rgba'
+  let scaledSource = rotSpriteScaledSourceCache.get(sourceData)
+  if (!scaledSource || scaledSource.paletteKey !== paletteKey) {
+    let contentLeft = source.width
+    let contentTop = source.height
+    let contentRight = -1
+    let contentBottom = -1
+    const includeOpaqueOffset = (offset: number): void => {
+      contentLeft = Math.min(contentLeft, offset % source.width)
+      contentTop = Math.min(contentTop, Math.floor(offset / source.width))
+      contentRight = Math.max(contentRight, offset % source.width)
+      contentBottom = Math.max(contentBottom, Math.floor(offset / source.width))
+    }
+    if (!opaquePaletteIds && sourceData.opaqueOffsets.length > 0) {
+      for (const offset of sourceData.opaqueOffsets) includeOpaqueOffset(offset)
+    } else {
+      for (let offset = 0; offset < source.width * source.height; offset++) {
         if ((!source.mask || source.mask[offset] === 1) && isOpaqueValue(sourceData.values[offset])) includeOpaqueOffset(offset)
       }
     }
-  }
-  if (contentRight < contentLeft || contentBottom < contentTop) return []
-  const contentWidth = contentRight - contentLeft + 1
-  const contentHeight = contentBottom - contentTop + 1
-  if (contentWidth * contentHeight > ROTSPRITE_MAX_SOURCE_PIXELS) return null
-
-  const selectedAt = (localX: number, localY: number): boolean => {
-    if (localX < 0 || localY < 0 || localX >= contentWidth || localY >= contentHeight) return false
-    const sourceLocalX = contentLeft + localX
-    const sourceLocalY = contentTop + localY
-    const offset = sourceLocalY * source.width + sourceLocalX
-    return !source.mask || source.mask[offset] === 1
-  }
-  let scaledSource = rotSpriteScaledSourceCache.get(sourceData)
-  if (!scaledSource) {
-    // Aseprite starts at the native raster and applies Scale2x as
-    // 1x -> 2x -> 4x -> 8x. Starting from an 8x raster and applying the same
-    // passes again would create a 64x surface and makes live previews stall.
-    let enlargedWidth = contentWidth
-    let enlargedHeight = contentHeight
-    let enlarged: Uint32Array<ArrayBufferLike> = new Uint32Array(contentWidth * contentHeight)
-    for (let localY = 0; localY < contentHeight; localY += 1) for (let localX = 0; localX < contentWidth; localX += 1) {
-      const sourceOffset = (contentTop + localY) * source.width + contentLeft + localX
-      // Keep internal transparent holes and masked pixels in the neighborhood;
-      // only the empty frame outside the content bounds is removed.
-      enlarged[localY * contentWidth + localX] = sourceData.values[sourceOffset]
-    }
-    for (let pass = 0; pass < 3; pass += 1) {
-      const scaled = scale2xPacked(enlarged, enlargedWidth, enlargedHeight)
-      enlarged = scaled.pixels
-      enlargedWidth = scaled.width
-      enlargedHeight = scaled.height
-    }
+    const contentWidth = Math.max(0, contentRight - contentLeft + 1)
+    const contentHeight = Math.max(0, contentBottom - contentTop + 1)
     scaledSource = {
-      pixels: enlarged,
-      width: enlargedWidth,
-      height: enlargedHeight,
+      sampler: new RotSpriteSource(contentWidth, contentHeight, (x, y) => {
+        const offset = (contentTop + y) * source.width + contentLeft + x
+        return !source.mask || source.mask[offset] === 1 ? sourceData.values[offset] : 0
+      }),
       sourceOffsetX: contentLeft,
-      sourceOffsetY: contentTop
+      sourceOffsetY: contentTop,
+      paletteKey
     }
     rotSpriteScaledSourceCache.set(sourceData, scaledSource)
   }
-
+  const contentLeft = scaledSource.sourceOffsetX
+  const contentTop = scaledSource.sourceOffsetY
+  const contentWidth = scaledSource.sampler.width
+  const contentHeight = scaledSource.sampler.height
+  if (!contentWidth || !contentHeight) return []
+  const selectedAt = (x: number, y: number): boolean => !source.mask || source.mask[(contentTop + y) * source.width + contentLeft + x] === 1
+  const pureRotation = !shear && !target.flipHorizontal && !target.flipVertical
+    && target.width === source.width && target.height === source.height
   const contentTarget = {
     x: target.x + contentLeft,
     y: target.y + contentTop,
@@ -3181,8 +3135,15 @@ const rotSpriteSelectionCells = (
     { x: contentTarget.x + contentTarget.width, y: contentTarget.y },
     { x: contentTarget.x + contentTarget.width, y: contentTarget.y + contentTarget.height },
     { x: contentTarget.x, y: contentTarget.y + contentTarget.height }
-  ].map((corner) => rotateAroundSelectionCenter(corner.x, corner.y))
-  const transformedBounds = {
+  ].map((corner) => pureRotation
+    ? rotateAroundSelectionCenter(corner.x, corner.y)
+    : transformedSelectionDestinationPoint(source, {
+      ...target,
+      // Match the shared inverse mapper for cross-boundary resize handles.
+      flipHorizontal: target.flipHorizontal && !(Number.isFinite(target.flipOriginX) && target.flipOriginX! <= target.x + 1e-9),
+      flipVertical: target.flipVertical && !(Number.isFinite(target.flipOriginY) && target.flipOriginY! <= target.y + 1e-9)
+    }, source.x + corner.x - target.x - 0.5, source.y + corner.y - target.y - 0.5, angle, shear))
+  const transformedBounds = quad ? selectionQuadBounds(quad) : {
     x: Math.floor(Math.min(...transformedContentCorners.map((corner) => corner.x))),
     y: Math.floor(Math.min(...transformedContentCorners.map((corner) => corner.y))),
     width: Math.ceil(Math.max(...transformedContentCorners.map((corner) => corner.x))) - Math.floor(Math.min(...transformedContentCorners.map((corner) => corner.x))),
@@ -3206,16 +3167,54 @@ const rotSpriteSelectionCells = (
   const fixedRound = (value: number): number => Math.floor((value + FIXED_HALF) / FIXED_ONE)
   const fixedRoundDown = (value: number): number => Math.floor((value - FIXED_HALF) / FIXED_ONE)
 
-  const enlarged = scaledSource.pixels
-  const enlargedWidth = scaledSource.width
-  const enlargedHeight = scaledSource.height
+  const enlargedWidth = contentWidth * ROTSPRITE_SCALE
+  const enlargedHeight = contentHeight * ROTSPRITE_SCALE
   const sourceOffsetX = scaledSource.sourceOffsetX
   const sourceOffsetY = scaledSource.sourceOffsetY
   const highWidth = workingBounds.width * ROTSPRITE_SCALE
   const highHeight = workingBounds.height * ROTSPRITE_SCALE
-  const highPixels = new Uint32Array(highWidth * highHeight)
-  const highSourceIndices = new Uint32Array(highWidth * highHeight)
-  const highValid = new Uint8Array(highWidth * highHeight)
+  // Retain the original endpoint-based 8x -> 1x sampling phase without
+  // allocating/rasterizing the high-resolution destination. Only these samples
+  // can survive the final shrink. Canvas clipping must not reset their phase.
+  const cells: TransformCell[] = []
+  const downsampleX = workingBounds.width > 1 ? fixedDiv(highWidth - 1, workingBounds.width - 1) : 0
+  const downsampleY = workingBounds.height > 1 ? fixedDiv(highHeight - 1, workingBounds.height - 1) : 0
+  const firstX = Math.max(0, -workingBounds.x)
+  const lastX = Math.min(workingBounds.width, document.width - workingBounds.x)
+  const firstY = Math.max(0, -workingBounds.y)
+  const lastY = Math.min(workingBounds.height, document.height - workingBounds.y)
+  if (firstX >= lastX || firstY >= lastY) return []
+  let outputY = firstY
+  if (quad) {
+    // Free quadrilaterals need the shared inverse geometry (including an
+    // already transformed source). Apply the same endpoint shrink phase to
+    // samples in the virtual 8x destination, then read the bounded EPX source.
+    const transform = selectionQuadTransformFor(source, quad)
+    const sourceTransform = sourceData.sourceQuad ? selectionQuadTransformFor(source, sourceData.sourceQuad) : null
+    if (!transform || (sourceData.sourceQuad && !sourceTransform)) return []
+    for (let y = firstY; y < lastY; y++) for (let x = firstX; x < lastX; x++) {
+      const normalized = selectionQuadSourcePoint(transform, {
+        x: workingBounds.x + (fixedFloor(x * downsampleX) + 0.5) / ROTSPRITE_SCALE,
+        y: workingBounds.y + (fixedFloor(y * downsampleY) + 0.5) / ROTSPRITE_SCALE
+      })
+      if (!normalized || normalized.x < 0 || normalized.x >= 1 || normalized.y < 0 || normalized.y >= 1) continue
+      const point = sourceTransform
+        ? selectionQuadPoint(sourceTransform, normalized.x, normalized.y)
+        : { x: source.x + normalized.x * source.width, y: source.y + normalized.y * source.height }
+      if (!point) continue
+      const highX = Math.floor((point.x - source.x - contentLeft) * ROTSPRITE_SCALE)
+      const highY = Math.floor((point.y - source.y - contentTop) * ROTSPRITE_SCALE)
+      if (highX < 0 || highY < 0 || highX >= enlargedWidth || highY >= enlargedHeight) continue
+      const localX = Math.floor(highX / ROTSPRITE_SCALE)
+      const localY = Math.floor(highY / ROTSPRITE_SCALE)
+      if (!selectedAt(localX, localY)) continue
+      const value = scaledSource.sampler.sample(highX, highY)
+      if (!isOpaqueValue(value)) continue
+      cells.push({ x: workingBounds.x + x, y: workingBounds.y + y,
+        sourceIndex: pixelIndex(document.width, source.x + contentLeft + localX, source.y + contentTop + localY), value })
+    }
+    return cells
+  }
   // This is the fixed-point corner calculation used by Aseprite's
   // rotate_scale_flip_coordinates(). The points are outer pixel corners, not
   // pixel centres, which is important for the final 8x -> 1x sampling.
@@ -3237,18 +3236,18 @@ const rotSpriteSelectionCells = (
   const originYFixed = (contentCenter.y - workingBounds.y) * ROTSPRITE_SCALE * FIXED_ONE
   const topLeftX = originXFixed - fixedMul(pivotXFixed, fixedCosine) + fixedMul(pivotYFixed, fixedSine)
   const topLeftY = originYFixed - fixedMul(pivotXFixed, fixedSine) - fixedMul(pivotYFixed, fixedCosine)
-  const cornersX = [
+  const cornersX = pureRotation ? [
     topLeftX,
     topLeftX + fixedMul(sourceWidthFixed, fixedCosine),
     topLeftX + fixedMul(sourceWidthFixed, fixedCosine) - fixedMul(sourceHeightFixed, fixedSine),
     topLeftX - fixedMul(sourceHeightFixed, fixedSine)
-  ]
-  const cornersY = [
+  ] : transformedContentCorners.map(point => Math.round((point.x - workingBounds.x) * ROTSPRITE_SCALE * FIXED_ONE))
+  const cornersY = pureRotation ? [
     topLeftY,
     topLeftY + fixedMul(sourceWidthFixed, fixedSine),
     topLeftY + fixedMul(sourceWidthFixed, fixedSine) + fixedMul(sourceHeightFixed, fixedCosine),
     topLeftY + fixedMul(sourceHeightFixed, fixedCosine)
-  ]
+  ] : transformedContentCorners.map(point => Math.round((point.y - workingBounds.y) * ROTSPRITE_SCALE * FIXED_ONE))
 
   // A direct TypeScript port of Aseprite's fixed-point parallelogram
   // scan-converter. Each destination high-resolution pixel is visited only
@@ -3311,30 +3310,30 @@ const rotSpriteSelectionCells = (
     / ((cornersX[3] - cornersX[0]) * (cornersY[1] - cornersY[0]) - (cornersX[1] - cornersX[0]) * (cornersY[3] - cornersY[0]))
 
   const drawScanline = (y: number, left: number, right: number, sourceStartX: number, sourceStartY: number): void => {
+    while (outputY < lastY && fixedFloor(outputY * downsampleY) < y) outputY++
+    if (outputY >= lastY || fixedFloor(outputY * downsampleY) !== y) return
     const leftPixel = Math.max(0, fixedFloor(left))
     const rightPixel = Math.min(highWidth - 1, fixedFloor(right))
-    let sourceX = sourceStartX + fixedMul((leftPixel * FIXED_ONE) - left, sourceDx)
-    let sourceY = sourceStartY + fixedMul((leftPixel * FIXED_ONE) - left, sourceDy)
-    for (let x = leftPixel; x <= rightPixel; x += 1) {
-      const sourcePixelX = fixedFloor(sourceX)
-      const sourcePixelY = fixedFloor(sourceY)
-      if (sourcePixelX >= 0 && sourcePixelY >= 0 && sourcePixelX < enlargedWidth && sourcePixelY < enlargedHeight
-        && selectedAt(Math.floor(sourcePixelX / ROTSPRITE_SCALE), Math.floor(sourcePixelY / ROTSPRITE_SCALE))) {
-        const value = enlarged[sourcePixelY * enlargedWidth + sourcePixelX]
-        if (!isOpaqueValue(value)) {
-          sourceX += sourceDx
-          sourceY += sourceDy
-          continue
-        }
-        const sourceLocalX = sourceOffsetX + Math.min(contentWidth - 1, Math.max(0, Math.floor(sourcePixelX / ROTSPRITE_SCALE)))
-        const sourceLocalY = sourceOffsetY + Math.min(contentHeight - 1, Math.max(0, Math.floor(sourcePixelY / ROTSPRITE_SCALE)))
-        const outputOffset = y * highWidth + x
-        highPixels[outputOffset] = value
-        highSourceIndices[outputOffset] = pixelIndex(document.width, source.x + sourceLocalX, source.y + sourceLocalY)
-        highValid[outputOffset] = 1
-      }
-      sourceX += sourceDx
-      sourceY += sourceDy
+    const startX = sourceStartX + fixedMul((leftPixel * FIXED_ONE) - left, sourceDx)
+    const startY = sourceStartY + fixedMul((leftPixel * FIXED_ONE) - left, sourceDy)
+    const begin = downsampleX > 0 ? Math.max(firstX, Math.ceil(leftPixel * FIXED_ONE / downsampleX)) : firstX
+    for (let x = begin; x < lastX; x++) {
+      const highX = fixedFloor(x * downsampleX)
+      if (highX > rightPixel) break
+      const sourcePixelX = fixedFloor(startX + (highX - leftPixel) * sourceDx)
+      const sourcePixelY = fixedFloor(startY + (highX - leftPixel) * sourceDy)
+      if (sourcePixelX < 0 || sourcePixelY < 0 || sourcePixelX >= enlargedWidth || sourcePixelY >= enlargedHeight) continue
+      const localX = Math.floor(sourcePixelX / ROTSPRITE_SCALE)
+      const localY = Math.floor(sourcePixelY / ROTSPRITE_SCALE)
+      if (!selectedAt(localX, localY)) continue
+      const value = scaledSource!.sampler.sample(sourcePixelX, sourcePixelY)
+      if (!isOpaqueValue(value)) continue
+      cells.push({
+        x: workingBounds.x + x,
+        y: workingBounds.y + outputY,
+        sourceIndex: pixelIndex(document.width, source.x + sourceOffsetX + localX, source.y + sourceOffsetY + localY),
+        value
+      })
     }
   }
 
@@ -3427,28 +3426,6 @@ const rotSpriteSelectionCells = (
     rightBmpX += rightBmpDx
   }
 
-  // Aseprite's scale_image() uses (src-1)/(dst-1), not a centre-based
-  // floating-point ratio. Keep the same endpoint and rounding behavior.
-  const cells: TransformCell[] = []
-  const downsampleX = workingBounds.width > 1 ? fixedDiv(highWidth - 1, workingBounds.width - 1) : 0
-  const downsampleY = workingBounds.height > 1 ? fixedDiv(highHeight - 1, workingBounds.height - 1) : 0
-  for (let y = 0; y < workingBounds.height; y += 1) {
-    const highY = Math.min(highHeight - 1, Math.max(0, fixedFloor(y * downsampleY)))
-    for (let x = 0; x < workingBounds.width; x += 1) {
-      const highX = Math.min(highWidth - 1, Math.max(0, fixedFloor(x * downsampleX)))
-      const highOffset = highY * highWidth + highX
-      if (!highValid[highOffset]) continue
-      const documentX = workingBounds.x + x
-      const documentY = workingBounds.y + y
-      if (!isInBounds(document.width, document.height, documentX, documentY)) continue
-      cells.push({
-        x: documentX,
-        y: documentY,
-        sourceIndex: highSourceIndices[highOffset],
-        value: highPixels[highOffset]
-      })
-    }
-  }
   return cells
 }
 
@@ -3986,6 +3963,10 @@ function selectionTransformCells(document: SpriteDocument, sourceData: Selection
   const isOpaqueValue = (value: number): boolean => layer.format === 'rgba'
     ? (value >>> 24) !== 0
     : value !== 0 && getPaletteEntry(document, value).color.a !== 0
+  if (optimizedRotation) {
+    const rotSpriteCells = rotSpriteSelectionCells(document, sourceData, target, angle, layer, shear, quad)
+    if (rotSpriteCells) return rotSpriteCells
+  }
   if (quad) {
     const transform = selectionQuadTransformFor(source, quad)
     const sourceTransform = sourceData.sourceQuad ? selectionQuadTransformFor(source, sourceData.sourceQuad) : null
@@ -4028,10 +4009,6 @@ function selectionTransformCells(document: SpriteDocument, sourceData: Selection
     && target.height === source.height
   )
   if (pixelPreservingRotation) {
-    if (optimizedRotation) {
-      const rotSpriteCells = rotSpriteSelectionCells(document, sourceData, target, angle, layer)
-      if (rotSpriteCells) return rotSpriteCells
-    }
     const addForwardMappedCell = (sourceOffset: number): void => {
       if (!isOpaqueValue(sourceData.values[sourceOffset])) return
       const localX = sourceOffset % source.width

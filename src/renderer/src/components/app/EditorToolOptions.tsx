@@ -438,9 +438,9 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, percentage, 
   </div>
 }
 
-export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brushSize, documentId, primaryColor, secondaryColor, telemetryPreview, onChange, onGradientDitherChange }: {
+export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brushSize, documentId, primaryColor, secondaryColor, telemetryPreview, onChange, onGradientDitherChange, availableEffects = brushDynamicsEffects }: {
   settings: BrushDynamicsSettings
-  tool: 'pencil' | 'eraser'
+  tool: 'pencil' | 'eraser' | 'smooth'
   intrinsicSize: boolean
   brushSize: number
   documentId: string | null
@@ -449,6 +449,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
   telemetryPreview?: BrushDynamicsTelemetrySnapshot
   onChange: (effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>) => void
   onGradientDitherChange: (dither: GradientDither) => void
+  availableEffects?: readonly BrushDynamicsEffect[]
 }) {
   const { t } = useI18n()
   const telemetry = useSyncExternalStore(
@@ -457,8 +458,8 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
     () => null
   )
   const liveTelemetry = telemetryPreview ?? telemetry
-  const effectDisabled = (effect: BrushDynamicsEffect): boolean => (effect === 'size' && intrinsicSize) || (effect === 'gradient' && tool === 'eraser')
-  const firstAvailableMapping = (): BrushDynamicsEffect | null => brushDynamicsEffects.find((effect) => !effectDisabled(effect) && settings.effects[effect].sensor) ?? null
+  const effectDisabled = (effect: BrushDynamicsEffect): boolean => !availableEffects.includes(effect) || (effect === 'size' && intrinsicSize) || (effect === 'gradient' && tool === 'eraser')
+  const firstAvailableMapping = (): BrushDynamicsEffect | null => availableEffects.find((effect) => !effectDisabled(effect) && settings.effects[effect].sensor) ?? null
   const [activeEffect, setActiveEffect] = useState<BrushDynamicsEffect | null>(firstAvailableMapping)
   const effectLabel = (effect: BrushDynamicsEffect): string => effect === 'size'
     ? t('toolOptions.pressureEffectSize')
@@ -474,12 +475,9 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
     if (!activeEffect) return
     const activeDisabled = (activeEffect === 'size' && intrinsicSize) || (activeEffect === 'gradient' && tool === 'eraser')
     if (!activeDisabled) return
-    const fallback = brushDynamicsEffects.find((effect) => {
-      const disabled = (effect === 'size' && intrinsicSize) || (effect === 'gradient' && tool === 'eraser')
-      return !disabled && settings.effects[effect].sensor
-    })
+    const fallback = availableEffects.find((effect) => !effectDisabled(effect) && settings.effects[effect].sensor)
     setActiveEffect(fallback ?? null)
-  }, [activeEffect, intrinsicSize, settings.effects.angle.sensor, settings.effects.gradient.sensor, settings.effects.size.sensor, settings.effects.strength.sensor, tool])
+  }, [activeEffect, availableEffects, intrinsicSize, settings.effects.angle.sensor, settings.effects.gradient.sensor, settings.effects.size.sensor, settings.effects.strength.sensor, tool])
   const selectMapping = (effect: BrushDynamicsEffect, sensor: BrushDynamicsSensor): void => {
     if (effectDisabled(effect)) return
     const mapping = settings.effects[effect]
@@ -542,10 +540,10 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
       <div className="pressure-section-title">{t('toolOptions.pressureMappingMatrix')}</div>
       <div className="pressure-matrix" role="grid" aria-label={t('toolOptions.pressureMappingMatrix')}>
         <div className="pressure-matrix-header" role="row"><span aria-hidden="true" /><span role="columnheader">{sensorLabel('pressure')}</span><span role="columnheader">{sensorLabel('speed')}</span></div>
-        {intrinsicSize ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureIntrinsicSizeHint')}>{renderEffectRow('size')}</Tooltip> : renderEffectRow('size')}
-        {renderEffectRow('strength')}
-        {tool === 'eraser' ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureEraserGradientHint')}>{renderEffectRow('gradient')}</Tooltip> : renderEffectRow('gradient')}
-        {renderEffectRow('angle')}
+        {availableEffects.includes('size') && (intrinsicSize ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureIntrinsicSizeHint')}>{renderEffectRow('size')}</Tooltip> : renderEffectRow('size'))}
+        {availableEffects.includes('strength') && renderEffectRow('strength')}
+        {availableEffects.includes('gradient') && (tool === 'eraser' ? <Tooltip className="pressure-matrix-tooltip" content={t('toolOptions.pressureEraserGradientHint')}>{renderEffectRow('gradient')}</Tooltip> : renderEffectRow('gradient'))}
+        {availableEffects.includes('angle') && renderEffectRow('angle')}
       </div>
     </div>
     {activeMapping && activeSensor && sensorBounds ? <section className="pressure-mapping-details">
@@ -588,6 +586,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
   ))
   const [brushSizeFlyoutOpen, setBrushSizeFlyoutOpen] = useState(false)
+  const [smoothStrengthFlyoutOpen, setSmoothStrengthFlyoutOpen] = useState(false)
   const [liquifyFlyoutOpen, setLiquifyFlyoutOpen] = useState<'radius' | 'strength' | null>(null)
   const [brushAngleFlyoutOpen, setBrushAngleFlyoutOpen] = useState(false)
   const [basicBrushFlyoutOpen, setBasicBrushFlyoutOpen] = useState(false)
@@ -670,6 +669,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     const closeOutside = (event: PointerEvent): void => {
       if (!(event.target instanceof Element)) return
       if (!event.target.closest('.brush-size-control')) setBrushSizeFlyoutOpen(false)
+      if (!event.target.closest('.smooth-strength-control')) setSmoothStrengthFlyoutOpen(false)
       if (!event.target.closest('.liquify-value-control')) setLiquifyFlyoutOpen(null)
       if (!event.target.closest('.brush-angle-control')) setBrushAngleFlyoutOpen(false)
       if (!event.target.closest('.brush-shape-selector')) setBasicBrushFlyoutOpen(false)
@@ -682,12 +682,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       if (!(event.target instanceof Element)) return
       if (!keepsBrushDynamicsOpen(event.target)) setPressureFlyoutOpen(false)
     }
-    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setLiquifyFlyoutOpen(null) }
-    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setLiquifyFlyoutOpen(null) } }
+    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) }
+    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) } }
     const closeAll = (event: Event): void => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (target && target !== 'popover') return
       setBrushSizeFlyoutOpen(false)
+      setSmoothStrengthFlyoutOpen(false)
       setLiquifyFlyoutOpen(null)
       setBrushAngleFlyoutOpen(false)
       setBasicBrushFlyoutOpen(false)
@@ -806,14 +807,15 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
 
   useEffect(() => {
     const supportsBrushLibrary = session?.tool === 'pencil' || session?.tool === 'eraser' || session?.tool === 'line' || (session?.tool === 'fill' && (session.fillKind ?? 'bucket') === 'bucket')
-    if (!supportsBrushLibrary && session?.tool !== 'airbrush') setBrushSizeFlyoutOpen(false)
-    if (session?.tool !== 'pencil' && session?.tool !== 'eraser' && session?.tool !== 'line') {
+    if (!supportsBrushLibrary && session?.tool !== 'airbrush' && session?.tool !== 'smooth') setBrushSizeFlyoutOpen(false)
+    if (session?.tool !== 'pencil' && session?.tool !== 'eraser' && session?.tool !== 'line' && session?.tool !== 'smooth') {
       setBasicBrushFlyoutOpen(false)
       closeBrushDitherFlyout()
     }
     if (session?.brushImage && !isProceduralBrushId(session.brushImage.id)) closeBrushDitherFlyout()
     if (session?.tool !== 'fill' || (session.fillKind ?? 'bucket') !== 'bucket') setFillTextureOpen(false)
     if (session?.tool !== 'pencil' && session?.tool !== 'eraser') setPressureFlyoutOpen(false)
+    if (session?.tool !== 'smooth') setSmoothStrengthFlyoutOpen(false)
   }, [closeBrushDitherFlyout, renderKey, session?.tool, session?.fillKind])
 
   useEffect(() => {
@@ -903,7 +905,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [session?.tool, session?.liquifyMode])
 
   useEffect(() => {
-    if (!session || session.tool !== 'pencil' && session.tool !== 'eraser' && session.tool !== 'line' || session.brushShape !== 'square' && session.brushShape !== 'line' || session.brushImage?.intrinsicSize) setBrushAngleFlyoutOpen(false)
+    if (!session || session.tool !== 'pencil' && session.tool !== 'eraser' && session.tool !== 'line' && session.tool !== 'smooth' || session.brushShape !== 'square' && session.brushShape !== 'line' || session.brushImage?.intrinsicSize) setBrushAngleFlyoutOpen(false)
   }, [session?.tool, session?.brushShape, session?.brushImage?.intrinsicSize])
 
   if (!session) return null
@@ -912,15 +914,19 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const fillKind = session.fillKind ?? 'bucket'
   const gradientDither = session.gradientDither ?? 'none'
   const gradientStops = session.gradientStops ?? [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]
-  const isStrokeBrushTool = session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line'
+  // Smooth uses the same basic stamp controls as Pencil. Its smoothing
+  // algorithm remains distinct, but size, round/square/line stamp choice,
+  // pixel cleanup and symmetry must describe one shared brush state.
+  const isStrokeBrushTool = session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line' || session.tool === 'smooth'
+  const isSmoothBrushTool = session.tool === 'smooth'
   const isBucketBrushTool = session.tool === 'fill' && fillKind === 'bucket'
   const isBrushTool = isStrokeBrushTool || isBucketBrushTool
   const activeProceduralBrush = session.brushImage && isProceduralBrushId(session.brushImage.id) ? session.brushImage : null
-  const activeLibraryBrush = session.brushImage && !activeProceduralBrush ? session.brushImage : null
+  const activeLibraryBrush = !isSmoothBrushTool && session.brushImage && !activeProceduralBrush ? session.brushImage : null
   const showBrushAngle = isStrokeBrushTool && session.brushSize > 1 && !activeLibraryBrush?.intrinsicSize && (session.brushShape === 'square' || session.brushShape === 'line')
   const brushDither = session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
   const brushDitherMaximumStage = ditherStageCount(brushDither.template)
-  const supportsSymmetry = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'selection' || session.tool === 'shape' || session.tool === 'line' || (session.tool === 'fill' && fillKind === 'bucket')
+  const supportsSymmetry = session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'selection' || session.tool === 'shape' || session.tool === 'line' || (session.tool === 'fill' && fillKind === 'bucket')
   const selectionModeItems = selectionModes(locale)
   const brushPaintModeGroups = [{
     label: t('toolOptions.brushMode'),
@@ -1030,7 +1036,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <button key={shape} type="button" role="menuitemradio" className={`icon-button brush-preset ${!activeLibraryBrush && session.brushShape === shape ? 'selected' : ''}`} title={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} aria-checked={!activeLibraryBrush && session.brushShape === shape} onClick={() => chooseBasicBrush(shape)}><span className="brush-shape-preview" style={{ transform: `rotate(${shape === 'square' || shape === 'line' ? session.brushAngle : 0}deg)` }}><PixelShapeIcon kind={shape} /></span></button>)}
         </div>}
       </div>}
-      {isStrokeBrushTool && <>
+      {isStrokeBrushTool && !isSmoothBrushTool && <>
         <div className="brush-dither-control">
           <button ref={brushDitherTriggerRef} type="button" className={`icon-button brush-dither-trigger ${brushDither.enabled && !activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.brushDither')} aria-label={t('toolOptions.brushDither')} aria-haspopup="dialog" aria-expanded={brushDitherFlyoutOpen} aria-pressed={brushDither.enabled && !activeLibraryBrush} disabled={Boolean(activeLibraryBrush)} onClick={() => {
             if (brushDitherFlyoutOpen) closeBrushDitherFlyout()
@@ -1089,15 +1095,16 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           {activeProceduralBrush && <div className="fill-procedural-settings"><ProceduralBrushControls brushId={activeProceduralBrush.id as ProceduralBrushId} settings={session.proceduralBrushSettings[activeProceduralBrush.id as ProceduralBrushId]} onChange={workspace.setProceduralBrushSettings} /><div className="procedural-output-controls"><PreferenceToggle className="procedural-dither-toggle" checked={session.brushImageSettings.mode === 'dither'} label={t('toolOptions.textureDither')} tooltip={t('toolOptions.textureDitherHint')} onChange={(enabled) => workspace.setBrushImageSettings({ mode: enabled ? 'dither' : 'threshold' })} /><div className="procedural-antialias-control"><CheckboxField className="tool-checkbox" checked={session.proceduralAntialias} label={t('toolOptions.textureAntialiasing')} onChange={workspace.setProceduralAntialias} />{session.proceduralAntialias && <RangeField className="procedural-antialias-strength" density="compact" label={t('toolOptions.amount')} min={1} max={100} suffix="%" value={session.proceduralAntialiasStrength} onChange={workspace.setProceduralAntialiasStrength} />}</div></div></div>}
         </div>}
       </div>}
-      <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} /> : <PixelUtilityIcon kind="image" />}</button>
+      {!isSmoothBrushTool && <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} /> : <PixelUtilityIcon kind="image" />}</button>}
       {isStrokeBrushTool && !activeLibraryBrush?.intrinsicSize && <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.brushSizeValue')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushSize')}><RangeField ariaLabel={t('toolOptions.brushSizeSlider')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>}
+      {isSmoothBrushTool && <FormField className="smooth-strength-field" layout="inline" label={t('toolOptions.pressureEffectStrength')}><div className="brush-size-control smooth-strength-control" onPointerDown={() => setSmoothStrengthFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onValueChange={workspace.setSmoothStrength} onFocus={() => setSmoothStrengthFlyoutOpen(true)} />{smoothStrengthFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.pressureEffectStrength')}><RangeField ariaLabel={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onChange={workspace.setSmoothStrength} /></div>}</div></FormField>}
       {showBrushAngle && <div className="brush-size-control brush-angle-control" title={t('toolOptions.brushRotation')} onPointerDown={() => setBrushAngleFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
       {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
-      {(session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
-      {(session.tool === 'pencil' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">
+      {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
+      {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">
       <Tooltip content={t('toolOptions.brushDynamicsDescription')}><button className={`pressure-trigger icon-button ${session.brushDynamics.effects.size.sensor || session.brushDynamics.effects.strength.sensor || session.brushDynamics.effects.gradient.sensor || session.brushDynamics.effects.angle.sensor ? 'selected' : ''}`} type="button" aria-label={t('toolOptions.brushDynamics')} title={t('toolOptions.brushDynamics')} aria-expanded={pressureFlyoutOpen} onClick={() => setPressureFlyoutOpen((open) => !open)}><PixelPressureIcon /></button></Tooltip>
-        {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} /></div>, document.body)}
+        {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} availableEffects={session.tool === 'smooth' ? ['size', 'angle'] : undefined} /></div>, document.body)}
       </div>}
     </>}
     {session.tool === 'selection' && (session.selectionPropertiesActive || session.freeTransformActive) && session.selection ? (() => {

@@ -549,7 +549,7 @@ button[aria-label]:has(> .pixel-utility-icon:only-child) { display: inline-grid;
 .move-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
 .selection-flyout { grid-template-columns: repeat(5, var(--tool-rail-button-size)); }
 .fill-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
-.brush-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
+.brush-flyout { grid-template-columns: repeat(3, var(--tool-rail-button-size)); }
 .tool-flyout-tooltip { display: block; width: var(--tool-rail-button-size); height: var(--tool-rail-button-size); }
 .moon-tooltip > strong, .moon-tooltip > span, .moon-tooltip > small { display: block; }
 .moon-tooltip > span { margin-top: var(--ui-space-1); color: var(--theme-text-soft); }
@@ -724,6 +724,8 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .gradient-preset-preview { display: block; width: 312px; height: 48px; max-width: none; image-rendering: pixelated; }
 .brush-size-control { position: relative; display: inline-flex; flex: 0 0 70px; width: 70px; }
 .brush-size-control .number-input { flex: 0 0 70px; width: 70px; }
+.tool-options .smooth-strength-field { display: inline-grid; grid-template-columns: max-content 70px; width: max-content; align-items: center; gap: var(--ui-space-3); }
+.tool-options .smooth-strength-field > .ui-field-control { width: 70px; }
 .brush-size-popover { position: absolute; z-index: 27; top: calc(100% + var(--ui-space-2)); left: 0; display: block; width: 210px; padding: var(--ui-space-4); color: var(--theme-text-soft); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
 .brush-size-popover .range-field { width: 100%; }
 .brush-shape-preview { display: inline-flex; align-items: center; justify-content: center; transform-origin: center; }
@@ -3227,6 +3229,18 @@ body .modal.confirm-modal-bulk-actions > footer > button:last-child { grid-colum
 .start-screen-news-item strong { overflow: hidden; color: var(--theme-text-primary); font-size: var(--ui-font-regular); text-overflow: ellipsis; white-space: nowrap; }
 .start-screen-news-title time { color: var(--theme-icon-muted); font: var(--ui-font-small)/1 ui-monospace, Consolas, monospace; white-space: nowrap; }
 .start-screen-news-item p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.home-steam-card { display: grid; gap: var(--ui-space-3); min-width: 0; padding: var(--ui-space-3); color: #e4e8f0; background: linear-gradient(135deg, #3b4351 0%, #2b323d 100%); border: 1px solid #4a5669; box-shadow: 2px 2px 0 rgb(13 18 27 / 35%); }
+.home-steam-card-heading { display: flex; align-items: center; justify-content: space-between; min-width: 0; }
+.home-steam-card-heading > div { display: flex; min-width: 0; align-items: baseline; gap: var(--ui-space-2); }
+.home-steam-card-heading strong { min-width: 0; overflow: hidden; color: #f3f5f9; font-size: var(--ui-font-regular); text-overflow: ellipsis; white-space: nowrap; }
+.home-steam-card-heading span { color: #aeb8c8; font-size: var(--ui-font-small); }
+.home-steam-card-heading .start-screen-link-icon { flex: 0 0 22px; color: #aeb8c8; }
+.home-steam-card-main { display: grid; gap: var(--ui-space-3); min-width: 0; }
+.home-steam-card-art { display: grid; min-height: 52px; place-items: center; overflow: hidden; background: #283241; border: 1px solid #4a5669; }
+.home-steam-card-art img { display: block; width: min(150px, 78%); height: auto; max-height: 34px; opacity: .92; }
+.home-steam-card p { margin: 0; color: #c1c9d6; font-size: var(--ui-font-small); line-height: 1.45; }
+.home-steam-card-action { width: 100%; min-width: 0; min-height: var(--ui-command-button-height); justify-self: stretch; justify-content: center; color: #efffc7; background: #668f00; border-color: #8fb72a; }
+.home-steam-card-action:hover { color: #ffffff; background: #789f0a; border-color: #b2d94a; }
 .recent-files-panel { display: flex; flex-direction: column; align-self: start; width: 100%; max-height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: var(--theme-surface); border: 1px solid var(--theme-border); }
 .recent-files-header { display: flex; flex: 0 0 50px; min-height: 50px; align-items: center; justify-content: space-between; min-width: 0; padding: 0 var(--ui-space-4) 0 var(--ui-space-5); background: var(--theme-raised-surface); border-bottom: 1px solid var(--theme-border); }
 .recent-files-header h2 { margin: 0; color: var(--theme-text-primary); font-size: var(--ui-font-regular); font-weight: 600; }

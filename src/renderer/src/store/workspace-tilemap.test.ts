@@ -24,6 +24,36 @@ beforeEach(() => {
 })
 
 describe('workspace Free Tile layer ownership', () => {
+  it('makes newly created raster, tilemap, and free-tile layers active without explicitly selecting them', async () => {
+    const document = createDocument('new layer activity', 4, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const assertActivityOnly = (layerId: string): void => {
+      const session = useWorkspace.getState().sessions[0]!
+      expect(session.document.activeLayerId).toBe(layerId)
+      // The Store retains the active layer as its implicit command target;
+      // only `layerSelectionExplicit` may request the blue multi-select UI.
+      expect(session.selectedLayerIds).toEqual([layerId])
+      expect(session.selectedGroupIds).toEqual([])
+      expect(session.layerSelectionExplicit).toBe(false)
+      expect(session.selectedAnimationFrameIds).toEqual([])
+      expect(session.selectedAnimationCellKeys).toEqual([])
+      expect(session.selectedAnimationMaskCellKeys).toEqual([])
+      expect(session.timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: layerId })
+    }
+
+    await useWorkspace.getState().addLayer()
+    const raster = document.layers.at(-1)!
+    assertActivityOnly(raster.id)
+
+    await useWorkspace.getState().createTilemapLayer({ name: 'Terrain', tileWidth: 1, tileHeight: 1 })
+    const tilemap = document.layers.find((layer) => layer.kind === 'tilemap')!
+    assertActivityOnly(tilemap.id)
+
+    await useWorkspace.getState().createFreeTileLayer({ name: 'Props' })
+    const freeTile = document.layers.find((layer) => layer.kind === 'free-tile')!
+    assertActivityOnly(freeTile.id)
+  })
+
   it('keeps a selected Free Tile layer deletable when it has instances', async () => {
     const document = createDocument('delete free tile layer with instances', 4, 4, 'rgba')
     useWorkspace.getState().addSession(document)

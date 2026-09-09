@@ -161,6 +161,7 @@ export interface WorkspaceToolCommands {
   setLiquifyMode(mode: LiquifyMode): void
   setLiquifyRadius(radius: number): void
   setLiquifyStrength(strength: number): void
+  setSmoothStrength(strength: number): void
   setLiquifyGestureActive(active: boolean): void
   setLiquifyResetHistoryPosition(position: number | null, revision: number | null): void
   resetLiquify(): boolean
@@ -306,6 +307,8 @@ export interface WorkspaceViewSelectionCommands {
 export interface WorkspaceHistoryCommands {
   beginLiquifyStroke(layerId: string): boolean
   cancelLiquifyStroke(edit: PixelEdit, compound: boolean): void
+  applySmoothBrushStroke(edit: PixelEdit, stroke: { visited: Set<number> }): boolean
+  cancelSmoothBrushStroke(edit: PixelEdit): void
   commitLiquifyStroke(edit: PixelEdit, label: string, compound: boolean, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitPixelEdit(edit: PixelEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapEdit(edit: TilemapEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
@@ -471,6 +474,8 @@ export interface WorkspaceLayerCommands {
   rasterizeLayer(layerId: string): void
   splitLayerStyles(layerId: string): void
   createLinkedLayer(layerId: string): string | null
+  /** Switch the canvas editing target without creating a blue explicit layer selection. */
+  activateLayerForCanvas(layerId: string): void
   duplicateActiveLayer(): void
   duplicateLayers(layerIds: string[]): string[]
   duplicateSelectedLayerRows(): { layerIds: string[]; groupIds: string[] }

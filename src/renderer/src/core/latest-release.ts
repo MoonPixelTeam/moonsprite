@@ -1,5 +1,8 @@
 import { LATEST_PACKAGED_RELEASE_LABEL } from './app-meta'
 import type { TranslationKey } from './localization'
+import { readStoredString, writeStoredString } from './storage'
+
+export const LATEST_RELEASE_SEEN_STORAGE_KEY = 'moonsprite.latest-release-seen'
 
 export interface LatestReleaseSection {
   title: TranslationKey
@@ -118,3 +121,10 @@ export const homeAnnouncementsForDisplay = (releases: readonly LatestReleaseDefi
 // Keep the existing single-release API for menus and callers that only need
 // the current announcement.
 export const latestRelease = latestReleases[0]
+
+/** Returns true once per release version and records that the changelog was shown. */
+export const shouldShowLatestRelease = (release: LatestReleaseDefinition = latestRelease, storage?: Storage): boolean => {
+  if (readStoredString(LATEST_RELEASE_SEEN_STORAGE_KEY, storage) === release.version) return false
+  writeStoredString(LATEST_RELEASE_SEEN_STORAGE_KEY, release.version, storage)
+  return true
+}

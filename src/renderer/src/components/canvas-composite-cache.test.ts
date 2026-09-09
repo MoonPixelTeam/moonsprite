@@ -348,6 +348,31 @@ describe('CanvasCompositeCache', () => {
     expect(context.drawImage).toHaveBeenCalledOnce()
   })
 
+  it('reuses the 4K composite across dock resizes and settles to the precise sampling path', () => {
+    const document = createDocument('4K dock resize', 4000, 4000, 'rgba', false)
+    writeLayerColor(document, document.layers[0], 4000 * 2000 + 2000, { r: 24, g: 96, b: 220, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context, { view: view({ zoom: 3.075 }), fromX: 1900, fromY: 1900, toX: 2100, toY: 2100, devicePixelRatio: 1.5, fastViewPreview: true })
+    const surfaceCount = MockOffscreenCanvas.instances.length
+    const uploads = MockOffscreenCanvas.instances.reduce((count, surface) => count + surface.context.putImageData.mock.calls.length, 0)
+    for (let step = 0; step < 30; step++) {
+      context.drawImage.mockClear()
+      draw(cache, document, context, {
+        view: view({ zoom: 3.075 }), fromX: 1900, fromY: 1900, toX: 2100 + step, toY: 2100 + step,
+        originX: -5700 + step / 2, originY: -5700 + step / 2, devicePixelRatio: 1.5, fastViewPreview: true
+      })
+      expect(context.drawImage).toHaveBeenCalledOnce()
+    }
+    expect(MockOffscreenCanvas.instances).toHaveLength(surfaceCount)
+    expect(MockOffscreenCanvas.instances.reduce((count, surface) => count + surface.context.putImageData.mock.calls.length, 0)).toBe(uploads)
+    context.drawImage.mockClear()
+    // A small final region uses the precise run path; large ones intentionally
+    // collapse runs above the existing 4096-blit threshold.
+    draw(cache, document, context, { view: view({ zoom: 3.075 }), fromX: 1990, fromY: 1990, toX: 2010, toY: 2010, devicePixelRatio: 1.5 })
+    expect(context.drawImage.mock.calls.length).toBeGreaterThan(1)
+  })
+
   it('composites supported animation frames through Canvas2D layer sources', () => {
     const document = createDocument('gpu animation frame', 4, 4, 'rgba')
     const layer = document.layers[0]

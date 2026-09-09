@@ -3,6 +3,7 @@ import type { SelectionQuad } from '@shared/types'
 import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, pixelEditHasChanges, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
+import { applySmoothBrush } from '@/core/smooth-brush'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, normalizeAnimationCelZIndex, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
@@ -47,7 +48,7 @@ import { defaultSymmetryCenter, type SymmetryAxes, type SymmetryCenter } from '@
 import { saveDocumentViewState } from '@/core/document-view-state'
 import type { TimelineRowRef } from '@/core/animation-timeline-identity'
 import { brushPressureFromDynamics, migrateBrushPressureSettings, normalizeBrushPressureSettings, patchBrushDynamicsGradientDither, patchBrushDynamicsMapping, type BrushDynamicsEffect, type BrushDynamicsMapping, type BrushPressureSettings } from '@/core/pressure'
-import { cloneTextCelData, convertTextSurface, normalizeTextCelData, rasterizeText, translateTextCelData } from '@/core/text-raster'
+import { cloneTextCelData, convertTextSurface, normalizeTextBoxBounds, normalizeTextCelData, rasterizeText, translateTextCelData } from '@/core/text-raster'
 import { cloneLayerStyles, hasConfiguredLayerStyles, hasEnabledLayerStyles, layerStyleOutputBounds, layerStylesEqual, layerStylesHistoryBytes } from '@/core/layer-styles'
 import { renderBackgroundPatternIndexed, renderBackgroundPatternRgba, renderBackgroundTileIndexed, renderBackgroundTileRgba, type BackgroundPatternTile } from '@/core/background-patterns'
 import { encodeSelectionBackgroundPreset } from '@/core/background-preset-images'
@@ -1267,6 +1268,9 @@ const ensureLayerSelection = (session: DocumentSession): void => {
     || session.selectedAnimationCellKeys.length > 0
     || session.selectedAnimationMaskCellKeys.length > 0
     || session.selectedAnimationMaskRowKeys.length > 0
+  // `selectedLayerIds` also preserves the implicit active editing target for
+  // existing commands.  Its visual treatment is controlled separately by
+  // `layerSelectionExplicit`.
   if (!animationSelectionActive && session.selectedLayerIds.length === 0 && session.selectedGroupIds.length === 0 && fallbackLayerId) {
     session.selectedLayerIds = [fallbackLayerId]
   }
@@ -1295,6 +1299,21 @@ const clearAnimationItemSelection = (session: DocumentSession, preserveMaskRowSe
   session.animationCellSelectionAnchorKey = null
   session.animationCellSelectionExplicit = false
   clearAnimationMaskContext(session, preserveMaskRowSelection)
+}
+
+// Creating a layer changes the editing target but must not manufacture an
+// explicit timeline selection (the latter owns the blue selection treatment).
+const activateNewLayerContext = (session: DocumentSession, layerId: string, frameId: string): void => {
+  session.document.activeLayerId = layerId
+  session.selectedLayerIds = []
+  session.selectedGroupId = null
+  session.selectedGroupIds = []
+  session.layerSelectionExplicit = false
+  session.layerSelectionAnchorId = layerId
+  clearAnimationItemSelection(session)
+  session.activeLayerMaskId = null
+  session.layerMaskIsolatedView = false
+  setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, frameId, null)
 }
 
 export interface AnimationSelectionNormalizationOptions {
@@ -2888,6 +2907,17 @@ async function buildSpriteSheetResult(sourceSession: DocumentSession, options: S
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
+  applySmoothBrushStroke(edit, stroke) {
+    const session = activeSession(get())
+    if (!session || session.animationPlaying || session.activeLayerMaskId) return false
+    const layer = activePaintLayer(session)
+    if (layer.id !== edit.layerId || layer.kind || isLayerEffectivelyLocked(session.document, layer) || !isLayerEffectivelyVisible(session.document, layer)) return false
+    return applySmoothBrush(session.document, layer, edit, stroke, session.selection, session.smoothStrength)
+  },
+  cancelSmoothBrushStroke(edit) {
+    const session = activeSession(get())
+    if (session) revertPixelEdit(session.document, edit)
+  },
   sessions: [],
   activeId: null,
   sharedPrimaryColor: { ...initialColorRoles.primary },
@@ -3377,7 +3407,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       })
     }, 'metadata')
   },
-  setBrushSize(size) { get().mutateActive((session) => { if (session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
+  setBrushSize(size) { get().mutateActive((session) => { if (session.tool !== 'smooth' && session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushAngle(angle) { get().mutateActive((session) => { session.brushAngle = Math.max(-180, Math.min(180, Math.round(angle))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setAirbrushParticleRadius(radius) { get().mutateActive((session) => { session.airbrushParticleRadius = Math.max(1, Math.min(16, Math.round(radius))); persistToolSettings(session) }, false) },
   setAirbrushParticleShape(shape) { get().mutateActive((session) => { session.airbrushParticleShape = shape; persistToolSettings(session) }, false) },
@@ -3387,6 +3417,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setLiquifyMode(mode: LiquifyMode) { get().mutateActive((session) => { session.liquifyMode = mode; persistToolSettings(session) }, false) },
   setLiquifyRadius(radius) { get().mutateActive((session) => { session.liquifyRadius = Math.max(1, Math.min(128, Math.round(radius))); persistToolSettings(session) }, false) },
   setLiquifyStrength(strength) { get().mutateActive((session) => { session.liquifyStrength = Math.max(1, Math.min(100, Math.round(strength))); persistToolSettings(session) }, false) },
+  setSmoothStrength(strength) { if (!Number.isFinite(strength)) return; get().mutateActive((session) => { session.smoothStrength = Math.max(0, Math.min(100, Math.round(strength))); persistToolSettings(session) }, false) },
   setLiquifyGestureActive(active) { get().mutateActive((session) => { session.liquifyGestureActive = active }, false) },
   setLiquifyResetHistoryPosition(position, revision) { get().mutateActive((session) => { session.liquifyResetHistoryPosition = position; session.liquifyResetHistoryRevision = revision }, false) },
   resetLiquify() {
@@ -4110,7 +4141,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const cel = timeline.cels.find((candidate) => candidate.layerId === transform.layerId && candidate.frameId === transform.frameId)
       const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
       if (!layer || !cel || !source?.text) return
-      const target = clampSliceRect(bounds, session.document.width, session.document.height)
+      const target = normalizeTextBoxBounds(bounds)
       const rendered = renderTextAtCurrentSurface(session.document, {
         ...source.text,
         originX: target.x,
@@ -4135,7 +4166,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!layer || !cel || !source?.text || !source.surface) return
     const beforeText = cloneTextCelData(transform.originalText)
     const beforeSurface = cloneAnimationCelSurface(transform.originalSurface)
-    const target = clampSliceRect(bounds, current.document.width, current.document.height)
+    const target = normalizeTextBoxBounds(bounds)
     get().previewTextBoxTransform(target)
     get().mutateActive((session) => {
       const activeTransform = session.textBoxTransform
@@ -7623,12 +7654,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const lastGroupMember = groupMemberIds ? document.layers.reduce((last, item, index) => groupMemberIds.has(item.id) ? index : last, -1) : -1
       const index = lastGroupMember >= 0 ? lastGroupMember + 1 : document.layers.length
       document.layers.splice(index, 0, layer)
-      ensureAnimationDocument(document)
+      const timeline = ensureAnimationDocument(document)
       const animationCels = cloneAnimationCelsForLayerIds(document, [layer.id])
-      document.activeLayerId = layer.id
-      session.selectedGroupId = null
-      session.selectedGroupIds = []
-      session.selectedLayerIds = [layer.id]
+      activateNewLayerContext(session, layer.id, timeline.activeFrameId)
       session.history.beginCompound()
       session.history.push({
         label: tr('workspace.history.newLayer'), bytes: layer.pixels.byteLength,
@@ -7895,17 +7923,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           cel.opacity = layer.opacity
         }
         refreshActiveAnimationFrame(document)
-        document.activeLayerId = layer.id
-        session.selectedGroupId = null
-        session.selectedGroupIds = []
-        session.selectedLayerIds = [layer.id]
-        session.layerSelectionAnchorId = layer.id
+        activateNewLayerContext(session, layer.id, timeline.activeFrameId)
         session.selectedTilesetId = tileset.id
         session.selectedTileId = tileset.tileIds[0] ?? null
         session.secondaryTileId = tileset.tileIds[0] ?? null
         session.tilemapMode = 'hybrid'
-        session.selectedAnimationCellKeys = [animationCelKey(layer.id, timeline.activeFrameId)]
-        session.animationCellSelectionExplicit = false
         moveLayerPanelRowsOperation(session, [layer.id], [], placement)
         const after = captureDocumentStructureSnapshot(document)
         const afterSelection = captureLayerUi(session)
@@ -8005,18 +8027,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           cel.opacity = layer.opacity
         }
         refreshActiveAnimationFrame(document)
-        document.activeLayerId = layer.id
-        session.selectedGroupId = null
-        session.selectedGroupIds = []
-        session.selectedLayerIds = [layer.id]
-        session.layerSelectionAnchorId = layer.id
+        activateNewLayerContext(session, layer.id, timeline.activeFrameId)
         const selectedSource = sources[0] ?? null
         session.selectedTilesetId = selectedSource?.tileset.id ?? null
         session.selectedTileId = selectedSource?.tileset.tileIds[0] ?? null
         session.secondaryTileId = selectedSource?.tileset.tileIds[0] ?? null
         session.freeTileMode = 'edit'
-        session.selectedAnimationCellKeys = [animationCelKey(layer.id, timeline.activeFrameId)]
-        session.animationCellSelectionExplicit = false
         moveLayerPanelRowsOperation(session, [layer.id], [], placement)
         const after = captureDocumentStructureSnapshot(document)
         const afterSelection = captureLayerUi(session)
@@ -9109,7 +9125,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const source = session.document.layers.find((candidate) => candidate.id === layerId)
       const linkedCopyName = source?.linkedContentId ? createLinkedLayerNameAllocator(session.document)(source.linkedContentId, source.name) : null
       result = beginLayerMoveDuplicatePreviewCommand(session, layerId, copySuffix)
-      if (result && linkedCopyName) result.layer.name = linkedCopyName
+      if (result) {
+        if (linkedCopyName) result.layer.name = linkedCopyName
+        // This is a transient preview, not a document operation, but the
+        // compositor must see the new layer immediately rather than reuse the
+        // pre-copy cache entry.
+        const fromRevision = session.contentRevision
+        session.revision += 1
+        session.contentRevision += 1
+        session.layersPanelRevision += 1
+        session.contentInvalidation = { kind: 'full', fromRevision, revision: session.contentRevision }
+      }
     }, false)
     return result
   },
@@ -9123,7 +9149,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cancelLayerMovePreview(documentId, move) {
     get().mutateActive((session) => {
       if (session.document.id !== documentId) return
-      cancelLayerMovePreviewCommand(session, move)
+      if (cancelLayerMovePreviewCommand(session, move)) {
+        const fromRevision = session.contentRevision
+        session.revision += 1
+        session.contentRevision += 1
+        session.layersPanelRevision += 1
+        session.contentInvalidation = { kind: 'full', fromRevision, revision: session.contentRevision }
+      }
     }, false)
   },
 
@@ -9134,7 +9166,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       single: tr('canvas.history.moveLayer'),
       multiple: tr('canvas.history.moveSelectedLayers')
     })
-    if (entry) get().pushHistory(entry)
+    if (!entry) return
+    get().pushHistory(entry)
+    // The copy is inserted while dragging for a live preview.  Confirming
+    // that drag must make the copy (rather than the source layer) the active
+    // editing target, without retaining a blue explicit layer selection.
+    if (move.duplicatedLayerId) get().activateLayerForCanvas(move.duplicatedLayerId)
   },
 
   reorderLayer(layerId, targetLayerId) {
@@ -9370,6 +9407,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         : [layerId]
       const selectedLayerIds = toggledLayerIds.length > 0 ? toggledLayerIds : [layerId]
       applyLayerRowSelection(session, selectedLayerIds, [], { kind: 'layer', id: layerId })
+      setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, session.document.animation?.activeFrameId ?? null, null)
+    }, false)
+    const current = activeSession(get())
+    if (current) requestTilesetPanelForLayer(current.document, layerId)
+  },
+
+  activateLayerForCanvas(layerId) {
+    get().commitFloatingPaste()
+    get().mutateActive((session) => {
+      if (!session.document.layers.some((layer) => layer.id === layerId)) return
+      // Canvas hit-testing changes the editing context only. It is deliberately
+      // not equivalent to a timeline row click, which creates an explicit
+      // layer selection and its blue selection outline.
+      session.document.activeLayerId = layerId
+      session.selectedLayerIds = []
+      session.selectedGroupId = null
+      session.selectedGroupIds = []
+      session.layerSelectionExplicit = false
+      session.layerSelectionAnchorId = layerId
+      clearAnimationItemSelection(session)
+      session.activeLayerMaskId = null
+      session.layerMaskIsolatedView = false
       setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, session.document.animation?.activeFrameId ?? null, null)
     }, false)
     const current = activeSession(get())

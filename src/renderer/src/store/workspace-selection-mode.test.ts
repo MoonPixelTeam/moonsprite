@@ -14,6 +14,23 @@ beforeEach(() => {
 })
 
 describe('layer, frame, and cel selection modes', () => {
+  it('switches a canvas hit target without creating an explicit layer selection', () => {
+    const document = createDocument('canvas active layer', 2, 2, 'rgba')
+    const second = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(second)
+    useWorkspace.getState().addSession(document)
+
+    useWorkspace.getState().activateLayerForCanvas(second.id)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.document.activeLayerId).toBe(second.id)
+    expect(session.layerSelectionExplicit).toBe(false)
+    // Normalization keeps the active row ID available to the timeline, but
+    // the false explicit flag is what prevents a blue selection outline.
+    expect(session.selectedLayerIds).toEqual([second.id])
+    expect(session.timelineActiveContext.row).toMatchObject({ kind: 'layer', ownerId: second.id })
+  })
+
   it('disables and clears selection aspect linking when entering free transform', () => {
     const document = createDocument('free transform aspect link', 4, 4, 'rgba')
     useWorkspace.getState().addSession(document)

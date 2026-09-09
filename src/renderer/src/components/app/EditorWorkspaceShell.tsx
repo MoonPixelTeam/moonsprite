@@ -15,6 +15,8 @@ import type { ShortcutId } from '@/core/shortcuts'
 interface EditorWorkspaceShellProps {
   editorOnly: boolean
   editorColumns: string
+  leftDockWidth: number
+  inspectorWidth: number
   editorRows: string
   editorAreas: string
   toolRailSide: ToolRailSide
@@ -60,6 +62,8 @@ interface EditorWorkspaceShellProps {
 export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
   editorOnly,
   editorColumns,
+  leftDockWidth,
+  inspectorWidth,
   editorRows,
   editorAreas,
   toolRailSide,
@@ -103,7 +107,7 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
 }: EditorWorkspaceShellProps) {
   const { t } = useI18n()
   useAnimationPlaybackClock(session.document.id)
-  return <PerformanceProfiler id="EditorWorkspaceShell"><section className="editor-layout" style={{ gridTemplateColumns: editorOnly ? 'minmax(0, 1fr)' : editorColumns, gridTemplateRows: editorOnly ? 'minmax(0, 1fr)' : editorRows, gridTemplateAreas: editorOnly ? '"work"' : editorAreas }}>
+  return <PerformanceProfiler id="EditorWorkspaceShell"><section className="editor-layout" style={{ '--left-dock-width': `${leftDockWidth}px`, '--inspector-width': `${inspectorWidth}px`, gridTemplateColumns: editorOnly ? 'minmax(0, 1fr)' : editorColumns, gridTemplateRows: editorOnly ? 'minmax(0, 1fr)' : editorRows, gridTemplateAreas: editorOnly ? '"work"' : editorAreas } as CSSProperties}>
     <EditorToolRail side={toolRailSide} onGripPointerDown={onToolRailGrip} />
     {hasLeftDock && <aside ref={setLeftDockHost} className="left-panel-dock" data-panel-dock-zone="left" />}
     {hasLeftDock && <div className="left-dock-resizer" role="separator" aria-orientation="vertical" aria-label={t('workspaceDock.resizeLeft')} onPointerDown={onLeftDockResize}><span aria-hidden="true" /></div>}

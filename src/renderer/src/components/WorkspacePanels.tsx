@@ -1,3 +1,4 @@
+import { beginWorkspaceResize, endWorkspaceResize, createResizeFrame } from './workspace-resize'
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
@@ -284,7 +285,18 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
     setDockDropTarget(target)
   }
   useEffect(() => {
-    const move = (event: PointerEvent): void => {
+    const previewWeights = (weights: Record<WorkspacePanelId, number>, dock: FixedPanelDock): void => {
+      const slots = [...document.querySelectorAll<HTMLElement>(`[data-panel-dock-content="${dock}"] [data-inspector-panel-id]`)]
+      const ids = slots.map(slot => slot.dataset.inspectorPanelId as WorkspacePanelId)
+      const fillId = ids.includes('layers') ? 'layers' : ids.find(id => id !== 'color' || colorSquareDockRef.current !== 'bottom') ?? ids[0]
+      for (const slot of slots) {
+        const id = slot.dataset.inspectorPanelId as WorkspacePanelId
+        const locked = id === 'color' && colorSquareDockRef.current === dock
+        slot.style.flex = locked ? `0 0 ${weights[id]}px` : dock === 'bottom' ? bottomPanelFlex(weights[id], id === fillId) : proportionalPanelFlex(weights[id])
+        slot.style.setProperty('--locked-size', `${weights[id]}px`)
+      }
+    }
+    const applyMove = (event: { clientX: number; clientY: number }): void => {
       const bottomResize = bottomResizeRef.current
       if (bottomResize) {
         if (Math.abs(event.clientX - bottomResize.startX) > 1 && colorSquareDockRef.current === 'bottom') setSquareDock(null)
@@ -294,7 +306,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
         const leading = Math.max(minimumLeading, Math.min(total - minimumTrailing, bottomResize.startWidths[bottomResize.leading] + event.clientX - bottomResize.startX))
         const next = { ...bottomResize.startWidths, [bottomResize.leading]: leading, [bottomResize.trailing]: total - leading }
         bottomWeightsRef.current = next
-        setBottomWeights(next)
+        previewWeights(next, 'bottom')
         return
       }
       const drag = resizeRef.current
@@ -320,7 +332,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
           next[lowerPanels[0]] += -delta
         }
         verticalWeightsRef.current = next
-        setVerticalWeights(next)
+        previewWeights(next, drag.dock)
         return
       }
       const dockDrag = dockDragRef.current
@@ -352,7 +364,16 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
         return
       }
     }
+    const frame = createResizeFrame(applyMove)
+    const move = (event: PointerEvent): void => {
+      if (resizeRef.current || bottomResizeRef.current) frame.push(event)
+      else applyMove(event)
+    }
     const up = (event: PointerEvent): void => {
+      const resizing = Boolean(resizeRef.current || bottomResizeRef.current)
+      frame.flush()
+      if (resizeRef.current) setVerticalWeights(verticalWeightsRef.current)
+      if (bottomResizeRef.current) setBottomWeights(bottomWeightsRef.current)
       if (resizeRef.current) persistLayout(orderRef.current, verticalWeightsRef.current)
       if (bottomResizeRef.current) persistLayout(orderRef.current, verticalWeightsRef.current, bottomWeightsRef.current)
       const dockDrag = dockDragRef.current
@@ -380,6 +401,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       } else if (dockDrag?.moved) persistLayout(orderRef.current, verticalWeightsRef.current)
       resizeRef.current = null
       bottomResizeRef.current = null
+      if (resizing) endWorkspaceResize()
       dockDragRef.current = null
       detachPreviewRef.current = null
       setDetachPreview(null)
@@ -387,10 +409,15 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       setDraggingPanel(null)
       document.documentElement.classList.remove(workspacePanelDraggingClass)
     }
+    const blur = (): void => { if (resizeRef.current || bottomResizeRef.current) up(new PointerEvent('pointercancel')) }
+    window.addEventListener('blur', blur)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
     return () => {
+      frame.cancel()
+      if (resizeRef.current || bottomResizeRef.current) endWorkspaceResize()
+      window.removeEventListener('blur', blur)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
@@ -513,6 +540,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
             const content = panelSlot.querySelector<HTMLElement>(':scope > .inspector-panel-slot')
             if (slotId && content) measured[slotId] = content.getBoundingClientRect().height
           }
+          beginWorkspaceResize()
           resizeRef.current = { upper: id, dock, startY: event.clientY, startSizes: measured }
           event.currentTarget.setPointerCapture?.(event.pointerId)
           event.preventDefault()
@@ -524,6 +552,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
           const slotId = slot.dataset.inspectorPanelId as WorkspacePanelId | undefined
           if (slotId) measured[slotId] = slot.getBoundingClientRect().width
         }
+        beginWorkspaceResize()
         bottomResizeRef.current = { leading: id, trailing: nextId, startX: event.clientX, startWidths: measured }
         event.currentTarget.setPointerCapture?.(event.pointerId)
         event.preventDefault()

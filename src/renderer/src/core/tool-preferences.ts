@@ -81,6 +81,7 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   liquifyMode: LiquifyMode
   liquifyRadius: number
   liquifyStrength: number
+  smoothStrength: number
 }
 
 const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, ProceduralBrushSettings> => Object.fromEntries(
@@ -144,6 +145,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   airbrushIntervalMs: 50,
   liquifyMode: 'push',
   liquifyRadius: 16,
+  smoothStrength: 50,
   liquifyStrength: 50
 }
 
@@ -255,6 +257,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       liquifyMode: stored.liquifyMode === 'inflate' || stored.liquifyMode === 'deflate' || stored.liquifyMode === 'twist-clockwise' || stored.liquifyMode === 'twist-counter-clockwise' || stored.liquifyMode === 'push' ? stored.liquifyMode : defaultToolSettings.liquifyMode,
       liquifyRadius: Number.isFinite(stored.liquifyRadius) ? Math.max(1, Math.min(128, Math.round(stored.liquifyRadius!))) : defaultToolSettings.liquifyRadius,
       liquifyStrength: Number.isFinite(stored.liquifyStrength) ? Math.max(1, Math.min(100, Math.round(stored.liquifyStrength!))) : defaultToolSettings.liquifyStrength,
+      smoothStrength: Number.isFinite(stored.smoothStrength) ? Math.max(0, Math.min(100, Math.round(stored.smoothStrength!))) : defaultToolSettings.smoothStrength,
       symmetryAxes: {
         horizontal: storedSymmetryAxes?.horizontal === true,
         vertical: storedSymmetryAxes?.vertical === true,

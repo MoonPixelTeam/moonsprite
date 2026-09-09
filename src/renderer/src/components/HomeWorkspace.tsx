@@ -580,6 +580,8 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         }
         releaseBannerObjectUrls()
         for (const card of cards) if (card.previewUrl) bannerObjectUrls.current.push(card.previewUrl)
+        // Pick a fresh starting banner for each home-screen entry.
+        setBannerIndex(cards.length > 0 ? Math.floor(Math.random() * cards.length) : 0)
         setBannerProjects(cards)
       } catch {
         if (!disposed) setBannerProjects([])
@@ -596,11 +598,10 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
   }, [])
 
   useEffect(() => {
-    setBannerIndex(0)
     if (bannerProjects.length < 2) return
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % bannerProjects.length), 8_000)
     return () => window.clearInterval(timer)
-  }, [bannerProjects.length])
+  }, [bannerProjects])
 
   const loadSection = async (target: HomeSectionDefinition): Promise<void> => {
     const generation = ++loadGeneration.current
@@ -1031,8 +1032,19 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
           <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
-          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : '无法打开工程备份文件夹。')) }}><PixelUtilityIcon kind="folderOpen" /><span><strong>工程备份</strong><small>打开工程备份文件夹</small></span></button>
+          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : '无法打开工程备份文件夹。')) }}><PixelUtilityIcon kind="save" /><span><strong>工程备份</strong><small>打开工程备份文件夹</small></span></button>
           <section className="start-screen-news" aria-label={t('home.news')}>
+            <article className="home-steam-card" aria-label={`${t('home.steam')} · MoonSprite`}>
+              <header className="home-steam-card-heading">
+                <div><strong>MoonSprite</strong><span>{t('home.steam')}</span></div>
+                <HomeLinkIcon kind="steam" />
+              </header>
+              <div className="home-steam-card-main">
+                <div className="home-steam-card-art"><img src={moonspriteLogo} alt="MoonSprite" /></div>
+                <p>{t('home.steamDescription')}</p>
+              </div>
+              <button type="button" className="quiet-button home-steam-card-action" onClick={() => openExternalLink(homeExternalLinks.steam)}>{t('home.steamWishlist')}</button>
+            </article>
             {homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
               <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: release.version })}</strong><time dateTime={release.publishedAt}>{formatReleaseDate(release.publishedAt, locale)}</time></span>
               <p>{t(release.homeSummary)}</p>

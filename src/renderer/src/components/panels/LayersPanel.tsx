@@ -496,6 +496,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return value ? <kbd aria-hidden="true">{value}</kbd> : null
   }
   const propertyTransactionRef = useRef<string | null>(null)
+  const timelinePropertiesHistoryRef = useRef<{ documentId: string; kind: 'frame' | 'cel' } | null>(null)
   const pendingPropertyPreviewRef = useRef<LayerFormState | null>(null)
   const propertyPreviewTimerRef = useRef<number | null>(null)
   const dragRef = useRef<LayerDragState | null>(null)
@@ -968,6 +969,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const frame = ensureAnimationDocument(session.document).frames.find((candidate) => candidate.id === ensureAnimationDocument(session.document).activeFrameId)
     if (frame) {
       const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+      store.beginLayerPanelTransaction(session.document.id)
+      timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
       setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
     }
   })
@@ -976,11 +979,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     if (!frame) return
     if (ensureAnimationDocument(session.document).activeFrameId !== frameId) store.setActiveAnimationFrame(frameId)
     const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+    store.beginLayerPanelTransaction(session.document.id)
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
     setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
     setAnimationMenu(null)
   }
   const saveFrameProperties = (): void => {
     if (!frameProperties) return
+    const transaction = timelinePropertiesHistoryRef.current
+    if (transaction?.kind === 'frame') {
+      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationFrameDuration'))
+      timelinePropertiesHistoryRef.current = null
+    }
     setFrameProperties(null)
   }
   const previewFrameProperties = (duration: number): void => {
@@ -1061,11 +1071,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const key = animationCelKey(layerId, frameId)
     const targetKeys = session.selectedAnimationCellKeys.includes(key) ? [...session.selectedAnimationCellKeys] : [key]
     if (!session.selectedAnimationCellKeys.includes(key)) store.selectAnimationCell(key)
+    store.beginLayerPanelTransaction(session.document.id)
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'cel' }
     setCelProperties({ layerId, frameId, targetKeys, opacity: Math.round((source.opacity ?? 1) * 100), zIndex: source.zIndex ?? 0 })
     setAnimationMenu(null)
   }
   const saveCelProperties = (): void => {
     if (!celProperties) return
+    const transaction = timelinePropertiesHistoryRef.current
+    if (transaction?.kind === 'cel') {
+      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationCelProperties'))
+      timelinePropertiesHistoryRef.current = null
+    }
     setCelProperties(null)
   }
   const previewCelProperties = (next: NonNullable<typeof celProperties>): void => {
@@ -3931,16 +3948,16 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     {loopSectionEditor && <AnimationLoopSectionDialog mode={loopSectionEditor.mode} frameCount={timeline.frames.length} initialValue={loopSectionEditor.value} onClose={() => setLoopSectionEditor(null)} onConfirm={saveLoopSection} />}
     {frameProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-frame-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveFrameProperties() }}>
-        <DialogHeader eyebrow="FRAME PROPERTIES" title={frameProperties.targetFrameIds.length > 1 ? t('timeline.multipleFrameProperties') : t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setFrameProperties(null)} />
+        <DialogHeader eyebrow="FRAME PROPERTIES" title={frameProperties.targetFrameIds.length > 1 ? t('timeline.multipleFrameProperties') : t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={saveFrameProperties} />
         <div className="modal-body"><FormField layout="inline" label={t('timeline.duration')}><NumberInput autoFocus onFocus={(event) => event.currentTarget.select()} aria-label={t('timeline.duration')} value={frameProperties.duration} min={1} max={60_000} step={10} suffix="ms" onValueChange={previewFrameProperties} /></FormField></div>
-        <footer><button type="button" className="primary-button" onClick={() => setFrameProperties(null)}>{t('common.close')}</button></footer>
+        <footer><button type="button" className="primary-button" onClick={saveFrameProperties}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
     {celProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-cel-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveCelProperties() }} onKeyDown={(event) => { if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing) return; event.preventDefault(); event.stopPropagation(); saveCelProperties() }}>
-        <DialogHeader eyebrow="CEL PROPERTIES" title={celProperties.targetKeys.length > 1 ? t('timeline.multipleCelProperties') : t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setCelProperties(null)} />
+        <DialogHeader eyebrow="CEL PROPERTIES" title={celProperties.targetKeys.length > 1 ? t('timeline.multipleCelProperties') : t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={saveCelProperties} />
         <div className="modal-body"><RangeField autoFocus className="layer-opacity-control" label={t('layers.opacity')} min={0} max={100} suffix="%" value={celProperties.opacity} onChange={(opacity) => previewCelProperties({ ...celProperties, opacity })} /><FormField layout="inline" label={t('timeline.zCoordinate')}><NumberInput aria-label={t('timeline.zCoordinate')} value={celProperties.zIndex} min={-999} max={999} step={1} onValueChange={(zIndex) => previewCelProperties({ ...celProperties, zIndex })} /></FormField></div>
-        <footer><button type="button" className="primary-button" onClick={() => setCelProperties(null)}>{t('common.close')}</button></footer>
+        <footer><button type="button" className="primary-button" onClick={saveCelProperties}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
     {layerSettingsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setLayerSettingsOpen(false) }}>

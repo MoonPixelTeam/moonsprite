@@ -1,3 +1,4 @@
+import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage, recordWorkspaceResizeContext } from './workspace-resize'
 import { createLinearDitherPreviewSampler } from '../core/gradient-dither-preview'
 import { createGradientPreviewDiagnostics, GRADIENT_PREVIEW_DIAGNOSTIC_VERSION } from '../core/gradient-preview-diagnostics'
 import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
@@ -16,6 +17,7 @@ import { blendOver, hexToColor, relativeLuminanceColor, TRANSPARENT, unpackColor
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, resolveRadialGradientGeometry, type GradientGeometryOptions } from '@/core/gradient'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
 import { applyLiquifyPushPath, applyLiquifyHoldStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
+import { collectSmoothBrushArea, SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
 import { accumulateLiquifyHoldStrength, applyAccumulatedLiquifyPush, createLiquifyHoldClock, type LiquifyHoldClock } from '@/components/canvas-liquify-interaction'
 import { DEFAULT_GRID_SETTINGS, gridCellBoundsAt, gridLinePositions, shouldRenderPixelGrid, snapPointToGrid, snapSelectionBoundsToGrid, snapSelectionTranslationToGrid } from '@/core/grid'
 import { alignmentThresholdForZoom, resolveAlignment } from '@/core/alignment'
@@ -224,7 +226,7 @@ const selectedTextBoxForSession = (session: DocumentSession): SelectionRect | nu
   const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === timeline.activeFrameId)
   const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
   const text = source?.text
-  if (!text?.boxWidth || !text.boxHeight) return null
+  if (text?.layoutMode !== 'box' || !text.boxWidth || !text.boxHeight) return null
   return {
     x: text.originX ?? source?.surface?.offsetX ?? layer.offsetX,
     y: text.originY ?? source?.surface?.offsetY ?? layer.offsetY,
@@ -1971,7 +1973,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (adjustmentPreviewEditRef.current) prepareAdjustmentPreviewEdit(session.document.id)
     const state = useWorkspace.getState()
     let documentChanged = false
-    if (drag.kind === 'liquify' && drag.edit) {
+    if (drag.kind === 'smooth' && drag.edit) {
+      state.cancelSmoothBrushStroke(drag.edit)
+      documentChanged = true
+    } else if (drag.kind === 'liquify' && drag.edit) {
       state.setLiquifyGestureActive(false)
       state.cancelLiquifyStroke(drag.edit, Boolean(drag.liquifyCompound))
       documentChanged = true
@@ -2294,7 +2299,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const draw = (): void => {
     const performanceProbe = window.__moonSpriteCanvasProbe
-    const drawStartedAt = performanceProbe ? performance.now() : 0
+    const drawStartedAt = performanceProbe || isWorkspaceResizing() ? performance.now() : 0
     const canvas = canvasRef.current
     if (!canvas) return
     // Ctrl+Alt is the brush-size modifier, while Ctrl alone is the temporary
@@ -2327,7 +2332,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
+    const backingStarted = isWorkspaceResizing() ? performance.now() : 0
     const deviceScale = syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
+    if (backingStarted) recordWorkspaceResizeStage('backing', performance.now() - backingStarted)
     const displayContext = canvas.getContext('2d')
     if (!displayContext) return
     displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
@@ -2344,7 +2351,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     // per-pixel alignment blit while this flag is set, and rotated scenes use
     // a low-cost sampling kernel. The exact aligned frame is rendered once
     // after the gesture commits.
-    const viewPreviewActive = activeDrag?.kind === 'pan'
+    const viewPreviewActive = isWorkspaceResizing() || activeDrag?.kind === 'pan'
       || activeDrag?.kind === 'zoom-drag'
       || activeDrag?.kind === 'rotate-view'
       || zoomPreviewStartRef.current !== null
@@ -2592,6 +2599,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           })
         }
       }
+      const compositeStarted = isWorkspaceResizing() ? performance.now() : 0
       compositeCacheRef.current.draw({
         context,
         document,
@@ -2643,6 +2651,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               }
             : undefined
       })
+      if (compositeStarted) recordWorkspaceResizeStage('composite', performance.now() - compositeStarted)
       const textPreview = textToolPreviewRef.current
       if (textPreview?.format === 'rgba') {
         const previewCanvas = new OffscreenCanvas(textPreview.width, textPreview.height)
@@ -3180,6 +3189,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         : null
       const originalTilePixels = new Map<string, Uint8ClampedArray>()
       const previewTilePixels = new Map<string, Uint8ClampedArray>()
+      const previewFillRects: Array<{ pixelRect: { x: number; y: number; width: number; height: number }; sampleX: number; sampleY: number; color: RgbaColor }> = []
+      const queuePreviewPixel = (pixelX: number, pixelY: number, color: RgbaColor): void => {
+        for (const { point, copy } of previewPixelPlacements(pixelX, pixelY)) {
+          previewFillRects.push({
+            pixelRect: deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale),
+            sampleX: point.x,
+            sampleY: point.y,
+            color
+          })
+        }
+      }
       const centers = brushPathStampPoints(points, session.brushSize, activeBrushImage, previewAngle, session.brushShape)
       if (overwriteImageBrushPixels) centers.reverse()
       for (const center of centers) {
@@ -3203,13 +3223,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 : getPaletteEntry(document, packedBase).color
             if (tilemapTarget && tilemapTileset) {
               if (currentSession.tilemapMode === 'edit' && tilesetHasOnlyTransparentTile(tilemapTileset)) {
-                drawPreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
+                queuePreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
                 continue
               }
               const cellIndex = tilemapCellIndexAtPoint(tilemapTarget.tilemap, tilemapTarget.surface.offsetX, tilemapTarget.surface.offsetY, pixelX, pixelY)
               const cell = cellIndex === null ? null : tilemapTarget.tilemap.cells[cellIndex]
               if (!cell || cell.tilesetId !== tilemapTileset.id) {
-                if (currentSession.tilemapMode === 'hybrid') drawPreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
+                if (currentSession.tilemapMode === 'hybrid') queuePreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
                 continue
               }
               let original = originalTilePixels.get(cell.tileId)
@@ -3237,7 +3257,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               preview[sourceOffset + 1] = replacement.g
               preview[sourceOffset + 2] = replacement.b
               preview[sourceOffset + 3] = replacement.a
-            } else drawPreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
+            } else queuePreviewPixel(pixelX, pixelY, previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels))
           }
         }
       }
@@ -3245,6 +3265,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drawTilemapEditPreviewTiles(previewTilePixels)
         queueTilesetTilePreview(tilemapTileset?.id, previewTilePixels)
       }
+      fillPreviewPixelRects(previewFillRects)
     }
     const drawShapeContourPreview = (
       points: Iterable<Point>,
@@ -4656,6 +4677,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       publishedCanvasPreviewRef.current = null
       notifyCanvasPreview(session.document.id, null)
     }
+    if (isWorkspaceResizing()) {
+      recordWorkspaceResizeStage('main', performance.now() - drawStartedAt)
+      recordWorkspaceResizeContext({ width: document.width, height: document.height, layers: document.layers.length, zoom: view.zoom })
+    }
     performanceProbe?.recordDraw(performance.now() - drawStartedAt)
   }
 
@@ -4683,6 +4708,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
     if (currentSession.animationPlaying) return false
+    if (currentSession.tool === 'smooth') {
+      const drag = inputRef.current.drag
+      return inputRef.current.pointer.visible
+        && !inputRef.current.spaceHeld
+        && !inputRef.current.sampling
+        && drag?.kind !== 'pan'
+    }
     if (currentSession.tool === 'liquify') {
       const drag = inputRef.current.drag
       return brushPreviewMode !== 'none'
@@ -4720,6 +4752,30 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!point) return
     const view = liveViewRef.current
     const renderPlan = createCanvasRenderPlan(rect.width, rect.height, currentSession.document, view, rotationIndicatorPosition)
+    if (currentSession.tool === 'smooth') {
+      const layer = activePaintLayer(currentSession)
+      if (layer.kind || currentSession.activeLayerMaskId || isLayerEffectivelyLocked(currentSession.document, layer)) return
+      context.save()
+      applyViewRotation(context, rect.width, rect.height, view)
+      context.fillStyle = SMOOTH_BRUSH_OVERLAY
+      const covered = new Set(inputRef.current.drag?.smoothStroke?.visited ?? [])
+      const stampSize = Math.max(1, Math.min(128, Math.round(currentSession.brushSize)))
+      const angle = brushAngleWithDynamics(currentSession)
+      const anchor = brushStampAnchor(stampSize, null, angle, currentSession.brushShape)
+      for (const span of solidBrushPreviewRowSpans(stampSize, currentSession.brushShape, angle, optimizedRotationEnabled)) {
+        const y = Math.round(point.y) - anchor.y + span.y
+        if (y < 0 || y >= currentSession.document.height) continue
+        for (let x = Math.max(0, Math.round(point.x) - anchor.x + span.left); x <= Math.min(currentSession.document.width - 1, Math.round(point.x) - anchor.x + span.right); x++) {
+          if (!currentSession.selection || selectionContains(currentSession.selection, x, y)) covered.add(y * currentSession.document.width + x)
+        }
+      }
+      for (const key of covered) {
+        const pixel = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, key % currentSession.document.width, Math.floor(key / currentSession.document.width), deviceScale)
+        context.fillRect(pixel.x, pixel.y, pixel.width, pixel.height)
+      }
+      context.restore()
+      return
+    }
     if (currentSession.tool === 'liquify') {
       // The preview is drawn on a separate overlay surface. Apply the same
       // view transform as the document surface so mirrored and rotated views
@@ -5071,6 +5127,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               : drag?.kind === 'shape' ? canvasToolCursor(session.tool, session.primaryColor)
                 : drag?.kind === 'pan' ? canvasCursors.grabbing : canvasCursors.grab
           }
+          // The brush preview is rendered on a separate overlay canvas. Clear
+          // it immediately when Space turns the active gesture into a hand
+          // pan; the regular canvas redraw does not touch this surface.
+          scheduleBrushPreviewOverlay()
           scheduleDraw()
         }
         return
@@ -5083,7 +5143,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         altKey: event.altKey || inputRef.current.altHeld,
         shiftKey: event.shiftKey || inputRef.current.shiftHeld
       }
-      const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive(modifierEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
+      const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive(modifierEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify')
       if (modifierSizing) {
         inputRef.current.sampling = false
         event.preventDefault()
@@ -5232,6 +5292,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         if (canvasRef.current) canvasRef.current.style.cursor = drag?.kind === 'marquee'
           ? selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
           : canvasToolCursor(session.tool, session.primaryColor)
+        // Restore the smooth preview as soon as temporary hand navigation is
+        // released (the overlay draw will re-check the live input state).
+        scheduleBrushPreviewOverlay()
         scheduleDraw()
       }
     }
@@ -5310,38 +5373,50 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }, [selectionOverlayAnimated, session.document.id])
 
   useEffect(() => {
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (entry) {
-        cacheStageDisplaySize(entry.contentRect.width, entry.contentRect.height)
-        const state = useWorkspace.getState()
-        state.setViewportSizeForDocument(session.document.id, stageSizeRef.current)
-        const constrained = constrainCanvasView(liveViewRef.current, stageSizeRef.current)
-        if (constrained.panX !== liveViewRef.current.panX || constrained.panY !== liveViewRef.current.panY) {
-          liveViewRef.current = constrained
-          state.setViewForDocument(session.document.id, { panX: constrained.panX, panY: constrained.panY })
-        }
+    const syncViewport = (): void => {
+      const state = useWorkspace.getState()
+      const current = state.sessions.find(item => item.document.id === session.document.id)
+      if (!current) return
+      const size = stageSizeRef.current
+      if (current.viewportSize.width !== size.width || current.viewportSize.height !== size.height) {
+        state.setViewportSizeForDocument(session.document.id, size)
       }
+      const view = liveViewRef.current
+      if (current.view.panX !== view.panX || current.view.panY !== view.panY) {
+        state.setViewForDocument(session.document.id, { panX: view.panX, panY: view.panY })
+      }
+    }
+    const updateSize = (width: number, height: number): void => {
+      cacheStageDisplaySize(width, height)
+      liveViewRef.current = constrainCanvasView(liveViewRef.current, stageSizeRef.current)
+      // Local geometry remains live. Publish once when the layout gesture ends
+      // instead of notifying all document/store subscribers on every resize.
+      if (!isWorkspaceResizing()) syncViewport()
+    }
+    const stopListening = onWorkspaceResizeEnd(() => {
+      const bounds = stageRef.current?.getBoundingClientRect()
+      if (bounds) updateSize(bounds.width, bounds.height)
+      scheduleDraw()
+    })
+    const observer = new ResizeObserver((entries) => {
+      const observerStarted = isWorkspaceResizing() ? performance.now() : 0
+      const entry = entries[0]
+      if (entry) updateSize(entry.contentRect.width, entry.contentRect.height)
       // ResizeObserver runs before paint. Redraw now so the browser never
       // stretches the previous canvas bitmap to the new dock layout for a frame.
       if (drawRequestRef.current !== null) window.cancelAnimationFrame(drawRequestRef.current)
       drawRequestRef.current = null
       drawRef.current()
+      if (observerStarted) recordWorkspaceResizeStage('observer', performance.now() - observerStarted)
     })
     if (stageRef.current) {
       const bounds = stageRef.current.getBoundingClientRect()
-      cacheStageDisplaySize(bounds.width, bounds.height)
-      const state = useWorkspace.getState()
-      state.setViewportSizeForDocument(session.document.id, stageSizeRef.current)
-      const constrained = constrainCanvasView(liveViewRef.current, stageSizeRef.current)
-      if (constrained.panX !== liveViewRef.current.panX || constrained.panY !== liveViewRef.current.panY) {
-        liveViewRef.current = constrained
-        state.setViewForDocument(session.document.id, { panX: constrained.panX, panY: constrained.panY })
-      }
+      updateSize(bounds.width, bounds.height)
       observer.observe(stageRef.current)
     }
     return () => {
       observer.disconnect()
+      stopListening()
       stopAirbrushTimer()
       if (drawRequestRef.current) window.cancelAnimationFrame(drawRequestRef.current)
       if (selectionPreviewFrameRef.current) window.cancelAnimationFrame(selectionPreviewFrameRef.current)
@@ -5752,6 +5827,33 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (!layer) continue
       if (!isLayerEffectivelyVisible(session.document, layer) || isLayerEffectivelyLocked(session.document, layer)) continue
       if (readLayerVisibleColorAt(session.document, layer, point.x, point.y).a > 0) return layer
+    }
+    return null
+  }
+
+  const textLayerAt = (point: Point): RasterLayer | null => {
+    const timeline = ensureAnimationDocument(session.document)
+    const layerById = new Map(session.document.layers.map((layer) => [layer.id, layer]))
+    for (const layerId of layerIdsInVisualStackOrder(session.document.layers, session.document.groups)) {
+      const layer = layerById.get(layerId)
+      if (!layer || !isLayerEffectivelyVisible(session.document, layer) || isLayerEffectivelyLocked(session.document, layer)) continue
+      if (layer.kind !== 'text') {
+        if (readLayerVisibleColorAt(session.document, layer, point.x, point.y).a > 0) return null
+        continue
+      }
+      const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === timeline.activeFrameId)
+      const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
+      if (!source?.text || !source.surface) continue
+      const boxed = source.text.layoutMode === 'box' && source.text.boxWidth !== undefined && source.text.boxHeight !== undefined
+      // Unboxed text still owns a rectangular editing region. Extend the
+      // rendered layout by half an em so spaces, ascenders/descenders, and the
+      // area immediately around the line stay easy to target.
+      const padding = boxed ? 0 : Math.max(2, Math.ceil(source.text.fontSize / 2))
+      const x = source.surface.offsetX - padding
+      const y = source.surface.offsetY - padding
+      const width = (boxed ? source.text.boxWidth! : source.surface.width) + padding * 2
+      const height = (boxed ? source.text.boxHeight! : source.surface.height) + padding * 2
+      if (point.x >= x && point.y >= y && point.x < x + width && point.y < y + height) return layer
     }
     return null
   }
@@ -6315,7 +6417,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (insideDocument && point && contrastColor.a < 255) contrastColor = blendOver(transparencyColorAt(point.x, point.y, checkerboard), contrastColor)
     const altActive = inputRef.current.altHeld || altKey
     const ctrlActive = inputRef.current.ctrlHeld || ctrlKey
-    const brushSizeTool = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify'
+    const brushSizeTool = session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify'
     const modifierSizing = brushSizeAdjustmentPreviewActive || ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && modifierActive({ ctrlKey, metaKey: false, altKey, shiftKey }, 'brushSizeAdjust') && brushSizeTool)
     const wheelSizing = wheelBrushSizePreviewRef.current && brushSizeTool
     const selectedTextBox = selectedTextBoxForSession(session)
@@ -6335,6 +6437,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const moveCopyAvailable = moveToolActive && insideDocument && Boolean(session.moveAutoSelect ? (point && (topEditableLayerAt(point) ?? (activeLayerEditable ? getActiveLayer(session.document) : null))) : activeLayerEditable)
     const selectionCopyAvailable = session.tool === 'selection' && !altActive && ctrlActive && selectionHitStartsContentMove(selectionHit, true) && selectionLayersEditable && (!session.pendingPaste || shouldRestartFloatingSelectionForCopy(session.pendingPaste.copy, true))
     const copyAvailable = (altActive && moveCopyAvailable) || selectionCopyAvailable
+    const textCopyAvailable = session.tool === 'text' && altActive && Boolean(point && textLayerAt(point))
     const sampling = paletteSamplingShortcutActive() || session.tool === 'eyedropper' || ((quickToolActive('eyedropper') || (session.tool === 'rotate' && altKey)) && !centeredSelectionResize && !(moveToolActive && moveCopyAvailable) && !modifierSizing)
     inputRef.current.sampling = sampling
     if (sampling && session.tool === 'rotate') updateRotationIndicator(liveViewRef.current.rotation, false)
@@ -6345,7 +6448,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const resizeEdge = canvasResizeHitAt(clientX, clientY)
     if (modifierSizing || wheelSizing) canvas.style.cursor = canvasToolCursor('pencil', contrastColor)
     else if (resizeEdge) canvas.style.cursor = displayedResizeCursorForHandle(resizeEdge as SelectionHandle)
-    else if (copyAvailable) canvas.style.cursor = canvasCursors.copy
+    else if (copyAvailable || textCopyAvailable) canvas.style.cursor = canvasCursors.copy
     // Ctrl temporarily switches the eyedropper to the move tool. Keep this
     // cursor ahead of sampling so the visual feedback matches the gesture.
     else if (temporaryMove) canvas.style.cursor = available ? canvasCursors.move : canvasCursors.unavailable
@@ -6774,6 +6877,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       beginPanPreview()
       event.currentTarget.setPointerCapture(event.pointerId)
       event.currentTarget.style.cursor = canvasCursors.grabbing
+      // Middle-button/Space panning must hide the smooth-brush overlay even
+      // when the pointer does not move after the gesture starts.
+      scheduleBrushPreviewOverlay()
       event.preventDefault()
       return
     }
@@ -6836,7 +6942,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint')
       && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint')
       && modifierActive(event.nativeEvent, 'brushSizeAdjust')
-      && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
+      && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify')
     // Modifier sizing has no cursor hit-test or composited color sample to
     // resolve. Avoid updateCursor's layer-tree sampling on every mouse move.
     if (!modifierSizingActive) updateCursor(event)
@@ -6930,7 +7036,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     const selectedTextBox = selectedTextBoxForSession(session)
     const textBoxHit = event.button === 0 && selectedTextBox ? selectionHit(event) : 'outside'
-    if (!temporaryMove && session.tool === 'text' && selectedTextBox && textBoxHit in resizeCursors) {
+    const textCopyTarget = !temporaryMove && session.tool === 'text' && event.button === 0 && event.altKey ? textLayerAt(point) : null
+    if (!temporaryMove && !textCopyTarget && session.tool === 'text' && selectedTextBox && textBoxHit in resizeCursors) {
       state.beginSelectedTextBoxTransform()
       inputRef.current.drag = {
         kind: 'transform-text-box',
@@ -6943,7 +7050,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.currentTarget.style.cursor = displayedResizeCursorForHandle(textBoxHit as SelectionHandle)
       return
     }
-    if (!temporaryMove && session.tool === 'text' && selectedTextBox && textBoxHit === 'inside') {
+    if (!temporaryMove && !textCopyTarget && session.tool === 'text' && selectedTextBox && textBoxHit === 'inside') {
       state.beginSelectedTextBoxTransform()
       inputRef.current.drag = {
         kind: 'transform-text-box',
@@ -7010,7 +7117,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       && !session.activeLayerMaskId
       && (session.selectedGroupIds.length > 0 || session.selectedLayerIds.length > 1)
     const hasRasterFocus = hasSelectedRasterLayer || focusesRasterLayer || (session.tool === 'selection' && selectionLayersEditable)
-    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify') && (session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize) && event.button === 0) {
+    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify') && (session.tool === 'smooth' || session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize) && event.button === 0) {
       inputRef.current.sampling = false
       inputRef.current.drag = { kind: 'brush-size', start: point, last: point, startClient: { x: event.clientX, y: event.clientY }, startBrushSize: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize }
       event.currentTarget.style.cursor = canvasToolCursor('pencil', session.primaryColor)
@@ -7123,14 +7230,33 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         return
       }
     }
-    if (session.tool === 'text' && event.button === 0 && !temporaryMove) {
+    if (session.tool === 'text' && event.button === 0 && !temporaryMove && !textCopyTarget) {
+      // Text behaves as a direct-edit tool: hitting an existing visible text
+      // layer opens its editor instead of starting a new text box.
+      const textTarget = textLayerAt(point)
+      if (textTarget?.kind === 'text') {
+        const timeline = ensureAnimationDocument(session.document)
+        const cel = timeline.cels.find((candidate) => candidate.layerId === textTarget.id && candidate.frameId === timeline.activeFrameId)
+        const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
+        if (cel && source?.text) {
+          state.selectMoveToolLayer(textTarget.id)
+          openTextToolDialog({
+            documentId: session.document.id,
+            layerId: textTarget.id,
+            frameId: timeline.activeFrameId,
+            x: source.surface?.offsetX ?? source.text.originX ?? textTarget.offsetX,
+            y: source.surface?.offsetY ?? source.text.originY ?? textTarget.offsetY
+          })
+          return
+        }
+      }
       inputRef.current.drag = {
         kind: 'create-text-box',
         start: point,
         last: point,
         startClient: { x: event.clientX, y: event.clientY },
         moved: false,
-        previewTarget: clampSliceRect(shapeBounds(point, point), session.document.width, session.document.height)
+        previewTarget: shapeBounds(point, point)
       }
       return
     }
@@ -7167,9 +7293,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair)
       return
     }
-    if (!freeTransformActive && (session.tool === 'move' || temporaryMove) && event.button === 0) {
+    if (!freeTransformActive && (session.tool === 'move' || temporaryMove || textCopyTarget) && event.button === 0) {
       const additiveSelection = event.shiftKey
-      const hitTarget = session.moveAutoSelect || additiveSelection ? topEditableLayerAt(point) : null
+      const hitTarget = textCopyTarget ?? (session.moveAutoSelect || additiveSelection ? topEditableLayerAt(point) : null)
       let selectedLayerIds = resolveCanvasMoveLayerIds({
         selectedLayerIds: session.selectedLayerIds,
         selectedGroupIds: session.selectedGroupIds,
@@ -7188,26 +7314,26 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         return
       }
       if (!additiveSelection && selectedLayerIds.length > 1 && hitTarget && !selectedLayerIds.includes(hitTarget.id)) {
-        state.selectMoveToolLayer(hitTarget.id)
+        state.activateLayerForCanvas(hitTarget.id)
         selectedLayerIds = [hitTarget.id]
         revealLayerInPanel(session.document.id, hitTarget.id)
         showMoveLayerContentPreview(hitTarget)
       }
       const frameSelectionAcrossLayers = session.selectedAnimationFrameIds.length > 0
-      let selectedMovableLayers = (frameSelectionAcrossLayers ? session.document.layers.map((layer) => layer.id) : selectedLayerIds)
+      let selectedMovableLayers = (textCopyTarget ? [textCopyTarget.id] : frameSelectionAcrossLayers ? session.document.layers.map((layer) => layer.id) : selectedLayerIds)
         .map((id) => session.document.layers.find((layer) => layer.id === id))
         .filter((layer): layer is RasterLayer => Boolean(layer && isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer)))
-      let moveAllSelectedLayers = frameSelectionAcrossLayers || selectedMovableLayers.length > 1 || session.selectedGroupIds.length > 0
-      const target = additiveSelection && hitTarget ? hitTarget : moveAllSelectedLayers
+      let moveAllSelectedLayers = !textCopyTarget && (frameSelectionAcrossLayers || selectedMovableLayers.length > 1 || session.selectedGroupIds.length > 0)
+      const target = textCopyTarget ?? (additiveSelection && hitTarget ? hitTarget : moveAllSelectedLayers
         ? selectedMovableLayers.find((layer) => layer.id === session.document.activeLayerId) ?? selectedMovableLayers[0]
-        : session.moveAutoSelect ? (hitTarget ?? (canMoveActiveLayer ? movableActiveLayer : null)) : (canMoveActiveLayer ? movableActiveLayer : null)
+        : session.moveAutoSelect ? (hitTarget ?? (canMoveActiveLayer ? movableActiveLayer : null)) : (canMoveActiveLayer ? movableActiveLayer : null))
       if (!target) { if (eyedropperHeld) sampleAtPoint(); return }
       flashMoveLayer(hitTarget ?? target)
       if (!additiveSelection && session.moveAutoSelect && !moveAllSelectedLayers) {
         const currentFrameId = session.document.animation?.activeFrameId
         const targetKey = currentFrameId ? animationCelKey(target.id, currentFrameId) : null
         if (!targetKey || !session.selectedAnimationCellKeys.includes(targetKey)) {
-          state.selectMoveToolLayer(target.id)
+          state.activateLayerForCanvas(target.id)
           selectedLayerIds = [target.id]
           selectedMovableLayers = [target]
           moveAllSelectedLayers = false
@@ -7221,7 +7347,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         && activeSession.selectedAnimationFrameIds.length === 0
         && activeSession.selectedAnimationCellKeys.length === 0
         && activeSession.selectedAnimationMaskCellKeys.length === 0
-      if (layerSelectionAcrossFrames) moveAllSelectedLayers = true
+      if (layerSelectionAcrossFrames && !textCopyTarget) moveAllSelectedLayers = true
       const selectedCellKeys = resolveCanvasMoveAnimationCellKeys({
         selectedAnimationCellKeys: activeSession.selectedAnimationCellKeys,
         selectedAnimationFrameIds: activeSession.selectedAnimationFrameIds,
@@ -7271,15 +7397,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         layerOffset: { x: target.offsetX, y: target.offsetY }, layerIds, layerOffsets,
         layerContentBounds: layerContentBoundsById, layerFrameId: currentFrameId,
         ...alignmentDragFields(alignmentMovingBounds, layerIds),
-        animationCellKeys, animationCellOffsets, animationMaskOffsets: animationMaskOffsetsForLayerMove(activeSession, layerIds, currentFrameId, animationCellKeys), duplicateOnDrag: copyLayerHeld && layerIds.length === 1 && animationCellKeys.length <= 1,
+        animationCellKeys, animationCellOffsets, animationMaskOffsets: animationMaskOffsetsForLayerMove(activeSession, layerIds, currentFrameId, animationCellKeys), duplicateOnDrag: Boolean(textCopyTarget || copyLayerHeld) && layerIds.length === 1 && animationCellKeys.length <= 1,
         originalSelectedLayerIds: [...selectedLayerIds], selectionStart,
         selectionPivotStart: activeSession.selectionPivot ? { ...activeSession.selectionPivot } : undefined,
         previewPivot: activeSession.selectionPivot ? { ...activeSession.selectionPivot } : undefined,
         clickLayerId: hitTarget?.id ?? session.document.activeLayerId,
+        // Even with automatic layer selection disabled, a click (as opposed to
+        // a drag) on another visible layer should activate that layer.
         collapseLayerSelectionOnClick: !additiveSelection && (selectedLayerIds.length > 1 || activeSession.selectedAnimationCellKeys.length > 1)
       }
       preserveCanvasSelection(session.document.id)
-      event.currentTarget.style.cursor = copyLayerHeld ? canvasCursors.copy : canvasCursors.move
+      event.currentTarget.style.cursor = textCopyTarget || copyLayerHeld ? canvasCursors.copy : canvasCursors.move
       return
     }
     if (session.tool === 'rotate' && eyedropperHeld && (event.button === 0 || event.button === 2)) {
@@ -7802,6 +7930,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (session.tool === 'zoom') {
       const view = liveViewRef.current
       inputRef.current.drag = { kind: 'zoom-drag', start: point, last: point, startClient: { x: event.clientX, y: event.clientY }, startZoom: view.zoom }
+      return
+    }
+    if (session.tool === 'smooth') {
+      if (event.button !== 0) return
+      if (!hasRasterFocus || !canEditLayer || tilemapPixelEditBlocked || editableLayer.kind || session.activeLayerMaskId) return
+      const drag: DragState = { kind: 'smooth', start: point, last: point, edit: beginPixelEdit(editableLayer.id), smoothStroke: { visited: new Set() }, startedAt: Date.now() }
+      inputRef.current.drag = drag
+      collectSmoothBrushArea(session.document, drag.smoothStroke!, point, point, session.brushSize, session.selection, session.brushShape, brushAngleWithDynamics(session), optimizedRotationEnabled)
+      scheduleDraw()
       return
     }
     if (session.tool === 'liquify' && (event.button === 0 || event.button === 2)) {
@@ -8359,15 +8496,16 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const repeatedMarquee = inputRef.current.drag?.kind === 'marquee' && !inputRef.current.drag.quickSelectCell && repeatMode !== 'off'
     const repeatedSelectionMove = (inputRef.current.drag?.kind === 'move-content' || inputRef.current.drag?.kind === 'move-selection') && repeatMode !== 'off'
     const allowOutsideCopies = Boolean((inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || repeatedMarquee || repeatedSelectionMove) && repeatMode !== 'off')
+    const textBoxInteraction = inputRef.current.drag?.kind === 'create-text-box' || inputRef.current.drag?.kind === 'transform-text-box'
     const point = localPoint(event, allowOutsideCopies)
-      ?? ((freeTransformActive || activeDrag?.freeTransform === true)
+      ?? ((freeTransformActive || activeDrag?.freeTransform === true || textBoxInteraction)
         ? localContinuousPointAt(event.clientX, event.clientY)
         : null)
     if (point) inputRef.current.updatePointer({ point, clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, altKey: event.altKey })
     if (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'lasso' || inputRef.current.drag?.kind === 'polygon-lasso') {
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true)
     }
-    const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify')
+    const modifierSizing = (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') && modifierActive(event.nativeEvent, 'brushSizeAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify')
     if (modifierSizing && !inputRef.current.drag) {
       if (!inputRef.current.modifierBrushSize) inputRef.current.modifierBrushSize = { x: event.clientX, y: event.clientY, size: session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize }
       else {
@@ -8456,7 +8594,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     // Liquify uses continuous document coordinates in its own branch below.
     // Do not overwrite its previous point with the integer-snapped `point`.
-    if (drag.kind !== 'liquify') drag.last = point
+    if (drag.kind !== 'liquify' && drag.kind !== 'smooth') drag.last = point
+    if (drag.kind === 'smooth' && drag.edit && drag.smoothStroke) {
+      collectSmoothBrushArea(session.document, drag.smoothStroke, drag.last, point, session.brushSize, session.selection, session.brushShape, brushAngleWithDynamics(session), optimizedRotationEnabled)
+      drag.last = point
+      scheduleDraw()
+      return
+    }
     if (drag.kind === 'sample-color') {
       if (point.x >= 0 && point.y >= 0 && point.x < session.document.width && point.y < session.document.height) {
         if (drag.tileSampling) {
@@ -9272,7 +9416,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag.kind === 'create-text-box') {
       drag.moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       drag.last = point
-      drag.previewTarget = clampSliceRect(shapeBounds(drag.start, point), session.document.width, session.document.height)
+      drag.previewTarget = shapeBounds(drag.start, point)
       scheduleDraw()
       return
     }
@@ -9455,11 +9599,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const modifiers = selectionTransformModifierState(event.nativeEvent)
       const target = drag.handle
         ? resizeSelectionBounds(drag.transformStartTarget, point, drag.handle, session.document, modifiers.proportional, false, modifiers.fromCenter)
-        : moveSliceRect(drag.transformStartTarget, point.x - drag.start.x, point.y - drag.start.y, session.document.width, session.document.height)
+        : { ...drag.transformStartTarget, x: Math.round(drag.transformStartTarget.x + point.x - drag.start.x), y: Math.round(drag.transformStartTarget.y + point.y - drag.start.y) }
       drag.last = point
       drag.moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       if (!drag.handle && !drag.moved) return
-      drag.previewTarget = clampSliceRect(target, session.document.width, session.document.height)
+      drag.previewTarget = target
       state.previewTextBoxTransform(drag.previewTarget)
       compositeCacheRef.current.invalidateAll()
       scheduleDraw()
@@ -9578,6 +9722,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         : restoreCanvasDragAfterPan(drag, localPoint(event) ?? drag.resumeDrag?.last ?? drag.last)
       if (resumedDrag) inputRef.current.drag = resumedDrag
       updateCursor(event)
+      // The pan drag owns the pointer while the view moves. Once it ends,
+      // redraw the separate brush-preview surface so a smooth-brush preview
+      // can return immediately (or stay cleared when another drag resumes).
+      scheduleBrushPreviewOverlay()
       // Commit the pan on the next frame so pointer-up does not synchronously
       // block the primary mouse stream with a full canvas repaint.
       scheduleDraw()
@@ -9805,6 +9953,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (session.tool === 'eraser') state.setLastEraserPoint(drag.last)
       else state.setLastPencilPoint(drag.last)
     }
+    if (drag.kind === 'smooth' && drag.edit) {
+      if (drag.smoothStroke) state.applySmoothBrushStroke(drag.edit, drag.smoothStroke)
+      if (drag.edit.dirtyRect) invalidateCompositeRect(drag.edit.dirtyRect, [drag.edit.layerId])
+      state.commitPixelEdit(drag.edit, t('canvas.history.smooth'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
+    }
     if (drag.kind === 'airbrush' && drag.edit) {
       if (freeTileSourceEditForDrag(drag)) commitFreeTileSourceDrag(drag, t('canvas.history.airbrush'))
       else state.commitPixelEdit(drag.edit, t('canvas.history.airbrush'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
@@ -9820,7 +9973,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     if (drag.kind === 'move-layer') state.commitLayerMove(session.document.id, drag)
     if (drag.kind === 'move-layer' && drag.collapseLayerSelectionOnClick && !drag.moved && drag.clickLayerId) {
-      state.selectMoveToolLayer(drag.clickLayerId)
+      state.activateLayerForCanvas(drag.clickLayerId)
       revealLayerInPanel(session.document.id, drag.clickLayerId)
     }
     if (drag.kind === 'move-layer' && drag.previewPivot) state.setSelectionPivot(drag.previewPivot)
@@ -9881,7 +10034,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     if (drag.kind === 'create-text-box') {
       const moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
-      const target = drag.previewTarget ?? clampSliceRect(shapeBounds(drag.start, drag.last), session.document.width, session.document.height)
+      const target = drag.previewTarget ?? shapeBounds(drag.start, drag.last)
       textToolBoxRef.current = moved ? { ...target } : null
       openTextToolDialog({
         documentId: session.document.id,
@@ -9905,8 +10058,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           documentId: currentSession.document.id,
           layerId: layer.id,
           frameId: timeline.activeFrameId,
-          x: source?.text?.originX ?? source?.surface?.offsetX ?? layer.offsetX,
-          y: source?.text?.originY ?? source?.surface?.offsetY ?? layer.offsetY
+          // The rendered cel surface is the current placement. Text metadata can
+          // be stale while a duplicated layer move is being finalized, so it must
+          // never pull an existing text layer back to its pre-move origin.
+          x: source?.surface?.offsetX ?? source?.text?.originX ?? layer.offsetX,
+          y: source?.surface?.offsetY ?? source?.text?.originY ?? layer.offsetY
         })
       } else state.commitTextBoxTransform(drag.previewTarget)
       compositeCacheRef.current.invalidateAll()
@@ -10067,7 +10223,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       event.stopImmediatePropagation()
       return
     }
-    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && !canvasResizePreviewRef.current && modifierActive(wheelModifiers, 'brushSizeWheelAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'liquify') && (session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize)) {
+    if ((activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') && !canvasResizePreviewRef.current && modifierActive(wheelModifiers, 'brushSizeWheelAdjust') && (session.tool === 'pencil' || session.tool === 'airbrush' || session.tool === 'eraser' || session.tool === 'smooth' || session.tool === 'liquify') && (session.tool === 'smooth' || session.tool === 'airbrush' || session.tool === 'liquify' || activeLayer.kind === 'tilemap' || !activeBrushImage?.intrinsicSize)) {
       event.preventDefault()
       event.stopImmediatePropagation()
       wheelBrushSizePreviewRef.current = true
@@ -10293,6 +10449,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       hideEyedropperMagnifier()
       updateCursor(event)
+      // Cancellation can happen without a matching pointer-up (for example
+      // when the middle-button capture is interrupted). Ensure the detached
+      // brush-preview canvas is cleared in that path as well.
+      scheduleBrushPreviewOverlay()
       inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
       pressureAdapterRef.current.release(event.pointerId)
       if (pressurePointer) hidePenCursor()

@@ -12,7 +12,7 @@ import { TextAreaInput } from './TextAreaInput'
 import { ThemedSelect } from './ThemedSelect'
 import { Tooltip } from './Tooltip'
 import { useI18n } from './I18nProvider'
-import { DEFAULT_TEXT_CONTENT, DEFAULT_TEXT_FONT_FAMILY, DEFAULT_TEXT_FONT_SIZE, TEXT_FONT_FAMILIES, applyTextStyleRun, normalizeTextCelData, reconcileTextStyleRuns, textFontDefaultSize } from '@/core/text-raster'
+import { DEFAULT_TEXT_BOX_HEIGHT, DEFAULT_TEXT_BOX_WIDTH, DEFAULT_TEXT_CONTENT, DEFAULT_TEXT_FONT_FAMILY, DEFAULT_TEXT_FONT_SIZE, TEXT_FONT_FAMILIES, applyTextStyleRun, normalizeTextCelData, rasterizeText, reconcileTextStyleRuns, textFontDefaultSize } from '@/core/text-raster'
 import { deleteTextFont, importSystemTextFont, importTextFont, loadLastTextFontSize, loadSystemFontCatalog, loadTextFontCatalog, recordLastTextFontSize, recordTextFontUsage, type TextFontOption } from '@/platform/font-service'
 
 export function TextToolDialog({ initial, editing, box, onClose, onChange, onPreview, onSubmit }: {
@@ -49,12 +49,36 @@ export function TextToolDialog({ initial, editing, box, onClose, onChange, onPre
     if (!box) return
     setValue((current) => current.originX === box.x && current.originY === box.y && current.boxWidth === box.width && current.boxHeight === box.height
       ? current
-      : { ...current, originX: box.x, originY: box.y, boxWidth: box.width, boxHeight: box.height })
+      : { ...current, originX: box.x, originY: box.y, layoutMode: 'box', boxWidth: box.width, boxHeight: box.height })
   }, [box?.height, box?.width, box?.x, box?.y])
   const antialiasGroups = useMemo(() => [{ label: t('textTool.rendering'), options: [
     { value: 'pixel' as const, label: t('textTool.pixel') },
     { value: 'smooth' as const, label: t('textTool.smooth') }
   ] }], [t])
+  const layoutModeGroups = useMemo(() => [{ label: t('textTool.layoutMode'), options: [
+    { value: 'free' as const, label: t('textTool.layoutFree') },
+    { value: 'box' as const, label: t('textTool.layoutBox') }
+  ] }], [t])
+  const textAlignGroups = useMemo(() => [{ label: t('textTool.textAlign'), options: [
+    { value: 'left' as const, label: t('textTool.alignLeft') },
+    { value: 'center' as const, label: t('textTool.alignCenter') },
+    { value: 'right' as const, label: t('textTool.alignRight') }
+  ] }], [t])
+  const boxedLayout = value.layoutMode === 'box'
+  const setLayoutMode = (layoutMode: 'free' | 'box'): void => setValue((current) => {
+    if (layoutMode === 'free') return { ...current, layoutMode, boxWidth: undefined, boxHeight: undefined }
+    if (current.layoutMode === 'box' && current.boxWidth && current.boxHeight) return current
+    // A newly boxed text starts at its current visual size. This keeps selecting
+    // center/right alignment from appearing to move the text or its frame.
+    const free = { ...current, layoutMode: 'free' as const, boxWidth: undefined, boxHeight: undefined }
+    const surface = rasterizeText(free, current.originX ?? 0, current.originY ?? 0).rgba
+    return {
+      ...current,
+      layoutMode,
+      boxWidth: Math.max(1, surface.width || DEFAULT_TEXT_BOX_WIDTH),
+      boxHeight: Math.max(1, surface.height || DEFAULT_TEXT_BOX_HEIGHT)
+    }
+  })
   const spacingModeGroups = useMemo(() => [{ label: t('textTool.spacingMode'), options: [
     { value: 'actual' as const, label: t('textTool.actualSpacing'), description: t('textTool.actualSpacingDescription') },
     { value: 'font' as const, label: t('textTool.fontSpacing'), description: t('textTool.fontSpacingDescription') }
@@ -252,6 +276,8 @@ export function TextToolDialog({ initial, editing, box, onClose, onChange, onPre
             window.queueMicrotask(syncSelectionMirror)
           }} />{!textAreaFocused && hasTextSelection && <div className="text-tool-selection-mirror" aria-hidden="true" style={{ width: selectionMirror.width, height: selectionMirror.height, '--text-selection-scroll-x': `${selectionMirror.scrollLeft}px`, '--text-selection-scroll-y': `${selectionMirror.scrollTop}px` } as CSSProperties}><div><span>{value.text.slice(0, selection.start)}</span><mark>{value.text.slice(selection.start, selection.end)}</mark><span>{value.text.slice(selection.end)}</span></div></div>}</div></FormField>
           <div className="text-tool-number-grid">
+            <FormField label={t('textTool.layoutMode')}><ThemedSelect<'free' | 'box'> value={value.layoutMode ?? 'free'} groups={layoutModeGroups} label={t('textTool.layoutMode')} onChange={setLayoutMode} /></FormField>
+            <FormField label={t('textTool.textAlign')}><ThemedSelect<'left' | 'center' | 'right'> value={value.textAlign ?? 'left'} groups={textAlignGroups} label={t('textTool.textAlign')} disabled={!boxedLayout} onChange={(textAlign) => setValue((current) => ({ ...current, textAlign }))} /></FormField>
             <FormField label={t('textTool.fontSize')}><NumberInput min={1} max={512} suffix="px" value={selectionValues('fontSize')} onValueChange={(fontSize) => { recordLastTextFontSize(fontSize); updateRangeStyle({ fontSize }) }} /></FormField>
             <FormField label={t('textTool.lineSpacing')}><NumberInput min={-256} max={512} suffix="px" value={selectionValues('lineSpacing')} onValueChange={(lineSpacing) => updateRangeStyle({ lineSpacing })} /></FormField>
             <FormField label={t('textTool.letterSpacing')}><NumberInput min={-64} max={256} suffix="px" value={selectionValues('letterSpacing')} onValueChange={(letterSpacing) => updateRangeStyle({ letterSpacing })} /></FormField>

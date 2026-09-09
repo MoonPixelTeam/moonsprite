@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LiquifyMode } from '@shared/types'
-import { createDocument, createLayerMask, readLayerColorAt, writeLayerColor } from './document'
+import { createDocument, createLayerMask, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, revertPixelEdit } from './history'
 import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from './liquify'
 
@@ -14,6 +14,21 @@ const createFixture = (size = 9) => {
 }
 
 describe('liquify', () => {
+  it('materializes a previously smaller layer to the resized canvas before deforming', () => {
+    const document = createDocument('expanded liquify canvas', 32, 32, 'rgba')
+    const layer = document.layers[0]
+    resizeDocumentAt(document, 128, 128, 0, 0)
+
+    // The target is outside the original 32×32 bitmap. A transparent dab
+    // does not need to change pixels, but it must no longer be clipped by the
+    // stale layer geometry.
+    applyLiquifyStep(document, layer, beginPixelEdit(layer.id), { x: 96, y: 96 }, { x: 96, y: 96 }, {
+      mode: 'inflate', radius: 8, strength: 100
+    })
+
+    expect(layer).toMatchObject({ width: 128, height: 128, offsetX: 0, offsetY: 0 })
+  })
+
   it.each([
     { mode: 'push', expected: 'push' },
     { mode: 'inflate', expected: 'deflate' },

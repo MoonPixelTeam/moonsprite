@@ -538,6 +538,7 @@ export class CanvasCompositeCache {
     if (!selection) return
     this.invalidatedInitialDocuments.add(document)
     this.compositeCache.invalidateLiveSourceCaches()
+    this.compositeCache.invalidateStyleSources(document, selection, affectedOwnerIds)
     const expanded = expandLayerStyleInvalidationRect(document, selection, affectedOwnerIds)
     this.livePreviewPending.add(`${document.id}:${frameId}`)
     this.invalidateRect(expanded, document.width, document.height, frameId)

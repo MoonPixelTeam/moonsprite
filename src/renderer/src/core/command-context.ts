@@ -34,6 +34,26 @@ export const hasAnimationDeleteSelection = (context: AnimationDeleteSelectionCon
   || (context.selectedMaskRowCount ?? 0) > 0
   || (context.cellSelectionExplicit && context.selectedCellCount > 0)
 
+/**
+ * The active cel is an editing context, not an explicit timeline selection.
+ * Delete should clear that cel when no other canvas, timeline, layer, or
+ * Free Tile selection owns the command.
+ */
+export const shouldDeleteActiveAnimationCel = (context: {
+  scope: EditorCommandScope
+  hasCanvasSelection: boolean
+  hasAnimationSelection: boolean
+  hasExplicitLayerSelection: boolean
+  hasFreeTileInstanceSelection: boolean
+  hasAnimation: boolean
+}): boolean =>
+  (context.scope === 'canvas' || context.scope === 'layers')
+  && !context.hasCanvasSelection
+  && !context.hasAnimationSelection
+  && !context.hasExplicitLayerSelection
+  && !context.hasFreeTileInstanceSelection
+  && context.hasAnimation
+
 export function resolveDeleteCommand(scope: EditorCommandScope, hasSelection: boolean, hasAnimationSelection = false, hasFreeTileInstanceSelection = false): DeleteCommandTarget {
   if (scope === 'layers' && hasFreeTileInstanceSelection) return 'free-tile-instance'
   // A canvas selection owns Delete even when the last focused surface is the

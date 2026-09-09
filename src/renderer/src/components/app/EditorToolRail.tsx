@@ -101,10 +101,10 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     : quickToolMatch?.target ?? null
   const displaySession = applyQuickToolTarget(session, quickTarget)
   const allTools = toolDefinitions(locale)
-  // Keep pencil and airbrush in one rail slot; both definitions remain available
+  // Keep pencil, airbrush, and smooth brush in one rail slot; all definitions remain available
   // to the flyout, shortcut handling, and component-library previews.
-  const tools = allTools.filter((tool) => tool.id !== 'airbrush')
-  const brushTools = allTools.filter((tool) => tool.id === 'pencil' || tool.id === 'airbrush')
+  const tools = allTools.filter((tool) => tool.id !== 'airbrush' && tool.id !== 'smooth')
+  const brushTools = (['pencil', 'airbrush', 'smooth'] as const).flatMap((id) => allTools.find((tool) => tool.id === id) ?? [])
   const selectionKinds = selectionKindDefinitions(locale)
   const shapeKinds = shapeKindDefinitions(locale)
   const lineKinds = lineKindDefinitions(locale)
@@ -121,7 +121,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     </span>
     <button className="tool-rail-grip" type="button" aria-label={t('tools.moveToolbar')} title={t('tools.moveToolbarHint')} onPointerDown={onGripPointerDown}><PixelUtilityIcon kind="move" /></button>
     {tools.map((tool) => {
-      const presentationToolId = tool.id === 'pencil' && displaySession.tool === 'airbrush' ? 'airbrush' : tool.id
+      const presentationToolId = tool.id === 'pencil' && (displaySession.tool === 'airbrush' || displaySession.tool === 'smooth') ? displaySession.tool : tool.id
       const presentation = activeToolPresentation(presentationToolId, displaySession.selectionKind, displaySession.shapeKind, locale, fillKind, displaySession.lineKind, displaySession.moveKind)
       const shortcut = primaryShortcutFor(presentation.shortcutId)
       const toolAvailable = isToolAvailableForSession(session, tool.id)
@@ -129,7 +129,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
         if (!toolAvailable) return
         // Keep the active brush when opening the shared pencil/airbrush slot.
         // Switching to pencil is only needed when entering the slot from another tool.
-        if (tool.id !== 'pencil' || (displaySession.tool !== 'pencil' && displaySession.tool !== 'airbrush')) workspace.setTool(tool.id)
+        if (tool.id !== 'pencil' || (displaySession.tool !== 'pencil' && displaySession.tool !== 'airbrush' && displaySession.tool !== 'smooth')) workspace.setTool(tool.id)
         setBrushFlyoutOpen(tool.id === 'pencil' ? !brushFlyoutOpen : false)
         setShapeFlyoutOpen(tool.id === 'shape' ? !shapeFlyoutOpen : false)
         setLineFlyoutOpen(tool.id === 'line' ? !lineFlyoutOpen : false)

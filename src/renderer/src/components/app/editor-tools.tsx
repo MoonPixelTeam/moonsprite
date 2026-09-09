@@ -7,6 +7,7 @@ import toolSelectionIcon from '@/assets/tool-icons/tool-selection.svg'
 import toolPencilIcon from '@/assets/tool-icons/tool-pencil.svg'
 import toolAirbrushIcon from '@/assets/tool-icons/tool-airbrush.svg'
 import toolEraserIcon from '@/assets/tool-icons/tool-eraser.svg'
+import toolSmoothIcon from '@/assets/tool-icons/tool-smooth.svg'
 import toolLiquifyIcon from '@/assets/tool-icons/tool-liquify.svg'
 import toolLiquifyNormalIcon from '@/assets/tool-icons/tool-liquify-normal.svg'
 import toolFillIcon from '@/assets/tool-icons/tool-fill.svg'
@@ -68,8 +69,10 @@ import toolHandNormalIcon from '@/assets/tool-icons/tool-hand-normal.svg'
 import toolZoomNormalIcon from '@/assets/tool-icons/tool-zoom-normal.svg'
 import toolRotateNormalIcon from '@/assets/tool-icons/tool-rotate-normal.svg'
 import toolTextNormalIcon from '@/assets/tool-icons/tool-text-normal.svg'
+import toolSmoothNormalIcon from '@/assets/tool-icons/tool-smooth-normal.svg'
 
 const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
+  [toolSmoothIcon, toolSmoothNormalIcon],
   [toolPencilIcon, toolPencilNormalIcon],
   [toolAirbrushIcon, toolAirbrushNormalIcon],
   [toolEraserIcon, toolEraserNormalIcon],
@@ -100,6 +103,7 @@ const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
 export const normalEditorToolIconFor = (source: string): string | undefined => NORMAL_EDITOR_TOOL_ICON_BY_SOURCE.get(source)
 
 const TOOL_BASE: Array<{ id: ToolId; icon: string; shortcutId: ShortcutId }> = [
+  { id: 'smooth', icon: toolSmoothIcon, shortcutId: 'tool.smooth' },
   { id: 'pencil', icon: toolPencilIcon, shortcutId: 'tool.pencil' }, { id: 'airbrush', icon: toolAirbrushIcon, shortcutId: 'tool.airbrush' }, { id: 'eraser', icon: toolEraserIcon, shortcutId: 'tool.eraser' }, { id: 'liquify', icon: toolLiquifyIcon, shortcutId: 'tool.liquify' }, { id: 'selection', icon: toolSelectionIcon, shortcutId: 'tool.selection' }, { id: 'shape', icon: toolShapeIcon, shortcutId: 'tool.shape' }, { id: 'line', icon: shapeLineIcon, shortcutId: 'tool.line' }, { id: 'fill', icon: toolFillIcon, shortcutId: 'tool.fill' }, { id: 'text', icon: toolTextIcon, shortcutId: 'tool.text' }, { id: 'move', icon: toolMoveIcon, shortcutId: 'tool.move' }, { id: 'eyedropper', icon: toolEyedropperIcon, shortcutId: 'tool.eyedropper' }, { id: 'hand', icon: toolHandIcon, shortcutId: 'tool.hand' }, { id: 'zoom', icon: toolZoomIcon, shortcutId: 'tool.zoom' }, { id: 'rotate', icon: toolRotateIcon, shortcutId: 'tool.rotate' }
 ]
 
