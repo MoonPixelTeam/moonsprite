@@ -281,33 +281,6 @@ const mergeOverlappingRects = (rects: readonly SelectionRect[]): SelectionRect[]
   return merged
 }
 
-const DEFAULT_MAX_RECOMPOSE_PIXELS_PER_FRAME = 64 * 1024
-
-const limitDirtyRectsForFrame = (rects: readonly SelectionRect[], maximumPixels: number): { active: SelectionRect[]; deferred: SelectionRect[] } => {
-  const active: SelectionRect[] = []
-  const deferred: SelectionRect[] = []
-  let budget = maximumPixels
-  for (const rect of rects) {
-    if (budget <= 0) {
-      deferred.push(rect)
-      continue
-    }
-    const width = Math.max(1, Math.floor(rect.width))
-    const height = Math.max(1, Math.floor(rect.height))
-    const area = width * height
-    if (area <= budget) {
-      active.push(rect)
-      budget -= area
-      continue
-    }
-    const activeHeight = Math.max(1, Math.min(height, Math.floor(budget / width)))
-    active.push({ x: rect.x, y: rect.y, width: rect.width, height: activeHeight })
-    if (activeHeight < height) deferred.push({ x: rect.x, y: rect.y + activeHeight, width: rect.width, height: height - activeHeight })
-    budget = 0
-  }
-  return { active, deferred }
-}
-
 const subtractRect = (source: SelectionRect, removed: SelectionRect): SelectionRect[] => {
   const overlap = intersectRect(source, removed)
   if (!overlap) return [source]
@@ -492,7 +465,6 @@ export class CanvasCompositeCache {
   private livePreviewCommitRevisions = new Map<string, number>()
   private fullPreviewInvalidationPending = false
   private compositeCache = new DocumentCompositeCache()
-  private pendingCompositeWork = false
   private movePreview: MovePreviewSurface | null = null
   /**
    * A browser-composited move preview for the flat stack path.  It is kept
@@ -504,10 +476,7 @@ export class CanvasCompositeCache {
   private clipboardPreview: ClipboardPreviewSurface | null = null
   private selectionTransformRaster: SelectionTransformRasterSurface | null = null
 
-  constructor(
-    private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES,
-    private readonly maxRecomposePixelsPerFrame = DEFAULT_MAX_RECOMPOSE_PIXELS_PER_FRAME
-  ) {}
+  constructor(private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES) {}
 
   supportsSelectionPreview(document: SpriteDocument, contentRevision: number, layerId: string): boolean {
     return Boolean(this.compositeCache.renderLayersFor(document, contentRevision)?.some((layer) => layer.id === layerId))
@@ -601,8 +570,7 @@ export class CanvasCompositeCache {
     return { kind: 'region', rect: { ...hint.rect } }
   }
 
-  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview, requestRedraw }: DrawCompositeOptions): void {
-    this.pendingCompositeWork = false
+  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
     this.currentDevicePixelRatio = devicePixelRatio
     this.lastDocument = document
     const effectiveFrameId = frameId ?? document.animation?.activeFrameId ?? 'static'
@@ -652,7 +620,6 @@ export class CanvasCompositeCache {
     if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending)) this.drawSurface(context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, sourceDirtyRect, imageSmoothingEnabled, isolatedLayerMask, fastViewPreview, animationPlayback, animationConsumerOnly)
     else this.drawRegion(context, document, view, originX, originY, fromX, fromY, toX, toY, frameKey, effectiveFrameId, contentRevision, contentInvalidation, sourceDirtyRect, imageSmoothingEnabled, isolatedLayerMask, fastViewPreview, animationPlayback)
     context.restore()
-    if (this.pendingCompositeWork) requestRedraw?.()
   }
 
   private alignedDestination(originX: number, originY: number, width: number, height: number): ReturnType<typeof deviceAlignedCanvasRect> {
@@ -1734,19 +1701,19 @@ export class CanvasCompositeCache {
         dirtyRects.push(visibleDirtyRect)
         pendingDirtyRects.push(...subtractRect(rect, visibleDirtyRect))
       }
-      const limited = limitDirtyRectsForFrame(mergeOverlappingRects(dirtyRects), this.maxRecomposePixelsPerFrame)
-      if (limited.deferred.length > 0) {
-        pendingDirtyRects.push(...limited.deferred)
-        this.pendingCompositeWork = true
-      }
+      // Complete every visible dirty region before presenting this frame.
+      // Splitting a committed fill/undo into 64K-pixel horizontal bands exposed
+      // intermediate cache contents as a top-to-bottom wipe. Offscreen areas
+      // remain lazy, and unchanged pixels are still excluded from recomposition.
+      const activeRects = mergeOverlappingRects(dirtyRects)
       surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? mergeOverlappingRects(pendingDirtyRects) : undefined
-      if (limited.active.length > 0) this.invalidateSurfaceBitmap(surface)
+      if (activeRects.length > 0) this.invalidateSurfaceBitmap(surface)
       recordCanvasStage('canvas.cache-invalidation', invalidationStartedAt, {
-        dirtyRects: limited.active.length,
-        dirtyPixels: limited.active.reduce((sum, rect) => sum + rect.width * rect.height, 0)
+        dirtyRects: activeRects.length,
+        dirtyPixels: activeRects.reduce((sum, rect) => sum + rect.width * rect.height, 0)
       })
       const surfaceContext = surface.canvas.getContext('2d')
-      if (surfaceContext) for (const rect of limited.active) {
+      if (surfaceContext) for (const rect of activeRects) {
         const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
         const pixels = isolatedLayerMask
           ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
@@ -1875,15 +1842,14 @@ export class CanvasCompositeCache {
       const dirtyRects = mergeOverlappingRects(this.dirtyRects.get(frameId) ?? [])
         .map((rect) => intersectRect(rect, visibleRect))
         .filter((rect): rect is SelectionRect => Boolean(rect))
-      const limited = limitDirtyRectsForFrame(dirtyRects, this.maxRecomposePixelsPerFrame)
-      if (limited.deferred.length > 0) this.pendingCompositeWork = true
-      if (limited.active.length > 0) this.invalidateSurfaceBitmap(region)
+      const activeRects = dirtyRects
+      if (activeRects.length > 0) this.invalidateSurfaceBitmap(region)
       recordCanvasStage('canvas.cache-invalidation', invalidationStartedAt, {
-        dirtyRects: limited.active.length,
-        dirtyPixels: limited.active.reduce((sum, rect) => sum + rect.width * rect.height, 0)
+        dirtyRects: activeRects.length,
+        dirtyPixels: activeRects.reduce((sum, rect) => sum + rect.width * rect.height, 0)
       })
       const regionContext = region.canvas.getContext('2d')
-      if (regionContext) for (const rect of limited.active) {
+      if (regionContext) for (const rect of activeRects) {
         const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
         const pixels = isolatedLayerMask
           ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
@@ -1904,8 +1870,7 @@ export class CanvasCompositeCache {
         regionContext.putImageData(imageData(pixels, rect.width, rect.height), rect.x - x, rect.y - y)
         recordCanvasStage('canvas.pixel-upload', uploadStartedAt, { pixels: rect.width * rect.height })
       }
-      if (limited.deferred.length > 0) this.dirtyRects.set(frameId, limited.deferred)
-      else this.dirtyRects.delete(frameId)
+      this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     }
     if (!region) return null

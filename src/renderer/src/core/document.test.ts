@@ -10,6 +10,28 @@ const red = { r: 255, g: 0, b: 0, a: 255 }
 const blue = { r: 0, g: 0, b: 255, a: 128 }
 
 describe('document compositing', () => {
+  it('keeps row bounds exact through holes, edge erasure, empty rows and regrowth', () => {
+    const document = createDocument('row edge refresh', 32, 4, 'rgba')
+    const layer = document.layers[0]
+    const cache = new DocumentCompositeCache()
+    let revision = 1
+    const verify = (x: number, width: number): void => {
+      const dirty = { x, y: 1, width, height: 1 }
+      const actual = compositeRegion(document, 0, 0, 32, 4, cache, ++revision, dirty)
+      expect(actual).toEqual(compositeRegion(document, 0, 0, 32, 4))
+    }
+    for (const x of [2, 12, 20, 30]) writeLayerColor(document, layer, 32 + x, red)
+    verify(0, 32)
+    writeLayerColor(document, layer, 32 + 2, { r: 0, g: 0, b: 0, a: 0 })
+    verify(2, 1)
+    writeLayerColor(document, layer, 32 + 30, { r: 0, g: 0, b: 0, a: 0 })
+    verify(30, 1)
+    for (const x of [12, 20]) writeLayerColor(document, layer, 32 + x, { r: 0, g: 0, b: 0, a: 0 })
+    verify(12, 9)
+    writeLayerColor(document, layer, 32 + 8, red)
+    verify(8, 1)
+  })
+
   it('distinguishes unknown content bounds from cached empty or populated bounds', () => {
     const document = createDocument('known bounds', 8, 6, 'rgba')
     const layer = document.layers[0]

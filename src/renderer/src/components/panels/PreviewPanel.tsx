@@ -83,9 +83,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewTagCycleSectionId, setPreviewTagCycleSectionId] = useState<string | null>(null)
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
-  // This auxiliary canvas shares the UI thread with painting. Keep each
-  // catch-up slice small enough that it cannot consume the input frame.
-  const compositeCacheRef = useRef(new CanvasCompositeCache(undefined, 24 * 1024))
+  const compositeCacheRef = useRef(new CanvasCompositeCache())
   const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
   const drawRef = useRef<() => void>(() => {})

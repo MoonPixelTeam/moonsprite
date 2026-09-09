@@ -1,3 +1,4 @@
+import { pixelSource } from '@/components/pixel-source'
 import { useMemo, useState, type ReactElement } from 'react'
 import { FileText, Layers2, Palette, Search } from 'lucide-react'
 import type { GradientDither, ImageBrush, OutlineDirections, OutlineKernel, OutlinePosition, RgbaColor, Tileset } from '@shared/types'
@@ -567,8 +568,8 @@ const componentBrushes: ImageBrush[] = [
 function BrushThumbnailPreview({ locale }: { locale: AppLocale }) {
   const [selected, setSelected] = useState(0)
   return <div className="component-preview-row" style={{ '--brush-swatch-size': '48px' } as React.CSSProperties}>
-    {componentBrushes.map((brush, index) => <button key={brush.id} type="button" className={`swatch brush-swatch transparent ${selected === index ? 'selected' : ''}`} aria-label={`${componentText(locale, 'componentLibrary.preview.brush')} ${index + 1}`} aria-pressed={selected === index} onClick={() => setSelected(index)}><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail brush={brush} /></span></button>)}
-    <button type="button" className="swatch brush-swatch transparent" aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail brush={componentBrushes[0]} /></span></button>
+    {componentBrushes.map((brush, index) => <button key={brush.id} type="button" className={`swatch brush-swatch transparent ${selected === index ? 'selected' : ''}`} aria-label={`${componentText(locale, 'componentLibrary.preview.brush')} ${index + 1}`} aria-pressed={selected === index} onClick={() => setSelected(index)}><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail source={pixelSource(brush)} /></span></button>)}
+    <button type="button" className="swatch brush-swatch transparent" aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail source={pixelSource(componentBrushes[0])} /></span></button>
   </div>
 }
 

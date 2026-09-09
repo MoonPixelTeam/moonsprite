@@ -16,6 +16,37 @@ const red = { r: 255, g: 48, b: 48, a: 255 }
 const black = { r: 0, g: 0, b: 0, a: 255 }
 
 describe('pixel tools', () => {
+  it.each(['rgba', 'indexed'] as const)('keeps compact bucket spans equivalent to masked fill and exact through undo (%s)', (format) => {
+    const document = createDocument('packed bucket spans', 512, 512, format)
+    const reference = createDocument('masked reference', 512, 512, format)
+    const layer = document.layers[0]
+    const other = reference.layers[0]
+    // Walls with a single-pixel passage, an enclosed hole and edge-touching spans.
+    for (const [doc, targetLayer] of [[document, layer], [reference, other]] as const) {
+      for (let y = 0; y < 512; y++) if (y !== 300) writeLayerColor(doc, targetLayer, y * 512 + 200, black)
+      for (let x = 350; x <= 450; x++) {
+        writeLayerColor(doc, targetLayer, 100 * 512 + x, black)
+        writeLayerColor(doc, targetLayer, 200 * 512 + x, black)
+      }
+      for (let y = 100; y <= 200; y++) {
+        writeLayerColor(doc, targetLayer, y * 512 + 350, black)
+        writeLayerColor(doc, targetLayer, y * 512 + 450, black)
+      }
+    }
+    const original = layer.pixels.slice()
+    const edit = floodFill(document, layer, 0, 0, red)!
+    floodFill(reference, other, 0, 0, red, { x: 0, y: 0, width: 512, height: 512 })
+    expect(layer.pixels.every((value, index) => value === other.pixels[index])).toBe(true)
+    expect(edit.before.size).toBe(0)
+    expect(edit.runs!.length).toBeGreaterThan(0)
+    const filled = layer.pixels.slice()
+    const history = commitPixelEdit(document, edit, 'bucket')!
+    history.undo()
+    expect(layer.pixels.every((value, index) => value === original[index])).toBe(true)
+    history.redo()
+    expect(layer.pixels.every((value, index) => value === filled[index])).toBe(true)
+  })
+
   it('composites translucent selection pixels over an existing destination when moved or copied', () => {
     const document = createDocument('translucent selection source-over', 4, 1, 'rgba')
     const layer = getActiveLayer(document)

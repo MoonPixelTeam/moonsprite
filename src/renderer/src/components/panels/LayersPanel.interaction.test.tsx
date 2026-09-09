@@ -85,10 +85,13 @@ describe('LayersPanel timeline focus interactions', () => {
     await waitFor(() => expect(putImageData.mock.calls.length).toBeGreaterThanOrEqual(2))
     const rendersBeforePreview = putImageData.mock.calls.length
     firstMask.pixels.fill(0)
+    for (let offset = 3; offset < firstMask.pixels.length; offset += 4) firstMask.pixels[offset] = 255
 
     act(() => { notifyLayerMaskThumbnailPreview(document.id, firstMask.id) })
 
     await waitFor(() => expect(putImageData.mock.calls.length - rendersBeforePreview).toBeGreaterThanOrEqual(2))
+    const linkedPreviews = putImageData.mock.calls.slice(rendersBeforePreview)
+    expect(linkedPreviews.filter(([image]) => image.data[0] === 0 && image.data[3] === 255).length).toBeGreaterThanOrEqual(2)
   })
 
   it('redraws every linked ordinary cel thumbnail from the live layer', async () => {

@@ -1,3 +1,4 @@
+import { pixelSource, type PixelSource } from '@/components/pixel-source'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, AnimationTimeline, BlendMode, LayerGroup, LayerMask, PaletteEntry, RasterLayer, RgbaColor, Tileset } from '@shared/types'
@@ -249,16 +250,16 @@ const drawLayerMaskThumbnail = (canvas: HTMLCanvasElement, mask: LayerMask, docu
     // Canvas rendering is unavailable in a few test and recovery environments.
   }
 }
-function LayerMaskThumbnail({ mask, revision, documentWidth, documentHeight, thumbnailSize }: { mask: LayerMask; revision: number | string; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function LayerMaskThumbnail({ maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { maskSource: PixelSource<LayerMask>; revision: number | string; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    return scheduleThumbnailRender(() => drawLayerMaskThumbnail(canvas, mask, documentWidth, documentHeight))
-  }, [mask, revision, documentWidth, documentHeight, thumbnailSize])
+    return scheduleThumbnailRender(() => drawLayerMaskThumbnail(canvas, maskSource(), documentWidth, documentHeight))
+  }, [maskSource, revision, documentWidth, documentHeight, thumbnailSize])
   return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
 }
-function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; ownerId: string; frameId: string; mask: LayerMask; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; ownerId: string; frameId: string; maskSource: PixelSource<LayerMask>; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     let cancelScheduledRender: (() => void) | null = null
@@ -270,7 +271,7 @@ function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision
         const current = liveSession()
         const timeline = current?.document.animation
         const liveMask = timeline ? animationMaskAt(timeline, ownerId, frameId) : null
-        if (canvas) drawLayerMaskThumbnail(canvas, liveMask ?? mask, documentWidth, documentHeight)
+        if (canvas) drawLayerMaskThumbnail(canvas, liveMask ?? maskSource(), documentWidth, documentHeight)
       })
     }
     const belongsToActiveMaskGroup = (): boolean => {
@@ -290,7 +291,7 @@ function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision
       unregisterPreview()
       cancelScheduledRender?.()
     }
-  }, [documentHeight, documentId, documentWidth, frameId, mask, ownerId, revision, thumbnailSize])
+  }, [documentHeight, documentId, documentWidth, frameId, maskSource, ownerId, revision, thumbnailSize])
   return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
 }
 const useTimelineThumbnailContentSync = (documentId: string): void => {
@@ -3490,7 +3491,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         const maskSlotSelected = maskRowSelected || maskFrameSelected || maskActive || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
         const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key)
         const maskThumbnail = resolvedMask && showCelThumbnails
-          ? <ActiveLayerMaskThumbnail documentId={session.document.id} ownerId={displayRow.owner.id} frameId={frame.id} mask={resolvedMask} revision={session.contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} />
+          ? <ActiveLayerMaskThumbnail documentId={session.document.id} ownerId={displayRow.owner.id} frameId={frame.id} maskSource={pixelSource(resolvedMask)} revision={session.contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} />
           : null
         const maskName = t(displayRow.ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask')
         const maskFrameVisualSelection = frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected

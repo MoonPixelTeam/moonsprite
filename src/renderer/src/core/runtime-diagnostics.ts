@@ -69,13 +69,33 @@ let lastAction: { name: string; detail: RuntimeDiagnosticDetail } | null = null
 
 const monotonicNow = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now()
 
+const normalizeValue = (value: unknown): RuntimeDiagnosticValue => {
+  if (typeof value === 'string') return value.length > MAX_DETAIL_STRING_LENGTH ? `${value.slice(0, MAX_DETAIL_STRING_LENGTH)}...` : value
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value
+  if (ArrayBuffer.isView(value)) return `[Pixel/binary data: ${value.byteLength} bytes]`
+  if (value instanceof ArrayBuffer) return `[ArrayBuffer: ${value.byteLength} bytes]`
+  if (Array.isArray(value)) return `[Array: ${value.length} items]`
+  return `[${typeof value}]`
+}
+
 const normalizeDetail = (detail: RuntimeDiagnosticDetail | undefined): RuntimeDiagnosticDetail => {
   if (!detail) return {}
+  // Runtime callers can bypass the scalar-only TypeScript contract. Never
+  // enumerate image buffers or recursively serialize an object into a log.
+  if (ArrayBuffer.isView(detail) || detail instanceof ArrayBuffer || Array.isArray(detail)) {
+    return { omittedDetail: normalizeValue(detail) }
+  }
   const normalized: RuntimeDiagnosticDetail = {}
-  for (const [key, value] of Object.entries(detail).slice(0, MAX_DETAIL_KEYS)) {
-    normalized[key] = typeof value === 'string' && value.length > MAX_DETAIL_STRING_LENGTH
-      ? `${value.slice(0, MAX_DETAIL_STRING_LENGTH)}...`
-      : value
+  let count = 0
+  for (const key in detail) {
+    if (count >= MAX_DETAIL_KEYS) break
+    const property = Object.getOwnPropertyDescriptor(detail, key)
+    if (!property) continue
+    count += 1
+    Object.defineProperty(normalized, key.slice(0, 128), {
+      value: 'value' in property ? normalizeValue(property.value) : '[accessor]',
+      enumerable: true, configurable: true, writable: true
+    })
   }
   return normalized
 }
@@ -89,9 +109,14 @@ const currentContext = (): RuntimeDiagnosticDetail => {
 }
 
 const activeOperationDetail = (now: number): RuntimeDiagnosticDetail => {
-  const operations = [...activeOperations.values()]
-    .map((operation) => `${operation.name}:${Math.max(0, Math.round(now - operation.startedAt))}ms`)
-    .join(',')
+  let operations = ''
+  for (const operation of activeOperations.values()) {
+    operations += `${operations ? ',' : ''}${operation.name.slice(0, MAX_DETAIL_STRING_LENGTH)}:${Math.max(0, Math.round(now - operation.startedAt))}ms`
+    if (operations.length >= MAX_DETAIL_STRING_LENGTH) {
+      operations = `${operations.slice(0, MAX_DETAIL_STRING_LENGTH)}...`
+      break
+    }
+  }
   return {
     activeOperationCount: activeOperations.size,
     ...(operations ? { activeOperations: operations } : {}),
@@ -128,11 +153,11 @@ export const recordRuntimeDiagnostic = (
     timestamp: new Date().toISOString(),
     monotonicMs: Math.round(now * 100) / 100,
     kind,
-    name,
-    detail: {
+    name: name.slice(0, MAX_DETAIL_STRING_LENGTH),
+    detail: normalizeDetail({
       ...normalizeDetail(detail),
       ...(includeContext ? currentContext() : {})
-    }
+    })
   })
 }
 
@@ -159,6 +184,7 @@ export const beginRuntimeDiagnosticOperation = (
   warningMs = DEFAULT_OPERATION_WARNING_MS
 ): RuntimeDiagnosticOperation => {
   const id = `${sessionId}-${++operationSequence}`
+  detail = normalizeDetail(detail)
   const startedAt = monotonicNow()
   activeOperations.set(id, { name, startedAt })
   recordRuntimeDiagnostic('operation-start', name, { operationId: id, ...detail })
@@ -182,7 +208,7 @@ export const beginRuntimeDiagnosticOperation = (
         operationId: id,
         stage,
         elapsedMs: Math.round(monotonicNow() - startedAt),
-        ...stageDetail
+        ...normalizeDetail(stageDetail)
       })
     },
     finish(outcome = 'ok', finishDetail) {
@@ -196,7 +222,7 @@ export const beginRuntimeDiagnosticOperation = (
         outcome,
         durationMs: Math.round(durationMs),
         slow: slowReported || durationMs >= warningMs,
-        ...finishDetail
+        ...normalizeDetail(finishDetail)
       }, slowReported || durationMs >= warningMs || outcome === 'error')
     }
   }

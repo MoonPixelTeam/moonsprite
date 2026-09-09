@@ -10,6 +10,35 @@ import {
 } from './runtime-diagnostics'
 
 describe('runtime diagnostics', () => {
+  it('summarizes accidental pixel payloads without reading getters or serializing document objects', () => {
+    const readPixels = vi.fn(() => { throw new Error('must not read') })
+    const detail = {
+      width: 4000, pixels: new Uint8Array(4000 * 4000), nested: { toJSON: readPixels },
+      get expensive() { return readPixels() }
+    }
+    recordRuntimeDiagnostic('session', 'safe-detail', detail as unknown as import('./runtime-diagnostics').RuntimeDiagnosticDetail)
+    const logged = runtimeDiagnosticSnapshot()[0].detail
+    expect(logged).toEqual({ width: 4000, pixels: '[Pixel/binary data: 16000000 bytes]', nested: '[object]', expensive: '[accessor]' })
+    expect(JSON.stringify(logged).length).toBeLessThan(200)
+    expect(readPixels).not.toHaveBeenCalled()
+  })
+
+  it('normalizes operation data before spreading and bounds detail size', () => {
+    const pixels = new Uint8Array(4000 * 4000) as unknown as import('./runtime-diagnostics').RuntimeDiagnosticDetail
+    const operation = beginRuntimeDiagnosticOperation('test', pixels)
+    operation.mark('preview', pixels)
+    operation.finish('ok', pixels)
+    for (const logged of runtimeDiagnosticSnapshot()) {
+      expect(logged.detail.omittedDetail).toBe('[Pixel/binary data: 16000000 bytes]')
+      expect(JSON.stringify(logged).length).toBeLessThan(1000)
+    }
+    const read = vi.fn()
+    const detail = Object.fromEntries(Array.from({ length: 32 }, (_, i) => [`key${i}`, 'x'.repeat(1000)]))
+    Object.defineProperty(detail, 'extra', { enumerable: true, get: read })
+    recordRuntimeDiagnostic('session', 'bounded', detail)
+    expect(Object.keys(runtimeDiagnosticSnapshot().at(-1)!.detail)).toHaveLength(32)
+    expect(read).not.toHaveBeenCalled()
+  })
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()

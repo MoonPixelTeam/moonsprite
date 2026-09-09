@@ -2200,13 +2200,13 @@ export class DocumentCompositeCache {
         : opaqueIds!.has(layer.pixels[index])
     }
     const scanRange = (y: number, fromX: number, toX: number): { left: number; right: number } => {
-      let left = toX
-      let right = fromX
-      for (let x = fromX; x < toX; x += 1) {
-        if (!visibleAt(x, y)) continue
-        left = Math.min(left, x)
-        right = x + 1
-      }
+      // Only the first and last visible pixels define the row bounds. A filled
+      // 4K row needs two alpha reads, not a scan through all 4000 interior pixels.
+      let left = fromX
+      while (left < toX && !visibleAt(left, y)) left += 1
+      if (left === toX) return { left: toX, right: fromX }
+      let right = toX
+      while (right > left + 1 && !visibleAt(right - 1, y)) right -= 1
       return { left, right }
     }
     const scanRow = (y: number): void => {

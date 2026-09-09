@@ -1,3 +1,7 @@
+import { createLinearDitherPreviewSampler } from '../core/gradient-dither-preview'
+import { createGradientPreviewDiagnostics, GRADIENT_PREVIEW_DIAGNOSTIC_VERSION } from '../core/gradient-preview-diagnostics'
+import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { createGradientCompositePreview, compositeGradientPreviewAt, fillGradientPreviewBlock, gradientReplacementColor, type GradientCompositePreview } from '@/core/gradient-preview'
 import { drawMagicWandPreview } from './canvas-magic-preview'
 import { MagicWandGesture } from '@/core/magic-wand-gesture'
 import { prepareSelectionBoundary } from '@/core/selection-boundary'
@@ -148,7 +152,7 @@ const brushAngleWithDynamics = (session: Pick<DocumentSession, 'brushShape' | 'b
 }
 
 interface GradientPreviewSurface { canvas: OffscreenCanvas; context: OffscreenCanvasRenderingContext2D; imageData: ImageData; pixels: Uint8ClampedArray; width: number; height: number }
-interface GradientCompositePreviewCache { key: string; width: number; height: number; lower: Uint8ClampedArray; upper: Uint8ClampedArray }
+interface GradientCompositePreviewCache extends GradientCompositePreview { key: string }
 interface GradientPreviewCoverageCache {
   selection: SelectionMask | null | undefined
   paintRegion: SelectionMask | null | undefined
@@ -323,6 +327,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const checkerboardTileRef = useRef<{ key: string; canvas: OffscreenCanvas } | null>(null)
   const isoGuideTileRef = useRef<{ key: string; canvas: OffscreenCanvas } | null>(null)
   const gradientPreviewSurfaceRef = useRef<GradientPreviewSurface | null>(null)
+  const gradientPreviewInputAtRef = useRef(0)
+  const gradientPreviewDiagnosticsRef = useRef<ReturnType<typeof createGradientPreviewDiagnostics> | null>(null)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const collector = createGradientPreviewDiagnostics(detail => recordRuntimeDiagnostic('operation-stage', 'gradient.preview.summary', detail))
+    gradientPreviewDiagnosticsRef.current = collector
+    recordRuntimeDiagnostic('session', 'gradient.preview.ready', { version: GRADIENT_PREVIEW_DIAGNOSTIC_VERSION })
+    return () => { collector.flush(); gradientPreviewDiagnosticsRef.current = null }
+  }, [])
   const brushPreviewCompositeCacheRef = useRef<BrushPreviewCompositeCache | null>(null)
   const brushPreviewStackCacheRef = useRef<BrushPreviewStackCache | null>(null)
   const magicGestureRef = useRef<{ cancel: (redraw?: boolean) => void; drag: DragState } | null>(null)
@@ -3353,6 +3366,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           previewToY = Math.min(previewToY, paintRegion.y + paintRegion.height)
         }
         if (previewToX > previewFromX && previewToY > previewFromY) {
+          const gradientDiagnostic = gradientPreviewDiagnosticsRef.current
+          const gradientPreviewStartedAt = gradientDiagnostic ? performance.now() : 0
           const activeIndex = document.layers.indexOf(activeLayer)
           const canUseStaticComposite = !isolatedLayerMask
             && activeIndex >= 0
@@ -3363,20 +3378,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             && activeLayer.clippingMask !== true
             && !activeLayer.layerStyles
           let staticComposite = gradientCompositePreviewCacheRef.current
+          const opaqueReplacement = document.colorMode === 'rgba' && activeLayer.format === 'rgba'
+            && startColor.a === 255 && endColor.a === 255 && (activeGradientStops?.every((stop) => stop.color.a === 255) ?? true)
           if (canUseStaticComposite) {
-            const staticKey = `${document.id}:${currentSession.contentRevision}:${activeLayer.id}:${document.width}x${document.height}`
+            const staticKey = `${document.id}:${currentSession.revision}:${activeLayer.id}:${document.width}x${document.height}:${previewFromX},${previewFromY},${previewToX},${previewToY}:${opaqueReplacement}`
             if (!staticComposite || staticComposite.key !== staticKey) {
-              const makeSubset = (layers: typeof document.layers): typeof document => ({
-                ...document,
-                layers,
-                activeLayerId: layers[0]?.id ?? document.activeLayerId
-              })
-              // document.layers is stored bottom-to-top. Layers before the
-              // active layer form the backdrop; layers after it remain above
-              // the temporary gradient.
-              const lower = compositeRegion(makeSubset(document.layers.slice(0, activeIndex)), 0, 0, document.width, document.height)
-              const upper = compositeRegion(makeSubset(document.layers.slice(activeIndex + 1)), 0, 0, document.width, document.height)
-              staticComposite = { key: staticKey, width: document.width, height: document.height, lower, upper }
+              staticComposite = {
+                key: staticKey,
+                ...createGradientCompositePreview(document, activeIndex, {
+                  x: previewFromX, y: previewFromY, width: previewToX - previewFromX, height: previewToY - previewFromY
+                }, opaqueReplacement)
+              }
               gradientCompositePreviewCacheRef.current = staticComposite
             }
           } else {
@@ -3395,8 +3407,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           const nativeSourceHeight = Math.max(1, Math.round(targetHeight * deviceScale.y))
           const visibleDocumentWidth = previewToX - previewFromX
           const visibleDocumentHeight = previewToY - previewFromY
-          const sourceBasisWidth = view.zoom < 1 && gradientDither !== 'none' ? visibleDocumentWidth : nativeSourceWidth
-          const sourceBasisHeight = view.zoom < 1 && gradientDither !== 'none' ? visibleDocumentHeight : nativeSourceHeight
+          const useLinearDitherAverages = gradientType === 'linear' && gradientDither !== 'none' && !selection?.mask && !paintRegion?.mask
+          const useDocumentDitherSurface = view.zoom < 1 && gradientDither !== 'none' && !useLinearDitherAverages
+          const sourceBasisWidth = useDocumentDitherSurface ? visibleDocumentWidth : nativeSourceWidth
+          const sourceBasisHeight = useDocumentDitherSurface ? visibleDocumentHeight : nativeSourceHeight
           const previewSampleLimit = view.zoom < 1 && gradientDither !== 'none'
             ? DITHERED_GRADIENT_PREVIEW_SAMPLE_LIMIT
             : view.zoom < 1 ? SMOOTH_GRADIENT_PREVIEW_SAMPLE_LIMIT : Number.POSITIVE_INFINITY
@@ -3422,35 +3436,25 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             }
           }
           if (surface) {
+            const gradientPrepareEndedAt = gradientDiagnostic ? performance.now() : 0
             const pixels = surface.pixels
             pixels.fill(0)
+            const pixelWords = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.byteLength / 4)
             const writeSample = (sampleX: number, sampleY: number, alpha: number, left: number, top: number, right: number, bottom: number, sampledGradientColor?: RgbaColor): void => {
               if (alpha <= 0 || right <= left || bottom <= top) return
               const gradientColor = sampledGradientColor ?? sampleGradient(sampleX, sampleY)
-              const activeLayerColor = readLayerColorAt(document, activeLayer, sampleX, sampleY)
-              const replacement = gradientColor.a > 0 && gradientColor.a < 255 ? blendOver(activeLayerColor, gradientColor) : gradientColor
+              const replacement = gradientColor.a === 255 ? gradientColor
+                : gradientReplacementColor(readLayerColorAt(document, activeLayer, sampleX, sampleY), gradientColor)
               const resolvedReplacement = resolveLayerCanvasColor(document, activeLayer, replacement)
               const previewColor = staticComposite
-                ? blendOver(
-                  blendOver(
-                    { r: staticComposite.lower[(sampleY * staticComposite.width + sampleX) * 4], g: staticComposite.lower[(sampleY * staticComposite.width + sampleX) * 4 + 1], b: staticComposite.lower[(sampleY * staticComposite.width + sampleX) * 4 + 2], a: staticComposite.lower[(sampleY * staticComposite.width + sampleX) * 4 + 3] },
-                    resolvedReplacement
-                  ),
-                  { r: staticComposite.upper[(sampleY * staticComposite.width + sampleX) * 4], g: staticComposite.upper[(sampleY * staticComposite.width + sampleX) * 4 + 1], b: staticComposite.upper[(sampleY * staticComposite.width + sampleX) * 4 + 2], a: staticComposite.upper[(sampleY * staticComposite.width + sampleX) * 4 + 3] }
-                )
+                ? compositeGradientPreviewAt(staticComposite, sampleX, sampleY, resolvedReplacement)
                 : isolatedLayerMask ? layerMaskDisplayColor(resolvedReplacement) : sampleCompositeReplacement(sampleX, sampleY, resolvedReplacement)
               const displayColor = view.relativeLuminance ? relativeLuminanceColor(previewColor) : previewColor
               const transparency = transparencyColorAt(sampleX, sampleY, checkerboard)
-              const composited = displayColor.a > 0
+              const composited = displayColor.a === 255 ? displayColor : displayColor.a > 0
                 ? blendOver({ r: transparency.r, g: transparency.g, b: transparency.b, a: 255 }, displayColor)
                 : transparency
-              for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-                const offset = (y * sourceWidth + x) * 4
-                pixels[offset] = composited.r
-                pixels[offset + 1] = composited.g
-                pixels[offset + 2] = composited.b
-                pixels[offset + 3] = alpha
-              }
+              fillGradientPreviewBlock(pixelWords, sourceWidth, left, top, right, bottom, { ...composited, a: alpha })
             }
             const previewDocumentBlockAt = (deviceX: number, deviceY: number): { fromX: number; fromY: number; toX: number; toY: number; centerX: number; centerY: number } | null => {
               if (sourceWidth === visibleDocumentWidth && sourceHeight === visibleDocumentHeight) {
@@ -3468,16 +3472,20 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               const blockToY = Math.min(previewToY, Math.ceil(documentBottom - 1e-9))
               if (blockToX <= blockFromX || blockToY <= blockFromY) return null
               return {
-                fromX: blockFromX,
-                fromY: blockFromY,
-                toX: blockToX,
-                toY: blockToY,
+                fromX: useLinearDitherAverages ? Math.max(previewFromX, documentLeft) : blockFromX,
+                fromY: useLinearDitherAverages ? Math.max(previewFromY, documentTop) : blockFromY,
+                toX: useLinearDitherAverages ? Math.min(previewToX, documentRight) : blockToX,
+                toY: useLinearDitherAverages ? Math.min(previewToY, documentBottom) : blockToY,
                 centerX: Math.min(blockToX - 1, blockFromX + Math.floor((blockToX - blockFromX) / 2)),
                 centerY: Math.min(blockToY - 1, blockFromY + Math.floor((blockToY - blockFromY) / 2))
               }
             }
+            const averageLinearDither = useLinearDitherAverages
+              ? createLinearDitherPreviewSampler(startColor, endColor, drag.start, drag.last, gradientDither, previewFromX, previewToX, activeGradientStops)
+              : null
             const averagedDitherColor = (block: NonNullable<ReturnType<typeof previewDocumentBlockAt>>, allowed?: (x: number, y: number) => boolean): RgbaColor | undefined => {
               if (gradientDither === 'none') return undefined
+              if (averageLinearDither && !allowed) return averageLinearDither(block)
               let count = 0
               let alpha = 0
               let red = 0
@@ -3514,7 +3522,32 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             } else {
               const selectionMask = selection?.mask
               const paintMask = paintRegion?.mask
-              if (!selectionMask && !paintMask) {
+              if (averageLinearDither && opaqueReplacement && staticComposite && !view.relativeLuminance) {
+                // Axis bounds do not depend on the other axis. Compute them
+                // once per row/column, rather than allocating a block and
+                // converting coordinates for every display pixel.
+                const columns = Array.from({ length: sourceWidth }, (_, x) => previewDocumentBlockAt(x, 0))
+                const block = { fromX: 0, fromY: 0, toX: 0, toY: 0 }
+                for (let deviceY = 0; deviceY < sourceHeight; deviceY++) {
+                  const row = previewDocumentBlockAt(0, deviceY)
+                  if (!row) continue
+                  if (!staticComposite.upper) {
+                    averageLinearDither.writeRow(row.fromY, row.toY, columns, pixelWords, deviceY * sourceWidth)
+                    continue
+                  }
+                  block.fromY = row.fromY; block.toY = row.toY
+                  for (let deviceX = 0; deviceX < sourceWidth; deviceX++) {
+                    const column = columns[deviceX]
+                    if (!column) continue
+                    block.fromX = column.fromX; block.toX = column.toX
+                    const gradientColor = averageLinearDither(block)
+                    const color = staticComposite.upper
+                      ? compositeGradientPreviewAt(staticComposite, column.centerX, row.centerY, gradientColor)
+                      : gradientColor
+                    pixelWords[deviceY * sourceWidth + deviceX] = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r
+                  }
+                }
+              } else if (!selectionMask && !paintMask) {
                 for (let deviceY = 0; deviceY < sourceHeight; deviceY += 1) for (let deviceX = 0; deviceX < sourceWidth; deviceX += 1) {
                   const block = previewDocumentBlockAt(deviceX, deviceY)
                   if (!block) continue
@@ -3601,6 +3634,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 }
               }
             }
+            const gradientRasterEndedAt = gradientDiagnostic ? performance.now() : 0
             surface.context.putImageData(surface.imageData, 0, 0)
             for (const copy of repeatCopies) {
               context.save()
@@ -3628,6 +3662,25 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 gradientBoundary.height
               )
               context.restore()
+            }
+            if (gradientDiagnostic && gradientPreviewInputAtRef.current > 0) {
+              const endedAt = performance.now()
+              const path = view.zoom >= 1 ? 'document-pixels' : useLinearDitherAverages ? 'linear-periodic' : gradientDither === 'none' ? 'smooth' : 'sampled-dither'
+              const composite = opaqueReplacement && staticComposite && !view.relativeLuminance && useLinearDitherAverages && view.zoom < 1 ? 'direct-opaque'
+                : staticComposite ? 'static-stack' : 'per-pixel-stack'
+              gradientDiagnostic.record(`${path}:${composite}:${gradientDither}:${document.width}:${document.height}:${view.zoom}`, {
+                path, composite, dither: gradientDither, type: gradientType, zoom: view.zoom,
+                width: document.width, height: document.height, stops: activeGradientStops?.length ?? 2,
+                selectionMask: Boolean(selection?.mask), paintMask: Boolean(paintRegion?.mask),
+                sourcePixels: sourceWidth * sourceHeight, visiblePixels: visibleDocumentWidth * visibleDocumentHeight,
+                layers: document.layers.length, backgroundLayer: Boolean(activeLayer.background), worker: false
+              }, {
+                prepare: gradientPrepareEndedAt - gradientPreviewStartedAt,
+                raster: gradientRasterEndedAt - gradientPrepareEndedAt,
+                upload: endedAt - gradientRasterEndedAt, total: endedAt - gradientPreviewStartedAt,
+                inputLag: gradientPreviewInputAtRef.current ? endedAt - gradientPreviewInputAtRef.current : 0
+              })
+              gradientPreviewInputAtRef.current = 0
             }
           }
         }
@@ -8393,6 +8446,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     if (drag.kind === 'gradient') {
+      if (gradientPreviewDiagnosticsRef.current) {
+        const now = performance.now()
+        gradientPreviewInputAtRef.current = event.timeStamp > 0 && event.timeStamp <= now ? event.timeStamp : now
+      }
       inputRef.current.sampling = false
       event.currentTarget.style.cursor = canvasToolCursor(session.tool, session.primaryColor)
       drag.rawLast = point
@@ -9575,6 +9632,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     if (drag.kind === 'gradient') {
       gradientPreviewCoverageCacheRef.current = null
+      const commitStartedAt = performance.now()
+      let rasterMs = 0, historyMs = 0
       const moved = drag.start.x !== drag.last.x || drag.start.y !== drag.last.y
       const sourceEdit = freeTileSourceEditForDrag(drag)
       if (sourceEdit) {
@@ -9586,11 +9645,21 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       } else if (moved) {
         const layer = activePaintLayer(session)
         if (!isLayerEffectivelyLocked(session.document, layer)) {
+          const rasterStartedAt = performance.now()
           const edit = applyGradient(session.document, layer, drag.start, drag.last, drag.color ?? session.primaryColor, drag.gradientEndColor ?? session.secondaryColor, paintSelectionForDrag(drag), gradientDither, drag.gradientPaintRegion, gradientType, gradientGeometryOptionsForDrag(drag), drag.gradientStops ?? gradientStops)
+          rasterMs = performance.now() - rasterStartedAt
+          const historyStartedAt = performance.now()
           if (edit) state.commitPixelEdit(edit, t('canvas.history.gradient'))
+          historyMs = performance.now() - historyStartedAt
         }
       }
+      const drawStartedAt = performance.now()
       draw()
+      const finishedAt = performance.now()
+      const detail = { rasterMs, historyMs, drawMs: finishedAt - drawStartedAt, totalMs: finishedAt - commitStartedAt,
+        width: session.document.width, height: session.document.height, dither: gradientDither, type: gradientType, freeTile: Boolean(sourceEdit) }
+      window.__moonSpriteCanvasProbe?.recordOperationStage?.('gradient.commit', detail.totalMs, detail)
+      if (import.meta.env.DEV) recordRuntimeDiagnostic('operation-end', 'gradient.commit', detail)
       return
     }
     updateCursor(event)

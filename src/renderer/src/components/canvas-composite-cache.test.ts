@@ -789,12 +789,40 @@ describe('CanvasCompositeCache', () => {
 })
 
 
-describe.each([{ name: 'full surface', bytes: 64, budget: 64 }, { name: 'region surface', bytes: 1, budget: 64 }, { name: 'deferred surface', bytes: 64, budget: 1 }])('history invalidation: $name', ({ bytes, budget }) => {
+describe.each([{ name: 'full surface', bytes: 128 * 1024 * 1024 }, { name: 'region surface', bytes: 1 }])('history invalidation: $name', ({ bytes }) => {
+  it.each([false, true])('presents fill, undo and redo completely on the first frame (selection=%s)', (selected) => {
+    useWorkspace.setState({ sessions: [], activeId: null })
+    const document = createDocument('atomic visible fill', 512, 512, 'rgba')
+    useWorkspace.getState().addSession(document)
+    if (selected) useWorkspace.getState().setSelection({ x: 8, y: 8, width: 496, height: 496 })
+    const cache = new CanvasCompositeCache(bytes)
+    const context = makeContext()
+    const requestRedraw = vi.fn()
+    const drawSession = (): void => {
+      const current = useWorkspace.getState().sessions[0]
+      draw(cache, current.document, context, { revision: current.revision, contentRevision: current.contentRevision, contentInvalidation: current.contentInvalidation, requestRedraw })
+    }
+    drawSession()
+    try {
+      for (const command of ['fillForeground', 'undo', 'redo'] as const) {
+        useWorkspace.getState()[command]()
+        drawSession()
+        const current = useWorkspace.getState().sessions[0]
+        const surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+        const expected = compositeRegion(current.document, 0, 0, 512, 512, new DocumentCompositeCache(), current.contentRevision)
+        expect(surface.pixels.every((value, index) => value === expected[index]), `${command}: mixed old/new pixels in first displayed frame`).toBe(true)
+        expect(requestRedraw).not.toHaveBeenCalled()
+      }
+    } finally {
+      useWorkspace.setState({ sessions: [], activeId: null })
+    }
+  })
+
   it('preserves an erase queued when pointer-up precedes the next draw', () => {
     const document = createDocument('erase before RAF', 4, 4, 'rgba')
     const layer = document.layers[0]
     writeLayerColor(document, layer, 5, { r: 255, g: 0, b: 0, a: 255 })
-    const cache = new CanvasCompositeCache(bytes, budget)
+    const cache = new CanvasCompositeCache(bytes)
     const context = makeContext()
     const frameId = document.animation!.activeFrameId
     draw(cache, document, context)
@@ -803,7 +831,7 @@ describe.each([{ name: 'full surface', bytes: 64, budget: 64 }, { name: 'region 
     cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
     cache.retainLivePreview(document, frameId, 2)
     commitPixelEdit(document, edit, 'erase')
-    for (let index = 0; index < 16; index += 1) draw(cache, document, context, {
+    draw(cache, document, context, {
       contentRevision: 2, revision: 2,
       contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
     })
@@ -815,7 +843,7 @@ describe.each([{ name: 'full surface', bytes: 64, budget: 64 }, { name: 'region 
   it('does not let a retained commit hide undo and redo before the next draw', () => {
     const document = createDocument('undo before RAF', 4, 4, 'rgba')
     const layer = document.layers[0]
-    const cache = new CanvasCompositeCache(bytes, budget)
+    const cache = new CanvasCompositeCache(bytes)
     const context = makeContext()
     const frameId = document.animation!.activeFrameId
     draw(cache, document, context)
@@ -826,7 +854,7 @@ describe.each([{ name: 'full surface', bytes: 64, budget: 64 }, { name: 'region 
     cache.retainLivePreview(document, frameId, 2)
     const entry = commitPixelEdit(document, edit, 'draw')!
     entry.undo()
-    for (let index = 0; index < 16; index += 1) draw(cache, document, context, {
+    draw(cache, document, context, {
       revision: 3, contentRevision: 3,
       contentInvalidation: { kind: 'region', fromRevision: 2, revision: 3, frameId, rect: edit.dirtyRect }
     })

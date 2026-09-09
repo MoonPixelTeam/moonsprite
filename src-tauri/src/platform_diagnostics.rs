@@ -6,7 +6,7 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
 const MAX_LOG_FILES: usize = 8;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
@@ -75,9 +75,22 @@ fn session_file(app: &AppHandle, state: &DiagnosticState) -> Result<PathBuf, Str
 }
 
 #[tauri::command]
-pub(crate) fn append_diagnostic_events(
+pub(crate) async fn append_diagnostic_events(
     app: AppHandle,
-    state: State<'_, DiagnosticState>,
+    events: Vec<Value>,
+) -> Result<(), String> {
+    // File open, rotation and flush must not run on the desktop UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DiagnosticState>();
+        append_events_to_file(&app, &state, events)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn append_events_to_file(
+    app: &AppHandle,
+    state: &DiagnosticState,
     events: Vec<Value>,
 ) -> Result<(), String> {
     if events.is_empty() {
@@ -87,7 +100,7 @@ pub(crate) fn append_diagnostic_events(
         .write_lock
         .lock()
         .map_err(|_| "诊断日志写入状态不可用".to_string())?;
-    let path = session_file(&app, &state)?;
+    let path = session_file(app, state)?;
     let file = OpenOptions::new()
         .create(true)
         .append(true)

@@ -2287,6 +2287,67 @@ const packedCanvasPixels = (document: SpriteDocument, layer: RasterLayer): Uint3
     : null
 }
 
+// Exact-color, unmasked fills can mark visited spans with their final value.
+// Produce the existing compact history runs while traversing, avoiding both a
+// canvas-sized visited mask and the second full-canvas mask-to-runs scan.
+const floodFillPackedSolidRuns = (document: SpriteDocument, layer: RasterLayer, pixels: Uint32Array, startX: number, startY: number, target: number, next: number): PixelEdit | null => {
+  next = normalizeLayerPackedValue(document, layer, next)
+  if (next === target) return null
+  const width = document.width
+  const edit = beginPixelEdit(layer.id)
+  preparePixelEdit(document, edit)
+  const runs: NonNullable<PixelEdit['runs']> = []
+  let stack = new Int32Array(1024)
+  let count = 0
+  const push = (index: number): void => {
+    if (count === stack.length) {
+      const expanded = new Int32Array(stack.length * 2)
+      expanded.set(stack)
+      stack = expanded
+    }
+    stack[count++] = index
+  }
+  const scanNeighbor = (left: number, right: number): void => {
+    if (left < 0 || right > pixels.length) return
+    let index = left
+    while (index < right) {
+      while (index < right && pixels[index] !== target) index += 1
+      if (index === right) break
+      push(index++)
+      while (index < right && pixels[index] === target) index += 1
+    }
+  }
+  let minX = width
+  let minY = document.height
+  let maxX = 0
+  let maxY = 0
+  push(startY * width + startX)
+  while (count) {
+    const seed = stack[--count]
+    if (pixels[seed] !== target) continue
+    const rowStart = seed - seed % width
+    const rowEnd = rowStart + width
+    let left = seed
+    let right = seed + 1
+    while (left > rowStart && pixels[left - 1] === target) left -= 1
+    while (right < rowEnd && pixels[right] === target) right += 1
+    if (runs.length === 0) markLayerContentChanged(layer)
+    pixels.fill(next, left, right)
+    runs.push({ index: left, length: right - left, before: target, after: next })
+    const y = rowStart / width
+    minX = Math.min(minX, left - rowStart)
+    maxX = Math.max(maxX, right - rowStart)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y + 1)
+    scanNeighbor(left - width, right - width)
+    scanNeighbor(left + width, right + width)
+  }
+  if (!runs.length) return null
+  edit.runs = runs
+  edit.dirtyRect = { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+  return edit
+}
+
 const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, target: number, next: number, selection: SelectionMask | null | undefined, contiguous: boolean): PixelEdit | null => {
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
@@ -2548,6 +2609,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
       ? packedCanvasPixels(document, layer)
       : null
     if (packedPixels) {
+      if (effectiveGapClosingThreshold <= 0) return floodFillPackedSolidRuns(document, layer, packedPixels, startX, startY, target, next)
       const region = contiguousMatchingRegion(
         document.width,
         document.height,

@@ -3,12 +3,76 @@ import { commitPixelEdit, revertPixelEdit } from './history'
 import { createDocument, createSparseLayer, getActiveLayer, readLayerColorAt, writeLayerColor } from './document'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, gradientAmountAt, gradientColorAt, gradientColorForAmount, gradientRegionSelection, GRADIENT_DITHER_PRESETS, interpolateRgbaColor, resolveRadialGradientGeometry } from './gradient'
 import { ditherStageCount } from './gradient-color'
+import { packColor } from './raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
 const blue = { r: 0, g: 0, b: 255, a: 255 }
 const green = { r: 0, g: 255, b: 0, a: 255 }
+const expectPackedPixels = (actual: Uint32Array, expected: Uint32Array): void => {
+  expect(actual.length).toBe(expected.length)
+  expect(actual.findIndex((value, index) => value !== expected[index])).toBe(-1)
+}
 
 describe('gradient tool core', () => {
+  it.each(['bayer-2', 'bayer-8', 'diagonal'] as const)('preserves shifted, multicolor dense layers and selection holes through %s undo/redo', (dither) => {
+    const document = createDocument('dense dither history', 536, 536, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.offsetX = -4; layer.offsetY = -3
+    const words = new Uint32Array(layer.pixels.buffer)
+    for (let index = 0; index < words.length; index++) words[index] = 0xff000000 | ((index % 6) * 0x223344)
+    words[13 * layer.width + 12] = packColor(red)
+    const before = words.slice(), expected = words.slice()
+    const mask = new Uint8Array(512 * 512).fill(1)
+    // Selected-but-unchanged and unselected islands must retain their data.
+    for (let y = 20; y < 80; y++) mask.fill(0, y * 512 + 10, y * 512 + 90)
+    const selection = { x: 8, y: 10, width: 512, height: 512, mask }
+    const stops = [{ position: 0, color: red }, { position: 0.5, color: green }, { position: 1, color: blue }]
+    const start = { x: 8, y: 10 }, end = { x: 519, y: 521 }
+    const sample = createGradientColorSampler(red, blue, start, end, dither, 'linear', {}, stops)
+    for (let y = 10; y < 522; y++) for (let x = 8; x < 520; x++) {
+      if (mask[(y - 10) * 512 + x - 8]) expected[(y + 3) * layer.width + x + 4] = packColor(sample(x, y))
+    }
+    const edit = applyGradient(document, layer, start, end, red, blue, selection, dither, undefined, 'linear', {}, stops)!
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    const history = commitPixelEdit(document, edit, 'dither gradient')!
+    for (let repeat = 0; repeat < 2; repeat++) {
+      history.undo()
+      expectPackedPixels(new Uint32Array(layer.pixels.buffer), before)
+      history.redo()
+      expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    }
+  })
+
+  it('retains exact pixels and complete undo for blank dense dither commits', () => {
+    const document = createDocument('blank dense dither', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    const sample = createGradientColorSampler(red, blue, { x: 511, y: 0 }, { x: 0, y: 511 }, 'bayer-2')
+    const expected = new Uint32Array(512 * 512)
+    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) expected[y * 512 + x] = packColor(sample(x, y))
+    const edit = applyGradient(document, layer, { x: 511, y: 0 }, { x: 0, y: 511 }, red, blue, null, 'bayer-2')!
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    const history = commitPixelEdit(document, edit, 'dither gradient')!
+    history.undo()
+    expect(layer.pixels.every(value => value === 0)).toBe(true)
+    history.redo()
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+  })
+  it('preserves selected dense pixels that already equal the gradient across undo and redo', () => {
+    const document = createDocument('unchanged dense pixels', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    // This red pixel is selected but unchanged at the red endpoint. Dense
+    // rectangle history must retain it while restoring the surrounding pixels.
+    writeLayerColor(document, layer, 256 * 512, red)
+    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 511, y: 0 }, red, blue)!
+    const history = commitPixelEdit(document, edit, 'gradient')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 1, 256).a).toBe(0)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 511, 256)).toEqual(blue)
+  })
+
   it('snaps constrained endpoints to sixteen directions while preserving distance', () => {
     expect(constrainGradientEndpoint({ x: 2, y: 3 }, { x: 12, y: 3 })).toEqual({ x: 12, y: 3 })
     expect(constrainGradientEndpoint({ x: 2, y: 3 }, { x: 2, y: 13 })).toEqual({ x: 2, y: 13 })
