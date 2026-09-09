@@ -415,6 +415,7 @@ export interface WorkspaceAnimationCommands {
   selectAnimationCelContent(key: string, additive?: boolean): void
   clearAnimationSelection(preserveActiveContext?: boolean): void
   setAnimationCelOpacity(layerId: string, frameId: string, opacity: number): void
+  setAnimationCelProperties(layerId: string, frameId: string, properties: { opacity: number; zIndex: number }, targetKeys?: readonly string[]): void
   connectSelectedAnimationCels(): void
   disconnectSelectedAnimationCels(): void
   copySelectedAnimationCels(): void
@@ -468,6 +469,7 @@ export interface WorkspaceLayerCommands {
   previewTextCel(layerId: string, frameId: string, data: TextCelData, x?: number, y?: number): TextCelPreview | null
   restoreTextCelPreview(layerId: string, frameId: string, preview: TextCelPreview): void
   rasterizeLayer(layerId: string): void
+  splitLayerStyles(layerId: string): void
   createLinkedLayer(layerId: string): string | null
   duplicateActiveLayer(): void
   duplicateLayers(layerIds: string[]): string[]

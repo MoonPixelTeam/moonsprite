@@ -42,6 +42,7 @@ export interface LayerClipboard {
     offsetY: number
     storageOriginX?: number
     storageOriginY?: number
+    zIndex?: number
     opacity?: number
     text?: TextCelData
     tilemap?: TilemapCelData

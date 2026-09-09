@@ -1310,6 +1310,43 @@ export type CompositeStackItem =
   | { kind: 'layer'; layer: RasterLayer }
   | { kind: 'group'; group: LayerGroup; children: CompositeStackItem[] }
 
+const animationLayerZIndexes = (document: SpriteDocument): Map<string, number> => {
+  const timeline = document.animation
+  if (!timeline) return new Map()
+  const byId = new Map(timeline.cels.map((cel) => [cel.id, cel]))
+  const result = new Map<string, number>()
+  for (const cel of timeline.cels) {
+    if (cel.frameId !== timeline.activeFrameId) continue
+    const visited = new Set<string>()
+    let source = cel
+    while (source.linkedCelId && !visited.has(source.id)) {
+      visited.add(source.id)
+      const linked = byId.get(source.linkedCelId)
+      if (!linked || linked.layerId !== cel.layerId) break
+      source = linked
+    }
+    const numeric = Number(source.zIndex)
+    result.set(cel.layerId, Number.isFinite(numeric) ? Math.max(-999, Math.min(999, Math.trunc(numeric))) : 0)
+  }
+  return result
+}
+
+/** Sort bottom-to-top composite blocks without separating clipping layers from their base. */
+const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: ReadonlyMap<string, number>): void => {
+  for (const item of items) if (item.kind === 'group') sortCompositeContainerByZ(item.children, layerZIndexes)
+  const blocks: Array<{ items: CompositeStackItem[]; zIndex: number; order: number }> = []
+  for (const item of items) {
+    const clipsToLower = item.kind === 'layer' ? item.layer.clippingMask === true : item.group.clippingMask === true
+    if (clipsToLower && blocks.length > 0) {
+      blocks[blocks.length - 1].items.push(item)
+      continue
+    }
+    blocks.push({ items: [item], zIndex: item.kind === 'layer' ? layerZIndexes.get(item.layer.id) ?? 0 : 0, order: blocks.length })
+  }
+  blocks.sort((left, right) => left.zIndex - right.zIndex || left.order - right.order)
+  items.splice(0, items.length, ...blocks.flatMap((block) => block.items))
+}
+
 /** Uses the visible layer-panel order as the single source of truth for compositing order. */
 const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => {
   const layerById = new Map(document.layers.map((layer) => [layer.id, layer]))
@@ -1338,6 +1375,7 @@ const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => 
     for (const item of items) if (item.kind === 'group') reverseContainers(item.children)
   }
   reverseContainers(root)
+  sortCompositeContainerByZ(root, animationLayerZIndexes(document))
   return root
 }
 

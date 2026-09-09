@@ -53,6 +53,24 @@ describe('document compositing', () => {
     expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual(Object.values(blendWithMode(red, blue, 1, 'normal')))
   })
 
+  it('orders active-frame cels by z coordinate and keeps layer order for equal values', () => {
+    const document = createDocument('cel z order', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    const top = createLayer('top', 1, 1, 'rgba')
+    document.layers.push(top)
+    writeLayerColor(document, bottom, 0, red)
+    writeLayerColor(document, top, 0, { r: 0, g: 0, b: 255, a: 255 })
+    const timeline = ensureAnimationDocument(document)
+    const bottomCel = timeline.cels.find((cel) => cel.layerId === bottom.id && cel.frameId === timeline.activeFrameId)!
+    const topCel = timeline.cels.find((cel) => cel.layerId === top.id && cel.frameId === timeline.activeFrameId)!
+
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([0, 0, 255, 255])
+    bottomCel.zIndex = 1
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([255, 0, 0, 255])
+    topCel.zIndex = 1
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([0, 0, 255, 255])
+  })
+
   it('composites asynchronously in batches without changing pixel output', async () => {
     const document = createDocument('async composite', 2, 2, 'rgba')
     const layer = document.layers[0]

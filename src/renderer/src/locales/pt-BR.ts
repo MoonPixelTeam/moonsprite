@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const ptBRMessages = {
+  'layers.splitLayerStyles': 'Separar estilos de camada',
+  'layers.splitStyleShadow': 'Sombra projetada',
+  'layers.splitStyleInnerStroke': 'Traçado interno',
+  'layers.splitStyleOuterStroke': 'Traçado externo',
   "locale.zh-CN": "Chinês simplificado",
   "locale.en-US": "Inglês",
   "locale.ja-JP": "Japonês",
@@ -1428,8 +1432,11 @@ export const ptBRMessages = {
   "timeline.playbackSpeed": "Reprodução Velocidade",
   "timeline.playbackSpeedValue": "Reprodução Velocidade {rate}x",
   "timeline.framePropertiesNumbered": "Quadro {number} propriedades",
+  "timeline.multipleFrameProperties": "Multiple Frame Properties",
   "timeline.celProperties": "Não especificado",
+  "timeline.zCoordinate": "Coordenada Z",
   "timeline.celPropertiesNumbered": "Quadro {number} Cel propriedades",
+  "timeline.multipleCelProperties": "Multiple Cel Properties",
   "timeline.celMenu": "Cel Ações",
   "timeline.copyFrame": "Copiar Quadro",
   "timeline.pasteFrame": "Colar Quadro",
@@ -1761,6 +1768,7 @@ export const ptBRMessages = {
   "layers.nextColor": "próximo Cor",
   "layers.groupProperties": "Camada Grupo propriedades",
   "layers.layerProperties": "Camada propriedades",
+  "layers.layerPropertiesNamed": "{name} Camada propriedades",
   "layers.multipleProperties": "Multiple Camada propriedades",
   "layers.name": "Nome",
   "layers.blendMode": "Blend Modo",
@@ -2179,6 +2187,7 @@ export const ptBRMessages = {
   "workspace.history.toggleAnimationFrameDisabled": "Alternar estado do quadro",
   "workspace.history.animationLoop": "Alterar Animação loop",
   "workspace.history.animationCelOpacity": "Alterar Cel Opacidade",
+  "workspace.history.animationCelProperties": "Alterar propriedades do Cel",
   "workspace.history.animationCelLink": "Link Animação Cels",
   "workspace.history.animationCelUnlink": "Unlink Animação Cels",
   "workspace.history.pasteAnimationCel": "Colar Animação Cel",

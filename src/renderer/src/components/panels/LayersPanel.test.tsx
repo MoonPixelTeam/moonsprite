@@ -2,7 +2,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi } from '@shared/types'
 import { createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer } from '@/core/document'
-import { animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
+import { addBlankAnimationFrame, animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { layersPanelRenderKey } from '@/core/panel-render-keys'
@@ -589,6 +589,31 @@ describe('LayersPanel animation', () => {
     expect(screen.queryByRole('slider', { name: '不透明度' })).not.toBeInTheDocument()
   })
 
+  it('applies cel properties to the complete multi-cell selection', async () => {
+    const document = createDocument('multi cel properties', 1, 1, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const secondFrameId = addBlankAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectAnimationCell(animationCelKey(document.activeLayerId, timeline.frames[0].id))
+    useWorkspace.getState().selectAnimationCell(animationCelKey(document.activeLayerId, secondFrameId), 'toggle')
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toHaveLength(2)
+    render(<LayersPanel session={session} docked />)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '第 2 帧动画单元格' }))
+    expect(session.selectedAnimationCellKeys).toHaveLength(2)
+    fireEvent.click(screen.getByRole('menuitem', { name: '单元格属性' }))
+    const zCoordinate = screen.getByRole('spinbutton', { name: 'Z 坐标' })
+    fireEvent.change(zCoordinate, { target: { value: '8' } })
+    fireEvent.blur(zCoordinate)
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(animationCelAt(timeline, document.activeLayerId, timeline.frames[0].id)?.zIndex).toBe(8)
+      expect(animationCelAt(timeline, document.activeLayerId, secondFrameId)?.zIndex).toBe(8)
+    })
+  })
+
   it('updates the active cel content without rerendering the full layer panel', () => {
     const document = createDocument('live cel content', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -830,14 +855,14 @@ describe('LayersPanel animation', () => {
 
 
 
-  it('disables content-only commands for an empty cel context menu', () => {
+  it('keeps cel properties available but disables content-only commands for an empty cel context menu', () => {
     const document = createDocument('empty cel menu', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
 
     fireEvent.contextMenu(screen.getByRole('button', { name: '第 1 帧动画单元格' }))
 
-    expect(screen.getByRole('menuitem', { name: '单元格属性' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: '单元格属性' })).toBeEnabled()
     expect(screen.getByRole('menuitem', { name: '复制单元格' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: '删除单元格' })).toBeDisabled()
   })

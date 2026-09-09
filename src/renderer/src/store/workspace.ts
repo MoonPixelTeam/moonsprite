@@ -4,7 +4,7 @@ import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLo
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, pixelEditHasChanges, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
-import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
+import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, normalizeAnimationCelZIndex, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
@@ -70,6 +70,7 @@ import { beginFreeTileInstancePropertiesTransaction as beginFreeTileInstanceProp
 import { beginLayerPropertiesTransaction as beginLayerPropertiesTransactionCommand, cancelLayerPropertiesTransaction as cancelLayerPropertiesTransactionCommand, commitLayerPropertiesTransaction as commitLayerPropertiesTransactionCommand, previewLayerPropertiesTransaction as previewLayerPropertiesTransactionCommand, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from './workspace-layer-properties'
 import { beginLayerMoveDuplicatePreview as beginLayerMoveDuplicatePreviewCommand, cancelLayerMovePreview as cancelLayerMovePreviewCommand, createLayerMoveHistoryEntry, previewLayerMove as previewLayerMoveCommand, type LayerMoveDuplicateResult, type LayerMoveState } from './workspace-layer-move'
 import type { AntiAliasPreview, ColorReplacementPreview, ColorReplacementTarget, FreeTileInstancePropertyChanges, TextCelPreview, TextLayerDraftTarget, WorkspaceState } from './workspace-state'
+import { splitLayerStyles as splitLayerStylesCommand } from './workspace-layer-style-split'
 import type { PaletteSortDirection, PaletteSortMode } from '@/core/palette'
 import type { AdjustmentSnapshot, AnimationFrameClipboardItem, AnimationMaskClipboardItem, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, FloatingPaste, FloatingSelectionBoxHistoryEntry, OutlinePreview, SelectionPivot, TimelineActiveContext } from './workspace-types'
 
@@ -2527,6 +2528,7 @@ function layerClipboardFromDocument(document: SpriteDocument, layer: RasterLayer
       offsetY: surface.offsetY,
       storageOriginX: surface.storageOriginX,
       storageOriginY: surface.storageOriginY,
+      zIndex: cel.zIndex,
       opacity: cel.opacity,
       text: cel.text ? cloneTextCelData(cel.text) : undefined,
       tilemap: cel.tilemap ? cloneTilemapCelData(cel.tilemap) : undefined,
@@ -2620,6 +2622,7 @@ function applyLayerClipboardAnimationCel(
   const frame = timeline.frames[source.frameIndex]
   const cel = frame ? timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === frame.id) : null
   if (!cel) return
+  cel.zIndex = normalizeAnimationCelZIndex(source.zIndex)
   cel.opacity = source.opacity ?? layer.opacity
   cel.text = source.text ? cloneTextCelData(source.text) : undefined
   cel.tilemap = source.tilemap ? {
@@ -2686,6 +2689,7 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
   for (const { item, layer, cel } of resolvedDestinations) {
     const next = animationCelForTarget(session.document, layer, item.cel)
     cel.linkedCelId = item.cel.linkedCelId ? destinationBySourceId.get(item.cel.linkedCelId)?.id ?? null : null
+    cel.zIndex = next.zIndex
     cel.surface = next.surface
     cel.opacity = next.opacity
     cel.text = next.text
@@ -6186,6 +6190,50 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })
   },
 
+  setAnimationCelProperties(layerId, frameId, properties, targetKeys) {
+    get().mutateActive((session) => {
+      const timeline = ensureAnimationDocument(session.document)
+      const cel = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === frameId)
+      if (!cel) return
+      const requested = new Set(targetKeys?.length ? targetKeys : [animationCelKey(layerId, frameId)])
+      const sourceById = new Map<string, AnimationCel>()
+      for (const candidate of timeline.cels) {
+        if (!requested.has(animationCelKey(candidate.layerId, candidate.frameId))) continue
+        const source = resolveAnimationCel(timeline, candidate) ?? candidate
+        sourceById.set(source.id, source)
+      }
+      if (sourceById.size === 0) return
+      const groups = [...sourceById.values()].map((source) => ({
+        source,
+        members: timeline.cels.filter((candidate) => (resolveAnimationCel(timeline, candidate) ?? candidate).id === source.id)
+      }))
+      const before = new Map(groups.map(({ source }) => [source.id, { opacity: source.opacity ?? 1, zIndex: normalizeAnimationCelZIndex(source.zIndex) }]))
+      const after = { opacity: Math.max(0, Math.min(1, properties.opacity)), zIndex: normalizeAnimationCelZIndex(properties.zIndex) }
+      if ([...before.values()].every((value) => value.opacity === after.opacity && value.zIndex === after.zIndex)) return
+      const apply = (values: ReadonlyMap<string, typeof after> | typeof after): void => {
+        for (const { source, members } of groups) {
+          const value = values instanceof Map ? values.get(source.id) : values
+          if (!value) continue
+          for (const candidate of members) {
+            candidate.opacity = value.opacity
+            candidate.zIndex = value.zIndex
+          }
+        }
+        for (const activeCel of timeline.cels) {
+          if (activeCel.frameId !== timeline.activeFrameId) continue
+          const activeSource = resolveAnimationCel(timeline, activeCel) ?? activeCel
+          const layer = session.document.layers.find((candidate) => candidate.id === activeCel.layerId)
+          if (layer && Number.isFinite(activeSource.opacity)) layer.opacity = Math.max(0, Math.min(1, activeSource.opacity!))
+        }
+      }
+      apply(after)
+      session.history.push({ label: tr('workspace.history.animationCelProperties'), bytes: groups.length * 32, undo: () => apply(before), redo: () => apply(after), affectedLayerIds: [...new Set(groups.map(({ source }) => source.layerId))], invalidation: { kind: 'full' } })
+      // Cel properties are an explicit timeline-panel operation. Preserve the
+      // user's multi-cel highlight after the resulting content revision.
+      session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
+    })
+  },
+
   connectSelectedAnimationCels() {
     get().mutateActive((session) => {
       const timeline = ensureAnimationDocument(session.document)
@@ -6547,6 +6595,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const replacement = remaining[0]
         if (replacement && destinationIds.has(source.id)) {
           replacement.linkedCelId = null
+          replacement.zIndex = source.zIndex
           replacement.surface = source.surface
           replacement.opacity = source.opacity
           replacement.text = source.text
@@ -6554,6 +6603,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           replacement.freeTiles = source.freeTiles
           for (const member of remaining.slice(1)) {
             member.linkedCelId = replacement.id
+            member.zIndex = replacement.zIndex
             member.surface = replacement.surface
             member.opacity = replacement.opacity
             member.text = replacement.text
@@ -6569,6 +6619,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const writeTargets = [...affectedTargets.values()]
       const before = writeTargets.filter((cel) => !appendedFrameIds.has(cel.frameId)).map(cloneAnimationCel)
       for (const { source, target: destination } of placements) {
+        destination.zIndex = normalizeAnimationCelZIndex(source.zIndex)
         destination.surface = source.surface ? cloneAnimationCelSurface(source.surface) : undefined
         destination.opacity = source.opacity
         destination.text = source.text ? cloneTextCelData(source.text) : undefined
@@ -6627,11 +6678,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       for (const source of sources) {
         const original = timeline.cels.find((cel) => cel.layerId === source.layerId && cel.frameId === source.frameId)
         if (original?.surface) original.surface = original.surface.format === 'rgba' ? { ...original.surface, pixels: new Uint8ClampedArray(original.surface.pixels.length) } : { ...original.surface, pixels: new Uint32Array(original.surface.pixels.length) }
+        if (original) original.zIndex = 0
         if (original) delete original.text
         if (original) delete original.tilemap
       }
       for (const { source, target: destination } of placements) {
         destination.linkedCelId = null
+        destination.zIndex = normalizeAnimationCelZIndex(source.zIndex)
         destination.surface = source.surface ? cloneAnimationCelSurface(source.surface) : undefined
         destination.opacity = source.opacity
         destination.text = source.text ? cloneTextCelData(source.text) : undefined
@@ -6968,6 +7021,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           replacement.linkedCelId = null
           for (const member of remaining.slice(1)) {
             member.linkedCelId = replacement.id
+            member.zIndex = replacement.zIndex
             member.surface = replacement.surface
             member.opacity = replacement.opacity
             member.text = replacement.text
@@ -6983,6 +7037,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
               ? { ...cel.surface, pixels: new Uint32Array(cel.surface.pixels.length), runtimeRaster: undefined }
               : undefined
           cel.linkedCelId = null
+          cel.zIndex = 0
           delete cel.text
           delete cel.tilemap
           delete cel.freeTiles
@@ -7505,6 +7560,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       const after = frames.map((frame) => ({ id: frame.id, duration: frame.duration }))
       session.history.push({ label: tr('workspace.history.animationFrameDuration'), bytes: frames.length * 32, undo: () => apply(before), redo: () => apply(after) })
+      // Editing frame timing must not look like canvas drawing and dismiss
+      // the explicit multi-frame selection.
+      session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
     })
   },
 
@@ -10021,7 +10079,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   previewLayerPropertiesTransaction(id, values, changedFields) {
     get().mutateActive((session) => {
+      const beforeContentRevision = session.contentRevision
       previewLayerPropertiesTransactionCommand(documentTransactions, session, id, values, changedFields)
+      // Previewing opacity/blend mode invalidates the canvas immediately. It
+      // is still a property-dialog interaction, so don't let that preview
+      // revision hide the explicit layer/frame/cel selection guides.
+      if (session.contentRevision !== beforeContentRevision) {
+        session.selectionGuidesPreservedAtContentRevision = session.contentRevision
+      }
     }, false)
   },
 
@@ -10030,6 +10095,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const result = commitLayerPropertiesTransactionCommand(documentTransactions, session, id, values, changedFields)
       if (result.kind === 'content') {
         syncActiveAnimationFrame(session.document)
+        // Layer properties are a panel operation, not a canvas edit. Keep
+        // the explicit layer/frame/cel selection visible after committing a
+        // content-affecting property such as opacity or blend mode.
+        session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
         touch(session, true, result.invalidation)
         recordDocumentOperation(session)
       } else if (result.kind === 'metadata') {
@@ -10177,6 +10246,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   clearLayerStyles(targets) {
     return get().setLayerStylesForTargets(targets, undefined, 'clear')
+  },
+  splitLayerStyles(layerId) {
+    get().commitFloatingPaste()
+    get().mutateActive((session) => {
+      const beforeSelection = captureAnimationSelectionHistory(session)
+      const entry = splitLayerStylesCommand(session.document, layerId)
+      if (entry) session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
+    }, true, true)
   },
   applyActiveLayerAdjustment(adjustment) {
     get().mutateActive((session) => {

@@ -2,8 +2,9 @@ import type { AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types
 import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
 import { compositeDocument, compositeRegion } from './document'
 
-const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], layerId?: string): SpriteDocument => {
-  if (!layerId || !layers.some((layer) => layer.id === layerId)) return { ...document, layers }
+const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], frameId: string, layerId?: string): SpriteDocument => {
+  const animation = document.animation ? { ...document.animation, activeFrameId: frameId } : document.animation
+  if (!layerId || !layers.some((layer) => layer.id === layerId)) return { ...document, layers, animation }
   const visibleGroups = new Set<string>()
   let groupId = layers.find((layer) => layer.id === layerId)?.groupId ?? null
   while (groupId) {
@@ -13,6 +14,7 @@ const documentForAnimationLayerComposite = (document: SpriteDocument, layers: Sp
   }
   return {
     ...document,
+    animation,
     layers: layers.map((layer) => ({ ...layer, visible: layer.id === layerId && layer.visible })),
     groups: document.groups.map((group) => ({ ...group, visible: visibleGroups.has(group.id) && group.visible }))
   }
@@ -38,13 +40,13 @@ export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: 
 export const compositeAnimationFrame = (document: SpriteDocument, frameId: string, layerId?: string): Uint8ClampedArray => {
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
-  return compositeDocument(documentForAnimationLayerComposite(document, layers, layerId))
+  return compositeDocument(documentForAnimationLayerComposite(document, layers, frameId, layerId))
 }
 
 export const compositeAnimationFrameRegion = (document: SpriteDocument, frameId: string, x: number, y: number, width: number, height: number): Uint8ClampedArray => {
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
-  return compositeRegion({ ...document, layers }, x, y, width, height)
+  return compositeRegion(documentForAnimationLayerComposite(document, layers, frameId), x, y, width, height)
 }
 
 export const tintOnionSkinPixels = (source: Uint8ClampedArray, tint: RgbaColor, opacityPercent: number, distance: number): Uint8ClampedArray => {

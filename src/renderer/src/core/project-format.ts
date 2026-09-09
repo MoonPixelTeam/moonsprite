@@ -102,6 +102,7 @@ interface ManifestCel {
   layerId: string
   frameId: string
   linkedCelId?: string | null
+  zIndex?: number
   opacity?: number
   format?: RasterFormat
   width?: number
@@ -153,7 +154,7 @@ interface ManifestTimelapse extends Omit<TimelapseSettings, 'snapshots'> {
 
 type RasterDataEncoding = 'raw' | 'sparse-tiles-v1'
 
-export const PROJECT_SCHEMA_VERSION = 18
+export const PROJECT_SCHEMA_VERSION = 19
 const FREE_TILE_SET_PROJECT_SCHEMA_VERSION = 18
 const LINKED_LAYERS_PROJECT_SCHEMA_VERSION = 17
 const LOOP_SECTIONS_PROJECT_SCHEMA_VERSION = 16
@@ -819,6 +820,7 @@ const createProjectArchiveFiles = (
         layerId: cel.layerId,
         frameId: cel.frameId,
         ...(cel.linkedCelId ? { linkedCelId: cel.linkedCelId } : {}),
+        ...(Number.isFinite(cel.zIndex) && cel.zIndex !== 0 ? { zIndex: Math.max(-999, Math.min(999, Math.trunc(cel.zIndex!))) } : {}),
         ...(Number.isFinite(cel.opacity) ? { opacity: cel.opacity } : {}),
         ...(encoded ? {
           format: cel.surface.format,
@@ -1239,7 +1241,7 @@ export function migrateProjectManifest(input: unknown): ProjectManifest {
   const candidate = input as { app?: unknown; schemaVersion?: unknown; document?: Record<string, unknown> }
   if (candidate.app !== 'MoonSprite' || !candidate.document) throw new Error(tr('core.project.unsupportedVersion'))
   const version = Number(candidate.schemaVersion)
-  if (![1, 2, 3, LEGACY_PROJECT_SCHEMA_VERSION, SPARSE_RASTER_PROJECT_SCHEMA_VERSION, SLICES_PROJECT_SCHEMA_VERSION, EDITABLE_TEXT_PROJECT_SCHEMA_VERSION, STYLED_TEXT_PROJECT_SCHEMA_VERSION, TEXT_BOX_PROJECT_SCHEMA_VERSION, DOCUMENT_COLOR_MODE_PROJECT_SCHEMA_VERSION, LAYER_STYLES_PROJECT_SCHEMA_VERSION, BACKGROUND_LAYER_PROJECT_SCHEMA_VERSION, TILEMAP_PROJECT_SCHEMA_VERSION, FREE_TILE_PROJECT_SCHEMA_VERSION, FREE_TILE_SOURCE_PROJECT_SCHEMA_VERSION, LOOP_SECTIONS_PROJECT_SCHEMA_VERSION, LINKED_LAYERS_PROJECT_SCHEMA_VERSION, PROJECT_SCHEMA_VERSION].includes(version) || candidate.document.schemaVersion !== candidate.schemaVersion) throw new Error(tr('core.project.unsupportedVersion'))
+  if (![1, 2, 3, LEGACY_PROJECT_SCHEMA_VERSION, SPARSE_RASTER_PROJECT_SCHEMA_VERSION, SLICES_PROJECT_SCHEMA_VERSION, EDITABLE_TEXT_PROJECT_SCHEMA_VERSION, STYLED_TEXT_PROJECT_SCHEMA_VERSION, TEXT_BOX_PROJECT_SCHEMA_VERSION, DOCUMENT_COLOR_MODE_PROJECT_SCHEMA_VERSION, LAYER_STYLES_PROJECT_SCHEMA_VERSION, BACKGROUND_LAYER_PROJECT_SCHEMA_VERSION, TILEMAP_PROJECT_SCHEMA_VERSION, FREE_TILE_PROJECT_SCHEMA_VERSION, FREE_TILE_SOURCE_PROJECT_SCHEMA_VERSION, LOOP_SECTIONS_PROJECT_SCHEMA_VERSION, LINKED_LAYERS_PROJECT_SCHEMA_VERSION, FREE_TILE_SET_PROJECT_SCHEMA_VERSION, PROJECT_SCHEMA_VERSION].includes(version) || candidate.document.schemaVersion !== candidate.schemaVersion) throw new Error(tr('core.project.unsupportedVersion'))
   if (version >= SPARSE_RASTER_PROJECT_SCHEMA_VERSION) {
     const layers = Array.isArray(candidate.document.layers) ? candidate.document.layers : []
     const animation = candidate.document.animation && typeof candidate.document.animation === 'object' ? candidate.document.animation as { cels?: unknown } : null

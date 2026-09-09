@@ -50,4 +50,29 @@ describe('animation cel deletion', () => {
     expect(animationCelHasContent(first, document.palette)).toBe(true)
     expect(third.linkedCelId).toBe(first.id)
   })
+
+  it('updates multiple selected and linked cel properties as one undoable change', () => {
+    const document = createDocument('linked cel properties', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, { r: 255, g: 0, b: 0, a: 255 })
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    const thirdFrameId = addBlankAnimationFrame(document)
+    expect(linkAnimationFrameCels(document, firstFrameId, secondFrameId, [layer.id])).toBe(true)
+    useWorkspace.getState().addSession(document)
+
+    useWorkspace.getState().setAnimationCelProperties(layer.id, firstFrameId, { opacity: 0.75, zIndex: 24 }, [
+      animationCelKey(layer.id, firstFrameId),
+      animationCelKey(layer.id, thirdFrameId)
+    ])
+    expect(animationCelAt(timeline, layer.id, firstFrameId)).toMatchObject({ opacity: 0.75, zIndex: 24 })
+    expect(animationCelAt(timeline, layer.id, secondFrameId)).toMatchObject({ opacity: 0.75, zIndex: 24 })
+    expect(animationCelAt(timeline, layer.id, thirdFrameId)).toMatchObject({ opacity: 0.75, zIndex: 24 })
+
+    useWorkspace.getState().undo()
+    expect(animationCelAt(timeline, layer.id, firstFrameId)?.zIndex ?? 0).toBe(0)
+    expect(animationCelAt(timeline, layer.id, secondFrameId)?.zIndex ?? 0).toBe(0)
+    expect(animationCelAt(timeline, layer.id, thirdFrameId)?.zIndex ?? 0).toBe(0)
+  })
 })

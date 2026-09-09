@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { strFromU8, unzipSync, zipSync, type Zippable } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
 import { activateAnimationFrame, addBlankAnimationFrame, cloneAnimationCelsForLayer, connectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, refreshActiveAnimationFrame, resizeAnimationCelsAt, syncActiveAnimationFrame, syncActiveAnimationLayer } from './animation'
 import { animationMaskAt, cachedLayerContentBounds, createDocument, createLayer, createLayerMask, duplicateLayer, getActiveLayer, getLayerStorageOrigin, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { applySelectionTranslationPreview, captureSelectionTransform, restoreSelectionTranslationPreview } from './tools'
@@ -113,6 +113,28 @@ describe('project manifest migration boundary', () => {
     const reopened = decodeProject(encodeProject(document))
     expect(reopened.layers[0].autoLinkAnimationCels).toBe(true)
     expect(reopened.layers[1].autoLinkAnimationCels).toBeUndefined()
+  })
+
+  it('round-trips animation cel z coordinates', () => {
+    const document = createDocument('cel z coordinate', 2, 2, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    timeline.cels[0].zIndex = -37
+
+    const reopened = decodeProject(encodeProject(document))
+    expect(reopened.animation?.cels[0].zIndex).toBe(-37)
+  })
+
+  it('opens schema v18 projects after the cel z coordinate format upgrade', () => {
+    const files = unzipSync(encodeProject(createDocument('v18 project', 2, 2, 'rgba')))
+    const manifest = JSON.parse(strFromU8(files['manifest.json']))
+    manifest.schemaVersion = 18
+    manifest.document.schemaVersion = 18
+    files['manifest.json'] = strToU8(JSON.stringify(manifest))
+
+    expect(decodeProject(zipSync(files))).toMatchObject({
+      name: 'v18 project',
+      schemaVersion: PROJECT_SCHEMA_VERSION
+    })
   })
 
   it('writes shared pixel storage with one canonical geometry after a non-active cel diverges', () => {

@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const ruRUMessages = {
+  'layers.splitLayerStyles': 'Разделить стили слоя',
+  'layers.splitStyleShadow': 'Тень',
+  'layers.splitStyleInnerStroke': 'Внутренняя обводка',
+  'layers.splitStyleOuterStroke': 'Внешняя обводка',
   "locale.zh-CN": "Упрощённый китайский",
   "locale.en-US": "Английский",
   "locale.ja-JP": "Японский",
@@ -1428,8 +1432,11 @@ export const ruRUMessages = {
   "timeline.playbackSpeed": "Воспроизведение Скорость",
   "timeline.playbackSpeedValue": "Воспроизведение Скорость {rate}x",
   "timeline.framePropertiesNumbered": "Кадр {number} свойства",
+  "timeline.multipleFrameProperties": "Multiple Frame Properties",
   "timeline.celProperties": "Не указано",
+  "timeline.zCoordinate": "Координата Z",
   "timeline.celPropertiesNumbered": "Кадр {number} Cel свойства",
+  "timeline.multipleCelProperties": "Multiple Cel Properties",
   "timeline.celMenu": "Cel Действия",
   "timeline.copyFrame": "Копировать Кадр",
   "timeline.pasteFrame": "Вставить Кадр",
@@ -1761,6 +1768,7 @@ export const ruRUMessages = {
   "layers.nextColor": "следующий Цвет",
   "layers.groupProperties": "Слой Группа свойства",
   "layers.layerProperties": "Слой свойства",
+  "layers.layerPropertiesNamed": "{name} Слой свойства",
   "layers.multipleProperties": "Multiple Слой свойства",
   "layers.name": "Имя",
   "layers.blendMode": "Blend Режим",
@@ -2179,6 +2187,7 @@ export const ruRUMessages = {
   "workspace.history.toggleAnimationFrameDisabled": "Переключить состояние кадра",
   "workspace.history.animationLoop": "Изменить Анимация цикл",
   "workspace.history.animationCelOpacity": "Изменить Cel Непрозрачность",
+  "workspace.history.animationCelProperties": "Изменить свойства Cel",
   "workspace.history.animationCelLink": "Link Анимация Cels",
   "workspace.history.animationCelUnlink": "Unlink Анимация Cels",
   "workspace.history.pasteAnimationCel": "Вставить Анимация Cel",

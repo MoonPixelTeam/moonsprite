@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const jaJPMessages = {
+  'layers.splitLayerStyles': 'レイヤースタイルを分離',
+  'layers.splitStyleShadow': 'ドロップシャドウ',
+  'layers.splitStyleInnerStroke': '内側の境界線',
+  'layers.splitStyleOuterStroke': '外側の境界線',
   'locale.zh-CN': '簡体字中国語',
   'locale.en-US': '英語',
   'locale.ja-JP': '日本語',
@@ -1428,8 +1432,11 @@ export const jaJPMessages = {
   'timeline.playbackSpeed': '再生 データ',
   'timeline.playbackSpeedValue': '再生 データ {rate}x ',
   'timeline.framePropertiesNumbered': 'フレーム {number} データ ',
+  'timeline.multipleFrameProperties': '複数フレームのプロパティ',
   'timeline.celProperties': 'データ データ',
+  'timeline.zCoordinate': 'Z 座標',
   'timeline.celPropertiesNumbered': 'フレーム {number} データ データ ',
+  'timeline.multipleCelProperties': '複数セルのプロパティ',
   'timeline.celMenu': 'データ データ',
   'timeline.copyFrame': 'コピー フレーム',
   'timeline.pasteFrame': '貼り付け フレーム',
@@ -1761,6 +1768,7 @@ export const jaJPMessages = {
   'layers.nextColor': '次 カラー',
   'layers.groupProperties': 'レイヤーグループ データ',
   'layers.layerProperties': 'レイヤー データ',
+  'layers.layerPropertiesNamed': '{name} レイヤープロパティ',
   'layers.multipleProperties': '複数 レイヤー データ',
   'layers.name': '名前',
   'layers.blendMode': '描画モード',
@@ -2179,6 +2187,7 @@ export const jaJPMessages = {
   'workspace.history.toggleAnimationFrameDisabled': 'フレームの有効状態を切り替え',
   'workspace.history.animationLoop': '変更 アニメーション ループ',
   'workspace.history.animationCelOpacity': '変更 データ 不透明度',
+  'workspace.history.animationCelProperties': 'セルのプロパティを変更',
   'workspace.history.animationCelLink': 'データ アニメーション データ',
   'workspace.history.animationCelUnlink': 'データ アニメーション データ',
   'workspace.history.pasteAnimationCel': '貼り付け アニメーション データ',

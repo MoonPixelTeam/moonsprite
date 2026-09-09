@@ -495,6 +495,64 @@ const gradientColorAt = (geometry: LayerStyleGeometry, style: LayerStyles['gradi
 
 export type LayerStyleSourceReader = (x: number, y: number) => RgbaColor
 export type LayerStyleColorResolver = (color: RgbaColor) => RgbaColor
+
+export type LayerStylePart = 'shadow' | 'outerStroke' | 'colorOverlay' | 'gradientOverlay' | 'innerGlow' | 'innerStroke'
+
+/** Bottom-to-top effect order. Interior parts use the existing clipping stack:
+ * their alpha is the effect coverage, not another copy of the source alpha.
+ * A both-sided stroke has two parts because only its interior is clipped. */
+export function enabledLayerStyleParts(styles: LayerStyles): LayerStylePart[] {
+  if (!styles.enabled) return []
+  const parts: LayerStylePart[] = []
+  if (styles.shadow.enabled) parts.push('shadow')
+  if (styles.stroke.enabled && styles.stroke.position !== 'inside') parts.push('outerStroke')
+  if (styles.colorOverlay.enabled) parts.push('colorOverlay')
+  if (styles.gradientOverlay.enabled) parts.push('gradientOverlay')
+  if (styles.innerGlow.enabled) parts.push('innerGlow')
+  if (styles.stroke.enabled && styles.stroke.position !== 'outside') parts.push('innerStroke')
+  return parts
+}
+
+/** Extracts effect pixels only, using the same geometry, smart colors and order
+ * as applyLayerStylesAt. Never includes the original image in an effect layer. */
+export function sampleLayerStyleParts(
+  geometry: LayerStyleGeometry,
+  styles: LayerStyles,
+  x: number,
+  y: number,
+  source: RgbaColor,
+  read: LayerStyleSourceReader,
+  resolveColor: LayerStyleColorResolver = (color) => color
+): Partial<Record<LayerStylePart, RgbaColor>> {
+  const result: Partial<Record<LayerStylePart, RgbaColor>> = {}
+  if (!styles.enabled) return result
+  if (styles.shadow.enabled) result.shadow = withCoverage(shadowColor(styles.shadow), shadowCoverage(read, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur))
+  if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
+    const sample = outsideStrokeSample(read, x, y, styles.stroke)
+    result.outerStroke = withCoverage(resolveOutlineStrokeColor(styles.stroke, sample.referenceColor, resolveColor), sample.alpha / 255)
+  }
+  if (source.a === 0) return result
+  let styled = source
+  if (styles.colorOverlay.enabled) {
+    result.colorOverlay = styles.colorOverlay.color
+    styled = overlayPreservingAlpha(styled, styles.colorOverlay.color)
+  }
+  if (styles.gradientOverlay.enabled) {
+    const color = gradientColorAt(geometry, styles.gradientOverlay, x, y)
+    result.gradientOverlay = color
+    styled = overlayPreservingAlpha(styled, color)
+  }
+  if (styles.innerGlow.enabled) {
+    const coverage = innerGlowCoverage(read, x, y, styles.innerGlow.size)
+    result.innerGlow = withCoverage(styles.innerGlow.color, coverage)
+    styled = overlayPreservingAlpha(styled, styles.innerGlow.color, coverage)
+  }
+  if (styles.stroke.enabled && styles.stroke.position !== 'outside') {
+    result.innerStroke = withCoverage(resolveOutlineStrokeColor(styles.stroke, styled, resolveColor), innerStrokeCoverage(read, x, y, styles.stroke))
+  }
+  return result
+}
+
 export interface LayerStyleCoverageOverrides {
   shadow?: number
   innerGlow?: number

@@ -23,6 +23,23 @@ describe('animation timeline boundary', () => {
     expect(animationCelHasContent(cel)).toBe(true)
   })
 
+  it('shares z coordinates across linked cels and retains them when unlinked', () => {
+    const document = createDocument('linked cel z', 1, 1, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    writeLayerColor(document, document.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+    const secondFrameId = addBlankAnimationFrame(document)
+    const first = animationCelAt(timeline, document.activeLayerId, firstFrameId)!
+    const second = animationCelAt(timeline, document.activeLayerId, secondFrameId)!
+    first.zIndex = 12
+
+    expect(connectAnimationCels(document, [first.id, second.id])).toBe(true)
+    expect(second.zIndex).toBe(12)
+    expect(disconnectAnimationCels(document, [second.id])).toBe(true)
+    expect(second.linkedCelId).toBeNull()
+    expect(second.zIndex).toBe(12)
+  })
+
 
 
 

@@ -143,6 +143,8 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string; barId?: string } | null>(null)
   const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set(preferences.quickCommandBars.filter((bar) => bar.edge === 'none').map((bar) => bar.id)))
   const preferencePointerDragRef = useRef<PreferencePointerDrag | null>(null)
+  const preferenceAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0)
+  const preferenceAutoScrollFrameRef = useRef<number | null>(null)
   const update = <K extends keyof typeof preferences>(key: K, value: typeof preferences[K]): void => setPreferences((current) => ({ ...current, [key]: value }))
   const updateDocumentSize = (index: number, key: keyof DocumentSizePreset, value: number): void => update('documentSizePresets', preferences.documentSizePresets.map((preset, presetIndex) => presetIndex === index ? { ...preset, [key]: value } : preset))
   const updateLayerColorPreset = (index: number, color: typeof preferences.layerDisplayColorPresets[number]): void => update('layerDisplayColorPresets', preferences.layerDisplayColorPresets.map((preset, presetIndex) => presetIndex === index ? { ...color, a: 255 } : preset))
@@ -248,9 +250,45 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     window.dispatchEvent(new Event('moonsprite:preferences-changed'))
   }, [])
   useEffect(() => {
+    const stopAutoScroll = (): void => {
+      preferenceAutoScrollDirectionRef.current = 0
+      if (preferenceAutoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(preferenceAutoScrollFrameRef.current)
+        preferenceAutoScrollFrameRef.current = null
+      }
+    }
+    const updateAutoScroll = (event: PointerEvent, drag: PreferencePointerDrag): void => {
+      const container = drag.kind === 'quick-command' && drag.barId
+        ? document.querySelector<HTMLElement>(`[data-preference-quick-command-list="${drag.barId}"]`)
+        : document.querySelector<HTMLElement>('.preference-color-mode-list')
+      if (!container) return stopAutoScroll()
+      const bounds = container.getBoundingClientRect()
+      const edgeSize = Math.min(32, Math.max(16, bounds.height / 4))
+      const withinHorizontalBounds = event.clientX >= bounds.left && event.clientX <= bounds.right
+      const direction: -1 | 0 | 1 = withinHorizontalBounds && event.clientY <= bounds.top + edgeSize
+        ? -1
+        : withinHorizontalBounds && event.clientY >= bounds.bottom - edgeSize ? 1 : 0
+      preferenceAutoScrollDirectionRef.current = direction
+      if (direction === 0 || preferenceAutoScrollFrameRef.current !== null) return
+      const scroll = (): void => {
+        const activeDrag = preferencePointerDragRef.current
+        const scrollingContainer = activeDrag?.kind === 'quick-command' && activeDrag.barId
+          ? document.querySelector<HTMLElement>(`[data-preference-quick-command-list="${activeDrag.barId}"]`)
+          : document.querySelector<HTMLElement>('.preference-color-mode-list')
+        const scrollingDirection = preferenceAutoScrollDirectionRef.current
+        if (!scrollingContainer || scrollingDirection === 0) {
+          preferenceAutoScrollFrameRef.current = null
+          return
+        }
+        scrollingContainer.scrollTop += scrollingDirection * 12
+        preferenceAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+      }
+      preferenceAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+    }
     const move = (event: PointerEvent): void => {
       const drag = preferencePointerDragRef.current
       if (!drag || drag.pointerId !== event.pointerId) return
+      updateAutoScroll(event, drag)
       const selector = `[data-preference-order-kind="${drag.kind}"]`
       const row = (typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(event.clientX, event.clientY) : [])
         .map((element) => element.closest<HTMLElement>(selector))
@@ -269,6 +307,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       if (!drag || drag.pointerId !== event.pointerId) return
       if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId)
       preferencePointerDragRef.current = null
+      stopAutoScroll()
       setDraggedPreferenceItem(null)
     }
     window.addEventListener('pointermove', move)
@@ -278,6 +317,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
+      stopAutoScroll()
     }
   }, [])
   const recoveryValue = preferences.recovery ? String(preferences.recoveryMinutes) : 'off'
@@ -391,7 +431,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
 
   return <div className="modal-backdrop" role="presentation"><ModalShell storageKey="preferences" defaultWidth={720} defaultHeight={560} minWidth={620} minHeight={460} fitContent={false} className="settings-modal" role="dialog" aria-label={t('preferences.title')}>
     <DialogHeader eyebrow={t('preferences.eyebrow')} title={t('preferences.title')} closeLabel={t('common.close')} onClose={onClose} />
-    <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey), muted: Boolean(normalizedQuery && !preferenceSectionMatches.get(value)) }))} onChange={setSection} /></aside><PreferenceSearchContext.Provider value={preferenceSearch}><main className="component-scrollbar">
+    <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey), muted: Boolean(normalizedQuery && !preferenceSectionMatches.get(value)) }))} onChange={setSection} /></aside><PreferenceSearchContext.Provider value={preferenceSearch}><main className="component-scrollbar preference-settings-scroll">
       {!hasPreferenceMatches ? <p className="preference-search-empty">{t('preferences.searchNoResults')}</p> : <>
       {section === 'general' && <>
         <PreferenceGroup title={t('preferences.groups.interface')}>
@@ -420,7 +460,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           const collapsed = collapsedQuickCommandBars.has(bar.id)
           return <section className={`preference-quick-command-bar ${collapsed ? 'collapsed' : ''}`} key={bar.id}>
           <header className="preference-quick-command-bar-header"><TextInput className="preference-quick-command-bar-name" aria-label={t('preferences.quickCommandBarName')} value={bar.name} maxLength={32} onChange={(event) => updateQuickCommandBar(bar.id, { name: event.target.value })} /><ThemedSelect value={bar.edge} groups={[{ label: t('preferences.quickCommandBarEdge'), options: [{ value: 'top' as QuickCommandBarEdge, label: t('common.top') }, { value: 'right' as QuickCommandBarEdge, label: t('common.right') }, { value: 'bottom' as QuickCommandBarEdge, label: t('common.bottom') }, { value: 'left' as QuickCommandBarEdge, label: t('common.left') }, { value: 'none' as QuickCommandBarEdge, label: t('common.close') }] }]} label={t('preferences.quickCommandBarEdge')} onChange={(edge) => updateQuickCommandBar(bar.id, { edge })} /><button type="button" className="icon-button preference-quick-command-collapse" aria-label={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} title={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} onClick={() => toggleQuickCommandBarCollapsed(bar.id)}><PixelUtilityIcon kind={collapsed ? 'down' : 'up'} /></button></header>
-          {!collapsed && <div className="preference-quick-command-list">{bar.commands.map((item) => {
+          {!collapsed && <div className="preference-quick-command-list component-scrollbar" data-preference-quick-command-list={bar.id}>{bar.commands.map((item) => {
             const metadata = QUICK_COMMAND_METADATA[item.id]
             const enabledCount = bar.commands.filter((candidate) => candidate.enabled).length
             const label = t(metadata.label)

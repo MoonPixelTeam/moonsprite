@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const esESMessages = {
+  'layers.splitLayerStyles': 'Separar estilos de capa',
+  'layers.splitStyleShadow': 'Sombra paralela',
+  'layers.splitStyleInnerStroke': 'Trazo interior',
+  'layers.splitStyleOuterStroke': 'Trazo exterior',
   'locale.zh-CN': 'Chino simplificado',
   'locale.en-US': 'Inglés',
   'locale.ja-JP': 'Japonés',
@@ -1428,8 +1432,11 @@ export const esESMessages = {
   'timeline.playbackSpeed': 'Playback Speed',
   'timeline.playbackSpeedValue': 'Playback Speed {rate}x',
   'timeline.framePropertiesNumbered': 'Frame {number} Properties',
+  'timeline.multipleFrameProperties': 'Multiple Frame Properties',
   'timeline.celProperties': 'Cel Properties',
+  'timeline.zCoordinate': 'Z Coordinate',
   'timeline.celPropertiesNumbered': 'Frame {number} Cel Properties',
+  'timeline.multipleCelProperties': 'Multiple Cel Properties',
   'timeline.celMenu': 'Cel Actions',
   'timeline.copyFrame': 'Copia Frame',
   'timeline.pasteFrame': 'Pegar Frame',
@@ -1761,6 +1768,7 @@ export const esESMessages = {
   'layers.nextColor': 'Next Color',
   'layers.groupProperties': 'Capa Grupo Properties',
   'layers.layerProperties': 'Capa Properties',
+  'layers.layerPropertiesNamed': '{name} Capa Properties',
   'layers.multipleProperties': 'Multiple Capa Properties',
   'layers.name': 'Name',
   'layers.blendMode': 'Modo de fusión',
@@ -2179,6 +2187,7 @@ export const esESMessages = {
   'workspace.history.toggleAnimationFrameDisabled': 'Cambiar estado del fotograma',
   'workspace.history.animationLoop': 'Change Animation Loop',
   'workspace.history.animationCelOpacity': 'Change Cel Opacidad',
+  'workspace.history.animationCelProperties': 'Change Cel Properties',
   'workspace.history.animationCelLink': 'Link Animation Cels',
   'workspace.history.animationCelUnlink': 'Unlink Animation Cels',
   'workspace.history.pasteAnimationCel': 'Pegar Animation Cel',

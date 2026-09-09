@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const enUSMessages = {
+  'layers.splitLayerStyles': 'Split Layer Styles',
+  'layers.splitStyleShadow': 'Drop Shadow',
+  'layers.splitStyleInnerStroke': 'Inner Stroke',
+  'layers.splitStyleOuterStroke': 'Outer Stroke',
   'locale.zh-CN': '简体中文',
   'locale.en-US': 'English',
   'locale.ja-JP': '日本語',
@@ -1447,8 +1451,11 @@ export const enUSMessages = {
   'timeline.playbackSpeed': 'Playback Speed',
   'timeline.playbackSpeedValue': 'Playback Speed {rate}x',
   'timeline.framePropertiesNumbered': 'Frame {number} Properties',
+  'timeline.multipleFrameProperties': 'Multiple Frame Properties',
   'timeline.celProperties': 'Cel Properties',
+  'timeline.zCoordinate': 'Z Coordinate',
   'timeline.celPropertiesNumbered': 'Frame {number} Cel Properties',
+  'timeline.multipleCelProperties': 'Multiple Cel Properties',
   'timeline.celMenu': 'Cel Actions',
   'timeline.copyFrame': 'Copy Frame',
   'timeline.pasteFrame': 'Paste Frame',
@@ -1782,6 +1789,7 @@ export const enUSMessages = {
   'layers.nextColor': 'Next Color',
   'layers.groupProperties': 'Layer Group Properties',
   'layers.layerProperties': 'Layer Properties',
+  'layers.layerPropertiesNamed': '{name} Layer Properties',
   'layers.multipleProperties': 'Multiple Layer Properties',
   'layers.name': 'Name',
   'layers.blendMode': 'Blend Mode',
@@ -2200,6 +2208,7 @@ export const enUSMessages = {
   'workspace.history.toggleAnimationFrameDisabled': 'Toggle Frame Enabled State',
   'workspace.history.animationLoop': 'Change Animation Loop',
   'workspace.history.animationCelOpacity': 'Change Cel Opacity',
+  'workspace.history.animationCelProperties': 'Change Cel Properties',
   'workspace.history.animationCelLink': 'Link Animation Cels',
   'workspace.history.animationCelUnlink': 'Unlink Animation Cels',
   'workspace.history.pasteAnimationCel': 'Paste Animation Cel',

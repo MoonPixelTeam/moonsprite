@@ -67,7 +67,20 @@ type LayerPanelToggleTarget =
 type LayerAutoLinkToggleTarget = { control: 'auto-link'; ownerKind: 'layer'; id: string }
 type LayerDisplayRow = { kind: 'node'; node: LayerTreeNode } | { kind: 'mask'; ownerKind: 'layer' | 'group'; owner: RasterLayer | LayerGroup; depth: number }
 type DropTarget = { kind: 'layer'; id: string; insertAfter?: boolean; depth: number } | { kind: 'group'; id: string; depth: number } | { kind: 'above-group'; id: string; insertAfter?: boolean; depth: number } | { kind: 'edge'; edge: 'top' | 'bottom'; offset?: number }
-interface LayerContextMenu { kind: 'layer' | 'group'; id: string; x: number; y: number }
+interface LayerContextMenu {
+  kind: 'layer' | 'group'
+  id: string
+  x: number
+  y: number
+  /**
+   * The selection is captured when the menu opens.  A portalled menu receives
+   * its click after the originating row has had a chance to re-render, so
+   * resolving this lazily could degrade a multi-row edit into an edit of the
+   * last row that was right-clicked.
+   */
+  propertyTargets: LayerFormTarget[]
+  propertySelectionIncludesUnsupported: boolean
+}
 interface LayerCreateContextMenu { x: number; y: number }
 interface LayerStyleDialogState { source: LayerFormTarget; targets: LayerFormTarget[] }
 interface LayerStyleDragState { source: LayerFormTarget; target: LayerFormTarget | null; startX: number; startY: number; x: number; y: number; moved: boolean }
@@ -422,6 +435,12 @@ const selectedRowsForProperties = (session: DocumentSession): LayerFormTarget[] 
     ...layerIds.map((id) => ({ id, kind: 'layer' as const }))
   ]
 }
+
+/** Mask rows are editable image surfaces, not layer/group property owners.
+ * A range selection can contain both kinds of rows, so callers must not
+ * silently apply layer properties to only the supported subset. */
+const hasUnsupportedPropertySelection = (session: DocumentSession): boolean =>
+  session.selectedAnimationMaskRowKeys.length > 0
 export function LayersPanel({ session, docked = false, sideDocked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession; sideDocked?: boolean } & DockDragProps) {
   const { locale, t } = useI18n()
   useTimelineThumbnailContentSync(session.document.id)
@@ -551,12 +570,15 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const [animationMenu, setAnimationMenu] = useState<AnimationContextMenu | null>(null)
   const animationMenuRef = useRef<HTMLDivElement>(null)
   const [animationMenuPosition, setAnimationMenuPosition] = useState({ left: 8, top: 8 })
-  const [frameProperties, setFrameProperties] = useState<{ frameId: string; duration: number } | null>(null)
+  const [frameProperties, setFrameProperties] = useState<{ frameId: string; targetFrameIds: string[]; duration: number } | null>(null)
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
-  const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; opacity: number } | null>(null)
+  const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; targetKeys: string[]; opacity: number; zIndex: number } | null>(null)
   const [layerSettingsOpen, setLayerSettingsOpen] = useState(false)
+  const [layerQuickActionsExpanded, setLayerQuickActionsExpanded] = useState(false)
   const [draggedLayerQuickAction, setDraggedLayerQuickAction] = useState<LayerQuickActionId | null>(null)
   const layerQuickActionPointerDragRef = useRef<LayerQuickActionPointerDrag | null>(null)
+  const layerQuickActionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0)
+  const layerQuickActionAutoScrollFrameRef = useRef<number | null>(null)
   const [layerSettings, setLayerSettings] = useState<LayerSettingsState>(() => {
     const preferences = loadEditorPreferences()
     return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() }
@@ -824,6 +846,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const preferences = loadEditorPreferences()
     setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() })
     setLayerSettingsSlider(null)
+    setLayerQuickActionsExpanded(false)
     setLayerSettingsOpen(true)
   }
   const applyLayerSettings = (next: LayerSettingsState): void => {
@@ -943,20 +966,31 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openFrameProperties = (): void => useFrameMenuTarget(() => {
     const frame = ensureAnimationDocument(session.document).frames.find((candidate) => candidate.id === ensureAnimationDocument(session.document).activeFrameId)
-    if (frame) setFrameProperties({ frameId: frame.id, duration: frame.duration })
+    if (frame) {
+      const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+      setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
+    }
   })
   const openFramePropertiesFor = (frameId: string): void => {
     const frame = ensureAnimationDocument(session.document).frames.find((candidate) => candidate.id === frameId)
     if (!frame) return
     if (ensureAnimationDocument(session.document).activeFrameId !== frameId) store.setActiveAnimationFrame(frameId)
-    setFrameProperties({ frameId: frame.id, duration: frame.duration })
+    const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+    setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
     setAnimationMenu(null)
   }
   const saveFrameProperties = (): void => {
     if (!frameProperties) return
-    if (ensureAnimationDocument(session.document).activeFrameId !== frameProperties.frameId) store.setActiveAnimationFrame(frameProperties.frameId)
-    store.setActiveAnimationFrameDuration(frameProperties.duration)
     setFrameProperties(null)
+  }
+  const previewFrameProperties = (duration: number): void => {
+    if (!frameProperties) return
+    const next = { ...frameProperties, duration }
+    setFrameProperties(next)
+    // Frame properties apply as the value changes, matching layer-property
+    // feedback. The subsequent Save only closes this already-applied dialog.
+    if (ensureAnimationDocument(session.document).activeFrameId !== next.frameId) store.setActiveAnimationFrame(next.frameId)
+    store.setActiveAnimationFrameDuration(next.duration)
   }
   const nextLoopSectionName = (): string => {
     const names = new Set((ensureAnimationDocument(session.document).loopSections ?? []).map((section) => section.name))
@@ -1022,15 +1056,21 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openCelProperties = (layerId: string, frameId: string): void => {
     const cel = celLookup.at(layerId, frameId)
-    if (!currentCelHasContent(layerId, frameId)) return
-    store.selectAnimationCell(animationCelKey(layerId, frameId))
-    setCelProperties({ layerId, frameId, opacity: Math.round((cel?.opacity ?? 1) * 100) })
+    if (!cel) return
+    const source = celLookup.resolve(cel) ?? cel
+    const key = animationCelKey(layerId, frameId)
+    const targetKeys = session.selectedAnimationCellKeys.includes(key) ? [...session.selectedAnimationCellKeys] : [key]
+    if (!session.selectedAnimationCellKeys.includes(key)) store.selectAnimationCell(key)
+    setCelProperties({ layerId, frameId, targetKeys, opacity: Math.round((source.opacity ?? 1) * 100), zIndex: source.zIndex ?? 0 })
     setAnimationMenu(null)
   }
   const saveCelProperties = (): void => {
     if (!celProperties) return
-    store.setAnimationCelOpacity(celProperties.layerId, celProperties.frameId, celProperties.opacity / 100)
     setCelProperties(null)
+  }
+  const previewCelProperties = (next: NonNullable<typeof celProperties>): void => {
+    setCelProperties(next)
+    store.setAnimationCelProperties(next.layerId, next.frameId, { opacity: next.opacity / 100, zIndex: next.zIndex }, next.targetKeys)
   }
   const openCelMenu = (event: React.MouseEvent<HTMLElement>, layerId: string, frameId: string, kind: 'cel' | 'mask' = 'cel'): void => {
     const key = animationCelKey(layerId, frameId)
@@ -1824,7 +1864,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       if (!target) return
       const insideList = Boolean(list?.contains(target))
       if (insideList && target.closest('.layer-animation-toolbar, .layer-animation-edit, .panel-actions, .layer-style-indicator, .layer-status-icon-tooltip, .layer-visibility, .layer-lock-toggle, .group-folder, .layer-tilemap-indicator, .layer-instance-properties')) return
-      if (target?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .animation-context-menu, .frame-properties-modal, .cel-properties-modal')) return
+      // Property forms are portalled outside the timeline.  They edit the
+      // existing explicit selection, so interacting with any form control
+      // must not be treated as a click on empty canvas/UI and clear it.
+      if (target?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal')) return
       if (insideList && target.closest('[data-layer-id], [data-group-id], [data-layer-mask-row-owner]')) return
       const canvasTarget = target?.closest('.stage-canvas, .stage-surface')
       // Canvas interactions (drawing, panning, zooming, and selection edits)
@@ -2514,11 +2557,15 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const editLayer = (layer: RasterLayer): void => beginProperties({ id: layer.id, kind: 'layer', targets: [{ id: layer.id, kind: 'layer' }], batchChanges: [], name: layer.name, opacity: Math.round(layer.opacity * 100), blendMode: layer.blendMode, cumulativeBlend: false, locked: layer.locked, displayColor: layer.displayColor ? { ...layer.displayColor } : null, description: layer.description ?? '' })
   const editGroup = (group: LayerGroup): void => beginProperties({ id: group.id, kind: 'group', targets: [{ id: group.id, kind: 'group' }], batchChanges: [], name: group.name, opacity: Math.round(group.opacity * 100), blendMode: group.blendMode, cumulativeBlend: group.cumulativeBlend === true, locked: group.locked, displayColor: group.displayColor ? { ...group.displayColor } : null, description: group.description ?? '' })
-  const editSelectedRows = (): void => {
-    const targets = selectedRowsForProperties(session)
+  const editSelectedRows = (frozenTargets?: readonly LayerFormTarget[]): void => {
+    // Menus are portalled. Read the live session rather than the render-time
+    // prop so a Shift/Ctrl row selection made immediately before right-click
+    // cannot be observed as its previous single-row state.
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const targets = frozenTargets ? [...frozenTargets] : selectedRowsForProperties(current)
     if (targets.length <= 1) return
     const first = targets[0]
-    const source = first.kind === 'group' ? session.document.groups.find((group) => group.id === first.id) : session.document.layers.find((layer) => layer.id === first.id)
+    const source = first.kind === 'group' ? current.document.groups.find((group) => group.id === first.id) : current.document.layers.find((layer) => layer.id === first.id)
     if (!source) return
     beginProperties({ id: first.id, kind: first.kind, targets, batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' })
   }
@@ -2995,8 +3042,19 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     // sole context selection, and mask editing keeps its existing escape path.
     if (kind === 'layer' && (wasEditingLayerMask || !session.selectedLayerIds.includes(id))) store.selectLayer(id)
     if (kind === 'group' && (wasEditingLayerMask || !session.selectedGroupIds.includes(id))) store.selectGroup(id)
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const source = { kind, id } as LayerFormTarget
+    const selectedTargets = selectedRowsForProperties(current)
+    const sourceIsSelected = selectedTargets.some((target) => target.kind === source.kind && target.id === source.id)
     setLayerCreateMenu(null)
-    setContextMenu({ kind, id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 540)) })
+    setContextMenu({
+      kind,
+      id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 540)),
+      propertyTargets: sourceIsSelected ? selectedTargets : [source],
+      propertySelectionIncludesUnsupported: sourceIsSelected && hasUnsupportedPropertySelection(current)
+    })
   }
   const openLayerCreateContextMenu = (event: React.MouseEvent): void => {
     event.preventDefault()
@@ -3040,19 +3098,29 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     store.deleteSelectedLayers()
     closeContextMenu()
   }
+  const contextMenuPropertySelection = (): { source: LayerFormTarget | null; targets: LayerFormTarget[]; usesSelection: boolean } => {
+    if (!contextMenu) return { source: null, targets: [], usesSelection: false }
+    const source = { kind: contextMenu.kind, id: contextMenu.id } as LayerFormTarget
+    return {
+      source,
+      targets: contextMenu.propertyTargets,
+      usesSelection: contextMenu.propertyTargets.some((target) => target.kind === source.kind && target.id === source.id)
+    }
+  }
   const openProperties = (): void => {
-    if (!contextMenu) return
-    const selectedRows = selectedRowsForProperties(session)
-    if (selectedRows.length > 1) {
-      editSelectedRows()
+    const selection = contextMenuPropertySelection()
+    if (!selection.source || contextMenu?.propertySelectionIncludesUnsupported) return
+    if (selection.targets.length > 1) {
+      editSelectedRows(selection.targets)
       closeContextMenu()
       return
     }
-    if (contextMenu.kind === 'group') {
-      const group = session.document.groups.find((item) => item.id === contextMenu.id)
+    const source = selection.source
+    if (source.kind === 'group') {
+      const group = session.document.groups.find((item) => item.id === source.id)
       if (group) editGroup(group)
     } else {
-      const layer = session.document.layers.find((item) => item.id === contextMenu.id)
+      const layer = session.document.layers.find((item) => item.id === source.id)
       if (layer) editLayer(layer)
     }
     closeContextMenu()
@@ -3106,6 +3174,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return hasConfiguredLayerStyles(owner?.layerStyles)
   })
   const contextMenuLayerHasStyles = Boolean(contextMenuLayer && hasConfiguredLayerStyles(contextMenuLayer.layerStyles))
+  const contextMenuPropertyTargets = contextMenuPropertySelection()
+  const contextMenuPropertiesDisabled = !contextMenuPropertyTargets.source
+    || Boolean(contextMenu?.propertySelectionIncludesUnsupported)
   const toggleContextLayerStyles = (): void => {
     store.setLayerStylesEnabled(contextMenuStyleTargets, !contextMenuOwnerStylesEnabled)
     closeContextMenu()
@@ -3296,6 +3367,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       case 'convertLayerToTilemap': if (activeLayer && !activeLayer.kind && !activeLayer.background && !hasConfiguredLayerStyles(activeLayer.layerStyles)) setTilemapLayerDialog({ mode: 'convert', layerId: activeLayer.id }); break
       case 'convertLayerToRaster': if (activeLayer && (activeLayer.background || activeLayer.kind || hasConfiguredLayerStyles(activeLayer.layerStyles))) store.rasterizeLayer(activeLayer.id); break
       case 'openLayerProperties': {
+        if (hasUnsupportedPropertySelection(active)) break
         if (targets.length > 1) editSelectedRows()
         else if (primaryTarget?.kind === 'group') {
           const group = active.document.groups.find((candidate) => candidate.id === primaryTarget.id)
@@ -3396,9 +3468,40 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setDraggedLayerQuickAction(id)
   }
   useEffect(() => {
+    const stopAutoScroll = (): void => {
+      layerQuickActionAutoScrollDirectionRef.current = 0
+      if (layerQuickActionAutoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(layerQuickActionAutoScrollFrameRef.current)
+        layerQuickActionAutoScrollFrameRef.current = null
+      }
+    }
+    const updateAutoScroll = (event: PointerEvent): void => {
+      const container = document.querySelector<HTMLElement>('.layer-quick-actions-scroll')
+      if (!container) return stopAutoScroll()
+      const bounds = container.getBoundingClientRect()
+      const edgeSize = Math.min(32, Math.max(16, bounds.height / 4))
+      const withinHorizontalBounds = event.clientX >= bounds.left && event.clientX <= bounds.right
+      const direction: -1 | 0 | 1 = withinHorizontalBounds && event.clientY <= bounds.top + edgeSize
+        ? -1
+        : withinHorizontalBounds && event.clientY >= bounds.bottom - edgeSize ? 1 : 0
+      layerQuickActionAutoScrollDirectionRef.current = direction
+      if (direction === 0 || layerQuickActionAutoScrollFrameRef.current !== null) return
+      const scroll = (): void => {
+        const scrollingContainer = document.querySelector<HTMLElement>('.layer-quick-actions-scroll')
+        const scrollingDirection = layerQuickActionAutoScrollDirectionRef.current
+        if (!scrollingContainer || scrollingDirection === 0) {
+          layerQuickActionAutoScrollFrameRef.current = null
+          return
+        }
+        scrollingContainer.scrollTop += scrollingDirection * 12
+        layerQuickActionAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+      }
+      layerQuickActionAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+    }
     const move = (event: PointerEvent): void => {
       const drag = layerQuickActionPointerDragRef.current
       if (!drag || drag.pointerId !== event.pointerId) return
+      updateAutoScroll(event)
       const row = (typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(event.clientX, event.clientY) : [])
         .map((element) => element.closest<HTMLElement>('[data-layer-quick-action-id]'))
         .find((element): element is HTMLElement => Boolean(element))
@@ -3414,6 +3517,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       if (!drag || drag.pointerId !== event.pointerId) return
       if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId)
       layerQuickActionPointerDragRef.current = null
+      stopAutoScroll()
       setDraggedLayerQuickAction(null)
     }
     window.addEventListener('pointermove', move)
@@ -3423,6 +3527,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
+      stopAutoScroll()
     }
   }, [layerSettings])
   const runLayerQuickAction = (id: LayerQuickActionId): void => shortcutCommandHandlerRef.current(id)
@@ -3771,12 +3876,13 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       {contextMenu.kind === 'group' && contextMenuGroupMask && <LayerContextMenuItem icon="link" label={t(contextMenuGroupMask.moveWithOwner === false ? 'layers.enableLayerMaskMoveBinding' : 'layers.disableLayerMaskMoveBinding')} onClick={() => { store.setGroupMaskMoveWithOwner(contextMenu.id, timeline.activeFrameId, contextMenuGroupMask.moveWithOwner === false); closeContextMenu() }} />}
       <span className="context-menu-divider" role="separator" />
       <LayerContextMenuItem icon="layerStyle" label={t('layers.layerStyle')} shortcut={shortcutHint('openLayerStyles')} onClick={openLayerStyles} />
+      {contextMenu.kind === 'layer' && <LayerContextMenuItem icon="layerStyle" label={t('layers.splitLayerStyles')} disabled={!contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true} onClick={() => { store.splitLayerStyles(contextMenu.id); closeContextMenu() }} />}
       {contextMenuOwnerHasStyles && <LayerContextMenuItem icon={contextMenuOwnerStylesEnabled ? 'eyeOff' : 'eye'} label={t(contextMenuOwnerStylesEnabled ? 'layers.disableLayerStyles' : 'layers.enableLayerStyles')} shortcut={shortcutHint('toggleLayerStyles')} onClick={toggleContextLayerStyles} />}
       <LayerContextMenuItem icon="copy" label={t('layers.copyLayerStyle')} shortcut={shortcutHint('copyLayerStyles')} disabled={!contextMenuOwnerHasStyles} onClick={copyContextLayerStyles} />
       <LayerContextMenuItem icon="paste" label={t('layers.pasteLayerStyle')} shortcut={shortcutHint('pasteLayerStyles')} disabled={!layerStyleClipboard} onClick={pasteContextLayerStyles} />
       <LayerContextMenuItem icon="clearRecords" label={t('layers.clearLayerStyle')} shortcut={shortcutHint('clearLayerStyles')} disabled={!contextMenuSelectionHasStyles} onClick={clearContextLayerStyles} />
       <span className="context-menu-divider" role="separator" />
-      <LayerContextMenuItem icon="properties" label={t('layers.properties')} shortcut={shortcutHint('openLayerProperties')} onClick={openProperties} />
+      <LayerContextMenuItem icon="properties" label={t('layers.properties')} shortcut={shortcutHint('openLayerProperties')} disabled={contextMenuPropertiesDisabled} onClick={openProperties} />
       <LayerContextMenuItem icon="delete" label={t('common.delete')} shortcut={shortcutHint('deleteLayer')} onClick={deleteContextSelection} danger />
     </div>, document.body)}
     {backgroundLayerDialogOpen && createPortal(<BackgroundLayerDialog onClose={() => setBackgroundLayerDialogOpen(false)} onCreate={(pattern) => store.createBackgroundLayer(pattern)} />, document.body)}
@@ -3813,7 +3919,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <span className="context-menu-divider" />
         <Tooltip className="layer-menu-tooltip" content={animationMenuLayerMaskPasteBlocked ? emptyLayerMaskCelTooltip : undefined}><button className="context-menu-item" type="button" role="menuitem" disabled={!session.animationMaskClipboard.length || animationMenuLayerMaskPasteBlocked} onClick={() => { store.pasteAnimationMasks(animationMenu.layerId, animationMenu.frameId); setAnimationMenu(null) }}><PixelUtilityIcon kind="paste" /><span>{t('timeline.pasteMask')}</span>{shortcutHint('pasteAnimationMasks')}</button></Tooltip>
         <span className="context-menu-divider" />
-        <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCelHasContent} onClick={() => openCelProperties(animationMenu.layerId, animationMenu.frameId)}><PixelUtilityIcon kind="info" /><span>{t('timeline.celProperties')}</span>{shortcutHint('openAnimationCelProperties')}</button>
+        <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCel} onClick={() => openCelProperties(animationMenu.layerId, animationMenu.frameId)}><PixelUtilityIcon kind="info" /><span>{t('timeline.celProperties')}</span>{shortcutHint('openAnimationCelProperties')}</button>
         <span className="context-menu-divider" />
         <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCelHasContent} onClick={() => { store.copySelectedAnimationCels(); setAnimationMenu(null) }}><PixelUtilityIcon kind="copy" /><span>{t('timeline.copyCel')}</span>{shortcutHint('copy', 'copyAnimationCel')}</button>
         <button className="context-menu-item" type="button" role="menuitem" disabled={!session.animationCellClipboard.length} onClick={() => { store.pasteAnimationCels(); setAnimationMenu(null) }}><PixelUtilityIcon kind="paste" /><span>{t('timeline.pasteCel')}</span>{shortcutHint('pasteAnimationCels', 'paste')}</button>
@@ -3823,18 +3929,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       </>}
     </div>, document.body)}
     {loopSectionEditor && <AnimationLoopSectionDialog mode={loopSectionEditor.mode} frameCount={timeline.frames.length} initialValue={loopSectionEditor.value} onClose={() => setLoopSectionEditor(null)} onConfirm={saveLoopSection} />}
-    {frameProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setFrameProperties(null) }}>
+    {frameProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-frame-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveFrameProperties() }}>
-        <DialogHeader eyebrow="FRAME PROPERTIES" title={t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setFrameProperties(null)} />
-        <div className="modal-body"><FormField layout="inline" label={t('timeline.duration')}><NumberInput autoFocus onFocus={(event) => event.currentTarget.select()} aria-label={t('timeline.duration')} value={frameProperties.duration} min={1} max={60_000} step={10} suffix="ms" onValueChange={(duration) => setFrameProperties({ ...frameProperties, duration })} /></FormField></div>
-        <footer><button type="button" className="quiet-button" onClick={() => setFrameProperties(null)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
+        <DialogHeader eyebrow="FRAME PROPERTIES" title={frameProperties.targetFrameIds.length > 1 ? t('timeline.multipleFrameProperties') : t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setFrameProperties(null)} />
+        <div className="modal-body"><FormField layout="inline" label={t('timeline.duration')}><NumberInput autoFocus onFocus={(event) => event.currentTarget.select()} aria-label={t('timeline.duration')} value={frameProperties.duration} min={1} max={60_000} step={10} suffix="ms" onValueChange={previewFrameProperties} /></FormField></div>
+        <footer><button type="button" className="primary-button" onClick={() => setFrameProperties(null)}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
-    {celProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setCelProperties(null) }}>
+    {celProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-cel-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveCelProperties() }} onKeyDown={(event) => { if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing) return; event.preventDefault(); event.stopPropagation(); saveCelProperties() }}>
-        <DialogHeader eyebrow="CEL PROPERTIES" title={t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setCelProperties(null)} />
-        <div className="modal-body"><RangeField autoFocus className="layer-opacity-control" label={t('layers.opacity')} min={0} max={100} suffix="%" value={celProperties.opacity} onChange={(opacity) => setCelProperties({ ...celProperties, opacity })} /></div>
-        <footer><button type="button" className="quiet-button" onClick={() => setCelProperties(null)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
+        <DialogHeader eyebrow="CEL PROPERTIES" title={celProperties.targetKeys.length > 1 ? t('timeline.multipleCelProperties') : t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setCelProperties(null)} />
+        <div className="modal-body"><RangeField autoFocus className="layer-opacity-control" label={t('layers.opacity')} min={0} max={100} suffix="%" value={celProperties.opacity} onChange={(opacity) => previewCelProperties({ ...celProperties, opacity })} /><FormField layout="inline" label={t('timeline.zCoordinate')}><NumberInput aria-label={t('timeline.zCoordinate')} value={celProperties.zIndex} min={-999} max={999} step={1} onValueChange={(zIndex) => previewCelProperties({ ...celProperties, zIndex })} /></FormField></div>
+        <footer><button type="button" className="primary-button" onClick={() => setCelProperties(null)}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
     {layerSettingsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setLayerSettingsOpen(false) }}>
@@ -3854,9 +3960,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
             </div>
           </section>
           <section className="layer-settings-section layer-quick-actions-settings">
-            <div className="layer-settings-section-heading"><h3>{t('layers.quickActions')}</h3></div>
-            <p className="layer-quick-actions-description">{t('layers.quickActionsDescription')}</p>
-            <div className="preference-quick-command-list">
+            <div className="layer-settings-section-heading"><h3>{t('layers.quickActions')}</h3><button type="button" className="icon-button layer-quick-actions-collapse" aria-label={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={layerQuickActionsExpanded} title={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} onClick={() => setLayerQuickActionsExpanded((expanded) => !expanded)}><PixelUtilityIcon kind={layerQuickActionsExpanded ? 'up' : 'down'} /></button></div>
+            {layerQuickActionsExpanded && <><p className="layer-quick-actions-description">{t('layers.quickActionsDescription')}</p>
+            <div className="preference-quick-command-list layer-quick-actions-scroll component-scrollbar">
               {layerSettings.quickActions.map((action) => {
                 const metadata = layerQuickActionMetadata[action.id]
                 const label = t(metadata.label)
@@ -3868,7 +3974,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
                   <PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={action.enabled} disabled={!action.enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT} onChange={(event) => updateLayerQuickAction(action.id, event.currentTarget.checked)} />
                 </div>
               })}
-            </div>
+            </div></>}
           </section>
           <section className="layer-settings-section layer-settings-onion-section">
             <div className="layer-settings-section-heading"><h3>{t('layers.onionSkin')}</h3></div>
@@ -3894,17 +4000,17 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <footer><button type="button" className="quiet-button" onClick={resetLayerSettings}><PixelUtilityIcon kind="restore" />{t('common.reset')}</button><span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={() => setLayerSettingsOpen(false)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
       </ModalShell>
     </div>, document.body)}
-    {form && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) closeProperties() }}>
+    {form && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="layer-properties-v2" defaultWidth={380} defaultHeight={470} fitContentKey={`${form.kind}:${form.targets.length}:${form.targets.every((target) => target.kind === 'group')}`} minWidth={340} minHeight={340} maxWidth={520} maxHeight={700} className="layer-modal" onSubmit={(event) => { event.preventDefault(); closeProperties() }} onKeyDown={(event) => {
         if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing || (event.target as HTMLElement).tagName === 'TEXTAREA') return
         event.preventDefault()
         event.stopPropagation()
         closeProperties()
       }}>
-        <DialogHeader eyebrow={form.targets.length > 1 ? 'MULTIPLE PROPERTIES' : form.kind === 'group' ? 'GROUP PROPERTIES' : 'LAYER PROPERTIES'} title={t(form.targets.length > 1 ? 'layers.multipleProperties' : form.kind === 'group' ? 'layers.groupProperties' : 'layers.layerProperties')} closeLabel={t('common.close')} onClose={closeProperties} />
+        <DialogHeader eyebrow={form.targets.length > 1 ? 'MULTIPLE PROPERTIES' : form.kind === 'group' ? 'GROUP PROPERTIES' : 'LAYER PROPERTIES'} title={t(form.targets.length > 1 ? 'layers.multipleProperties' : form.kind === 'group' ? 'layers.groupProperties' : 'layers.layerPropertiesNamed', form.kind === 'layer' ? { name: form.name } : undefined)} closeLabel={t('common.close')} onClose={closeProperties} />
         <div className="modal-body layer-properties-body">
           <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.name')}><TextInput autoFocus onFocus={(event) => event.currentTarget.select()} value={form.name} onChange={(event) => previewProperties({ ...form, name: event.target.value }, 'name')} /></FormField>
-          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
+          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} preserveAnimationSelection onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
           <RangeField className="layer-opacity-control" disabled={singleFormTargetLocked} label={t('layers.opacity')} min={0} max={100} suffix="%" value={form.opacity} onChange={(opacity) => previewProperties({ ...form, opacity }, 'opacity')} />
           {form.targets.every((target) => target.kind === 'group') && <CheckboxField className="tool-checkbox layer-cumulative-blend" checked={form.cumulativeBlend} disabled={singleFormTargetLocked} label={<><strong>{t('layers.cumulativeBlend')}</strong><small>{t('layers.cumulativeBlendDescription')}</small></>} onChange={(cumulativeBlend) => previewProperties({ ...form, cumulativeBlend }, 'cumulativeBlend')} />}
           <FormField className="layer-display-color-field" label={t('layers.displayColor')}><div className="layer-display-color-options"><button type="button" className={`layer-color-preset no-color ${form.displayColor === null ? 'selected' : ''}`} aria-label={t('layers.noDisplayColor')} aria-pressed={form.displayColor === null} onClick={() => previewProperties({ ...form, displayColor: null }, 'displayColor')}><span /></button>{layerDisplayColorPresets.map((color) => <button key={`${color.r}-${color.g}-${color.b}`} type="button" className={`layer-color-preset ${sameColor(form.displayColor, color) ? 'selected' : ''}`} aria-label={t('layers.displayColorRgb', { r: color.r, g: color.g, b: color.b })} aria-pressed={sameColor(form.displayColor, color)} style={{ '--layer-preset-color': `rgb(${color.r} ${color.g} ${color.b})` } as React.CSSProperties} onClick={() => previewProperties({ ...form, displayColor: { ...color } }, 'displayColor')}><span /></button>)}<ColorValueControl color={form.displayColor ?? defaultLayerDisplayColor} density="compact" onChange={(displayColor) => previewProperties({ ...form, displayColor }, 'displayColor')} label={t('layers.colorControl')} roleLabel={t('layers.custom')} className="layer-custom-color-trigger" fillWithColor /></div></FormField>

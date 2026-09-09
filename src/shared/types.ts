@@ -608,6 +608,8 @@ export interface AnimationCel {
   layerId: string
   frameId: string
   linkedCelId?: string | null
+  /** Cel visual stacking offset; equal values retain layer order. */
+  zIndex?: number
   /** Cel 独立的不透明度，未设置时沿用图层不透明度。 */
   opacity?: number
   surface?: AnimationCelSurface
@@ -703,7 +705,7 @@ export interface DocumentSlice {
 }
 
 export interface SpriteDocument {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
   id: string
   name: string
   width: number

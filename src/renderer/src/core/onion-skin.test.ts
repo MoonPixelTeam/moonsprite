@@ -33,6 +33,23 @@ describe('onion skin helpers', () => {
     ])
   })
 
+  it('uses the requested frame z order instead of the active frame z order', () => {
+    const document = createDocument('frame z onion', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    const top = createLayer('top', 1, 1, 'rgba')
+    document.layers.push(top)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    addBlankAnimationFrame(document)
+    const bottomCel = animationCelAt(timeline, bottom.id, firstFrameId)!
+    const topCel = animationCelAt(timeline, top.id, firstFrameId)!
+    bottomCel.surface!.pixels.set([255, 0, 0, 255])
+    topCel.surface!.pixels.set([0, 0, 255, 255])
+    bottomCel.zIndex = 3
+
+    expect([...compositeAnimationFrame(document, firstFrameId)]).toEqual([255, 0, 0, 255])
+  })
+
   it('preserves relative luminance using only darker variants of the configured onion color', () => {
     const tint = { r: 80, g: 100, b: 220, a: 204 }
     const source = new Uint8ClampedArray([

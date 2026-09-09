@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const koKRMessages = {
+  'layers.splitLayerStyles': '레이어 스타일 분리',
+  'layers.splitStyleShadow': '그림자',
+  'layers.splitStyleInnerStroke': '안쪽 테두리',
+  'layers.splitStyleOuterStroke': '바깥쪽 테두리',
   'locale.zh-CN': '중국어(간체)',
   'locale.en-US': '영어',
   'locale.ja-JP': '일본어',
@@ -1428,8 +1432,11 @@ export const koKRMessages = {
   'timeline.playbackSpeed': '재생 데이터',
   'timeline.playbackSpeedValue': '재생 데이터 {rate}x ',
   'timeline.framePropertiesNumbered': '프레임 {number} 데이터 ',
+  'timeline.multipleFrameProperties': '여러 프레임 속성',
   'timeline.celProperties': '데이터 데이터',
+  'timeline.zCoordinate': 'Z 좌표',
   'timeline.celPropertiesNumbered': '프레임 {number} 데이터 데이터 ',
+  'timeline.multipleCelProperties': '여러 셀 속성',
   'timeline.celMenu': '데이터 데이터',
   'timeline.copyFrame': '복사본 프레임',
   'timeline.pasteFrame': '붙여넣기 프레임',
@@ -1761,6 +1768,7 @@ export const koKRMessages = {
   'layers.nextColor': '다음 색상',
   'layers.groupProperties': '레이어 그룹 데이터',
   'layers.layerProperties': '레이어 데이터',
+  'layers.layerPropertiesNamed': '{name} 레이어 속성',
   'layers.multipleProperties': '여러 레이어 데이터',
   'layers.name': '이름',
   'layers.blendMode': '혼합 모드',
@@ -2179,6 +2187,7 @@ export const koKRMessages = {
   'workspace.history.toggleAnimationFrameDisabled': '프레임 활성 상태 전환',
   'workspace.history.animationLoop': '변경 애니메이션 루프',
   'workspace.history.animationCelOpacity': '변경 데이터 불투명도',
+  'workspace.history.animationCelProperties': '셀 속성 변경',
   'workspace.history.animationCelLink': '데이터 애니메이션 데이터',
   'workspace.history.animationCelUnlink': '데이터 애니메이션 데이터',
   'workspace.history.pasteAnimationCel': '붙여넣기 애니메이션 데이터',

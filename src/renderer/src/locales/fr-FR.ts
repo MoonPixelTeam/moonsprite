@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const frFRMessages = {
+  'layers.splitLayerStyles': 'Séparer les styles de calque',
+  'layers.splitStyleShadow': 'Ombre portée',
+  'layers.splitStyleInnerStroke': 'Contour intérieur',
+  'layers.splitStyleOuterStroke': 'Contour extérieur',
   'locale.zh-CN': 'Chinois simplifié',
   'locale.en-US': 'Anglais',
   'locale.ja-JP': 'Japonais',
@@ -1428,8 +1432,11 @@ export const frFRMessages = {
   'timeline.playbackSpeed': 'Playback Speed',
   'timeline.playbackSpeedValue': 'Playback Speed {rate}x',
   'timeline.framePropertiesNumbered': 'Frame {number} Properties',
+  'timeline.multipleFrameProperties': 'Multiple Frame Properties',
   'timeline.celProperties': 'Cel Properties',
+  'timeline.zCoordinate': 'Z Coordinate',
   'timeline.celPropertiesNumbered': 'Frame {number} Cel Properties',
+  'timeline.multipleCelProperties': 'Multiple Cel Properties',
   'timeline.celMenu': 'Cel Actions',
   'timeline.copyFrame': 'Copie Frame',
   'timeline.pasteFrame': 'Coller Frame',
@@ -1761,6 +1768,7 @@ export const frFRMessages = {
   'layers.nextColor': 'Next Couleur',
   'layers.groupProperties': 'Calque Groupe Properties',
   'layers.layerProperties': 'Calque Properties',
+  'layers.layerPropertiesNamed': '{name} Calque Properties',
   'layers.multipleProperties': 'Multiple Calque Properties',
   'layers.name': 'Name',
   'layers.blendMode': 'Mode de fusion',
@@ -2179,6 +2187,7 @@ export const frFRMessages = {
   'workspace.history.toggleAnimationFrameDisabled': 'Activer ou désactiver l’image',
   'workspace.history.animationLoop': 'Change Animation Loop',
   'workspace.history.animationCelOpacity': 'Change Cel Opacité',
+  'workspace.history.animationCelProperties': 'Change Cel Properties',
   'workspace.history.animationCelLink': 'Link Animation Cels',
   'workspace.history.animationCelUnlink': 'Unlink Animation Cels',
   'workspace.history.pasteAnimationCel': 'Coller Animation Cel',

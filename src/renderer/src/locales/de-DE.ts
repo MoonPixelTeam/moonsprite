@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from '@/core/localization'
 
 export const deDEMessages = {
+  'layers.splitLayerStyles': 'Ebenenstile aufteilen',
+  'layers.splitStyleShadow': 'Schlagschatten',
+  'layers.splitStyleInnerStroke': 'Innere Kontur',
+  'layers.splitStyleOuterStroke': 'Äußere Kontur',
   "locale.zh-CN": "Chinesisch (vereinfacht)",
   "locale.en-US": "Englisch",
   "locale.ja-JP": "Japanisch",
@@ -1428,8 +1432,11 @@ export const deDEMessages = {
   "timeline.playbackSpeed": "Wiedergabe Geschwindigkeit",
   "timeline.playbackSpeedValue": "Wiedergabe Geschwindigkeit {rate}x",
   "timeline.framePropertiesNumbered": "Nicht angegeben {number}",
+  "timeline.multipleFrameProperties": "Multiple Frame Properties",
   "timeline.celProperties": "Nicht angegeben",
+  "timeline.zCoordinate": "Z-Koordinate",
   "timeline.celPropertiesNumbered": "Nicht angegeben {number}",
+  "timeline.multipleCelProperties": "Multiple Cel Properties",
   "timeline.celMenu": "Cel Aktionen",
   "timeline.copyFrame": "Kopieren Frame",
   "timeline.pasteFrame": "Einfügen Frame",
@@ -1761,6 +1768,7 @@ export const deDEMessages = {
   "layers.nextColor": "Nächste Farbe",
   "layers.groupProperties": "Ebene Gruppe Eigenschaften",
   "layers.layerProperties": "Ebene Eigenschaften",
+  "layers.layerPropertiesNamed": "{name} Ebene Eigenschaften",
   "layers.multipleProperties": "Multiple Ebene Eigenschaften",
   "layers.name": "Nicht angegeben",
   "layers.blendMode": "Blend Modus",
@@ -2179,6 +2187,7 @@ export const deDEMessages = {
   "workspace.history.toggleAnimationFrameDisabled": "Frame-Aktivierung umschalten",
   "workspace.history.animationLoop": "Ändern Animation Schleife",
   "workspace.history.animationCelOpacity": "Ändern Cel Deckkraft",
+  "workspace.history.animationCelProperties": "Cel-Eigenschaften ändern",
   "workspace.history.animationCelLink": "Nicht angegeben",
   "workspace.history.animationCelUnlink": "Nicht angegeben",
   "workspace.history.pasteAnimationCel": "Einfügen Animation Cel",
