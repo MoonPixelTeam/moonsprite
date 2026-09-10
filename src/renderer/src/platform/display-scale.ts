@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from './runtime-platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 export type DisplayScaleListener = (scaleFactor: number) => void
@@ -51,7 +52,7 @@ function detectDisplayScaleFactor(): Promise<number> {
 }
 
 export async function observeDisplayScaleFactor(listener: DisplayScaleListener): Promise<number> {
-  if (!isTauriRuntime()) return 1
+  if (isAndroidRuntime() || !isTauriRuntime()) return 1
   listeners.add(listener)
   const listenerReady = ensureScaleChangeListener()
   const scaleFactor = await detectDisplayScaleFactor()

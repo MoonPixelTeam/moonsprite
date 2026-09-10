@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from './runtime-platform'
 import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -108,6 +109,7 @@ function handleDisplayScaleChange(scaleFactor: number): void {
 }
 
 export async function applyUiScale(scale: UiScale): Promise<void> {
+  if (isAndroidRuntime()) { document.documentElement.style.zoom = String(scale); return }
   if (!isTauriRuntime()) return
   requestedScale = scale
   const displayScaleFactor = await observeDisplayScaleFactor(handleDisplayScaleChange)

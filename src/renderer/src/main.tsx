@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { AndroidTabletBar } from './components/app/AndroidTabletBar'
 import { I18nProvider } from './components/I18nProvider'
 import { PerformanceProfiler } from './components/PerformanceProfiler'
 import { loadEditorPreferences } from './core/file-preferences'
@@ -58,6 +59,7 @@ void installTauriApi()
       <I18nProvider>
         <PerformanceProfiler id="MoonSprite">
           <App />
+          <AndroidTabletBar />
         </PerformanceProfiler>
       </I18nProvider>
     )

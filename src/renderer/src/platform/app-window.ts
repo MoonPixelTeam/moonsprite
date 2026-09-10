@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from './runtime-platform'
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
 import { invoke } from '@tauri-apps/api/core'
 import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window'
@@ -5,7 +6,7 @@ import type { WorkspaceLayout } from '@shared/types'
 
 export type AppWindowLayout = NonNullable<WorkspaceLayout['mainWindow']>
 
-const currentDesktopWindow = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+const currentDesktopWindow = () => !isAndroidRuntime() && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
   ? getCurrentWindow()
   : null
 

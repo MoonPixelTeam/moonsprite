@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from '@/platform/runtime-platform'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, ExternalLink, GitFork } from 'lucide-react'
@@ -1230,6 +1231,25 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (isAndroidRuntime()) {
+      let pending = false
+      const save = (): void => {
+        if (pending) return
+        pending = true
+        void useWorkspace.getState().autosaveDirty().finally(() => { pending = false })
+      }
+      const hidden = (): void => { if (document.visibilityState === 'hidden') save() }
+      const timer = window.setInterval(save, 30_000)
+      document.addEventListener('visibilitychange', hidden)
+      window.addEventListener('pagehide', save)
+      window.addEventListener('moonsprite:background', save)
+      return () => {
+        window.clearInterval(timer)
+        document.removeEventListener('visibilitychange', hidden)
+        window.removeEventListener('pagehide', save)
+        window.removeEventListener('moonsprite:background', save)
+      }
+    }
     if (!runtimePreferences.recovery) return
     // Recovery encoding walks and compresses the full dirty document on the
     // renderer thread. Keep it interval-driven so switching windows never

@@ -1,0 +1,18 @@
+{
+  "identifier": "android",
+  "description": "Tablet test: user-selected documents only; internal IO uses Rust commands",
+  "platforms": [
+    "android"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-stat"
+  ]
+}

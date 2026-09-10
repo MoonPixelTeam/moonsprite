@@ -40,9 +40,16 @@
     "preview": "vite preview --config vite.config.ts",
     "website:dev": "pnpm --dir website dev",
     "website:build": "pnpm --dir website build",
-    "website:capture": "node website/scripts/capture-product.mjs"
+    "website:capture": "node website/scripts/capture-product.mjs",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:apk": "pnpm android:prepare && tauri android build --debug --apk --target aarch64",
+    "android:prepare": "node scripts/android-prepare.mjs",
+    "android:apk:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-apk-windows.ps1"
   },
   "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-fs": "^2.5.2",
     "ag-psd": "31.0.2",
     "gifuct-js": "2.1.2"
   },
@@ -63,9 +70,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "typescript": "7.0.2",
+    "upng-js": "2.1.0",
     "vite": "8.1.5",
     "vitest": "4.1.10",
-    "upng-js": "2.1.0",
     "zustand": "5.0.14"
   },
   "packageManager": "pnpm@11.9.0"

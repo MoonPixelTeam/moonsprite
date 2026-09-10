@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "android"))]
 use rfd::FileDialog;
 use serde::Serialize;
 use std::{
@@ -169,6 +170,7 @@ fn stored_font(path: &Path, imported: bool) -> Result<StoredFont, String> {
     })
 }
 
+#[cfg(not(target_os = "android"))]
 fn font_dialog() -> FileDialog {
     FileDialog::new().add_filter("Font files", FONT_EXTENSIONS)
 }
@@ -333,6 +335,7 @@ pub(crate) fn list_system_fonts() -> Result<Vec<StoredFont>, String> {
     windows_system_fonts()
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub(crate) fn import_font() -> Result<Option<StoredFont>, String> {
     let Some(source) = font_dialog().pick_file() else {
@@ -436,3 +439,7 @@ mod tests {
         let _ = fs::remove_dir_all(directory);
     }
 }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub(crate) fn import_font() -> Result<Option<StoredFont>, String> { Err("Font import is unavailable in the Android test build".into()) }

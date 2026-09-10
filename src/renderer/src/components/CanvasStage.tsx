@@ -48,6 +48,8 @@ import { preserveCanvasSelection, revealLayerInPanel } from '@/components/layer-
 import { layerIdsInVisualStackOrder } from '@/core/layer-panel-layout'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { eyedropperMagnifierContentPoint, eyedropperMagnifierPixelScale, eyedropperMagnifierViewTransform } from '@/core/eyedropper-magnifier'
+import { isAndroidRuntime } from '@/platform/runtime-platform'
+import { acceptsTabletCanvasPointer } from '@/core/tablet-input'
 import { isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
 import { airbrushParticleSize, airbrushSymmetryPoints, generateAirbrushParticles } from '@/core/airbrush'
 import { activeBrushInputsForTool } from '@/core/brushes'
@@ -9799,6 +9801,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     return false
   }
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (event.pointerType === 'touch' && handleTouchDown(event)) return
     if (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') return
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
@@ -9825,6 +9828,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     syncPenCursor(event)
   }
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (event.pointerType === 'touch') {
       if (tabletPreferences.api === 'disabled' || tabletPreferences.touchMode === 'disabled') { event.preventDefault(); return }
       if (touchPointersRef.current.has(event.pointerId)) touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
@@ -9849,6 +9853,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     syncPenCursor(event)
   }
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (handleTouchUp(event)) return
     if (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') return
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
@@ -9863,6 +9868,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
   }
   const pointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (event.pointerType === 'touch') {
       if (handleTouchUp(event, true)) return
       touchPointersRef.current.delete(event.pointerId)
@@ -9919,6 +9925,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     else draw()
   }
   const pointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const pressurePointer = isPressurePointerType(event.pointerType) || pressureAdapterRef.current.isPressureCapable(event.pointerId)
     const selectionCreationDrag = inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'lasso' || inputRef.current.drag?.kind === 'polygon-lasso'
@@ -9929,6 +9936,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (pressurePointer) hidePenCursor()
   }
   const pointerEnter = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const session = liveInputSession()
     const navigationShortcutActive = event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)

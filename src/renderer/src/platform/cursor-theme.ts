@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from './runtime-platform'
 import type { CursorScale } from '@/core/file-preferences'
 import { translateCurrent as tr } from '@/core/localization'
 import { invoke } from '@tauri-apps/api/core'
@@ -143,7 +144,7 @@ let nativeCursorVisibilityQueue = Promise.resolve()
 
 export function setNativeCursorVisible(visible: boolean): Promise<void> {
   requestedNativeCursorVisibility = visible
-  if (!isTauriRuntime()) return Promise.resolve()
+  if (isAndroidRuntime() || !isTauriRuntime()) return Promise.resolve()
   const requested = visible
   const operation = nativeCursorVisibilityQueue.catch(() => undefined).then(async () => {
     if (requestedNativeCursorVisibility !== requested || appliedNativeCursorVisibility === requested) return
