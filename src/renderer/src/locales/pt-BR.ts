@@ -1002,6 +1002,8 @@ export const ptBRMessages = {
   "toolOptions.amount": "Não especificado",
   "toolOptions.liquifyMode": "Modo Dissolver",
   "toolOptions.liquifyPush": "Empurrar",
+  "toolOptions.liquifySmoothing": "Suavização",
+  "toolOptions.liquifySmoothingHint": "Recomendado para áreas de cor uniforme; regiões detalhadas podem perder pixels existentes.",
   "toolOptions.liquifyInflate": "Inflar",
   "toolOptions.liquifyDeflate": "Desinflar",
   "toolOptions.liquifyTwistClockwise": "Girar no sentido horário",

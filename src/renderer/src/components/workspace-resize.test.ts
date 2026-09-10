@@ -11,8 +11,11 @@ it('displays only the latest resize sample each frame and flushes the final posi
   const apply = vi.fn()
   const frame = createResizeFrame(apply)
   beginWorkspaceResize()
+  expect(document.documentElement.classList.contains('workspace-resizing')).toBe(true)
   const commit = vi.fn(() => {
     expect(isWorkspaceResizing()).toBe(false)
+    // The final size must settle while CSS transitions are still disabled.
+    expect(document.documentElement.classList.contains('workspace-resizing')).toBe(true)
     expect(apply).toHaveBeenLastCalledWith({ clientX: 500, clientY: 600 })
   })
   const unsubscribe = onWorkspaceResizeEnd(commit)
@@ -26,6 +29,7 @@ it('displays only the latest resize sample each frame and flushes the final posi
   frame.flush()
   endWorkspaceResize()
   endWorkspaceResize()
+  expect(document.documentElement.classList.contains('workspace-resizing')).toBe(false)
   expect(commit).toHaveBeenCalledOnce()
   expect(callbacks.size).toBe(0)
   unsubscribe()

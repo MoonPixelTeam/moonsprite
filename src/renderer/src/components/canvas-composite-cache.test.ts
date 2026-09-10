@@ -537,6 +537,60 @@ describe('CanvasCompositeCache', () => {
     expect(Array.from(patch.data.slice(4, 8))).toEqual([0, 96, 255, 255])
   })
 
+  it('recomposes styled output when a layer moves after its pixels change', () => {
+    const document = createDocument('styled layer move preview', 8, 4, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    writeLayerColor(document, layer, 2 + document.width, { r: 0, g: 96, b: 255, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context)
+
+    const oldBounds = { x: 1, y: 0, width: 3, height: 3 }
+    layer.offsetX = 2
+    cache.invalidateLayerPlacementCaches()
+    const newBounds = { x: 3, y: 0, width: 3, height: 3 }
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    cache.invalidateDocumentRect(oldBounds, document, frameId)
+    cache.invalidateDocumentRect(newBounds, document, frameId)
+    draw(cache, document, context, { movingLayerIds: [layer.id] })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice((0 * document.width + 1) * 4, (0 * document.width + 1) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(surface.pixels.slice((1 * document.width + 4) * 4, (1 * document.width + 4) * 4 + 4))).toEqual([0, 96, 255, 255])
+  })
+
+  it('recomposes styled output after a liquify-like edit followed by a move', () => {
+    const document = createDocument('styled liquify then move', 8, 4, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    writeLayerColor(document, layer, 2 + document.width, { r: 255, g: 0, b: 0, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context, { revision: 1, contentRevision: 1 })
+
+    // Simulate the in-place pixel mutation performed by liquify and its
+    // region invalidation before the subsequent layer move.
+    layer.pixels[1 * document.width * 4 + 2 * 4] = 0
+    layer.pixels[1 * document.width * 4 + 2 * 4 + 1] = 96
+    layer.pixels[1 * document.width * 4 + 2 * 4 + 2] = 255
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    cache.invalidateDocumentRect({ x: 2, y: 1, width: 1, height: 1 }, document, frameId, [layer.id])
+    draw(cache, document, context, { revision: 2, contentRevision: 2, contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: { x: 2, y: 1, width: 1, height: 1 } } })
+
+    layer.offsetX = 2
+    cache.invalidateLayerPlacementCaches()
+    cache.invalidateDocumentRect({ x: 1, y: 0, width: 3, height: 3 }, document, frameId)
+    cache.invalidateDocumentRect({ x: 3, y: 0, width: 3, height: 3 }, document, frameId)
+    draw(cache, document, context, { revision: 2, contentRevision: 2, movingLayerIds: [layer.id] })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice((0 * document.width + 1) * 4, (0 * document.width + 1) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(surface.pixels.slice((1 * document.width + 4) * 4, (1 * document.width + 4) * 4 + 4))).toEqual([0, 96, 255, 255])
+  })
+
   it('forwards a live source region to a preview cache without rebuilding its surface', () => {
     const document = createDocument('live preview invalidation', 8, 8, 'rgba')
     const layer = document.layers[0]

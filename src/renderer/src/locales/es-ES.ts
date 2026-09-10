@@ -1002,6 +1002,8 @@ export const esESMessages = {
   'toolOptions.amount': 'Amount',
   'toolOptions.liquifyMode': 'Modo Licuar',
   'toolOptions.liquifyPush': 'Empujar',
+  'toolOptions.liquifySmoothing': 'Smoothing',
+  'toolOptions.liquifySmoothingHint': 'Recomendado para áreas de color uniforme; las zonas con mucho detalle pueden perder píxeles existentes.',
   'toolOptions.liquifyInflate': 'Inflar',
   'toolOptions.liquifyDeflate': 'Desinflar',
   'toolOptions.liquifyTwistClockwise': 'Girar a la derecha',

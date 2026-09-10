@@ -161,6 +161,8 @@ export interface WorkspaceToolCommands {
   setLiquifyMode(mode: LiquifyMode): void
   setLiquifyRadius(radius: number): void
   setLiquifyStrength(strength: number): void
+  setLiquifySmoothing(enabled: boolean): void
+  setLiquifySmoothingStrength(strength: number): void
   setSmoothStrength(strength: number): void
   setLiquifyGestureActive(active: boolean): void
   setLiquifyResetHistoryPosition(position: number | null, revision: number | null): void
@@ -309,7 +311,7 @@ export interface WorkspaceHistoryCommands {
   cancelLiquifyStroke(edit: PixelEdit, compound: boolean): void
   applySmoothBrushStroke(edit: PixelEdit, stroke: { visited: Set<number> }): boolean
   cancelSmoothBrushStroke(edit: PixelEdit): void
-  commitLiquifyStroke(edit: PixelEdit, label: string, compound: boolean, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
+  commitLiquifyStroke(edit: PixelEdit, label: string, compound: boolean, activity?: { stroke?: boolean; durationMs?: number }, push?: boolean): HistoryEntry | null
   commitPixelEdit(edit: PixelEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapEdit(edit: TilemapEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapTilesetEdit(edit: TilemapTilesetEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null

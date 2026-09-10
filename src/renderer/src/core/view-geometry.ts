@@ -81,6 +81,22 @@ export function viewCanvasOrigin(viewportWidth: number, viewportHeight: number, 
   }
 }
 
+export interface ViewportPlacement { left: number; top: number; width: number; height: number }
+
+/** Change only the viewport's clipping area, keeping document pixels fixed in
+ * the window. All placement values use logical canvas units, including left
+ * and top. Reuse the pan transform so rotated/mirrored views keep the same map.
+ */
+export function preserveViewOnViewportChange<T extends ViewGeometryState>(
+  view: T, previous: ViewportPlacement, next: ViewportPlacement, position: RotationIndicatorPosition
+): T {
+  const dx = previous.left - next.left + (previous.width - next.width) / 2
+  const dy = previous.top - next.top + (previous.height - next.height) / 2
+  if (dx === 0 && dy === 0) return view
+  const delta = viewPanDeltaFromScreen(dx, dy, view.rotation, position, view.mirrored, view.mirroredVertical)
+  return { ...view, panX: view.panX + delta.x, panY: view.panY + delta.y }
+}
+
 export function rotateViewportPoint(point: ViewportPoint, pivot: ViewportPoint, degrees: number): ViewportPoint {
   const radians = degrees * Math.PI / 180
   const dx = point.x - pivot.x

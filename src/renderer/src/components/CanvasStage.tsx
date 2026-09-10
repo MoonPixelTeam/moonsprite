@@ -29,7 +29,7 @@ import { LIQUIFY_RESET_COMMAND_EVENT, type LiquifyResetCommandDetail } from '@/c
 import { activeLayerMask, activePaintLayer, isToolAvailableForSession, selectedTransformLayersAreEditable, selectedTransformLayersForSession } from '@/store/workspace-session'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
 import { DEFAULT_GRID_COLOR, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, loadEditorPreferences, parseIsoViewPreferences, type BrushPreviewMode, type CheckerboardPreferences, type CursorScale, type EyedropperMagnifierStyle, type GridColorPreferences, type IsoViewPreferences, type OnionSkinPreferences, type RotationIndicatorPosition, type SelectionPreviewColorMode, type SymmetryAxisPreferences, type TabletPreferences, type WheelZoomMode, type ZoomToolDragMode } from '@/core/file-preferences'
-import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotateViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint, type ViewGeometryState } from '@/core/view-geometry'
+import { preserveViewOnViewportChange, type ViewportPlacement, clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotateViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint, type ViewGeometryState } from '@/core/view-geometry'
 import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, deviceAlignedDocumentPointAtViewport, deviceAlignedPixelRect, repeatedDeviceAlignedCanvasRect, type CanvasDeviceScale, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale, canvasClientDeltaForInterfaceScale, canvasViewportPointForInterfaceScale, canvasViewportPointToCss, canvasViewportSizeForInterfaceScale } from '@/core/canvas-interface-scale'
 import { balancedStairLinePoints, constrainLineEndpoint } from '@/core/pixel-line'
@@ -54,7 +54,7 @@ import { drawSelectionOutline, drawSelectionSizeLabel, selectionScreenBox, selec
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
-import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
+import { canvasBackingCapacity, canvasDisplayDeviceScale, clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { onionSkinFrameRefs } from '@/core/onion-skin'
 import { resolveTheme } from '@/core/theme'
 import { pixelSamplingMode } from '@/core/pixel-display'
@@ -2119,7 +2119,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
-    const deviceScale = syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
+    const deviceScale = syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height, isWorkspaceResizing())
     const displayContext = overlay.getContext('2d')
     if (!displayContext) return
     displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
@@ -2137,8 +2137,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     let context: RasterContext2D = displayContext
     if (rotated) {
       let scene = selectionRotationSceneRef.current
-      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * deviceScale.x))
-      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * deviceScale.y))
+      const sceneBackingWidth = canvasBackingCapacity(Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), scene?.width ?? 0, isWorkspaceResizing())
+      const sceneBackingHeight = canvasBackingCapacity(Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), scene?.height ?? 0, isWorkspaceResizing())
       if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
         scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
         selectionRotationSceneRef.current = scene
@@ -2332,9 +2332,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
+    const previousBackingWidth = canvas.width, previousBackingHeight = canvas.height
     const backingStarted = isWorkspaceResizing() ? performance.now() : 0
-    const deviceScale = syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
-    if (backingStarted) recordWorkspaceResizeStage('backing', performance.now() - backingStarted)
+    const deviceScale = syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height, isWorkspaceResizing())
+    if (backingStarted) {
+      recordWorkspaceResizeStage('backing', performance.now() - backingStarted)
+      if (canvas.width !== previousBackingWidth || canvas.height !== previousBackingHeight) recordWorkspaceResizeStage('allocation', performance.now() - backingStarted)
+    }
     const displayContext = canvas.getContext('2d')
     if (!displayContext) return
     displayContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
@@ -2364,8 +2368,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     let context: RasterContext2D = displayContext
     if (rotated) {
       let scene = rotationSceneRef.current
-      const sceneBackingWidth = Math.max(1, Math.ceil(sceneWidth * deviceScale.x))
-      const sceneBackingHeight = Math.max(1, Math.ceil(sceneHeight * deviceScale.y))
+      const sceneBackingWidth = canvasBackingCapacity(Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), scene?.width ?? 0, isWorkspaceResizing())
+      const sceneBackingHeight = canvasBackingCapacity(Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), scene?.height ?? 0, isWorkspaceResizing())
       if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
         scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
         rotationSceneRef.current = scene
@@ -4741,7 +4745,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const rect = stageSize()
     const displaySize = stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
-    const deviceScale = syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height)
+    const deviceScale = syncCanvasDisplaySize(overlay, rect.width, rect.height, dpr, displaySize.width, displaySize.height, isWorkspaceResizing())
     const context = overlay.getContext('2d')
     if (!context) return
     context.setTransform(deviceScale.x, 0, 0, deviceScale.y, 0, 0)
@@ -5373,6 +5377,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }, [selectionOverlayAnimated, session.document.id])
 
   useEffect(() => {
+    let placement: ViewportPlacement | null = null
+    let layoutViewPending = false
     const syncViewport = (): void => {
       const state = useWorkspace.getState()
       const current = state.sessions.find(item => item.document.id === session.document.id)
@@ -5385,23 +5391,42 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (current.view.panX !== view.panX || current.view.panY !== view.panY) {
         state.setViewForDocument(session.document.id, { panX: view.panX, panY: view.panY })
       }
+      if (layoutViewPending) {
+        pendingViewRef.current = null
+        layoutViewPending = false
+      }
     }
-    const updateSize = (width: number, height: number): void => {
-      cacheStageDisplaySize(width, height)
-      liveViewRef.current = constrainCanvasView(liveViewRef.current, stageSizeRef.current)
+    const updateSize = (bounds: DOMRectReadOnly): void => {
+      if (bounds.width <= 0 || bounds.height <= 0) return
+      const size = cacheStageDisplaySize(bounds.width, bounds.height)
+      const next: ViewportPlacement = {
+        left: canvasClientDeltaForInterfaceScale(bounds.left, interfaceScale),
+        top: canvasClientDeltaForInterfaceScale(bounds.top, interfaceScale),
+        width: size.width, height: size.height
+      }
+      if (placement) {
+        liveViewRef.current = preserveViewOnViewportChange(liveViewRef.current, placement, next, rotationIndicatorPosition)
+        // Survive unrelated React updates during a dock gesture (e.g. playback).
+        // The shared view hook consumes this pending view until it is published.
+        if (isWorkspaceResizing()) {
+          pendingViewRef.current = { ...liveViewRef.current }
+          layoutViewPending = true
+        }
+      }
+      placement = next
       // Local geometry remains live. Publish once when the layout gesture ends
       // instead of notifying all document/store subscribers on every resize.
       if (!isWorkspaceResizing()) syncViewport()
     }
     const stopListening = onWorkspaceResizeEnd(() => {
       const bounds = stageRef.current?.getBoundingClientRect()
-      if (bounds) updateSize(bounds.width, bounds.height)
+      if (bounds) updateSize(bounds)
       scheduleDraw()
     })
     const observer = new ResizeObserver((entries) => {
       const observerStarted = isWorkspaceResizing() ? performance.now() : 0
       const entry = entries[0]
-      if (entry) updateSize(entry.contentRect.width, entry.contentRect.height)
+      if (entry && stageRef.current) updateSize(stageRef.current.getBoundingClientRect())
       // ResizeObserver runs before paint. Redraw now so the browser never
       // stretches the previous canvas bitmap to the new dock layout for a frame.
       if (drawRequestRef.current !== null) window.cancelAnimationFrame(drawRequestRef.current)
@@ -5411,7 +5436,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     })
     if (stageRef.current) {
       const bounds = stageRef.current.getBoundingClientRect()
-      updateSize(bounds.width, bounds.height)
+      updateSize(bounds)
       observer.observe(stageRef.current)
     }
     return () => {
@@ -5424,7 +5449,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       selectionPreviewFrameRef.current = null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interfaceScale, session.document.id])
+  }, [interfaceScale, session.document.id, rotationIndicatorPosition])
 
   const unrotatedStagePoint = (clientX: number, clientY: number): Point => {
     const size = stageSize()
@@ -5442,10 +5467,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       : documentPointFromViewportPoint(viewportPoint, size.width, size.height, session.document.width, session.document.height, liveViewRef.current, rotationIndicatorPosition)
     if (!continuous && pixelSamplingMode(liveViewRef.current.zoom) === 'hard') {
       const origin = viewCanvasOrigin(size.width, size.height, session.document.width, session.document.height, liveViewRef.current)
-      const deviceScale = {
-        x: canvasRef.current.width > 0 ? canvasRef.current.width / size.width : canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale),
-        y: canvasRef.current.height > 0 ? canvasRef.current.height / size.height : canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
-      }
+      const deviceScale = canvasDisplayDeviceScale(canvasRef.current, canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale))
       // Use the displayed point directly after undoing rotation/mirroring.
       // Converting through document coordinates and multiplying by zoom again
       // can cross an exact device-pixel tie at high zoom due to floating-point
@@ -8750,14 +8772,20 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         }
       }
       if (!state.previewLayerMove(session.document.id, drag, distanceX, distanceY)) return
+      // Layer offsets are previewed by mutating the document in place, so the
+      // content revision does not change. Drop only placement plans before
+      // recompositing the old/new regions; styled proxies otherwise retain
+      // the drag-start offset and leave a stale footprint behind.
+      compositeCacheRef.current.invalidateLayerPlacementCaches()
+      const moveInvalidationLayerIds = drag.duplicatedLayerId ? [drag.duplicatedLayerId] : drag.layerIds
       invalidateOnionSkinDragFrames(drag)
       if (drag.layerContentBounds) {
         let dirtyPixels = 0
         for (const bounds of Object.values(drag.layerContentBounds)) {
           if (!bounds) continue
           dirtyPixels += bounds.width * bounds.height * 2
-          invalidateCompositeRect(translatedSelectionRect(bounds, previousDistance))
-          invalidateCompositeRect(translatedSelectionRect(bounds, distance))
+          invalidateCompositeRect(translatedSelectionRect(bounds, previousDistance), moveInvalidationLayerIds)
+          invalidateCompositeRect(translatedSelectionRect(bounds, distance), moveInvalidationLayerIds)
         }
         window.__moonSpriteCanvasProbe?.recordOperationStage?.('move-layer.cache-invalidation', 0, { dirtyPixels })
       } else {
@@ -9968,7 +9996,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.edit,
         t('canvas.history.liquify'),
         Boolean(drag.liquifyCompound),
-        { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) }
+        { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) },
+        drag.liquifyMode === 'push'
       )
     }
     if (drag.kind === 'move-layer') state.commitLayerMove(session.document.id, drag)

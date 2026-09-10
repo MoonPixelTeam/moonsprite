@@ -1002,6 +1002,8 @@ export const ruRUMessages = {
   "toolOptions.amount": "Не указано",
   "toolOptions.liquifyMode": "Режим пластики",
   "toolOptions.liquifyPush": "Сдвиг",
+  "toolOptions.liquifySmoothing": "Сглаживание",
+  "toolOptions.liquifySmoothingHint": "Рекомендуется для однотонных областей; на участках с большим количеством деталей могут повредиться существующие пиксели.",
   "toolOptions.liquifyInflate": "Раздуть",
   "toolOptions.liquifyDeflate": "Сжать",
   "toolOptions.liquifyTwistClockwise": "По часовой стрелке",

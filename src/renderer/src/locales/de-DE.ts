@@ -1002,6 +1002,8 @@ export const deDEMessages = {
   "toolOptions.amount": "Nicht angegeben",
   "toolOptions.liquifyMode": "Verflüssigen-Modus",
   "toolOptions.liquifyPush": "Schieben",
+  "toolOptions.liquifySmoothing": "Glättung",
+  "toolOptions.liquifySmoothingHint": "Für Flächen mit einheitlicher Farbe empfohlen; in detailreichen Bereichen können vorhandene Pixel beschädigt werden.",
   "toolOptions.liquifyInflate": "Aufblasen",
   "toolOptions.liquifyDeflate": "Zusammenziehen",
   "toolOptions.liquifyTwistClockwise": "Im Uhrzeigersinn",

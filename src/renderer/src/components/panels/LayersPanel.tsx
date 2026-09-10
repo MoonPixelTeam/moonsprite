@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, AnimationTimeline, BlendMode, LayerGroup, LayerMask, PaletteEntry, RasterLayer, RgbaColor, Tileset } from '@shared/types'
 import { AnimationLoopSectionDialog, type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
+import { observeToolbarExtent } from '@/components/toolbar-extent'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'
@@ -507,7 +508,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const layerListRef = useRef<HTMLDivElement>(null)
   const layerAnimationToolbarRef = useRef<HTMLDivElement>(null)
   const animationLoopSectionTrackRef = useRef<HTMLDivElement>(null)
-  const [animationToolbarExtent, setAnimationToolbarExtent] = useState(0)
   const revealSequenceRef = useRef(0)
   const [layerRevealRequest, setLayerRevealRequest] = useState<{ layerId: string; sequence: number } | null>(null)
   const [draggingIds, setDraggingIds] = useState<string[]>([])
@@ -625,17 +625,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   useLayoutEffect(() => {
     const toolbar = layerAnimationToolbarRef.current
     const header = toolbar?.closest('header')
-    if (!toolbar || !header) return
-    const updateToolbarExtent = (): void => {
-      const next = Math.max(0, Math.ceil(toolbar.getBoundingClientRect().right - header.getBoundingClientRect().left))
-      setAnimationToolbarExtent((current) => current === next ? current : next)
-    }
-    updateToolbarExtent()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(updateToolbarExtent)
-    observer.observe(toolbar)
-    observer.observe(header)
-    return () => observer.disconnect()
+    const panel = floating.ref.current
+    if (!toolbar || !header || !panel) return
+    return observeToolbarExtent(panel, header, toolbar)
   }, [docked, integratedFreeTileInstanceLayer?.id, layerDensity, layerSettings.timelineHidden, session.document.id])
   const hideAnimationCellSelectionOutline = (): void => {
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
@@ -3626,7 +3618,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       <Tooltip className="layer-status-icon-tooltip layer-mask-row-layer-icon" content={maskRowTooltip}><span className="layer-mask-row-icon" aria-hidden="true"><PixelUtilityIcon kind="layerMask" /></span></Tooltip>
     </button>
   }
-  return <><section ref={floating.ref} className={`panel layers-panel layer-density-${layerDensity} ${layerSettings.timelineHidden ? 'timeline-hidden' : ''} ${visibleLoopSectionLaneCount > 0 ? 'has-animation-loop-sections' : ''} ${loopSectionResizePreview ? 'loop-section-resizing' : ''} ${session.animationPlaying ? 'animation-playing' : ''} ${animationItemDragging ? 'animation-item-dragging' : ''} ${floating.style ? 'floating-panel' : ''} ${draggingCopy ? 'layer-copy-drag' : ''} ${layerStyleDrag ? 'layer-style-copy-drag' : ''}`} data-command-scope="layers" style={{ ...floating.style, '--layer-label-width': `${layerLabelWidth}px`, '--layer-frame-count': timeline.frames.length, '--animation-loop-section-lanes': visibleLoopSectionLaneCount, '--animation-loop-section-track-height': `${visibleLoopSectionLaneCount * 20}px`, '--animation-toolbar-extent': `${animationToolbarExtent}px` } as CSSProperties} onPointerDown={floating.bringToFront} onWheel={handleLayerPanelWheel} onContextMenu={onPanelContextMenu}>
+  return <><section ref={floating.ref} className={`panel layers-panel layer-density-${layerDensity} ${layerSettings.timelineHidden ? 'timeline-hidden' : ''} ${visibleLoopSectionLaneCount > 0 ? 'has-animation-loop-sections' : ''} ${loopSectionResizePreview ? 'loop-section-resizing' : ''} ${session.animationPlaying ? 'animation-playing' : ''} ${animationItemDragging ? 'animation-item-dragging' : ''} ${floating.style ? 'floating-panel' : ''} ${draggingCopy ? 'layer-copy-drag' : ''} ${layerStyleDrag ? 'layer-style-copy-drag' : ''}`} data-command-scope="layers" style={{ ...floating.style, '--layer-label-width': `${layerLabelWidth}px`, '--layer-frame-count': timeline.frames.length, '--animation-loop-section-lanes': visibleLoopSectionLaneCount, '--animation-loop-section-track-height': `${visibleLoopSectionLaneCount * 20}px` } as CSSProperties} onPointerDown={floating.bringToFront} onWheel={handleLayerPanelWheel} onContextMenu={onPanelContextMenu}>
     <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>{integratedFreeTileInstanceLayer ? <><span className="free-tile-instance-header" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('freeTiles.backToLayers')} aria-label={t('freeTiles.backToLayers')} onClick={() => store.setFreeTileInstanceLayerView(null)}><PixelUtilityIcon kind="left" /></button><strong className="layer-panel-title">{t('freeTiles.instanceLayersTitle', { name: integratedFreeTileInstanceLayer.name })}</strong></span><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}><FreeTileInstancePanelSettings /></span></> : <>{layerSettings.timelineHidden && <span className="panel-actions layer-quick-actions layer-quick-actions-timeline-hidden" role="toolbar" aria-label={t('layers.quickActions')} onPointerDown={(event) => event.stopPropagation()}>{layerQuickActionButtons}</span>}<div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}><span className="layer-animation-playback">
         <button type="button" title={t('timeline.firstFrame')} aria-label={t('timeline.firstFrame')} onClick={() => selectAnimationEdge('first')}><PlaybackPixelIcon kind="first" /></button>
         <button type="button" title={t('timeline.previousFrame')} aria-label={t('timeline.previousFrame')} onClick={() => selectAnimationStep(-1)}><PlaybackPixelIcon kind="previous" /></button>

@@ -498,6 +498,11 @@ export class CanvasCompositeCache {
     this.selectionTransformRaster = null
   }
 
+  /** Drop derived placement plans while a live move mutates offsets in place. */
+  invalidateLayerPlacementCaches(): void {
+    this.compositeCache.invalidateLayerPlacementCaches()
+  }
+
   invalidateAll(): void {
     if (this.lastDocument) this.invalidatedInitialDocuments.add(this.lastDocument)
     this.fullPreviewInvalidationPending = true

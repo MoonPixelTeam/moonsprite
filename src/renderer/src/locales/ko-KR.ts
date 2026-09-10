@@ -1002,6 +1002,8 @@ export const koKRMessages = {
   'toolOptions.amount': '데이터',
   'toolOptions.liquifyMode': '픽셀 유동화 모드',
   'toolOptions.liquifyPush': '밀기',
+  'toolOptions.liquifySmoothing': 'Smoothing',
+  'toolOptions.liquifySmoothingHint': '단색이고 세부 묘사가 적은 영역에서 사용하는 것이 좋습니다. 복잡한 영역에서는 기존 픽셀이 손상될 수 있습니다.',
   'toolOptions.liquifyInflate': '팽창',
   'toolOptions.liquifyDeflate': '수축',
   'toolOptions.liquifyTwistClockwise': '시계 방향',

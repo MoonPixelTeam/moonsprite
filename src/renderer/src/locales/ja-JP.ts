@@ -1002,6 +1002,8 @@ export const jaJPMessages = {
   'toolOptions.amount': 'データ',
   'toolOptions.liquifyMode': 'ゆがみモード',
   'toolOptions.liquifyPush': '押し出し',
+  'toolOptions.liquifySmoothing': 'Smoothing',
+  'toolOptions.liquifySmoothingHint': '単色で細部の少ない領域での使用を推奨します。細部の多い領域では元のピクセルが損なわれることがあります。',
   'toolOptions.liquifyInflate': '膨張',
   'toolOptions.liquifyDeflate': '収縮',
   'toolOptions.liquifyTwistClockwise': '時計回り',

@@ -1,6 +1,6 @@
 [package]
 name = "moonsprite"
-version = "1.0.0-beta2"
+version = "1.0.0-beta3"
 description = "An original, source-available pixel art workstation for Windows."
 authors = ["MoonSprite contributors"]
 edition = "2021"

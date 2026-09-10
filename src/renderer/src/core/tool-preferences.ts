@@ -81,6 +81,8 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   liquifyMode: LiquifyMode
   liquifyRadius: number
   liquifyStrength: number
+  liquifySmoothing: boolean
+  liquifySmoothingStrength: number
   smoothStrength: number
 }
 
@@ -146,6 +148,8 @@ export const defaultToolSettings: PersistedToolSettings = {
   liquifyMode: 'push',
   liquifyRadius: 16,
   smoothStrength: 50,
+  liquifySmoothing: false,
+  liquifySmoothingStrength: 50,
   liquifyStrength: 50
 }
 
@@ -257,6 +261,8 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       liquifyMode: stored.liquifyMode === 'inflate' || stored.liquifyMode === 'deflate' || stored.liquifyMode === 'twist-clockwise' || stored.liquifyMode === 'twist-counter-clockwise' || stored.liquifyMode === 'push' ? stored.liquifyMode : defaultToolSettings.liquifyMode,
       liquifyRadius: Number.isFinite(stored.liquifyRadius) ? Math.max(1, Math.min(128, Math.round(stored.liquifyRadius!))) : defaultToolSettings.liquifyRadius,
       liquifyStrength: Number.isFinite(stored.liquifyStrength) ? Math.max(1, Math.min(100, Math.round(stored.liquifyStrength!))) : defaultToolSettings.liquifyStrength,
+      liquifySmoothing: stored.liquifySmoothing === true,
+      liquifySmoothingStrength: Number.isFinite(stored.liquifySmoothingStrength) ? Math.max(0, Math.min(100, Math.round(stored.liquifySmoothingStrength!))) : defaultToolSettings.liquifySmoothingStrength,
       smoothStrength: Number.isFinite(stored.smoothStrength) ? Math.max(0, Math.min(100, Math.round(stored.smoothStrength!))) : defaultToolSettings.smoothStrength,
       symmetryAxes: {
         horizontal: storedSymmetryAxes?.horizontal === true,

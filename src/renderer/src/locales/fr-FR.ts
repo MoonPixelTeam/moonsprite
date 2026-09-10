@@ -1002,6 +1002,8 @@ export const frFRMessages = {
   'toolOptions.amount': 'Amount',
   'toolOptions.liquifyMode': 'Mode Fluidité',
   'toolOptions.liquifyPush': 'Pousser',
+  'toolOptions.liquifySmoothing': 'Smoothing',
+  'toolOptions.liquifySmoothingHint': 'Recommandé pour les zones de couleur unie ; les zones détaillées peuvent endommager les pixels existants.',
   'toolOptions.liquifyInflate': 'Dilater',
   'toolOptions.liquifyDeflate': 'Contracter',
   'toolOptions.liquifyTwistClockwise': 'Tourner à droite',

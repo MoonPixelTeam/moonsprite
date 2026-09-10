@@ -109,6 +109,8 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     liquifyMode: source.liquifyMode,
     liquifyRadius: source.liquifyRadius,
     smoothStrength: source.smoothStrength,
+    liquifySmoothing: source.liquifySmoothing,
+    liquifySmoothingStrength: source.liquifySmoothingStrength,
     liquifyStrength: source.liquifyStrength
   })
 }
@@ -309,6 +311,8 @@ export function persistToolSettings(session: DocumentSession): void {
     liquifyMode: session.liquifyMode,
     liquifyRadius: session.liquifyRadius,
     liquifyStrength: session.liquifyStrength,
+    liquifySmoothing: session.liquifySmoothing,
+    liquifySmoothingStrength: session.liquifySmoothingStrength,
     smoothStrength: session.smoothStrength,
     symmetryAxes: { ...session.symmetryAxes }
   }
@@ -428,6 +432,8 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     liquifyMode: settings.liquifyMode,
     liquifyRadius: settings.liquifyRadius,
     liquifyStrength: settings.liquifyStrength,
+    liquifySmoothing: settings.liquifySmoothing,
+    liquifySmoothingStrength: settings.liquifySmoothingStrength,
     smoothStrength: settings.smoothStrength,
     liquifyResetHistoryPosition: null,
     liquifyResetHistoryRevision: null,

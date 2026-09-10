@@ -14,6 +14,7 @@
 
 | 版本 | 完整记录 |
 | --- | --- |
+| `1.0.0-beta3` | [查看 1.0.0-beta3 完整更新记录](docs/changelog/1.0.0-beta3.md) |
 | `1.0.0-beta2` | [查看 1.0.0-beta2 完整更新记录](docs/changelog/1.0.0-beta2.md) |
 | `1.0.0-beta1` | [查看 1.0.0-beta1 完整更新记录](docs/changelog/1.0.0-beta1.md) |
 | `DEV.6` | [查看 DEV.6 完整更新记录](docs/changelog/DEV.6.md) |

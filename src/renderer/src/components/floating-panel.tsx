@@ -145,6 +145,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
   const drag = useRef<{ offsetX: number; offsetY: number; width: number; height: number } | null>(null)
   const panelResize = useRef<{ direction: ResizeDirection; startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null)
   const pointerCaptureRef = useRef<{ element: HTMLElement; pointerId: number } | null>(null)
+  const dragCursorActive = useRef(false)
   const positionRef = useRef(position)
   const viewportRef = useRef({ width: window.innerWidth, height: window.innerHeight })
   const userPositioned = useRef(false)
@@ -161,6 +162,11 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
       positionRef.current = next
       return next
     })
+  }
+  const setDragCursor = (active: boolean): void => {
+    if (dragCursorActive.current === active) return
+    dragCursorActive.current = active
+    document.documentElement.classList.toggle('floating-panel-dragging', active)
   }
 
   useEffect(() => {
@@ -213,6 +219,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
         try { if (capture.element.hasPointerCapture?.(capture.pointerId)) capture.element.releasePointerCapture(capture.pointerId) } catch { /* WebView may release capture when leaving the native window. */ }
       }
       pointerCaptureRef.current = null
+      setDragCursor(false)
       dockTargetRef.current = null
       setDockPreview(null)
     }
@@ -254,6 +261,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
       window.removeEventListener('pointercancel', up)
       window.removeEventListener('resize', scheduleResize)
       if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame)
+      setDragCursor(false)
     }
   }, [])
 
@@ -284,6 +292,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
     setZIndex(++floatingZIndex)
     updatePosition((current) => current ?? { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height })
     drag.current = { offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top, width: bounds.width, height: bounds.height }
+    setDragCursor(true)
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId)
       pointerCaptureRef.current = { element: event.currentTarget, pointerId: event.pointerId }
@@ -316,6 +325,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
     updatePosition(() => next)
     persistPosition(next)
     drag.current = continueDrag ? { offsetX, offsetY, width: bounds.width, height: bounds.height } : null
+    setDragCursor(continueDrag)
   }
   const resizeTo = (width: number, height: number): void => {
     let nextPosition: FloatingPosition | null = null

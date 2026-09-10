@@ -1909,6 +1909,14 @@ export class DocumentCompositeCache {
     this.visibleTiles = new WeakMap()
   }
 
+  /** Drop placement plans while a live move mutates layer offsets in place. */
+  invalidateLayerPlacementCaches(): void {
+    // Normal and GPU move plans keep references to the live layer objects, so
+    // their offsets are read on every composite. Styled plans, however,
+    // contain derived proxy objects whose offsets must be rebuilt.
+    this.styledLayerPlans = new WeakMap()
+  }
+
   normalLayersFor(document: SpriteDocument, revision: number, sourceDirtyRect?: SelectionRect): RasterLayer[] | null {
     const frameId = document.animation?.activeFrameId ?? 'static'
     const cached = this.normalLayerPlans.get(document)
