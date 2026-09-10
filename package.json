@@ -43,7 +43,9 @@
     "website:capture": "node website/scripts/capture-product.mjs",
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
-    "android:apk": "tauri android build --debug --apk --target aarch64"
+    "android:apk": "pnpm android:prepare && tauri android build --debug --apk --target aarch64",
+    "android:prepare": "node scripts/android-prepare.mjs",
+    "android:apk:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android-apk-windows.ps1"
   },
   "dependencies": {
     "@tauri-apps/plugin-dialog": "^2.7.3",

@@ -26,6 +26,10 @@
 - [Lua 脚本与 MSE API](scripting/README.md)
 - `.msext` 扩展包格式与安装行为见 [扩展包 ADR](adr/0020-extension-package-format.md)。
 
+## Android 测试版
+
+- [平板测试范围、构建与真机验收](android/tablet-test.md)
+
 ## 质量与发布
 
 - [回归矩阵](testing/regression-matrix.md)

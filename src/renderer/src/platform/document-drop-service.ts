@@ -1,3 +1,4 @@
+import { isAndroidRuntime } from './runtime-platform'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -29,7 +30,7 @@ const defaultRustSubscriber: RustDropSubscriber = (onDrop) =>
 
 export function startDocumentDropService(options: DocumentDropServiceOptions): () => void {
   const target = options.eventTarget ?? window
-  const desktop = options.desktop ?? '__TAURI_INTERNALS__' in window
+  const desktop = options.desktop ?? (!isAndroidRuntime() && '__TAURI_INTERNALS__' in window)
   const nativeSources = options.nativeSources ?? (desktop ? [getCurrentWebview(), getCurrentWindow()] : [])
   const rustSubscriber = options.rustSubscriber ?? (desktop ? defaultRustSubscriber : undefined)
   const dedupeMs = options.dedupeMs ?? 1_000

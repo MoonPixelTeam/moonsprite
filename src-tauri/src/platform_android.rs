@@ -13,8 +13,8 @@ pub fn data_root() -> Result<PathBuf, String> {
     DATA_ROOT.get().cloned().ok_or_else(|| "Android storage is not initialized".into())
 }
 
-// Allocate a new private directory, not just a guessed unused filename. Save As
-// and importing two files with the same name cannot overwrite an existing work.
+// Reserve names separately from real files: the editor must not mistake an
+// empty placeholder for an existing project or an export overwrite conflict.
 #[tauri::command]
 pub fn android_allocate_file(name: String, gallery: bool) -> Result<String, String> {
     let name = name.trim();
@@ -23,7 +23,8 @@ pub fn android_allocate_file(name: String, gallery: bool) -> Result<String, Stri
     }
     let root = crate::platform_paths::ensure_executable_subdirectory(
         if gallery { "gallery" } else { "exports" }, "文件")?;
-    // Gallery is scanned non-recursively, so reserve the file itself with create_new.
+    let reservations = root.join(".reservations");
+    std::fs::create_dir_all(&reservations).map_err(|e| e.to_string())?;
     for index in 0..100_000 {
         let candidate = if index == 0 { root.join(name) } else {
             let path = std::path::Path::new(name);
@@ -31,7 +32,9 @@ pub fn android_allocate_file(name: String, gallery: bool) -> Result<String, Stri
             let ext = path.extension().map(|v| format!(".{}", v.to_string_lossy())).unwrap_or_default();
             root.join(format!("{stem}-{index}{ext}"))
         };
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+        if candidate.exists() { continue; }
+        let marker = reservations.join(candidate.file_name().ok_or("Invalid file name")?);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(marker) {
             Ok(_) => return Ok(candidate.to_string_lossy().into_owned()),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e.to_string()),

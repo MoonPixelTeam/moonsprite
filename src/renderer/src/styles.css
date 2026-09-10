@@ -4005,3 +4005,15 @@ body input[type='checkbox'] {
   min-height: 28px !important;
   padding: 0 !important;
 }
+
+/* Android tablet test: retain the desktop editor, remove native window chrome. */
+html[data-platform='android'] { --app-window-titlebar-height: 0px; overscroll-behavior: none; }
+html[data-platform='android'] .app-window-titlebar { display: none; }
+html[data-platform='android'] .app-shell { height: calc(100dvh - 48px - env(safe-area-inset-bottom)); min-height: 0; }
+html[data-platform='android'] .stage-wrap { touch-action: none; }
+html[data-platform='android'] .modal { max-width: calc(100vw - 24px); max-height: calc(100dvh - 72px); }
+.android-tablet-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 790; display: flex; align-items: center; gap: 4px; height: calc(48px + env(safe-area-inset-bottom)); padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); overflow-x: auto; background: var(--theme-deep-surface); color: var(--theme-text-primary); border-top: 1px solid var(--theme-border); }
+.android-tablet-bar button { flex: 0 0 auto; min-height: 36px; padding: 4px 10px; border: 1px solid var(--theme-border); border-radius: 0; color: var(--theme-text-primary); background: var(--theme-raised-surface); }
+.android-tablet-bar button:active { background: #2979ff; color: white; }
+.android-tablet-bar button:disabled { opacity: .4; }
+.android-tablet-bar span { min-width: 100px; font-size: 12px; }
