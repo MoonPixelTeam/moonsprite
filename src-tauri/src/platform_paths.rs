@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(not(target_os = "android"))]
 pub fn executable_directory() -> Result<PathBuf, String> {
     let executable = std::env::current_exe()
         .map_err(|error| format!("无法确定 MoonSprite 程序目录：{error}"))?;
@@ -47,3 +48,6 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 }
+
+#[cfg(target_os = "android")]
+pub fn executable_directory() -> Result<PathBuf, String> { crate::platform_android::data_root() }

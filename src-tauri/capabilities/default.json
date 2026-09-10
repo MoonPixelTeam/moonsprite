@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "MoonSprite desktop window permissions",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-center",
@@ -19,5 +21,10 @@
     "core:window:allow-close",
     "core:window:allow-show",
     "core:webview:allow-set-webview-zoom"
+  ],
+  "platforms": [
+    "windows",
+    "linux",
+    "macOS"
   ]
 }

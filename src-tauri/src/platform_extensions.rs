@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "android"))]
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -1132,6 +1133,7 @@ fn install_extension_at(package_path: &Path, directory: &Path) -> Result<StoredE
     Ok(stored_extension(&target, installed_manifest, enabled))
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub(crate) fn choose_and_install_extension(
     language: Option<String>,
@@ -1650,3 +1652,7 @@ mod tests {
         assert!(inspect_archive(Cursor::new(bytes)).is_err());
     }
 }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub(crate) fn choose_and_install_extension() -> Result<Option<StoredExtension>, String> { Err("Extension installation is unavailable in the Android test build".into()) }

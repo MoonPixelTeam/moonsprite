@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "art.moonpx.moonsprite.tablettest",
+  "build": { "beforeBuildCommand": "pnpm build:web" },
+  "app": {
+    "windows": [{ "title": "MoonSprite Android Test", "visible": true, "decorations": true, "dragDropEnabled": false }],
+    "security": { "capabilities": ["android"] }
+  },
+  "bundle": {
+    "resources": null,
+    "android": { "minSdkVersion": 26 }
+  }
+}

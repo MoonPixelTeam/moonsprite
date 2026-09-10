@@ -47,6 +47,8 @@ import { preserveCanvasSelection, revealLayerInPanel } from '@/components/layer-
 import { layerIdsInVisualStackOrder } from '@/core/layer-panel-layout'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { eyedropperMagnifierPixelScale } from '@/core/eyedropper-magnifier'
+import { isAndroidRuntime } from '@/platform/runtime-platform'
+import { acceptsTabletCanvasPointer } from '@/core/tablet-input'
 import { isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
 import { airbrushParticleSize, airbrushSymmetryPoints, generateAirbrushParticles } from '@/core/airbrush'
 import { activeBrushInputsForTool } from '@/core/brushes'
@@ -8854,6 +8856,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     try { action() } finally { performanceProbe.recordInput(kind, performance.now() - startedAt) }
   }
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
     // device ownership before accepting the new interaction.
     inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
@@ -8871,6 +8874,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     syncPenCursor(event)
   }
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
       event.preventDefault()
       return
@@ -8879,6 +8883,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     syncPenCursor(event)
   }
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     try {
       measurePointerInput('pointer-up', () => handlePointerUp(event))
@@ -8889,6 +8894,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
   }
   const pointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
       event.preventDefault()
       return
@@ -8927,6 +8933,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     draw()
   }
   const pointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const pressurePointer = isPressurePointerType(event.pointerType) || pressureAdapterRef.current.isPressureCapable(event.pointerId)
     handlePointerLeave(event)
@@ -8935,6 +8942,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (pressurePointer) hidePenCursor()
   }
   const pointerEnter = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!acceptsTabletCanvasPointer(event.pointerType, isAndroidRuntime())) { event.preventDefault(); return }
     if (!inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const session = liveInputSession()
     const navigationShortcutActive = event.ctrlKey || event.metaKey || inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)

@@ -11,8 +11,17 @@ use tauri::{AppHandle, DragDropEvent, Emitter, Manager, State, WindowEvent};
 mod close_coordinator;
 mod platform_background_presets;
 mod platform_brushes;
+#[cfg(not(target_os = "android"))]
 mod platform_clipboard;
+#[cfg(target_os = "android")]
+#[path = "platform_clipboard_android.rs"]
+mod platform_clipboard;
+mod platform_android;
 mod platform_diagnostics;
+#[cfg(not(target_os = "android"))]
+mod platform_dialogs;
+#[cfg(target_os = "android")]
+#[path = "platform_dialogs_android.rs"]
 mod platform_dialogs;
 mod platform_extensions;
 mod platform_files;
@@ -123,6 +132,7 @@ fn start_window_drag_if_primary_pressed(window: tauri::WebviewWindow) -> Result<
     if !primary_pointer_is_pressed() {
         return Ok(false);
     }
+    #[cfg(not(target_os = "android"))]
     window.start_dragging().map_err(|error| error.to_string())?;
     Ok(true)
 }
@@ -130,8 +140,11 @@ fn start_window_drag_if_primary_pressed(window: tauri::WebviewWindow) -> Result<
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let startup_files = startup_file_paths();
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_fs::init()).plugin(tauri_plugin_dialog::init());
+    #[cfg(not(target_os = "android"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
             |app, arguments, _cwd| {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.unminimize();
@@ -145,7 +158,8 @@ pub fn run() {
                 }
             },
         ))
-        .manage(AppState {
+        ;
+    builder.manage(AppState {
             startup_files: Mutex::new(startup_files),
             ..AppState::default()
         })
@@ -154,6 +168,9 @@ pub fn run() {
         .manage(platform_files::ScaledPngCancellation::default())
         .manage(platform_scripts::LuaScriptRuntime::default())
         .setup(|app| {
+            #[cfg(target_os = "android")]
+            platform_android::initialize(app.handle())?;
+            #[cfg(not(target_os = "android"))]
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
                 window.set_icon(icon)?;
@@ -166,6 +183,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            platform_android::android_allocate_file,
             platform_dialogs::open_files,
             platform_dialogs::open_brush_images,
             take_startup_files,

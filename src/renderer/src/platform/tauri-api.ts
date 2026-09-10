@@ -1,3 +1,5 @@
+import { isAndroidRuntime } from './runtime-platform'
+import { createAndroidApi } from './android-api'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ExtensionListing, MoonSpriteApi, ProjectPreview, RgbaColor, SaveDialogFormat, ScaledPngWriteOptions, ScaledPngWriteResult, StoredBackgroundPreset, StoredBrush, StoredBrushFolder, StoredExtension, StoredPalette, StoredWorkspace } from '@shared/types'
@@ -468,6 +470,10 @@ export const createTauriApi = (): MoonSpriteApi => ({
 
 export async function installTauriApi(): Promise<void> {
   if (window.moonSprite) return
-  if ('__TAURI_INTERNALS__' in window) window.moonSprite = createTauriApi()
+  if ('__TAURI_INTERNALS__' in window) {
+    const api = createTauriApi()
+    window.moonSprite = isAndroidRuntime() ? createAndroidApi(api) : api
+    if (isAndroidRuntime()) document.documentElement.dataset.platform = 'android'
+  }
   else window.moonSprite = createBrowserApi()
 }
