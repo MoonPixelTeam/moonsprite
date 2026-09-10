@@ -571,6 +571,16 @@ pub(crate) fn open_lua_script_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) fn delete_lua_script(script_id: String) -> Result<(), String> {
+    if script_id.starts_with("extension:") {
+        return Err("扩展提供的脚本必须随扩展一起管理。".to_string());
+    }
+    let directory = script_directory()?;
+    let path = resolve_lua_script_path(&directory, &script_id)?;
+    fs::remove_file(&path).map_err(|error| format!("无法删除脚本 {}：{error}", path.display()))
+}
+
+#[tauri::command]
 pub(crate) async fn run_lua_script(
     state: State<'_, LuaScriptRuntime>,
     script_id: String,

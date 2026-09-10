@@ -81,6 +81,20 @@ describe('HistoryStack', () => {
     expect(history.memoryBytes).toBe(10)
   })
 
+  it('notifies local-history observers only after committed stack transitions', () => {
+    const history = new HistoryStack()
+    const changes: string[] = []
+    history.setChangeListener((change) => changes.push(change.kind))
+    history.beginCompound()
+    history.push(entry({ value: 0 }, 1, 'first'))
+    expect(changes).toEqual([])
+    history.endCompound('compound')
+    history.undo()
+    history.redo()
+    history.clear()
+    expect(changes).toEqual(['push', 'undo', 'redo', 'clear'])
+  })
+
   it('preserves an entry when undo or redo throws', () => {
     const history = new HistoryStack()
     history.push({ label: 'bad undo', bytes: 7, undo: () => { throw new Error('undo') }, redo: () => undefined })

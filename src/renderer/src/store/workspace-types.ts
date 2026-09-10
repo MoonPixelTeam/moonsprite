@@ -1,3 +1,4 @@
+import type { LocalHistorySnapshot } from '@/core/local-history-archive'
 import type {
   AnimationCel,
   AnimationCelSurface,
@@ -194,6 +195,12 @@ export type AnimationPlaybackMode = 'once' | 'all' | 'tag'
 export interface DocumentSession {
   document: SpriteDocument
   history: HistoryStack
+  /** Local-only serialized undo timeline; never written into .moonsprite files. */
+  localHistory: {
+    snapshots: LocalHistorySnapshot[]
+    labels: string[]
+    position: number
+  } | null
   tool: ToolId
   moveKind: MoveKind
   selectedSliceId: string | null

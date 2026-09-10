@@ -54,6 +54,12 @@ export function AppWindowTitleBar() {
   }, [])
 
   const maximizeLabel = t(maximized ? 'app.window.restore' : 'app.window.maximize')
+  // Caption buttons are pointer-only controls. Keeping their focus after a
+  // click makes Enter invoke the native button again, which conflicts with the
+  // animation playback shortcut while editing.
+  const keepCanvasKeyboardFocus = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+  }, [])
 
   return <header className="app-window-titlebar" onPointerMoveCapture={settleMaximizeCursor}>
     <div className="app-window-titlebar-drag" onPointerDown={beginDragCandidate} onPointerMove={moveDragCandidate} onPointerUp={finishDragCandidate} onPointerCancel={finishDragCandidate} onLostPointerCapture={finishDragCandidate} onDoubleClick={toggleMaximized}>
@@ -61,9 +67,9 @@ export function AppWindowTitleBar() {
       <span className="app-window-titlebar-text">MoonSprite {APP_CHANNEL_LABEL}</span>
     </div>
     <div className="app-window-controls">
-      <button type="button" tabIndex={-1} className="app-window-control" title={t('app.window.minimize')} aria-label={t('app.window.minimize')} onClick={() => { void minimizeAppWindow().catch(() => {}) }}><span aria-hidden="true">{captionGlyphs.minimize}</span></button>
-      <button type="button" tabIndex={-1} className="app-window-control" title={maximizeLabel} aria-label={maximizeLabel} onClick={toggleMaximized}><span aria-hidden="true">{maximized ? captionGlyphs.restore : captionGlyphs.maximize}</span></button>
-      <button type="button" tabIndex={-1} className="app-window-control app-window-control-close" title={t('app.window.close')} aria-label={t('app.window.close')} onClick={() => { void closeAppWindow().catch(() => {}) }}><span aria-hidden="true">{captionGlyphs.close}</span></button>
+      <button type="button" tabIndex={-1} className="app-window-control" title={t('app.window.minimize')} aria-label={t('app.window.minimize')} onPointerDown={keepCanvasKeyboardFocus} onClick={() => { void minimizeAppWindow().catch(() => {}) }}><span aria-hidden="true">{captionGlyphs.minimize}</span></button>
+      <button type="button" tabIndex={-1} className="app-window-control" title={maximizeLabel} aria-label={maximizeLabel} onPointerDown={keepCanvasKeyboardFocus} onClick={toggleMaximized}><span aria-hidden="true">{maximized ? captionGlyphs.restore : captionGlyphs.maximize}</span></button>
+      <button type="button" tabIndex={-1} className="app-window-control app-window-control-close" title={t('app.window.close')} aria-label={t('app.window.close')} onPointerDown={keepCanvasKeyboardFocus} onClick={() => { void closeAppWindow().catch(() => {}) }}><span aria-hidden="true">{captionGlyphs.close}</span></button>
     </div>
   </header>
 }

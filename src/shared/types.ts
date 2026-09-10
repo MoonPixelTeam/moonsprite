@@ -862,6 +862,12 @@ export interface RecoveryRecord {
   updatedAt: string
 }
 
+export interface ProjectBackupRecord {
+  filePath: string
+  modifiedAt: number
+  sizeBytes: number
+}
+
 export interface GalleryProject {
   filePath: string
   fileName: string
@@ -1129,6 +1135,7 @@ export interface MoonSpriteApi {
   cacheProjectPreview(filePath: string, preview: ProjectPreview): Promise<void>
   writeBinaryAtomic(filePath: string, data: Uint8Array): Promise<void>
   openProjectBackupFolder(): Promise<void>
+  listProjectBackups(projectPath: string): Promise<ProjectBackupRecord[]>
   writeScaledPngAtomic?(filePath: string, source: Uint8Array, options: ScaledPngWriteOptions, onProgress?: (value: number) => void, onCancelReady?: (cancel: () => void) => void): Promise<ScaledPngWriteResult>
   writeProjectIncremental(filePath: string, sourcePath: string, data: Uint8Array): Promise<void>
   writeClipboardImage(image: ClipboardImage): Promise<void>
@@ -1164,6 +1171,9 @@ export interface MoonSpriteApi {
   readRecovery(id: string): Promise<Uint8Array>
   writeRecovery(id: string, name: string, data: Uint8Array): Promise<void>
   deleteRecovery(id: string): Promise<void>
+  readLocalHistory(id: string): Promise<Uint8Array>
+  writeLocalHistory(id: string, data: Uint8Array): Promise<void>
+  deleteLocalHistory(id: string): Promise<void>
   listGalleryProjects(): Promise<GalleryListing>
   listFolderProjects(directoryPath: string): Promise<GalleryListing>
   deleteGalleryProject(fileName: string): Promise<void>
@@ -1174,6 +1184,7 @@ export interface MoonSpriteApi {
   openExternalUrl(url: string): Promise<void>
   listLuaScripts(): Promise<LuaScriptListing>
   openLuaScriptFolder(): Promise<void>
+  deleteLuaScript(scriptId: string): Promise<void>
   runLuaScript(scriptId: string, context: LuaScriptExecutionContext): Promise<LuaScriptRunResult>
   dispatchLuaScriptDialog(sessionId: string, action: LuaScriptDialogAction, context: LuaScriptExecutionContext): Promise<LuaScriptRunResult>
   closeLuaScriptSession(sessionId: string): Promise<void>

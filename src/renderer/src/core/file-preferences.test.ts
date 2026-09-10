@@ -8,6 +8,7 @@ import {
   SKIP_DISABLED_FRAMES_PREFERENCE_KEY,
   EXPORT_FORMAT_PREFERENCE_KEY,
   EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY,
+  PROJECT_BACKUP_ENABLED_PREFERENCE_KEY,
   PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY,
   PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY,
   PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY,
@@ -70,9 +71,12 @@ describe('editor preferences boundary', () => {
       gradientLineVisible: true,
       gradientLineColor: DEFAULT_EDITOR_PREFERENCES.gradientLineColor,
       eyedropperQuickSelect: false,
+      projectBackupEnabled: true,
       projectBackupVersions: 10,
       projectBackupRetentionDays: 30,
       projectBackupDirectory: '',
+      localHistoryEnabled: false,
+      localHistoryLimit: 50,
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
     expect(parseUiScale('1.25')).toBe(1)
@@ -134,9 +138,12 @@ describe('editor preferences boundary', () => {
       gradientLineVisible: false,
       gradientLineColor: { r: 12, g: 34, b: 56, a: 78 },
       eyedropperQuickSelect: true,
+      projectBackupEnabled: false,
       projectBackupVersions: 6,
       projectBackupRetentionDays: 90,
       projectBackupDirectory: 'D:/MoonSprite backups',
+      localHistoryEnabled: true,
+      localHistoryLimit: 999,
       animationPlaybackRate: 1.5,
       animationPlaybackMode: 'tag',
       animationReturnToStart: true,
@@ -153,9 +160,12 @@ describe('editor preferences boundary', () => {
     expect(loaded.gradientLineVisible).toBe(false)
     expect(loaded.gradientLineColor).toEqual({ r: 12, g: 34, b: 56, a: 78 })
     expect(loaded.eyedropperQuickSelect).toBe(true)
+    expect(loaded.projectBackupEnabled).toBe(false)
     expect(loaded.projectBackupVersions).toBe(6)
     expect(loaded.projectBackupRetentionDays).toBe(90)
     expect(loaded.projectBackupDirectory).toBe('D:/MoonSprite backups')
+    expect(loaded.localHistoryEnabled).toBe(true)
+    expect(loaded.localHistoryLimit).toBe(200)
     expect(loaded.animationPlaybackRate).toBe(1.5)
     expect(loaded.animationPlaybackMode).toBe('tag')
     expect(loaded.animationReturnToStart).toBe(true)
@@ -165,6 +175,7 @@ describe('editor preferences boundary', () => {
     expect(storage.getItem(EXPORT_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)).toBe('80')
     expect(storage.getItem(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY)).toBe('true')
+    expect(storage.getItem(PROJECT_BACKUP_ENABLED_PREFERENCE_KEY)).toBe('false')
     expect(storage.getItem(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)).toBe('6')
     expect(storage.getItem(PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY)).toBe('90')
     expect(storage.getItem(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)).toBe('D:/MoonSprite backups')

@@ -235,7 +235,8 @@ const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly Palette
   celContentCache.set(storage, entries)
   return value
 }
-function CelThumbnail({ documentId, layerId, cel, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; cel: AnimationCel; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+  const cel = celSource()
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     let cancelScheduledRender: (() => void) | null = null
@@ -365,11 +366,11 @@ const useTimelineThumbnailContentSync = (documentId: string): void => {
     })
   }, [documentId])
 }
-function AnimationCelContent({ active, documentId, layerId, cel, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
+function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
   active: boolean
   documentId: string
   layerId: string
-  cel: AnimationCel
+  celSource: PixelSource<AnimationCel>
   palette: readonly PaletteEntry[]
   revision: number
   documentWidth: number
@@ -378,13 +379,14 @@ function AnimationCelContent({ active, documentId, layerId, cel, palette, revisi
   showThumbnail: boolean
   selectionMarker: boolean
 }) {
+  const cel = celSource()
   const liveRevision = useWorkspace((state) => active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision)
   const liveSession = active ? useWorkspace.getState().sessions.find((item) => item.document.id === documentId) : null
   const livePalette = liveSession?.document.palette ?? palette
   const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)
   if (!hasContent) return null
   return showThumbnail
-    ? <CelThumbnail documentId={documentId} layerId={layerId} cel={cel} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
+    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
     : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
 }
 function ActiveFrameSync({ documentId, frameIds, containerRef, suppressActiveGuide, activeFrameIdOverride }: {
@@ -3843,7 +3845,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       const selectionMarkerVisible = shouldRenderTimelineCelSelectionMarker(hasContent, Boolean(keySelected || currentCell || layerSelectedAcrossTimeline || cellVisuallySelected))
       const liveActiveCell = Boolean(!animationCelDragActive && active && node.layer.id === playbackActiveLayerId && resolvedCel)
       const normalCelMarker = resolvedCel && (hasContent || liveActiveCell)
-        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} cel={resolvedCel} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={selectionMarkerVisible} />
+        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} celSource={pixelSource(resolvedCel)} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={selectionMarkerVisible} />
         : selectionMarkerVisible ? <span className="cel-content-marker selection-marker" aria-hidden="true" /> : null
       return <button type="button" data-animation-cel-key={key} data-frame-index={index} key={`${node.id}-${frame.id}`} className={`layer-animation-cel ${node.layer.kind === 'text' ? 'text-cel' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-cel' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-cel' : ''} ${cel ? 'has-cel' : ''} ${node.layer.id === visualActiveLayerId ? 'active-layer-cel' : ''} ${currentFrameCellHighlighted ? 'active-frame' : ''} ${frameSelectedForCell ? 'selected-animation-frame' : ''} ${layerSelectedAcrossTimeline ? 'selected-layer' : ''} ${currentCell ? 'current-cel' : ''} ${cellVisuallySelected ? 'selected-cel' : ''} ${linkedCelMember ? 'linked-cel-member' : ''} ${showLinkedCelVisuals && (linkedWithPrevious || linkedWithNext) ? 'linked-cel' : ''} ${showLinkedVisuals && linkedWithPrevious ? 'linked-cel-previous' : ''} ${linkedCelEnd ? 'linked-cel-end' : ''} ${linkedCelBridgeEnd ? 'linked-cel-bridge-end' : ''} ${draggingAnimationFrameIds.includes(frame.id) || (draggingAnimationCellKind === 'cel' && draggingAnimationCellKeys.includes(key)) ? 'dragging' : ''} ${animationCelDropTargetKey === key && !animationCelDragActive && !(animationCelDragAnchorKey && draggingAnimationCellKeys.length > 1) ? 'drop-target' : ''}`} aria-label={t('timeline.celAtFrame', { number: index + 1 })} title={`${node.layer.name} · ${t('timeline.frameNumber', { number: index + 1 })}`} onPointerDown={(event) => beginAnimationCelDrag(event, node.layer.id, frame.id)} onPointerMove={(event) => updateAnimationItemCursor(event, frame.id, key)} onPointerLeave={(event) => { event.currentTarget.style.cursor = '' }} onClick={(event) => { if (suppressAnimationClickRef.current) { event.preventDefault(); event.stopPropagation(); return } if (event.detail === 0) store.selectAnimationCell(key, event.shiftKey ? 'range' : event.ctrlKey ? 'toggle' : 'replace') }} onDoubleClick={() => {
         if (node.layer.kind === 'text') {

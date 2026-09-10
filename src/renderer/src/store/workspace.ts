@@ -61,6 +61,8 @@ import { createFreeTileSourceEditRaster, freeTileSelectionToEditRaster, freeTile
 import { filterPresetById, lcdChannelColorAtNormalized, lcdChannelOffset, lcdScanlineColorAtNormalized, normalizeLcdScreenFilterOptions, renderFilterPreset, type FilterPresetId, type LcdScreenFilterOptions } from '@/core/filter-presets'
 import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, openDocumentFile, saveDocumentFile, type ExportOptions, type FileOperationLifecycle, type SaveAsOptions } from './document-file-service'
 import { RecoveryService } from './recovery-service'
+import { projectRollbackProgress } from '@/core/project-rollback-progress'
+import { configureLocalHistory, flushLocalHistoryPersist, scheduleLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
 import { clipboardService, selectionClipboardImage, type AnimationCelClipboardSnapshot, type AnimationFrameClipboardSnapshot, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
 import { captureAdjustmentSnapshot, captureLayerUi, commitLayerMerge, prepareAdjustmentSnapshotTargets, restoreAdjustmentSnapshot, restoreAdjustmentSnapshotRegions, restorePreparedAdjustmentSnapshotLayer } from './workspace-history'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, captureDocumentStructureSnapshot, captureLayerContentSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, documentStructureDeltaBytes, layerContentSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot, restoreDocumentStructureSnapshot, restoreLayerContentSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
@@ -331,6 +333,75 @@ const invalidateTextLayerDraft = (session: DocumentSession, panelChanged = false
 
 const cloneSlices = (slices: readonly DocumentSlice[] | undefined): DocumentSlice[] =>
   (slices ?? []).map((slice) => ({ ...slice }))
+
+const PROJECT_ROLLBACK_HISTORY_LABEL = '回档工程备份'
+const isProjectRollbackHistoryEntry = (entry: Pick<HistoryEntry, 'label'> | null | undefined): boolean => entry?.label === PROJECT_ROLLBACK_HISTORY_LABEL
+let isApplyingDeferredProjectRollbackHistory = false
+
+const historyPositionIncludesProjectRollback = (entries: readonly { label: string }[], from: number, to: number): boolean =>
+  entries.slice(Math.min(from, to), Math.max(from, to)).some(isProjectRollbackHistoryEntry)
+
+const deferProjectRollbackHistoryChange = (operation: () => void): void => {
+  projectRollbackProgress.begin()
+  const run = () => {
+    isApplyingDeferredProjectRollbackHistory = true
+    try {
+      operation()
+    } finally {
+      isApplyingDeferredProjectRollbackHistory = false
+      projectRollbackProgress.endAfterPaint()
+    }
+  }
+  if (typeof window === 'undefined') {
+    run()
+    return
+  }
+  // The first frame lets React paint the overlay; the following frame starts
+  // the synchronous document swap without making the dialog flash afterward.
+  window.requestAnimationFrame(() => window.requestAnimationFrame(run))
+}
+
+const cloneProjectRollbackSnapshot = (document: SpriteDocument): SpriteDocument => structuredClone(document)
+
+const projectRollbackSnapshotBytes = (document: SpriteDocument): number => {
+  const buffers = new Set<ArrayBufferLike>()
+  const visited = new Set<object>()
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return
+    if (ArrayBuffer.isView(value)) {
+      buffers.add(value.buffer)
+      return
+    }
+    if (value instanceof ArrayBuffer) {
+      buffers.add(value)
+      return
+    }
+    if (visited.has(value)) return
+    visited.add(value)
+    if (Array.isArray(value)) for (const item of value) visit(item)
+    else for (const item of Object.values(value)) visit(item)
+  }
+  visit(document)
+  return [...buffers].reduce((total, buffer) => total + buffer.byteLength, 0)
+}
+
+const restoreProjectRollbackSnapshot = (session: DocumentSession, snapshot: SpriteDocument): void => {
+  const history = session.history
+  const recoveryOriginId = session.recoveryOriginId
+  const revision = session.revision
+  const contentRevision = session.contentRevision
+  const layersPanelRevision = session.layersPanelRevision
+  const restored = sessionFromDocument(cloneProjectRollbackSnapshot(snapshot))
+  Object.assign(session, restored)
+  session.history = history
+  session.recoveryOriginId = recoveryOriginId
+  // Canvas composites are keyed by document ID and content revision. Keep
+  // those counters monotonic across a document swap so restored pixels cannot
+  // collide with a pre-rollback composite cache entry.
+  session.revision = revision
+  session.contentRevision = contentRevision
+  session.layersPanelRevision = layersPanelRevision
+}
 
 const restoreSlices = (session: DocumentSession, slices: readonly DocumentSlice[], selectedSliceId: string | null, selectedSliceIds: readonly string[] = selectedSliceId ? [selectedSliceId] : []): void => {
   session.document.slices = cloneSlices(slices)
@@ -3172,6 +3243,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const existing = get().sessions.find((session) => session.document.id === document.id)
     if (existing) return
     const session = sessionFromDocument(document)
+    configureLocalHistory(session, window.moonSprite)
     normalizeAnimationSelection(session)
     session.recoveryOriginId = options?.recoveryOriginId ?? null
     session.primaryColor = { ...get().sharedPrimaryColor }
@@ -5656,6 +5728,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     if (session?.textBoxTransform) get().cancelTextBoxTransform()
     if (!session?.history.canUndo) return
+    const showsRollbackProgress = isProjectRollbackHistoryEntry(session.history.latestUndoEntry)
+    if (showsRollbackProgress && !isApplyingDeferredProjectRollbackHistory) {
+      const documentId = session.document.id
+      deferProjectRollbackHistoryChange(() => {
+        if (activeSession(get())?.document.id === documentId) get().undo()
+      })
+      return
+    }
     const hadTilesetPanelContent = documentUsesTilesetPanel(session.document)
     get().mutateActive((session) => {
       // History entries for drawing retain the layer/frame activity from the
@@ -5706,6 +5786,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return
     }
     if (!session?.history.canRedo) return
+    const showsRollbackProgress = session.history.timeline.entries[session.history.position]?.label === PROJECT_ROLLBACK_HISTORY_LABEL
+    if (showsRollbackProgress && !isApplyingDeferredProjectRollbackHistory) {
+      const documentId = session.document.id
+      deferProjectRollbackHistoryChange(() => {
+        if (activeSession(get())?.document.id === documentId) get().redo()
+      })
+      return
+    }
     const hadTilesetPanelContent = documentUsesTilesetPanel(session.document)
     get().mutateActive((session) => {
       const view = { ...session.view }
@@ -5741,6 +5829,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (consumeCanvasResizePreviewHistory(initial.document.id, position < initial.history.position ? 'undo' : 'redo')) return
     const documentId = initial.document.id
     const target = Math.max(0, Math.min(initial.history.length, Math.trunc(position)))
+    if (!isApplyingDeferredProjectRollbackHistory && historyPositionIncludesProjectRollback(initial.history.timeline.entries, initial.history.position, target)) {
+      deferProjectRollbackHistoryChange(() => {
+        if (activeSession(get())?.document.id === documentId) get().setHistoryPosition(target)
+      })
+      return
+    }
     const maximumSteps = Math.abs(initial.history.position - target) + 16
     for (let step = 0; step < maximumSteps; step += 1) {
       const session = activeSession(get())
@@ -12355,6 +12449,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       saved.document.dirty = !fullySaved
       set({ sessions: [...get().sessions] })
       recordRecentProject(result.filePath, saved.document.name)
+      scheduleLocalHistoryPersist(window.moonSprite, saved)
       const latest = get().sessions.find((item) => item.document.id === documentId)
       if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
         removeSavedRecovery(latest.recoveryOriginId ?? documentId)
@@ -12452,6 +12547,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (options?.duplicate) parsed.id = createId('doc')
       options?.onBeforeSession?.()
       get().addSession(parsed)
+      const opened = get().sessions.find((session) => session.document.id === parsed.id)
+      if (opened) {
+        try {
+          await restoreLocalHistory(window.moonSprite, opened)
+          set({ sessions: [...get().sessions] })
+        } catch (historyError) {
+          console.error('MoonSprite local history restore failed', historyError)
+        }
+      }
       recordRecentProject(filePath, parsed.name)
       finishOpenProgress()
       return true
@@ -12478,6 +12582,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (choice === 'discard' && !preserveOpenedRecovery) await get().discardRecovery(id)
     }
     if (!session.document.dirty && !preserveOpenedRecovery) await get().discardRecovery(id)
+    try {
+      await flushLocalHistoryPersist(window.moonSprite, session)
+    } catch (historyError) {
+      console.error('MoonSprite local history close flush failed', historyError)
+    }
     timelapseCaptureGenerations.set(session.document, (timelapseCaptureGenerations.get(session.document) ?? 0) + 1)
     set((state) => {
       const sessions = state.sessions.filter((item) => item.document.id !== id)
@@ -12485,6 +12594,34 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     })
     const active = activeSession(get())
     requestTilesetPanelVisibility(documentUsesTilesetPanel(active?.document))
+  },
+
+  restoreProjectBackup(documentId, document) {
+    const current = get().sessions.find((session) => session.document.id === documentId)
+    if (!current || get().activeId !== documentId) return false
+    const identity = {
+      id: current.document.id,
+      name: current.document.name,
+      filePath: current.document.filePath,
+      sourceFilePath: current.document.sourceFilePath
+    }
+    const before = cloneProjectRollbackSnapshot(current.document)
+    const after = cloneProjectRollbackSnapshot(document)
+    Object.assign(after, identity, { dirty: before.dirty })
+    let restored = false
+    get().mutateActive((session) => {
+      if (session.document.id !== documentId) return
+      restoreProjectRollbackSnapshot(session, after)
+      session.history.push({
+        label: '回档工程备份',
+        bytes: projectRollbackSnapshotBytes(before) + projectRollbackSnapshotBytes(after),
+        undo: () => restoreProjectRollbackSnapshot(session, before),
+        redo: () => restoreProjectRollbackSnapshot(session, after),
+        invalidation: { kind: 'full' }
+      })
+      restored = true
+    }, 'content', true)
+    return restored
   },
 
   async restoreRecoveries() {
@@ -12559,5 +12696,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     dialog.resolve(choice)
   },
 
-  setMessage(message) { set({ message }) }
+  setMessage(message) { set({ message }) },
+  syncLocalHistoryPreferences() {
+    for (const session of get().sessions) configureLocalHistory(session, window.moonSprite)
+    set({ sessions: [...get().sessions] })
+  }
 }))

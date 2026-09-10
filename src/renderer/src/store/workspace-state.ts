@@ -586,6 +586,7 @@ export interface WorkspaceDocumentIoCommands {
   openFiles(): Promise<void>
   openPath(filePath: string, options?: { duplicate?: boolean; onBeforeSession?: () => void }): Promise<boolean>
   closeDocument(id: string): Promise<void>
+  restoreProjectBackup(documentId: string, document: SpriteDocument): boolean
 }
 
 export interface WorkspaceRecoveryCommands {
@@ -599,6 +600,7 @@ export interface WorkspaceUiCommands {
   dismissSaveProgress(): void
   cancelExport(): void
   setMessage(message: string | null): void
+  syncLocalHistoryPreferences(): void
   requestDialog(options: Omit<AppDialog, 'resolve'>): Promise<string>
   resolveDialog(choice: string): void
 }

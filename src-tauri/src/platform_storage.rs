@@ -62,11 +62,7 @@ pub fn atomic_write_with_validation_and_backup(
         if !path.is_file() {
             return Ok(());
         }
-        let project_key = stable_path_hash(path);
-        let project_directory = backup_directory.join(format!(
-            "{}-{project_key:016x}",
-            backup_project_name(path),
-        ));
+        let project_directory = backup_directory.join(project_backup_directory_name(path));
         fs::create_dir_all(&project_directory).map_err(|error| error.to_string())?;
         let backup = project_directory.join(format!("backup-{}{}", backup_timestamp(), PROJECT_BACKUP_EXTENSION));
         fs::hard_link(path, &backup)
@@ -151,6 +147,14 @@ fn backup_project_name(path: &Path) -> String {
     let source = path.file_stem().and_then(|value| value.to_str()).unwrap_or("project");
     let name = source.chars().filter(|value| value.is_alphanumeric() || matches!(value, '-' | '_')).take(64).collect::<String>();
     if name.is_empty() { "project".to_string() } else { name }
+}
+
+pub fn project_backup_directory_name(path: &Path) -> String {
+    format!("{}-{:016x}", backup_project_name(path), stable_path_hash(path))
+}
+
+pub fn project_backup_legacy_key(path: &Path) -> String {
+    format!("{:016x}", stable_path_hash(path))
 }
 
 fn backup_timestamp() -> u128 {

@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, ExternalLink, GitFork } from 'lucide-react'
-import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout } from '@shared/types'
+import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, ProjectBackupRecord, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout } from '@shared/types'
 import type { AdjustmentKind } from '@/core/adjustments'
 import { compositePixelWithLayerColor, getActiveLayer, isLayerEffectivelyVisible, readLayerColorAt } from '@/core/document'
 import { decodeBrowserRasterImage } from '@/core/raster-image'
+import { decodeDocumentFileAsync } from '@/core/document-files'
 import { blendOver, packColor, unpackColor } from '@/core/raster'
 import type { PanelDock, WorkspacePanelId } from '@/components/WorkspacePanels'
 import { AppMenuBar } from '@/components/app/AppMenuBar'
@@ -44,6 +45,8 @@ import { LatestReleaseDialog } from '@/components/LatestReleaseDialog'
 import { GridSettingsDialog } from '@/components/GridSettingsDialog'
 import { IsoViewSettingsDialog } from '@/components/IsoViewSettingsDialog'
 import { ProjectInfoDialog } from '@/components/ProjectInfoDialog'
+import { ProjectRollbackDialog } from '@/components/ProjectRollbackDialog'
+import { ProjectRollbackProgressOverlay } from '@/components/ProjectRollbackProgressOverlay'
 import { LuaScriptResultDialog, type LuaScriptReport } from '@/components/LuaScriptResultDialog'
 import { LuaScriptDialogs } from '@/components/LuaScriptDialog'
 import { TimelapseDialog } from '@/components/TimelapseDialog'
@@ -252,6 +255,7 @@ export default function App() {
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [isoViewSettingsOpen, setIsoViewSettingsOpen] = useState(false)
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
+  const [projectRollbackOpen, setProjectRollbackOpen] = useState(false)
   const [luaScriptRunning, setLuaScriptRunning] = useState(false)
   const [luaScriptReport, setLuaScriptReport] = useState<LuaScriptReport | null>(null)
   const [luaScriptSession, setLuaScriptSession] = useState<LuaScriptClientSession | null>(null)
@@ -1230,6 +1234,22 @@ export default function App() {
     })
   }
 
+  const restoreProjectBackup = async (record: ProjectBackupRecord): Promise<boolean> => {
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === useWorkspace.getState().activeId)
+    if (!current?.document.filePath || !runtimePreferences.projectBackupEnabled) return false
+    try {
+      const bytes = await window.moonSprite.readBinary(record.filePath)
+      const backupPath = /\.moonsprite\.bak$/i.test(record.filePath) ? record.filePath : `${record.filePath}.bak`
+      const backup = await decodeDocumentFileAsync(bytes, backupPath)
+      const restored = useWorkspace.getState().restoreProjectBackup(current.document.id, backup)
+      if (restored) workspace.setMessage('已回档工程备份，可通过编辑 - 撤销返回当前版本。')
+      return restored
+    } catch (error) {
+      workspace.setMessage(error instanceof Error ? error.message : '无法回档工程备份。')
+      return false
+    }
+  }
+
   const createDocumentAndShow = async (name: string, width: number, height: number, mode: ColorMode, recordDrawing: boolean): Promise<void> => {
     const beforeIds = new Set(useWorkspace.getState().sessions.map((item) => item.document.id))
     await useWorkspace.getState().newDocument(name, width, height, mode, recordDrawing)
@@ -1565,6 +1585,7 @@ export default function App() {
         else if (isoViewSettingsOpen) setIsoViewSettingsOpen(false)
         else if (timelapseOpen) setTimelapseOpen(false)
         else if (projectInfoOpen) setProjectInfoOpen(false)
+        else if (projectRollbackOpen) setProjectRollbackOpen(false)
         else if (luaScriptReport) setLuaScriptReport(null)
         else if (luaScriptSession?.dialogs.length) {
           const dialog = luaScriptSession.dialogs.at(-1)!
@@ -2347,7 +2368,7 @@ export default function App() {
       window.removeEventListener('wheel', wheel, true)
       window.removeEventListener('blur', blur)
     }
-  }, [adjustmentOpen, advancedMode, aboutOpen, canvasResizeOpen, colorReplacementOpen, componentLibraryOpen, cycleAdvancedMode, exportOpen, gridSettingsOpen, homeOpen, imageResizeOpen, isoViewSettingsOpen, lcdScreenOpen, latestReleaseOpen, loadSavedWorkspaces, luaScriptReport, luaScriptSession, newOpen, openLuaScriptFolder, openMenu, openPreferences, openSaveAs, outlineOpen, panelVisibility, popupPanelId, preferencesOpen, projectInfoOpen, publishShortcutCommand, resetCurrentWorkspace, runtimePreferences.timelineHidden, saveAsOpen, shortcutConflictState, shortcutOpen, spriteSheetExportOpen, timelapseOpen, toggleMirrorView, togglePopupPanel, toggleSliceOutlinesVisibility, toggleTimelineVisibility, updatePanelVisibility, updateToolRailSide, workspace, workspaceManagerOpen, workspaceSaveOpen, session?.brushSize, session?.document.id, session?.moveKind, session?.selectedFreeTileInstanceId, session?.selectedSliceId, session?.selectedSliceIds, session?.selection, session?.textBoxTransform, session?.tool, shortcuts])
+  }, [adjustmentOpen, advancedMode, aboutOpen, canvasResizeOpen, colorReplacementOpen, componentLibraryOpen, cycleAdvancedMode, exportOpen, gridSettingsOpen, homeOpen, imageResizeOpen, isoViewSettingsOpen, lcdScreenOpen, latestReleaseOpen, loadSavedWorkspaces, luaScriptReport, luaScriptSession, newOpen, openLuaScriptFolder, openMenu, openPreferences, openSaveAs, outlineOpen, panelVisibility, popupPanelId, preferencesOpen, projectInfoOpen, projectRollbackOpen, publishShortcutCommand, resetCurrentWorkspace, runtimePreferences.timelineHidden, saveAsOpen, shortcutConflictState, shortcutOpen, spriteSheetExportOpen, timelapseOpen, toggleMirrorView, togglePopupPanel, toggleSliceOutlinesVisibility, toggleTimelineVisibility, updatePanelVisibility, updateToolRailSide, workspace, workspaceManagerOpen, workspaceSaveOpen, session?.brushSize, session?.document.id, session?.moveKind, session?.selectedFreeTileInstanceId, session?.selectedSliceId, session?.selectedSliceIds, session?.selection, session?.textBoxTransform, session?.tool, shortcuts])
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent): void => {
@@ -2657,6 +2678,8 @@ export default function App() {
       onExportSpriteSheet={() => { if (session) setSpriteSheetExportSourceId(session.document.id) }}
       onOpenTimelapse={() => setTimelapseOpen(true)}
       onOpenProjectInfo={() => setProjectInfoOpen(true)}
+      projectRollbackEnabled={Boolean(session?.document.filePath && runtimePreferences.projectBackupEnabled)}
+      onOpenProjectRollback={() => setProjectRollbackOpen(true)}
       onRunLuaScript={(scriptId) => { void runLuaScript(scriptId) }}
       onOpenLuaScriptFolder={() => { void openLuaScriptFolder() }}
       onToggleExtensionPanel={toggleExtensionPanel}
@@ -2752,6 +2775,7 @@ export default function App() {
 
     <EditorStatusBar homeOpen={homeOpen} resourceLabel={resourceLabel} />
     <OpenProgressOverlay />
+    <ProjectRollbackProgressOverlay />
     <SaveProgressOverlay />
     {advancedModeNotice && <div className="advanced-mode-notice" role="status" aria-live="polite"><strong>{advancedModeNotice}</strong><small>{advancedModeNotice === t('app.advanced.enabled') ? `${advancedModeNoticeShortcut} ${t('app.advanced.restore')}` : advancedModeNoticeShortcut}</small></div>}
     {workspace.saveProgress && createPortal(<div className={`modal-backdrop save-progress-backdrop ${workspace.saveProgress.requiresConfirmation ? 'is-complete' : 'is-running'}`} role="presentation"><ModalShell storageKey="save-progress" defaultWidth={280} defaultHeight={workspace.saveProgress.requiresConfirmation ? 190 : 142} fitContentKey={workspace.saveProgress.requiresConfirmation ? 'complete' : 'progress'} minWidth={250} minHeight={workspace.saveProgress.requiresConfirmation ? 176 : 132} className="save-progress-modal" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="save-progress-title"><header><div className="save-progress-heading"><span className="save-progress-icon" aria-hidden="true">{workspace.saveProgress.requiresConfirmation ? <CheckCircle2 size={20} /> : <span className="save-progress-animation" />}</span><div><span className="eyebrow">FILE OPERATION</span><h2 id="save-progress-title">{workspace.saveProgress.title}</h2></div></div>{!workspace.saveProgress.requiresConfirmation && <button type="button" className="icon-button" aria-label={t('app.progress.close', { title: workspace.saveProgress.title })} onClick={() => workspace.cancelExport()}><PixelUtilityIcon kind="close" /></button>}</header><div className="save-progress-body"><strong>{workspace.saveProgress.label}</strong><div className={`save-progress-track ${workspace.saveProgress.value >= 100 ? 'is-full' : ''}`} aria-label={t('app.progress.aria', { title: workspace.saveProgress.title, value: workspace.saveProgress.value })}><i style={{ width: `${workspace.saveProgress.value}%` }} /></div><div className="save-progress-meta"><span>{t(workspace.saveProgress.requiresConfirmation ? 'app.progress.complete' : 'app.progress.processing')}</span><small>{workspace.saveProgress.value}%</small></div></div>{workspace.saveProgress.requiresConfirmation && <footer><button type="button" className="primary-button" onClick={() => workspace.dismissSaveProgress()}>{t('timelapse.confirmExport')}</button></footer>}</ModalShell></div>, document.body)}
@@ -2818,6 +2842,7 @@ export default function App() {
     {session && gridSettingsOpen && <GridSettingsDialog value={session.view.grid} onApply={(grid) => workspace.setView({ grid })} onClose={() => setGridSettingsOpen(false)} />}
     {session && isoViewSettingsOpen && <IsoViewSettingsDialog value={runtimePreferences.isoView} onApply={applyIsoViewPreferences} onPreview={previewIsoViewPreferences} onClose={() => setIsoViewSettingsOpen(false)} />}
     {session && projectInfoOpen && <ProjectInfoDialog document={session.document} onClose={() => setProjectInfoOpen(false)} />}
+    {session && projectRollbackOpen && runtimePreferences.projectBackupEnabled && session.document.filePath && <ProjectRollbackDialog projectPath={session.document.filePath} onClose={() => setProjectRollbackOpen(false)} onRestore={restoreProjectBackup} />}
     {luaScriptSession && <LuaScriptDialogs busy={luaScriptRunning} dialogs={luaScriptSession.dialogs} sessionId={luaScriptSession.sessionId} onAction={(action) => { void dispatchLuaScriptDialog(action) }} />}
     {luaScriptReport && <LuaScriptResultDialog report={luaScriptReport} onClose={() => setLuaScriptReport(null)} />}
     {session && timelapseOpen && <TimelapseDialog settings={session.document.timelapse!} onChange={(settings) => workspace.setTimelapseSettings(settings)} onClear={() => workspace.clearTimelapse()} onExport={(format, options) => workspace.exportTimelapse(format, options)} onClose={() => setTimelapseOpen(false)} />}

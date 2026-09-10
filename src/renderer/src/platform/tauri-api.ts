@@ -12,6 +12,7 @@ const tr = (key: TranslationKey, params?: TranslationParams): string => translat
 const dialogLanguage = (): string => loadEditorPreferences().language
 
 const browserRecoveries = new Map<string, { name: string; data: Uint8Array; updatedAt: string }>()
+const browserLocalHistories = new Map<string, Uint8Array>()
 const browserBrushes = new Map<string, { stored: StoredBrush; data: Uint8Array }>()
 const browserBackgroundPresets = new Map<string, { stored: StoredBackgroundPreset; data: Uint8Array }>()
 let browserBrushOrder: string[] = []
@@ -78,6 +79,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   cacheProjectPreview: async () => {},
   writeBinaryAtomic: async () => { throw new Error(tr('platform.browser.writeUnsupported')) },
   openProjectBackupFolder: async () => {},
+  listProjectBackups: async () => [],
   writeProjectIncremental: async () => { throw new Error(tr('platform.browser.writeUnsupported')) },
   writeClipboardImage: async () => {},
   readClipboardText: async () => null,
@@ -214,6 +216,13 @@ const createBrowserApi = (): MoonSpriteApi => ({
   },
   writeRecovery: async (id, name, data) => { browserRecoveries.set(id, { name, data: data.slice(), updatedAt: new Date().toISOString() }) },
   deleteRecovery: async (id) => { browserRecoveries.delete(id) },
+  readLocalHistory: async (id) => {
+    const data = browserLocalHistories.get(id)
+    if (!data) throw new Error('本地历史不存在')
+    return data.slice()
+  },
+  writeLocalHistory: async (id, data) => { browserLocalHistories.set(id, data.slice()) },
+  deleteLocalHistory: async (id) => { browserLocalHistories.delete(id) },
   listGalleryProjects: async () => ({ directoryPath: 'gallery', projects: [] }),
   listFolderProjects: async (directoryPath) => ({ directoryPath, projects: [] }),
   deleteGalleryProject: async () => {},
@@ -224,6 +233,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   openExternalUrl: async (url) => { window.open(url, '_blank', 'noopener,noreferrer') },
   listLuaScripts: async () => ({ directoryPath: 'scripts', scripts: [] }),
   openLuaScriptFolder: async () => {},
+  deleteLuaScript: async () => {},
   runLuaScript: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   dispatchLuaScriptDialog: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   closeLuaScriptSession: async () => {},
@@ -287,6 +297,7 @@ const writeBinaryAtomic = (filePath: string, data: Uint8Array): Promise<void> =>
     { headers: {
       'x-moonsprite-file-path': encodeURIComponent(filePath),
       'x-moonsprite-project-backup-versions': String(loadEditorPreferences().projectBackupVersions),
+      'x-moonsprite-project-backup-enabled': loadEditorPreferences().projectBackupEnabled ? '1' : '0',
       'x-moonsprite-project-backup-retention-days': String(loadEditorPreferences().projectBackupRetentionDays),
       'x-moonsprite-project-backup-directory': encodeURIComponent(loadEditorPreferences().projectBackupDirectory)
     } }
@@ -369,6 +380,12 @@ const writeRecovery = (id: string, name: string, data: Uint8Array): Promise<void
   )
 )
 
+const writeLocalHistory = (id: string, data: Uint8Array): Promise<void> => trackedBinaryInvoke(
+  'local-history.write',
+  data,
+  () => invoke('write_local_history', data, { headers: { 'x-moonsprite-local-history-id': encodeURIComponent(id) } })
+)
+
 export const createTauriApi = (): MoonSpriteApi => ({
   openFiles: () => invoke('open_files', { language: dialogLanguage() }),
   openBrushImages: () => invoke('open_brush_images', { language: dialogLanguage() }),
@@ -399,6 +416,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   }),
   writeBinaryAtomic,
   openProjectBackupFolder: () => invoke('open_project_backup_folder', { directoryPath: loadEditorPreferences().projectBackupDirectory }),
+  listProjectBackups: (projectPath) => invoke('list_project_backups', { projectPath, directoryPath: loadEditorPreferences().projectBackupDirectory }),
   writeScaledPngAtomic,
   writeProjectIncremental,
   writeClipboardImage: (image) => invoke('write_clipboard_image', { width: image.width, height: image.height, data: Array.from(image.data) }),
@@ -434,6 +452,9 @@ export const createTauriApi = (): MoonSpriteApi => ({
   readRecovery: (id) => invokeBytes('read_recovery', { id }),
   writeRecovery,
   deleteRecovery: (id) => invoke('delete_recovery', { id }),
+  readLocalHistory: (id) => invokeBytes('read_local_history', { id }),
+  writeLocalHistory,
+  deleteLocalHistory: (id) => invoke('delete_local_history', { id }),
   listGalleryProjects: () => invoke('list_gallery_projects'),
   listFolderProjects: (directoryPath) => invoke('list_folder_projects', { directoryPath }),
   deleteGalleryProject: (fileName) => invoke('delete_gallery_project', { fileName }),
@@ -444,6 +465,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   openExternalUrl: (url) => invoke('open_external_url', { url }),
   listLuaScripts: () => invoke('list_lua_scripts'),
   openLuaScriptFolder: () => invoke('open_lua_script_folder'),
+  deleteLuaScript: (scriptId) => invoke('delete_lua_script', { scriptId }),
   runLuaScript: (scriptId, context) => invoke('run_lua_script', { scriptId, context }),
   dispatchLuaScriptDialog: (sessionId, action, context) => invoke('dispatch_lua_script_dialog', { sessionId, action, context }),
   closeLuaScriptSession: (sessionId) => invoke('close_lua_script_session', { sessionId }),

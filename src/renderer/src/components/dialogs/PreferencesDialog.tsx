@@ -61,7 +61,7 @@ import { ThemePreferencesSection } from './ThemePreferencesSection'
 import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
 import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
-import type { StoredExtension } from '@shared/types'
+import type { LuaScriptEntry, StoredExtension } from '@shared/types'
 
 interface PreferencesDialogProps {
   initialSection?: PreferenceSection
@@ -77,12 +77,12 @@ const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
   ['appearance', 'preferences.sections.appearance'],
   ['theme', 'preferences.sections.theme'],
   ['input', 'preferences.sections.input'],
-  ['tablet', 'preferences.sections.tablet'],
   ['tools', 'preferences.sections.tools'],
   ['files', 'preferences.sections.files'],
   ['colorLayers', 'preferences.sections.colors'],
   ['presets', 'preferences.sections.presets'],
   ['extensions', 'preferences.sections.extensions'],
+  ['tablet', 'preferences.sections.tablet'],
   ['reset', 'preferences.sections.reset']
 ]
 
@@ -99,7 +99,7 @@ const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
   files: ['preferences.groups.locations', 'preferences.saveDirectory', 'preferences.exportDirectory', 'preferences.groups.formats', 'preferences.saveFormat', 'preferences.exportFormat', 'preferences.groups.recovery', 'preferences.recovery', 'preferences.recoveryRetentionDays', 'preferences.recoveryRetentionDaysHint'],
   colorLayers: ['preferences.colorModes', 'preferences.restoreDefaults'],
   presets: ['preferences.newDocumentPresets', 'preferences.addSize', 'preferences.exportScalePresets', 'preferences.addScale', 'preferences.layerColors', 'preferences.addColor', 'preferences.restoreDefaults'],
-  extensions: ['preferences.groups.extensions', 'preferences.extensions.add', 'preferences.extensions.openFolder', 'preferences.extensions.empty', 'preferences.extensions.entry', 'preferences.extensions.commands', 'preferences.extensions.panels', 'preferences.extensions.menus', 'preferences.extensions.enabled', 'preferences.extensions.disabled', 'preferences.extensions.enable', 'preferences.extensions.disable', 'preferences.extensions.uninstall'],
+  extensions: ['preferences.groups.extensions', 'app.menu.file.scripts', 'preferences.extensions.add', 'preferences.extensions.openFolder', 'preferences.extensions.empty', 'preferences.extensions.entry', 'preferences.extensions.commands', 'preferences.extensions.panels', 'preferences.extensions.menus', 'preferences.extensions.enabled', 'preferences.extensions.disabled', 'preferences.extensions.enable', 'preferences.extensions.disable', 'preferences.extensions.uninstall'],
   reset: ['preferences.resetDescription', 'preferences.resetAll']
 }
 
@@ -140,6 +140,9 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [extensions, setExtensions] = useState<StoredExtension[]>([])
   const [extensionsLoading, setExtensionsLoading] = useState(false)
   const [extensionBusyId, setExtensionBusyId] = useState<string | null>(null)
+  const [luaScripts, setLuaScripts] = useState<LuaScriptEntry[]>([])
+  const [luaScriptsLoading, setLuaScriptsLoading] = useState(false)
+  const [luaScriptBusyId, setLuaScriptBusyId] = useState<string | null>(null)
   const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string; barId?: string } | null>(null)
   const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set(preferences.quickCommandBars.filter((bar) => bar.edge === 'none').map((bar) => bar.id)))
   const preferencePointerDragRef = useRef<PreferencePointerDrag | null>(null)
@@ -214,6 +217,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     setEditorPreferencesPreview(preferences)
     applyThemeToDocument(preferences.theme)
     window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+    useWorkspace.getState().syncLocalHistoryPreferences()
   }, [preferences])
   useEffect(() => {
     setSection(initialSection)
@@ -238,12 +242,25 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       setExtensionsLoading(false)
     }
   }, [t])
+  const refreshLuaScripts = useCallback(async (): Promise<void> => {
+    if (typeof window.moonSprite?.listLuaScripts !== 'function') return
+    setLuaScriptsLoading(true)
+    try {
+      const listing = await window.moonSprite.listLuaScripts()
+      setLuaScripts(listing.scripts)
+    } catch (error) {
+      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('app.menu.file.noScripts'))
+    } finally {
+      setLuaScriptsLoading(false)
+    }
+  }, [t])
   useEffect(() => {
     void refreshExtensions()
-    const onExtensionsChanged = (): void => { void refreshExtensions() }
+    void refreshLuaScripts()
+    const onExtensionsChanged = (): void => { void refreshExtensions(); void refreshLuaScripts() }
     window.addEventListener('moonsprite:extensions-changed', onExtensionsChanged)
     return () => window.removeEventListener('moonsprite:extensions-changed', onExtensionsChanged)
-  }, [refreshExtensions])
+  }, [refreshExtensions, refreshLuaScripts])
   useEffect(() => () => {
     setEditorPreferencesPreview(null)
     applyThemeToDocument(loadEditorPreferences().theme)
@@ -347,6 +364,31 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       await window.moonSprite.openExtensionFolder()
     } catch (error) {
       useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('preferences.extensions.operationFailed'))
+    }
+  }
+  const openLuaScriptFolder = async (): Promise<void> => {
+    try {
+      await window.moonSprite.openLuaScriptFolder()
+    } catch (error) {
+      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('app.menu.file.noScripts'))
+    }
+  }
+  const deleteLuaScript = async (script: LuaScriptEntry): Promise<void> => {
+    if (script.extensionId || luaScriptBusyId) return
+    const choice = await useWorkspace.getState().requestDialog({
+      title: t('preferences.scripts.deleteTitle'),
+      message: t('preferences.scripts.deleteMessage', { name: script.name }),
+      choices: [{ id: 'cancel', label: t('preferences.cancel'), tone: 'quiet' }, { id: 'delete', label: t('common.delete'), tone: 'danger' }]
+    })
+    if (choice !== 'delete') return
+    setLuaScriptBusyId(script.id)
+    try {
+      await window.moonSprite.deleteLuaScript(script.id)
+      await refreshLuaScripts()
+    } catch (error) {
+      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('app.menu.file.noScripts'))
+    } finally {
+      setLuaScriptBusyId(null)
     }
   }
   const toggleExtension = async (extension: StoredExtension): Promise<void> => {
@@ -552,10 +594,15 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <FormField className="preference-field" label={t('preferences.recovery')}><ThemedSelect value={recoveryValue} groups={[{ label: t('preferences.recoveryGroup'), options: [{ value: 'off', label: t('preferences.recovery.off') }, { value: '0.5', label: t('preferences.recovery.seconds30') }, { value: '1', label: t('preferences.recovery.minutes1') }, { value: '2', label: t('preferences.recovery.minutes2') }, { value: '5', label: t('preferences.recovery.minutes5') }, { value: '10', label: t('preferences.recovery.minutes10') }] }]} label={t('preferences.recovery')} onChange={(value) => setPreferences((current) => value === 'off' ? { ...current, recovery: false } : { ...current, recovery: true, recoveryMinutes: Number(value) })} /></FormField>
         <FormField className="preference-field" label={t('preferences.recoveryRetentionDays')} hint={t('preferences.recoveryRetentionDaysHint')}><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} value={preferences.recoveryRetentionDays} onValueChange={(value) => update('recoveryRetentionDays', Math.round(value))} /></FormField>
         </PreferenceGroup>
+        <PreferenceGroup title="本地历史记录">
+        {toggle('关闭后保留历史记录', preferences.localHistoryEnabled, (value) => update('localHistoryEnabled', value), '将最近的历史记录保存在本机软件数据目录。不会写入 .moonsprite 工程文件，但会增加本机磁盘占用和保存时的后台处理量。')}
+        <FormField className="preference-field" label="保留历史记录数量" hint="每个工程最多保存这么多条历史记录。"><NumberInput min={1} max={200} suffix="条" disabled={!preferences.localHistoryEnabled} value={preferences.localHistoryLimit} onValueChange={(value) => update('localHistoryLimit', Math.round(value))} /></FormField>
+        </PreferenceGroup>
         <PreferenceGroup title="工程备份">
-        <FormField className="preference-field" label="每个工程保留版本" hint="保存前保留旧版本；备份位于软件数据目录，不会写入工程所在文件夹。"><NumberInput min={1} max={10} suffix="个" value={preferences.projectBackupVersions} onValueChange={(value) => update('projectBackupVersions', Math.round(value))} /></FormField>
-        <FormField className="preference-field" label="工程备份保留时间"><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} value={preferences.projectBackupRetentionDays} onValueChange={(value) => update('projectBackupRetentionDays', Math.round(value))} /></FormField>
-        <FormField className="preference-field preference-path-field" label="工程备份目录" hint={preferences.projectBackupDirectory ? '使用自定义目录。' : '默认保存到软件数据目录。'}><div className="preference-path-control"><TextInput readOnly value={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} title={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} /><button type="button" className="icon-button" title={t('preferences.chooseDirectory')} aria-label="选择工程备份目录" onClick={() => void choosePreferenceDirectory('projectBackupDirectory')}><PixelUtilityIcon kind="folderOpen" /></button><button type="button" className="icon-button" title={t('preferences.restoreDefaultDirectory')} aria-label="恢复默认工程备份目录" disabled={!preferences.projectBackupDirectory} onClick={() => update('projectBackupDirectory', '')}><PixelUtilityIcon kind="restore" /></button></div></FormField>
+        {toggle('启用工程备份', preferences.projectBackupEnabled, (value) => update('projectBackupEnabled', value), '保存工程前保留当前版本。关闭后不会创建新备份，也无法使用文件 - 回档。')}
+        <FormField className="preference-field" label="每个工程保留版本" hint="保存前保留旧版本；备份位于软件数据目录，不会写入工程所在文件夹。"><NumberInput min={1} max={10} suffix="个" disabled={!preferences.projectBackupEnabled} value={preferences.projectBackupVersions} onValueChange={(value) => update('projectBackupVersions', Math.round(value))} /></FormField>
+        <FormField className="preference-field" label="工程备份保留时间"><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} disabled={!preferences.projectBackupEnabled} value={preferences.projectBackupRetentionDays} onValueChange={(value) => update('projectBackupRetentionDays', Math.round(value))} /></FormField>
+        <FormField className="preference-field preference-path-field" label="工程备份目录" hint={preferences.projectBackupDirectory ? '使用自定义目录。' : '默认保存到软件数据目录。'}><div className="preference-path-control"><TextInput readOnly value={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} title={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} /><button type="button" className="icon-button" title={t('preferences.chooseDirectory')} aria-label="选择工程备份目录" disabled={!preferences.projectBackupEnabled} onClick={() => void choosePreferenceDirectory('projectBackupDirectory')}><PixelUtilityIcon kind="folderOpen" /></button><button type="button" className="icon-button" title={t('preferences.restoreDefaultDirectory')} aria-label="恢复默认工程备份目录" disabled={!preferences.projectBackupEnabled || !preferences.projectBackupDirectory} onClick={() => update('projectBackupDirectory', '')}><PixelUtilityIcon kind="restore" /></button></div></FormField>
         </PreferenceGroup>
       </>}
       {section === 'colorLayers' && <div className="preference-presets preference-color-layer-settings"><section className="preference-color-settings"><SettingsSectionHeader title={t('preferences.colorModes')} actions={<button type="button" className="quiet-button" onClick={() => update('colorEditorModes', DEFAULT_COLOR_EDITOR_MODES.map((item) => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>} /><div className="preference-color-mode-list">{preferences.colorEditorModes.map((item, index) => {
@@ -585,6 +632,9 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           </div>
           <div className="preference-extension-actions"><PreferenceToggle className="preference-extension-toggle" label={t('preferences.extensions.enable')} checked={extension.enabled} disabled={extensionBusyId !== null} onChange={() => void toggleExtension(extension)} /><button type="button" className="danger-button" disabled={extensionBusyId !== null} onClick={() => void uninstallExtension(extension)}><PixelUtilityIcon kind="delete" />{t('preferences.extensions.uninstall')}</button></div>
         </article>)}</div>}
+      </PreferenceGroup>}
+      {section === 'extensions' && <PreferenceGroup className="preference-scripts-group" title={t('app.menu.file.scripts')} actions={<><button type="button" onClick={() => void openLuaScriptFolder()}><PixelUtilityIcon kind="folderOpen" />{t('app.menu.file.openScriptFolder')}</button><button type="button" onClick={() => void refreshLuaScripts()} disabled={luaScriptsLoading}><PixelUtilityIcon kind="restore" />{t('common.refresh')}</button></>}>
+        {luaScriptsLoading && luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.loadingScripts')}</p> : luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.noScripts')}</p> : <div className="preference-script-list">{luaScripts.map((script) => <article className="preference-script-row" key={script.id}><div className="preference-script-name">{script.name}</div><div className="preference-script-meta">{script.extensionName ?? t('preferences.scripts.local')}</div><button type="button" className="icon-button preference-script-delete" aria-label={t('preferences.scripts.deleteAria', { name: script.name })} title={script.extensionId ? t('preferences.scripts.extensionManaged') : t('common.delete')} disabled={Boolean(script.extensionId) || luaScriptBusyId !== null} onClick={() => void deleteLuaScript(script)}><PixelUtilityIcon kind="delete" /></button></article>)}</div>}
       </PreferenceGroup>}
       {section === 'reset' && <><p>{t('preferences.resetDescription')}</p><button className="danger-button" onClick={() => void resetAllSettings()}>{t('preferences.resetAll')}</button></>}
       </>}

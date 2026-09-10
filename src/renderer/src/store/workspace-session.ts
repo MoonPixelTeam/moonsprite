@@ -358,6 +358,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const session = {
     document,
     history: new HistoryStack(),
+    localHistory: null,
     tool: 'pencil',
     moveKind: 'move',
     selectedSliceId: null,

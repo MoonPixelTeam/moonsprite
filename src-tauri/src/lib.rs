@@ -19,6 +19,7 @@ mod platform_extensions;
 mod platform_files;
 mod platform_fonts;
 mod platform_gallery;
+mod platform_local_history;
 mod platform_palette;
 mod platform_paths;
 mod platform_recovery;
@@ -163,6 +164,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
                 window.set_icon(icon)?;
+                platform_diagnostics::install_webview_failure_diagnostics(&window)?;
             }
             platform_recovery::initialize_session_marker(app.handle())?;
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
@@ -196,6 +198,7 @@ pub fn run() {
             platform_files::cache_project_preview,
             platform_files::write_binary_atomic,
             platform_files::open_project_backup_folder,
+            platform_files::list_project_backups,
             platform_files::cancel_scaled_png_export,
             platform_files::write_scaled_png_atomic,
             platform_files::write_project_incremental,
@@ -234,6 +237,9 @@ pub fn run() {
             platform_recovery::read_recovery,
             platform_recovery::write_recovery,
             platform_recovery::delete_recovery,
+            platform_local_history::read_local_history,
+            platform_local_history::write_local_history,
+            platform_local_history::delete_local_history,
             platform_gallery::list_gallery_projects,
             platform_gallery::list_folder_projects,
             platform_gallery::delete_gallery_project,
@@ -244,6 +250,7 @@ pub fn run() {
             platform_gallery::open_external_url,
             platform_scripts::list_lua_scripts,
             platform_scripts::open_lua_script_folder,
+            platform_scripts::delete_lua_script,
             platform_scripts::run_lua_script,
             platform_scripts::dispatch_lua_script_dialog,
             platform_scripts::close_lua_script_session,

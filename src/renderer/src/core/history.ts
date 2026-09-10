@@ -29,6 +29,18 @@ export interface HistoryTimeline {
   position: number
 }
 
+/**
+ * A notification emitted after the stack has applied a navigation operation.
+ * Consumers must treat entries as opaque: their closures are intentionally not
+ * serializable. Persistent history records document snapshots separately.
+ */
+export interface HistoryStackChange {
+  kind: 'push' | 'undo' | 'redo' | 'clear'
+  entry?: HistoryEntry
+  /** Number of oldest undo entries removed by the byte budget during a push. */
+  discardedUndoEntries?: number
+}
+
 export type ContentInvalidationHint =
   | { kind: 'full' }
   | { kind: 'region'; frameId?: string; rect: SelectionRect }
@@ -67,6 +79,7 @@ export class HistoryStack {
   private compoundDepth = 0
   private stackRevision = 0
   private animationSelectionNormalizationRequested = false
+  private changeListener: ((change: HistoryStackChange) => void) | null = null
 
   constructor(private readonly maxBytes = 256 * 1024 * 1024) {}
 
@@ -83,6 +96,24 @@ export class HistoryStack {
     return { entries, position: this.position }
   }
 
+  setChangeListener(listener: ((change: HistoryStackChange) => void) | null): void {
+    this.changeListener = listener
+  }
+
+  /** Hydrate an already-applied timeline without replaying undo closures. */
+  restoreTimeline(entries: readonly HistoryEntry[], position: number): void {
+    if (this.compoundDepth) throw new Error('Cannot restore history during a transaction')
+    if (!Number.isInteger(position) || position < 0 || position > entries.length) throw new Error('Invalid history position')
+    this.undoEntries = entries.slice(0, position)
+    this.redoEntries = entries.slice(position).reverse()
+    this.bytes = this.undoEntries.reduce((sum, entry) => sum + entry.bytes, 0)
+    this.stackRevision += 1
+  }
+
+  private notify(change: HistoryStackChange): void {
+    this.changeListener?.(change)
+  }
+
   clear(): void {
     this.undoEntries = []
     this.redoEntries = []
@@ -91,6 +122,7 @@ export class HistoryStack {
     this.compoundDepth = 0
     this.animationSelectionNormalizationRequested = false
     this.stackRevision += 1
+    this.notify({ kind: 'clear' })
   }
 
   /** Mark entries recorded by the current mutateActive scope as structural. */
@@ -109,10 +141,13 @@ export class HistoryStack {
     this.undoEntries.push(entry)
     this.bytes += entry.bytes
     this.redoEntries = []
+    let discardedUndoEntries = 0
     while (this.bytes > this.maxBytes && this.undoEntries.length > 1) {
       this.bytes -= this.undoEntries.shift()!.bytes
+      discardedUndoEntries += 1
     }
     this.stackRevision += 1
+    this.notify({ kind: 'push', entry, discardedUndoEntries })
   }
 
   beginCompound(): void {
@@ -160,6 +195,7 @@ export class HistoryStack {
     this.bytes -= entry.bytes
     this.redoEntries.push(entry)
     this.stackRevision += 1
+    this.notify({ kind: 'undo', entry })
     return entry
   }
 
@@ -199,6 +235,7 @@ export class HistoryStack {
     this.undoEntries.push(entry)
     this.bytes += entry.bytes
     this.stackRevision += 1
+    this.notify({ kind: 'redo', entry })
     return entry
   }
 }
