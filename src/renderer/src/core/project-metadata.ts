@@ -19,7 +19,7 @@ export const DEFAULT_TIMELAPSE_SETTINGS: TimelapseSettings = {
   quality: 'medium',
   fps: 12,
   speed: 8,
-  mode: 'full',
+  mode: 'smart',
   snapshots: []
 }
 
@@ -48,7 +48,7 @@ const timelapseQuality = (value: unknown): TimelapseQuality =>
   value === 'low' || value === 'high' ? value : 'medium'
 
 const timelapseRecordingMode = (value: unknown): TimelapseRecordingMode =>
-  value === 'smart' ? 'smart' : 'full'
+  value === 'full' ? 'full' : 'smart'
 
 export const normalizeTimelapseSettings = (
   value: unknown,

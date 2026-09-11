@@ -1,4 +1,4 @@
-import type { FreeTileInstance, SelectionMask, SelectionMode, SelectionRect, SpriteDocument, TilemapCelData } from '@shared/types'
+import type { FillConnectivity, FreeTileInstance, SelectionMask, SelectionMode, SelectionRect, SpriteDocument, TilemapCelData } from '@shared/types'
 import type { FreeTileSourceRef } from './free-tile'
 import { createFreeTileSourceEditRaster, freeTileSelectionFromEditRaster } from './free-tile-edit'
 import { combineSelection, magicWandSelection } from './selection'
@@ -13,6 +13,7 @@ export interface MagicWandOperation {
   axes?: SymmetryAxes
   center?: { x: number; y: number }
   previewColor?: string
+  connectivity?: FillConnectivity
   tilemap?: { grid: TilemapCelData; offsetX: number; offsetY: number }
   freeTile?: {
     source: FreeTileSourceRef
@@ -29,7 +30,7 @@ export const prepareMagicWandOperation = (options: MagicWandOperation) => {
     if (free) {
       const b = free.bounds
       incoming = edit && x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height
-        ? freeTileSelectionFromEditRaster(edit, magicWandSelection(edit.document, edit.layer, x - edit.origin.x, y - edit.origin.y, tolerance, contiguous, gap), width, height)
+        ? freeTileSelectionFromEditRaster(edit, magicWandSelection(edit.document, edit.layer, x - edit.origin.x, y - edit.origin.y, tolerance, contiguous, gap, { connectivity: options.connectivity ?? 4 }), width, height)
         : null
     }
     if (hasSymmetry(options.axes)) incoming = symmetrySelection(incoming, width, height, options.axes, options.center)

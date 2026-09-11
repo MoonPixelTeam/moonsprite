@@ -6,6 +6,7 @@ import {
   DEFAULT_QUICK_COMMAND_BARS,
   UI_SCALE_VALUES,
   VIEW_DRAG_SENSITIVITY_VALUES,
+  KEY_DISPLAY_DURATIONS,
   loadEditorPreferences,
   parseDocumentSizePresets,
   parseExportScalePresets,
@@ -18,6 +19,7 @@ import {
   type DocumentSizePreset,
   type EyedropperMagnifierSize,
   type EyedropperMagnifierStyle,
+  type KeyDisplayDuration,
   type MoveLayerClickFlashDuration,
   MOVE_LAYER_CLICK_FLASH_DURATIONS,
   type QuickCommandId,
@@ -62,7 +64,7 @@ import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
 import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
 import type { LuaScriptEntry, StoredExtension } from '@shared/types'
-import { exportUsageStatistics, initializeUsageStatistics, openUsageStatisticsFolder, resetUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
+import { initializeUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
 
 interface PreferencesDialogProps {
   initialSection?: PreferenceSection
@@ -468,15 +470,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     setUsageStatisticsBusy(true)
     try { await operation() } catch (error) { useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error)) } finally { setUsageStatisticsBusy(false) }
   }
-  const confirmResetUsageStatistics = async (): Promise<void> => {
-    const choice = await useWorkspace.getState().requestDialog({
-      title: '重置使用统计',
-      message: '确定重置全部使用统计吗？',
-      detail: '此操作无法撤销。',
-      choices: [{ id: 'cancel', label: '取消', tone: 'quiet' }, { id: 'reset', label: '重置', tone: 'primary' }]
-    })
-    if (choice === 'reset') await runUsageStatistics(resetUsageStatistics)
-  }
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
   const preferenceSectionMatches = useMemo(() => new Map(PREFERENCE_SECTIONS.map(([value, labelKey]) => [value, !normalizedQuery || [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key))].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))])), [locale, normalizedQuery, t])
   const visiblePreferenceSections = PREFERENCE_SECTIONS
@@ -517,7 +510,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         </PreferenceGroup>
         <PreferenceGroup title="使用统计">
           <PreferenceToggle label="开启使用统计" checked={usageStatisticsEnabled} disabled={usageStatisticsBusy} onChange={(enabled) => void runUsageStatistics(async () => { await setUsageStatisticsEnabled(enabled); setUsageStatisticsEnabledState(enabled) })} />
-          <div className="preference-usage-statistics-actions"><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void runUsageStatistics(openUsageStatisticsFolder)}><PixelUtilityIcon kind="folderOpen" />打开保存文件夹</button><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void runUsageStatistics(async () => { if (await exportUsageStatistics()) useWorkspace.getState().setMessage('使用统计已导出。') })}><PixelUtilityIcon kind="export" />导出 JSON</button><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void confirmResetUsageStatistics()}><PixelUtilityIcon kind="restore" />重置统计</button></div>
         </PreferenceGroup>
       </>}
       {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bar, name: t('preferences.quickCommandDefaultName', { index: index + 1 }), commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
@@ -558,6 +550,12 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           <FormField className="preference-field" label={t('preferences.zoomMode')}><ThemedSelect value={preferences.zoomToolDragMode} groups={[{ label: t('preferences.zoomModeGroup'), options: [{ value: 'smooth', label: t('preferences.zoomMode.smooth') }, { value: 'stepped', label: t('preferences.zoomMode.stepped') }] }]} label={t('preferences.zoomMode')} onChange={(value) => update('zoomToolDragMode', value as ZoomToolDragMode)} /></FormField>
           <FormField className="preference-field" label={t('preferences.viewDragSensitivity')}><ThemedSelect value={String(preferences.viewDragSensitivity)} groups={[{ label: t('preferences.viewDragSensitivityGroup'), options: VIEW_DRAG_SENSITIVITY_VALUES.map((value) => ({ value: String(value), label: `${value}x` })) }]} label={t('preferences.viewDragSensitivity')} onChange={(value) => update('viewDragSensitivity', Number(value) as ViewDragSensitivity)} /></FormField>
           <FormField className="preference-field" label={t('preferences.position')}><ThemedSelect value={preferences.rotationIndicatorPosition} groups={[{ label: t('preferences.positionGroup'), options: [{ value: 'view', label: t('preferences.position.view') }, { value: 'canvas', label: t('preferences.position.canvas') }, { value: 'pointer-left', label: t('preferences.position.pointerLeft') }] }]} label={t('preferences.position')} onChange={(value) => update('rotationIndicatorPosition', value as RotationIndicatorPosition)} /></FormField>
+        </PreferenceGroup>
+        <PreferenceGroup title="交互提示">
+          <PreferenceToggle label="悬浮描述" checked={preferences.tooltipsEnabled} onChange={(enabled) => update('tooltipsEnabled', enabled)} tooltip="控制界面中的悬浮描述提示，默认开启。" />
+          {toggle('按键显示', preferences.keyDisplayEnabled, (value) => update('keyDisplayEnabled', value), '在画布右下角显示最近按下的键位，提示会自动淡出。')}
+          <FormField className="preference-field" label="按键显示尺寸"><ThemedSelect value={String(preferences.keyDisplaySize)} groups={[{ label: '按键显示尺寸', options: [{ value: '0.75', label: '小' }, { value: '1', label: '标准' }, { value: '1.25', label: '大' }, { value: '1.5', label: '特大' }] }]} label="按键显示尺寸" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplaySize', Number(value))} /></FormField>
+          <FormField className="preference-field" label="停留时长"><ThemedSelect value={String(preferences.keyDisplayDuration)} groups={[{ label: '停留时长', options: KEY_DISPLAY_DURATIONS.map((duration) => ({ value: String(duration), label: `${duration / 1000} 秒` })) }]} label="停留时长" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplayDuration', Number(value) as KeyDisplayDuration)} /></FormField>
         </PreferenceGroup>
       </>}
       {section === 'tablet' && <PreferenceGroup title={t('preferences.groups.tablet')}>
@@ -639,28 +637,16 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       {section === 'presets' && <div className="preference-presets"><section><SettingsSectionHeader title={t('preferences.newDocumentPresets')} actions={<button type="button" onClick={() => update('documentSizePresets', [...preferences.documentSizePresets, { width: 64, height: 64 }])}><PixelUtilityIcon kind="plus" />{t('preferences.addSize')}</button>} /><div className="preference-preset-grid">{preferences.documentSizePresets.map((preset, index) => <div className="document-size-preset-row" key={index}><NumberInput density="compact" aria-label={t('preferences.presetWidthAria', { index: index + 1 })} min={1} max={16384} suffix="px" value={preset.width} onValueChange={(value) => updateDocumentSize(index, 'width', value)} /><span>x</span><NumberInput density="compact" aria-label={t('preferences.presetHeightAria', { index: index + 1 })} min={1} max={16384} suffix="px" value={preset.height} onValueChange={(value) => updateDocumentSize(index, 'height', value)} /><DeleteIconButton aria-label={t('preferences.deleteSizeAria', { width: preset.width, height: preset.height })} disabled={preferences.documentSizePresets.length === 1} onClick={() => update('documentSizePresets', preferences.documentSizePresets.filter((_, presetIndex) => presetIndex !== index))} /></div>)}</div></section><section><SettingsSectionHeader title={t('preferences.exportScalePresets')} actions={<button type="button" onClick={() => update('exportScalePresets', [...preferences.exportScalePresets, 100])}><PixelUtilityIcon kind="plus" />{t('preferences.addScale')}</button>} /><div className="preference-preset-grid export-scale-preset-grid">{preferences.exportScalePresets.map((scale, index) => <div className="export-scale-preset-row" key={index}><NumberInput density="compact" aria-label={t('preferences.exportScaleAria', { index: index + 1 })} min={1} max={6400} suffix="%" value={scale} onValueChange={(value) => update('exportScalePresets', preferences.exportScalePresets.map((currentScale, scaleIndex) => scaleIndex === index ? value : currentScale))} /><DeleteIconButton aria-label={t('preferences.deleteScaleAria', { scale })} disabled={preferences.exportScalePresets.length === 1} onClick={() => update('exportScalePresets', preferences.exportScalePresets.filter((_, scaleIndex) => scaleIndex !== index))} /></div>)}</div></section><section className="preference-layer-settings preference-checker-colors"><SettingsSectionHeader title={t('preferences.layerColors')} actions={<><button type="button" className="quiet-button" aria-label={t('preferences.restoreDefaults')} onClick={() => update('layerDisplayColorPresets', DEFAULT_LAYER_DISPLAY_COLOR_PRESETS.map((color) => ({ ...color })))}><PixelUtilityIcon kind="restore" /><span>{t('preferences.restoreDefaults')}</span></button><button type="button" className="quiet-button" disabled={preferences.layerDisplayColorPresets.length >= 12} onClick={() => update('layerDisplayColorPresets', [...preferences.layerDisplayColorPresets, { r: 117, g: 117, b: 117, a: 255 }])}><PixelUtilityIcon kind="plus" /><span>{t('preferences.addColor')}</span></button></>} /><div className="preference-layer-color-grid">{preferences.layerDisplayColorPresets.map((color, index) => <div className="preference-layer-color-row" key={index}><ColorValueControl color={color} density="regular" onChange={(value) => updateLayerColorPreset(index, value)} label={t('preferences.layerColorAria', { index: index + 1 })} storageKey="layer-preset" fillWithColor /><DeleteIconButton size="regular" aria-label={t('preferences.deleteLayerColorAria', { index: index + 1 })} disabled={preferences.layerDisplayColorPresets.length === 1} onClick={() => update('layerDisplayColorPresets', preferences.layerDisplayColorPresets.filter((_, presetIndex) => presetIndex !== index))} /></div>)}</div></section></div>}
       {section === 'extensions' && <PreferenceGroup title={t('preferences.groups.extensions')} actions={<><button type="button" onClick={() => void chooseExtension()} disabled={extensionsLoading || extensionBusyId !== null}><PixelUtilityIcon kind="import" />{t('preferences.extensions.add')}</button><button type="button" onClick={() => void openExtensionFolder()}><PixelUtilityIcon kind="folderOpen" />{t('preferences.extensions.openFolder')}</button></>}>
         {extensionsLoading && extensions.length === 0 ? <p className="preference-search-empty">{t('preferences.extensions.loading')}</p> : extensions.length === 0 ? <p className="preference-search-empty">{t('preferences.extensions.empty')}</p> : <div className="preference-extension-list">{extensions.map((extension) => <article className={`preference-extension-row${extension.enabled ? '' : ' disabled'}`} key={extension.id}>
-          <div className="preference-extension-info">
-            <header className="preference-extension-heading">
-              <div className="preference-extension-identity"><div className="preference-extension-title"><strong>{extension.name}</strong><span>{t('preferences.extensions.versionShort', { version: extension.version })}</span></div>{extension.author && <span className="preference-extension-author">{extension.author}</span>}</div>
-              <span className="preference-extension-state">{extension.enabled ? t('preferences.extensions.enabled') : t('preferences.extensions.disabled')}</span>
-            </header>
-            {extension.description && <p className="preference-extension-description">{extension.description}</p>}
-            <div className="preference-extension-stats">
-              <span title={extension.commands.map((command) => command.name).join(', ')}>{t('preferences.extensions.commandsShort', { count: extension.commands.length })}</span>
-              <span title={extension.panels.map((panel) => panel.name).join(', ')}>{t('preferences.extensions.panelsShort', { count: extension.panels.length })}</span>
-              <span title={[...extension.menuItems.map((item) => item.menu), ...extension.topMenus.map((menu) => menu.name)].join(', ')}>{t('preferences.extensions.menusShort', { count: extension.menuItems.length + extension.topMenus.length })}</span>
-            </div>
-            <dl className="preference-extension-details">
-              <div><dt>{t('preferences.extensions.idLabel')}</dt><dd title={extension.id}>{extension.id}</dd></div>
-              {extension.entry && <div><dt>{t('preferences.extensions.entryLabel')}</dt><dd title={extension.entry}>{extension.entry}</dd></div>}
-              <div className="preference-extension-location"><dt>{t('preferences.extensions.pathLabel')}</dt><dd title={extension.filePath}>{extension.filePath}</dd></div>
-            </dl>
-          </div>
-          <div className="preference-extension-actions"><PreferenceToggle className="preference-extension-toggle" label={t('preferences.extensions.enable')} checked={extension.enabled} disabled={extensionBusyId !== null} onChange={() => void toggleExtension(extension)} /><button type="button" className="danger-button" disabled={extensionBusyId !== null} onClick={() => void uninstallExtension(extension)}><PixelUtilityIcon kind="delete" />{t('preferences.extensions.uninstall')}</button></div>
+          <header className="preference-extension-heading">
+            <div className="preference-extension-identity"><div className="preference-extension-title"><strong>{extension.name}</strong><span>{t('preferences.extensions.versionShort', { version: extension.version })}</span></div>{extension.author && <span className="preference-extension-author">{extension.author}</span>}</div>
+            <span className="preference-extension-state">{extension.enabled ? t('preferences.extensions.enabled') : t('preferences.extensions.disabled')}</span>
+          </header>
+          {extension.description && <p className="preference-extension-description">{extension.description}</p>}
+          <div className="preference-extension-actions"><PreferenceToggle className="preference-extension-toggle" label={t('preferences.extensions.enable')} checked={extension.enabled} disabled={extensionBusyId !== null} onChange={() => void toggleExtension(extension)} /><button type="button" className="quiet-button" disabled={extensionBusyId !== null} onClick={() => void uninstallExtension(extension)}><PixelUtilityIcon kind="delete" />{t('preferences.extensions.uninstall')}</button></div>
         </article>)}</div>}
       </PreferenceGroup>}
       {section === 'extensions' && <PreferenceGroup className="preference-scripts-group" title={t('app.menu.file.scripts')} actions={<><button type="button" onClick={() => void openLuaScriptFolder()}><PixelUtilityIcon kind="folderOpen" />{t('app.menu.file.openScriptFolder')}</button><button type="button" onClick={() => void refreshLuaScripts()} disabled={luaScriptsLoading}><PixelUtilityIcon kind="restore" />{t('common.refresh')}</button></>}>
-        {luaScriptsLoading && luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.loadingScripts')}</p> : luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.noScripts')}</p> : <div className="preference-script-list">{luaScripts.map((script) => <article className="preference-script-row" key={script.id}><div className="preference-script-name">{script.name}</div><div className="preference-script-meta">{script.extensionName ?? t('preferences.scripts.local')}</div><button type="button" className="icon-button preference-script-delete" aria-label={t('preferences.scripts.deleteAria', { name: script.name })} title={script.extensionId ? t('preferences.scripts.extensionManaged') : t('common.delete')} disabled={Boolean(script.extensionId) || luaScriptBusyId !== null} onClick={() => void deleteLuaScript(script)}><PixelUtilityIcon kind="delete" /></button></article>)}</div>}
+        {luaScriptsLoading && luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.loadingScripts')}</p> : luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.noScripts')}</p> : <div className="preference-script-list">{luaScripts.map((script) => <article className="preference-script-row" key={script.id}><div className="preference-script-name">{script.name}</div>{script.extensionName && <div className="preference-script-meta">{script.extensionName}</div>}<button type="button" className="icon-button preference-script-delete" aria-label={t('preferences.scripts.deleteAria', { name: script.name })} title={script.extensionId ? t('preferences.scripts.extensionManaged') : t('common.delete')} disabled={Boolean(script.extensionId) || luaScriptBusyId !== null} onClick={() => void deleteLuaScript(script)}><PixelUtilityIcon kind="delete" /></button></article>)}</div>}
       </PreferenceGroup>}
       {section === 'reset' && <><p>{t('preferences.resetDescription')}</p><button className="danger-button" onClick={() => void resetAllSettings()}>{t('preferences.resetAll')}</button></>}
       </>}

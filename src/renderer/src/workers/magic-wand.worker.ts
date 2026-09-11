@@ -154,7 +154,8 @@ const handleMessage = (event: MessageEvent<any>) => {
     y,
     tolerance = 0,
     contiguous = true,
-    gapClosingThreshold = 0
+    gapClosingThreshold = 0,
+    connectivity = 4
   } = event.data as {
     id: number
     width: number
@@ -164,6 +165,7 @@ const handleMessage = (event: MessageEvent<any>) => {
     tolerance?: number
     contiguous?: boolean
     gapClosingThreshold?: number
+    connectivity?: 4 | 8
   }
   const computeStartedAt = performance.now()
   const target = readPacked(x, y)
@@ -176,6 +178,7 @@ const handleMessage = (event: MessageEvent<any>) => {
     tolerance,
     contiguous,
     gapClosingThreshold,
+    connectivity,
     layerBounds: { x: sourceOffsetX, y: sourceOffsetY, width: sourceWidth, height: sourceHeight },
     contentBounds: sourceContentBounds
   }, readPacked)

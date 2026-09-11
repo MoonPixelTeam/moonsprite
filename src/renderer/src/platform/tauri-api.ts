@@ -1,6 +1,6 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ExtensionListing, MoonSpriteApi, ProjectPreview, RgbaColor, SaveDialogFormat, ScaledPngWriteOptions, ScaledPngWriteResult, StoredBackgroundPreset, StoredBrush, StoredBrushFolder, StoredExtension, StoredPalette, StoredWorkspace } from '@shared/types'
+import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ExtensionListing, ExtensionPackagePreview, MoonSpriteApi, ProjectPreview, RgbaColor, SaveDialogFormat, ScaledPngWriteOptions, ScaledPngWriteResult, StoredBackgroundPreset, StoredBrush, StoredBrushFolder, StoredExtension, StoredPalette, StoredWorkspace } from '@shared/types'
 import { builtInPalettes } from '@/core/built-in-palettes'
 import { brushFolderContains, remapBrushFolderId } from '@/core/brush-folder-tree'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -245,6 +245,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   dispatchLuaScriptDialog: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   closeLuaScriptSession: async () => {},
   listExtensions: async (): Promise<ExtensionListing> => ({ directoryPath: 'extensions', extensions: [] }),
+  inspectExtensionPackage: async (): Promise<ExtensionPackagePreview> => { throw new Error(tr('platform.browser.readUnsupported')) },
   installExtension: async (): Promise<StoredExtension> => { throw new Error(tr('platform.browser.readUnsupported')) },
   chooseAndInstallExtension: async (): Promise<StoredExtension | null> => { throw new Error(tr('platform.browser.readUnsupported')) },
   setExtensionEnabled: async (): Promise<StoredExtension> => { throw new Error(tr('platform.browser.readUnsupported')) },
@@ -484,6 +485,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   dispatchLuaScriptDialog: (sessionId, action, context) => invoke('dispatch_lua_script_dialog', { sessionId, action, context }),
   closeLuaScriptSession: (sessionId) => invoke('close_lua_script_session', { sessionId }),
   listExtensions: () => invoke('list_extensions'),
+  inspectExtensionPackage: (filePath) => invoke('inspect_extension_package', { packagePath: filePath }),
   installExtension: (filePath) => invoke('install_extension', { packagePath: filePath }),
   chooseAndInstallExtension: () => invoke('choose_and_install_extension', { language: dialogLanguage() }),
   setExtensionEnabled: (id, enabled) => invoke('set_extension_enabled', { id, enabled }),

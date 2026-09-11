@@ -351,11 +351,14 @@ export const selectionResizeHit = (
 }
 
 export interface CanvasDragState {
-  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'smooth' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
+  kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'smooth' | 'extension-tool' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
   smoothStroke?: { visited: Set<number> }
+  extensionToolMask?: Set<number>
+  extensionToolBounds?: SelectionRect | null
+  extensionToolContentRevision?: number
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint
@@ -665,6 +668,12 @@ export const deferredSelectionPreviewOwner = (
 
 export const canvasGestureForPreview = (drag: CanvasDragState | null | undefined): CanvasDragState | null =>
   drag?.kind === 'pan' && drag.resumeDrag?.kind === 'polygon-lasso' ? drag.resumeDrag : drag ?? null
+
+export const brushPreviewAllowedDuringDrag = (
+  drag: Pick<CanvasDragState, 'kind'> | null | undefined,
+  drawingKind: 'draw' | 'airbrush',
+  drawingBrushPreviewEnabled: boolean
+): boolean => !drag || (drag.kind === drawingKind && drawingBrushPreviewEnabled)
 
 export const marqueePreviewTargetForDrag = (drag: CanvasDragState | null | undefined): SelectionRect | null => {
   const previewDrag = canvasGestureForPreview(drag)

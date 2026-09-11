@@ -11,6 +11,7 @@ import { useAnimationPlaybackClock } from '@/components/useAnimationPlaybackCloc
 import type { DocumentPaneDirection, DocumentPaneNode } from '@/core/document-pane-layout'
 import type { QuickCommandSettingsTarget } from './quick-command-registry'
 import type { ShortcutId } from '@/core/shortcuts'
+import type { ExtensionToolContribution } from '@/core/extension-contributions'
 
 interface EditorWorkspaceShellProps {
   editorOnly: boolean
@@ -57,6 +58,7 @@ interface EditorWorkspaceShellProps {
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
+  extensionTools: ExtensionToolContribution[]
 }
 
 export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
@@ -103,16 +105,17 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
   onOpenPreferences,
   onOpenCommandSettings,
   shortcutFor,
-  onToggleMirror
+  onToggleMirror,
+  extensionTools
 }: EditorWorkspaceShellProps) {
   const { t } = useI18n()
   useAnimationPlaybackClock(session.document.id)
   return <PerformanceProfiler id="EditorWorkspaceShell"><section className="editor-layout" style={{ '--left-dock-width': `${leftDockWidth}px`, '--inspector-width': `${inspectorWidth}px`, gridTemplateColumns: editorOnly ? 'minmax(0, 1fr)' : editorColumns, gridTemplateRows: editorOnly ? 'minmax(0, 1fr)' : editorRows, gridTemplateAreas: editorOnly ? '"work"' : editorAreas } as CSSProperties}>
-    <EditorToolRail side={toolRailSide} onGripPointerDown={onToolRailGrip} />
+    <EditorToolRail side={toolRailSide} onGripPointerDown={onToolRailGrip} extensionTools={extensionTools} />
     {hasLeftDock && <aside ref={setLeftDockHost} className="left-panel-dock" data-panel-dock-zone="left" />}
     {hasLeftDock && <div className="left-dock-resizer" role="separator" aria-orientation="vertical" aria-label={t('workspaceDock.resizeLeft')} onPointerDown={onLeftDockResize}><span aria-hidden="true" /></div>}
     <section ref={workAreaRef} className={`work-area ${hasBottomDock ? 'has-bottom-layers' : ''}`} style={{ '--bottom-layers-height': `${bottomDockHeight}px` } as CSSProperties}>
-      <EditorToolOptions onOpenColorReplacement={onOpenColorReplacement} />
+      <EditorToolOptions onOpenColorReplacement={onOpenColorReplacement} extensionTools={extensionTools} />
       <EditorCanvasHost documentPaneLayout={documentPaneLayout} workspaceDocumentId={workspaceDocumentId} paneOnlyDocumentIds={paneOnlyDocumentIds} onDocumentPaneLayoutChange={onDocumentPaneLayoutChange} onDocumentPaneMove={onDocumentPaneMove} onDocumentPaneReturnToTabs={onDocumentPaneReturnToTabs} onDocumentPaneFloat={onDocumentPaneFloat} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
       {hasBottomDock && <div className="bottom-layers-resizer" role="separator" aria-orientation="horizontal" aria-label={t('workspaceDock.resizeBottom')} onPointerDown={onBottomDockResize}><span /></div>}
       {hasBottomDock && <div ref={setBottomDockHost} className="bottom-layers-dock" data-panel-dock-zone="bottom" />}

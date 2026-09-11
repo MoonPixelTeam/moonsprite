@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, ExternalLink, GitFork } from 'lucide-react'
-import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, ProjectBackupRecord, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout } from '@shared/types'
+import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, ProjectBackupRecord, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout, ExtensionPackagePreview } from '@shared/types'
 import type { AdjustmentKind } from '@/core/adjustments'
 import { compositePixelWithLayerColor, getActiveLayer, isLayerEffectivelyVisible, readLayerColorAt } from '@/core/document'
 import { decodeBrowserRasterImage } from '@/core/raster-image'
@@ -26,7 +26,7 @@ import { detectDocumentPixelScale } from '@/core/image-scale-detection'
 import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
 import { zoomViewAroundViewportPoint } from '@/core/view-geometry'
 import { appCoordinatorRenderKey } from '@/components/app/app-render-keys'
-import { detachDocumentPaneWorkspace, documentPaneContains, documentPaneLeafIds, moveDocumentPane, removeDocumentPane, splitDocumentPaneFromTab, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPanePlacement } from '@/core/document-pane-layout'
+import { detachDocumentPaneWorkspace, documentPaneContains, documentPaneLeafIds, moveDocumentPane, removeDocumentPane, replaceDocumentPaneDocument, splitDocumentPaneFromTab, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPanePlacement } from '@/core/document-pane-layout'
 import { NewDocumentDialog } from '@/components/NewDocumentDialog'
 import { CanvasResizeDialog } from '@/components/CanvasResizeDialog'
 import { ColorReplacementDialog } from '@/components/ColorReplacementDialog'
@@ -68,7 +68,7 @@ import { adjacentFormInput } from '@/core/form-focus'
 import { saveProgress } from '@/core/save-progress'
 import { publishBrushLibraryImportPaths } from '@/core/brush-library-events'
 import { isExtensionPackagePath } from '@/core/extension-packages'
-import { listExtensionPanelContributions, listExtensionTopMenuContributions, reconcileExtensionPanelVisibility, saveExtensionPanelVisibility } from '@/core/extension-contributions'
+import { listExtensionPanelContributions, listExtensionToolContributions, listExtensionTopMenuContributions, publishExtensionToolContributions, reconcileExtensionPanelVisibility, saveExtensionPanelVisibility } from '@/core/extension-contributions'
 import { startDocumentDropService } from '@/platform/document-drop-service'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'
 import { latestRelease, shouldShowLatestRelease, type LatestReleaseDefinition } from '@/core/latest-release'
@@ -327,6 +327,8 @@ export default function App() {
   const [paneOnlyDocumentIds, setPaneOnlyDocumentIds] = useState<string[]>([])
   const [workspaceDocumentId, setWorkspaceDocumentId] = useState<string | null>(() => useWorkspace.getState().activeId)
   const [floatingDocuments, setFloatingDocuments] = useState<FloatingDocumentEntry[]>([])
+  const previousDocumentIdsRef = useRef<Set<string> | null>(null)
+  const preferredWorkspaceDocumentIdRef = useRef<string | null>(null)
   const resizeStart = useRef<{ x: number; width: number; parentWidth: number } | null>(null)
   const bottomLayersResizeStart = useRef<{ y: number; height: number; parentHeight: number } | null>(null)
   const bottomLayersHeightRef = useRef(bottomLayersHeight)
@@ -424,6 +426,13 @@ export default function App() {
     return () => window.removeEventListener('moonsprite:extensions-changed', onExtensionsChanged)
   }, [refreshExtensions, refreshLuaScripts])
   const extensionPanelContributions = useMemo(() => listExtensionPanelContributions(extensions), [extensions])
+  const extensionToolContributions = useMemo(() => listExtensionToolContributions(extensions), [extensions])
+  useEffect(() => {
+    publishExtensionToolContributions(extensionToolContributions)
+    if (session?.tool !== 'extension') return
+    if (extensionToolContributions.some(({ key }) => key === session.extensionToolId)) return
+    useWorkspace.getState().setTool('pencil')
+  }, [extensionToolContributions, session?.extensionToolId, session?.tool])
   const setExtensionPanelVisible = useCallback((key: string, visible: boolean): void => {
     setExtensionPanelVisibility((current) => ({ ...current, [key]: visible }))
     saveExtensionPanelVisibility(key, visible)
@@ -564,16 +573,48 @@ export default function App() {
   }, [documentPaneLayout, workspaceDocumentId])
   void coordinatorRenderKey
   useEffect(() => {
+    const openDocumentIds = workspace.sessions.map((item) => item.document.id)
+    const openIds = new Set(openDocumentIds)
+    const previousIds = previousDocumentIdsRef.current
+    previousDocumentIdsRef.current = openIds
+    const closedIds = previousIds ? [...previousIds].filter((id) => !openIds.has(id)) : []
+    const unavailableIds = new Set([...paneOnlyDocumentIds, ...floatingDocumentIds])
+    const replacementCandidates = openDocumentIds
+      .filter((id) => !unavailableIds.has(id) && !closedIds.includes(id))
+    const closedMainDocumentId = closedIds.find((id) => (
+      documentPaneLayout?.kind === 'split'
+      && documentPaneContains(documentPaneLayout, id)
+      && !paneOnlyDocumentIds.includes(id)
+    ))
+    const remainingMainPane = closedMainDocumentId && documentPaneLayout
+      ? removeDocumentPane(documentPaneLayout, closedMainDocumentId)
+      : null
+    const promotedEmbeddedDocumentId = remainingMainPane
+      ? documentPaneLeafIds(remainingMainPane).find((id) => openIds.has(id)) ?? null
+      : null
+
     setDocumentPaneLayout((current) => {
       if (!current) return null
-      const validDocumentIds = new Set(workspace.sessions.map((item) => item.document.id))
       let next: DocumentPaneNode | null = current
-      for (const documentId of documentPaneLeafIds(current)) {
-        if (next && !validDocumentIds.has(documentId)) next = removeDocumentPane(next, documentId) ?? null
+      for (const documentId of closedIds) {
+        if (!next || !documentPaneContains(next, documentId)) continue
+        const replacementId = replacementCandidates.find((candidate) => !documentPaneContains(next!, candidate))
+        next = replacementId
+          ? replaceDocumentPaneDocument(next, documentId, replacementId)
+          : removeDocumentPane(next, documentId) ?? null
       }
       return next?.kind === 'split' ? next : null
     })
-  }, [workspace.sessions])
+    if (closedMainDocumentId) {
+      const replacementId = replacementCandidates[0] ?? promotedEmbeddedDocumentId
+      if (replacementId) {
+        preferredWorkspaceDocumentIdRef.current = replacementId
+        setWorkspaceDocumentId(replacementId)
+        if (!replacementCandidates[0]) setPaneOnlyDocumentIds((current) => current.filter((id) => id !== replacementId))
+        if (useWorkspace.getState().activeId !== replacementId) useWorkspace.getState().setActive(replacementId)
+      }
+    }
+  }, [documentPaneLayout, floatingDocumentIds, paneOnlyDocumentIds, workspace.sessions])
   useEffect(() => {
     const openIds = new Set(workspace.sessions.map((item) => item.document.id))
     setPaneOnlyDocumentIds((current) => documentPaneLayout?.kind === 'split'
@@ -592,6 +633,9 @@ export default function App() {
     const openIds = new Set(workspace.sessions.map((item) => item.document.id))
     const availableIds = workspace.sessions.map((item) => item.document.id).filter((id) => !unavailable.has(id))
     setWorkspaceDocumentId((current) => {
+      const preferred = preferredWorkspaceDocumentIdRef.current
+      preferredWorkspaceDocumentIdRef.current = null
+      if (preferred && openIds.has(preferred) && !unavailable.has(preferred)) return preferred
       if (workspace.activeId && openIds.has(workspace.activeId) && !unavailable.has(workspace.activeId)) return workspace.activeId
       if (current && openIds.has(current) && !unavailable.has(current)) return current
       return availableIds.at(-1) ?? null
@@ -1185,8 +1229,26 @@ export default function App() {
     }
   }
 
+  const confirmExtensionInstall = async (preview: ExtensionPackagePreview): Promise<boolean> => {
+    const detail = [
+      `作者：${preview.author || '未提供'}　版本：${preview.version || '未提供'}`,
+      `标识：${preview.id}`,
+      preview.description || '此扩展未提供描述。',
+      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount} · 工具 ${preview.toolCount}`
+    ].filter(Boolean).join('\n')
+    const choice = await workspace.requestDialog({
+      title: '安装扩展',
+      message: `是否安装“${preview.name}”？`,
+      detail,
+      choices: [{ id: 'cancel', label: t('common.cancel'), tone: 'quiet' }, { id: 'install', label: '安装', tone: 'primary' }]
+    })
+    return choice === 'install'
+  }
+
   const installExtensionPackage = async (filePath: string): Promise<boolean> => {
     try {
+      const preview = await window.moonSprite.inspectExtensionPackage(filePath)
+      if (!(await confirmExtensionInstall(preview))) return false
       const extension = await window.moonSprite.installExtension(filePath)
       window.dispatchEvent(new Event('moonsprite:extensions-changed'))
       useWorkspace.getState().setMessage(t('preferences.extensions.installSuccess', { name: extension.name }))
@@ -2446,14 +2508,10 @@ export default function App() {
 
   const openNewDocumentFromTab = useCallback((): void => setNewOpen(true), [])
   const activateDocumentTab = useCallback((documentId: string): void => {
-    setHomeOpen(false)
-    setWorkspaceDocumentId(documentId)
-    useWorkspace.getState().setActive(documentId)
+    startTransition(() => { setHomeOpen(false); setWorkspaceDocumentId(documentId); useWorkspace.getState().setActive(documentId) })
   }, [])
   const contextActivateDocumentTab = useCallback((documentId: string): void => {
-    setHomeOpen(false)
-    setWorkspaceDocumentId(documentId)
-    useWorkspace.getState().setActive(documentId)
+    startTransition(() => { setHomeOpen(false); setWorkspaceDocumentId(documentId); useWorkspace.getState().setActive(documentId) })
   }, [])
   const splitDocumentFromTab = useCallback((placement: DocumentPanePlacement): void => {
     const workspace = useWorkspace.getState()
@@ -2776,6 +2834,7 @@ export default function App() {
       onOpenCommandSettings={openQuickCommandSettings}
       shortcutFor={shortcutFor}
       onToggleMirror={toggleMirrorView}
+      extensionTools={extensionToolContributions}
     /> : <Suspense fallback={<div aria-hidden="true" />}><LazyHomeWorkspace onNew={() => setNewOpen(true)} onOpen={() => void openFilesAndShowDocument()} onOpenProject={openGalleryProject} onOpenImage={openHomeImage} onRestoreRecovery={restoreRecoveryAndShowDocument} onOpenLatestRelease={openLatestRelease} /></Suspense>}
 
     {floatingDocuments.map((item, stackIndex) => {
@@ -2797,7 +2856,7 @@ export default function App() {
     <SaveProgressOverlay />
     {advancedModeNotice && <div className="advanced-mode-notice" role="status" aria-live="polite"><strong>{advancedModeNotice}</strong><small>{advancedModeNotice === t('app.advanced.enabled') ? `${advancedModeNoticeShortcut} ${t('app.advanced.restore')}` : advancedModeNoticeShortcut}</small></div>}
     {workspace.saveProgress && createPortal(<div className={`modal-backdrop save-progress-backdrop ${workspace.saveProgress.requiresConfirmation ? 'is-complete' : 'is-running'}`} role="presentation"><ModalShell storageKey="save-progress" defaultWidth={280} defaultHeight={workspace.saveProgress.requiresConfirmation ? 190 : 142} fitContentKey={workspace.saveProgress.requiresConfirmation ? 'complete' : 'progress'} minWidth={250} minHeight={workspace.saveProgress.requiresConfirmation ? 176 : 132} className="save-progress-modal" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="save-progress-title"><header><div className="save-progress-heading"><span className="save-progress-icon" aria-hidden="true">{workspace.saveProgress.requiresConfirmation ? <CheckCircle2 size={20} /> : <span className="save-progress-animation" />}</span><div><span className="eyebrow">FILE OPERATION</span><h2 id="save-progress-title">{workspace.saveProgress.title}</h2></div></div>{!workspace.saveProgress.requiresConfirmation && <button type="button" className="icon-button" aria-label={t('app.progress.close', { title: workspace.saveProgress.title })} onClick={() => workspace.cancelExport()}><PixelUtilityIcon kind="close" /></button>}</header><div className="save-progress-body"><strong>{workspace.saveProgress.label}</strong><div className={`save-progress-track ${workspace.saveProgress.value >= 100 ? 'is-full' : ''}`} aria-label={t('app.progress.aria', { title: workspace.saveProgress.title, value: workspace.saveProgress.value })}><i style={{ width: `${workspace.saveProgress.value}%` }} /></div><div className="save-progress-meta"><span>{t(workspace.saveProgress.requiresConfirmation ? 'app.progress.complete' : 'app.progress.processing')}</span><small>{workspace.saveProgress.value}%</small></div></div>{workspace.saveProgress.requiresConfirmation && <footer><button type="button" className="primary-button" onClick={() => workspace.dismissSaveProgress()}>{t('timelapse.confirmExport')}</button></footer>}</ModalShell></div>, document.body)}
-    {workspace.dialog && <div className="modal-backdrop dialog-backdrop" role="presentation"><ModalShell storageKey="confirm-content-v2" fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}`} defaultWidth={420} defaultHeight={180} minHeight={0} resizable={false} className={`confirm-modal${workspace.dialog.choices.some((choice) => choice.id === 'overwrite-all' || choice.id === 'rename-all') ? ' confirm-modal-bulk-actions' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title"><DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title" /><div className="confirm-content"><strong>{workspace.dialog.message}</strong>{workspace.dialog.detail && <p>{workspace.dialog.detail}</p>}</div><footer>{workspace.dialog.choices.map((choice) => <button key={choice.id} className={choice.tone === 'primary' ? 'primary-button' : choice.tone === 'danger' ? 'danger-button' : 'quiet-button'} onClick={() => workspace.resolveDialog(choice.id)}>{choice.label}</button>)}</footer></ModalShell></div>}
+    {workspace.dialog && <div className="modal-backdrop dialog-backdrop" role="presentation"><ModalShell storageKey="confirm-content-v2" fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}:${workspace.dialog.detail?.length ?? 0}`} defaultWidth={420} defaultHeight={220} minHeight={0} resizable={false} className={`confirm-modal${workspace.dialog.choices.some((choice) => choice.id === 'overwrite-all' || choice.id === 'rename-all') ? ' confirm-modal-bulk-actions' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title"><DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title" /><div className="confirm-content"><strong>{workspace.dialog.message}</strong>{workspace.dialog.detail && <p>{workspace.dialog.detail}</p>}</div><footer>{workspace.dialog.choices.map((choice) => <button key={choice.id} className={choice.tone === 'primary' ? 'primary-button' : choice.tone === 'danger' ? 'danger-button' : 'quiet-button'} onClick={() => workspace.resolveDialog(choice.id)}>{choice.label}</button>)}</footer></ModalShell></div>}
     {exportOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
       <ModalShell as="form" storageKey="export-layout-v2" fitContentKey={`${exportForm.format}:${exportTarget}:${exportForm.gifFrameRange ?? 'all'}`} defaultWidth={520} defaultHeight={520} minWidth={420} minHeight={360} maxWidth={640} maxHeight={760} className="export-modal" onSubmit={(event) => {
         event.preventDefault()

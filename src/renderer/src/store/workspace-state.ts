@@ -12,7 +12,9 @@ import type {
   ColorMode,
   DocumentSlice,
   FillKind,
+  FillConnectivity,
   FillMode,
+  FillReference,
   FreeTileInstance,
   FreeTileSourceLayer,
   GradientDither,
@@ -150,6 +152,8 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
+  setExtensionTool(id: string, mode: string): void
+  setExtensionToolMode(mode: string): void
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
@@ -174,6 +178,7 @@ export interface WorkspaceToolCommands {
   setBrushTextureScale(scale: number): void
   setBrushPaintMode(mode: BrushPaintMode): void
   setInkMode(mode: InkMode): void
+  setSyncInkAcrossTools(enabled: boolean): void
   setBrushDynamicsMapping(effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>): void
   setBrushDynamicsGradientDither(dither: GradientDither): void
   setBrushPressure(settings: Partial<BrushPressureSettings>): void
@@ -197,6 +202,8 @@ export interface WorkspaceToolCommands {
   setFillTolerance(tolerance: number): void
   setFillGapClosing(enabled: boolean): void
   setFillGapThreshold(threshold: number): void
+  setFillReference(reference: FillReference): void
+  setFillConnectivity(connectivity: FillConnectivity): void
   setGradientTolerance(tolerance: number): void
   setGradientContiguous(contiguous: boolean): void
   setGradientType(type: GradientType): void

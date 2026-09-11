@@ -3,12 +3,19 @@ import { BRUSH_SPEED_STOP_MS, CanvasInputState, PEN_COMPATIBLE_MOUSE_SUPPRESSION
 import { balancedStairLinePoints } from './pixel-line'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 import { isPenBarrelButtonEvent, isPenEraserEvent } from './canvas-input'
+import { brushPreviewAllowedDuringDrag } from './canvas-input'
 import { beginPixelEdit } from './history'
 import { applySelectionTransform, captureSelectionTransform, paintBrush } from './tools'
 import { beginCanvasToolGesture, clearCanvasToolGestures, deferCanvasShortcut, endCanvasToolGesture, isCanvasToolGestureLocked } from './canvas-tool-gesture-lock'
 const drag = (): CanvasDragState => ({ kind: 'move-content', start: { x: 0, y: 0 }, last: { x: 0, y: 0 } })
 
 describe('canvas input helpers', () => {
+  it('hides the brush preview while the canvas is being panned', () => {
+    expect(brushPreviewAllowedDuringDrag(createCanvasPanDrag({ x: 0, y: 0 }, { x: 10, y: 10 }), 'airbrush', true)).toBe(false)
+    expect(brushPreviewAllowedDuringDrag({ kind: 'airbrush' }, 'airbrush', true)).toBe(true)
+    expect(brushPreviewAllowedDuringDrag({ kind: 'airbrush' }, 'airbrush', false)).toBe(false)
+  })
+
   it('keeps selection transforms proportional while the aspect link is locked', () => {
     expect(selectionTransformModifiers({ ctrlKey: false, altKey: false, shiftKey: false }).proportional).toBe(false)
     expect(selectionTransformModifiers({ ctrlKey: false, altKey: false, shiftKey: false, proportionalLocked: true }).proportional).toBe(true)

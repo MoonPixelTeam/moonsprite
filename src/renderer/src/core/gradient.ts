@@ -2,7 +2,7 @@ import type { GradientDither, GradientStop, GradientType, RasterLayer, RgbaColor
 import { beginPixelEdit, preparePixelEdit, recordPixel, type PixelEdit } from './history'
 import { cacheRasterContentBounds, expandLayerToRect, getLayerStorageOrigin, isLayerEffectivelyLocked, isLayerMask, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterContentBounds, readLayerColor, readLayerPacked, writeLayerPacked } from './document'
 import { blendOver, packColor } from './raster'
-import { magicWandSelection, selectionContains } from './selection'
+import { magicWandSelection, selectionContains, type MagicWandRegionOptions } from './selection'
 import { createGradientColorSampler, normalizeGradientStops, resolveRadialGradientGeometry, type GradientGeometryOptions } from './gradient-color'
 import { createLinearDitherPreviewSampler } from './gradient-dither-preview'
 
@@ -36,8 +36,9 @@ export const gradientRegionSelection = (
   layer: RasterLayer,
   start: { x: number; y: number },
   tolerance = 0,
-  contiguous = true
-): SelectionMask | null => magicWandSelection(document, layer, start.x, start.y, tolerance, contiguous)
+  contiguous = true,
+  options?: MagicWandRegionOptions
+): SelectionMask | null => magicWandSelection(document, layer, start.x, start.y, tolerance, contiguous, 0, options)
 
 const gradientPaintValue = (document: SpriteDocument, layer: RasterLayer, index: number, color: RgbaColor): number => {
   if (color.a === 0) {

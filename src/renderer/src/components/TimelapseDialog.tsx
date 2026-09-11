@@ -173,7 +173,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
         <PreferenceToggle className="timelapse-toggle" checked={settings.enabled} label={t('timelapse.recording')} onChange={(enabled) => onChange({ enabled })} />
         <FormField label={t('timelapse.recordingMode')} hint={settings.mode === 'smart' ? t('timelapse.recordingModeSmartHint') : t('timelapse.recordingModeFullHint')}>
           <ThemedSelect<TimelapseRecordingMode>
-            value={settings.mode ?? 'full'}
+            value={settings.mode ?? 'smart'}
             groups={[{ label: t('timelapse.recordingMode'), options: [
               { value: 'full', label: t('timelapse.recordingModeFull'), description: t('timelapse.recordingModeFullHint') },
               { value: 'smart', label: t('timelapse.recordingModeSmart'), description: t('timelapse.recordingModeSmartHint') }

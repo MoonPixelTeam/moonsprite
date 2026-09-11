@@ -2,7 +2,7 @@ export type ColorMode = 'rgba' | 'indexed' | 'grayscale'
 export type RasterFormat = 'rgba' | 'indexed'
 export type ImageResizeInterpolation = 'nearest' | 'smooth'
 export type TileRepeatMode = 'off' | 'x' | 'y' | 'both'
-export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify' | 'smooth'
+export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify' | 'smooth' | 'extension'
 export type LiquifyMode = 'push' | 'inflate' | 'deflate' | 'twist-clockwise' | 'twist-counter-clockwise'
 export type MoveKind = 'move' | 'slice'
 export type BrushShape = 'round' | 'square' | 'line'
@@ -135,8 +135,35 @@ export interface StoredExtension {
   panels: StoredExtensionPanel[]
   menuItems: StoredExtensionMenuItem[]
   topMenus: StoredExtensionTopMenu[]
+  /** Declarative tools exposed by the extension host. */
+  tools?: StoredExtensionTool[]
   filePath: string
   enabled: boolean
+}
+
+export type ExtensionToolKind = 'remote-pixel-brush'
+export type ExtensionToolPlacement = 'pencil'
+
+export interface StoredExtensionToolMode {
+  id: string
+  name: string
+  description: string
+}
+
+/**
+ * A host-owned interactive tool. Extensions describe the contribution; the
+ * renderer owns the interaction and document mutation implementation.
+ */
+export interface StoredExtensionTool {
+  id: string
+  name: string
+  description: string
+  kind: ExtensionToolKind
+  placement: ExtensionToolPlacement
+  icon: string
+  modes: StoredExtensionToolMode[]
+  defaultMode: string
+  previewColor: string
 }
 
 export interface StoredExtensionCommand {
@@ -177,11 +204,25 @@ export interface ExtensionListing {
   directoryPath: string
   extensions: StoredExtension[]
 }
+
+export interface ExtensionPackagePreview {
+  name: string
+  version: string
+  description: string
+  author: string
+  id: string
+  commandCount: number
+  panelCount: number
+  menuCount: number
+  toolCount: number
+}
 export type ShapeKind = 'rectangle' | 'ellipse' | 'rectangle-outline' | 'ellipse-outline' | 'freeform' | 'polygon'
 export type LineKind = 'line' | 'curve'
 export interface ShapeRatio { width: number; height: number }
 export type FillMode = 'contiguous' | 'global'
 export type FillKind = 'bucket' | 'gradient'
+export type FillReference = 'current-layer' | 'visible-layers'
+export type FillConnectivity = 4 | 8
 export type GradientType = 'linear' | 'radial'
 export type GradientDither = 'none' | 'checker' | 'diagonal' | 'diagonal-reverse' | 'horizontal' | 'vertical' | 'bayer-2' | 'bayer-4' | 'bayer-8'
 export type BrushDitherTemplate = Exclude<GradientDither, 'none'>
@@ -688,7 +729,7 @@ export interface TimelapseSettings {
   quality: TimelapseQuality
   fps: number
   speed: number
-  /** Omitted by legacy projects; normalization treats it as `full`. */
+  /** Omitted by legacy projects; normalization treats it as `smart`. */
   mode?: TimelapseRecordingMode
   snapshots: TimelapseSnapshot[]
 }
@@ -1201,6 +1242,7 @@ export interface MoonSpriteApi {
   dispatchLuaScriptDialog(sessionId: string, action: LuaScriptDialogAction, context: LuaScriptExecutionContext): Promise<LuaScriptRunResult>
   closeLuaScriptSession(sessionId: string): Promise<void>
   listExtensions(): Promise<ExtensionListing>
+  inspectExtensionPackage(filePath: string): Promise<ExtensionPackagePreview>
   installExtension(filePath: string): Promise<StoredExtension>
   chooseAndInstallExtension(): Promise<StoredExtension | null>
   setExtensionEnabled(id: string, enabled: boolean): Promise<StoredExtension>

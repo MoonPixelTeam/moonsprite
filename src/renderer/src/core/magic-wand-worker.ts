@@ -23,6 +23,7 @@ interface WorkerRequestMessage {
   tolerance: number
   contiguous: boolean
   gapClosingThreshold: number
+  connectivity: 4 | 8
 }
 
 interface Pending {
@@ -162,7 +163,8 @@ export class MagicWandWorkerClient {
     sourceKey = '',
     contiguous = true,
     gapClosingThreshold = 0,
-    operation: MagicWandOperation = {}
+    operation: MagicWandOperation = {},
+    connectivity: 4 | 8 = 4
   ): Promise<MagicWandWorkerResult | null> {
     const worker = this.ensureWorker()
     if (!worker) return Promise.reject(new Error('Web Workers are unavailable'))
@@ -176,6 +178,7 @@ export class MagicWandWorkerClient {
       tolerance,
       contiguous,
       gapClosingThreshold,
+      connectivity,
       type: 'request'
     }
     return new Promise((resolve, reject) => {

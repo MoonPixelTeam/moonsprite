@@ -13,6 +13,7 @@ import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-to
 import { consumeCanvasResizePreviewHistory } from '@/core/canvas-resize-preview'
 import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
 import { openProgress } from '@/core/open-progress'
+import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import { saveProgress } from '@/core/save-progress'
 import { createSelectionBrush, encodeBrushPng } from '@/core/brushes'
 import { buildSpriteSheetExportDocument, createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
@@ -3278,13 +3279,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   setActive(id) {
+    const switchStartedAt = runtimeDiagnosticsActive() ? performance.now() : 0
     get().commitFloatingPaste()
     const state = get()
     const current = activeSession(state)
     if (current && current.document.id !== id) documentTransactions.cancelDocument(current.document.id, current)
     const target = state.sessions.find((session) => session.document.id === id)
-    set({ sessions: [...state.sessions], activeId: id })
+    // Switching tabs only changes the active document. Cloning the complete
+    // sessions array here invalidated every canvas host and made each large
+    // document redraw synchronously, even though none of their session data
+    // changed.
+    set({ activeId: id })
     requestTilesetPanelVisibility(documentUsesTilesetPanel(target?.document))
+    if (switchStartedAt) recordRuntimeDiagnostic('operation-stage', 'workspace.tab-switch.store', {
+      documentId: id,
+      durationMs: Math.round((performance.now() - switchStartedAt) * 100) / 100,
+      canvasWidth: target?.document.width ?? 0,
+      canvasHeight: target?.document.height ?? 0
+    })
   },
   syncCanvasToolSettings(documentId) {
     const state = get()
@@ -3323,6 +3335,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }, false)
   },
   setMoveKind(kind) { get().mutateActive((session) => { session.moveKind = kind }, false) },
+  setExtensionTool(id, mode) {
+    get().setTool('extension')
+    get().mutateActive((session) => { session.extensionToolId = id; session.extensionToolMode = mode }, false)
+  },
+  setExtensionToolMode(mode) { get().mutateActive((session) => { session.extensionToolMode = mode }, false) },
   selectSlice(id, additive = false) {
     get().mutateActive((session) => {
       const valid = id && session.document.slices?.some((slice) => slice.id === id) ? id : null
@@ -3492,6 +3509,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setBrushSize(size) { get().mutateActive((session) => { if (session.tool !== 'smooth' && session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushAngle(angle) { get().mutateActive((session) => { session.brushAngle = Math.max(-180, Math.min(180, Math.round(angle))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setAirbrushParticleRadius(radius) { get().mutateActive((session) => { session.airbrushParticleRadius = Math.max(1, Math.min(16, Math.round(radius))); persistToolSettings(session) }, false) },
+  setAirbrushParticleAngle(angle) { get().mutateActive((session) => { session.airbrushParticleAngle = Math.max(-180, Math.min(180, Math.round(angle))); persistToolSettings(session) }, false) },
   setAirbrushParticleShape(shape) { get().mutateActive((session) => { session.airbrushParticleShape = shape; persistToolSettings(session) }, false) },
   setAirbrushScatterRadius(radius) { get().mutateActive((session) => { session.airbrushScatterRadius = Math.max(1, Math.min(64, Math.round(radius))); persistToolSettings(session) }, false) },
   setAirbrushDensity(density) { get().mutateActive((session) => { session.airbrushDensity = Math.max(1, Math.min(128, Math.round(density))); persistToolSettings(session) }, false) },
@@ -3521,7 +3539,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setBrushTexture(texture) { get().mutateActive((session) => { session.brushTexture = texture; rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushTextureScale(scale) { get().mutateActive((session) => { session.brushTextureScale = Math.max(1, Math.min(16, Math.round(scale))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushPaintMode(mode) { get().mutateActive((session) => { session.brushPaintMode = mode; rememberBrushProfile(session); persistToolSettings(session) }, false) },
-  setInkMode(mode: InkMode) { get().mutateActive((session) => { session.inkMode = mode; persistToolSettings(session) }, false) },
+  setInkMode(mode: InkMode) { get().mutateActive((session) => { session.inkMode = mode; if (session.syncInkAcrossTools) for (const tool of Object.keys(session.brushProfiles) as Array<keyof typeof session.brushProfiles>) session.brushProfiles[tool].inkMode = mode; else rememberBrushProfile(session); persistToolSettings(session) }, false) },
+  setSyncInkAcrossTools(enabled: boolean) { get().mutateActive((session) => { session.syncInkAcrossTools = enabled; if (enabled) for (const tool of Object.keys(session.brushProfiles) as Array<keyof typeof session.brushProfiles>) session.brushProfiles[tool].inkMode = session.inkMode; persistToolSettings(session) }, false) },
   setBrushDynamicsMapping(effect, patch) {
     let shouldEnableBrushPreview = false
     get().mutateActive((session) => {
@@ -3684,6 +3703,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setFillTolerance(tolerance) { get().mutateActive((session) => { session.fillTolerance = Math.max(0, Math.min(255, Math.round(tolerance) || 0)); persistToolSettings(session) }, false) },
   setFillGapClosing(enabled) { get().mutateActive((session) => { session.fillGapClosing = enabled; persistToolSettings(session) }, false) },
   setFillGapThreshold(threshold) { get().mutateActive((session) => { session.fillGapThreshold = normalizeGapClosingThreshold(threshold); persistToolSettings(session) }, false) },
+  setFillReference(reference) { get().mutateActive((session) => { session.fillReference = reference; persistToolSettings(session) }, false) },
+  setFillConnectivity(connectivity) { get().mutateActive((session) => { session.fillConnectivity = connectivity; persistToolSettings(session) }, false) },
   setGradientTolerance(tolerance) { get().mutateActive((session) => { session.gradientTolerance = Math.max(0, Math.min(255, Math.round(tolerance) || 0)); persistToolSettings(session) }, false) },
   setGradientContiguous(contiguous) { get().mutateActive((session) => { session.gradientContiguous = contiguous; persistToolSettings(session) }, false) },
   setGradientType(type) { get().mutateActive((session) => { session.gradientType = type; persistToolSettings(session) }, false) },

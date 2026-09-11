@@ -134,6 +134,22 @@ describe('gradient tool core', () => {
     })
   })
 
+  it('uses visible colors and diagonal connectivity for a gradient paint region', () => {
+    const document = createDocument('visible gradient region', 3, 3, 'rgba')
+    const sourceLayer = getActiveLayer(document)
+    const targetLayer = createSparseLayer('Target', 'rgba')
+    document.layers.push(targetLayer)
+    document.activeLayerId = targetLayer.id
+    writeLayerColor(document, sourceLayer, 0, red)
+    writeLayerColor(document, sourceLayer, 4, red)
+    const sourceColorAt = (x: number, y: number) => {
+      if ((x === 0 && y === 0) || (x === 1 && y === 1)) return red
+      return { r: 0, g: 0, b: 0, a: 0 }
+    }
+    const region = gradientRegionSelection(document, targetLayer, { x: 0, y: 0 }, 0, true, { sourceColorAt, connectivity: 8 })
+    expect(region?.mask ? Array.from(region.mask).filter(Boolean) : []).toHaveLength(2)
+  })
+
   it('keeps dense opaque multi-stop gradients exact through undo and redo', () => {
     const document = createDocument('dense packed gradient', 512, 512, 'rgba')
     const layer = getActiveLayer(document)

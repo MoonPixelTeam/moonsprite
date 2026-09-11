@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { loadEditorPreferences } from '@/core/file-preferences'
 
 interface TooltipProps {
   children: ReactNode
@@ -7,7 +8,20 @@ interface TooltipProps {
   className?: string
 }
 
+function useTooltipsEnabled(): boolean {
+  const [enabled, setEnabled] = useState(() => loadEditorPreferences().tooltipsEnabled)
+
+  useEffect(() => {
+    const sync = (): void => setEnabled(loadEditorPreferences().tooltipsEnabled)
+    window.addEventListener('moonsprite:preferences-changed', sync)
+    return () => window.removeEventListener('moonsprite:preferences-changed', sync)
+  }, [])
+
+  return enabled
+}
+
 export function Tooltip({ children, content, className = '' }: TooltipProps) {
+  const tooltipsEnabled = useTooltipsEnabled()
   const id = useId()
   const anchorRef = useRef<HTMLSpanElement>(null)
   const tooltipRef = useRef<HTMLSpanElement>(null)
@@ -15,7 +29,7 @@ export function Tooltip({ children, content, className = '' }: TooltipProps) {
   const [position, setPosition] = useState({ left: 8, top: 8 })
 
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open || !tooltipsEnabled) return
     const anchor = anchorRef.current?.getBoundingClientRect()
     const tooltip = tooltipRef.current?.getBoundingClientRect()
     if (!anchor || !tooltip) return
@@ -24,11 +38,15 @@ export function Tooltip({ children, content, className = '' }: TooltipProps) {
       ? anchor.bottom + 5
       : Math.max(8, anchor.top - tooltip.height - 5)
     setPosition({ left, top })
-  }, [open, content])
+  }, [open, content, tooltipsEnabled])
 
-  return <span ref={anchorRef} className={`moon-tooltip-anchor ${className}`.trim()} aria-describedby={open && content ? id : undefined} onPointerEnter={() => setOpen(Boolean(content))} onPointerLeave={() => setOpen(false)} onFocus={() => setOpen(Boolean(content))} onBlur={() => setOpen(false)}>
+  useEffect(() => {
+    if (!tooltipsEnabled) setOpen(false)
+  }, [tooltipsEnabled])
+
+  return <span ref={anchorRef} className={`moon-tooltip-anchor ${className}`.trim()} aria-describedby={tooltipsEnabled && open && content ? id : undefined} onPointerEnter={() => setOpen(tooltipsEnabled && Boolean(content))} onPointerLeave={() => setOpen(false)} onFocus={() => setOpen(tooltipsEnabled && Boolean(content))} onBlur={() => setOpen(false)}>
     {children}
-    {open && content && createPortal(<span ref={tooltipRef} id={id} className="moon-tooltip" role="tooltip" style={position}>{content}</span>, document.body)}
+    {tooltipsEnabled && open && content && createPortal(<span ref={tooltipRef} id={id} className="moon-tooltip" role="tooltip" style={position}>{content}</span>, document.body)}
   </span>
 }
 
@@ -37,7 +55,7 @@ interface NativeTooltipState {
   content: string
 }
 
-const NATIVE_TOOLTIP_DELAY_MS = 280
+const NATIVE_TOOLTIP_DELAY_MS = 600
 
 /**
  * Promotes legacy HTML title hints to the shared Tooltip surface.  A large
@@ -47,11 +65,16 @@ const NATIVE_TOOLTIP_DELAY_MS = 280
  * same behavior as Tooltip without changing their actions or labels.
  */
 export function NativeTooltipBridge() {
+  const tooltipsEnabled = useTooltipsEnabled()
   const [active, setActive] = useState<NativeTooltipState | null>(null)
   const tooltipRef = useRef<HTMLSpanElement>(null)
   const pendingAnchorRef = useRef<HTMLElement | null>(null)
   const pendingTimerRef = useRef<number | null>(null)
   const [position, setPosition] = useState({ left: 8, top: 8 })
+
+  useEffect(() => {
+    document.documentElement.dataset.tooltipsEnabled = String(tooltipsEnabled)
+  }, [tooltipsEnabled])
 
   const anchorFor = useCallback((target: EventTarget | null): HTMLElement | null => {
     if (!(target instanceof Element)) return null
@@ -61,6 +84,35 @@ export function NativeTooltipBridge() {
     return content ? anchor : null
   }, [])
 
+  const suppressNativeTitle = useCallback((anchor: HTMLElement | null): void => {
+    if (!anchor) return
+    const title = anchor.getAttribute('title')?.trim()
+    if (!title) return
+    anchor.setAttribute('data-moon-tooltip', title)
+    anchor.removeAttribute('title')
+  }, [])
+
+  useLayoutEffect(() => {
+    const stripTitles = (root: ParentNode): void => {
+      if (root instanceof HTMLElement && root.hasAttribute('title')) suppressNativeTitle(root)
+      root.querySelectorAll<HTMLElement>('[title]').forEach(suppressNativeTitle)
+    }
+    stripTitles(document)
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes') {
+          suppressNativeTitle(mutation.target instanceof HTMLElement ? mutation.target : null)
+          continue
+        }
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof HTMLElement) stripTitles(node)
+        })
+      }
+    })
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] })
+    return () => observer.disconnect()
+  }, [suppressNativeTitle])
+
   const promote = useCallback((anchor: HTMLElement | null): void => {
     if (!anchor) return
     const content = (anchor.getAttribute('title') ?? anchor.getAttribute('data-moon-tooltip'))?.trim()
@@ -69,8 +121,8 @@ export function NativeTooltipBridge() {
     // scheduled. Keep a data copy so React rerenders cannot lose the text.
     anchor.setAttribute('data-moon-tooltip', content)
     anchor.removeAttribute('title')
-    setActive({ anchor, content })
-  }, [])
+    if (tooltipsEnabled) setActive({ anchor, content })
+  }, [tooltipsEnabled])
 
   const cancelPending = useCallback((): void => {
     if (pendingTimerRef.current !== null) window.clearTimeout(pendingTimerRef.current)
@@ -94,7 +146,12 @@ export function NativeTooltipBridge() {
   useEffect(() => {
     const pointerOver = (event: PointerEvent): void => {
       const anchor = anchorFor(event.target)
-      if (anchor) schedulePromote(anchor)
+      if (!anchor) return
+      if (tooltipsEnabled) schedulePromote(anchor)
+      else {
+        cancelPending()
+        suppressNativeTitle(anchor)
+      }
     }
     const pointerOut = (event: PointerEvent): void => {
       const anchor = active?.anchor
@@ -106,7 +163,15 @@ export function NativeTooltipBridge() {
       if (eventAnchor === pendingAnchor || (anchor && (event.target === anchor || anchor.contains(event.target as Node)))) cancelPending()
       if (anchor && (event.target === anchor || anchor.contains(event.target as Node))) setActive(null)
     }
-    const focusIn = (event: FocusEvent): void => schedulePromote(anchorFor(event.target))
+    const focusIn = (event: FocusEvent): void => {
+      const anchor = anchorFor(event.target)
+      if (!anchor) return
+      if (tooltipsEnabled) schedulePromote(anchor)
+      else {
+        cancelPending()
+        suppressNativeTitle(anchor)
+      }
+    }
     const focusOut = (event: FocusEvent): void => {
       const anchor = active?.anchor
       const pendingAnchor = pendingAnchorRef.current
@@ -127,7 +192,14 @@ export function NativeTooltipBridge() {
       document.removeEventListener('focusin', focusIn, true)
       document.removeEventListener('focusout', focusOut, true)
     }
-  }, [active, anchorFor, promote])
+  }, [active, anchorFor, cancelPending, promote, schedulePromote, suppressNativeTitle, tooltipsEnabled])
+
+  useEffect(() => {
+    cancelPending()
+    setActive(null)
+    if (tooltipsEnabled) return
+    document.querySelectorAll<HTMLElement>('[title]').forEach(suppressNativeTitle)
+  }, [cancelPending, suppressNativeTitle, tooltipsEnabled])
 
   useLayoutEffect(() => {
     if (!active || !tooltipRef.current) return
@@ -168,6 +240,6 @@ export function NativeTooltipBridge() {
     }
   }, [active])
 
-  if (!active || active.anchor.hasAttribute('data-moon-tooltip-disabled')) return null
+  if (!tooltipsEnabled || !active || active.anchor.hasAttribute('data-moon-tooltip-disabled')) return null
   return createPortal(<span ref={tooltipRef} className="moon-tooltip native-title-tooltip" role="tooltip" style={position}>{active.content}</span>, document.body)
 }

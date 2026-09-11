@@ -53,10 +53,11 @@ const paintLayerValue = (
 }
 
 /**
- * Composites a captured selection pixel over the destination pixel. Selection
- * moves/copies are source-over operations: a translucent source must not
- * replace an opaque destination. Masks keep their scalar/direct-write
- * semantics and therefore bypass color compositing.
+ * Composites a captured selection pixel over the destination pixel for copy /
+ * paste-style operations. A normal selection move bypasses this helper and
+ * writes the captured packed value directly, so moving a translucent pixel
+ * cannot accumulate alpha. Masks keep their scalar/direct-write semantics and
+ * therefore bypass color compositing.
  */
 const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {
   if (isLayerMask(layer)) return value
@@ -2489,7 +2490,12 @@ const floodFillSolidRuns = (document: SpriteDocument, layer: RasterLayer, startX
   return edit
 }
 
-export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler): PixelEdit | null {
+export interface FloodFillRegionOptions {
+  sourceColorAt?: (x: number, y: number) => RgbaColor
+  connectivity?: 4 | 8
+}
+
+export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection?: SelectionMask | null, contiguous = true, imageBrush: ImageBrush | null = null, brushSize = 1, imageBrushSettings?: ImageBrushSettings, brushTexture: BrushTexture = 'solid', brushTextureScale = 1, proceduralAntialiasStrength = 0, brushPaintMode: BrushPaintMode = 'paint', tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
   if (!isInBounds(document.width, document.height, startX, startY) || isLayerEffectivelyLocked(document, layer) || (selection && !insideSelection(selection, startX, startY))) return null
   const startWasOutsideLayer = layerIndexAt(layer, startX, startY) === null
   if (startWasOutsideLayer && !ensureLayerCoversCanvas(document, layer)) return null
@@ -2501,11 +2507,16 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const paletteColors = layer.format === 'indexed'
     ? new Map(document.palette.map((entry) => [entry.id, packColor(getPaletteEntry(document, entry.id).color)]))
     : null
-  const targetColor = layer.format === 'rgba' ? target : paletteColors!.get(target) ?? 0
+  const sourceColorAt = options?.sourceColorAt
+  const connectivity = options?.connectivity ?? 4
+  const targetColor = sourceColorAt ? packColor(sourceColorAt(startX, startY)) : layer.format === 'rgba' ? target : paletteColors!.get(target) ?? 0
   const matchesValue = (value: number): boolean => normalizedTolerance === 0
     ? value === target
     : packedColorMatchesTolerance(layer.format === 'rgba' ? value : paletteColors!.get(value) ?? 0, targetColor, normalizedTolerance)
-  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid'
+  const matchesCanvas = (x: number, y: number, value: number): boolean => sourceColorAt
+    ? packedColorMatchesTolerance(packColor(sourceColorAt(x, y)), targetColor, normalizedTolerance)
+    : matchesValue(value)
+  const compactSolidFill = document.width * document.height >= COMPACT_FILL_MIN_PIXELS && !imageBrush && brushTexture === 'solid' && !sourceColorAt && connectivity === 4
   type LocalSmartClosure = { bounds: BinaryRegionBounds; result: ReturnType<typeof contiguousMatchingRegionInBounds> }
   let cachedLocalSmartClosure: LocalSmartClosure | null | undefined
   const resolveLocalSmartClosure = (): LocalSmartClosure | null => {
@@ -2543,7 +2554,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     cachedLocalSmartClosure = { bounds, result }
     return cachedLocalSmartClosure
   }
-  if (!startWasOutsideLayer && matchesValue(0)) {
+  if (!sourceColorAt && !startWasOutsideLayer && matchesValue(0)) {
     const bounds = selection ? clampSelection(document, selection) : { x: 0, y: 0, width: document.width, height: document.height }
     const layerLeft = layer.offsetX
     const layerTop = layer.offsetY
@@ -2619,7 +2630,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
   const next = paintLayerValue(document, layer, edit, startLayerIndex, color)
-  if (target === next) return null
+  if (!sourceColorAt && target === next) return null
   if (compactSolidFill) {
     const layerCoversCanvas = layer.offsetX <= 0
       && layer.offsetY <= 0
@@ -2701,7 +2712,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
         const layerIndex = layerIndexAtCanvas(x, y)
         if (layerIndex === null) continue
         const current = readLayerPacked(document, layer, layerIndex)
-        if (!matchesValue(current)) continue
+        if (!matchesCanvas(x, y, current)) continue
         paintAtCoverage(layerIndex, textureCoverage(x, y), current)
       }
     }
@@ -2709,16 +2720,16 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
   }
   const maxPixels = document.width * document.height
   if (effectiveGapClosingThreshold > 0) {
-    const smartClosureBounds = smartClosureBoundsForLayer(document, layer)
+    const smartClosureBounds = sourceColorAt ? undefined : smartClosureBoundsForLayer(document, layer)
     const region = contiguousMatchingRegion(document.width, document.height, startX, startY, (index) => {
       const x = index % document.width
       const y = Math.floor(index / document.width)
       if (selection && !insideSelection(selection, x, y)) return false
       const layerIndex = layerIndexAtCanvas(x, y)
-      return layerIndex !== null && matchesValue(readLayerPacked(document, layer, layerIndex))
-      }, effectiveGapClosingThreshold, smartClosureBounds, profiler ? (stage, duration) => profiler.record(stage, duration) : undefined)
+      return layerIndex !== null && matchesCanvas(x, y, readLayerPacked(document, layer, layerIndex))
+      }, effectiveGapClosingThreshold, smartClosureBounds, profiler ? (stage, duration) => profiler.record(stage, duration) : undefined, connectivity)
     if (!region) return null
-    if (!imageBrush && brushTexture === 'solid' && normalizedTolerance === 0) {
+    if (!sourceColorAt && connectivity === 4 && !imageBrush && brushTexture === 'solid' && normalizedTolerance === 0) {
       return floodFillLocalBinaryRegionSolidRuns(document, layer, region, { x: 0, y: 0, width: document.width, height: document.height }, target, next)
     }
     for (let index = 0; index < maxPixels; index += 1) {
@@ -2738,7 +2749,7 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     const index = pixelIndex(document.width, x, y)
     if (visited[index] || (selection && !insideSelection(selection, x, y))) return
     const layerIndex = layerIndexAtCanvas(x, y)
-    if (layerIndex === null || !matchesValue(readLayerPacked(document, layer, layerIndex))) return
+    if (layerIndex === null || !matchesCanvas(x, y, readLayerPacked(document, layer, layerIndex))) return
     visited[index] = 1
     if (stackLength === stack.length) {
       const expanded = new Int32Array(Math.min(maxPixels, Math.max(stack.length * 2, 1024)))
@@ -2759,15 +2770,21 @@ export function floodFill(document: SpriteDocument, layer: RasterLayer, startX: 
     enqueueIfMatching(x + 1, y)
     enqueueIfMatching(x, y - 1)
     enqueueIfMatching(x, y + 1)
+    if (connectivity === 8) {
+      enqueueIfMatching(x - 1, y - 1)
+      enqueueIfMatching(x + 1, y - 1)
+      enqueueIfMatching(x - 1, y + 1)
+      enqueueIfMatching(x + 1, y + 1)
+    }
   }
   return edit.before.size > 0 ? edit : null
 }
 
-export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler): PixelEdit | null {
+export function floodFillSymmetric(document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, color: RgbaColor, selection: SelectionMask | null | undefined, contiguous: boolean, imageBrush: ImageBrush | null, brushSize: number, imageBrushSettings: ImageBrushSettings | undefined, brushTexture: BrushTexture, brushTextureScale: number, proceduralAntialiasStrength: number, brushPaintMode: BrushPaintMode, symmetryAxes?: SymmetryAxes, symmetryCenter?: SymmetryCenter, tolerance = 0, gapClosingThreshold = 0, profiler?: PixelOperationProfiler, options?: FloodFillRegionOptions): PixelEdit | null {
   const merged = beginPixelEdit(layer.id)
   for (const seed of symmetryPoints({ x: startX, y: startY }, document.width, document.height, symmetryAxes, symmetryCenter)) {
     const fillStartedAt = profiler ? performance.now() : 0
-    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler)
+    const edit = floodFill(document, layer, seed.x, seed.y, color, selection, contiguous, imageBrush, brushSize, imageBrushSettings, brushTexture, brushTextureScale, proceduralAntialiasStrength, brushPaintMode, tolerance, gapClosingThreshold, profiler, options)
     profiler?.record('bucket.flood-fill', performance.now() - fillStartedAt, {
       points: edit?.before.size ?? 0,
       runs: edit?.runs?.length ?? 0,
@@ -3635,10 +3652,13 @@ export function applySelectionTranslationCommit(
     if (targetX >= 0 && targetY >= 0 && targetX < target.width && targetY < target.height) {
       const offset = targetY * sourceSelection.width + targetX
       if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) {
-        // Use the value captured before this edit as the backdrop. This keeps
-        // overlapping moves deterministic regardless of iteration order while
-        // still applying source-over to translucent selection pixels.
-        next = compositeSelectionPixelOver(document, layer, before, source.values[offset])
+        // A normal move relocates the captured pixel exactly. Compositing a
+        // translucent source over the destination would accumulate alpha and
+        // change the pixel merely because it was moved. Clipboard/copy
+        // operations remain source-over so they behave like a paste.
+        next = copy || source.origin === 'clipboard'
+          ? compositeSelectionPixelOver(document, layer, before, source.values[offset])
+          : source.values[offset]
       }
     }
     return next
@@ -3767,6 +3787,10 @@ export function applySelectionTranslationPreview(
         before: new Uint32Array(required),
         count: 0
       }
+  // Snapshot each destination before this pass writes it. A translated
+  // selection may overlap its source; using the live layer after clearing the
+  // source would blend translucent pixels against a partially written value.
+  const previewBeforeByCanvas = new Map<number, number>()
   for (let offset = 0; offset < preview.count; offset += 1) preview.marks[preview.canvasIndices[offset]] = 0
   preview.count = 0
   if (preview.indices.length < required) {
@@ -3790,7 +3814,9 @@ export function applySelectionTranslationPreview(
     preview.marks[canvasIndex] = 1
     preview.canvasIndices[preview.count] = canvasIndex
     preview.indices[preview.count] = index
-    preview.before[preview.count] = readLayerPacked(document, layer, index)
+    const before = readLayerPacked(document, layer, index)
+    preview.before[preview.count] = before
+    previewBeforeByCanvas.set(canvasIndex, before)
     preview.count += 1
   }
   const writeCanvasPacked = (canvasIndex: number, value: number, composite = false): void => {
@@ -3798,7 +3824,12 @@ export function applySelectionTranslationPreview(
     const y = Math.floor(canvasIndex / document.width)
     if (!insideClip(x, y)) return
     const index = layerIndexAt(layer, x, y)
-    if (index !== null) writeLayerPacked(document, layer, index, composite ? compositeSelectionPixel(document, layer, index, value) : value)
+    if (index !== null) {
+      const destination = previewBeforeByCanvas.get(canvasIndex)
+      writeLayerPacked(document, layer, index, composite
+        ? compositeSelectionPixelOver(document, layer, destination ?? readLayerPacked(document, layer, index), value)
+        : value)
+    }
   }
   const sourceSelection = source.selection
   if (tileRepeatMode !== 'off') {
@@ -3847,7 +3878,7 @@ export function applySelectionTranslationPreview(
     })
     forEachOpaqueSource((localOffset, value) => {
       const targetIndex = targetCanvasIndex(localOffset)
-      if (targetIndex !== null) writeCanvasPacked(targetIndex, value, true)
+      if (targetIndex !== null) writeCanvasPacked(targetIndex, value, copy || source.origin === 'clipboard')
     })
     return finishPreview()
   }
@@ -3918,7 +3949,7 @@ export function applySelectionTranslationPreview(
     const localOffset = source.opaqueOffsets[offset]
     const x = target.x + localOffset % sourceSelection.width
     const y = target.y + Math.floor(localOffset / sourceSelection.width)
-    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset], true)
+    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset], copy)
   }
   return finishPreview()
 }
@@ -4406,7 +4437,9 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
           const index = layerIndexAt(layer, destination.x, destination.y)
           if (index === null || written.has(index)) continue
           written.add(index)
-          recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, index, value))
+          recordCanvasPixel(destination.x, destination.y, copy
+            ? compositeSelectionPixelForEdit(document, layer, edit, index, value)
+            : value)
         }
       }
     }
@@ -4455,7 +4488,9 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
         : value === 0 || getPaletteEntry(document, value).color.a === 0
       if (!transparent) {
         const destinationIndex = layerIndexAt(layer, x, y)
-        if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+        if (destinationIndex !== null) recordCanvasPixel(x, y, copy
+          ? compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value)
+          : value)
       }
     })
     return edit.before.size > 0 ? edit : null

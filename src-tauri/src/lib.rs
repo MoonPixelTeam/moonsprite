@@ -190,6 +190,7 @@ pub fn run() {
             platform_diagnostics::append_diagnostic_events,
             platform_diagnostics::open_diagnostic_logs,
             platform_extensions::list_extensions,
+            platform_extensions::inspect_extension_package,
             platform_extensions::install_extension,
             platform_extensions::choose_and_install_extension,
             platform_extensions::set_extension_enabled,

@@ -8,6 +8,8 @@ import {
   SKIP_DISABLED_FRAMES_PREFERENCE_KEY,
   EXPORT_FORMAT_PREFERENCE_KEY,
   EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY,
+  KEY_DISPLAY_DURATION_PREFERENCE_KEY,
+  TOOLTIPS_ENABLED_PREFERENCE_KEY,
   PROJECT_BACKUP_ENABLED_PREFERENCE_KEY,
   PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY,
   PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY,
@@ -19,6 +21,7 @@ import {
   parseTabletPreferences,
   parseEyedropperMagnifierSize,
   parseIsoViewPreferences,
+  parseKeyDisplayDuration,
   parseMoveLayerClickFlashDuration,
   parseOutlineSettingsPreference,
   parseUiScale,
@@ -68,6 +71,8 @@ describe('editor preferences boundary', () => {
       uiScale: 1,
       viewDragSensitivity: 1,
       moveLayerClickFlashDuration: 120,
+      keyDisplayDuration: 1400,
+      tooltipsEnabled: true,
       gradientLineVisible: true,
       gradientLineColor: DEFAULT_EDITOR_PREFERENCES.gradientLineColor,
       eyedropperQuickSelect: false,
@@ -83,6 +88,8 @@ describe('editor preferences boundary', () => {
     expect(parseViewDragSensitivity('1.25')).toBe(1)
     expect(parseEyedropperMagnifierSize('2')).toBe(1)
     expect(parseMoveLayerClickFlashDuration('240')).toBe(120)
+    expect(parseKeyDisplayDuration('2000')).toBe(2000)
+    expect(parseKeyDisplayDuration('9999')).toBe(1400)
   })
 
   it('persists the last-used outline settings as a software preference', () => {
@@ -135,6 +142,8 @@ describe('editor preferences boundary', () => {
       uiScale: 1.5,
       viewDragSensitivity: 1.5,
       moveLayerClickFlashDuration: 80,
+      keyDisplayDuration: 3000,
+      tooltipsEnabled: false,
       gradientLineVisible: false,
       gradientLineColor: { r: 12, g: 34, b: 56, a: 78 },
       eyedropperQuickSelect: true,
@@ -157,6 +166,8 @@ describe('editor preferences boundary', () => {
     expect(loaded.uiScale).toBe(1.5)
     expect(loaded.viewDragSensitivity).toBe(1.5)
     expect(loaded.moveLayerClickFlashDuration).toBe(80)
+    expect(loaded.keyDisplayDuration).toBe(3000)
+    expect(loaded.tooltipsEnabled).toBe(false)
     expect(loaded.gradientLineVisible).toBe(false)
     expect(loaded.gradientLineColor).toEqual({ r: 12, g: 34, b: 56, a: 78 })
     expect(loaded.eyedropperQuickSelect).toBe(true)
@@ -174,6 +185,8 @@ describe('editor preferences boundary', () => {
     expect(storage.getItem(SAVE_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(EXPORT_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)).toBe('80')
+    expect(storage.getItem(KEY_DISPLAY_DURATION_PREFERENCE_KEY)).toBe('3000')
+    expect(storage.getItem(TOOLTIPS_ENABLED_PREFERENCE_KEY)).toBe('false')
     expect(storage.getItem(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY)).toBe('true')
     expect(storage.getItem(PROJECT_BACKUP_ENABLED_PREFERENCE_KEY)).toBe('false')
     expect(storage.getItem(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)).toBe('6')

@@ -460,7 +460,8 @@ const floodBinaryRegion = (
   height: number,
   startIndex: number,
   matches: (index: number) => boolean,
-  virtualBarrier?: Uint8Array
+  virtualBarrier?: Uint8Array,
+  connectivity: 4 | 8 = 4
 ): Uint8Array | null => {
   if (!matches(startIndex) || virtualBarrier?.[startIndex] === 1) return null
   const total = width * height
@@ -481,6 +482,18 @@ const floodBinaryRegion = (
   push(startIndex)
   while (stackLength > 0) {
     const index = stack[--stackLength]
+    if (connectivity === 8) {
+      selected[index] = 1
+      const x = index % width
+      const y = Math.floor(index / width)
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        if (offsetX === 0 && offsetY === 0) continue
+        const nextX = x + offsetX
+        const nextY = y + offsetY
+        if (nextX >= 0 && nextY >= 0 && nextX < width && nextY < height) push(nextY * width + nextX)
+      }
+      continue
+    }
     const rowStart = index - index % width
     const rowEnd = rowStart + width
     let left = index
@@ -609,11 +622,12 @@ const contiguousMatchingRegionWithin = (
   startY: number,
   matches: (index: number) => boolean,
   gapClosingThreshold = 0,
-  profiler?: BinaryRegionProfiler
+  profiler?: BinaryRegionProfiler,
+  connectivity: 4 | 8 = 4
 ): Uint8Array | null => {
   if (width < 1 || height < 1 || startX < 0 || startY < 0 || startX >= width || startY >= height) return null
   const startIndex = startY * width + startX
-  if (gapClosingThreshold <= 0) return floodBinaryRegion(width, height, startIndex, matches)
+  if (gapClosingThreshold <= 0) return floodBinaryRegion(width, height, startIndex, matches, undefined, connectivity)
 
   const matching = new Uint8Array(width * height)
   const matchingStartedAt = performance.now()
@@ -644,8 +658,8 @@ const contiguousMatchingRegionWithin = (
     height: barrierBottom - barrierTop
   }, profiler)
   const floodStartedAt = performance.now()
-  const region = floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1, virtualBarrier)
-    ?? floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1)
+  const region = floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1, virtualBarrier, connectivity)
+    ?? floodBinaryRegion(width, height, startIndex, (index) => matching[index] === 1, undefined, connectivity)
   profiler?.('bucket.smart.region-flood', performance.now() - floodStartedAt)
   if (region) includeSmartClosurePixels(region, virtualBarrier, matching, width, height, threshold, profiler)
   return region
@@ -669,7 +683,8 @@ export const contiguousMatchingRegionInBounds = (
   matches: (index: number) => boolean,
   gapClosingThreshold = 0,
   bounds: BinaryRegionBounds,
-  profiler?: BinaryRegionProfiler
+  profiler?: BinaryRegionProfiler,
+  connectivity: 4 | 8 = 4
 ): BinaryRegionResult | null => {
   const left = Math.max(0, Math.floor(bounds.x))
   const top = Math.max(0, Math.floor(bounds.y))
@@ -685,7 +700,8 @@ export const contiguousMatchingRegionInBounds = (
     startY - top,
     (index) => matches((top + Math.floor(index / localWidth)) * width + left + index % localWidth),
     gapClosingThreshold,
-    profiler
+    profiler,
+    connectivity
   )
   return localRegion
     ? { region: localRegion, bounds: { x: left, y: top, width: localWidth, height: localHeight } }
@@ -706,10 +722,11 @@ export const contiguousMatchingRegion = (
   matches: (index: number) => boolean,
   gapClosingThreshold = 0,
   bounds?: BinaryRegionBounds,
-  profiler?: BinaryRegionProfiler
+  profiler?: BinaryRegionProfiler,
+  connectivity: 4 | 8 = 4
 ): Uint8Array | null => {
-  if (!bounds) return contiguousMatchingRegionWithin(width, height, startX, startY, matches, gapClosingThreshold, profiler)
-  const local = contiguousMatchingRegionInBounds(width, height, startX, startY, matches, gapClosingThreshold, bounds, profiler)
+  if (!bounds) return contiguousMatchingRegionWithin(width, height, startX, startY, matches, gapClosingThreshold, profiler, connectivity)
+  const local = contiguousMatchingRegionInBounds(width, height, startX, startY, matches, gapClosingThreshold, bounds, profiler, connectivity)
   if (!local) return null
   const { region: localRegion, bounds: resolvedBounds } = local
   const region = new Uint8Array(width * height)

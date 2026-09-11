@@ -51,6 +51,8 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
 export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
   Object.assign(target, {
     tool: source.tool,
+    extensionToolId: source.extensionToolId,
+    extensionToolMode: source.extensionToolMode,
     moveKind: source.moveKind,
     primaryColor: { ...source.primaryColor },
     secondaryColor: { ...source.secondaryColor },
@@ -62,6 +64,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     brushTextureScale: source.brushTextureScale,
     brushPaintMode: source.brushPaintMode,
     inkMode: source.inkMode,
+    syncInkAcrossTools: source.syncInkAcrossTools,
     brushImageId: source.brushImageId,
     brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
     brushImageTemporary: source.brushImageTemporary,
@@ -83,6 +86,8 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     fillTolerance: source.fillTolerance,
     fillGapClosing: source.fillGapClosing,
     fillGapThreshold: source.fillGapThreshold,
+    fillReference: source.fillReference,
+    fillConnectivity: source.fillConnectivity,
     gradientTolerance: source.gradientTolerance,
     gradientContiguous: source.gradientContiguous,
     gradientType: source.gradientType,
@@ -104,6 +109,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     symmetryAxesInitialized: structuredClone(source.symmetryAxesInitialized),
     airbrushParticleRadius: source.airbrushParticleRadius,
     airbrushParticleShape: source.airbrushParticleShape,
+    airbrushParticleAngle: source.airbrushParticleAngle,
     airbrushScatterRadius: source.airbrushScatterRadius,
     airbrushDensity: source.airbrushDensity,
     airbrushIntervalMs: source.airbrushIntervalMs,
@@ -173,6 +179,7 @@ export const selectedTransformLayersAreEditable = (
   && layers.every((layer) => isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer))
 
 export const brushProfileFromSession = (session: DocumentSession): BrushProfile => ({
+  inkMode: session.inkMode,
   brushSize: session.brushSize,
   brushShape: session.brushShape,
   brushAngle: session.brushAngle,
@@ -192,6 +199,7 @@ export const brushProfileFromSession = (session: DocumentSession): BrushProfile 
 })
 
 export const applyBrushProfile = (session: DocumentSession, profile: BrushProfile): void => {
+  session.inkMode = profile.inkMode
   session.brushSize = profile.brushSize
   session.brushShape = profile.brushShape
   session.brushAngle = profile.brushAngle
@@ -233,6 +241,7 @@ let toolSettingsPersistTimer: number | null = null
 
 function persistedBrushProfileFromSession(profile: BrushProfile): PersistedBrushProfile {
   return {
+    inkMode: profile.inkMode,
     brushSize: profile.brushSize,
     brushShape: profile.brushShape,
     brushAngle: profile.brushAngle,
@@ -274,6 +283,7 @@ export function persistToolSettings(session: DocumentSession): void {
   const snapshot: PersistedToolSettings = {
     ...active,
     inkMode: session.inkMode,
+    syncInkAcrossTools: session.syncInkAcrossTools,
     brushPaintModePreferenceVersion: 1,
     proceduralAntialiasPreferenceVersion: 1,
     brushProfiles: profiles,
@@ -288,6 +298,8 @@ export function persistToolSettings(session: DocumentSession): void {
     fillTolerance: session.fillTolerance,
     fillGapClosing: session.fillGapClosing,
     fillGapThreshold: session.fillGapThreshold,
+    fillReference: session.fillReference,
+    fillConnectivity: session.fillConnectivity,
     gradientTolerance: session.gradientTolerance,
     gradientContiguous: session.gradientContiguous,
     gradientType: session.gradientType,
@@ -307,6 +319,7 @@ export function persistToolSettings(session: DocumentSession): void {
     perfectPixels: session.perfectPixels,
     airbrushParticleRadius: session.airbrushParticleRadius,
     airbrushParticleShape: session.airbrushParticleShape,
+    airbrushParticleAngle: session.airbrushParticleAngle,
     airbrushScatterRadius: session.airbrushScatterRadius,
     airbrushDensity: session.airbrushDensity,
     airbrushIntervalMs: session.airbrushIntervalMs,
@@ -362,6 +375,8 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     history: new HistoryStack(),
     localHistory: null,
     tool: 'pencil',
+    extensionToolId: null,
+    extensionToolMode: '',
     moveKind: 'move',
     selectedSliceId: null,
     selectedSliceIds: [],
@@ -394,6 +409,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     proceduralAntialiasStrength: settings.proceduralAntialiasStrength,
     brushDynamics: normalizeBrushDynamicsSettings(settings.brushDynamics),
     brushPressure: { ...settings.brushPressure },
+    syncInkAcrossTools: settings.syncInkAcrossTools,
     shapeKind: settings.shapeKind,
     lineKind: settings.lineKind,
     curveAnchorCount: settings.curveAnchorCount,
@@ -405,6 +421,8 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     fillTolerance: settings.fillTolerance,
     fillGapClosing: settings.fillGapClosing,
     fillGapThreshold: settings.fillGapThreshold,
+    fillReference: settings.fillReference,
+    fillConnectivity: settings.fillConnectivity,
     gradientTolerance: settings.gradientTolerance,
     gradientContiguous: settings.gradientContiguous,
     gradientType: settings.gradientType,
@@ -430,6 +448,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     perfectPixels: settings.perfectPixels,
     airbrushParticleRadius: settings.airbrushParticleRadius,
     airbrushParticleShape: settings.airbrushParticleShape,
+    airbrushParticleAngle: settings.airbrushParticleAngle,
     airbrushScatterRadius: settings.airbrushScatterRadius,
     airbrushDensity: settings.airbrushDensity,
     airbrushIntervalMs: settings.airbrushIntervalMs,

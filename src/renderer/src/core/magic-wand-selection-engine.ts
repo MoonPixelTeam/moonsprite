@@ -9,6 +9,7 @@ export interface MagicWandSelectionRequest {
   tolerance: number
   contiguous: boolean
   gapClosingThreshold: number
+  connectivity?: 4 | 8
   layerBounds: SelectionRect
   contentBounds?: SelectionRect | null
 }
@@ -212,6 +213,12 @@ export const computeMagicWandSelection = (
 
   const gapClosingThreshold = Math.max(0, Math.round(request.gapClosingThreshold))
   if (gapClosingThreshold <= 0) {
+    if (request.connectivity === 8) {
+      const region = contiguousMatchingRegion(width, height, x, y, matches, 0, bounded ? {
+        x: originX, y: originY, width: regionWidth, height: regionHeight
+      } : undefined, undefined, 8)
+      return region ? compactRegion(region, width, height, 0, 0) : null
+    }
     if (target === 0) {
       const exterior = transparentExteriorSelection(request, matchesAt)
       if (exterior !== undefined) return exterior
@@ -234,9 +241,9 @@ export const computeMagicWandSelection = (
         y: originY,
         width: regionWidth,
         height: regionHeight
-      })
+      }, undefined, request.connectivity ?? 4)
     : null
   if (local) return compactRegion(local.region, local.bounds.width, local.bounds.height, local.bounds.x, local.bounds.y)
-  const region = contiguousMatchingRegion(width, height, x, y, matches, gapClosingThreshold)
+  const region = contiguousMatchingRegion(width, height, x, y, matches, gapClosingThreshold, undefined, undefined, request.connectivity ?? 4)
   return region ? compactRegion(region, width, height, 0, 0) : null
 }

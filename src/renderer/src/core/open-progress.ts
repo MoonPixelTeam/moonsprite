@@ -49,6 +49,11 @@ export function createOpenProgressController(
       }
     },
     dismiss() {
+      // Dismissal is an explicit cancellation of the visible open task. Keep
+      // the controller reusable: leaving the operation count alive would make
+      // the matching completion decrement only a stale count, causing all
+      // subsequent opens to inherit a permanently running overlay.
+      activeOperations = 0
       displayGeneration += 1
       publish('hidden')
     },

@@ -54,6 +54,10 @@ export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradi
 export const GRADIENT_LINE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-color'
 export const LASSO_PREVIEW_CLOSED_PREFERENCE_KEY = 'moonsprite.preference.lasso-preview-closed'
 export const EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-quick-select'
+export const TOOLTIPS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.tooltips-enabled'
+export const KEY_DISPLAY_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.key-display-enabled'
+export const KEY_DISPLAY_SIZE_PREFERENCE_KEY = 'moonsprite.preference.key-display-size'
+export const KEY_DISPLAY_DURATION_PREFERENCE_KEY = 'moonsprite.preference.key-display-duration'
 export const EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-switch-to-pencil'
 export const EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-enabled'
 export const EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-style'
@@ -104,6 +108,8 @@ export type ViewDragSensitivity = typeof VIEW_DRAG_SENSITIVITY_VALUES[number]
 export type CursorScale = 1 | 1.25 | 1.5 | 2
 export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
+export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
+export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
 export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
 export type ToolIconScale = 1 | 2
@@ -391,6 +397,16 @@ export function parseCursorScale(value: string | null): CursorScale {
   return parsed === 1.25 || parsed === 1.5 || parsed === 2 ? parsed : 1
 }
 
+export function parseKeyDisplaySize(value: string | null): number {
+  const parsed = Number(value)
+  return parsed === 0.75 || parsed === 1.25 || parsed === 1.5 ? parsed : 1
+}
+
+export function parseKeyDisplayDuration(value: string | null): KeyDisplayDuration {
+  const parsed = Number(value)
+  return KEY_DISPLAY_DURATIONS.includes(parsed as KeyDisplayDuration) ? parsed as KeyDisplayDuration : 1400
+}
+
 export function parseUiScale(value: string | null): UiScale {
   const parsed = Number(value)
   return UI_SCALE_VALUES.includes(parsed as UiScale) ? parsed as UiScale : 1
@@ -624,6 +640,10 @@ export interface EditorPreferences {
   gradientLineColor: RgbaColor
   lassoPreviewClosed: boolean
   eyedropperQuickSelect: boolean
+  tooltipsEnabled: boolean
+  keyDisplayEnabled: boolean
+  keyDisplaySize: number
+  keyDisplayDuration: KeyDisplayDuration
   eyedropperSwitchToPencil: boolean
   eyedropperMagnifierEnabled: boolean
   eyedropperMagnifierStyle: EyedropperMagnifierStyle
@@ -709,6 +729,10 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   gradientLineColor: DEFAULT_GRADIENT_LINE_COLOR,
   lassoPreviewClosed: false,
   eyedropperQuickSelect: false,
+  tooltipsEnabled: true,
+  keyDisplayEnabled: false,
+  keyDisplaySize: 1,
+  keyDisplayDuration: 1400,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
   eyedropperMagnifierStyle: 'pixel',
@@ -1178,6 +1202,10 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     gradientLineColor: parseHexColor(get(GRADIENT_LINE_COLOR_PREFERENCE_KEY), DEFAULT_GRADIENT_LINE_COLOR),
     lassoPreviewClosed: get(LASSO_PREVIEW_CLOSED_PREFERENCE_KEY) === 'true',
     eyedropperQuickSelect: get(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY) === 'true',
+    tooltipsEnabled: get(TOOLTIPS_ENABLED_PREFERENCE_KEY) !== 'false',
+    keyDisplayEnabled: get(KEY_DISPLAY_ENABLED_PREFERENCE_KEY) === 'true',
+    keyDisplaySize: parseKeyDisplaySize(get(KEY_DISPLAY_SIZE_PREFERENCE_KEY)),
+    keyDisplayDuration: parseKeyDisplayDuration(get(KEY_DISPLAY_DURATION_PREFERENCE_KEY)),
     eyedropperSwitchToPencil: get(EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY) === 'true',
     eyedropperMagnifierEnabled: get(EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY) !== 'false',
     eyedropperMagnifierStyle: parseEyedropperMagnifierStyle(get(EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY)),
@@ -1271,6 +1299,10 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [GRADIENT_LINE_COLOR_PREFERENCE_KEY]: colorHex(preferences.gradientLineColor),
     [LASSO_PREVIEW_CLOSED_PREFERENCE_KEY]: String(preferences.lassoPreviewClosed),
     [EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY]: String(preferences.eyedropperQuickSelect),
+    [TOOLTIPS_ENABLED_PREFERENCE_KEY]: String(preferences.tooltipsEnabled),
+    [KEY_DISPLAY_ENABLED_PREFERENCE_KEY]: String(preferences.keyDisplayEnabled),
+    [KEY_DISPLAY_SIZE_PREFERENCE_KEY]: String(parseKeyDisplaySize(String(preferences.keyDisplaySize))),
+    [KEY_DISPLAY_DURATION_PREFERENCE_KEY]: String(parseKeyDisplayDuration(String(preferences.keyDisplayDuration))),
     [EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY]: String(preferences.eyedropperSwitchToPencil),
     [EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY]: String(preferences.eyedropperMagnifierEnabled),
     [EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY]: preferences.eyedropperMagnifierStyle,

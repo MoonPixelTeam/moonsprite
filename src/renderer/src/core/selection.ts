@@ -1,4 +1,4 @@
-import type { CanvasAnchor, RasterLayer, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
+import type { CanvasAnchor, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
 import { getPaletteEntry, rasterLayerPackedValueIsUniform } from './document'
 export { selectionBoundarySegments } from './selection-boundary'
 import { isInBounds, packColor, pixelIndex } from './raster'
@@ -1078,7 +1078,12 @@ export const packedColorMatchesTolerance = (a: number, b: number, tolerance: num
     Math.abs((a >>> 24) - (b >>> 24))
   ) <= tolerance
 
-export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, tolerance = 0, contiguous = true, gapClosingThreshold = 0): SelectionMask | null => {
+export interface MagicWandRegionOptions {
+  sourceColorAt?: (x: number, y: number) => RgbaColor
+  connectivity?: 4 | 8
+}
+
+export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer, startX: number, startY: number, tolerance = 0, contiguous = true, gapClosingThreshold = 0, options?: MagicWandRegionOptions): SelectionMask | null => {
   if (!isInBounds(document.width, document.height, startX, startY)) return null
   const normalizedTolerance = Math.max(0, Math.min(255, Math.round(tolerance)))
   const palette = layer.format === 'indexed'
@@ -1102,13 +1107,21 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
     const localIndex = localY * layer.width + localX
     return packedPixels ? packedPixels[localIndex] : palette!.get(layer.pixels[localIndex]) ?? 0
   }
+  const sourceColorAt = options?.sourceColorAt
   const target = packedAt(pixelIndex(document.width, startX, startY))
-  const matches = (index: number): boolean => packedColorMatchesTolerance(packedAt(index), target, normalizedTolerance)
+  const targetSource = sourceColorAt?.(startX, startY)
+  const sourceTarget = targetSource ? packColor(targetSource) : target
+  const matches = (index: number): boolean => {
+    if (!sourceColorAt) return packedColorMatchesTolerance(packedAt(index), target, normalizedTolerance)
+    const x = index % document.width
+    const y = Math.floor(index / document.width)
+    return packedColorMatchesTolerance(packColor(sourceColorAt(x, y)), sourceTarget, normalizedTolerance)
+  }
   const layerCoversCanvas = layer.offsetX <= 0
     && layer.offsetY <= 0
     && layer.offsetX + layer.width >= document.width
     && layer.offsetY + layer.height >= document.height
-  if (layerCoversCanvas) {
+  if (!sourceColorAt && layerCoversCanvas) {
     const localIndex = (startY - layer.offsetY) * layer.width + startX - layer.offsetX
     const rawTarget = layer.format === 'rgba' ? target : layer.pixels[localIndex]
     if (rasterLayerPackedValueIsUniform(layer, rawTarget)) {
@@ -1131,16 +1144,16 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
   if (!contiguous) {
     for (let index = 0; index < total; index += 1) if (matches(index)) add(index)
   } else {
-    const targetAlpha = target >>> 24
-    const left = Math.max(0, layer.offsetX)
-    const top = Math.max(0, layer.offsetY)
-    const right = Math.min(document.width, layer.offsetX + layer.width)
-    const bottom = Math.min(document.height, layer.offsetY + layer.height)
+    const targetAlpha = sourceTarget >>> 24
+    const left = sourceColorAt ? 0 : Math.max(0, layer.offsetX)
+    const top = sourceColorAt ? 0 : Math.max(0, layer.offsetY)
+    const right = sourceColorAt ? document.width : Math.min(document.width, layer.offsetX + layer.width)
+    const bottom = sourceColorAt ? document.height : Math.min(document.height, layer.offsetY + layer.height)
     const bounds = targetAlpha > normalizedTolerance && right > left && bottom > top
       ? { x: left, y: top, width: right - left, height: bottom - top }
       : undefined
     const local = bounds
-      ? contiguousMatchingRegionInBounds(document.width, document.height, startX, startY, matches, gapClosingThreshold, bounds)
+      ? contiguousMatchingRegionInBounds(document.width, document.height, startX, startY, matches, gapClosingThreshold, bounds, undefined, options?.connectivity ?? 4)
       : null
     if (local) {
       selected = local.region
@@ -1150,7 +1163,7 @@ export const magicWandSelection = (document: SpriteDocument, layer: RasterLayer,
       selectedOriginY = local.bounds.y
       for (let index = 0; index < selected.length; index += 1) if (selected[index] === 1) add(index)
     } else {
-      const region = contiguousMatchingRegion(document.width, document.height, startX, startY, matches, gapClosingThreshold)
+      const region = contiguousMatchingRegion(document.width, document.height, startX, startY, matches, gapClosingThreshold, undefined, undefined, options?.connectivity ?? 4)
       if (region) for (let index = 0; index < total; index += 1) if (region[index] === 1) add(index)
     }
   }

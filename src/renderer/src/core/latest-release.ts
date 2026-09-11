@@ -18,44 +18,55 @@ export interface LatestReleaseDefinition {
 
 const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
-  publishedAt: '2026-09-05',
+  publishedAt: '2026-09-12',
   homeSummary: 'home.newsReleaseSummary',
   sections: [
     {
       title: 'latestRelease.section.interaction',
       items: [
-        'latestRelease.item.tools',
-        'latestRelease.item.selection',
-        'latestRelease.item.layers',
-        'latestRelease.item.dragDrop',
-        'latestRelease.item.shortcuts',
-        'latestRelease.item.dialogs'
+        'latestRelease.item.liquify',
+        'latestRelease.item.smoothBrush',
+        'latestRelease.item.rollback',
+        'latestRelease.item.magicWand',
+        'latestRelease.item.extensions',
+        'latestRelease.item.rotation',
+        'latestRelease.item.scripting'
       ]
     },
     {
       title: 'latestRelease.section.canvas',
       items: [
-        'latestRelease.item.rendering',
-        'latestRelease.item.preview',
-        'latestRelease.item.mirror',
-        'latestRelease.item.input'
+        'latestRelease.item.fillOptions',
+        'latestRelease.item.mouseShortcuts',
+        'latestRelease.item.layerQuickActions',
+        'latestRelease.item.globalSampler',
+        'latestRelease.item.timelapse',
+        'latestRelease.item.performanceOptimization'
       ]
+    }
+  ]
+} as const satisfies LatestReleaseDefinition
+
+const beta2Release = {
+  version: '1.0.0-beta2',
+  publishedAt: '2026-09-05',
+  homeSummary: 'home.newsReleaseSummaryBeta2',
+  sections: [
+    {
+      title: 'latestRelease.section.interaction',
+      items: ['latestRelease.item.tools', 'latestRelease.item.selection', 'latestRelease.item.layers', 'latestRelease.item.dragDrop', 'latestRelease.item.shortcuts', 'latestRelease.item.dialogs']
+    },
+    {
+      title: 'latestRelease.section.canvas',
+      items: ['latestRelease.item.rendering', 'latestRelease.item.preview', 'latestRelease.item.mirror', 'latestRelease.item.input']
     },
     {
       title: 'latestRelease.section.preferences',
-      items: [
-        'latestRelease.item.preferences',
-        'latestRelease.item.colors',
-        'latestRelease.item.cursor'
-      ]
+      items: ['latestRelease.item.preferences', 'latestRelease.item.colors', 'latestRelease.item.cursor']
     },
     {
       title: 'latestRelease.section.maintenance',
-      items: [
-        'latestRelease.item.format',
-        'latestRelease.item.docs',
-        'latestRelease.item.performance'
-      ]
+      items: ['latestRelease.item.format', 'latestRelease.item.docs', 'latestRelease.item.performance']
     }
   ]
 } as const satisfies LatestReleaseDefinition
@@ -112,7 +123,7 @@ const dev6Release = {
  * Complete release feed. Keep every published announcement here so older
  * releases remain available when a new version is published.
  */
-export const latestReleases = [currentRelease, beta1Release, dev6Release] as const satisfies readonly LatestReleaseDefinition[]
+export const latestReleases = [currentRelease, beta2Release, beta1Release, dev6Release] as const satisfies readonly LatestReleaseDefinition[]
 export const MAX_HOME_ANNOUNCEMENTS = 3
 export const homeAnnouncementsForDisplay = (releases: readonly LatestReleaseDefinition[]): readonly LatestReleaseDefinition[] => [...releases]
   .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt) || right.version.localeCompare(left.version))

@@ -9,7 +9,9 @@ import type {
   BrushShape,
   BrushTexture,
   FillKind,
+  FillConnectivity,
   FillMode,
+  FillReference,
   GradientDither,
   GradientStop,
   GradientType,
@@ -169,6 +171,7 @@ export interface TextBoxTransformState {
 }
 
 export interface BrushProfile {
+  inkMode: InkMode
   brushSize: number
   brushShape: BrushShape
   brushAngle: number
@@ -204,6 +207,8 @@ export interface DocumentSession {
     position: number
   } | null
   tool: ToolId
+  extensionToolId: string | null
+  extensionToolMode: string
   moveKind: MoveKind
   selectedSliceId: string | null
   selectedSliceIds: string[]
@@ -230,6 +235,7 @@ export interface DocumentSession {
   brushTextureScale: number
   brushPaintMode: BrushPaintMode
   inkMode: InkMode
+  syncInkAcrossTools: boolean
   brushImageId: string | null
   brushImage: ImageBrush | null
   brushImageTemporary: boolean
@@ -251,6 +257,8 @@ export interface DocumentSession {
   fillTolerance: number
   fillGapClosing: boolean
   fillGapThreshold: number
+  fillReference: FillReference
+  fillConnectivity: FillConnectivity
   gradientTolerance: number
   gradientContiguous: boolean
   gradientType: GradientType
@@ -287,6 +295,7 @@ export interface DocumentSession {
   symmetryCenter: SymmetryCenter
   airbrushParticleRadius: number
   airbrushParticleShape: BrushShape
+  airbrushParticleAngle: number
   airbrushScatterRadius: number
   airbrushDensity: number
   airbrushIntervalMs: number

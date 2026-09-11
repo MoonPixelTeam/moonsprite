@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillKind, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
 import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
 import { readStoredJson, writeStoredJson } from './storage'
@@ -24,6 +24,7 @@ export const BRUSH_TOOLS = ['pencil', 'eraser', 'fill', 'line'] as const
 export type BrushTool = typeof BRUSH_TOOLS[number]
 
 export interface PersistedBrushProfile {
+  inkMode: InkMode
   brushSize: number
   brushShape: BrushShape
   brushAngle: number
@@ -41,6 +42,7 @@ export interface PersistedBrushProfile {
 }
 
 export interface PersistedToolSettings extends PersistedBrushProfile {
+  syncInkAcrossTools: boolean
   inkMode: InkMode
   brushPaintModePreferenceVersion: number
   proceduralAntialiasPreferenceVersion: number
@@ -56,6 +58,8 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   fillTolerance: number
   fillGapClosing: boolean
   fillGapThreshold: number
+  fillReference: FillReference
+  fillConnectivity: FillConnectivity
   gradientTolerance: number
   gradientContiguous: boolean
   gradientType: GradientType
@@ -76,6 +80,7 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   symmetryAxes: SymmetryAxes
   airbrushParticleRadius: number
   airbrushParticleShape: BrushShape
+  airbrushParticleAngle: number
   airbrushScatterRadius: number
   airbrushDensity: number
   airbrushIntervalMs: number
@@ -92,6 +97,7 @@ const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, Proce
 ) as Record<ProceduralBrushId, ProceduralBrushSettings>
 
 export const defaultToolSettings: PersistedToolSettings = {
+  syncInkAcrossTools: false,
   brushSize: 1,
   brushShape: 'round',
   brushAngle: 0,
@@ -121,6 +127,8 @@ export const defaultToolSettings: PersistedToolSettings = {
   fillTolerance: 0,
   fillGapClosing: false,
   fillGapThreshold: DEFAULT_GAP_CLOSING_THRESHOLD,
+  fillReference: 'current-layer',
+  fillConnectivity: 4,
   gradientTolerance: 0,
   gradientContiguous: true,
   gradientType: 'linear',
@@ -144,6 +152,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   symmetryAxes: { ...DEFAULT_SYMMETRY_AXES },
   airbrushParticleRadius: 1,
   airbrushParticleShape: 'round',
+  airbrushParticleAngle: 0,
   airbrushScatterRadius: 12,
   airbrushDensity: 8,
   airbrushIntervalMs: 50,
@@ -180,6 +189,7 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
       ? migrateBrushPressureSettings(stored.brushPressure)
       : normalizeBrushDynamicsSettings(fallback.brushDynamics)
   return {
+    inkMode: stored?.inkMode === 'copy-alpha-color' || stored?.inkMode === 'lock-alpha' ? stored.inkMode : fallback.inkMode,
     brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(128, Math.round(stored!.brushSize!))) : fallback.brushSize,
     brushShape: stored?.brushShape === 'square' || stored?.brushShape === 'round' || stored?.brushShape === 'line' ? stored.brushShape : fallback.brushShape,
     brushAngle: Number.isFinite(stored?.brushAngle) ? Math.max(-180, Math.min(180, Math.round(stored!.brushAngle!))) : fallback.brushAngle,
@@ -225,6 +235,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
     return {
       ...legacyProfile,
       inkMode: stored.inkMode === 'copy-alpha-color' || stored.inkMode === 'lock-alpha' ? stored.inkMode : 'simple',
+      syncInkAcrossTools: stored.syncInkAcrossTools === true,
       brushPaintModePreferenceVersion: 1,
       proceduralAntialiasPreferenceVersion: 1,
       brushProfiles,
@@ -239,6 +250,8 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       fillTolerance: Number.isFinite(stored.fillTolerance) ? Math.max(0, Math.min(255, Math.round(stored.fillTolerance!))) : defaultToolSettings.fillTolerance,
       fillGapClosing: typeof stored.fillGapClosing === 'boolean' ? stored.fillGapClosing : defaultToolSettings.fillGapClosing,
       fillGapThreshold: Number.isFinite(stored.fillGapThreshold) ? normalizeGapClosingThreshold(stored.fillGapThreshold!) : defaultToolSettings.fillGapThreshold,
+      fillReference: stored.fillReference === 'visible-layers' ? 'visible-layers' : defaultToolSettings.fillReference,
+      fillConnectivity: stored.fillConnectivity === 8 ? 8 : defaultToolSettings.fillConnectivity,
       gradientTolerance: Number.isFinite(stored.gradientTolerance) ? Math.max(0, Math.min(255, Math.round(stored.gradientTolerance!))) : defaultToolSettings.gradientTolerance,
       gradientContiguous: typeof stored.gradientContiguous === 'boolean' ? stored.gradientContiguous : defaultToolSettings.gradientContiguous,
       gradientType: stored.gradientType === 'radial' ? 'radial' : 'linear',
@@ -258,6 +271,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       perfectPixels: typeof stored.perfectPixels === 'boolean' ? stored.perfectPixels : defaultToolSettings.perfectPixels,
       airbrushParticleRadius: Number.isFinite(stored.airbrushParticleRadius) ? Math.max(1, Math.min(16, Math.round(stored.airbrushParticleRadius!))) : defaultToolSettings.airbrushParticleRadius,
       airbrushParticleShape: stored.airbrushParticleShape === 'square' || stored.airbrushParticleShape === 'line' || stored.airbrushParticleShape === 'round' ? stored.airbrushParticleShape : defaultToolSettings.airbrushParticleShape,
+      airbrushParticleAngle: Number.isFinite(stored.airbrushParticleAngle) ? Math.max(-180, Math.min(180, Math.round(stored.airbrushParticleAngle!))) : defaultToolSettings.airbrushParticleAngle,
       airbrushScatterRadius: Number.isFinite(stored.airbrushScatterRadius) ? Math.max(1, Math.min(64, Math.round(stored.airbrushScatterRadius!))) : defaultToolSettings.airbrushScatterRadius,
       airbrushDensity: Number.isFinite(stored.airbrushDensity) ? Math.max(1, Math.min(128, Math.round(stored.airbrushDensity!))) : defaultToolSettings.airbrushDensity,
       airbrushIntervalMs: Number.isFinite(stored.airbrushIntervalMs) ? Math.max(16, Math.min(1000, Math.round(stored.airbrushIntervalMs!))) : defaultToolSettings.airbrushIntervalMs,

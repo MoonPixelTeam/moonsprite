@@ -11,6 +11,11 @@ describe('timelapse video encoding helpers', () => {
     expect(normalizeTimelapseSettings({ recordUndoSteps: true }).recordUndoSteps).toBe(true)
   })
 
+  it('defaults timelapse recording to smart cropping', () => {
+    expect(normalizeTimelapseSettings(undefined).mode).toBe('smart')
+    expect(normalizeTimelapseSettings({ mode: 'full' }).mode).toBe('full')
+  })
+
   it('selects a supported WebM codec in preference order', () => {
     expect(resolveTimelapseMimeType('webm', (candidate) => candidate === 'video/webm;codecs=vp8'))
       .toBe('video/webm;codecs=vp8')

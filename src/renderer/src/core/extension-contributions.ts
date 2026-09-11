@@ -5,6 +5,7 @@ import type {
   StoredExtensionCommand,
   StoredExtensionMenuItem,
   StoredExtensionPanel,
+  StoredExtensionTool,
   StoredExtensionTopMenu
 } from '@shared/types'
 import { readStoredString, writeStoredString } from './storage'
@@ -36,6 +37,13 @@ export interface ExtensionTopMenuContribution {
   commands: StoredExtensionCommand[]
 }
 
+export interface ExtensionToolContribution {
+  key: string
+  extensionId: string
+  extensionName: string
+  tool: StoredExtensionTool
+}
+
 export const extensionCommandScriptId = (extensionId: string, commandId: string): string =>
   `extension:${extensionId}:${commandId}`
 
@@ -47,6 +55,26 @@ export const extensionMenuItemKey = (extensionId: string, menuItemId: string): s
 
 export const extensionTopMenuKey = (extensionId: string, topMenuId: string): string =>
   `extension-menu:${extensionId}:${topMenuId}`
+
+export const extensionToolKey = (extensionId: string, toolId: string): string =>
+  `${extensionId}:tool:${toolId}`
+
+export const listExtensionToolContributions = (extensions: StoredExtension[]): ExtensionToolContribution[] =>
+  extensions.flatMap((extension) => (extension.enabled ? (extension.tools ?? []).map((tool) => ({
+    key: extensionToolKey(extension.id, tool.id),
+    extensionId: extension.id,
+    extensionName: extension.name,
+    tool
+  })) : []))
+
+let activeToolContributions = new Map<string, ExtensionToolContribution>()
+
+export const publishExtensionToolContributions = (contributions: ExtensionToolContribution[]): void => {
+  activeToolContributions = new Map(contributions.map((contribution) => [contribution.key, contribution]))
+}
+
+export const extensionToolContributionFor = (key: string | null): ExtensionToolContribution | null =>
+  key ? activeToolContributions.get(key) ?? null : null
 
 const extensionPanelVisibilityStorageKey = (panelKey: string): string =>
   `${EXTENSION_PANEL_VISIBILITY_PREFIX}${panelKey}`
