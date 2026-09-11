@@ -2001,6 +2001,8 @@ export const ruRUMessages = {
   "projectInfo.timelapseStorage": "Не указано",
   "timelapse.title": "Не указано",
   "timelapse.recording": "Не указано",
+  "timelapse.recordUndoSteps": "Записывать шаги отмены",
+  "timelapse.recordUndoStepsHint": "Если включено, в запись входят отмена, повтор и переходы по истории; если выключено, сохраняются только фактически применённые шаги редактирования.",
   "timelapse.recordingMode": "Recording Режим",
   "timelapse.recordingModeFull": "Не указано",
   "timelapse.recordingModeFullHint": "Keep Каждый Операция Кадр для Этот most Завершено запись, but Этот Проект Файл keeps growing.",

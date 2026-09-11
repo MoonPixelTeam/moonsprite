@@ -933,6 +933,9 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
   if (captureTimelapse) scheduleTimelapseCapture(session)
 }
 
+const shouldCaptureTimelapseHistoryStep = (session: DocumentSession): boolean =>
+  normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? []).recordUndoSteps === true
+
 const persistDisplaySettings = (session: DocumentSession, view: Partial<ViewState>): boolean => {
   if (!('showPixelGrid' in view) && !('showGrid' in view) && !('grid' in view)) return false
   const current = normalizeProjectDisplaySettings(session.document.displaySettings)
@@ -5771,7 +5774,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (entry.documentChanged !== false) {
         if (entry.contentChanged === false) touchMetadata(session)
         else touch(session, true, entry.invalidation)
-        recordDocumentOperation(session, undefined, entry.contentChanged !== false)
+        recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
       }
     }, false)
     const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)
@@ -5821,7 +5824,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (entry.documentChanged !== false) {
         if (entry.contentChanged === false) touchMetadata(session)
         else touch(session, true, entry.invalidation)
-        recordDocumentOperation(session, undefined, entry.contentChanged !== false)
+        recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
       }
     }, false)
     const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)
@@ -8301,9 +8304,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const timeline = ensureAnimationDocument(document)
         connectAnimationCels(document, timeline.cels.filter((cel) => cel.layerId === layer.id).map((cel) => cel.id))
         refreshActiveAnimationFrame(document)
-        document.activeLayerId = layer.id
-        session.selectedGroupId = null
-        session.selectedGroupIds = []
+        // Keep the timeline's active row in sync with the newly-created layer.
+        // The canvas sampler uses document.activeLayerId while the timeline UI
+        // uses timelineActiveContext; updating only one left the old layer
+        // visually active even though magic-wand sampled the background.
+        activateNewLayerContext(session, layer.id, timeline.activeFrameId)
         session.selectedLayerIds = [layer.id]
         const after = captureDocumentStructureSnapshot(document)
         const afterSelection = captureLayerUi(session)
@@ -10659,7 +10664,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (isLayerEffectivelyLocked(session.document, layer)) { set({ message: tr('workspace.clipboard.layerLocked') }); return false }
     try {
       const normalized = normalizeOutlineSettings(settings, session.primaryColor)!
-      const edit = outlineSelection(session.document, layer, session.selection, normalized.color, normalized.thickness, normalized.position, normalized.directions, normalized.kernel, normalized.smartHue, normalized.smartHueDarkness, normalized.backgroundColor)
+      const edit = outlineSelection(session.document, layer, session.selection, normalized.color, normalized.thickness, normalized.position, normalized.directions, normalized.kernel, normalized.smartHue, normalized.smartHueDarkness, normalized.backgroundColor, normalized.followOpacity)
       if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
       session.document.outlineSettings = cloneOutlineSettings(normalized)
       persistOutlineSettings(normalized)
@@ -10707,7 +10712,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const layer = activePaintLayer(session)
     if (isLayerEffectivelyLocked(session.document, layer)) { set({ message: tr('workspace.clipboard.layerLocked') }); return false }
     try {
-      const edit = outlineSelectionBoundary(session.document, layer, session.selection, insideSettings.color, insideSettings.thickness, insideSettings.directions, insideSettings.kernel, insideSettings.smartHue, insideSettings.smartHueDarkness)
+      const edit = outlineSelectionBoundary(session.document, layer, session.selection, insideSettings.color, insideSettings.thickness, insideSettings.directions, insideSettings.kernel, insideSettings.smartHue, insideSettings.smartHueDarkness, insideSettings.followOpacity)
       if (!edit) { set({ message: tr('workspace.outline.noContent') }); return false }
       get().commitPixelEdit(edit, tr('workspace.history.outlineInside'))
       set({ message: tr('workspace.outline.applied', { thickness: insideSettings.thickness, position: tr('outline.inside') }) })

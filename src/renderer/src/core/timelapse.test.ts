@@ -6,6 +6,11 @@ import { normalizeTimelapseSettings } from './project-metadata'
 
 describe('timelapse video encoding helpers', () => {
 
+  it('defaults undo-step recording off while preserving an explicit opt-in', () => {
+    expect(normalizeTimelapseSettings(undefined).recordUndoSteps).toBe(false)
+    expect(normalizeTimelapseSettings({ recordUndoSteps: true }).recordUndoSteps).toBe(true)
+  })
+
   it('selects a supported WebM codec in preference order', () => {
     expect(resolveTimelapseMimeType('webm', (candidate) => candidate === 'video/webm;codecs=vp8'))
       .toBe('video/webm;codecs=vp8')

@@ -102,6 +102,7 @@ export interface OutlinePreview {
   kernel: OutlineKernel
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity: boolean
 }
 
 export interface AnimationFrameClipboardItem {

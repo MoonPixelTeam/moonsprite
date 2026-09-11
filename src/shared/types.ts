@@ -396,6 +396,7 @@ export interface LayerStyleStroke {
   directions: OutlineDirections
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity?: boolean
 }
 
 export interface LayerStyleShadow {
@@ -682,6 +683,8 @@ export interface TimelapseSnapshot {
 
 export interface TimelapseSettings {
   enabled: boolean
+  /** Omitted by legacy projects; normalization treats it as false. */
+  recordUndoSteps?: boolean
   quality: TimelapseQuality
   fps: number
   speed: number
@@ -786,6 +789,7 @@ export interface OutlineSettings {
   directions: OutlineDirections
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity: boolean
   previewEnabled: boolean
 }
 export type CanvasAnchor = 'nw' | 'n' | 'ne' | 'w' | 'center' | 'e' | 'sw' | 's' | 'se'

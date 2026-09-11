@@ -1566,12 +1566,13 @@ export function outlineSelection(
   kernel: OutlineKernel = 'square',
   smartHue = false,
   smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS,
-  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 }
+  backgroundColor: RgbaColor = { r: 0, g: 0, b: 0, a: 0 },
+  followOpacity = false
 ): PixelEdit | null {
   if (isLayerEffectivelyLocked(document, layer)) return null
   if (!ensureLayerCoversCanvas(document, layer)) return null
   const edit = beginPixelEdit(layer.id)
-  const colorSettings = { color, smartHue, smartHueDarkness }
+  const colorSettings = { color, smartHue, smartHueDarkness, followOpacity }
   for (const sample of outlinePixelSamples(document, layer, selection, thickness, position, directions, kernel, backgroundColor)) {
     const x = sample.index % document.width
     const y = Math.floor(sample.index / document.width)
@@ -1595,7 +1596,8 @@ export function outlineSelectionBoundary(
   directions: OutlineDirections = allOutlineDirections(),
   kernel: OutlineKernel = 'square',
   smartHue = false,
-  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS
+  smartHueDarkness = DEFAULT_OUTLINE_SMART_HUE_DARKNESS,
+  followOpacity = false
 ): PixelEdit | null {
   if (!selection || isLayerEffectivelyLocked(document, layer)) return null
   if (!ensureLayerCoversCanvas(document, layer)) return null
@@ -1605,7 +1607,7 @@ export function outlineSelectionBoundary(
   const right = Math.min(document.width, selection.x + selection.width)
   const bottom = Math.min(document.height, selection.y + selection.height)
   if (right <= left || bottom <= top) return null
-  const colorSettings = { color, smartHue, smartHueDarkness }
+  const colorSettings = { color, smartHue, smartHueDarkness, followOpacity }
   const edit = beginPixelEdit(layer.id)
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
     if (!selectionContains(selection, x, y)) continue

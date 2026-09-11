@@ -1,7 +1,7 @@
-import { Brush, Film, Layers3, Maximize2 } from 'lucide-react'
 import type { SpriteDocument } from '@shared/types'
 import { DialogHeader } from './DialogHeader'
 import { ModalShell } from './ModalShell'
+import { PixelUtilityIcon, type PixelUtilityIconKind } from './PixelUtilityIcon'
 import { useI18n } from './I18nProvider'
 
 interface ProjectInfoDialogProps {
@@ -40,11 +40,11 @@ export function ProjectInfoDialog({ document, onClose }: ProjectInfoDialogProps)
   const timeline = document.animation
   const timelapseFrames = document.timelapse?.snapshots.length ?? 0
   const timelapseBytes = document.timelapse?.snapshots.reduce((total, snapshot) => total + snapshot.data.byteLength, 0) ?? 0
-  const highlights = [
-    { label: t('projectInfo.strokes'), value: statistics.strokeCount.toLocaleString(), icon: Brush },
-    { label: t('projectInfo.drawingTime'), value: formatDuration(statistics.drawingTimeMs), icon: Film },
-    { label: t('projectInfo.canvas'), value: `${document.width} x ${document.height}`, suffix: 'px', icon: Maximize2 },
-    { label: t('projectInfo.layers'), value: String(document.layers.length), icon: Layers3 }
+  const highlights: Array<{ label: string; value: string; suffix?: string; icon: PixelUtilityIconKind }> = [
+    { label: t('projectInfo.strokes'), value: statistics.strokeCount.toLocaleString(), icon: 'info' },
+    { label: t('projectInfo.drawingTime'), value: formatDuration(statistics.drawingTimeMs), icon: 'timelapse' },
+    { label: t('projectInfo.canvas'), value: `${document.width} x ${document.height}`, suffix: 'px', icon: 'image' },
+    { label: t('projectInfo.layers'), value: String(document.layers.length), icon: 'linkedLayer' }
   ]
   const details = [
     [t('projectInfo.name'), document.name],
@@ -63,7 +63,7 @@ export function ProjectInfoDialog({ document, onClose }: ProjectInfoDialogProps)
       <DialogHeader title={t('projectInfo.title')} titleId="project-info-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="project-info-content component-scrollbar">
         <section className="project-info-highlights" aria-label={t('projectInfo.title')}>
-          {highlights.map(({ label, value, suffix, icon: Icon }) => <div key={label} className="project-info-highlight"><Icon size={16} aria-hidden="true" /><span>{label}</span><strong>{value}{suffix && <small>{suffix}</small>}</strong></div>)}
+          {highlights.map(({ label, value, suffix, icon }) => <div key={label} className="project-info-highlight"><PixelUtilityIcon kind={icon} scale={2} /><span>{label}</span><strong>{value}{suffix && <small>{suffix}</small>}</strong></div>)}
         </section>
         <dl className="project-info-details">{details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       </div>

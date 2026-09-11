@@ -49,6 +49,8 @@ describe('workspace background layers', () => {
     expect(background.pixels[16 * 4]).toBe(191)
     expect(document.activeLayerId).toBe(background.id)
     expect(session.selectedLayerIds).toEqual([background.id])
+    expect(session.timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: background.id })
+    expect(session.timelineActiveContext.frameId).toBe(timeline.activeFrameId)
     expect(new Set(cels.map((cel) => resolveAnimationCel(timeline, cel)?.id)).size).toBe(1)
 
     useWorkspace.getState().undo()

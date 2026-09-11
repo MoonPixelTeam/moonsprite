@@ -50,7 +50,7 @@ export const layerStylesSignature = (value: unknown): string => {
     source.enabled,
     stroke?.enabled, rawColorSignature(stroke?.color), stroke?.size, stroke?.position, stroke?.kernel,
     directions?.nw, directions?.n, directions?.ne, directions?.w, directions?.e, directions?.sw, directions?.s, directions?.se,
-    stroke?.smartHue, stroke?.smartHueDarkness,
+    stroke?.smartHue, stroke?.smartHueDarkness, stroke?.followOpacity,
     shadow?.enabled, rawColorSignature(shadow?.color), shadow?.offsetX, shadow?.offsetY, shadow?.blur, shadow?.smartShadow, shadow?.smartShadowDarkness,
     innerGlow?.enabled, rawColorSignature(innerGlow?.color), innerGlow?.size,
     colorOverlay?.enabled, rawColorSignature(colorOverlay?.color),
@@ -61,7 +61,7 @@ export const layerStylesSignature = (value: unknown): string => {
 export function createDefaultLayerStyles(): LayerStyles {
   return {
     enabled: true,
-    stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside', kernel: 'round', directions: outlineDirectionsForKernel('round'), smartHue: false, smartHueDarkness: DEFAULT_LAYER_STYLE_SMART_HUE_DARKNESS },
+    stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside', kernel: 'round', directions: outlineDirectionsForKernel('round'), smartHue: false, smartHueDarkness: DEFAULT_LAYER_STYLE_SMART_HUE_DARKNESS, followOpacity: false },
     shadow: { enabled: false, color: { r: 0, g: 0, b: 0, a: 160 }, offsetX: 2, offsetY: 2, blur: 0, smartShadow: false, smartShadowDarkness: DEFAULT_LAYER_STYLE_SMART_SHADOW_DARKNESS },
     innerGlow: { enabled: false, color: { r: 255, g: 255, b: 255, a: 192 }, size: 2 },
     colorOverlay: { enabled: false, color: { r: 41, g: 121, b: 255, a: 255 } },
@@ -89,7 +89,8 @@ export function normalizeLayerStyles(value: unknown): LayerStyles | undefined {
       kernel: strokeKernel,
       directions: normalizeOutlineDirections(stroke?.directions, outlineDirectionsForKernel(strokeKernel)),
       smartHue: enabled(stroke?.smartHue),
-      smartHueDarkness: integer(stroke?.smartHueDarkness, defaults.stroke.smartHueDarkness, 0, 100)
+      smartHueDarkness: integer(stroke?.smartHueDarkness, defaults.stroke.smartHueDarkness, 0, 100),
+      followOpacity: enabled(stroke?.followOpacity)
     },
     shadow: {
       enabled: enabled(shadow?.enabled),
@@ -156,6 +157,7 @@ export const layerStylesEqual = (left: LayerStyles | undefined, right: LayerStyl
     && a.stroke.kernel === b.stroke.kernel
     && a.stroke.smartHue === b.stroke.smartHue
     && a.stroke.smartHueDarkness === b.stroke.smartHueDarkness
+    && a.stroke.followOpacity === b.stroke.followOpacity
     && OUTLINE_DIRECTIONS.every((direction) => a.stroke.directions[direction] === b.stroke.directions[direction])
     && colorEquals(a.stroke.color, b.stroke.color)
     && a.shadow.enabled === b.shadow.enabled
@@ -274,9 +276,13 @@ const outsideStrokeSample = (read: LayerStyleSourceReader, x: number, y: number,
     if (!direction || !style.directions[direction]) continue
     const sample = read(x + offsetX, y + offsetY)
     maximum = Math.max(maximum, sample.a)
-    if (style.smartHue && sample.a > 0) {
+    if ((style.smartHue || style.followOpacity) && sample.a > 0) {
       const distance = offsetX * offsetX + offsetY * offsetY
-      if (distance < referenceDistance) {
+      // When several source pixels are equally close (common on an
+      // anti-aliased diagonal), prefer the lower-alpha edge pixel. Picking
+      // the opaque interior pixel here made follow-opacity render as a
+      // fully opaque stroke instead of matching the softened edge.
+      if (distance < referenceDistance || (distance === referenceDistance && sample.a < referenceColor.a)) {
         referenceColor = sample
         referenceDistance = distance
       }
@@ -292,7 +298,11 @@ const innerStrokeCoverage = (read: LayerStyleSourceReader, x: number, y: number,
     if (!outlineKernelContainsOffset(offsetX, offsetY, style.size, style.kernel)) continue
     const direction = outlineDirectionForOffset(offsetX, offsetY)
     if (!direction || !style.directions[direction]) continue
-    coverage = Math.max(coverage, 1 - read(x + offsetX, y + offsetY).a / 255)
+    // Treat anti-aliased (partially transparent) pixels as existing
+    // content.  Using fractional alpha here makes an anti-aliased edge
+    // receive a second, overlapping inner stroke.  Shift+O uses the same
+    // binary boundary semantics (alpha > 0 is source content).
+    coverage = Math.max(coverage, read(x + offsetX, y + offsetY).a === 0 ? 1 : 0)
     if (coverage >= 1) return 1
   }
   return coverage
@@ -335,22 +345,11 @@ export type LayerStyleBinaryStrokeMetric = 'square' | 'horizontal' | 'vertical' 
  * Returns the exact distance metric for the common binary stroke presets.
  * Custom direction masks intentionally use the pixel-accurate fallback.
  */
-export const layerStyleBinaryStrokeMetric = (stroke: LayerStyles['stroke']): LayerStyleBinaryStrokeMetric | null => {
-  if (stroke.smartHue) return null
-  const directions = stroke.directions
-  const cardinal = !directions.nw && !directions.ne && !directions.sw && !directions.se
-    && directions.n && directions.w && directions.e && directions.s
-  const square = OUTLINE_DIRECTIONS.every((direction) => directions[direction])
-  const horizontal = directions.w && directions.e
-    && !directions.nw && !directions.n && !directions.ne
-    && !directions.sw && !directions.s && !directions.se
-  const vertical = directions.n && directions.s
-    && !directions.nw && !directions.ne && !directions.w
-    && !directions.e && !directions.sw && !directions.se
-  if (stroke.kernel === 'square' && square) return 'square'
-  if (stroke.kernel === 'horizontal' && horizontal) return 'horizontal'
-  if (stroke.kernel === 'vertical' && vertical) return 'vertical'
-  if (stroke.kernel === 'round' && cardinal) return 'cardinal'
+export const layerStyleBinaryStrokeMetric = (_stroke: LayerStyles['stroke']): LayerStyleBinaryStrokeMetric | null => {
+  // Stroke alpha now has two explicit semantics (fixed vs follow source
+  // opacity). The distance-field shortcut only modeled the former
+  // fractional-alpha behavior, so it can disagree with the exact directed
+  // outline at corners. Keep one authoritative rendering path for strokes.
   return null
 }
 
@@ -416,7 +415,7 @@ export const applySimpleLayerStylesPacked = (
 ): number | null => {
   if (styles.enabled === false) return sourcePacked >>> 0
   if (styles.colorOverlay.enabled || styles.gradientOverlay.enabled) return null
-  if (styles.stroke.enabled && styles.stroke.smartHue) return null
+  if (styles.stroke.enabled && (styles.stroke.smartHue || styles.stroke.followOpacity)) return null
   if (styles.stroke.enabled && outsideStrokeCoverageOverride === undefined && innerStrokeCoverageOverride === undefined) return null
   if (!styles.shadow.enabled && !styles.innerGlow.enabled && !styles.stroke.enabled) return sourcePacked >>> 0
 
@@ -529,7 +528,7 @@ export function sampleLayerStyleParts(
   if (styles.shadow.enabled) result.shadow = withCoverage(shadowColor(styles.shadow), shadowCoverage(read, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur))
   if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
     const sample = outsideStrokeSample(read, x, y, styles.stroke)
-    result.outerStroke = withCoverage(resolveOutlineStrokeColor(styles.stroke, sample.referenceColor, resolveColor), sample.alpha / 255)
+    result.outerStroke = withCoverage(resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, sample.referenceColor, resolveColor), 1)
   }
   if (source.a === 0) return result
   let styled = source
@@ -548,7 +547,7 @@ export function sampleLayerStyleParts(
     styled = overlayPreservingAlpha(styled, styles.innerGlow.color, coverage)
   }
   if (styles.stroke.enabled && styles.stroke.position !== 'outside') {
-    result.innerStroke = withCoverage(resolveOutlineStrokeColor(styles.stroke, styled, resolveColor), innerStrokeCoverage(read, x, y, styles.stroke))
+    result.innerStroke = withCoverage(resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, styled, resolveColor), styles.stroke.followOpacity ? 1 : innerStrokeCoverage(read, x, y, styles.stroke))
   }
   return result
 }
@@ -599,11 +598,14 @@ export function applyLayerStylesAt(
     if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(shadowColor(styles.shadow), coverage), 1, 'normal')
   }
   if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
-    const sample = coverageOverrides?.outsideStroke !== undefined && !styles.stroke.smartHue
+    const sample = coverageOverrides?.outsideStroke !== undefined && !styles.stroke.smartHue && !styles.stroke.followOpacity
       ? { alpha: coverageOverrides.outsideStroke * 255, referenceColor: TRANSPARENT }
       : outsideStrokeSample(readGeometry, x, y, styles.stroke)
-    const coverage = !styles.stroke.smartHue ? coverageOverrides?.outsideStroke ?? sample.alpha / 255 : sample.alpha / 255
-    if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(resolveOutlineStrokeColor(styles.stroke, sample.referenceColor, resolveDynamicColor), coverage), 1, 'normal')
+    // A normal layer-style stroke is an opaque/fixed-alpha effect.  Source
+    // alpha is consulted only when the explicit follow-opacity option is on;
+    // otherwise an anti-aliased source edge must not fade the chosen stroke.
+    const coverage = sample.alpha > 0 ? 1 : 0
+    if (coverage > 0) backdrop = blendWithMode(backdrop, withCoverage(resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, sample.referenceColor, resolveDynamicColor), coverage), 1, 'normal')
   }
 
   let styledSource = source
@@ -614,6 +616,6 @@ export function applyLayerStylesAt(
     styles.innerGlow.color,
     coverageOverrides?.innerGlow ?? innerGlowCoverage(readGeometry, x, y, styles.innerGlow.size)
   )
-  if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor(styles.stroke, styledSource, resolveDynamicColor), coverageOverrides?.insideStroke ?? innerStrokeCoverage(readGeometry, x, y, styles.stroke))
+  if (styledSource.a > 0 && styles.stroke.enabled && styles.stroke.position !== 'outside') styledSource = overlayPreservingAlpha(styledSource, resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, styledSource, resolveDynamicColor), styles.stroke.followOpacity ? 1 : coverageOverrides?.insideStroke ?? innerStrokeCoverage(readGeometry, x, y, styles.stroke))
   return styledSource.a > 0 ? blendWithMode(backdrop, styledSource, 1, 'normal') : backdrop
 }

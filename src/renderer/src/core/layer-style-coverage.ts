@@ -69,8 +69,14 @@ export function layerStyleCoverageTile(rect: SelectionRect, styles: LayerStyles,
           if (metric !== 'vertical') { maximum = Math.max(maximum, alpha[i - distance], alpha[i + distance]); minimum = Math.min(minimum, alpha[i - distance], alpha[i + distance]) }
           if (metric !== 'horizontal') { maximum = Math.max(maximum, alpha[i - distance * width], alpha[i + distance * width]); minimum = Math.min(minimum, alpha[i - distance * width], alpha[i + distance * width]) }
         }
-        if (output.outsideStroke) output.outsideStroke[out] = Math.max(output.outsideStroke[out], maximum / 255)
-        if (output.insideStroke) output.insideStroke[out] = Math.max(output.insideStroke[out], 1 - minimum / 255)
+        // Outside strokes use the configured stroke alpha by default. Source
+        // alpha only controls the result through the explicit
+        // follow-opacity mode, which bypasses this binary fast path.
+        if (output.outsideStroke) output.outsideStroke[out] = Math.max(output.outsideStroke[out], maximum > 0 ? 1 : 0)
+        // Keep anti-aliased source pixels inside the shape.  A fractional
+        // inner-stroke coverage would layer a second stroke over the
+        // anti-aliased edge; the outline tool's boundary test is binary.
+        if (output.insideStroke) output.insideStroke[out] = Math.max(output.insideStroke[out], minimum === 0 ? 1 : 0)
       }
     }
   }

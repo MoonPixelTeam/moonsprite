@@ -2001,6 +2001,8 @@ export const ptBRMessages = {
   "projectInfo.timelapseStorage": "Não especificado",
   "timelapse.title": "Não especificado",
   "timelapse.recording": "Não especificado",
+  "timelapse.recordUndoSteps": "Gravar etapas de desfazer",
+  "timelapse.recordUndoStepsHint": "Quando ativado, desfazer, refazer e saltos no histórico são incluídos; quando desativado, apenas as etapas de edição efetivas são mantidas.",
   "timelapse.recordingMode": "Recording Modo",
   "timelapse.recordingModeFull": "Não especificado",
   "timelapse.recordingModeFullHint": "Keep Cada Operação Quadro para O most Concluído gravar, but O Projeto Arquivo keeps growing.",

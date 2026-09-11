@@ -182,6 +182,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
             onChange={(mode) => onChange({ mode })}
           />
         </FormField>
+        <PreferenceToggle className="timelapse-undo-toggle" checked={settings.recordUndoSteps === true} label={t('timelapse.recordUndoSteps')} tooltip={t('timelapse.recordUndoStepsHint')} onChange={(recordUndoSteps) => onChange({ recordUndoSteps })} />
         <div className="timelapse-config-grid">
           <FormField label={t('timelapse.exportFormat')}><ThemedSelect<TimelapseExportFormat> value={format} groups={[{ label: t('timelapse.exportFormat'), options: [{ value: 'mp4', label: 'MP4' }, { value: 'webm', label: 'WebM' }, { value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPG' }] }]} label={t('timelapse.exportFormat')} onChange={setFormat} /></FormField>
           {videoFormat ? <FormField label={t('timelapse.quality')}><ThemedSelect<TimelapseQuality> value={settings.quality} groups={[{ label: t('timelapse.quality'), options: qualityOptions }]} label={t('timelapse.quality')} onChange={(quality) => onChange({ quality })} /></FormField> : <FormField className="timelapse-scale-field" label={t('timelapse.exportScale')}><div className="timelapse-scale-control"><NumberInput min={1} max={6400} value={imageScalePercent} suffix="%" onValueChange={setImageScalePercent} /><div className="scale-presets" aria-label={t('timelapse.exportScale')}>

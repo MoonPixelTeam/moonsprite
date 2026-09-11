@@ -2008,6 +2008,8 @@ export const koKRMessages = {
   'projectInfo.timelapseStorage': '데이터 데이터',
   'timelapse.title': '데이터 동영상',
   'timelapse.recording': '기록 그리는 중',
+  'timelapse.recordUndoSteps': '실행 취소 단계 기록',
+  'timelapse.recordUndoStepsHint': '켜면 실행 취소, 다시 실행 및 기록 이동도 포함합니다. 끄면 실제로 적용된 편집 단계만 유지합니다.',
   'timelapse.recordingMode': '데이터 모드',
   'timelapse.recordingModeFull': '전체 데이터',
   'timelapse.recordingModeFullHint': '데이터 데이터 작업 프레임 용 데이터 완료 기록, 데이터 프로젝트 파일 데이터 데이터.',

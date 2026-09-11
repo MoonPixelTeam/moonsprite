@@ -168,6 +168,6 @@ export function NativeTooltipBridge() {
     }
   }, [active])
 
-  if (!active) return null
+  if (!active || active.anchor.hasAttribute('data-moon-tooltip-disabled')) return null
   return createPortal(<span ref={tooltipRef} className="moon-tooltip native-title-tooltip" role="tooltip" style={position}>{active.content}</span>, document.body)
 }

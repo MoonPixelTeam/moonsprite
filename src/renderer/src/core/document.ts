@@ -2139,6 +2139,7 @@ export class DocumentCompositeCache {
     const completeCoverage = localFields ? hasCompleteBinaryStyleCoverage(styles, localFields)
       : Boolean(alphaCoverage && (!styles.stroke.enabled || ((styles.stroke.position === 'inside' || alphaCoverage.outsideStroke) && (styles.stroke.position === 'outside' || alphaCoverage.insideStroke))))
     const canUsePackedStyle = completeCoverage
+      && !styles.stroke.enabled
       && !styles.stroke.smartHue
       && !styles.colorOverlay.enabled
       && !styles.gradientOverlay.enabled
@@ -2197,7 +2198,15 @@ export class DocumentCompositeCache {
         sourceColor,
         readSource,
         cache.resolveStyleColor,
-        { shadow: shadowCoverage, innerGlow: innerGlowCoverage, outsideStroke: outsideStrokeCoverage, insideStroke: insideStrokeCoverage }
+        {
+          shadow: shadowCoverage,
+          innerGlow: innerGlowCoverage,
+          // The directed stroke sampler owns both geometry and the optional
+          // follow-opacity alpha. Coverage tiles cannot represent that
+          // source choice without changing the result at diagonal corners.
+          outsideStroke: styles.stroke.enabled ? undefined : outsideStrokeCoverage,
+          insideStroke: styles.stroke.enabled ? undefined : insideStrokeCoverage
+        }
       ))
     }
     return pixels

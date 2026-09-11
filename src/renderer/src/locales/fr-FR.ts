@@ -2008,6 +2008,8 @@ export const frFRMessages = {
   'projectInfo.timelapseStorage': 'Timelapse Storage',
   'timelapse.title': 'Timelapse Video',
   'timelapse.recording': 'Record Drawing',
+  'timelapse.recordUndoSteps': 'Record Undo Steps',
+  'timelapse.recordUndoStepsHint': 'When enabled, undo, redo, and history jumps are included; when disabled, only effective editing steps are retained.',
   'timelapse.recordingMode': 'Recording Mode',
   'timelapse.recordingModeFull': 'Full Recording',
   'timelapse.recordingModeFullHint': 'Keep every operation frame pour le most complete record, but le projet Fichier keeps growing.',

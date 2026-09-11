@@ -24,6 +24,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
   const [kernel, setKernel] = useState<OutlineKernel>('round')
   const [edgeDirections, setEdgeDirections] = useState<OutlineDirections>(() => defaultOutlineSettings(session.primaryColor).directions)
   const [smartHue, setSmartHue] = useState(false)
+  const [followOpacity, setFollowOpacity] = useState(false)
   const [smartHueDarkness, setSmartHueDarkness] = useState(() => defaultOutlineSettings(session.primaryColor).smartHueDarkness)
   const [previewEnabled, setPreviewEnabled] = useState(true)
 
@@ -42,18 +43,19 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
     setKernel(settings.kernel)
     setEdgeDirections({ ...settings.directions })
     setSmartHue(settings.smartHue)
+    setFollowOpacity(settings.followOpacity)
     setSmartHueDarkness(settings.smartHueDarkness)
     setPreviewEnabled(settings.previewEnabled)
   }, [open, session.document.id, session.primaryColor.r, session.primaryColor.g, session.primaryColor.b, session.primaryColor.a, setOutlinePreview])
 
   useEffect(() => {
-    if (open && previewEnabled) setOutlinePreview({ color, backgroundColor, thickness, position, directions: edgeDirections, kernel, smartHue, smartHueDarkness })
+    if (open && previewEnabled) setOutlinePreview({ color, backgroundColor, thickness, position, directions: edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity })
     else setOutlinePreview(null)
-  }, [open, previewEnabled, color, backgroundColor, thickness, position, edgeDirections, kernel, smartHue, smartHueDarkness, setOutlinePreview])
+  }, [open, previewEnabled, color, backgroundColor, thickness, position, edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity, setOutlinePreview])
 
   const close = (): void => { setOutlinePreview(null); onClose() }
   const submit = (): void => {
-    if (outlineActiveSelection({ color, backgroundColor, thickness, position, directions: edgeDirections, kernel, smartHue, smartHueDarkness, previewEnabled })) close()
+    if (outlineActiveSelection({ color, backgroundColor, thickness, position, directions: edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity, previewEnabled })) close()
   }
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
     }
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
-  }, [open, color, backgroundColor, thickness, position, edgeDirections, kernel, smartHue, smartHueDarkness, previewEnabled])
+  }, [open, color, backgroundColor, thickness, position, edgeDirections, kernel, smartHue, smartHueDarkness, followOpacity, previewEnabled])
 
   if (!open) return null
 
@@ -82,7 +84,8 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
       <DialogHeader eyebrow="OUTLINE" title={t('outline.title')} closeLabel={t('common.close')} onClose={close} />
       <div className="modal-body outline-modal-body">
         <div className="outline-tone-settings">
-          <PreferenceToggle className="outline-smart-toggle" label={t('outline.smartHue')} tooltip={t('outline.smartHueDescription')} checked={smartHue} onChange={setSmartHue} />
+          <PreferenceToggle label={t('outline.smartHue')} tooltip={t('outline.smartHueDescription')} checked={smartHue} onChange={setSmartHue} />
+          <PreferenceToggle label="跟随不透明度" tooltip="根据相邻源像素的不透明度调整描边透明度。关闭时使用描边颜色自身的透明度。" checked={followOpacity} onChange={setFollowOpacity} />
           {!smartHue && <FormField className="outline-color-field" layout="inline" label={t('outline.color')}><ColorValueControl color={color} density="regular" onChange={setColor} label={t('outline.color')} storageKey="selection-outline" fillWithColor inPalette={false} /></FormField>}
           <FormField className="outline-color-field" layout="inline" label={t('outline.backgroundColor')}><ColorValueControl color={backgroundColor} density="regular" onChange={setBackgroundColor} label={t('outline.backgroundColor')} storageKey="selection-outline-background" fillWithColor inPalette={false} /></FormField>
           {smartHue && <RangeField className="outline-smart-darkness" label={t('outline.smartHueDarkness')} min={0} max={100} suffix="%" value={smartHueDarkness} onChange={setSmartHueDarkness} />}

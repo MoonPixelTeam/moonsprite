@@ -2008,6 +2008,8 @@ export const jaJPMessages = {
   'projectInfo.timelapseStorage': 'データ データ',
   'timelapse.title': 'データ 動画',
   'timelapse.recording': '記録 描画',
+  'timelapse.recordUndoSteps': '取り消し手順を記録',
+  'timelapse.recordUndoStepsHint': '有効にすると、取り消し、やり直し、履歴の移動も含めます。無効にすると、実際に適用された編集手順だけを保持します。',
   'timelapse.recordingMode': 'データ モード',
   'timelapse.recordingModeFull': '完全 データ',
   'timelapse.recordingModeFullHint': 'データ すべて 操作 フレーム 用 データ 完了 記録, データ プロジェクト ファイル データ データ.',

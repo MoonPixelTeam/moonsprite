@@ -2001,6 +2001,8 @@ export const deDEMessages = {
   "projectInfo.timelapseStorage": "Nicht angegeben",
   "timelapse.title": "Nicht angegeben",
   "timelapse.recording": "Nicht angegeben",
+  "timelapse.recordUndoSteps": "Rückgängigmachungen aufzeichnen",
+  "timelapse.recordUndoStepsHint": "Wenn aktiviert, werden Rückgängig, Wiederholen und Sprünge im Verlauf aufgenommen; andernfalls bleiben nur wirksame Bearbeitungsschritte erhalten.",
   "timelapse.recordingMode": "Recording Modus",
   "timelapse.recordingModeFull": "Nicht angegeben",
   "timelapse.recordingModeFullHint": "Keep Jede Vorgang Frame für Die most Abgeschlossen Aufzeichnen, but Die Projekt Datei keeps growing.",

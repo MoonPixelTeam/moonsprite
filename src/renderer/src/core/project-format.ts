@@ -840,6 +840,7 @@ const createProjectArchiveFiles = (
   const timelapseSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   const timelapse: ManifestTimelapse = {
     enabled: timelapseSettings.enabled,
+    recordUndoSteps: timelapseSettings.recordUndoSteps,
     quality: timelapseSettings.quality,
     fps: timelapseSettings.fps,
     speed: timelapseSettings.speed,
