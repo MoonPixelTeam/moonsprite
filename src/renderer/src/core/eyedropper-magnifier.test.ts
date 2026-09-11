@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eyedropperMagnifierContentPoint, eyedropperMagnifierViewTransform } from './eyedropper-magnifier'
+import { eyedropperMagnifierContentPoint, eyedropperMagnifierPosition, eyedropperMagnifierViewTransform } from './eyedropper-magnifier'
 
 describe('eyedropper magnifier view transform', () => {
   it('maps lens coordinates back through the same rotation as the canvas', () => {
@@ -25,5 +25,15 @@ describe('eyedropper magnifier view transform', () => {
       mirrored: false,
       mirroredVertical: false
     })
+  })
+
+  it('centers the lens above the pointer and flips it below near the top', () => {
+    expect(eyedropperMagnifierPosition({ x: 400, y: 500 }, { width: 800, height: 700 }, 256)).toEqual({ left: 272, top: 226 })
+    expect(eyedropperMagnifierPosition({ x: 400, y: 100 }, { width: 800, height: 700 }, 256)).toEqual({ left: 272, top: 118 })
+  })
+
+  it('keeps the lens inside the same bounds used by the canvas', () => {
+    expect(eyedropperMagnifierPosition({ x: 2, y: 500 }, { width: 800, height: 700 }, 256).left).toBe(6)
+    expect(eyedropperMagnifierPosition({ x: 799, y: 500 }, { width: 800, height: 700 }, 256).left).toBe(538)
   })
 })

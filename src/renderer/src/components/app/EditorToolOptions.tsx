@@ -1,7 +1,7 @@
 import { pixelSource } from '@/components/pixel-source'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientStop, GradientType, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
+import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, GradientDither, GradientStop, GradientType, InkMode, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { NumberInput } from '@/components/NumberInput'
 import { ColorValueControl } from '@/components/ColorValueControl'
@@ -24,6 +24,8 @@ import { createProceduralBrushes, isProceduralBrushId } from '@/core/brushes'
 import type { TranslationKey } from '@/core/localization'
 import { brushTextureContains } from '@/core/tools'
 import { loadEditorPreferences, parseLineDirectionStep, saveEditorPreferences } from '@/core/file-preferences'
+import { loadShortcutBindings } from '@/core/shortcuts'
+import { applyQuickToolTarget } from '@/core/quick-tools'
 import { autoSliceCount, autoSliceRects, MAX_AUTO_SLICES, type AutoSliceSettings } from '@/core/slices'
 import { publishSlicePreview } from '@/core/slice-preview'
 import { BRUSH_SPEED_INPUT_LIMIT, DEFAULT_PRESSURE_INPUT_RANGE, DEFAULT_SPEED_INPUT_RANGE, type BrushDynamicsCurve, type BrushDynamicsDirection, type BrushDynamicsEffect, type BrushDynamicsMapping, type BrushDynamicsSensor, type BrushDynamicsSettings } from '@/core/pressure'
@@ -35,6 +37,7 @@ import { interpolateRgbaColor } from '@/core/gradient-color'
 import { temporaryLiquifyModeForShift } from '@/core/liquify'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, LIQUIFY_RESET_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { useWorkspace } from '@/store/workspace'
+import { useQuickToolShortcut } from '@/components/useQuickToolShortcut'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { PixelPressureIcon } from '@/components/PixelPressureIcon'
 import { useFloatingWindowStack } from '@/components/floating-panel'
@@ -82,6 +85,12 @@ function BrushDitherPreview({ template, stage }: { template: BrushDitherTemplate
 const gradientStopCssColor = (color: RgbaColor): string => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
 const gradientStopIconContent = gradientStopIcon.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
 const gradientStopIdentity = (stop: GradientStop): string => `${stop.position.toFixed(6)}:${stop.color.r},${stop.color.g},${stop.color.b},${stop.color.a}`
+
+const INK_MODE_OPTIONS: ReadonlyArray<{ value: InkMode; label: TranslationKey; description: TranslationKey }> = [
+  { value: 'simple', label: 'toolOptions.inkSimple', description: 'toolOptions.inkSimpleHint' },
+  { value: 'copy-alpha-color', label: 'toolOptions.inkCopyAlphaColor', description: 'toolOptions.inkCopyAlphaColorHint' },
+  { value: 'lock-alpha', label: 'toolOptions.inkLockAlpha', description: 'toolOptions.inkLockAlphaHint' }
+]
 
 function GradientStopIcon({ color }: { color: RgbaColor }) {
   return <svg className="gradient-editor-stop-icon" width={11} height={16} viewBox="0 0 11 16" style={{ '--gradient-stop-color': gradientStopCssColor(color) } as React.CSSProperties} dangerouslySetInnerHTML={{ __html: gradientStopIconContent }} aria-hidden="true" />
@@ -604,6 +613,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const [toleranceFlyoutOpen, setToleranceFlyoutOpen] = useState<'wand' | 'wand-gap' | 'fill' | 'fill-gap' | 'gradient' | null>(null)
   const [temporarySelectionMode, setTemporarySelectionMode] = useState<SelectionMode | null>(null)
   const [temporaryLiquifyMode, setTemporaryLiquifyMode] = useState<LiquifyMode | null>(null)
+  const [inkFlyoutOpen, setInkFlyoutOpen] = useState(false)
   const [pressureFlyoutOpen, setPressureFlyoutOpen] = useState(false)
   const [sliceProperties, setSliceProperties] = useState<(SelectionRect & { id: string }) | null>(null)
   const [autoSliceSettings, setAutoSliceSettings] = useState<AutoSliceSettings | null>(null)
@@ -625,7 +635,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     setBrushDitherFlyoutOpen(false)
   }, [])
   const state = useWorkspace.getState()
-  const session = state.sessions.find((item) => item.document.id === state.activeId) ?? null
+  const storedSession = state.sessions.find((item) => item.document.id === state.activeId) ?? null
+  const [shortcuts, setShortcuts] = useState(loadShortcutBindings)
+  const quickToolMatch = useQuickToolShortcut(shortcuts)
+  // The rail and the properties bar must present the same effective tool while
+  // a quick-tool shortcut is held (e.g. Ctrl → Move). This is only a display
+  // projection: the stored session stays unchanged and is restored on key-up.
+  const session = storedSession ? applyQuickToolTarget(storedSession, quickToolMatch?.target ?? null) : null
   const proceduralBrushes = useMemo(() => session ? createProceduralBrushes(session.proceduralBrushSettings) : [], [renderKey, session?.document.id])
   const autoSlicePlan = useMemo(() => {
     if (!session || !autoSliceSettings) return { count: 0, rects: [] as SelectionRect[] }
@@ -637,6 +653,12 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [autoSliceSettings, session?.document.height, session?.document.id, session?.document.width])
   const autoSliceTotal = autoSlicePlan.count
   const autoSlicePreview = autoSlicePlan.rects
+
+  useEffect(() => {
+    const refreshShortcuts = (): void => setShortcuts(loadShortcutBindings())
+    window.addEventListener('moonsprite:shortcuts-changed', refreshShortcuts)
+    return () => window.removeEventListener('moonsprite:shortcuts-changed', refreshShortcuts)
+  }, [])
 
   useEffect(() => {
     const documentId = session?.document.id
@@ -682,14 +704,15 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       if (!brushDitherResidentRef.current && !event.target.closest('.brush-dither-control, .brush-dither-popover')) closeBrushDitherFlyout()
       if (!event.target.closest('.fill-texture-control')) setFillTextureOpen(false)
       if (!event.target.closest('.tolerance-control')) setToleranceFlyoutOpen(null)
+      if (!event.target.closest('.ink-control')) setInkFlyoutOpen(false)
       if (!keepsBrushDynamicsOpen(event.target)) setPressureFlyoutOpen(false)
     }
     const closeOnFocusOutside = (event: FocusEvent): void => {
       if (!(event.target instanceof Element)) return
       if (!keepsBrushDynamicsOpen(event.target)) setPressureFlyoutOpen(false)
     }
-    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) }
-    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) } }
+    const closeOnBlur = (): void => { setBasicBrushFlyoutOpen(false); if (!brushDitherResidentRef.current) closeBrushDitherFlyout(); setFillTextureOpen(false); setToleranceFlyoutOpen(null); setInkFlyoutOpen(false); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) }
+    const closeOnEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setBasicBrushFlyoutOpen(false); closeBrushDitherFlyout(); setInkFlyoutOpen(false); setPressureFlyoutOpen(false); setBrushAngleFlyoutOpen(false); setSmoothStrengthFlyoutOpen(false); setLiquifyFlyoutOpen(null) } }
     const closeAll = (event: Event): void => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (target && target !== 'popover') return
@@ -701,6 +724,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       closeBrushDitherFlyout()
       setFillTextureOpen(false)
       setToleranceFlyoutOpen(null)
+      setInkFlyoutOpen(false)
       setPressureFlyoutOpen(false)
     }
     window.addEventListener('pointerdown', closeOutside, true)
@@ -1126,6 +1150,12 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
+      {isStrokeBrushTool && !isSmoothBrushTool && <div className="ink-control">
+        <button type="button" className="ink-trigger icon-button" title={t('toolOptions.ink')} aria-label={t('toolOptions.ink')} aria-expanded={inkFlyoutOpen} onClick={() => setInkFlyoutOpen((open) => !open)}><PixelUtilityIcon kind="ink" /></button>
+        {inkFlyoutOpen && <div className="menu-popover ink-popover" role="menu" aria-label={t('toolOptions.ink')}>
+          {INK_MODE_OPTIONS.map((option) => <button key={option.value} type="button" role="menuitemradio" aria-checked={session.inkMode === option.value} onClick={() => { workspace.setInkMode(option.value); setInkFlyoutOpen(false) }}><Tooltip className="ink-label-tooltip" content={t(option.description)}><span className="ink-option-label">{t(option.label)}</span></Tooltip><span className="menu-check">{session.inkMode === option.value && <PixelUtilityIcon kind="check" />}</span></button>)}
+        </div>}
+      </div>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">
       <Tooltip content={t('toolOptions.brushDynamicsDescription')}><button className={`pressure-trigger icon-button ${session.brushDynamics.effects.size.sensor || session.brushDynamics.effects.strength.sensor || session.brushDynamics.effects.gradient.sensor || session.brushDynamics.effects.angle.sensor ? 'selected' : ''}`} type="button" aria-label={t('toolOptions.brushDynamics')} title={t('toolOptions.brushDynamics')} aria-expanded={pressureFlyoutOpen} onClick={() => setPressureFlyoutOpen((open) => !open)}><PixelPressureIcon /></button></Tooltip>
         {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} availableEffects={session.tool === 'smooth' ? ['size', 'angle'] : undefined} /></div>, document.body)}

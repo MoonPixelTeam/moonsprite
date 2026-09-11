@@ -1,4 +1,4 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillMode, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
 import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
 import { readStoredJson, writeStoredJson } from './storage'
@@ -41,6 +41,7 @@ export interface PersistedBrushProfile {
 }
 
 export interface PersistedToolSettings extends PersistedBrushProfile {
+  inkMode: InkMode
   brushPaintModePreferenceVersion: number
   proceduralAntialiasPreferenceVersion: number
   brushProfiles?: Partial<Record<BrushTool, PersistedBrushProfile>>
@@ -98,6 +99,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   brushTexture: 'solid',
   brushTextureScale: 1,
   brushPaintMode: 'paint',
+  inkMode: 'simple',
   brushPaintModePreferenceVersion: 1,
   brushImageId: null,
   brushImageSettings: { mode: 'dither', threshold: 128, blackPoint: 0, whitePoint: 255, invert: false },
@@ -222,6 +224,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
     const storedSymmetryAxes = stored.symmetryAxes as (Partial<SymmetryAxes> & { diagonal?: boolean }) | undefined
     return {
       ...legacyProfile,
+      inkMode: stored.inkMode === 'copy-alpha-color' || stored.inkMode === 'lock-alpha' ? stored.inkMode : 'simple',
       brushPaintModePreferenceVersion: 1,
       proceduralAntialiasPreferenceVersion: 1,
       brushProfiles,

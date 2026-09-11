@@ -19,6 +19,7 @@ import type {
   GradientStop,
   GradientType,
   ImageBrush,
+  InkMode,
   ImageBrushSettings,
   ImageResizeInterpolation,
   LayerStyles,
@@ -172,6 +173,7 @@ export interface WorkspaceToolCommands {
   setBrushTexture(texture: BrushTexture): void
   setBrushTextureScale(scale: number): void
   setBrushPaintMode(mode: BrushPaintMode): void
+  setInkMode(mode: InkMode): void
   setBrushDynamicsMapping(effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>): void
   setBrushDynamicsGradientDither(dither: GradientDither): void
   setBrushPressure(settings: Partial<BrushPressureSettings>): void

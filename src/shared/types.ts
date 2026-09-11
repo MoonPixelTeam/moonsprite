@@ -8,6 +8,7 @@ export type MoveKind = 'move' | 'slice'
 export type BrushShape = 'round' | 'square' | 'line'
 export type BrushTexture = 'solid' | 'cracks' | 'wood' | 'grain'
 export type BrushPaintMode = 'paint' | 'pattern-source' | 'pattern-target'
+export type InkMode = 'simple' | 'copy-alpha-color' | 'lock-alpha'
 export type ProceduralBrushId = 'procedural:noise' | 'procedural:clouds' | 'procedural:cells' | 'procedural:fibers'
 
 export interface ProceduralBrushSettings {
@@ -1127,6 +1128,7 @@ export interface MoonSpriteApi {
   savePaletteImage(defaultPath?: string): Promise<SaveDialogResult>
   saveShortcutFile(defaultPath?: string): Promise<SaveDialogResult>
   saveThemeFile(defaultPath?: string): Promise<SaveDialogResult>
+  saveUsageStatisticsFile(defaultPath?: string): Promise<SaveDialogResult>
   getDefaultFileDirectories(): Promise<DefaultFileDirectories>
   chooseDirectory(defaultPath?: string): Promise<DirectoryDialogResult>
   fileExists(filePath: string): Promise<boolean>
@@ -1142,6 +1144,8 @@ export interface MoonSpriteApi {
   readClipboardText(): Promise<string | null>
   readClipboardImage(): Promise<ClipboardImage | null>
   readClipboardImageSize(): Promise<ClipboardImageSize | null>
+  sampleWindowColor(clientX: number, clientY: number): Promise<RgbaColor | null>
+  sampleWindowColorRegion(clientX: number, clientY: number, radius: number): Promise<RgbaColor[] | null>
   listPalettes(): Promise<PaletteListing>
   savePalette(id: string | null, name: string, colors: RgbaColor[], columns: number, slots: Array<number | null>): Promise<StoredPalette>
   deletePalette(id: string): Promise<void>
@@ -1174,6 +1178,10 @@ export interface MoonSpriteApi {
   readLocalHistory(id: string): Promise<Uint8Array>
   writeLocalHistory(id: string, data: Uint8Array): Promise<void>
   deleteLocalHistory(id: string): Promise<void>
+  readUsageStatistics(): Promise<string | null>
+  writeUsageStatistics(json: string): Promise<void>
+  usageStatisticsPath(): Promise<string>
+  openUsageStatisticsFolder(): Promise<void>
   listGalleryProjects(): Promise<GalleryListing>
   listFolderProjects(directoryPath: string): Promise<GalleryListing>
   deleteGalleryProject(fileName: string): Promise<void>

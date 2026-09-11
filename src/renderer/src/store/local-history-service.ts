@@ -2,20 +2,45 @@ import { strFromU8, unzip } from 'fflate'
 import type { MoonSpriteApi, SpriteDocument } from '@shared/types'
 import { decodeProject, encodeProjectAsync } from '@/core/project-format'
 import { HistoryStack, type HistoryEntry, type HistoryStackChange } from '@/core/history'
-import { cloneHistoryDocument, historyDocumentTransferView, hydrateLocalHistoryDelta, historyDocumentBytes } from '@/core/local-history-delta'
-import { decodeHistoryDelta, type LocalHistoryManifest, type LocalHistorySnapshot } from '@/core/local-history-archive'
+import { captureCommittedHistoryDelta, cloneHistoryDocument, historyDocumentTransferView, hydrateLocalHistoryDelta, historyDocumentBytes } from '@/core/local-history-delta'
+import { decodeHistoryDelta, materializeLocalHistorySnapshot, unpackLocalHistorySnapshots, type LocalHistoryManifest, type LocalHistorySnapshot } from '@/core/local-history-archive'
 import { packLocalHistoryAsync } from '@/core/local-history-worker'
 import { getLayerStorageOrigin, setLayerStorageOrigin } from '@/core/document'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import type { DocumentSession } from './workspace-types'
+import { invalidateSessionContent } from './workspace-session'
 
-const HISTORY_FORMAT_VERSION = 2
-const SNAPSHOT_DIRECTORY = 'snapshots/'
+const HISTORY_FORMAT_VERSION = 4
 
 const cloneDocument = cloneHistoryDocument
-const encodedSnapshots = new WeakMap<SpriteDocument, Promise<Uint8Array>>()
+const encodedSnapshots = new WeakMap<LocalHistorySnapshot, Promise<Uint8Array>>()
+const snapshotShapes = new WeakMap<LocalHistorySnapshot, string>()
+const documentShape = (document: SpriteDocument): string => JSON.stringify([
+  document.width, document.height, document.colorMode, document.palette,
+  document.layers.map(layer => [layer.id, layer.kind, layer.format, layer.width, layer.height, layer.offsetX, layer.offsetY, getLayerStorageOrigin(layer)]),
+  document.animation?.frames.map(frame => frame.id), document.animation?.cels.map(cel => [cel.id, cel.layerId, cel.frameId])
+])
+const captureSnapshot = (document: SpriteDocument): LocalHistorySnapshot => {
+  const snapshot = cloneDocument(document)
+  snapshotShapes.set(snapshot, documentShape(document))
+  return snapshot
+}
 const writeQueues = new Map<string, Promise<void>>()
+interface HistoryWrite {
+  manifest: LocalHistoryManifest
+  snapshots: LocalHistorySnapshot[]
+  completion: Promise<void>
+}
+const sessionWrites = new WeakMap<DocumentSession, HistoryWrite>()
+// Weak references avoid retaining closed projects, while another session writing
+// the same path invalidates a previously acknowledged timeline.
+const latestWrites = new Map<string, WeakRef<HistoryWrite>>()
+const sameHistoryWrite = (write: HistoryWrite, manifest: LocalHistoryManifest, snapshots: LocalHistorySnapshot[]): boolean =>
+  write.manifest.projectKey === manifest.projectKey && write.manifest.position === manifest.position &&
+  write.manifest.labels.length === manifest.labels.length && write.snapshots.length === snapshots.length &&
+  manifest.labels.every((label, index) => write.manifest.labels[index] === label) &&
+  snapshots.every((snapshot, index) => write.snapshots[index] === snapshot)
 const deltaCaches = new WeakMap<LocalHistorySnapshot, WeakMap<LocalHistorySnapshot, Uint8Array | null>>()
 const cacheDelta = (before: LocalHistorySnapshot, after: LocalHistorySnapshot, delta: Uint8Array | null): void => {
   let next = deltaCaches.get(before)
@@ -27,7 +52,8 @@ const encodeSnapshot = (snapshot: LocalHistorySnapshot): Promise<Uint8Array> => 
   if ('archive' in snapshot) return Promise.resolve(snapshot.archive)
   const cached = encodedSnapshots.get(snapshot)
   if (cached) return cached
-  const encoded = encodeProjectAsync(historyDocumentTransferView(snapshot), { includePreview: false }).catch(error => {
+  const source = 'base' in snapshot ? materializeLocalHistorySnapshot(snapshot) : snapshot
+  const encoded = encodeProjectAsync(historyDocumentTransferView(source), { includePreview: false }).catch(error => {
     encodedSnapshots.delete(snapshot)
     throw error
   })
@@ -73,7 +99,7 @@ export const configureLocalHistory = (session: DocumentSession, api: MoonSpriteA
   }
   if (!session.localHistory) {
     const started = performance.now()
-    session.localHistory = { snapshots: [cloneDocument(session.document)], labels: [], position: 0 }
+    session.localHistory = { snapshots: [captureSnapshot(session.document)], labels: [], position: 0 }
     if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'local-history.baseline', { durationMs: Math.round((performance.now() - started) * 10) / 10, width: session.document.width, height: session.document.height, layers: session.document.layers.length })
   }
   session.history.setChangeListener((change) => {
@@ -87,9 +113,16 @@ export const recordLocalHistoryChange = (session: DocumentSession, change: Histo
   if (!state) return
   switch (change.kind) {
     case 'push': {
+      const base = state.snapshots[state.position]
+      const shape = documentShape(session.document)
+      const previousShape = snapshotShapes.get(base) ?? (!('archive' in base) && !('base' in base) ? documentShape(base) : undefined)
+      const delta = loadEditorPreferences().localHistoryEnabled && change.entry && previousShape === shape
+        ? captureCommittedHistoryDelta(session.document, change.entry) : null
       state.snapshots.splice(state.position + 1)
       state.labels.splice(state.position)
-      state.snapshots.push(cloneDocument(session.document))
+      const snapshot: LocalHistorySnapshot = delta ? { base, delta } : captureSnapshot(session.document)
+      snapshotShapes.set(snapshot, shape)
+      state.snapshots.push(snapshot)
       state.labels.push(change.entry?.label ?? '编辑')
       state.position = state.labels.length
       const discarded = change.discardedUndoEntries ?? 0
@@ -103,8 +136,9 @@ export const recordLocalHistoryChange = (session: DocumentSession, change: Histo
     }
     case 'undo': state.position = Math.max(0, state.position - 1); break
     case 'redo': state.position = Math.min(state.labels.length, state.position + 1); break
-    case 'clear': session.localHistory = { snapshots: [cloneDocument(session.document)], labels: [], position: 0 }; break
+    case 'clear': session.localHistory = { snapshots: [captureSnapshot(session.document)], labels: [], position: 0 }; break
   }
+  if (change.kind === 'undo' || change.kind === 'redo') snapshotShapes.set(state.snapshots[state.position], documentShape(session.document))
 }
 
 const pendingWrites = new Map<string, number>()
@@ -143,18 +177,52 @@ export const persistLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   // live timeline while the previous write is still running.
   const snapshots = [...state.snapshots]
   const id = manifest.projectKey
+  const known = sessionWrites.get(session)
+  if (known && latestWrites.get(id)?.deref() === known && sameHistoryWrite(known, manifest, snapshots)) {
+    await known.completion
+    return
+  }
   const previous = writeQueues.get(id)
   const write = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(async () => {
     const archives: Uint8Array[] = []
+    const incrementalDeltas = snapshots.map((snapshot, index) => index > 0 && 'base' in snapshot && snapshot.base === snapshots[index - 1] ? snapshot.delta : null)
     for (let index = 0; index < snapshots.length; index++) {
-      archives.push(await encodeSnapshot(snapshots[index]))
+      archives.push(incrementalDeltas[index] ? new Uint8Array() : await encodeSnapshot(snapshots[index]))
     }
-    const packed = await packLocalHistoryAsync({ manifest, snapshots: archives, cachedDeltas: manifest.labels.map((_, index) => deltaCaches.get(snapshots[index])?.get(snapshots[index + 1])) })
+    const packed = await packLocalHistoryAsync({ manifest, snapshots: archives, incrementalDeltas, cachedDeltas: manifest.labels.map((_, index) => deltaCaches.get(snapshots[index])?.get(snapshots[index + 1])) })
     packed.deltas.forEach((delta, index) => cacheDelta(snapshots[index], snapshots[index + 1], delta))
     await api.writeLocalHistory(id, packed.archive)
+    // Once trimming advances into a journal, its first state is encoded as a
+    // checkpoint. Rebase the live chain so discarded strokes can be collected.
+    const live = session.localHistory
+    if ('base' in snapshots[0] && live?.snapshots[0] === snapshots[0]) {
+      const replacements = new Map<LocalHistorySnapshot, LocalHistorySnapshot>([[snapshots[0], { archive: archives[0] }]])
+      const old = live.snapshots
+      const rebased = old.map(snapshot => {
+        const next = replacements.get(snapshot) ?? ('base' in snapshot && replacements.has(snapshot.base)
+          ? { base: replacements.get(snapshot.base)!, delta: snapshot.delta } : snapshot)
+        replacements.set(snapshot, next)
+        const shape = snapshotShapes.get(snapshot)
+        if (shape) snapshotShapes.set(next, shape)
+        return next
+      })
+      for (let index = 0; index + 1 < old.length; index++) {
+        const cached = deltaCaches.get(old[index])?.get(old[index + 1])
+        if (cached !== undefined) cacheDelta(rebased[index], rebased[index + 1], cached)
+      }
+      live.snapshots = rebased
+      record.snapshots = record.snapshots.map(snapshot => replacements.get(snapshot) ?? snapshot)
+    }
   })
+  const record: HistoryWrite = { manifest, snapshots, completion: write }
+  sessionWrites.set(session, record)
+  latestWrites.set(id, new WeakRef(record))
   writeQueues.set(id, write)
-  try { await write } finally { if (writeQueues.get(id) === write) writeQueues.delete(id) }
+  try { await write } catch (error) {
+    if (sessionWrites.get(session) === record) sessionWrites.delete(session)
+    if (latestWrites.get(id)?.deref() === record) latestWrites.delete(id)
+    throw error
+  } finally { if (writeQueues.get(id) === write) writeQueues.delete(id) }
 }
 
 const replaceDocument = (target: SpriteDocument, source: SpriteDocument): void => {
@@ -181,19 +249,16 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     configureLocalHistory(session, api)
     return false
   }
+  const readCompleted = performance.now()
   const files = await new Promise<Record<string, Uint8Array>>((resolve, reject) => unzip(archive, (error, result) => error ? reject(error) : resolve(result)))
+  const unzipCompleted = performance.now()
   const manifestData = files['manifest.json']
   if (!manifestData) throw new Error('本地历史数据缺少索引')
   const manifest = JSON.parse(strFromU8(manifestData)) as LocalHistoryManifest
-  if (manifest.version !== HISTORY_FORMAT_VERSION || manifest.projectKey !== historyId(session.document) || !Array.isArray(manifest.labels)) {
+  if (![2, 3, HISTORY_FORMAT_VERSION].includes(manifest.version) || manifest.projectKey !== historyId(session.document) || !Array.isArray(manifest.labels)) {
     throw new Error('本地历史数据版本不兼容')
   }
-  const snapshots: LocalHistorySnapshot[] = []
-  for (let index = 0; index <= manifest.labels.length; index++) {
-    const archive = files[`${SNAPSHOT_DIRECTORY}${index}.moonsprite`]
-    if (!archive) throw new Error('本地历史数据不完整')
-    snapshots.push({ archive })
-  }
+  const snapshots = unpackLocalHistorySnapshots(files, manifest)
   const hasCache = manifest.deltaVersion === 1 && manifest.deltas?.length === manifest.labels.length
   let deltas: Array<Uint8Array | null>
   if (hasCache) {
@@ -215,7 +280,8 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   const decodeSnapshot = (index: number): SpriteDocument => {
     const existing = structuralSnapshots.get(index)
     if (existing) return existing
-    const snapshot = decodeProject((snapshots[index] as { archive: Uint8Array }).archive)
+    const source = snapshots[index]
+    const snapshot = 'archive' in source ? decodeProject(source.archive) : materializeLocalHistorySnapshot(source)
     structuralSnapshots.set(index, snapshot)
     return snapshot
   }
@@ -236,17 +302,36 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     }
   }
   const current = decodeSnapshot(position)
+  // A drawing journal changes pixels, not the independently saved recording.
+  const recording = manifest.snapshotDeltas?.some(Boolean) ? { timelapse: session.document.timelapse } : null
+  const prepareCompleted = performance.now()
   // The session is already visible while history loads. Never overwrite an edit
   // or a new history stack that arrived during asynchronous preparation.
   if (session.document !== initialDocument || session.revision !== initialRevision || session.history !== initialHistory || session.history?.revision !== initialHistoryRevision) return false
-  replaceDocument(session.document, current)
+  replaceDocument(session.document, recording ? { ...current, timelapse: undefined } : current)
+  if (recording) session.document.timelapse = recording.timelapse
+  // The session can already have render plans and point samplers referring to
+  // the pre-restore layers. Replace their generation before the first live edit,
+  // without marking the saved document dirty or adding an undo entry.
+  invalidateSessionContent(session)
   restoredStack.restoreTimeline(entries, position)
   session.history = restoredStack
   session.localHistory = { snapshots, labels: [...manifest.labels], position }
+  snapshotShapes.set(snapshots[position], documentShape(session.document))
+  if (hasCache && !writeQueues.has(manifest.projectKey)) {
+    const record: HistoryWrite = { manifest: { ...manifest, position }, snapshots: [...snapshots], completion: Promise.resolve() }
+    sessionWrites.set(session, record)
+    latestWrites.set(manifest.projectKey, new WeakRef(record))
+  }
   configureLocalHistory(session, api)
   if (!hasCache) scheduleLocalHistoryPersist(api, session)
   if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'local-history.restore', {
     durationMs: Math.round((performance.now() - restoreStarted) * 10) / 10,
+    archiveBytes: archive.byteLength,
+    readMs: Math.round((readCompleted - restoreStarted) * 10) / 10,
+    unzipMs: Math.round((unzipCompleted - readCompleted) * 10) / 10,
+    prepareMs: Math.round((prepareCompleted - unzipCompleted) * 10) / 10,
+    installMs: Math.round((performance.now() - prepareCompleted) * 10) / 10,
     cacheHit: hasCache,
     historyEntries: entries.length,
     snapshots: snapshots.length,

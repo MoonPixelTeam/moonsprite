@@ -1,4 +1,4 @@
-import type { AnimationCelSurface, AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
+import type { AnimationCelSurface, AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, GradientDither, ImageBrush, ImageBrushSettings, InkMode, OutlineDirections, OutlineKernel, OutlinePosition, RasterLayer, RgbaColor, SelectionMask, SelectionQuad, SelectionRect, ShapeKind, SpriteDocument, TileRepeatMode } from '@shared/types'
 import { cachedLayerContentBounds, compositeRegion, ensureLayerCoversCanvas, expandLayerToRect, getActiveLayer, getLayer, getLayerStorageOrigin, getPaletteEntry, isLayerEffectivelyLocked, isLayerMask, layerContentBounds, layerIndexAt, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterLayerPackedValueIsUniform, readLayerColor, readLayerColorAt, readLayerPacked, readLayerPackedAt, writeLayerPacked, writeLayerPackedRun } from './document'
 import { beginPixelEdit, preparePixelEdit, recordPixel, recordPixelKnownCurrent, type PixelEdit } from './history'
 import { blendOver, colorEquals, isInBounds, packColor, pixelIndex, relativeLuminanceColor, unpackColor } from './raster'
@@ -12,6 +12,7 @@ import { readSurfacePackedRegion } from './runtime-raster'
 import { allOutlineDirections, DEFAULT_OUTLINE_SMART_HUE_DARKNESS, outlineDirectionForOffset, outlineKernelContainsOffset, resolveOutlineStrokeColor } from './outline-settings'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
 import { contiguousMatchingRegion, contiguousMatchingRegionInBounds, type BinaryRegionBounds } from './contiguous-region'
+import { applyInkColor, resolveInkStampColor } from './ink'
 
 const paintLayerValue = (
   document: SpriteDocument,
@@ -369,10 +370,11 @@ export function paintBrush(
   tileRepeatMode: TileRepeatMode = 'off',
   brushDither?: BrushDitherSettings,
   angle = 0,
-  optimizedRotation = true
+  optimizedRotation = true,
+  inkMode: InkMode = 'simple'
 ): void {
   const normalizedOpacityScale = Math.max(0, Math.min(1, Number.isFinite(opacityScale) ? opacityScale : 1))
-  if (normalizedOpacityScale <= 0) return
+  if (normalizedOpacityScale <= 0 && inkMode !== 'copy-alpha-color') return
   const recordedPixelCount = edit.before.size
   const geometryAngle = !imageBrush && (size <= 1 || shape === 'round') ? 0 : angle
   const stamp = brushStampDimensions(size, imageBrush, geometryAngle, shape)
@@ -382,7 +384,7 @@ export function paintBrush(
   const footprint = symmetricRect(document, { x: stampX, y: stampY, width: stamp.width, height: stamp.height }, symmetryAxes, symmetryCenter, tileRepeatMode)
   if (!ensureLayerCoversEditRect(document, layer, edit, footprint)) return
   const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
-  const solidStampKey = tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && !hasSymmetry(symmetryAxes) && (color.a === 0 || color.a === 255)
+  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && !hasSymmetry(symmetryAxes) && (color.a === 0 || color.a === 255)
     ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}`
     : null
   const solidPackedValue = solidStampKey
@@ -519,7 +521,8 @@ export function paintBrush(
   }
   for (const offset of offsets) {
     const scaledCoverage = Math.round(offset.coverage * normalizedOpacityScale)
-    if (scaledCoverage === 0) continue
+    const inkCoverage = inkMode === 'copy-alpha-color' ? offset.coverage : scaledCoverage
+    if (inkCoverage === 0) continue
     const sourcePoint = { x: x - beforeX + offset.x, y: y - beforeY + offset.y }
     if (solidStampKey && previousStamp?.key === solidStampKey) {
       const previousLocalX = sourcePoint.x - previousStamp.stampX
@@ -533,6 +536,7 @@ export function paintBrush(
       const index = layerIndexAt(layer, px, py)
       if (index === null) continue
       if (colorReplacement) {
+        if (scaledCoverage === 0) continue
         const current = layerColorBeforeEdit(document, layer, edit, index)
         const source = colorReplacement.source
         if (current.r !== source.r || current.g !== source.g || current.b !== source.b || current.a !== source.a) continue
@@ -559,14 +563,15 @@ export function paintBrush(
         : offset.color
           ? { ...resolvedColor, a: Math.round(resolvedColor.a * offset.color.a / 255) }
           : resolvedColor
-      const paintCoverageKey = coverageKey ?? (gradient
+      const paintCoverageKey = `${inkMode}:${coverageKey ?? (gradient
         ? brushGradientCoverageKey(gradient)
         : color.a === 0
         ? 'erase'
-        : `paint:${paintColor.r},${paintColor.g},${paintColor.b},${paintColor.a}`)
+        : `paint:${paintColor.r},${paintColor.g},${paintColor.b},${paintColor.a}`)}`
       const eraseResolvedColor = !gradient && color.a === 0
       const sourceOverGradient = gradientHasTransparentStop(gradient) || Boolean(gradient && paintColor.a === 0)
       const overwriteImageBrushPixel = imageBrush?.intrinsicSize === true
+        && inkMode === 'simple'
         && brushPaintMode === 'paint'
         && !eraseResolvedColor
         // A gradient with a transparent stop must blend over the current
@@ -574,7 +579,21 @@ export function paintBrush(
         // replacement would let a lower-pressure crossing erase the earlier
         // part of the same stroke.
         && !sourceOverGradient
-      if (!overwriteImageBrushPixel && !claimBrushCoverage(edit, paintCoverageKey, index, scaledCoverage, coverageKey !== undefined || gradient !== undefined)) continue
+      if (!overwriteImageBrushPixel && !claimBrushCoverage(edit, paintCoverageKey, index, inkCoverage, coverageKey !== undefined || gradient !== undefined || inkMode === 'lock-alpha')) continue
+      const stamped = resolveInkStampColor(inkMode, paintColor, offset.coverage, normalizedOpacityScale)
+      if (inkMode !== 'simple') {
+        // Aseprite's Lock Alpha reads from the stroke source image, not from
+        // the already-modified destination. Keep repeated samples in one
+        // stroke idempotent so translucent colors cannot accumulate and blur.
+        const destinationColor = inkMode === 'lock-alpha'
+          ? layerColorBeforeEdit(document, layer, edit, index)
+          : readLayerColor(document, layer, index)
+        const nextColor = applyInkColor(inkMode, destinationColor, stamped)
+        if (nextColor) recordPixel(document, layer, edit, index, layer.format === 'rgba'
+          ? packColor(nextColor)
+          : nextColor.a === 0 ? 0 : paletteColorIdForCanvas(document, nextColor))
+        continue
+      }
       if (eraseResolvedColor) {
         const eraseCoverage = offset.color ? Math.round(scaledCoverage * offset.color.a / 255) : scaledCoverage
         if (eraseCoverage === 0) continue
@@ -585,7 +604,6 @@ export function paintBrush(
           recordPixel(document, layer, edit, index, layer.format === 'rgba' ? packColor(erased) : erased.a === 0 ? 0 : paletteColorIdForCanvas(document, erased))
         }
       } else {
-        const stamped = scaledCoverage === 255 ? paintColor : { ...paintColor, a: Math.round(paintColor.a * scaledCoverage / 255) }
         const next = overwriteImageBrushPixel
           ? layer.format === 'rgba'
             ? packColor(stamped)
@@ -1090,7 +1108,8 @@ export function paintLine(
   dynamics?: BrushLineDynamics,
   tileRepeatMode: TileRepeatMode = 'off',
   brushDither?: BrushDitherSettings,
-  optimizedRotation = true
+  optimizedRotation = true,
+  inkMode: InkMode = 'simple'
 ): void {
   const dynamicValue = (from: number | undefined, to: number | undefined, fallback: number, progress: number): number => {
     const start = Number.isFinite(from) ? from! : fallback
@@ -1112,7 +1131,7 @@ export function paintLine(
           dither: dynamics.gradient.dither
         }
       : undefined
-    paintBrush(document, layer, edit, pointX, pointY, pointSize, pointColor, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, colorReplacement, opacityScale, dynamics?.coverageKey, dynamics?.overrideImageBrushColor, gradient, tileRepeatMode, brushDither, angle, optimizedRotation)
+    paintBrush(document, layer, edit, pointX, pointY, pointSize, pointColor, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, colorReplacement, opacityScale, dynamics?.coverageKey, dynamics?.overrideImageBrushColor, gradient, tileRepeatMode, brushDither, angle, optimizedRotation, inkMode)
   }
   const maximumSize = Math.max(1, Math.round(Math.max(size, dynamics?.fromSize ?? size, dynamics?.toSize ?? size)))
   const maximumAngle = Math.max(Math.abs(dynamics?.fromAngle ?? 0), Math.abs(dynamics?.toAngle ?? 0))
@@ -1183,7 +1202,8 @@ export function paintBrushPath(
   tileRepeatMode: TileRepeatMode = 'off',
   brushDither?: BrushDitherSettings,
   optimizedRotation = true,
-  angle = 0
+  angle = 0,
+  inkMode: InkMode = 'simple'
 ): void {
   const centers = brushPathStampPoints(points, size, imageBrush, angle, shape)
   if (centers.length === 0) return
@@ -1197,7 +1217,7 @@ export function paintBrushPath(
   const footprint = symmetricRect(document, { x: left, y: top, width: right - left, height: bottom - top }, symmetryAxes, symmetryCenter, tileRepeatMode)
   if (!ensureLayerCoversEditRect(document, layer, edit, footprint)) return
   for (const center of centers) {
-    paintBrush(document, layer, edit, center.x, center.y, size, color, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, undefined, 1, undefined, false, undefined, tileRepeatMode, brushDither, angle, optimizedRotation)
+    paintBrush(document, layer, edit, center.x, center.y, size, color, shape, selection, texture, textureScale, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin, symmetryAxes, symmetryCenter, undefined, 1, undefined, false, undefined, tileRepeatMode, brushDither, angle, optimizedRotation, inkMode)
   }
 }
 

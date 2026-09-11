@@ -16,6 +16,111 @@ const red = { r: 255, g: 48, b: 48, a: 255 }
 const black = { r: 0, g: 0, b: 0, a: 255 }
 
 describe('pixel tools', () => {
+  it('supports simple, copy, and lock-alpha ink writes', () => {
+    const paintWithInk = (mode: 'simple' | 'copy-alpha-color' | 'lock-alpha', base: typeof blue, source: typeof blue) => {
+      const document = createDocument(`ink ${mode}`, 2, 1, 'rgba')
+      const layer = getActiveLayer(document)
+      writeLayerColor(document, layer, 0, base)
+      const edit = beginPixelEdit(layer.id)
+      const paint = () => paintBrush(document, layer, edit, 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, mode)
+      paint()
+      return readLayerColorAt(document, layer, 0, 0)
+    }
+    const base = { r: 20, g: 40, b: 60, a: 96 }
+    const translucent = { r: 220, g: 140, b: 100, a: 128 }
+
+    expect(paintWithInk('simple', base, translucent)).toEqual(blendOver(base, translucent))
+    expect(paintWithInk('copy-alpha-color', base, translucent)).toEqual(translucent)
+    expect(paintWithInk('lock-alpha', base, translucent)).toEqual({ ...blendOver(base, translucent), a: base.a })
+  })
+
+  it('treats transparent lock-alpha ink as a no-op', () => {
+    const base = { r: 20, g: 40, b: 60, a: 96 }
+    const document = createDocument('transparent lock-alpha ink', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, base)
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, { r: 255, g: 0, b: 0, a: 0 }, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, 'lock-alpha')
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(base)
+  })
+
+  it('does not accumulate translucent Lock Alpha samples within one stroke', () => {
+    const document = createDocument('stable translucent lock alpha', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 30, g: 70, b: 110, a: 104 }
+    const source = { r: 230, g: 150, b: 60, a: 96 }
+    const edit = beginPixelEdit(layer.id)
+    writeLayerColor(document, layer, 0, base)
+
+    const stamp = () => paintBrush(document, layer, edit, 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, 'lock-alpha')
+    stamp()
+    const first = readLayerColorAt(document, layer, 0, 0)
+    stamp()
+
+    expect(first).toEqual({ ...blendOver(base, source), a: base.a })
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(first)
+  })
+
+  it('copies foreground RGBA exactly regardless of stroke opacity', () => {
+    const document = createDocument('copy alpha and color opacity', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 20, g: 40, b: 60, a: 220 }
+    const source = { r: 210, g: 120, b: 70, a: 96 }
+    writeLayerColor(document, layer, 0, base)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.1, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(source)
+  })
+
+  it('lets transparent Copy Alpha+Color erase the destination pixel', () => {
+    const document = createDocument('transparent copy alpha and color', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, { r: 180, g: 90, b: 30, a: 0 }, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.25, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
+  it('copies a colored image-brush pixel without making its alpha opaque', () => {
+    const document = createDocument('copy colored image brush alpha', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const source = { r: 190, g: 80, b: 230, a: 112 }
+    const brush = {
+      id: 'copy-alpha-color.png',
+      name: 'Copy Alpha+Color',
+      width: 1,
+      height: 1,
+      coverage: new Uint8Array([source.a]),
+      colors: new Uint32Array([packColor(source)]),
+      intrinsicSize: true
+    }
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, red, 'square', null, 'solid', 1, brush, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.2, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(source)
+  })
+
+  it('keeps a coverage-only brush mask in Copy Alpha+Color while ignoring stroke opacity', () => {
+    const document = createDocument('copy brush mask coverage', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const source = { r: 210, g: 90, b: 40, a: 128 }
+    const brush = {
+      id: 'copy-mask.png',
+      name: 'Copy mask',
+      width: 1,
+      height: 1,
+      coverage: new Uint8Array([64]),
+      intrinsicSize: true
+    }
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, source, 'square', null, 'solid', 1, brush, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.2, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual({ ...source, a: 32 })
+  })
+
   it.each(['rgba', 'indexed'] as const)('keeps compact bucket spans equivalent to masked fill and exact through undo (%s)', (format) => {
     const document = createDocument('packed bucket spans', 512, 512, format)
     const reference = createDocument('masked reference', 512, 512, format)

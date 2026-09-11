@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { RgbaColor } from '@shared/types'
-import { beginCanvasColorSampling, endCanvasColorSampling, registerCanvasColorSamplingSurface, routeCanvasColorSampling, routeCanvasColorSamplingIntent, setCanvasColorSamplingIntent } from './canvas-color-sampling'
+import { beginCanvasColorSampling, endCanvasColorSampling, registerCanvasColorSamplingSurface, routeCanvasColorSampling, routeCanvasColorSamplingIntent, sampleCanvasColorAtClientPoint, setCanvasColorSamplingIntent } from './canvas-color-sampling'
 
 const color: RgbaColor = { r: 12, g: 34, b: 56, a: 255 }
 
@@ -61,5 +61,20 @@ describe('canvas color sampling routing', () => {
     cleanTarget()
     source.remove()
     target.remove()
+  })
+
+  it('samples a registered canvas without changing the active sampling state', () => {
+    const canvas = document.createElement('canvas')
+    canvas.className = 'stage-canvas'
+    document.body.append(canvas)
+    const clean = registerCanvasColorSamplingSurface({ canvas, sampleAtClientPoint: () => color, setSamplingCursor: () => {} })
+    const originalElementsFromPoint = document.elementsFromPoint
+    document.elementsFromPoint = () => [canvas]
+
+    expect(sampleCanvasColorAtClientPoint(10, 10)).toEqual(color)
+
+    document.elementsFromPoint = originalElementsFromPoint
+    clean()
+    canvas.remove()
   })
 })

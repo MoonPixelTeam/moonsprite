@@ -25,7 +25,9 @@ mod platform_paths;
 mod platform_recovery;
 mod platform_resources;
 mod platform_scripts;
+mod platform_screen_color;
 mod platform_storage;
+mod platform_usage_statistics;
 mod platform_workspaces;
 use close_coordinator::CloseCoordinator;
 
@@ -182,6 +184,7 @@ pub fn run() {
             platform_dialogs::save_palette_image,
             platform_dialogs::save_shortcut_file,
             platform_dialogs::save_theme_file,
+            platform_dialogs::save_usage_statistics_file,
             platform_dialogs::default_file_directories,
             platform_dialogs::choose_directory,
             platform_diagnostics::append_diagnostic_events,
@@ -207,6 +210,8 @@ pub fn run() {
             platform_clipboard::read_clipboard_image,
             platform_clipboard::read_clipboard_image_size,
             platform_cursor::set_native_cursor,
+            platform_screen_color::sample_window_color,
+            platform_screen_color::sample_window_color_region,
             platform_resources::get_resource_info,
             platform_palette::list_palettes,
             platform_palette::save_palette,
@@ -240,6 +245,10 @@ pub fn run() {
             platform_local_history::read_local_history,
             platform_local_history::write_local_history,
             platform_local_history::delete_local_history,
+            platform_usage_statistics::read_usage_statistics,
+            platform_usage_statistics::write_usage_statistics,
+            platform_usage_statistics::usage_statistics_path,
+            platform_usage_statistics::open_usage_statistics_folder,
             platform_gallery::list_gallery_projects,
             platform_gallery::list_folder_projects,
             platform_gallery::delete_gallery_project,

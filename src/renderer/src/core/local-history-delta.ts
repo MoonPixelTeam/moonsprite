@@ -1,5 +1,5 @@
 import type { AnimationCelSurface, RasterLayer, SpriteDocument } from '@shared/types'
-import type { HistoryEntry, ContentInvalidationHint } from './history'
+import { getCommittedPixelChanges, type HistoryEntry, type ContentInvalidationHint } from './history'
 import { getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from './document'
 import { detachRuntimeRaster, lazyRuntimeRasterForSurface, rehydrateRuntimeRasterDocument } from './runtime-raster'
 
@@ -72,6 +72,47 @@ export interface LocalHistoryDelta {
   requiresAnimationSelectionNormalization: boolean
 }
 const identityKeys = new Set(['id', 'filePath', 'sourceFilePath'])
+
+/** Capture already committed pixel buffers, without scanning or cloning the document. */
+export function captureCommittedHistoryDelta(document: SpriteDocument, entry: HistoryEntry): LocalHistoryDelta | null {
+  const edit = getCommittedPixelChanges(entry)
+  if (!edit || edit.layerOffset || (document.animation?.frames.length ?? 1) !== 1) return null
+  const index = document.layers.findIndex(layer => layer.id === edit.layerId)
+  const layer = document.layers[index]
+  if (!layer || layer.kind || layer.linkedContentId || layer.width !== document.width || layer.height !== document.height) return null
+  const origin = getLayerStorageOrigin(layer)
+  if (origin.x || origin.y) return null
+  // A separate cel buffer would require a structural snapshot, not a pixel patch.
+  if (document.animation?.cels.some(cel => cel.layerId === layer.id && cel.surface && cel.surface.pixels !== layer.pixels)) return null
+  const patches: Patch[] = []
+  const path = ['layers', String(index), 'pixels']
+  const add = (x: number, y: number, width: number, before: Uint8Array, after: Uint8Array): boolean => {
+    if (x < 0 || y < 0 || x + width > layer.width || y >= layer.height) return false
+    patches.push({ path, offset: (y * layer.width + x) * 4, before, after })
+    return true
+  }
+  for (const patch of edit.regionPatches) {
+    const before = new Uint8Array(patch.before.buffer, patch.before.byteOffset, patch.before.byteLength)
+    const after = new Uint8Array(patch.after.buffer, patch.after.byteOffset, patch.after.byteLength)
+    for (let row = 0; row < patch.height; row++) {
+      const start = row * patch.width * 4, end = start + patch.width * 4
+      if (!add(patch.x, patch.y + row, patch.width, before.subarray(start, end), after.subarray(start, end))) return null
+    }
+  }
+  const packed = (value: number, length: number): Uint8Array => {
+    const result = new Uint8Array(length * 4), view = new DataView(result.buffer)
+    for (let index = 0; index < length; index++) view.setUint32(index * 4, value, true)
+    return result
+  }
+  for (let i = 0; i < edit.runXs.length; i++) {
+    if (!add(edit.runXs[i], edit.runYs[i], edit.runLengths[i], packed(edit.runBefore[i], edit.runLengths[i]), packed(edit.runAfter[i], edit.runLengths[i]))) return null
+  }
+  for (let i = 0; i < edit.xs.length; i++) if (!add(edit.xs[i], edit.ys[i], 1, packed(edit.before[i], 1), packed(edit.after[i], 1))) return null
+  const origins = document.layers.map(getLayerStorageOrigin)
+  return { patches, origins: { before: origins, after: origins }, label: entry.label,
+    bytes: patches.reduce((sum, patch) => sum + (patch.before as Uint8Array).byteLength + (patch.after as Uint8Array).byteLength, 0),
+    invalidation: entry.invalidation ?? { kind: 'full' }, affectedLayerIds: [layer.id], requiresAnimationSelectionNormalization: false }
+}
 
 /** Compile once on reopening. Navigation then touches only changed byte runs.
  * Structural/alias changes return null and retain the complete snapshot path.

@@ -1,5 +1,5 @@
 use std::{fs, path::PathBuf};
-use tauri::{ipc::{InvokeBody, Request}, AppHandle, Manager};
+use tauri::{ipc::{InvokeBody, Request, Response}, AppHandle, Manager};
 
 use crate::platform_storage::atomic_write;
 
@@ -44,9 +44,14 @@ fn request_data(request: &Request<'_>) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-pub(crate) fn read_local_history(app: AppHandle, id: String) -> Result<Vec<u8>, String> {
+pub(crate) async fn read_local_history(app: AppHandle, id: String) -> Result<Response, String> {
     let id = safe_history_id(&id)?;
-    fs::read(history_dir(&app)?.join(format!("{id}.history"))).map_err(|error| error.to_string())
+    let path = history_dir(&app)?.join(format!("{id}.history"));
+    // Vec<u8> as a command result is serialized as a JSON number array. Keep
+    // archives binary across IPC and perform disk IO off the window thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::read(path).map(Response::new).map_err(|error| error.to_string())
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

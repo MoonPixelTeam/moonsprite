@@ -200,7 +200,7 @@ function ProjectFileRow({ project, concealed, reorderable, dragging, removePendi
   const { locale, t } = useI18n()
   const invalid = Boolean(project.error)
   return <article className={`recent-file-row ${concealed ? 'concealed' : ''} ${reorderable ? 'reorderable reorderable-list-row' : ''} ${invalid ? 'invalid' : ''} ${project.pinned ? 'pinned' : ''} ${onDelete ? 'deletable' : ''} ${onRemoveFromRecent ? 'removable' : ''} ${dragging ? 'dragging' : ''} ${removePending ? 'remove-pending' : ''}`} data-recent-path={project.filePath} onContextMenu={(event) => { event.preventDefault(); onOpenFolder() }}>
-    <button type="button" className="recent-file-open" onPointerDown={(event) => { if (event.button === 1) event.preventDefault() }} onClick={onOpen} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onOpenInBackground() }} title={concealed ? t('home.hiddenProject') : invalid ? t('home.previewReadFailedTitle', { error: project.error ?? '' }) : t('home.openProject', { name: project.name })}>
+    <button type="button" className="recent-file-open" data-moon-tooltip-disabled onPointerDown={(event) => { if (event.button === 1) event.preventDefault() }} onClick={onOpen} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onOpenInBackground() }}>
       <span className="recent-file-preview">{concealed ? <PixelUtilityIcon kind="eyeOff" /> : project.previewUrl ? <img src={project.previewUrl} alt="" /> : invalid ? <TriangleAlert size={21} /> : <PixelUtilityIcon kind="image" />}</span>
       <span className="recent-file-copy"><strong>{concealed ? t('home.hiddenProject') : project.name}</strong><small>{concealed ? t('home.hiddenProjectDetail') : invalid ? t('home.previewReadFailed') : project.width && project.height ? `${project.width} x ${project.height} · ${t(`colorMode.${project.colorMode ?? 'rgba'}`)}` : project.previewLoading ? t('home.readingPreview') : formatProjectType(project.filePath)}</small><span>{concealed ? '********' : project.filePath}</span></span>
       <time>{concealed ? '--/-- --:--' : formatTime(project.lastOpened, locale)}</time>
@@ -277,7 +277,7 @@ function RecoveryFileRow({ record, retentionDays, onRestore, onDiscard }: { reco
 function HomeLanguageDialog({ current, onApply, onClose }: { current: AppLocale; onApply(locale: AppLocale): void; onClose(): void }) {
   const { locale, t } = useI18n()
   const [selected, setSelected] = useState<AppLocale>(current)
-  return <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="home-language-v3" defaultWidth={380} defaultHeight={540} minWidth={340} minHeight={360} maxWidth={480} maxHeight={620} className="home-language-modal" role="dialog" aria-modal="true" aria-labelledby="home-language-title">
       <DialogHeader title={t('home.languageDialogTitle')} titleId="home-language-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body home-language-dialog-body">
@@ -426,7 +426,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
 
   return <div ref={navigationRef} className="home-section-navigation">
     <div className="home-section-tabs" role="tablist" aria-label={ariaLabel}>
-      {visibleEntries.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeId === entry.id} className={`home-section-tab ${activeId === entry.id ? 'selected' : ''}`} title={entry.title} onClick={() => onSelect(entry.id)}>{renderTabContent(entry)}</button>)}
+      {visibleEntries.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeId === entry.id} data-moon-tooltip-disabled className={`home-section-tab ${activeId === entry.id ? 'selected' : ''}`} onClick={() => onSelect(entry.id)}>{renderTabContent(entry)}</button>)}
     </div>
     {overflowEntries.length > 0 && <button ref={overflowButtonRef} className="home-section-overflow-button icon-button" type="button" aria-label={moreLabel} title={moreLabel} aria-haspopup="menu" aria-expanded={overflowMenuOpen} onClick={toggleOverflowMenu}><PixelUtilityIcon kind={overflowMenuOpen ? 'up' : 'down'} /></button>}
     <div ref={measurementsRef} className="home-section-measurements" aria-hidden="true">
@@ -434,7 +434,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
       <button ref={overflowMeasureRef} className="home-section-overflow-button icon-button" type="button" tabIndex={-1}><PixelUtilityIcon kind="down" /></button>
     </div>
     {overflowMenuOpen && createPortal(<div ref={overflowMenuRef} className="context-menu home-section-overflow-menu component-scrollbar" role="menu" aria-label={moreLabel} style={overflowMenuPosition} onPointerDown={(event) => event.stopPropagation()}>
-      {overflowEntries.map((entry) => <button key={entry.id} className="context-menu-item" type="button" role="menuitem" title={entry.title} onClick={() => { setOverflowMenuOpen(false); onSelect(entry.id) }}><PixelUtilityIcon kind={entry.kind === 'folder' ? 'folder' : entry.kind === 'recovery' ? 'refresh' : 'image'} /><span className="home-section-overflow-label">{entry.label}</span>{entry.recoveryCount !== undefined && <span className="recovery-count">{entry.recoveryCount}</span>}</button>)}
+      {overflowEntries.map((entry) => <button key={entry.id} className="context-menu-item" type="button" role="menuitem" data-moon-tooltip-disabled onClick={() => { setOverflowMenuOpen(false); onSelect(entry.id) }}><PixelUtilityIcon kind={entry.kind === 'folder' ? 'folder' : entry.kind === 'recovery' ? 'refresh' : 'image'} /><span className="home-section-overflow-label">{entry.label}</span>{entry.recoveryCount !== undefined && <span className="recovery-count">{entry.recoveryCount}</span>}</button>)}
     </div>, document.body)}
   </div>
 }

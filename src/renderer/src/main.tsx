@@ -16,6 +16,7 @@ import { installRuntimeDiagnostics } from './platform/runtime-diagnostics'
 import type { RuntimeDiagnosticDetail } from './core/runtime-diagnostics'
 import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
+import { NativeTooltipBridge } from './components/Tooltip'
 
 const rootElement = document.getElementById('root')
 
@@ -58,6 +59,7 @@ void installTauriApi()
       <I18nProvider>
         <PerformanceProfiler id="MoonSprite">
           <App />
+          <NativeTooltipBridge />
         </PerformanceProfiler>
       </I18nProvider>
     )

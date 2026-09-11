@@ -42,6 +42,7 @@ import { SaveAsDialog } from '@/components/dialogs/SaveAsDialog'
 import { ShortcutDialog } from '@/components/dialogs/ShortcutDialog'
 import { SpriteSheetExportDialog } from '@/components/dialogs/SpriteSheetExportDialog'
 import { LatestReleaseDialog } from '@/components/LatestReleaseDialog'
+import { UsageStatisticsDialog } from '@/components/dialogs/UsageStatisticsDialog'
 import { GridSettingsDialog } from '@/components/GridSettingsDialog'
 import { IsoViewSettingsDialog } from '@/components/IsoViewSettingsDialog'
 import { ProjectInfoDialog } from '@/components/ProjectInfoDialog'
@@ -86,9 +87,12 @@ import { applyCursorPreferences } from '@/platform/cursor-theme'
 import { applyAppWindowLayout, initializeAppWindow, readAppWindowLayout, showAppWindow } from '@/platform/app-window'
 import { applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
 import { openRuntimeDiagnosticLogs } from '@/platform/runtime-diagnostics'
+import { initializeUsageStatistics } from '@/platform/usage-statistics'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { ACTIVE_WORKSPACE_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_STORAGE_KEY, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, constrainBottomDockHeight, constrainInspectorWidth, constrainLeftDockWidth, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO, DEFAULT_INSPECTOR_WIDTH_RATIO, DEFAULT_LEFT_DOCK_WIDTH_RATIO, DEFAULT_PANEL_DOCKS, dockSizeRatio, FLOATING_PANEL_STORAGE_KEYS, INSPECTOR_LAYOUT_STORAGE_KEY, INSPECTOR_WIDTH_RATIO_STORAGE_KEY, INSPECTOR_WIDTH_STORAGE_KEY, LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, LEFT_DOCK_WIDTH_STORAGE_KEY, PANEL_DOCKS_STORAGE_KEY, resolveDockSizeRatio, TOOL_RAIL_SIDE_STORAGE_KEY, loadBottomDockHeight, loadInspectorWidth, loadLeftDockWidth, loadMainWindowState, loadPanelDocks, loadPanelVisibility, loadToolRailSide, normalizeWorkspaceLayout, readLayoutStorage, saveMainWindowState, savePanelDocks, savePanelVisibility, toolRailDockTargetAtPointer, workspaceDockSizesForParent, workspacePanelDockPresence, writeLayoutStorage } from '@/core/workspace-layout-preferences'
 import { type ExportOptions, type SaveAsOptions, type TextCelPreview, type TextLayerDraftTarget, useWorkspace } from '@/store/workspace'
+import { waitForDocumentCloseTasks } from '@/store/document-close-tasks'
+import { flushLocalHistoryPersist } from '@/store/local-history-service'
 import { closeLuaScriptClientSession, dispatchLuaScriptDialogForActiveDocument, luaScriptTargetIsActive, runLuaScriptForActiveDocument, type LuaScriptClientSession } from '@/store/lua-script-service'
 import { useI18n } from '@/components/I18nProvider'
 import './styles.css'
@@ -241,6 +245,7 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [componentLibraryOpen, setComponentLibraryOpen] = useState(false)
   const [latestReleaseOpen, setLatestReleaseOpen] = useState(false)
+  const [usageStatisticsOpen, setUsageStatisticsOpen] = useState(false)
   const [latestReleaseSelection, setLatestReleaseSelection] = useState<LatestReleaseDefinition | null>(null)
   const latestReleaseNoticeHandledRef = useRef(false)
   const openLatestRelease = useCallback((release?: LatestReleaseDefinition): void => {
@@ -252,6 +257,7 @@ export default function App() {
     latestReleaseNoticeHandledRef.current = true
     if (shouldShowLatestRelease()) openLatestRelease(latestRelease)
   }, [openLatestRelease])
+  useEffect(() => { void initializeUsageStatistics() }, [])
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [isoViewSettingsOpen, setIsoViewSettingsOpen] = useState(false)
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
@@ -1394,6 +1400,17 @@ export default function App() {
         if (choice === 'cancel') { closeInProgress.current = false; window.moonSprite.cancelClose(); return }
         if (choice === 'save' && !(await useWorkspace.getState().saveActive())) { closeInProgress.current = false; window.moonSprite.cancelClose(); return }
         if (choice === 'discard' && item.recoveryOriginId === null) await useWorkspace.getState().discardRecovery(item.document.id)
+      }
+      try {
+        await waitForDocumentCloseTasks()
+        await Promise.all(useWorkspace.getState().sessions.map(session => flushLocalHistoryPersist(window.moonSprite, session)))
+        await waitForDocumentCloseTasks()
+      } catch (error) {
+        console.error('MoonSprite history flush before exit failed', error)
+        useWorkspace.setState({ message: error instanceof Error ? error.message : String(error) })
+        closeInProgress.current = false
+        window.moonSprite.cancelClose()
+        return
       }
       window.moonSprite.approveClose()
     })
@@ -2704,6 +2721,7 @@ export default function App() {
       onCycleAdvancedMode={cycleAdvancedMode}
       onOpenComponentLibrary={() => setComponentLibraryOpen(true)}
       onOpenLatestRelease={openLatestRelease}
+      onOpenUsageStatistics={() => setUsageStatisticsOpen(true)}
       onOpenDiagnostics={() => { void openRuntimeDiagnosticLogs().catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error))) }}
       onOpenAbout={() => setAboutOpen(true)}
     />
@@ -2819,7 +2837,7 @@ export default function App() {
     {adjustmentOpen && <AdjustmentDialog kind={adjustmentKind} onClose={() => setAdjustmentOpen(false)} />}
     {lcdScreenOpen && session && <LcdScreenDialog onClose={() => setLcdScreenOpen(false)} onApply={(options) => { void workspace.applyLcdScreenFilter(options) }} />}
     {colorReplacementOpen && session && <ColorReplacementDialog key={session.document.id} onClose={() => setColorReplacementOpen(false)} />}
-    {aboutOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setAboutOpen(false) }}>
+    {aboutOpen && <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setAboutOpen(false) }}>
       <ModalShell storageKey="about-v2" defaultWidth={460} defaultHeight={360} minWidth={380} minHeight={310} maxWidth={620} maxHeight={520} className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
         <DialogHeader title={t('app.about.title')} titleId="about-title" closeLabel={t('common.close')} onClose={() => setAboutOpen(false)} />
         <div className="about-content">
@@ -2839,6 +2857,7 @@ export default function App() {
     </div>}
     {componentLibraryOpen && <Suspense fallback={null}><LazyComponentLibrary onClose={() => setComponentLibraryOpen(false)} /></Suspense>}
     {latestReleaseOpen && <LatestReleaseDialog release={latestReleaseSelection ?? undefined} onClose={() => setLatestReleaseOpen(false)} />}
+    {usageStatisticsOpen && <UsageStatisticsDialog onClose={() => setUsageStatisticsOpen(false)} />}
     {session && gridSettingsOpen && <GridSettingsDialog value={session.view.grid} onApply={(grid) => workspace.setView({ grid })} onClose={() => setGridSettingsOpen(false)} />}
     {session && isoViewSettingsOpen && <IsoViewSettingsDialog value={runtimePreferences.isoView} onApply={applyIsoViewPreferences} onPreview={previewIsoViewPreferences} onClose={() => setIsoViewSettingsOpen(false)} />}
     {session && projectInfoOpen && <ProjectInfoDialog document={session.document} onClose={() => setProjectInfoOpen(false)} />}

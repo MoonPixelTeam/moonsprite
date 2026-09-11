@@ -98,7 +98,7 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
       ? t('shortcuts.sharedWith', { commands: sharedOwners.map((id) => labels[id]).join(t('shortcuts.labelSeparator')) })
       : t('shortcuts.available')
 
-  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop" role="presentation" onPointerDown={(event) => {
+  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => {
     if (event.target === event.currentTarget) onClose()
   }}>
     <section ref={recorderRef} className="modal shortcut-recorder-modal" role="dialog" aria-modal="true" aria-label={editor.index === undefined ? t('shortcuts.addTitle') : t('shortcuts.changeTitle')} style={{ zIndex: recorderWindowStack.zIndex }} onPointerDownCapture={recorderWindowStack.bringToFront} onFocusCapture={recorderWindowStack.bringToFront}>

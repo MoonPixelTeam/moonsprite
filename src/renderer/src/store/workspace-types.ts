@@ -14,6 +14,7 @@ import type {
   GradientStop,
   GradientType,
   ImageBrush,
+  InkMode,
   LayerMask,
   LiquifyMode,
   ImageBrushSettings,
@@ -227,6 +228,7 @@ export interface DocumentSession {
   brushTexture: BrushTexture
   brushTextureScale: number
   brushPaintMode: BrushPaintMode
+  inkMode: InkMode
   brushImageId: string | null
   brushImage: ImageBrush | null
   brushImageTemporary: boolean

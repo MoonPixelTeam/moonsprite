@@ -55,3 +55,21 @@ export const eyedropperMagnifierPixelScale = (viewZoom: number, lensSize = 204, 
   const safeZoom = Number.isFinite(viewZoom) ? Math.max(0, viewZoom) : 0
   return Math.max(baselineScale, safeZoom * RELATIVE_MAGNIFICATION)
 }
+
+/** Place the lens exactly like the canvas eyedropper: centered above the pointer, then below if needed. */
+export const eyedropperMagnifierPosition = (
+  point: { x: number; y: number },
+  bounds: { width: number; height: number },
+  displaySize: number
+): { left: number; top: number } => {
+  const horizontalInset = Math.min(6, Math.max(0, (bounds.width - displaySize) / 2))
+  const verticalInset = Math.min(6, Math.max(0, (bounds.height - displaySize) / 2))
+  const maxLeft = Math.max(horizontalInset, bounds.width - displaySize - horizontalInset)
+  const maxTop = Math.max(verticalInset, bounds.height - displaySize - verticalInset)
+  const left = Math.min(maxLeft, Math.max(horizontalInset, point.x - displaySize / 2))
+  const preferredTop = point.y - displaySize - 18
+  const top = preferredTop >= verticalInset
+    ? preferredTop
+    : Math.min(maxTop, Math.max(verticalInset, point.y + 18))
+  return { left, top }
+}

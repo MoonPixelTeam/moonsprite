@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { SelectionQuad } from '@shared/types'
-import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, InkMode, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, pixelEditHasChanges, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { applySmoothBrush, smoothChangedLiquifyPixels } from '@/core/smooth-brush'
@@ -63,6 +63,9 @@ import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, openDoc
 import { RecoveryService } from './recovery-service'
 import { projectRollbackProgress } from '@/core/project-rollback-progress'
 import { configureLocalHistory, flushLocalHistoryPersist, scheduleLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
+import { startDocumentCloseTask, waitForDocumentCloseTasks } from './document-close-tasks'
+import { inheritCommittedPixelChanges } from '@/core/history'
+import { recordUsageEvent, recordUsageExport } from '@/platform/usage-statistics'
 import { clipboardService, selectionClipboardImage, type AnimationCelClipboardSnapshot, type AnimationFrameClipboardSnapshot, type LayerClipboard, type LayerCollectionClipboard, type LayerMaskClipboard, type SelectionClipboard } from './clipboard-service'
 import { captureAdjustmentSnapshot, captureLayerUi, commitLayerMerge, prepareAdjustmentSnapshotTargets, restoreAdjustmentSnapshot, restoreAdjustmentSnapshotRegions, restorePreparedAdjustmentSnapshotLayer } from './workspace-history'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, captureDocumentStructureSnapshot, captureLayerContentSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, documentStructureDeltaBytes, layerContentSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot, restoreDocumentStructureSnapshot, restoreLayerContentSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
@@ -926,6 +929,7 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
   if (activity?.stroke) statistics.strokeCount += 1
   if (activity?.durationMs) statistics.drawingTimeMs += Math.max(0, Math.round(activity.durationMs))
   session.document.statistics = statistics
+  if (activity?.stroke) recordUsageEvent('drawingStroke')
   if (captureTimelapse) scheduleTimelapseCapture(session)
 }
 
@@ -3016,6 +3020,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
       }
       get().addSession(document)
+      recordUsageEvent('newProject')
     } catch (error) {
       set({ message: error instanceof Error ? error.message : tr('workspace.canvasCreateError') })
     }
@@ -3047,6 +3052,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         })
         if (!path) return false
         set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
+        recordUsageExport('png-sprite-sheet')
         return true
       }
       const result = await buildSpriteSheetResult(sourceSession, options)
@@ -3056,6 +3062,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         })
         if (!path) return false
         set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
+        recordUsageExport('png-sprite-sheet')
       } else {
         result.document.dirty = true
         get().addSession(result.document)
@@ -3511,6 +3518,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setBrushTexture(texture) { get().mutateActive((session) => { session.brushTexture = texture; rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushTextureScale(scale) { get().mutateActive((session) => { session.brushTextureScale = Math.max(1, Math.min(16, Math.round(scale))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
   setBrushPaintMode(mode) { get().mutateActive((session) => { session.brushPaintMode = mode; rememberBrushProfile(session); persistToolSettings(session) }, false) },
+  setInkMode(mode: InkMode) { get().mutateActive((session) => { session.inkMode = mode; persistToolSettings(session) }, false) },
   setBrushDynamicsMapping(effect, patch) {
     let shouldEnableBrushPreview = false
     get().mutateActive((session) => {
@@ -4617,7 +4625,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       const operationProbe = window.__moonSpriteCanvasProbe
       const historyStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-      const entry = commitPixelEdit(session.document, edit, label)
+      const entry = commitPixelEdit(session.document, edit, label, Boolean(session.localHistory) && loadEditorPreferences().localHistoryEnabled)
       operationProbe?.recordOperationStage?.('commit.history-record', performance.now() - historyStartedAt, {
         points: edit.before.size + (edit.points?.count ?? 0),
         runs: edit.runs?.length ?? 0,
@@ -4630,6 +4638,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : entry
         committed = historyEntry
         const historyPushStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
+        inheritCommittedPixelChanges(entry, historyEntry)
         session.history.push(historyEntry)
         operationProbe?.recordOperationStage?.('commit.history-push', performance.now() - historyPushStartedAt)
         const animationSyncStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
@@ -5669,6 +5678,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       })
       if (!message) return false
       set({ message, saveProgress: progressStarted ? { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
+      recordUsageExport(format)
       return true
     } catch (error) {
       if (canceled) {
@@ -12460,6 +12470,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
       endSaveProgress()
+      recordUsageEvent('save')
       return true
     } catch (error) {
       endSaveProgress(false)
@@ -12520,6 +12531,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const progressVisible = progressStarted && Boolean(get().saveProgress)
       set({ message, ...(progressVisible ? { saveProgress: { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done') } } : {}) })
       if (progressVisible) window.setTimeout(() => { if (get().saveProgress?.value === 100) set({ saveProgress: null }) }, 180)
+      recordUsageExport(exportOptions?.format ?? 'png')
       return true
     } catch (error) {
       if (canceled) {
@@ -12543,6 +12555,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   async openPath(filePath, options) {
     const finishOpenProgress = openProgress.begin()
     try {
+      await waitForDocumentCloseTasks(filePath)
       const parsed = await openDocumentFile(window.moonSprite, filePath)
       if (options?.duplicate) parsed.id = createId('doc')
       options?.onBeforeSession?.()
@@ -12570,6 +12583,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const session = get().sessions.find((item) => item.document.id === id)
     if (!session) return
     const preserveOpenedRecovery = session.recoveryOriginId !== null
+    const recoverySuppressedBeforeClose = session.recoverySuppressed
+    let discardClosedRecovery = !session.document.dirty && !preserveOpenedRecovery
     if (documentTransactions.cancelDocument(id, session)) set((state) => ({ sessions: [...state.sessions] }))
     if (session.document.dirty) {
       const choice = await get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] })
@@ -12579,14 +12594,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         const saved = await get().saveActive()
         if (!saved) return
       }
-      if (choice === 'discard' && !preserveOpenedRecovery) await get().discardRecovery(id)
+      if (choice === 'discard' && !preserveOpenedRecovery) discardClosedRecovery = true
     }
-    if (!session.document.dirty && !preserveOpenedRecovery) await get().discardRecovery(id)
-    try {
+    discardClosedRecovery ||= !session.document.dirty && !preserveOpenedRecovery
+    if (discardClosedRecovery) session.recoverySuppressed = true
+    startDocumentCloseTask(session.document.filePath || session.document.sourceFilePath || id, async () => {
       await flushLocalHistoryPersist(window.moonSprite, session)
-    } catch (historyError) {
+      if (discardClosedRecovery) await get().discardRecovery(id)
+    }, historyError => {
       console.error('MoonSprite local history close flush failed', historyError)
-    }
+      session.recoverySuppressed = recoverySuppressedBeforeClose
+      set(state => ({
+        sessions: state.sessions.some(item => item.document.id === id) ? state.sessions : [...state.sessions, session],
+        activeId: state.activeId ?? id,
+        message: `${session.document.name}: ${historyError instanceof Error ? historyError.message : String(historyError)}`
+      }))
+    })
     timelapseCaptureGenerations.set(session.document, (timelapseCaptureGenerations.get(session.document) ?? 0) + 1)
     set((state) => {
       const sessions = state.sessions.filter((item) => item.document.id !== id)

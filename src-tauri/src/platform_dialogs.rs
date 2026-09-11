@@ -366,6 +366,28 @@ pub(crate) fn save_theme_file(
     }
 }
 
+#[tauri::command]
+pub(crate) fn save_usage_statistics_file(
+    window: Window,
+    default_path: Option<String>,
+    language: Option<String>,
+) -> SaveDialogResult {
+    let path = file_dialog(default_path.as_deref(), &window)
+        .add_filter(
+            if is_english(language.as_deref()) {
+                "MoonSprite usage statistics"
+            } else {
+                "MoonSprite 使用统计"
+            },
+            JSON,
+        )
+        .save_file();
+    SaveDialogResult {
+        canceled: path.is_none(),
+        file_path: path.map(|value| value.to_string_lossy().to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{has_explicit_directory, image_export_filter, project_save_filter};

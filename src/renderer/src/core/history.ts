@@ -24,6 +24,28 @@ export interface HistoryTimelineEntry {
   position: number
 }
 
+export interface CommittedPixelChanges {
+  layerId: string
+  frameId?: string
+  xs: Int32Array
+  ys: Int32Array
+  before: Uint32Array
+  after: Uint32Array
+  runXs: Int32Array
+  runYs: Int32Array
+  runLengths: Uint32Array
+  runBefore: Uint32Array
+  runAfter: Uint32Array
+  regionPatches: CommittedPixelRegionPatch[]
+  layerOffset?: PixelEditLayerOffset
+}
+const committedPixelChanges = new WeakMap<HistoryEntry, CommittedPixelChanges>()
+export const getCommittedPixelChanges = (entry: HistoryEntry): CommittedPixelChanges | undefined => committedPixelChanges.get(entry)
+export const inheritCommittedPixelChanges = (source: HistoryEntry, target: HistoryEntry): void => {
+  const changes = committedPixelChanges.get(source)
+  if (changes) committedPixelChanges.set(target, changes)
+}
+
 export interface HistoryTimeline {
   entries: HistoryTimelineEntry[]
   position: number
@@ -458,7 +480,7 @@ export function recordPixel(document: SpriteDocument, layer: RasterLayer, edit: 
   return recordPixelKnownCurrent(document, layer, edit, index, current, next)
 }
 
-export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label: string): HistoryEntry | null {
+export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label: string, capturePersistentChanges = false): HistoryEntry | null {
   const pointCount = edit.points?.count ?? 0
   if (!pixelEditHasChanges(edit)) return null
   const maskTarget = isLayerMask(getLayer(document, edit.layerId))
@@ -580,7 +602,7 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
       layer.offsetY = y
     }
   }
-  return {
+  const entry: HistoryEntry = {
     label,
     bytes: xs.byteLength + ys.byteLength + before.byteLength + after.byteLength + runXs.byteLength + runYs.byteLength + runLengths.byteLength + runBefore.byteLength + runAfter.byteLength + regionPatchBytes + (layerOffset ? 32 : 0),
     undo: () => { applyRuns(runBefore); applyRegionPatches('before'); apply(before); if (layerOffset) applyLayerOffset(layerOffset.beforeX, layerOffset.beforeY) },
@@ -590,6 +612,8 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
       : edit.dirtyRect ? { kind: 'region', frameId, rect: { ...edit.dirtyRect } } : undefined,
     affectedLayerIds: linkedLayerIds.length > 0 ? linkedLayerIds : [edit.layerId]
   }
+  if (capturePersistentChanges) committedPixelChanges.set(entry, { layerId: edit.layerId, frameId, xs, ys, before, after, runXs, runYs, runLengths, runBefore, runAfter, regionPatches, layerOffset })
+  return entry
 }
 
 export function revertPixelEdit(document: SpriteDocument, edit: PixelEdit | null | undefined): void {

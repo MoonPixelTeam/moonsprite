@@ -61,6 +61,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     brushTexture: source.brushTexture,
     brushTextureScale: source.brushTextureScale,
     brushPaintMode: source.brushPaintMode,
+    inkMode: source.inkMode,
     brushImageId: source.brushImageId,
     brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
     brushImageTemporary: source.brushImageTemporary,
@@ -272,6 +273,7 @@ export function persistToolSettings(session: DocumentSession): void {
   const active = persistedBrushProfileFromSession(activeProfile)
   const snapshot: PersistedToolSettings = {
     ...active,
+    inkMode: session.inkMode,
     brushPaintModePreferenceVersion: 1,
     proceduralAntialiasPreferenceVersion: 1,
     brushProfiles: profiles,
@@ -381,6 +383,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     brushTexture: settings.brushTexture,
     brushTextureScale: settings.brushTextureScale,
     brushPaintMode: settings.brushPaintMode,
+    inkMode: settings.inkMode,
     brushImageId: settings.brushImageId,
     brushImage: null,
     brushImageTemporary: false,

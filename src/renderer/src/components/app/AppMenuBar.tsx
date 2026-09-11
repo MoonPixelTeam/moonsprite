@@ -89,6 +89,7 @@ interface AppMenuBarProps {
   onCycleAdvancedMode: () => void
   onOpenComponentLibrary: () => void
   onOpenLatestRelease: () => void
+  onOpenUsageStatistics: () => void
   onOpenDiagnostics: () => void
   onOpenAbout: () => void
 }
@@ -148,6 +149,7 @@ export function AppMenuBar({
   onCycleAdvancedMode,
   onOpenComponentLibrary,
   onOpenLatestRelease,
+  onOpenUsageStatistics,
   onOpenDiagnostics,
   onOpenAbout
 }: AppMenuBarProps) {
@@ -232,7 +234,7 @@ export function AppMenuBar({
     workspace.setSelection({ x: 0, y: 0, width: session.document.width, height: session.document.height })
   }
   return <PerformanceProfiler id="AppMenuBar"><header className="topbar">
-    <button className="brand" title={t('app.brand.homeTitle')} aria-label={t('app.brand.homeAria')} onClick={() => { onHome(); closeMenu() }}><img className="brand-logo" src={moonspriteLogo} alt="" aria-hidden="true" /><span>MOONSPRITE</span><small>{APP_CHANNEL_LABEL}</small></button>
+    <button className="brand" data-moon-tooltip-disabled aria-label={t('app.brand.homeAria')} onClick={() => { onHome(); closeMenu() }}><img className="brand-logo" src={moonspriteLogo} alt="" aria-hidden="true" /><span>MOONSPRITE</span><small>{APP_CHANNEL_LABEL}</small></button>
     <nav className="menu-strip" aria-label={t('app.menu.mainAria')} onPointerOver={(event) => { const button = (event.target as HTMLElement).closest('button[aria-expanded]'); const item = button?.parentElement; if (item?.parentElement !== event.currentTarget) return; hoverMenuAt(Array.from(event.currentTarget.children).indexOf(item)) }}>
       {renderExtensionTopMenusAt('start')}
       {renderExtensionTopMenusAt('before:file')}
@@ -274,7 +276,7 @@ export function AppMenuBar({
       </div>}</div>
       {renderExtensionTopMenusAt('after:window')}
       {renderExtensionTopMenusAt('before:help')}
-      <div className="menu-item"><button aria-expanded={openMenu === 'help'} onClick={() => toggleMenu('help')}>{t('app.menu.help')}</button>{openMenu === 'help' && <div className="menu-popover">{renderExistingMenuContributions('help', 'start')}<button onClick={() => { onOpenComponentLibrary(); closeMenu() }}>{t('app.menu.help.componentLibrary')}{shortcutHint('openComponentLibrary')}</button><button onClick={() => { onOpenLatestRelease(); closeMenu() }}>{t('app.menu.help.changelog')}{shortcutHint('openLatestRelease')}</button><button onClick={() => { onOpenDiagnostics(); closeMenu() }}>{t('app.menu.help.diagnostics')}</button><button onClick={() => { onOpenAbout(); closeMenu() }}>{t('app.menu.help.about')}{shortcutHint('openAbout')}</button>{renderExistingMenuContributions('help', 'end')}</div>}</div>
+      <div className="menu-item"><button aria-expanded={openMenu === 'help'} onClick={() => toggleMenu('help')}>{t('app.menu.help')}</button>{openMenu === 'help' && <div className="menu-popover">{renderExistingMenuContributions('help', 'start')}<button onClick={() => { onOpenComponentLibrary(); closeMenu() }}>{t('app.menu.help.componentLibrary')}{shortcutHint('openComponentLibrary')}</button><button onClick={() => { onOpenLatestRelease(); closeMenu() }}>{t('app.menu.help.changelog')}{shortcutHint('openLatestRelease')}</button><button onClick={() => { onOpenUsageStatistics(); closeMenu() }}>使用统计</button><button onClick={() => { onOpenDiagnostics(); closeMenu() }}>{t('app.menu.help.diagnostics')}</button><button onClick={() => { onOpenAbout(); closeMenu() }}>{t('app.menu.help.about')}{shortcutHint('openAbout')}</button>{renderExistingMenuContributions('help', 'end')}</div>}</div>
       {renderExtensionTopMenusAt('after:help')}
       {renderExtensionTopMenusAt('end')}
     </nav>

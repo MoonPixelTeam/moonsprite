@@ -5,6 +5,7 @@ import { hslToRgb, rgbToHsl } from '@/core/color-values'
 import { rangeValueWithShiftStep } from '@/core/range-step'
 import { ColorValueControl } from './ColorValueControl'
 import { useI18n } from '@/components/I18nProvider'
+import { registerColorPickerSampler } from './color-picker-sampling'
 
 export const colorCss = (color: RgbaColor): string => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
 export { parseRgbaHex as parseColorHex } from '@/core/color-values'
@@ -216,6 +217,9 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
   const pointerInputActiveRef = useRef(false)
   const colorFrameRef = useRef<number | null>(null)
   const pendingColorRef = useRef<{ color: RgbaColor; secondary: boolean; hsv?: ReturnType<typeof rgbToHsv> } | null>(null)
+  const externalSampleRef = useRef<{ color: RgbaColor | null } | null>(null)
+  const externalSamplingRef = useRef(false)
+  const triangleGeometryRef = useRef<{ key: string; weights: TriangleWeights[] } | null>(null)
   const pickerHsvRef = useRef(pickerHsv)
   const secondaryPickerHsvRef = useRef(secondaryPickerHsv)
   const onChangeRef = useRef(onChange)
@@ -354,6 +358,21 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
       if (secondary) secondaryPickerHsvRef.current = nextHsv
       else pickerHsvRef.current = nextHsv
     }
+    if (externalSampleRef.current) {
+      externalSampleRef.current.color = nextColor
+      activeStripColorRef.current = nextColor
+      // The initiating color editor owns the write. Keep HSV precision locally
+      // just as for a normal field gesture, without also changing another color.
+      if (nextHsv) {
+        activeFieldHsvRef.current = nextHsv
+        activeStripHsvRef.current = nextHsv
+        if (secondary) setSecondaryPickerHsv(nextHsv)
+        else setPickerHsv(nextHsv)
+      }
+      if (secondary) lastEmittedSecondaryColorRef.current = nextColor
+      else lastEmittedColorRef.current = nextColor
+      return
+    }
     pendingColorRef.current = { color: nextColor, secondary, hsv: nextHsv }
     if (colorFrameRef.current !== null) return
     colorFrameRef.current = window.requestAnimationFrame(() => {
@@ -377,6 +396,18 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
     const image = context.createImageData(canvas.width, canvas.height)
+    let triangleWeights: TriangleWeights[] | null = null
+    if (moonTriangle) {
+      const key = `${canvas.width}:${canvas.height}:${colorSteps}`
+      if (triangleGeometryRef.current?.key !== key) {
+        const weights: TriangleWeights[] = []
+        for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+          weights.push(quantizeTriangleWeights(closestTriangleWeights(moonTriangleVertices, x / (canvas.width - 1), y / (canvas.height - 1)), colorSteps))
+        }
+        triangleGeometryRef.current = { key, weights }
+      }
+      triangleWeights = triangleGeometryRef.current.weights
+    } else triangleGeometryRef.current = null
     const wheelHitMask = scheme === 'wheel' || scheme === 'normal-map' ? new Uint8Array(canvas.width * canvas.height) : null
     for (let y = 0; y < canvas.height; y += 1) for (let x = 0; x < canvas.width; x += 1) {
       const rawRelativeX = x / (canvas.width - 1)
@@ -432,8 +463,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
           continue
         } else if (moonTriangle) {
           // Fill through the edge so the CSS polygon owns antialiasing.
-          const rawWeights = closestTriangleWeights(moonTriangleVertices, rawRelativeX, rawRelativeY)
-          sample = rgbToHsv(triangleWeightsToColor(fieldHue, quantizeTriangleWeights(rawWeights, colorSteps)))
+          sample = rgbToHsv(triangleWeightsToColor(fieldHue, triangleWeights![y * canvas.width + x]))
         } else if (Math.abs(rawDx) <= moonSquareRadius && Math.abs(rawDy) <= moonSquareRadius) {
           const localX = Math.max(0, Math.min(1, (rawDx / moonSquareRadius + 1) / 2))
           const localY = Math.max(0, Math.min(1, (rawDy / moonSquareRadius + 1) / 2))
@@ -499,7 +529,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     const activeRole = activeFieldRoleRef.current ?? (editingSecondaryRef.current ? 'secondary' : 'primary')
     const secondaryEditing = activeRole === 'secondary' && Boolean(secondaryColor && onSecondaryChange)
     const currentHsv = activeFieldHsvRef.current ?? (secondaryEditing ? secondaryPickerHsvRef.current : pickerHsvRef.current)
-    const sourceColor = secondaryEditing ? secondaryColor! : color
+    const sourceColor = externalSampleRef.current && activeStripColorRef.current ? activeStripColorRef.current : secondaryEditing ? secondaryColor! : color
     let nextHsv = { ...currentHsv, s: relativeX, v: valueFromPosition(1 - relativeY) }
     if (scheme === 'hs-square') {
       nextHsv = { h: actualHue(relativeX * 360), s: 1 - relativeY, v: currentHsv.v }
@@ -554,7 +584,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     }
     const secondary = secondaryEditing
     activeFieldHsvRef.current = nextHsv
-    const nextColor = hsvToRgb(nextHsv, secondary ? secondaryColor!.a : color.a)
+    const nextColor = hsvToRgb(nextHsv, sourceColor.a)
     emitPointerColor(nextColor, secondary, nextHsv)
   }
   pickFieldRef.current = (event) => pickField(event as unknown as React.PointerEvent<HTMLElement>)
@@ -684,6 +714,47 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
     })
   }
   const cursorHue = actualHue(displayHue)
+  const externalSamplerRef = useRef<(x: number, y: number, target: Element) => RgbaColor | null>(() => null)
+  externalSamplerRef.current = (x, y, target) => {
+    if (!externalSamplingRef.current) {
+      externalSamplingRef.current = true
+      activeFieldRoleRef.current = stripRoleRef.current
+      activeFieldHsvRef.current = { ...displayHsv }
+      activeStripHsvRef.current = { ...stripHsv }
+      activeStripColorRef.current = { ...stripColor }
+    }
+    const result = { color: null as RgbaColor | null }
+    externalSampleRef.current = result
+    const event = { clientX: x, clientY: y, currentTarget: target, shiftKey: false } as React.PointerEvent<HTMLInputElement>
+    try {
+      if (target.matches('.color-field-interaction')) {
+        // Each location decides ring/field membership; dragging in from a color
+        // button does not establish the field's own pointer capture.
+        pickField(event, true)
+        if (result.color) activeStripHsvRef.current = activeFieldHsvRef.current
+      } else if (target.matches('.hue-strip-input')) pickHueStrip(event)
+      else pickStrip(event, target.matches('.alpha-strip-input') ? 'alpha' : 'value')
+      return result.color
+    } finally { externalSampleRef.current = null }
+  }
+  useEffect(() => {
+    const element = pickerRef.current
+    if (!element) return
+    return registerColorPickerSampler(element, {
+      sample: (x, y, target) => externalSamplerRef.current(x, y, target),
+      finish: () => {
+        if (!externalSamplingRef.current) return
+        externalSamplingRef.current = false
+        activeFieldRoleRef.current = null
+        activeFieldHsvRef.current = null
+        activeStripHsvRef.current = null
+        activeStripColorRef.current = null
+        moonDragZoneRef.current = null
+        moonFieldHueRef.current = null
+        wheelDragRef.current = false
+      }
+    })
+  }, [])
   const wheelCursor = quantizedWheelVector(Math.cos(cursorHue * Math.PI / 180) * displayHsv.s, Math.sin(cursorHue * Math.PI / 180) * displayHsv.s, colorSteps, Math.max(0.94, 1 - 10 / wheelCanvasSize))
   const fieldCursor = scheme === 'hs-square'
     ? { left: `${steppedCellCenter(cursorHue / 360) * 100}%`, top: `${steppedCellCenter(1 - displayHsv.s) * 100}%` }

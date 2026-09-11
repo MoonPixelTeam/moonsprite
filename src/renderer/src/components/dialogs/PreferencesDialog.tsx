@@ -62,6 +62,7 @@ import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
 import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
 import type { LuaScriptEntry, StoredExtension } from '@shared/types'
+import { exportUsageStatistics, initializeUsageStatistics, openUsageStatisticsFolder, resetUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
 
 interface PreferencesDialogProps {
   initialSection?: PreferenceSection
@@ -143,6 +144,8 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [luaScripts, setLuaScripts] = useState<LuaScriptEntry[]>([])
   const [luaScriptsLoading, setLuaScriptsLoading] = useState(false)
   const [luaScriptBusyId, setLuaScriptBusyId] = useState<string | null>(null)
+  const [usageStatisticsEnabled, setUsageStatisticsEnabledState] = useState(() => usageStatisticsSnapshot().data.enabled)
+  const [usageStatisticsBusy, setUsageStatisticsBusy] = useState(false)
   const [draggedPreferenceItem, setDraggedPreferenceItem] = useState<{ kind: PreferenceOrderKind; id: string; barId?: string } | null>(null)
   const [collapsedQuickCommandBars, setCollapsedQuickCommandBars] = useState<Set<string>>(() => new Set(preferences.quickCommandBars.filter((bar) => bar.edge === 'none').map((bar) => bar.id)))
   const preferencePointerDragRef = useRef<PreferencePointerDrag | null>(null)
@@ -261,6 +264,12 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     window.addEventListener('moonsprite:extensions-changed', onExtensionsChanged)
     return () => window.removeEventListener('moonsprite:extensions-changed', onExtensionsChanged)
   }, [refreshExtensions, refreshLuaScripts])
+  useEffect(() => {
+    const refresh = (): void => setUsageStatisticsEnabledState(usageStatisticsSnapshot().data.enabled)
+    void initializeUsageStatistics().then(refresh)
+    const unsubscribe = subscribeUsageStatistics(refresh)
+    return unsubscribe
+  }, [])
   useEffect(() => () => {
     setEditorPreferencesPreview(null)
     applyThemeToDocument(loadEditorPreferences().theme)
@@ -455,6 +464,19 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     window.dispatchEvent(new Event('moonsprite:preferences-changed'))
   }
   const toggle = (label: string, checked: boolean, onChange: (checked: boolean) => void, tooltip?: string) => <PreferenceToggle label={label} checked={checked} onChange={onChange} tooltip={tooltip} />
+  const runUsageStatistics = async (operation: () => Promise<void>): Promise<void> => {
+    setUsageStatisticsBusy(true)
+    try { await operation() } catch (error) { useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error)) } finally { setUsageStatisticsBusy(false) }
+  }
+  const confirmResetUsageStatistics = async (): Promise<void> => {
+    const choice = await useWorkspace.getState().requestDialog({
+      title: '重置使用统计',
+      message: '确定重置全部使用统计吗？',
+      detail: '此操作无法撤销。',
+      choices: [{ id: 'cancel', label: '取消', tone: 'quiet' }, { id: 'reset', label: '重置', tone: 'primary' }]
+    })
+    if (choice === 'reset') await runUsageStatistics(resetUsageStatistics)
+  }
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
   const preferenceSectionMatches = useMemo(() => new Map(PREFERENCE_SECTIONS.map(([value, labelKey]) => [value, !normalizedQuery || [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key))].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))])), [locale, normalizedQuery, t])
   const visiblePreferenceSections = PREFERENCE_SECTIONS
@@ -492,6 +514,10 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.project')}>
           {toggle(t('preferences.timelapseRecording'), preferences.timelapseRecordingEnabled, (value) => update('timelapseRecordingEnabled', value), t('preferences.timelapseRecordingHint'))}
+        </PreferenceGroup>
+        <PreferenceGroup title="使用统计">
+          <PreferenceToggle label="开启使用统计" checked={usageStatisticsEnabled} disabled={usageStatisticsBusy} onChange={(enabled) => void runUsageStatistics(async () => { await setUsageStatisticsEnabled(enabled); setUsageStatisticsEnabledState(enabled) })} />
+          <div className="preference-usage-statistics-actions"><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void runUsageStatistics(openUsageStatisticsFolder)}><PixelUtilityIcon kind="folderOpen" />打开保存文件夹</button><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void runUsageStatistics(async () => { if (await exportUsageStatistics()) useWorkspace.getState().setMessage('使用统计已导出。') })}><PixelUtilityIcon kind="export" />导出 JSON</button><button type="button" className="quiet-button" disabled={usageStatisticsBusy} onClick={() => void confirmResetUsageStatistics()}><PixelUtilityIcon kind="restore" />重置统计</button></div>
         </PreferenceGroup>
       </>}
       {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bar, name: t('preferences.quickCommandDefaultName', { index: index + 1 }), commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>

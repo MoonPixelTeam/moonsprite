@@ -108,6 +108,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.brushTexture,
     session.brushTextureScale,
     session.brushPaintMode,
+    session.inkMode,
     session.brushImageId ?? '',
     brush ? `${brush.id}:${brush.name}:${brush.width}:${brush.height}:${brush.intrinsicSize ? 1 : 0}` : '',
     session.brushImageTemporary ? 1 : 0,
