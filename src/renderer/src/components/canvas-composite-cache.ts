@@ -479,6 +479,7 @@ export class CanvasCompositeCache {
   private livePreviewPending = new Set<string>()
   private livePreviewCommitRevisions = new Map<string, number>()
   private fullPreviewInvalidationPending = false
+  private lastConsumedFullContentRevision = -1
   private compositeCache = new DocumentCompositeCache()
   private movePreview: MovePreviewSurface | null = null
   /**
@@ -594,6 +595,16 @@ export class CanvasCompositeCache {
   draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
     this.currentDevicePixelRatio = devicePixelRatio
     this.lastDocument = document
+    // A full content invalidation cannot be repaired by dirty-rect uploads:
+    // styled layers may have output outside the edited pixels, and an old
+    // surface/bitmap can otherwise remain visible until a later move. Clear
+    // every derived surface exactly once for this content revision.
+    if (contentInvalidation?.kind === 'full'
+      && contentInvalidation.revision === contentRevision
+      && this.lastConsumedFullContentRevision !== contentRevision) {
+      this.lastConsumedFullContentRevision = contentRevision
+      this.invalidateSurface()
+    }
     const effectiveFrameId = frameId ?? document.animation?.activeFrameId ?? 'static'
     this.lastDrawnFrameId = effectiveFrameId
     const namespace = this.surfaceNamespace(document, view, isolatedLayerMask)
@@ -1466,7 +1477,13 @@ export class CanvasCompositeCache {
     }
     if (firstMovingIndex < 0 || lastMovingIndex < firstMovingIndex || layers.slice(firstMovingIndex, lastMovingIndex + 1).some((layer) => !movingIds.has(layer.id))) return false
     if (width * height * 8 > this.maxCacheBytes) return false
-    const key = `${document.id}:${frameId}:${contentRevision}:${x}:${y}:${width}:${height}:${view.tileRepeatMode ?? 'off'}:${movingLayers.map((layer) => layer.id).join(',')}`
+    // Include each participating layer's source revision. A styled layer is
+    // rendered through a proxy, so a flip/paste can change that proxy while
+    // the move preview surface still has the same document revision. Without
+    // this component, the first move after mirroring reuses the old preview
+    // and leaves stale/cropped style pixels behind.
+    const previewLayerRevision = (layer: RasterLayer): string => `${layer.id}:${getLayerContentRevision(layer)}`
+    const key = `${document.id}:${frameId}:${contentRevision}:${x}:${y}:${width}:${height}:${view.tileRepeatMode ?? 'off'}:${movingLayers.map(previewLayerRevision).join(',')}:${layers.slice(lastMovingIndex + 1).map(previewLayerRevision).join(',')}`
     let preview = this.movePreview
     if (!preview || preview.key !== key) {
       const basePixels = this.compositeCache.movePreviewLayerRegion(document, layers.slice(0, firstMovingIndex), x, y, width, height, contentRevision)

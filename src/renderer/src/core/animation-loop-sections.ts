@@ -100,6 +100,23 @@ export const animationLoopSectionStartFrameId = (
   return frames.find((frame) => frame.disabled !== true)?.id ?? null
 }
 
+export const stepAnimationLoopSectionFrameId = (
+  timeline: Pick<AnimationTimeline, 'frames'>,
+  section: AnimationLoopSection,
+  frameId: string,
+  direction: -1 | 1,
+  skipDisabledFrames = false
+): string | null => {
+  const range = resolveAnimationLoopSectionRange(timeline, section)
+  if (!range) return null
+  const frames = timeline.frames.slice(range.startIndex, range.endIndex + 1)
+  const candidates = skipDisabledFrames ? frames.filter((frame) => frame.disabled !== true) : frames
+  if (candidates.length === 0) return null
+  const currentIndex = candidates.findIndex((frame) => frame.id === frameId)
+  const startIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0
+  return candidates[(startIndex + direction + candidates.length) % candidates.length]?.id ?? null
+}
+
 export const advanceAnimationLoopSectionPlayback = (
   timeline: Pick<AnimationTimeline, 'frames'>,
   section: AnimationLoopSection,

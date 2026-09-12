@@ -243,6 +243,86 @@ describe('workspace animation loop sections', () => {
     expect(document.dirty).toBe(false)
   })
 
+  it('repeats a nested loop before resuming and repeating its outer loop', () => {
+    const document = createDocument('nested loop playback', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 12; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const frames = timeline.frames
+    const outerId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Outer', startFrameId: frames[2].id, endFrameId: frames[12].id, direction: 'forward', repeatCount: null
+    })!
+    const innerId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Inner', startFrameId: frames[5].id, endFrameId: frames[11].id, direction: 'forward', repeatCount: 2
+    })!
+
+    useWorkspace.getState().playAnimationLoopSection(outerId)
+    expect(timeline.activeFrameId).toBe(frames[2].id)
+    for (const index of [3, 4]) {
+      useWorkspace.getState().advanceAnimationFrame()
+      expect(timeline.activeFrameId).toBe(frames[index].id)
+    }
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[5].id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaybackLoopSectionId: innerId, animationPlaybackLoopStack: [{ sectionId: outerId, iteration: 0 }] })
+
+    for (const index of [6, 7, 8, 9, 10, 11]) {
+      useWorkspace.getState().advanceAnimationFrame()
+      expect(timeline.activeFrameId).toBe(frames[index].id)
+    }
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[5].id)
+    for (const index of [6, 7, 8, 9, 10, 11]) {
+      useWorkspace.getState().advanceAnimationFrame()
+      expect(timeline.activeFrameId).toBe(frames[index].id)
+    }
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[11].id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaybackLoopSectionId: outerId, animationPlaybackLoopStack: [] })
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[12].id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[2].id)
+  })
+
+  it('treats an infinite child loop as one pass when the parent loop is playing', () => {
+    const document = createDocument('multiple nested loops', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    for (let index = 0; index < 8; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const frames = timeline.frames
+    const outerId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Outer', startFrameId: frames[0].id, endFrameId: frames[8].id, direction: 'forward', repeatCount: null
+    })!
+    const finiteChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Finite child', startFrameId: frames[1].id, endFrameId: frames[2].id, direction: 'forward', repeatCount: 3
+    })!
+    const infiniteChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Infinite child', startFrameId: frames[4].id, endFrameId: frames[5].id, direction: 'forward', repeatCount: null
+    })!
+
+    useWorkspace.getState().playAnimationLoopSection(outerId)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[1].id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaybackLoopSectionId: finiteChildId, animationPlaybackLoopStack: [{ sectionId: outerId, iteration: 0 }] })
+    for (const index of [2, 1, 2, 1, 2, 2]) {
+      useWorkspace.getState().advanceAnimationFrame()
+      expect(timeline.activeFrameId).toBe(frames[index].id)
+    }
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[3].id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[4].id)
+    expect(useWorkspace.getState().sessions[0].animationPlaybackLoopSectionId).toBe(infiniteChildId)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[5].id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[5].id)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({ animationPlaybackLoopSectionId: outerId, animationPlaybackLoopStack: [] })
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(frames[6].id)
+  })
+
   it('honors a finite tag repeat before continuing through the timeline', () => {
     const document = createDocument('finite tag repeat playback', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)

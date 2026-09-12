@@ -336,6 +336,7 @@ export interface DocumentSession {
   animationPlaybackLoopSectionId: string | null
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
+  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number }>
   /** Finite tag section that anchors the current play-through cycle. */
   animationPlaybackTagCycleSectionId: string | null
   animationReturnToStart: boolean

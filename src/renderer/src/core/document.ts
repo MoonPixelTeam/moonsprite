@@ -971,6 +971,11 @@ export const cacheRasterContentBounds = (surface: RasterContentSurface, palette:
   rasterContentBoundsCache.set(storage, entries)
 }
 
+/** Drops derived visible bounds after operations that can relocate many pixels. */
+export const invalidateRasterContentBounds = (surface: RasterContentSurface): void => {
+  rasterContentBoundsCache.delete(rasterStorageIdentity(surface))
+}
+
 /** Returns local visible-pixel bounds and shares the result across layers, cels, thumbnails, and compositing. */
 export function cachedRasterContentBounds(surface: RasterContentSurface, palette: readonly PaletteEntry[] = []): SelectionRect | null | undefined {
   const opaquePaletteIds = surface.format === 'indexed'

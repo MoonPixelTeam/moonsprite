@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import type { SelectionQuad } from '@shared/types'
-import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, InkMode, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface, AnimationLayerMask, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline, BackgroundPatternId, BlendMode, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, CanvasAnchor, ColorMode, DocumentSlice, FillKind, FillMode, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, GradientDither, GradientStop, ImageBrush, ImageBrushSettings, ImageResizeInterpolation, InkMode, LayerGroup, LayerMask, LayerStyles, LineKind, LiquifyMode, MoveKind, OutlineSettings, PaletteEntry, PaletteSlotLayout, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RecoveryRecord, RgbaColor, SelectionKind, SelectionMask, SelectionMode, SelectionRect, ShapeKind, ShapeRatio, SpriteDocument, StoredPalette, TextCelData, TilemapCell, TileRepeatMode, Tileset, TimelapseExportFormat, TimelapseSettings, ToolId, ViewState } from '@shared/types'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, pixelEditHasChanges, recordPixel, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { applySmoothBrush, smoothChangedLiquifyPixels } from '@/core/smooth-brush'
+import { invalidateRasterContentBounds } from '@/core/document'
 import { animationMaskAt, animationMaskSlotAt, cacheRasterContentBounds, cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositeRegion, convertDocumentColorMode, createAnimationMaskLookup, createDocument, createId, createLayer, createSparseLayer, createLayerMask as createAttachedLayerMask, documentImageResizeSnapshotBytes, documentVisibleContentBounds, duplicateLayer, expandLayerStyleInvalidationRect, findLayerMask, findOrAddPaletteColor, getDescendantGroupIds, getGroup, getGroupLockingAncestor, getLayerIdsInGroup, getLayer, getActiveLayer, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, isLayerEffectivelyVisible, isLayerMask, layerContentBounds, markLayerContentChanged, markRasterStorageContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, resolveAnimationMask, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot, writeLayerColor } from '@/core/document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelContentSelection, animationCelHasContent, animationCelKey, animationGroupMaskAt, animationLayerAtFrame, cloneAnimationCel, cloneAnimationCelSurface, cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, cloneDocumentForAnimationFrame, connectAnimationCels, createAnimationCelLookup, deleteAnimationFrame, detachLinkedLayerContent, disconnectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, inheritAnimationFrameCelLinks, linkAnimationFrameCels, mapAnimationCelBlock, nextAnimationFrameId, normalizeAnimationCelZIndex, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, resizeAnimationCelsAt, restoreAnimationCels, setAnimationFrameDuration, setAnimationLoop, stepAnimationFrameId, syncActiveAnimationFrame, syncActiveAnimationLayer, synchronizeLinkedLayerContents, synchronizeLinkedLayerGroupContents } from '@/core/animation'
-import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
+import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, cloneAnimationLoopSections, normalizeAnimationLoopSections, reconcileAnimationLoopSectionsAfterFrameReorder, resolveAnimationLoopSectionRange, stepAnimationLoopSectionFrameId } from '@/core/animation-loop-sections'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
@@ -577,13 +578,21 @@ const markFloatingPreviewChanged = (session: DocumentSession, before: SelectionR
   const fromRevision = session.contentRevision
   session.revision += 1
   session.contentRevision += 1
-  session.contentInvalidation = {
-    kind: 'region',
-    frameId: session.document.animation?.activeFrameId,
-    rect: mergeSelectionRects(before, after),
-    fromRevision,
-    revision: session.contentRevision
-  }
+  const pendingLayerIds = session.pendingPaste?.layers?.map((state) => state.layerId)
+    ?? (session.pendingPaste?.layerId ? [session.pendingPaste.layerId] : [])
+  const styledPreview = pendingLayerIds.some((id) => {
+    const layer = session.document.layers.find((candidate) => candidate.id === id)
+    return Boolean(layer && hasEnabledLayerStyles(layer.layerStyles))
+  })
+  session.contentInvalidation = styledPreview
+    ? { kind: 'full', fromRevision, revision: session.contentRevision }
+    : {
+        kind: 'region',
+        frameId: session.document.animation?.activeFrameId,
+        rect: mergeSelectionRects(before, after),
+        fromRevision,
+        revision: session.contentRevision
+      }
 }
 
 const markFloatingOverlayChanged = (session: DocumentSession): void => {
@@ -1517,6 +1526,7 @@ const clearAnimationLoopPlayback = (session: DocumentSession): void => {
   session.animationPlaybackLoopSectionId = null
   session.animationPlaybackLoopIteration = 0
   session.animationPlaybackLoopSectionRepeatIndefinitely = false
+  session.animationPlaybackLoopStack = []
   session.animationPlaybackTagCycleSectionId = null
 }
 
@@ -1554,6 +1564,31 @@ const animationLoopSectionContainsFrame = (timeline: AnimationTimeline, section:
   const range = resolveAnimationLoopSectionRange(timeline, section)
   const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
   return Boolean(range && frameIndex >= range.startIndex && frameIndex <= range.endIndex)
+}
+
+const nestedAnimationLoopSectionAtFrame = (timeline: AnimationTimeline, parent: AnimationLoopSection, frameId: string): AnimationLoopSection | null => {
+  const parentRange = resolveAnimationLoopSectionRange(timeline, parent)
+  const frameIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
+  if (!parentRange || frameIndex < parentRange.startIndex || frameIndex > parentRange.endIndex) return null
+  return (timeline.loopSections ?? [])
+    .map((section) => ({ section, range: resolveAnimationLoopSectionRange(timeline, section) }))
+    .filter(({ section, range }) => Boolean(
+      range
+      && section.id !== parent.id
+      && range.startIndex >= parentRange.startIndex
+      && range.endIndex <= parentRange.endIndex
+      && (range.endIndex - range.startIndex) < (parentRange.endIndex - parentRange.startIndex)
+      && frameIndex >= range.startIndex
+      && frameIndex <= range.endIndex
+    ))
+    .sort((left, right) => (left.range!.endIndex - left.range!.startIndex) - (right.range!.endIndex - right.range!.startIndex))
+    .at(0)?.section ?? null
+}
+
+const animationLoopSectionBoundaryFrameId = (timeline: AnimationTimeline, section: AnimationLoopSection, direction: AnimationLoopDirection): string | null => {
+  const range = resolveAnimationLoopSectionRange(timeline, section)
+  if (!range) return null
+  return timeline.frames[direction === 'forward' ? range.endIndex : range.startIndex]?.id ?? null
 }
 
 const updateSelectedAnimationFramesDisabled = (session: DocumentSession, update: boolean | 'toggle'): void => {
@@ -2472,9 +2507,15 @@ const whiteAnimationMaskForOwner = (source: LayerMask, ownerKind: AnimationMaskO
 const ensureAnimationCelSlot = (document: SpriteDocument, layerId: string, frameId: string): { cel: AnimationCel; created: boolean } | null => {
   const timeline = ensureAnimationDocument(document)
   const existing = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === frameId)
-  if (existing) return { cel: existing, created: false }
   const layer = document.layers.find((candidate) => candidate.id === layerId)
   if (!layer || !timeline.frames.some((frame) => frame.id === frameId)) return null
+  // Every cel belonging to a free-tile layer must carry its own instance
+  // container. The source tileset remains owned by the layer and is therefore
+  // shared across all animation frames, while instances stay frame-local.
+  if (existing) {
+    if (layer.kind === 'free-tile' && !existing.freeTiles) existing.freeTiles = createFreeTileCelData()
+    return { cel: existing, created: false }
+  }
   const cel: AnimationCel = {
     id: createId('cel'),
     layerId,
@@ -2484,6 +2525,7 @@ const ensureAnimationCelSlot = (document: SpriteDocument, layerId: string, frame
       ? { format: 'rgba', width: 1, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(4) }
       : { format: 'indexed', width: 1, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint32Array(1) }
   }
+  if (layer.kind === 'free-tile') cel.freeTiles = createFreeTileCelData()
   timeline.cels.push(cel)
   return { cel, created: true }
 }
@@ -4669,7 +4711,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         syncActiveAnimationLayer(session.document, edit.layerId)
         operationProbe?.recordOperationStage?.('commit.animation-sync', performance.now() - animationSyncStartedAt)
         const invalidationStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-        touch(session, true, entry.invalidation)
+        // Style proxies add pixels outside the edited source rect. A flipped
+        // pasted selection can therefore leave the style-expanded cache
+        // partially stale if we invalidate only the raw pixel region.
+        const styledLayerEdit = hasEnabledLayerStyles(editedLayer?.layerStyles)
+        touch(session, true, styledLayerEdit ? { kind: 'full' } : entry.invalidation)
         operationProbe?.recordOperationStage?.('commit.cache-invalidation', performance.now() - invalidationStartedAt, {
           dirtyPixels: edit.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0,
           dirtyWidth: edit.dirtyRect?.width ?? 0,
@@ -5318,7 +5364,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   beginFreeTilePlacement() {
     const session = activeSession(get())
-    const target = session ? activeFreeTileCelTarget(session.document) : null
+    let target = session ? activeFreeTileCelTarget(session.document) : null
+    if (session && !target) {
+      const timeline = ensureAnimationDocument(session.document)
+      const layer = session.document.layers.find((candidate) => candidate.id === session.document.activeLayerId && candidate.kind === 'free-tile')
+      const frameId = timeline.activeFrameId
+      if (layer && timeline.frames.some((frame) => frame.id === frameId)) {
+        ensureAnimationCelSlot(session.document, layer.id, frameId)
+        target = activeFreeTileCelTarget(session.document)
+      }
+    }
     return target ? {
       layerId: target.layer.id,
       frameId: target.cel.frameId,
@@ -5918,14 +5973,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const current = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
     const direction = Math.sign(delta)
     const skipDisabledFrames = loadEditorPreferences().skipDisabledFrames
+    const activeLoopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
+    const loopSectionFrameId = activeLoopSection
+      ? stepAnimationLoopSectionFrameId(timeline, activeLoopSection, timeline.activeFrameId, direction > 0 ? 1 : -1, skipDisabledFrames)
+      : null
     const frameId = skipDisabledFrames
-      ? stepAnimationFrameId(timeline, current < 0 ? '' : timeline.activeFrameId, direction > 0 ? 1 : -1)
+      ? activeLoopSection
+        ? loopSectionFrameId
+        : stepAnimationFrameId(timeline, current < 0 ? '' : timeline.activeFrameId, direction > 0 ? 1 : -1)
       : null
     const frame = skipDisabledFrames
       ? frameId ? timeline.frames.find((candidate) => candidate.id === frameId) : null
-      : timeline.frames[current < 0
-        ? direction > 0 ? 0 : timeline.frames.length - 1
-        : (current + direction + timeline.frames.length) % timeline.frames.length]
+      : activeLoopSection
+        ? timeline.frames.find((candidate) => candidate.id === (loopSectionFrameId ?? ''))
+        : timeline.frames[current < 0
+          ? direction > 0 ? 0 : timeline.frames.length - 1
+          : (current + direction + timeline.frames.length) % timeline.frames.length]
     if (!frame || frame.id === timeline.activeFrameId) return
     if (session.selectedAnimationFrameIds.length > 0) {
       get().selectAnimationFrame(frame.id)
@@ -7362,9 +7425,44 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return
     }
     if (loopSection) {
-      const playbackSection = session.animationPlaybackLoopSectionRepeatIndefinitely ? { ...loopSection, repeatCount: null } : loopSection
+      const playbackSection = session.animationPlaybackLoopSectionRepeatIndefinitely
+        ? session.animationPlaybackLoopStack.length > 0
+          ? { ...loopSection, repeatCount: 1 }
+          : { ...loopSection, repeatCount: null }
+        : loopSection
       const step = advanceAnimationLoopSectionPlayback(timeline, playbackSection, timeline.activeFrameId, session.animationPlaybackLoopIteration)
       const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
+      const nestedSection = step && !step.completed ? nestedAnimationLoopSectionAtFrame(timeline, loopSection, step.frameId) : null
+      if (step && nestedSection) {
+        const nestedStartFrameId = animationLoopSectionStartFrameId(timeline, nestedSection)
+        if (!nestedStartFrameId) return
+        get().mutateActive((current) => {
+          current.animationPlaybackLoopStack.push({ sectionId: loopSection.id, iteration: step.completedIterations })
+          setAnimationLoopPlaybackSection(current, nestedSection)
+          activateAnimationPlaybackFrame(current, nestedStartFrameId)
+        }, false)
+        return
+      }
+      if (step?.completed && session.animationPlaybackLoopStack.length > 0) {
+        const parentContext = session.animationPlaybackLoopStack.at(-1)
+        const parentSection = parentContext
+          ? (timeline.loopSections ?? []).find((section) => section.id === parentContext.sectionId) ?? null
+          : null
+        const boundaryFrameId = parentSection
+          ? animationLoopSectionBoundaryFrameId(timeline, loopSection, parentSection.direction)
+          : null
+        if (!parentSection || !boundaryFrameId) {
+          get().setAnimationPlaying(false)
+          return
+        }
+        get().mutateActive((current) => {
+          current.animationPlaybackLoopStack = current.animationPlaybackLoopStack.slice(0, -1)
+          setAnimationLoopPlaybackSection(current, parentSection)
+          activateAnimationPlaybackFrame(current, boundaryFrameId)
+          current.animationPlaybackLoopIteration = parentContext!.iteration
+        }, false)
+        return
+      }
       if (step?.completed && playbackMode === 'tag' && !session.animationPlaybackLoopSectionRepeatIndefinitely && loopSection.repeatCount !== null) {
         const nextFrameId = nextAnimationFrameId({ ...timeline, loop: true }, loopSection.endFrameId)
         if (nextFrameId) {
@@ -7546,6 +7644,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.animationPlaybackLoopSectionId = id
       session.animationPlaybackLoopIteration = 0
       session.animationPlaybackLoopSectionRepeatIndefinitely = section.repeatCount === null
+      session.animationPlaybackLoopStack = []
       session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null
       session.animationPlaying = true
       if (firstFrameId !== timeline.activeFrameId && activateAnimationFrame(session.document, firstFrameId)) {
@@ -12093,6 +12192,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           if (pending.translationPreview) restoreSelectionTranslationPreview(session.document, pending.translationPreview)
           else if (pending.previewEdit) revertPixelEdit(session.document, pending.previewEdit)
         } else restoreFloatingPreview(session)
+        // A flipped floating cel can change its visible bounds even when the
+        // selection rectangle stays the same. Drop the source bounds used by
+        // layer-style expansion before rebuilding the preview.
+        for (const layerId of pending.layers?.map((state) => state.layerId) ?? [pending.layerId]) {
+          const layer = session.document.layers.find((candidate) => candidate.id === layerId)
+          if (layer) invalidateRasterContentBounds(layer)
+        }
         if (pending.layers?.length) {
           for (const layerState of pending.layers) layerState.source = flipSelectionTransformSource(layerState.source, axis)
           syncFloatingPrimaryLayerState(pending)
@@ -12145,6 +12251,110 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return
       }
       const tilemapLayer = activePaintLayer(session)
+      // A selected free-tile cel mirrors all of its frame-local instances.
+      // Do this before the instance-only path so Shift+H/V on a timeline cel
+      // persists in the cel data and cannot be lost on the next refresh.
+      const timelineForFreeTiles = ensureAnimationDocument(session.document)
+      const selectedFreeTileCelKeys = new Set(session.selectedAnimationCellKeys)
+      if (session.selectedAnimationFrameIds.length > 0) {
+        for (const cel of timelineForFreeTiles.cels) {
+          if (session.selectedAnimationFrameIds.includes(cel.frameId)) selectedFreeTileCelKeys.add(animationCelKey(cel.layerId, cel.frameId))
+        }
+      }
+      const freeTileCelEdits = timelineForFreeTiles.cels
+        .filter((cel) => selectedFreeTileCelKeys.has(animationCelKey(cel.layerId, cel.frameId)) && session.document.layers.some((layer) => layer.id === cel.layerId && layer.kind === 'free-tile'))
+        .map((cel) => {
+          if (!cel.freeTiles) cel.freeTiles = createFreeTileCelData()
+          const before = cloneFreeTileCelData(cel.freeTiles)
+          const after = cloneFreeTileCelData(before)
+          for (const instance of after.instances) {
+            if (axis === 'horizontal') instance.flipHorizontal = instance.flipHorizontal !== true
+            else instance.flipVertical = instance.flipVertical !== true
+          }
+          return { cel, before, after, edit: { layerId: cel.layerId, frameId: cel.frameId, before, after, dirtyRect: null } as FreeTilePlacementEdit }
+        })
+      if (!session.selection && freeTileCelEdits.length > 0) {
+        const changed = freeTileCelEdits.filter(({ before, after }) => !freeTileCelDataEqual(before, after))
+        if (changed.length > 0) {
+          for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'after')
+          session.history.push({
+            label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'),
+            bytes: changed.reduce((total, entry) => total + (entry.before.instances.length + entry.after.instances.length) * 72, 0),
+            undo: () => { for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'before') },
+            redo: () => { for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'after') },
+            invalidation: { kind: 'full' },
+            affectedLayerIds: [...new Set(changed.map((entry) => entry.cel.layerId))],
+            contentChanged: true,
+            requiresAnimationSync: false
+          })
+          touch(session, true, { kind: 'full' })
+          recordDocumentOperation(session)
+        }
+        return
+      }
+      // Shift+H/V also applies to selected free-tile instances. Keep the
+      // operation on the instance metadata (rather than flipping the
+      // rendered raster), otherwise the next canvas refresh restores the
+      // pre-flip appearance.
+      const freeTileInstanceIds = session.selectedFreeTileInstanceIds.length > 0
+        ? session.selectedFreeTileInstanceIds
+        : session.selectedFreeTileInstanceId ? [session.selectedFreeTileInstanceId] : []
+      if (!session.selection && tilemapLayer.kind === 'free-tile' && freeTileInstanceIds.length > 0) {
+        const target = activeFreeTileCelTarget(session.document)
+        if (target) {
+          const before = cloneFreeTileCelData(target.freeTiles)
+          const selected = new Set(freeTileInstanceIds)
+          const after = cloneFreeTileCelData(before)
+          for (const instance of after.instances) {
+            if (!selected.has(instance.id) || instance.locked === true) continue
+            if (axis === 'horizontal') instance.flipHorizontal = instance.flipHorizontal !== true
+            else instance.flipVertical = instance.flipVertical !== true
+          }
+          if (!freeTileCelDataEqual(before, after)) {
+            const edit: FreeTilePlacementEdit = { layerId: target.layer.id, frameId: target.cel.frameId, before, after, dirtyRect: null }
+            applyFreeTilePlacementEdit(session.document, edit, 'after')
+            session.history.push({
+              label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'),
+              bytes: (before.instances.length + after.instances.length) * 72,
+              undo: () => { applyFreeTilePlacementEdit(session.document, edit, 'before') },
+              redo: () => { applyFreeTilePlacementEdit(session.document, edit, 'after') },
+              invalidation: { kind: 'full' },
+              affectedLayerIds: [target.layer.id],
+              contentChanged: true,
+              requiresAnimationSync: false
+            })
+            touch(session, true, { kind: 'full' })
+            recordDocumentOperation(session)
+          }
+        }
+        return
+      }
+      // A selected timeline cel on a tilemap layer represents the complete
+      // tilemap cel. With no pixel selection, mirror all of its cells in one
+      // document edit so the persisted tile metadata matches the preview.
+      const activeTimeline = ensureAnimationDocument(session.document)
+      const activeCelKey = animationCelKey(tilemapLayer.id, activeTimeline.activeFrameId)
+      const tilemapCelSelected = session.selectedAnimationCellKeys.includes(activeCelKey)
+        || session.selectedAnimationFrameIds.includes(activeTimeline.activeFrameId)
+      if (!session.selection && tilemapLayer.kind === 'tilemap' && tilemapCelSelected) {
+        const fullCanvasSelection: SelectionMask = { x: 0, y: 0, width: session.document.width, height: session.document.height }
+        const edit = flipTilemapSelection(session.document, tilemapLayer.id, activeTimeline.activeFrameId, fullCanvasSelection, axis)
+        if (edit) {
+          session.history.push({
+            label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'),
+            bytes: tilemapEditBytes(edit),
+            undo: () => { applyTilemapDocumentEdit(session.document, edit, 'before') },
+            redo: () => { applyTilemapDocumentEdit(session.document, edit, 'after') },
+            invalidation: edit.dirtyRect ? { kind: 'region', frameId: edit.frameId, rect: { ...edit.dirtyRect } } : { kind: 'full' },
+            affectedLayerIds: [tilemapLayer.id],
+            contentChanged: true,
+            requiresAnimationSync: false
+          })
+          touch(session, true, { kind: 'full' })
+          recordDocumentOperation(session)
+        }
+        return
+      }
       if (session.selection && tilemapLayer.kind === 'tilemap' && session.tilemapMode === 'paint') {
         const beforeSelection = cloneSelectionMask(session.selection)
         const afterSelection = flipSelectionMask(session.selection, axis)
@@ -12250,6 +12460,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const afterSelection = session.selection ? flipSelectionMask(session.selection, axis) : null
       const edit = session.selection ? flipSelection(session.document, session.selection, axis, layer) : flipLayer(session.document, axis)
       const entry = edit && commitPixelEdit(session.document, edit, axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'))
+      // Flipping a whole styled layer changes the source geometry under the
+      // style proxy. A point/region invalidation can leave the cached styled
+      // surface behind, especially when the style extends beyond the layer.
+      // Rebuild the complete composite for this operation.
+      const wholeStyledLayerFlip = !session.selection && hasEnabledLayerStyles(layer.layerStyles)
       const sameMask = beforeSelection?.mask === afterSelection?.mask
         || (beforeSelection?.mask?.length === afterSelection?.mask?.length && beforeSelection?.mask?.every((value, index) => value === afterSelection?.mask?.[index]))
       const selectionChanged = !sameMask
@@ -12259,6 +12474,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (entry) {
         session.history.push({ ...entry, bytes: entry.bytes + (beforeSelection?.mask?.byteLength ?? 0) + (afterSelection?.mask?.byteLength ?? 0), undo: () => { entry.undo(); session.selection = cloneSelectionMask(beforeSelection) }, redo: () => { entry.redo(); session.selection = cloneSelectionMask(afterSelection) } })
         session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
+        if (wholeStyledLayerFlip) invalidateSessionContent(session)
       } else if (selectionChanged) {
         session.history.push({ label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'), bytes: (beforeSelection?.mask?.byteLength ?? 0) + (afterSelection?.mask?.byteLength ?? 0), undo: () => { session.selection = cloneSelectionMask(beforeSelection) }, redo: () => { session.selection = cloneSelectionMask(afterSelection) } })
       }

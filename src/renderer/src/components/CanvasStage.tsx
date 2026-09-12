@@ -29,6 +29,7 @@ import { applySelectionTransformLayerState, captureAnimationFrameSelectionTransf
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { LIQUIFY_RESET_COMMAND_EVENT, type LiquifyResetCommandDetail } from '@/core/command-context'
 import { activeLayerMask, activePaintLayer, isToolAvailableForSession, selectedTransformLayersAreEditable, selectedTransformLayersForSession } from '@/store/workspace-session'
+import { animationLoopSectionAtFrame } from '@/core/animation-loop-sections'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
 import { DEFAULT_GRID_COLOR, ISO_VIEW_PREFERENCES_PREVIEW_EVENT, loadEditorPreferences, parseIsoViewPreferences, type BrushPreviewMode, type CheckerboardPreferences, type CursorScale, type EyedropperMagnifierStyle, type GridColorPreferences, type IsoViewPreferences, type OnionSkinPreferences, type RotationIndicatorPosition, type SelectionPreviewColorMode, type SymmetryAxisPreferences, type TabletPreferences, type WheelZoomMode, type ZoomToolDragMode } from '@/core/file-preferences'
 import { preserveViewOnViewportChange, type ViewportPlacement, clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotateViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint, type ViewGeometryState } from '@/core/view-geometry'
@@ -76,7 +77,7 @@ import { animationMaskOffsetsForLayerMove } from '@/store/workspace-layer-move'
 import { activeTilemapCelTarget, applyTilemapDocumentEdit, captureTilemapSelectionMove, previewTilemapSelectionMove, tilemapEditPreviewTilePixels, writeTilemapCell } from '@/core/tilemap-document'
 import { beginTilemapEdit, expandSelectionToTilemapCells, nearestTileRepeatEquivalent, normalizeSelectionForTileRepeatPreview, readTilesetTilePixels, tilemapCellBounds, tilemapCellIndexAtPoint, tilemapCellLineIndices, tilemapEditableSelectionAtPoint, tilemapSourcePointForCell, tilesetHasOnlyTransparentTile, tileRepeatContinuousPreviewPlacements, tileRepeatLinePoints, tileRepeatLineSegments, tileRepeatMappedPointForCopies, tileRepeatOffsetsForViewport, tileRepeatPreviewPlacements, wrapDocumentPointForTileRepeat, wrapSelectionMaskForTileRepeat } from '@/core/tilemap'
 import { freeTileInstanceAtPoint, freeTileInstanceBounds, freeTileSourceEditTargetAtPoint, freeTileSourceForInstance, freeTileSourcePointForInstance, freeTileSourceStampOrigin, freeTileTileIdForInstance } from '@/core/free-tile'
-import { activeFreeTileCelTarget, captureFreeTileSourceSnapshot, freeTileInstanceAtDocumentPoint, freeTileSourceForId } from '@/core/free-tile-document'
+import { activeFreeTileCelTarget, captureFreeTileSourceSnapshot, freeTileCelTargetAt, freeTileInstanceAtDocumentPoint, freeTileSourceForId } from '@/core/free-tile-document'
 import { createFreeTileSourceEditRaster, freeTileSelectionForInstanceEdit, freeTileSelectionFromEditRaster, freeTileSelectionToEditRaster, freeTileSourceSnapshotFromEditRaster, freeTileTransformTargetToEditRaster, selectionCoversRect, type FreeTileSourceEditRaster } from '@/core/free-tile-edit'
 import { openTextToolDialog, TEXT_TOOL_PREVIEW_EVENT, type TextToolPreviewDetail } from '@/components/text-tool-events'
 import { clearTilesetTilePreview, publishTilesetTilePreview } from '@/components/tileset-preview-events'
@@ -2619,7 +2620,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (!isolatedLayerMask && !timelineHidden && onionSkin.enabled && !currentSession.animationPlaying) {
         const timeline = currentSession.document.animation
         if (timeline && timeline.frames.length > 1) {
-          const refs = onionSkinFrameRefs(timeline, onionSkin.previousFrames, onionSkin.nextFrames)
+          const loopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
+          const refs = onionSkinFrameRefs(timeline, onionSkin.previousFrames, onionSkin.nextFrames, loopSection)
           onionSkinCacheRef.current.draw({
             context,
             document: currentSession.document,
@@ -5108,12 +5110,36 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const keyDown = (event: KeyboardEvent): void => {
       const eventTarget = event.target instanceof Element ? event.target : null
       const keyDisplayBlocked = Boolean(eventTarget?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop'))
-      const drawingGestureActive = ['draw', 'tile-draw', 'free-tile-draw', 'liquify', 'gradient', 'line', 'shape'].includes(inputRef.current.drag?.kind ?? '')
+      const keyDisplayTarget = eventTarget
+        ? `${eventTarget.tagName.toLowerCase()}${eventTarget.className && typeof eventTarget.className === 'string' ? `.${eventTarget.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`
+        : 'unknown'
       // Plain wheel shortcuts are represented as synthetic keyboard events and
       // stay hidden; a modifier + wheel is an intentional shortcut and remains
       // visible (for example Ctrl + ↑).
       const syntheticWheelWithModifier = !event.isTrusted && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
-      if ((event.isTrusted || syntheticWheelWithModifier) && keyDisplayEnabled && activeDocumentId === session.document.id && inputRef.current.pointer.visible && !event.repeat && !keyDisplayBlocked && !drawingGestureActive) {
+      const keyDisplayReasons: string[] = []
+      if (!event.isTrusted && !syntheticWheelWithModifier) keyDisplayReasons.push('untrusted-event')
+      if (!keyDisplayEnabled) keyDisplayReasons.push('disabled')
+      if (activeDocumentId !== session.document.id) keyDisplayReasons.push('inactive-document')
+      if (!inputRef.current.pointer.visible) keyDisplayReasons.push('pointer-hidden')
+      if (event.repeat) keyDisplayReasons.push('repeat')
+      if (keyDisplayBlocked) keyDisplayReasons.push('blocked-target')
+      const keyDisplayAccepted = keyDisplayReasons.length === 0
+      recordRuntimeDiagnostic('operation-stage', 'key-display.keydown', {
+        key: event.key,
+        code: event.code,
+        trusted: event.isTrusted,
+        repeat: event.repeat,
+        enabled: keyDisplayEnabled,
+        activeDocument: activeDocumentId === session.document.id,
+        pointerVisible: inputRef.current.pointer.visible,
+        blocked: keyDisplayBlocked,
+        target: keyDisplayTarget,
+        defaultPrevented: event.defaultPrevented,
+        accepted: keyDisplayAccepted,
+        rejectedBy: keyDisplayReasons.join(',')
+      })
+      if (keyDisplayAccepted) {
         const keyId = event.key
         if (keyDisplayGestureRef.current.size === 0) keyDisplayWheelRef.current = false
         keyDisplayHeldRef.current.add(keyId)
@@ -5310,19 +5336,33 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       inputRef.current.syncModifierKeys(event)
       keyDisplayHeldRef.current.delete(event.key)
       const wheelOnlyModifiers = keyDisplayWheelRef.current && Array.from(keyDisplayGestureRef.current).every((key) => key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt')
-      if (keyDisplayHeldRef.current.size === 0 && keyDisplayGestureRef.current.size > 0 && !wheelOnlyModifiers) {
-        const combo = Array.from(keyDisplayGestureRef.current)
+      const pendingKeys = Array.from(keyDisplayGestureRef.current)
+      const shouldEmitKeyDisplay = keyDisplayHeldRef.current.size === 0 && pendingKeys.length > 0 && !wheelOnlyModifiers
+      let emittedCombo = ''
+      if (shouldEmitKeyDisplay) {
+        const combo = pendingKeys
           .sort((left, right) => {
             const rank = (key: string): number => key === 'Control' || key === 'Meta' ? 0 : key === 'Shift' ? 1 : key === 'Alt' ? 2 : 3
             return rank(left) - rank(right)
           })
           .map((heldKey) => keyDisplayLabel(heldKey))
+        emittedCombo = combo.join(' + ')
         const id = ++keyDisplayIdRef.current
-        setKeyDisplayEntries((current) => [...current, { id, label: combo.join(' + ') }].slice(-10))
+        setKeyDisplayEntries((current) => [...current, { id, label: emittedCombo }].slice(-10))
         window.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), keyDisplayDuration)
         keyDisplayGestureRef.current.clear()
         keyDisplayActiveEntryRef.current = null
       }
+      recordRuntimeDiagnostic('operation-stage', 'key-display.keyup', {
+        key: event.key,
+        code: event.code,
+        enabled: keyDisplayEnabled,
+        heldCount: keyDisplayHeldRef.current.size,
+        pendingCount: pendingKeys.length,
+        wheelOnlyModifiers,
+        emitted: shouldEmitKeyDisplay,
+        combo: emittedCombo
+      })
       if (keyDisplayHeldRef.current.size === 0) keyDisplayWheelRef.current = false
       const temporaryPanReleased = shortcutReleasedByBindings(event, shortcutBindingsFor(shortcuts, 'tool.hand.quick'))
       if (lineConnectionConfigured && !lineConnectionActive(event)) updateShiftPreview(false)
@@ -7354,9 +7394,28 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const copyLayerHeld = modifierActive(event.nativeEvent, 'copyLayerOnDrag')
     const prepareFreeTileSourceEdit = (): { source: NonNullable<ReturnType<typeof freeTileSourceForId>>; instance: FreeTileInstance; placementEdit: ReturnType<typeof state.beginFreeTilePlacement>; sourceEdit: FreeTileSourceEditRaster; selection: SelectionMask | null; sourceRegion: SelectionRect } | null => {
       if (editableLayer.kind !== 'free-tile' || session.freeTileMode !== 'edit') return null
-      const target = activeFreeTileCelTarget(session.document)
+      let activeTarget = activeFreeTileCelTarget(session.document)
+      // In edit mode each animation cel owns its own instance container. If
+      // the pointer is over an instance belonging to another free-tile layer,
+      // resolve that cel instead of forcing all edits into the active layer.
+      const crossLayerTarget = session.document.layers
+        .filter((candidate) => candidate.kind === 'free-tile' && candidate.id !== activeTarget?.layer.id)
+        .map((candidate) => freeTileCelTargetAt(session.document, candidate.id, ensureAnimationDocument(session.document).activeFrameId))
+        .find((candidate) => candidate && freeTileInstanceAtDocumentPoint(candidate, point.x, point.y)) ?? null
+      let target = crossLayerTarget ?? activeTarget
+      if (!target) {
+        // A newly selected animation frame may not have a cel yet. The store
+        // creates its free-tile cel lazily so every frame keeps free-tile
+        // semantics while sharing the layer's source tileset.
+        if (!state.beginFreeTilePlacement()) return null
+        activeTarget = activeFreeTileCelTarget(session.document)
+        target = activeTarget
+      }
       if (!target) return null
-      const selectedSource = freeTileSourceForId(session.document, target.layer, session.selectedTilesetId) ?? target.sources[0] ?? null
+      const hitInstance = freeTileInstanceAtDocumentPoint(target, point.x, point.y)
+      const selectedSource = (hitInstance ? freeTileSourceForInstance(target.sources, hitInstance) : null)
+        ?? freeTileSourceForId(session.document, target.layer, session.selectedTilesetId)
+        ?? target.sources[0] ?? null
       if (!selectedSource || selectedSource.visible === false) return null
       const sourceLayer = target.layer.freeTileSources?.find((candidate) => candidate.id === selectedSource.id)
       if (sourceLayer?.locked) return null

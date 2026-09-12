@@ -3319,7 +3319,7 @@ body .modal.confirm-modal-bulk-actions > footer > button:last-child { grid-colum
 .home-feature-banner-dot.active { background: #fff; opacity: .2; }
 .home-feature-banner-art-frame:hover::after, .home-feature-banner-art-frame:focus-within::after { opacity: 1; }
 .home-feature-banner-art-frame:hover :is(.home-feature-banner-title, .home-feature-banner-author, .home-feature-banner-dots), .home-feature-banner-art-frame:focus-within :is(.home-feature-banner-title, .home-feature-banner-author, .home-feature-banner-dots) { opacity: 1; }
-.start-screen-layout { display: grid; grid-template-columns: 222px minmax(0, 1fr); align-content: start; align-items: stretch; gap: var(--ui-space-4); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; padding: var(--ui-space-5) 0 var(--ui-space-5); }
+.start-screen-layout { display: grid; grid-template-columns: 222px minmax(0, 1fr); align-content: stretch; align-items: stretch; gap: var(--ui-space-4); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; padding: var(--ui-space-5) 0 var(--ui-space-5); }
 .start-actions { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); align-content: stretch; gap: var(--ui-space-4); height: 100%; min-height: 0; overflow: hidden; }
 .start-actions h2 { margin: 0 0 var(--ui-space-2); color: var(--theme-text-primary); font-size: var(--ui-font-regular); font-weight: 600; }
 .start-action { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: var(--ui-space-4); width: 100%; min-height: 54px; padding: var(--ui-space-4); text-align: left; }

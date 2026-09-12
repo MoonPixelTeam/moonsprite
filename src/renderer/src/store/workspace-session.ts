@@ -514,6 +514,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationPlaybackLoopSectionId: null,
     animationPlaybackLoopIteration: 0,
     animationPlaybackLoopSectionRepeatIndefinitely: false,
+    animationPlaybackLoopStack: [],
     animationPlaybackTagCycleSectionId: null,
     animationReturnToStart: editorPreferences.animationReturnToStart,
     timelineActiveContext: {
