@@ -8,6 +8,7 @@ import { translatedSelectionRect } from '@/core/canvas-input'
 import { normalizeSelectionForTileRepeatPreview, tileRepeatDocumentOffsets } from '@/core/tilemap'
 import { initialDocumentCompositePending, initialDocumentCompositeSurface, registerInitialDocumentCompositeSurface } from '@/core/initial-document-composite'
 import { deviceAlignedCanvasRect, deviceAlignedDocumentRect, deviceAlignedPixelRuns, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
+import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import type { CanvasPreviewInvalidation, CanvasPreviewSelection } from '@/core/canvas-preview-lifecycle'
 import type { RasterContext2D } from './canvas-selection-renderer'
 
@@ -561,7 +562,10 @@ export class CanvasCompositeCache {
     this.compositeCache.invalidateLiveSourceCaches()
     this.compositeCache.invalidateStyleSources(document, selection, affectedOwnerIds)
     const expanded = expandLayerStyleInvalidationRect(document, selection, affectedOwnerIds)
-    this.livePreviewPending.add(`${document.id}:${frameId}`)
+    // The document has already changed, but the cached surface has not been
+    // painted yet. Keep this as a normal dirty region so live strokes remain
+    // visible while the pointer is down. `retainLivePreview` is the explicit
+    // opt-in used only after a preview surface has actually been painted.
     this.invalidateRect(expanded, document.width, document.height, frameId)
     const previous = this.sourceDirtyHints.get(frameId)
     const next = { ...selection }
@@ -578,6 +582,12 @@ export class CanvasCompositeCache {
         })()
       : next
     this.sourceDirtyHints.set(frameId, { rect, used: false })
+    // Live edits keep the content revision stable until pointer-up. Mark the
+    // existing surface directly so the next frame consumes the dirty region
+    // even though the revision-based invalidation path is not involved yet.
+    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
+      surface.pendingDirtyRects = [...(surface.pendingDirtyRects ?? []), expanded]
+    }
   }
 
   consumePreviewInvalidation(frameId = this.lastDrawnFrameId): CanvasPreviewInvalidation | null {
@@ -603,6 +613,7 @@ export class CanvasCompositeCache {
       && contentInvalidation.revision === contentRevision
       && this.lastConsumedFullContentRevision !== contentRevision) {
       this.lastConsumedFullContentRevision = contentRevision
+      this.invalidatedInitialDocuments.add(document)
       this.invalidateSurface()
     }
     const effectiveFrameId = frameId ?? document.animation?.activeFrameId ?? 'static'
@@ -616,6 +627,12 @@ export class CanvasCompositeCache {
       this.invalidateSurface()
     }
     const frameKey = `${namespace}:${effectiveFrameId}`
+    // Animation cels are materialized after the document shell can already
+    // have produced an initial composite. Never reuse that early snapshot for
+    // an animated document: it may be blank even though the active cel has
+    // since been loaded, which otherwise makes the canvas recover only after
+    // an unrelated visibility toggle.
+    if (document.animation && contentRevision === 0) this.invalidatedInitialDocuments.add(document)
     const liveSourceDirtyHint = this.sourceDirtyHints.get(effectiveFrameId)
     const liveSourceDirtyRect = liveSourceDirtyHint?.rect
     // A single draw pass can render several tile-repeat copies. Keep the hint
@@ -1654,11 +1671,16 @@ export class CanvasCompositeCache {
   }
 
   private drawSurface(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, canvasWidth: number, canvasHeight: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], sourceDirtyRect: SelectionRect | undefined, imageSmoothingEnabled: boolean, isolatedLayerMask?: LayerMask, fastViewPreview = false, animationPlayback = false, animationConsumerOnly = false, render = true): CompositeSurface {
+    // Layer styles depend on the current cel surface and cannot use the
+    // playback shared/GPU snapshot safely across frame swaps.
+    const animationFastPath = animationPlayback
+      && !document.layers.some((layer) => hasEnabledLayerStyles(layer.layerStyles))
+      && !document.groups.some((group) => hasEnabledLayerStyles(group.layerStyles))
     let surface = this.surfaces.get(key)
     // Playback often starts after the editor already rendered the current
     // frame through the normal path. Publish that surface immediately so the
     // first navigation event cannot trigger a redundant frame composite.
-    if (surface && animationPlayback && !isolatedLayerMask && !view.relativeLuminance
+    if (surface && animationFastPath && !isolatedLayerMask && !view.relativeLuminance
       && !sharedAnimationCompositeSurface(document, frameId, contentRevision)) {
       rememberSharedAnimationComposite(document, frameId, contentRevision, surface.canvas)
     }
@@ -1667,9 +1689,12 @@ export class CanvasCompositeCache {
       && invalidation?.revision === contentRevision
       && invalidation.fromRevision === surface.revision
     const liveKey = `${document.id}:${frameId}`
+    // A live stroke can enqueue several invalidation rectangles while the
+    // document revision is still unchanged. The presence of a live-preview
+    // marker alone must not suppress those redraws; only an explicitly
+    // retained preview for this committed revision is authoritative.
     const livePreviewAlreadyPainted = !isolatedLayerMask && this.livePreviewPending.has(liveKey)
-      && (surface?.revision === contentRevision || (canApplyInvalidation && invalidation?.kind === 'region'
-        && this.livePreviewCommitRevisions.get(liveKey) === contentRevision))
+      && this.livePreviewCommitRevisions.get(liveKey) === contentRevision
     if (surface && surface.revision !== contentRevision) {
       if (canApplyInvalidation && invalidation?.kind === 'region') {
         if (!livePreviewAlreadyPainted && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId) && invalidation.rect) {
@@ -1687,14 +1712,14 @@ export class CanvasCompositeCache {
         && !this.invalidatedInitialDocuments.has(document)
         ? initialDocumentCompositeSurface(document, frameId)
         : null
-      const exactSharedAnimationSurface = !initialSurface && animationPlayback && !isolatedLayerMask && !view.relativeLuminance
+      const exactSharedAnimationSurface = !initialSurface && animationFastPath && !isolatedLayerMask && !view.relativeLuminance
         ? sharedAnimationCompositeSurface(document, frameId, contentRevision)
         : null
       const sharedAnimationSurface = exactSharedAnimationSurface ?? (animationConsumerOnly
         ? latestSharedAnimationCompositeSurface(document, contentRevision)
         : null)
       const transientFallback = Boolean(!exactSharedAnimationSurface && sharedAnimationSurface)
-      const animationSurface = !initialSurface && !sharedAnimationSurface && animationPlayback && !animationConsumerOnly && !isolatedLayerMask && !view.relativeLuminance
+      const animationSurface = !initialSurface && !sharedAnimationSurface && animationFastPath && !animationConsumerOnly && !isolatedLayerMask && !view.relativeLuminance
         ? this.createAnimationCompositeCanvas(document, contentRevision, 0, 0, document.width, document.height)
         : null
       const canvas = initialSurface ?? sharedAnimationSurface ?? animationSurface ?? new OffscreenCanvas(document.width, document.height)
@@ -1716,7 +1741,7 @@ export class CanvasCompositeCache {
         canvas.getContext('2d')?.putImageData(imageData(pixels, document.width, document.height), 0, 0)
         if (!isolatedLayerMask && !view.relativeLuminance && contentRevision === 0 && !this.invalidatedInitialDocuments.has(document)) registerInitialDocumentCompositeSurface(document, canvas, frameId)
       }
-      if (animationPlayback && !animationConsumerOnly && !isolatedLayerMask && !view.relativeLuminance) rememberSharedAnimationComposite(document, frameId, contentRevision, canvas)
+      if (animationFastPath && !animationConsumerOnly && !isolatedLayerMask && !view.relativeLuminance) rememberSharedAnimationComposite(document, frameId, contentRevision, canvas)
       surface = { canvas, revision: contentRevision, transient: transientFallback }
       if (!transientFallback) this.remember(this.surfaces, key, surface)
       this.dirtyRects.delete(frameId)
@@ -1815,6 +1840,9 @@ export class CanvasCompositeCache {
   }
 
   private drawRegion(context: RasterContext2D, document: SpriteDocument, view: ViewState, originX: number, originY: number, fromX: number, fromY: number, toX: number, toY: number, key: string, frameId: string, contentRevision: number, invalidation: DrawCompositeOptions['contentInvalidation'], sourceDirtyRect: SelectionRect | undefined, imageSmoothingEnabled = false, isolatedLayerMask?: LayerMask, fastViewPreview = false, animationPlayback = false, render = true): CompositeRegionSurface | null {
+    const animationFastPath = animationPlayback
+      && !document.layers.some((layer) => hasEnabledLayerStyles(layer.layerStyles))
+      && !document.groups.some((group) => hasEnabledLayerStyles(group.layerStyles))
     const x = Math.max(0, Math.floor(fromX))
     const y = Math.max(0, Math.floor(fromY))
     const right = Math.min(document.width, Math.ceil(toX))
@@ -1825,12 +1853,10 @@ export class CanvasCompositeCache {
     let region = this.regions.get(key)
     const liveKey = `${document.id}:${frameId}`
     const livePreviewAlreadyPainted = !isolatedLayerMask && this.livePreviewPending.has(liveKey)
-      && (region?.revision === contentRevision || (invalidation?.kind === 'region'
-        && invalidation.fromRevision === region?.revision && invalidation.revision === contentRevision
-        && this.livePreviewCommitRevisions.get(liveKey) === contentRevision))
+      && this.livePreviewCommitRevisions.get(liveKey) === contentRevision
     const sameGeometry = region && region.x === x && region.y === y && region.width === width && region.height === height
     if (!sameGeometry) {
-      const animationSurface = animationPlayback && !isolatedLayerMask && !view.relativeLuminance
+      const animationSurface = animationFastPath && !isolatedLayerMask && !view.relativeLuminance
         ? this.createAnimationCompositeCanvas(document, contentRevision, x, y, width, height)
         : null
       const canvas = animationSurface ?? new OffscreenCanvas(width, height)

@@ -1,7 +1,6 @@
 export interface EyedropperQuickSelectContext {
   enabled: boolean
-  key: string
-  altHeld: boolean
+  shortcutMatched: boolean
   repeat: boolean
   pointerVisible: boolean
   activeDocument: boolean
@@ -13,13 +12,13 @@ export interface EyedropperQuickSelectContext {
 }
 
 /**
- * The optional Alt-only eyedropper is a one-shot action. It must not steal Alt
- * from an in-progress canvas gesture or fire repeatedly while the key is held.
+ * The optional quick eyedropper is a one-shot action. It must not steal a
+ * configured shortcut from an in-progress canvas gesture or fire repeatedly
+ * while the key is held.
  */
 export const shouldQuickSelectEyedropper = (context: EyedropperQuickSelectContext): boolean =>
   context.enabled
-  && context.key === 'Alt'
-  && context.altHeld
+  && context.shortcutMatched
   && !context.repeat
   && context.pointerVisible
   && context.activeDocument

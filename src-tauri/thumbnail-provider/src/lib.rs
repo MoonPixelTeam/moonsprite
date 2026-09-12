@@ -36,6 +36,7 @@ use zip::ZipArchive;
 
 const MAX_PROJECT_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 64 * 1024 * 1024;
+const APPLICATION_ICON_PNG: &[u8] = include_bytes!("../../icons/128x128.png");
 static ACTIVE_OBJECTS: AtomicU32 = AtomicU32::new(0);
 static SERVER_LOCKS: AtomicU32 = AtomicU32::new(0);
 
@@ -126,7 +127,31 @@ impl ThumbnailProvider {
             .min(requested_size as f64 / source_height as f64);
         let width = ((source_width as f64 * scale).round() as u32).max(1);
         let height = ((source_height as f64 * scale).round() as u32).max(1);
-        let resized = image::imageops::resize(&source, width, height, FilterType::Nearest);
+        let mut resized = image::imageops::resize(&source, width, height, FilterType::Nearest);
+        let badge_size = (requested_size / 4).clamp(16, 48).min(width).min(height);
+        let badge = image::imageops::resize(
+            &image::load_from_memory_with_format(APPLICATION_ICON_PNG, ImageFormat::Png)
+                .map_err(|_| com_error(E_FAIL))?
+                .into_rgba8(),
+            badge_size,
+            badge_size,
+            FilterType::Nearest,
+        );
+        let badge_margin = (badge_size / 12).max(2);
+        image::imageops::overlay(
+            &mut resized,
+            &badge,
+            i64::from(
+                width
+                    .saturating_sub(badge_size)
+                    .saturating_sub(badge_margin),
+            ),
+            i64::from(
+                height
+                    .saturating_sub(badge_size)
+                    .saturating_sub(badge_margin),
+            ),
+        );
 
         let header = BITMAPINFOHEADER {
             biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,

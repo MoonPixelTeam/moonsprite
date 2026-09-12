@@ -51,6 +51,7 @@ describe('split layer styles into editable pixels', () => {
     if (part === 'innerGlow' || part === 'innerStroke') expect(readLayerColorAt(document, effect, 3, 3).a).toBeLessThan(255)
     if (part === 'colorOverlay') expect(readLayerColorAt(document, effect, 2, 2)).toEqual({ r: 255, g: 0, b: 0, a: 255 })
     expect(readLayerColorAt(document, effect, -3, -3).a).toBe(0)
+    if (part === 'outerStroke') expect(readLayerColorAt(document, effect, effect.offsetX, effect.offsetY).a).toBe(0)
     // It is an ordinary writable pixel layer, not a live effect or copied base.
     writeLayerColor(document, effect, 0, { r: 12, g: 34, b: 56, a: 255 })
     expect(readLayerColorAt(document, effect, effect.offsetX, effect.offsetY)).toEqual({ r: 12, g: 34, b: 56, a: 255 })

@@ -914,7 +914,15 @@ const queueTimelapseCapture = (session: DocumentSession): Promise<void> => {
   tracked = previous.catch(() => undefined).then(async () => {
     await commitPreparedTimelapseSnapshot(document, prepared, () => (timelapseCaptureGenerations.get(document) ?? 0) === generation)
     const currentSessions = useWorkspace.getState().sessions
-    if (currentSessions.some((current) => current.document === document)) useWorkspace.setState({ sessions: [...currentSessions] })
+    const currentSession = currentSessions.find((current) => current.document === document)
+    if (currentSession) {
+      // The PNG encoding finishes asynchronously, after the drawing
+      // transaction. Make the newly appended timelapse snapshot a real
+      // document change so a save performed immediately afterwards cannot
+      // reuse the previous clean revision and omit the recording.
+      currentSession.revision += 1
+      useWorkspace.setState({ sessions: [...currentSessions] })
+    }
   }).finally(() => {
     if (timelapseCaptureTasks.get(document) === tracked) timelapseCaptureTasks.delete(document)
   })
@@ -1546,6 +1554,7 @@ const retargetAnimationLoopPlaybackAtFrame = (session: DocumentSession, frameId:
 }
 
 const activateAnimationPlaybackFrame = (session: DocumentSession, frameId: string): boolean => {
+  const fromContentRevision = session.contentRevision
   if (!activateAnimationFrame(session.document, frameId)) return false
   const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0
     || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0
@@ -1557,6 +1566,12 @@ const activateAnimationPlaybackFrame = (session: DocumentSession, frameId: strin
   session.lastPencilPoint = null
   session.lastEraserPoint = null
   session.revision += 1
+  // Playback swaps the live layer surfaces in place.  Treat that swap as a
+  // full composite change so the canvas cache cannot keep presenting the
+  // previous frame (or a blank surface) until an unrelated visibility toggle
+  // happens to invalidate it.
+  session.contentRevision += 1
+  session.contentInvalidation = { kind: 'full', fromRevision: fromContentRevision, revision: session.contentRevision }
   return true
 }
 
@@ -7502,7 +7517,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       get().mutateActive((current) => {
         current.animationPlaybackLoopIteration = step.completedIterations
-        if (!activateAnimationFrame(current.document, step.frameId)) return
+        if (!activateAnimationPlaybackFrame(current, step.frameId)) return
         const preserveMaskContext = (current.selectedAnimationMaskRowKeys?.length ?? 0) > 0
           || (current.selectedAnimationMaskCellKeys?.length ?? 0) > 0
           || current.activeLayerMaskId !== null

@@ -1814,6 +1814,12 @@ export default function App() {
         if (allowRepeat || !event.repeat) command()
         return true
       }
+      const adjustBrushSize = (delta: number): void => {
+        if (!session) return
+        if (session.tool === 'airbrush') workspace.setAirbrushScatterRadius(session.airbrushScatterRadius + delta)
+        else if (session.tool === 'liquify') workspace.setLiquifyRadius(session.liquifyRadius + delta)
+        else workspace.setBrushSize(session.brushSize + delta)
+      }
       const viewZoomShortcut = ([
         ['viewZoom100', 1],
         ['viewZoom200', 2],
@@ -2343,8 +2349,8 @@ export default function App() {
         else if (target === 'selection' && session?.selection) workspace.deleteSelection()
         return
       }
-      if (runCommand('brushSizeDecrease', () => workspace.setBrushSize((session?.brushSize ?? 1) - 1), true)) return
-      if (runCommand('brushSizeIncrease', () => workspace.setBrushSize((session?.brushSize ?? 1) + 1), true)) return
+      if (runCommand('brushSizeDecrease', () => adjustBrushSize(-1), true)) return
+      if (runCommand('brushSizeIncrease', () => adjustBrushSize(1), true)) return
       const browserShortcut = commandKey && (
         ['p', 'r', 'l', 'u', '0', '+', '=', '-'].includes(key)
         || (event.shiftKey && ['i', 'j', 'c'].includes(key))

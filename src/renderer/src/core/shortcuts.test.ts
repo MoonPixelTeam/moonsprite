@@ -110,6 +110,9 @@ describe('shortcut persistence boundary', () => {
     expect(shortcutMatchesEvent({ key: 'S', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent, DEFAULT_SHORTCUTS.quickOutline)).toBe(true)
     expect(shortcutMatchesEvent({ key: 's', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.outlineSelectionInside)).toBe(true)
     expect(shortcutText({ key: 'k', code: 'KeyK', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent)).toBe('Win+K')
+    expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(false)
+    expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, 'Ctrl+R')).toBe(true)
+    expect(shortcutMatchesEvent({ key: 'Alt', code: 'AltLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(true)
   })
 
 

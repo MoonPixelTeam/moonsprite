@@ -680,8 +680,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
   toolIconScale: 1,
-  uiMotionLevel: 'subtle',
-  animationsEnabled: true,
+  uiMotionLevel: 'off',
+  animationsEnabled: false,
   animationPlaybackRate: 1,
   animationPlaybackMode: null,
   animationReturnToStart: false,
@@ -1146,9 +1146,10 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
   const get = (key: string): string | null => readStoredString(key, storage)
   const theme = effectiveThemeColors(loadThemePreferences(storage), get, storage)
   const storedMotionLevel = get(UI_MOTION_LEVEL_PREFERENCE_KEY)
+  const legacyAnimationsEnabled = get(ANIMATIONS_ENABLED_PREFERENCE_KEY)
   const uiMotionLevel = storedMotionLevel !== null
     ? parseUiMotionLevel(storedMotionLevel)
-    : get(ANIMATIONS_ENABLED_PREFERENCE_KEY) === 'false' ? 'off' : DEFAULT_EDITOR_PREFERENCES.uiMotionLevel
+    : legacyAnimationsEnabled === 'false' ? 'off' : legacyAnimationsEnabled === 'true' ? 'subtle' : DEFAULT_EDITOR_PREFERENCES.uiMotionLevel
   return {
     language: parseAppLocale(get(LANGUAGE_PREFERENCE_KEY)),
     uiScale: parseUiScale(get(UI_SCALE_PREFERENCE_KEY)),

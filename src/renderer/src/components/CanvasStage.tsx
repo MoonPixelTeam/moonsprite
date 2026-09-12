@@ -40,7 +40,7 @@ import { advanceIsoAlignedStrokeSegment, isoGridLineSegment, isoGuidePixelPatter
 import { cloneSelection, combineSelection, lassoSelection, magicWandSelection, polygonSelection, rasterLinePoints, rectSelection, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadTransform, shearTransformedSelection, shiftSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad, type SelectionShearTransform } from '@/core/selection'
 import { CANVAS_RESIZE_PREVIEW_EVENT, canvasResizePreviewClippedRects, canvasResizePreviewExposedRects, drawCanvasResizePreviewLayers } from '@/core/canvas-resize-preview'
 import { SLICE_PREVIEW_EVENT } from '@/core/slice-preview'
-import { deriveShortcutConflicts, dispatchWheelShortcutInput, loadShortcutBindings, matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutMatchesAnyEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
+import { deriveShortcutConflicts, dispatchWheelShortcutInput, loadShortcutBindings, matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { beginCanvasColorSampling, canvasColorSamplingActiveFor, canvasColorSamplingIntentActive, clearCanvasColorSamplingIntentFor, endCanvasColorSampling, registerCanvasColorSamplingSurface, routeCanvasColorSampling, routeCanvasColorSamplingIntent, setCanvasColorSamplingIntent } from '@/core/canvas-color-sampling'
 import { CanvasInputState, PointerPressureAdapter, appendCanvasPathStep, beginBrushSpeedTracking, beginTemporaryCenteredMarqueeResize, brushLineConnectionOverridesTemporaryMove, canvasGestureForPreview, centerMarqueeBoundsAtCreationPoint, centeredShapeBounds, clampCanvasZoom as clampZoom, coalescedPointerClientPoints, constrainFreeTransformCornerToAspectRatio, constrainedTranslation, createCanvasPanDrag, createMarqueeResizeStart, deferredSelectionCommitInvalidationRects, deferredSelectionPreviewMaterializationRequired, deferredSelectionPreviewOwner, drawingSizePreviewTargetForDrag, floatingSelectionCopyMode, isCanvasViewNavigationDrag, isCanvasViewNavigationTool, isPendingCanvasPathGesture, isQuickSelectionSecondPress, layerMovePreviewActive, marqueeSelectionCommit, normalizeCanvasWheelDelta, paletteSamplingShortcutStartsPrimarySample, playbackCanvasNavigationTool, polygonLassoClosedPathPoints, polygonLassoPreviewPoints, quickSelectCellDragBounds, redoCanvasPathStep, registerPendingCanvasGestureHistory, resizeRotatedMarqueeBounds, resizeSelectionBounds, resizeTransformedSelectionBounds, resolveMarqueeModifierMode, restoreCanvasDragAfterPan, restoreTemporaryCenteredMarqueeResize, revertCancelledCanvasDragPixelChanges, sampledForegroundColorToAdd, selectionGestureMoved, selectionHitStartsContentMove, selectionInteractionHit, selectionMarqueeUsesConstraint, selectionMovePointerDelta, selectionOverlayFrameForDrag, selectionPivotAfterResize, selectionPivotAtDragPoint, selectionPivotHit, selectionResizeHit, selectionRotationAngle, selectionFreeTransformContentHit, selectionFreeTransformHit, selectionTransformedInteractionHit, selectionTransformDeferredPreviewEnabled, selectionTransformGeometrySource, selectionTransformModifiers, selectionTransformPreviewChanged, shapeBounds, shouldClosePolygonLasso, shouldPreserveLineAnchorAfterNoopDrag, shouldRestartFloatingSelectionForCopy, shouldReuseFloatingSelectionSourceForCopy, shouldStartCanvasPan, snapSelectionRotation, steppedCanvasZoom as steppedZoom, temporaryMoveForCanvasInteractionAllowed, temporaryMoveSuppressesToolPreview, temporaryMoveToolAllowed, temporaryTransformOffset, translatedSelectionRect, translatedSelectionTransformPreviewMask, undoActiveCanvasPathGesture, updateBrushSpeedTracking, viewDragClientDelta, wheelCanvasZoom, zoomDragModeForModifiers, zoomDragTarget, type CanvasDragState as DragState, type CanvasPoint as Point, type QuickSelectionPress, type SelectionHandle, type SelectionHit, type SelectionRotationHandle, type SelectionShearHandle } from '@/core/canvas-input'
@@ -368,6 +368,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const eyedropperPointerLightRef = useRef<HTMLImageElement>(null)
   const eyedropperOriginalColorRef = useRef<RgbaColor | null>(null)
   const quickEyedropperOriginalColorRef = useRef<RgbaColor | null>(null)
+  const quickEyedropperActiveRef = useRef(false)
   const quickEyedropperSuppressedRef = useRef(false)
   const canvasColorSampleAtClientPointRef = useRef<(clientX: number, clientY: number) => RgbaColor | null>(() => null)
   const [rotationIndicatorPosition, setRotationIndicatorPosition] = useState<RotationIndicatorPosition>(() => loadEditorPreferences().rotationIndicatorPosition)
@@ -4731,7 +4732,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       recordWorkspaceResizeStage('main', performance.now() - drawStartedAt)
       recordWorkspaceResizeContext({ width: document.width, height: document.height, layers: document.layers.length, zoom: view.zoom })
     }
-    performanceProbe?.recordDraw(performance.now() - drawStartedAt)
+    const drawDuration = drawStartedAt ? performance.now() - drawStartedAt : 0
+    if (drawDuration >= 50) recordRuntimeDiagnostic('operation-stage', 'canvas.stage.draw', {
+      documentId: document.id,
+      durationMs: Math.round(drawDuration * 10) / 10,
+      width: document.width,
+      height: document.height,
+      layers: document.layers.length,
+      contentRevision: currentSession.contentRevision,
+      active: activeDocumentId === session.document.id
+    })
+    performanceProbe?.recordDraw(drawDuration)
   }
 
   const scheduleDraw = (): void => {
@@ -5088,8 +5099,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (drag.liquifyMode === nextMode) return
       drag.liquifyMode = nextMode
     }
+    const quickEyedropperShortcuts = shortcutBindingsFor(shortcuts, 'tool.eyedropper.quick')
+    const quickEyedropperShortcutMatches = (event: KeyboardEvent): boolean => quickEyedropperShortcuts.some((shortcut) =>
+      !shortcutBindingBlocked(shortcutConflictState, 'tool.eyedropper.quick', shortcut)
+      && shortcutMatchesEvent(event, shortcut)
+    )
     const cancelQuickEyedropperForChord = (): void => {
-      if (!eyedropperQuickSelect || !inputRef.current.altHeld) return
+      if (!eyedropperQuickSelect || !quickEyedropperActiveRef.current) return
+      quickEyedropperActiveRef.current = false
       quickEyedropperSuppressedRef.current = true
       const original = quickEyedropperOriginalColorRef.current
       quickEyedropperOriginalColorRef.current = null
@@ -5105,7 +5122,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }
     }
     const quickSelectChordKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Alt') cancelQuickEyedropperForChord()
+      if (!quickEyedropperShortcutMatches(event)) cancelQuickEyedropperForChord()
     }
     const keyDown = (event: KeyboardEvent): void => {
       const eventTarget = event.target instanceof Element ? event.target : null
@@ -5275,22 +5292,21 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         }
         if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
         else scheduleDraw()
-      } else if (event.key === 'Alt' && inputRef.current.pointer.visible) {
-        // App-level shortcut handling prevents the native Alt menu before this
-        // listener runs. That is expected and must not suppress quick sampling.
+      } else if (quickEyedropperShortcutMatches(event) && inputRef.current.pointer.visible) {
         const interactionBlocked = Boolean(target?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop, .themed-select'))
           || Boolean(document.querySelector('.modal-backdrop'))
         event.preventDefault()
         if (shouldQuickSelectEyedropper({
           enabled: eyedropperQuickSelect,
-          key: event.key,
-          altHeld: inputRef.current.altHeld,
+          shortcutMatched: true,
           repeat: event.repeat,
           pointerVisible: inputRef.current.pointer.visible,
           activeDocument: useWorkspace.getState().activeId === session.document.id,
           dragActive: Boolean(inputRef.current.drag),
           spaceHeld: inputRef.current.spaceHeld,
-          modifierChordActive: event.ctrlKey || event.metaKey || event.shiftKey,
+          // An exact shortcut match already accounts for the configured
+          // modifiers, so these are not an unrelated chord here.
+          modifierChordActive: false,
           canvasContextBlocked: quickEyedropperSuppressedRef.current
             || session.tool === 'move'
             || session.animationPlaying
@@ -5298,6 +5314,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             || Boolean(canvasResizePreviewRef.current),
           interactionBlocked
         })) {
+          quickEyedropperActiveRef.current = true
           const sampled = canvasColorSampleAtClientPointRef.current(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY)
           const workspace = useWorkspace.getState()
           const liveSession = workspace.sessions.find((item) => item.document.id === session.document.id)
@@ -5365,7 +5382,16 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       })
       if (keyDisplayHeldRef.current.size === 0) keyDisplayWheelRef.current = false
       const temporaryPanReleased = shortcutReleasedByBindings(event, shortcutBindingsFor(shortcuts, 'tool.hand.quick'))
+      const quickEyedropperReleased = shortcutReleasedByBindings(event, quickEyedropperShortcuts)
       if (lineConnectionConfigured && !lineConnectionActive(event)) updateShiftPreview(false)
+      if (quickEyedropperReleased && quickEyedropperActiveRef.current) {
+        quickEyedropperActiveRef.current = false
+        flushEyedropperSampleColor()
+        quickEyedropperOriginalColorRef.current = null
+        quickEyedropperSuppressedRef.current = false
+        eyedropperOriginalColorRef.current = null
+        hideEyedropperMagnifier()
+      }
       if (event.key === 'Alt' || event.key === 'Control' || event.key === 'Shift') {
         if (event.key === 'Alt') { event.preventDefault(); inputRef.current.altHeld = false }
         if (event.key === 'Control') inputRef.current.ctrlHeld = false
@@ -5397,13 +5423,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           }
         }
         inputRef.current.sampling = session.tool === 'eyedropper' || quickToolActive('eyedropper')
-        if (event.key === 'Alt' && eyedropperQuickSelect && inputRef.current.drag?.kind !== 'sample-color') {
-          flushEyedropperSampleColor()
-          quickEyedropperOriginalColorRef.current = null
-          quickEyedropperSuppressedRef.current = false
-          eyedropperOriginalColorRef.current = null
-          hideEyedropperMagnifier()
-        }
         inputRef.current.modifierBrushSize = null
         if (event.key === 'Alt' && (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'shape')) {
           const drag = inputRef.current.drag
@@ -5444,6 +5463,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     const cancelSampling = (): void => {
       if (inputRef.current.drag?.kind === 'sample-color') inputRef.current.finish()
       inputRef.current.sampling = false
+      quickEyedropperActiveRef.current = false
       quickEyedropperOriginalColorRef.current = null
       quickEyedropperSuppressedRef.current = false
       eyedropperOriginalColorRef.current = null
@@ -5474,7 +5494,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     window.addEventListener('focus', focus)
     document.addEventListener('visibilitychange', visibilityChange)
     return () => { window.removeEventListener('keydown', quickSelectChordKeyDown, true); window.removeEventListener('keydown', keyDown, true); window.removeEventListener('keyup', keyUp, true); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', visibilityChange) }
-  }, [session.tool, gradientType, lineAnchor, lineConnectionShortcut, eyedropperQuickSelect, keyDisplayEnabled, keyDisplayDuration, activeDocumentId, shortcuts.brushSizeAdjust, shortcuts.resetViewRotation, shortcuts['tool.hand.quick']])
+  }, [session.tool, gradientType, lineAnchor, lineConnectionShortcut, eyedropperQuickSelect, keyDisplayEnabled, keyDisplayDuration, activeDocumentId, shortcuts.brushSizeAdjust, shortcuts.resetViewRotation, shortcuts['tool.hand.quick'], shortcuts['tool.eyedropper.quick'], shortcutConflictState])
 
   useEffect(() => {
     // Every dependency in this effect contributes to the canvas appearance.
@@ -5572,11 +5592,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       const observerStarted = isWorkspaceResizing() ? performance.now() : 0
       const entry = entries[0]
       if (entry && stageRef.current) updateSize(stageRef.current.getBoundingClientRect())
-      // ResizeObserver runs before paint. Redraw now so the browser never
-      // stretches the previous canvas bitmap to the new dock layout for a frame.
-      if (drawRequestRef.current !== null) window.cancelAnimationFrame(drawRequestRef.current)
-      drawRequestRef.current = null
-      drawRef.current()
+      // ResizeObserver runs during layout. Drawing synchronously here can
+      // resize the canvas again before the observer cycle settles, producing
+      // ResizeObserver loop errors and blocking input. Coalesce the redraw
+      // into the next animation frame instead.
+      scheduleDraw()
       if (observerStarted) recordWorkspaceResizeStage('observer', performance.now() - observerStarted)
     })
     if (stageRef.current) {
@@ -8840,16 +8860,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (!modifierSizing) inputRef.current.modifierBrushSize = null
     if (!point) return
     const drag = inputRef.current.drag
-    if (!drag && shouldQuickSelectEyedropper({
+    if (!drag && quickEyedropperActiveRef.current && shouldQuickSelectEyedropper({
       enabled: eyedropperQuickSelect,
-      key: 'Alt',
-      altHeld: inputRef.current.altHeld,
+      shortcutMatched: true,
       repeat: false,
       pointerVisible: inputRef.current.pointer.visible,
       activeDocument: useWorkspace.getState().activeId === session.document.id,
       dragActive: false,
       spaceHeld: inputRef.current.spaceHeld,
-      modifierChordActive: event.ctrlKey || event.metaKey || event.shiftKey,
+      modifierChordActive: false,
       canvasContextBlocked: quickEyedropperSuppressedRef.current
         || session.tool === 'move'
         || session.animationPlaying
@@ -9387,7 +9406,21 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           && (session.tool === 'pencil' || session.tool === 'eraser')
           && Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) <= 2
         if (simpleSolidStroke) {
-          for (const rect of solidBrushStampDifferenceRects(from, to, size, session.brushShape, angle, optimizedRotationEnabled)) {
+          // Repaint the complete local stroke envelope instead of only the
+          // stamp difference. Pointer samples can arrive faster than RAF;
+          // difference-only regions then leave visible gaps between frames.
+          for (const rect of brushStrokeInvalidationRects(
+            from,
+            to,
+            size,
+            null,
+            session.document.width,
+            session.document.height,
+            undefined,
+            symmetryCenter,
+            'off',
+            angle
+          )) {
             batchedFineInvalidations.push(rect)
           }
           return
@@ -9583,10 +9616,20 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const speedSample = updateBrushSpeedTracking(drag.brushSpeed, sample)
         drag.brushSpeed = speedSample.state
         const dynamics = brushDynamicsAt(sample.pointerType ?? event.pointerType, sample.pressure, speedSample.speed, sample.pressureAvailable, sample.previousPressure)
+        const previousSize = drag.lastBrushSize ?? dynamics.size
+        const previousOpacity = drag.lastOpacityScale ?? dynamics.opacityScale
+        const fastMotion = speedSample.speed > 1.5
+        const stableDynamics = fastMotion
+          ? {
+              ...dynamics,
+              size: Math.max(previousSize * 0.8, Math.min(previousSize * 1.2, dynamics.size)),
+              opacityScale: Math.max(previousOpacity - 0.2, Math.min(previousOpacity + 0.2, dynamics.opacityScale))
+            }
+          : dynamics
         const rasterDistance = Math.max(Math.abs(rawRepeatedPoint.x - segmentStart.x), Math.abs(rawRepeatedPoint.y - segmentStart.y))
         const acceptedSize = activeBrushImage?.intrinsicSize
-          ? dynamics.size
-          : smoothBrushSizeEnvelope(segmentStartSize, dynamics.size, session.brushSize, rasterDistance)
+          ? stableDynamics.size
+          : smoothBrushSizeEnvelope(segmentStartSize, stableDynamics.size, session.brushSize, rasterDistance)
         const repeatedPoint = gridSnapActive
           ? snapBrushPointToGrid(rawRepeatedPoint, acceptedSize, activeBrushImage, brushAngleWithDynamics(session, dynamics.angle))
           : rawRepeatedPoint
@@ -9594,7 +9637,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           ? wrapDocumentPointForTileRepeat(repeatedPoint, session.document.width, session.document.height, repeatMode)
           : rawPoint
         const sampleColor = drag.color ?? activeColor()
-        const sampleGradient = drag.colorReplacement ? undefined : brushGradientAt(sampleColor, dynamics.gradientAmount)
+        const sampleGradient = drag.colorReplacement ? undefined : brushGradientAt(sampleColor, stableDynamics.gradientAmount)
         const samePoint = repeatedPoint.x === segmentStart.x && repeatedPoint.y === segmentStart.y
         const sameColor = sampleColor.r === segmentStartColor.r && sampleColor.g === segmentStartColor.g && sampleColor.b === segmentStartColor.b && sampleColor.a === segmentStartColor.a
         const sameGradient = (!segmentStartGradient && !sampleGradient) || Boolean(segmentStartGradient && sampleGradient
@@ -9642,8 +9685,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartAngle, brushAngleWithDynamics(session, dynamics.angle), segmentStartColor, segmentStartGradient, sampleGradient)
           drag.path = [{ ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: brushAngleWithDynamics(session, dynamics.angle), color: sampleColor, gradient: sampleGradient }]
         }
-        if (rebuiltStroke) compositeCacheRef.current.invalidateAll()
-        else if (repeatMode === 'off') {
+        if (rebuiltStroke) {
+          // Perfect-pixel corner repair rebuilds the edit buffer, but it does
+          // not require invalidating the whole document. Repaint the rebuilt
+          // path envelope so large documents keep the live preview responsive.
+          const rebuiltPath = drag.path ?? []
+          for (let index = 1; index < rebuiltPath.length; index += 1) {
+            const from = rebuiltPath[index - 1]
+            const to = rebuiltPath[index]
+            queueStrokeInvalidation(from, to, Math.max(from.size ?? session.brushSize, to.size ?? session.brushSize), Math.max(from.angle ?? 0, to.angle ?? 0))
+          }
+        } else if (repeatMode === 'off') {
           queueStrokeInvalidation(segmentStart, repeatedPoint, Math.max(segmentStartSize, acceptedSize), Math.max(segmentStartAngle, brushAngleWithDynamics(session, dynamics.angle)))
         } else for (const segment of tileRepeatLineSegments(segmentStart, repeatedPoint, session.document.width, session.document.height, repeatMode)) {
           queueStrokeInvalidation(segment.from, segment.to, Math.max(segmentStartSize, acceptedSize), Math.max(segmentStartAngle, brushAngleWithDynamics(session, dynamics.angle)))
@@ -9655,6 +9707,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         segmentStartColor = sampleColor
         segmentStartGradient = sampleGradient
       }
+      // Keep live strokes on the dirty-rectangle path. The stroke segment
+      // queues above already cover every newly painted area; invalidating the
+      // whole surface here made every pointer sample rebuild the full 4K
+      // canvas and caused the multi-hundred-millisecond stalls reported by
+      // large projects.
       for (const rect of batchedFineInvalidations) invalidateCompositeRect(rect)
       if (batchedStrokeInvalidation) invalidateCompositeRect(batchedStrokeInvalidation)
       scheduleDraw(); return
@@ -10268,10 +10325,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       return
     }
     if (drag.kind === 'draw' && drag.edit) {
-      // Zustand notifies subscribers synchronously from commitPixelEdit().
-      // Mark the live surface before committing so that the resulting draw
-      // cannot promote the stroke's large bounding box to a full recompose.
-      compositeCacheRef.current.retainLivePreview(session.document, session.document.animation?.activeFrameId, session.contentRevision + 1)
+      // Do not promote the live preview to the committed surface here. Fast
+      // pointer sampling can leave intermediate stroke strips unpainted in
+      // the cache even though the document edit is complete; treating that
+      // preview as authoritative is what produces visible gaps until an eye
+      // toggle forces a redraw. The committed dirty rect below is the source
+      // of truth and will repaint every affected strip.
       const entry = state.commitPixelEdit(drag.edit, session.tool === 'eraser' ? t('canvas.history.eraser') : t('canvas.history.draw'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
       if (!entry) compositeCacheRef.current.clearLivePreview(session.document)
       // `commitPixelEdit` already publishes the edit's dirty rectangle through

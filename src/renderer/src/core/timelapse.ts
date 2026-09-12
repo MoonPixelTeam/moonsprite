@@ -497,7 +497,8 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   markSmartTimelapseSnapshotAdded(latestSettings, cache)
 }
 
-const wait = (duration: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, duration))
+// Timelapse export can run in a Worker, where `window` does not exist.
+const wait = (duration: number): Promise<void> => new Promise((resolve) => globalThis.setTimeout(resolve, duration))
 
 export const timelapseFrameHoldMs = (_snapshot: TimelapseSnapshot, settings: Pick<TimelapseSettings, 'fps' | 'speed'>): number => 1000 / settings.fps / Math.max(1, settings.speed)
 

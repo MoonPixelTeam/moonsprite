@@ -528,7 +528,10 @@ export function sampleLayerStyleParts(
   if (styles.shadow.enabled) result.shadow = withCoverage(shadowColor(styles.shadow), shadowCoverage(read, x - styles.shadow.offsetX, y - styles.shadow.offsetY, styles.shadow.blur))
   if (styles.stroke.enabled && styles.stroke.position !== 'inside' && source.a === 0) {
     const sample = outsideStrokeSample(read, x, y, styles.stroke)
-    result.outerStroke = withCoverage(resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, sample.referenceColor, resolveColor), 1)
+    result.outerStroke = withCoverage(
+      resolveOutlineStrokeColor({ ...styles.stroke, followOpacity: styles.stroke.followOpacity === true }, sample.referenceColor, resolveColor),
+      sample.alpha > 0 ? 1 : 0
+    )
   }
   if (source.a === 0) return result
   let styled = source

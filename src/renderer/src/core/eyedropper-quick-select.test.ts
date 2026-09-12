@@ -3,8 +3,7 @@ import { shouldQuickSelectEyedropper, type EyedropperQuickSelectContext } from '
 
 const context = (patch: Partial<EyedropperQuickSelectContext> = {}): EyedropperQuickSelectContext => ({
   enabled: true,
-  key: 'Alt',
-  altHeld: true,
+  shortcutMatched: true,
   repeat: false,
   pointerVisible: true,
   activeDocument: true,
@@ -23,8 +22,7 @@ describe('eyedropper quick select', () => {
 
   it.each([
     ['preference disabled', { enabled: false }],
-    ['another key', { key: 'Control' }],
-    ['Alt not held', { altHeld: false }],
+    ['shortcut not matched', { shortcutMatched: false }],
     ['repeated keydown', { repeat: true }],
     ['pointer outside', { pointerVisible: false }],
     ['inactive document', { activeDocument: false }],
