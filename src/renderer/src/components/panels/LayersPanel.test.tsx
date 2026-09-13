@@ -606,7 +606,7 @@ describe('LayersPanel animation', () => {
     const zCoordinate = screen.getByRole('spinbutton', { name: 'Z 坐标' })
     fireEvent.change(zCoordinate, { target: { value: '8' } })
     fireEvent.blur(zCoordinate)
-    fireEvent.submit(globalThis.document.querySelector('.cel-properties-modal form')!)
+    fireEvent.submit(zCoordinate.closest('form')!)
 
     await waitFor(() => {
       expect(animationCelAt(timeline, document.activeLayerId, timeline.frames[0].id)?.zIndex).toBe(8)
@@ -1308,8 +1308,9 @@ describe('LayersPanel properties', () => {
     expect(document.groups[0].cumulativeBlend).toBe(true)
     expect(member.blendMode).toBe('screen')
 
-    fireEvent.doubleClick(container.querySelector(`[data-layer-id="${member.id}"]`)!)
-    expect(screen.getByRole('heading', { name: /^图层属性/ })).toBeInTheDocument()
+    fireEvent.contextMenu(container.querySelector(`[data-layer-id="${member.id}"]`)!, { clientX: 20, clientY: 48 })
+    fireEvent.click(screen.getByRole('menuitem', { name: '属性' }))
+    expect(screen.getByRole('heading', { name: `${member.name} 图层属性` })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '混合模式' }))
     fireEvent.click(screen.getByRole('option', { name: '正常' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))
