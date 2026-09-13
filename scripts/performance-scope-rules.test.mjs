@@ -129,7 +129,7 @@ test('发布审计至少运行 P3 并固定覆盖标准、Profiler、大画布�
   const ordinaryRelease = classifyPerformanceAudit(['src/renderer/src/components/AboutDialog.tsx'], { minimumLevel: 'P3', releaseAudit: true })
   assert.equal(ordinaryRelease.level, 'P3')
   assert.deepEqual(ordinaryRelease.suites.map((suite) => suite.id), ['canvas-standard', 'canvas-profile', 'canvas-large-800', 'canvas-large-2048', 'canvas-large-4000', 'canvas-large-sentinel', 'canvas-complex', 'project-format', 'bundle'])
-  assert.deepEqual(ordinaryRelease.suites[0].scenarios, ['pan', 'zoom', 'rotated-zoom', 'draw', 'shape', 'marquee', 'bucket-fill', 'gradient'])
+  assert.deepEqual(ordinaryRelease.suites[0].scenarios, ['pan', 'zoom', 'rotated-zoom', 'draw', 'brush-128-zoom2', 'shape', 'marquee', 'magic-wand', 'bucket-fill', 'gradient'])
   assert.deepEqual(ordinaryRelease.suites.find((suite) => suite.id === 'canvas-large-4000').scenarios, ['large-pan', 'large-zoom', 'large-draw', 'large-shape', 'large-marquee', 'large-bucket-fill', 'large-selection-fill', 'large-selection-delete', 'large-layer-visibility', 'large-group-visibility', 'large-layer-opacity', 'large-layer-reorder', 'large-layer-style-move', 'large-layer-style-shadow-size', 'large-layer-style-inner-glow-size', 'large-gradient', 'large-detail-pan', 'large-detail-draw', 'large-detail-draw-timelapse'])
   const complexSuite = ordinaryRelease.suites.find((suite) => suite.id === 'canvas-complex')
   assert.deepEqual(complexSuite.sizes, [1024])
