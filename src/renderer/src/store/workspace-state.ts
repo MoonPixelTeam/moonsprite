@@ -159,6 +159,7 @@ export interface WorkspaceToolCommands {
   setBrushSize(size: number): void
   setBrushAngle(angle: number): void
   setAirbrushParticleRadius(radius: number): void
+  setAirbrushParticleAngle(angle: number): void
   setAirbrushParticleShape(shape: BrushShape): void
   setAirbrushScatterRadius(radius: number): void
   setAirbrushDensity(density: number): void
