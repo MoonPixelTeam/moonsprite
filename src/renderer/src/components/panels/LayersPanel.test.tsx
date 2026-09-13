@@ -606,7 +606,7 @@ describe('LayersPanel animation', () => {
     const zCoordinate = screen.getByRole('spinbutton', { name: 'Z 坐标' })
     fireEvent.change(zCoordinate, { target: { value: '8' } })
     fireEvent.blur(zCoordinate)
-    fireEvent.submit(document.querySelector('.cel-properties-modal form')!)
+    fireEvent.submit(globalThis.document.querySelector('.cel-properties-modal form')!)
 
     await waitFor(() => {
       expect(animationCelAt(timeline, document.activeLayerId, timeline.frames[0].id)?.zIndex).toBe(8)
