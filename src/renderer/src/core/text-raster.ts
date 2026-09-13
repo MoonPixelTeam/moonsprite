@@ -3,7 +3,7 @@ import { applyRelativeLuminance, packColor } from './raster'
 import { transformRgbaSelectionSurface } from './tools'
 import { DEFAULT_TEXT_FONT_SIZE, normalizeTextCelData } from './text-cel-data'
 
-export { applyTextStyleRun, cloneTextCelData, DEFAULT_TEXT_CONTENT, DEFAULT_TEXT_FONT_FAMILY, DEFAULT_TEXT_FONT_SIZE, normalizeTextCelData, normalizeTextStyleRuns, reconcileTextStyleRuns, TEXT_FONT_FAMILIES, textFontDefaultSize, translateTextCelData } from './text-cel-data'
+export { applyTextStyleRun, cloneTextCelData, DEFAULT_TEXT_BOX_HEIGHT, DEFAULT_TEXT_BOX_WIDTH, DEFAULT_TEXT_CONTENT, DEFAULT_TEXT_FONT_FAMILY, DEFAULT_TEXT_FONT_SIZE, normalizeTextBoxBounds, normalizeTextCelData, normalizeTextStyleRuns, reconcileTextStyleRuns, TEXT_FONT_FAMILIES, textFontDefaultSize, translateTextCelData } from './text-cel-data'
 
 const finiteOr = (value: unknown, fallback: number): number => {
   const number = Number(value)
@@ -197,7 +197,7 @@ const rasterizeTextBase = (data: TextCelData, x: number, y: number): Extract<Ani
   const pixelMode = data.antialias === 'pixel'
   const alphaThreshold = pixelMode ? PIXEL_TEXT_ALPHA_THRESHOLD : 1
   const lines: TextLineLayout[] = []
-  const boxed = data.boxWidth !== undefined && data.boxHeight !== undefined
+  const boxed = data.layoutMode === 'box' && data.boxWidth !== undefined && data.boxHeight !== undefined
   const padding = boxed && data.spacingMode === 'actual' ? 0 : 2
   const maximumLineWidth = boxed ? Math.max(1, data.boxWidth! - padding * 2) : null
   let lineStart = 0
@@ -230,10 +230,18 @@ const rasterizeTextBase = (data: TextCelData, x: number, y: number): Extract<Ani
   const width = boxed ? data.boxWidth! : Math.max(1, Math.ceil(Math.max(0, ...lines.map((line) => line.width)) + padding * 2))
   const height = boxed ? data.boxHeight! : Math.max(1, Math.ceil(Math.max(...lines.map((line) => line.baseline + line.bottom + 1), padding) + padding))
   const pixels = new Uint8ClampedArray(width * height * 4)
-  lines.forEach((line) => line.characters.forEach((character) => {
+  lines.forEach((line) => {
+    const availableWidth = width - padding * 2
+    const alignmentOffset = !boxed || data.textAlign === 'left'
+      ? 0
+      : data.textAlign === 'center'
+        ? Math.max(0, Math.floor((availableWidth - line.width) / 2))
+        : Math.max(0, availableWidth - line.width)
+    line.characters.forEach((character) => {
     if (!character.glyph) return
-    blendGlyph(pixels, width, height, character.glyph, Math.round(padding + character.x + character.glyph.left), Math.round(line.baseline + character.glyph.top), character.color, data.antialias === 'pixel')
-  }))
+      blendGlyph(pixels, width, height, character.glyph, Math.round(padding + alignmentOffset + character.x + character.glyph.left), Math.round(line.baseline + character.glyph.top), character.color, data.antialias === 'pixel')
+    })
+  })
   return { format: 'rgba', width, height, offsetX: Math.trunc(x), offsetY: Math.trunc(y), pixels }
 }
 

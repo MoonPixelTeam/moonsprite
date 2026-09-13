@@ -6,7 +6,7 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
 const MAX_LOG_FILES: usize = 8;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
@@ -15,6 +15,81 @@ const MAX_EVENT_BYTES: usize = 64 * 1024;
 pub(crate) struct DiagnosticState {
     session_file: Mutex<Option<PathBuf>>,
     write_lock: Mutex<()>,
+}
+
+// This runs in the host process: renderer-side error handlers cannot report a
+// renderer crash, because they disappear together with the failed process.
+#[cfg(windows)]
+pub(crate) fn install_webview_failure_diagnostics(
+    window: &tauri::WebviewWindow,
+) -> tauri::Result<()> {
+    use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler};
+    use windows_core::Interface;
+
+    let target = window.clone();
+    window.with_webview(move |webview| {
+        let app = target.app_handle().clone();
+        let setup = unsafe {
+            (|| -> windows_core::Result<()> {
+                let core = webview.controller().CoreWebView2()?;
+                let callback = ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+                    args.ProcessFailedKind(&mut kind)?;
+                    let mut reason = None;
+                    let mut exit_code = None;
+                    if let Ok(details) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+                        let mut value = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
+                        if details.Reason(&mut value).is_ok() { reason = Some(value.0); }
+                        let mut value = 0;
+                        if details.ExitCode(&mut value).is_ok() { exit_code = Some(value); }
+                    }
+                    let app = app.clone();
+                    let target = target.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
+                            .map(|duration| duration.as_millis()).unwrap_or_default();
+                        let event = serde_json::json!({
+                            "version": 1, "kind": "native-process-failure",
+                            "name": "webview.process-failed", "timestampMs": timestamp,
+                            "detail": { "processKind": kind.0, "reason": reason, "exitCode": exit_code }
+                        });
+                        if let Err(error) = append_events_to_file(&app, &app.state::<DiagnosticState>(), vec![event]) {
+                            eprintln!("WebView2 crash diagnostic write failed: {error}");
+                        }
+                        // Do not reload for hangs or GPU subprocess failures:
+                        // a live editor may still contain unsaved work.
+                        if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED {
+                            let reload = rfd::MessageDialog::new()
+                                .set_title("MoonSprite")
+                                .set_level(rfd::MessageLevel::Error)
+                                .set_description("界面进程已退出，诊断信息已记录。是否重新载入界面？\n未保存的内容只能从已有的恢复记录中找回。")
+                                .set_buttons(rfd::MessageButtons::YesNo)
+                                .show();
+                            if reload == rfd::MessageDialogResult::Yes {
+                                if let Err(error) = target.with_webview(|webview| {
+                                    let result = webview.controller().CoreWebView2().and_then(|core| core.Reload());
+                                    if let Err(error) = result { eprintln!("WebView2 reload failed: {error}"); }
+                                }) { eprintln!("WebView2 reload dispatch failed: {error}"); }
+                            }
+                        }
+                    });
+                    Ok(())
+                }));
+                let mut token = 0;
+                core.add_ProcessFailed(&callback, &mut token)?;
+                Ok(())
+            })()
+        };
+        if let Err(error) = setup { eprintln!("WebView2 failure diagnostics setup failed: {error}"); }
+    })
+}
+
+#[cfg(not(windows))]
+pub(crate) fn install_webview_failure_diagnostics(
+    _window: &tauri::WebviewWindow,
+) -> tauri::Result<()> {
+    Ok(())
 }
 
 fn diagnostic_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -75,9 +150,22 @@ fn session_file(app: &AppHandle, state: &DiagnosticState) -> Result<PathBuf, Str
 }
 
 #[tauri::command]
-pub(crate) fn append_diagnostic_events(
+pub(crate) async fn append_diagnostic_events(
     app: AppHandle,
-    state: State<'_, DiagnosticState>,
+    events: Vec<Value>,
+) -> Result<(), String> {
+    // File open, rotation and flush must not run on the desktop UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DiagnosticState>();
+        append_events_to_file(&app, &state, events)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn append_events_to_file(
+    app: &AppHandle,
+    state: &DiagnosticState,
     events: Vec<Value>,
 ) -> Result<(), String> {
     if events.is_empty() {
@@ -87,7 +175,7 @@ pub(crate) fn append_diagnostic_events(
         .write_lock
         .lock()
         .map_err(|_| "诊断日志写入状态不可用".to_string())?;
-    let path = session_file(&app, &state)?;
+    let path = session_file(app, state)?;
     let file = OpenOptions::new()
         .create(true)
         .append(true)

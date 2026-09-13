@@ -2,11 +2,13 @@ export type ColorMode = 'rgba' | 'indexed' | 'grayscale'
 export type RasterFormat = 'rgba' | 'indexed'
 export type ImageResizeInterpolation = 'nearest' | 'smooth'
 export type TileRepeatMode = 'off' | 'x' | 'y' | 'both'
-export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate'
+export type ToolId = 'pencil' | 'airbrush' | 'eraser' | 'fill' | 'eyedropper' | 'selection' | 'shape' | 'line' | 'text' | 'move' | 'hand' | 'zoom' | 'rotate' | 'liquify' | 'smooth' | 'extension'
+export type LiquifyMode = 'push' | 'inflate' | 'deflate' | 'twist-clockwise' | 'twist-counter-clockwise'
 export type MoveKind = 'move' | 'slice'
 export type BrushShape = 'round' | 'square' | 'line'
 export type BrushTexture = 'solid' | 'cracks' | 'wood' | 'grain'
 export type BrushPaintMode = 'paint' | 'pattern-source' | 'pattern-target'
+export type InkMode = 'simple' | 'copy-alpha-color' | 'lock-alpha'
 export type ProceduralBrushId = 'procedural:noise' | 'procedural:clouds' | 'procedural:cells' | 'procedural:fibers'
 
 export interface ProceduralBrushSettings {
@@ -133,8 +135,35 @@ export interface StoredExtension {
   panels: StoredExtensionPanel[]
   menuItems: StoredExtensionMenuItem[]
   topMenus: StoredExtensionTopMenu[]
+  /** Declarative tools exposed by the extension host. */
+  tools?: StoredExtensionTool[]
   filePath: string
   enabled: boolean
+}
+
+export type ExtensionToolKind = 'remote-pixel-brush'
+export type ExtensionToolPlacement = 'pencil'
+
+export interface StoredExtensionToolMode {
+  id: string
+  name: string
+  description: string
+}
+
+/**
+ * A host-owned interactive tool. Extensions describe the contribution; the
+ * renderer owns the interaction and document mutation implementation.
+ */
+export interface StoredExtensionTool {
+  id: string
+  name: string
+  description: string
+  kind: ExtensionToolKind
+  placement: ExtensionToolPlacement
+  icon: string
+  modes: StoredExtensionToolMode[]
+  defaultMode: string
+  previewColor: string
 }
 
 export interface StoredExtensionCommand {
@@ -175,11 +204,25 @@ export interface ExtensionListing {
   directoryPath: string
   extensions: StoredExtension[]
 }
+
+export interface ExtensionPackagePreview {
+  name: string
+  version: string
+  description: string
+  author: string
+  id: string
+  commandCount: number
+  panelCount: number
+  menuCount: number
+  toolCount: number
+}
 export type ShapeKind = 'rectangle' | 'ellipse' | 'rectangle-outline' | 'ellipse-outline' | 'freeform' | 'polygon'
 export type LineKind = 'line' | 'curve'
 export interface ShapeRatio { width: number; height: number }
 export type FillMode = 'contiguous' | 'global'
 export type FillKind = 'bucket' | 'gradient'
+export type FillReference = 'current-layer' | 'visible-layers'
+export type FillConnectivity = 4 | 8
 export type GradientType = 'linear' | 'radial'
 export type GradientDither = 'none' | 'checker' | 'diagonal' | 'diagonal-reverse' | 'horizontal' | 'vertical' | 'bayer-2' | 'bayer-4' | 'bayer-8'
 export type BrushDitherTemplate = Exclude<GradientDither, 'none'>
@@ -270,6 +313,9 @@ export interface TextCelData {
   spacingMode: TextSpacingMode
   antialias: TextAntialiasMode
   color: RgbaColor
+  /** Free text sizes to its content; box text wraps and aligns inside its rectangle. */
+  layoutMode?: 'free' | 'box'
+  textAlign?: 'left' | 'center' | 'right'
   styleRuns?: TextStyleRun[]
   /** Original insertion point used when editable text is rasterized again. */
   originX?: number
@@ -391,6 +437,7 @@ export interface LayerStyleStroke {
   directions: OutlineDirections
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity?: boolean
 }
 
 export interface LayerStyleShadow {
@@ -607,6 +654,8 @@ export interface AnimationCel {
   layerId: string
   frameId: string
   linkedCelId?: string | null
+  /** Cel visual stacking offset; equal values retain layer order. */
+  zIndex?: number
   /** Cel 独立的不透明度，未设置时沿用图层不透明度。 */
   opacity?: number
   surface?: AnimationCelSurface
@@ -675,10 +724,12 @@ export interface TimelapseSnapshot {
 
 export interface TimelapseSettings {
   enabled: boolean
+  /** Omitted by legacy projects; normalization treats it as false. */
+  recordUndoSteps?: boolean
   quality: TimelapseQuality
   fps: number
   speed: number
-  /** Omitted by legacy projects; normalization treats it as `full`. */
+  /** Omitted by legacy projects; normalization treats it as `smart`. */
   mode?: TimelapseRecordingMode
   snapshots: TimelapseSnapshot[]
 }
@@ -702,7 +753,7 @@ export interface DocumentSlice {
 }
 
 export interface SpriteDocument {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
   id: string
   name: string
   width: number
@@ -779,6 +830,7 @@ export interface OutlineSettings {
   directions: OutlineDirections
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity: boolean
   previewEnabled: boolean
 }
 export type CanvasAnchor = 'nw' | 'n' | 'ne' | 'w' | 'center' | 'e' | 'sw' | 's' | 'se'
@@ -854,6 +906,12 @@ export interface RecoveryRecord {
   id: string
   name: string
   updatedAt: string
+}
+
+export interface ProjectBackupRecord {
+  filePath: string
+  modifiedAt: number
+  sizeBytes: number
 }
 
 export interface GalleryProject {
@@ -966,8 +1024,18 @@ export interface LuaScriptExecutionContext {
   layerVisible: boolean
   layerLocked: boolean
   layerFormat: RasterLayer['format']
+  /** Aseprite-compatible parent group and bottom-to-top stack position. */
+  layerGroupId: string | null
+  layerStackIndex: number
   frameNumber: number
   pixels: number[]
+  /** Raster cels from the active layer, bounded by the Lua image budget. */
+  activeLayerCels: Array<{
+    id: string
+    frameId: string
+    frameNumber: number
+    surface: LuaScriptSurfaceSnapshot
+  }>
   selection: {
     x: number
     y: number
@@ -1052,6 +1120,8 @@ export interface LuaScriptCreatedLayer {
   visible: boolean
   locked: boolean
   frameNumber: number
+  parentGroupId?: string | null
+  stackIndex?: number
   surface: LuaScriptSurfaceSnapshot
 }
 
@@ -1072,6 +1142,8 @@ export interface LuaScriptRunResult {
   createdLayers: LuaScriptCreatedLayer[]
   createdDocuments: LuaScriptCreatedDocument[]
   dialogs: LuaScriptDialog[]
+  activeLayerId?: string | null
+  activeFrameNumber?: number | null
   finished: boolean
   elapsedMs: number
 }
@@ -1101,6 +1173,7 @@ export interface MoonSpriteApi {
   savePaletteImage(defaultPath?: string): Promise<SaveDialogResult>
   saveShortcutFile(defaultPath?: string): Promise<SaveDialogResult>
   saveThemeFile(defaultPath?: string): Promise<SaveDialogResult>
+  saveUsageStatisticsFile(defaultPath?: string): Promise<SaveDialogResult>
   getDefaultFileDirectories(): Promise<DefaultFileDirectories>
   chooseDirectory(defaultPath?: string): Promise<DirectoryDialogResult>
   fileExists(filePath: string): Promise<boolean>
@@ -1108,12 +1181,16 @@ export interface MoonSpriteApi {
   readProjectPreview(filePath: string): Promise<ProjectPreview>
   cacheProjectPreview(filePath: string, preview: ProjectPreview): Promise<void>
   writeBinaryAtomic(filePath: string, data: Uint8Array): Promise<void>
+  openProjectBackupFolder(): Promise<void>
+  listProjectBackups(projectPath: string): Promise<ProjectBackupRecord[]>
   writeScaledPngAtomic?(filePath: string, source: Uint8Array, options: ScaledPngWriteOptions, onProgress?: (value: number) => void, onCancelReady?: (cancel: () => void) => void): Promise<ScaledPngWriteResult>
   writeProjectIncremental(filePath: string, sourcePath: string, data: Uint8Array): Promise<void>
   writeClipboardImage(image: ClipboardImage): Promise<void>
   readClipboardText(): Promise<string | null>
   readClipboardImage(): Promise<ClipboardImage | null>
   readClipboardImageSize(): Promise<ClipboardImageSize | null>
+  sampleWindowColor(clientX: number, clientY: number): Promise<RgbaColor | null>
+  sampleWindowColorRegion(clientX: number, clientY: number, radius: number): Promise<RgbaColor[] | null>
   listPalettes(): Promise<PaletteListing>
   savePalette(id: string | null, name: string, colors: RgbaColor[], columns: number, slots: Array<number | null>): Promise<StoredPalette>
   deletePalette(id: string): Promise<void>
@@ -1143,6 +1220,13 @@ export interface MoonSpriteApi {
   readRecovery(id: string): Promise<Uint8Array>
   writeRecovery(id: string, name: string, data: Uint8Array): Promise<void>
   deleteRecovery(id: string): Promise<void>
+  readLocalHistory(id: string): Promise<Uint8Array>
+  writeLocalHistory(id: string, data: Uint8Array): Promise<void>
+  deleteLocalHistory(id: string): Promise<void>
+  readUsageStatistics(): Promise<string | null>
+  writeUsageStatistics(json: string): Promise<void>
+  usageStatisticsPath(): Promise<string>
+  openUsageStatisticsFolder(): Promise<void>
   listGalleryProjects(): Promise<GalleryListing>
   listFolderProjects(directoryPath: string): Promise<GalleryListing>
   deleteGalleryProject(fileName: string): Promise<void>
@@ -1153,10 +1237,12 @@ export interface MoonSpriteApi {
   openExternalUrl(url: string): Promise<void>
   listLuaScripts(): Promise<LuaScriptListing>
   openLuaScriptFolder(): Promise<void>
+  deleteLuaScript(scriptId: string): Promise<void>
   runLuaScript(scriptId: string, context: LuaScriptExecutionContext): Promise<LuaScriptRunResult>
   dispatchLuaScriptDialog(sessionId: string, action: LuaScriptDialogAction, context: LuaScriptExecutionContext): Promise<LuaScriptRunResult>
   closeLuaScriptSession(sessionId: string): Promise<void>
   listExtensions(): Promise<ExtensionListing>
+  inspectExtensionPackage(filePath: string): Promise<ExtensionPackagePreview>
   installExtension(filePath: string): Promise<StoredExtension>
   chooseAndInstallExtension(): Promise<StoredExtension | null>
   setExtensionEnabled(id: string, enabled: boolean): Promise<StoredExtension>

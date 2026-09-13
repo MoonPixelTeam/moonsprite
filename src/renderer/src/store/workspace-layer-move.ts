@@ -1,10 +1,11 @@
 import type { AnimationCel, RasterLayer, SelectionMask, SelectionRect } from '@shared/types'
-import { cloneAnimationCel, cloneAnimationCelsForLayer, ensureAnimationDocument, parseAnimationCelKey, removeAnimationCelsForLayers, restoreAnimationCels, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, animationCelOffsetsForKeys } from '@/core/animation'
+import { animationCelKey, cloneAnimationCel, cloneAnimationCelsForLayer, ensureAnimationDocument, parseAnimationCelKey, removeAnimationCelsForLayers, restoreAnimationCels, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, animationCelOffsetsForKeys } from '@/core/animation'
 import { animationMaskAt } from '@/core/document'
 import type { CanvasDragState } from '@/core/canvas-input'
 import type { ContentInvalidationHint, HistoryEntry } from '@/core/history'
 import { cloneLayerStyles, layerStylesHistoryBytes } from '@/core/layer-styles'
 import { cloneSelection, shiftSelection } from '@/core/selection'
+import { cloneTextCelData, translateTextCelData } from '@/core/text-cel-data'
 import type { DocumentSession } from './workspace-types'
 
 type Point = { x: number; y: number }
@@ -139,6 +140,24 @@ export const previewLayerMove = (
     }
     if (move.animationMaskOffsets) previewAnimationMaskOffsets(session, move, distanceX, distanceY)
   }
+  if (move.duplicatedLayerId && move.duplicatedAnimationCels?.length) {
+    // The duplicated cels own their own text origins. Move them with the
+    // preview so subsequent text rasterization uses the copied position.
+    // Use the drag-start snapshots as the source on every pointer update:
+    // unlike surfaces, text origin metadata is not represented by layer
+    // offsets and must not accumulate or retain the original layer's origin.
+    const timeline = ensureAnimationDocument(session.document)
+    for (const original of move.duplicatedAnimationCels) {
+      if (!original.text) continue
+      const duplicate = timeline.cels.find((cel) => cel.layerId === move.duplicatedLayerId && cel.frameId === original.frameId)
+      if (!duplicate) continue
+      duplicate.text = translateTextCelData(cloneTextCelData(original.text), distanceX, distanceY)
+    }
+    const offsets = Object.fromEntries(move.duplicatedAnimationCels.flatMap((cel) => cel.surface
+      ? [[animationCelKey(move.duplicatedLayerId!, cel.frameId), { x: cel.surface.offsetX + distanceX, y: cel.surface.offsetY + distanceY }] as const]
+      : []))
+    setAnimationCelOffsetsForKeys(session.document, offsets)
+  }
   if (move.selectionStart) {
     session.selection = shiftSelection(move.selectionStart, distanceX, distanceY, session.document.width, session.document.height)
   }
@@ -260,7 +279,14 @@ export const createLayerMoveHistoryEntry = (
   const beforeSelection = cloneSelection(move.selectionStart ?? null)
   const afterSelection = cloneSelection(session.selection)
   const duplicatedLayer = move.duplicatedLayer
-  const duplicatedAnimationCels = move.duplicatedAnimationCels ?? []
+  // Redo must restore the copy after its final drag position has been applied.
+  // The drag-start snapshot intentionally remains in move for cancellation, so
+  // using it here would restore stale text origins after an undo/redo cycle.
+  const duplicatedAnimationCels = duplicatedLayer
+    ? ensureAnimationDocument(session.document).cels
+      .filter((cel) => cel.layerId === layerId)
+      .map(cloneAnimationCel)
+    : []
   return {
     label: labels.single,
     bytes: duplicatedLayer ? duplicateHistoryBytes(duplicatedLayer, duplicatedAnimationCels) : 32,

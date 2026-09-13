@@ -1,4 +1,4 @@
-import type { ImageBrush, LayerMask, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
+import type { ImageBrush, LayerMask, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
 import { HistoryStack, type ContentInvalidationHint } from '@/core/history'
 import { PROCEDURAL_BRUSH_IDS } from '@/core/brushes'
 import { packColor, unpackColor } from '@/core/raster'
@@ -51,15 +51,20 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
 export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
   Object.assign(target, {
     tool: source.tool,
+    extensionToolId: source.extensionToolId,
+    extensionToolMode: source.extensionToolMode,
     moveKind: source.moveKind,
     primaryColor: { ...source.primaryColor },
     secondaryColor: { ...source.secondaryColor },
     brushSize: source.brushSize,
     brushShape: source.brushShape,
+    brushAngle: source.brushAngle,
     brushDither: structuredClone(source.brushDither),
     brushTexture: source.brushTexture,
     brushTextureScale: source.brushTextureScale,
     brushPaintMode: source.brushPaintMode,
+    inkMode: source.inkMode,
+    syncInkAcrossTools: source.syncInkAcrossTools,
     brushImageId: source.brushImageId,
     brushImage: source.brushImage ? structuredClone(source.brushImage) : null,
     brushImageTemporary: source.brushImageTemporary,
@@ -81,6 +86,8 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     fillTolerance: source.fillTolerance,
     fillGapClosing: source.fillGapClosing,
     fillGapThreshold: source.fillGapThreshold,
+    fillReference: source.fillReference,
+    fillConnectivity: source.fillConnectivity,
     gradientTolerance: source.gradientTolerance,
     gradientContiguous: source.gradientContiguous,
     gradientType: source.gradientType,
@@ -90,6 +97,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     moveAutoSelect: source.moveAutoSelect,
     selectionKind: source.selectionKind,
     selectionMode: source.selectionMode,
+    selectionRotationAlgorithm: source.selectionRotationAlgorithm,
     selectionRounded: source.selectionRounded,
     selectionCornerRadius: source.selectionCornerRadius,
     wandTolerance: source.wandTolerance,
@@ -101,9 +109,16 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     symmetryAxesInitialized: structuredClone(source.symmetryAxesInitialized),
     airbrushParticleRadius: source.airbrushParticleRadius,
     airbrushParticleShape: source.airbrushParticleShape,
+    airbrushParticleAngle: source.airbrushParticleAngle,
     airbrushScatterRadius: source.airbrushScatterRadius,
     airbrushDensity: source.airbrushDensity,
-    airbrushIntervalMs: source.airbrushIntervalMs
+    airbrushIntervalMs: source.airbrushIntervalMs,
+    liquifyMode: source.liquifyMode,
+    liquifyRadius: source.liquifyRadius,
+    smoothStrength: source.smoothStrength,
+    liquifySmoothing: source.liquifySmoothing,
+    liquifySmoothingStrength: source.liquifySmoothingStrength,
+    liquifyStrength: source.liquifyStrength
   })
 }
 
@@ -117,7 +132,11 @@ const MASK_WHITE: RgbaColor = { r: 255, g: 255, b: 255, a: 255 }
 const MASK_BLACK: RgbaColor = { r: 0, g: 0, b: 0, a: 255 }
 
 export const enterLayerMaskEditing = (session: DocumentSession): void => {
-  if (!session.layerMaskColorMemory) session.layerMaskColorMemory = { primary: { ...session.primaryColor }, secondary: { ...session.secondaryColor } }
+  // Entering the same mask context again happens during selection restoration
+  // (for example after undo/redo). Keep the user's current mask paint colors
+  // instead of resetting them to white/black on every re-entry.
+  if (session.layerMaskColorMemory) return
+  session.layerMaskColorMemory = { primary: { ...session.primaryColor }, secondary: { ...session.secondaryColor } }
   session.primaryColor = { ...MASK_WHITE }
   session.secondaryColor = { ...MASK_BLACK }
 }
@@ -160,8 +179,10 @@ export const selectedTransformLayersAreEditable = (
   && layers.every((layer) => isLayerEffectivelyVisible(session.document, layer) && !isLayerEffectivelyLocked(session.document, layer))
 
 export const brushProfileFromSession = (session: DocumentSession): BrushProfile => ({
+  inkMode: session.inkMode,
   brushSize: session.brushSize,
   brushShape: session.brushShape,
+  brushAngle: session.brushAngle,
   brushDither: { ...(session.brushDither ?? defaultToolSettings.brushDither) },
   brushTexture: session.brushTexture,
   brushTextureScale: session.brushTextureScale,
@@ -178,8 +199,10 @@ export const brushProfileFromSession = (session: DocumentSession): BrushProfile 
 })
 
 export const applyBrushProfile = (session: DocumentSession, profile: BrushProfile): void => {
+  session.inkMode = profile.inkMode
   session.brushSize = profile.brushSize
   session.brushShape = profile.brushShape
+  session.brushAngle = profile.brushAngle
   session.brushDither = { ...profile.brushDither }
   session.brushTexture = profile.brushTexture
   session.brushTextureScale = profile.brushTextureScale
@@ -218,8 +241,10 @@ let toolSettingsPersistTimer: number | null = null
 
 function persistedBrushProfileFromSession(profile: BrushProfile): PersistedBrushProfile {
   return {
+    inkMode: profile.inkMode,
     brushSize: profile.brushSize,
     brushShape: profile.brushShape,
+    brushAngle: profile.brushAngle,
     brushDither: { ...profile.brushDither },
     brushTexture: profile.brushTexture,
     brushTextureScale: profile.brushTextureScale,
@@ -257,6 +282,8 @@ export function persistToolSettings(session: DocumentSession): void {
   const active = persistedBrushProfileFromSession(activeProfile)
   const snapshot: PersistedToolSettings = {
     ...active,
+    inkMode: session.inkMode,
+    syncInkAcrossTools: session.syncInkAcrossTools,
     brushPaintModePreferenceVersion: 1,
     proceduralAntialiasPreferenceVersion: 1,
     brushProfiles: profiles,
@@ -271,6 +298,8 @@ export function persistToolSettings(session: DocumentSession): void {
     fillTolerance: session.fillTolerance,
     fillGapClosing: session.fillGapClosing,
     fillGapThreshold: session.fillGapThreshold,
+    fillReference: session.fillReference,
+    fillConnectivity: session.fillConnectivity,
     gradientTolerance: session.gradientTolerance,
     gradientContiguous: session.gradientContiguous,
     gradientType: session.gradientType,
@@ -280,6 +309,7 @@ export function persistToolSettings(session: DocumentSession): void {
     moveAutoSelect: session.moveAutoSelect,
     selectionKind: session.selectionKind,
     selectionMode: session.selectionMode,
+    selectionRotationAlgorithm: session.selectionRotationAlgorithm,
     selectionRounded: session.selectionRounded,
     selectionCornerRadius: session.selectionCornerRadius,
     wandTolerance: session.wandTolerance,
@@ -289,9 +319,16 @@ export function persistToolSettings(session: DocumentSession): void {
     perfectPixels: session.perfectPixels,
     airbrushParticleRadius: session.airbrushParticleRadius,
     airbrushParticleShape: session.airbrushParticleShape,
+    airbrushParticleAngle: session.airbrushParticleAngle,
     airbrushScatterRadius: session.airbrushScatterRadius,
     airbrushDensity: session.airbrushDensity,
     airbrushIntervalMs: session.airbrushIntervalMs,
+    liquifyMode: session.liquifyMode,
+    liquifyRadius: session.liquifyRadius,
+    liquifyStrength: session.liquifyStrength,
+    liquifySmoothing: session.liquifySmoothing,
+    liquifySmoothingStrength: session.liquifySmoothingStrength,
+    smoothStrength: session.smoothStrength,
     symmetryAxes: { ...session.symmetryAxes }
   }
   try {
@@ -336,7 +373,10 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const session = {
     document,
     history: new HistoryStack(),
+    localHistory: null,
     tool: 'pencil',
+    extensionToolId: null,
+    extensionToolMode: '',
     moveKind: 'move',
     selectedSliceId: null,
     selectedSliceIds: [],
@@ -353,10 +393,12 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     secondaryColor: defaultSecondary,
     brushSize: settings.brushSize,
     brushShape: settings.brushShape,
+    brushAngle: settings.brushAngle,
     brushDither: { ...settings.brushDither },
     brushTexture: settings.brushTexture,
     brushTextureScale: settings.brushTextureScale,
     brushPaintMode: settings.brushPaintMode,
+    inkMode: settings.inkMode,
     brushImageId: settings.brushImageId,
     brushImage: null,
     brushImageTemporary: false,
@@ -367,6 +409,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     proceduralAntialiasStrength: settings.proceduralAntialiasStrength,
     brushDynamics: normalizeBrushDynamicsSettings(settings.brushDynamics),
     brushPressure: { ...settings.brushPressure },
+    syncInkAcrossTools: settings.syncInkAcrossTools,
     shapeKind: settings.shapeKind,
     lineKind: settings.lineKind,
     curveAnchorCount: settings.curveAnchorCount,
@@ -378,6 +421,8 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     fillTolerance: settings.fillTolerance,
     fillGapClosing: settings.fillGapClosing,
     fillGapThreshold: settings.fillGapThreshold,
+    fillReference: settings.fillReference,
+    fillConnectivity: settings.fillConnectivity,
     gradientTolerance: settings.gradientTolerance,
     gradientContiguous: settings.gradientContiguous,
     gradientType: settings.gradientType,
@@ -387,7 +432,9 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     moveAutoSelect: settings.moveAutoSelect,
     selection: null,
     selectionPropertiesActive: false,
+    selectionAspectRatio: null,
     selectionAngle: 0,
+    selectionRotationAlgorithm: settings.selectionRotationAlgorithm,
     freeTransformQuad: null,
     selectionPivot: null,
     selectionKind: settings.selectionKind,
@@ -401,9 +448,18 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     perfectPixels: settings.perfectPixels,
     airbrushParticleRadius: settings.airbrushParticleRadius,
     airbrushParticleShape: settings.airbrushParticleShape,
+    airbrushParticleAngle: settings.airbrushParticleAngle,
     airbrushScatterRadius: settings.airbrushScatterRadius,
     airbrushDensity: settings.airbrushDensity,
     airbrushIntervalMs: settings.airbrushIntervalMs,
+    liquifyMode: settings.liquifyMode,
+    liquifyRadius: settings.liquifyRadius,
+    liquifyStrength: settings.liquifyStrength,
+    liquifySmoothing: settings.liquifySmoothing,
+    liquifySmoothingStrength: settings.liquifySmoothingStrength,
+    smoothStrength: settings.smoothStrength,
+    liquifyResetHistoryPosition: null,
+    liquifyResetHistoryRevision: null,
     symmetryAxes: { ...settings.symmetryAxes },
     symmetryAxesInitialized: {
       horizontal: settings.symmetryAxes.horizontal,
@@ -452,13 +508,15 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     layerSelectionAnchorId: document.activeLayerId,
     collapsedGroupIds: [],
     animationPlaying: false,
-    animationPlaybackRate: 1,
-    animationPlaybackMode: timeline.loop ? 'all' : 'once',
+    animationPlaybackRate: editorPreferences.animationPlaybackRate,
+    animationPlaybackMode: editorPreferences.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once'),
     animationPlaybackStartFrameId: null,
     animationPlaybackLoopSectionId: null,
     animationPlaybackLoopIteration: 0,
     animationPlaybackLoopSectionRepeatIndefinitely: false,
-    animationReturnToStart: false,
+    animationPlaybackLoopStack: [],
+    animationPlaybackTagCycleSectionId: null,
+    animationReturnToStart: editorPreferences.animationReturnToStart,
     timelineActiveContext: {
       row: { kind: 'layer', ownerKind: 'layer', ownerId: document.activeLayerId },
       frameId: timeline.activeFrameId,
@@ -491,17 +549,22 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   return session
 }
 
+/** Refreshes changed pixels without declaring an edit (e.g. preview rollback). */
+export function invalidateSessionContent(session: DocumentSession, invalidation: ContentInvalidationHint = { kind: 'full' }): void {
+  const fromRevision = session.contentRevision
+  session.revision += 1
+  session.contentRevision += 1
+  if (invalidation.kind === 'full') session.layersPanelRevision += 1
+  session.contentInvalidation = invalidation.kind === 'region'
+    ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
+    : { kind: 'full', fromRevision, revision: session.contentRevision }
+}
+
 export function touch(session: DocumentSession, dirty = true, invalidation: ContentInvalidationHint = { kind: 'full' }): void {
   if (dirty) {
-    const fromRevision = session.contentRevision
     session.document.dirty = true
     session.document.updatedAt = new Date().toISOString()
-    session.revision += 1
-    session.contentRevision += 1
-    if (invalidation.kind === 'full') session.layersPanelRevision += 1
-    session.contentInvalidation = invalidation.kind === 'region'
-      ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
-      : { kind: 'full', fromRevision, revision: session.contentRevision }
+    invalidateSessionContent(session, invalidation)
     session.recoverySuppressed = false
   }
 }

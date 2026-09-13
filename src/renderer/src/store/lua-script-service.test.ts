@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { LuaScriptExecutionContext, LuaScriptRunResult } from '@shared/types'
 import { createDocument, getActiveLayer, readLayerPacked } from '@/core/document'
+import { animationLayerAtFrame, ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import {
   dispatchLuaScriptDialogForActiveDocument,
@@ -95,6 +96,58 @@ describe('Lua script document service', () => {
     expect(readLayerPacked(document, layer, 0) >>> 0).toBe(red)
   })
 
+  it('commits a non-active frame cel surface and restores it on undo', async () => {
+    const document = createDocument('multi-frame target', 2, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    useWorkspace.getState().duplicateAnimationFrame()
+    const secondFrameId = ensureAnimationDocument(document).activeFrameId
+    const red = 0xff0000ff
+    let firstCelId = ''
+
+    const outcome = await runLuaScriptForActiveDocument({
+      runLuaScript: async (_scriptId, context) => {
+        expect(context.frameNumber).toBe(2)
+        expect(context.activeLayerCels).toHaveLength(2)
+        const first = context.activeLayerCels.find((cel) => cel.frameId === firstFrameId)!
+        firstCelId = first.id
+        return result({
+          batches: [{
+            label: 'Edit first frame',
+            changes: [],
+            surfaceChange: null,
+            operations: [{
+              path: 'animation.setCelSurface',
+              arguments: {
+                layerId: layer.id,
+                frameId: firstFrameId,
+                celId: first.id,
+                before: first.surface,
+                after: { ...first.surface, offsetX: 2, pixels: [red, 0] }
+              }
+            }]
+          }]
+        })
+      }
+    }, 'multi-frame.lua')
+
+    expect(firstCelId).not.toBe('')
+    expect(outcome.summary.changedPixelCount).toBe(1)
+    const changed = animationLayerAtFrame(document, layer.id, firstFrameId)!
+    expect(changed.offsetX).toBe(2)
+    expect(readLayerPacked(document, changed, 0) >>> 0).toBe(red)
+    expect(ensureAnimationDocument(document).activeFrameId).toBe(secondFrameId)
+
+    useWorkspace.getState().undo()
+    const restored = animationLayerAtFrame(document, layer.id, firstFrameId)!
+    expect(restored.offsetX).toBe(0)
+    expect(readLayerPacked(document, restored, 0) >>> 0).toBe(0)
+    useWorkspace.getState().redo()
+    expect(readLayerPacked(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0) >>> 0).toBe(red)
+  })
+
   it('creates a script layer through undoable store history', async () => {
     const document = createDocument('layer creation target', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -126,6 +179,37 @@ describe('Lua script document service', () => {
     expect(document.activeLayerId).toBe('lua-layer-1')
   })
 
+  it('places an Aseprite-created layer below its source and restores the requested active layer', async () => {
+    const document = createDocument('shadow target', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const source = getActiveLayer(document)
+
+    await runLuaScriptForActiveDocument({
+      runLuaScript: async () => result({
+        activeLayerId: source.id,
+        activeFrameNumber: 1,
+        createdLayers: [{
+          id: 'lua-shadow',
+          name: 'Shadow',
+          opacity: 255,
+          visible: true,
+          locked: false,
+          frameNumber: 1,
+          parentGroupId: null,
+          stackIndex: 1,
+          surface: { format: 'rgba', width: 2, height: 2, offsetX: 0, offsetY: 0, pixels: [0xff000000, 0, 0, 0] }
+        }]
+      })
+    }, 'shadow.lua')
+
+    expect(document.layers.map((layer) => layer.id)).toEqual(['lua-shadow', source.id])
+    expect(document.activeLayerId).toBe(source.id)
+    expect(useWorkspace.getState().sessions[0].selectedLayerIds).toEqual([source.id])
+
+    useWorkspace.getState().undo()
+    expect(document.layers.map((layer) => layer.id)).toEqual([source.id])
+  })
+
 
 
 
@@ -146,6 +230,7 @@ describe('Lua script document service', () => {
             surfaceChange: null,
             operations: [
               { path: 'layers.update', arguments: { id: layer.id, name: 'Renamed', opacity: 128 } },
+              { path: 'animation.setFrameDuration', arguments: { frame: 1, duration: 250 } },
               { path: 'palette.create', arguments: { color: { r: 12, g: 34, b: 56, a: 255 } } },
               { path: 'selection.set', arguments: { x: 0, y: 0, width: 1, height: 2 } }
             ]
@@ -163,11 +248,13 @@ describe('Lua script document service', () => {
     expect(outcome.summary.transactionCount).toBe(1)
     expect(layer.name).toBe('Renamed')
     expect(layer.opacity).toBeCloseTo(128 / 255)
+    expect(document.animation?.frames[0].duration).toBe(250)
     expect(document.palette.some((entry) => entry.color.r === 12 && entry.color.g === 34 && entry.color.b === 56)).toBe(true)
     expect(useWorkspace.getState().sessions[0].selection).toEqual({ x: 0, y: 0, width: 1, height: 2 })
 
     useWorkspace.getState().undo()
     expect(layer.name).not.toBe('Renamed')
+    expect(document.animation?.frames[0].duration).toBe(100)
     expect(document.palette.some((entry) => entry.color.r === 12 && entry.color.g === 34 && entry.color.b === 56)).toBe(false)
     expect(useWorkspace.getState().sessions[0].selection).toBeNull()
   })

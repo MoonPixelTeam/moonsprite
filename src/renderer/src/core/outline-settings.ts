@@ -51,20 +51,25 @@ const clampChannel = (value: unknown, fallback: number): number =>
 const clampPercentage = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : fallback
 
-type OutlineStrokeColorSettings = Pick<OutlineSettings, 'color' | 'smartHue' | 'smartHueDarkness'>
+type OutlineStrokeColorSettings = Pick<OutlineSettings, 'color' | 'smartHue' | 'smartHueDarkness' | 'followOpacity'>
 
 export const resolveOutlineStrokeColor = (
   settings: OutlineStrokeColorSettings,
   referenceColor: RgbaColor,
   resolveDynamicColor: (color: RgbaColor) => RgbaColor = (color) => color
 ): RgbaColor => {
-  if (!settings.smartHue || referenceColor.a === 0) return settings.color
+  if (!settings.smartHue && !settings.followOpacity) return settings.color
+  if (referenceColor.a === 0) return settings.color
+  const alpha = settings.followOpacity
+    ? Math.round(settings.color.a * referenceColor.a / 255)
+    : settings.color.a
+  if (!settings.smartHue) return { ...settings.color, a: alpha }
   const multiplier = 1 - clampPercentage(settings.smartHueDarkness, DEFAULT_OUTLINE_SMART_HUE_DARKNESS) / 100
   return resolveDynamicColor({
     r: Math.round(referenceColor.r * multiplier),
     g: Math.round(referenceColor.g * multiplier),
     b: Math.round(referenceColor.b * multiplier),
-    a: settings.color.a
+    a: alpha
   })
 }
 
@@ -77,6 +82,7 @@ export const defaultOutlineSettings = (color: RgbaColor): OutlineSettings => ({
   directions: outlineDirectionsForKernel('round'),
   smartHue: false,
   smartHueDarkness: DEFAULT_OUTLINE_SMART_HUE_DARKNESS,
+  followOpacity: false,
   previewEnabled: true
 })
 
@@ -114,6 +120,7 @@ export const normalizeOutlineSettings = (value: unknown, fallbackColor?: RgbaCol
     directions: normalizeOutlineDirections(candidate.directions, fallback.directions),
     smartHue: candidate.smartHue === true,
     smartHueDarkness: clampPercentage(candidate.smartHueDarkness, fallback.smartHueDarkness),
+    followOpacity: candidate.followOpacity === true,
     previewEnabled: candidate.previewEnabled !== false
   }
 }

@@ -158,6 +158,7 @@ pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialog
                 "moonsprite",
                 "ase",
                 "aseprite",
+                "psd",
                 "png",
                 "jpg",
                 "jpeg",
@@ -167,6 +168,7 @@ pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialog
             ],
         )
         .add_filter("Aseprite files", &["ase", "aseprite"])
+        .add_filter("Photoshop files", &["psd"])
         .add_filter(
             if english {
                 "MoonSprite project"
@@ -354,6 +356,28 @@ pub(crate) fn save_theme_file(
                 "MoonSprite theme"
             } else {
                 "MoonSprite 主题"
+            },
+            JSON,
+        )
+        .save_file();
+    SaveDialogResult {
+        canceled: path.is_none(),
+        file_path: path.map(|value| value.to_string_lossy().to_string()),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_usage_statistics_file(
+    window: Window,
+    default_path: Option<String>,
+    language: Option<String>,
+) -> SaveDialogResult {
+    let path = file_dialog(default_path.as_deref(), &window)
+        .add_filter(
+            if is_english(language.as_deref()) {
+                "MoonSprite usage statistics"
+            } else {
+                "MoonSprite 使用统计"
             },
             JSON,
         )

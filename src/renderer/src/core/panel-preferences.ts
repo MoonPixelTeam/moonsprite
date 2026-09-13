@@ -93,7 +93,7 @@ export function saveFloatingPosition(key: string | undefined, position: Floating
   writeStoredString(key, JSON.stringify({ ...position, viewportWidth: viewport.width, viewportHeight: viewport.height }), storage)
 }
 
-export type PanelColorPickerScheme = 'moon-ring' | 'sv-square' | 'hs-square' | 'wheel'
+export type PanelColorPickerScheme = 'moon-ring' | 'sv-square' | 'hs-square' | 'wheel' | 'normal-map'
 export interface PanelColorPickerConfig {
   scheme: PanelColorPickerScheme
   hueSteps: number
@@ -102,7 +102,7 @@ export interface PanelColorPickerConfig {
 }
 
 export function parseColorPickerConfig(configValue: string | null, schemeValue: string | null, huePresets: readonly number[], colorPresets: readonly number[], fallbackScheme: PanelColorPickerScheme = 'sv-square'): PanelColorPickerConfig {
-  const schemes: readonly PanelColorPickerScheme[] = ['moon-ring', 'sv-square', 'hs-square', 'wheel']
+  const schemes: readonly PanelColorPickerScheme[] = ['moon-ring', 'sv-square', 'hs-square', 'wheel', 'normal-map']
   const schemeFromStorage = schemes.includes(schemeValue as PanelColorPickerScheme) ? schemeValue as PanelColorPickerScheme : fallbackScheme
   const defaults: PanelColorPickerConfig = { scheme: schemeFromStorage, hueSteps: huePresets[0] ?? 0, colorSteps: colorPresets[0] ?? 0, moonField: 'hsv-square' }
   try {

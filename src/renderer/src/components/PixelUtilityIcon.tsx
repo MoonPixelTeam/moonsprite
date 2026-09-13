@@ -4,7 +4,6 @@ const utilityIconPaths = {
   eye: 'M3 2h4v1H3zM2 3h3v1H2zM6 3h2v1H6zM1 4h1v2H1zM3 4h4v1H3zM8 4h1v2H8zM4 5h2v1H4zM2 6h1v1H2zM7 6h1v1H7zM3 7h4v1H3z',
   eyeOff: 'M1 4h1v2H1zM8 4h1v2H8zM2 6h1v1H2zM7 6h1v1H7zM3 7h4v1H3z',
   properties: 'M2 2h3v1H2zM2 3h1v1H2zM4 3h4v1H4zM2 4h3v1H2zM6 5h3v1H6zM3 6h4v1H3zM8 6h1v1H8zM6 7h3v1H6z',
-  pencil: 'M8 1h2v1H8zM7 2h3v2H7zM6 3h3v2H6zM5 4h3v2H5zM4 5h3v2H4zM3 6h3v2H3zM2 7h3v2H2zM1 8h3v2H1zM1 10h2v1H1z',
   tilePaint: 'M6 2h2v1H6zM5 3h2v1H5zM8 3h1v1H8zM4 4h1v1H4zM6 4h3v1H6zM3 5h1v1H3zM6 5h2v1H6zM2 6h1v1H2zM5 6h2v1H5zM2 7h4v1H2zM2 8h3v1H2z',
   tileModeEdit: 'M3 3h5v1H3zM3 4h1v3H3zM7 4h1v3H7zM3 7h5v1H3z',
   tileModeCreate: 'M2 3h7v1H2zM2 4h1v4H2zM8 4h1v1H8zM7 5h1v1H7zM6 6h3v1H6zM3 7h3v1H3zM7 7h1v1H7z',
@@ -42,6 +41,8 @@ const utilityIconPaths = {
   folder: 'M2 2h3v1H2zM1 3h7v1H1zM1 4h8v5H1z',
   folderOpen: 'M4 4h6v1H4zM3 5h7v1H3zM2 6h8v1H2zM1 7h8v2H1z',
   move: 'M4 3h1v1H4zM6 3h1v1H6zM4 5h1v1H4zM6 5h1v1H6zM4 7h1v1H4zM6 7h1v1H6z',
+  aspectLink: 'M3 2h2v1H3zM6 2h2v1H6zM3 3h1v1H3zM7 3h1v1H7zM5 4h1v3H5zM3 7h1v1H3zM7 7h1v1H7zM3 8h2v1H3zM6 8h2v1H6z',
+  swap: 'M6 2h1v1H6zM6 3h2v1H6zM3 4h6v1H3zM2 6h6v1H2zM3 7h2v1H3zM4 8h1v1H4z',
   save: 'M3 2h5v1H3zM2 3h1v1H2zM7 3h2v1H7zM2 4h7v2H2zM2 6h2v2H2zM7 6h2v2H7zM2 8h7v1H2z',
   export: 'M3 2h5v1H3zM2 3h4v1H2zM8 3h1v1H8zM2 4h7v1H2zM2 5h1v1H2zM5 5h4v1H5zM2 6h1v2H2zM7 6h2v1H7zM5 7h4v1H5zM2 8h7v1H2z',
   import: 'M2 2h7v1H2zM2 3h1v2H2zM8 3h1v5H8zM2 5h3v1H2zM6 5h3v1H6zM2 6h2v1H2zM5 6h1v1H5zM7 6h2v1H7zM2 7h1v1H2zM4 7h3v1H4zM2 8h7v1H2z',
@@ -91,7 +92,8 @@ const utilityIconPaths = {
   timelapse: 'M3 2h5v1H3zM1 4h3v1H1zM7 4h1v1H7zM9 4h1v1H9zM1 5h3v1H1zM5 5h1v1H5zM7 5h3v1H7zM1 6h3v1H1zM7 6h3v1H7zM1 7h9v1H1zM2 8h7v1H2z',
   community: 'M4 0h3v1H4zM2 1h3v1H2zM6 1h3v1H6zM1 2h3v1H1zM7 2h3v1H7zM1 3h2v1H1zM8 3h2v1H8zM0 4h2v1H0zM9 4h2v1H9zM0 5h2v1H0zM9 5h2v1H9zM0 6h3v1H0zM4 6h1v1H4zM6 6h1v1H6zM8 6h3v1H8zM1 7h2v1H1zM5 7h1v1H5zM8 7h2v1H8zM1 8h2v1H1zM8 8h2v1H8zM2 9h7v1H2zM4 10h3v1H4z',
   grid: 'M1 1h9v1H1zM1 4h9v1H1zM1 7h9v1H1zM1 9h9v1H1zM1 1h1v9H1zM4 1h1v9H4zM7 1h1v9H7zM9 1h1v9H9z',
-  dither: 'M2 2h7v1H2zM2 3h1v5H2zM8 3h1v5H8zM4 3h1v1H4zM6 3h1v1H6zM3 4h1v1H3zM5 4h1v1H5zM7 4h1v1H7zM4 5h1v1H4zM6 5h1v1H6zM3 6h1v1H3zM5 6h1v1H5zM7 6h1v1H7zM4 7h1v1H4zM6 7h1v1H6zM2 8h7v1H2z'
+  dither: 'M2 2h7v1H2zM2 3h1v5H2zM8 3h1v5H8zM4 3h1v1H4zM6 3h1v1H6zM3 4h1v1H3zM5 4h1v1H5zM7 4h1v1H7zM4 5h1v1H4zM6 5h1v1H6zM3 6h1v1H3zM5 6h1v1H5zM7 6h1v1H7zM4 7h1v1H4zM6 7h1v1H6zM2 8h7v1H2z',
+  ink: 'M5 1h1v1H5zM4 2h3v2H4zM3 4h5v1H3zM2 5h7v3H2zM3 8h5v1H3zM4 9h3v1H4z'
 } as const
 
 const utilityIconTranslucentPaths: Partial<Record<PixelUtilityIconKind, string>> = {
@@ -109,6 +111,7 @@ const utilityIconTranslucentPaths: Partial<Record<PixelUtilityIconKind, string>>
   copy: 'M2 2h4v1H2zM2 3h1v3H2z',
   link: 'M4 3h1v1H4zM6 3h1v1H6zM4 7h1v1H4zM6 7h1v1H6z',
   linkedLayer: 'M3 4h1v1H3zM7 4h1v1H7zM3 5h1v1H3zM7 5h1v1H7zM5 7h1v1H5z',
+  aspectLink: 'M3 4h1v1H3zM7 4h1v1H7zM3 6h1v1H3zM7 6h1v1H7z',
   mergeDown: 'M3 6h1v1H3z',
   mergeVisible: 'M3 6h1v1H3zM6 6h1v1H6z',
   clippingMask: 'M5 3h1v1H5z',

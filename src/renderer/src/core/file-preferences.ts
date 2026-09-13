@@ -2,7 +2,9 @@ import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
 import type { RgbaColor } from '@shared/types'
+import type { OutlineSettings } from '@shared/types'
 import type { ColorValueMode } from './color-values'
+import { normalizeOutlineSettings, cloneOutlineSettings } from './outline-settings'
 import { DEFAULT_THEME_PREFERENCES, THEME_PREFERENCE_KEY, loadThemePreferences, normalizeThemePreferences, resolveTheme, rgbaHex, saveThemePreferences, withThemePaletteColors, type ThemePalette, type ThemePreferences } from './theme'
 import { ISO_GUIDE_BASE_SPACING, ISO_LINE_STAIR_STEP } from './isometric'
 
@@ -19,6 +21,12 @@ export const LANGUAGE_PREFERENCE_KEY = APP_LANGUAGE_PREFERENCE_KEY
 export const RECOVERY_PREFERENCE_KEY = 'moonsprite.preference.recovery'
 export const RECOVERY_MINUTES_PREFERENCE_KEY = 'moonsprite.preference.recovery-minutes'
 export const RECOVERY_RETENTION_DAYS_PREFERENCE_KEY = 'moonsprite.preference.recovery-retention-days'
+export const PROJECT_BACKUP_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.project-backup-enabled'
+export const PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY = 'moonsprite.preference.project-backup-versions'
+export const PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY = 'moonsprite.preference.project-backup-retention-days'
+export const PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.project-backup-directory'
+export const LOCAL_HISTORY_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.local-history-enabled'
+export const LOCAL_HISTORY_LIMIT_PREFERENCE_KEY = 'moonsprite.preference.local-history-limit'
 export const ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY = 'moonsprite.preference.zoom-tool-drag-mode'
 export const VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY = 'moonsprite.preference.view-drag-sensitivity'
 export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-mode'
@@ -45,6 +53,11 @@ export const SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.
 export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-visible'
 export const GRADIENT_LINE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-color'
 export const LASSO_PREVIEW_CLOSED_PREFERENCE_KEY = 'moonsprite.preference.lasso-preview-closed'
+export const EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-quick-select'
+export const TOOLTIPS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.tooltips-enabled'
+export const KEY_DISPLAY_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.key-display-enabled'
+export const KEY_DISPLAY_SIZE_PREFERENCE_KEY = 'moonsprite.preference.key-display-size'
+export const KEY_DISPLAY_DURATION_PREFERENCE_KEY = 'moonsprite.preference.key-display-duration'
 export const EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-switch-to-pencil'
 export const EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-enabled'
 export const EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-magnifier-style'
@@ -58,6 +71,7 @@ export const SELECTION_PREVIEW_COLOR_MODE_PREFERENCE_KEY = 'moonsprite.preferenc
 export const SELECTION_PREVIEW_COLOR_PREFERENCE_KEY = 'moonsprite.preference.selection-preview-color'
 export const SELECTION_SIZE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.selection-size-visible'
 export const BALANCED_SHIFT_LINE_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.balanced-shift-line-enabled'
+export const OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.optimized-rotation-enabled'
 export const LINE_DIRECTION_STEP_PREFERENCE_KEY = 'moonsprite.preference.line-direction-step'
 export const LAYER_DISPLAY_COLOR_PRESETS_KEY = 'moonsprite.preference.layer-display-color-presets'
 export const COLOR_EDITOR_MODES_PREFERENCE_KEY = 'moonsprite.preference.color-editor-modes'
@@ -76,9 +90,16 @@ export const UI_SCALE_PREFERENCE_KEY = 'moonsprite.preference.ui-scale'
 export const TOOL_ICON_SCALE_PREFERENCE_KEY = 'moonsprite.preference.tool-icon-scale'
 export const ANIMATIONS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.animations-enabled'
 export const UI_MOTION_LEVEL_PREFERENCE_KEY = 'moonsprite.preference.ui-motion-level'
+export const ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY = 'moonsprite.preference.animation-playback-rate'
+export const ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY = 'moonsprite.preference.animation-playback-mode'
+export const ANIMATION_RETURN_TO_START_PREFERENCE_KEY = 'moonsprite.preference.animation-return-to-start'
+export const SKIP_DISABLED_FRAMES_PREFERENCE_KEY = 'moonsprite.preference.skip-disabled-frames'
+export const TABLET_PREFERENCES_KEY = 'moonsprite.preference.tablet'
+/** Last-used selection outline settings shared by new projects. */
+export const OUTLINE_SETTINGS_PREFERENCE_KEY = 'moonsprite.preference.outline-settings'
 export { THEME_PREFERENCE_KEY }
 
-export type RotationIndicatorPosition = 'view' | 'canvas'
+export type RotationIndicatorPosition = 'view' | 'canvas' | 'pointer-left'
 export type RelativeLuminanceScope = 'canvas' | 'app'
 export type ZoomToolDragMode = 'smooth' | 'stepped'
 export type WheelZoomMode = 'smooth' | 'stepped'
@@ -87,11 +108,40 @@ export type ViewDragSensitivity = typeof VIEW_DRAG_SENSITIVITY_VALUES[number]
 export type CursorScale = 1 | 1.25 | 1.5 | 2
 export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
+export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
+export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
 export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
 export type ToolIconScale = 1 | 2
 export type UiMotionLevel = 'off' | 'subtle' | 'normal' | 'full'
+export type TimelinePlaybackModePreference = 'once' | 'all' | 'tag'
 export const UI_MOTION_LEVELS: readonly UiMotionLevel[] = ['off', 'subtle', 'normal', 'full']
+export const ANIMATION_PLAYBACK_RATES = [0.25, 0.5, 1, 1.5, 2, 3] as const
+export type TabletApi = 'auto' | 'windows-ink' | 'disabled'
+export type TabletTouchMode = 'navigate' | 'draw' | 'disabled'
+export type TabletBarrelButtonAction = 'eraser' | 'eyedropper' | 'hand' | 'disabled'
+export interface TabletPreferences {
+  api: TabletApi
+  pressureEnabled: boolean
+  tiltEnabled: boolean
+  twistEnabled: boolean
+  eraserTipEnabled: boolean
+  barrelButtonAction: TabletBarrelButtonAction
+  touchMode: TabletTouchMode
+  twoFingerZoomEnabled: boolean
+  twoFingerRotateEnabled: boolean
+}
+export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
+  api: 'auto',
+  pressureEnabled: true,
+  tiltEnabled: false,
+  twistEnabled: false,
+  eraserTipEnabled: true,
+  barrelButtonAction: 'eraser',
+  touchMode: 'navigate',
+  twoFingerZoomEnabled: true,
+  twoFingerRotateEnabled: false
+}
 export type BrushPreviewMode = 'none' | 'edge' | 'full' | 'full-edge'
 export type SelectionPreviewColorMode = 'auto' | 'custom'
 export type EyedropperMagnifierStyle = 'pixel' | 'line'
@@ -314,7 +364,7 @@ export const DEFAULT_SELECTION_PREVIEW_COLOR: RgbaColor = { r: 0, g: 0, b: 255, 
 export const DEFAULT_GRADIENT_LINE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 
 export function parseRotationIndicatorPosition(value: string | null): RotationIndicatorPosition {
-  return value === 'canvas' ? 'canvas' : 'view'
+  return value === 'canvas' || value === 'pointer-left' ? value : 'view'
 }
 
 export function parseDrawingBrushPreviewEnabled(value: string | null): boolean {
@@ -345,6 +395,16 @@ export function parseBrushShiftLineEnabled(value: string | null): boolean {
 export function parseCursorScale(value: string | null): CursorScale {
   const parsed = Number(value)
   return parsed === 1.25 || parsed === 1.5 || parsed === 2 ? parsed : 1
+}
+
+export function parseKeyDisplaySize(value: string | null): number {
+  const parsed = Number(value)
+  return parsed === 0.75 || parsed === 1.25 || parsed === 1.5 ? parsed : 1
+}
+
+export function parseKeyDisplayDuration(value: string | null): KeyDisplayDuration {
+  const parsed = Number(value)
+  return KEY_DISPLAY_DURATIONS.includes(parsed as KeyDisplayDuration) ? parsed as KeyDisplayDuration : 1400
 }
 
 export function parseUiScale(value: string | null): UiScale {
@@ -382,6 +442,15 @@ export function parseCheckerSize(value: string | null): CheckerSize {
 export function parseLineDirectionStep(value: string | null): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? Math.max(1, Math.min(16, Math.round(parsed))) : 1
+}
+
+export function parseAnimationPlaybackRate(value: string | null): number {
+  const parsed = Number(value)
+  return ANIMATION_PLAYBACK_RATES.includes(parsed as typeof ANIMATION_PLAYBACK_RATES[number]) ? parsed : 1
+}
+
+export function parseAnimationPlaybackMode(value: string | null): TimelinePlaybackModePreference | null {
+  return value === 'once' || value === 'all' || value === 'tag' ? value : null
 }
 
 const parseHexColor = (value: string | null, fallback: RgbaColor): RgbaColor => {
@@ -523,6 +592,10 @@ export interface EditorPreferences {
   toolIconScale: ToolIconScale
   uiMotionLevel: UiMotionLevel
   animationsEnabled: boolean
+  animationPlaybackRate: number
+  animationPlaybackMode: TimelinePlaybackModePreference | null
+  animationReturnToStart: boolean
+  skipDisabledFrames: boolean
   saveFormat: SaveFormatPreference
   exportFormat: ExportFormatPreference
   saveDirectory: string
@@ -530,6 +603,13 @@ export interface EditorPreferences {
   recovery: boolean
   recoveryMinutes: number
   recoveryRetentionDays: number
+  projectBackupEnabled: boolean
+  projectBackupVersions: number
+  projectBackupRetentionDays: number
+  projectBackupDirectory: string
+  /** Keeps undo snapshots in the app data directory instead of project files. */
+  localHistoryEnabled: boolean
+  localHistoryLimit: number
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
@@ -559,6 +639,11 @@ export interface EditorPreferences {
   gradientLineVisible: boolean
   gradientLineColor: RgbaColor
   lassoPreviewClosed: boolean
+  eyedropperQuickSelect: boolean
+  tooltipsEnabled: boolean
+  keyDisplayEnabled: boolean
+  keyDisplaySize: number
+  keyDisplayDuration: KeyDisplayDuration
   eyedropperSwitchToPencil: boolean
   eyedropperMagnifierEnabled: boolean
   eyedropperMagnifierStyle: EyedropperMagnifierStyle
@@ -572,6 +657,7 @@ export interface EditorPreferences {
   selectionPreviewColor: RgbaColor
   selectionSizeVisible: boolean
   balancedShiftLineEnabled: boolean
+  optimizedRotationEnabled: boolean
   lineDirectionStep: number
   layerDisplayColorPresets: RgbaColor[]
   colorEditorModes: ColorEditorModePreference[]
@@ -585,6 +671,8 @@ export interface EditorPreferences {
   quickCommandBarTranslucent: boolean
   quickCommandPreferences: QuickCommandPreference[]
   quickCommandBars: QuickCommandBarPreference[]
+  tablet: TabletPreferences
+  outlineSettings: OutlineSettings | null
   theme: ThemePreferences
 }
 
@@ -592,8 +680,12 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
   toolIconScale: 1,
-  uiMotionLevel: 'subtle',
-  animationsEnabled: true,
+  uiMotionLevel: 'off',
+  animationsEnabled: false,
+  animationPlaybackRate: 1,
+  animationPlaybackMode: null,
+  animationReturnToStart: false,
+  skipDisabledFrames: true,
   saveFormat: 'moonsprite',
   exportFormat: 'png',
   saveDirectory: '',
@@ -601,6 +693,12 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   recovery: true,
   recoveryMinutes: 5,
   recoveryRetentionDays: 7,
+  projectBackupEnabled: true,
+  projectBackupVersions: 10,
+  projectBackupRetentionDays: 30,
+  projectBackupDirectory: '',
+  localHistoryEnabled: false,
+  localHistoryLimit: 50,
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
@@ -630,6 +728,11 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   gradientLineVisible: true,
   gradientLineColor: DEFAULT_GRADIENT_LINE_COLOR,
   lassoPreviewClosed: false,
+  eyedropperQuickSelect: false,
+  tooltipsEnabled: true,
+  keyDisplayEnabled: false,
+  keyDisplaySize: 1,
+  keyDisplayDuration: 1400,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
   eyedropperMagnifierStyle: 'pixel',
@@ -643,6 +746,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   selectionPreviewColor: DEFAULT_SELECTION_PREVIEW_COLOR,
   selectionSizeVisible: true,
   balancedShiftLineEnabled: true,
+  optimizedRotationEnabled: true,
   lineDirectionStep: 1,
   layerDisplayColorPresets: DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
   colorEditorModes: DEFAULT_COLOR_EDITOR_MODES,
@@ -656,6 +760,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   quickCommandBarTranslucent: false,
   quickCommandPreferences: DEFAULT_QUICK_COMMAND_PREFERENCES,
   quickCommandBars: DEFAULT_QUICK_COMMAND_BARS,
+  tablet: DEFAULT_TABLET_PREFERENCES,
+  outlineSettings: null,
   theme: DEFAULT_THEME_PREFERENCES
 }
 
@@ -965,6 +1071,24 @@ export function parseRecoveryRetentionDays(value: string | null): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.recoveryRetentionDays
 }
 
+export function parseProjectBackupVersions(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.projectBackupVersions
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.projectBackupVersions
+}
+
+export function parseLocalHistoryLimit(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.localHistoryLimit
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(200, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.localHistoryLimit
+}
+
+export function parseProjectBackupRetentionDays(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.projectBackupRetentionDays
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.projectBackupRetentionDays
+}
+
 export function parseMoveLayerClickFlashDuration(value: string | null): MoveLayerClickFlashDuration {
   const parsed = Number(value)
   return MOVE_LAYER_CLICK_FLASH_DURATIONS.includes(parsed as MoveLayerClickFlashDuration)
@@ -984,20 +1108,58 @@ export function parseAlignmentThreshold(value: string | null): number {
     : DEFAULT_EDITOR_PREFERENCES.alignmentThreshold
 }
 
+export function parseTabletPreferences(value: string | null): TabletPreferences {
+  try {
+    const parsed = JSON.parse(value ?? 'null') as Partial<TabletPreferences> | null
+    if (!parsed || typeof parsed !== 'object') throw new Error('invalid tablet preferences')
+    const api: TabletApi = parsed.api === 'windows-ink' || parsed.api === 'disabled' ? parsed.api : 'auto'
+    const touchMode: TabletTouchMode = parsed.touchMode === 'draw' || parsed.touchMode === 'disabled' ? parsed.touchMode : 'navigate'
+    const barrelButtonAction: TabletBarrelButtonAction = parsed.barrelButtonAction === 'eyedropper' || parsed.barrelButtonAction === 'hand' || parsed.barrelButtonAction === 'disabled' ? parsed.barrelButtonAction : 'eraser'
+    return {
+      api,
+      pressureEnabled: parsed.pressureEnabled !== false,
+      tiltEnabled: parsed.tiltEnabled === true,
+      twistEnabled: parsed.twistEnabled === true,
+      eraserTipEnabled: parsed.eraserTipEnabled !== false,
+      barrelButtonAction,
+      touchMode,
+      twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
+      twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true
+    }
+  } catch {
+    return { ...DEFAULT_TABLET_PREFERENCES }
+  }
+}
+
+/** Parse the software-wide outline defaults without inventing a setting when none was saved. */
+export function parseOutlineSettingsPreference(value: string | null): OutlineSettings | null {
+  if (!value?.trim()) return null
+  try {
+    return normalizeOutlineSettings(JSON.parse(value))
+  } catch {
+    return null
+  }
+}
+
 export function loadEditorPreferences(storage?: Storage): EditorPreferences {
   if (!storage && previewPreferences) return copyPreferences(previewPreferences)
   const get = (key: string): string | null => readStoredString(key, storage)
   const theme = effectiveThemeColors(loadThemePreferences(storage), get, storage)
   const storedMotionLevel = get(UI_MOTION_LEVEL_PREFERENCE_KEY)
+  const legacyAnimationsEnabled = get(ANIMATIONS_ENABLED_PREFERENCE_KEY)
   const uiMotionLevel = storedMotionLevel !== null
     ? parseUiMotionLevel(storedMotionLevel)
-    : get(ANIMATIONS_ENABLED_PREFERENCE_KEY) === 'false' ? 'off' : DEFAULT_EDITOR_PREFERENCES.uiMotionLevel
+    : legacyAnimationsEnabled === 'false' ? 'off' : legacyAnimationsEnabled === 'true' ? 'subtle' : DEFAULT_EDITOR_PREFERENCES.uiMotionLevel
   return {
     language: parseAppLocale(get(LANGUAGE_PREFERENCE_KEY)),
     uiScale: parseUiScale(get(UI_SCALE_PREFERENCE_KEY)),
     toolIconScale: parseToolIconScale(get(TOOL_ICON_SCALE_PREFERENCE_KEY)),
     uiMotionLevel,
     animationsEnabled: uiMotionLevel !== 'off',
+    animationPlaybackRate: parseAnimationPlaybackRate(get(ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY)),
+    animationPlaybackMode: parseAnimationPlaybackMode(get(ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY)),
+    animationReturnToStart: get(ANIMATION_RETURN_TO_START_PREFERENCE_KEY) === 'true',
+    skipDisabledFrames: get(SKIP_DISABLED_FRAMES_PREFERENCE_KEY) !== 'false',
     saveFormat: parseSaveFormat(get(SAVE_FORMAT_PREFERENCE_KEY)),
     exportFormat: parseExportFormat(get(EXPORT_FORMAT_PREFERENCE_KEY)),
     saveDirectory: parseDirectoryPreference(get(SAVE_DIRECTORY_PREFERENCE_KEY)),
@@ -1005,6 +1167,12 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     recovery: get(RECOVERY_PREFERENCE_KEY) !== 'false',
     recoveryMinutes: parseRecoveryMinutes(get(RECOVERY_MINUTES_PREFERENCE_KEY)),
     recoveryRetentionDays: parseRecoveryRetentionDays(get(RECOVERY_RETENTION_DAYS_PREFERENCE_KEY)),
+    projectBackupEnabled: get(PROJECT_BACKUP_ENABLED_PREFERENCE_KEY) !== 'false',
+    projectBackupVersions: parseProjectBackupVersions(get(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)),
+    projectBackupRetentionDays: parseProjectBackupRetentionDays(get(PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY)),
+    projectBackupDirectory: parseDirectoryPreference(get(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)),
+    localHistoryEnabled: get(LOCAL_HISTORY_ENABLED_PREFERENCE_KEY) === 'true',
+    localHistoryLimit: parseLocalHistoryLimit(get(LOCAL_HISTORY_LIMIT_PREFERENCE_KEY)),
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
@@ -1034,6 +1202,11 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     gradientLineVisible: get(GRADIENT_LINE_VISIBLE_PREFERENCE_KEY) !== 'false',
     gradientLineColor: parseHexColor(get(GRADIENT_LINE_COLOR_PREFERENCE_KEY), DEFAULT_GRADIENT_LINE_COLOR),
     lassoPreviewClosed: get(LASSO_PREVIEW_CLOSED_PREFERENCE_KEY) === 'true',
+    eyedropperQuickSelect: get(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY) === 'true',
+    tooltipsEnabled: get(TOOLTIPS_ENABLED_PREFERENCE_KEY) !== 'false',
+    keyDisplayEnabled: get(KEY_DISPLAY_ENABLED_PREFERENCE_KEY) === 'true',
+    keyDisplaySize: parseKeyDisplaySize(get(KEY_DISPLAY_SIZE_PREFERENCE_KEY)),
+    keyDisplayDuration: parseKeyDisplayDuration(get(KEY_DISPLAY_DURATION_PREFERENCE_KEY)),
     eyedropperSwitchToPencil: get(EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY) === 'true',
     eyedropperMagnifierEnabled: get(EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY) !== 'false',
     eyedropperMagnifierStyle: parseEyedropperMagnifierStyle(get(EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY)),
@@ -1047,6 +1220,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     selectionPreviewColor: parseHexColor(get(SELECTION_PREVIEW_COLOR_PREFERENCE_KEY), DEFAULT_SELECTION_PREVIEW_COLOR),
     selectionSizeVisible: get(SELECTION_SIZE_VISIBLE_PREFERENCE_KEY) !== 'false',
     balancedShiftLineEnabled: get(BALANCED_SHIFT_LINE_ENABLED_PREFERENCE_KEY) !== 'false',
+    optimizedRotationEnabled: get(OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY) !== 'false',
     lineDirectionStep: parseLineDirectionStep(get(LINE_DIRECTION_STEP_PREFERENCE_KEY)),
     layerDisplayColorPresets: parseLayerDisplayColorPresets(get(LAYER_DISPLAY_COLOR_PRESETS_KEY)),
     colorEditorModes: parseColorEditorModes(get(COLOR_EDITOR_MODES_PREFERENCE_KEY)),
@@ -1060,6 +1234,8 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     quickCommandBarTranslucent: get(QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY) === 'true',
     quickCommandPreferences: parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY)),
     quickCommandBars: parseQuickCommandBars(get(QUICK_COMMAND_BARS_PREFERENCE_KEY), parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY))),
+    tablet: parseTabletPreferences(get(TABLET_PREFERENCES_KEY)),
+    outlineSettings: parseOutlineSettingsPreference(get(OUTLINE_SETTINGS_PREFERENCE_KEY)),
     theme: theme.theme
   }
 }
@@ -1075,6 +1251,10 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [TOOL_ICON_SCALE_PREFERENCE_KEY]: String(parseToolIconScale(String(preferences.toolIconScale))),
     [ANIMATIONS_ENABLED_PREFERENCE_KEY]: String(uiMotionLevel !== 'off'),
     [UI_MOTION_LEVEL_PREFERENCE_KEY]: uiMotionLevel,
+    [ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY]: String(parseAnimationPlaybackRate(String(preferences.animationPlaybackRate))),
+    [ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY]: preferences.animationPlaybackMode ?? '',
+    [ANIMATION_RETURN_TO_START_PREFERENCE_KEY]: String(preferences.animationReturnToStart),
+    [SKIP_DISABLED_FRAMES_PREFERENCE_KEY]: String(preferences.skipDisabledFrames),
     [SAVE_FORMAT_PREFERENCE_KEY]: preferences.saveFormat,
     [EXPORT_FORMAT_PREFERENCE_KEY]: preferences.exportFormat,
     [SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.saveDirectory),
@@ -1082,6 +1262,12 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [RECOVERY_PREFERENCE_KEY]: String(preferences.recovery),
     [RECOVERY_MINUTES_PREFERENCE_KEY]: String(parseRecoveryMinutes(String(preferences.recoveryMinutes))),
     [RECOVERY_RETENTION_DAYS_PREFERENCE_KEY]: String(parseRecoveryRetentionDays(String(preferences.recoveryRetentionDays))),
+    [PROJECT_BACKUP_ENABLED_PREFERENCE_KEY]: String(preferences.projectBackupEnabled),
+    [PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY]: String(parseProjectBackupVersions(String(preferences.projectBackupVersions))),
+    [PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY]: String(parseProjectBackupRetentionDays(String(preferences.projectBackupRetentionDays))),
+    [PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.projectBackupDirectory),
+    [LOCAL_HISTORY_ENABLED_PREFERENCE_KEY]: String(preferences.localHistoryEnabled),
+    [LOCAL_HISTORY_LIMIT_PREFERENCE_KEY]: String(parseLocalHistoryLimit(String(preferences.localHistoryLimit))),
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
@@ -1113,6 +1299,11 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [GRADIENT_LINE_VISIBLE_PREFERENCE_KEY]: String(preferences.gradientLineVisible),
     [GRADIENT_LINE_COLOR_PREFERENCE_KEY]: colorHex(preferences.gradientLineColor),
     [LASSO_PREVIEW_CLOSED_PREFERENCE_KEY]: String(preferences.lassoPreviewClosed),
+    [EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY]: String(preferences.eyedropperQuickSelect),
+    [TOOLTIPS_ENABLED_PREFERENCE_KEY]: String(preferences.tooltipsEnabled),
+    [KEY_DISPLAY_ENABLED_PREFERENCE_KEY]: String(preferences.keyDisplayEnabled),
+    [KEY_DISPLAY_SIZE_PREFERENCE_KEY]: String(parseKeyDisplaySize(String(preferences.keyDisplaySize))),
+    [KEY_DISPLAY_DURATION_PREFERENCE_KEY]: String(parseKeyDisplayDuration(String(preferences.keyDisplayDuration))),
     [EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY]: String(preferences.eyedropperSwitchToPencil),
     [EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY]: String(preferences.eyedropperMagnifierEnabled),
     [EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY]: preferences.eyedropperMagnifierStyle,
@@ -1126,6 +1317,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [SELECTION_PREVIEW_COLOR_PREFERENCE_KEY]: colorHex(preferences.selectionPreviewColor),
     [SELECTION_SIZE_VISIBLE_PREFERENCE_KEY]: String(preferences.selectionSizeVisible),
     [BALANCED_SHIFT_LINE_ENABLED_PREFERENCE_KEY]: String(preferences.balancedShiftLineEnabled),
+    [OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY]: String(preferences.optimizedRotationEnabled),
     [LINE_DIRECTION_STEP_PREFERENCE_KEY]: String(parseLineDirectionStep(String(preferences.lineDirectionStep))),
     [LAYER_DISPLAY_COLOR_PRESETS_KEY]: JSON.stringify(parseLayerDisplayColorPresets(JSON.stringify(preferences.layerDisplayColorPresets))),
     [COLOR_EDITOR_MODES_PREFERENCE_KEY]: JSON.stringify(parseColorEditorModes(JSON.stringify(preferences.colorEditorModes))),
@@ -1138,7 +1330,9 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY]: String(preferences.quickCommandBarExpanded),
     [QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY]: String(preferences.quickCommandBarTranslucent),
     [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences))),
-    [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences))
+    [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences)),
+    [TABLET_PREFERENCES_KEY]: JSON.stringify(parseTabletPreferences(JSON.stringify(preferences.tablet))),
+    [OUTLINE_SETTINGS_PREFERENCE_KEY]: preferences.outlineSettings ? JSON.stringify(cloneOutlineSettings(normalizeOutlineSettings(preferences.outlineSettings)!)) : ''
   }
   for (const [key, value] of Object.entries(values)) writeStoredString(key, value, storage)
   saveThemePreferences(theme, storage)

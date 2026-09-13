@@ -1,14 +1,78 @@
 import { describe, expect, it } from 'vitest'
 import { commitPixelEdit, revertPixelEdit } from './history'
-import { createDocument, getActiveLayer, readLayerColorAt, writeLayerColor } from './document'
+import { createDocument, createSparseLayer, getActiveLayer, readLayerColorAt, writeLayerColor } from './document'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, gradientAmountAt, gradientColorAt, gradientColorForAmount, gradientRegionSelection, GRADIENT_DITHER_PRESETS, interpolateRgbaColor, resolveRadialGradientGeometry } from './gradient'
 import { ditherStageCount } from './gradient-color'
+import { packColor } from './raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
 const blue = { r: 0, g: 0, b: 255, a: 255 }
 const green = { r: 0, g: 255, b: 0, a: 255 }
+const expectPackedPixels = (actual: Uint32Array, expected: Uint32Array): void => {
+  expect(actual.length).toBe(expected.length)
+  expect(actual.findIndex((value, index) => value !== expected[index])).toBe(-1)
+}
 
 describe('gradient tool core', () => {
+  it.each(['bayer-2', 'bayer-8', 'diagonal'] as const)('preserves shifted, multicolor dense layers and selection holes through %s undo/redo', (dither) => {
+    const document = createDocument('dense dither history', 536, 536, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.offsetX = -4; layer.offsetY = -3
+    const words = new Uint32Array(layer.pixels.buffer)
+    for (let index = 0; index < words.length; index++) words[index] = 0xff000000 | ((index % 6) * 0x223344)
+    words[13 * layer.width + 12] = packColor(red)
+    const before = words.slice(), expected = words.slice()
+    const mask = new Uint8Array(512 * 512).fill(1)
+    // Selected-but-unchanged and unselected islands must retain their data.
+    for (let y = 20; y < 80; y++) mask.fill(0, y * 512 + 10, y * 512 + 90)
+    const selection = { x: 8, y: 10, width: 512, height: 512, mask }
+    const stops = [{ position: 0, color: red }, { position: 0.5, color: green }, { position: 1, color: blue }]
+    const start = { x: 8, y: 10 }, end = { x: 519, y: 521 }
+    const sample = createGradientColorSampler(red, blue, start, end, dither, 'linear', {}, stops)
+    for (let y = 10; y < 522; y++) for (let x = 8; x < 520; x++) {
+      if (mask[(y - 10) * 512 + x - 8]) expected[(y + 3) * layer.width + x + 4] = packColor(sample(x, y))
+    }
+    const edit = applyGradient(document, layer, start, end, red, blue, selection, dither, undefined, 'linear', {}, stops)!
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    const history = commitPixelEdit(document, edit, 'dither gradient')!
+    for (let repeat = 0; repeat < 2; repeat++) {
+      history.undo()
+      expectPackedPixels(new Uint32Array(layer.pixels.buffer), before)
+      history.redo()
+      expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    }
+  })
+
+  it('retains exact pixels and complete undo for blank dense dither commits', () => {
+    const document = createDocument('blank dense dither', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    const sample = createGradientColorSampler(red, blue, { x: 511, y: 0 }, { x: 0, y: 511 }, 'bayer-2')
+    const expected = new Uint32Array(512 * 512)
+    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) expected[y * 512 + x] = packColor(sample(x, y))
+    const edit = applyGradient(document, layer, { x: 511, y: 0 }, { x: 0, y: 511 }, red, blue, null, 'bayer-2')!
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+    const history = commitPixelEdit(document, edit, 'dither gradient')!
+    history.undo()
+    expect(layer.pixels.every(value => value === 0)).toBe(true)
+    history.redo()
+    expectPackedPixels(new Uint32Array(layer.pixels.buffer), expected)
+  })
+  it('preserves selected dense pixels that already equal the gradient across undo and redo', () => {
+    const document = createDocument('unchanged dense pixels', 512, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    // This red pixel is selected but unchanged at the red endpoint. Dense
+    // rectangle history must retain it while restoring the surrounding pixels.
+    writeLayerColor(document, layer, 256 * 512, red)
+    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 511, y: 0 }, red, blue)!
+    const history = commitPixelEdit(document, edit, 'gradient')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 1, 256).a).toBe(0)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 0, 256)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 511, 256)).toEqual(blue)
+  })
+
   it('snaps constrained endpoints to sixteen directions while preserving distance', () => {
     expect(constrainGradientEndpoint({ x: 2, y: 3 }, { x: 12, y: 3 })).toEqual({ x: 12, y: 3 })
     expect(constrainGradientEndpoint({ x: 2, y: 3 }, { x: 2, y: 13 })).toEqual({ x: 2, y: 13 })
@@ -34,6 +98,14 @@ describe('gradient tool core', () => {
     expect(gradientColorAt(red, blue, 4, 2, start, end, 'none', 'radial')).toEqual(red)
     expect(gradientColorAt(red, blue, 6, 2, start, end, 'none', 'radial')).toEqual({ r: 128, g: 0, b: 128, a: 255 })
     expect(createGradientColorSampler(red, blue, start, end, 'none', 'radial')(4, 4)).toEqual(blue)
+  })
+
+  it('rotates radial gradient ellipse axes around its center', () => {
+    const start = { x: 0, y: 0 }
+    const end = { x: 8, y: 4 }
+    expect(gradientAmountAt(4, 4, start, end, 'radial', { angle: 90 })).toBe(0.5)
+    expect(gradientAmountAt(4, 6, start, end, 'radial', { angle: 90 })).toBe(1)
+    expect(gradientAmountAt(4, 6, start, end, 'radial', { angle: 90, radialGeometry: { center: { x: 4, y: 2 }, radiusX: 4, radiusY: 2 } })).toBe(1)
   })
 
   it('interpolates any number of freeform gradient stops', () => {
@@ -62,6 +134,22 @@ describe('gradient tool core', () => {
     })
   })
 
+  it('uses visible colors and diagonal connectivity for a gradient paint region', () => {
+    const document = createDocument('visible gradient region', 3, 3, 'rgba')
+    const sourceLayer = getActiveLayer(document)
+    const targetLayer = createSparseLayer('Target', 'rgba')
+    document.layers.push(targetLayer)
+    document.activeLayerId = targetLayer.id
+    writeLayerColor(document, sourceLayer, 0, red)
+    writeLayerColor(document, sourceLayer, 4, red)
+    const sourceColorAt = (x: number, y: number) => {
+      if ((x === 0 && y === 0) || (x === 1 && y === 1)) return red
+      return { r: 0, g: 0, b: 0, a: 0 }
+    }
+    const region = gradientRegionSelection(document, targetLayer, { x: 0, y: 0 }, 0, true, { sourceColorAt, connectivity: 8 })
+    expect(region?.mask ? Array.from(region.mask).filter(Boolean) : []).toHaveLength(2)
+  })
+
   it('keeps dense opaque multi-stop gradients exact through undo and redo', () => {
     const document = createDocument('dense packed gradient', 512, 512, 'rgba')
     const layer = getActiveLayer(document)
@@ -86,6 +174,56 @@ describe('gradient tool core', () => {
     for (const x of [0, 128, 256, 384, 511]) expect(readLayerColorAt(document, layer, x, 300)).toEqual(sample(x, 300))
   })
 
+  it('does not leave a sparse layer expanded when a transparent gradient is a no-op', () => {
+    const document = createDocument('sparse gradient no-op', 1024, 1024, 'rgba')
+    const layer = createSparseLayer('sparse', 'rgba')
+    document.layers = [layer]
+    document.activeLayerId = layer.id
+    const transparent = { r: 0, g: 0, b: 0, a: 0 }
+    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 1023, y: 1023 }, transparent, transparent)
+    expect(edit).toBeNull()
+    expect(layer.width).toBe(1)
+    expect(layer.height).toBe(1)
+    expect(layer.offsetX).toBe(0)
+    expect(layer.offsetY).toBe(0)
+  })
+
+  it('restores an opaque background layer after repeated dense gradient undo', () => {
+    const document = createDocument('background gradient undo', 1024, 1024, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.background = { mode: 'canvas' }
+    const yellow = { r: 255, g: 230, b: 0, a: 255 }
+    layer.pixels.fill(0)
+    for (let offset = 0; offset < layer.pixels.length; offset += 4) {
+      layer.pixels[offset] = yellow.r
+      layer.pixels[offset + 1] = yellow.g
+      layer.pixels[offset + 2] = yellow.b
+      layer.pixels[offset + 3] = yellow.a
+    }
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 1023, y: 0 }, red, blue)
+      expect(edit).not.toBeNull()
+      const history = commitPixelEdit(document, edit!, 'background gradient')!
+      history.undo()
+      expect(readLayerColorAt(document, layer, 512, 512)).toEqual(yellow)
+    }
+  })
+
+  it('preserves pixels outside a masked dense gradient on undo and redo', () => {
+    const document = createDocument('masked dense gradient', 1024, 512, 'rgba')
+    const layer = getActiveLayer(document)
+    const outside = { r: 12, g: 34, b: 56, a: 255 }
+    for (let index = 0; index < layer.width * layer.height; index += 1) writeLayerColor(document, layer, index, outside)
+    const selection = { x: 0, y: 0, width: 512, height: 512, mask: new Uint8Array(512 * 512).fill(1) }
+    const edit = applyGradient(document, layer, { x: 0, y: 0 }, { x: 511, y: 0 }, red, blue, selection)
+    expect(edit?.denseRegion?.count).toBeGreaterThan(0)
+    const history = commitPixelEdit(document, edit!, 'masked gradient')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 800, 300)).toEqual(outside)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 800, 300)).toEqual(outside)
+  })
+
   it('uses the nearest edge stop outside the first and last positions', () => {
     const sample = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'none', 'linear', {}, [
       { position: 0.25, color: red },
@@ -97,7 +235,7 @@ describe('gradient tool core', () => {
     expect(sample(4, 0)).toEqual(blue)
   })
 
-  it('supports freeform stops in radial gradients while dithering stays two-color', () => {
+  it('supports freeform stops in radial gradients and ordered dithering', () => {
     const stops = [
       { position: 0, color: red },
       { position: 0.5, color: green },
@@ -109,7 +247,8 @@ describe('gradient tool core', () => {
     expect(radial(2, 4)).toEqual(blue)
     const dithered = createGradientColorSampler(red, blue, { x: 0, y: 0 }, { x: 4, y: 0 }, 'checker', 'linear', {}, stops)
     expect(dithered(0, 0)).toEqual(red)
-    expect(dithered(2, 0)).toEqual(blue)
+    expect(dithered(2, 0)).toEqual(green)
+    expect(dithered(4, 0)).toEqual(blue)
   })
 
   it('matches marquee-style center and proportional modifiers for radial geometry', () => {

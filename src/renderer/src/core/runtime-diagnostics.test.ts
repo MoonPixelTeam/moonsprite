@@ -4,12 +4,43 @@ import {
   configureRuntimeDiagnostics,
   createRuntimeDiagnosticSessionId,
   mainThreadStallDuration,
+  measureRuntimeDiagnostic,
   recordRuntimeDiagnostic,
   resetRuntimeDiagnosticsForTests,
-  runtimeDiagnosticSnapshot
+  runtimeDiagnosticSnapshot,
+  runtimeDiagnosticSpanOverlap
 } from './runtime-diagnostics'
 
 describe('runtime diagnostics', () => {
+  it('summarizes accidental pixel payloads without reading getters or serializing document objects', () => {
+    const readPixels = vi.fn(() => { throw new Error('must not read') })
+    const detail = {
+      width: 4000, pixels: new Uint8Array(4000 * 4000), nested: { toJSON: readPixels },
+      get expensive() { return readPixels() }
+    }
+    recordRuntimeDiagnostic('session', 'safe-detail', detail as unknown as import('./runtime-diagnostics').RuntimeDiagnosticDetail)
+    const logged = runtimeDiagnosticSnapshot()[0].detail
+    expect(logged).toEqual({ width: 4000, pixels: '[Pixel/binary data: 16000000 bytes]', nested: '[object]', expensive: '[accessor]' })
+    expect(JSON.stringify(logged).length).toBeLessThan(200)
+    expect(readPixels).not.toHaveBeenCalled()
+  })
+
+  it('normalizes operation data before spreading and bounds detail size', () => {
+    const pixels = new Uint8Array(4000 * 4000) as unknown as import('./runtime-diagnostics').RuntimeDiagnosticDetail
+    const operation = beginRuntimeDiagnosticOperation('test', pixels)
+    operation.mark('preview', pixels)
+    operation.finish('ok', pixels)
+    for (const logged of runtimeDiagnosticSnapshot()) {
+      expect(logged.detail.omittedDetail).toBe('[Pixel/binary data: 16000000 bytes]')
+      expect(JSON.stringify(logged).length).toBeLessThan(1000)
+    }
+    const read = vi.fn()
+    const detail = Object.fromEntries(Array.from({ length: 48 }, (_, i) => [`key${i}`, 'x'.repeat(1000)]))
+    Object.defineProperty(detail, 'extra', { enumerable: true, get: read })
+    recordRuntimeDiagnostic('session', 'bounded', detail)
+    expect(Object.keys(runtimeDiagnosticSnapshot().at(-1)!.detail)).toHaveLength(48)
+    expect(read).not.toHaveBeenCalled()
+  })
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
@@ -74,5 +105,51 @@ describe('runtime diagnostics', () => {
     expect(mainThreadStallDuration(1_249, 500, 750)).toBeNull()
     expect(mainThreadStallDuration(1_250, 500, 750)).toBe(750)
     expect(mainThreadStallDuration(Number.NaN, 500, 750)).toBeNull()
+  })
+
+  it('keeps fast/disabled measurements silent and does not collect their context', () => {
+    const detail = vi.fn(() => ({ layerId: 'layer' }))
+    expect(measureRuntimeDiagnostic('disabled', () => 42, detail)).toBe(42)
+    configureRuntimeDiagnostics(() => {})
+    vi.spyOn(performance, 'now').mockReturnValue(10)
+    expect(measureRuntimeDiagnostic('fast', () => 43, detail)).toBe(43)
+    expect(detail).not.toHaveBeenCalled()
+    expect(runtimeDiagnosticSnapshot()).toHaveLength(0)
+  })
+
+  it('correlates completed nested spans with the original task interval and throttles repeated samples', () => {
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    configureRuntimeDiagnostics(() => {}, () => ({ documentId: 'other-tab' }))
+    measureRuntimeDiagnostic('pointer', () => {
+      now = 10
+      measureRuntimeDiagnostic('composite', () => { now = 70 }, () => ({ documentId: 'painted-document', layerId: 'painted-layer' }))
+      now = 100
+    })
+    const logs = runtimeDiagnosticSnapshot()
+    expect(logs[0].detail).toMatchObject({ spanId: 2, parentSpanId: 1, durationMs: 60, documentId: 'painted-document', timing: 'sync-inclusive' })
+    now = 5000 // A delayed observer must still match the old interval.
+    expect(runtimeDiagnosticSpanOverlap(0, 110)).toMatchObject({ measuredSpanCount: 2, measuredDocumentId: 'painted-document', measuredLayerId: 'painted-layer', measuredSpans: '1:pointer:100ms,2:composite:60ms' })
+    expect(runtimeDiagnosticSpanOverlap(101, 100)).toMatchObject({ measuredSpanCount: 0 })
+    measureRuntimeDiagnostic('move', () => { now += 20 })
+    for (let i = 0; i < 10; i++) measureRuntimeDiagnostic('move', () => { now += 20 })
+    expect(runtimeDiagnosticSnapshot().filter((entry) => entry.name === 'move')).toHaveLength(1)
+    now += 1000
+    measureRuntimeDiagnostic('move', () => { now += 20 })
+    expect(runtimeDiagnosticSnapshot().at(-1)?.detail).toMatchObject({ suppressedSamples: 10, suppressedMaxMs: 20 })
+  })
+
+  it('preserves thrown errors even when diagnostic context fails', () => {
+    configureRuntimeDiagnostics(() => { throw new Error('sink') })
+    const original = new Error('tool error')
+    expect(() => measureRuntimeDiagnostic('tool', () => { throw original }, () => { throw new Error('context') })).toThrow(original)
+  })
+
+  it('bounds the completed span ring under sustained slow input', () => {
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    configureRuntimeDiagnostics(() => {})
+    for (let i = 0; i < 300; i++) measureRuntimeDiagnostic('move', () => { now += 20 })
+    expect(runtimeDiagnosticSpanOverlap(0, now).measuredSpanCount).toBe(128)
   })
 })

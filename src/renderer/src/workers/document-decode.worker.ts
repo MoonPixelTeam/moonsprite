@@ -1,5 +1,6 @@
 import type { SpriteDocument } from '@shared/types'
 import { decodeAseprite } from '@/core/aseprite'
+import { decodePsd } from '@/core/psd'
 import { setRuntimeAppLocale, type AppLocale } from '@/core/localization'
 import { decodeProject } from '@/core/project-format'
 import { compositeDocument } from '@/core/document'
@@ -27,6 +28,8 @@ export interface DecodeWorkerResponse {
 
 const fileNameFromPath = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath
 const fileExtension = (filePath: string): string => filePath.split('.').pop()?.toLowerCase() ?? ''
+const isMoonSpriteBackupPath = (filePath: string): boolean => /\.moonsprite\.bak$/i.test(filePath)
+const isMoonSpriteProjectPath = (filePath: string): boolean => /\.moonsprite(?:\.bak)?$/i.test(filePath)
 
 const collectTransferables = (root: unknown): Transferable[] => {
   const buffers = new Set<ArrayBuffer>()
@@ -59,6 +62,7 @@ const createInitialCompositeSnapshot = (document: SpriteDocument): SpriteDocumen
           layerId: cel.layerId,
           frameId: cel.frameId,
           ...(cel.linkedCelId !== undefined ? { linkedCelId: cel.linkedCelId } : {}),
+          ...(cel.zIndex !== undefined ? { zIndex: cel.zIndex } : {}),
           ...(cel.opacity !== undefined ? { opacity: cel.opacity } : {})
         }))
       }
@@ -86,15 +90,19 @@ export const processDocumentDecodeRequest = (
   try {
     const suffix = fileExtension(filePath)
     const fileName = fileNameFromPath(filePath)
+    const project = isMoonSpriteProjectPath(filePath)
+    const backup = isMoonSpriteBackupPath(filePath)
     const reportDecodeProgress = (progress: number): void => {
       if (reportProgress) postMessage({ id, progress: prepareInitialComposite ? progress * 0.9 : progress }, [])
     }
-    const document = suffix === 'moonsprite'
+    const document = project
       ? decodeProject(data, reportDecodeProgress)
+      : suffix === 'psd'
+        ? decodePsd(data, fileName.replace(/\.psd$/i, ''), reportDecodeProgress)
       : decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), reportDecodeProgress)
-    document.filePath = suffix === 'moonsprite' ? filePath : null
-    document.sourceFilePath = filePath
-    document.name = fileName
+    document.filePath = project && !backup ? filePath : null
+    document.sourceFilePath = backup ? undefined : filePath
+    document.name = backup ? fileName.replace(/\.bak$/i, '') : fileName
 
     const shouldPrepareInitialComposite = prepareInitialComposite && canPrepareInitialDocumentComposite(document.width, document.height)
     prepareRuntimeRasterMetadata(document)

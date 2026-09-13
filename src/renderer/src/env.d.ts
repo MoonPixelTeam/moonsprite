@@ -15,11 +15,15 @@ declare global {
     }
     __moonSpritePerformanceHarness?: {
       createSimpleDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
+      createSparseMagicWandDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
       createComplexDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
       createLargeDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
       activeView(): ViewState | null
       resetScenario(view: ViewState): void
       prepareTool(tool: ToolId, fillKind?: FillKind | null, shapeKind?: ShapeKind | null): void
+      setBrushSize(size: number): void
+      prepareMagicWand(): void
+    selectionState: () => { x: number; y: number; width: number; height: number } | null
       prepareCenteredSelection(size: number): void
       prepareActiveLayerStyle(shadowBlur: number, innerGlowSize: number): void
       previewActiveLayerStyleSize(effect: 'shadow' | 'innerGlow', size: number): void
@@ -32,6 +36,7 @@ declare global {
       timelapseSnapshotCount(): number
       undoRedo(count: number): Promise<number>
       playAnimation(): Promise<number>
+      setAnimationPlaying(playing: boolean): void
     }
   }
 }

@@ -31,6 +31,7 @@ const HOME_FOLDER_FILE_EXTENSIONS: &[&str] = &[
     "moonsprite",
     "ase",
     "aseprite",
+    "psd",
     "png",
     "jpg",
     "jpeg",
@@ -258,6 +259,7 @@ mod tests {
         fs::write(directory.join("sprite.png"), [1]).unwrap();
         fs::write(directory.join("project.moonsprite"), [2]).unwrap();
         fs::write(directory.join("animation.ASEPRITE"), [3]).unwrap();
+        fs::write(directory.join("layers.psd"), [6]).unwrap();
         fs::write(directory.join("notes.txt"), [4]).unwrap();
         fs::write(directory.join("nested").join("ignored.png"), [5]).unwrap();
 
@@ -271,7 +273,12 @@ mod tests {
 
         assert_eq!(
             names,
-            vec!["animation.ASEPRITE", "project.moonsprite", "sprite.png"]
+            vec![
+                "animation.ASEPRITE",
+                "layers.psd",
+                "project.moonsprite",
+                "sprite.png"
+            ]
         );
         fs::remove_dir_all(directory).unwrap();
     }

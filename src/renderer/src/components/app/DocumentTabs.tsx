@@ -372,7 +372,7 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onContextActivate(item.document.id); setContextMenu({ documentId: item.document.id, x: event.clientX, y: event.clientY }) }}
       onClick={(event) => { if (suppressClickRef.current || dragRef.current?.moved) { event.preventDefault(); return }; onActivate(item.document.id) }}
     >
-      <PixelUtilityIcon kind="image" />
+      <PixelUtilityIcon kind="image" className="document-tab-leading-icon" />
       <span>{item.document.name}</span>
       {item.document.dirty && <i />}
       <span className="tab-close" role="button" tabIndex={0} aria-label={t('tabs.closeAria', { name: item.document.name })} onClick={(event) => { event.stopPropagation(); void useWorkspace.getState().closeDocument(item.document.id) }}><PixelUtilityIcon kind="close" /></span>

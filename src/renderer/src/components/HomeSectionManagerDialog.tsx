@@ -104,7 +104,7 @@ export function HomeSectionManagerDialog({ activeSectionId, fileDisplayFormats, 
     }
   }, [])
 
-  return <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="home-section-manager-v1" defaultWidth={520} defaultHeight={500} minWidth={420} minHeight={380} maxWidth={680} maxHeight={760} className="home-section-manager-modal" role="dialog" aria-modal="true" aria-labelledby="home-section-manager-title">
       <DialogHeader title={t('home.sectionManagerTitle')} titleId="home-section-manager-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="home-section-manager-body">

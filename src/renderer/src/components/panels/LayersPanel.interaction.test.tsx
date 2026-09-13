@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
-import { createDocument, createLayerMask, getActiveLayer } from '@/core/document'
+import { createDocument, createLayer, createLayerMask, getActiveLayer } from '@/core/document'
 import { addBlankAnimationFrame, animationCelAt, ensureAnimationDocument, animationCelKey, linkAnimationFrameCels } from '@/core/animation'
 import { LayersPanel } from './LayersPanel'
 import { useWorkspace } from '@/store/workspace'
@@ -85,10 +85,13 @@ describe('LayersPanel timeline focus interactions', () => {
     await waitFor(() => expect(putImageData.mock.calls.length).toBeGreaterThanOrEqual(2))
     const rendersBeforePreview = putImageData.mock.calls.length
     firstMask.pixels.fill(0)
+    for (let offset = 3; offset < firstMask.pixels.length; offset += 4) firstMask.pixels[offset] = 255
 
     act(() => { notifyLayerMaskThumbnailPreview(document.id, firstMask.id) })
 
     await waitFor(() => expect(putImageData.mock.calls.length - rendersBeforePreview).toBeGreaterThanOrEqual(2))
+    const linkedPreviews = putImageData.mock.calls.slice(rendersBeforePreview)
+    expect(linkedPreviews.filter(([image]) => image.data[0] === 0 && image.data[3] === 255).length).toBeGreaterThanOrEqual(2)
   })
 
   it('redraws every linked ordinary cel thumbnail from the live layer', async () => {
@@ -267,6 +270,32 @@ describe('LayersPanel timeline focus interactions', () => {
     expect(after.selectedAnimationCellKeys).toEqual([animationCelKey(secondLayer.id, after.document.animation!.activeFrameId)])
   })
 
+  it('keeps the timeline row active for multi-selected linked layers', () => {
+    const document = createDocument('multi selected linked layers', 2, 2, 'rgba')
+    const firstLayer = getActiveLayer(document)
+    const secondLayer = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(secondLayer)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = addBlankAnimationFrame(document)
+    for (const layer of [firstLayer, secondLayer]) {
+      const source = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === firstFrameId)!
+      const target = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === secondFrameId)!
+      target.linkedCelId = source.id
+      target.surface = source.surface
+    }
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectLayer(firstLayer.id)
+    useWorkspace.getState().selectLayer(secondLayer.id, 'toggle')
+
+    const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
+    for (const layer of [firstLayer, secondLayer]) {
+      expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, firstFrameId)}"]`)).toHaveClass('selected-layer')
+      expect(view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, secondFrameId)}"]`)).toHaveClass('selected-layer')
+    }
+    expect(view.container.querySelectorAll('.animation-linked-cel-block.layer-selected')).toHaveLength(2)
+  })
+
   it('dismisses a timeline selection made during playback on release', async () => {
     const document = createDocument('playback-only timeline selection', 2, 2, 'rgba')
     getActiveLayer(document)
@@ -354,7 +383,7 @@ describe('LayersPanel timeline focus interactions', () => {
     expect(view.container.querySelector('.layer-animation-grid')).toHaveStyle({ '--active-layer-row': '1' })
   })
 
-  it('does not leave current-frame activity on a mask row after canvas selection', async () => {
+  it('keeps current-frame activity on a mask row after canvas selection', async () => {
     const document = createDocument('canvas selection mask activity', 2, 2, 'rgba')
     const layer = getActiveLayer(document)
     layer.pixels[3] = 255
@@ -369,7 +398,7 @@ describe('LayersPanel timeline focus interactions', () => {
     view.rerender(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
 
     const maskCell = view.container.querySelector(`[data-animation-mask-cel-key="${animationCelKey(layer.id, timeline.activeFrameId)}"]`)
-    expect(maskCell).not.toHaveClass('active-frame')
+    expect(maskCell).toHaveClass('active-frame')
   })
 
   it('projects the playback frame onto every mask row', async () => {

@@ -2,8 +2,9 @@ import type { GradientDither, GradientStop, GradientType, RasterLayer, RgbaColor
 import { beginPixelEdit, preparePixelEdit, recordPixel, type PixelEdit } from './history'
 import { cacheRasterContentBounds, expandLayerToRect, getLayerStorageOrigin, isLayerEffectivelyLocked, isLayerMask, layerIndexAt, markLayerContentChanged, normalizeLayerPackedValue, paletteColorIdForCanvas, rasterContentBounds, readLayerColor, readLayerPacked, writeLayerPacked } from './document'
 import { blendOver, packColor } from './raster'
-import { magicWandSelection, selectionContains } from './selection'
+import { magicWandSelection, selectionContains, type MagicWandRegionOptions } from './selection'
 import { createGradientColorSampler, normalizeGradientStops, resolveRadialGradientGeometry, type GradientGeometryOptions } from './gradient-color'
+import { createLinearDitherPreviewSampler } from './gradient-dither-preview'
 
 export { createGradientColorSampler, gradientAmountAt, gradientColorAt, gradientColorForAmount, GRADIENT_DITHER_PRESETS, interpolateRgbaColor, normalizeGradientStops, resolveRadialGradientGeometry } from './gradient-color'
 export type { GradientGeometryOptions, RadialGradientGeometry } from './gradient-color'
@@ -35,8 +36,9 @@ export const gradientRegionSelection = (
   layer: RasterLayer,
   start: { x: number; y: number },
   tolerance = 0,
-  contiguous = true
-): SelectionMask | null => magicWandSelection(document, layer, start.x, start.y, tolerance, contiguous)
+  contiguous = true,
+  options?: MagicWandRegionOptions
+): SelectionMask | null => magicWandSelection(document, layer, start.x, start.y, tolerance, contiguous, 0, options)
 
 const gradientPaintValue = (document: SpriteDocument, layer: RasterLayer, index: number, color: RgbaColor): number => {
   if (color.a === 0) {
@@ -111,6 +113,7 @@ const applyDenseGradient = (
   bottom: number,
   sampleColor: (x: number, y: number) => RgbaColor,
   samplePacked: ((x: number, y: number) => number) | null,
+  sampleRow: ((y: number, target: Uint32Array, offset: number) => void) | null,
   selection?: SelectionMask | null,
   paintRegion?: SelectionMask | null
 ): PixelEdit | null => {
@@ -131,7 +134,7 @@ const applyDenseGradient = (
   const localLeft = left - layer.offsetX
   const localTop = top - layer.offsetY
   const unmasked = !selection?.mask && !paintRegion?.mask
-  const fullyTransparentRgba = Boolean(samplePacked && rgbaWords && unmasked && rasterContentBounds(layer, document.palette) === null)
+  const fullyTransparentRgba = Boolean((samplePacked || sampleRow) && rgbaWords && unmasked && rasterContentBounds(layer, document.palette) === null)
 
   preparePixelEdit(document, edit)
   if (fullyTransparentRgba) {
@@ -141,6 +144,11 @@ const applyDenseGradient = (
       const layerStart = (localTop + localY) * layer.width + localLeft
       const denseStart = localY * width
       before.set(rgbaWords!.subarray(layerStart, layerStart + width), denseStart)
+      if (sampleRow) {
+        sampleRow(top + localY, after, denseStart)
+        rgbaWords!.set(after.subarray(denseStart, denseStart + width), layerStart)
+        continue
+      }
       for (let localX = 0; localX < width; localX += 1) {
         const next = samplePacked!(left + localX, top + localY)
         after[denseStart + localX] = next
@@ -161,30 +169,42 @@ const applyDenseGradient = (
     edit.dirtyRect = { x: left, y: top, width, height }
     return edit
   }
-  for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-    if (selection?.mask && !selectionContains(selection, x, y)) continue
-    if (paintRegion?.mask && !selectionContains(paintRegion, x, y)) continue
-    const index = (y - layer.offsetY) * layer.width + x - layer.offsetX
-    const current = rgbaWords ? rgbaWords[index] : readLayerPacked(document, layer, index)
-    const next = samplePacked
-      ? samplePacked(x, y)
-      : normalizeLayerPackedValue(document, layer, gradientPaintValue(document, layer, index, sampleColor(x, y)))
-    if (current === next) continue
-    if (count === 0) markLayerContentChanged(layer)
-    const denseOffset = (y - top) * width + x - left
-    before[denseOffset] = current
-    after[denseOffset] = next
-    changed[denseOffset] = 1
-    count += 1
-    if (x < dirtyLeft) dirtyLeft = x
-    if (y < dirtyTop) dirtyTop = y
-    if (x + 1 > dirtyRight) dirtyRight = x + 1
-    if (y + 1 > dirtyBottom) dirtyBottom = y + 1
-    if (rgbaWords) rgbaWords[index] = next
-    else writeLayerPacked(document, layer, index, next)
+  const rowPixels = sampleRow ? new Uint32Array(width) : null
+  for (let y = top; y < bottom; y += 1) {
+    if (sampleRow) sampleRow(y, rowPixels!, 0)
+    for (let x = left; x < right; x += 1) {
+      const index = (y - layer.offsetY) * layer.width + x - layer.offsetX
+      const current = rgbaWords ? rgbaWords[index] : readLayerPacked(document, layer, index)
+      const denseOffset = (y - top) * width + x - left
+      // History restores the entire dense rectangle, including selected pixels
+      // whose gradient value is already correct or whose source is transparent.
+      before[denseOffset] = current
+      after[denseOffset] = current
+      const selected = (!selection?.mask || selectionContains(selection, x, y))
+        && (!paintRegion?.mask || selectionContains(paintRegion, x, y))
+      // Dense history patches cover the complete rectangle. Preserve untouched
+      // pixels too, otherwise undo/redo writes zeroes outside a masked region.
+      if (!selected) {
+        continue
+      }
+      const next = rowPixels ? rowPixels[x - left] : samplePacked
+        ? samplePacked(x, y)
+        : normalizeLayerPackedValue(document, layer, gradientPaintValue(document, layer, index, sampleColor(x, y)))
+      if (current === next) continue
+      if (count === 0) markLayerContentChanged(layer)
+      after[denseOffset] = next
+      changed[denseOffset] = 1
+      count += 1
+      if (x < dirtyLeft) dirtyLeft = x
+      if (y < dirtyTop) dirtyTop = y
+      if (x + 1 > dirtyRight) dirtyRight = x + 1
+      if (y + 1 > dirtyBottom) dirtyBottom = y + 1
+      if (rgbaWords) rgbaWords[index] = next
+      else writeLayerPacked(document, layer, index, next)
+    }
   }
   if (count === 0) return null
-  if (samplePacked && unmasked && localLeft === 0 && localTop === 0 && width === layer.width && height === layer.height) {
+  if ((samplePacked || sampleRow) && unmasked && localLeft === 0 && localTop === 0 && width === layer.width && height === layer.height) {
     cacheRasterContentBounds(layer, document.palette, { x: 0, y: 0, width, height })
   }
   edit.denseRegion = {
@@ -222,12 +242,30 @@ export const applyGradient = (
   const right = Math.min(document.width, selection ? selection.x + selection.width : document.width, paintRegion ? paintRegion.x + paintRegion.width : document.width)
   const bottom = Math.min(document.height, selection ? selection.y + selection.height : document.height, paintRegion ? paintRegion.y + paintRegion.height : document.height)
   if (right <= left || bottom <= top) return null
+  const sparseBlank = layer.width === 1 && layer.height === 1 && (layer.format === 'rgba' ? layer.pixels[3] === 0 : layer.pixels[0] === 0)
+  const originalWidth = layer.width
+  const originalHeight = layer.height
+  const originalOffsetX = layer.offsetX
+  const originalOffsetY = layer.offsetY
   if (!expandLayerToRect(layer, left, top, right, bottom)) return null
+  const restoreEmptyExpansion = (): void => {
+    if (!sparseBlank) return
+    layer.width = originalWidth
+    layer.height = originalHeight
+    layer.offsetX = originalOffsetX
+    layer.offsetY = originalOffsetY
+    layer.pixels = layer.format === 'rgba' ? new Uint8ClampedArray([0, 0, 0, 0]) : new Uint32Array([0])
+  }
   const sampleColor = createGradientColorSampler(startColor, endColor, start, end, dither, type, geometryOptions, gradientStops)
   const samplePacked = createOpaqueRgbaGradientSampler(document, layer, startColor, endColor, start, end, dither, type, geometryOptions, gradientStops)
   const edit = beginPixelEdit(layer.id)
   if ((right - left) * (bottom - top) >= DENSE_GRADIENT_MIN_PIXELS) {
-    return applyDenseGradient(document, layer, edit, left, top, right, bottom, sampleColor, samplePacked, selection, paintRegion)
+    const sampleRow = type === 'linear' && dither !== 'none' && document.colorMode === 'rgba' && layer.format === 'rgba' && !isLayerMask(layer)
+      && normalizeGradientStops(gradientStops, startColor, endColor).every(stop => stop.color.a === 255)
+      ? createLinearDitherPreviewSampler(startColor, endColor, start, end, dither, left, right, gradientStops).writeSourceRow : null
+    const denseEdit = applyDenseGradient(document, layer, edit, left, top, right, bottom, sampleColor, samplePacked, sampleRow, selection, paintRegion)
+    if (!denseEdit) restoreEmptyExpansion()
+    return denseEdit
   }
   for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
     if (selection?.mask && !selectionContains(selection, x, y)) continue
@@ -237,5 +275,7 @@ export const applyGradient = (
     const color = sampleColor(x, y)
     recordPixel(document, layer, edit, index, gradientPaintValue(document, layer, index, color))
   }
-  return edit.before.size > 0 ? edit : null
+  if (edit.before.size > 0) return edit
+  restoreEmptyExpansion()
+  return null
 }

@@ -222,6 +222,14 @@ const replaceDocumentPane = (node: DocumentPaneNode, paneId: string, documentId:
   return { ...node, first, second }
 }
 
+export const replaceDocumentPaneDocument = (node: DocumentPaneNode, documentId: string, replacementDocumentId: string): DocumentPaneNode => {
+  if (node.kind === 'leaf') return node.documentId === documentId ? createDocumentPaneLayout(replacementDocumentId) : node
+  const first = replaceDocumentPaneDocument(node.first, documentId, replacementDocumentId)
+  const second = replaceDocumentPaneDocument(node.second, documentId, replacementDocumentId)
+  if (first === node.first && second === node.second) return node
+  return { ...node, first, second }
+}
+
 export const splitDocumentPaneFromTab = (node: DocumentPaneNode | null, activeDocumentId: string, placement: DocumentPanePlacement): DocumentPaneNode => {
   const committed = node?.kind === 'split' && documentPaneContains(node, activeDocumentId) ? node : null
   const base = committed ?? createDocumentPaneLayout(activeDocumentId)

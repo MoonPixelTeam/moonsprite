@@ -74,6 +74,10 @@ export const DEFAULT_SHORTCUTS = {
   'tool.zoom.quick': '',
   'tool.rotate': 'R',
   'tool.rotate.quick': '',
+  'tool.smooth': '',
+  'tool.smooth.quick': '',
+  'tool.liquify': 'Y',
+  'tool.liquify.quick': '',
   lasso: 'Q',
   'lasso.quick': '',
   polygonLasso: 'Shift+Q',
@@ -84,6 +88,8 @@ export const DEFAULT_SHORTCUTS = {
   imageResize: 'Ctrl+Alt+I',
   transform: 'Ctrl+T',
   outline: 'Shift+O',
+  quickOutline: 'Shift+S',
+  outlineSelectionInside: 'S',
   adjustmentColorBalance: '',
   adjustmentBrightnessContrast: '',
   adjustmentHueSaturation: 'Ctrl+U',
@@ -301,6 +307,7 @@ export const DEFAULT_SHORTCUTS = {
   deleteAnimationLoopSection: '',
   openAnimationCelProperties: '',
   toggleAnimationPlayback: 'Enter',
+  toggleOnionSkin: '',
   animationPlaybackOnce: '',
   animationPlaybackAll: '',
   animationPlaybackTag: '',
@@ -334,19 +341,19 @@ const TOOL_SHORTCUT_GROUP = CYCLING_TOOL_SHORTCUT_IDS.flatMap((id, index) => [id
 
 export function normalizeShortcut(value: string): string {
   const parts = value.split('+').map((part) => part.trim()).filter(Boolean)
-  const modifiers = ['Ctrl', 'Alt', 'Shift'].filter((modifier) => parts.some((part) => part.toLowerCase() === modifier.toLowerCase()))
-  const key = parts.find((part) => !['ctrl', 'alt', 'shift'].includes(part.toLowerCase()))
+  const modifiers = ['Ctrl', 'Alt', 'Shift', 'Win', 'Space'].filter((modifier) => parts.some((part) => part.toLowerCase() === modifier.toLowerCase()))
+  const key = parts.find((part) => !['ctrl', 'alt', 'shift', 'win', 'space'].includes(part.toLowerCase()))
   return [...modifiers, ...(key ? [key.length === 1 ? key.toUpperCase() : key] : [])].join('+')
 }
 
 export const SHORTCUT_GROUPS = {
   file: ['openHome', 'newDocument', 'openDocument', 'closeDocument', 'openProjectInfo', 'save', 'saveAs', 'exportDocument', 'exportAllFrames', 'exportSpriteSheet', 'openProjectFolder', 'openTimelapse', 'openScriptFolder'],
   edit: ['undo', 'redo', 'copy', 'cut', 'paste', 'pasteAsNewLayer', 'pasteAsNewDocument'],
-  selection: ['selectAll', 'invertSelection', 'deselect', 'deleteSelection', 'transform', 'flipHorizontal', 'flipVertical', 'outline', 'toggleSelectionOutline', 'createBrushFromSelection', 'selectionModeReplace', 'selectionModeAdd', 'selectionModeSubtract', 'selectionModeIntersect', 'selectAllSlices', 'openAutoSlice', 'openSliceProperties'],
+  selection: ['selectAll', 'invertSelection', 'deselect', 'deleteSelection', 'transform', 'flipHorizontal', 'flipVertical', 'outline', 'quickOutline', 'outlineSelectionInside', 'toggleSelectionOutline', 'createBrushFromSelection', 'selectionModeReplace', 'selectionModeAdd', 'selectionModeSubtract', 'selectionModeIntersect', 'selectAllSlices', 'openAutoSlice', 'openSliceProperties'],
   image: ['canvasResize', 'imageResize', 'convertColorMode', 'convertColorModeRgba', 'convertColorModeIndexed', 'convertColorModeGrayscale', 'cropCanvas', 'trimCanvas'],
   color: ['fillForeground', 'addForegroundToPalette', 'swapForegroundBackground', 'replaceColor', 'adjustmentColorBalance', 'adjustmentBrightnessContrast', 'adjustmentHueSaturation', 'adjustmentCurves', 'togglePaletteEditLock', 'extractPaletteColors', 'togglePaletteColorSync', 'reversePaletteColors', 'createPaletteGradient', 'createPaletteHueGradient', 'sortPaletteHue', 'sortPaletteSaturation', 'sortPaletteBrightness', 'sortPaletteLuminance', 'sortPaletteRed', 'sortPaletteGreen', 'sortPaletteBlue', 'sortPaletteAlpha', 'paletteSortAscending', 'paletteSortDescending', 'paletteSwatchTiny', 'paletteSwatchSmall', 'paletteSwatchMedium', 'paletteSwatchLarge', 'paletteSwatchHuge', 'savePalette', 'openPaletteFolder', 'refreshPalettes'],
   layers: ['newLayer', 'createLayerGroup', 'newTilemapLayer', 'newFreeTileLayer', 'newBackgroundLayer', 'createLinkedLayer', 'convertLayerToBackground', 'convertLayerToTilemap', 'convertLayerToRaster', 'openLayerProperties', 'toggleClippingMask', 'toggleSelectedLayerVisibility', 'toggleSelectedLayerLock', 'toggleSelectedGroupCollapsed', 'toggleLayerMask', 'toggleGroupMask', 'openLayerStyles', 'toggleLayerStyles', 'copyLayerStyles', 'pasteLayerStyles', 'clearLayerStyles', 'duplicateLayer', 'mergeLayerDown', 'mergeSelectedLayers', 'mergeLayerGroup', 'mergeVisibleLayers', 'ungroupLayers', 'deleteLayer', 'openLayerSettings'],
-  animation: ['toggleAnimationPlayback', 'animationPlaybackOnce', 'animationPlaybackAll', 'animationPlaybackTag', 'toggleAnimationReturnToStart', 'animationPlaybackSpeed025', 'animationPlaybackSpeed050', 'animationPlaybackSpeed100', 'animationPlaybackSpeed150', 'animationPlaybackSpeed200', 'animationPlaybackSpeed300', 'previousAnimationFrame', 'nextAnimationFrame', 'addAnimationFrame', 'addLinkedAnimationFrame', 'addBlankAnimationFrame', 'deleteAnimationFrame', 'enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationCel', 'copyAnimationFrames', 'pasteAnimationFrames', 'pasteAnimationCels', 'copyAnimationMasks', 'pasteAnimationMasks', 'connectAnimationCels', 'disconnectAnimationCels', 'connectAnimationMasks', 'disconnectAnimationMasks', 'toggleAnimationMask', 'createAnimationLoopSection', 'openAnimationFrameProperties', 'playAnimationLoopSection', 'openAnimationLoopSectionProperties', 'deleteAnimationLoopSection', 'openAnimationCelProperties'],
+  animation: ['toggleAnimationPlayback', 'toggleOnionSkin', 'animationPlaybackOnce', 'animationPlaybackAll', 'animationPlaybackTag', 'toggleAnimationReturnToStart', 'animationPlaybackSpeed025', 'animationPlaybackSpeed050', 'animationPlaybackSpeed100', 'animationPlaybackSpeed150', 'animationPlaybackSpeed200', 'animationPlaybackSpeed300', 'previousAnimationFrame', 'nextAnimationFrame', 'addAnimationFrame', 'addLinkedAnimationFrame', 'addBlankAnimationFrame', 'deleteAnimationFrame', 'enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationCel', 'copyAnimationFrames', 'pasteAnimationFrames', 'pasteAnimationCels', 'copyAnimationMasks', 'pasteAnimationMasks', 'connectAnimationCels', 'disconnectAnimationCels', 'connectAnimationMasks', 'disconnectAnimationMasks', 'toggleAnimationMask', 'createAnimationLoopSection', 'openAnimationFrameProperties', 'playAnimationLoopSection', 'openAnimationLoopSectionProperties', 'deleteAnimationLoopSection', 'openAnimationCelProperties'],
   view: ['relativeLuminance', 'toggleGrid', 'toggleCustomGrid', 'toggleIsoView', 'toggleSliceOutlines', 'openGridSettings', 'openIsoViewSettings', 'tileRepeatOff', 'tileRepeatBoth', 'tileRepeatX', 'tileRepeatY', 'mirrorView', 'mirrorViewVertical', 'rotateViewClockwise90', 'rotateViewCounterClockwise90', 'viewZoom100', 'viewZoom200', 'viewZoom400', 'viewZoom800', 'viewZoom3200', 'resetView'],
   interface: ['popupColorPanel', 'popupPalettePanel', 'popupLayersPanel', 'popupPreviewPanel', 'popupTilesetPanel', 'popupBrushLibraryPanel', 'toggleColorPanel', 'togglePalettePanel', 'toggleLayersPanel', 'togglePreviewPanel', 'toggleTilesetPanel', 'toggleBrushLibraryPanel', 'toggleTimeline', 'toolRailLeft', 'toolRailRight', 'toolRailTop', 'toolRailBottom', 'saveWorkspaceLayout', 'resetWorkspaceLayout', 'openWorkspaceManager', 'advancedMode', 'openShortcutSettings', 'openPreferences'],
   tools: [...TOOL_SHORTCUT_GROUP, 'brushShapeRound', 'brushShapeSquare', 'brushShapeLine', 'togglePerfectPixels', 'toggleContiguous', 'toggleSmartClosure', 'toggleRoundedCorners', 'toggleFixedRatio', 'toggleMoveAutoSelect', 'toggleSymmetryHorizontal', 'toggleSymmetryVertical', 'toggleSymmetryDiagonalUp', 'toggleSymmetryDiagonalDown', 'toggleSymmetryRotational', 'resetSymmetryCenter', 'brushSizeDecrease', 'brushSizeIncrease'],
@@ -482,8 +489,8 @@ export function formatShortcutBindings(shortcuts: readonly string[]): string {
 
 export function shortcutDisplayText(shortcut: string, locale: AppLocale): string {
   const labels = locale === 'zh-CN'
-    ? { WheelUp: '滚轮向上', WheelDown: '滚轮向下', MouseMiddle: '鼠标中键', MouseBack: '鼠标侧键 1', MouseForward: '鼠标侧键 2' }
-    : { WheelUp: 'Wheel Up', WheelDown: 'Wheel Down', MouseMiddle: 'Middle Mouse', MouseBack: 'Mouse Button 4', MouseForward: 'Mouse Button 5' }
+    ? { WheelUp: '滚轮向上', WheelDown: '滚轮向下', MouseLeft: '鼠标左键', MouseRight: '鼠标右键', MouseMiddle: '鼠标中键', MouseDoubleLeft: '鼠标左键双击', MouseBack: '鼠标侧键 1', MouseForward: '鼠标侧键 2' }
+    : { WheelUp: 'Wheel Up', WheelDown: 'Wheel Down', MouseLeft: 'Left Mouse', MouseRight: 'Right Mouse', MouseMiddle: 'Middle Mouse', MouseDoubleLeft: 'Double Left Mouse', MouseBack: 'Mouse Button 4', MouseForward: 'Mouse Button 5' }
   return shortcut.split('+').map((part) => labels[part as keyof typeof labels] ?? part).join('+')
 }
 
@@ -661,9 +668,9 @@ export function isFunctionKey(key: string): boolean {
   return /^F(?:[1-9]|1[0-2])$/i.test(key)
 }
 
-export function shortcutText(event: KeyboardEvent): string {
+export function shortcutText(event: KeyboardEvent, heldParts?: ReadonlySet<string>): string {
   const key = keyboardEventKey(event)
-  const modifiers = [event.ctrlKey || event.metaKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean)
+  const modifiers = [event.ctrlKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : '', event.metaKey ? 'Win' : '', heldParts?.has('Space') && key !== 'Space' ? 'Space' : ''].filter(Boolean)
   const isModifier = key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift'
   const ordinaryKey = isModifier ? '' : key.length === 1 ? key.toUpperCase() : key
   return [...modifiers, ...(ordinaryKey ? [ordinaryKey] : [])].join('+')
@@ -675,29 +682,41 @@ export function wheelShortcutKey(delta: number): 'WheelUp' | 'WheelDown' | '' {
 
 export function wheelShortcutText(
   event: Pick<WheelEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
-  delta: number
+  delta: number,
+  heldParts?: ReadonlySet<string>
 ): string {
   const key = wheelShortcutKey(delta)
   if (!key) return ''
-  const modifiers = [event.ctrlKey || event.metaKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean)
+  const modifiers = [event.ctrlKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : '', event.metaKey ? 'Win' : '', heldParts?.has('Space') ? 'Space' : ''].filter(Boolean)
   return [...modifiers, key].join('+')
 }
 
-export type MouseShortcutKey = 'MouseMiddle' | 'MouseBack' | 'MouseForward'
+export type MouseShortcutKey = 'MouseLeft' | 'MouseRight' | 'MouseMiddle' | 'MouseBack' | 'MouseForward'
 
 export function mouseShortcutKey(button: number): MouseShortcutKey | '' {
+  if (button === 0) return 'MouseLeft'
   if (button === 1) return 'MouseMiddle'
+  if (button === 2) return 'MouseRight'
   if (button === 3) return 'MouseBack'
   if (button === 4) return 'MouseForward'
   return ''
 }
 
+export function mouseDoubleClickShortcutText(
+  event: Pick<MouseEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  heldParts?: ReadonlySet<string>
+): string {
+  const modifiers = [event.ctrlKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : '', event.metaKey ? 'Win' : '', heldParts?.has('Space') ? 'Space' : ''].filter(Boolean)
+  return [...modifiers, 'MouseDoubleLeft'].join('+')
+}
+
 export function mouseShortcutText(
-  event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>
+  event: Pick<MouseEvent, 'button' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  heldParts?: ReadonlySet<string>
 ): string {
   const key = mouseShortcutKey(event.button)
   if (!key) return ''
-  const modifiers = [event.ctrlKey || event.metaKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : ''].filter(Boolean)
+  const modifiers = [event.ctrlKey ? 'Ctrl' : '', event.altKey ? 'Alt' : '', event.shiftKey ? 'Shift' : '', event.metaKey ? 'Win' : '', heldParts?.has('Space') ? 'Space' : ''].filter(Boolean)
   return [...modifiers, key].join('+')
 }
 
@@ -711,14 +730,34 @@ export function dispatchMouseShortcutInput(
   return !target.dispatchEvent(new KeyboardEvent(type, {
     key,
     code: key,
-    ctrlKey: event.ctrlKey || event.metaKey,
-    metaKey: false,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
     altKey: event.altKey,
     shiftKey: event.shiftKey,
     bubbles: true,
     cancelable: true,
     composed: true
   }))
+}
+
+export function dispatchMouseDoubleClickShortcutInput(
+  target: EventTarget,
+  event: Pick<MouseEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>
+): boolean {
+  const init: KeyboardEventInit = {
+    key: 'MouseDoubleLeft',
+    code: 'MouseDoubleLeft',
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    bubbles: true,
+    cancelable: true,
+    composed: true
+  }
+  const consumed = !target.dispatchEvent(new KeyboardEvent('keydown', init))
+  target.dispatchEvent(new KeyboardEvent('keyup', init))
+  return consumed
 }
 
 export function dispatchWheelShortcutInput(
@@ -731,8 +770,8 @@ export function dispatchWheelShortcutInput(
   const init: KeyboardEventInit = {
     key,
     code: key,
-    ctrlKey: event.ctrlKey || event.metaKey,
-    metaKey: false,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
     altKey: event.altKey,
     shiftKey: event.shiftKey,
     bubbles: true,
@@ -744,8 +783,8 @@ export function dispatchWheelShortcutInput(
   return consumed
 }
 
-export function shortcutMatchesEvent(event: KeyboardEvent, shortcut: string): boolean {
-  return shortcut.trim() !== '' && normalizeShortcut(shortcutText(event)).toLowerCase() === normalizeShortcut(shortcut).toLowerCase()
+export function shortcutMatchesEvent(event: KeyboardEvent, shortcut: string, heldParts?: ReadonlySet<string>): boolean {
+  return shortcut.trim() !== '' && normalizeShortcut(shortcutText(event, heldParts)).toLowerCase() === normalizeShortcut(shortcut).toLowerCase()
 }
 
 export function shortcutMatchesAnyEvent(event: KeyboardEvent, shortcuts: readonly string[]): boolean {
@@ -755,10 +794,11 @@ export function shortcutMatchesAnyEvent(event: KeyboardEvent, shortcuts: readonl
 export function shortcutReleasedByEvent(event: KeyboardEvent, shortcut: string): boolean {
   const parts = normalizeShortcut(shortcut).split('+').filter(Boolean)
   const released = keyboardEventKey(event).toLowerCase()
-  if (released === 'control' || released === 'meta') return parts.includes('Ctrl')
+  if (released === 'control') return parts.includes('Ctrl')
+  if (released === 'meta') return parts.includes('Win')
   if (released === 'alt') return parts.includes('Alt')
   if (released === 'shift') return parts.includes('Shift')
-  return parts.some((part) => !['Ctrl', 'Alt', 'Shift'].includes(part) && part.toLowerCase() === released)
+  return parts.some((part) => !['Ctrl', 'Alt', 'Shift', 'Win'].includes(part) && part.toLowerCase() === released)
 }
 
 export function shortcutReleasedByBindings(event: KeyboardEvent, shortcuts: readonly string[]): boolean {
@@ -767,7 +807,8 @@ export function shortcutReleasedByBindings(event: KeyboardEvent, shortcuts: read
 
 export function shortcutKeyPart(event: KeyboardEvent): string {
   const key = keyboardEventKey(event)
-  if (key === 'Control' || key === 'Meta') return 'Ctrl'
+  if (key === 'Control') return 'Ctrl'
+  if (key === 'Meta') return 'Win'
   if (key === 'Alt' || key === 'Shift') return key
   return key.length === 1 ? key.toUpperCase() : key
 }

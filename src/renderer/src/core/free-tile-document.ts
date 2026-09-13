@@ -1,7 +1,7 @@
 import type { AnimationCel, AnimationCelSurface, FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, ImageResizeInterpolation, PaletteEntry, RasterLayer, SelectionRect, SpriteDocument, Tileset } from '@shared/types'
 import { ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel } from './animation'
 import { createId, markRasterStorageContentChanged, markRasterSurfaceContentChanged, paletteColorIdForCanvas, rasterContentBounds } from './document'
-import { cloneFreeTileCelData, freeTileInstanceAtPoint, freeTileSourceRefs, freeTileSourceForInstance, freeTileTileIdForInstance, renderFreeTileSurface, resizeFreeTileTileset, type FreeTileSourceRef } from './free-tile'
+import { cloneFreeTileCelData, createFreeTileCelData, freeTileInstanceAtPoint, freeTileSourceRefs, freeTileSourceForInstance, freeTileTileIdForInstance, renderFreeTileSurface, resizeFreeTileTileset, type FreeTileSourceRef } from './free-tile'
 import { createBlankTileset, MAX_TILESET_PIXELS, MAX_TILE_SIZE, readTilesetTilePixels } from './tilemap'
 import { unpackColor } from './raster'
 import { readSurfacePackedLocal } from './runtime-raster'
@@ -397,7 +397,11 @@ export const freeTileCelTargetAt = (document: SpriteDocument, layerId: string, f
   ensureFreeTileTilesetOwnership(document)
   const timeline = ensureAnimationDocument(document)
   const cel = timeline.cels.find((candidate) => candidate.layerId === layerId && candidate.frameId === frameId)
-  const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
+  // Free-tile instances are owned by each animation cel. Only the source
+  // tileset is shared at layer level; resolving a linked cel here would make
+  // edits on a later frame mutate the linked frame's instance container.
+  const source = cel
+  if (cel && !cel.freeTiles) cel.freeTiles = createFreeTileCelData()
   const sources = freeTileSourcesForLayer(document, layer)
   const tileset = sources[0]?.tileset
   if (!cel || !source?.freeTiles || !source.surface || !tileset || sources.length === 0) return null

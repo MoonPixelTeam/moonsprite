@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
 import type { ImageBrush } from '@shared/types'
 import { unpackColor } from '@/core/raster'
+import type { PixelSource } from './pixel-source'
 
-export function BrushThumbnail({ brush, className = '' }: { brush: ImageBrush; className?: string }) {
+export function BrushThumbnail({ source, className = '' }: { source: PixelSource<ImageBrush>; className?: string }) {
+  const brush = source()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const context = canvasRef.current?.getContext('2d')

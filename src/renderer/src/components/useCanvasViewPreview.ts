@@ -11,9 +11,10 @@ interface CanvasViewPreviewOptions {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   selectionCanvasRef: React.RefObject<HTMLCanvasElement | null>
   drawRef: React.RefObject<() => void>
+  requestDrawRef: React.RefObject<() => void>
 }
 
-export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, drawRef }: CanvasViewPreviewOptions) {
+export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, drawRef, requestDrawRef }: CanvasViewPreviewOptions) {
   const pendingViewRef = useRef<Partial<ViewState> | null>(null)
   const liveViewRef = useRef(sessionView)
   const viewFrameRef = useRef<number | null>(null)
@@ -81,15 +82,16 @@ export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, 
     liveViewRef.current = { ...liveViewRef.current, panX, panY }
     pendingViewRef.current = { ...liveViewRef.current }
     pendingPanPreviewOffsetRef.current = { x: panX - startPan.x, y: panY - startPan.y }
+    // Frame changes and navigation share the CanvasStage scheduler. Using a
+    // second draw request here can render the same expensive animation frame
+    // twice in one display interval when its playback timer fires mid-pan.
+    requestDrawRef.current()
     if (panPreviewFrameRef.current !== null) return
     panPreviewFrameRef.current = window.requestAnimationFrame(() => {
       panPreviewFrameRef.current = null
       const pending = pendingPanPreviewOffsetRef.current
       pendingPanPreviewOffsetRef.current = null
-      if (pending) {
-        drawRef.current()
-        notifyViewPreview(documentId, liveViewRef.current)
-      }
+      if (pending) notifyViewPreview(documentId, liveViewRef.current)
     })
   }
 

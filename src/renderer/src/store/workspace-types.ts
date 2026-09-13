@@ -1,3 +1,4 @@
+import type { LocalHistorySnapshot } from '@/core/local-history-archive'
 import type {
   AnimationCel,
   AnimationCelSurface,
@@ -8,12 +9,16 @@ import type {
   BrushShape,
   BrushTexture,
   FillKind,
+  FillConnectivity,
   FillMode,
+  FillReference,
   GradientDither,
   GradientStop,
   GradientType,
   ImageBrush,
+  InkMode,
   LayerMask,
+  LiquifyMode,
   ImageBrushSettings,
   LineKind,
   MoveKind,
@@ -99,6 +104,7 @@ export interface OutlinePreview {
   kernel: OutlineKernel
   smartHue: boolean
   smartHueDarkness: number
+  followOpacity: boolean
 }
 
 export interface AnimationFrameClipboardItem {
@@ -165,8 +171,10 @@ export interface TextBoxTransformState {
 }
 
 export interface BrushProfile {
+  inkMode: InkMode
   brushSize: number
   brushShape: BrushShape
+  brushAngle: number
   brushDither: BrushDitherSettings
   brushTexture: BrushTexture
   brushTextureScale: number
@@ -192,7 +200,15 @@ export type AnimationPlaybackMode = 'once' | 'all' | 'tag'
 export interface DocumentSession {
   document: SpriteDocument
   history: HistoryStack
+  /** Local-only serialized undo timeline; never written into .moonsprite files. */
+  localHistory: {
+    snapshots: LocalHistorySnapshot[]
+    labels: string[]
+    position: number
+  } | null
   tool: ToolId
+  extensionToolId: string | null
+  extensionToolMode: string
   moveKind: MoveKind
   selectedSliceId: string | null
   selectedSliceIds: string[]
@@ -213,10 +229,13 @@ export interface DocumentSession {
   secondaryColor: RgbaColor
   brushSize: number
   brushShape: BrushShape
+  brushAngle: number
   brushDither: BrushDitherSettings
   brushTexture: BrushTexture
   brushTextureScale: number
   brushPaintMode: BrushPaintMode
+  inkMode: InkMode
+  syncInkAcrossTools: boolean
   brushImageId: string | null
   brushImage: ImageBrush | null
   brushImageTemporary: boolean
@@ -238,6 +257,8 @@ export interface DocumentSession {
   fillTolerance: number
   fillGapClosing: boolean
   fillGapThreshold: number
+  fillReference: FillReference
+  fillConnectivity: FillConnectivity
   gradientTolerance: number
   gradientContiguous: boolean
   gradientType: GradientType
@@ -248,8 +269,12 @@ export interface DocumentSession {
   selection: SelectionMask | null
   /** View-only flag set when the user clicks an existing selection to edit its properties. */
   selectionPropertiesActive?: boolean
+  /** View-only aspect ratio shared by selection property inputs and canvas transform handles. */
+  selectionAspectRatio?: number | null
   /** Rotation displayed and edited by the selection properties bar. */
   selectionAngle?: number
+  /** Pixel rotation algorithm used by the current selection transform. */
+  selectionRotationAlgorithm: 'fast' | 'rotsprite'
   /** View-only mode that exposes only the four corner transform handles. */
   freeTransformActive?: boolean
   /** Current free-transform frame, kept after a committed corner drag. */
@@ -270,9 +295,19 @@ export interface DocumentSession {
   symmetryCenter: SymmetryCenter
   airbrushParticleRadius: number
   airbrushParticleShape: BrushShape
+  airbrushParticleAngle: number
   airbrushScatterRadius: number
   airbrushDensity: number
   airbrushIntervalMs: number
+  liquifyMode: LiquifyMode
+  liquifyRadius: number
+  liquifyStrength: number
+  liquifySmoothing: boolean
+  liquifySmoothingStrength: number
+  smoothStrength: number
+  liquifyGestureActive?: boolean
+  liquifyResetHistoryPosition: number | null
+  liquifyResetHistoryRevision: number | null
   lastPencilPoint: { x: number; y: number } | null
   lastEraserPoint: { x: number; y: number } | null
   canvasResizePreview: CanvasResizePreview | null
@@ -301,6 +336,9 @@ export interface DocumentSession {
   animationPlaybackLoopSectionId: string | null
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
+  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number }>
+  /** Finite tag section that anchors the current play-through cycle. */
+  animationPlaybackTagCycleSectionId: string | null
   animationReturnToStart: boolean
   /** Canonical active timeline row/cursor. Selection and playback never infer or overwrite this row. */
   timelineActiveContext: TimelineActiveContext

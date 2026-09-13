@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createDocument, createLayer } from './document'
 import { addBlankAnimationFrame, animationCelAt, ensureAnimationDocument } from './animation'
 import { compositeAnimationFrame, onionSkinFrameRefs, tintOnionSkinPixels } from './onion-skin'
+import type { AnimationLoopSection } from '@shared/types'
 
 describe('onion skin helpers', () => {
   it('collects adjacent frames without wrapping at timeline edges', () => {
@@ -12,6 +13,29 @@ describe('onion skin helpers', () => {
     expect(onionSkinFrameRefs(timeline, 2, 2).map(({ frameId, side }) => [frameId, side])).toEqual([
       [timeline.frames[0].id, 'previous'],
       [timeline.frames[1].id, 'previous']
+    ])
+  })
+
+  it('wraps onion skin references inside the active loop section only', () => {
+    const document = createDocument('loop onion', 1, 1, 'rgba')
+    addBlankAnimationFrame(document)
+    addBlankAnimationFrame(document)
+    addBlankAnimationFrame(document)
+    const timeline = ensureAnimationDocument(document)
+    const section: AnimationLoopSection = {
+      id: 'section',
+      name: 'Section',
+      startFrameId: timeline.frames[1].id,
+      endFrameId: timeline.frames[2].id,
+      direction: 'forward',
+      repeatCount: null
+    }
+    timeline.loopSections = [section]
+    timeline.activeFrameId = timeline.frames[1].id
+
+    expect(onionSkinFrameRefs(timeline, 1, 1, section).map(({ frameId, side }) => [frameId, side])).toEqual([
+      [timeline.frames[2].id, 'previous'],
+      [timeline.frames[2].id, 'next']
     ])
   })
 
@@ -31,6 +55,23 @@ describe('onion skin helpers', () => {
       255, 0, 0, 255,
       0, 0, 255, 255
     ])
+  })
+
+  it('uses the requested frame z order instead of the active frame z order', () => {
+    const document = createDocument('frame z onion', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    const top = createLayer('top', 1, 1, 'rgba')
+    document.layers.push(top)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    addBlankAnimationFrame(document)
+    const bottomCel = animationCelAt(timeline, bottom.id, firstFrameId)!
+    const topCel = animationCelAt(timeline, top.id, firstFrameId)!
+    bottomCel.surface!.pixels.set([255, 0, 0, 255])
+    topCel.surface!.pixels.set([0, 0, 255, 255])
+    bottomCel.zIndex = 3
+
+    expect([...compositeAnimationFrame(document, firstFrameId)]).toEqual([255, 0, 0, 255])
   })
 
   it('preserves relative luminance using only darker variants of the configured onion color', () => {

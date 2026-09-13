@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { animationFrameStepDirection, hasAnimationDeleteSelection, resolveCopyCommand, resolveDeleteCommand, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand } from './command-context'
+import { animationFrameStepDirection, hasAnimationDeleteSelection, resolveCopyCommand, resolveDeleteCommand, shouldDeleteActiveAnimationCel, shouldHandleAnimationPlaybackShortcut, shouldHandleGlobalSelectionEnter, shouldTriggerDeleteCommand } from './command-context'
 
 describe('command context', () => {
   it('routes Delete to the last active editor surface', () => {
@@ -10,9 +10,9 @@ describe('command context', () => {
     expect(resolveDeleteCommand('brushes', true)).toBe('brushes')
   })
 
-  it('routes Delete to a timeline selection before the selected layer', () => {
+  it('routes Delete to a timeline selection when no canvas selection is active', () => {
     expect(resolveDeleteCommand('layers', false, true)).toBe('animation')
-    expect(resolveDeleteCommand('layers', true, true)).toBe('animation')
+    expect(resolveDeleteCommand('layers', true, true)).toBe('selection')
     expect(resolveDeleteCommand('canvas', true, true)).toBe('selection')
     expect(resolveDeleteCommand('palette', false, true)).toBe('palette')
   })
@@ -21,6 +21,17 @@ describe('command context', () => {
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: true })).toBe(true)
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 1, selectedMaskCellCount: 0, cellSelectionExplicit: false })).toBe(false)
     expect(hasAnimationDeleteSelection({ selectedFrameCount: 0, selectedCellCount: 0, selectedMaskCellCount: 0, selectedMaskRowCount: 1, cellSelectionExplicit: false })).toBe(true)
+  })
+
+  it('clears the active cel only when no explicit selection owns Delete', () => {
+    const base = { scope: 'canvas' as const, hasCanvasSelection: false, hasAnimationSelection: false, hasExplicitLayerSelection: false, hasFreeTileInstanceSelection: false, hasAnimation: true }
+    expect(shouldDeleteActiveAnimationCel(base)).toBe(true)
+    expect(shouldDeleteActiveAnimationCel({ ...base, scope: 'layers' })).toBe(true)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasCanvasSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasAnimationSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasExplicitLayerSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, hasFreeTileInstanceSelection: true })).toBe(false)
+    expect(shouldDeleteActiveAnimationCel({ ...base, scope: 'palette' })).toBe(false)
   })
 
 
@@ -55,6 +66,8 @@ describe('command context', () => {
     expect(animationFrameStepDirection({ ...base, key: 'ArrowLeft', hasSelection: true })).toBeNull()
     expect(animationFrameStepDirection({ ...base, key: ',', hasSelection: true })).toBe(-1)
     expect(animationFrameStepDirection({ ...base, key: '.', hasSelection: true })).toBe(1)
+    expect(animationFrameStepDirection({ ...base, key: '，', hasSelection: true })).toBe(-1)
+    expect(animationFrameStepDirection({ ...base, key: '。', hasSelection: true })).toBe(1)
     expect(animationFrameStepDirection({ ...base, key: '<', hasSelection: true, shiftKey: true })).toBeNull()
     expect(animationFrameStepDirection({ ...base, key: '.', ctrlKey: true })).toBeNull()
   })

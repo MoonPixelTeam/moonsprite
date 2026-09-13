@@ -6,10 +6,15 @@ export const COMMAND_SCOPE_EVENT = 'moonsprite:command-scope'
 export const TILESET_DELETE_COMMAND_EVENT = 'moonsprite:delete-tileset-selection'
 export const BRUSH_LIBRARY_DELETE_COMMAND_EVENT = 'moonsprite:delete-brush-selection'
 export const EDITOR_SHORTCUT_COMMAND_EVENT = 'moonsprite:editor-shortcut-command'
+export const LIQUIFY_RESET_COMMAND_EVENT = 'moonsprite:liquify-reset'
 
 export interface EditorShortcutCommandDetail {
   documentId: string
   id: ShortcutId
+}
+
+export interface LiquifyResetCommandDetail {
+  documentId: string
 }
 
 export type DeleteCommandTarget = 'selection' | 'animation' | 'free-tile-instance' | 'layers' | 'palette' | 'tileset' | 'brushes' | null
@@ -29,8 +34,32 @@ export const hasAnimationDeleteSelection = (context: AnimationDeleteSelectionCon
   || (context.selectedMaskRowCount ?? 0) > 0
   || (context.cellSelectionExplicit && context.selectedCellCount > 0)
 
+/**
+ * The active cel is an editing context, not an explicit timeline selection.
+ * Delete should clear that cel when no other canvas, timeline, layer, or
+ * Free Tile selection owns the command.
+ */
+export const shouldDeleteActiveAnimationCel = (context: {
+  scope: EditorCommandScope
+  hasCanvasSelection: boolean
+  hasAnimationSelection: boolean
+  hasExplicitLayerSelection: boolean
+  hasFreeTileInstanceSelection: boolean
+  hasAnimation: boolean
+}): boolean =>
+  (context.scope === 'canvas' || context.scope === 'layers')
+  && !context.hasCanvasSelection
+  && !context.hasAnimationSelection
+  && !context.hasExplicitLayerSelection
+  && !context.hasFreeTileInstanceSelection
+  && context.hasAnimation
+
 export function resolveDeleteCommand(scope: EditorCommandScope, hasSelection: boolean, hasAnimationSelection = false, hasFreeTileInstanceSelection = false): DeleteCommandTarget {
   if (scope === 'layers' && hasFreeTileInstanceSelection) return 'free-tile-instance'
+  // A canvas selection owns Delete even when the last focused surface is the
+  // timeline and one or more cels/frames are selected. The timeline selection
+  // remains available for deletion when no canvas selection is active.
+  if (scope === 'layers' && hasSelection && hasAnimationSelection) return 'selection'
   if (scope === 'layers' && hasAnimationSelection) return 'animation'
   if (scope === 'layers') return 'layers'
   if (scope === 'palette') return 'palette'
@@ -88,8 +117,8 @@ export interface AnimationFrameStepKeyContext {
 export const animationFrameStepDirection = (context: AnimationFrameStepKeyContext): -1 | 1 | null => {
   if (context.ctrlKey || context.metaKey || context.altKey) return null
   const key = context.key.toLowerCase()
-  if (key === ',') return -1
-  if (key === '.') return 1
+  if (key === ',' || key === '，') return -1
+  if (key === '.' || key === '。') return 1
   if (context.hasSelection || context.shiftKey) return null
   if (key === 'arrowleft') return -1
   if (key === 'arrowright') return 1

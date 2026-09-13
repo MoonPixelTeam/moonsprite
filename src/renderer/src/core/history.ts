@@ -1,6 +1,6 @@
 import type { RasterLayer, SelectionRect, SpriteDocument } from '@shared/types'
 import { animationLayerAtFrame, setAnimationLayerOffsetsAtFrame } from './animation'
-import { getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document'
+import { cacheRasterContentBounds, cachedRasterContentBounds, getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document'
 
 export interface HistoryEntry {
   label: string
@@ -24,9 +24,43 @@ export interface HistoryTimelineEntry {
   position: number
 }
 
+export interface CommittedPixelChanges {
+  layerId: string
+  frameId?: string
+  xs: Int32Array
+  ys: Int32Array
+  before: Uint32Array
+  after: Uint32Array
+  runXs: Int32Array
+  runYs: Int32Array
+  runLengths: Uint32Array
+  runBefore: Uint32Array
+  runAfter: Uint32Array
+  regionPatches: CommittedPixelRegionPatch[]
+  layerOffset?: PixelEditLayerOffset
+}
+const committedPixelChanges = new WeakMap<HistoryEntry, CommittedPixelChanges>()
+export const getCommittedPixelChanges = (entry: HistoryEntry): CommittedPixelChanges | undefined => committedPixelChanges.get(entry)
+export const inheritCommittedPixelChanges = (source: HistoryEntry, target: HistoryEntry): void => {
+  const changes = committedPixelChanges.get(source)
+  if (changes) committedPixelChanges.set(target, changes)
+}
+
 export interface HistoryTimeline {
   entries: HistoryTimelineEntry[]
   position: number
+}
+
+/**
+ * A notification emitted after the stack has applied a navigation operation.
+ * Consumers must treat entries as opaque: their closures are intentionally not
+ * serializable. Persistent history records document snapshots separately.
+ */
+export interface HistoryStackChange {
+  kind: 'push' | 'undo' | 'redo' | 'clear'
+  entry?: HistoryEntry
+  /** Number of oldest undo entries removed by the byte budget during a push. */
+  discardedUndoEntries?: number
 }
 
 export type ContentInvalidationHint =
@@ -67,6 +101,7 @@ export class HistoryStack {
   private compoundDepth = 0
   private stackRevision = 0
   private animationSelectionNormalizationRequested = false
+  private changeListener: ((change: HistoryStackChange) => void) | null = null
 
   constructor(private readonly maxBytes = 256 * 1024 * 1024) {}
 
@@ -83,6 +118,24 @@ export class HistoryStack {
     return { entries, position: this.position }
   }
 
+  setChangeListener(listener: ((change: HistoryStackChange) => void) | null): void {
+    this.changeListener = listener
+  }
+
+  /** Hydrate an already-applied timeline without replaying undo closures. */
+  restoreTimeline(entries: readonly HistoryEntry[], position: number): void {
+    if (this.compoundDepth) throw new Error('Cannot restore history during a transaction')
+    if (!Number.isInteger(position) || position < 0 || position > entries.length) throw new Error('Invalid history position')
+    this.undoEntries = entries.slice(0, position)
+    this.redoEntries = entries.slice(position).reverse()
+    this.bytes = this.undoEntries.reduce((sum, entry) => sum + entry.bytes, 0)
+    this.stackRevision += 1
+  }
+
+  private notify(change: HistoryStackChange): void {
+    this.changeListener?.(change)
+  }
+
   clear(): void {
     this.undoEntries = []
     this.redoEntries = []
@@ -91,6 +144,7 @@ export class HistoryStack {
     this.compoundDepth = 0
     this.animationSelectionNormalizationRequested = false
     this.stackRevision += 1
+    this.notify({ kind: 'clear' })
   }
 
   /** Mark entries recorded by the current mutateActive scope as structural. */
@@ -109,10 +163,13 @@ export class HistoryStack {
     this.undoEntries.push(entry)
     this.bytes += entry.bytes
     this.redoEntries = []
+    let discardedUndoEntries = 0
     while (this.bytes > this.maxBytes && this.undoEntries.length > 1) {
       this.bytes -= this.undoEntries.shift()!.bytes
+      discardedUndoEntries += 1
     }
     this.stackRevision += 1
+    this.notify({ kind: 'push', entry, discardedUndoEntries })
   }
 
   beginCompound(): void {
@@ -160,7 +217,36 @@ export class HistoryStack {
     this.bytes -= entry.bytes
     this.redoEntries.push(entry)
     this.stackRevision += 1
+    this.notify({ kind: 'undo', entry })
     return entry
+  }
+
+  /** Cancels a just-committed transaction without turning cancellation into redo history. */
+  discardLatestUndo(expected: HistoryEntry): boolean {
+    const entry = this.undoEntries.at(-1)
+    if (entry !== expected || this.compoundDepth > 0) return false
+    entry.undo()
+    this.undoEntries.pop()
+    this.bytes -= entry.bytes
+    this.stackRevision += 1
+    return true
+  }
+
+  /** Rewinds undo history back to the requested position without adding redo entries. */
+  discardToPosition(position: number): HistoryEntry[] | null {
+    if (this.compoundDepth > 0 || !Number.isFinite(position)) return null
+    const target = Math.max(0, Math.min(this.undoEntries.length, Math.trunc(position)))
+    if (target >= this.undoEntries.length) return null
+    const discarded: HistoryEntry[] = []
+    while (this.undoEntries.length > target) {
+      const entry = this.undoEntries.pop()!
+      entry.undo()
+      this.bytes -= entry.bytes
+      discarded.push(entry)
+    }
+    this.redoEntries = []
+    this.stackRevision += 1
+    return discarded
   }
 
   redo(): HistoryEntry | null {
@@ -171,6 +257,7 @@ export class HistoryStack {
     this.undoEntries.push(entry)
     this.bytes += entry.bytes
     this.stackRevision += 1
+    this.notify({ kind: 'redo', entry })
     return entry
   }
 }
@@ -302,11 +389,11 @@ const regionPatchFromDenseEdit = (layer: RasterLayer, dense: PixelEditDenseRegio
     y: dense.y,
     width: dense.width,
     height: dense.height,
-    before: dense.before,
-    after: dense.after
+    before: dense.before.slice(),
+    after: dense.after.slice()
   }
-  const before = new Uint8ClampedArray(dense.before.buffer as ArrayBuffer, dense.before.byteOffset, dense.before.byteLength)
-  const after = new Uint8ClampedArray(dense.after.buffer as ArrayBuffer, dense.after.byteOffset, dense.after.byteLength)
+  const before = new Uint8ClampedArray(dense.before.buffer as ArrayBuffer, dense.before.byteOffset, dense.before.byteLength).slice()
+  const after = new Uint8ClampedArray(dense.after.buffer as ArrayBuffer, dense.after.byteOffset, dense.after.byteLength).slice()
   return { format: layer.format, x: dense.x, y: dense.y, width: dense.width, height: dense.height, before, after }
 }
 
@@ -345,6 +432,42 @@ export function beginPixelEdit(layerId: string): PixelEdit {
   return { layerId, before: new Map(), after: new Map() }
 }
 
+/** Merge consecutive live brush edits without replaying their accumulated pixels. */
+export function mergePixelEdits(first: PixelEdit, second: PixelEdit): PixelEdit {
+  if (first.layerId !== second.layerId) throw new Error('Cannot merge pixel edits from different layers')
+  const merged = beginPixelEdit(first.layerId)
+  merged.frameId = first.frameId ?? second.frameId
+  const append = (edit: PixelEdit): void => {
+    for (const [index, before] of edit.before) {
+      if (!merged.before.has(index)) merged.before.set(index, before)
+      merged.after.set(index, edit.after.get(index) ?? before)
+    }
+    if (edit.points) for (let offset = 0; offset < edit.points.count; offset += 1) {
+      const index = edit.points.indices[offset]
+      if (!merged.before.has(index)) merged.before.set(index, edit.points.before[offset])
+      merged.after.set(index, edit.points.after[offset])
+    }
+    if (edit.dirtyRect) {
+      if (!merged.dirtyRect) merged.dirtyRect = { ...edit.dirtyRect }
+      else {
+        const left = Math.min(merged.dirtyRect.x, edit.dirtyRect.x)
+        const top = Math.min(merged.dirtyRect.y, edit.dirtyRect.y)
+        const right = Math.max(merged.dirtyRect.x + merged.dirtyRect.width, edit.dirtyRect.x + edit.dirtyRect.width)
+        const bottom = Math.max(merged.dirtyRect.y + merged.dirtyRect.height, edit.dirtyRect.y + edit.dirtyRect.height)
+        merged.dirtyRect = { x: left, y: top, width: right - left, height: bottom - top }
+      }
+    }
+  }
+  append(first)
+  append(second)
+  return merged
+}
+
+/** Includes every edit storage format, including compact brush/transform records. */
+export const pixelEditHasChanges = (edit: PixelEdit | null | undefined): boolean => Boolean(edit && (
+  edit.before.size > 0 || edit.points?.count || edit.runs?.length || edit.denseRegion?.count || edit.layerOffset
+))
+
 export function preparePixelEdit(document: SpriteDocument, edit: PixelEdit): void {
   if (edit.frameId || !document.animation) return
   const target = getLayer(document, edit.layerId)
@@ -358,7 +481,11 @@ export function recordPixelKnownCurrent(document: SpriteDocument, layer: RasterL
   preparePixelEdit(document, edit)
   next = normalizeLayerPackedValue(document, layer, next)
   if (current === next) return false
-  if (!edit.dirtyRect) markLayerContentChanged(layer)
+  if (!edit.dirtyRect) {
+    const cachedBounds = cachedRasterContentBounds(layer, document.palette)
+    markLayerContentChanged(layer)
+    if (cachedBounds !== undefined) cacheRasterContentBounds(layer, document.palette, cachedBounds)
+  }
   if (!edit.before.has(index)) edit.before.set(index, current)
   edit.after.set(index, next)
   const x = index % layer.width + layer.offsetX
@@ -384,9 +511,9 @@ export function recordPixel(document: SpriteDocument, layer: RasterLayer, edit: 
   return recordPixelKnownCurrent(document, layer, edit, index, current, next)
 }
 
-export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label: string): HistoryEntry | null {
+export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label: string, capturePersistentChanges = false): HistoryEntry | null {
   const pointCount = edit.points?.count ?? 0
-  if (edit.before.size === 0 && pointCount === 0 && !edit.runs?.length && !edit.denseRegion?.count && !edit.layerOffset) return null
+  if (!pixelEditHasChanges(edit)) return null
   const maskTarget = isLayerMask(getLayer(document, edit.layerId))
   const editedLayer = maskTarget ? null : document.layers.find((layer) => layer.id === edit.layerId) ?? null
   const linkedLayerIds = editedLayer?.linkedContentId
@@ -506,7 +633,7 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
       layer.offsetY = y
     }
   }
-  return {
+  const entry: HistoryEntry = {
     label,
     bytes: xs.byteLength + ys.byteLength + before.byteLength + after.byteLength + runXs.byteLength + runYs.byteLength + runLengths.byteLength + runBefore.byteLength + runAfter.byteLength + regionPatchBytes + (layerOffset ? 32 : 0),
     undo: () => { applyRuns(runBefore); applyRegionPatches('before'); apply(before); if (layerOffset) applyLayerOffset(layerOffset.beforeX, layerOffset.beforeY) },
@@ -516,6 +643,8 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
       : edit.dirtyRect ? { kind: 'region', frameId, rect: { ...edit.dirtyRect } } : undefined,
     affectedLayerIds: linkedLayerIds.length > 0 ? linkedLayerIds : [edit.layerId]
   }
+  if (capturePersistentChanges) committedPixelChanges.set(entry, { layerId: edit.layerId, frameId, xs, ys, before, after, runXs, runYs, runLengths, runBefore, runAfter, regionPatches, layerOffset })
+  return entry
 }
 
 export function revertPixelEdit(document: SpriteDocument, edit: PixelEdit | null | undefined): void {

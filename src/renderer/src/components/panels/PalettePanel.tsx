@@ -1,4 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { playExportSuccessSound } from '@/platform/export-success-sound'
+import { usePaletteGridColumns } from '@/components/use-palette-grid-columns'
+import { paletteGridLines, paletteGridLineClass, paletteAutoCellClass } from '@/components/palette-grid-resize'
+import { palettePanelRenderKey } from '@/core/panel-render-keys'
 import { createPortal } from 'react-dom'
 import type { PaletteEntry, StoredPalette } from '@shared/types'
 import { colorCss, rgbaHex } from '@/components/ColorPicker'
@@ -12,7 +16,7 @@ import { TextInput } from '@/components/TextInput'
 import { Tooltip } from '@/components/Tooltip'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { encodePalettePng, extractPaletteColors, mergePaletteColors, type PaletteSortDirection, type PaletteSortMode } from '@/core/palette'
-import { addPaletteIdToSlots, fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorRoles, paletteColorsEqual, paletteGridCapacity, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
+import { addPaletteIdToSlots, fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorRoles, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY, readStoredString, removeStoredValue, writeStoredString } from '@/core/panel-preferences'
 import { colorEquals } from '@/core/raster'
 import { builtInPaletteNameKeys } from '@/core/built-in-palettes'
@@ -95,17 +99,23 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const [paletteBoxSelection, setPaletteBoxSelection] = useState<{ startSlot: number; endSlot: number } | null>(null)
   const [gestureSelectedIds, setGestureSelectedIds] = useState<number[] | null>(null)
   const [selectionOutlineHovered, setSelectionOutlineHovered] = useState(false)
-  const [gridCapacity, setGridCapacity] = useState(() => ({ columns: normalizePaletteColumns(session.document.paletteColumns), rows: 1 }))
   const [swatchSize, setSwatchSize] = useState<PaletteSwatchSize>(() => {
     const stored = readStoredString(PALETTE_SWATCH_SIZE_STORAGE_KEY)
     return PALETTE_SWATCH_SIZE_ORDER.includes(stored as PaletteSwatchSize) ? stored as PaletteSwatchSize : 'small'
   })
-  const ordered = session.document.paletteOrder.map((id) => session.document.palette.find((entry) => entry.id === id)).filter((entry): entry is PaletteEntry => Boolean(entry))
+  // Palette commands can edit arrays in place; identity alone is not a revision.
+  const paletteRenderKey = palettePanelRenderKey(session)
+  const paletteById = useMemo(() => new Map(session.document.palette.map(entry => [entry.id, entry])), [session.document.palette, paletteRenderKey])
+  const ordered = useMemo(() => session.document.paletteOrder.map(id => paletteById.get(id)).filter((entry): entry is PaletteEntry => Boolean(entry)), [session.document.paletteOrder, paletteById])
   const storedColumns = normalizePaletteColumns(session.document.paletteColumns)
-  const storedSlots = normalizePaletteSlots(session.document.palette.map((entry) => entry.id), session.document.paletteOrder, session.document.paletteSlots, storedColumns)
-  const fittedLayout = fitPaletteSlotsToGrid(storedSlots, storedColumns, gridCapacity.columns, gridCapacity.rows)
+  const storedSlots = useMemo(() => normalizePaletteSlots(session.document.palette.map((entry) => entry.id), session.document.paletteOrder, session.document.paletteSlots, storedColumns), [session.document.palette, session.document.paletteOrder, session.document.paletteSlots, storedColumns, paletteRenderKey])
+  const occupiedColumns = useMemo(() => storedSlots.reduce<number>((maximum, id, index) => id === null ? maximum : Math.max(maximum, index % storedColumns + 1), 1), [storedSlots, storedColumns])
+  const gridColumns = usePaletteGridColumns(swatchGridRef, PALETTE_SWATCH_PIXELS[swatchSize], paletteLayoutMode === 'manual' ? occupiedColumns : 1, paletteLayoutMode, paletteRenderKey)
+  // Trailing empty rows have no rendered swatches or hit targets. Retain all
+  // occupied coordinates, without rebuilding the palette for height changes.
+  const fittedLayout = useMemo(() => fitPaletteSlotsToGrid(storedSlots, storedColumns, gridColumns, 1), [storedSlots, storedColumns, gridColumns])
   const paletteSlots = paletteLayoutMode === 'auto' ? ordered.map((entry) => entry.id) : fittedLayout.slots
-  const paletteColumns = paletteLayoutMode === 'auto' ? gridCapacity.columns : fittedLayout.columns
+  const paletteColumns = paletteLayoutMode === 'auto' ? gridColumns : fittedLayout.columns
   const rawDisplayedSlots = palettePreviewSlots ?? paletteSlots
   const lastOccupiedSlot = rawDisplayedSlots.reduce<number>((last, id, index) => id !== null ? index : last, -1)
   const displayedSlotCount = rawDisplayedSlots.length === 0 ? 0 : Math.max(1, lastOccupiedSlot + 1, paletteLayoutMode === 'manual' ? paletteColumns : 0)
@@ -133,50 +143,25 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     ? paletteSlotRange(paletteColumns, focusedSlot, focusedSlot)
     : null
   const displayedSelectionRange = boxSelectionRange ?? focusedEmptySlotRange ?? selectedSlotRange
-  const paletteById = new Map(session.document.palette.map((entry) => [entry.id, entry]))
-  const paletteLineSegments = displayedSlots.flatMap((id, index) => {
-    if (id === null || !paletteById.has(id)) return []
-    const column = index % paletteSurfaceColumns
-    const row = Math.floor(index / paletteSurfaceColumns)
-    const occupied = (neighbor: number): boolean => {
-      const neighborId = displayedSlots[neighbor]
-      return neighborId !== null && neighborId !== undefined && paletteById.has(neighborId)
-    }
-    const segments: Array<{ key: string; column: number; row: number; side: 'left' | 'right' | 'top' | 'bottom'; position: 'edge' | 'gap'; extend: boolean }> = []
-    const hasLeft = column > 0 && occupied(index - 1)
-    const hasTop = row > 0 && occupied(index - paletteSurfaceColumns)
-    const hasRightSlot = column < paletteSurfaceColumns - 1 && index + 1 < displayedSlots.length
-    const hasBottomSlot = index + paletteSurfaceColumns < displayedSlots.length
-    if (!hasLeft) segments.push({ key: `${index}-left`, column, row, side: 'left', position: column === 0 ? 'edge' : 'gap', extend: hasBottomSlot })
-    segments.push({ key: `${index}-right`, column, row, side: 'right', position: hasRightSlot ? 'gap' : 'edge', extend: hasBottomSlot })
-    if (!hasTop) segments.push({ key: `${index}-top`, column, row, side: 'top', position: row === 0 ? 'edge' : 'gap', extend: hasRightSlot })
-    segments.push({ key: `${index}-bottom`, column, row, side: 'bottom', position: hasBottomSlot ? 'gap' : 'edge', extend: hasRightSlot })
-    return segments
-  })
+  const swatchPresentations = useMemo(() => new Map(session.document.palette.map(entry => {
+    const roles = paletteColorRoles(entry.color, session.primaryColor, session.secondaryColor)
+    const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
+    return [entry.id, {
+      roles,
+      label: `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`,
+      style: { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) } as React.CSSProperties
+    }]
+  })), [paletteRenderKey, session.document.palette, session.primaryColor, session.secondaryColor, t])
+  // Moving colors can temporarily leave holes even in auto mode. Preserve the
+  // sparse boundary path for that gesture; compact auto rows use cell borders.
+  const paletteAutoBorders = paletteLayoutMode === 'auto' && displayedSlots.every(id => id !== null && paletteById.has(id))
+  const paletteLineSegments = paletteAutoBorders ? [] : paletteGridLines(displayedSlots.map(id => id !== null && paletteById.has(id) ? id : null), paletteSurfaceColumns)
   const orderedColors = ordered.map((entry) => ({ ...entry.color }))
   const activePalette = paletteFiles.find((palette) => palette.id === activePaletteId) ?? null
   const paletteDisplayName = (palette: StoredPalette): string => {
     const nameKey = palette.builtIn ? builtInPaletteNameKeys[palette.id] : undefined
     return nameKey ? t(nameKey) : palette.name
   }
-
-  useLayoutEffect(() => {
-    const grid = swatchGridRef.current
-    if (!grid) return
-    const updateCapacity = (): void => {
-      if (grid.clientWidth <= 0 || grid.clientHeight <= 0) return
-      const next = paletteGridCapacity(grid.clientWidth, grid.clientHeight, PALETTE_SWATCH_PIXELS[swatchSize], 1)
-      setGridCapacity((current) => current.columns === next.columns && current.rows === next.rows ? current : next)
-    }
-    updateCapacity()
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateCapacity)
-    observer?.observe(grid)
-    window.addEventListener('resize', updateCapacity)
-    return () => {
-      observer?.disconnect()
-      window.removeEventListener('resize', updateCapacity)
-    }
-  }, [session.document.id, swatchSize])
 
   const refreshPalettes = async (preferredId?: string): Promise<void> => {
     setPaletteLoading(true)
@@ -685,6 +670,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       if (result.canceled || !result.filePath) return
       const encoded = encodePalettePng(orderedColors)
       await window.moonSprite.writeBinaryAtomic(result.filePath, encoded.bytes)
+      playExportSuccessSound()
       if (recordRecentExportPath(result.filePath)) window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
       setSaveOpen(false)
       store.setMessage(t('palette.imageSaved', { path: result.filePath }))
@@ -725,11 +711,11 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   }
 
   return <><section ref={floating.ref} className={`panel palette-panel ${panelColorSampling.active ? 'panel-color-sampling' : ''} ${floating.style ? 'floating-panel' : ''}`} data-command-scope="palette" style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
-    <header aria-label={t('panel.palette')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><span className="panel-actions palette-actions" onPointerDown={(event) => event.stopPropagation()}>
+    <header aria-label={t('panel.palette')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><strong>{t('panel.palette')}</strong><span className="panel-actions palette-actions" onPointerDown={(event) => event.stopPropagation()}>
       <span ref={libraryControlRef} className="palette-library-control"><button ref={libraryButtonRef} className={libraryOpen ? 'active' : ''} title={t('palette.chooseLocal')} aria-label={t('palette.chooseLocal')} aria-expanded={libraryOpen} onClick={() => { setLibraryOpen((open) => !open); setPaletteActionsOpen(false) }}><PixelUtilityIcon kind="paletteLocal" /></button></span>
       <span ref={paletteActionsControlRef} className="palette-actions-control"><button ref={paletteActionsButtonRef} className={paletteActionsOpen ? 'active' : ''} title={t('palette.actions')} aria-label={t('palette.actions')} aria-expanded={paletteActionsOpen} onClick={() => { setPaletteActionsOpen((open) => !open); setLibraryOpen(false) }}><PixelUtilityIcon kind="properties" /></button></span>
       <button className={paletteEditLocked ? '' : 'active'} title={t(paletteEditLocked ? 'palette.unlockEditing' : 'palette.lockEditing')} aria-label={t(paletteEditLocked ? 'palette.unlockEditing' : 'palette.lockEditing')} aria-pressed={!paletteEditLocked} onClick={togglePaletteEditLock}>{paletteEditLocked ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</button>
-    </span><small>{t('palette.colorCount', { count: ordered.length })}</small></header>
+    </span></header>
     <div
       ref={swatchGridRef}
       className={`swatch-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`}
@@ -742,29 +728,27 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       onWheel={handlePaletteWheel}
       onBlur={clearPaletteFocus}
     >
-      <span className="palette-swatch-grid-surface">
+      <span className={`palette-swatch-grid-surface ${paletteLayoutMode === 'manual' ? 'palette-grid-manual' : paletteAutoBorders ? 'palette-grid-auto' : ''}`} style={{ '--palette-layout-columns': paletteSurfaceColumns, '--palette-layout-rows': Math.ceil(displayedSlots.length / paletteSurfaceColumns) } as React.CSSProperties}>
       {displayedSlots.map((id, slotIndex) => {
         const entry = id === null ? null : paletteById.get(id) ?? null
-        const roles = entry ? paletteColorRoles(entry.color, session.primaryColor, session.secondaryColor) : { primary: false, secondary: false }
+        const presentation = entry ? swatchPresentations.get(entry.id) : undefined
+        const roles = presentation?.roles ?? { primary: false, secondary: false }
         const selected = Boolean(entry && displayedSelectedIds.includes(entry.id))
-        const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
-        const label = entry
-          ? `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`
-          : t('palette.emptySlot', { index: slotIndex + 1 })
-        return <span key={slotIndex} className={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''}`.trim()}><button
+        const label = presentation?.label ?? t('palette.emptySlot', { index: slotIndex + 1 })
+        return <span key={slotIndex} className={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''} ${paletteAutoBorders ? paletteAutoCellClass(slotIndex, paletteSurfaceColumns, displayedSlots.length) : ''}`.trim()} style={paletteLayoutMode === 'manual' ? { left: `calc(${slotIndex % paletteColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))`, top: `calc(${Math.floor(slotIndex / paletteColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))` } : undefined}><button
           data-palette-slot={slotIndex}
           data-palette-id={entry?.id}
           className={`swatch palette-slot ${entry ? 'occupied' : 'empty'} ${focusedSlot === slotIndex ? 'focused' : ''} ${selected ? 'selected' : ''} ${roles.primary ? 'primary' : ''} ${roles.secondary ? 'secondary' : ''} ${entry?.color.a === 0 ? 'transparent' : ''} ${entry && draggingIds.includes(entry.id) ? 'dragging' : ''} ${dropTargetSlot === slotIndex ? 'drop-target' : ''}`}
           title={label}
           aria-label={label}
           aria-pressed={selected}
-          style={entry ? { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) } as React.CSSProperties : undefined}
+          style={presentation?.style}
           onContextMenu={(event) => event.preventDefault()}
           onPointerDown={(event) => beginPaletteDrag(event, slotIndex, entry?.id ?? null)}
           onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); addCurrentColorToSlot(slotIndex) }}
         /></span>
       })}
-      {paletteLineSegments.map((segment) => <span key={segment.key} className={`palette-cell-line palette-cell-line-${segment.side} palette-cell-line-${segment.position} ${segment.extend ? 'palette-cell-line-extended' : ''}`} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
+      {paletteLineSegments.map((segment) => <span key={segment.key} data-palette-line={segment.key} className={paletteGridLineClass(segment)} hidden={segment.hidden} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
       </span>
       {displayedSelectionRange && <span data-palette-selection-outline className="palette-selection-box" aria-hidden="true" style={{ '--palette-selection-left': displayedSelectionRange.left, '--palette-selection-top': displayedSelectionRange.top, '--palette-selection-width': displayedSelectionRange.right - displayedSelectionRange.left + 1, '--palette-selection-height': displayedSelectionRange.bottom - displayedSelectionRange.top + 1 } as React.CSSProperties} />}
     </div>

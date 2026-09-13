@@ -11,6 +11,8 @@ export interface GifExportOptions {
   loopSectionId?: string
   direction: GifDirection
   crop?: SelectionRect
+  /** Optional layer to isolate while compositing every animation frame. */
+  layerId?: string
 }
 
 interface GifFramePixels { pixels: Uint8ClampedArray; duration: number }
@@ -198,16 +200,21 @@ export const exportAnimationGif = (document: SpriteDocument, options: GifExportO
     ? Math.max(loopStart, loopEnd)
     : Math.max(start, Math.min(timeline.frames.length - 1, Math.round(options.frameEnd ?? timeline.frames.length) - 1))
   const selected = timeline.frames.slice(start, end + 1).map((frame) => {
-    const composite = compositeAnimationFrame(document, frame.id)
+    const composite = compositeAnimationFrame(document, frame.id, options.layerId)
     const pixels = crop.x === 0 && crop.y === 0 && crop.width === document.width && crop.height === document.height
       ? composite
       : cropPixels(composite, document.width, crop)
     return { frame, pixels }
   })
   const ordered = gifFrameSequence(selected, options.direction)
-  const scaled = ordered.map(({ frame, pixels }) => ({ ...scalePixels(pixels, crop.width, crop.height, options.scalePercent), duration: frame.duration }))
+  const repeatCount = hasValidLoopSection && loopSection?.repeatCount !== null
+    ? Math.max(1, loopSection?.repeatCount ?? 1)
+    : 1
+  const repeated = Array.from({ length: repeatCount }, () => ordered).flat()
+  const scaled = repeated.map(({ frame, pixels }) => ({ ...scalePixels(pixels, crop.width, crop.height, options.scalePercent), duration: frame.duration }))
   const width = scaled[0]?.width ?? Math.max(1, crop.width)
   const height = scaled[0]?.height ?? Math.max(1, crop.height)
   const frames = scaled.map(({ pixels, duration }) => ({ pixels, duration }))
-  return { bytes: encodeGif(frames, width, height, timeline.loop), width, height, frameCount: frames.length }
+  const loop = hasValidLoopSection ? loopSection?.repeatCount === null : timeline.loop
+  return { bytes: encodeGif(frames, width, height, loop), width, height, frameCount: frames.length }
 }

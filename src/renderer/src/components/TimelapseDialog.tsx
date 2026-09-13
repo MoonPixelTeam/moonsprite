@@ -30,7 +30,6 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
   const [previewFrame, setPreviewFrame] = useState(0)
   const [format, setFormat] = useState<TimelapseExportFormat>('mp4')
   const [exportMode, setExportMode] = useState<TimelapseExportMode>('duration')
-  const [clearConfirm, setClearConfirm] = useState(false)
   const [imageScalePercent, setImageScalePercent] = useState(() => {
     const presets = loadEditorPreferences().exportScalePresets
     return presets.includes(100) ? 100 : presets[0] ?? 100
@@ -173,7 +172,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
         <PreferenceToggle className="timelapse-toggle" checked={settings.enabled} label={t('timelapse.recording')} onChange={(enabled) => onChange({ enabled })} />
         <FormField label={t('timelapse.recordingMode')} hint={settings.mode === 'smart' ? t('timelapse.recordingModeSmartHint') : t('timelapse.recordingModeFullHint')}>
           <ThemedSelect<TimelapseRecordingMode>
-            value={settings.mode ?? 'full'}
+            value={settings.mode ?? 'smart'}
             groups={[{ label: t('timelapse.recordingMode'), options: [
               { value: 'full', label: t('timelapse.recordingModeFull'), description: t('timelapse.recordingModeFullHint') },
               { value: 'smart', label: t('timelapse.recordingModeSmart'), description: t('timelapse.recordingModeSmartHint') }
@@ -182,6 +181,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
             onChange={(mode) => onChange({ mode })}
           />
         </FormField>
+        <PreferenceToggle className="timelapse-undo-toggle" checked={settings.recordUndoSteps === true} label={t('timelapse.recordUndoSteps')} tooltip={t('timelapse.recordUndoStepsHint')} onChange={(recordUndoSteps) => onChange({ recordUndoSteps })} />
         <div className="timelapse-config-grid">
           <FormField label={t('timelapse.exportFormat')}><ThemedSelect<TimelapseExportFormat> value={format} groups={[{ label: t('timelapse.exportFormat'), options: [{ value: 'mp4', label: 'MP4' }, { value: 'webm', label: 'WebM' }, { value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPG' }] }]} label={t('timelapse.exportFormat')} onChange={setFormat} /></FormField>
           {videoFormat ? <FormField label={t('timelapse.quality')}><ThemedSelect<TimelapseQuality> value={settings.quality} groups={[{ label: t('timelapse.quality'), options: qualityOptions }]} label={t('timelapse.quality')} onChange={(quality) => onChange({ quality })} /></FormField> : <FormField className="timelapse-scale-field" label={t('timelapse.exportScale')}><div className="timelapse-scale-control"><NumberInput min={1} max={6400} value={imageScalePercent} suffix="%" onValueChange={setImageScalePercent} /><div className="scale-presets" aria-label={t('timelapse.exportScale')}>
@@ -200,7 +200,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
       </div>
       <footer className="timelapse-footer">
         <div className="timelapse-clear-actions">
-          {!clearConfirm ? <button type="button" className="quiet-button timelapse-clear" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setClearConfirm(true) }}><PixelUtilityIcon kind="clearRecords" />{t('timelapse.clear')}</button> : <><span className="timelapse-clear-confirm-label">{t('timelapse.clearConfirm')}</span><button type="button" className="quiet-button" onClick={() => setClearConfirm(false)}>{t('common.cancel')}</button><button type="button" className="danger-button" onClick={() => { setClearConfirm(false); setPreviewFrame(0); onClear() }}>{t('timelapse.confirmClear')}</button></>}
+          <button type="button" className="quiet-button timelapse-clear" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setPreviewFrame(0); onClear() }}><PixelUtilityIcon kind="clearRecords" />{t('timelapse.clear')}</button>
         </div>
         <div className="timelapse-footer-actions"><button className="quiet-button" onClick={onClose}>{t('common.close')}</button><button className="primary-button" disabled={settings.snapshots.length === 0} onClick={() => { void onExport(format, exportOptions) }}><PixelUtilityIcon kind="export" />{t(videoFormat ? 'timelapse.exportVideo' : 'timelapse.exportImages')}</button></div>
       </footer>

@@ -1,27 +1,40 @@
 import type { CanvasDeviceScale } from '@/core/canvas-render-plan'
 
-export function syncCanvasDisplaySize(canvas: HTMLCanvasElement, width: number, height: number, dpr: number, cssWidth = width, cssHeight = height): CanvasDeviceScale {
+const displayScales = new WeakMap<HTMLCanvasElement, CanvasDeviceScale>()
+
+export function canvasBackingCapacity(required: number, current: number, reserve: boolean): number {
+  return reserve ? Math.max(current, Math.ceil(required / 128) * 128) : required
+}
+
+export const canvasDisplayDeviceScale = (canvas: HTMLCanvasElement, fallback: number): CanvasDeviceScale =>
+  displayScales.get(canvas) ?? { x: fallback, y: fallback }
+
+export function syncCanvasDisplaySize(canvas: HTMLCanvasElement, width: number, height: number, dpr: number, cssWidth = width, cssHeight = height, reserve = false): CanvasDeviceScale {
   const displayWidth = Math.max(0, width)
   const displayHeight = Math.max(0, height)
   const renderedCssWidth = Math.max(0, cssWidth)
   const renderedCssHeight = Math.max(0, cssHeight)
   const pixelRatio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1
-  const cssWidthValue = `${renderedCssWidth}px`
-  const cssHeightValue = `${renderedCssHeight}px`
+  const backingWidth = canvasBackingCapacity(Math.max(1, Math.round(displayWidth * pixelRatio)), canvas.width, reserve)
+  const backingHeight = canvasBackingCapacity(Math.max(1, Math.round(displayHeight * pixelRatio)), canvas.height, reserve)
+  // Spare pixels extend outside the clipped viewport; they must never stretch
+  // to fit it. Keep a constant physical scale while reusing the allocation.
+  const cssWidthValue = `${reserve && displayWidth > 0 ? backingWidth / pixelRatio * renderedCssWidth / displayWidth : renderedCssWidth}px`
+  const cssHeightValue = `${reserve && displayHeight > 0 ? backingHeight / pixelRatio * renderedCssHeight / displayHeight : renderedCssHeight}px`
 
   // Keep the last rendered CSS size fixed until the next draw. Otherwise a
   // percentage-sized canvas stretches its previous bitmap while a pane resizes.
   if (canvas.style.width !== cssWidthValue) canvas.style.width = cssWidthValue
   if (canvas.style.height !== cssHeightValue) canvas.style.height = cssHeightValue
 
-  const backingWidth = Math.max(1, Math.round(displayWidth * pixelRatio))
-  const backingHeight = Math.max(1, Math.round(displayHeight * pixelRatio))
   if (canvas.width !== backingWidth) canvas.width = backingWidth
   if (canvas.height !== backingHeight) canvas.height = backingHeight
-  return {
-    x: displayWidth > 0 ? backingWidth / displayWidth : pixelRatio,
-    y: displayHeight > 0 ? backingHeight / displayHeight : pixelRatio
+  const scale = {
+    x: !reserve && displayWidth > 0 ? backingWidth / displayWidth : pixelRatio,
+    y: !reserve && displayHeight > 0 ? backingHeight / displayHeight : pixelRatio
   }
+  displayScales.set(canvas, scale)
+  return scale
 }
 
 /**

@@ -4,6 +4,30 @@
 
 MoonSprite 的脚本运行在受限的 Lua 5.4 沙箱中。普通脚本文件放在程序根目录的 `scripts` 文件夹内，用户可以从“文件 > 脚本”打开。`.msext` 扩展可以把命令插入现有菜单、新增顶层菜单，或通过“窗口 > 栏目”提供浮动栏目；这些入口复用完全相同的运行时。脚本不能直接读写文件、启动进程、访问网络或加载任意 Lua 包。
 
+需要画布级交互的功能应声明宿主工具，而不是注入代码。当前宿主提供通用的 `remote-pixel-brush` 能力：
+
+```json
+{
+  "tools": [
+    {
+      "id": "remote-cleanup",
+      "name": "Remote Cleanup",
+      "description": "Process the brushed pixel region after release.",
+      "kind": "remote-pixel-brush",
+      "placement": "pencil",
+      "icon": "tool-smooth",
+      "modes": [{ "id": "default", "name": "Default" }],
+      "defaultMode": "default",
+      "previewColor": "#2979ff66"
+    }
+  ]
+}
+```
+
+启用扩展后，该工具由宿主渲染到铅笔工具组；名称、模式和预览色来自扩展清单，配置弹窗、网络请求和像素事务由通用宿主能力执行。扩展清单不会获得任意网络、DOM 或文档内部对象访问权。
+
+配置时填写 OpenAI 兼容的 Chat Completions API 地址（例如 `https://api.deepseek.com`）、API 密钥和模型。填写中转站根地址时，宿主会依次尝试 `/chat/completions` 和 `/v1/chat/completions`，将涂抹区域作为 JSON 像素数据发送，并要求模型优先以 JSON 返回稀疏 `edits`（本地像素索引和 RGBA），也兼容同尺寸的完整 RGBA 像素补丁。
+
 ## 可运行扩展
 
 扩展包是 ZIP 容器，根目录的 `manifest.json` 可以声明多个 Lua 命令和由 MoonSprite 渲染的栏目：
@@ -70,7 +94,12 @@ end)
 - `app.*` 是 Aseprite 兼容 API。它用于迁移已有脚本，当前只实现项目明确列出的兼容子集。
 - `mse.*` 是 MoonSprite 专属 API。它不会伪装成 Aseprite API，也不会暴露内部 `SpriteDocument` 或 Renderer 状态。
 
-当前兼容子集支持常见的图层与 Cel 用法，包括 `Sprite:newCel(layer, frame, image, position)` 的可选图像和位置参数，以及 `Layer.isEditable`、`Layer.isContinuous` 的读写。兼容脚本仍运行在 Lua 沙箱的图像、内存、指令数和执行时间预算内；逐像素邻域扫描等高计算量脚本在较大画布上可能因预算耗尽而停止，这不是 API 语法错误。
+当前 Aseprite 兼容子集分为两层：
+
+- 基础像素与图层：`Point`、`Rectangle`、`Color`、`Image`、`Palette`、活动 `Sprite/Layer/Cel`、图层类型/父级/堆叠位置、`Layer:cel(frame)`、`Sprite:newLayer()` 和 `Sprite:newCel(layer, frame, image, position)`。
+- 动画读取与编辑：`Sprite.frames/tags`、`Frame` 的序号/时长/停用状态、`Tag` 的范围/方向/重复次数、`app.range`，以及活动图层中已有多帧 Cel 的图像和位置读写。跨帧 Cel 写入与当前帧写入进入同一个脚本事务，并支持撤销/重做。
+
+该子集不等于完整 Aseprite API。脚本创建、复制或删除 Frame，以及在现有图层的空帧中创建 Cel，尚未作为兼容接口开放；脚本应先用能力范围内的已有帧/Cel，或改用 MoonSprite 的 `mse.*` 类型化接口。兼容脚本仍运行在 Lua 沙箱的图像、内存、指令数和执行时间预算内；逐像素邻域扫描等高计算量脚本在较大画布上可能因预算耗尽而停止，这不是 API 语法错误。
 
 完整的 MSE API 外形、端点状态和错误约定见 [mse-api.md](mse-api.md)。编辑器类型提示见 [mse-api.lua](mse-api.lua)，可以将它加入 VS Code 的 LuaLS 工作区库路径。
 

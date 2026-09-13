@@ -8,11 +8,16 @@ import { PanelResizeHandles, useFloatingWindowStack, type ResizeDirection } from
 import { useI18n } from '@/components/I18nProvider'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { paletteMarkerColor } from '@/core/palette-layout'
+import { rangeValueWithShiftStep } from '@/core/range-step'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { CANVAS_COLOR_SAMPLED_EVENT, CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, type CanvasColorSampledDetail } from './color-sampling-events'
+import { sampleCanvasColorAtClientPoint } from '@/core/canvas-color-sampling'
 import { normalEditorToolIconFor, PixelAssetIcon, TOOL_DEFINITIONS } from './app/editor-tools'
 import { useWorkspace } from '@/store/workspace'
 import { PreferenceSearchContext } from './PreferenceSearchContext'
+import { EyedropperMagnifier } from './EyedropperMagnifier'
+import { eyedropperMagnifierPosition } from '@/core/eyedropper-magnifier'
+import { finishColorPickerSampling, sampleColorPickerAtClientPoint } from './color-picker-sampling'
 
 interface ColorValueControlProps {
   color: RgbaColor
@@ -62,10 +67,46 @@ const COLOR_EDITOR_MIN_HEIGHT = 240
 const COLOR_EDITOR_CMYK_MIN_HEIGHT = 298
 const COLOR_EDITOR_MAX_WIDTH = 720
 const COLOR_EDITOR_MAX_HEIGHT = 480
+const GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS = 5
+const GLOBAL_EYEDROPPER_MAGNIFIER_GRID_SIZE = GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS * 2 + 1
 
 const cssColor = (color: RgbaColor): string => `rgb(${color.r} ${color.g} ${color.b} / ${color.a / 255})`
 const copyColor = (color: RgbaColor): RgbaColor => ({ ...color })
 const sameColor = (left: RgbaColor, right: RgbaColor): boolean => left.r === right.r && left.g === right.g && left.b === right.b && left.a === right.a
+const colorFromCss = (value: string): RgbaColor | null => {
+  const channels = value.match(/[\d.]+/g)?.map(Number) ?? []
+  if (channels.length < 3 || channels.slice(0, 3).some((channel) => !Number.isFinite(channel))) return null
+  const alpha = channels.length > 3 && Number.isFinite(channels[3]) ? clampByte(Math.round(channels[3] * 255)) : 255
+  if (alpha === 0) return null
+  return { r: clampByte(Math.round(channels[0])), g: clampByte(Math.round(channels[1])), b: clampByte(Math.round(channels[2])), a: alpha }
+}
+const fallbackUiColorAt = (clientX: number, clientY: number): RgbaColor | null => {
+  for (const element of document.elementsFromPoint(clientX, clientY)) {
+    const style = window.getComputedStyle(element)
+    for (const value of [style.backgroundColor, style.color, style.borderTopColor]) {
+      const color = colorFromCss(value)
+      if (color) return color
+    }
+  }
+  return null
+}
+const canvasColorGridAt = (clientX: number, clientY: number, center: RgbaColor): RgbaColor[] => {
+  const colors: RgbaColor[] = []
+  for (let offsetY = -GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS; offsetY <= GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS; offsetY += 1) {
+    for (let offsetX = -GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS; offsetX <= GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS; offsetX += 1) {
+      colors.push(sampleCanvasColorAtClientPoint(clientX + offsetX, clientY + offsetY) ?? center)
+    }
+  }
+  return colors
+}
+const globalMagnifierHiddenAt = (clientX: number, clientY: number): boolean =>
+  (document.elementsFromPoint?.(clientX, clientY) ?? []).some((element) => element.closest('.color-panel, .moon-color-picker'))
+type GlobalMagnifierSettings = Pick<ReturnType<typeof loadEditorPreferences>, 'eyedropperMagnifierEnabled' | 'eyedropperMagnifierStyle' | 'eyedropperMagnifierSize' | 'eyedropperMagnifierDistortionEnabled'>
+interface GlobalMagnifierSample {
+  clientX: number
+  clientY: number
+  pixels: RgbaColor[]
+}
 const copyHexToClipboard = async (color: RgbaColor): Promise<void> => {
   const value = displayRgbaHex(color)
   try {
@@ -112,6 +153,16 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
   const [resident, setResident] = useState(false)
   const [copiedSwatch, setCopiedSwatch] = useState<'previous' | 'current' | null>(null)
   const [sampling, setSampling] = useState(false)
+  const [globalMagnifier, setGlobalMagnifier] = useState<GlobalMagnifierSample | null>(null)
+  const [globalMagnifierSettings, setGlobalMagnifierSettings] = useState<GlobalMagnifierSettings>(() => {
+    const preferences = loadEditorPreferences()
+    return {
+      eyedropperMagnifierEnabled: preferences.eyedropperMagnifierEnabled,
+      eyedropperMagnifierStyle: preferences.eyedropperMagnifierStyle,
+      eyedropperMagnifierSize: preferences.eyedropperMagnifierSize,
+      eyedropperMagnifierDistortionEnabled: preferences.eyedropperMagnifierDistortionEnabled
+    }
+  })
   const [paletteEntries, setPaletteEntries] = useState<PaletteEntry[]>(activePaletteEntries)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -132,10 +183,56 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
   const samplingReturnToolRef = useRef<{ documentId: string; tool: ToolId } | null>(null)
   const sampledColorHandlerRef = useRef<(color: RgbaColor) => void>(() => undefined)
   const finishSamplingRef = useRef<(updateState?: boolean) => void>(() => undefined)
+  const rangeShiftHeldRef = useRef(false)
+  const triggerDragRef = useRef<{ pointerId: number; sampling: boolean } | null>(null)
+  const suppressTriggerClickRef = useRef(false)
+  const globalSamplingRef = useRef(false)
+  const globalSampleQueueRef = useRef<{ pending: { clientX: number; clientY: number; sequence: number } | null; running: boolean }>({ pending: null, running: false })
+  const globalSampleSequenceRef = useRef(0)
+  const globalSampleFrameRef = useRef<number | null>(null)
+  const globalSamplingEpochRef = useRef(0)
+  const globalMagnifierRef = useRef<HTMLDivElement>(null)
+  const globalPointerRef = useRef<{ clientX: number; clientY: number } | null>(null)
+  const globalMagnifierSettingsRef = useRef(globalMagnifierSettings)
+  const globalMagnifierCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => () => {
     if (copyFeedbackTimeoutRef.current !== null) window.clearTimeout(copyFeedbackTimeoutRef.current)
+    globalSamplingRef.current = false
+    globalSampleQueueRef.current.pending = null
+    globalSampleSequenceRef.current += 1
+    globalSamplingEpochRef.current += 1
+    globalPointerRef.current = null
+    if (globalSampleFrameRef.current !== null) window.cancelAnimationFrame(globalSampleFrameRef.current)
+    if (triggerDragRef.current?.sampling) finishColorPickerSampling()
+    delete document.documentElement.dataset.globalColorSampling
   }, [])
+
+  useEffect(() => {
+    globalMagnifierSettingsRef.current = globalMagnifierSettings
+  }, [globalMagnifierSettings])
+
+  useEffect(() => {
+    const magnifier = globalMagnifier
+    const canvas = globalMagnifierCanvasRef.current
+    if (!magnifier || !canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+    const columns = GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS * 2 + 1
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.imageSmoothingEnabled = false
+    const image = context.createImageData(columns, columns)
+    for (let index = 0; index < magnifier.pixels.length; index += 1) {
+      const color = magnifier.pixels[index]
+      if (!color) continue
+      const offset = index * 4
+      image.data[offset] = color.r
+      image.data[offset + 1] = color.g
+      image.data[offset + 2] = color.b
+      image.data[offset + 3] = color.a
+    }
+    context.putImageData(image, 0, 0)
+  }, [globalMagnifier])
 
   useEffect(() => {
     const next = copyColor(color)
@@ -426,6 +523,192 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
   }
 
   const confirmWorkingColor = (): void => commitEditorColor()
+  const setGlobalSampling = (active: boolean): void => {
+    globalSamplingRef.current = active
+    globalSampleSequenceRef.current += 1
+    globalSamplingEpochRef.current += 1
+    if (!active) {
+      if (globalSampleFrameRef.current !== null) window.cancelAnimationFrame(globalSampleFrameRef.current)
+      globalSampleFrameRef.current = null
+      globalSampleQueueRef.current.pending = null
+      globalPointerRef.current = null
+    }
+    if (active) {
+      const preferences = loadEditorPreferences()
+      const settings: GlobalMagnifierSettings = {
+        eyedropperMagnifierEnabled: preferences.eyedropperMagnifierEnabled,
+        eyedropperMagnifierStyle: preferences.eyedropperMagnifierStyle,
+        eyedropperMagnifierSize: preferences.eyedropperMagnifierSize,
+        eyedropperMagnifierDistortionEnabled: preferences.eyedropperMagnifierDistortionEnabled
+      }
+      globalMagnifierSettingsRef.current = settings
+      setGlobalMagnifierSettings(settings)
+      document.documentElement.dataset.globalColorSampling = 'true'
+      return
+    }
+    setGlobalMagnifier(null)
+    delete document.documentElement.dataset.globalColorSampling
+  }
+  const updateGlobalMagnifier = (clientX: number, clientY: number, pixels: RgbaColor[], epoch: number, requireActive: boolean): void => {
+    if (!globalMagnifierSettingsRef.current.eyedropperMagnifierEnabled || epoch !== globalSamplingEpochRef.current || requireActive && !globalSamplingRef.current) return
+    const latest = globalPointerRef.current
+    if (globalMagnifierHiddenAt(clientX, clientY) || latest && globalMagnifierHiddenAt(latest.clientX, latest.clientY)) {
+      setGlobalMagnifier(null)
+      return
+    }
+    setGlobalMagnifier({ clientX: latest?.clientX ?? clientX, clientY: latest?.clientY ?? clientY, pixels })
+  }
+  const applyGlobalColor = (next: RgbaColor): void => {
+    if (!sameColor(workingColorRef.current, next)) applyEditorColor(next)
+  }
+  const sampleGlobalColor = async (clientX: number, clientY: number, sequence: number, requireActive = true, showMagnifier = true): Promise<void> => {
+    const epoch = globalSamplingEpochRef.current
+    const current = (): boolean => sequence === globalSampleSequenceRef.current && (!requireActive || globalSamplingRef.current)
+    if (!current()) return
+    const picker = sampleColorPickerAtClientPoint(clientX, clientY)
+    if (picker) {
+      setGlobalMagnifier(null)
+      if (picker.color) applyGlobalColor(picker.color)
+      return
+    }
+    const canvasColor = sampleCanvasColorAtClientPoint(clientX, clientY)
+    if (canvasColor) {
+      if (!current()) return
+      if (showMagnifier) updateGlobalMagnifier(clientX, clientY, canvasColorGridAt(clientX, clientY, canvasColor), epoch, requireActive)
+      applyGlobalColor(canvasColor)
+      return
+    }
+    if (showMagnifier && globalMagnifierSettingsRef.current.eyedropperMagnifierEnabled) {
+      try {
+        const pixels = await window.moonSprite.sampleWindowColorRegion(clientX, clientY, GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS)
+        const center = pixels?.[Math.floor(pixels.length / 2)]
+        if (center) {
+          // One capture is in flight at a time. Its newest available image can
+          // refresh the lens during movement; only the exact request may commit
+          // a color, so entering a picker or releasing cannot be overwritten.
+          updateGlobalMagnifier(clientX, clientY, pixels, epoch, requireActive)
+          if (current()) applyGlobalColor(center)
+          return
+        }
+      } catch {
+        // Browser previews have no native window surface.
+      }
+    }
+    if (!current()) return
+    try {
+      const screenColor = await window.moonSprite.sampleWindowColor(clientX, clientY)
+      if (!current()) return
+      if (screenColor) {
+        applyGlobalColor(screenColor)
+        return
+      }
+    } catch {
+      // Browser previews have no native window surface.
+    }
+    const fallback = fallbackUiColorAt(clientX, clientY)
+    if (fallback && current()) {
+      if (showMagnifier) updateGlobalMagnifier(clientX, clientY, Array.from({ length: (GLOBAL_EYEDROPPER_MAGNIFIER_RADIUS * 2 + 1) ** 2 }, () => fallback), epoch, requireActive)
+      applyGlobalColor(fallback)
+    }
+  }
+  const queueGlobalColorSample = (clientX: number, clientY: number): void => {
+    const queue = globalSampleQueueRef.current
+    const sequence = ++globalSampleSequenceRef.current
+    globalPointerRef.current = { clientX, clientY }
+    if (globalMagnifierHiddenAt(clientX, clientY)) setGlobalMagnifier(null)
+    queue.pending = { clientX, clientY, sequence }
+    if (globalSampleFrameRef.current !== null) return
+    globalSampleFrameRef.current = window.requestAnimationFrame(() => {
+      globalSampleFrameRef.current = null
+      const latest = queue.pending
+      if (!latest || !globalSamplingRef.current) return
+      // Moving the lens must never wait for IPC or capture. Retain its last
+      // image while the next capture is pending, without re-rendering controls.
+      const lens = globalMagnifierRef.current
+      if (lens) {
+        const position = eyedropperMagnifierPosition({ x: latest.clientX, y: latest.clientY },
+          { width: window.innerWidth, height: window.innerHeight }, 256 * globalMagnifierSettingsRef.current.eyedropperMagnifierSize)
+        lens.style.left = `${position.left}px`
+        lens.style.top = `${position.top}px`
+      }
+      const picker = sampleColorPickerAtClientPoint(latest.clientX, latest.clientY)
+      if (picker) {
+        queue.pending = null
+        setGlobalMagnifier(null)
+        if (picker.color) applyGlobalColor(picker.color)
+        return
+      }
+      if (queue.running) return
+      queue.running = true
+      void (async () => {
+        try {
+          while (globalSamplingRef.current && queue.pending) {
+            const point = queue.pending
+            queue.pending = null
+            await sampleGlobalColor(point.clientX, point.clientY, point.sequence)
+          }
+        } finally { queue.running = false }
+      })()
+    })
+  }
+  const toggleEditor = (): void => {
+    if (suppressTriggerClickRef.current) {
+      suppressTriggerClickRef.current = false
+      return
+    }
+    if (open) commitHexRef.current()
+    const next = copyColor(color)
+    setPreviousColor(next)
+    setWorkingColor(next)
+    workingColorRef.current = next
+    committedColorRef.current = next
+    setConfirmedColor(next)
+    setDraftMode(mode)
+    setDraftValues(colorToValues(next, mode))
+    setHexText(displayRgbaHex(next))
+    if (open) {
+      finishSampling()
+      positionedRef.current = false
+    } else {
+      residentRef.current = false
+      setResident(false)
+    }
+    setOpen((value) => !value)
+  }
+  const beginTriggerDrag = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    if (event.button !== 0) return
+    triggerDragRef.current = { pointerId: event.pointerId, sampling: false }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const continueTriggerDrag = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    const drag = triggerDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag.sampling) {
+      queueGlobalColorSample(event.clientX, event.clientY)
+      return
+    }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom) return
+    drag.sampling = true
+    suppressTriggerClickRef.current = true
+    setGlobalSampling(true)
+    queueGlobalColorSample(event.clientX, event.clientY)
+  }
+  const endTriggerDrag = (event: React.PointerEvent<HTMLButtonElement>, cancelled = false): void => {
+    const drag = triggerDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    triggerDragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (!drag.sampling) return
+    suppressTriggerClickRef.current = !cancelled
+    setGlobalSampling(false)
+    if (!cancelled) {
+      const sequence = ++globalSampleSequenceRef.current
+      void sampleGlobalColor(event.clientX, event.clientY, sequence, false, false).finally(() => {
+        if (sequence === globalSampleSequenceRef.current) finishColorPickerSampling()
+      })
+    } else finishColorPickerSampling()
+  }
   const copySwatch = async (kind: 'previous' | 'current', value: RgbaColor): Promise<void> => {
     await copyHexToClipboard(value)
     setCopiedSwatch(kind)
@@ -458,7 +741,8 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
       </div> : fields.map((field) => {
         const gradient = colorGradient(mode, values, color, field)
         const background = field.key === 'a' ? `${gradient}, repeating-conic-gradient(var(--theme-checker-dark) 0 25%, var(--theme-checker-light) 0 50%) 50% / 20px 20px` : gradient
-        return <label key={field.key} className="color-editor-field"><span className="color-editor-field-label">{field.label}</span><input aria-label={t('colorEditor.slider', { label, field: field.label })} className="color-editor-range" style={{ background }} type="range" min={field.min} max={field.max} step={field.step} value={values[field.key] ?? 0} disabled={disabled} onChange={(event) => updateValue(field.key, Number(event.target.value))} onPointerUp={(event) => { confirmWorkingColor(); event.currentTarget.blur() }} onPointerCancel={(event) => { confirmWorkingColor(); event.currentTarget.blur() }} onBlur={confirmWorkingColor} /><NumberInput aria-label={`${label} ${field.label}`} min={field.min} max={field.max} step={field.step} value={Math.round(values[field.key] ?? 0)} disabled={disabled} onValueChange={(value) => { const next = updateValue(field.key, value); commitEditorColor(next) }} /></label>
+        const percentage = field.key === 's' || field.key === 'v' || field.key === 'l' || field.key === 'labL' || field.key === 'c' || field.key === 'm' || field.key === 'y' || field.key === 'k'
+        return <label key={field.key} className="color-editor-field"><span className="color-editor-field-label">{field.label}</span><input aria-label={t('colorEditor.slider', { label, field: field.label })} className="color-editor-range" style={{ background }} type="range" min={field.min} max={field.max} step={field.step} value={values[field.key] ?? 0} disabled={disabled} onPointerDown={(event) => { rangeShiftHeldRef.current = event.shiftKey }} onPointerMove={(event) => { rangeShiftHeldRef.current = event.shiftKey }} onChange={(event) => updateValue(field.key, rangeValueWithShiftStep(Number(event.target.value), field.min, field.max, field.step, percentage ? 'percentage' : 'number', rangeShiftHeldRef.current))} onPointerUp={(event) => { rangeShiftHeldRef.current = false; confirmWorkingColor(); event.currentTarget.blur() }} onPointerCancel={(event) => { rangeShiftHeldRef.current = false; confirmWorkingColor(); event.currentTarget.blur() }} onBlur={() => { rangeShiftHeldRef.current = false; confirmWorkingColor() }} /><NumberInput aria-label={`${label} ${field.label}`} min={field.min} max={field.max} step={field.step} value={Math.round(values[field.key] ?? 0)} disabled={disabled} onValueChange={(value) => { const next = updateValue(field.key, value); commitEditorColor(next) }} /></label>
       })}
     </div>
     <PanelResizeHandles onResize={(event, direction) => {
@@ -469,15 +753,39 @@ export function ColorValueControl({ color, density = 'regular', onChange, onComm
       event.stopPropagation()
     }} />
   </div> : null
+  const globalMagnifierOverlay = globalMagnifier && globalMagnifierSettings.eyedropperMagnifierEnabled
+    ? (() => {
+        const center = globalMagnifier.pixels[Math.floor(globalMagnifier.pixels.length / 2)] ?? workingColor
+        const displaySize = 256 * globalMagnifierSettings.eyedropperMagnifierSize
+        const { left, top } = eyedropperMagnifierPosition(
+          { x: globalPointerRef.current?.clientX ?? globalMagnifier.clientX, y: globalPointerRef.current?.clientY ?? globalMagnifier.clientY },
+          { width: window.innerWidth, height: window.innerHeight },
+          displaySize
+        )
+        const pointerTone = center.r * 0.2126 + center.g * 0.7152 + center.b * 0.0722 < 145 ? 'light' : 'dark'
+        return createPortal(<EyedropperMagnifier
+          className="global-eyedropper-magnifier"
+          magnifierRef={globalMagnifierRef}
+          canvasRef={globalMagnifierCanvasRef}
+          canvasSize={GLOBAL_EYEDROPPER_MAGNIFIER_GRID_SIZE}
+          styleMode={globalMagnifierSettings.eyedropperMagnifierStyle}
+          size={globalMagnifierSettings.eyedropperMagnifierSize}
+          distortionEnabled={globalMagnifierSettings.eyedropperMagnifierDistortionEnabled}
+          pointerTone={pointerTone}
+          style={{ left, top, '--eyedropper-sampled-color': cssColor(center), '--eyedropper-previous-color': cssColor(center) } as React.CSSProperties}
+        />, document.body)
+      })()
+    : null
 
   return <>
     <span className={`color-value-action-row color-value-density-${density} ${onAddToPalette ? 'supports-palette-action' : ''} ${onAddToPalette && !inPalette ? 'has-add-action' : ''} ${searchUnmatched ? 'search-unmatched' : ''}`.trim()}>
-      <button ref={triggerRef} type="button" className={`color-value-trigger ${fillWithColor && !mixed ? 'filled-color-trigger' : ''} ${mixed ? 'mixed-color-trigger' : ''} ${className}`.trim()} style={fillWithColor && !mixed ? { '--color-value-fill': cssColor(color), '--color-value-contrast': paletteMarkerColor(color) } as React.CSSProperties : undefined} aria-label={`${label}${roleLabel ? ` ${roleLabel}` : ''}`} aria-expanded={open} disabled={disabled} onClick={() => { if (open) commitHexRef.current(); const next = copyColor(color); setPreviousColor(next); setWorkingColor(next); workingColorRef.current = next; committedColorRef.current = next; setConfirmedColor(next); setDraftMode(mode); setDraftValues(colorToValues(next, mode)); setHexText(displayRgbaHex(next)); if (open) { finishSampling(); positionedRef.current = false } else { residentRef.current = false; setResident(false) }; setOpen((value) => !value) }}>
+      <button ref={triggerRef} type="button" className={`color-value-trigger ${fillWithColor && !mixed ? 'filled-color-trigger' : ''} ${mixed ? 'mixed-color-trigger' : ''} ${className}`.trim()} style={fillWithColor && !mixed ? { '--color-value-fill': cssColor(color), '--color-value-contrast': paletteMarkerColor(color) } as React.CSSProperties : undefined} aria-label={`${label}${roleLabel ? ` ${roleLabel}` : ''}`} aria-expanded={open} disabled={disabled} onPointerDown={beginTriggerDrag} onPointerMove={continueTriggerDrag} onPointerUp={endTriggerDrag} onPointerCancel={(event) => endTriggerDrag(event, true)} onLostPointerCapture={(event) => endTriggerDrag(event, true)} onClick={toggleEditor}>
       {!fillWithColor && <span className="color-value-swatch"><i style={{ background: `rgba(${color.r}, ${color.g}, ${color.b}, ${clampByte(color.a) / 255})` }} /></span>}
       <strong>{mixed ? '' : displayRgbaHex(color)}</strong>
       {roleLabel && <small>{roleLabel}</small>}
       </button>{onAddToPalette && !inPalette && <button type="button" className="color-value-add-button" title={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} aria-label={addToPaletteShortcut ? t('palette.addCurrentColorShortcut', { shortcut: addToPaletteShortcut }) : t('palette.addCurrentColor')} onClick={onAddToPalette}><PixelUtilityIcon kind="plus" /></button>}
     </span>
     {editor && createPortal(editor, document.body)}
+    {globalMagnifierOverlay}
   </>
 }

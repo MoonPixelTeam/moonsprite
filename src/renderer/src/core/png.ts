@@ -1,5 +1,5 @@
 import { decode, toRGBA8 } from 'upng-js'
-import type { DocumentSlice, PaletteEntry, SpriteDocument } from '@shared/types'
+import type { DocumentSlice, PaletteEntry, SelectionMask, SpriteDocument } from '@shared/types'
 import { encodeAseprite } from './aseprite'
 import { createDocument } from './document'
 import { compositeDocument } from './document'
@@ -8,6 +8,7 @@ import { translateCurrent as tr } from './localization'
 import { applyImportedRgbaPalette, normalizeImportedIndexedPalette } from './imported-palette'
 import { encodePng, type PngExport } from './png-encode'
 import { encodePsd } from './psd'
+import { selectionContains } from './selection'
 
 export { encodePng, type PngExport } from './png-encode'
 
@@ -191,4 +192,16 @@ export async function exportDocumentSliceImage(document: SpriteDocument, slice: 
     pixels.set(composite.subarray(sourceOffset, sourceOffset + slice.width * 4), y * slice.width * 4)
   }
   return encodeScaledPixels(scalePixels(pixels, slice.width, slice.height, scalePercent), format)
+}
+
+export async function exportDocumentSelectionImage(document: SpriteDocument, selection: SelectionMask, scalePercent: number, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd' | 'gif'>): Promise<ImageExport> {
+  const composite = compositeDocument(document)
+  const pixels = new Uint8ClampedArray(selection.width * selection.height * 4)
+  for (let y = 0; y < selection.height; y += 1) for (let x = 0; x < selection.width; x += 1) {
+    const target = (y * selection.width + x) * 4
+    if (!selectionContains(selection, selection.x + x, selection.y + y)) continue
+    const source = ((selection.y + y) * document.width + selection.x + x) * 4
+    pixels.set(composite.subarray(source, source + 4), target)
+  }
+  return encodeScaledPixels(scalePixels(pixels, selection.width, selection.height, scalePercent), format)
 }

@@ -137,6 +137,8 @@ describe('store-owned layer move transactions', () => {
     useWorkspace.getState().commitLayerMove(document.id, move)
     expect(document.layers).toHaveLength(2)
     expect(duplicate.layer.offsetX).toBe(5)
+    expect(document.activeLayerId).toBe(duplicate.layerId)
+    expect(useWorkspace.getState().sessions[0].layerSelectionExplicit).toBe(false)
 
     useWorkspace.getState().undo()
     expect(document.layers).toHaveLength(1)
@@ -145,5 +147,36 @@ describe('store-owned layer move transactions', () => {
     expect(document.layers).toHaveLength(2)
     expect(document.layers.find((layer) => layer.id === duplicate.layerId)?.offsetX).toBe(5)
     expect(document.activeLayerId).toBe(duplicate.layerId)
+  })
+
+  it('keeps a copied text cel at its dragged origin when restoring the copy', () => {
+    const document = createDocument('copy text placement', 16, 8, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const timeline = ensureAnimationDocument(document)
+    const sourceCel = animationCelAt(timeline, document.activeLayerId, timeline.activeFrameId)!
+    sourceCel.surface!.offsetX = 2
+    sourceCel.surface!.offsetY = 3
+    sourceCel.text = {
+      text: 'A', fontFamily: 'Tiny5', fontSize: 8, lineSpacing: 1, letterSpacing: 0,
+      spacingMode: 'actual', antialias: 'pixel', color: { r: 255, g: 255, b: 255, a: 255 }, originX: 2, originY: 3
+    }
+    const move = baseMove(document.id)
+    const duplicate = useWorkspace.getState().beginLayerMoveDuplicatePreview(document.id, move.layerId!, 'Copy')!
+    Object.assign(move, {
+      duplicatedLayerId: duplicate.layerId,
+      duplicatedLayer: duplicate.layer,
+      duplicatedAnimationCels: duplicate.animationCels,
+      duplicatedLayerIndex: duplicate.insertionIndex,
+      layerPreviewOffset: { x: 5, y: -1 }
+    })
+
+    useWorkspace.getState().previewLayerMove(document.id, move, 5, -1)
+    const frameId = timeline.activeFrameId
+    expect(animationCelAt(timeline, duplicate.layerId, frameId)?.text).toMatchObject({ originX: 7, originY: 2 })
+
+    useWorkspace.getState().commitLayerMove(document.id, move)
+    useWorkspace.getState().undo()
+    useWorkspace.getState().redo()
+    expect(animationCelAt(ensureAnimationDocument(document), duplicate.layerId, frameId)?.text).toMatchObject({ originX: 7, originY: 2 })
   })
 })

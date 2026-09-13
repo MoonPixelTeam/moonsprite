@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { createPortal } from 'react-dom'
 import {
   DEFAULT_SHORTCUT_BINDINGS,
@@ -10,8 +11,6 @@ import {
   findShortcutBindingOwners,
   formatShortcutBindingsForLocale,
   importShortcutBindings,
-  mouseShortcutKey,
-  mouseShortcutText,
   removeShortcutBinding,
   resetShortcutBindings,
   shortcutBindingBlocked,
@@ -20,16 +19,15 @@ import {
   shortcutIdsMayShareBinding,
   shortcutLabels,
   shortcutText,
-  wheelShortcutText,
   type ShortcutBindings,
   type ShortcutGroupId,
   type ShortcutId
 } from '@/core/shortcuts'
-import { normalizeCanvasWheelDelta } from '@/core/canvas-input'
 import { ModalShell } from '@/components/ModalShell'
 import { DialogHeader } from '@/components/DialogHeader'
 import { SettingsNavigation } from '@/components/SettingsNavigation'
 import { TextInput } from '@/components/TextInput'
+import { CheckboxField } from '@/components/CheckboxField'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useI18n } from '@/components/I18nProvider'
 import { useFloatingWindowStack } from '@/components/floating-panel'
@@ -58,26 +56,36 @@ interface ShortcutRecorderProps {
   onClose: () => void
 }
 
-const WHEEL_CAPTURE_GESTURE_GAP_MS = 160
+const MOUSE_SHORTCUT_ACTIONS = ['MouseLeft', 'MouseRight', 'MouseMiddle', 'MouseDoubleLeft', 'WheelUp', 'WheelDown'] as const
+const SHORTCUT_MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Space', 'Win'] as const
+type MouseShortcutAction = typeof MOUSE_SHORTCUT_ACTIONS[number]
+type ShortcutModifier = typeof SHORTCUT_MODIFIERS[number]
 
 function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: ShortcutRecorderProps) {
   const { locale, t } = useI18n()
   const original = editor.index === undefined ? '' : shortcuts[editor.id]?.[editor.index] ?? ''
-  const [candidate, setCandidate] = useState(original)
-  const candidateRef = useRef(original)
-  const wheelCaptureRef = useRef<{ at: number } | null>(null)
+  const originalParts = original.split('+').filter(Boolean)
+  const originalMouseAction = MOUSE_SHORTCUT_ACTIONS.find((action) => originalParts.includes(action))
+  const [keyboardCandidate, setKeyboardCandidate] = useState(() => originalMouseAction ? '' : original)
+  const [selectedMouseAction, setSelectedMouseAction] = useState<MouseShortcutAction | null>(originalMouseAction ?? null)
+  const [mouseModifiers, setMouseModifiers] = useState<ShortcutModifier[]>(() => SHORTCUT_MODIFIERS.filter((modifier) => originalParts.includes(modifier)))
+  const [mouseOptionsExpanded, setMouseOptionsExpanded] = useState(Boolean(originalMouseAction))
   const recorderRef = useRef<HTMLElement>(null)
   const recorderWindowStack = useFloatingWindowStack(recorderRef)
-  const updateCandidate = (value: string): void => {
-    if (candidateRef.current === value) return
-    candidateRef.current = value
-    setCandidate(value)
-  }
-  const suppressMouseShortcutButton = (event: ReactMouseEvent<HTMLInputElement> | ReactPointerEvent<HTMLInputElement>): boolean => {
-    if (!mouseShortcutKey(event.button)) return false
-    event.preventDefault()
-    event.stopPropagation()
-    return true
+  const candidate = selectedMouseAction ? [...mouseModifiers, selectedMouseAction].join('+') : keyboardCandidate
+  const mouseShortcutSummary = selectedMouseAction ? shortcutDisplayText(candidate, locale) : null
+  const mouseActionOptions = MOUSE_SHORTCUT_ACTIONS.map((action) => ({
+    value: action,
+    label: shortcutDisplayText(action, locale)
+  }))
+  const updateMouseModifier = (modifier: ShortcutModifier, checked: boolean): void => {
+    const modifiers = checked
+      ? [...mouseModifiers, modifier]
+      : mouseModifiers.filter((item) => item !== modifier)
+    setMouseModifiers(modifiers)
+    if (selectedMouseAction) return
+    const keyParts = keyboardCandidate.split('+').filter((part) => !SHORTCUT_MODIFIERS.includes(part as ShortcutModifier))
+    setKeyboardCandidate([...SHORTCUT_MODIFIERS.filter((item) => modifiers.includes(item)), ...keyParts].join('+'))
   }
   const owners = useMemo(
     () => findShortcutBindingOwners(shortcuts, candidate, editor.id),
@@ -91,14 +99,13 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
       ? t('shortcuts.sharedWith', { commands: sharedOwners.map((id) => labels[id]).join(t('shortcuts.labelSeparator')) })
       : t('shortcuts.available')
 
-  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop" role="presentation" onPointerDown={(event) => {
+  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => {
     if (event.target === event.currentTarget) onClose()
   }}>
     <section ref={recorderRef} className="modal shortcut-recorder-modal" role="dialog" aria-modal="true" aria-label={editor.index === undefined ? t('shortcuts.addTitle') : t('shortcuts.changeTitle')} style={{ zIndex: recorderWindowStack.zIndex }} onPointerDownCapture={recorderWindowStack.bringToFront} onFocusCapture={recorderWindowStack.bringToFront}>
       <DialogHeader eyebrow={t('shortcuts.eyebrow')} title={labels[editor.id]} closeLabel={t('common.close')} onClose={onClose} />
       <div className="shortcut-recorder-body">
-        <label>
-          <span>{t('shortcuts.key')}</span>
+        <label className="shortcut-recorder-capture">
           <TextInput
             autoFocus
             className="shortcut-recorder-input"
@@ -113,43 +120,48 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
                 onClose()
                 return
               }
-              const modifierOnly = ['Control', 'Meta', 'Alt', 'Shift'].includes(event.key)
-              const wheelCaptureActive = wheelCaptureRef.current && performance.now() - wheelCaptureRef.current.at < WHEEL_CAPTURE_GESTURE_GAP_MS
-              if (event.repeat || (modifierOnly && wheelCaptureActive)) return
-              wheelCaptureRef.current = null
-              updateCandidate(shortcutText(event.nativeEvent))
+              if (event.repeat) return
+              const shortcut = shortcutText(event.nativeEvent)
+              setKeyboardCandidate(shortcut)
+              setSelectedMouseAction(null)
+              setMouseModifiers(SHORTCUT_MODIFIERS.filter((modifier) => shortcut.split('+').includes(modifier)))
             }}
-            onWheel={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              const shortcut = wheelShortcutText(event.nativeEvent, normalizeCanvasWheelDelta(event.nativeEvent))
-              if (!shortcut) return
-              const now = performance.now()
-              if (wheelCaptureRef.current && now - wheelCaptureRef.current.at < WHEEL_CAPTURE_GESTURE_GAP_MS) {
-                wheelCaptureRef.current.at = now
-                return
-              }
-              wheelCaptureRef.current = { at: now }
-              updateCandidate(shortcut)
-            }}
-            onPointerDown={(event) => {
-              const shortcut = mouseShortcutText(event.nativeEvent)
-              if (!shortcut || !suppressMouseShortcutButton(event)) return
-              event.currentTarget.focus()
-              wheelCaptureRef.current = null
-              updateCandidate(shortcut)
-            }}
-            onPointerUp={(event) => { suppressMouseShortcutButton(event) }}
-            onAuxClick={(event) => { suppressMouseShortcutButton(event) }}
           />
         </label>
+        <div className="shortcut-recorder-modifiers shortcut-mouse-modifiers" role="group" aria-label={locale === 'zh-CN' ? '修饰键' : 'Modifiers'}>
+          {SHORTCUT_MODIFIERS.map((modifier) => <CheckboxField
+            className="shortcut-mouse-modifier"
+            key={modifier}
+            checked={mouseModifiers.includes(modifier)}
+            label={modifier}
+            onChange={(checked) => updateMouseModifier(modifier, checked)}
+          />)}
+        </div>
+        <section className="shortcut-recorder-options" aria-label={locale === 'zh-CN' ? '鼠标操作' : 'Mouse actions'}>
+          <button type="button" className="quiet-button shortcut-mouse-toggle" aria-expanded={mouseOptionsExpanded} onClick={() => setMouseOptionsExpanded((expanded) => !expanded)}>
+            <span>{locale === 'zh-CN' ? '鼠标操作' : 'Mouse actions'}</span>
+            {mouseShortcutSummary && <kbd>{mouseShortcutSummary}</kbd>}
+            <PixelUtilityIcon kind={mouseOptionsExpanded ? 'up' : 'down'} />
+          </button>
+          {mouseOptionsExpanded && <div className="shortcut-mouse-settings">
+            <div className="shortcut-mouse-actions" role="group" aria-label={locale === 'zh-CN' ? '鼠标操作' : 'Mouse actions'}>
+              {mouseActionOptions.map((option) => <CheckboxField
+                className="shortcut-mouse-action"
+                key={option.value}
+                checked={selectedMouseAction === option.value}
+                label={option.label}
+                onChange={(checked) => setSelectedMouseAction(checked ? option.value : null)}
+              />)}
+            </div>
+          </div>}
+        </section>
         <p className={displacedOwners.length > 0 ? 'shortcut-assignment transfer' : 'shortcut-assignment'}>
           <span>{t('shortcuts.currentAssignment')}</span>
           <strong>{assignment}</strong>
         </p>
       </div>
       <footer>
-        <button type="button" className="quiet-button" onClick={() => { wheelCaptureRef.current = null; updateCandidate('') }}>{t('shortcuts.clear')}</button>
+        <button type="button" className="quiet-button" onClick={() => { setKeyboardCandidate(''); setSelectedMouseAction(null); setMouseModifiers([]) }}>{t('shortcuts.clear')}</button>
         <button type="button" className="quiet-button" onClick={onClose}>{t('common.cancel')}</button>
         <button type="button" className="primary-button" disabled={!candidate.trim() && editor.index === undefined} onClick={() => onApply(candidate)}>
           {editor.index === undefined ? t('shortcuts.add') : t('shortcuts.change')}
@@ -201,6 +213,7 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
       if (result.canceled || !result.filePath) return
       const bytes = new TextEncoder().encode(JSON.stringify(createShortcutSettingsFile(draftShortcuts), null, 2))
       await window.moonSprite.writeBinaryAtomic(result.filePath, bytes)
+      playExportSuccessSound()
       setImportNotice(null)
     } catch {
       setImportNotice({ tone: 'error', text: t('shortcuts.exportError') })

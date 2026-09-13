@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
+import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, SHORTCUT_LABELS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 
 describe('shortcut persistence boundary', () => {
   it('recognizes only F1 through F12 as native function keys', () => {
@@ -42,14 +42,18 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS.toolRailBottom).toBe('')
     expect(DEFAULT_SHORTCUTS.swapForegroundBackground).toBe('X')
     expect(DEFAULT_SHORTCUTS.addForegroundToPalette).toBe('Alt+S')
+    expect(DEFAULT_SHORTCUTS.quickOutline).toBe('Shift+S')
+    expect(DEFAULT_SHORTCUTS.outlineSelectionInside).toBe('S')
+    expect(SHORTCUT_GROUPS.selection).toEqual(expect.arrayContaining(['quickOutline', 'outlineSelectionInside']))
     expect(SHORTCUT_GROUPS.color).toContain('addForegroundToPalette')
     expect(DEFAULT_SHORTCUTS.replaceColor).toBe('Ctrl+Shift+K')
     expect(SHORTCUT_GROUPS.color).toContain('replaceColor')
     expect(SHORTCUT_GROUPS.selection).toContain('toggleSelectionOutline')
     expect(SHORTCUT_GROUPS.file).toContain('exportSpriteSheet')
     expect(SHORTCUT_GROUPS.animation).toContain('toggleAnimationPlayback')
-    expect(SHORTCUT_GROUPS.animation).toEqual(expect.arrayContaining(['enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationFrames', 'pasteAnimationCels', 'createAnimationLoopSection', 'openAnimationCelProperties']))
+    expect(SHORTCUT_GROUPS.animation).toEqual(expect.arrayContaining(['toggleOnionSkin', 'enableAnimationFrames', 'disableAnimationFrames', 'toggleAnimationFramesDisabled', 'copyAnimationFrames', 'pasteAnimationCels', 'createAnimationLoopSection', 'openAnimationCelProperties']))
     expect(DEFAULT_SHORTCUTS.toggleAnimationPlayback).toBe('Enter')
+    expect(DEFAULT_SHORTCUTS.toggleOnionSkin).toBe('')
     expect(DEFAULT_SHORTCUTS.addLinkedAnimationFrame).toBe('Alt+M')
     expect(SHORTCUT_GROUPS.animation).toContain('addLinkedAnimationFrame')
     expect(SHORTCUT_GROUPS.interface).toContain('toggleColorPanel')
@@ -85,12 +89,14 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS.viewZoom3200).toBe('')
     expect(SHORTCUT_GROUPS.view).toEqual(expect.arrayContaining(['viewZoom100', 'viewZoom200', 'viewZoom400', 'viewZoom800', 'viewZoom3200']))
     expect(SHORTCUT_LABELS.openPreferences).toBe('首选项')
+    expect(SHORTCUT_LABELS.toggleOnionSkin).toBe('洋葱皮开关')
     expect(SHORTCUT_LABELS.openScriptFolder).toBe('打开脚本文件夹')
     expect(DEFAULT_SHORTCUTS.newTilemapLayer).toBe('')
     expect(DEFAULT_SHORTCUTS.importBrushImage).toBe('')
     expect(DEFAULT_SHORTCUTS['tool.airbrush']).toBe('J')
     expect(DEFAULT_SHORTCUTS['tool.slice']).toBe('Shift+C')
     expect(normalizeShortcut('Ctrl+Shift+Alt+M')).toBe('Ctrl+Alt+Shift+M')
+    expect(normalizeShortcut('Win+Space+MouseLeft')).toBe('Win+Space+MouseLeft')
   })
 
   it('tracks press and release for a held command shortcut', () => {
@@ -101,6 +107,12 @@ describe('shortcut persistence boundary', () => {
     expect(shortcutMatchesEvent(pressed, 'Alt+S')).toBe(true)
     expect(shortcutReleasedByEvent(releasedKey, 'Alt+S')).toBe(true)
     expect(shortcutReleasedByEvent(releasedModifier, 'Alt+S')).toBe(true)
+    expect(shortcutMatchesEvent({ key: 'S', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent, DEFAULT_SHORTCUTS.quickOutline)).toBe(true)
+    expect(shortcutMatchesEvent({ key: 's', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.outlineSelectionInside)).toBe(true)
+    expect(shortcutText({ key: 'k', code: 'KeyK', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent)).toBe('Win+K')
+    expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(false)
+    expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, 'Ctrl+R')).toBe(true)
+    expect(shortcutMatchesEvent({ key: 'Alt', code: 'AltLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(true)
   })
 
 
@@ -117,6 +129,22 @@ describe('shortcut persistence boundary', () => {
     expect(dispatchWheelShortcutInput(target, { ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, -120)).toBe(true)
     expect(phases).toEqual(['keydown:WheelUp', 'keyup:WheelUp'])
     expect(dispatchWheelShortcutInput(target, { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, 0)).toBe(false)
+  })
+
+  it('records and dispatches primary mouse interactions', () => {
+    const target = document.createElement('div')
+    const phases: string[] = []
+    target.addEventListener('keydown', (event) => phases.push(`${event.type}:${event.key}`))
+    target.addEventListener('keyup', (event) => phases.push(`${event.type}:${event.key}`))
+
+    expect(mouseShortcutText({ button: 0, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe('Ctrl+MouseLeft')
+    expect(mouseShortcutText({ button: 0, ctrlKey: false, metaKey: true, altKey: false, shiftKey: false })).toBe('Win+MouseLeft')
+    expect(mouseShortcutText({ button: 0, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, new Set(['Space']))).toBe('Space+MouseLeft')
+    expect(mouseShortcutText({ button: 2, ctrlKey: false, metaKey: false, altKey: true, shiftKey: false })).toBe('Alt+MouseRight')
+    expect(mouseDoubleClickShortcutText({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: true })).toBe('Shift+MouseDoubleLeft')
+    expect(dispatchMouseShortcutInput(target, { button: 0, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }, 'keydown')).toBe(false)
+    expect(dispatchMouseDoubleClickShortcutInput(target, { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBe(false)
+    expect(phases).toEqual(['keydown:MouseLeft', 'keydown:MouseDoubleLeft', 'keyup:MouseDoubleLeft'])
   })
 
 

@@ -128,6 +128,9 @@ async function startFrameProbe(page) {
       recordOperationStage(stage, duration, detail = {}) {
         samples.operationStages.push({ stage, duration, detail })
       },
+      operationCount(stage) {
+        return samples.operationStages.filter((sample) => sample.stage === stage).length
+      },
       stop() {
         running = false
         observer?.disconnect()
@@ -150,6 +153,19 @@ async function createDocument(page, size) {
     const harness = window.__moonSpritePerformanceHarness
     if (!harness) throw new Error('Performance harness is unavailable.')
     return harness.createSimpleDocument(canvasSize)
+  }, size)
+  await page.waitForSelector('canvas.stage-canvas', { timeout: 30_000 })
+  await page.waitForTimeout(300)
+  return project
+}
+
+async function createSparseMagicWandDocument(page, size) {
+  await page.goto(performanceUrl.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+  await page.waitForSelector('button.start-action.primary-button', { timeout: 30_000 })
+  const project = await page.evaluate(async (canvasSize) => {
+    const harness = window.__moonSpritePerformanceHarness
+    if (!harness) throw new Error('Performance harness is unavailable.')
+    return harness.createSparseMagicWandDocument(canvasSize)
   }, size)
   await page.waitForSelector('canvas.stage-canvas', { timeout: 30_000 })
   await page.waitForTimeout(300)
@@ -220,12 +236,13 @@ async function seedUndoHistory(page, center) {
 }
 
 async function benchmarkScenarioPage(page, size, scenario) {
-  const projectKind = scenario.startsWith('complex-') ? 'complex' : scenario.startsWith('large-') ? 'large' : 'simple'
+  const projectKind = scenario === 'magic-wand' ? 'sparse' : scenario.startsWith('complex-') ? 'complex' : scenario.startsWith('large-') ? 'large' : 'simple'
   const detailView = scenario.startsWith('large-detail-')
   const actionKind = scenario.replace(/^complex-/, '').replace(/^large-(?:detail-)?/, '').replace(/-timelapse$/, '')
   const timelapseEnabled = scenario.endsWith('-timelapse')
   let project = { uniquePixelBytes: size * size * 4, layerCount: 1, frameCount: 1 }
-  if (projectKind === 'complex') project = await createComplexDocument(page, size)
+  if (projectKind === 'sparse') project = await createSparseMagicWandDocument(page, size)
+  else if (projectKind === 'complex') project = await createComplexDocument(page, size)
   else if (projectKind === 'large') project = await createLargeDocument(page, size)
   else project = await createDocument(page, size)
   const canvas = page.locator('canvas.stage-canvas')
@@ -310,6 +327,29 @@ async function benchmarkScenarioPage(page, size, scenario) {
     }))
   }
 
+  if (actionKind === 'brush-128-zoom2') {
+    if (initialView) {
+      Object.assign(initialView, { zoom: 2, panX: 0, panY: 0 })
+      await prepareToolScenario(page, initialView, 'pencil')
+      await page.evaluate(() => {
+        const harness = window.__moonSpritePerformanceHarness
+        if (!harness) throw new Error('Performance harness is unavailable.')
+        harness.setBrushSize(128)
+      })
+      await page.waitForTimeout(50)
+    }
+    results.push(await runScenario(page, size, scenario, async () => {
+      await page.mouse.move(center.x - 180, center.y - 80)
+      await page.mouse.down({ button: 'left' })
+      for (let index = 0; index < 72; index += 1) {
+        const progress = index / 71
+        await page.mouse.move(center.x - 180 + progress * 360, center.y - 80 + Math.sin(progress * Math.PI * 4) * 95)
+        await page.waitForTimeout(12)
+      }
+      await page.mouse.up({ button: 'left' })
+    }))
+  }
+
   if (actionKind === 'shape') {
     if (initialView) await prepareToolScenario(page, initialView, 'shape', null, 'ellipse')
     results.push(await runScenario(page, size, scenario, async () => {
@@ -335,6 +375,37 @@ async function benchmarkScenarioPage(page, size, scenario) {
         await page.waitForTimeout(12)
       }
       await page.mouse.up({ button: 'left' })
+    }))
+  }
+
+  if (actionKind === 'magic-wand') {
+    if (initialView) await resetSimpleScenario(page, initialView)
+    await page.evaluate(() => window.__moonSpritePerformanceHarness?.prepareTool('pencil'))
+    await page.mouse.move(center.x - 140, center.y - 40)
+    await page.mouse.down({ button: 'left' })
+    await page.mouse.move(center.x - 100, center.y - 20, { steps: 4 })
+    await page.mouse.up({ button: 'left' })
+    await page.waitForTimeout(50)
+    results.push(await runScenario(page, size, scenario, async () => {
+      await page.evaluate(() => window.__moonSpritePerformanceHarness?.prepareMagicWand())
+      await page.waitForTimeout(100)
+      await page.mouse.move(center.x, center.y)
+      await page.mouse.down({ button: 'left' })
+      await page.waitForFunction(() => (window.__moonSpriteCanvasProbe?.operationCount?.('magic-wand.worker-roundtrip') ?? 0) > 0, undefined, { timeout: 10_000 })
+      await page.waitForFunction(() => (window.__moonSpriteCanvasProbe?.operationCount?.('magic-wand.preview-render') ?? 0) > 0, undefined, { timeout: 10_000 })
+      await page.mouse.up({ button: 'left' })
+      await page.waitForFunction(() => Boolean(window.__moonSpritePerformanceHarness?.selectionState()))
+      // Exercise the actual selection display, panning, deselection and a quick
+      // click whose pointer-up occurs before the asynchronous result arrives.
+      await page.mouse.down({ button: 'middle' })
+      await page.mouse.move(center.x + 120, center.y + 60, { steps: 10 })
+      await page.mouse.up({ button: 'middle' })
+      await page.keyboard.press('Control+d')
+      await page.waitForFunction(() => window.__moonSpritePerformanceHarness?.selectionState() === null)
+      await page.mouse.click(center.x, center.y)
+      await page.waitForFunction(() => Boolean(window.__moonSpritePerformanceHarness?.selectionState()))
+      await page.keyboard.press('Control+d')
+      await page.waitForFunction(() => window.__moonSpritePerformanceHarness?.selectionState() === null)
     }))
   }
 
@@ -462,6 +533,30 @@ async function benchmarkScenarioPage(page, size, scenario) {
         const frames = await harness.playAnimation()
         if (frames < 2) throw new Error(`Expected an animated project, received ${frames} frame.`)
       })
+    }))
+  }
+
+  if (actionKind === 'playback-pan') {
+    if (initialView) await resetSimpleScenario(page, initialView)
+    results.push(await runScenario(page, size, 'complex-playback-pan', async () => {
+      await page.evaluate(() => {
+        const harness = window.__moonSpritePerformanceHarness
+        if (!harness) throw new Error('Performance harness is unavailable.')
+        harness.setAnimationPlaying(true)
+      })
+      try {
+        await page.waitForTimeout(50)
+        await page.mouse.move(center.x - 90, center.y - 45)
+        await page.mouse.down({ button: 'middle' })
+        for (let index = 0; index < 72; index += 1) {
+          const progress = index / 71
+          await page.mouse.move(center.x - 90 + progress * 180, center.y - 45 + Math.sin(progress * Math.PI * 2) * 70)
+          await page.waitForTimeout(12)
+        }
+        await page.mouse.up({ button: 'middle' })
+      } finally {
+        await page.evaluate(() => window.__moonSpritePerformanceHarness?.setAnimationPlaying(false))
+      }
     }))
   }
 

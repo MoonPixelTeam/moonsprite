@@ -1,3 +1,5 @@
+import { layerStyleCoverageTile } from './layer-style-coverage'
+import { LayerStyleTileCache } from './layer-style-tile-cache'
 import type { AnimationCel, AnimationCelSurface, AnimationTimeline, BlendMode, CanvasAnchor, ColorMode, FreeTileCelData, FreeTileSourceLayer, ImageResizeInterpolation, IndexedLayer, LayerGroup, LayerMask, LayerStyles, PaletteEntry, RasterLayer, RgbaColor, RgbaLayer, RuntimeRasterTiles, SelectionRect, SpriteDocument, Tileset } from '@shared/types'
 import { blendWithMode, blendWithModeInto, colorEquals, packColor, pixelIndex, readRgbaPixel, relativeLuminanceColor, TRANSPARENT, unpackColor, writeRgbaPixel } from './raster'
 import { translateCurrent as tr } from './localization'
@@ -5,7 +7,7 @@ import { DEFAULT_PROJECT_DISPLAY_SETTINGS, DEFAULT_PROJECT_STATISTICS, DEFAULT_T
 import { buildLayerPanelTree } from './layer-panel-layout'
 import { addPaletteIdToSlots, normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots, PALETTE_GRID_COLUMNS } from './palette-layout'
 import { cachedRuntimeRasterVisibleBounds, detachRuntimeRaster, installRuntimeRaster, lazyRuntimeRasterForSurface, rasterStorageIdentity, readSurfacePackedLocal, readSurfacePackedRegion, readSurfaceRgbaRegion, runtimeRasterForSurface, runtimeRasterVisibleBounds, runtimeTileHasVisiblePixels } from './runtime-raster'
-import { applyLayerStylesAt, applySimpleLayerStylesPacked, cloneLayerStyles, hasEnabledLayerStyles, layerStyleAffectedRect, layerStyleBinaryStrokeMetric, layerStyleOutputBounds, layerStylesEqual, layerStylesSignature, mapLayerStyleColors, resolveLayerStyles, type LayerStyleBinaryStrokeMetric, type LayerStyleCoverageOverrides, type LayerStyleGeometry } from './layer-styles'
+import { applyLayerStylesAt, applySimpleLayerStylesPacked, cloneLayerStyles, hasEnabledLayerStyles, layerStyleAffectedRect, layerStyleBinaryStrokeMetric, layerStyleOutputBounds, layerStylesEqual, layerStylesSignature, mapLayerStyleColors, resolveLayerStyles, type LayerStyleBinaryStrokeMetric, type LayerStyleGeometry } from './layer-styles'
 import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
 
 let sequence = 0
@@ -969,6 +971,11 @@ export const cacheRasterContentBounds = (surface: RasterContentSurface, palette:
   rasterContentBoundsCache.set(storage, entries)
 }
 
+/** Drops derived visible bounds after operations that can relocate many pixels. */
+export const invalidateRasterContentBounds = (surface: RasterContentSurface): void => {
+  rasterContentBoundsCache.delete(rasterStorageIdentity(surface))
+}
+
 /** Returns local visible-pixel bounds and shares the result across layers, cels, thumbnails, and compositing. */
 export function cachedRasterContentBounds(surface: RasterContentSurface, palette: readonly PaletteEntry[] = []): SelectionRect | null | undefined {
   const opaquePaletteIds = surface.format === 'indexed'
@@ -997,17 +1004,35 @@ export function rasterContentBounds(surface: RasterContentSurface, palette: read
   let minY = surface.height
   let maxX = -1
   let maxY = -1
-  for (let y = 0; y < surface.height; y += 1) {
-    for (let x = 0; x < surface.width; x += 1) {
-      const index = y * surface.width + x
-      const opaque = surface.format === 'rgba'
-        ? surface.pixels[index * 4 + 3] > 0
-        : opaquePaletteIds!.has(surface.pixels[index])
-      if (!opaque) continue
-      minX = Math.min(minX, x)
+  // Only each row's first and last visible pixels can expand the bounds.
+  // Hold native storage once: surface.pixels may be an accessor, and repeated
+  // color sampling or visiting opaque interiors makes post-erase clicks stall.
+  const pixels = surface.pixels
+  if (surface.format === 'rgba') {
+    for (let y = 0; y < surface.height; y += 1) {
+      const row = y * surface.width * 4
+      let left = 0
+      while (left < surface.width && !(pixels[row + left * 4 + 3] > 0)) left += 1
+      if (left === surface.width) continue
+      minX = Math.min(minX, left)
       minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x)
-      maxY = Math.max(maxY, y)
+      maxY = y
+      let right = surface.width - 1
+      while (right > maxX && right > left && !(pixels[row + right * 4 + 3] > 0)) right -= 1
+      maxX = Math.max(maxX, right)
+    }
+  } else {
+    for (let y = 0; y < surface.height; y += 1) {
+      const row = y * surface.width
+      let left = 0
+      while (left < surface.width && !opaquePaletteIds!.has(pixels[row + left])) left += 1
+      if (left === surface.width) continue
+      minX = Math.min(minX, left)
+      minY = Math.min(minY, y)
+      maxY = y
+      let right = surface.width - 1
+      while (right > maxX && right > left && !opaquePaletteIds!.has(pixels[row + right])) right -= 1
+      maxX = Math.max(maxX, right)
     }
   }
   const bounds = maxX < minX || maxY < minY ? null : {
@@ -1310,6 +1335,43 @@ export type CompositeStackItem =
   | { kind: 'layer'; layer: RasterLayer }
   | { kind: 'group'; group: LayerGroup; children: CompositeStackItem[] }
 
+const animationLayerZIndexes = (document: SpriteDocument): Map<string, number> => {
+  const timeline = document.animation
+  if (!timeline) return new Map()
+  const byId = new Map(timeline.cels.map((cel) => [cel.id, cel]))
+  const result = new Map<string, number>()
+  for (const cel of timeline.cels) {
+    if (cel.frameId !== timeline.activeFrameId) continue
+    const visited = new Set<string>()
+    let source = cel
+    while (source.linkedCelId && !visited.has(source.id)) {
+      visited.add(source.id)
+      const linked = byId.get(source.linkedCelId)
+      if (!linked || linked.layerId !== cel.layerId) break
+      source = linked
+    }
+    const numeric = Number(source.zIndex)
+    result.set(cel.layerId, Number.isFinite(numeric) ? Math.max(-999, Math.min(999, Math.trunc(numeric))) : 0)
+  }
+  return result
+}
+
+/** Sort bottom-to-top composite blocks without separating clipping layers from their base. */
+const sortCompositeContainerByZ = (items: CompositeStackItem[], layerZIndexes: ReadonlyMap<string, number>): void => {
+  for (const item of items) if (item.kind === 'group') sortCompositeContainerByZ(item.children, layerZIndexes)
+  const blocks: Array<{ items: CompositeStackItem[]; zIndex: number; order: number }> = []
+  for (const item of items) {
+    const clipsToLower = item.kind === 'layer' ? item.layer.clippingMask === true : item.group.clippingMask === true
+    if (clipsToLower && blocks.length > 0) {
+      blocks[blocks.length - 1].items.push(item)
+      continue
+    }
+    blocks.push({ items: [item], zIndex: item.kind === 'layer' ? layerZIndexes.get(item.layer.id) ?? 0 : 0, order: blocks.length })
+  }
+  blocks.sort((left, right) => left.zIndex - right.zIndex || left.order - right.order)
+  items.splice(0, items.length, ...blocks.flatMap((block) => block.items))
+}
+
 /** Uses the visible layer-panel order as the single source of truth for compositing order. */
 const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => {
   const layerById = new Map(document.layers.map((layer) => [layer.id, layer]))
@@ -1338,6 +1400,7 @@ const buildCompositeStack = (document: SpriteDocument): CompositeStackItem[] => 
     for (const item of items) if (item.kind === 'group') reverseContainers(item.children)
   }
   reverseContainers(root)
+  sortCompositeContainerByZ(root, animationLayerZIndexes(document))
   return root
 }
 
@@ -1783,6 +1846,71 @@ export class DocumentCompositeCache {
   private styledLayerPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; layers: RasterLayer[] | null }>()
   private opacityGroupPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; items: CompositeStackItem[] | null }>()
   private styledLayerBlocks = new WeakMap<RasterLayer, StyledLayerBlockCache>()
+  private isolatedStyleTiles = new LayerStyleTileCache()
+  private trackedStyleDocuments = new WeakSet<SpriteDocument>()
+  private pendingStyleSources = new WeakMap<object, SelectionRect>()
+  private styleSourceBounds = new WeakMap<RasterLayer, { storage: object; key: string; revision: number; bounds: SelectionRect | null }>()
+
+  private compiledStyleSourceBounds(document: SpriteDocument, layer: RasterLayer, fallback?: SelectionRect): SelectionRect | null {
+    const dirty = this.trackedStyleDocuments.has(document) ? this.pendingStyleSources.get(layer) : fallback
+    const storage = rasterStorageIdentity(layer), revision = getLayerContentRevision(layer)
+    const key = `${layer.width}:${layer.height}:${rasterContentPaletteKey(layer, document.palette)}`
+    const cached = this.styleSourceBounds.get(layer)
+    let bounds: SelectionRect | null
+    if (!cached || cached.storage !== storage || cached.key !== key) bounds = rasterContentBounds(layer, document.palette)
+    else if (dirty) {
+      const local = localRectForLayer(dirty, layer), previous = cached.bounds
+      // An interior edit cannot change the exact outer bounds. At an edge,
+      // recompute exactly: group gradient geometry must also shrink on erase.
+      bounds = previous && local.x > previous.x && local.y > previous.y
+        && local.x + local.width < previous.x + previous.width && local.y + local.height < previous.y + previous.height
+        ? previous : visibleBoundsWithinLocalRect(document, layer, { x: 0, y: 0, width: layer.width, height: layer.height })
+    } else bounds = cached.revision === revision ? cached.bounds : rasterContentBounds(layer, document.palette)
+    this.styleSourceBounds.set(layer, { storage, key, revision, bounds })
+    return bounds ? { ...bounds, x: layer.offsetX + bounds.x, y: layer.offsetY + bounds.y } : null
+  }
+
+  compositeSourceBounds(document: SpriteDocument, layer: RasterLayer, dirty?: SelectionRect): SelectionRect | null {
+    return this.compiledStyleSourceBounds(document, layer, dirty)
+  }
+
+  /** Keep source ownership and every edit until the relevant cache consumes it. */
+  invalidateStyleSources(document: SpriteDocument, rect: SelectionRect, ownerIds?: readonly string[]): void {
+    this.trackedStyleDocuments.add(document)
+    const ids = ownerIds ? new Set(ownerIds) : null
+    if (ids) for (const [ownerId, mask] of [...activeCelMasksByLayer(document), ...activeGroupMasksByGroup(document)]) {
+      if (ids.has(mask.id)) ids.add(ownerId)
+    }
+    const owners: Array<RasterLayer | LayerGroup> = [...document.layers, ...document.groups]
+    for (const owner of owners) {
+      if (ids && !ids.has(owner.id)) continue
+      let current: RasterLayer | LayerGroup | undefined = owner
+      let affected = rect
+      const visited = new Set<string>()
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id)
+        const previous = this.pendingStyleSources.get(current)
+        this.pendingStyleSources.set(current, previous ? unionSelectionRects(previous, affected) : { ...affected })
+        affected = layerStyleAffectedRect(affected, current.layerStyles)
+        const parentId: string | null | undefined = 'parentGroupId' in current ? current.parentGroupId : (current as RasterLayer).groupId
+        current = document.groups.find(group => group.id === parentId)
+      }
+    }
+  }
+
+  private takeStyleSourceDirty(document: SpriteDocument, owner: object, fallback?: SelectionRect): SelectionRect | undefined {
+    if (!this.trackedStyleDocuments.has(document)) return fallback
+    const rect = this.pendingStyleSources.get(owner)
+    this.pendingStyleSources.delete(owner)
+    return rect
+  }
+
+  isolatedStyleReader(document: SpriteDocument, owner: RasterLayer | LayerGroup, geometry: LayerStyleGeometry, styles: LayerStyles,
+    read: (x: number, y: number) => RgbaColor, resolve: (color: RgbaColor) => RgbaColor, revision: number, fallback?: SelectionRect): (x: number, y: number) => RgbaColor {
+    const dirty = this.takeStyleSourceDirty(document, owner, fallback)
+    const key = `${document.animation?.activeFrameId ?? 'static'}:${document.colorMode}:${geometry.x},${geometry.y},${geometry.width},${geometry.height}:${layerStylesSignature(styles)}:${document.palette.map(entry => `${entry.id},${entry.color.r},${entry.color.g},${entry.color.b},${entry.color.a}`).join(';')}`
+    return this.isolatedStyleTiles.prepare(owner, key, revision, dirty, geometry, styles, read, resolve)
+  }
 
   invalidateAll(): void {
     this.rowRanges = new WeakMap()
@@ -1792,12 +1920,38 @@ export class DocumentCompositeCache {
     this.styledLayerPlans = new WeakMap()
     this.opacityGroupPlans = new WeakMap()
     this.styledLayerBlocks = new WeakMap()
+    this.isolatedStyleTiles = new LayerStyleTileCache()
+    this.pendingStyleSources = new WeakMap()
+    this.trackedStyleDocuments = new WeakSet()
+    this.styleSourceBounds = new WeakMap()
   }
 
   /** Drop source-derived visibility indexes while a live stroke mutates pixels. */
   invalidateLiveSourceCaches(): void {
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
+  }
+
+  /** A translation preserves a layer's own style pixels, but changes the
+   * composite inside ancestor groups and masks that do not follow the owner. */
+  invalidateLayerPlacementSources(document: SpriteDocument, rect: SelectionRect, layerIds?: readonly string[]): void {
+    const ids = layerIds ? new Set(layerIds) : null
+    const affected = new Set<string>()
+    for (const layer of document.layers) {
+      if (ids && !ids.has(layer.id)) continue
+      if (layer.groupId) affected.add(layer.groupId)
+      const mask = document.animation ? animationMaskAt(document.animation, layer.id, document.animation.activeFrameId) : null
+      if (layer.clippingMask || mask?.moveWithOwner === false) affected.add(layer.id)
+    }
+    if (affected.size) this.invalidateStyleSources(document, rect, [...affected])
+  }
+
+  /** Drop placement plans while a live move mutates layer offsets in place. */
+  invalidateLayerPlacementCaches(): void {
+    // Normal and GPU move plans keep references to the live layer objects, so
+    // their offsets are read on every composite. Styled plans, however,
+    // contain derived proxy objects whose offsets must be rebuilt.
+    this.styledLayerPlans = new WeakMap()
   }
 
   normalLayersFor(document: SpriteDocument, revision: number, sourceDirtyRect?: SelectionRect): RasterLayer[] | null {
@@ -1823,7 +1977,8 @@ export class DocumentCompositeCache {
       const styled = styledLayerBlockCacheFor(layer)
       return !styled || styled.contentRevision === getLayerContentRevision(styled.sourceLayer)
     })
-    if (cached && cached.revision === revision && cached.frameId === frameId && !sourceDirtyRect && cachedSourcesAreCurrent) return cached.layers
+    if (cached && cached.revision === revision && cached.frameId === frameId && !sourceDirtyRect && cachedSourcesAreCurrent
+      && !document.layers.some(layer => this.pendingStyleSources.has(layer))) return cached.layers
     const unsupportedGroup = document.groups.some((group) => isGroupEffectivelyVisible(document, group) && (group.blendMode !== 'normal'
       || group.opacity !== 1
       || group.cumulativeBlend === true
@@ -1872,19 +2027,18 @@ export class DocumentCompositeCache {
   }
 
   private invalidateStyledLayerBlocks(cache: StyledLayerBlockCache, rect: SelectionRect): void {
-    const outputBounds = { x: cache.localX, y: cache.localY, width: cache.width, height: cache.height }
-    const affected = intersectRect(rect, outputBounds)
-    if (!affected) return
-    const fromX = Math.floor((affected.x - cache.localX) / STYLED_LAYER_BLOCK_SIZE)
-    const fromY = Math.floor((affected.y - cache.localY) / STYLED_LAYER_BLOCK_SIZE)
-    const toX = Math.floor((affected.x + affected.width - 1 - cache.localX) / STYLED_LAYER_BLOCK_SIZE)
-    const toY = Math.floor((affected.y + affected.height - 1 - cache.localY) / STYLED_LAYER_BLOCK_SIZE)
+    const affected = rect
+    const fromX = Math.floor(affected.x / STYLED_LAYER_BLOCK_SIZE)
+    const fromY = Math.floor(affected.y / STYLED_LAYER_BLOCK_SIZE)
+    const toX = Math.floor((affected.x + affected.width - 1) / STYLED_LAYER_BLOCK_SIZE)
+    const toY = Math.floor((affected.y + affected.height - 1) / STYLED_LAYER_BLOCK_SIZE)
     for (let blockY = fromY; blockY <= toY; blockY += 1) for (let blockX = fromX; blockX <= toX; blockX += 1) {
       cache.blocks.delete(`${blockX}:${blockY}`)
     }
   }
 
   private styledLayerBlockProxy(document: SpriteDocument, sourceLayer: RasterLayer, sourceDirtyRect?: SelectionRect): RasterLayer {
+    sourceDirtyRect = this.takeStyleSourceDirty(document, sourceLayer, sourceDirtyRect)
     const styleKey = layerStylesSignature(sourceLayer.layerStyles)
     const paletteKey = sourceLayer.format === 'indexed'
       ? document.palette.map((entry) => `${entry.id}:${entry.color.r}:${entry.color.g}:${entry.color.b}:${entry.color.a}`).join(',')
@@ -1954,12 +2108,8 @@ export class DocumentCompositeCache {
         const localY = outputBounds?.y ?? 0
         const width = Math.max(1, outputBounds?.width ?? 1)
         const height = Math.max(1, outputBounds?.height ?? 1)
-        const geometryChanged = cached.localX !== localX
-          || cached.localY !== localY
-          || cached.width !== width
-          || cached.height !== height
-        if (geometryChanged) cached.blocks.clear()
-        else this.invalidateStyledLayerBlocks(cached, layerStyleAffectedRect(dirtyLocal, cached.resolvedStyles))
+        // Unchanged fixed tiles remain valid when the visible output grows.
+        this.invalidateStyledLayerBlocks(cached, layerStyleAffectedRect(dirtyLocal, cached.resolvedStyles))
         cached.localX = localX
         cached.localY = localY
         cached.width = width
@@ -2022,12 +2172,16 @@ export class DocumentCompositeCache {
     }
     const binaryStrokeMetric = styles.stroke.enabled ? layerStyleBinaryStrokeMetric(styles.stroke) : null
     const localFields = localBinaryStyleFields(document, sourceLayer, block, styles, binaryStrokeMetric)
-    const canUsePackedStyle = hasCompleteBinaryStyleCoverage(styles, localFields)
+    const alphaCoverage = localFields ? undefined : layerStyleCoverageTile(block, styles, (x, y) => readSourcePacked(x, y) >>> 24)
+    const completeCoverage = localFields ? hasCompleteBinaryStyleCoverage(styles, localFields)
+      : Boolean(alphaCoverage && (!styles.stroke.enabled || ((styles.stroke.position === 'inside' || alphaCoverage.outsideStroke) && (styles.stroke.position === 'outside' || alphaCoverage.insideStroke))))
+    const canUsePackedStyle = completeCoverage
+      && !styles.stroke.enabled
       && !styles.stroke.smartHue
       && !styles.colorOverlay.enabled
       && !styles.gradientOverlay.enabled
       && (styles.shadow.enabled || styles.innerGlow.enabled || styles.stroke.enabled)
-    const coverageOverrides: LayerStyleCoverageOverrides | undefined = localFields ? {} : undefined
+
     const geometry = { x: 0, y: 0, width: sourceLayer.width, height: sourceLayer.height }
 
     for (let y = 0; y < block.height; y += 1) for (let x = 0; x < block.width; x += 1) {
@@ -2044,18 +2198,18 @@ export class DocumentCompositeCache {
         : 0
       const shadowCoverage = localFields?.shadow
         ? shadowDistanceAtPixel <= styles.shadow.blur ? 1 - shadowDistanceAtPixel / (styles.shadow.blur + 1) : 0
-        : undefined
+        : alphaCoverage?.shadow?.[y * block.width + x]
       const innerGlowCoverage = localFields?.innerGlow
         ? innerGlowDistanceAtPixel <= styles.innerGlow.size
           ? (styles.innerGlow.size - innerGlowDistanceAtPixel + 1) / styles.innerGlow.size
           : 0
-        : undefined
+        : alphaCoverage?.innerGlow?.[y * block.width + x]
       const outsideStrokeCoverage = localFields?.strokeOutside
         ? distanceFieldAt(localFields.strokeOutside, sourceX, sourceY) <= styles.stroke.size ? 1 : 0
-        : undefined
+        : alphaCoverage?.outsideStroke?.[y * block.width + x]
       const insideStrokeCoverage = localFields?.strokeInside
         ? distanceFieldAt(localFields.strokeInside, sourceX, sourceY) <= styles.stroke.size ? 1 : 0
-        : undefined
+        : alphaCoverage?.insideStroke?.[y * block.width + x]
       if (canUsePackedStyle) {
         const packed = applySimpleLayerStylesPacked(
           styles,
@@ -2081,7 +2235,15 @@ export class DocumentCompositeCache {
         sourceColor,
         readSource,
         cache.resolveStyleColor,
-        coverageOverrides ? { shadow: shadowCoverage, innerGlow: innerGlowCoverage } : undefined
+        {
+          shadow: shadowCoverage,
+          innerGlow: innerGlowCoverage,
+          // The directed stroke sampler owns both geometry and the optional
+          // follow-opacity alpha. Coverage tiles cannot represent that
+          // source choice without changing the result at diagonal corners.
+          outsideStroke: styles.stroke.enabled ? undefined : outsideStrokeCoverage,
+          insideStroke: styles.stroke.enabled ? undefined : insideStrokeCoverage
+        }
       ))
     }
     return pixels
@@ -2091,13 +2253,13 @@ export class DocumentCompositeCache {
     const key = `${blockX}:${blockY}`
     const cached = cache.blocks.get(key)
     if (cached) return cached
-    const x = cache.localX + blockX * STYLED_LAYER_BLOCK_SIZE
-    const y = cache.localY + blockY * STYLED_LAYER_BLOCK_SIZE
+    const x = blockX * STYLED_LAYER_BLOCK_SIZE
+    const y = blockY * STYLED_LAYER_BLOCK_SIZE
     const block: StyledLayerBlock = {
       x,
       y,
-      width: Math.min(STYLED_LAYER_BLOCK_SIZE, cache.localX + cache.width - x),
-      height: Math.min(STYLED_LAYER_BLOCK_SIZE, cache.localY + cache.height - y),
+      width: STYLED_LAYER_BLOCK_SIZE,
+      height: STYLED_LAYER_BLOCK_SIZE,
       pixels: new Uint8ClampedArray(0)
     }
     block.pixels = this.renderStyledLayerBlock(document, cache, block)
@@ -2113,10 +2275,10 @@ export class DocumentCompositeCache {
     const right = Math.min(startX + width, layer.offsetX + cache.width)
     const bottom = Math.min(startY + height, layer.offsetY + cache.height)
     if (right <= left || bottom <= top) return
-    const fromBlockX = Math.floor((left - layer.offsetX) / STYLED_LAYER_BLOCK_SIZE)
-    const toBlockX = Math.floor((right - 1 - layer.offsetX) / STYLED_LAYER_BLOCK_SIZE)
-    const fromBlockY = Math.floor((top - layer.offsetY) / STYLED_LAYER_BLOCK_SIZE)
-    const toBlockY = Math.floor((bottom - 1 - layer.offsetY) / STYLED_LAYER_BLOCK_SIZE)
+    const fromBlockX = Math.floor((left - cache.sourceLayer.offsetX) / STYLED_LAYER_BLOCK_SIZE)
+    const toBlockX = Math.floor((right - 1 - cache.sourceLayer.offsetX) / STYLED_LAYER_BLOCK_SIZE)
+    const fromBlockY = Math.floor((top - cache.sourceLayer.offsetY) / STYLED_LAYER_BLOCK_SIZE)
+    const toBlockY = Math.floor((bottom - 1 - cache.sourceLayer.offsetY) / STYLED_LAYER_BLOCK_SIZE)
     const opacity = layer.opacity
     for (let blockY = fromBlockY; blockY <= toBlockY; blockY += 1) for (let blockX = fromBlockX; blockX <= toBlockX; blockX += 1) {
       const block = this.styledLayerBlockFor(document, cache, blockX, blockY)
@@ -2200,13 +2362,13 @@ export class DocumentCompositeCache {
         : opaqueIds!.has(layer.pixels[index])
     }
     const scanRange = (y: number, fromX: number, toX: number): { left: number; right: number } => {
-      let left = toX
-      let right = fromX
-      for (let x = fromX; x < toX; x += 1) {
-        if (!visibleAt(x, y)) continue
-        left = Math.min(left, x)
-        right = x + 1
-      }
+      // Only the first and last visible pixels define the row bounds. A filled
+      // 4K row needs two alpha reads, not a scan through all 4000 interior pixels.
+      let left = fromX
+      while (left < toX && !visibleAt(left, y)) left += 1
+      if (left === toX) return { left: toX, right: fromX }
+      let right = toX
+      while (right > left + 1 && !visibleAt(right - 1, y)) right -= 1
       return { left, right }
     }
     const scanRow = (y: number): void => {
@@ -2712,9 +2874,39 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
   if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)
   const opacityGroupStack = cache ? cache.opacityGroupStackFor(document, revision) : opacityGroupCompositeStack(document)
   if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, undefined, dirtyRect)
-  const sample = createCompositePointSampler(document)
+  const sample = compileCompositePointSampler(document, undefined, cache, revision, sourceDirtyRect)
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
-    writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y))
+    writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y, undefined))
+  }
+  return output
+}
+
+/**
+ * Responsive counterpart used by long-running exports. The sampler is
+ * compiled once, then rows are processed in small batches so the renderer can
+ * repaint progress and react to cancellation while large canvases composite.
+ */
+export async function compositeRegionAsync(
+  document: SpriteDocument,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  onProgress?: (value: number) => void,
+  shouldCancel?: () => boolean,
+  rowsPerBatch = 8
+): Promise<Uint8ClampedArray> {
+  const output = new Uint8ClampedArray(width * height * 4)
+  const sample = createCompositePointSampler(document)
+  const yieldHost = (): Promise<void> => new Promise((resolve) => {
+    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') window.setTimeout(resolve, 0)
+    else setTimeout(resolve, 0)
+  })
+  for (let y = 0; y < height; y += 1) {
+    if (shouldCancel?.()) throw new Error('MoonSprite export canceled.')
+    for (let x = 0; x < width; x += 1) writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y))
+    onProgress?.((y + 1) / Math.max(1, height) * 100)
+    if ((y + 1) % Math.max(1, rowsPerBatch) === 0 && y + 1 < height) await yieldHost()
   }
   return output
 }
@@ -2725,11 +2917,11 @@ export function compositePixel(document: SpriteDocument, index: number): RgbaCol
 
 type CompositePointReplacementSampler = (x: number, y: number, replacement: RgbaColor | undefined) => RgbaColor
 
-const compileCompositePointSampler = (document: SpriteDocument, layerId?: string): CompositePointReplacementSampler => {
+const compileCompositePointSampler = (document: SpriteDocument, layerId?: string, styleCache?: DocumentCompositeCache, revision = 0, sourceDirtyRect?: SelectionRect): CompositePointReplacementSampler => {
   const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
-  type CompiledItem =
+  type CompiledItem = { styleReader?: (x: number, y: number) => RgbaColor } & (
     | { kind: 'layer'; layer: RasterLayer; read: CompositePointReplacementSampler; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; outputBounds: SelectionRect | null }
-    | { kind: 'group'; group: LayerGroup; children: CompiledItem[]; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; geometry: LayerStyleGeometry; outputBounds: SelectionRect | null }
+    | { kind: 'group'; group: LayerGroup; children: CompiledItem[]; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; geometry: LayerStyleGeometry; outputBounds: SelectionRect | null })
   const mergeBounds = (bounds: readonly (SelectionRect | null)[]): SelectionRect | null => {
     let result: SelectionRect | null = null
     for (const boundsEntry of bounds) if (boundsEntry) result = result ? unionSelectionRects(result, boundsEntry) : { ...boundsEntry }
@@ -2747,7 +2939,7 @@ const compileCompositePointSampler = (document: SpriteDocument, layerId?: string
     const styles = hasEnabledLayerStyles(layer.layerStyles)
       ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor)
       : undefined
-    const outputBounds = layerStyleOutputBounds(layerContentBounds(document, layer), styles)
+    const outputBounds = layerStyleOutputBounds(styleCache ? styleCache.compositeSourceBounds(document, layer, sourceDirtyRect) : layerContentBounds(document, layer), styles)
     if (layer.id !== layerId) return { kind: 'layer', layer, read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds }
     return {
       kind: 'layer',
@@ -2802,6 +2994,15 @@ const compileCompositePointSampler = (document: SpriteDocument, layerId?: string
       : applyItemMask(item, item.read(x, y, replacement), x, y, replacement)
   }
   function isolatedItemColor(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    if (item.styles && styleCache && replacement === undefined) {
+      if (!item.styleReader) {
+        const owner = item.kind === 'layer' ? item.layer : item.group
+        const geometry = item.kind === 'layer' ? { x: item.layer.offsetX, y: item.layer.offsetY, width: item.layer.width, height: item.layer.height } : item.geometry
+        item.styleReader = styleCache.isolatedStyleReader(document, owner, geometry, item.styles,
+          (sx, sy) => isolatedItemSource(item, sx, sy, undefined), item.resolveStyleColor, revision, sourceDirtyRect)
+      }
+      return item.styleReader(x, y)
+    }
     const source = isolatedItemSource(item, x, y, replacement)
     if (!item.styles) return source
     const geometry = item.kind === 'layer' ? item.layer : item.geometry

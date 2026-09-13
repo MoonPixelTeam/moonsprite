@@ -24,6 +24,7 @@ export interface SelectionBoundaryCache {
   height: number
   mask?: Uint8Array
   segments: Int32Array
+  buckets?: Map<string, number[]>
   screenPaths: Map<string, {
     outline: Path2D
     dashGroups: Array<{ offset: number; path: Path2D }>
@@ -188,8 +189,28 @@ export function drawSelectionOutline({
   const phase = Math.floor(performance.now() / SELECTION_DASH_STEP_MS) % SELECTION_DASH_CYCLE_CSS
   let nextCache = cache
   if (!nextCache || nextCache.width !== selection.width || nextCache.height !== selection.height || nextCache.mask !== selection.mask) {
+    const boundaryStartedAt = performance.now()
     const segments = selectionBoundarySegments(selection)
-    nextCache = { width: selection.width, height: selection.height, mask: selection.mask, segments, screenPaths: new Map() }
+    const buckets = new Map<string, number[]>()
+    const bucketSize = 64
+    for (let index = 0; index < segments.length; index += 4) {
+      const left = Math.floor(Math.min(segments[index], segments[index + 2]) / bucketSize)
+      const right = Math.floor(Math.max(segments[index], segments[index + 2]) / bucketSize)
+      const top = Math.floor(Math.min(segments[index + 1], segments[index + 3]) / bucketSize)
+      const bottom = Math.floor(Math.max(segments[index + 1], segments[index + 3]) / bucketSize)
+      for (let by = top; by <= bottom; by += 1) for (let bx = left; bx <= right; bx += 1) {
+        const key = `${bx}:${by}`
+        const bucket = buckets.get(key)
+        if (bucket) bucket.push(index)
+        else buckets.set(key, [index])
+      }
+    }
+    nextCache = { width: selection.width, height: selection.height, mask: selection.mask, segments, buckets, screenPaths: new Map() }
+    if (typeof window !== 'undefined') window.__moonSpriteCanvasProbe?.recordOperationStage?.('selection.boundary-build', performance.now() - boundaryStartedAt, {
+      width: selection.width,
+      height: selection.height,
+      segments: segments.length / 4
+    })
   }
 
   const zoom = Math.max(0.0001, box.width / Math.max(1, selection.width))
@@ -204,7 +225,13 @@ export function drawSelectionOutline({
   if (!screenPaths) {
     const outline = new Path2D()
     const dashGroups = new Map<number, Path2D>()
-    for (let index = 0; index < nextCache.segments.length; index += 4) {
+    const candidateIndices = new Set<number>()
+    const bucketSize = 64
+    for (let by = Math.floor(visibleTop / bucketSize); by <= Math.floor(visibleBottom / bucketSize); by += 1) for (let bx = Math.floor(visibleLeft / bucketSize); bx <= Math.floor(visibleRight / bucketSize); bx += 1) {
+      for (const index of nextCache.buckets?.get(`${bx}:${by}`) ?? []) candidateIndices.add(index)
+    }
+    const indices = candidateIndices.size > 0 ? candidateIndices : Array.from({ length: nextCache.segments.length / 4 }, (_, index) => index * 4)
+    for (const index of indices) {
       const x1 = nextCache.segments[index]
       const y1 = nextCache.segments[index + 1]
       const x2 = nextCache.segments[index + 2]

@@ -11,6 +11,7 @@ import { decodeGifAnimation } from './gif-import'
 import { compositeDocument } from './document'
 import { encodeBmp } from './bmp'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
+import { decodePsd } from './psd'
 
 export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
 
@@ -20,6 +21,14 @@ export function fileNameFromPath(filePath: string): string {
 
 export function fileExtension(filePath: string): string {
   return filePath.split('.').pop()?.toLowerCase() ?? ''
+}
+
+export function isMoonSpriteBackupPath(filePath: string): boolean {
+  return /\.moonsprite\.bak$/i.test(filePath)
+}
+
+export function isMoonSpriteProjectPath(filePath: string): boolean {
+  return /\.moonsprite(?:\.bak)?$/i.test(filePath)
 }
 
 export function joinDirectoryPath(directory: string, fileName: string): string {
@@ -128,15 +137,18 @@ export function normalizeSaveDialogPath(filePath: string, format: SaveImageKind)
 const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void): SpriteDocument => {
   const suffix = fileExtension(filePath)
   const fileName = fileNameFromPath(filePath)
-  const document = suffix === 'moonsprite'
+  const backup = isMoonSpriteBackupPath(filePath)
+  const document = isMoonSpriteProjectPath(filePath)
     ? decodeProject(data, onProgress)
     : suffix === 'ase' || suffix === 'aseprite'
       ? decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), onProgress)
+      : suffix === 'psd'
+        ? decodePsd(data, fileName.replace(/\.psd$/i, ''), onProgress)
       : decodePng(data, fileName.replace(/\.png$/i, ''))
   onProgress?.(1)
-  document.filePath = suffix === 'moonsprite' ? filePath : null
-  document.sourceFilePath = filePath
-  document.name = fileName
+  document.filePath = isMoonSpriteProjectPath(filePath) && !backup ? filePath : null
+  document.sourceFilePath = backup ? undefined : filePath
+  document.name = backup ? fileName.replace(/\.bak$/i, '') : fileName
   return document
 }
 
@@ -197,7 +209,7 @@ const zipArchiveStats = (data: Uint8Array): ZipArchiveStats | null => {
 
 export const shouldDecodeDocumentInWorker = (data: Uint8Array, filePath: string): boolean => {
   const suffix = fileExtension(filePath)
-  if (suffix === 'moonsprite') {
+  if (isMoonSpriteProjectPath(filePath)) {
     if (data.byteLength > DIRECT_PROJECT_MAX_ARCHIVE_BYTES) return true
     const expandedRasterBytes = readProjectExpandedRasterBytes(data)
     if (expandedRasterBytes === null || expandedRasterBytes > DIRECT_PROJECT_MAX_UNCOMPRESSED_BYTES) return true
@@ -212,6 +224,7 @@ export const shouldDecodeDocumentInWorker = (data: Uint8Array, filePath: string)
     const height = view.getUint16(10, true)
     return frames * width * height > DIRECT_ASEPRITE_MAX_FRAME_PIXELS
   }
+  if (suffix === 'psd') return true
   return false
 }
 
@@ -338,23 +351,25 @@ const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgre
 
 export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string, onProgress?: (value: number) => void): Promise<SpriteDocument> {
   const suffix = fileExtension(filePath)
-  if ((suffix === 'moonsprite' || suffix === 'ase' || suffix === 'aseprite') && typeof Worker !== 'undefined' && shouldDecodeDocumentInWorker(data, filePath)) {
+  const project = isMoonSpriteProjectPath(filePath)
+  const backup = isMoonSpriteBackupPath(filePath)
+  if ((project || suffix === 'ase' || suffix === 'aseprite' || suffix === 'psd') && typeof Worker !== 'undefined' && shouldDecodeDocumentInWorker(data, filePath)) {
     const source = data.slice()
     try {
-      const result = await decodeDocumentFileInWorker(data, filePath, onProgress, suffix === 'moonsprite')
-      if (suffix === 'moonsprite') registerProjectSaveBaseline(result.document, filePath, source)
+      const result = await decodeDocumentFileInWorker(data, filePath, onProgress, project)
+      if (project && !backup) registerProjectSaveBaseline(result.document, filePath, source)
       if (result.initialComposite) registerPendingInitialDocumentComposite(result.document, result.initialComposite, result.document.animation?.activeFrameId)
       return result.document
     } catch (error) {
       if (!(error instanceof DocumentDecodeWorkerTransportError)) throw error
       const document = decodeStructuredDocumentFile(source, filePath, onProgress)
-      if (suffix === 'moonsprite') registerProjectSaveBaseline(document, filePath, source)
+      if (project && !backup) registerProjectSaveBaseline(document, filePath, source)
       return document
     }
   }
   if (!browserRasterImageExtensions.includes(suffix as (typeof browserRasterImageExtensions)[number])) {
     const document = decodeStructuredDocumentFile(data, filePath, onProgress)
-    if (suffix === 'moonsprite') registerProjectSaveBaseline(document, filePath, data)
+    if (project && !backup) registerProjectSaveBaseline(document, filePath, data)
     return document
   }
   const fileName = fileNameFromPath(filePath)

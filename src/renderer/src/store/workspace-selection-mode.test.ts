@@ -14,6 +14,57 @@ beforeEach(() => {
 })
 
 describe('layer, frame, and cel selection modes', () => {
+  it('switches a canvas hit target without creating an explicit layer selection', () => {
+    const document = createDocument('canvas active layer', 2, 2, 'rgba')
+    const second = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(second)
+    useWorkspace.getState().addSession(document)
+
+    useWorkspace.getState().activateLayerForCanvas(second.id)
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.document.activeLayerId).toBe(second.id)
+    expect(session.layerSelectionExplicit).toBe(false)
+    // Normalization keeps the active row ID available to the timeline, but
+    // the false explicit flag is what prevents a blue selection outline.
+    expect(session.selectedLayerIds).toEqual([second.id])
+    expect(session.timelineActiveContext.row).toMatchObject({ kind: 'layer', ownerId: second.id })
+  })
+
+  it('disables and clears selection aspect linking when entering free transform', () => {
+    const document = createDocument('free transform aspect link', 4, 4, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 2, height: 1 })
+    useWorkspace.getState().setSelectionPropertiesActive(true)
+    useWorkspace.getState().setSelectionAspectRatio(2)
+    useWorkspace.getState().beginFreeTransform()
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.freeTransformActive).toBe(true)
+    expect(session.selectionAspectRatio).toBeNull()
+  })
+
+  it('stores the selection aspect link outside document content and history', () => {
+    const document = createDocument('selection aspect link', 4, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const before = useWorkspace.getState().sessions[0]
+    const contentRevision = before.contentRevision
+    const historyPosition = before.history.position
+
+    useWorkspace.getState().setSelectionAspectRatio(2)
+
+    let session = useWorkspace.getState().sessions[0]
+    expect(session.selectionAspectRatio).toBe(2)
+    expect(session.document.dirty).toBe(false)
+    expect(session.contentRevision).toBe(contentRevision)
+    expect(session.history.position).toBe(historyPosition)
+
+    useWorkspace.getState().setSelectionAspectRatio(null)
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectionAspectRatio).toBeNull()
+    expect(session.history.position).toBe(historyPosition)
+  })
+
   it('restricts group selection to viewport navigation and whole-group move tools', () => {
     const document = createDocument('group tool availability', 2, 2, 'rgba')
     const layer = getActiveLayer(document)

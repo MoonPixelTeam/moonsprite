@@ -2,11 +2,11 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi } from '@shared/types'
 import { createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer } from '@/core/document'
-import { animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
+import { addBlankAnimationFrame, animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { layersPanelRenderKey } from '@/core/panel-render-keys'
-import { ONION_SKIN_PREFERENCE_KEY, TIMELINE_HIDDEN_PREFERENCE_KEY } from '@/core/file-preferences'
+import { ONION_SKIN_PREFERENCE_KEY, SKIP_DISABLED_FRAMES_PREFERENCE_KEY, TIMELINE_HIDDEN_PREFERENCE_KEY } from '@/core/file-preferences'
 import { useWorkspace } from '@/store/workspace'
 import { finishAnimationCellOperation, revealLayerInPanel } from '@/components/layer-panel-reveal'
 import { FREE_TILE_INSTANCE_FLASH_EVENT } from '@/components/free-tile-instance-events'
@@ -335,7 +335,7 @@ describe('LayersPanel animation', () => {
     fireEvent.click(repeatToggle)
     expect(within(dialog).getByRole('textbox', { name: '重复' })).toHaveValue('无限')
     fireEvent.change(within(dialog).getByRole('textbox', { name: '名称' }), { target: { value: '行走' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    fireEvent.submit(dialog.closest('form')!)
 
     let loopBar = container.querySelector<HTMLButtonElement>('[data-animation-loop-section-id]')!
     const loopId = loopBar.dataset.animationLoopSectionId!
@@ -360,7 +360,7 @@ describe('LayersPanel animation', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: '名称' }), { target: { value: '反向行走' } })
     fireEvent.click(within(dialog).getByRole('button', { name: '播放方向' }))
     fireEvent.click(screen.getByRole('option', { name: '反向' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    fireEvent.submit(dialog.closest('form')!)
     expect(container.querySelector(`[data-animation-loop-section-id="${loopId}"]`)).toHaveTextContent('反向行走')
 
     loopBar = container.querySelector<HTMLButtonElement>(`[data-animation-loop-section-id="${loopId}"]`)!
@@ -587,6 +587,31 @@ describe('LayersPanel animation', () => {
     fireEvent.keyDown(opacity, { key: 'Enter' })
     await waitFor(() => expect(timeline.cels[0].opacity).toBeCloseTo(0.45))
     expect(screen.queryByRole('slider', { name: '不透明度' })).not.toBeInTheDocument()
+  })
+
+  it('applies cel properties to the complete multi-cell selection', async () => {
+    const document = createDocument('multi cel properties', 1, 1, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const secondFrameId = addBlankAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectAnimationCell(animationCelKey(document.activeLayerId, timeline.frames[0].id))
+    useWorkspace.getState().selectAnimationCell(animationCelKey(document.activeLayerId, secondFrameId), 'toggle')
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toHaveLength(2)
+    render(<LayersPanel session={session} docked />)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '第 2 帧动画单元格' }))
+    expect(session.selectedAnimationCellKeys).toHaveLength(2)
+    fireEvent.click(screen.getByRole('menuitem', { name: '单元格属性' }))
+    const zCoordinate = screen.getByRole('spinbutton', { name: 'Z 坐标' })
+    fireEvent.change(zCoordinate, { target: { value: '8' } })
+    fireEvent.blur(zCoordinate)
+    fireEvent.submit(zCoordinate.closest('form')!)
+
+    await waitFor(() => {
+      expect(animationCelAt(timeline, document.activeLayerId, timeline.frames[0].id)?.zIndex).toBe(8)
+      expect(animationCelAt(timeline, document.activeLayerId, secondFrameId)?.zIndex).toBe(8)
+    })
   })
 
   it('updates the active cel content without rerendering the full layer panel', () => {
@@ -830,14 +855,14 @@ describe('LayersPanel animation', () => {
 
 
 
-  it('disables content-only commands for an empty cel context menu', () => {
+  it('keeps cel properties available but disables content-only commands for an empty cel context menu', () => {
     const document = createDocument('empty cel menu', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
 
     fireEvent.contextMenu(screen.getByRole('button', { name: '第 1 帧动画单元格' }))
 
-    expect(screen.getByRole('menuitem', { name: '单元格属性' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: '单元格属性' })).toBeEnabled()
     expect(screen.getByRole('menuitem', { name: '复制单元格' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: '删除单元格' })).toBeDisabled()
   })
@@ -902,6 +927,23 @@ describe('LayersPanel animation', () => {
     expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
   })
 
+  it('highlights the linked run at the active layer and frame by default', () => {
+    const document = createDocument('active linked cel visual', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const cels = timeline.frames.map((frame) => timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === frame.id)!).filter(Boolean)
+    expect(connectAnimationCels(document, cels.map((cel) => cel.id))).toBe(true)
+    useWorkspace.getState().clearAnimationSelection(true)
+
+    const { container } = render(<ConnectedLayersPanel />)
+
+    expect(container.querySelector('[data-linked-cel-block]')).toHaveClass('selected')
+  })
+
 
   it('keeps thumbnails on every cel in a linked group at enlarged density', () => {
     localStorage.setItem('moonsprite.layers.display-density', 'huge')
@@ -941,11 +983,15 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerLeave(densityLabel.parentElement!)
     expect(screen.queryByRole('tooltip')).toBeNull()
     expect(modal!.querySelector('.layer-settings-pair')).toBeNull()
+    const skipDisabledFrames = screen.getByRole('checkbox', { name: '左右切换时跳过停用帧' })
+    expect(skipDisabledFrames).toBeChecked()
+    fireEvent.click(skipDisabledFrames)
     fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     expect(modal!.querySelector('.layer-settings-pair')).not.toBeNull()
     fireEvent.submit(modal!)
 
     expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, previousFrames: 1, nextFrames: 1 })
+    expect(localStorage.getItem(SKIP_DISABLED_FRAMES_PREFERENCE_KEY)).toBe('false')
   })
 
   it('hides timeline editing and clears active animation interaction from layer settings', () => {
@@ -960,7 +1006,7 @@ describe('LayersPanel animation', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '隐藏时间轴' }))
 
     expect(container.querySelector('.layers-panel')).toHaveClass('timeline-hidden')
-    expect(container.querySelector('.layer-panel-title')).toHaveTextContent('图层')
+    expect(container.querySelector('.layer-animation-toolbar')).toBeInTheDocument()
     expect(document.querySelector('.layer-settings-modal')).toHaveClass('timeline-disabled')
     expect(document.querySelector('.layer-settings-onion')).toBeDisabled()
     expect(localStorage.getItem(TIMELINE_HIDDEN_PREFERENCE_KEY)).toBe('true')
@@ -1264,7 +1310,7 @@ describe('LayersPanel properties', () => {
 
     fireEvent.contextMenu(container.querySelector(`[data-layer-id="${member.id}"]`)!, { clientX: 20, clientY: 48 })
     fireEvent.click(screen.getByRole('menuitem', { name: '属性' }))
-    expect(screen.getByRole('heading', { name: '图层属性' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: `${member.name} 图层属性` })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '混合模式' }))
     fireEvent.click(screen.getByRole('option', { name: '正常' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))
@@ -1988,6 +2034,56 @@ describe('LayersPanel properties', () => {
     useWorkspace.getState().undo()
     expect(root.groupId ?? null).toBeNull()
     expect(document.groups.find((group) => group.id === 'source-group')?.parentGroupId ?? null).toBeNull()
+  })
+
+  it('keeps the layer drag preview aligned with the pointer after scrolling', () => {
+    const document = createDocument('scrolled layer drag preview', 2, 2, 'rgba')
+    const first = getActiveLayer(document)
+    const second = createLayer('Second', 2, 2, 'rgba')
+    document.layers.push(second)
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const list = container.querySelector<HTMLElement>('.layer-list')!
+    const firstRow = container.querySelector<HTMLElement>(`[data-layer-id="${first.id}"]`)!
+    Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 100, bottom: 300, width: 300, height: 200, x: 0, y: 100, toJSON: () => ({}) }) })
+    Object.defineProperty(list, 'scrollTop', { configurable: true, value: 160, writable: true })
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 900 })
+    Object.defineProperty(firstRow, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 120, bottom: 160, width: 300, height: 40, x: 0, y: 120, toJSON: () => ({}) }) })
+
+    fireEvent.pointerDown(firstRow, { button: 0, clientX: 150, clientY: 140 })
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 240 })
+
+    const ghost = container.querySelector<HTMLElement>('.layer-drag-ghost')
+    expect(ghost).toBeInTheDocument()
+    expect(ghost?.style.top).toBe('286.5px')
+    fireEvent.pointerUp(window, { clientX: 150, clientY: 240 })
+  })
+
+  it('auto-scrolls the layer list while dragging near an edge', () => {
+    vi.useFakeTimers()
+    try {
+      const document = createDocument('auto-scroll layer drag', 2, 2, 'rgba')
+      const first = getActiveLayer(document)
+      const second = createLayer('Second', 2, 2, 'rgba')
+      document.layers.push(second)
+      useWorkspace.getState().addSession(document)
+      const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+      const list = container.querySelector<HTMLElement>('.layer-list')!
+      const firstRow = container.querySelector<HTMLElement>(`[data-layer-id="${first.id}"]`)!
+      Object.defineProperty(list, 'getBoundingClientRect', { value: () => ({ left: 0, right: 300, top: 100, bottom: 300, width: 300, height: 200, x: 0, y: 100, toJSON: () => ({}) }) })
+      Object.defineProperty(list, 'scrollTop', { configurable: true, value: 160, writable: true })
+      Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 900 })
+      Object.defineProperty(list, 'clientHeight', { configurable: true, value: 200 })
+
+      fireEvent.pointerDown(firstRow, { button: 0, clientX: 150, clientY: 140 })
+      fireEvent.pointerMove(window, { clientX: 150, clientY: 108 })
+      act(() => { vi.advanceTimersByTime(80) })
+
+      expect(list.scrollTop).toBeLessThan(160)
+      fireEvent.pointerUp(window, { clientX: 150, clientY: 108 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('applies right-click properties to a mixed selection as one action', () => {

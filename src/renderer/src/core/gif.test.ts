@@ -116,6 +116,29 @@ describe('GIF animation export', () => {
     ])
   })
 
+  it('exports finite loop sections with their configured repeat count', () => {
+    const document = createDocument('gif finite loop section', 1, 1, 'rgba')
+    writeLayerColor(document, document.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+    addBlankAnimationFrame(document)
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 255, b: 0, a: 255 })
+    addBlankAnimationFrame(document)
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 0, b: 255, a: 255 })
+    const timeline = document.animation!
+    timeline.loopSections = [{ id: 'finite-loop', name: 'Finite', startFrameId: timeline.frames[1].id, endFrameId: timeline.frames[2].id, direction: 'forward', repeatCount: 2 }]
+
+    const result = exportAnimationGif(document, { scalePercent: 100, loopSectionId: 'finite-loop', direction: 'forward' })
+    const frames = decompressFrames(parseGIF(result.bytes.slice().buffer), true)
+
+    expect(result.frameCount).toBe(4)
+    expect(frames.map((frame) => Array.from(frame.patch))).toEqual([
+      [0, 255, 0, 255],
+      [0, 0, 255, 255],
+      [0, 255, 0, 255],
+      [0, 0, 255, 255]
+    ])
+    expect(new TextDecoder().decode(result.bytes)).not.toContain('NETSCAPE2.0')
+  })
+
   it('clears transparent pixels between full-canvas animation frames', () => {
     const document = createDocument('gif disposal', 2, 1, 'rgba')
     const layer = document.layers[0]

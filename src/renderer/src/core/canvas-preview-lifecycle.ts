@@ -11,11 +11,13 @@ export interface CanvasPreviewSelection {
   /** Exact projective frame used by free transform previews. */
   quad?: SelectionQuad
   copy: boolean
+  /** Whether non-right-angle selection rotations use the RotSprite path. */
+  optimizedRotation?: boolean
 }
 
 export type CanvasPreviewInvalidation =
   | { kind: 'full' }
-  | { kind: 'region'; rect: SelectionRect }
+  | { kind: 'region'; rect: SelectionRect; placementOnly?: boolean; layerIds?: readonly string[] }
 
 export interface CanvasPreviewSnapshot {
   document: SpriteDocument
@@ -25,6 +27,8 @@ export interface CanvasPreviewSnapshot {
   invalidation?: CanvasPreviewInvalidation
   movingLayerIds?: readonly string[]
   selectionPreview?: CanvasPreviewSelection
+  /** High-frequency raster edits are shown by the editor immediately; auxiliary canvases catch up after commit. */
+  deferAuxiliaryDraw?: boolean
 }
 
 type CanvasPreviewListener = (snapshot: CanvasPreviewSnapshot | null) => void

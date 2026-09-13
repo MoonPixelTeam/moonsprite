@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, readLayerColor, writeLayerColor } from '@/core/document'
 import { ensureAnimationDocument } from '@/core/animation'
-import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, type SelectionTransformSource } from '@/core/tools'
+import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
 import { beginPixelEdit, commitPixelEdit } from '@/core/history'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from '@/core/initial-document-composite'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { useWorkspace } from '@/store/workspace'
 import { CanvasCompositeCache } from './canvas-composite-cache'
 import { installRuntimeRaster } from '@/core/runtime-raster'
 
@@ -112,9 +113,50 @@ beforeEach(() => {
   vi.stubGlobal('ImageData', MockImageData)
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it('keeps one unfinished bitmap capture across repeated invalidations', async () => {
+    const document = createDocument('long stroke capture backlog', 256, 256, 'rgba')
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const pending: Array<(bitmap: { close: () => void }) => void> = []
+    const capture = vi.fn(() => new Promise<{ close: () => void }>(resolve => pending.push(resolve)))
+    vi.stubGlobal('createImageBitmap', capture)
+    draw(cache, document, context)
+    for (let x = 0; x < 60; x += 1) {
+      writeLayerColor(document, document.layers[0], x, { r: x, g: 0, b: 0, a: 255 })
+      cache.invalidateDocumentRect({ x, y: 0, width: 1, height: 1 }, document)
+      draw(cache, document, context)
+    }
+    expect(capture).toHaveBeenCalledTimes(1)
+    const close = vi.fn()
+    pending[0]({ close })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(close).toHaveBeenCalledTimes(1)
+    draw(cache, document, context)
+    expect(capture).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([true, false])('defers bitmap captures during a long stroke (full surface: %s)', async (fullSurface) => {
+    const document = createDocument('live stroke without snapshots', 256, 256, 'rgba')
+    const cache = fullSurface ? new CanvasCompositeCache() : new CanvasCompositeCache(1)
+    const context = makeContext()
+    const capture = vi.fn(async () => ({ close: vi.fn() }))
+    vi.stubGlobal('createImageBitmap', capture)
+    for (let x = 0; x < 60; x += 1) {
+      writeLayerColor(document, document.layers[0], x, { r: x, g: 0, b: 0, a: 255 })
+      cache.invalidateDocumentRect({ x, y: 0, width: 1, height: 1 }, document)
+      draw(cache, document, context, { liveRasterEdit: true })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    expect(capture).not.toHaveBeenCalled()
+    const source = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(source.pixels.slice(59 * 4, 60 * 4))).toEqual([59, 0, 0, 255])
+    draw(cache, document, context, { liveRasterEdit: false })
+    expect(capture).toHaveBeenCalledTimes(1)
+  })
+
   it('shows a moved layer across enabled tile-repeat boundaries', () => {
     const document = createDocument('repeated moved layer', 4, 1, 'rgba')
     const moving = createLayer('moving', 4, 1, 'rgba')
@@ -149,6 +191,91 @@ describe('CanvasCompositeCache', () => {
     expect(Array.from(surface.pixels.slice((12 * 16 + 12) * 4, (12 * 16 + 12) * 4 + 4))).toEqual([0, 96, 255, 255])
   })
 
+  it('does not publish a bitmap captured before a brush invalidation', async () => {
+    const document = createDocument('stale brush bitmap', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const pending: Array<(bitmap: MockOffscreenCanvas) => void> = []
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise<MockOffscreenCanvas>((resolve) => {
+      pending.push(resolve)
+    })))
+    const frameId = document.animation?.activeFrameId ?? 'static'
+
+    draw(cache, document, context)
+    expect(pending).toHaveLength(1)
+
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 64, 64, 128, { r: 255, g: 64, b: 32, a: 255 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context, {
+      revision: 2,
+      contentRevision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
+    })
+
+    const stale = new MockOffscreenCanvas(256, 256)
+    pending[0](stale)
+    await Promise.resolve()
+    const surfaces = (cache as unknown as { surfaces: Map<string, { bitmap?: unknown }> }).surfaces
+    expect([...surfaces.values()][0]?.bitmap).toBeUndefined()
+  })
+
+  it('batches fragmented large-brush edges into one local surface upload', () => {
+    const document = createDocument('large brush upload batching', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    draw(cache, document, context)
+
+    const initialEdit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, initialEdit, 96, 96, 128, { r: 41, g: 121, b: 255, a: 255 }, 'round')
+    cache.invalidateDocumentRect(initialEdit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context)
+
+    const edit = beginPixelEdit(layer.id)
+    paintLine(document, layer, edit, 96, 96, 98, 98, 128, { r: 41, g: 121, b: 255, a: 255 }, null, 'round')
+    const fragments = solidBrushStampDifferenceRects({ x: 96, y: 96 }, { x: 98, y: 98 }, 128, 'round')
+    expect(fragments.length).toBeGreaterThan(1)
+    for (const rect of fragments) cache.invalidateDocumentRect(rect, document, frameId, [layer.id])
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    const uploadsBefore = surface.context.putImageData.mock.calls.length
+    draw(cache, document, context)
+    expect(surface.context.putImageData.mock.calls.length - uploadsBefore).toBe(1)
+
+    const expected = compositeRegion(document, 0, 0, document.width, document.height, new DocumentCompositeCache(), 1)
+    expect(Array.from(surface.pixels)).toEqual(Array.from(expected))
+  })
+
+  it('reuses the live surface when a large stroke is committed', () => {
+    const document = createDocument('commit live surface', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const frameId = document.animation?.activeFrameId ?? 'static'
+
+    draw(cache, document, context)
+    const edit = beginPixelEdit(layer.id)
+    paintLine(document, layer, edit, 64, 64, 192, 64, 128, { r: 255, g: 64, b: 32, a: 255 })
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context)
+    const entry = commitPixelEdit(document, edit, 'brush')
+    expect(entry).not.toBeNull()
+    cache.retainLivePreview(document, frameId, 2)
+    const beforeUploads = (context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas).context.putImageData.mock.calls.length
+    draw(cache, document, context, {
+      revision: 2,
+      contentRevision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
+    })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    const uploads = surface.context.putImageData.mock.calls.slice(beforeUploads)
+    expect(uploads).toHaveLength(0)
+    expect(Array.from(surface.pixels.slice((64 * document.width + 64) * 4, (64 * document.width + 64) * 4 + 4))).toEqual([255, 64, 32, 255])
+  })
+
   it('renders a live stroke after a sparse runtime layer is materialized', () => {
     const document = createDocument('sparse live stroke', 4, 4, 'rgba')
     const layer = document.layers[0]
@@ -171,6 +298,33 @@ describe('CanvasCompositeCache', () => {
     expect(Array.from(surface.pixels.slice((3 * 4 + 3) * 4, (3 * 4 + 3) * 4 + 4))).toEqual([0, 96, 255, 255])
   })
 
+  it('recomposes an undo after a live preview on a cached surface', () => {
+    const document = createDocument('undo after live preview', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache(4 * 4 * 4)
+    const context = makeContext()
+    const frameId = document.animation?.activeFrameId ?? 'static'
+
+    draw(cache, document, context, { revision: 1, contentRevision: 1 })
+
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 1, 1, 1, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context, { revision: 1, contentRevision: 1 })
+
+    const entry = commitPixelEdit(document, edit, 'pencil')
+    expect(entry).not.toBeNull()
+    entry!.undo()
+    draw(cache, document, context, {
+      revision: 2,
+      contentRevision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
+    })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    const pixelOffset = (1 * document.width + 1) * 4
+    expect(Array.from(surface.pixels.slice(pixelOffset, pixelOffset + 4))).toEqual([0, 0, 0, 0])
+  })
 
   it('clips the composite to device-aligned canvas boundaries', () => {
     const document = createDocument('aligned canvas clip', 4, 4, 'rgba')
@@ -214,6 +368,109 @@ describe('CanvasCompositeCache', () => {
     expect(Math.min(...destinationRects.map((rect) => rect.top))).toBe(visibleBoundary.top)
     expect(Math.max(...destinationRects.map((rect) => rect.right))).toBe(visibleBoundary.right)
     expect(Math.max(...destinationRects.map((rect) => rect.bottom))).toBe(visibleBoundary.bottom)
+  })
+
+  it('uses one bitmap blit during a fractional zoom preview', () => {
+    const document = createDocument('fractional zoom preview', 32, 32, 'rgba')
+    const context = makeContext()
+
+    draw(new CanvasCompositeCache(), document, context, {
+      view: view({ zoom: 4.125 }),
+      canvasWidth: document.width * 4.125,
+      canvasHeight: document.height * 4.125,
+      imageSmoothingEnabled: false,
+      fastViewPreview: true,
+      devicePixelRatio: 1.5
+    })
+
+    // The committed pixel-aligned path intentionally splits the image into
+    // many runs. Interactive zoom/pan must stay a single drawImage call so
+    // the browser can keep the UI responsive at high magnifications.
+    expect(context.drawImage).toHaveBeenCalledOnce()
+  })
+
+  it('reuses the 4K composite across dock resizes and settles to the precise sampling path', () => {
+    const document = createDocument('4K dock resize', 4000, 4000, 'rgba', false)
+    writeLayerColor(document, document.layers[0], 4000 * 2000 + 2000, { r: 24, g: 96, b: 220, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context, { view: view({ zoom: 3.075 }), fromX: 1900, fromY: 1900, toX: 2100, toY: 2100, devicePixelRatio: 1.5, fastViewPreview: true })
+    const surfaceCount = MockOffscreenCanvas.instances.length
+    const uploads = MockOffscreenCanvas.instances.reduce((count, surface) => count + surface.context.putImageData.mock.calls.length, 0)
+    for (let step = 0; step < 30; step++) {
+      context.drawImage.mockClear()
+      draw(cache, document, context, {
+        view: view({ zoom: 3.075 }), fromX: 1900, fromY: 1900, toX: 2100 + step, toY: 2100 + step,
+        originX: -5700 + step / 2, originY: -5700 + step / 2, devicePixelRatio: 1.5, fastViewPreview: true
+      })
+      expect(context.drawImage).toHaveBeenCalledOnce()
+    }
+    expect(MockOffscreenCanvas.instances).toHaveLength(surfaceCount)
+    expect(MockOffscreenCanvas.instances.reduce((count, surface) => count + surface.context.putImageData.mock.calls.length, 0)).toBe(uploads)
+    context.drawImage.mockClear()
+    // A small final region uses the precise run path; large ones intentionally
+    // collapse runs above the existing 4096-blit threshold.
+    draw(cache, document, context, { view: view({ zoom: 3.075 }), fromX: 1990, fromY: 1990, toX: 2010, toY: 2010, devicePixelRatio: 1.5 })
+    expect(context.drawImage.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it('composites supported animation frames through Canvas2D layer sources', () => {
+    const document = createDocument('gpu animation frame', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 5, { r: 24, g: 96, b: 220, a: 255 })
+    const context = makeContext()
+
+    draw(new CanvasCompositeCache(), document, context, { animationPlayback: true })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(surface.context.drawImage).toHaveBeenCalled()
+    expect(Array.from(surface.pixels.slice(5 * 4, 5 * 4 + 4))).toEqual([24, 96, 220, 255])
+  })
+
+  it('shares a completed animation frame between canvas consumers', () => {
+    const document = createDocument('shared animation frame', 4, 4, 'rgba')
+    writeLayerColor(document, document.layers[0], 6, { r: 180, g: 40, b: 90, a: 255 })
+    const editorContext = makeContext()
+    const previewContext = makeContext()
+
+    draw(new CanvasCompositeCache(), document, editorContext, { animationPlayback: true })
+    draw(new CanvasCompositeCache(), document, previewContext, { animationPlayback: true })
+
+    expect(previewContext.drawImage.mock.calls.at(-1)?.[0]).toBe(editorContext.drawImage.mock.calls.at(-1)?.[0])
+  })
+
+  it('bounds committed fractional blits for large visible regions', () => {
+    const document = createDocument('large fractional region', 256, 256, 'rgba')
+    const context = makeContext()
+
+    draw(new CanvasCompositeCache(), document, context, {
+      view: view({ zoom: 4.125 }),
+      canvasWidth: document.width * 4.125,
+      canvasHeight: document.height * 4.125,
+      imageSmoothingEnabled: false,
+      devicePixelRatio: 1.5
+    })
+
+    // The exact run path is retained for small regions, but a large viewport
+    // must never create a rows×columns storm of drawImage calls.
+    expect(context.drawImage).toHaveBeenCalledOnce()
+  })
+
+  it('keeps rotated fractional zoom contiguous after the preview commits', () => {
+    const document = createDocument('rotated fractional zoom', 32, 32, 'rgba')
+    const context = makeContext()
+
+    draw(new CanvasCompositeCache(), document, context, {
+      view: view({ zoom: 4.125, rotation: 37 }),
+      canvasWidth: document.width * 4.125,
+      canvasHeight: document.height * 4.125,
+      imageSmoothingEnabled: false,
+      devicePixelRatio: 1.5
+    })
+
+    // Pixel-run alignment is an axis-aligned optimization. Applying it
+    // before the outer rotation creates a seam at every run boundary.
+    expect(context.drawImage).toHaveBeenCalledOnce()
   })
 
   it('keeps a moved selection preview separate from document pixels', () => {
@@ -319,6 +576,60 @@ describe('CanvasCompositeCache', () => {
     const [patch, x, y] = patchCall
     expect({ width: patch.width, height: patch.height, x, y }).toEqual({ width: 3, height: 2, x: 3, y: 0 })
     expect(Array.from(patch.data.slice(4, 8))).toEqual([0, 96, 255, 255])
+  })
+
+  it('recomposes styled output when a layer moves after its pixels change', () => {
+    const document = createDocument('styled layer move preview', 8, 4, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    writeLayerColor(document, layer, 2 + document.width, { r: 0, g: 96, b: 255, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context)
+
+    const oldBounds = { x: 1, y: 0, width: 3, height: 3 }
+    layer.offsetX = 2
+    cache.invalidateLayerPlacementCaches()
+    const newBounds = { x: 3, y: 0, width: 3, height: 3 }
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    cache.invalidateDocumentRect(oldBounds, document, frameId)
+    cache.invalidateDocumentRect(newBounds, document, frameId)
+    draw(cache, document, context, { movingLayerIds: [layer.id] })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice((0 * document.width + 1) * 4, (0 * document.width + 1) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(surface.pixels.slice((1 * document.width + 4) * 4, (1 * document.width + 4) * 4 + 4))).toEqual([0, 96, 255, 255])
+  })
+
+  it('recomposes styled output after a liquify-like edit followed by a move', () => {
+    const document = createDocument('styled liquify then move', 8, 4, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    writeLayerColor(document, layer, 2 + document.width, { r: 255, g: 0, b: 0, a: 255 })
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context, { revision: 1, contentRevision: 1 })
+
+    // Simulate the in-place pixel mutation performed by liquify and its
+    // region invalidation before the subsequent layer move.
+    layer.pixels[1 * document.width * 4 + 2 * 4] = 0
+    layer.pixels[1 * document.width * 4 + 2 * 4 + 1] = 96
+    layer.pixels[1 * document.width * 4 + 2 * 4 + 2] = 255
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    cache.invalidateDocumentRect({ x: 2, y: 1, width: 1, height: 1 }, document, frameId, [layer.id])
+    draw(cache, document, context, { revision: 2, contentRevision: 2, contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: { x: 2, y: 1, width: 1, height: 1 } } })
+
+    layer.offsetX = 2
+    cache.invalidateLayerPlacementCaches()
+    cache.invalidateDocumentRect({ x: 1, y: 0, width: 3, height: 3 }, document, frameId)
+    cache.invalidateDocumentRect({ x: 3, y: 0, width: 3, height: 3 }, document, frameId)
+    draw(cache, document, context, { revision: 2, contentRevision: 2, movingLayerIds: [layer.id] })
+
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice((0 * document.width + 1) * 4, (0 * document.width + 1) * 4 + 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(surface.pixels.slice((1 * document.width + 4) * 4, (1 * document.width + 4) * 4 + 4))).toEqual([0, 96, 255, 255])
   })
 
   it('forwards a live source region to a preview cache without rebuilding its surface', () => {
@@ -594,5 +905,187 @@ describe('CanvasCompositeCache', () => {
     const pixels = surface.context.putImageData.mock.calls.at(-1)?.[0] as MockImageData
     const offset = (5 * document.width + 6) * 4
     expect(Array.from(pixels.data.slice(offset, offset + 4))).toEqual([0, 96, 255, 255])
+  })
+})
+
+
+describe.each([{ name: 'full surface', bytes: 128 * 1024 * 1024 }, { name: 'region surface', bytes: 1 }])('history invalidation: $name', ({ bytes }) => {
+  it.each([false, true])('presents fill, undo and redo completely on the first frame (selection=%s)', (selected) => {
+    useWorkspace.setState({ sessions: [], activeId: null })
+    const document = createDocument('atomic visible fill', 512, 512, 'rgba')
+    useWorkspace.getState().addSession(document)
+    if (selected) useWorkspace.getState().setSelection({ x: 8, y: 8, width: 496, height: 496 })
+    const cache = new CanvasCompositeCache(bytes)
+    const context = makeContext()
+    const requestRedraw = vi.fn()
+    const drawSession = (): void => {
+      const current = useWorkspace.getState().sessions[0]
+      draw(cache, current.document, context, { revision: current.revision, contentRevision: current.contentRevision, contentInvalidation: current.contentInvalidation, requestRedraw })
+    }
+    drawSession()
+    try {
+      for (const command of ['fillForeground', 'undo', 'redo'] as const) {
+        useWorkspace.getState()[command]()
+        drawSession()
+        const current = useWorkspace.getState().sessions[0]
+        const surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+        const expected = compositeRegion(current.document, 0, 0, 512, 512, new DocumentCompositeCache(), current.contentRevision)
+        expect(surface.pixels.every((value, index) => value === expected[index]), `${command}: mixed old/new pixels in first displayed frame`).toBe(true)
+        expect(requestRedraw).not.toHaveBeenCalled()
+      }
+    } finally {
+      useWorkspace.setState({ sessions: [], activeId: null })
+    }
+  })
+
+  it('preserves an erase queued when pointer-up precedes the next draw', () => {
+    const document = createDocument('erase before RAF', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 5, { r: 255, g: 0, b: 0, a: 255 })
+    const cache = new CanvasCompositeCache(bytes)
+    const context = makeContext()
+    const frameId = document.animation!.activeFrameId
+    draw(cache, document, context)
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 1, 1, 1, { r: 0, g: 0, b: 0, a: 0 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    cache.retainLivePreview(document, frameId, 2)
+    commitPixelEdit(document, edit, 'erase')
+    draw(cache, document, context, {
+      contentRevision: 2, revision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, frameId, rect: edit.dirtyRect }
+    })
+    const surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(readLayerColor(document, layer, 5).a).toBe(0)
+    expect(surface.pixels[23]).toBe(0)
+  })
+
+  it('does not let a retained commit hide undo and redo before the next draw', () => {
+    const document = createDocument('undo before RAF', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    const cache = new CanvasCompositeCache(bytes)
+    const context = makeContext()
+    const frameId = document.animation!.activeFrameId
+    draw(cache, document, context)
+    const edit = beginPixelEdit(layer.id)
+    paintBrush(document, layer, edit, 1, 1, 1, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+    cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+    draw(cache, document, context)
+    cache.retainLivePreview(document, frameId, 2)
+    const entry = commitPixelEdit(document, edit, 'draw')!
+    entry.undo()
+    draw(cache, document, context, {
+      revision: 3, contentRevision: 3,
+      contentInvalidation: { kind: 'region', fromRevision: 2, revision: 3, frameId, rect: edit.dirtyRect }
+    })
+    let surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(readLayerColor(document, layer, 5).a).toBe(0)
+    expect(surface.pixels[23]).toBe(0)
+    entry.redo()
+    draw(cache, document, context, { revision: 4, contentRevision: 4,
+      contentInvalidation: { kind: 'region', fromRevision: 3, revision: 4, frameId, rect: edit.dirtyRect } })
+    surface = context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas
+    expect(surface.pixels[23]).toBe(255)
+  })
+})
+
+
+it('refreshes a cancelled liquify preview through Store invalidation without adding history or dirtying the document', () => {
+  useWorkspace.setState({ sessions: [], activeId: null })
+  const document = createDocument('liquify rollback surface', 4, 4, 'rgba')
+  useWorkspace.getState().addSession(document)
+  const session = useWorkspace.getState().sessions[0]
+  const layer = document.layers[0]
+  const cache = new CanvasCompositeCache()
+  const context = makeContext()
+  const frameId = document.animation!.activeFrameId
+  const dirty = document.dirty
+  const revision = session.contentRevision
+  draw(cache, document, context, { revision, contentRevision: revision })
+  const edit = beginPixelEdit(layer.id)
+  paintBrush(document, layer, edit, 1, 1, 1, { r: 255, g: 0, b: 0, a: 255 }, 'square')
+  cache.invalidateDocumentRect(edit.dirtyRect, document, frameId, [layer.id])
+  draw(cache, document, context, { revision, contentRevision: revision })
+  expect((context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas).pixels[23]).toBe(255)
+  useWorkspace.getState().cancelLiquifyStroke(edit, false)
+  draw(cache, document, context, { revision: session.revision, contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+  expect((context.drawImage.mock.calls.at(-1)![0] as MockOffscreenCanvas).pixels[23]).toBe(0)
+  expect(readLayerColor(document, layer, 5).a).toBe(0)
+  expect(session.history.position).toBe(0)
+  expect(document.dirty).toBe(dirty)
+})
+
+
+describe('styled layer placement previews', () => {
+  it.each(['stroke', 'shadow', 'innerGlow', 'combined'])('reuses %s pixels through drag, cancellation and a subsequent edit', effect => {
+    const document = createDocument('styled move reuse', 64, 48, 'rgba')
+    const layer = document.layers[0]
+    const styles = createDefaultLayerStyles()
+    if (effect === 'stroke' || effect === 'combined') styles.stroke = { ...styles.stroke, enabled: true, size: 2 }
+    if (effect === 'shadow' || effect === 'combined') styles.shadow = { ...styles.shadow, enabled: true, blur: 2, offsetX: 2, offsetY: 2 }
+    if (effect === 'innerGlow' || effect === 'combined') styles.innerGlow = { ...styles.innerGlow, enabled: true, size: 2 }
+    layer.layerStyles = styles
+    for (let y = 6; y < 12; y += 1) for (let x = 6; x < 12; x += 1) writeLayerColor(document, layer, y * layer.width + x, { r: 20, g: 110, b: 240, a: 180 })
+    const cache = new CanvasCompositeCache()
+    const preview = new CanvasCompositeCache()
+    const context = makeContext(), previewContext = makeContext()
+    const frameId = document.animation!.activeFrameId
+    const rect = { x: 0, y: 0, width: 64, height: 48 }
+    const blocks = vi.spyOn(DocumentCompositeCache.prototype as unknown as { renderStyledLayerBlock: (...args: unknown[]) => Uint8ClampedArray }, 'renderStyledLayerBlock')
+    draw(cache, document, context)
+    draw(preview, document, previewContext)
+    for (const offset of [2, 5, 0]) {
+      layer.offsetX = offset
+      cache.invalidateDocumentPlacementRect(rect, document, frameId, [layer.id])
+      const invalidation = cache.consumePreviewInvalidation(frameId)
+      expect(invalidation).toEqual({ kind: 'region', rect, placementOnly: true, layerIds: [layer.id] })
+      preview.invalidateDocumentPlacementRect(rect, document, frameId, invalidation?.kind === 'region' ? invalidation.layerIds : undefined)
+      blocks.mockClear()
+      draw(cache, document, context, { movingLayerIds: [layer.id] })
+      draw(preview, document, previewContext, { movingLayerIds: [layer.id] })
+      expect(blocks).not.toHaveBeenCalled()
+      const expected = compositeRegion(document, 0, 0, 64, 48, new DocumentCompositeCache(), 1)
+      expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(expected)
+      expect((previewContext.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(expected)
+    }
+    writeLayerColor(document, layer, 8 * layer.width + 8, { r: 255, g: 0, b: 0, a: 255 })
+    cache.invalidateDocumentRect({ x: 8, y: 8, width: 1, height: 1 }, document, frameId, [layer.id])
+    blocks.mockClear()
+    draw(cache, document, context, { revision: 2, contentRevision: 2 })
+    expect(blocks).toHaveBeenCalled()
+    expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+      .toEqual(compositeRegion(document, 0, 0, 64, 48, new DocumentCompositeCache(), 2))
+  })
+
+  it('refreshes ancestor group styles when a child moves inside unchanged group bounds', () => {
+    const document = createDocument('group style placement', 32, 24, 'rgba')
+    const moving = document.layers[0]
+    moving.groupId = 'group'
+    writeLayerColor(document, moving, 8 * 32 + 8, { r: 255, g: 0, b: 0, a: 255 })
+    const anchor = createLayer('fixed group extent', 32, 24, 'rgba')
+    anchor.groupId = 'group'
+    writeLayerColor(document, anchor, 3 * 32 + 3, { r: 0, g: 0, b: 255, a: 255 })
+    writeLayerColor(document, anchor, 18 * 32 + 25, { r: 0, g: 0, b: 255, a: 255 })
+    document.layers.push(anchor)
+    const layerStyles = createDefaultLayerStyles()
+    layerStyles.stroke = { ...layerStyles.stroke, enabled: true, size: 1 }
+    document.groups = [{ id: 'group', name: 'Group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal', layerStyles }]
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    moving.offsetX = 4
+    cache.invalidateDocumentPlacementRect({ x: 0, y: 0, width: 32, height: 24 }, document, document.animation!.activeFrameId, [moving.id])
+    draw(cache, document, context, { movingLayerIds: [moving.id] })
+    expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+      .toEqual(compositeRegion(document, 0, 0, 32, 24, new DocumentCompositeCache(), 1))
+  })
+
+  it('preserves pixel invalidation when an edit and a move share a preview frame', () => {
+    const document = createDocument('mixed preview updates', 16, 16, 'rgba')
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    const frameId = document.animation!.activeFrameId
+    cache.invalidateDocumentRect({ x: 1, y: 1, width: 1, height: 1 }, document, frameId)
+    cache.invalidateDocumentPlacementRect({ x: 5, y: 5, width: 1, height: 1 }, document, frameId, [document.activeLayerId])
+    expect(cache.consumePreviewInvalidation(frameId)).toEqual({ kind: 'region', rect: { x: 1, y: 1, width: 5, height: 5 } })
   })
 })

@@ -1,8 +1,10 @@
-import type { RgbaColor, TextCelData, TextCelTransform, TextStyleRun } from '@shared/types'
+import type { RgbaColor, SelectionRect, TextCelData, TextCelTransform, TextStyleRun } from '@shared/types'
 
 export const DEFAULT_TEXT_FONT_FAMILY = 'Fusion Pixel 10px Prop Zh_hans'
 export const DEFAULT_TEXT_FONT_SIZE = 10
 export const DEFAULT_TEXT_CONTENT = 'TEXT'
+export const DEFAULT_TEXT_BOX_WIDTH = 128
+export const DEFAULT_TEXT_BOX_HEIGHT = 64
 
 export const TEXT_FONT_FAMILIES = [
   DEFAULT_TEXT_FONT_FAMILY,
@@ -145,6 +147,7 @@ export const normalizeTextCelData = (value: Partial<TextCelData> | null | undefi
   const styleRuns = normalizeTextStyleRuns(value?.styleRuns, text.length)
   const boxWidth = Number.isFinite(value?.boxWidth) ? Math.max(1, Math.min(16384, Math.round(value!.boxWidth!))) : undefined
   const boxHeight = Number.isFinite(value?.boxHeight) ? Math.max(1, Math.min(16384, Math.round(value!.boxHeight!))) : undefined
+  const layoutMode = value?.layoutMode === 'box' || (value?.layoutMode !== 'free' && boxWidth !== undefined && boxHeight !== undefined) ? 'box' : 'free'
   return {
     text,
     fontFamily: typeof value?.fontFamily === 'string' && value.fontFamily.trim() ? value.fontFamily.trim().slice(0, 128) : DEFAULT_TEXT_FONT_FAMILY,
@@ -153,6 +156,8 @@ export const normalizeTextCelData = (value: Partial<TextCelData> | null | undefi
     letterSpacing: Math.max(-64, Math.min(256, Math.round(finiteOr(value?.letterSpacing, 0)))),
     spacingMode: value?.spacingMode === 'actual' ? 'actual' : 'font',
     antialias: value?.antialias === 'smooth' ? 'smooth' : 'pixel',
+    layoutMode,
+    textAlign: value?.textAlign === 'center' || value?.textAlign === 'right' ? value.textAlign : 'left',
     color: {
       r: Math.max(0, Math.min(255, Math.round(finiteOr(value?.color?.r, fallbackColor.r)))),
       g: Math.max(0, Math.min(255, Math.round(finiteOr(value?.color?.g, fallbackColor.g)))),
@@ -162,13 +167,22 @@ export const normalizeTextCelData = (value: Partial<TextCelData> | null | undefi
     ...(styleRuns.length > 0 ? { styleRuns } : {}),
     ...(Number.isFinite(value?.originX) ? { originX: Math.trunc(value!.originX!) } : {}),
     ...(Number.isFinite(value?.originY) ? { originY: Math.trunc(value!.originY!) } : {}),
-    ...(boxWidth !== undefined && boxHeight !== undefined ? { boxWidth, boxHeight } : {}),
+    ...(layoutMode === 'box' ? { boxWidth: boxWidth ?? DEFAULT_TEXT_BOX_WIDTH, boxHeight: boxHeight ?? DEFAULT_TEXT_BOX_HEIGHT } : {}),
     ...(Array.isArray(value?.transforms) && value!.transforms!.length > 0 ? { transforms: value!.transforms!.flatMap((transform) => {
       const normalized = normalizeTextTransform(transform)
       return normalized ? [normalized] : []
     }) } : {})
   }
 }
+
+// Text boxes are layer content, rather than document selections or slices: they
+// deliberately retain negative positions and may extend past the canvas edge.
+export const normalizeTextBoxBounds = (value: SelectionRect): SelectionRect => ({
+  x: Math.trunc(finiteOr(value.x, 0)),
+  y: Math.trunc(finiteOr(value.y, 0)),
+  width: Math.max(1, Math.min(16384, Math.round(finiteOr(value.width, 1)))),
+  height: Math.max(1, Math.min(16384, Math.round(finiteOr(value.height, 1))))
+})
 
 export const cloneTextCelData = (value: TextCelData): TextCelData => ({
   ...value,

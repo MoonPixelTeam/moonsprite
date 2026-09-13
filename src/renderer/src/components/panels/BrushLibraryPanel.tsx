@@ -1,3 +1,4 @@
+import { pixelSource } from '@/components/pixel-source'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
@@ -412,7 +413,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
       onClick={(event) => selectBrush(event, item)}
     >
       <span className="brush-swatch-preview" aria-hidden="true">
-        <BrushThumbnail brush={item.brush} />
+        <BrushThumbnail source={pixelSource(item.brush)} />
       </span>
       {item.project && <span className="brush-project-badge" aria-hidden="true">P</span>}
     </button>
@@ -500,7 +501,7 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
   </section>
   <FloatingDockPreview style={floating.dockPreview} />
-  {dragPreview && createPortal(<div className="brush-drag-ghost" style={{ left: dragPreview.left, top: dragPreview.top, width: dragPreview.width, height: dragPreview.height }} aria-hidden="true"><BrushThumbnail brush={dragPreview.brush} />{dragPreview.count > 1 && <span>{dragPreview.count}</span>}</div>, document.body)}
+  {dragPreview && createPortal(<div className="brush-drag-ghost" style={{ left: dragPreview.left, top: dragPreview.top, width: dragPreview.width, height: dragPreview.height }} aria-hidden="true"><BrushThumbnail source={pixelSource(dragPreview.brush)} />{dragPreview.count > 1 && <span>{dragPreview.count}</span>}</div>, document.body)}
   {addOpen && createPortal(<div ref={addPopoverRef} className="context-menu brush-add-popover" role="menu" aria-label={t('brush.add')} style={addPosition}>
     <button type="button" className="context-menu-item" role="menuitem" onClick={() => { setAddOpen(false); void workspace.createBrushFromSelection() }}><PixelUtilityIcon kind="selectionOutline" /><span>{t('brush.fromSelection')}</span></button>
     <button type="button" className="context-menu-item" role="menuitem" onClick={() => { setAddOpen(false); void controller.importFromPicker() }}><PixelUtilityIcon kind="image" /><span>{t('brush.importImage')}</span></button>

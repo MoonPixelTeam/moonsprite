@@ -61,6 +61,21 @@ describe('non-destructive layer styles', () => {
     expect(pixelAt(output, 5, 1, 1)).toEqual([0, 0, 0, 0])
   })
 
+  it('uses the configured stroke alpha unless follow-opacity is enabled', () => {
+    const render = (followOpacity: boolean): Uint8ClampedArray => {
+      const document = createDocument('stroke opacity', 3, 1, 'rgba')
+      const layer = getActiveLayer(document)
+      writeLayerColor(document, layer, 1, { ...red, a: 128 })
+      const styles = createDefaultLayerStyles()
+      styles.stroke = { ...styles.stroke, enabled: true, color: blue, size: 1, position: 'outside', followOpacity }
+      layer.layerStyles = styles
+      return compositeRegion(document, 0, 0, 3, 1)
+    }
+
+    expect(pixelAt(render(false), 3, 0, 0)).toEqual([0, 0, 255, 255])
+    expect(pixelAt(render(true), 3, 0, 0)).toEqual([0, 0, 255, 128])
+  })
+
 
 
 

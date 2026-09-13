@@ -28,7 +28,6 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
       role="option"
       aria-selected={selected}
       data-history-position={position}
-      title={label}
       onClick={() => { if (!selected) useWorkspace.getState().setHistoryPosition(position) }}
     >
       <span className="history-entry-marker" aria-hidden="true" />

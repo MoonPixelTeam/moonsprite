@@ -1,0 +1,55 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { beginWorkspaceResize, createResizeFrame, endWorkspaceResize, isWorkspaceResizing, onWorkspaceResizeEnd } from './workspace-resize'
+
+afterEach(() => { endWorkspaceResize(); vi.restoreAllMocks() })
+
+it('displays only the latest resize sample each frame and flushes the final position before commit', () => {
+  const callbacks = new Map<number, FrameRequestCallback>()
+  let id = 0
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callbacks.set(++id, callback); return id })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(key => { callbacks.delete(key) })
+  const apply = vi.fn()
+  const frame = createResizeFrame(apply)
+  beginWorkspaceResize()
+  expect(document.documentElement.classList.contains('workspace-resizing')).toBe(true)
+  const commit = vi.fn(() => {
+    expect(isWorkspaceResizing()).toBe(false)
+    // The final size must settle while CSS transitions are still disabled.
+    expect(document.documentElement.classList.contains('workspace-resizing')).toBe(true)
+    expect(apply).toHaveBeenLastCalledWith({ clientX: 500, clientY: 600 })
+  })
+  const unsubscribe = onWorkspaceResizeEnd(commit)
+  for (let i = 0; i < 240; i++) frame.push({ clientX: i, clientY: -i })
+  expect(callbacks.size).toBe(1)
+  expect(apply).not.toHaveBeenCalled()
+  callbacks.values().next().value!(0)
+  expect(apply).toHaveBeenCalledExactlyOnceWith({ clientX: 239, clientY: -239 })
+  expect(commit).not.toHaveBeenCalled()
+  frame.push({ clientX: 500, clientY: 600 })
+  frame.flush()
+  endWorkspaceResize()
+  endWorkspaceResize()
+  expect(document.documentElement.classList.contains('workspace-resizing')).toBe(false)
+  expect(commit).toHaveBeenCalledOnce()
+  expect(callbacks.size).toBe(0)
+  unsubscribe()
+})
+
+it('cancels pending resize work on unmount and removes settled listeners', () => {
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(17)
+  const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+  const apply = vi.fn()
+  const commit = vi.fn()
+  const unsubscribe = onWorkspaceResizeEnd(commit)
+  const frame = createResizeFrame(apply)
+  beginWorkspaceResize()
+  frame.push({ clientX: 20, clientY: 30 })
+  frame.cancel()
+  frame.flush()
+  unsubscribe()
+  endWorkspaceResize()
+  expect(cancel).toHaveBeenCalledWith(17)
+  expect(apply).not.toHaveBeenCalled()
+  expect(commit).not.toHaveBeenCalled()
+  expect(isWorkspaceResizing()).toBe(false)
+})

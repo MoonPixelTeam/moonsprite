@@ -55,9 +55,11 @@ const preserveCanvasFocus = (event: ReactPointerEvent<HTMLButtonElement>): void 
 const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
   const { t } = useI18n()
   const [moving, setMoving] = useState(false)
+  const [pressedControl, setPressedControl] = useState<string | null>(null)
   const [dragPreview, setDragPreview] = useState<{ edge: QuickCommandBarEdge; position: number } | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<QuickCommandDragState | null>(null)
+  const pressedReleaseTimerRef = useRef<number | null>(null)
   const activeId = useWorkspace((state) => state.activeId)
   const session = useWorkspace((state) => state.sessions.find((item) => item.document.id === documentId) ?? null)
   const renderKey = useWorkspace((state) => {
@@ -85,6 +87,37 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
     event.stopPropagation()
     runForDocument(() => onOpenCommandSettings?.(target))
   }
+  const pressControl = (id: string, event: ReactPointerEvent<HTMLButtonElement>): void => {
+    preserveCanvasFocus(event)
+    if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
+    pressedReleaseTimerRef.current = null
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* pointer capture is not available in every test environment */ }
+    setPressedControl(id)
+  }
+  const clearPressedControl = (id: string): void => {
+    if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
+    pressedReleaseTimerRef.current = null
+    setPressedControl((current) => current === id ? null : current)
+  }
+  const releaseControl = (id: string): void => {
+    if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
+    pressedReleaseTimerRef.current = window.setTimeout(() => {
+      setPressedControl((current) => current === id ? null : current)
+      pressedReleaseTimerRef.current = null
+    }, 100)
+  }
+  useEffect(() => () => {
+    if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
+  }, [])
+  useEffect(() => {
+    const clearPressedOnWindowBlur = (): void => {
+      if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
+      pressedReleaseTimerRef.current = null
+      setPressedControl(null)
+    }
+    window.addEventListener('blur', clearPressedOnWindowBlur)
+    return () => window.removeEventListener('blur', clearPressedOnWindowBlur)
+  }, [])
   const toggleExpanded = (): void => {
     const state = useWorkspace.getState()
     if (activeId !== documentId) state.setActive(documentId)
@@ -177,7 +210,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       case 'undo': return { disabled: !session.history.canUndo, run: () => runForDocument((state) => state.undo()) }
       case 'redo': return { disabled: !session.history.canRedo, run: () => runForDocument((state) => state.redo()) }
       case 'selectAll': return { run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active) return; state.commitFloatingPaste(); state.setTool('selection'); state.setSelection({ x: 0, y: 0, width: active.document.width, height: active.document.height }) }) }
-      case 'deselect': return { disabled: selectionUnavailable, run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active?.selection) return; const label = t('app.selection.cancelHistory'); if (active.pendingPaste) state.commitFloatingPaste(label); else state.commitSelectionChange({ ...active.selection, mask: active.selection.mask?.slice() }, null, label, { resetTimelineSelection: active.selectionGuidesPreservedAtContentRevision === active.contentRevision }) }) }
+      case 'deselect': return { disabled: selectionUnavailable, run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (!active?.selection) return; const label = t('app.selection.cancelHistory'); if (active.pendingPaste) state.commitFloatingPaste(label); else state.commitSelectionChange(active.selection, null, label, { resetTimelineSelection: active.selectionGuidesPreservedAtContentRevision === active.contentRevision }) }) }
       case 'pixelGrid': return { pressed: Boolean(session.view.showPixelGrid), run: () => runForDocument((state) => state.togglePixelGrid()) }
       case 'selectionOutline': return { disabled: selectionUnavailable, pressed: !selectionUnavailable && session.view.showSelectionOutline !== false, run: () => runForDocument((state) => state.toggleSelectionOutline()) }
       case 'relativeLuminance': return { pressed: session.view.relativeLuminance, run: () => runForDocument((state) => { const active = state.sessions.find((item) => item.document.id === documentId); if (active) state.setView({ relativeLuminance: !active.view.relativeLuminance }) }) }
@@ -202,17 +235,17 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
   } as CSSProperties
   return <div ref={barRef} className={`quick-command-bar quick-command-bar-${edge} ${translucent ? 'translucent' : ''} ${visuallyExpanded ? 'expanded' : ''} ${moving ? 'moving' : ''}`.trim()} style={style} role="toolbar" aria-label={`${t('quickCommands.aria')}: ${bar.name}`} data-document-id={documentId} data-quick-command-bar-id={bar.id} data-command-scope="canvas" data-preserve-animation-selection>
     <Tooltip className="quick-command-tooltip quick-command-toggle-tooltip" content={<><strong>{t(visuallyExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')}</strong><span>{t('quickCommands.toggleDescription')}</span></>}>
-      <button type="button" className="quick-command-toggle" aria-label={t(visuallyExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={visuallyExpanded} onPointerDown={preserveCanvasFocus} onClick={toggleExpanded}><PixelUtilityIcon kind={visuallyExpanded ? 'up' : 'down'} /></button>
+      <button type="button" className={`quick-command-toggle ${pressedControl === 'toggle' ? 'quick-command-pressed' : ''}`.trim()} aria-label={t(visuallyExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={visuallyExpanded} onPointerDown={(event) => pressControl('toggle', event)} onPointerUp={(event) => { clearPressedControl('toggle'); event.currentTarget.releasePointerCapture?.(event.pointerId) }} onPointerCancel={(event) => { clearPressedControl('toggle'); event.currentTarget.releasePointerCapture?.(event.pointerId) }} onPointerLeave={() => clearPressedControl('toggle')} onClick={() => { clearPressedControl('toggle'); toggleExpanded() }}><PixelUtilityIcon kind={visuallyExpanded ? 'up' : 'down'} /></button>
     </Tooltip>
     <div className="quick-command-actions-clip" aria-hidden={!visuallyExpanded}><div className="quick-command-actions">
       {commands.map((command) => {
         const shortcut = command.shortcutId ? shortcutFor(command.shortcutId) : ''
         return <Tooltip key={command.id} className="quick-command-tooltip" content={<><strong>{t(command.label)}</strong><span>{t(command.description)}</span>{shortcut && <small>{shortcut}</small>}</>}>
-          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''}`} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}>{command.iconSource ? <PixelAssetIcon src={command.iconSource} className="quick-command-asset-icon" /> : <PixelUtilityIcon kind={command.icon} />}</button>
+          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''} ${pressedControl === command.id ? 'quick-command-pressed' : ''}`.trim()} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={(event) => pressControl(command.id, event)} onPointerUp={() => releaseControl(command.id)} onPointerCancel={() => releaseControl(command.id)} onPointerLeave={() => releaseControl(command.id)} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}>{command.iconSource ? <PixelAssetIcon src={command.iconSource} className="quick-command-asset-icon" /> : <PixelUtilityIcon kind={command.icon} />}</button>
         </Tooltip>
       })}
       <Tooltip className="quick-command-tooltip quick-command-settings-tooltip" content={<><strong>{t('quickCommands.settings')}</strong><span>{t('quickCommands.settingsDescription')}</span></>}>
-        <button type="button" className="quick-command-button quick-command-settings" aria-label={t('quickCommands.settings')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={preserveCanvasFocus} onClick={onOpenPreferences}><PixelUtilityIcon kind="properties" /></button>
+        <button type="button" className={`quick-command-button quick-command-settings ${pressedControl === 'settings' ? 'quick-command-pressed' : ''}`.trim()} aria-label={t('quickCommands.settings')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={(event) => pressControl('settings', event)} onPointerUp={() => releaseControl('settings')} onPointerCancel={() => releaseControl('settings')} onPointerLeave={() => releaseControl('settings')} onClick={onOpenPreferences}><PixelUtilityIcon kind="properties" /></button>
       </Tooltip>
       <Tooltip className="quick-command-tooltip quick-command-move-tooltip" content={<><strong>{t('quickCommands.move')}</strong><span>{t('quickCommands.moveDescription')}</span></>}>
         <button type="button" className="quick-command-button quick-command-move" aria-label={t('quickCommands.move')} disabled={!visuallyExpanded} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={startMoving} onPointerMove={moveBar} onPointerUp={stopMoving} onPointerCancel={stopMoving} onLostPointerCapture={finishMoving}><PixelUtilityIcon kind="move" /></button>

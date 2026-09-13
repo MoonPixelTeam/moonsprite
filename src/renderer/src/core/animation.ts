@@ -186,6 +186,14 @@ export const cloneAnimationLayerMask = (entry: AnimationLayerMask, layerId = ent
   mask: { ...entry.mask, id: maskId, ownerKind: 'cel', ownerId: layerId, linkedMaskId: maskId === entry.mask.id ? entry.mask.linkedMaskId : null, pixels: new Uint8ClampedArray(entry.mask.pixels) }
 })
 
+export const MIN_ANIMATION_CEL_Z_INDEX = -999
+export const MAX_ANIMATION_CEL_Z_INDEX = 999
+export const normalizeAnimationCelZIndex = (value: unknown): number => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.max(MIN_ANIMATION_CEL_Z_INDEX, Math.min(MAX_ANIMATION_CEL_Z_INDEX, Math.trunc(numeric)))
+}
+
 const normalizeCels = (value: unknown, frameIds: Set<string>): AnimationCel[] => {
   if (!Array.isArray(value)) return []
   const result: AnimationCel[] = []
@@ -209,6 +217,7 @@ const normalizeCels = (value: unknown, frameIds: Set<string>): AnimationCel[] =>
       layerId: candidate.layerId,
       frameId: candidate.frameId,
       ...(typeof candidate.linkedCelId === 'string' ? { linkedCelId: candidate.linkedCelId } : {}),
+      ...(normalizeAnimationCelZIndex(candidate.zIndex) !== 0 ? { zIndex: normalizeAnimationCelZIndex(candidate.zIndex) } : {}),
       ...(Number.isFinite(candidate.opacity) ? { opacity: Math.max(0, Math.min(1, Number(candidate.opacity))) } : {}),
       ...(surface ? { surface } : {}),
       ...(text ? { text } : {}),
@@ -748,6 +757,7 @@ const normalizeAnimationCelLinks = (timeline: AnimationTimeline): void => {
     }
     if (!current || current === cel) continue
     cel.linkedCelId = current.id
+    cel.zIndex = normalizeAnimationCelZIndex(current.zIndex)
     cel.surface = current.surface
     cel.opacity = current.opacity
     cel.text = current.text
@@ -980,8 +990,9 @@ export const connectAnimationCels = (document: SpriteDocument, celIds: readonly 
         cel.linkedCelId = null
         continue
       }
-      if (cel.linkedCelId !== source.id || cel.surface !== source.surface || cel.opacity !== source.opacity) changed = true
+      if (cel.linkedCelId !== source.id || cel.surface !== source.surface || cel.opacity !== source.opacity || normalizeAnimationCelZIndex(cel.zIndex) !== normalizeAnimationCelZIndex(source.zIndex)) changed = true
       cel.linkedCelId = source.id
+      cel.zIndex = normalizeAnimationCelZIndex(source.zIndex)
       cel.surface = source.surface
       cel.opacity = source.opacity
       cel.text = source.text
@@ -1007,6 +1018,7 @@ export const linkAnimationFrameCels = (document: SpriteDocument, sourceFrameId: 
     const source = lookup.resolve(sourceSlot) ?? sourceSlot
     if (!source || !target || source.id === target.id || !animationCelHasContent(source, document.palette)) continue
     target.linkedCelId = source.id
+    target.zIndex = normalizeAnimationCelZIndex(source.zIndex)
     target.surface = source.surface
     target.opacity = source.opacity
     target.text = source.text
@@ -1043,8 +1055,9 @@ export const inheritAnimationFrameCelLinks = (
     if (!sourceSlot.linkedCelId && !animationCelHasContent(sourceSlot, document.palette)) continue
     const source = lookup.resolve(sourceSlot) ?? sourceSlot
     if (!source || source.id === target.id) continue
-    if (target.linkedCelId !== source.id || target.surface !== source.surface || target.opacity !== source.opacity) changed = true
+    if (target.linkedCelId !== source.id || target.surface !== source.surface || target.opacity !== source.opacity || normalizeAnimationCelZIndex(target.zIndex) !== normalizeAnimationCelZIndex(source.zIndex)) changed = true
     target.linkedCelId = source.id
+    target.zIndex = normalizeAnimationCelZIndex(source.zIndex)
     target.surface = source.surface
     target.opacity = source.opacity
     target.text = source.text
@@ -1125,6 +1138,7 @@ export const disconnectAnimationCels = (document: SpriteDocument, celIds: readon
     if ((!selected.has(cel.id) && !selectedThroughSource) || !cel.linkedCelId) continue
     const source = resolveAnimationCel(timeline, cel)
     if (!source) continue
+    cel.zIndex = normalizeAnimationCelZIndex(source.zIndex)
     cel.surface = source.surface ? cloneAnimationCelSurface(source.surface) : undefined
     cel.opacity = source.opacity
     cel.text = cloneAnimationText(source.text)
@@ -1316,7 +1330,7 @@ export const duplicateAnimationFrame = (document: SpriteDocument): string => {
     const resolvedSourceCel = resolveAnimationCel(timeline, sourceCel ?? null)
     const source = resolvedSourceCel?.surface ?? blankSurfaceFromLayer(layer)
     const celId = nextCelId()
-    timeline.cels.push({ id: celId, layerId: layer.id, frameId: id, opacity: resolvedSourceCel?.opacity ?? layer.opacity, surface: cloneAnimationCelSurface(source), tilemap: cloneAnimationTilemap(resolvedSourceCel?.tilemap), freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles) })
+  timeline.cels.push({ id: celId, layerId: layer.id, frameId: id, zIndex: normalizeAnimationCelZIndex(resolvedSourceCel?.zIndex), opacity: resolvedSourceCel?.opacity ?? layer.opacity, surface: cloneAnimationCelSurface(source), tilemap: cloneAnimationTilemap(resolvedSourceCel?.tilemap), freeTiles: cloneAnimationFreeTiles(resolvedSourceCel?.freeTiles) })
   }
   for (const entry of (timeline.layerMasks ?? []).filter((candidate) => candidate.frameId === sourceId)) {
     timeline.layerMasks!.push(cloneAnimationLayerMask(entry, entry.layerId, id, createId('mask')))
@@ -1371,6 +1385,18 @@ export const nextAnimationFrameId = (timeline: AnimationTimeline, frameId: strin
   if (next) return next.id
   if (timeline.loop) return firstPlayableAnimationFrameId(timeline)
   return timeline.frames[index]?.disabled === true ? null : frameId
+}
+
+export const stepAnimationFrameId = (timeline: Pick<AnimationTimeline, 'frames'>, frameId: string, direction: -1 | 1): string | null => {
+  if (timeline.frames.length === 0) return null
+  const currentIndex = timeline.frames.findIndex((frame) => frame.id === frameId)
+  const startIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0
+  for (let offset = 1; offset <= timeline.frames.length; offset += 1) {
+    const index = (startIndex + direction * offset + timeline.frames.length) % timeline.frames.length
+    const frame = timeline.frames[index]
+    if (frame?.disabled !== true) return frame?.id ?? null
+  }
+  return null
 }
 
 export const cloneAnimationCelsForLayer = (document: SpriteDocument, sourceLayerId: string, targetLayer: RasterLayer): void => {

@@ -88,6 +88,75 @@ describe('document PSD export service', () => {
 })
 
 describe('native PNG export service', () => {
+  it('isolates a selected layer through the normal composite pipeline', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const api = { writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Layer target', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    if (bottom.format !== 'rgba') throw new Error('Expected an RGBA layer')
+    bottom.name = 'Bottom layer'
+    bottom.pixels.set([0, 0, 255, 255])
+    const topDocument = createDocument('Top', 1, 1, 'rgba')
+    const top = topDocument.layers[0]
+    if (top.format !== 'rgba') throw new Error('Expected an RGBA layer')
+    top.id = 'selected-layer'
+    top.name = 'Selected layer'
+    top.pixels.set([255, 0, 0, 255])
+    document.layers.push(top)
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'selected-layer', format: 'png-rgba', scalePercent: 100, target: 'layer', layerId: top.id, directory: 'D:/exports'
+    })).resolves.toBe('已导出 1 个图层图像。')
+
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/selected-layer-Selected layer.png', expect.any(Uint8Array))
+    const output = decodePng(writeBinaryAtomic.mock.calls[0][1])
+    const layer = output.layers[0]
+    if (layer.format !== 'rgba') throw new Error('Expected an RGBA layer')
+    expect(Array.from(layer.pixels)).toEqual([255, 0, 0, 255])
+  })
+
+  it('exports every layer with a distinct layer-name suffix when no layer is selected', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const api = { writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('All layers', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    bottom.name = 'Bottom'
+    const top = createDocument('Top', 1, 1, 'rgba').layers[0]
+    top.id = 'top-layer'
+    top.name = 'Top'
+    document.layers.push(top)
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'all-layers', format: 'png-rgba', scalePercent: 100, target: 'layer', directory: 'D:/exports'
+    })).resolves.toBe('已导出 2 个图层图像。')
+
+    expect(writeBinaryAtomic.mock.calls.map(([filePath]) => filePath)).toEqual([
+      'D:/exports/all-layers-Bottom.png',
+      'D:/exports/all-layers-Top.png'
+    ])
+  })
+
+  it('resolves layer export name conflicts before it reports encoding progress', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/conflict-Only layer.png')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Layer conflict', 1, 1, 'rgba')
+    document.layers[0].name = 'Only layer'
+    let encodeStarts = 0
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'conflict', format: 'png-rgba', scalePercent: 100, target: 'layer', directory: 'D:/exports'
+    }, {
+      onEncodeStart: () => { encodeStarts += 1 },
+      onConflict: async () => {
+        expect(encodeStarts).toBe(0)
+        return 'rename'
+      }
+    })).resolves.toBe('已导出 1 个图层图像。')
+
+    expect(encodeStarts).toBe(1)
+  })
+
   it('delegates scaling to the atomic platform writer without allocating the scaled surface in the renderer', async () => {
     const writeScaledPngAtomic = vi.fn(async (_filePath: string, _source: Uint8Array, _options: ScaledPngWriteOptions, onProgress?: (value: number) => void) => {
       onProgress?.(0)
@@ -145,6 +214,51 @@ describe('native PNG export service', () => {
     })).rejects.toThrow('export canceled')
 
     expect(nativeCancel).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('slice export conflict handling', () => {
+  it('resolves a GIF slice conflict before it reports encoding progress', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/Slice 1.gif')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Slice conflict', 1, 1, 'rgba')
+    document.slices = [{ id: 'slice-1', name: 'Slice 1', x: 0, y: 0, width: 1, height: 1 }]
+    let encodeStarts = 0
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'slice-conflict', format: 'gif', scalePercent: 100, target: 'slices', directory: 'D:/exports'
+    }, {
+      onEncodeStart: () => { encodeStarts += 1 },
+      onConflict: async () => {
+        expect(encodeStarts).toBe(0)
+        return 'rename'
+      }
+    })).resolves.toContain('1')
+
+    expect(encodeStarts).toBe(1)
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/Slice 1 (1).gif', expect.any(Uint8Array))
+  })
+
+  it('resolves a frame export conflict before fallback encoding begins', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/frames-001.png')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Frame conflict', 1, 1, 'rgba')
+    let encodeStarts = 0
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'frames', format: 'png-rgba', scalePercent: 100, target: 'frames', directory: 'D:/exports'
+    }, {
+      onEncodeStart: () => { encodeStarts += 1 },
+      onConflict: async () => {
+        expect(encodeStarts).toBe(0)
+        return 'rename'
+      }
+    })).resolves.toContain('1')
+
+    expect(encodeStarts).toBe(1)
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/frames-001 (1).png', expect.any(Uint8Array))
   })
 })
 

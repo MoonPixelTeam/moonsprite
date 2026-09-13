@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { compositeRegion, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
+import { compositeRegion, createCompositePointSampler, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
-import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints } from './tools'
+import { antiAliasSelection, appendPerfectPixelSegment, applySelectionTransform, applySelectionTranslationCommit, applySelectionTranslationPreview, bezierCurvePixelPoints, brushMaskOffsets, brushPathStampPoints, brushStampAnchor, brushStampDimensions, brushStrokeInvalidationRects, captureSelectionTransform, clearSelection, filledShapePathPixelPoints, fillSelectionOrCanvas, flipLayer, flipSelection, floodFill, floodFillSymmetric, inheritBrushPaintBaseline, lineShapePixelPoints, moveSelection, outlinePixelIndices, outlineSelection, outlineSelectionBoundary, paintBrush, paintBrushPath, paintLine, paintShape, paintShapePixelPoints, perfectPixelPathPoints, replaceLayerColor, rotatedShapePixelPoints, sampleCompositeColor, selectionTransformPreviewPacked, selectionTranslationPreviewEdit, shapeBoundaryPixelPoints, shapeContainsPixel, shapePixelPoints, solidBrushPreviewRowSpans, solidBrushStampDifferenceRects } from './tools'
 import { combineSelection, ellipseSelection, lassoSelection, magicWandSelection, rasterLinePoints, rotatedSelectionBounds, selectionBoundarySegments, selectionContains, selectionQuadBounds, transformedSelectionBounds, transformedSelectionSourcePoint, transformSelectionMask } from './selection'
 import { resizeDocument } from './document'
 import { createProceduralBrush, createProceduralBrushes, createSelectionBrush, proceduralBrushCoverageAt } from './brushes'
@@ -16,7 +16,143 @@ const red = { r: 255, g: 48, b: 48, a: 255 }
 const black = { r: 0, g: 0, b: 0, a: 255 }
 
 describe('pixel tools', () => {
-  it('composites translucent selection pixels over an existing destination when moved or copied', () => {
+  it('supports simple, copy, and lock-alpha ink writes', () => {
+    const paintWithInk = (mode: 'simple' | 'copy-alpha-color' | 'lock-alpha', base: typeof blue, source: typeof blue) => {
+      const document = createDocument(`ink ${mode}`, 2, 1, 'rgba')
+      const layer = getActiveLayer(document)
+      writeLayerColor(document, layer, 0, base)
+      const edit = beginPixelEdit(layer.id)
+      const paint = () => paintBrush(document, layer, edit, 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, mode)
+      paint()
+      return readLayerColorAt(document, layer, 0, 0)
+    }
+    const base = { r: 20, g: 40, b: 60, a: 96 }
+    const translucent = { r: 220, g: 140, b: 100, a: 128 }
+
+    expect(paintWithInk('simple', base, translucent)).toEqual(blendOver(base, translucent))
+    expect(paintWithInk('copy-alpha-color', base, translucent)).toEqual(translucent)
+    expect(paintWithInk('lock-alpha', base, translucent)).toEqual({ ...blendOver(base, translucent), a: base.a })
+  })
+
+  it('treats transparent lock-alpha ink as a no-op', () => {
+    const base = { r: 20, g: 40, b: 60, a: 96 }
+    const document = createDocument('transparent lock-alpha ink', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, base)
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, { r: 255, g: 0, b: 0, a: 0 }, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, 'lock-alpha')
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(base)
+  })
+
+  it('does not accumulate translucent Lock Alpha samples within one stroke', () => {
+    const document = createDocument('stable translucent lock alpha', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 30, g: 70, b: 110, a: 104 }
+    const source = { r: 230, g: 150, b: 60, a: 96 }
+    const edit = beginPixelEdit(layer.id)
+    writeLayerColor(document, layer, 0, base)
+
+    const stamp = () => paintBrush(document, layer, edit, 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 1, undefined, false, undefined, 'off', undefined, 0, true, 'lock-alpha')
+    stamp()
+    const first = readLayerColorAt(document, layer, 0, 0)
+    stamp()
+
+    expect(first).toEqual({ ...blendOver(base, source), a: base.a })
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(first)
+  })
+
+  it('copies foreground RGBA exactly regardless of stroke opacity', () => {
+    const document = createDocument('copy alpha and color opacity', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const base = { r: 20, g: 40, b: 60, a: 220 }
+    const source = { r: 210, g: 120, b: 70, a: 96 }
+    writeLayerColor(document, layer, 0, base)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, source, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.1, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(source)
+  })
+
+  it('lets transparent Copy Alpha+Color erase the destination pixel', () => {
+    const document = createDocument('transparent copy alpha and color', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, { r: 180, g: 90, b: 30, a: 0 }, 'square', null, 'solid', 1, null, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.25, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
+  it('copies a colored image-brush pixel without making its alpha opaque', () => {
+    const document = createDocument('copy colored image brush alpha', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const source = { r: 190, g: 80, b: 230, a: 112 }
+    const brush = {
+      id: 'copy-alpha-color.png',
+      name: 'Copy Alpha+Color',
+      width: 1,
+      height: 1,
+      coverage: new Uint8Array([source.a]),
+      colors: new Uint32Array([packColor(source)]),
+      intrinsicSize: true
+    }
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, red, 'square', null, 'solid', 1, brush, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.2, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(source)
+  })
+
+  it('keeps a coverage-only brush mask in Copy Alpha+Color while ignoring stroke opacity', () => {
+    const document = createDocument('copy brush mask coverage', 1, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const source = { r: 210, g: 90, b: 40, a: 128 }
+    const brush = {
+      id: 'copy-mask.png',
+      name: 'Copy mask',
+      width: 1,
+      height: 1,
+      coverage: new Uint8Array([64]),
+      intrinsicSize: true
+    }
+    writeLayerColor(document, layer, 0, blue)
+
+    paintBrush(document, layer, beginPixelEdit(layer.id), 0, 0, 1, source, 'square', null, 'solid', 1, brush, undefined, 0, 'paint', undefined, undefined, undefined, undefined, 0.2, undefined, false, undefined, 'off', undefined, 0, true, 'copy-alpha-color')
+
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual({ ...source, a: 32 })
+  })
+
+  it.each(['rgba', 'indexed'] as const)('keeps compact bucket spans equivalent to masked fill and exact through undo (%s)', (format) => {
+    const document = createDocument('packed bucket spans', 512, 512, format)
+    const reference = createDocument('masked reference', 512, 512, format)
+    const layer = document.layers[0]
+    const other = reference.layers[0]
+    // Walls with a single-pixel passage, an enclosed hole and edge-touching spans.
+    for (const [doc, targetLayer] of [[document, layer], [reference, other]] as const) {
+      for (let y = 0; y < 512; y++) if (y !== 300) writeLayerColor(doc, targetLayer, y * 512 + 200, black)
+      for (let x = 350; x <= 450; x++) {
+        writeLayerColor(doc, targetLayer, 100 * 512 + x, black)
+        writeLayerColor(doc, targetLayer, 200 * 512 + x, black)
+      }
+      for (let y = 100; y <= 200; y++) {
+        writeLayerColor(doc, targetLayer, y * 512 + 350, black)
+        writeLayerColor(doc, targetLayer, y * 512 + 450, black)
+      }
+    }
+    const original = layer.pixels.slice()
+    const edit = floodFill(document, layer, 0, 0, red)!
+    floodFill(reference, other, 0, 0, red, { x: 0, y: 0, width: 512, height: 512 })
+    expect(layer.pixels.every((value, index) => value === other.pixels[index])).toBe(true)
+    expect(edit.before.size).toBe(0)
+    expect(edit.runs!.length).toBeGreaterThan(0)
+    const filled = layer.pixels.slice()
+    const history = commitPixelEdit(document, edit, 'bucket')!
+    history.undo()
+    expect(layer.pixels.every((value, index) => value === original[index])).toBe(true)
+    history.redo()
+    expect(layer.pixels.every((value, index) => value === filled[index])).toBe(true)
+  })
+
+  it('preserves translucent selection pixels when moved and composites them when copied', () => {
     const document = createDocument('translucent selection source-over', 4, 1, 'rgba')
     const layer = getActiveLayer(document)
     const base = { r: 30, g: 90, b: 210, a: 255 }
@@ -25,7 +161,7 @@ describe('pixel tools', () => {
     writeLayerColor(document, layer, 0, sourceColor)
     const selection = { x: 0, y: 0, width: 1, height: 1 }
     const source = captureSelectionTransform(document, selection, layer)!
-    const expected = blendOver(base, sourceColor)
+    const expected = sourceColor
 
     applySelectionTransform(document, source, { ...selection, x: 2 }, 0, false, undefined, undefined, undefined, layer)
     expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
@@ -34,18 +170,23 @@ describe('pixel tools', () => {
     writeLayerColor(document, layer, 0, sourceColor)
     const copySource = captureSelectionTransform(document, selection, layer)!
     applySelectionTransform(document, copySource, { ...selection, x: 2 }, 0, true, undefined, undefined, undefined, layer)
-    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blendOver(expected, sourceColor))
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blendOver(sourceColor, sourceColor))
 
     const previewDocument = createDocument('translucent selection preview source-over', 4, 1, 'rgba')
     const previewLayer = getActiveLayer(previewDocument)
     writeLayerColor(previewDocument, previewLayer, 2, base)
     writeLayerColor(previewDocument, previewLayer, 0, sourceColor)
     const previewSource = captureSelectionTransform(previewDocument, selection, previewLayer)!
-    applySelectionTranslationPreview(previewDocument, previewSource, { ...selection, x: 2 }, true, null, previewLayer)
-    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(expected)
+    applySelectionTranslationPreview(previewDocument, previewSource, { ...selection, x: 2 }, false, null, previewLayer)
+    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(sourceColor)
+
+    writeLayerColor(previewDocument, previewLayer, 0, sourceColor)
+    const copyPreviewSource = captureSelectionTransform(previewDocument, selection, previewLayer)!
+    applySelectionTranslationPreview(previewDocument, copyPreviewSource, { ...selection, x: 2 }, true, null, previewLayer)
+    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(blendOver(sourceColor, sourceColor))
   })
 
-  it('composites translucent pixels in the committed translation path', () => {
+  it('preserves translucent pixels in the committed translation path', () => {
     const document = createDocument('translucent committed translation', 4, 1, 'rgba')
     const layer = getActiveLayer(document)
     const base = { r: 30, g: 90, b: 210, a: 255 }
@@ -54,7 +195,7 @@ describe('pixel tools', () => {
     writeLayerColor(document, layer, 0, sourceColor)
     const selection = { x: 0, y: 0, width: 1, height: 1 }
     const source = captureSelectionTransform(document, selection, layer)!
-    const expected = blendOver(base, sourceColor)
+    const expected = sourceColor
 
     const edit = applySelectionTranslationCommit(document, source, { ...selection, x: 2 }, false, layer)
     expect(edit).not.toBeNull()
@@ -62,7 +203,7 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
   })
 
-  it('uses the pre-move backdrop for overlapping translucent selection transforms', () => {
+  it('moves overlapping translucent selection pixels without compositing', () => {
     const document = createDocument('overlapping translucent selection transform', 3, 1, 'rgba')
     const layer = getActiveLayer(document)
     const base = { r: 30, g: 90, b: 210, a: 255 }
@@ -74,8 +215,39 @@ describe('pixel tools', () => {
 
     const edit = applySelectionTransform(document, source, { ...selection, x: 1 }, 0, false, undefined, undefined, undefined, layer)
     expect(edit).not.toBeNull()
-    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blendOver(base, sourceColor))
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(sourceColor)
     expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+  })
+
+  it('moves overlapping translucent translation previews without compositing', () => {
+    const document = createDocument('overlapping translucent translation preview', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 240, g: 40, b: 20, a: 128 }
+    const second = { r: 40, g: 220, b: 80, a: 128 }
+    writeLayerColor(document, layer, 0, first)
+    writeLayerColor(document, layer, 1, second)
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 2, height: 1 }, layer)!
+
+    applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 2, height: 1 }, false, null, layer)
+
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(first)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(second)
+  })
+
+  it('does not accumulate translucent pixels when a translation preview is refreshed', () => {
+    const document = createDocument('stable translucent translation preview', 3, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
+    const base = { r: 30, g: 90, b: 210, a: 255 }
+    writeLayerColor(document, layer, 0, sourceColor)
+    writeLayerColor(document, layer, 1, base)
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 1, height: 1 }, layer)!
+    const first = applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 1, height: 1 }, false, null, layer)
+    const expected = sourceColor
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(expected)
+    applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 1, height: 1 }, false, first, layer)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(expected)
   })
 
   it('materializes sparse layer storage before the opaque pencil fast path writes', () => {
@@ -124,6 +296,25 @@ describe('pixel tools', () => {
     history.undo()
     expect(readLayerColorAt(document, layer, 12, 8).a).toBe(0)
     expect(readLayerColorAt(document, layer, 43, 39).a).toBe(0)
+  })
+
+  it('records 128px solid strokes in typed point buffers and restores them exactly', () => {
+    const document = createDocument('typed large brush history', 256, 256, 'rgba')
+    const layer = getActiveLayer(document)
+    const edit = beginPixelEdit(layer.id)
+
+    paintBrush(document, layer, edit, 96, 128, 128, blue, 'square')
+    paintBrush(document, layer, edit, 100, 128, 128, blue, 'square')
+
+    expect(edit.before.size).toBe(0)
+    expect(edit.points?.count).toBe(132 * 128)
+    const history = commitPixelEdit(document, edit, '128px brush')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 40, 64).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 163, 191).a).toBe(0)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 40, 64)).toEqual(blue)
+    expect(readLayerColorAt(document, layer, 163, 191)).toEqual(blue)
   })
 
 
@@ -219,7 +410,95 @@ describe('pixel tools', () => {
 
   it('rotates the line brush shape with the same angle semantics', () => {
     const mask = brushMaskOffsets(5, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 90)
-    expect(mask.map(({ x, y }) => `${x}:${y}`)).toEqual(['2:0', '2:1', '2:2', '2:3', '2:4'])
+    expect(new Set(mask.map(({ x, y }) => `${x}:${y}`))).toEqual(new Set(['2:0', '2:1', '2:2', '2:3', '2:4']))
+  })
+
+  it('keeps a rotated line brush centered on the pointer pixel', () => {
+    const angle = 45
+    const mask = brushMaskOffsets(5, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+    const stamp = brushStampDimensions(5, null, angle, 'line')
+    const anchor = brushStampAnchor(5, null, angle, 'line')
+    expect((Math.min(...mask.map(({ x }) => x)) + Math.max(...mask.map(({ x }) => x))) / 2).toBe(anchor.x)
+    expect((Math.min(...mask.map(({ y }) => y)) + Math.max(...mask.map(({ y }) => y))) / 2).toBe(anchor.y)
+    expect(stamp).toEqual({ width: 5, height: 5 })
+  })
+
+  it('keeps optimized rotated line brush pixels connected at every angle', () => {
+    for (const angle of [15, 30, 45, 60, 75, 120, 150, 210, 300]) {
+      const mask = brushMaskOffsets(9, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+      expect(mask.length).toBeGreaterThan(1)
+      for (let index = 1; index < mask.length; index += 1) {
+        expect(Math.max(Math.abs(mask[index].x - mask[index - 1].x), Math.abs(mask[index].y - mask[index - 1].y)), `line at ${angle} degrees`).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  it('ignores brush rotation for one-pixel square and line brushes', () => {
+    expect(brushMaskOffsets(1, 'square', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 37)).toEqual([{ x: 0, y: 0, coverage: 255 }])
+    expect(brushMaskOffsets(1, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 37)).toEqual([{ x: 0, y: 0, coverage: 255 }])
+  })
+
+  it('does not leave enclosed holes when a rotated line brush is moved quickly', () => {
+    for (const [angle, from, to] of [
+      [15, { x: 12, y: 48 }, { x: 116, y: 48 }],
+      [30, { x: 12, y: 20 }, { x: 116, y: 72 }],
+      [45, { x: 12, y: 48 }, { x: 116, y: 48 }],
+      [60, { x: 12, y: 72 }, { x: 116, y: 20 }],
+      [90, { x: 64, y: 12 }, { x: 64, y: 84 }],
+      [135, { x: 12, y: 48 }, { x: 116, y: 48 }]
+    ] as const) {
+      const document = createDocument(`fast rotated line brush ${angle}`, 128, 96, 'rgba')
+      const layer = getActiveLayer(document)
+      paintLine(document, layer, beginPixelEdit(layer.id), from.x, from.y, to.x, to.y, 32, blue, null, 'line', 'solid', 1, null, undefined, 0, 'paint', undefined, 'raster', undefined, undefined, undefined, { fromAngle: angle, toAngle: angle }, 'off', undefined, true)
+      const painted = new Set<string>()
+      for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+        if (readLayerColorAt(document, layer, x, y).a > 0) painted.add(`${x}:${y}`)
+      }
+      let enclosedHoles = 0
+      for (let y = 1; y < document.height - 1; y += 1) for (let x = 1; x < document.width - 1; x += 1) {
+        if (painted.has(`${x}:${y}`)) continue
+        if ([`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`].every((key) => painted.has(key))) enclosedHoles += 1
+      }
+      expect(enclosedHoles, `line at ${angle} degrees`).toBe(0)
+    }
+  })
+
+  it('rotates solid square brush stamps instead of keeping an axis-aligned block', () => {
+    const mask = brushMaskOffsets(5, 'square', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 45)
+    expect(Math.max(...mask.map(({ x }) => x))).toBeGreaterThan(4)
+    expect(Math.max(...mask.map(({ y }) => y))).toBeGreaterThan(4)
+    expect(mask.length).toBeLessThan(25)
+  })
+
+  it('compresses solid brush hover footprints without changing their raster pixels', () => {
+    for (const [size, shape, angle] of [
+      [17, 'round', 0],
+      [16, 'square', 0],
+      [17, 'square', 37],
+      [17, 'line', 63]
+    ] as const) {
+      const mask = brushMaskOffsets(size, shape, 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, angle, true)
+      const previewPixels = new Set<string>()
+      for (const span of solidBrushPreviewRowSpans(size, shape, angle, true)) {
+        for (let x = span.left; x <= span.right; x += 1) previewPixels.add(`${x}:${span.y}`)
+      }
+      expect(previewPixels).toEqual(new Set(mask.map(({ x, y }) => `${x}:${y}`)))
+    }
+  })
+
+  it('keeps large solid hover footprints proportional to brush diameter and cached', () => {
+    const square = solidBrushPreviewRowSpans(1024, 'square')
+    const round = solidBrushPreviewRowSpans(1024, 'round')
+    expect(square).toHaveLength(1024)
+    expect(round.length).toBeLessThanOrEqual(1024)
+    expect(solidBrushPreviewRowSpans(1024, 'square')).toBe(square)
+    expect(solidBrushPreviewRowSpans(1024, 'round')).toBe(round)
+  })
+
+  it('invalidates only the newly exposed strip for adjacent solid stamps', () => {
+    const rects = solidBrushStampDifferenceRects({ x: 64, y: 64 }, { x: 65, y: 64 }, 32, 'square')
+    expect(rects.reduce((area, rect) => area + rect.width * rect.height, 0)).toBe(32)
+    expect(rects.every((rect) => rect.width === 1)).toBe(true)
   })
 
 
@@ -245,6 +524,23 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(closed.document, closed.layer, 0, 0).a).toBe(0)
     expect(readLayerColorAt(closed.document, closed.layer, 4, 2)).toEqual(red)
     expect(readLayerColorAt(closed.document, closed.layer, 3, 2)).toEqual(blue)
+  })
+
+  it('uses visible layers as the fill source and connects diagonal pixels in 8-way mode', () => {
+    const document = createDocument('visible layer 8-way fill', 3, 3, 'rgba')
+    const sourceLayer = getActiveLayer(document)
+    const targetLayer = createLayer('Target', 3, 3, 'rgba')
+    document.layers.push(targetLayer)
+    document.activeLayerId = targetLayer.id
+    writeLayerColor(document, sourceLayer, 0, blue)
+    writeLayerColor(document, sourceLayer, 4, blue)
+    const sourceColorAt = createCompositePointSampler(document)
+    const edit = floodFill(document, targetLayer, 0, 0, red, null, true, null, 1, undefined, 'solid', 1, 0, 'paint', 0, 0, undefined, { sourceColorAt, connectivity: 8 })
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, targetLayer, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, targetLayer, 1, 1)).toEqual(red)
+    expect(readLayerColorAt(document, targetLayer, 2, 2).a).toBe(0)
   })
 
   it('keeps uniform large smart-closure fills compact and exactly undoable', () => {
@@ -656,6 +952,14 @@ describe('pixel tools', () => {
     expect(readLayerColor(insideDocument, insideLayer, 4)).toEqual(blue)
   })
 
+  it('strokes an empty selection along its inside boundary', () => {
+    const document = createDocument('empty selection boundary', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const edit = outlineSelectionBoundary(document, layer, { x: 1, y: 1, width: 3, height: 3 }, { r: 255, g: 0, b: 0, a: 255 }, 1)
+    expect(edit).not.toBeNull()
+    expect(edit?.before.size).toBe(8)
+  })
+
   it('treats the configured background color as existing outline instead of source content', () => {
     const document = createDocument('background-aware outline', 5, 5, 'rgba')
     const layer = getActiveLayer(document)
@@ -717,6 +1021,7 @@ describe('pixel tools', () => {
       { id: 2, name: 'second', color: second },
       { id: 3, name: 'midpoint', color: midpoint }
     ]
+    document.paletteOrder = [0, 1, 2, 3]
     paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
 
@@ -740,6 +1045,7 @@ describe('pixel tools', () => {
       { id: 3, name: 'lower relative luminance', color: lowerRelativeLuminance },
       { id: 4, name: 'middle relative luminance', color: middleRelativeLuminance }
     ]
+    document.paletteOrder = [0, 1, 2, 3, 4]
     paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
     paintLine(document, layer, beginPixelEdit(layer.id), 4, 4, 4, 4, 1, lowerRelativeLuminance)
@@ -749,6 +1055,30 @@ describe('pixel tools', () => {
 
     expect(edit).not.toBeNull()
     expect(readLayerColorAt(document, layer, 2, 1)).toEqual(middleRelativeLuminance)
+  })
+
+  it('uses only the current palette after switching away from an old palette', () => {
+    const document = createDocument('switched palette anti-alias color', 5, 5, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 0, g: 0, b: 0, a: 255 }
+    const second = { r: 255, g: 255, b: 255, a: 255 }
+    const oldPaletteMidpoint = { r: 120, g: 120, b: 120, a: 255 }
+    const currentPaletteColor = { r: 220, g: 40, b: 40, a: 255 }
+    document.palette = [
+      { id: 0, name: 'transparent', color: { r: 0, g: 0, b: 0, a: 0 } },
+      { id: 1, name: 'first', color: first },
+      { id: 2, name: 'second', color: second },
+      { id: 3, name: 'old midpoint', color: oldPaletteMidpoint },
+      { id: 4, name: 'current color', color: currentPaletteColor }
+    ]
+    document.paletteOrder = [0, 1, 2, 4]
+    paintLine(document, layer, beginPixelEdit(layer.id), 1, 1, 1, 1, 1, first)
+    paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 2, 2, 1, second)
+
+    const edit = antiAliasSelection(document, layer, null, null, 1, false, 'palette')
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(currentPaletteColor)
   })
 
   it('keeps canvas-source anti-alias colors opaque regardless of the opacity setting', () => {
@@ -831,6 +1161,7 @@ describe('pixel tools', () => {
       { id: 2, name: 'inner', color: inner },
       { id: 3, name: 'midpoint', color: midpoint }
     ]
+    document.paletteOrder = [0, 1, 2, 3]
     paintShape(document, layer, beginPixelEdit(layer.id), { x: 1, y: 1, width: 5, height: 5 }, 'rectangle', outer)
     paintLine(document, layer, beginPixelEdit(layer.id), 2, 2, 4, 4, 1, inner)
 
@@ -901,6 +1232,136 @@ describe('pixel tools', () => {
       }
     }
     expect(opaqueCount).toBe(23)
+  })
+
+  it('uses the RotSprite selection path only while optimized rotation is enabled', () => {
+    const document = createDocument('selection RotSprite switch', 16, 16, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 5, y: 5, width: 5, height: 5 }
+    const pattern = [
+      [0, 1, 2, 0, 0],
+      [1, 1, 0, 0, 2],
+      [0, 2, 1, 1, 0],
+      [0, 0, 2, 0, 1],
+      [1, 0, 0, 2, 1]
+    ]
+    for (let localY = 0; localY < pattern.length; localY += 1) for (let localX = 0; localX < pattern[localY].length; localX += 1) {
+      if (pattern[localY][localX] !== 0) writeLayerColor(document, layer, (selection.y + localY) * document.width + selection.x + localX, pattern[localY][localX] === 1 ? red : blue)
+    }
+    const source = captureSelectionTransform(document, selection, layer)!
+    let differs = false
+    let optimized: Uint32Array<ArrayBufferLike> = new Uint32Array(0)
+    for (let angle = 1; angle < 90 && !differs; angle += 1) {
+      optimized = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, angle, undefined, layer, undefined, undefined, true)
+      const regular = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, angle, undefined, layer, undefined, undefined, false)
+      differs = !Array.from(optimized).every((value, index) => value === regular[index])
+    }
+
+    expect(differs).toBe(true)
+    expect(Array.from(optimized).some((value) => value !== 0)).toBe(true)
+  })
+
+  it('keeps padded selections from changing the rotated content raster', () => {
+    const pattern = [
+      [0, 1, 0, 0, 2],
+      [1, 1, 1, 2, 0],
+      [0, 2, 1, 1, 0],
+      [0, 0, 2, 1, 1],
+      [2, 0, 0, 1, 0]
+    ]
+    const render = (selection: { x: number; y: number; width: number; height: number }): number[] => {
+      const document = createDocument('RotSprite tight content bounds', 32, 32, 'rgba')
+      const layer = getActiveLayer(document)
+      for (let localY = 0; localY < 5; localY += 1) for (let localX = 0; localX < 5; localX += 1) {
+        const value = pattern[localY][localX]
+        if (value !== 0) writeLayerColor(document, layer, (12 + localY) * document.width + 12 + localX, value === 1 ? red : blue)
+      }
+      const source = captureSelectionTransform(document, selection, layer)!
+      applySelectionTransform(document, source, selection, 45, false, undefined, undefined, undefined, layer, undefined, undefined, false, true)
+      return Array.from({ length: document.width * document.height }, (_, index) => packColor(readLayerColorAt(document, layer, index % document.width, Math.floor(index / document.width))))
+    }
+
+    expect(render({ x: 12, y: 12, width: 5, height: 5 }))
+      .toEqual(render({ x: 10, y: 10, width: 9, height: 9 }))
+  })
+
+  it('keeps Aseprite-style 45-degree solid rotations connected', () => {
+    const document = createDocument('RotSprite solid 45 degrees', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7 }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) {
+      for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const painted = new Set<string>()
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+      if (preview[y * document.width + x] !== 0) painted.add(`${x}:${y}`)
+    }
+    expect(painted.size).toBeGreaterThan(0)
+    for (const key of painted) {
+      const [x, y] = key.split(':').map(Number)
+      const connected = painted.has(`${x - 1}:${y}`) || painted.has(`${x + 1}:${y}`)
+        || painted.has(`${x}:${y - 1}`) || painted.has(`${x}:${y + 1}`)
+      expect(connected, `isolated pixel at ${key}`).toBe(true)
+    }
+  })
+
+  it('keeps RotSprite thin lines continuous at 45 degrees', () => {
+    const document = createDocument('RotSprite thin line 45 degrees', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 10, y: 14, width: 9, height: 1 }
+    for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, selection.y * document.width + x, red)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const painted = new Set<string>()
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
+      if (preview[y * document.width + x] !== 0) painted.add(`${x}:${y}`)
+    }
+    expect(painted.size).toBeGreaterThan(1)
+    let edgeCount = 0
+    for (const key of painted) {
+      const [x, y] = key.split(':').map(Number)
+      const neighbors = [
+        painted.has(`${x - 1}:${y - 1}`), painted.has(`${x}:${y - 1}`), painted.has(`${x + 1}:${y - 1}`),
+        painted.has(`${x - 1}:${y}`), painted.has(`${x + 1}:${y}`),
+        painted.has(`${x - 1}:${y + 1}`), painted.has(`${x}:${y + 1}`), painted.has(`${x + 1}:${y + 1}`)
+      ].filter(Boolean).length
+      if (neighbors === 1) edgeCount += 1
+      expect(neighbors).toBeGreaterThan(0)
+    }
+    expect(edgeCount).toBe(2)
+  })
+
+  it('does not rotate pixels outside the selection mask', () => {
+    const document = createDocument('RotSprite masked selection', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7, mask: new Uint8Array(49).fill(1) }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) {
+      for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    }
+    const fullSource = captureSelectionTransform(document, selection, layer)!
+    const fullPreview = selectionTransformPreviewPacked(document, fullSource, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    selection.mask.fill(0)
+    for (let y = 2; y < 5; y += 1) for (let x = 2; x < 5; x += 1) selection.mask[y * selection.width + x] = 1
+    const maskedSource = captureSelectionTransform(document, selection, layer)!
+    const maskedPreview = selectionTransformPreviewPacked(document, maskedSource, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const count = (pixels: Uint32Array): number => Array.from(pixels).filter((value) => value !== 0).length
+    expect(count(maskedPreview)).toBeGreaterThan(0)
+    expect(count(maskedPreview)).toBeLessThan(count(fullPreview))
+  })
+
+  it('keeps a RotSprite interior marker at the rotation centre', () => {
+    const document = createDocument('RotSprite interior marker', 32, 32, 'rgba')
+    const layer = getActiveLayer(document)
+    const selection = { x: 12, y: 12, width: 7, height: 7 }
+    for (let y = selection.y; y < selection.y + selection.height; y += 1) for (let x = selection.x; x < selection.x + selection.width; x += 1) writeLayerColor(document, layer, y * document.width + x, red)
+    writeLayerColor(document, layer, 15 * document.width + 15, blue)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = selectionTransformPreviewPacked(document, source, selection, 0, 0, document.width, document.height, 45, undefined, layer, undefined, undefined, true)
+    const bluePixels: string[] = []
+    for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) if (preview[y * document.width + x] === packColor(blue)) bluePixels.push(`${x}:${y}`)
+    expect(bluePixels).toEqual(['15:15'])
   })
 
   it('commits a four-corner transform from captured pixels without retaining the source', () => {

@@ -12,18 +12,22 @@ mod close_coordinator;
 mod platform_background_presets;
 mod platform_brushes;
 mod platform_clipboard;
+mod platform_cursor;
 mod platform_diagnostics;
 mod platform_dialogs;
 mod platform_extensions;
 mod platform_files;
 mod platform_fonts;
 mod platform_gallery;
+mod platform_local_history;
 mod platform_palette;
 mod platform_paths;
 mod platform_recovery;
 mod platform_resources;
+mod platform_screen_color;
 mod platform_scripts;
 mod platform_storage;
+mod platform_usage_statistics;
 mod platform_workspaces;
 use close_coordinator::CloseCoordinator;
 
@@ -39,24 +43,29 @@ fn supported_file_paths(arguments: impl IntoIterator<Item = OsString>) -> Vec<St
         .map(PathBuf::from)
         .filter(|path| {
             path.is_file()
-                && path
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| {
-                        matches!(
-                            value.to_ascii_lowercase().as_str(),
-                            "moonsprite"
-                                | "ase"
-                                | "aseprite"
-                                | "png"
-                                | "jpg"
-                                | "jpeg"
-                                | "webp"
-                                | "bmp"
-                                | "gif"
-                                | "msext"
-                        )
-                    })
+                && (path
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .ends_with(".moonsprite.bak")
+                    || path
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .is_some_and(|value| {
+                            matches!(
+                                value.to_ascii_lowercase().as_str(),
+                                "moonsprite"
+                                    | "ase"
+                                    | "aseprite"
+                                    | "psd"
+                                    | "png"
+                                    | "jpg"
+                                    | "jpeg"
+                                    | "webp"
+                                    | "bmp"
+                                    | "gif"
+                                    | "msext"
+                            )
+                        }))
         })
         .map(|path| path.to_string_lossy().to_string())
         .collect()
@@ -157,6 +166,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
                 window.set_icon(icon)?;
+                platform_diagnostics::install_webview_failure_diagnostics(&window)?;
             }
             platform_recovery::initialize_session_marker(app.handle())?;
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
@@ -174,11 +184,13 @@ pub fn run() {
             platform_dialogs::save_palette_image,
             platform_dialogs::save_shortcut_file,
             platform_dialogs::save_theme_file,
+            platform_dialogs::save_usage_statistics_file,
             platform_dialogs::default_file_directories,
             platform_dialogs::choose_directory,
             platform_diagnostics::append_diagnostic_events,
             platform_diagnostics::open_diagnostic_logs,
             platform_extensions::list_extensions,
+            platform_extensions::inspect_extension_package,
             platform_extensions::install_extension,
             platform_extensions::choose_and_install_extension,
             platform_extensions::set_extension_enabled,
@@ -189,6 +201,8 @@ pub fn run() {
             platform_files::read_project_preview,
             platform_files::cache_project_preview,
             platform_files::write_binary_atomic,
+            platform_files::open_project_backup_folder,
+            platform_files::list_project_backups,
             platform_files::cancel_scaled_png_export,
             platform_files::write_scaled_png_atomic,
             platform_files::write_project_incremental,
@@ -196,6 +210,9 @@ pub fn run() {
             platform_clipboard::read_clipboard_text,
             platform_clipboard::read_clipboard_image,
             platform_clipboard::read_clipboard_image_size,
+            platform_cursor::set_native_cursor,
+            platform_screen_color::sample_window_color,
+            platform_screen_color::sample_window_color_region,
             platform_resources::get_resource_info,
             platform_palette::list_palettes,
             platform_palette::save_palette,
@@ -226,6 +243,13 @@ pub fn run() {
             platform_recovery::read_recovery,
             platform_recovery::write_recovery,
             platform_recovery::delete_recovery,
+            platform_local_history::read_local_history,
+            platform_local_history::write_local_history,
+            platform_local_history::delete_local_history,
+            platform_usage_statistics::read_usage_statistics,
+            platform_usage_statistics::write_usage_statistics,
+            platform_usage_statistics::usage_statistics_path,
+            platform_usage_statistics::open_usage_statistics_folder,
             platform_gallery::list_gallery_projects,
             platform_gallery::list_folder_projects,
             platform_gallery::delete_gallery_project,
@@ -236,6 +260,7 @@ pub fn run() {
             platform_gallery::open_external_url,
             platform_scripts::list_lua_scripts,
             platform_scripts::open_lua_script_folder,
+            platform_scripts::delete_lua_script,
             platform_scripts::run_lua_script,
             platform_scripts::dispatch_lua_script_dialog,
             platform_scripts::close_lua_script_session,

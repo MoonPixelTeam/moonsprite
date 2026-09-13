@@ -49,9 +49,9 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
     { value: 'moon-ring', label: t('color.scheme.moonRing') },
     { value: 'sv-square', label: t('color.scheme.svSquare') },
     { value: 'hs-square', label: t('color.scheme.hsSquare') },
-    { value: 'wheel', label: t('color.scheme.wheel') }
+    { value: 'wheel', label: t('color.scheme.wheel') },
+    { value: 'normal-map', label: t('color.scheme.normalMap') }
   ]
-  const currentSchemeName = schemeOptions.find((option) => option.value === pickerConfig.scheme)?.label ?? t('panel.color')
   const paletteColors = visiblePaletteColors(session.document.palette, session.document.paletteOrder)
   const tilemapTarget = activeTilemapCelTarget(session.document)
   const selectedTileset = session.tilemapMode === 'paint' && tilemapTarget
@@ -149,7 +149,7 @@ export function ColorPanel({ session, docked = false, onDockDragStart, onPanelCo
   }
 
   return <><section ref={floating.ref} className={`panel color-panel ${panelColorSampling.active ? 'panel-color-sampling' : ''} ${floating.style ? 'floating-panel' : ''}`} style={floating.style} onPointerDown={floating.bringToFront} onPointerUp={completeColorSampling} onContextMenu={onPanelContextMenu}>
-    <header aria-label={t('panel.color')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><small>{currentSchemeName}</small><span className="panel-actions color-scheme-control" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('color.restoreSquare')} aria-label={t('color.restoreSquare')} onClick={restoreSquare}><PixelUtilityIcon kind="paletteCenter" /></button><button ref={schemeButtonRef} type="button" className={schemeMenuOpen ? 'active' : ''} title={t('color.changeScheme')} aria-label={t('color.changeScheme')} aria-expanded={schemeMenuOpen} onClick={() => setSchemeMenuOpen((open) => !open)}><PixelUtilityIcon kind="moreLines" /></button></span></header>
+    <header aria-label={t('panel.color')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><strong>{t('panel.color')}</strong><span className="panel-actions color-scheme-control" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('color.restoreSquare')} aria-label={t('color.restoreSquare')} onClick={restoreSquare}><PixelUtilityIcon kind="paletteCenter" /></button><button ref={schemeButtonRef} type="button" className={schemeMenuOpen ? 'active' : ''} title={t('color.changeScheme')} aria-label={t('color.changeScheme')} aria-expanded={schemeMenuOpen} onClick={() => setSchemeMenuOpen((open) => !open)}><PixelUtilityIcon kind="moreLines" /></button></span></header>
     <ColorPicker color={session.primaryColor} secondaryColor={session.secondaryColor} onChange={setPrimary} onSecondaryChange={setSecondary} paletteColors={paletteColors} onAddPaletteColor={addPaletteColor} addToPaletteShortcut={shortcuts.addForegroundToPalette} roleControls={tileRoleControls} config={pickerConfig} />
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
   </section><FloatingDockPreview style={floating.dockPreview} />

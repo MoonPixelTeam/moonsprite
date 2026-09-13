@@ -1,4 +1,5 @@
-import type { CSSProperties, FocusEventHandler, ReactNode } from 'react'
+import { useRef, type CSSProperties, type FocusEventHandler, type ReactNode } from 'react'
+import { rangeValueWithShiftStep } from '@/core/range-step'
 
 interface RangeFieldProps {
   ariaLabel?: string
@@ -19,6 +20,7 @@ interface RangeFieldProps {
 }
 
 export function RangeField({ ariaLabel, ariaValueText, autoFocus = false, className = '', density = 'regular', disabled = false, label, max, min, onBlur, onChange, step = 1, suffix, value, valueLabel }: RangeFieldProps) {
+  const shiftHeldRef = useRef(false)
   const hasLabel = label !== undefined && label !== null
   const progress = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0
   const displayValue = valueLabel ?? `${value}${suffix ?? ''}`
@@ -33,7 +35,7 @@ export function RangeField({ ariaLabel, ariaValueText, autoFocus = false, classN
     <span className="range-slider" style={sliderStyle}>
       <span className="range-slider-fill" aria-hidden="true" />
       <output className="range-slider-value" aria-hidden="true">{displayValue}</output>
-      <input aria-label={accessibleLabel} aria-valuetext={accessibleValueText} autoFocus={autoFocus} type="range" disabled={disabled} min={min} max={max} step={step} value={value} onBlur={onBlur} onChange={(event) => onChange(Number(event.target.value))} />
+      <input aria-label={accessibleLabel} aria-valuetext={accessibleValueText} autoFocus={autoFocus} type="range" disabled={disabled} min={min} max={max} step={step} value={value} onBlur={(event) => { shiftHeldRef.current = false; onBlur?.(event) }} onPointerDown={(event) => { shiftHeldRef.current = event.shiftKey }} onPointerMove={(event) => { shiftHeldRef.current = event.shiftKey }} onPointerUp={() => { shiftHeldRef.current = false }} onPointerCancel={() => { shiftHeldRef.current = false }} onKeyDown={(event) => { shiftHeldRef.current = event.shiftKey }} onKeyUp={(event) => { shiftHeldRef.current = event.shiftKey }} onChange={(event) => onChange(rangeValueWithShiftStep(Number(event.target.value), min, max, step, suffix === '%' ? 'percentage' : 'number', shiftHeldRef.current))} />
     </span>
   </label>
 }

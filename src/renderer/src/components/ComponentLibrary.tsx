@@ -1,6 +1,7 @@
+import { pixelSource } from '@/components/pixel-source'
 import { useMemo, useState, type ReactElement } from 'react'
 import { FileText, Layers2, Palette, Search } from 'lucide-react'
-import type { GradientDither, ImageBrush, OutlineDirections, OutlineKernel, OutlinePosition, RgbaColor, Tileset } from '@shared/types'
+import type { GradientDither, ImageBrush, InkMode, OutlineDirections, OutlineKernel, OutlinePosition, RgbaColor, Tileset } from '@shared/types'
 import { BrushThumbnail } from './BrushThumbnail'
 import { ColorPicker, type ColorPickerConfig } from './ColorPicker'
 import { ColorValueControl } from './ColorValueControl'
@@ -25,11 +26,14 @@ import { SettingsSectionHeader } from './SettingsSectionHeader'
 import { SettingsNavigation } from './SettingsNavigation'
 import { LivePreviewToggle } from './LivePreviewToggle'
 import { PixelAutoLinkIcon } from './PixelAutoLinkIcon'
+import { PixelInkIcon } from './PixelInkIcon'
+import { PixelDrawingTimeIcon } from './PixelDrawingTimeIcon'
+import { PixelLayerCountIcon } from './PixelLayerCountIcon'
 import { PixelPressureIcon } from './PixelPressureIcon'
 import { OutlineStrokeControls } from './OutlineStrokeControls'
 import { TilesetTileThumbnail } from './TilesetTileThumbnail'
 import { BrushDynamicsSettingsPanel } from './app/EditorToolOptions'
-import { FILL_KIND_ICONS, GRADIENT_TYPE_ICONS, SELECTION_KIND_ICONS, fillKindDefinitions, lineKindDefinitions, normalEditorToolIconFor, selectionKindDefinitions, shapeKindDefinitions, toolDefinitions } from './app/editor-tools'
+import { FILL_KIND_ICONS, GRADIENT_TYPE_ICONS, LIQUIFY_MODE_ICONS, SELECTION_KIND_ICONS, fillKindDefinitions, lineKindDefinitions, normalEditorToolIconFor, selectionKindDefinitions, shapeKindDefinitions, toolDefinitions } from './app/editor-tools'
 import selectionShrinkIcon from '@/assets/pixel-icons/selection-shrink.svg'
 import quickAntiAliasIcon from '@/assets/pixel-icons/quick-command-anti-alias.svg'
 import { CURSOR_ICON_LIBRARY } from '@/platform/cursor-theme'
@@ -86,7 +90,7 @@ const pixelIconNames: Partial<Record<PixelUtilityIconKind, string>> = {
   newFolder: '新建文件夹', ungroupFolder: '解组文件夹', plus: '加', minus: '减', close: '叉', up: '上', down: '下',
   left: '左', right: '右', onion: '洋葱皮', more: '更多', moreLines: '更多（横线）', paletteLocal: '选择本地色板',
   paletteCenter: '居中', restore: '恢复', undo: '撤销', redo: '重做', workspace: '工作区', copy: '复制',
-  linkedLayer: '关联图层', mergeDown: '向下合并', mergeVisible: '合并可见图层', clippingMask: '剪贴蒙版', layerMask: '图层蒙版', layerStyle: '图层样式', folder: '文件夹', folderOpen: '展开文件夹', move: '移动',
+  linkedLayer: '关联图层', mergeDown: '向下合并', mergeVisible: '合并可见图层', clippingMask: '剪贴蒙版', layerMask: '图层蒙版', layerStyle: '图层样式', folder: '文件夹', folderOpen: '展开文件夹', move: '移动', aspectLink: '关联', swap: '切换',
   save: '保存', export: '导出', image: '图像', roadmapPlanned: '未完成', roadmapCompleted: '完成',
   info: '信息', canvasCenter: '居中', canvasAnchorCenter: '画布居中锚点', canvasTop: '上', canvasBottom: '下', canvasLeft: '左', canvasRight: '右',
   canvasTopLeft: '左上', canvasTopRight: '右上', canvasBottomLeft: '左下', canvasBottomRight: '右下',
@@ -98,12 +102,17 @@ const pixelIconNames: Partial<Record<PixelUtilityIconKind, string>> = {
   resetView: '重置视图', deleteSelection: '删除选区内容', rotateClockwise90: '顺时针旋转 90°',
   rotateCounterClockwise90: '逆时针旋转 90°', tileRepeatX: 'X轴平铺', tileRepeatY: 'Y轴平铺', tileRepeatBoth: '包围平铺',
   tilemap: '瓦片', tilePaint: '绘制瓦片', convertTo: '转换为', tileModeEdit: '原位编辑',
-  tileModeCreate: '变体创建', tileModeHybrid: '混合编辑', timelapse: '缩时视频', grid: '网格'
+  tileModeCreate: '变体创建', tileModeHybrid: '混合编辑', timelapse: '缩时视频', grid: '网格', ink: '墨水'
 }
 
 const pixelIconNameOverrides: Partial<Record<PixelUtilityIconKind, string>> = { link: '连接', paste: '粘贴' }
 const pixelIconTitle = (kind: PixelUtilityIconKind): string => `名称: ${pixelIconNameOverrides[kind] ?? pixelIconNames[kind] ?? kind} · ID: ${kind}`
 const iconLibraryTitle = (name: string, id: string): string => `名称: ${name} · ID: ${id}`
+const inkModeIconDefinitions: ReadonlyArray<{ mode: InkMode; label: TranslationKey }> = [
+  { mode: 'simple', label: 'toolOptions.inkSimple' },
+  { mode: 'copy-alpha-color', label: 'toolOptions.inkCopyAlphaColor' },
+  { mode: 'lock-alpha', label: 'toolOptions.inkLockAlpha' }
+]
 
 const cursorNames: Record<string, { zh: string; en: string }> = {
   default: { zh: '默认指针', en: 'Default pointer' }, help: { zh: '帮助指针', en: 'Help pointer' }, progress: { zh: '进度指针', en: 'Progress pointer' }, wait: { zh: '等待指针', en: 'Wait pointer' }, project: { zh: '项目指针', en: 'Project pointer' }, crosshair: { zh: '十字指针', en: 'Crosshair pointer' }, text: { zh: '文本指针', en: 'Text pointer' }, pointer: { zh: '指向指针', en: 'Pointer' },
@@ -161,7 +170,19 @@ const toolLibraryItems = (locale: AppLocale) => {
     { id: 'tool.gradient.linear', name: previewText(locale, 'linearGradient'), largeSource: GRADIENT_TYPE_ICONS.linear, normalSource: GRADIENT_TYPE_ICONS.linear },
     { id: 'tool.gradient.radial', name: previewText(locale, 'radialGradient'), largeSource: GRADIENT_TYPE_ICONS.radial, normalSource: GRADIENT_TYPE_ICONS.radial }
   ]
-  return [...toolItems, ...gradientModeItems]
+  const liquifyModeItems = ([
+    ['push', 'toolOptions.liquifyPush'],
+    ['inflate', 'toolOptions.liquifyInflate'],
+    ['deflate', 'toolOptions.liquifyDeflate'],
+    ['twist-clockwise', 'toolOptions.liquifyTwistClockwise'],
+    ['twist-counter-clockwise', 'toolOptions.liquifyTwistCounterClockwise']
+  ] as const).map(([mode, labelKey]) => ({
+    id: `tool.liquify.${mode}`,
+    name: componentText(locale, labelKey),
+    largeSource: LIQUIFY_MODE_ICONS[mode],
+    normalSource: LIQUIFY_MODE_ICONS[mode]
+  }))
+  return [...toolItems, ...gradientModeItems, ...liquifyModeItems]
 }
 
 const localizeEntry = (entry: ComponentLibraryEntry, locale: AppLocale): ComponentLibraryEntry => ({
@@ -174,7 +195,7 @@ const localizeEntry = (entry: ComponentLibraryEntry, locale: AppLocale): Compone
 export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
   { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: '.primary-button / .quiet-button / .danger-button', tags: ['操作', '状态'] },
   { id: 'icon-button', name: '图标按钮', category: 'controls', description: '工具栏和面板标题中的方形图标操作。', source: '.icon-button', tags: ['图标', '工具栏'] },
-  { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '统一收录界面状态、动画自动链接和压感操作使用的 5×5、6×6 或 11×11 像素图标，以整数比例显示并保留原稿半透明边缘。', source: 'PixelUtilityIcon / PixelAutoLinkIcon / PixelPressureIcon / assets/pixel-icons/*.svg', tags: ['图标', '状态', '操作'] },
+  { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '统一收录界面状态、动画自动链接、压感操作和墨水模式使用的像素图标，以整数比例显示并保留原稿半透明边缘。', source: 'PixelUtilityIcon / PixelAutoLinkIcon / PixelPressureIcon / PixelInkIcon / assets/pixel-icons/*.svg', tags: ['图标', '状态', '操作'] },
   { id: 'tool-icons', name: '工具图标', category: 'editor', description: '工具、选区、形状、填充、渐变和不同尺寸的像素工具图标。', source: 'editor-tools.tsx / PixelAssetIcon', tags: ['图标', '工具', '工具栏'] },
   { id: 'pointer-icons', name: '指针图标', category: 'editor', description: '画布、选区、缩放、旋转和调整操作使用的像素指针。', source: 'platform/cursor-theme.ts', tags: ['图标', '工具'] },
   { id: 'delete-icon-button', name: '删除图标按钮', category: 'controls', description: '用于删除预设或列表项目的统一危险图标按钮，提供紧凑、常规和禁用状态。', source: 'DeleteIconButton', tags: ['删除', '危险', '图标'] },
@@ -353,8 +374,8 @@ function PanelHeaderPreview({ locale }: { locale: AppLocale }) {
 function PixelUtilityIconPreview({ locale }: { locale: AppLocale }) {
   const [locked, setLocked] = useState(true)
   const [visible, setVisible] = useState(true)
-  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasAnchorCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
-  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')} aria-label={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${quickAntiAliasIcon}")` } as React.CSSProperties} aria-hidden="true" /></button><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link disabled" title="Auto-link disabled"><PixelAutoLinkIcon enabled={false} /></span><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link enabled" title="Auto-link enabled"><PixelAutoLinkIcon enabled /></span><button type="button" className="icon-button" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')}><PixelPressureIcon /></button><button type="button" className="icon-button selected" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')} aria-pressed="true"><PixelPressureIcon /></button><button type="button" className="icon-button" title={componentText(locale, 'componentLibrary.preview.disabled')} aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><PixelPressureIcon /></button></div>
+  const kinds = ['properties', 'delete', 'newFolder', 'ungroupFolder', 'plus', 'minus', 'close', 'up', 'down', 'left', 'right', 'onion', 'more', 'moreLines', 'paletteLocal', 'paletteCenter', 'restore', 'undo', 'redo', 'workspace', 'copy', 'link', 'linkedLayer', 'paste', 'mergeDown', 'mergeVisible', 'clippingMask', 'layerMask', 'layerStyle', 'folder', 'folderOpen', 'move', 'aspectLink', 'swap', 'save', 'export', 'image', 'roadmapPlanned', 'roadmapCompleted', 'info', 'canvasCenter', 'canvasAnchorCenter', 'canvasHorizontalCenter', 'canvasVerticalCenter', 'canvasTop', 'canvasBottom', 'canvasLeft', 'canvasRight', 'canvasTopLeft', 'canvasTopRight', 'canvasBottomLeft', 'canvasBottomRight', 'checkboxUnchecked', 'checkboxChecked', 'pin', 'clearRecords', 'refresh', 'extractColors', 'detectImageScale', 'follow', 'check', 'selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'selectAll', 'deselect', 'selectionOutline', 'resetView', 'deleteSelection', 'rotateClockwise90', 'rotateCounterClockwise90', 'tileRepeatX', 'tileRepeatY', 'tileRepeatBoth', 'tilemap', 'tilePaint', 'convertTo', 'tileModeEdit', 'tileModeCreate', 'tileModeHybrid', 'timelapse', 'grid'] as const
+  return <div className="component-preview-row"><button type="button" title={pixelIconTitle(locked ? 'lock' : 'unlock')} className={locked ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(locked ? 'lock' : 'unlock')} aria-pressed={locked} onClick={() => setLocked((value) => !value)}><PixelUtilityIcon kind={locked ? 'lock' : 'unlock'} /></button><button type="button" title={pixelIconTitle(visible ? 'eye' : 'eyeOff')} className={visible ? 'icon-button selected' : 'icon-button'} aria-label={pixelIconTitle(visible ? 'eye' : 'eyeOff')} aria-pressed={visible} onClick={() => setVisible((value) => !value)}><PixelUtilityIcon kind={visible ? 'eye' : 'eyeOff'} /></button>{kinds.map((kind) => <button key={kind} type="button" className="icon-button" title={pixelIconTitle(kind)} aria-label={pixelIconTitle(kind)}><PixelUtilityIcon kind={kind} /></button>)}<button type="button" className="icon-button" title={pixelIconTitle('lock')} aria-label={pixelIconTitle('lock')} disabled><PixelUtilityIcon kind="lock" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')} aria-label={iconLibraryTitle(componentText(locale, 'toolOptions.shrinkSelection'), 'selection-shrink')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${selectionShrinkIcon}")` } as React.CSSProperties} aria-hidden="true" /></button><button type="button" className="icon-button" title={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')} aria-label={iconLibraryTitle(componentText(locale, 'quickCommands.quickAntiAlias'), 'quick-command-anti-alias')}><span className="pixel-asset-icon pixel-utility-asset-icon" style={{ '--pixel-icon-source': `url("${quickAntiAliasIcon}")` } as React.CSSProperties} aria-hidden="true" /></button>{inkModeIconDefinitions.map(({ mode, label }) => <button key={mode} type="button" className="icon-button" title={iconLibraryTitle(translate(locale, label), `ink-${mode}`)} aria-label={iconLibraryTitle(translate(locale, label), `ink-${mode}`)}><PixelInkIcon mode={mode} /></button>)}<button type="button" className="icon-button" title={iconLibraryTitle('有效绘画时长', 'drawing-time')} aria-label={iconLibraryTitle('有效绘画时长', 'drawing-time')}><PixelDrawingTimeIcon /></button><button type="button" className="icon-button" title={iconLibraryTitle('图层数量', 'layer-count')} aria-label={iconLibraryTitle('图层数量', 'layer-count')}><PixelLayerCountIcon /></button><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link disabled" title="Auto-link disabled"><PixelAutoLinkIcon enabled={false} /></span><span className="component-auto-link-icon-preview" role="img" aria-label="Auto-link enabled" title="Auto-link enabled"><PixelAutoLinkIcon enabled /></span><button type="button" className="icon-button" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')}><PixelPressureIcon /></button><button type="button" className="icon-button selected" title={componentText(locale, 'toolOptions.brushDynamics')} aria-label={componentText(locale, 'toolOptions.brushDynamics')} aria-pressed="true"><PixelPressureIcon /></button><button type="button" className="icon-button" title={componentText(locale, 'componentLibrary.preview.disabled')} aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><PixelPressureIcon /></button></div>
 }
 
 function ToolIconPreview({ locale }: { locale: AppLocale }) {
@@ -555,8 +576,8 @@ const componentBrushes: ImageBrush[] = [
 function BrushThumbnailPreview({ locale }: { locale: AppLocale }) {
   const [selected, setSelected] = useState(0)
   return <div className="component-preview-row" style={{ '--brush-swatch-size': '48px' } as React.CSSProperties}>
-    {componentBrushes.map((brush, index) => <button key={brush.id} type="button" className={`swatch brush-swatch transparent ${selected === index ? 'selected' : ''}`} aria-label={`${componentText(locale, 'componentLibrary.preview.brush')} ${index + 1}`} aria-pressed={selected === index} onClick={() => setSelected(index)}><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail brush={brush} /></span></button>)}
-    <button type="button" className="swatch brush-swatch transparent" aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail brush={componentBrushes[0]} /></span></button>
+    {componentBrushes.map((brush, index) => <button key={brush.id} type="button" className={`swatch brush-swatch transparent ${selected === index ? 'selected' : ''}`} aria-label={`${componentText(locale, 'componentLibrary.preview.brush')} ${index + 1}`} aria-pressed={selected === index} onClick={() => setSelected(index)}><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail source={pixelSource(brush)} /></span></button>)}
+    <button type="button" className="swatch brush-swatch transparent" aria-label={componentText(locale, 'componentLibrary.preview.disabled')} disabled><span className="brush-swatch-preview" aria-hidden="true"><BrushThumbnail source={pixelSource(componentBrushes[0])} /></span></button>
   </div>
 }
 

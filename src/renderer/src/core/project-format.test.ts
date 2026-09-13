@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { strFromU8, unzipSync, zipSync, type Zippable } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
 import { activateAnimationFrame, addBlankAnimationFrame, cloneAnimationCelsForLayer, connectAnimationCels, duplicateAnimationFrame, ensureAnimationDocument, refreshActiveAnimationFrame, resizeAnimationCelsAt, syncActiveAnimationFrame, syncActiveAnimationLayer } from './animation'
-import { animationMaskAt, createDocument, createLayer, createLayerMask, duplicateLayer, getActiveLayer, getLayerStorageOrigin, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
+import { animationMaskAt, cachedLayerContentBounds, createDocument, createLayer, createLayerMask, duplicateLayer, getActiveLayer, getLayerStorageOrigin, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { applySelectionTranslationPreview, captureSelectionTransform, restoreSelectionTranslationPreview } from './tools'
 import { acceptProjectSaveBaseline, compactProjectRasterStorage, decodeProject, encodeProject, encodeProjectAsync, encodeProjectSaveAsync, encodeProjectWorkerPayload, PROJECT_SCHEMA_VERSION, migrateProjectManifest, readProjectGalleryMetadata, registerProjectSaveBaseline, type ProjectEncodeWorkerPayload } from './project-format'
 import { rasterStorageIdentity, runtimeRasterForSurface, surfacePixelsMaterialized } from './runtime-raster'
@@ -115,6 +115,28 @@ describe('project manifest migration boundary', () => {
     expect(reopened.layers[1].autoLinkAnimationCels).toBeUndefined()
   })
 
+  it('round-trips animation cel z coordinates', () => {
+    const document = createDocument('cel z coordinate', 2, 2, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    timeline.cels[0].zIndex = -37
+
+    const reopened = decodeProject(encodeProject(document))
+    expect(reopened.animation?.cels[0].zIndex).toBe(-37)
+  })
+
+  it('opens schema v18 projects after the cel z coordinate format upgrade', () => {
+    const files = unzipSync(encodeProject(createDocument('v18 project', 2, 2, 'rgba')))
+    const manifest = JSON.parse(strFromU8(files['manifest.json']))
+    manifest.schemaVersion = 18
+    manifest.document.schemaVersion = 18
+    files['manifest.json'] = strToU8(JSON.stringify(manifest))
+
+    expect(decodeProject(zipSync(files))).toMatchObject({
+      name: 'v18 project',
+      schemaVersion: PROJECT_SCHEMA_VERSION
+    })
+  })
+
   it('writes shared pixel storage with one canonical geometry after a non-active cel diverges', () => {
     const document = createDocument('shared raster geometry save', 42, 39, 'rgba')
     const timeline = ensureAnimationDocument(document)
@@ -196,6 +218,64 @@ describe('project manifest migration boundary', () => {
     expect(repairedCelEntry.dataFile).not.toBe(repairedLayerEntry.dataFile)
     expect(patchFiles[repairedCelEntry.dataFile]).toBeDefined()
     expect(Array.from(patchFiles[repairedCelEntry.dataFile].subarray(0, 4))).toEqual([220, 30, 40, 255])
+  })
+
+  it('does not reuse a tileset resource after its layout grows', async () => {
+    const document = createDocument('incremental tileset layout change', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    document.tilesets = [tileset]
+    const archive = encodeProject(document)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-tileset-layout-change.moonsprite', archive)).toBe(true)
+
+    tileset.rows = 2
+    tileset.pixels = new Uint8ClampedArray(tileset.columns * tileset.rows * tileset.tileWidth * tileset.tileHeight * 4)
+    const encoded = await encodeProjectSaveAsync(document)
+    const files = unzipSync(encoded.data)
+
+    expect(files['tilesets/tileset-1.rgba']).toHaveLength(32)
+    expect(encoded.reusableEntries.some((entry) => entry.path === 'tilesets/tileset-1.rgba')).toBe(false)
+    expect(() => decodeProject(encodeProject(document))).not.toThrow()
+  })
+
+  it('does not reuse a corrupt tileset resource from an incremental baseline', async () => {
+    const document = createDocument('incremental corrupt tileset baseline', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    document.tilesets = [tileset]
+    const files = unzipSync(encodeProject(document))
+    files['tilesets/tileset-1.rgba'] = files['tilesets/tileset-1.rgba'].subarray(0, 12)
+    const corruptArchive = zipSync(files)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-corrupt-tileset-baseline.moonsprite', corruptArchive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const repairedFiles = unzipSync(encoded.data)
+
+    expect(repairedFiles['tilesets/tileset-1.rgba']).toHaveLength(16)
+    expect(encoded.reusableEntries.some((entry) => entry.path === 'tilesets/tileset-1.rgba')).toBe(false)
+    expect(() => decodeProject(encodeProject(document))).not.toThrow()
+  })
+
+  it('records reusable resource lengths and raster metadata in the save plan', async () => {
+    const document = createDocument('incremental save plan metadata', 4, 3, 'rgba')
+    const archive = encodeProject(document)
+    expect(registerProjectSaveBaseline(document, 'D:/gallery/incremental-save-plan-metadata.moonsprite', archive)).toBe(true)
+
+    const encoded = await encodeProjectSaveAsync(document)
+    const files = unzipSync(encoded.data)
+    const plan = JSON.parse(strFromU8(files['.moonsprite-save-plan.json'])) as { version: number; entries: Array<{ path: string; crc32: number; byteLength: number; encoding?: string; width?: number; height?: number }> }
+
+    expect(plan.version).toBe(2)
+    expect(plan.entries.length).toBeGreaterThan(0)
+    expect(plan.entries.every((entry) => entry.crc32 >= 0 && entry.byteLength > 0)).toBe(true)
+    expect(plan.entries.some((entry) => (entry.encoding === 'raw' || entry.encoding === 'sparse-tiles-v1') && entry.width === 4 && entry.height === 3)).toBe(true)
+  })
+
+  it('refuses to save a tileset whose pixels do not match its declared layout', () => {
+    const document = createDocument('invalid tileset storage', 2, 2, 'rgba')
+    const tileset = createSolidTileset('tileset-1', 'Tiles', 2, 2, { r: 10, g: 20, b: 30, a: 255 }, 'tile-1')
+    tileset.rows = 2
+    document.tilesets = [tileset]
+
+    expect(() => encodeProject(document)).toThrow()
   })
 
   it('rejects a raw raster size mismatch instead of substituting another frame resource', () => {
@@ -624,9 +704,9 @@ describe('project manifest migration boundary', () => {
     const restoredCel = ensureAnimationDocument(restored).cels[0]
 
     expect(manifest.document.layers[0].kind).toBe('text')
-    expect(manifest.document.animation.cels[0].text).toEqual(cel.text)
+    expect(manifest.document.animation.cels[0].text).toMatchObject(cel.text)
     expect(getActiveLayer(restored).kind).toBe('text')
-    expect(restoredCel.text).toEqual(cel.text)
+    expect(restoredCel.text).toMatchObject(cel.text)
     expect(restoredCel.surface).toMatchObject({ offsetX: 3, offsetY: 4 })
     expect(restoredCel.surface?.pixels.slice(0, 4)).toEqual(new Uint8ClampedArray([12, 34, 56, 200]))
   })
@@ -644,6 +724,17 @@ describe('project manifest migration boundary', () => {
     expect(entry.dataEncoding).toBe('sparse-tiles-v1')
     expect(entry.dataFile).toMatch(/\.tiles$/)
     expect(getActiveLayer(restored).pixels).toEqual(pixels)
+  })
+
+  it('prewarms sparse visible bounds for magic wand', () => {
+    const document = createDocument('sparse visible bounds', 128, 128, 'rgba')
+    const pixels = getActiveLayer(document).pixels as Uint8ClampedArray
+    pixels[(80 * 128 + 96) * 4 + 3] = 255
+
+    const restored = decodeProject(encodeProject(document))
+    const layer = getActiveLayer(restored)
+
+    expect(cachedLayerContentBounds(restored, layer)).toEqual({ x: 64, y: 64, width: 64, height: 64 })
   })
 
   it('rejects malformed sparse raster containers', () => {

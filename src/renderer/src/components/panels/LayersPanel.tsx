@@ -1,8 +1,10 @@
+import { pixelSource, type PixelSource } from '@/components/pixel-source'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, AnimationTimeline, BlendMode, LayerGroup, LayerMask, PaletteEntry, RasterLayer, RgbaColor, Tileset } from '@shared/types'
 import { AnimationLoopSectionDialog, type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
+import { observeToolbarExtent } from '@/components/toolbar-extent'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'
@@ -22,6 +24,7 @@ import { buildLayerPanelTree, getLayerPanelAncestorGroupIds, layerPanelRevealScr
 import { DEFAULT_ONION_SKIN_PREFERENCES, loadEditorPreferences, saveEditorPreferences, type OnionSkinPreferences } from '@/core/file-preferences'
 import { animationCelHasContent, animationCelKey, animationGroupMaskAt, createAnimationCelLookup, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { animationLoopSectionAtFrame, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
+import { decodeDocumentFileAsync } from '@/core/document-files'
 import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { formatShortcutBindingsForLocale, loadShortcutBindings, shortcutBindingsFor, type ShortcutId } from '@/core/shortcuts'
 import { useWorkspace, type DocumentSession, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from '@/store/workspace'
@@ -30,9 +33,10 @@ import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import { CheckboxField } from '@/components/CheckboxField'
+import { PixelCheckbox } from '@/components/PixelCheckbox'
 import { CANVAS_SELECTION_PRESERVE_EVENT, CANVAS_SELECTION_STARTED_EVENT, LAYER_PANEL_REVEAL_EVENT, type CanvasSelectionPreserveDetail, type CanvasSelectionStartedDetail, type LayerPanelRevealDetail } from '@/components/layer-panel-reveal'
 import { rasterStorageIdentity } from '@/core/runtime-raster'
-import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, LAYER_DENSITY_ORDER as layerDensityOrder, loadFreeTileInstancePanelLayout, loadLayerDensity, loadLayerSideDockAutoHide, saveLayerDensity, saveLayerSideDockAutoHide, type FreeTileInstancePanelLayout, type LayerDisplayDensity } from '@/core/layer-panel-preferences'
+import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, DEFAULT_LAYER_QUICK_ACTIONS, LAYER_DENSITY_ORDER as layerDensityOrder, LAYER_QUICK_ACTION_LIMIT, loadFreeTileInstancePanelLayout, loadLayerDensity, loadLayerQuickActions, loadLayerSideDockAutoHide, saveLayerDensity, saveLayerQuickActions, saveLayerSideDockAutoHide, type FreeTileInstancePanelLayout, type LayerDisplayDensity, type LayerQuickAction, type LayerQuickActionId } from '@/core/layer-panel-preferences'
 import { LayerStyleDialog } from '@/components/LayerStyleDialog'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles } from '@/core/layer-styles'
 import { BackgroundLayerDialog } from '@/components/BackgroundLayerDialog'
@@ -47,6 +51,7 @@ import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
 import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
 import { notifyAnimationCelThumbnailPreview, notifyLayerMaskThumbnailPreview, registerAnimationCelThumbnailPreviewListener, registerLayerMaskThumbnailPreviewListener } from '@/core/canvas-preview-lifecycle'
+import type { TranslationKey } from '@/core/localization'
 
 type LayerFormTarget = LayerPropertyTarget
 type BatchProperty = LayerPropertyField
@@ -64,10 +69,24 @@ type LayerPanelToggleTarget =
 type LayerAutoLinkToggleTarget = { control: 'auto-link'; ownerKind: 'layer'; id: string }
 type LayerDisplayRow = { kind: 'node'; node: LayerTreeNode } | { kind: 'mask'; ownerKind: 'layer' | 'group'; owner: RasterLayer | LayerGroup; depth: number }
 type DropTarget = { kind: 'layer'; id: string; insertAfter?: boolean; depth: number } | { kind: 'group'; id: string; depth: number } | { kind: 'above-group'; id: string; insertAfter?: boolean; depth: number } | { kind: 'edge'; edge: 'top' | 'bottom'; offset?: number }
-interface LayerContextMenu { kind: 'layer' | 'group'; id: string; x: number; y: number }
+interface LayerContextMenu {
+  kind: 'layer' | 'group'
+  id: string
+  x: number
+  y: number
+  /**
+   * The selection is captured when the menu opens.  A portalled menu receives
+   * its click after the originating row has had a chance to re-render, so
+   * resolving this lazily could degrade a multi-row edit into an edit of the
+   * last row that was right-clicked.
+   */
+  propertyTargets: LayerFormTarget[]
+  propertySelectionIncludesUnsupported: boolean
+}
 interface LayerCreateContextMenu { x: number; y: number }
 interface LayerStyleDialogState { source: LayerFormTarget; targets: LayerFormTarget[] }
 interface LayerStyleDragState { source: LayerFormTarget; target: LayerFormTarget | null; startX: number; startY: number; x: number; y: number; moved: boolean }
+interface LayerQuickActionPointerDrag { id: LayerQuickActionId; pointerId: number; captureTarget: HTMLElement }
 function LayerContextMenuItem({ icon, label, shortcut, onClick, danger = false, disabled = false }: { icon: PixelUtilityIconKind; label: ReactNode; shortcut?: ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean }) {
   return <button role="menuitem" className={danger ? 'danger' : undefined} disabled={disabled} onClick={onClick}><span className="layer-context-icon"><PixelUtilityIcon kind={icon} /></span><span className="layer-context-label">{label}</span>{shortcut}</button>
 }
@@ -86,7 +105,35 @@ type AnimationPointerDrag =
 type AnimationGestureSelection = { kind: 'frame'; ids: string[] } | { kind: 'cel' | 'mask'; keys: string[] }
 type AnimationGestureActiveTarget = { kind: 'frame'; frameId: string } | { kind: 'cel' | 'mask'; layerId: string; frameId: string }
 type LayerTreeNode = LayerPanelNode & ({ kind: 'layer'; layer: RasterLayer } | { kind: 'group'; group: LayerGroup })
-interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean }
+interface LayerSettingsState { density: LayerDisplayDensity; onionSkin: OnionSkinPreferences; timelineHidden: boolean; sideDockAutoHide: boolean; skipDisabledFrames: boolean; quickActions: LayerQuickAction[] }
+
+const layerQuickActionMetadata = {
+  newLayer: { icon: 'plus', label: 'layers.new' },
+  newTilemapLayer: { icon: 'tilemap', label: 'layers.newTilemap' },
+  newFreeTileLayer: { icon: 'freeTile', label: 'layers.newFreeTile' },
+  newBackgroundLayer: { icon: 'image', label: 'layers.newBackground' },
+  createLayerGroup: { icon: 'newFolder', label: 'layers.newGroup' },
+  duplicateLayer: { icon: 'copy', label: 'layers.duplicate' },
+  deleteLayer: { icon: 'delete', label: 'layers.deleteSelected' },
+  createLinkedLayer: { icon: 'linkedLayer', label: 'layers.createLinkedLayer' },
+  mergeLayerDown: { icon: 'mergeDown', label: 'app.menu.layer.mergeDown' },
+  mergeSelectedLayers: { icon: 'mergeDown', label: 'app.menu.layer.mergeSelected' },
+  mergeLayerGroup: { icon: 'mergeDown', label: 'app.menu.layer.mergeGroup' },
+  mergeVisibleLayers: { icon: 'mergeVisible', label: 'app.menu.layer.mergeVisible' },
+  ungroupLayers: { icon: 'ungroupFolder', label: 'app.menu.layer.ungroup' },
+  toggleClippingMask: { icon: 'clippingMask', label: 'layers.clippingMask' },
+  toggleLayerMask: { icon: 'layerMask', label: 'layers.createLayerMask' },
+  toggleGroupMask: { icon: 'layerMask', label: 'layers.createLayerGroupMask' },
+  openLayerProperties: { icon: 'properties', label: 'layers.layerProperties' },
+  openLayerStyles: { icon: 'layerStyle', label: 'layers.openLayerStyle' },
+  toggleLayerStyles: { icon: 'layerStyle', label: 'layers.layerStyle' },
+  copyLayerStyles: { icon: 'copy', label: 'layers.copyLayerStyle' },
+  pasteLayerStyles: { icon: 'paste', label: 'layers.pasteLayerStyle' },
+  clearLayerStyles: { icon: 'delete', label: 'layers.clearLayerStyle' },
+  convertLayerToBackground: { icon: 'image', label: 'layers.convertToBackground' },
+  convertLayerToTilemap: { icon: 'tilemap', label: 'layers.convertToTilemap' },
+  convertLayerToRaster: { icon: 'image', label: 'layers.convertToRaster' }
+} satisfies Record<LayerQuickActionId, { icon: PixelUtilityIconKind; label: TranslationKey }>
 
 const layoutAnimationLoopSections = (timeline: AnimationTimeline): { items: AnimationLoopSectionLayout[]; laneCount: number } => {
   const candidates = (timeline.loopSections ?? []).flatMap((section) => {
@@ -189,7 +236,8 @@ const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly Palette
   celContentCache.set(storage, entries)
   return value
 }
-function CelThumbnail({ documentId, layerId, cel, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; cel: AnimationCel; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+  const cel = celSource()
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     let cancelScheduledRender: (() => void) | null = null
@@ -249,16 +297,16 @@ const drawLayerMaskThumbnail = (canvas: HTMLCanvasElement, mask: LayerMask, docu
     // Canvas rendering is unavailable in a few test and recovery environments.
   }
 }
-function LayerMaskThumbnail({ mask, revision, documentWidth, documentHeight, thumbnailSize }: { mask: LayerMask; revision: number | string; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function LayerMaskThumbnail({ maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { maskSource: PixelSource<LayerMask>; revision: number | string; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    return scheduleThumbnailRender(() => drawLayerMaskThumbnail(canvas, mask, documentWidth, documentHeight))
-  }, [mask, revision, documentWidth, documentHeight, thumbnailSize])
+    return scheduleThumbnailRender(() => drawLayerMaskThumbnail(canvas, maskSource(), documentWidth, documentHeight))
+  }, [maskSource, revision, documentWidth, documentHeight, thumbnailSize])
   return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
 }
-function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; ownerId: string; frameId: string; mask: LayerMask; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; ownerId: string; frameId: string; maskSource: PixelSource<LayerMask>; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     let cancelScheduledRender: (() => void) | null = null
@@ -270,7 +318,7 @@ function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision
         const current = liveSession()
         const timeline = current?.document.animation
         const liveMask = timeline ? animationMaskAt(timeline, ownerId, frameId) : null
-        if (canvas) drawLayerMaskThumbnail(canvas, liveMask ?? mask, documentWidth, documentHeight)
+        if (canvas) drawLayerMaskThumbnail(canvas, liveMask ?? maskSource(), documentWidth, documentHeight)
       })
     }
     const belongsToActiveMaskGroup = (): boolean => {
@@ -290,7 +338,7 @@ function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, mask, revision
       unregisterPreview()
       cancelScheduledRender?.()
     }
-  }, [documentHeight, documentId, documentWidth, frameId, mask, ownerId, revision, thumbnailSize])
+  }, [documentHeight, documentId, documentWidth, frameId, maskSource, ownerId, revision, thumbnailSize])
   return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
 }
 const useTimelineThumbnailContentSync = (documentId: string): void => {
@@ -319,11 +367,11 @@ const useTimelineThumbnailContentSync = (documentId: string): void => {
     })
   }, [documentId])
 }
-function AnimationCelContent({ active, documentId, layerId, cel, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
+function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
   active: boolean
   documentId: string
   layerId: string
-  cel: AnimationCel
+  celSource: PixelSource<AnimationCel>
   palette: readonly PaletteEntry[]
   revision: number
   documentWidth: number
@@ -332,13 +380,14 @@ function AnimationCelContent({ active, documentId, layerId, cel, palette, revisi
   showThumbnail: boolean
   selectionMarker: boolean
 }) {
+  const cel = celSource()
   const liveRevision = useWorkspace((state) => active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision)
   const liveSession = active ? useWorkspace.getState().sessions.find((item) => item.document.id === documentId) : null
   const livePalette = liveSession?.document.palette ?? palette
   const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)
   if (!hasContent) return null
   return showThumbnail
-    ? <CelThumbnail documentId={documentId} layerId={layerId} cel={cel} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
+    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
     : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
 }
 function ActiveFrameSync({ documentId, frameIds, containerRef, suppressActiveGuide, activeFrameIdOverride }: {
@@ -390,6 +439,12 @@ const selectedRowsForProperties = (session: DocumentSession): LayerFormTarget[] 
     ...layerIds.map((id) => ({ id, kind: 'layer' as const }))
   ]
 }
+
+/** Mask rows are editable image surfaces, not layer/group property owners.
+ * A range selection can contain both kinds of rows, so callers must not
+ * silently apply layer properties to only the supported subset. */
+const hasUnsupportedPropertySelection = (session: DocumentSession): boolean =>
+  session.selectedAnimationMaskRowKeys.length > 0
 export function LayersPanel({ session, docked = false, sideDocked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession; sideDocked?: boolean } & DockDragProps) {
   const { locale, t } = useI18n()
   useTimelineThumbnailContentSync(session.document.id)
@@ -445,15 +500,47 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return value ? <kbd aria-hidden="true">{value}</kbd> : null
   }
   const propertyTransactionRef = useRef<string | null>(null)
+  const timelinePropertiesHistoryRef = useRef<{ documentId: string; kind: 'frame' | 'cel' } | null>(null)
   const pendingPropertyPreviewRef = useRef<LayerFormState | null>(null)
   const propertyPreviewTimerRef = useRef<number | null>(null)
   const dragRef = useRef<LayerDragState | null>(null)
   const layerDragFrameRef = useRef<number | null>(null)
+  const layerDragAutoScrollFrameRef = useRef<number | null>(null)
+  const layerDragPointerRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null)
   const pendingLayerDragRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null)
   const layerListRef = useRef<HTMLDivElement>(null)
   const layerAnimationToolbarRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const handleGifDrop = (event: Event): void => {
+      const detail = (event as CustomEvent<{ documentId?: string; path?: string; x?: number; y?: number }>).detail
+      if (!detail?.documentId || detail.documentId !== session.document.id || !detail.path || !/\.gif$/i.test(detail.path)) return
+      if (!Number.isFinite(detail.x) || !Number.isFinite(detail.y)) return
+      const target = globalThis.document.elementFromPoint(detail.x!, detail.y!)
+      const dropzone = target?.closest<HTMLElement>('.layer-animation-grid')
+      if (!dropzone) return
+      const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+      const liveTimeline = liveSession?.document.animation
+      if (!liveSession || !liveTimeline) return
+      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
+      const frameIndex = Number(frameTarget?.dataset.frameIndex)
+      const startFrameIndex = Number.isInteger(frameIndex) ? frameIndex + 1 : liveTimeline.frames.length
+      void (async () => {
+        try {
+          const bytes = await window.moonSprite.readBinary(detail.path!)
+          const source = await decodeDocumentFileAsync(bytes, detail.path!)
+          if (!source.animation?.frames.length) throw new Error('GIF 没有可导入的动画帧。')
+          const state = useWorkspace.getState()
+          if (state.activeId !== session.document.id) return
+          state.importGifAnimationLayer(source, startFrameIndex)
+        } catch (error) {
+          useWorkspace.getState().setMessage(error instanceof Error ? error.message : '无法导入 GIF。')
+        }
+      })()
+    }
+    window.addEventListener('moonsprite:animation-gif-drop', handleGifDrop)
+    return () => window.removeEventListener('moonsprite:animation-gif-drop', handleGifDrop)
+  }, [session.document.id])
   const animationLoopSectionTrackRef = useRef<HTMLDivElement>(null)
-  const [animationToolbarExtent, setAnimationToolbarExtent] = useState(0)
   const revealSequenceRef = useRef(0)
   const [layerRevealRequest, setLayerRevealRequest] = useState<{ layerId: string; sequence: number } | null>(null)
   const [draggingIds, setDraggingIds] = useState<string[]>([])
@@ -505,6 +592,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }, [selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys.length, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
   const animationFrameDropTargetRef = useRef<{ frameId: string; insertAfter: boolean } | null>(null)
   const [animationFrameDropTarget, setAnimationFrameDropTarget] = useState<{ frameId: string; insertAfter: boolean } | null>(null)
+  const [gifDropTargetIndex, setGifDropTargetIndex] = useState<number | null>(null)
   const [contextMenu, setContextMenu] = useState<LayerContextMenu | null>(null)
   const [layerCreateMenu, setLayerCreateMenu] = useState<LayerCreateContextMenu | null>(null)
   const [backgroundLayerDialogOpen, setBackgroundLayerDialogOpen] = useState(false)
@@ -517,13 +605,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const [animationMenu, setAnimationMenu] = useState<AnimationContextMenu | null>(null)
   const animationMenuRef = useRef<HTMLDivElement>(null)
   const [animationMenuPosition, setAnimationMenuPosition] = useState({ left: 8, top: 8 })
-  const [frameProperties, setFrameProperties] = useState<{ frameId: string; duration: number } | null>(null)
+  const [frameProperties, setFrameProperties] = useState<{ frameId: string; targetFrameIds: string[]; duration: number } | null>(null)
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
-  const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; opacity: number } | null>(null)
+  const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; targetKeys: string[]; opacity: number; zIndex: number } | null>(null)
   const [layerSettingsOpen, setLayerSettingsOpen] = useState(false)
+  const [layerQuickActionsExpanded, setLayerQuickActionsExpanded] = useState(false)
+  const [draggedLayerQuickAction, setDraggedLayerQuickAction] = useState<LayerQuickActionId | null>(null)
+  const layerQuickActionPointerDragRef = useRef<LayerQuickActionPointerDrag | null>(null)
+  const layerQuickActionAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0)
+  const layerQuickActionAutoScrollFrameRef = useRef<number | null>(null)
   const [layerSettings, setLayerSettings] = useState<LayerSettingsState>(() => {
     const preferences = loadEditorPreferences()
-    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide() }
+    return { density: loadLayerDensity(), onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() }
   })
   const [layerSettingsSlider, setLayerSettingsSlider] = useState<'previousOpacity' | 'nextOpacity' | null>(null)
   const [layerLabelWidth, setLayerLabelWidth] = useState(loadLayerLabelWidth)
@@ -566,17 +659,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   useLayoutEffect(() => {
     const toolbar = layerAnimationToolbarRef.current
     const header = toolbar?.closest('header')
-    if (!toolbar || !header) return
-    const updateToolbarExtent = (): void => {
-      const next = Math.max(0, Math.ceil(toolbar.getBoundingClientRect().right - header.getBoundingClientRect().left))
-      setAnimationToolbarExtent((current) => current === next ? current : next)
-    }
-    updateToolbarExtent()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(updateToolbarExtent)
-    observer.observe(toolbar)
-    observer.observe(header)
-    return () => observer.disconnect()
+    const panel = floating.ref.current
+    if (!toolbar || !header || !panel) return
+    return observeToolbarExtent(panel, header, toolbar)
   }, [docked, integratedFreeTileInstanceLayer?.id, layerDensity, layerSettings.timelineHidden, session.document.id])
   const hideAnimationCellSelectionOutline = (): void => {
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
@@ -786,8 +871,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openLayerSettings = (): void => {
     const preferences = loadEditorPreferences()
-    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide() })
+    setLayerSettings({ density: layerDensity, onionSkin: preferences.onionSkin, timelineHidden: preferences.timelineHidden, sideDockAutoHide: loadLayerSideDockAutoHide(), skipDisabledFrames: preferences.skipDisabledFrames, quickActions: loadLayerQuickActions() })
     setLayerSettingsSlider(null)
+    setLayerQuickActionsExpanded(false)
     setLayerSettingsOpen(true)
   }
   const applyLayerSettings = (next: LayerSettingsState): void => {
@@ -796,7 +882,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setLayerDensity(next.density)
     saveLayerDensity(next.density)
     saveLayerSideDockAutoHide(next.sideDockAutoHide)
-    saveEditorPreferences({ ...loadEditorPreferences(), onionSkin: next.onionSkin, timelineHidden: next.timelineHidden })
+    saveLayerQuickActions(next.quickActions)
+    saveEditorPreferences({ ...loadEditorPreferences(), onionSkin: next.onionSkin, timelineHidden: next.timelineHidden, skipDisabledFrames: next.skipDisabledFrames })
     if (next.timelineHidden) {
       setLayerSettingsSlider(null)
       store.setAnimationPlaying(false)
@@ -813,6 +900,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     density: defaultLayerDensity,
     timelineHidden: false,
     sideDockAutoHide: true,
+    skipDisabledFrames: true,
+    quickActions: DEFAULT_LAYER_QUICK_ACTIONS.map((action) => ({ ...action })),
     onionSkin: {
       ...DEFAULT_ONION_SKIN_PREFERENCES,
       previousColor: { ...DEFAULT_ONION_SKIN_PREFERENCES.previousColor },
@@ -821,7 +910,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   })
   const toggleOnionSkin = (): void => {
     const current = loadEditorPreferences().onionSkin
-    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide })
+    applyLayerSettings({ density: layerDensity, onionSkin: { ...current, enabled: !current.enabled }, timelineHidden: layerSettings.timelineHidden, sideDockAutoHide: layerSettings.sideDockAutoHide, skipDisabledFrames: layerSettings.skipDisabledFrames, quickActions: layerSettings.quickActions })
   }
   const selectAnimationFrame = (frameId: string, mode: 'replace' | 'toggle' | 'range' = 'replace'): void => {
     store.selectAnimationFrame(frameId, mode)
@@ -904,20 +993,40 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openFrameProperties = (): void => useFrameMenuTarget(() => {
     const frame = ensureAnimationDocument(session.document).frames.find((candidate) => candidate.id === ensureAnimationDocument(session.document).activeFrameId)
-    if (frame) setFrameProperties({ frameId: frame.id, duration: frame.duration })
+    if (frame) {
+      const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+      store.beginLayerPanelTransaction(session.document.id)
+      timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
+      setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
+    }
   })
   const openFramePropertiesFor = (frameId: string): void => {
     const frame = ensureAnimationDocument(session.document).frames.find((candidate) => candidate.id === frameId)
     if (!frame) return
     if (ensureAnimationDocument(session.document).activeFrameId !== frameId) store.setActiveAnimationFrame(frameId)
-    setFrameProperties({ frameId: frame.id, duration: frame.duration })
+    const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+    store.beginLayerPanelTransaction(session.document.id)
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
+    setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
     setAnimationMenu(null)
   }
   const saveFrameProperties = (): void => {
     if (!frameProperties) return
-    if (ensureAnimationDocument(session.document).activeFrameId !== frameProperties.frameId) store.setActiveAnimationFrame(frameProperties.frameId)
-    store.setActiveAnimationFrameDuration(frameProperties.duration)
+    const transaction = timelinePropertiesHistoryRef.current
+    if (transaction?.kind === 'frame') {
+      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationFrameDuration'))
+      timelinePropertiesHistoryRef.current = null
+    }
     setFrameProperties(null)
+  }
+  const previewFrameProperties = (duration: number): void => {
+    if (!frameProperties) return
+    const next = { ...frameProperties, duration }
+    setFrameProperties(next)
+    // Frame properties apply as the value changes, matching layer-property
+    // feedback. The subsequent Save only closes this already-applied dialog.
+    if (ensureAnimationDocument(session.document).activeFrameId !== next.frameId) store.setActiveAnimationFrame(next.frameId)
+    store.setActiveAnimationFrameDuration(next.duration)
   }
   const nextLoopSectionName = (): string => {
     const names = new Set((ensureAnimationDocument(session.document).loopSections ?? []).map((section) => section.name))
@@ -983,15 +1092,28 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const openCelProperties = (layerId: string, frameId: string): void => {
     const cel = celLookup.at(layerId, frameId)
-    if (!currentCelHasContent(layerId, frameId)) return
-    store.selectAnimationCell(animationCelKey(layerId, frameId))
-    setCelProperties({ layerId, frameId, opacity: Math.round((cel?.opacity ?? 1) * 100) })
+    if (!cel) return
+    const source = celLookup.resolve(cel) ?? cel
+    const key = animationCelKey(layerId, frameId)
+    const targetKeys = session.selectedAnimationCellKeys.includes(key) ? [...session.selectedAnimationCellKeys] : [key]
+    if (!session.selectedAnimationCellKeys.includes(key)) store.selectAnimationCell(key)
+    store.beginLayerPanelTransaction(session.document.id)
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'cel' }
+    setCelProperties({ layerId, frameId, targetKeys, opacity: Math.round((source.opacity ?? 1) * 100), zIndex: source.zIndex ?? 0 })
     setAnimationMenu(null)
   }
   const saveCelProperties = (): void => {
     if (!celProperties) return
-    store.setAnimationCelOpacity(celProperties.layerId, celProperties.frameId, celProperties.opacity / 100)
+    const transaction = timelinePropertiesHistoryRef.current
+    if (transaction?.kind === 'cel') {
+      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationCelProperties'))
+      timelinePropertiesHistoryRef.current = null
+    }
     setCelProperties(null)
+  }
+  const previewCelProperties = (next: NonNullable<typeof celProperties>): void => {
+    setCelProperties(next)
+    store.setAnimationCelProperties(next.layerId, next.frameId, { opacity: next.opacity / 100, zIndex: next.zIndex }, next.targetKeys)
   }
   const openCelMenu = (event: React.MouseEvent<HTMLElement>, layerId: string, frameId: string, kind: 'cel' | 'mask' = 'cel'): void => {
     const key = animationCelKey(layerId, frameId)
@@ -1785,7 +1907,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       if (!target) return
       const insideList = Boolean(list?.contains(target))
       if (insideList && target.closest('.layer-animation-toolbar, .layer-animation-edit, .panel-actions, .layer-style-indicator, .layer-status-icon-tooltip, .layer-visibility, .layer-lock-toggle, .group-folder, .layer-tilemap-indicator, .layer-instance-properties')) return
-      if (target?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .animation-context-menu, .frame-properties-modal, .cel-properties-modal')) return
+      // Property forms are portalled outside the timeline.  They edit the
+      // existing explicit selection, so interacting with any form control
+      // must not be treated as a click on empty canvas/UI and clear it.
+      if (target?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal')) return
       if (insideList && target.closest('[data-layer-id], [data-group-id], [data-layer-mask-row-owner]')) return
       const canvasTarget = target?.closest('.stage-canvas, .stage-surface')
       // Canvas interactions (drawing, panning, zooming, and selection edits)
@@ -2203,17 +2328,36 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const selectedMaskCellFrameIds = new Set(maskCellTargets.map((target) => target.frameId))
   const selectedActivityFrameIds = new Set([...selectedCellFrameIds, ...selectedMaskCellFrameIds])
   const selectedCellLayerIds = new Set(ordinaryCellTargets.map((target) => target.layerId))
+  const selectedMaskCellLayerIds = new Set(maskCellTargets.map((target) => target.layerId))
+  // Masks are rendered on separate rows, so retain the complete selected
+  // owner/frame domain when projecting cel activity onto mask rows.
+  const selectedMaskActivityLayerIds = new Set([...selectedCellLayerIds, ...selectedMaskCellLayerIds])
   const cellSelectionActive = selectionOutlineVisible && selectedCellTargets.length > 0
   const ordinaryCelSelectionVisible = cellSelectionActive && renderedCellKeys.length > 0
     && (session.animationCellSelectionExplicit || animationGestureSelection?.kind === 'cel')
   const hasMultipleCellSelection = renderedCellKeys.length + renderedMaskCellKeys.length > 1
   const hasMultipleLayerSelection = session.selectedLayerIds.length > 1
+  const implicitLayerCellKeys = new Set(session.selectedLayerIds.map((layerId) => animationCelKey(layerId, visualActiveFrameId)))
+  // Selecting multiple layers also mirrors their active-frame cels into the
+  // session. Those keys are an implementation detail of row selection, not a
+  // real cel selection, so they must not suppress the full-row highlight.
+  const onlyImplicitLayerCellSelection = session.layerSelectionExplicit === true
+    && animationGestureSelection === null
+    && hasMultipleLayerSelection
+    && renderedMaskCellKeys.length === 0
+    && renderedCellKeys.length === implicitLayerCellKeys.size
+    && renderedCellKeys.every((key) => implicitLayerCellKeys.has(key))
+  const explicitMultiLayerSelection = session.layerSelectionExplicit === true
+    && hasMultipleLayerSelection
+    && session.selectedLayerIds.length > 1
+    && session.selectedGroupIds.length === 0
+    && session.selectedGroupId === null
   // Suppress the active-frame guide only while the multi-cel selection is
   // visibly shown. Hidden formal selections must still leave the normal
   // active frame/cel context visible.
   const suppressCellSelectionGuides = selectionOutlineVisible && hasMultipleCellSelection && !hasMultipleLayerSelection
   const layerSelectionActive = session.layerSelectionExplicit && selectionOutlineVisible && renderedFrameIds.length === 0 && renderedCellKeys.length === 0 && renderedMaskCellKeys.length === 0
-  const showLayerSelectionAcrossTimeline = layerSelectionActive
+  const showLayerSelectionAcrossTimeline = layerSelectionActive || onlyImplicitLayerCellSelection || explicitMultiLayerSelection
   const selectedFrameIndexes = timeline.frames
     .map((frame, index) => renderedFrameIdSet.has(frame.id) ? index : -1)
     .filter((index) => index >= 0)
@@ -2312,12 +2456,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     }
   })()
   const animationCelDragActive = animationCelDragPreview !== null
-  const implicitLayerCellKeys = new Set(session.selectedLayerIds.map((layerId) => animationCelKey(layerId, visualActiveFrameId)))
-  const onlyImplicitLayerCellSelection = animationGestureSelection === null
-    && hasMultipleLayerSelection
-    && renderedMaskCellKeys.length === 0
-    && renderedCellKeys.length === implicitLayerCellKeys.size
-    && renderedCellKeys.every((key) => implicitLayerCellKeys.has(key))
   const shouldShowAnimationCellSelectionOutline = selectionOutlineVisible && !onlyImplicitLayerCellSelection
     && (session.layerMaskIsolatedView || animationCellSelectionOutlineVisible || animationGestureSelection?.kind === 'cel' || animationGestureSelection?.kind === 'mask')
   const linkedCelGroups = displayRows.flatMap((displayRow, row) => {
@@ -2366,7 +2504,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const highlightedLinkedCelGroups = new Set([
     ...selectedLinkedCelGroups,
     ...linkedCelGroups
-      .filter((group) => group.layerSelected && group.frameIndexSet.has(visualActiveFrameIndex))
+      // The active layer/frame is an implicit visual focus. When that slot is
+      // part of a linked run, keep the run highlighted even before the user
+      // explicitly selects a cel or layer row.
+      .filter((group) => (group.layerSelected || (group.kind === 'cel' && group.layerId === playbackActiveLayerId)) && group.frameIndexSet.has(visualActiveFrameIndex))
       .map(linkedGroupKey)
   ])
   const linkedMaskSlotVisuals = new Map<string, { withPrevious: boolean; withNext: boolean }>()
@@ -2459,11 +2600,15 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const editLayer = (layer: RasterLayer): void => beginProperties({ id: layer.id, kind: 'layer', targets: [{ id: layer.id, kind: 'layer' }], batchChanges: [], name: layer.name, opacity: Math.round(layer.opacity * 100), blendMode: layer.blendMode, cumulativeBlend: false, locked: layer.locked, displayColor: layer.displayColor ? { ...layer.displayColor } : null, description: layer.description ?? '' })
   const editGroup = (group: LayerGroup): void => beginProperties({ id: group.id, kind: 'group', targets: [{ id: group.id, kind: 'group' }], batchChanges: [], name: group.name, opacity: Math.round(group.opacity * 100), blendMode: group.blendMode, cumulativeBlend: group.cumulativeBlend === true, locked: group.locked, displayColor: group.displayColor ? { ...group.displayColor } : null, description: group.description ?? '' })
-  const editSelectedRows = (): void => {
-    const targets = selectedRowsForProperties(session)
+  const editSelectedRows = (frozenTargets?: readonly LayerFormTarget[]): void => {
+    // Menus are portalled. Read the live session rather than the render-time
+    // prop so a Shift/Ctrl row selection made immediately before right-click
+    // cannot be observed as its previous single-row state.
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const targets = frozenTargets ? [...frozenTargets] : selectedRowsForProperties(current)
     if (targets.length <= 1) return
     const first = targets[0]
-    const source = first.kind === 'group' ? session.document.groups.find((group) => group.id === first.id) : session.document.layers.find((layer) => layer.id === first.id)
+    const source = first.kind === 'group' ? current.document.groups.find((group) => group.id === first.id) : current.document.layers.find((layer) => layer.id === first.id)
     if (!source) return
     beginProperties({ id: first.id, kind: first.kind, targets, batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' })
   }
@@ -2712,6 +2857,42 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const targetLayer = session.document.layers.find((layer) => layer.id === target.id)
     return Boolean(targetLayer?.groupId && blockedTargets.has(targetLayer.groupId))
   }
+  const stopLayerDragAutoScroll = (): void => {
+    if (layerDragAutoScrollFrameRef.current !== null) window.cancelAnimationFrame(layerDragAutoScrollFrameRef.current)
+    layerDragAutoScrollFrameRef.current = null
+  }
+  const scheduleLayerDragAutoScroll = (): void => {
+    if (layerDragAutoScrollFrameRef.current !== null) return
+    const tick = (): void => {
+      layerDragAutoScrollFrameRef.current = null
+      const drag = dragRef.current
+      const pointer = layerDragPointerRef.current
+      const list = layerListRef.current
+      const bounds = list?.getBoundingClientRect()
+      if (!drag?.moved || !pointer || !list || !bounds) return
+      const viewportHeight = list.clientHeight || bounds.height
+      const maxScrollTop = Math.max(0, list.scrollHeight - viewportHeight)
+      if (maxScrollTop <= 0 || pointer.clientX < bounds.left || pointer.clientX > bounds.right) return
+      const edgeThreshold = Math.min(48, Math.max(24, viewportHeight * 0.15))
+      const distanceFromTop = pointer.clientY - bounds.top
+      const distanceFromBottom = bounds.bottom - pointer.clientY
+      let delta = 0
+      if (distanceFromTop >= 0 && distanceFromTop < edgeThreshold && list.scrollTop > 0) {
+        delta = -Math.max(2, Math.round((edgeThreshold - distanceFromTop) * 0.5))
+      } else if (distanceFromBottom >= 0 && distanceFromBottom < edgeThreshold && list.scrollTop < maxScrollTop) {
+        delta = Math.max(2, Math.round((edgeThreshold - distanceFromBottom) * 0.5))
+      }
+      if (delta === 0) return
+      const nextScrollTop = Math.max(0, Math.min(maxScrollTop, list.scrollTop + delta))
+      if (nextScrollTop === list.scrollTop) return
+      list.scrollTop = nextScrollTop
+      // Recompute the ghost and drop target against the newly scrolled rows
+      // even when the pointer itself is stationary at the edge.
+      moveLayerDrag(pointer.clientX, pointer.clientY, pointer.altKey)
+      layerDragAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+    }
+    layerDragAutoScrollFrameRef.current = window.requestAnimationFrame(tick)
+  }
   const moveLayerDrag = (clientX: number, clientY: number, altKey: boolean): void => {
     const drag = dragRef.current
     if (!drag) return
@@ -2726,13 +2907,20 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       if (node.kind === 'layer' && draggedLayerIds.has(node.id)) return [{ id: node.id, kind: 'layer', name: node.layer.name }]
       return []
     })
-    const listBounds = layerListRef.current?.getBoundingClientRect()
+    const list = layerListRef.current
+    const listBounds = list?.getBoundingClientRect()
     const selectedCount = drag.wholeGroupSelection
       ? Math.max(1, drag.selectedGroupIds.length)
       : new Set([...drag.selectedLayerIds.map((id) => `layer:${id}`), ...drag.selectedGroupIds.map((id) => `group:${id}`)]).size
     const count = Math.max(items.length, selectedCount)
     const ghostHeight = Math.min(4, Math.max(1, items.length)) * 27 + (count > Math.min(4, items.length) ? 20 : 0)
-    const y = listBounds ? Math.max(0, Math.min(listBounds.height - ghostHeight, clientY - listBounds.top - ghostHeight / 2)) : 0
+    // The ghost is absolutely positioned in the scrollable layer list. Its
+    // `top` therefore uses content coordinates, while pointer events report
+    // viewport coordinates. Include the current scroll offset so the preview
+    // stays under the pointer after the list has been scrolled.
+    const y = listBounds
+      ? Math.max(0, Math.min(Math.max(0, (list?.scrollHeight ?? listBounds.height) - ghostHeight), clientY - listBounds.top + (list?.scrollTop ?? 0) - ghostHeight / 2))
+      : 0
     setDragGhost({ y, items: items.length > 0 ? items : [{ id: drag.row.id, kind: drag.row.kind, name: t('layers.fallbackName') }], count })
     let target = resolveDropTarget(clientX, clientY, drag.ids, drag.groupIds, drag.copy)
     if (target && dropTargetBlockedByGroups(target, drag.groupIds)) target = null
@@ -2753,6 +2941,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     if (pending) moveLayerDrag(pending.clientX, pending.clientY, pending.altKey)
   }
   const finishLayerDrag = (clientX: number, clientY: number): void => {
+    stopLayerDragAutoScroll()
+    layerDragPointerRef.current = null
     if (layerDragFrameRef.current !== null) window.cancelAnimationFrame(layerDragFrameRef.current)
     layerDragFrameRef.current = null
     flushPendingLayerDrag()
@@ -2796,6 +2986,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   useEffect(() => {
     const move = (event: PointerEvent): void => {
       if (dragRef.current) {
+        layerDragPointerRef.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey }
         if (!dragRef.current.moved) moveLayerDrag(event.clientX, event.clientY, event.altKey)
         else {
           pendingLayerDragRef.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey }
@@ -2804,6 +2995,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
             flushPendingLayerDrag()
           })
         }
+        scheduleLayerDragAutoScroll()
       }
       moveAnimationPointerDragRef.current(event)
     }
@@ -2814,6 +3006,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return () => {
       if (layerDragFrameRef.current !== null) window.cancelAnimationFrame(layerDragFrameRef.current)
       layerDragFrameRef.current = null
+      stopLayerDragAutoScroll()
+      layerDragPointerRef.current = null
       pendingLayerDragRef.current = null
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', finish)
@@ -2883,10 +3077,27 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     event.preventDefault()
     event.stopPropagation()
     const wasEditingLayerMask = Boolean(session.activeLayerMaskId)
-    if (kind === 'layer' && (wasEditingLayerMask || session.selectedGroupId || !session.selectedLayerIds.includes(id))) store.selectLayer(id)
+    // Preserve an existing mixed/multi row selection when the context menu is
+    // opened on one of its members.  The previous selectedGroupId check
+    // forced a replace-selection whenever a group was still the active row,
+    // so creating a group from the context menu silently dropped the other
+    // explicitly selected layers.  A non-selected target still becomes the
+    // sole context selection, and mask editing keeps its existing escape path.
+    if (kind === 'layer' && (wasEditingLayerMask || !session.selectedLayerIds.includes(id))) store.selectLayer(id)
     if (kind === 'group' && (wasEditingLayerMask || !session.selectedGroupIds.includes(id))) store.selectGroup(id)
+    const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const source = { kind, id } as LayerFormTarget
+    const selectedTargets = selectedRowsForProperties(current)
+    const sourceIsSelected = selectedTargets.some((target) => target.kind === source.kind && target.id === source.id)
     setLayerCreateMenu(null)
-    setContextMenu({ kind, id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 540)) })
+    setContextMenu({
+      kind,
+      id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 540)),
+      propertyTargets: sourceIsSelected ? selectedTargets : [source],
+      propertySelectionIncludesUnsupported: sourceIsSelected && hasUnsupportedPropertySelection(current)
+    })
   }
   const openLayerCreateContextMenu = (event: React.MouseEvent): void => {
     event.preventDefault()
@@ -2930,19 +3141,29 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     store.deleteSelectedLayers()
     closeContextMenu()
   }
+  const contextMenuPropertySelection = (): { source: LayerFormTarget | null; targets: LayerFormTarget[]; usesSelection: boolean } => {
+    if (!contextMenu) return { source: null, targets: [], usesSelection: false }
+    const source = { kind: contextMenu.kind, id: contextMenu.id } as LayerFormTarget
+    return {
+      source,
+      targets: contextMenu.propertyTargets,
+      usesSelection: contextMenu.propertyTargets.some((target) => target.kind === source.kind && target.id === source.id)
+    }
+  }
   const openProperties = (): void => {
-    if (!contextMenu) return
-    const selectedRows = selectedRowsForProperties(session)
-    if (selectedRows.length > 1) {
-      editSelectedRows()
+    const selection = contextMenuPropertySelection()
+    if (!selection.source || contextMenu?.propertySelectionIncludesUnsupported) return
+    if (selection.targets.length > 1) {
+      editSelectedRows(selection.targets)
       closeContextMenu()
       return
     }
-    if (contextMenu.kind === 'group') {
-      const group = session.document.groups.find((item) => item.id === contextMenu.id)
+    const source = selection.source
+    if (source.kind === 'group') {
+      const group = session.document.groups.find((item) => item.id === source.id)
       if (group) editGroup(group)
     } else {
-      const layer = session.document.layers.find((item) => item.id === contextMenu.id)
+      const layer = session.document.layers.find((item) => item.id === source.id)
       if (layer) editLayer(layer)
     }
     closeContextMenu()
@@ -2996,6 +3217,9 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return hasConfiguredLayerStyles(owner?.layerStyles)
   })
   const contextMenuLayerHasStyles = Boolean(contextMenuLayer && hasConfiguredLayerStyles(contextMenuLayer.layerStyles))
+  const contextMenuPropertyTargets = contextMenuPropertySelection()
+  const contextMenuPropertiesDisabled = !contextMenuPropertyTargets.source
+    || Boolean(contextMenu?.propertySelectionIncludesUnsupported)
   const toggleContextLayerStyles = (): void => {
     store.setLayerStylesEnabled(contextMenuStyleTargets, !contextMenuOwnerStylesEnabled)
     closeContextMenu()
@@ -3174,14 +3398,19 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const targets = shortcutLayerTargets()
     const primaryTarget = targets[0] ?? null
     switch (id) {
+      case 'newLayer': void store.addLayer(); break
+      case 'createLayerGroup': store.createLayerGroup(); break
       case 'newTilemapLayer': openTilemapLayerDialog(); break
       case 'newFreeTileLayer': openFreeTileLayerDialog(); break
       case 'newBackgroundLayer': openBackgroundLayerDialog(); break
+      case 'duplicateLayer': store.duplicateSelectedLayerRows(); break
+      case 'deleteLayer': store.deleteSelectedLayers(); break
       case 'createLinkedLayer': if (activeLayer && !activeLayer.kind && !activeLayer.background) store.createLinkedLayer(activeLayer.id); break
       case 'convertLayerToBackground': if (activeLayer && !activeLayer.kind && !activeLayer.background) store.setLayerBackground(activeLayer.id, true); break
       case 'convertLayerToTilemap': if (activeLayer && !activeLayer.kind && !activeLayer.background && !hasConfiguredLayerStyles(activeLayer.layerStyles)) setTilemapLayerDialog({ mode: 'convert', layerId: activeLayer.id }); break
       case 'convertLayerToRaster': if (activeLayer && (activeLayer.background || activeLayer.kind || hasConfiguredLayerStyles(activeLayer.layerStyles))) store.rasterizeLayer(activeLayer.id); break
       case 'openLayerProperties': {
+        if (hasUnsupportedPropertySelection(active)) break
         if (targets.length > 1) editSelectedRows()
         else if (primaryTarget?.kind === 'group') {
           const group = active.document.groups.find((candidate) => candidate.id === primaryTarget.id)
@@ -3206,10 +3435,24 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       case 'copyLayerStyles': if (primaryTarget) store.copyLayerStyles(primaryTarget.kind, primaryTarget.id); break
       case 'pasteLayerStyles': if (targets.length > 0) store.pasteLayerStyles(targets); break
       case 'clearLayerStyles': if (targets.length > 0) store.clearLayerStyles(targets); break
+      case 'mergeLayerDown': store.mergeActiveLayerDown(); break
+      case 'mergeSelectedLayers': store.mergeSelectedLayers(); break
+      case 'mergeLayerGroup': store.mergeSelectedGroup(); break
+      case 'mergeVisibleLayers': store.mergeVisibleLayers(); break
+      case 'ungroupLayers': store.ungroupSelected(); break
+      case 'toggleClippingMask': {
+        if (!primaryTarget) break
+        const owner = primaryTarget.kind === 'layer'
+          ? active.document.layers.find((layer) => layer.id === primaryTarget.id)
+          : active.document.groups.find((group) => group.id === primaryTarget.id)
+        store.setClippingMask(primaryTarget.kind, primaryTarget.id, owner?.clippingMask !== true)
+        break
+      }
       case 'openLayerSettings': openLayerSettings(); break
       case 'enableAnimationFrames': updateAnimationFrameDisabled(false); break
       case 'disableAnimationFrames': updateAnimationFrameDisabled(true); break
       case 'toggleAnimationFramesDisabled': updateAnimationFrameDisabled('toggle'); break
+      case 'toggleOnionSkin': toggleOnionSkin(); break
       case 'copyAnimationFrames': store.copySelectedAnimationFrames(); break
       case 'pasteAnimationFrames': store.pasteAnimationFrames(); break
       case 'pasteAnimationCels': store.pasteAnimationCels(); break
@@ -3244,6 +3487,153 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       }
     }
   }
+  const updateLayerQuickAction = (id: LayerQuickActionId, enabled: boolean): void => {
+    const enabledCount = layerSettings.quickActions.filter((action) => action.enabled).length
+    if (enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT) return
+    applyLayerSettings({ ...layerSettings, quickActions: layerSettings.quickActions.map((action) => action.id === id ? { ...action, enabled } : action) })
+  }
+  const moveLayerQuickAction = (id: LayerQuickActionId, targetId: LayerQuickActionId, insertAfter: boolean): void => {
+    const from = layerSettings.quickActions.findIndex((action) => action.id === id)
+    if (from < 0 || id === targetId) return
+    const quickActions = [...layerSettings.quickActions]
+    const [action] = quickActions.splice(from, 1)
+    const target = quickActions.findIndex((candidate) => candidate.id === targetId)
+    if (target < 0) return
+    quickActions.splice(target + (insertAfter ? 1 : 0), 0, action)
+    applyLayerSettings({ ...layerSettings, quickActions })
+  }
+  const beginLayerQuickActionPointerDrag = (event: React.PointerEvent<HTMLElement>, id: LayerQuickActionId): void => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    layerQuickActionPointerDragRef.current = { id, pointerId: event.pointerId, captureTarget: event.currentTarget }
+    setDraggedLayerQuickAction(id)
+  }
+  useEffect(() => {
+    const isGifFileDrag = (event: DragEvent): boolean => {
+      const items = Array.from(event.dataTransfer?.items ?? [])
+      const hasFile = items.some((item) => item.kind === 'file') || event.dataTransfer?.types.includes('Files') === true
+      if (!hasFile) return false
+      const names = Array.from(event.dataTransfer?.files ?? []).map((file) => file.name).filter(Boolean)
+      return names.length === 0 || names.every((name) => /\.gif$/i.test(name))
+    }
+    const isGifPathDrag = (paths: readonly string[]): boolean => paths.length > 0 && paths.every((path) => /\.gif$/i.test(path))
+    const clearGifDropPreview = (): void => setGifDropTargetIndex(null)
+    const updateGifDropAtPoint = (x: number, y: number, isGif: boolean): void => {
+      if (useWorkspace.getState().activeId !== session.document.id || !isGif) {
+        clearGifDropPreview()
+        return
+      }
+      const target = globalThis.document.elementFromPoint(x, y)
+      const grid = target?.closest<HTMLElement>('.layer-animation-grid')
+      if (!grid) {
+        clearGifDropPreview()
+        return
+      }
+      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
+      let insertionIndex = Number(frameTarget?.dataset.frameIndex) + 1
+      if (!frameTarget || !Number.isInteger(insertionIndex)) {
+        const firstFrame = grid.querySelector<HTMLElement>('[data-frame-index]')
+        const frameWidth = firstFrame?.getBoundingClientRect().width ?? (grid.getBoundingClientRect().width / Math.max(1, timeline.frames.length))
+        const relativeX = x - grid.getBoundingClientRect().left
+        insertionIndex = Math.ceil(relativeX / Math.max(1, frameWidth))
+      }
+      setGifDropTargetIndex(Math.max(0, Math.min(timeline.frames.length, insertionIndex)))
+    }
+    const updateGifDropPreview = (event: DragEvent): void => {
+      if (!isGifFileDrag(event)) {
+        clearGifDropPreview()
+        return
+      }
+      updateGifDropAtPoint(event.clientX, event.clientY, true)
+      event.preventDefault()
+    }
+    const updateNativeGifDropPreview = (event: Event): void => {
+      const detail = (event as CustomEvent<{ paths?: string[]; x?: number; y?: number; documentId?: string }>).detail
+      if (!detail?.paths || detail.documentId !== session.document.id || !Number.isFinite(detail.x) || !Number.isFinite(detail.y)) {
+        clearGifDropPreview()
+        return
+      }
+      updateGifDropAtPoint(detail.x!, detail.y!, isGifPathDrag(detail.paths))
+    }
+    window.addEventListener('dragover', updateGifDropPreview, true)
+    window.addEventListener('drop', clearGifDropPreview, true)
+    window.addEventListener('dragend', clearGifDropPreview, true)
+    window.addEventListener('moonsprite:document-drag-over', updateNativeGifDropPreview)
+    window.addEventListener('moonsprite:document-drag-leave', clearGifDropPreview)
+    return () => {
+      window.removeEventListener('dragover', updateGifDropPreview, true)
+      window.removeEventListener('drop', clearGifDropPreview, true)
+      window.removeEventListener('dragend', clearGifDropPreview, true)
+      window.removeEventListener('moonsprite:document-drag-over', updateNativeGifDropPreview)
+      window.removeEventListener('moonsprite:document-drag-leave', clearGifDropPreview)
+    }
+  }, [session.document.id, timeline.frames.length])
+  useEffect(() => {
+    const stopAutoScroll = (): void => {
+      layerQuickActionAutoScrollDirectionRef.current = 0
+      if (layerQuickActionAutoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(layerQuickActionAutoScrollFrameRef.current)
+        layerQuickActionAutoScrollFrameRef.current = null
+      }
+    }
+    const updateAutoScroll = (event: PointerEvent): void => {
+      const container = document.querySelector<HTMLElement>('.layer-quick-actions-scroll')
+      if (!container) return stopAutoScroll()
+      const bounds = container.getBoundingClientRect()
+      const edgeSize = Math.min(32, Math.max(16, bounds.height / 4))
+      const withinHorizontalBounds = event.clientX >= bounds.left && event.clientX <= bounds.right
+      const direction: -1 | 0 | 1 = withinHorizontalBounds && event.clientY <= bounds.top + edgeSize
+        ? -1
+        : withinHorizontalBounds && event.clientY >= bounds.bottom - edgeSize ? 1 : 0
+      layerQuickActionAutoScrollDirectionRef.current = direction
+      if (direction === 0 || layerQuickActionAutoScrollFrameRef.current !== null) return
+      const scroll = (): void => {
+        const scrollingContainer = document.querySelector<HTMLElement>('.layer-quick-actions-scroll')
+        const scrollingDirection = layerQuickActionAutoScrollDirectionRef.current
+        if (!scrollingContainer || scrollingDirection === 0) {
+          layerQuickActionAutoScrollFrameRef.current = null
+          return
+        }
+        scrollingContainer.scrollTop += scrollingDirection * 12
+        layerQuickActionAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+      }
+      layerQuickActionAutoScrollFrameRef.current = window.requestAnimationFrame(scroll)
+    }
+    const move = (event: PointerEvent): void => {
+      const drag = layerQuickActionPointerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      updateAutoScroll(event)
+      const row = (typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(event.clientX, event.clientY) : [])
+        .map((element) => element.closest<HTMLElement>('[data-layer-quick-action-id]'))
+        .find((element): element is HTMLElement => Boolean(element))
+        ?? (event.target instanceof Element ? event.target.closest<HTMLElement>('[data-layer-quick-action-id]') : null)
+      const targetId = row?.dataset.layerQuickActionId as LayerQuickActionId | undefined
+      if (!row || !targetId || targetId === drag.id) return
+      const bounds = row.getBoundingClientRect()
+      moveLayerQuickAction(drag.id, targetId, event.clientY >= bounds.top + bounds.height / 2)
+      event.preventDefault()
+    }
+    const end = (event: PointerEvent): void => {
+      const drag = layerQuickActionPointerDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      if (drag.captureTarget.hasPointerCapture(event.pointerId)) drag.captureTarget.releasePointerCapture(event.pointerId)
+      layerQuickActionPointerDragRef.current = null
+      stopAutoScroll()
+      setDraggedLayerQuickAction(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      stopAutoScroll()
+    }
+  }, [layerSettings])
+  const runLayerQuickAction = (id: LayerQuickActionId): void => shortcutCommandHandlerRef.current(id)
   const animationColumnResizer = <span className="layer-animation-column-resizer" role="separator" aria-label={t('timeline.resizeLayerArea')} aria-orientation="vertical" aria-valuemin={layerLabelWidthLimits.min} aria-valuemax={layerLabelWidthLimits.max} aria-valuenow={layerLabelWidth} tabIndex={0} onPointerDown={beginLayerLabelResize} onKeyDown={(event) => { if (event.key === 'ArrowLeft') { event.preventDefault(); setStoredLayerLabelWidth(layerLabelWidth - 12) } else if (event.key === 'ArrowRight') { event.preventDefault(); setStoredLayerLabelWidth(layerLabelWidth + 12) } }} />
   const animationLoopSectionBars = loopSectionLayout.items.map(({ section, startIndex, span, lane, laneSpan }) => {
     const rangeFrameIds = timeline.frames.slice(startIndex, startIndex + span).map((frame) => frame.id)
@@ -3265,6 +3655,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     {selectedCellLayerRows.map((row) => <span key={`active-cell-layer-${row}`} className="animation-active-cell-row" style={{ '--animation-row-top': displayRowTop(row), '--animation-row-height': displayRowSpanHeight(row, 1) } as CSSProperties} aria-hidden="true" />)}
     {selectionOutlineVisible && selectedFrameRanges.map((range) => <span key={`${range.start}-${range.span}`} data-animation-frame-selection={timeline.frames.slice(range.start, range.start + range.span).map((frame) => frame.id).join(' ')} className="animation-frame-selection-column" style={{ '--animation-frame-index': range.start, '--animation-frame-span': range.span } as CSSProperties} aria-hidden="true" />)}
     {animationFrameDropTarget && timeline.frames.findIndex((frame) => frame.id === animationFrameDropTarget.frameId) >= 0 && <span className="animation-frame-drop-line" style={{ '--animation-frame-drop-index': timeline.frames.findIndex((frame) => frame.id === animationFrameDropTarget.frameId) + (animationFrameDropTarget.insertAfter ? 1 : 0) } as CSSProperties} aria-hidden="true" />}
+    {gifDropTargetIndex !== null && <span className="animation-frame-drop-line animation-gif-drop-line" style={{ '--animation-frame-drop-index': gifDropTargetIndex } as CSSProperties} aria-hidden="true" />}
   </>
   const animationFrameHeaders = timeline.frames.map((frame, index) => {
     const visualFrame = visualFrameStateById.get(frame.id)
@@ -3274,6 +3665,12 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     return <button type="button" data-animation-frame-id={frame.id} data-frame-index={index} key={`header-${frame.id}`} className={`layer-animation-frame-header ${frameActive ? 'active' : ''} ${frameSelected ? 'selected-animation-frame' : ''} ${frame.disabled === true ? 'disabled-frame' : ''} ${draggingAnimationFrameIds.includes(frame.id) ? 'dragging' : ''}`} aria-label={t('timeline.frameNumber', { number: index + 1 })} title={`${t('timeline.frameNumber', { number: index + 1 })} · ${frame.duration} ms`} onPointerDown={(event) => beginAnimationFrameDrag(event, frame.id)} onPointerMove={(event) => updateAnimationItemCursor(event, frame.id)} onPointerLeave={(event) => { event.currentTarget.style.cursor = '' }} onClick={(event) => { if (suppressAnimationClickRef.current) { event.preventDefault(); event.stopPropagation(); return } if (event.detail === 0) selectAnimationFrame(frame.id, event.shiftKey ? 'range' : event.ctrlKey ? 'toggle' : 'replace') }} onDoubleClick={() => openFramePropertiesFor(frame.id)} onContextMenu={(event) => openFrameMenu(event, frame.id)}>{frame.disabled === true && <svg className="layer-animation-frame-disabled-mark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="100" x2="100" y2="0" vectorEffect="non-scaling-stroke" /></svg>}<strong>{index + 1}</strong>{layerDensity !== 'compact' && <small>{frame.duration}</small>}</button>
   })
   const hideSideDockActions = sideDocked && layerSettings.sideDockAutoHide
+  const visibleLayerQuickActions = layerSettings.quickActions.filter((action) => action.enabled).slice(0, LAYER_QUICK_ACTION_LIMIT)
+  const layerQuickActionButtons = !hideSideDockActions && visibleLayerQuickActions.map((action) => {
+    const metadata = layerQuickActionMetadata[action.id]
+    const label = t(metadata.label)
+    return <button type="button" className="layer-structure-edit-button" key={action.id} title={label} aria-label={label} onClick={() => runLayerQuickAction(action.id)}><PixelUtilityIcon kind={metadata.icon} /></button>
+  })
   const densityLabel = t(layerDensityLabelKeys[layerSettings.density])
   const densityDescription = t(layerDensityDescriptionKeys[layerSettings.density])
   const renderAnimationMaskRow = (
@@ -3316,8 +3713,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       <Tooltip className="layer-status-icon-tooltip layer-mask-row-layer-icon" content={maskRowTooltip}><span className="layer-mask-row-icon" aria-hidden="true"><PixelUtilityIcon kind="layerMask" /></span></Tooltip>
     </button>
   }
-  return <><section ref={floating.ref} className={`panel layers-panel layer-density-${layerDensity} ${layerSettings.timelineHidden ? 'timeline-hidden' : ''} ${visibleLoopSectionLaneCount > 0 ? 'has-animation-loop-sections' : ''} ${loopSectionResizePreview ? 'loop-section-resizing' : ''} ${session.animationPlaying ? 'animation-playing' : ''} ${animationItemDragging ? 'animation-item-dragging' : ''} ${floating.style ? 'floating-panel' : ''} ${draggingCopy ? 'layer-copy-drag' : ''} ${layerStyleDrag ? 'layer-style-copy-drag' : ''}`} data-command-scope="layers" style={{ ...floating.style, '--layer-label-width': `${layerLabelWidth}px`, '--layer-frame-count': timeline.frames.length, '--animation-loop-section-lanes': visibleLoopSectionLaneCount, '--animation-loop-section-track-height': `${visibleLoopSectionLaneCount * 20}px`, '--animation-toolbar-extent': `${animationToolbarExtent}px` } as CSSProperties} onPointerDown={floating.bringToFront} onWheel={handleLayerPanelWheel} onContextMenu={onPanelContextMenu}>
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>{integratedFreeTileInstanceLayer ? <><span className="free-tile-instance-header" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('freeTiles.backToLayers')} aria-label={t('freeTiles.backToLayers')} onClick={() => store.setFreeTileInstanceLayerView(null)}><PixelUtilityIcon kind="left" /></button><strong className="layer-panel-title">{t('freeTiles.instanceLayersTitle', { name: integratedFreeTileInstanceLayer.name })}</strong></span><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}><FreeTileInstancePanelSettings /></span></> : <>{layerSettings.timelineHidden && <strong className="layer-panel-title">{t('panel.layers')}</strong>}<div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}><span className="layer-animation-playback">
+  return <><section ref={floating.ref} className={`panel layers-panel layer-density-${layerDensity} ${layerSettings.timelineHidden ? 'timeline-hidden' : ''} ${visibleLoopSectionLaneCount > 0 ? 'has-animation-loop-sections' : ''} ${loopSectionResizePreview ? 'loop-section-resizing' : ''} ${session.animationPlaying ? 'animation-playing' : ''} ${animationItemDragging ? 'animation-item-dragging' : ''} ${floating.style ? 'floating-panel' : ''} ${draggingCopy ? 'layer-copy-drag' : ''} ${layerStyleDrag ? 'layer-style-copy-drag' : ''}`} data-command-scope="layers" style={{ ...floating.style, '--layer-label-width': `${layerLabelWidth}px`, '--layer-frame-count': timeline.frames.length, '--animation-loop-section-lanes': visibleLoopSectionLaneCount, '--animation-loop-section-track-height': `${visibleLoopSectionLaneCount * 20}px` } as CSSProperties} onPointerDown={floating.bringToFront} onWheel={handleLayerPanelWheel} onContextMenu={onPanelContextMenu}>
+    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>{integratedFreeTileInstanceLayer ? <><span className="free-tile-instance-header" onPointerDown={(event) => event.stopPropagation()}><button type="button" title={t('freeTiles.backToLayers')} aria-label={t('freeTiles.backToLayers')} onClick={() => store.setFreeTileInstanceLayerView(null)}><PixelUtilityIcon kind="left" /></button><strong className="layer-panel-title">{t('freeTiles.instanceLayersTitle', { name: integratedFreeTileInstanceLayer.name })}</strong></span><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}><FreeTileInstancePanelSettings /></span></> : <>{layerSettings.timelineHidden && <span className="panel-actions layer-quick-actions layer-quick-actions-timeline-hidden" role="toolbar" aria-label={t('layers.quickActions')} onPointerDown={(event) => event.stopPropagation()}>{layerQuickActionButtons}</span>}<div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}><span className="layer-animation-playback">
         <button type="button" title={t('timeline.firstFrame')} aria-label={t('timeline.firstFrame')} onClick={() => selectAnimationEdge('first')}><PlaybackPixelIcon kind="first" /></button>
         <button type="button" title={t('timeline.previousFrame')} aria-label={t('timeline.previousFrame')} onClick={() => selectAnimationStep(-1)}><PlaybackPixelIcon kind="previous" /></button>
         <button type="button" className={session.animationPlaying ? 'active' : ''} title={session.animationPlaying ? t('timeline.pause') : t('timeline.play')} aria-label={session.animationPlaying ? t('timeline.pause') : t('timeline.play')} onClick={() => store.setAnimationPlaying(!session.animationPlaying)} onContextMenu={(event) => openAnimationMenu(event, { kind: 'playback', x: event.clientX, y: event.clientY })}><PlaybackPixelIcon kind={session.animationPlaying ? 'pause' : 'play'} /></button>
@@ -3327,7 +3724,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <button type="button" className={layerSettings.onionSkin.enabled ? 'active' : ''} title={t('layers.onionSkinEnabled')} aria-label={t('layers.onionSkinEnabled')} aria-pressed={layerSettings.onionSkin.enabled} onClick={toggleOnionSkin}><PixelUtilityIcon kind="onion" /></button>
         {!hideSideDockActions && <button type="button" className="timeline-frame-edit-button" title={t('timeline.addFrame')} aria-label={t('timeline.addFrame')} onClick={() => store.duplicateAnimationFrame()}><PixelUtilityIcon kind="plus" /></button>}
         {!hideSideDockActions && <button type="button" className="timeline-frame-edit-button" title={t('timeline.deleteFrame')} aria-label={t('timeline.deleteFrame')} disabled={timeline.frames.length <= 1} onClick={() => store.deleteSelectedAnimationItems()}><PixelUtilityIcon kind="delete" /></button>}
-      </span></div><span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.new')} aria-label={t('layers.new')} onClick={() => void store.addLayer()}><PixelUtilityIcon kind="plus" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newTilemap')} aria-label={t('layers.newTilemap')} onClick={openTilemapLayerDialog}><PixelUtilityIcon kind="tilemap" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newFreeTile')} aria-label={t('layers.newFreeTile')} onClick={openFreeTileLayerDialog}><PixelUtilityIcon kind="freeTile" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.newGroupShortcut')} aria-label={t('layers.newGroup')} onClick={() => store.createLayerGroup()}><PixelUtilityIcon kind="newFolder" /></button>}{!hideSideDockActions && <button className="layer-structure-edit-button" title={t('layers.deleteSelected')} aria-label={t('layers.deleteSelected')} onClick={() => store.deleteSelectedLayers()}><PixelUtilityIcon kind="delete" /></button>}<button title={t('layers.settings')} aria-label={t('layers.settings')} onClick={openLayerSettings}><PixelUtilityIcon kind="properties" /></button></span></>}{animationLoopSectionHeader}</header>
+      </span></div><span className="panel-actions layer-quick-actions" role="toolbar" aria-label={t('layers.quickActions')} onPointerDown={(event) => event.stopPropagation()}>{!layerSettings.timelineHidden && layerQuickActionButtons}<button type="button" title={t('layers.settings')} aria-label={t('layers.settings')} onClick={openLayerSettings}><PixelUtilityIcon kind="properties" /></button></span></>}{animationLoopSectionHeader}</header>
     {integratedFreeTileInstanceLayer ? <FreeTileInstanceLayers session={session} layer={integratedFreeTileInstanceLayer} listRef={layerListRef} /> : <div ref={layerListRef} className={`layer-list layer-animation-list component-scrollbar ${selectedAnimationOutlineRows.length > 0 ? 'has-layer-selection-outline' : ''}`} style={{ '--layer-frame-count': timeline.frames.length, '--layer-selection-start': layerSelectionStart, '--layer-selection-span': layerSelectionSpan } as CSSProperties} onScroll={syncAnimationLoopSectionScroll} onPointerDown={(event) => { if (event.target === event.currentTarget) clearSelectionFromBlank() }} onContextMenu={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>('[data-layer-id], [data-group-id]'); if (target?.dataset.layerId) openLayerContextMenu(event, 'layer', target.dataset.layerId); else if (target?.dataset.groupId) openLayerContextMenu(event, 'group', target.dataset.groupId); else openLayerCreateContextMenu(event) }}><div className="layer-animation-tree"><div className="layer-animation-corner"><ActiveFrameSync documentId={session.document.id} frameIds={timeline.frames.map((frame) => frame.id)} containerRef={layerListRef} suppressActiveGuide={suppressCellSelectionGuides} activeFrameIdOverride={gestureActiveFrameId} /></div>{animationColumnResizer}{displayRows.map((displayRow, rowIndex) => {
       const visualRow = timelineVisualState.rows[rowIndex]
       if (displayRow.kind === 'mask') return renderAnimationMaskRow(displayRow, visualRow)
@@ -3415,32 +3812,42 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         const maskSlotSelected = maskRowSelected || maskFrameSelected || maskActive || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
         const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key)
         const maskThumbnail = resolvedMask && showCelThumbnails
-          ? <ActiveLayerMaskThumbnail documentId={session.document.id} ownerId={displayRow.owner.id} frameId={frame.id} mask={resolvedMask} revision={session.contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} />
+          ? <ActiveLayerMaskThumbnail documentId={session.document.id} ownerId={displayRow.owner.id} frameId={frame.id} maskSource={pixelSource(resolvedMask)} revision={session.contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} />
           : null
         const maskName = t(displayRow.ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask')
         const maskFrameVisualSelection = frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected
-        // Once a canvas selection is active, an ordinary-layer focus must not
-        // leak the current frame into unrelated mask rows. The mask row
-        // belonging to the active layer is still part of that layer's current
-        // frame context and must retain its active background.
-        // During playback the playhead is a column-wide activity indicator.
-        // It must also paint every mask row, even when frame-copy/paste has
-        // cleared the mask editing context. Otherwise the suppression layer
-        // hides the current-frame background only on mask rows.
-        // Mask-row activity is driven by timeline focus, never by the canvas
-        // pixel-selection object. A canvas marquee must not silently toggle
-        // timeline mask backgrounds.
-        const maskOwnerIsActiveLayer = maskCellClasses.active
+        // Ordinary timeline focus is shared by all attached mask rows. Mask
+        // editing remains independent; only ordinary-layer/cel/frame focus
+        // should project the current or selected frames onto every mask row.
+        const ordinaryTimelineContextActive = !maskVisualSelectionActive && session.activeLayerMaskId === null
+        const maskOwnerIsActiveLayer = ordinaryTimelineContextActive && (
+          (displayRow.ownerKind === 'layer' && displayRow.owner.id === playbackActiveLayerId)
           || (focusState.implicitCursor && displayRow.ownerKind === 'layer' && displayRow.owner.id === session.document.activeLayerId)
+          || (session.layerSelectionExplicit === true
+            && displayRow.ownerKind === 'layer'
+            && session.selectedLayerIds.includes(displayRow.owner.id))
+        )
+        const ordinaryFrameActivityHighlighted = ordinaryTimelineContextActive
+          && (maskCellClasses.frameActive
+            || selectedCellFrameIds.has(frame.id)
+            || (renderedFrameIds.length > 0 && visualSelectedFrameIdSet.has(frame.id)))
+        const selectedMaskActivityHighlighted = selectedCellTargets.length > 0
+          && displayRow.ownerKind === 'layer'
+          && selectedMaskActivityLayerIds.has(displayRow.owner.id)
+          && selectedActivityFrameIds.has(frame.id)
         const maskFrameActivityVisible = session.animationPlaying
           || maskVisualSelectionActive
-          || (maskOwnerIsActiveLayer && (selectionOutlineVisible || !session.selection))
+          || maskOwnerIsActiveLayer
+          || ordinaryFrameActivityHighlighted
+          || selectedMaskActivityHighlighted
         const maskActiveFrameHighlighted = maskFrameActivityVisible
           && frameVisualEnabled
           && ((session.animationPlaying && maskCellClasses.frameActive)
             || (maskVisualSelectionActive && (maskCellClasses.frameActive || maskCellClasses.selected))
-            || (maskOwnerIsActiveLayer && selectionOutlineVisible && maskCellClasses.frameActive)
+            || (maskOwnerIsActiveLayer && maskCellClasses.frameActive)
             || (focusState.implicitCursor && maskOwnerIsActiveLayer && maskCellClasses.frameActive)
+            || ordinaryFrameActivityHighlighted
+            || selectedMaskActivityHighlighted
             || maskCellClasses.selectedByFrame
             || maskFrameSelected
             || (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
@@ -3471,8 +3878,11 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // a canvas marquee or frame switch, especially when mask rows are
       // inserted between ordinary rows. The column background still carries
       // frame selection for every row; this marker must not leak to siblings.
-      const currentFrameCellHighlighted = Boolean(cellClasses.frameActive || cellClasses.selectedByFrame)
-        && node.layer.id === playbackActiveLayerId
+      const selectedCellActivityHighlighted = selectedCellTargets.length > 0
+        && selectedCellLayerIds.has(node.layer.id)
+        && selectedCellFrameIds.has(frame.id)
+      const currentFrameCellHighlighted = Boolean(cellClasses.frameActive || cellClasses.selectedByFrame || selectedCellActivityHighlighted)
+        && (node.layer.id === playbackActiveLayerId || selectedCellActivityHighlighted)
       const cel = celLookup.at(node.layer.id, frame.id)
       const resolvedCel = celLookup.resolve(cel)
       const key = animationCelKey(node.layer.id, frame.id)
@@ -3509,21 +3919,26 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       // active, the owner row must keep only its ambient frame background and
       // must not render a second current-cel content marker.
       const defaultActiveCell = Boolean(!focusState.frameFocus && !maskVisualSelectionActive && hasContent && cellClasses.current)
-      const currentCell = Boolean(!animationCelDragActive && !focusState.frameFocus && !maskVisualSelectionActive && hasContent && (defaultActiveCell || (!suppressCellSelectionGuides && currentFrameCellHighlighted
+      // Drawing hides the selection guides but keeps the active frame/cel
+      // context. Once guides are hidden, frame focus must no longer suppress
+      // the current cel marker; otherwise the marker disappears while the
+      // active frame background remains visible.
+      const frameFocusVisualSuppressed = focusState.frameFocus && selectionOutlineVisible
+      const currentCell = Boolean(!animationCelDragActive && !frameFocusVisualSuppressed && !maskVisualSelectionActive && hasContent && (defaultActiveCell || (!suppressCellSelectionGuides && currentFrameCellHighlighted
         && (!selectionOutlineVisible || renderedCellKeys.length === 0 || cellVisuallySelected))))
       // Explicit layer selection highlights every cel in those layers;
       // frame/cel selection modes remain mutually exclusive.
-      const layerSelectionModeActive = !hasNonRowAnimationItemSelection
+      const layerSelectionModeActive = !hasNonRowAnimationItemSelection || onlyImplicitLayerCellSelection || explicitMultiLayerSelection
       // The active layer is only the interaction context on project startup;
       // show the full-row selection after the user explicitly selects a layer.
-      const layerSelectedAcrossTimeline = Boolean(timelineVisualState.selectionGuidesVisible && session.layerSelectionExplicit && layerSelectionModeActive && visualCell?.selectedByLayer)
+      const layerSelectedAcrossTimeline = Boolean((timelineVisualState.selectionGuidesVisible || explicitMultiLayerSelection) && session.layerSelectionExplicit && layerSelectionModeActive && visualCell?.selectedByLayer)
       // A selection marker is an interior cel indicator, not the selection
       // highlight itself. Empty/transparent slots must keep their grid or
       // selection-box state without looking like visible cels.
       const selectionMarkerVisible = shouldRenderTimelineCelSelectionMarker(hasContent, Boolean(keySelected || currentCell || layerSelectedAcrossTimeline || cellVisuallySelected))
       const liveActiveCell = Boolean(!animationCelDragActive && active && node.layer.id === playbackActiveLayerId && resolvedCel)
       const normalCelMarker = resolvedCel && (hasContent || liveActiveCell)
-        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} cel={resolvedCel} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={selectionMarkerVisible} />
+        ? <AnimationCelContent active={liveActiveCell} documentId={session.document.id} layerId={node.layer.id} celSource={pixelSource(resolvedCel)} palette={session.document.palette} revision={contentRevision} documentWidth={session.document.width} documentHeight={session.document.height} thumbnailSize={celThumbnailSize} showThumbnail={showCelThumbnails} selectionMarker={selectionMarkerVisible} />
         : selectionMarkerVisible ? <span className="cel-content-marker selection-marker" aria-hidden="true" /> : null
       return <button type="button" data-animation-cel-key={key} data-frame-index={index} key={`${node.id}-${frame.id}`} className={`layer-animation-cel ${node.layer.kind === 'text' ? 'text-cel' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-cel' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-cel' : ''} ${cel ? 'has-cel' : ''} ${node.layer.id === visualActiveLayerId ? 'active-layer-cel' : ''} ${currentFrameCellHighlighted ? 'active-frame' : ''} ${frameSelectedForCell ? 'selected-animation-frame' : ''} ${layerSelectedAcrossTimeline ? 'selected-layer' : ''} ${currentCell ? 'current-cel' : ''} ${cellVisuallySelected ? 'selected-cel' : ''} ${linkedCelMember ? 'linked-cel-member' : ''} ${showLinkedCelVisuals && (linkedWithPrevious || linkedWithNext) ? 'linked-cel' : ''} ${showLinkedVisuals && linkedWithPrevious ? 'linked-cel-previous' : ''} ${linkedCelEnd ? 'linked-cel-end' : ''} ${linkedCelBridgeEnd ? 'linked-cel-bridge-end' : ''} ${draggingAnimationFrameIds.includes(frame.id) || (draggingAnimationCellKind === 'cel' && draggingAnimationCellKeys.includes(key)) ? 'dragging' : ''} ${animationCelDropTargetKey === key && !animationCelDragActive && !(animationCelDragAnchorKey && draggingAnimationCellKeys.length > 1) ? 'drop-target' : ''}`} aria-label={t('timeline.celAtFrame', { number: index + 1 })} title={`${node.layer.name} · ${t('timeline.frameNumber', { number: index + 1 })}`} onPointerDown={(event) => beginAnimationCelDrag(event, node.layer.id, frame.id)} onPointerMove={(event) => updateAnimationItemCursor(event, frame.id, key)} onPointerLeave={(event) => { event.currentTarget.style.cursor = '' }} onClick={(event) => { if (suppressAnimationClickRef.current) { event.preventDefault(); event.stopPropagation(); return } if (event.detail === 0) store.selectAnimationCell(key, event.shiftKey ? 'range' : event.ctrlKey ? 'toggle' : 'replace') }} onDoubleClick={() => {
         if (node.layer.kind === 'text') {
@@ -3565,12 +3980,13 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       {contextMenu.kind === 'group' && contextMenuGroupMask && <LayerContextMenuItem icon="link" label={t(contextMenuGroupMask.moveWithOwner === false ? 'layers.enableLayerMaskMoveBinding' : 'layers.disableLayerMaskMoveBinding')} onClick={() => { store.setGroupMaskMoveWithOwner(contextMenu.id, timeline.activeFrameId, contextMenuGroupMask.moveWithOwner === false); closeContextMenu() }} />}
       <span className="context-menu-divider" role="separator" />
       <LayerContextMenuItem icon="layerStyle" label={t('layers.layerStyle')} shortcut={shortcutHint('openLayerStyles')} onClick={openLayerStyles} />
+      {contextMenu.kind === 'layer' && <LayerContextMenuItem icon="layerStyle" label={t('layers.splitLayerStyles')} disabled={!contextMenuOwnerStylesEnabled || contextMenuStyleOwner?.locked === true} onClick={() => { store.splitLayerStyles(contextMenu.id); closeContextMenu() }} />}
       {contextMenuOwnerHasStyles && <LayerContextMenuItem icon={contextMenuOwnerStylesEnabled ? 'eyeOff' : 'eye'} label={t(contextMenuOwnerStylesEnabled ? 'layers.disableLayerStyles' : 'layers.enableLayerStyles')} shortcut={shortcutHint('toggleLayerStyles')} onClick={toggleContextLayerStyles} />}
       <LayerContextMenuItem icon="copy" label={t('layers.copyLayerStyle')} shortcut={shortcutHint('copyLayerStyles')} disabled={!contextMenuOwnerHasStyles} onClick={copyContextLayerStyles} />
       <LayerContextMenuItem icon="paste" label={t('layers.pasteLayerStyle')} shortcut={shortcutHint('pasteLayerStyles')} disabled={!layerStyleClipboard} onClick={pasteContextLayerStyles} />
       <LayerContextMenuItem icon="clearRecords" label={t('layers.clearLayerStyle')} shortcut={shortcutHint('clearLayerStyles')} disabled={!contextMenuSelectionHasStyles} onClick={clearContextLayerStyles} />
       <span className="context-menu-divider" role="separator" />
-      <LayerContextMenuItem icon="properties" label={t('layers.properties')} shortcut={shortcutHint('openLayerProperties')} onClick={openProperties} />
+      <LayerContextMenuItem icon="properties" label={t('layers.properties')} shortcut={shortcutHint('openLayerProperties')} disabled={contextMenuPropertiesDisabled} onClick={openProperties} />
       <LayerContextMenuItem icon="delete" label={t('common.delete')} shortcut={shortcutHint('deleteLayer')} onClick={deleteContextSelection} danger />
     </div>, document.body)}
     {backgroundLayerDialogOpen && createPortal(<BackgroundLayerDialog onClose={() => setBackgroundLayerDialogOpen(false)} onCreate={(pattern) => store.createBackgroundLayer(pattern)} />, document.body)}
@@ -3607,7 +4023,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <span className="context-menu-divider" />
         <Tooltip className="layer-menu-tooltip" content={animationMenuLayerMaskPasteBlocked ? emptyLayerMaskCelTooltip : undefined}><button className="context-menu-item" type="button" role="menuitem" disabled={!session.animationMaskClipboard.length || animationMenuLayerMaskPasteBlocked} onClick={() => { store.pasteAnimationMasks(animationMenu.layerId, animationMenu.frameId); setAnimationMenu(null) }}><PixelUtilityIcon kind="paste" /><span>{t('timeline.pasteMask')}</span>{shortcutHint('pasteAnimationMasks')}</button></Tooltip>
         <span className="context-menu-divider" />
-        <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCelHasContent} onClick={() => openCelProperties(animationMenu.layerId, animationMenu.frameId)}><PixelUtilityIcon kind="info" /><span>{t('timeline.celProperties')}</span>{shortcutHint('openAnimationCelProperties')}</button>
+        <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCel} onClick={() => openCelProperties(animationMenu.layerId, animationMenu.frameId)}><PixelUtilityIcon kind="info" /><span>{t('timeline.celProperties')}</span>{shortcutHint('openAnimationCelProperties')}</button>
         <span className="context-menu-divider" />
         <button className="context-menu-item" type="button" role="menuitem" disabled={!animationMenuCelHasContent} onClick={() => { store.copySelectedAnimationCels(); setAnimationMenu(null) }}><PixelUtilityIcon kind="copy" /><span>{t('timeline.copyCel')}</span>{shortcutHint('copy', 'copyAnimationCel')}</button>
         <button className="context-menu-item" type="button" role="menuitem" disabled={!session.animationCellClipboard.length} onClick={() => { store.pasteAnimationCels(); setAnimationMenu(null) }}><PixelUtilityIcon kind="paste" /><span>{t('timeline.pasteCel')}</span>{shortcutHint('pasteAnimationCels', 'paste')}</button>
@@ -3617,18 +4033,18 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       </>}
     </div>, document.body)}
     {loopSectionEditor && <AnimationLoopSectionDialog mode={loopSectionEditor.mode} frameCount={timeline.frames.length} initialValue={loopSectionEditor.value} onClose={() => setLoopSectionEditor(null)} onConfirm={saveLoopSection} />}
-    {frameProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setFrameProperties(null) }}>
+    {frameProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-frame-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveFrameProperties() }}>
-        <DialogHeader eyebrow="FRAME PROPERTIES" title={t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setFrameProperties(null)} />
-        <div className="modal-body"><FormField layout="inline" label={t('timeline.duration')}><NumberInput autoFocus onFocus={(event) => event.currentTarget.select()} aria-label={t('timeline.duration')} value={frameProperties.duration} min={1} max={60_000} step={10} suffix="ms" onValueChange={(duration) => setFrameProperties({ ...frameProperties, duration })} /></FormField></div>
-        <footer><button type="button" className="quiet-button" onClick={() => setFrameProperties(null)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
+        <DialogHeader eyebrow="FRAME PROPERTIES" title={frameProperties.targetFrameIds.length > 1 ? t('timeline.multipleFrameProperties') : t('timeline.framePropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === frameProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={saveFrameProperties} />
+        <div className="modal-body"><FormField layout="inline" label={t('timeline.duration')}><NumberInput autoFocus onFocus={(event) => event.currentTarget.select()} aria-label={t('timeline.duration')} value={frameProperties.duration} min={1} max={60_000} step={10} suffix="ms" onValueChange={previewFrameProperties} /></FormField></div>
+        <footer><button type="button" className="primary-button" onClick={saveFrameProperties}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
-    {celProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setCelProperties(null) }}>
+    {celProperties && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="animation-cel-properties" defaultWidth={340} defaultHeight={224} minWidth={300} minHeight={210} maxWidth={440} maxHeight={300} className="layer-modal frame-properties-modal" onSubmit={(event) => { event.preventDefault(); saveCelProperties() }} onKeyDown={(event) => { if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing) return; event.preventDefault(); event.stopPropagation(); saveCelProperties() }}>
-        <DialogHeader eyebrow="CEL PROPERTIES" title={t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={() => setCelProperties(null)} />
-        <div className="modal-body"><RangeField autoFocus className="layer-opacity-control" label={t('layers.opacity')} min={0} max={100} suffix="%" value={celProperties.opacity} onChange={(opacity) => setCelProperties({ ...celProperties, opacity })} /></div>
-        <footer><button type="button" className="quiet-button" onClick={() => setCelProperties(null)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
+        <DialogHeader eyebrow="CEL PROPERTIES" title={celProperties.targetKeys.length > 1 ? t('timeline.multipleCelProperties') : t('timeline.celPropertiesNumbered', { number: timeline.frames.findIndex((frame) => frame.id === celProperties.frameId) + 1 })} closeLabel={t('common.close')} onClose={saveCelProperties} />
+        <div className="modal-body"><RangeField autoFocus className="layer-opacity-control" label={t('layers.opacity')} min={0} max={100} suffix="%" value={celProperties.opacity} onChange={(opacity) => previewCelProperties({ ...celProperties, opacity })} /><FormField layout="inline" label={t('timeline.zCoordinate')}><NumberInput aria-label={t('timeline.zCoordinate')} value={celProperties.zIndex} min={-999} max={999} step={1} onValueChange={(zIndex) => previewCelProperties({ ...celProperties, zIndex })} /></FormField></div>
+        <footer><button type="button" className="primary-button" onClick={saveCelProperties}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
     {layerSettingsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setLayerSettingsOpen(false) }}>
@@ -3644,7 +4060,25 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
               </div>
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.sideDockAutoHide')} tooltip={t('layers.sideDockAutoHideDescription')} aria-label={t('layers.sideDockAutoHide')} checked={layerSettings.sideDockAutoHide} onChange={(sideDockAutoHide) => applyLayerSettings({ ...layerSettings, sideDockAutoHide })} />
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.hideTimeline')} tooltip={t('layers.hideTimelineDescription')} aria-label={t('layers.hideTimeline')} checked={layerSettings.timelineHidden} onChange={(timelineHidden) => applyLayerSettings({ ...layerSettings, timelineHidden })} />
+              <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
             </div>
+          </section>
+          <section className="layer-settings-section layer-quick-actions-settings">
+            <div className="layer-settings-section-heading"><h3>{t('layers.quickActions')}</h3><button type="button" className="icon-button layer-quick-actions-collapse" aria-label={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={layerQuickActionsExpanded} title={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} onClick={() => setLayerQuickActionsExpanded((expanded) => !expanded)}><PixelUtilityIcon kind={layerQuickActionsExpanded ? 'up' : 'down'} /></button></div>
+            {layerQuickActionsExpanded && <><p className="layer-quick-actions-description">{t('layers.quickActionsDescription')}</p>
+            <div className="preference-quick-command-list layer-quick-actions-scroll component-scrollbar">
+              {layerSettings.quickActions.map((action) => {
+                const metadata = layerQuickActionMetadata[action.id]
+                const label = t(metadata.label)
+                const enabledCount = layerSettings.quickActions.filter((candidate) => candidate.enabled).length
+                return <div className={`preference-quick-command-row reorderable-list-row ${draggedLayerQuickAction === action.id ? 'dragging' : ''}`} data-layer-quick-action-id={action.id} key={action.id} title={label}>
+                  <button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginLayerQuickActionPointerDrag(event, action.id)}><PixelUtilityIcon kind="move" /></button>
+                  <span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span>
+                  <span className="preference-quick-command-name">{label}</span>
+                  <PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={action.enabled} disabled={!action.enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT} onChange={(event) => updateLayerQuickAction(action.id, event.currentTarget.checked)} />
+                </div>
+              })}
+            </div></>}
           </section>
           <section className="layer-settings-section layer-settings-onion-section">
             <div className="layer-settings-section-heading"><h3>{t('layers.onionSkin')}</h3></div>
@@ -3670,17 +4104,17 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <footer><button type="button" className="quiet-button" onClick={resetLayerSettings}><PixelUtilityIcon kind="restore" />{t('common.reset')}</button><span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={() => setLayerSettingsOpen(false)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
       </ModalShell>
     </div>, document.body)}
-    {form && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) closeProperties() }}>
+    {form && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
       <ModalShell as="form" storageKey="layer-properties-v2" defaultWidth={380} defaultHeight={470} fitContentKey={`${form.kind}:${form.targets.length}:${form.targets.every((target) => target.kind === 'group')}`} minWidth={340} minHeight={340} maxWidth={520} maxHeight={700} className="layer-modal" onSubmit={(event) => { event.preventDefault(); closeProperties() }} onKeyDown={(event) => {
         if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing || (event.target as HTMLElement).tagName === 'TEXTAREA') return
         event.preventDefault()
         event.stopPropagation()
         closeProperties()
       }}>
-        <DialogHeader eyebrow={form.targets.length > 1 ? 'MULTIPLE PROPERTIES' : form.kind === 'group' ? 'GROUP PROPERTIES' : 'LAYER PROPERTIES'} title={t(form.targets.length > 1 ? 'layers.multipleProperties' : form.kind === 'group' ? 'layers.groupProperties' : 'layers.layerProperties')} closeLabel={t('common.close')} onClose={closeProperties} />
+        <DialogHeader eyebrow={form.targets.length > 1 ? 'MULTIPLE PROPERTIES' : form.kind === 'group' ? 'GROUP PROPERTIES' : 'LAYER PROPERTIES'} title={t(form.targets.length > 1 ? 'layers.multipleProperties' : form.kind === 'group' ? 'layers.groupProperties' : 'layers.layerPropertiesNamed', form.kind === 'layer' ? { name: form.name } : undefined)} closeLabel={t('common.close')} onClose={closeProperties} />
         <div className="modal-body layer-properties-body">
           <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.name')}><TextInput autoFocus onFocus={(event) => event.currentTarget.select()} value={form.name} onChange={(event) => previewProperties({ ...form, name: event.target.value }, 'name')} /></FormField>
-          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
+          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} preserveAnimationSelection onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
           <RangeField className="layer-opacity-control" disabled={singleFormTargetLocked} label={t('layers.opacity')} min={0} max={100} suffix="%" value={form.opacity} onChange={(opacity) => previewProperties({ ...form, opacity }, 'opacity')} />
           {form.targets.every((target) => target.kind === 'group') && <CheckboxField className="tool-checkbox layer-cumulative-blend" checked={form.cumulativeBlend} disabled={singleFormTargetLocked} label={<><strong>{t('layers.cumulativeBlend')}</strong><small>{t('layers.cumulativeBlendDescription')}</small></>} onChange={(cumulativeBlend) => previewProperties({ ...form, cumulativeBlend }, 'cumulativeBlend')} />}
           <FormField className="layer-display-color-field" label={t('layers.displayColor')}><div className="layer-display-color-options"><button type="button" className={`layer-color-preset no-color ${form.displayColor === null ? 'selected' : ''}`} aria-label={t('layers.noDisplayColor')} aria-pressed={form.displayColor === null} onClick={() => previewProperties({ ...form, displayColor: null }, 'displayColor')}><span /></button>{layerDisplayColorPresets.map((color) => <button key={`${color.r}-${color.g}-${color.b}`} type="button" className={`layer-color-preset ${sameColor(form.displayColor, color) ? 'selected' : ''}`} aria-label={t('layers.displayColorRgb', { r: color.r, g: color.g, b: color.b })} aria-pressed={sameColor(form.displayColor, color)} style={{ '--layer-preset-color': `rgb(${color.r} ${color.g} ${color.b})` } as React.CSSProperties} onClick={() => previewProperties({ ...form, displayColor: { ...color } }, 'displayColor')}><span /></button>)}<ColorValueControl color={form.displayColor ?? defaultLayerDisplayColor} density="compact" onChange={(displayColor) => previewProperties({ ...form, displayColor }, 'displayColor')} label={t('layers.colorControl')} roleLabel={t('layers.custom')} className="layer-custom-color-trigger" fillWithColor /></div></FormField>

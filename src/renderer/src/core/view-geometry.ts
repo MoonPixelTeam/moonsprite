@@ -13,10 +13,19 @@ export interface ViewportPoint { x: number; y: number }
 export interface ViewportBounds { left: number; top: number; right: number; bottom: number }
 export interface CanvasViewContentBounds { x: number; y: number; width: number; height: number }
 
+/** Snap a view rotation to one of the sixteen Shift-constrained directions. */
+export const VIEW_ROTATION_SNAP_DEGREES = 22.5
+
+export function snapViewRotation(rotation: number, increment = VIEW_ROTATION_SNAP_DEGREES): number {
+  if (!Number.isFinite(rotation) || !Number.isFinite(increment) || increment <= 0) return rotation
+  return Math.round(rotation / increment) * increment
+}
+
 const ROTATION_INDICATOR_MAX_FOOTPRINT = 204
 const ROTATION_INDICATOR_CLEARANCE_RATIO = 4 / 3
 const ROTATION_INDICATOR_HALF_WIDTH = 64
 const ROTATION_INDICATOR_HALF_HEIGHT = 96
+const ROTATION_INDICATOR_POINTER_LEFT_GAP = 96
 
 export function rotationIndicatorPointBetweenPointerAndCanvasCenter(width: number, height: number, pointer: ViewportPoint, canvasCenter: ViewportPoint): ViewportPoint {
   const clampAxis = (value: number, size: number, halfSize: number): number => size <= halfSize * 2
@@ -25,6 +34,16 @@ export function rotationIndicatorPointBetweenPointerAndCanvasCenter(width: numbe
   return {
     x: clampAxis((pointer.x + canvasCenter.x) / 2, width, ROTATION_INDICATOR_HALF_WIDTH),
     y: clampAxis((pointer.y + canvasCenter.y) / 2, height, ROTATION_INDICATOR_HALF_HEIGHT)
+  }
+}
+
+export function rotationIndicatorPointLeftOfPointer(width: number, height: number, pointer: ViewportPoint): ViewportPoint {
+  const clampAxis = (value: number, size: number, halfSize: number): number => size <= halfSize * 2
+    ? size / 2
+    : Math.max(halfSize, Math.min(size - halfSize, value))
+  return {
+    x: clampAxis(pointer.x - ROTATION_INDICATOR_HALF_WIDTH - ROTATION_INDICATOR_POINTER_LEFT_GAP, width, ROTATION_INDICATOR_HALF_WIDTH),
+    y: clampAxis(pointer.y, height, ROTATION_INDICATOR_HALF_HEIGHT)
   }
 }
 
@@ -60,6 +79,22 @@ export function viewCanvasOrigin(viewportWidth: number, viewportHeight: number, 
     x: viewportWidth / 2 + view.panX - documentWidth * view.zoom / 2,
     y: viewportHeight / 2 + view.panY - documentHeight * view.zoom / 2
   }
+}
+
+export interface ViewportPlacement { left: number; top: number; width: number; height: number }
+
+/** Change only the viewport's clipping area, keeping document pixels fixed in
+ * the window. All placement values use logical canvas units, including left
+ * and top. Reuse the pan transform so rotated/mirrored views keep the same map.
+ */
+export function preserveViewOnViewportChange<T extends ViewGeometryState>(
+  view: T, previous: ViewportPlacement, next: ViewportPlacement, position: RotationIndicatorPosition
+): T {
+  const dx = previous.left - next.left + (previous.width - next.width) / 2
+  const dy = previous.top - next.top + (previous.height - next.height) / 2
+  if (dx === 0 && dy === 0) return view
+  const delta = viewPanDeltaFromScreen(dx, dy, view.rotation, position, view.mirrored, view.mirroredVertical)
+  return { ...view, panX: view.panX + delta.x, panY: view.panY + delta.y }
 }
 
 export function rotateViewportPoint(point: ViewportPoint, pivot: ViewportPoint, degrees: number): ViewportPoint {

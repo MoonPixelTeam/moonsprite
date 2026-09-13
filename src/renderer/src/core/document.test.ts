@@ -3,13 +3,35 @@ import { BLEND_MODES } from '@shared/types'
 import { blendWithMode, blendWithModeInto, packColor, writeRgbaPixel } from './raster'
 import { createDefaultLayerStyles } from './layer-styles'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument } from './animation'
-import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
+import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, compositeRegionAsync, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, invalidateRasterContentBounds, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
 import { assignRasterStorage, installRuntimeRaster, surfacePixelsMaterialized } from './runtime-raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
 const blue = { r: 0, g: 0, b: 255, a: 128 }
 
 describe('document compositing', () => {
+  it('keeps row bounds exact through holes, edge erasure, empty rows and regrowth', () => {
+    const document = createDocument('row edge refresh', 32, 4, 'rgba')
+    const layer = document.layers[0]
+    const cache = new DocumentCompositeCache()
+    let revision = 1
+    const verify = (x: number, width: number): void => {
+      const dirty = { x, y: 1, width, height: 1 }
+      const actual = compositeRegion(document, 0, 0, 32, 4, cache, ++revision, dirty)
+      expect(actual).toEqual(compositeRegion(document, 0, 0, 32, 4))
+    }
+    for (const x of [2, 12, 20, 30]) writeLayerColor(document, layer, 32 + x, red)
+    verify(0, 32)
+    writeLayerColor(document, layer, 32 + 2, { r: 0, g: 0, b: 0, a: 0 })
+    verify(2, 1)
+    writeLayerColor(document, layer, 32 + 30, { r: 0, g: 0, b: 0, a: 0 })
+    verify(30, 1)
+    for (const x of [12, 20]) writeLayerColor(document, layer, 32 + x, { r: 0, g: 0, b: 0, a: 0 })
+    verify(12, 9)
+    writeLayerColor(document, layer, 32 + 8, red)
+    verify(8, 1)
+  })
+
   it('distinguishes unknown content bounds from cached empty or populated bounds', () => {
     const document = createDocument('known bounds', 8, 6, 'rgba')
     const layer = document.layers[0]
@@ -29,6 +51,34 @@ describe('document compositing', () => {
     writeLayerColor(document, top, 0, blue)
 
     expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual(Object.values(blendWithMode(red, blue, 1, 'normal')))
+  })
+
+  it('orders active-frame cels by z coordinate and keeps layer order for equal values', () => {
+    const document = createDocument('cel z order', 1, 1, 'rgba')
+    const bottom = document.layers[0]
+    const top = createLayer('top', 1, 1, 'rgba')
+    document.layers.push(top)
+    writeLayerColor(document, bottom, 0, red)
+    writeLayerColor(document, top, 0, { r: 0, g: 0, b: 255, a: 255 })
+    const timeline = ensureAnimationDocument(document)
+    const bottomCel = timeline.cels.find((cel) => cel.layerId === bottom.id && cel.frameId === timeline.activeFrameId)!
+    const topCel = timeline.cels.find((cel) => cel.layerId === top.id && cel.frameId === timeline.activeFrameId)!
+
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([0, 0, 255, 255])
+    bottomCel.zIndex = 1
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([255, 0, 0, 255])
+    topCel.zIndex = 1
+    expect(Array.from(compositeRegion(document, 0, 0, 1, 1))).toEqual([0, 0, 255, 255])
+  })
+
+  it('composites asynchronously in batches without changing pixel output', async () => {
+    const document = createDocument('async composite', 2, 2, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 0, red)
+    const progress: number[] = []
+    const asyncPixels = await compositeRegionAsync(document, 0, 0, 2, 2, (value) => progress.push(value), undefined, 1)
+    expect(Array.from(asyncPixels)).toEqual(Array.from(compositeRegion(document, 0, 0, 2, 2)))
+    expect(progress.at(-1)).toBe(100)
   })
 
   it('applies a frame-specific mask to the composited result of a layer group', () => {
@@ -216,4 +266,39 @@ describe('document compositing', () => {
 
 
 
+})
+
+
+describe('content bounds from native row edges', () => {
+  it('reads dense storage a bounded number of times when refreshing erased edges', () => {
+    const document = createDocument('dense edge refresh', 256, 128, 'rgba')
+    const layer = document.layers[0]
+    const pixels = new Uint8ClampedArray(256 * 128 * 4).fill(255)
+    for (let y = 0; y < 128; y += 1) pixels[y * 256 * 4 + 3] = 0
+    let reads = 0
+    Object.defineProperty(layer, 'pixels', { configurable: true, get: () => { reads += 1; return pixels } })
+    invalidateRasterContentBounds(layer)
+    expect(layerContentBounds(document, layer)).toEqual({ x: 1, y: 0, width: 255, height: 128 })
+    expect(reads).toBeLessThan(20)
+  })
+
+  it.each(['rgba', 'indexed'] as const)('matches visible pixels through holes and edge changes in %s storage', format => {
+    const document = createDocument('row edge patterns', 23, 11, format)
+    const layer = document.layers[0]
+    layer.offsetX = -9; layer.offsetY = 15
+    const ink = document.palette.find(entry => entry.color.a > 0)!.color
+    for (let step = 0; step < 6; step += 1) {
+      for (let y = 0; y < 11; y += 1) for (let x = 0; x < 23; x += 1) {
+        const visible = step > 0 && (x * 7 + y * 11 + step) % 13 === 0 && x >= step && y >= step - 1
+        writeLayerColor(document, layer, y * 23 + x, visible ? ink : { r: 0, g: 0, b: 0, a: 0 })
+      }
+      const visible = []
+      for (let y = 0; y < 11; y += 1) for (let x = 0; x < 23; x += 1) {
+        if (readLayerColorAt(document, layer, x - 9, y + 15).a > 0) visible.push({ x: x - 9, y: y + 15 })
+      }
+      const left = Math.min(...visible.map(p => p.x)), right = Math.max(...visible.map(p => p.x))
+      const top = Math.min(...visible.map(p => p.y)), bottom = Math.max(...visible.map(p => p.y))
+      expect(layerContentBounds(document, layer)).toEqual(visible.length ? { x: left, y: top, width: right - left + 1, height: bottom - top + 1 } : null)
+    }
+  })
 })

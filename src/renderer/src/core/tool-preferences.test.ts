@@ -21,6 +21,7 @@ describe('tool preferences boundary', () => {
       brushPaintMode: 'paint',
       shapeRounded: false,
       selectionRounded: false,
+      selectionRotationAlgorithm: 'fast',
       gradientType: 'linear'
     })
     storage.setItem(TOOL_SETTINGS_KEY, '{bad')
@@ -38,6 +39,7 @@ describe('tool preferences boundary', () => {
       shapeCornerRadius: 12,
       selectionRounded: true,
       selectionCornerRadius: 7,
+      selectionRotationAlgorithm: 'rotsprite',
       gradientType: 'radial'
     }, storage)
 
@@ -49,6 +51,7 @@ describe('tool preferences boundary', () => {
       shapeCornerRadius: 12,
       selectionRounded: true,
       selectionCornerRadius: 7,
+      selectionRotationAlgorithm: 'rotsprite',
       gradientType: 'radial'
     })
   })

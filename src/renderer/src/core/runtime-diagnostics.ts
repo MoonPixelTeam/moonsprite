@@ -34,7 +34,7 @@ type RuntimeDiagnosticContextProvider = () => RuntimeDiagnosticDetail
 const MAX_RECENT_EVENTS = 200
 const MAX_QUEUED_EVENTS = 100
 const DEFAULT_OPERATION_WARNING_MS = 5_000
-const MAX_DETAIL_KEYS = 32
+const MAX_DETAIL_KEYS = 48
 const MAX_DETAIL_STRING_LENGTH = 500
 
 type RuntimeDiagnosticCrypto = Partial<Pick<Crypto, 'getRandomValues' | 'randomUUID'>>
@@ -66,16 +66,40 @@ let sink: RuntimeDiagnosticSink | null = null
 let contextProvider: RuntimeDiagnosticContextProvider | null = null
 let watchdogInstalled = false
 let lastAction: { name: string; detail: RuntimeDiagnosticDetail } | null = null
+const recentSpans: Array<{ id: number; name: string; start: number; end: number; documentId: RuntimeDiagnosticValue; layerId: RuntimeDiagnosticValue }> = []
+const spanReports = new Map<string, { at: number; suppressed: number; maxMs: number }>()
+let spanSequence = 0
+let activeSpanId: number | null = null
 
 const monotonicNow = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now()
 
+const normalizeValue = (value: unknown): RuntimeDiagnosticValue => {
+  if (typeof value === 'string') return value.length > MAX_DETAIL_STRING_LENGTH ? `${value.slice(0, MAX_DETAIL_STRING_LENGTH)}...` : value
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value
+  if (ArrayBuffer.isView(value)) return `[Pixel/binary data: ${value.byteLength} bytes]`
+  if (value instanceof ArrayBuffer) return `[ArrayBuffer: ${value.byteLength} bytes]`
+  if (Array.isArray(value)) return `[Array: ${value.length} items]`
+  return `[${typeof value}]`
+}
+
 const normalizeDetail = (detail: RuntimeDiagnosticDetail | undefined): RuntimeDiagnosticDetail => {
   if (!detail) return {}
+  // Runtime callers can bypass the scalar-only TypeScript contract. Never
+  // enumerate image buffers or recursively serialize an object into a log.
+  if (ArrayBuffer.isView(detail) || detail instanceof ArrayBuffer || Array.isArray(detail)) {
+    return { omittedDetail: normalizeValue(detail) }
+  }
   const normalized: RuntimeDiagnosticDetail = {}
-  for (const [key, value] of Object.entries(detail).slice(0, MAX_DETAIL_KEYS)) {
-    normalized[key] = typeof value === 'string' && value.length > MAX_DETAIL_STRING_LENGTH
-      ? `${value.slice(0, MAX_DETAIL_STRING_LENGTH)}...`
-      : value
+  let count = 0
+  for (const key in detail) {
+    if (count >= MAX_DETAIL_KEYS) break
+    const property = Object.getOwnPropertyDescriptor(detail, key)
+    if (!property) continue
+    count += 1
+    Object.defineProperty(normalized, key.slice(0, 128), {
+      value: 'value' in property ? normalizeValue(property.value) : '[accessor]',
+      enumerable: true, configurable: true, writable: true
+    })
   }
   return normalized
 }
@@ -89,9 +113,14 @@ const currentContext = (): RuntimeDiagnosticDetail => {
 }
 
 const activeOperationDetail = (now: number): RuntimeDiagnosticDetail => {
-  const operations = [...activeOperations.values()]
-    .map((operation) => `${operation.name}:${Math.max(0, Math.round(now - operation.startedAt))}ms`)
-    .join(',')
+  let operations = ''
+  for (const operation of activeOperations.values()) {
+    operations += `${operations ? ',' : ''}${operation.name.slice(0, MAX_DETAIL_STRING_LENGTH)}:${Math.max(0, Math.round(now - operation.startedAt))}ms`
+    if (operations.length >= MAX_DETAIL_STRING_LENGTH) {
+      operations = `${operations.slice(0, MAX_DETAIL_STRING_LENGTH)}...`
+      break
+    }
+  }
   return {
     activeOperationCount: activeOperations.size,
     ...(operations ? { activeOperations: operations } : {}),
@@ -128,11 +157,11 @@ export const recordRuntimeDiagnostic = (
     timestamp: new Date().toISOString(),
     monotonicMs: Math.round(now * 100) / 100,
     kind,
-    name,
-    detail: {
-      ...normalizeDetail(detail),
-      ...(includeContext ? currentContext() : {})
-    }
+    name: name.slice(0, MAX_DETAIL_STRING_LENGTH),
+    detail: normalizeDetail({
+      ...(includeContext ? currentContext() : {}),
+      ...normalizeDetail(detail)
+    })
   })
 }
 
@@ -153,12 +182,66 @@ export const configureRuntimeDiagnostics = (
 
 export const runtimeDiagnosticsActive = (): boolean => sink !== null || watchdogInstalled
 
+/** Synchronous, inclusive wall time only; never use this to time an awaited job. */
+export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detail?: () => RuntimeDiagnosticDetail): T => {
+  if (!runtimeDiagnosticsActive()) return action()
+  const start = monotonicNow()
+  const parentSpanId = activeSpanId
+  const spanId = ++spanSequence
+  activeSpanId = spanId
+  let failed = false
+  try { return action() } catch (error) { failed = true; throw error } finally {
+    activeSpanId = parentSpanId
+    const end = monotonicNow()
+    const durationMs = end - start
+    // No context collection, timers or persistence on the normal fast path.
+    if (durationMs >= 16 || failed) {
+      try {
+        name = name.slice(0, 128)
+        const spanDetail = normalizeDetail(detail?.())
+        recentSpans.push({ id: spanId, name, start, end, documentId: spanDetail.documentId ?? null, layerId: spanDetail.layerId ?? null })
+        if (recentSpans.length > 128) recentSpans.shift()
+        const previous = spanReports.get(name)
+        if (!failed && previous && end - previous.at < 1000) {
+          previous.suppressed += 1
+          previous.maxMs = Math.max(previous.maxMs, durationMs)
+        } else {
+          if (spanReports.size >= 64 && !previous) spanReports.delete(spanReports.keys().next().value!)
+          spanReports.set(name, { at: end, suppressed: 0, maxMs: 0 })
+          recordRuntimeDiagnostic(failed ? 'error' : 'operation-stage', name, {
+            spanId, parentSpanId, startTimeMs: Math.round(start * 10) / 10,
+            durationMs: Math.round(durationMs * 10) / 10, timing: 'sync-inclusive',
+            suppressedSamples: previous?.suppressed ?? 0,
+            suppressedMaxMs: Math.round(previous?.maxMs ?? 0),
+            ...spanDetail
+          }, true)
+        }
+      } catch { /* Instrumentation must not change an operation's result or error. */ }
+    }
+  }
+}
+
+/** Match finished work against the task's actual interval, not observer delivery time. */
+export const runtimeDiagnosticSpanOverlap = (start: number, duration: number): RuntimeDiagnosticDetail => {
+  const matching = recentSpans.filter((span) => span.start < start + duration && span.end > start)
+    .sort((a, b) => (b.end - b.start) - (a.end - a.start))
+  const attributed = matching.find((span) => span.documentId !== null)
+  return {
+    measuredSpanCount: matching.length,
+    measuredDocumentId: attributed?.documentId ?? null,
+    measuredLayerId: attributed?.layerId ?? null,
+    measuredSpans: matching.slice(0, 6)
+      .map((span) => `${span.id}:${span.name}:${Math.round(span.end - span.start)}ms`).join(',')
+  }
+}
+
 export const beginRuntimeDiagnosticOperation = (
   name: string,
   detail?: RuntimeDiagnosticDetail,
   warningMs = DEFAULT_OPERATION_WARNING_MS
 ): RuntimeDiagnosticOperation => {
   const id = `${sessionId}-${++operationSequence}`
+  detail = normalizeDetail(detail)
   const startedAt = monotonicNow()
   activeOperations.set(id, { name, startedAt })
   recordRuntimeDiagnostic('operation-start', name, { operationId: id, ...detail })
@@ -182,7 +265,7 @@ export const beginRuntimeDiagnosticOperation = (
         operationId: id,
         stage,
         elapsedMs: Math.round(monotonicNow() - startedAt),
-        ...stageDetail
+        ...normalizeDetail(stageDetail)
       })
     },
     finish(outcome = 'ok', finishDetail) {
@@ -196,7 +279,7 @@ export const beginRuntimeDiagnosticOperation = (
         outcome,
         durationMs: Math.round(durationMs),
         slow: slowReported || durationMs >= warningMs,
-        ...finishDetail
+        ...normalizeDetail(finishDetail)
       }, slowReported || durationMs >= warningMs || outcome === 'error')
     }
   }
@@ -292,6 +375,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
         recordRuntimeDiagnostic('long-task', 'renderer.long-task', {
           durationMs: Math.round(entry.duration),
           startTimeMs: Math.round(entry.startTime),
+          ...runtimeDiagnosticSpanOverlap(entry.startTime, entry.duration),
           ...activeOperationDetail(monotonicNow())
         }, true)
       }
@@ -300,6 +384,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   }
 
   recordRuntimeDiagnostic('session', 'renderer.started', {
+    diagnosticRevision: 2,
     hardwareConcurrency: navigator.hardwareConcurrency || 0,
     language: navigator.language,
     userAgent: navigator.userAgent
@@ -325,6 +410,10 @@ export const resetRuntimeDiagnosticsForTests = (): void => {
   recentEvents.length = 0
   queuedEvents.length = 0
   activeOperations.clear()
+  recentSpans.length = 0
+  spanReports.clear()
+  spanSequence = 0
+  activeSpanId = null
   lastAction = null
   sequence = 0
   operationSequence = 0

@@ -1,4 +1,4 @@
-const supportedDocumentExtension = /\.(moonsprite|msext|png|jpe?g|webp|bmp|gif|ase|aseprite)$/i
+const supportedDocumentExtension = /\.(moonsprite(?:\.bak)?|msext|png|jpe?g|webp|bmp|gif|psd|ase|aseprite)$/i
 
 const normalizeDroppedPath = (value: string): string => {
   const trimmed = value.trim().replace(/^"|"$/g, '')

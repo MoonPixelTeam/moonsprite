@@ -71,7 +71,7 @@ function ExtensionPanelWindow({ contribution, index, documentAvailable, commandR
           disabled={!documentAvailable || commandRunning}
           onClick={() => onRunCommand(extensionCommandScriptId(contribution.extensionId, command.id))}
         >
-          <PixelUtilityIcon kind="pencil" />
+          <PixelUtilityIcon kind="properties" />
           <span>
             <strong>{command.name}</strong>
             {command.description && <small>{command.description}</small>}

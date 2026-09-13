@@ -77,9 +77,10 @@ export function LayerStyleDialog({ ownerKind, owner, targets, onClose }: { owner
   const editor = activeEffect === 'stroke'
     ? <>
         <PreferenceToggle className="layer-style-smart-toggle" label={t('layers.layerStyleSmartHue')} tooltip={t('layers.layerStyleSmartHueDescription')} checked={draft.stroke.smartHue} onChange={(smartHue) => updateEffect('stroke', { smartHue })} />
+        <PreferenceToggle label="跟随不透明度" tooltip="根据相邻源像素的不透明度调整描边透明度。关闭时使用描边颜色自身的透明度。" checked={draft.stroke.followOpacity === true} onChange={(followOpacity) => updateEffect('stroke', { followOpacity })} />
         {!draft.stroke.smartHue && <FormField label={t('layers.layerStyleColor')}><ColorValueControl color={draft.stroke.color} density="regular" onChange={(color) => updateColor('stroke', color)} label={t('layers.layerStyleStroke')} storageKey="layer-style-stroke" fillWithColor inPalette={false} /></FormField>}
         {draft.stroke.smartHue && <RangeField className="layer-style-smart-darkness" label={t('layers.layerStyleSmartHueDarkness')} min={0} max={100} suffix="%" value={draft.stroke.smartHueDarkness} onChange={(smartHueDarkness) => updateEffect('stroke', { smartHueDarkness })} />}
-        <div className="layer-style-outline-controls"><OutlineStrokeControls thickness={draft.stroke.size} maxThickness={MAX_LAYER_STYLE_STROKE_SIZE} position={draft.stroke.position} positions={['outside', 'inside', 'both']} kernel={draft.stroke.kernel} directions={draft.stroke.directions} onThicknessChange={(size) => updateEffect('stroke', { size })} onPositionChange={(position) => updateEffect('stroke', { position })} onPatternChange={(kernel, directions) => updateEffect('stroke', { kernel, directions })} /></div>
+        <div className="layer-style-outline-controls"><OutlineStrokeControls variant="dialog" thickness={draft.stroke.size} maxThickness={MAX_LAYER_STYLE_STROKE_SIZE} position={draft.stroke.position} positions={['outside', 'inside', 'both']} kernel={draft.stroke.kernel} directions={draft.stroke.directions} onThicknessChange={(size) => updateEffect('stroke', { size })} onPositionChange={(position) => updateEffect('stroke', { position })} onPatternChange={(kernel, directions) => updateEffect('stroke', { kernel, directions })} /></div>
       </>
     : activeEffect === 'shadow'
       ? <>

@@ -78,6 +78,14 @@ const canvasAtClientPoint = (clientX: number, clientY: number): HTMLCanvasElemen
   return element instanceof HTMLCanvasElement && element.classList.contains('stage-canvas') ? element : null
 }
 
+/** Samples a registered editor canvas without changing the active canvas tool. */
+export const sampleCanvasColorAtClientPoint = (clientX: number, clientY: number): RgbaColor | null => {
+  const canvas = canvasAtClientPoint(clientX, clientY)
+  if (!canvas) return null
+  const surface = [...surfaces].find((candidate) => candidate.canvas === canvas)
+  return surface?.sampleAtClientPoint(clientX, clientY) ?? null
+}
+
 export const routeCanvasColorSamplingIntent = (clientX: number, clientY: number, secondary: boolean): boolean => {
   if (!samplingIntent) return false
   const canvas = canvasAtClientPoint(clientX, clientY)

@@ -15,10 +15,11 @@ export const DEFAULT_PROJECT_STATISTICS: ProjectStatistics = {
 
 export const DEFAULT_TIMELAPSE_SETTINGS: TimelapseSettings = {
   enabled: false,
+  recordUndoSteps: false,
   quality: 'medium',
   fps: 12,
   speed: 8,
-  mode: 'full',
+  mode: 'smart',
   snapshots: []
 }
 
@@ -47,7 +48,7 @@ const timelapseQuality = (value: unknown): TimelapseQuality =>
   value === 'low' || value === 'high' ? value : 'medium'
 
 const timelapseRecordingMode = (value: unknown): TimelapseRecordingMode =>
-  value === 'smart' ? 'smart' : 'full'
+  value === 'full' ? 'full' : 'smart'
 
 export const normalizeTimelapseSettings = (
   value: unknown,
@@ -56,6 +57,7 @@ export const normalizeTimelapseSettings = (
   const candidate = value && typeof value === 'object' ? value as Partial<TimelapseSettings> : {}
   return {
     enabled: candidate.enabled === undefined ? DEFAULT_TIMELAPSE_SETTINGS.enabled : candidate.enabled === true,
+    recordUndoSteps: candidate.recordUndoSteps === true,
     quality: timelapseQuality(candidate.quality),
     fps: Number.isFinite(candidate.fps) ? Math.max(1, Math.min(60, Math.round(candidate.fps!))) : DEFAULT_TIMELAPSE_SETTINGS.fps,
     speed: Number.isFinite(candidate.speed) ? Math.max(1, Math.min(64, Math.round(candidate.speed!))) : DEFAULT_TIMELAPSE_SETTINGS.speed,

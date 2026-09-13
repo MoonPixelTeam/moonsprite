@@ -1,6 +1,7 @@
-import type { BackgroundLayerSettings, ClipboardImage, ClipboardImageSize, FreeTileCelData, FreeTileSourceLayer, LayerGroup, RasterLayer, TextCelData, TilemapCelData, Tileset } from '@shared/types'
+import type { AnimationCel, AnimationGroupMask, AnimationLayerMask, BackgroundLayerSettings, ClipboardImage, ClipboardImageSize, FreeTileCelData, FreeTileSourceLayer, LayerGroup, RasterLayer, TextCelData, TilemapCelData, Tileset } from '@shared/types'
 import { unpackColor } from '@/core/raster'
 import { cloneLayerStyles } from '@/core/layer-styles'
+import { cloneAnimationCel, cloneAnimationGroupMask, cloneAnimationLayerMask } from '@/core/animation'
 
 export interface SelectionClipboard {
   width: number
@@ -41,6 +42,7 @@ export interface LayerClipboard {
     offsetY: number
     storageOriginX?: number
     storageOriginY?: number
+    zIndex?: number
     opacity?: number
     text?: TextCelData
     tilemap?: TilemapCelData
@@ -80,6 +82,39 @@ export interface LayerCollectionClipboard {
   tilesets?: Tileset[]
   layers: LayerClipboard[]
   groups: LayerGroupClipboard[]
+}
+
+/** A document-independent animation cel payload. IDs are retained for diagnostics only;
+ * placement is expressed by source layer/frame indexes so it can be pasted into another document. */
+export interface AnimationCelClipboardSnapshot {
+  sourceDocumentId: string
+  anchorLayerIndex: number
+  anchorFrameIndex: number
+  items: Array<{ layerIndex: number; frameIndex: number; cel: AnimationCel; mask?: AnimationLayerMask }>
+}
+
+export interface AnimationFrameClipboardSnapshot {
+  sourceDocumentId: string
+  layers: Array<{
+    name: string
+    kind?: RasterLayer['kind']
+    width: number
+    height: number
+    offsetX: number
+    offsetY: number
+    visible: boolean
+    locked: boolean
+    opacity: number
+    blendMode: RasterLayer['blendMode']
+    clippingMask?: boolean
+  }>
+  frames: Array<{
+    duration: number
+    disabled?: boolean
+    cels: Array<{ layerIndex: number; cel: AnimationCel }>
+    layerMasks: Array<{ layerIndex: number; mask: AnimationLayerMask }>
+    groupMasks: Array<{ groupIndex: number; mask: AnimationGroupMask }>
+  }>
 }
 
 const MAX_CLIPBOARD_PIXELS = 16 * 1024 * 1024
@@ -173,6 +208,8 @@ export class ClipboardService {
   private layerCopySystemBaseline: Promise<SelectionClipboard | null> | null = null
   private layerCopySystemBaselineSize: Promise<ClipboardImageSize | null> | null = null
   private animationCopySystemBaseline: Promise<SelectionClipboard | null> | null = null
+  private animationCells: AnimationCelClipboardSnapshot | null = null
+  private animationFrames: AnimationFrameClipboardSnapshot | null = null
 
   clearSelection(): void {
     this.selection = null
@@ -189,6 +226,7 @@ export class ClipboardService {
   setSelection(clipboard: SelectionClipboard): void {
     this.selection = cloneSelectionClipboard(clipboard)
     this.layers = null
+    this.clearAnimation()
     this.layerCopySystemBaseline = null
     this.layerCopySystemBaselineSize = null
     this.animationCopySystemBaseline = null
@@ -205,6 +243,7 @@ export class ClipboardService {
   setLayers(clipboard: LayerCollectionClipboard): void {
     this.layers = cloneLayerCollectionClipboard(clipboard)
     this.selection = null
+    this.clearAnimation()
     this.layerCopySystemBaseline = null
     this.layerCopySystemBaselineSize = null
     this.animationCopySystemBaseline = null
@@ -224,6 +263,30 @@ export class ClipboardService {
     this.layerCopySystemBaseline = null
     this.layerCopySystemBaselineSize = null
     this.animationCopySystemBaseline = readSystemImage ? this.readSystemSelection(readSystemImage) : Promise.resolve(null)
+  }
+
+  setAnimationCells(snapshot: AnimationCelClipboardSnapshot): void {
+    this.animationCells = cloneAnimationCelClipboardSnapshot(snapshot)
+    this.animationFrames = null
+  }
+
+  getAnimationCells(): AnimationCelClipboardSnapshot | null {
+    return this.animationCells ? cloneAnimationCelClipboardSnapshot(this.animationCells) : null
+  }
+
+  setAnimationFrames(snapshot: AnimationFrameClipboardSnapshot): void {
+    this.animationFrames = cloneAnimationFrameClipboardSnapshot(snapshot)
+    this.animationCells = null
+  }
+
+  getAnimationFrames(): AnimationFrameClipboardSnapshot | null {
+    return this.animationFrames ? cloneAnimationFrameClipboardSnapshot(this.animationFrames) : null
+  }
+
+  clearAnimation(): void {
+    this.animationCells = null
+    this.animationFrames = null
+    this.animationCopySystemBaseline = null
   }
 
   getLayer(): LayerClipboard | null {
@@ -318,6 +381,30 @@ export class ClipboardService {
 }
 
 export const clipboardService = new ClipboardService()
+
+const cloneAnimationCelClipboardSnapshot = (snapshot: AnimationCelClipboardSnapshot): AnimationCelClipboardSnapshot => ({
+  sourceDocumentId: snapshot.sourceDocumentId,
+  anchorLayerIndex: snapshot.anchorLayerIndex,
+  anchorFrameIndex: snapshot.anchorFrameIndex,
+  items: snapshot.items.map((item) => ({
+    layerIndex: item.layerIndex,
+    frameIndex: item.frameIndex,
+    cel: cloneAnimationCel(item.cel),
+    mask: item.mask ? cloneAnimationLayerMask(item.mask) : undefined
+  }))
+})
+
+const cloneAnimationFrameClipboardSnapshot = (snapshot: AnimationFrameClipboardSnapshot): AnimationFrameClipboardSnapshot => ({
+  sourceDocumentId: snapshot.sourceDocumentId,
+  layers: snapshot.layers.map((layer) => ({ ...layer })),
+  frames: snapshot.frames.map((frame) => ({
+    duration: frame.duration,
+    ...(frame.disabled === true ? { disabled: true } : {}),
+    cels: frame.cels.map((item) => ({ layerIndex: item.layerIndex, cel: cloneAnimationCel(item.cel) })),
+    layerMasks: frame.layerMasks.map((item) => ({ layerIndex: item.layerIndex, mask: cloneAnimationLayerMask(item.mask) })),
+    groupMasks: frame.groupMasks.map((item) => ({ groupIndex: item.groupIndex, mask: cloneAnimationGroupMask(item.mask) }))
+  }))
+})
 
 const masksEqual = (left: Uint8Array | undefined, right: Uint8Array | undefined, size: number): boolean => {
   if (left === right) return true

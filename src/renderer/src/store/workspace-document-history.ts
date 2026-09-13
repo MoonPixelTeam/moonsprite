@@ -266,15 +266,33 @@ export interface DocumentColorModeSnapshot {
   nextColorId: number
 }
 
-export const captureDocumentColorModeSnapshot = (document: SpriteDocument): DocumentColorModeSnapshot => ({
-  colorMode: document.colorMode,
-  surfaces: captureDocumentImageResizeSnapshot(document),
+export const captureDocumentColorModeSnapshot = (document: SpriteDocument): DocumentColorModeSnapshot => {
+  const surfaces = captureDocumentImageResizeSnapshot(document)
+  // Color conversion replaces or reuses raster storage. Keep an owned copy so
+  // undo is independent from the buffers touched by the conversion itself.
+  surfaces.surfaces = surfaces.surfaces.map((entry) => ({
+    ...entry,
+    storage: entry.storage.kind === 'pixels'
+      ? { kind: 'pixels', pixels: entry.storage.pixels.slice() }
+      : {
+          kind: 'runtime',
+          runtime: {
+            ...entry.storage.runtime,
+            data: entry.storage.runtime.data.slice(),
+            tileOffsets: entry.storage.runtime.tileOffsets.slice()
+          }
+        }
+  }))
+  return {
+    colorMode: document.colorMode,
+    surfaces,
   palette: clonePalette(document.palette),
   paletteOrder: [...document.paletteOrder],
   paletteSlots: document.paletteSlots ? [...document.paletteSlots] : undefined,
   paletteColumns: document.paletteColumns,
   nextColorId: document.nextColorId
-})
+  }
+}
 
 export const restoreDocumentColorModeSnapshot = (document: SpriteDocument, snapshot: DocumentColorModeSnapshot): void => {
   document.colorMode = snapshot.colorMode

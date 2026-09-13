@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus, TriangleAlert } from 'lucide-react'
 import type { ColorMode, ProjectPreview, RecoveryRecord } from '@shared/types'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'
-import { decodeDocumentFileAsync } from '@/core/document-files'
+import { decodeDocumentFileAsync, isMoonSpriteProjectPath } from '@/core/document-files'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { readProjectGalleryMetadataAsync } from '@/core/project-gallery'
 import { encodeProjectPreview } from '@/core/project-format'
@@ -162,9 +162,10 @@ const formatReleaseDate = (value: string, locale: AppLocale): string => new Intl
 }).format(new Date(`${value}T00:00:00`))
 
 const formatProjectType = (filePath: string): string => {
+  if (isMoonSpriteProjectPath(filePath)) return 'MoonSprite'
   const extension = filePath.match(/\.([^./\\]+)$/)?.[1]
   if (!extension) return 'FILE'
-  return extension.toLowerCase() === 'moonsprite' ? 'MoonSprite' : extension.toUpperCase()
+  return extension.toUpperCase()
 }
 
 function parseRecoveryTimestamp(value: string): number {
@@ -199,7 +200,7 @@ function ProjectFileRow({ project, concealed, reorderable, dragging, removePendi
   const { locale, t } = useI18n()
   const invalid = Boolean(project.error)
   return <article className={`recent-file-row ${concealed ? 'concealed' : ''} ${reorderable ? 'reorderable reorderable-list-row' : ''} ${invalid ? 'invalid' : ''} ${project.pinned ? 'pinned' : ''} ${onDelete ? 'deletable' : ''} ${onRemoveFromRecent ? 'removable' : ''} ${dragging ? 'dragging' : ''} ${removePending ? 'remove-pending' : ''}`} data-recent-path={project.filePath} onContextMenu={(event) => { event.preventDefault(); onOpenFolder() }}>
-    <button type="button" className="recent-file-open" onPointerDown={(event) => { if (event.button === 1) event.preventDefault() }} onClick={onOpen} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onOpenInBackground() }} title={concealed ? t('home.hiddenProject') : invalid ? t('home.previewReadFailedTitle', { error: project.error ?? '' }) : t('home.openProject', { name: project.name })}>
+    <button type="button" className="recent-file-open" data-moon-tooltip-disabled onPointerDown={(event) => { if (event.button === 1) event.preventDefault() }} onClick={onOpen} onAuxClick={(event) => { if (event.button !== 1) return; event.preventDefault(); event.stopPropagation(); onOpenInBackground() }}>
       <span className="recent-file-preview">{concealed ? <PixelUtilityIcon kind="eyeOff" /> : project.previewUrl ? <img src={project.previewUrl} alt="" /> : invalid ? <TriangleAlert size={21} /> : <PixelUtilityIcon kind="image" />}</span>
       <span className="recent-file-copy"><strong>{concealed ? t('home.hiddenProject') : project.name}</strong><small>{concealed ? t('home.hiddenProjectDetail') : invalid ? t('home.previewReadFailed') : project.width && project.height ? `${project.width} x ${project.height} · ${t(`colorMode.${project.colorMode ?? 'rgba'}`)}` : project.previewLoading ? t('home.readingPreview') : formatProjectType(project.filePath)}</small><span>{concealed ? '********' : project.filePath}</span></span>
       <time>{concealed ? '--/-- --:--' : formatTime(project.lastOpened, locale)}</time>
@@ -276,7 +277,7 @@ function RecoveryFileRow({ record, retentionDays, onRestore, onDiscard }: { reco
 function HomeLanguageDialog({ current, onApply, onClose }: { current: AppLocale; onApply(locale: AppLocale): void; onClose(): void }) {
   const { locale, t } = useI18n()
   const [selected, setSelected] = useState<AppLocale>(current)
-  return <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="home-language-v3" defaultWidth={380} defaultHeight={540} minWidth={340} minHeight={360} maxWidth={480} maxHeight={620} className="home-language-modal" role="dialog" aria-modal="true" aria-labelledby="home-language-title">
       <DialogHeader title={t('home.languageDialogTitle')} titleId="home-language-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body home-language-dialog-body">
@@ -425,7 +426,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
 
   return <div ref={navigationRef} className="home-section-navigation">
     <div className="home-section-tabs" role="tablist" aria-label={ariaLabel}>
-      {visibleEntries.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeId === entry.id} className={`home-section-tab ${activeId === entry.id ? 'selected' : ''}`} title={entry.title} onClick={() => onSelect(entry.id)}>{renderTabContent(entry)}</button>)}
+      {visibleEntries.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={activeId === entry.id} data-moon-tooltip-disabled className={`home-section-tab ${activeId === entry.id ? 'selected' : ''}`} onClick={() => onSelect(entry.id)}>{renderTabContent(entry)}</button>)}
     </div>
     {overflowEntries.length > 0 && <button ref={overflowButtonRef} className="home-section-overflow-button icon-button" type="button" aria-label={moreLabel} title={moreLabel} aria-haspopup="menu" aria-expanded={overflowMenuOpen} onClick={toggleOverflowMenu}><PixelUtilityIcon kind={overflowMenuOpen ? 'up' : 'down'} /></button>}
     <div ref={measurementsRef} className="home-section-measurements" aria-hidden="true">
@@ -433,7 +434,7 @@ function HomeSectionTabs({ entries, activeId, ariaLabel, moreLabel, onSelect }: 
       <button ref={overflowMeasureRef} className="home-section-overflow-button icon-button" type="button" tabIndex={-1}><PixelUtilityIcon kind="down" /></button>
     </div>
     {overflowMenuOpen && createPortal(<div ref={overflowMenuRef} className="context-menu home-section-overflow-menu component-scrollbar" role="menu" aria-label={moreLabel} style={overflowMenuPosition} onPointerDown={(event) => event.stopPropagation()}>
-      {overflowEntries.map((entry) => <button key={entry.id} className="context-menu-item" type="button" role="menuitem" title={entry.title} onClick={() => { setOverflowMenuOpen(false); onSelect(entry.id) }}><PixelUtilityIcon kind={entry.kind === 'folder' ? 'folder' : entry.kind === 'recovery' ? 'refresh' : 'image'} /><span className="home-section-overflow-label">{entry.label}</span>{entry.recoveryCount !== undefined && <span className="recovery-count">{entry.recoveryCount}</span>}</button>)}
+      {overflowEntries.map((entry) => <button key={entry.id} className="context-menu-item" type="button" role="menuitem" data-moon-tooltip-disabled onClick={() => { setOverflowMenuOpen(false); onSelect(entry.id) }}><PixelUtilityIcon kind={entry.kind === 'folder' ? 'folder' : entry.kind === 'recovery' ? 'refresh' : 'image'} /><span className="home-section-overflow-label">{entry.label}</span>{entry.recoveryCount !== undefined && <span className="recovery-count">{entry.recoveryCount}</span>}</button>)}
     </div>, document.body)}
   </div>
 }
@@ -528,7 +529,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
           const bytes = await window.moonSprite.readBinary(record.filePath)
           const mimeType = rasterImageMimeType(record.filePath)
           let generated: ProjectPreview
-          if (/\.moonsprite$/i.test(record.filePath)) generated = await readProjectGalleryMetadataAsync(bytes)
+          if (isMoonSpriteProjectPath(record.filePath)) generated = await readProjectGalleryMetadataAsync(bytes)
           else if (mimeType) {
             const preview = await createRasterImagePreview(bytes, mimeType)
             generated = { ...preview, colorMode: 'rgba' }
@@ -579,6 +580,8 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         }
         releaseBannerObjectUrls()
         for (const card of cards) if (card.previewUrl) bannerObjectUrls.current.push(card.previewUrl)
+        // Pick a fresh starting banner for each home-screen entry.
+        setBannerIndex(cards.length > 0 ? Math.floor(Math.random() * cards.length) : 0)
         setBannerProjects(cards)
       } catch {
         if (!disposed) setBannerProjects([])
@@ -595,11 +598,10 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
   }, [])
 
   useEffect(() => {
-    setBannerIndex(0)
     if (bannerProjects.length < 2) return
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % bannerProjects.length), 8_000)
     return () => window.clearInterval(timer)
-  }, [bannerProjects.length])
+  }, [bannerProjects])
 
   const loadSection = async (target: HomeSectionDefinition): Promise<void> => {
     const generation = ++loadGeneration.current
@@ -1030,7 +1032,19 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
           <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
+          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : '无法打开工程备份文件夹。')) }}><PixelUtilityIcon kind="save" /><span><strong>工程备份</strong><small>打开工程备份文件夹</small></span></button>
           <section className="start-screen-news" aria-label={t('home.news')}>
+            <article className="home-steam-card" aria-label={`${t('home.steam')} · MoonSprite`}>
+              <header className="home-steam-card-heading">
+                <div><strong>MoonSprite</strong><span>{t('home.steam')}</span></div>
+                <HomeLinkIcon kind="steam" />
+              </header>
+              <div className="home-steam-card-main">
+                <div className="home-steam-card-art"><img src={moonspriteLogo} alt="MoonSprite" /></div>
+                <p>{t('home.steamDescription')}</p>
+              </div>
+              <button type="button" className="quiet-button home-steam-card-action" onClick={() => openExternalLink(homeExternalLinks.steam)}>{t('home.steamWishlist')}</button>
+            </article>
             {homeAnnouncementsForDisplay(latestReleases).map((release) => <button key={`${release.version}:${release.publishedAt}`} className="start-screen-news-item" type="button" onClick={() => onOpenLatestRelease?.(release)} aria-label={t('home.newsOpenAria', { version: release.version })}>
               <span className="start-screen-news-title"><strong>{t('home.newsReleaseTitle', { version: release.version })}</strong><time dateTime={release.publishedAt}>{formatReleaseDate(release.publishedAt, locale)}</time></span>
               <p>{t(release.homeSummary)}</p>

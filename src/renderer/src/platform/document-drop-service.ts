@@ -13,6 +13,8 @@ export interface DocumentDropServiceOptions {
   openPath(path: string): boolean | Promise<boolean>
   pathForFile(file: File): string
   claimPaths?(paths: string[], position?: DocumentDropPosition): boolean | Promise<boolean>
+  onDragOver?(paths: string[], position?: DocumentDropPosition): void
+  onDragLeave?(): void
   onOpened?(): void
   eventTarget?: Window
   desktop?: boolean
@@ -84,20 +86,31 @@ export function startDocumentDropService(options: DocumentDropServiceOptions): (
 
   const ensureDesktopSubscriptions = (): void => {
     if (!desktop) return
-    nativeSources.forEach((source, index) => subscribe(`native-${index}`, () => subscribeToNativeDocumentDrops(source, ({ paths, position }) => handleDroppedPaths(paths, { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio }))))
+    nativeSources.forEach((source, index) => subscribe(`native-${index}`, () => subscribeToNativeDocumentDrops(
+      source,
+      ({ paths, position }) => handleDroppedPaths(paths, { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio }),
+      ({ paths, position }) => options.onDragOver?.(paths, { x: position.x / devicePixelRatio, y: position.y / devicePixelRatio }),
+      () => options.onDragLeave?.()
+    )))
     if (rustSubscriber) subscribe('rust-window-event', () => rustSubscriber((paths) => handleDroppedPaths(paths)))
   }
 
-  const dragOver = (event: DragEvent): void => event.preventDefault()
+  const dragOver = (event: DragEvent): void => {
+    event.preventDefault()
+    options.onDragOver?.([], { x: event.clientX, y: event.clientY })
+  }
   const drop = (event: DragEvent): void => {
     event.preventDefault()
+    options.onDragLeave?.()
     const paths = Array.from(event.dataTransfer?.files ?? []).map(options.pathForFile).filter(Boolean)
     handleDroppedPaths(paths, { x: event.clientX, y: event.clientY })
   }
+  const dragLeave = (): void => options.onDragLeave?.()
   const focus = (): void => ensureDesktopSubscriptions()
 
   target.addEventListener('dragover', dragOver, true)
   target.addEventListener('drop', drop, true)
+  target.addEventListener('dragleave', dragLeave, true)
   target.addEventListener('focus', focus)
   ensureDesktopSubscriptions()
 
@@ -105,6 +118,7 @@ export function startDocumentDropService(options: DocumentDropServiceOptions): (
     active = false
     target.removeEventListener('dragover', dragOver, true)
     target.removeEventListener('drop', drop, true)
+    target.removeEventListener('dragleave', dragLeave, true)
     target.removeEventListener('focus', focus)
     for (const cleanup of cleanups.values()) cleanup()
     cleanups.clear()

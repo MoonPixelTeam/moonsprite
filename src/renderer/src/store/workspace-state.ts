@@ -12,17 +12,21 @@ import type {
   ColorMode,
   DocumentSlice,
   FillKind,
+  FillConnectivity,
   FillMode,
+  FillReference,
   FreeTileInstance,
   FreeTileSourceLayer,
   GradientDither,
   GradientStop,
   GradientType,
   ImageBrush,
+  InkMode,
   ImageBrushSettings,
   ImageResizeInterpolation,
   LayerStyles,
   LineKind,
+  LiquifyMode,
   MoveKind,
   OutlineSettings,
   PaletteEntry,
@@ -148,19 +152,34 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
+  setExtensionTool(id: string, mode: string): void
+  setExtensionToolMode(mode: string): void
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
+  setBrushAngle(angle: number): void
   setAirbrushParticleRadius(radius: number): void
+  setAirbrushParticleAngle(angle: number): void
   setAirbrushParticleShape(shape: BrushShape): void
   setAirbrushScatterRadius(radius: number): void
   setAirbrushDensity(density: number): void
   setAirbrushIntervalMs(intervalMs: number): void
+  setLiquifyMode(mode: LiquifyMode): void
+  setLiquifyRadius(radius: number): void
+  setLiquifyStrength(strength: number): void
+  setLiquifySmoothing(enabled: boolean): void
+  setLiquifySmoothingStrength(strength: number): void
+  setSmoothStrength(strength: number): void
+  setLiquifyGestureActive(active: boolean): void
+  setLiquifyResetHistoryPosition(position: number | null, revision: number | null): void
+  resetLiquify(): boolean
   setBrushShape(shape: BrushShape): void
   setBrushDither(settings: BrushDitherSettings): void
   setBrushTexture(texture: BrushTexture): void
   setBrushTextureScale(scale: number): void
   setBrushPaintMode(mode: BrushPaintMode): void
+  setInkMode(mode: InkMode): void
+  setSyncInkAcrossTools(enabled: boolean): void
   setBrushDynamicsMapping(effect: BrushDynamicsEffect, patch: Partial<BrushDynamicsMapping>): void
   setBrushDynamicsGradientDither(dither: GradientDither): void
   setBrushPressure(settings: Partial<BrushPressureSettings>): void
@@ -184,6 +203,8 @@ export interface WorkspaceToolCommands {
   setFillTolerance(tolerance: number): void
   setFillGapClosing(enabled: boolean): void
   setFillGapThreshold(threshold: number): void
+  setFillReference(reference: FillReference): void
+  setFillConnectivity(connectivity: FillConnectivity): void
   setGradientTolerance(tolerance: number): void
   setGradientContiguous(contiguous: boolean): void
   setGradientType(type: GradientType): void
@@ -230,6 +251,8 @@ export interface WorkspaceViewSelectionCommands {
   setTileRepeatMode(mode: TileRepeatMode): void
   setSelection(selection: SelectionMask | null): void
   setSelectionPropertiesActive(active: boolean): void
+  setSelectionAspectRatio(ratio: number | null): void
+  setSelectionRotationAlgorithm(algorithm: 'fast' | 'rotsprite'): void
   updateSelectionProperties(patch: Partial<SelectionRect> & { angle?: number; shearAngle?: number }): void
   shrinkSelectionToContent(): void
   setSelectionPivot(pivot: SelectionPivot | null): void
@@ -262,6 +285,8 @@ export interface WorkspaceViewSelectionCommands {
   restoreAntiAliasPreview(preview: AntiAliasPreview | null): void
   setOutlinePreview(preview: OutlinePreview | null): void
   outlineActiveSelection(settings: OutlineSettings): boolean
+  quickOutlineActiveSelection(): boolean
+  outlineSelectionInside(): boolean
   beginFloatingSelectionTransform(source: SelectionTransformSource, edit: PixelEdit | null, before: SelectionMask, target: SelectionMask, copy: boolean, label: string, translationPreview?: SelectionTranslationPreview | null, transformTarget?: SelectionRect, transformAngle?: number, transformShear?: SelectionShearTransform, previewDeferred?: boolean, tilemapEditCellIndex?: number, layers?: SelectionTransformLayerState[], transformQuad?: SelectionQuad): void
   beginFreeTileFloatingSelectionTransform(options: {
     sourceId: string
@@ -292,6 +317,11 @@ export interface WorkspaceViewSelectionCommands {
 }
 
 export interface WorkspaceHistoryCommands {
+  beginLiquifyStroke(layerId: string): boolean
+  cancelLiquifyStroke(edit: PixelEdit, compound: boolean): void
+  applySmoothBrushStroke(edit: PixelEdit, stroke: { visited: Set<number> }): boolean
+  cancelSmoothBrushStroke(edit: PixelEdit): void
+  commitLiquifyStroke(edit: PixelEdit, label: string, compound: boolean, activity?: { stroke?: boolean; durationMs?: number }, push?: boolean): HistoryEntry | null
   commitPixelEdit(edit: PixelEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapEdit(edit: TilemapEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapTilesetEdit(edit: TilemapTilesetEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
@@ -400,6 +430,7 @@ export interface WorkspaceAnimationCommands {
   selectAnimationCelContent(key: string, additive?: boolean): void
   clearAnimationSelection(preserveActiveContext?: boolean): void
   setAnimationCelOpacity(layerId: string, frameId: string, opacity: number): void
+  setAnimationCelProperties(layerId: string, frameId: string, properties: { opacity: number; zIndex: number }, targetKeys?: readonly string[]): void
   connectSelectedAnimationCels(): void
   disconnectSelectedAnimationCels(): void
   copySelectedAnimationCels(): void
@@ -429,6 +460,7 @@ export interface WorkspaceAnimationCommands {
   addAnimationFrame(): void
   addLinkedAnimationFrame(): void
   duplicateAnimationFrame(): void
+  importGifAnimationLayer(source: SpriteDocument, startFrameIndex: number): boolean
   deleteAnimationFrame(normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
   setActiveAnimationFrameDuration(duration: number): void
   setAnimationLoop(loop: boolean): void
@@ -453,7 +485,10 @@ export interface WorkspaceLayerCommands {
   previewTextCel(layerId: string, frameId: string, data: TextCelData, x?: number, y?: number): TextCelPreview | null
   restoreTextCelPreview(layerId: string, frameId: string, preview: TextCelPreview): void
   rasterizeLayer(layerId: string): void
+  splitLayerStyles(layerId: string): void
   createLinkedLayer(layerId: string): string | null
+  /** Switch the canvas editing target without creating a blue explicit layer selection. */
+  activateLayerForCanvas(layerId: string): void
   duplicateActiveLayer(): void
   duplicateLayers(layerIds: string[]): string[]
   duplicateSelectedLayerRows(): { layerIds: string[]; groupIds: string[] }
@@ -562,6 +597,7 @@ export interface WorkspaceDocumentIoCommands {
   openFiles(): Promise<void>
   openPath(filePath: string, options?: { duplicate?: boolean; onBeforeSession?: () => void }): Promise<boolean>
   closeDocument(id: string): Promise<void>
+  restoreProjectBackup(documentId: string, document: SpriteDocument): boolean
 }
 
 export interface WorkspaceRecoveryCommands {
@@ -575,6 +611,7 @@ export interface WorkspaceUiCommands {
   dismissSaveProgress(): void
   cancelExport(): void
   setMessage(message: string | null): void
+  syncLocalHistoryPreferences(): void
   requestDialog(options: Omit<AppDialog, 'resolve'>): Promise<string>
   resolveDialog(choice: string): void
 }

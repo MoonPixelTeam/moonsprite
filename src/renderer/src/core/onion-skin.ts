@@ -1,34 +1,64 @@
-import type { AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types'
+import type { AnimationLoopSection, AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types'
+import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
 import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
 import { compositeDocument, compositeRegion } from './document'
 
+const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], frameId: string, layerId?: string): SpriteDocument => {
+  const animation = document.animation ? { ...document.animation, activeFrameId: frameId } : document.animation
+  if (!layerId || !layers.some((layer) => layer.id === layerId)) return { ...document, layers, animation }
+  const visibleGroups = new Set<string>()
+  let groupId = layers.find((layer) => layer.id === layerId)?.groupId ?? null
+  while (groupId) {
+    if (visibleGroups.has(groupId)) break
+    visibleGroups.add(groupId)
+    groupId = document.groups.find((group) => group.id === groupId)?.parentGroupId ?? null
+  }
+  return {
+    ...document,
+    animation,
+    layers: layers.map((layer) => ({ ...layer, visible: layer.id === layerId && layer.visible })),
+    groups: document.groups.map((group) => ({ ...group, visible: visibleGroups.has(group.id) && group.visible }))
+  }
+}
+
 export interface OnionSkinFrameRef { frameId: string; distance: number; side: 'previous' | 'next' }
 
-export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: number, nextFrames: number): OnionSkinFrameRef[] => {
+export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: number, nextFrames: number, loopSection?: AnimationLoopSection | null): OnionSkinFrameRef[] => {
   const activeIndex = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
   if (activeIndex < 0) return []
+  const sectionRange = loopSection ? resolveAnimationLoopSectionRange(timeline, loopSection) : null
+  const sectionActiveIndex = sectionRange && activeIndex >= sectionRange.startIndex && activeIndex <= sectionRange.endIndex
+    ? activeIndex - sectionRange.startIndex
+    : null
+  const sectionLength = sectionRange ? sectionRange.endIndex - sectionRange.startIndex + 1 : 0
   const result: OnionSkinFrameRef[] = []
-  for (let distance = Math.min(8, Math.max(0, Math.round(previousFrames))); distance >= 1; distance -= 1) {
-    const frame = timeline.frames[activeIndex - distance]
+  const previousLimit = sectionActiveIndex === null ? Math.min(8, Math.max(0, Math.round(previousFrames))) : Math.min(8, Math.max(0, Math.round(previousFrames)), Math.max(0, sectionLength - 1))
+  const nextLimit = sectionActiveIndex === null ? Math.min(8, Math.max(0, Math.round(nextFrames))) : Math.min(8, Math.max(0, Math.round(nextFrames)), Math.max(0, sectionLength - 1))
+  for (let distance = previousLimit; distance >= 1; distance -= 1) {
+    const frame = sectionActiveIndex === null
+      ? timeline.frames[activeIndex - distance]
+      : timeline.frames[sectionRange!.startIndex + (sectionActiveIndex - distance + sectionLength) % sectionLength]
     if (frame) result.push({ frameId: frame.id, distance, side: 'previous' })
   }
-  for (let distance = Math.min(8, Math.max(0, Math.round(nextFrames))); distance >= 1; distance -= 1) {
-    const frame = timeline.frames[activeIndex + distance]
+  for (let distance = nextLimit; distance >= 1; distance -= 1) {
+    const frame = sectionActiveIndex === null
+      ? timeline.frames[activeIndex + distance]
+      : timeline.frames[sectionRange!.startIndex + (sectionActiveIndex + distance) % sectionLength]
     if (frame) result.push({ frameId: frame.id, distance, side: 'next' })
   }
   return result
 }
 
-export const compositeAnimationFrame = (document: SpriteDocument, frameId: string): Uint8ClampedArray => {
+export const compositeAnimationFrame = (document: SpriteDocument, frameId: string, layerId?: string): Uint8ClampedArray => {
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
-  return compositeDocument({ ...document, layers })
+  return compositeDocument(documentForAnimationLayerComposite(document, layers, frameId, layerId))
 }
 
 export const compositeAnimationFrameRegion = (document: SpriteDocument, frameId: string, x: number, y: number, width: number, height: number): Uint8ClampedArray => {
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
-  return compositeRegion({ ...document, layers }, x, y, width, height)
+  return compositeRegion(documentForAnimationLayerComposite(document, layers, frameId), x, y, width, height)
 }
 
 export const tintOnionSkinPixels = (source: Uint8ClampedArray, tint: RgbaColor, opacityPercent: number, distance: number): Uint8ClampedArray => {

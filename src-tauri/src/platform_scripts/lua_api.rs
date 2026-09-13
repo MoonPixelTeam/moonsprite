@@ -249,6 +249,330 @@ impl UserData for ScriptColor {
     }
 }
 
+#[derive(Clone, Debug)]
+struct ScriptPaletteEntry {
+    id: u32,
+    color: ScriptColor,
+}
+
+#[derive(Clone, Debug)]
+struct ScriptPalette {
+    entries: Vec<ScriptPaletteEntry>,
+    document: Weak<RefCell<ScriptDocumentState>>,
+}
+
+impl UserData for ScriptPalette {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("size", |_, palette| Ok(palette.entries.len()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("getColor", |lua, palette, value: i64| {
+            let id = value.max(0) as u32;
+            let entry = palette
+                .entries
+                .iter()
+                .find(|entry| entry.id == id)
+                .or_else(|| palette.entries.get(id as usize));
+            match entry {
+                Some(entry) => Ok(Value::UserData(lua.create_userdata(entry.color)?)),
+                None => Ok(Value::Nil),
+            }
+        });
+        methods.add_method("getColorIndex", |_, palette, value: Value| {
+            let color = script_color_from_value(value)?;
+            palette
+                .entries
+                .iter()
+                .min_by_key(|entry| {
+                    let channel = |left: u8, right: u8| {
+                        let difference = left as i32 - right as i32;
+                        difference * difference
+                    };
+                    channel(entry.color.red, color.red)
+                        + channel(entry.color.green, color.green)
+                        + channel(entry.color.blue, color.blue)
+                        + channel(entry.color.alpha, color.alpha)
+                })
+                .map(|entry| entry.id)
+                .ok_or_else(|| LuaError::RuntimeError("The sprite palette is empty.".into()))
+        });
+        methods.add_method_mut("setColor", |_, palette, (value, color): (i64, Value)| {
+            let id = value.max(0) as u32;
+            let color = script_color_from_value(color)?;
+            let entry_index = palette
+                .entries
+                .iter()
+                .position(|entry| entry.id == id)
+                .or_else(|| ((id as usize) < palette.entries.len()).then_some(id as usize))
+                .ok_or_else(|| LuaError::RuntimeError("Palette index is out of range.".into()))?;
+            let entry = &mut palette.entries[entry_index];
+            entry.color = color;
+            if let Some(document) = palette.document.upgrade() {
+                document
+                    .borrow_mut()
+                    .queue_mse_operation(LuaScriptOperation {
+                        path: "palette.update".into(),
+                        arguments: serde_json::json!({
+                            "id": entry.id,
+                            "color": color.serialized(),
+                        }),
+                    });
+            }
+            Ok(())
+        });
+    }
+}
+
+fn script_palette_entries(document: &ScriptDocumentState) -> Vec<ScriptPaletteEntry> {
+    document
+        .mse_snapshot
+        .get("palette")
+        .and_then(|palette| palette.get("entries"))
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let color = entry.get("color")?;
+            Some(ScriptPaletteEntry {
+                id: entry.get("id")?.as_u64()?.min(u32::MAX as u64) as u32,
+                color: ScriptColor {
+                    red: color.get("r")?.as_u64()?.min(255) as u8,
+                    green: color.get("g")?.as_u64()?.min(255) as u8,
+                    blue: color.get("b")?.as_u64()?.min(255) as u8,
+                    alpha: color
+                        .get("a")
+                        .and_then(JsonValue::as_u64)
+                        .unwrap_or(255)
+                        .min(255) as u8,
+                },
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug)]
+struct ScriptFrame {
+    id: String,
+    number: u32,
+    duration_ms: u32,
+    disabled: bool,
+    document: Weak<RefCell<ScriptDocumentState>>,
+}
+
+impl UserData for ScriptFrame {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("frameNumber", |_, frame| Ok(frame.number));
+        fields.add_field_method_get(
+            "duration",
+            |_, frame| Ok(frame.duration_ms as f64 / 1_000.0),
+        );
+        fields.add_field_method_set("duration", |_, frame, seconds: f64| {
+            if !seconds.is_finite() || seconds <= 0.0 {
+                return Err(LuaError::RuntimeError(
+                    "Frame.duration must be a positive number of seconds.".into(),
+                ));
+            }
+            let duration = (seconds * 1_000.0).round().clamp(1.0, 60_000.0) as u32;
+            if let Some(document) = frame.document.upgrade() {
+                document
+                    .borrow_mut()
+                    .queue_mse_operation(LuaScriptOperation {
+                        path: "animation.setFrameDuration".into(),
+                        arguments: serde_json::json!({ "frame": frame.id, "duration": duration }),
+                    });
+            }
+            frame.duration_ms = duration;
+            Ok(())
+        });
+        fields.add_field_method_get("isDisabled", |_, frame| Ok(frame.disabled));
+    }
+}
+
+fn script_frames(document: &Rc<RefCell<ScriptDocumentState>>) -> Vec<ScriptFrame> {
+    let state = document.borrow();
+    state
+        .mse_snapshot
+        .get("animation")
+        .and_then(|animation| animation.get("frames"))
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter_map(|(index, frame)| {
+            Some(ScriptFrame {
+                id: frame.get("id")?.as_str()?.to_string(),
+                number: frame
+                    .get("number")
+                    .and_then(JsonValue::as_u64)
+                    .unwrap_or(index as u64 + 1)
+                    .min(u32::MAX as u64) as u32,
+                duration_ms: frame
+                    .get("duration")
+                    .and_then(JsonValue::as_u64)
+                    .unwrap_or(100)
+                    .clamp(1, 60_000) as u32,
+                disabled: frame
+                    .get("disabled")
+                    .and_then(JsonValue::as_bool)
+                    .unwrap_or(false),
+                document: Rc::downgrade(document),
+            })
+        })
+        .collect()
+}
+
+fn frame_number_from_value(value: &Value, fallback: u32) -> LuaResult<u32> {
+    match value {
+        Value::Nil => Ok(fallback.max(1)),
+        Value::Integer(value) => Ok((*value).max(1) as u32),
+        Value::Number(value) if value.is_finite() => Ok(value.round().max(1.0) as u32),
+        Value::UserData(value) if value.is::<ScriptFrame>() => {
+            Ok(value.borrow::<ScriptFrame>()?.number.max(1))
+        }
+        _ => Err(LuaError::RuntimeError(
+            "Expected a frame number or Frame value.".into(),
+        )),
+    }
+}
+
+fn script_frame_for_number(
+    document: &Rc<RefCell<ScriptDocumentState>>,
+    number: u32,
+) -> ScriptFrame {
+    script_frames(document)
+        .into_iter()
+        .find(|frame| frame.number == number)
+        .unwrap_or_else(|| ScriptFrame {
+            id: format!("frame-{number}"),
+            number,
+            duration_ms: 100,
+            disabled: false,
+            document: Rc::downgrade(document),
+        })
+}
+
+#[derive(Clone, Debug)]
+struct ScriptTag {
+    id: String,
+    name: String,
+    start_frame_id: String,
+    end_frame_id: String,
+    direction: String,
+    repeat_count: Option<u32>,
+    document: Weak<RefCell<ScriptDocumentState>>,
+}
+
+impl ScriptTag {
+    fn queue_update(&self) {
+        if let Some(document) = self.document.upgrade() {
+            document
+                .borrow_mut()
+                .queue_mse_operation(LuaScriptOperation {
+                    path: "animation.updateLoop".into(),
+                    arguments: serde_json::json!({
+                        "id": self.id,
+                        "name": self.name,
+                        "startFrameId": self.start_frame_id,
+                        "endFrameId": self.end_frame_id,
+                        "direction": self.direction,
+                        "repeatCount": self.repeat_count,
+                    }),
+                });
+        }
+    }
+
+    fn frame(&self, id: &str) -> Option<ScriptFrame> {
+        let document = self.document.upgrade()?;
+        script_frames(&document)
+            .into_iter()
+            .find(|frame| frame.id == id)
+    }
+}
+
+impl UserData for ScriptTag {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("name", |_, tag| Ok(tag.name.clone()));
+        fields.add_field_method_set("name", |_, tag, value: String| {
+            tag.name = value;
+            tag.queue_update();
+            Ok(())
+        });
+        fields.add_field_method_get("fromFrame", |_, tag| Ok(tag.frame(&tag.start_frame_id)));
+        fields.add_field_method_set("fromFrame", |_, tag, value: Value| {
+            let document = tag
+                .document
+                .upgrade()
+                .ok_or_else(|| LuaError::RuntimeError("The tag is no longer available.".into()))?;
+            let number = frame_number_from_value(&value, 1)?;
+            let frame = script_frame_for_number(&document, number);
+            tag.start_frame_id = frame.id;
+            tag.queue_update();
+            Ok(())
+        });
+        fields.add_field_method_get("toFrame", |_, tag| Ok(tag.frame(&tag.end_frame_id)));
+        fields.add_field_method_set("toFrame", |_, tag, value: Value| {
+            let document = tag
+                .document
+                .upgrade()
+                .ok_or_else(|| LuaError::RuntimeError("The tag is no longer available.".into()))?;
+            let number = frame_number_from_value(&value, 1)?;
+            let frame = script_frame_for_number(&document, number);
+            tag.end_frame_id = frame.id;
+            tag.queue_update();
+            Ok(())
+        });
+        fields.add_field_method_get("repeats", |_, tag| Ok(tag.repeat_count.unwrap_or(0)));
+        fields.add_field_method_set("repeats", |_, tag, value: i64| {
+            tag.repeat_count = (value > 0).then_some(value as u32);
+            tag.queue_update();
+            Ok(())
+        });
+        fields.add_field_method_get("aniDir", |_, tag| {
+            Ok(if tag.direction == "reverse" { 1 } else { 0 })
+        });
+        fields.add_field_method_set("aniDir", |_, tag, value: i64| {
+            tag.direction = if value == 1 { "reverse" } else { "forward" }.into();
+            tag.queue_update();
+            Ok(())
+        });
+    }
+}
+
+fn script_tags(document: &Rc<RefCell<ScriptDocumentState>>) -> Vec<ScriptTag> {
+    let state = document.borrow();
+    state
+        .mse_snapshot
+        .get("animation")
+        .and_then(|animation| animation.get("loops"))
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|tag| {
+            Some(ScriptTag {
+                id: tag.get("id")?.as_str()?.to_string(),
+                name: tag
+                    .get("name")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("Tag")
+                    .to_string(),
+                start_frame_id: tag.get("startFrameId")?.as_str()?.to_string(),
+                end_frame_id: tag.get("endFrameId")?.as_str()?.to_string(),
+                direction: tag
+                    .get("direction")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("forward")
+                    .to_string(),
+                repeat_count: tag
+                    .get("repeatCount")
+                    .and_then(JsonValue::as_u64)
+                    .map(|value| value.min(u32::MAX as u64) as u32),
+                document: Rc::downgrade(document),
+            })
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ScriptImageData {
     mode: ScriptPixelMode,
@@ -289,10 +613,13 @@ impl ActiveSurfaceSnapshot {
 struct ScriptLayerData {
     id: String,
     name: String,
+    kind: String,
     opacity: u8,
     visible: bool,
     locked: bool,
     continuous: bool,
+    parent_group_id: Option<String>,
+    stack_index: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -302,6 +629,25 @@ struct ScriptCreatedLayerState {
     offset_x: i32,
     offset_y: i32,
     frame_number: u32,
+}
+
+#[derive(Clone, Debug)]
+struct ScriptKnownCelState {
+    id: String,
+    layer_id: String,
+    frame_id: String,
+    frame_number: u32,
+    image: Rc<RefCell<ScriptImageData>>,
+    offset_x: i32,
+    offset_y: i32,
+}
+
+#[derive(Clone, Debug)]
+struct ScriptKnownCelSnapshot {
+    state: Rc<RefCell<ScriptKnownCelState>>,
+    image: ScriptImageData,
+    offset_x: i32,
+    offset_y: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -331,6 +677,7 @@ struct ScriptStateCheckpoint {
     active_offset_x: i32,
     active_offset_y: i32,
     active_layer: Rc<RefCell<ScriptLayerData>>,
+    known_cels: Vec<ScriptKnownCelSnapshot>,
 }
 
 #[derive(Debug)]
@@ -359,6 +706,7 @@ struct ScriptDocumentState {
     offset_x: i32,
     offset_y: i32,
     active_layer: Rc<RefCell<ScriptLayerData>>,
+    known_cels: Vec<Rc<RefCell<ScriptKnownCelState>>>,
     frame_number: u32,
     transparent_color: u32,
     created_layers: Vec<Rc<RefCell<ScriptCreatedLayerState>>>,
@@ -392,6 +740,20 @@ impl ScriptDocumentState {
             active_offset_x: self.offset_x,
             active_offset_y: self.offset_y,
             active_layer: self.active_layer.clone(),
+            known_cels: self
+                .known_cels
+                .iter()
+                .map(|state| {
+                    let state_ref = state.borrow();
+                    let image = state_ref.image.borrow().clone();
+                    ScriptKnownCelSnapshot {
+                        state: state.clone(),
+                        image,
+                        offset_x: state_ref.offset_x,
+                        offset_y: state_ref.offset_y,
+                    }
+                })
+                .collect(),
         }
     }
 
@@ -421,6 +783,12 @@ impl ScriptDocumentState {
         self.offset_x = checkpoint.active_offset_x;
         self.offset_y = checkpoint.active_offset_y;
         self.active_layer = checkpoint.active_layer.clone();
+        for snapshot in &checkpoint.known_cels {
+            let mut state = snapshot.state.borrow_mut();
+            *state.image.borrow_mut() = snapshot.image.clone();
+            state.offset_x = snapshot.offset_x;
+            state.offset_y = snapshot.offset_y;
+        }
     }
 
     fn restore_invocation(&mut self, checkpoint: &ScriptStateCheckpoint) {
@@ -518,6 +886,8 @@ impl ScriptDocumentState {
             visible: metadata.visible,
             locked: metadata.locked,
             frame_number: layer.frame_number,
+            parent_group_id: metadata.parent_group_id.clone(),
+            stack_index: metadata.stack_index,
             surface: ActiveSurfaceSnapshot {
                 mode: image.mode,
                 width: image.width,
@@ -613,10 +983,61 @@ impl ScriptDocumentState {
     }
 
     fn flush_pending(&mut self) -> LuaResult<()> {
-        let Some(batch) = self.pending.take() else {
+        let Some(mut batch) = self.pending.take() else {
             return Ok(());
         };
         let after = self.snapshot();
+        let mut known_changed_count = 0usize;
+        for before in &batch.before.known_cels {
+            let state = before.state.borrow();
+            let image = state.image.borrow();
+            let image_changed = before.image != *image;
+            let position_changed =
+                before.offset_x != state.offset_x || before.offset_y != state.offset_y;
+            if !image_changed && !position_changed {
+                continue;
+            }
+            known_changed_count = known_changed_count.saturating_add(
+                if before.image.mode == image.mode
+                    && before.image.width == image.width
+                    && before.image.height == image.height
+                {
+                    before
+                        .image
+                        .pixels
+                        .iter()
+                        .zip(image.pixels.iter())
+                        .filter(|(left, right)| left != right)
+                        .count()
+                } else {
+                    before.image.pixels.len().max(image.pixels.len())
+                },
+            );
+            batch.operations.push(LuaScriptOperation {
+                path: "animation.setCelSurface".into(),
+                arguments: serde_json::json!({
+                    "layerId": state.layer_id,
+                    "frameId": state.frame_id,
+                    "celId": state.id,
+                    "before": ActiveSurfaceSnapshot {
+                        mode: before.image.mode,
+                        width: before.image.width,
+                        height: before.image.height,
+                        offset_x: before.offset_x,
+                        offset_y: before.offset_y,
+                        pixels: before.image.pixels.clone(),
+                    }.serialized(),
+                    "after": ActiveSurfaceSnapshot {
+                        mode: image.mode,
+                        width: image.width,
+                        height: image.height,
+                        offset_x: state.offset_x,
+                        offset_y: state.offset_y,
+                        pixels: image.pixels.clone(),
+                    }.serialized(),
+                }),
+            });
+        }
         if batch.before.surface == after && batch.operations.is_empty() {
             return Ok(());
         }
@@ -637,6 +1058,7 @@ impl ScriptDocumentState {
         } else {
             batch.before.surface.pixels.len().max(after.pixels.len())
         };
+        let changed_count = changed_count.saturating_add(known_changed_count);
         if self.total_change_count.saturating_add(changed_count) > MAX_CHANGED_PIXELS {
             return Err(LuaError::RuntimeError(format!(
                 "The script changed more than {MAX_CHANGED_PIXELS} pixels."
@@ -951,28 +1373,88 @@ impl UserData for ScriptSelection {
 #[derive(Clone, Debug)]
 struct ScriptLayer {
     data: Rc<RefCell<ScriptLayerData>>,
+    document: Weak<RefCell<ScriptDocumentState>>,
+    allocated_pixels: Rc<Cell<usize>>,
+    transparent_color: u32,
+}
+
+impl ScriptLayer {
+    fn new(
+        data: Rc<RefCell<ScriptLayerData>>,
+        document: &Rc<RefCell<ScriptDocumentState>>,
+        allocated_pixels: Rc<Cell<usize>>,
+        transparent_color: u32,
+    ) -> Self {
+        Self {
+            data,
+            document: Rc::downgrade(document),
+            allocated_pixels,
+            transparent_color,
+        }
+    }
+
+    fn queue_update(&self, key: &str, value: JsonValue) {
+        let Some(document) = self.document.upgrade() else {
+            return;
+        };
+        let created = {
+            let state = document.borrow();
+            state
+                .created_layers
+                .iter()
+                .any(|layer| Rc::ptr_eq(&layer.borrow().layer, &self.data))
+                || state.created_documents.iter().any(|sprite| {
+                    sprite
+                        .borrow()
+                        .layers
+                        .iter()
+                        .any(|layer| Rc::ptr_eq(&layer.borrow().layer, &self.data))
+                })
+        };
+        if created {
+            return;
+        }
+        let mut arguments = serde_json::Map::new();
+        arguments.insert(
+            "id".into(),
+            JsonValue::String(self.data.borrow().id.clone()),
+        );
+        arguments.insert(key.into(), value);
+        document
+            .borrow_mut()
+            .queue_mse_operation(LuaScriptOperation {
+                path: "layers.update".into(),
+                arguments: JsonValue::Object(arguments),
+            });
+    }
 }
 
 impl UserData for ScriptLayer {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("id", |_, layer| Ok(layer.data.borrow().id.clone()));
         fields.add_field_method_get("name", |_, layer| Ok(layer.data.borrow().name.clone()));
         fields.add_field_method_set("name", |_, layer, value: String| {
-            layer.data.borrow_mut().name = value;
+            layer.data.borrow_mut().name = value.clone();
+            layer.queue_update("name", JsonValue::String(value));
             Ok(())
         });
         fields.add_field_method_get("opacity", |_, layer| Ok(layer.data.borrow().opacity));
         fields.add_field_method_set("opacity", |_, layer, value: i64| {
-            layer.data.borrow_mut().opacity = clamp_u8(value);
+            let value = clamp_u8(value);
+            layer.data.borrow_mut().opacity = value;
+            layer.queue_update("opacity", JsonValue::Number(value.into()));
             Ok(())
         });
         fields.add_field_method_get("isVisible", |_, layer| Ok(layer.data.borrow().visible));
         fields.add_field_method_set("isVisible", |_, layer, value: bool| {
             layer.data.borrow_mut().visible = value;
+            layer.queue_update("visible", JsonValue::Bool(value));
             Ok(())
         });
         fields.add_field_method_get("isEditable", |_, layer| Ok(!layer.data.borrow().locked));
         fields.add_field_method_set("isEditable", |_, layer, value: bool| {
             layer.data.borrow_mut().locked = !value;
+            layer.queue_update("locked", JsonValue::Bool(!value));
             Ok(())
         });
         fields.add_field_method_get("isContinuous", |_, layer| {
@@ -985,7 +1467,311 @@ impl UserData for ScriptLayer {
         fields.add_field_method_get("isLocked", |_, layer| Ok(layer.data.borrow().locked));
         fields.add_field_method_set("isLocked", |_, layer, value: bool| {
             layer.data.borrow_mut().locked = value;
+            layer.queue_update("locked", JsonValue::Bool(value));
             Ok(())
+        });
+        fields.add_field_method_get("isImage", |_, layer| {
+            Ok(layer.data.borrow().kind == "raster")
+        });
+        fields.add_field_method_get(
+            "isGroup",
+            |_, layer| Ok(layer.data.borrow().kind == "group"),
+        );
+        fields.add_field_method_get("isTilemap", |_, layer| {
+            Ok(layer.data.borrow().kind == "tilemap")
+        });
+        fields.add_field_method_get("stackIndex", |_, layer| Ok(layer.data.borrow().stack_index));
+        fields.add_field_method_set("stackIndex", |_, layer, value: i64| {
+            layer.data.borrow_mut().stack_index = value.max(1) as u32;
+            Ok(())
+        });
+        fields.add_field_method_get("parent", |lua, layer| {
+            match layer.data.borrow().parent_group_id.clone() {
+                Some(id) => Ok(Value::String(lua.create_string(&id)?)),
+                None => Ok(Value::Nil),
+            }
+        });
+        fields.add_field_method_set("parent", |_, layer, value: Value| {
+            layer.data.borrow_mut().parent_group_id = match value {
+                Value::Nil => None,
+                Value::String(value) => Some(value.to_string_lossy()),
+                _ => {
+                    return Err(LuaError::RuntimeError(
+                        "Layer.parent currently accepts another layer parent value or nil.".into(),
+                    ));
+                }
+            };
+            Ok(())
+        });
+        fields.add_field_method_get("cels", |lua, layer| {
+            let cels = lua.create_table()?;
+            let Some(document) = layer.document.upgrade() else {
+                return Ok(cels);
+            };
+            let (is_active, active_frame, mut known_cels) = {
+                let state = document.borrow();
+                (
+                    Rc::ptr_eq(&layer.data, &state.active_layer),
+                    state.active_frame_number(),
+                    state.known_cels.clone(),
+                )
+            };
+            if is_active {
+                known_cels.sort_by_key(|cel| cel.borrow().frame_number);
+                let mut active_added = false;
+                for known in known_cels {
+                    let frame_number = known.borrow().frame_number;
+                    if !active_added && active_frame < frame_number {
+                        cels.push(lua.create_userdata(ScriptCel {
+                            document: document.clone(),
+                            allocated_pixels: layer.allocated_pixels.clone(),
+                            transparent_color: layer.transparent_color,
+                            frame_number: active_frame,
+                            layer: layer.data.clone(),
+                            known: None,
+                        })?)?;
+                        active_added = true;
+                    }
+                    cels.push(lua.create_userdata(ScriptCel {
+                        document: document.clone(),
+                        allocated_pixels: layer.allocated_pixels.clone(),
+                        transparent_color: layer.transparent_color,
+                        frame_number,
+                        layer: layer.data.clone(),
+                        known: Some(known),
+                    })?)?;
+                }
+                if !active_added {
+                    cels.push(lua.create_userdata(ScriptCel {
+                        document: document.clone(),
+                        allocated_pixels: layer.allocated_pixels.clone(),
+                        transparent_color: layer.transparent_color,
+                        frame_number: active_frame,
+                        layer: layer.data.clone(),
+                        known: None,
+                    })?)?;
+                }
+            }
+            Ok(cels)
+        });
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("cel", |lua, layer, frame: Option<Value>| {
+            let document = layer.document.upgrade().ok_or_else(|| {
+                LuaError::RuntimeError("The layer is no longer available.".into())
+            })?;
+            let frame_number = match frame {
+                None | Some(Value::Nil) => document.borrow().active_frame_number(),
+                Some(value) => {
+                    frame_number_from_value(&value, document.borrow().active_frame_number())?
+                }
+            };
+            let (target, known) = {
+                let document = document.borrow();
+                let active_layer = Rc::ptr_eq(&layer.data, &document.active_layer);
+                (
+                    active_layer && frame_number == document.active_frame_number(),
+                    active_layer
+                        .then(|| {
+                            document
+                                .known_cels
+                                .iter()
+                                .find(|cel| cel.borrow().frame_number == frame_number)
+                                .cloned()
+                        })
+                        .flatten(),
+                )
+            };
+            if !target && known.is_none() {
+                return Ok(Value::Nil);
+            }
+            Ok(Value::UserData(lua.create_userdata(ScriptCel {
+                document,
+                allocated_pixels: layer.allocated_pixels.clone(),
+                transparent_color: layer.transparent_color,
+                frame_number,
+                layer: layer.data.clone(),
+                known,
+            })?))
+        });
+    }
+}
+
+fn script_layers(
+    document: &Rc<RefCell<ScriptDocumentState>>,
+    allocated_pixels: &Rc<Cell<usize>>,
+    transparent_color: u32,
+) -> Vec<ScriptLayer> {
+    let state = document.borrow();
+    let active = state.active_layer.clone();
+    let active_id = active.borrow().id.clone();
+    state
+        .mse_snapshot
+        .get("layers")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter_map(|(index, layer)| {
+            let id = layer.get("id")?.as_str()?.to_string();
+            let data = if id == active_id {
+                active.clone()
+            } else {
+                Rc::new(RefCell::new(ScriptLayerData {
+                    id,
+                    name: layer
+                        .get("name")
+                        .and_then(JsonValue::as_str)
+                        .unwrap_or("Layer")
+                        .to_string(),
+                    kind: layer
+                        .get("kind")
+                        .and_then(JsonValue::as_str)
+                        .unwrap_or("raster")
+                        .to_string(),
+                    opacity: layer
+                        .get("opacity")
+                        .and_then(JsonValue::as_u64)
+                        .unwrap_or(255)
+                        .min(255) as u8,
+                    visible: layer
+                        .get("visible")
+                        .and_then(JsonValue::as_bool)
+                        .unwrap_or(true),
+                    locked: layer
+                        .get("locked")
+                        .and_then(JsonValue::as_bool)
+                        .unwrap_or(false),
+                    continuous: true,
+                    parent_group_id: layer
+                        .get("groupId")
+                        .and_then(JsonValue::as_str)
+                        .map(str::to_string),
+                    stack_index: index as u32 + 1,
+                }))
+            };
+            Some(ScriptLayer::new(
+                data,
+                document,
+                allocated_pixels.clone(),
+                transparent_color,
+            ))
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug)]
+struct ScriptRange {
+    document: Rc<RefCell<ScriptDocumentState>>,
+    allocated_pixels: Rc<Cell<usize>>,
+    transparent_color: u32,
+}
+
+impl ScriptRange {
+    fn string_ids(&self, key: &str) -> Vec<String> {
+        self.document
+            .borrow()
+            .mse_snapshot
+            .get("range")
+            .and_then(|range| range.get(key))
+            .and_then(JsonValue::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(JsonValue::as_str)
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+impl UserData for ScriptRange {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("isEmpty", |_, range| {
+            Ok(range.string_ids("layerIds").is_empty()
+                && range.string_ids("frameIds").is_empty()
+                && range.string_ids("cellKeys").is_empty())
+        });
+        fields.add_field_method_get("type", |_, range| {
+            Ok(if !range.string_ids("cellKeys").is_empty() {
+                1
+            } else if !range.string_ids("frameIds").is_empty() {
+                2
+            } else if !range.string_ids("layerIds").is_empty() {
+                3
+            } else {
+                0
+            })
+        });
+        fields.add_field_method_get("frames", |lua, range| {
+            let selected = range.string_ids("frameIds");
+            let frames = lua.create_table()?;
+            for frame in script_frames(&range.document)
+                .into_iter()
+                .filter(|frame| selected.contains(&frame.id))
+            {
+                frames.push(lua.create_userdata(frame)?)?;
+            }
+            Ok(frames)
+        });
+        fields.add_field_method_get("layers", |lua, range| {
+            let selected = range.string_ids("layerIds");
+            let layers = lua.create_table()?;
+            for layer in script_layers(
+                &range.document,
+                &range.allocated_pixels,
+                range.transparent_color,
+            )
+            .into_iter()
+            .filter(|layer| selected.contains(&layer.data.borrow().id))
+            {
+                layers.push(lua.create_userdata(layer)?)?;
+            }
+            Ok(layers)
+        });
+        fields.add_field_method_get("cels", |lua, range| {
+            let cels = lua.create_table()?;
+            let selected = range.string_ids("cellKeys");
+            if selected.is_empty() {
+                return Ok(cels);
+            }
+            let (active_layer, active_frame, active_frame_id, known_cels) = {
+                let document = range.document.borrow();
+                let active_frame = document.active_frame_number();
+                (
+                    document.active_layer.clone(),
+                    active_frame,
+                    script_frame_for_number(&range.document, active_frame).id,
+                    document.known_cels.clone(),
+                )
+            };
+            let active_layer_id = active_layer.borrow().id.clone();
+            if selected.contains(&format!("{active_layer_id}:{active_frame_id}")) {
+                cels.push(lua.create_userdata(ScriptCel {
+                    document: range.document.clone(),
+                    allocated_pixels: range.allocated_pixels.clone(),
+                    transparent_color: range.transparent_color,
+                    frame_number: active_frame,
+                    layer: active_layer.clone(),
+                    known: None,
+                })?)?;
+            }
+            for known in known_cels {
+                let state = known.borrow();
+                if !selected.contains(&format!("{}:{}", state.layer_id, state.frame_id)) {
+                    continue;
+                }
+                let frame_number = state.frame_number;
+                drop(state);
+                cels.push(lua.create_userdata(ScriptCel {
+                    document: range.document.clone(),
+                    allocated_pixels: range.allocated_pixels.clone(),
+                    transparent_color: range.transparent_color,
+                    frame_number,
+                    layer: active_layer.clone(),
+                    known: Some(known),
+                })?)?;
+            }
+            Ok(cels)
         });
     }
 }
@@ -997,12 +1783,17 @@ struct ScriptCel {
     transparent_color: u32,
     frame_number: u32,
     layer: Rc<RefCell<ScriptLayerData>>,
+    known: Option<Rc<RefCell<ScriptKnownCelState>>>,
 }
 
 impl UserData for ScriptCel {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("image", |lua, cel| {
-            let data = cel.document.borrow().active_image.clone();
+            let data = cel
+                .known
+                .as_ref()
+                .map(|state| state.borrow().image.clone())
+                .unwrap_or_else(|| cel.document.borrow().active_image.clone());
             lua.create_userdata(ScriptImage {
                 data,
                 document: Rc::downgrade(&cel.document),
@@ -1025,45 +1816,91 @@ impl UserData for ScriptCel {
             }
             drop(image_data);
             cel.document.borrow_mut().ensure_pending();
-            cel.document
-                .borrow_mut()
-                .replace_active_image(image.data.clone());
-            let app = lua.globals().get::<Table>("app")?;
-            app.set("activeImage", value)?;
+            if let Some(state) = &cel.known {
+                state.borrow_mut().image = image.data.clone();
+            } else {
+                cel.document
+                    .borrow_mut()
+                    .replace_active_image(image.data.clone());
+                let app = lua.globals().get::<Table>("app")?;
+                app.set("activeImage", value)?;
+            }
             Ok(())
         });
         fields.add_field_method_get("position", |_, cel| {
-            let document = cel.document.borrow();
-            Ok(ScriptPoint {
-                x: document.offset_x,
-                y: document.offset_y,
-            })
+            if let Some(state) = &cel.known {
+                let state = state.borrow();
+                Ok(ScriptPoint {
+                    x: state.offset_x,
+                    y: state.offset_y,
+                })
+            } else {
+                let document = cel.document.borrow();
+                Ok(ScriptPoint {
+                    x: document.offset_x,
+                    y: document.offset_y,
+                })
+            }
         });
         fields.add_field_method_set("position", |_, cel, value: Value| {
             let point = point_from_value(value)?;
-            let mut document = cel.document.borrow_mut();
-            if document.offset_x == point.x && document.offset_y == point.y {
-                return Ok(());
+            if let Some(state) = &cel.known {
+                let mut state = state.borrow_mut();
+                if state.offset_x == point.x && state.offset_y == point.y {
+                    return Ok(());
+                }
+                cel.document.borrow_mut().ensure_pending();
+                state.offset_x = point.x;
+                state.offset_y = point.y;
+            } else {
+                let mut document = cel.document.borrow_mut();
+                if document.offset_x == point.x && document.offset_y == point.y {
+                    return Ok(());
+                }
+                document.ensure_pending();
+                document.set_active_position(point.x, point.y);
             }
-            document.ensure_pending();
-            document.set_active_position(point.x, point.y);
             Ok(())
         });
         fields.add_field_method_get("bounds", |_, cel| {
-            let document = cel.document.borrow();
-            let image = document.active_image.borrow();
-            Ok(ScriptRectangle {
-                x: document.offset_x,
-                y: document.offset_y,
-                width: image.width as u32,
-                height: image.height as u32,
-            })
+            if let Some(state) = &cel.known {
+                let state = state.borrow();
+                let image = state.image.borrow();
+                Ok(ScriptRectangle {
+                    x: state.offset_x,
+                    y: state.offset_y,
+                    width: image.width as u32,
+                    height: image.height as u32,
+                })
+            } else {
+                let document = cel.document.borrow();
+                let image = document.active_image.borrow();
+                Ok(ScriptRectangle {
+                    x: document.offset_x,
+                    y: document.offset_y,
+                    width: image.width as u32,
+                    height: image.height as u32,
+                })
+            }
+        });
+        fields.add_field_method_get("id", |_, cel| {
+            Ok(cel
+                .known
+                .as_ref()
+                .map(|state| state.borrow().id.clone())
+                .unwrap_or_else(|| "active-cel".into()))
         });
         fields.add_field_method_get("frameNumber", |_, cel| Ok(cel.frame_number));
+        fields.add_field_method_get("frame", |_, cel| {
+            Ok(script_frame_for_number(&cel.document, cel.frame_number))
+        });
         fields.add_field_method_get("layer", |_, cel| {
-            Ok(ScriptLayer {
-                data: cel.layer.clone(),
-            })
+            Ok(ScriptLayer::new(
+                cel.layer.clone(),
+                &cel.document,
+                cel.allocated_pixels.clone(),
+                cel.transparent_color,
+            ))
         });
     }
 }
@@ -1164,10 +2001,32 @@ impl UserData for ScriptSprite {
         fields.add_field_method_get("colorMode", |_, sprite| {
             Ok(sprite.mode().aseprite_color_mode())
         });
-        fields.add_field_method_get("activeLayer", |_, sprite| {
-            Ok(ScriptLayer {
-                data: sprite.active_layer(),
+        fields.add_field_method_get("transparentColor", |_, sprite| Ok(sprite.transparent_color));
+        fields.add_field_method_get("palettes", |lua, sprite| {
+            let palettes = lua.create_table()?;
+            let entries = script_palette_entries(&sprite.document.borrow());
+            palettes.set(
+                1,
+                lua.create_userdata(ScriptPalette {
+                    entries,
+                    document: Rc::downgrade(&sprite.document),
+                })?,
+            )?;
+            Ok(palettes)
+        });
+        fields.add_field_method_get("palette", |_, sprite| {
+            Ok(ScriptPalette {
+                entries: script_palette_entries(&sprite.document.borrow()),
+                document: Rc::downgrade(&sprite.document),
             })
+        });
+        fields.add_field_method_get("activeLayer", |_, sprite| {
+            Ok(ScriptLayer::new(
+                sprite.active_layer(),
+                &sprite.document,
+                sprite.allocated_pixels.clone(),
+                sprite.transparent_color,
+            ))
         });
         fields.add_field_method_get("activeCel", |_, sprite| {
             let document = sprite.document.borrow();
@@ -1177,10 +2036,37 @@ impl UserData for ScriptSprite {
                 transparent_color: sprite.transparent_color,
                 frame_number: document.active_frame_number(),
                 layer: sprite.active_layer(),
+                known: None,
             })
         });
         fields.add_field_method_get("activeFrame", |_, sprite| {
-            Ok(sprite.document.borrow().active_frame_number())
+            let number = sprite.document.borrow().active_frame_number();
+            Ok(script_frame_for_number(&sprite.document, number))
+        });
+        fields.add_field_method_get("frames", |lua, sprite| {
+            let frames = lua.create_table()?;
+            for frame in script_frames(&sprite.document) {
+                frames.push(lua.create_userdata(frame)?)?;
+            }
+            Ok(frames)
+        });
+        fields.add_field_method_get("layers", |lua, sprite| {
+            let layers = lua.create_table()?;
+            for layer in script_layers(
+                &sprite.document,
+                &sprite.allocated_pixels,
+                sprite.transparent_color,
+            ) {
+                layers.push(lua.create_userdata(layer)?)?;
+            }
+            Ok(layers)
+        });
+        fields.add_field_method_get("tags", |lua, sprite| {
+            let tags = lua.create_table()?;
+            for tag in script_tags(&sprite.document) {
+                tags.push(lua.create_userdata(tag)?)?;
+            }
+            Ok(tags)
         });
         fields.add_field_method_get("selection", |_, sprite| {
             let selection = match sprite.kind {
@@ -1201,6 +2087,56 @@ impl UserData for ScriptSprite {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("newTag", |lua, sprite, args: Variadic<Value>| {
+            let fallback = sprite.document.borrow().active_frame_number();
+            let from_number = args
+                .first()
+                .map(|value| frame_number_from_value(value, fallback))
+                .transpose()?
+                .unwrap_or(fallback);
+            let to_number = args
+                .get(1)
+                .map(|value| frame_number_from_value(value, from_number))
+                .transpose()?
+                .unwrap_or(from_number);
+            let from = script_frame_for_number(&sprite.document, from_number);
+            let to = script_frame_for_number(&sprite.document, to_number);
+            let tag = ScriptTag {
+                id: next_script_object_id("lua-tag"),
+                name: "Tag".into(),
+                start_frame_id: from.id,
+                end_frame_id: to.id,
+                direction: "forward".into(),
+                repeat_count: None,
+                document: Rc::downgrade(&sprite.document),
+            };
+            sprite
+                .document
+                .borrow_mut()
+                .queue_mse_operation(LuaScriptOperation {
+                    path: "animation.createLoop".into(),
+                    arguments: serde_json::json!({
+                        "id": tag.id,
+                        "name": tag.name,
+                        "startFrameId": tag.start_frame_id,
+                        "endFrameId": tag.end_frame_id,
+                        "direction": tag.direction,
+                        "repeatCount": tag.repeat_count,
+                    }),
+                });
+            lua.create_userdata(tag)
+        });
+        methods.add_method("deleteTag", |_, sprite, value: AnyUserData| {
+            let tag = value.borrow::<ScriptTag>()?;
+            sprite
+                .document
+                .borrow_mut()
+                .queue_mse_operation(LuaScriptOperation {
+                    path: "animation.removeLoop".into(),
+                    arguments: serde_json::json!({ "id": tag.id }),
+                });
+            Ok(())
+        });
         methods.add_method("newLayer", |lua, sprite, ()| {
             let (width, height) = sprite.dimensions();
             let mode = sprite.mode();
@@ -1222,10 +2158,13 @@ impl UserData for ScriptSprite {
             let layer = Rc::new(RefCell::new(ScriptLayerData {
                 id: next_script_object_id("lua-layer"),
                 name: "Layer".into(),
+                kind: "raster".into(),
                 opacity: 255,
                 visible: true,
                 locked: false,
                 continuous: true,
+                parent_group_id: sprite.active_layer().borrow().parent_group_id.clone(),
+                stack_index: sprite.active_layer().borrow().stack_index.saturating_add(1),
             }));
             let state = Rc::new(RefCell::new(ScriptCreatedLayerState {
                 layer: layer.clone(),
@@ -1272,7 +2211,12 @@ impl UserData for ScriptSprite {
                 &sprite.allocated_pixels,
                 sprite.transparent_color,
             )?;
-            lua.create_userdata(ScriptLayer { data: layer })
+            lua.create_userdata(ScriptLayer::new(
+                layer,
+                &sprite.document,
+                sprite.allocated_pixels.clone(),
+                sprite.transparent_color,
+            ))
         });
         methods.add_method("newCel", |lua, sprite, args: Variadic<Value>| {
             let layer = match args.first() {
@@ -1285,7 +2229,7 @@ impl UserData for ScriptSprite {
             };
             let frame_number = match args.get(1) {
                 None | Some(Value::Nil) => 1,
-                Some(value) => numeric_value(value)?.round() as u32,
+                Some(value) => frame_number_from_value(value, 1)?,
             }
             .max(1);
             let supplied_image = match args.get(2) {
@@ -1398,6 +2342,7 @@ impl UserData for ScriptSprite {
                 transparent_color: sprite.transparent_color,
                 frame_number,
                 layer,
+                known: None,
             })
         });
     }
@@ -1915,7 +2860,58 @@ pub(super) struct LuaInvocation {
     pub(super) created_layers: Vec<LuaScriptCreatedLayer>,
     pub(super) created_documents: Vec<LuaScriptCreatedDocument>,
     pub(super) dialogs: Vec<LuaScriptDialog>,
+    pub(super) active_layer_id: Option<String>,
+    pub(super) active_frame_number: Option<u32>,
     pub(super) elapsed_ms: u64,
+}
+
+fn known_cels_from_context(
+    context: &LuaScriptContext,
+    mode: ScriptPixelMode,
+) -> Result<Vec<Rc<RefCell<ScriptKnownCelState>>>, String> {
+    let mut total_pixels = context.pixels.len();
+    let mut result = Vec::new();
+    for cel in &context.active_layer_cels {
+        if cel.frame_number == context.frame_number {
+            continue;
+        }
+        let surface = &cel.surface;
+        let pixel_count = surface.width as usize * surface.height as usize;
+        if surface.format != mode.document_format()
+            || pixel_count == 0
+            || pixel_count > MAX_IMAGE_PIXELS
+            || surface.pixels.len() != pixel_count
+        {
+            return Err("A Lua animation cel payload is invalid.".into());
+        }
+        total_pixels = total_pixels.saturating_add(pixel_count);
+        if total_pixels > MAX_IMAGE_PIXELS * 4 {
+            return Err(format!(
+                "Lua animation cels cannot exceed {} pixels per session.",
+                MAX_IMAGE_PIXELS * 4
+            ));
+        }
+        result.push(Rc::new(RefCell::new(ScriptKnownCelState {
+            id: cel.id.clone(),
+            layer_id: context.layer_id.clone(),
+            frame_id: cel.frame_id.clone(),
+            frame_number: cel.frame_number.max(1),
+            image: Rc::new(RefCell::new(ScriptImageData {
+                mode,
+                width: surface.width as usize,
+                height: surface.height as usize,
+                pixels: surface
+                    .pixels
+                    .iter()
+                    .copied()
+                    .map(|value| mode.aseprite_value_from_document(value))
+                    .collect(),
+            })),
+            offset_x: surface.offset_x,
+            offset_y: surface.offset_y,
+        })));
+    }
+    Ok(result)
 }
 
 pub(super) struct LuaSession {
@@ -1951,6 +2947,7 @@ impl LuaSession {
             }
         }
         let mode = ScriptPixelMode::from_context(&context)?;
+        let known_cels = known_cels_from_context(&context, mode)?;
         let active_image = Rc::new(RefCell::new(ScriptImageData {
             mode,
             width: context.layer_width as usize,
@@ -1965,10 +2962,13 @@ impl LuaSession {
         let active_layer = Rc::new(RefCell::new(ScriptLayerData {
             id: context.layer_id.clone(),
             name: context.layer_name.clone(),
+            kind: "raster".into(),
             opacity: context.layer_opacity,
             visible: context.layer_visible,
             locked: context.layer_locked,
             continuous: true,
+            parent_group_id: context.layer_group_id.clone(),
+            stack_index: context.layer_stack_index.max(1),
         }));
         let document = Rc::new(RefCell::new(ScriptDocumentState {
             document_id: context.document_id.clone(),
@@ -1987,6 +2987,7 @@ impl LuaSession {
             offset_x: context.layer_offset_x,
             offset_y: context.layer_offset_y,
             active_layer,
+            known_cels,
             frame_number: context.frame_number,
             transparent_color: context.transparent_color,
             created_layers: Vec::new(),
@@ -1998,7 +2999,15 @@ impl LuaSession {
         }));
         let ui = Rc::new(RefCell::new(ScriptUiState::default()));
         let output = Rc::new(RefCell::new(Vec::new()));
-        let allocated_pixels = Rc::new(Cell::new(context.pixels.len()));
+        let allocated_pixels = Rc::new(Cell::new(
+            context.pixels.len()
+                + context
+                    .active_layer_cels
+                    .iter()
+                    .filter(|cel| cel.frame_number != context.frame_number)
+                    .map(|cel| cel.surface.pixels.len())
+                    .sum::<usize>(),
+        ));
         let budget = Rc::new(ExecutionBudget {
             started_at: RefCell::new(Instant::now()),
             instruction_count: Cell::new(0),
@@ -2108,6 +3117,7 @@ impl LuaSession {
             }
         }
         let mode = ScriptPixelMode::from_context(&context)?;
+        let known_cels = known_cels_from_context(&context, mode)?;
         let mut document = self.document.borrow_mut();
         if document.document_id != context.document_id || mode != document.target_mode {
             return Err("The Lua script target is no longer available.".into());
@@ -2128,10 +3138,13 @@ impl LuaSession {
         *active_layer.borrow_mut() = ScriptLayerData {
             id: context.layer_id.clone(),
             name: context.layer_name.clone(),
+            kind: "raster".into(),
             opacity: context.layer_opacity,
             visible: context.layer_visible,
             locked: context.layer_locked,
             continuous: true,
+            parent_group_id: context.layer_group_id.clone(),
+            stack_index: context.layer_stack_index.max(1),
         };
         document.document_name = context.document_name.clone();
         document.document_width = context.document_width;
@@ -2147,6 +3160,7 @@ impl LuaSession {
         document.offset_x = context.layer_offset_x;
         document.offset_y = context.layer_offset_y;
         document.active_layer = active_layer;
+        document.known_cels = known_cels;
         document.frame_number = context.frame_number;
         document.transparent_color = context.transparent_color;
         document.created_layers.clear();
@@ -2155,6 +3169,15 @@ impl LuaSession {
         document.batches.clear();
         document.total_change_count = 0;
         drop(document);
+        self.allocated_pixels.set(
+            context.pixels.len()
+                + context
+                    .active_layer_cels
+                    .iter()
+                    .filter(|cel| cel.frame_number != context.frame_number)
+                    .map(|cel| cel.surface.pixels.len())
+                    .sum::<usize>(),
+        );
         refresh_active_globals(
             &self.lua,
             &self.document,
@@ -2288,12 +3311,49 @@ impl LuaSession {
         }
         let batches = std::mem::take(&mut self.document.borrow_mut().batches);
         let dialogs = self.ui.borrow().snapshots();
+        let app = self
+            .lua
+            .globals()
+            .get::<Table>("app")
+            .map_err(|error| error.to_string())?;
+        let active_layer_id = match app
+            .get::<Value>("activeLayer")
+            .map_err(|error| error.to_string())?
+        {
+            Value::UserData(value) if value.is::<ScriptLayer>() => Some(
+                value
+                    .borrow::<ScriptLayer>()
+                    .map_err(|error| error.to_string())?
+                    .data
+                    .borrow()
+                    .id
+                    .clone(),
+            ),
+            _ => None,
+        };
+        let active_frame_number = match app
+            .get::<Value>("activeFrame")
+            .map_err(|error| error.to_string())?
+        {
+            Value::Integer(value) => Some(value.max(1) as u32),
+            Value::Number(value) if value.is_finite() => Some(value.round().max(1.0) as u32),
+            Value::UserData(value) if value.is::<ScriptFrame>() => Some(
+                value
+                    .borrow::<ScriptFrame>()
+                    .map_err(|error| error.to_string())?
+                    .number
+                    .max(1),
+            ),
+            _ => None,
+        };
         Ok(LuaInvocation {
             output,
             batches,
             created_layers,
             created_documents,
             dialogs,
+            active_layer_id,
+            active_frame_number,
             elapsed_ms,
         })
     }
@@ -2323,6 +3383,20 @@ fn install_sandbox_globals(
     color_mode.set("INDEXED", 2)?;
     color_mode.set("TILEMAP", 3)?;
     globals.set("ColorMode", color_mode)?;
+
+    let ani_dir = lua.create_table()?;
+    ani_dir.set("FORWARD", 0)?;
+    ani_dir.set("REVERSE", 1)?;
+    ani_dir.set("PING_PONG", 2)?;
+    ani_dir.set("PING_PONG_REVERSE", 3)?;
+    globals.set("AniDir", ani_dir)?;
+
+    let range_type = lua.create_table()?;
+    range_type.set("EMPTY", 0)?;
+    range_type.set("CELS", 1)?;
+    range_type.set("FRAMES", 2)?;
+    range_type.set("LAYERS", 3)?;
+    globals.set("RangeType", range_type)?;
 
     globals.set(
         "Color",
@@ -2631,10 +3705,13 @@ fn install_sandbox_globals(
             let layer = Rc::new(RefCell::new(ScriptLayerData {
                 id: next_script_object_id("lua-layer"),
                 name: "Layer 1".into(),
+                kind: "raster".into(),
                 opacity: 255,
                 visible: true,
                 locked: false,
                 continuous: true,
+                parent_group_id: None,
+                stack_index: 1,
             }));
             let layer_state = Rc::new(RefCell::new(ScriptCreatedLayerState {
                 layer: layer.clone(),
@@ -2704,15 +3781,19 @@ fn refresh_active_globals(
         allocated_pixels: allocated_pixels.clone(),
         transparent_color,
     })?;
-    let layer = lua.create_userdata(ScriptLayer {
-        data: active_layer.clone(),
-    })?;
+    let layer = lua.create_userdata(ScriptLayer::new(
+        active_layer.clone(),
+        document,
+        allocated_pixels.clone(),
+        transparent_color,
+    ))?;
     let cel = lua.create_userdata(ScriptCel {
         document: document.clone(),
         allocated_pixels: allocated_pixels.clone(),
         transparent_color,
         frame_number,
         layer: active_layer,
+        known: None,
     })?;
     let image = lua.create_userdata(ScriptImage {
         data: active_image,
@@ -2726,7 +3807,19 @@ fn refresh_active_globals(
     app.set("activeImage", image)?;
     app.set("activeLayer", layer)?;
     app.set("activeCel", cel)?;
+    app.set(
+        "activeFrame",
+        lua.create_userdata(script_frame_for_number(document, frame_number))?,
+    )?;
     app.set("frame", frame_number)?;
+    app.set(
+        "range",
+        lua.create_userdata(ScriptRange {
+            document: document.clone(),
+            allocated_pixels: allocated_pixels.clone(),
+            transparent_color,
+        })?,
+    )?;
     Ok(())
 }
 
@@ -3182,8 +4275,11 @@ mod tests {
             layer_visible: true,
             layer_locked: false,
             layer_format: "rgba".into(),
+            layer_group_id: None,
+            layer_stack_index: 1,
             frame_number: 1,
             pixels: vec![rgba(10, 20, 30, 255); 4],
+            active_layer_cels: Vec::new(),
             selection: Some(LuaScriptSelectionContext {
                 x: 1,
                 y: 1,
@@ -3663,5 +4759,188 @@ mod tests {
         assert_eq!(result.created_layers.len(), 1);
         assert!(result.created_layers[0].locked);
         assert_eq!(result.created_layers[0].opacity, 127);
+    }
+
+    #[test]
+    fn runs_modeless_shadow_script_with_layer_placement_and_palette_compatibility() {
+        let mut session = LuaSession::new(context(), "shadow.lua").unwrap();
+        let initial = session
+            .execute_source(
+                r#"
+                    local dlg = Dialog("Shadow")
+                    dlg:slider { id="squash", min=10, max=100, value=40 }
+                    dlg:slider { id="skew", min=-200, max=200, value=100 }
+                    dlg:color { id="shadowColor", color=Color { r=0, g=0, b=0, a=255 } }
+                    dlg:button {
+                        id="generate",
+                        text="Generate",
+                        onclick=function()
+                            local sprite = app.activeSprite
+                            local layer = app.activeLayer
+                            local frame = app.activeFrame
+                            assert(layer.isImage)
+                            local cel = layer:cel(frame)
+                            assert(cel ~= nil)
+                            local srcImage = cel.image
+                            local srcPos = cel.position
+                            app.transaction(function()
+                                local shadowImage = Image(sprite.spec)
+                                shadowImage:clear()
+                                local c = dlg.data.shadowColor
+                                local drawColor = app.pixelColor.rgba(c.red, c.green, c.blue, c.alpha)
+                                shadowImage:drawPixel(srcPos.x, srcPos.y, drawColor)
+                                local shadowLayer = sprite:newLayer()
+                                shadowLayer.name = layer.name .. " Shadow"
+                                shadowLayer.parent = layer.parent
+                                shadowLayer.stackIndex = layer.stackIndex
+                                sprite:newCel(shadowLayer, frame, shadowImage, Point(0, 0))
+                                app.activeLayer = layer
+                                app.refresh()
+                            end)
+                        end
+                    }
+                    dlg:show { wait=false }
+                "#,
+            )
+            .expect("shadow dialog should open");
+
+        let result = session
+            .dispatch(LuaScriptDialogAction {
+                dialog_id: initial.dialogs[0].id.clone(),
+                control_id: Some("generate".into()),
+                event: "click".into(),
+                values: HashMap::new(),
+            })
+            .expect("shadow callback should execute");
+
+        assert_eq!(result.created_layers.len(), 1);
+        assert_eq!(result.created_layers[0].name, "Layer 1 Shadow");
+        assert_eq!(result.created_layers[0].stack_index, 1);
+        assert_eq!(result.created_layers[0].parent_group_id, None);
+        assert_eq!(result.active_layer_id.as_deref(), Some("layer-1"));
+        assert_eq!(result.active_frame_number, Some(1));
+        assert_ne!(result.created_layers[0].surface.pixels[5], 0);
+    }
+
+    #[test]
+    fn reads_and_writes_non_active_frame_cels() {
+        let mut source = context();
+        source.mse_snapshot["animation"]["frames"] = serde_json::json!([
+            { "id": "frame-1", "number": 1, "duration": 100, "active": true },
+            { "id": "frame-2", "number": 2, "duration": 120, "active": false }
+        ]);
+        source.active_layer_cels = vec![
+            super::super::LuaScriptCelContext {
+                id: "cel-1".into(),
+                frame_id: "frame-1".into(),
+                frame_number: 1,
+                surface: LuaScriptSurfaceSnapshot {
+                    format: "rgba".into(),
+                    width: 2,
+                    height: 2,
+                    offset_x: 1,
+                    offset_y: 1,
+                    pixels: source.pixels.clone(),
+                },
+            },
+            super::super::LuaScriptCelContext {
+                id: "cel-2".into(),
+                frame_id: "frame-2".into(),
+                frame_number: 2,
+                surface: LuaScriptSurfaceSnapshot {
+                    format: "rgba".into(),
+                    width: 2,
+                    height: 2,
+                    offset_x: 3,
+                    offset_y: 4,
+                    pixels: vec![rgba(20, 30, 40, 255); 4],
+                },
+            },
+        ];
+        let changed = rgba(1, 2, 3, 255);
+        let mut session = LuaSession::new(source, "multi-frame.lua").unwrap();
+        let result = session
+            .execute_source(&format!(
+                r#"
+                    local layer = app.activeLayer
+                    assert(#layer.cels == 2)
+                    local cel = layer:cel(app.activeSprite.frames[2])
+                    assert(cel ~= nil and cel.id == "cel-2")
+                    assert(cel.position.x == 3 and cel.position.y == 4)
+                    app.transaction("Edit frame 2", function()
+                        cel.image:putPixel(1, 0, {changed})
+                        cel.position = Point(5, 6)
+                    end)
+                "#
+            ))
+            .expect("a non-active frame cel should be editable");
+
+        assert_eq!(result.batches.len(), 1);
+        assert!(result.batches[0].changes.is_empty());
+        assert_eq!(result.batches[0].operations.len(), 1);
+        let operation = &result.batches[0].operations[0];
+        assert_eq!(operation.path, "animation.setCelSurface");
+        assert_eq!(operation.arguments["layerId"], "layer-1");
+        assert_eq!(operation.arguments["frameId"], "frame-2");
+        assert_eq!(operation.arguments["celId"], "cel-2");
+        assert_eq!(operation.arguments["before"]["offsetX"], 3);
+        assert_eq!(operation.arguments["after"]["offsetX"], 5);
+        assert_eq!(operation.arguments["after"]["offsetY"], 6);
+        assert_eq!(operation.arguments["after"]["pixels"][1], changed);
+    }
+
+    #[test]
+    fn exposes_common_frame_tag_layer_and_range_compatibility_objects() {
+        let mut source = context();
+        source.mse_snapshot["layers"] = serde_json::json!([
+            { "id": "layer-1", "name": "Layer 1", "kind": "raster", "opacity": 255, "visible": true, "locked": false },
+            { "id": "layer-2", "name": "Layer 2", "kind": "raster", "opacity": 255, "visible": true, "locked": false }
+        ]);
+        source.mse_snapshot["animation"] = serde_json::json!({
+            "frames": [
+                { "id": "frame-1", "number": 1, "duration": 100, "active": true },
+                { "id": "frame-2", "number": 2, "duration": 200, "disabled": true, "active": false }
+            ],
+            "loops": [{
+                "id": "loop-1", "name": "Walk", "startFrameId": "frame-1",
+                "endFrameId": "frame-2", "direction": "forward", "repeatCount": 3
+            }]
+        });
+        source.mse_snapshot["range"] = serde_json::json!({
+            "layerIds": ["layer-1", "layer-2"],
+            "frameIds": ["frame-1", "frame-2"],
+            "cellKeys": []
+        });
+        let mut session = LuaSession::new(source, "animation.lua").unwrap();
+        let result = session
+            .execute_source(
+                r#"
+                    local sprite = app.activeSprite
+                    assert(#sprite.layers == 2)
+                    assert(#sprite.frames == 2)
+                    assert(sprite.frames[2].frameNumber == 2)
+                    assert(sprite.frames[2].isDisabled)
+                    assert(app.activeFrame.frameNumber == 1)
+                    assert(#sprite.tags == 1)
+                    assert(sprite.tags[1].fromFrame.frameNumber == 1)
+                    assert(sprite.tags[1].toFrame.frameNumber == 2)
+                    assert(sprite.tags[1].repeats == 3)
+                    assert(#app.range.layers == 2)
+                    assert(#app.range.frames == 2)
+                    sprite.frames[2].duration = 0.25
+                    sprite.tags[1].name = "Walk 2"
+                    app.activeFrame = sprite.frames[2]
+                "#,
+            )
+            .expect("animation compatibility objects should execute");
+
+        assert_eq!(result.active_frame_number, Some(2));
+        assert_eq!(result.batches.len(), 1);
+        assert_eq!(result.batches[0].operations.len(), 2);
+        assert_eq!(
+            result.batches[0].operations[0].path,
+            "animation.setFrameDuration"
+        );
+        assert_eq!(result.batches[0].operations[1].path, "animation.updateLoop");
     }
 }

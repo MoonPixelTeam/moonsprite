@@ -20,6 +20,12 @@ async function createSimpleDocument(size: number) {
   return { uniquePixelBytes: document.layers[0].pixels.byteLength, layerCount: 1, frameCount: 1 }
 }
 
+async function createSparseMagicWandDocument(size: number) {
+  const document = createDocument('Sparse magic wand performance project', size, size, 'rgba')
+  addDocument(document)
+  return { uniquePixelBytes: document.layers[0].pixels.byteLength, layerCount: 1, frameCount: 1 }
+}
+
 async function createComplexDocument(size: number) {
   const document = createDocument('Complex performance project', 1, 1, 'rgba')
   document.width = size
@@ -188,6 +194,8 @@ const prepareTool = (tool: ToolId, fillKind: FillKind | null = null, shapeKind: 
   state.setGradientDither('none')
 }
 
+const setBrushSize = (size: number) => useWorkspace.getState().setBrushSize(size)
+
 const prepareCenteredSelection = (size: number) => {
   const session = activeSession()
   if (!session) return
@@ -320,14 +328,31 @@ async function playAnimation() {
   return frameIds.length
 }
 
+const setAnimationPlaying = (playing: boolean) => useWorkspace.getState().setAnimationPlaying(playing)
+
+function prepareMagicWand() {
+  const workspace = useWorkspace.getState()
+  workspace.setTool('selection')
+  workspace.setSelectionKind('magic')
+  workspace.setWandContiguous(true)
+  workspace.setWandGapClosing(false)
+}
+
 export function installPerformanceHarness() {
   window.__moonSpritePerformanceHarness = {
     createSimpleDocument,
+    createSparseMagicWandDocument,
     createComplexDocument,
     createLargeDocument,
     activeView,
     resetScenario,
     prepareTool,
+    setBrushSize,
+    prepareMagicWand,
+    selectionState: () => {
+      const selection = activeSession()?.selection
+      return selection ? { x: selection.x, y: selection.y, width: selection.width, height: selection.height } : null
+    },
     prepareCenteredSelection,
     prepareActiveLayerStyle,
     previewActiveLayerStyleSize,
@@ -339,6 +364,7 @@ export function installPerformanceHarness() {
     setTimelapseRecording,
     timelapseSnapshotCount,
     undoRedo,
+    setAnimationPlaying,
     playAnimation
   }
 }

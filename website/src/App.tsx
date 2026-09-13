@@ -3,7 +3,7 @@ import { ExternalLink, Languages, Menu, Moon, Sun, X } from 'lucide-react'
 import { SITE_CONFIG } from './config'
 import { copy, type Language } from './content'
 import { navigate, useRoute, type Route } from './router'
-import { SteamButton, scrollToId } from './ui'
+import { scrollToId } from './ui'
 import { Home } from './pages/Home'
 import { DocsPage } from './pages/Docs'
 import { FaqPage } from './pages/Faq'
@@ -129,7 +129,6 @@ export function App() {
               <li><button type="button" role="option" aria-selected={language === 'en'} onClick={() => { setLanguage('en'); setLangOpen(false) }}>English</button></li>
             </ul>}
           </div>
-          <SteamButton label={t.common.steam} soon={t.common.steamSoon} compact />
           <button className="menu-button" type="button" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label={menuOpen ? t.nav.close : t.nav.menu}>{menuOpen ? <X /> : <Menu />}</button>
         </div>
       </div>

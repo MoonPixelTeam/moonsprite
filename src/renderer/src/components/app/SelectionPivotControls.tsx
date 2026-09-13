@@ -8,8 +8,24 @@ import type { TranslationKey } from '@/core/localization'
 import { transformedSelectionPivotPreset, type SelectionShearTransform } from '@/core/selection'
 import type { SelectionPivot } from '@/store/workspace'
 
+type SelectionPivotTarget = SelectionRect & { mask?: never }
+
+/** Project before the React prop boundary: typing a SelectionMask as a
+ * SelectionRect does not remove its runtime mask. React's development timing
+ * logs recursively enumerate changed props, including every typed-array entry. */
+export const selectionPivotControlTarget = (target: SelectionRect | null): SelectionPivotTarget | null => target ? {
+  x: target.x,
+  y: target.y,
+  width: target.width,
+  height: target.height,
+  ...(target.flipHorizontal === undefined ? {} : { flipHorizontal: target.flipHorizontal }),
+  ...(target.flipVertical === undefined ? {} : { flipVertical: target.flipVertical }),
+  ...(target.flipOriginX === undefined ? {} : { flipOriginX: target.flipOriginX }),
+  ...(target.flipOriginY === undefined ? {} : { flipOriginY: target.flipOriginY })
+} : null
+
 interface SelectionPivotControlsProps {
-  target: SelectionRect | null
+  target: SelectionPivotTarget | null
   angle: number
   shear?: SelectionShearTransform
   pivot: SelectionPivot | null

@@ -34,7 +34,7 @@ const MAX_SCRIPT_OPERATION_BYTES = 16 * 1024 * 1024
 const MSE_OPERATION_PATHS = new Set([
   'document.create', 'document.open', 'document.save',
   'layers.create', 'layers.duplicate', 'layers.remove', 'layers.update',
-  'animation.setFrame', 'animation.createLoop', 'animation.updateLoop', 'animation.removeLoop', 'animation.play',
+  'animation.setFrame', 'animation.setFrameDuration', 'animation.setCelSurface', 'animation.createLoop', 'animation.updateLoop', 'animation.removeLoop', 'animation.play',
   'palette.create', 'palette.update', 'palette.remove', 'palette.extract',
   'tiles.createSet', 'tiles.createLayer', 'tiles.place', 'tiles.edit',
   'freeTiles.createSource', 'freeTiles.createLayer', 'freeTiles.place', 'freeTiles.edit',
@@ -133,6 +133,20 @@ const buildInvocation = (session: DocumentSession, storedBrushes: Awaited<Return
   const frameId = timeline?.activeFrameId ?? null
   const frameNumber = Math.max(1, (timeline?.frames.findIndex((frame) => frame.id === frameId) ?? 0) + 1)
   const expected = snapshotFromLayer(document, layer)
+  const activeLayerCels = timeline ? timeline.frames.flatMap((frame, index) => {
+    const cel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === frame.id)
+    const frameLayer = cel ? animationLayerAtFrame(document, layer.id, frame.id) : null
+    return cel && frameLayer ? [{
+      id: cel.id,
+      frameId: frame.id,
+      frameNumber: index + 1,
+      surface: snapshotFromLayer(document, frameLayer)
+    }] : []
+  }) : []
+  const celPixelCount = activeLayerCels.reduce((count, cel) => count + cel.surface.pixels.length, 0)
+  if (celPixelCount > MAX_SCRIPT_IMAGE_PIXELS * 3) {
+    throw new Error(tr('script.imageTooLarge', { count: MAX_SCRIPT_IMAGE_PIXELS * 3 }))
+  }
   return {
     context: {
       documentId: document.id,
@@ -151,8 +165,11 @@ const buildInvocation = (session: DocumentSession, storedBrushes: Awaited<Return
       layerVisible: layer.visible,
       layerLocked: layer.locked,
       layerFormat: layer.format,
+      layerGroupId: layer.groupId ?? null,
+      layerStackIndex: document.layers.indexOf(layer) + 1,
       frameNumber,
       pixels: [...expected.pixels],
+      activeLayerCels,
       selection: selectionContext(session),
       transparentColor: 0,
       foreground: packRgba(session.primaryColor),
@@ -193,7 +210,8 @@ const validateCreatedLayer = (layer: LuaScriptCreatedLayer, format: RasterLayer[
     || layer.opacity < 0
     || layer.opacity > 255
     || !Number.isInteger(layer.frameNumber)
-    || layer.frameNumber < 1) {
+    || layer.frameNumber < 1
+    || (layer.stackIndex !== undefined && (!Number.isSafeInteger(layer.stackIndex) || layer.stackIndex < 1))) {
     throw new Error(tr('script.invalidResult'))
   }
   validateSurfaceSnapshot(layer.surface, format)
@@ -367,6 +385,7 @@ const rasterLayerFromScript = (created: LuaScriptCreatedLayer, colorMode: Sprite
   layer.opacity = created.opacity / 255
   layer.visible = created.visible
   layer.locked = created.locked
+  layer.groupId = created.parentGroupId ?? null
   applySnapshotToLayer(layer, created.surface)
   return layer
 }
@@ -376,7 +395,7 @@ const animationSurfaceFromLayer = (layer: RasterLayer) => layer.format === 'rgba
   : { format: 'indexed' as const, width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY, pixels: layer.pixels }
 
 const commitCreatedLayer = (target: LuaScriptTarget, created: LuaScriptCreatedLayer, label: string): number => {
-  const session = activeTargetSession(target)
+  const session = focusScriptTarget(target)
   const document = session.document
   if (document.layers.some((layer) => layer.id === created.id)) throw new Error(tr('script.invalidResult'))
   const previousActiveLayerId = document.activeLayerId
@@ -392,8 +411,10 @@ const commitCreatedLayer = (target: LuaScriptTarget, created: LuaScriptCreatedLa
     opacity: layer.opacity,
     surface: animationSurfaceFromLayer(layer)
   }
-  const index = document.layers.length
-  document.layers.push(layer)
+  const index = created.stackIndex === undefined
+    ? document.layers.length
+    : Math.max(0, Math.min(document.layers.length, created.stackIndex - 1))
+  document.layers.splice(index, 0, layer)
   timeline.cels.push(cel)
   document.activeLayerId = layer.id
   timeline.activeFrameId = frame.id
@@ -423,11 +444,11 @@ const commitCreatedLayer = (target: LuaScriptTarget, created: LuaScriptCreatedLa
     contentChanged: true,
     requiresAnimationSync: false
   })
-  target.layerId = layer.id
-  target.frameId = frame.id
-  target.expected = snapshotFromLayer(document, layer)
   const updated = useWorkspace.getState().sessions.find((candidate) => candidate.document.id === target.documentId)
   if (!updated) throw new Error(tr('script.targetChanged'))
+  const originalLayer = updated.document.layers.find((candidate) => candidate.id === target.layerId)
+  if (!originalLayer) throw new Error(tr('script.targetChanged'))
+  target.expected = snapshotFromLayer(updated.document, layerForFrame(updated.document, target))
   target.revision = updated.revision
   return createdLayerPixelCount(created)
 }
@@ -605,6 +626,19 @@ const applyResult = async (
     useWorkspace.getState().addSession(document)
     changedPixelCount += created.layers.reduce((count, layer) => count + createdLayerPixelCount(layer), 0)
     documentBoundary = true
+  }
+  if (!documentBoundary) {
+    const workspace = useWorkspace.getState()
+    const session = workspace.sessions.find((candidate) => candidate.document.id === target.documentId)
+    if (session) {
+      if (result.activeLayerId && session.document.layers.some((layer) => layer.id === result.activeLayerId)) {
+        workspace.selectLayer(result.activeLayerId, 'replace')
+      }
+      if (result.activeFrameNumber && session.document.animation) {
+        const frame = session.document.animation.frames[result.activeFrameNumber - 1]
+        if (frame) workspace.setActiveAnimationFrame(frame.id)
+      }
+    }
   }
   return { transactionCount: addedHistoryEntries(positionsBefore) + result.createdDocuments.length, changedPixelCount, documentBoundary }
 }

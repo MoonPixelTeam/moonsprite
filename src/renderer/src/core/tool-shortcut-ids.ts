@@ -4,7 +4,7 @@ export const CYCLING_TOOL_SHORTCUT_IDS = [
   'tool.shape.rectangleOutline', 'tool.shape.rectangle', 'tool.shape.ellipseOutline',
   'tool.shape.ellipse', 'tool.shape.freeform', 'tool.shape.polygon', 'tool.line',
   'tool.curve', 'tool.text', 'tool.fill', 'tool.fill.gradient', 'tool.eyedropper',
-  'tool.hand', 'tool.zoom', 'tool.rotate'
+  'tool.hand', 'tool.zoom', 'tool.rotate', 'tool.liquify', 'tool.smooth'
 ] as const
 
 export type CyclingToolShortcutId = typeof CYCLING_TOOL_SHORTCUT_IDS[number]

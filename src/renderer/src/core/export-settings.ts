@@ -21,7 +21,8 @@ export interface ExportPreset {
   name: string
   format: ImageExportKind
   scalePercent: number
-  target?: 'document' | 'slices' | 'frames' | 'selection'
+  target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
+  layerId?: string
   sliceId?: string
   directory?: string
   gifFrameRange?: 'all' | 'range' | 'loop-section'
@@ -40,10 +41,12 @@ export interface DocumentExportSettings {
   name: string
   format: ImageExportKind
   scalePercent: number
-  target?: 'document' | 'slices' | 'frames' | 'selection'
+  target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
   /** Runtime-only mask used when target is selection; never persisted. */
   selection?: SelectionMask | null
   sliceId?: string
+  /** Runtime/persisted layer target. Missing means all layers when target is layer. */
+  layerId?: string
   directory?: string
   gifFrameRange?: 'all' | 'range' | 'loop-section'
   gifFrameStart?: number
@@ -97,8 +100,9 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
+  const layerId = typeof value.layerId === 'string' ? value.layerId.trim() : ''
   const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
   const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : value.gifFrameRange === 'loop-section' && gifLoopSectionId ? 'loop-section' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'
@@ -115,6 +119,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     scalePercent,
     ...(target !== 'document' ? { target } : {}),
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
+    ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
     ...(format === 'gif' ? {
       gifFrameRange,
@@ -135,8 +140,9 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
-    : value.target === 'slices' || value.target === 'selection' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
+    : value.target === 'slices' || value.target === 'selection' || value.target === 'layer' || (format !== 'gif' && value.target === 'frames') ? value.target : 'document'
   const sliceId = typeof value.sliceId === 'string' ? value.sliceId.trim() : ''
+  const layerId = typeof value.layerId === 'string' ? value.layerId.trim() : ''
   const gifLoopSectionId = typeof value.gifLoopSectionId === 'string' ? value.gifLoopSectionId.trim() : ''
   const gifFrameRange = value.gifFrameRange === 'range' ? 'range' : value.gifFrameRange === 'loop-section' && gifLoopSectionId ? 'loop-section' : 'all'
   const gifDirection: GifDirection = value.gifDirection === 'reverse'
@@ -153,6 +159,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     scalePercent,
     target,
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
+    ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
     ...(presetName ? { presetName } : {}),
     ...(format === 'gif' ? {

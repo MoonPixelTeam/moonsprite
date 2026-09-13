@@ -30,7 +30,9 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
   const [sourceColor, setSourceColor] = useState<RgbaColor>(() => copyColor(WHITE))
   const [replacementColor, setReplacementColor] = useState<RgbaColor>(() => copyColor(WHITE))
   const [target, setTarget] = useState<DialogTarget>('layers')
-  const [previewEnabled, setPreviewEnabled] = useState(true)
+  // Replacement previews are opt-in because large documents and multi-frame
+  // targets can make each parameter change expensive.
+  const [previewEnabled, setPreviewEnabled] = useState(false)
   const [samplingTarget, setSamplingTarget] = useState<SamplingTarget | null>(null)
   const samplingTargetRef = useRef<SamplingTarget | null>(null)
   const samplingReturnToolRef = useRef<ToolId | null>(null)

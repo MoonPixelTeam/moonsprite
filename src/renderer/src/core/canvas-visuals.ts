@@ -91,8 +91,8 @@ export const selectionRotationCursorForPosition = (
 export const selectionTransformDragCursor = (kind: string): string | null =>
   kind === 'transform-content' || kind === 'rotate-content' || kind === 'shear-content' ? canvasCursors.move : null
 
-export const selectionCreationCursor = (showCrosshair: boolean, available = true): string =>
-  available ? showCrosshair ? canvasCursors.crosshair : 'none' : canvasCursors.unavailable
+export const selectionCreationCursor = (showCrosshair: boolean, available = true, creating = false): string =>
+  available ? creating ? 'none' : showCrosshair ? canvasCursors.crosshair : 'none' : canvasCursors.unavailable
 
 export const colorLuminance = (color: RgbaColor): number => color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722
 
@@ -119,23 +119,26 @@ export const selectionPathPreviewPixelVisible = (
 export const selectionCursorCornerRects = (pixel: VisualRect, devicePixelRatio = 1): VisualRect[] => {
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
   const align = (value: number): number => Math.round(value * dpr) / dpr
-  const visualWidth = Math.max(8, pixel.width)
-  const visualHeight = Math.max(8, pixel.height)
-  const left = align(pixel.x + (pixel.width - visualWidth) / 2)
-  const top = align(pixel.y + (pixel.height - visualHeight) / 2)
-  const right = align(left + visualWidth)
-  const bottom = align(top + visualHeight)
-  const arm = Math.max(2, Math.min(4, Math.floor(Math.min(visualWidth, visualHeight) / 4)))
-  const stroke = 1
+  // The pointed cell belongs to the canvas preview. The cursor is only four
+  // corners immediately outside that cell, so the preview remains the center
+  // square shown between the marks instead of becoming part of the cursor.
+  const cellSize = Math.max(1, Math.min(pixel.width, pixel.height))
+  const arm = Math.max(2, Math.min(6, Math.round(cellSize / 4)))
+  const left = align(pixel.x - arm)
+  const top = align(pixel.y - arm)
+  const right = align(pixel.x + pixel.width + arm)
+  const bottom = align(pixel.y + pixel.height + arm)
+  const stroke = 2
   return [
-    { x: left, y: top, width: arm, height: stroke },
-    { x: left, y: top, width: stroke, height: arm },
-    { x: right - arm, y: top, width: arm, height: stroke },
-    { x: right - stroke, y: top, width: stroke, height: arm },
-    { x: left, y: bottom - stroke, width: arm, height: stroke },
-    { x: left, y: bottom - arm, width: stroke, height: arm },
-    { x: right - arm, y: bottom - stroke, width: arm, height: stroke },
-    { x: right - stroke, y: bottom - arm, width: stroke, height: arm }
+    // Each L has its bend facing the pointed cell.
+    { x: left, y: pixel.y - stroke, width: arm, height: stroke },
+    { x: pixel.x - stroke, y: top, width: stroke, height: arm },
+    { x: pixel.x + pixel.width, y: pixel.y - stroke, width: arm, height: stroke },
+    { x: pixel.x + pixel.width, y: top, width: stroke, height: arm },
+    { x: left, y: pixel.y + pixel.height, width: arm, height: stroke },
+    { x: pixel.x - stroke, y: pixel.y + pixel.height, width: stroke, height: arm },
+    { x: pixel.x + pixel.width, y: pixel.y + pixel.height, width: arm, height: stroke },
+    { x: pixel.x + pixel.width, y: pixel.y + pixel.height, width: stroke, height: arm }
   ]
 }
 
@@ -144,8 +147,8 @@ export const transparencyColorAt = (pixelX: number, pixelY: number, checkerboard
     ? checkerboard.lightColor
     : checkerboard.darkColor
 
-const colorCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection'])
-export const previewCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'shape', 'line'])
+const colorCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection', 'liquify', 'smooth', 'extension', 'text'])
+export const previewCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'shape', 'line', 'liquify', 'smooth', 'extension'])
 
 export const canvasToolCursor = (tool: ToolId, color: RgbaColor, available = true): string => {
   if (tool === 'rotate') return canvasCursors.rotate
