@@ -512,7 +512,7 @@ export function createCanvasPointerDown(ports: Ports) {
         if (!state.previewFreeTilePlacement(placementEdit)) return null
       }
       const bounds = freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY)
-      const sourceEdit = createFreeTileSourceEditRaster(session.document, selectedSource, bounds, point, instance)
+      const sourceEdit = createFreeTileSourceEditRaster(session.document, selectedSource, bounds, point, instance, session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'airbrush')
       if (!sourceEdit) {
         if (placementEdit) state.cancelFreeTilePlacement(placementEdit)
         return null

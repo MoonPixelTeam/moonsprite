@@ -154,8 +154,7 @@ export function LayersPanel({
     applyLayerSettings,
     toggleOnionSkin,
     setStoredLayerLabelWidth,
-    beginLayerLabelResize,
-    handleLayerPanelWheel
+    beginLayerLabelResize
   } = useLayerPanelPreferences({
     session,
     loopSectionLayout,
@@ -821,7 +820,6 @@ export function LayersPanel({
           } as CSSProperties
         }
         onPointerDown={floating.bringToFront}
-        onWheel={handleLayerPanelWheel}
         onContextMenu={onPanelContextMenu}
       >
         <header onPointerDown={(event) => (floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag))}>

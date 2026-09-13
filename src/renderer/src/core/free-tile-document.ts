@@ -1,3 +1,4 @@
+import { freeTileSourceCelBounds, refreshFreeTileSourceRegions } from './free-tile-source-refresh'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { FreeTileCelData, FreeTileInstance, FreeTileSourceLayer, Tileset } from '@shared/types-tiles'
 import type { ImageResizeInterpolation } from '@shared/types-raster'
@@ -333,8 +334,7 @@ export const validateFreeTileImageResize = (document: SpriteDocument, width: num
   for (const { tileset } of freeTileLayerTilesets(document)) {
     const tileWidth = Math.max(1, Math.round(tileset.tileWidth * scaleX))
     const tileHeight = Math.max(1, Math.round(tileset.tileHeight * scaleY))
-    if (tileWidth > MAX_TILE_SIZE || tileHeight > MAX_TILE_SIZE
-      || tileset.columns * tileset.rows * tileWidth * tileHeight > MAX_TILESET_PIXELS) throw new Error('Free Tile source size is too large')
+    if (tileset.columns * tileset.rows * tileWidth * tileHeight > MAX_TILESET_PIXELS) throw new Error('Free Tile source size is too large')
   }
 }
 
@@ -501,16 +501,16 @@ export const freeTileSourceEditSnapshotsEqual = (left: FreeTileSourceEditSnapsho
 
 export const freeTileSourceEditSnapshotBytes = (snapshot: FreeTileSourceEditSnapshot): number => snapshot.pixels.byteLength + 64
 
-export const applyFreeTileSourceSnapshot = (document: SpriteDocument, snapshot: FreeTileSourceEditSnapshot): boolean => {
+export const applyFreeTileSourceSnapshot = (document: SpriteDocument, snapshot: FreeTileSourceEditSnapshot, onRefresh?: (rect: SelectionRect | null) => void): boolean => {
   const owners = freeTileSourceOwnersForId(document, snapshot.sourceId)
   const owner = owners[0]
   const pixelCount = snapshot.width * snapshot.height
   if (!owner || owner.tileset.id !== snapshot.tilesetId
     || !Number.isSafeInteger(snapshot.width) || !Number.isSafeInteger(snapshot.height)
     || snapshot.width < 1 || snapshot.height < 1
-    || snapshot.width > MAX_TILE_SIZE || snapshot.height > MAX_TILE_SIZE
     || !Number.isSafeInteger(pixelCount) || pixelCount > MAX_TILESET_PIXELS
     || snapshot.pixels.length !== pixelCount * 4) return false
+  const previousBounds = onRefresh ? freeTileSourceCelBounds(document, owner.source.id) : null
   const tileId = owner.tileset.tileIds[0] ?? createId('tile')
   owner.tileset.tileWidth = snapshot.width
   owner.tileset.tileHeight = snapshot.height
@@ -527,7 +527,10 @@ export const applyFreeTileSourceSnapshot = (document: SpriteDocument, snapshot: 
     updatedSources.add(current.source)
   }
   markRasterStorageContentChanged(owner.tileset.pixels)
-  rerenderFreeTileSourceReferences(document, owner.source.id)
+  if (onRefresh && previousBounds) {
+    onRefresh(refreshFreeTileSourceRegions(document, owner.source.id, previousBounds))
+    refreshActiveAnimationFrame(document)
+  } else rerenderFreeTileSourceReferences(document, owner.source.id)
   return true
 }
 

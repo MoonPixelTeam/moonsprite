@@ -37,6 +37,8 @@ describe('workspace background layers', () => {
     addBlankAnimationFrame(document)
     useWorkspace.getState().addSession(document)
 
+    const artwork = getActiveLayer(document)
+
     await useWorkspace.getState().createBackgroundLayer('grid')
 
     const background = document.layers[0]
@@ -47,9 +49,11 @@ describe('workspace background layers', () => {
     expect(background.format).toBe('rgba')
     expect(background.pixels[0]).toBe(180)
     expect(background.pixels[16 * 4]).toBe(191)
-    expect(document.activeLayerId).toBe(background.id)
-    expect(session.selectedLayerIds).toEqual([background.id])
-    expect(session.timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: background.id })
+    // The background is added underneath the artwork; the editing target does not move.
+    expect(document.activeLayerId).not.toBe(background.id)
+    expect(document.activeLayerId).toBe(artwork.id)
+    expect(session.selectedLayerIds).not.toContain(background.id)
+    expect(session.timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: artwork.id })
     expect(session.timelineActiveContext.frameId).toBe(timeline.activeFrameId)
     expect(new Set(cels.map((cel) => resolveAnimationCel(timeline, cel)?.id)).size).toBe(1)
 
@@ -59,13 +63,48 @@ describe('workspace background layers', () => {
     expect(document.layers[0].background).toEqual({ mode: 'preset', pattern: 'grid' })
   })
 
+  it('keeps the current editing target and its selection when a background is created', async () => {
+    const document = createDocument('background keeps target', 8, 8, 'rgba')
+    const first = createLayer('first', 8, 8, 'rgba')
+    document.layers.push(first)
+    useWorkspace.getState().addSession(document)
+
+    const target = createLayer('target', 8, 8, 'rgba')
+    document.layers.push(target)
+    const session = useWorkspace.getState().sessions[0]
+    session.selectedLayerIds = [target.id, first.id]
+    document.activeLayerId = target.id
+    const activeContextBefore = { ...session.timelineActiveContext }
+
+    await useWorkspace.getState().createBackgroundLayer('grid')
+
+    const background = document.layers[0]
+    expect(background.background).toEqual({ mode: 'preset', pattern: 'grid' })
+    // Active layer, multi-row selection, group selection and the timeline focus are
+    // all exactly what they were before the background existed.
+    expect(document.activeLayerId).toBe(target.id)
+    expect(session.selectedLayerIds).toEqual([target.id, first.id])
+    // The timeline focus is preserved verbatim, not re-pointed at the background.
+    expect(session.timelineActiveContext).toEqual(activeContextBefore)
+    expect(background.id).not.toBe(document.activeLayerId)
+
+    // Undo and redo must land on the same target as well.
+    useWorkspace.getState().undo()
+    expect(document.layers.some((layer) => layer.id === background.id)).toBe(false)
+    expect(document.activeLayerId).toBe(target.id)
+    expect(session.selectedLayerIds).toEqual([target.id, first.id])
+    useWorkspace.getState().redo()
+    expect(document.layers[0].id).toBe(background.id)
+    expect(document.activeLayerId).toBe(target.id)
+  })
+
   it('adds preset colors to indexed documents instead of collapsing the pattern', async () => {
     const document = createDocument('indexed background preset', 32, 1, 'indexed')
     useWorkspace.getState().addSession(document)
 
     await useWorkspace.getState().createBackgroundLayer('grid')
 
-    const background = getActiveLayer(document)
+    const background = document.layers[0]
     expect(background.format).toBe('indexed')
     expect(new Set(background.pixels).size).toBe(2)
     expect(document.palette.some((entry) => entry.color.r === 180 && entry.color.g === 180 && entry.color.b === 180)).toBe(true)
@@ -78,7 +117,7 @@ describe('workspace background layers', () => {
 
     await useWorkspace.getState().createBackgroundLayer('solid')
 
-    const background = getActiveLayer(document)
+    const background = document.layers[0]
     expect(background.background).toEqual({ mode: 'preset', pattern: 'solid' })
     expect(Array.from(background.pixels)).toEqual([228, 228, 228, 255, 228, 228, 228, 255])
   })
@@ -93,7 +132,7 @@ describe('workspace background layers', () => {
 
     await useWorkspace.getState().createBackgroundLayer(tile)
 
-    const background = getActiveLayer(document)
+    const background = document.layers[0]
     expect(background.background).toEqual({ mode: 'canvas' })
     expect(Array.from(background.pixels)).toEqual([
       255, 0, 0, 255,

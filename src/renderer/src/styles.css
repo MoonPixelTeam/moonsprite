@@ -1241,6 +1241,8 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 :root[data-pen-input='true'], :root[data-pen-input='true'] * { cursor: none !important; }
 .stage-pen-cursor { position: absolute; z-index: 9; top: 0; left: 0; display: block; max-width: none; pointer-events: none; user-select: none; transform-origin: top left; image-rendering: pixelated; will-change: transform; }
 .stage-pen-cursor[hidden] { display: none; }
+.stage-canvas[data-adaptive-cursor='true'] { cursor: none !important; }
+.stage-adaptive-cursor { mask-size: 100% 100%; mask-repeat: no-repeat; }
 .rotation-indicator { position: absolute; z-index: 5; width: 128px; height: 192px; pointer-events: none; filter: drop-shadow(3px 4px 4px var(--theme-shadow-strong)); transform: translate(-61.5px, -97.5px); image-rendering: pixelated; }
 .rotation-indicator[hidden] { display: none; }
 .rotation-indicator-background { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(2, 64px); grid-template-rows: repeat(3, 64px); }

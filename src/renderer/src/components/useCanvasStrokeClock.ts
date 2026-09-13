@@ -1,6 +1,9 @@
+import { growFreeTileStrokeRaster } from '@/core/free-tile-stroke-raster'
 import { useEffect, useRef } from 'react'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
-import { animationMaskAt } from '@/core/document-model'
+import { animationMaskAt, getLayerContentRevision } from '@/core/document-model'
+import { rasterStorageIdentity } from '@/core/runtime-raster'
+import { advanceAirbrushClock } from './canvas-airbrush-clock'
 import { applyLiquifyHoldStep } from '@/core/liquify'
 import { accumulateLiquifyHoldStrength, createLiquifyHoldClock, type LiquifyHoldClock } from '@/components/canvas-liquify-interaction'
 import { brushStrokeInvalidationRects, paintBrush } from '@/core/tools-brush'
@@ -41,8 +44,12 @@ export function useCanvasStrokeClock(ports: Ports) {
         drag.freeTileSourceBefore &&
         drag.freeTileEditSourceOffset
     )
+    if (freeTileEdit) growFreeTileStrokeRaster(drag, drag.last, drag.last, ports.session.airbrushScatterRadius + ports.session.airbrushParticleRadius * 2 + 1)
     const paintDocument = freeTileEdit ? drag.freeTileEditDocument! : ports.session.document
     const paintLayer = freeTileEdit ? drag.freeTileEditLayer! : activePaintLayer(ports.session)
+    const storageBefore = rasterStorageIdentity(paintLayer)
+    const revisionBefore = getLayerContentRevision(paintLayer)
+    const selection = freeTileEdit ? (drag.freeTileEditSelection ?? null) : ports.paintSelectionForDrag(drag)
     const origin = freeTileEdit ? drag.freeTileEditOrigin! : { x: 0, y: 0 }
     const color = drag.color ?? ports.session.primaryColor
     const particleSize = airbrushParticleSize(ports.session.airbrushParticleRadius)
@@ -64,7 +71,7 @@ export function useCanvasStrokeClock(ports: Ports) {
         particleSize,
         color,
         ports.session.airbrushParticleShape,
-        freeTileEdit ? (drag.freeTileEditSelection ?? null) : ports.paintSelectionForDrag(drag),
+        selection,
         'solid',
         1,
         null,
@@ -86,6 +93,9 @@ export function useCanvasStrokeClock(ports: Ports) {
         'simple'
       )
     }
+    // Repeated particles often hit pixels already covered by this stroke.
+    // Keep sampling, but avoid recomposition and free-tile copying on no-op batches.
+    if (rasterStorageIdentity(paintLayer) === storageBefore && getLayerContentRevision(paintLayer) === revisionBefore) return
     if (freeTileEdit) {
       const sourceEdit: FreeTileSourceEditRaster = {
         document: drag.freeTileEditDocument!,
@@ -101,9 +111,8 @@ export function useCanvasStrokeClock(ports: Ports) {
           height: drag.freeTileSourceBefore!.height
         }
       }
-      const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit)
-      useWorkspace.getState().previewFreeTileSource(drag.freeTileSourceId!, cropped.width, cropped.height, cropped.pixels, cropped.offsetX, cropped.offsetY)
-      ports.compositeCacheRef.current.invalidateAll()
+      const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit, drag.edit.dirtyRect)
+      if (!useWorkspace.getState().previewFreeTileSource(drag.freeTileSourceId!, cropped.width, cropped.height, cropped.pixels, cropped.offsetX, cropped.offsetY)) return
       ports.scheduleDraw()
       return
     }
@@ -134,13 +143,7 @@ export function useCanvasStrokeClock(ports: Ports) {
       airbrushFrameRef.current = null
       const drag = ports.inputRef.current.drag
       if (drag?.kind !== 'airbrush' || !drag.edit) return
-      const interval = Math.max(16, ports.session.airbrushIntervalMs)
-      let batches = 0
-      while (now >= (drag.nextAirbrushAt ?? now) && batches < 4) {
-        sprayAirbrushRef.current(drag)
-        drag.nextAirbrushAt = (drag.nextAirbrushAt ?? now) + interval
-        batches += 1
-      }
+      drag.nextAirbrushAt = advanceAirbrushClock(drag.nextAirbrushAt, now, ports.session.airbrushIntervalMs, () => sprayAirbrushRef.current(drag))
       airbrushFrameRef.current = window.requestAnimationFrame(tick)
     }
     airbrushFrameRef.current = window.requestAnimationFrame(tick)

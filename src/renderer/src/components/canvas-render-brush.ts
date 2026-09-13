@@ -1,3 +1,4 @@
+import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
 import { compositeRegion } from '@/core/document-composite'
@@ -7,7 +8,7 @@ import { applyInkColor, resolveInkStampColor } from '@/core/ink'
 import { brushMaskOffsets, brushStampAnchor, solidBrushPreviewRowSpans } from '@/core/tools-brush'
 import { selectionContains } from '@/core/selection'
 import { type CanvasDragState as DragState } from '@/core/canvas-input'
-import { colorLuminance, transparencyColorAt } from '@/core/canvas-visuals'
+import { transparencyColorAt } from '@/core/canvas-visuals'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { tileRepeatContinuousPreviewPlacements } from '@/core/tilemap'
@@ -191,6 +192,7 @@ export function renderCanvasBrush({
     const { x: beforeX, y: beforeY } = brushStampAnchor(previewBrushSize, previewBrushImage, previewBrushAngle, currentSession.brushShape)
     const brushPoint = snapBrushPointToGrid(point, previewBrushSize, previewBrushImage, previewBrushAngle, currentSession)
     context.save()
+    const outline = new CanvasAdaptiveOutline()
     const texture = currentBrushTexture
     const patternOrigin = brushPatternOrigin(brushPoint, previewBrushSize, previewBrushImage)
     const drawPreviewOutline = brushPreviewMode === 'edge' || brushPreviewMode === 'full-edge' || (erasing && brushPreviewMode === 'full')
@@ -225,12 +227,6 @@ export function renderCanvasBrush({
     if (drawing && !drawPreviewOutline) {
       // No drawing-time preview work is required.
     } else if (fastSolidPreview && solidPreviewSpans) {
-      const sampled = erasing
-        ? drawing
-          ? transparencyColorAt(brushPoint.x, brushPoint.y, checkerboard)
-          : sampleCompositeForPreview(brushPoint.x, brushPoint.y)
-        : resolveLayerCanvasColor(document, currentActiveLayer, currentSession.primaryColor)
-      const luminance = colorLuminance(sampled)
       const rowBounds = solidPreviewSpans.map((span) => ({
         y: brushPoint.y - beforeY + span.y,
         left: brushPoint.x - beforeX + span.left,
@@ -277,8 +273,6 @@ export function renderCanvasBrush({
           if (neighbor.left > row.left) horizontalSegment(row.left, Math.min(row.right, neighbor.left - 1), row.y, bottom)
           if (neighbor.right < row.right) horizontalSegment(Math.max(row.left, neighbor.right + 1), row.right, row.y, bottom)
         }
-        context.strokeStyle =
-          luminance > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
         context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
         context.beginPath()
         for (let rowIndex = 0; rowIndex < clippedRows.length; rowIndex += 1) {
@@ -286,6 +280,7 @@ export function renderCanvasBrush({
           if (!row || row.right < row.left) continue
           const first = previewPixelRect(row.left, row.y)
           const last = previewPixelRect(row.right, row.y)
+          outline.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height })
           context.moveTo(first.x, first.y)
           context.lineTo(first.x, first.y + first.height)
           context.moveTo(last.x + last.width, last.y)
@@ -295,7 +290,7 @@ export function renderCanvasBrush({
           exposedHorizontal(row, previous, false)
           exposedHorizontal(row, next, true)
         }
-        context.stroke()
+        outline.stroke(context)
       }
     } else {
       const mask = brushMaskOffsets(
@@ -353,13 +348,6 @@ export function renderCanvasBrush({
         sampleY: number
         color: RgbaColor
       }> = []
-      const sampled = erasing
-        ? drawing
-          ? transparencyColorAt(brushPoint.x, brushPoint.y, checkerboard)
-          : sampleCompositeForPreview(brushPoint.x, brushPoint.y)
-        : resolveLayerCanvasColor(document, currentActiveLayer, drawing ? (drag?.color ?? currentSession.primaryColor) : currentSession.primaryColor)
-      const luminance = colorLuminance(sampled)
-      context.strokeStyle = luminance > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
       context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
       context.beginPath()
       const cacheableSolidHover =
@@ -472,6 +460,7 @@ export function renderCanvasBrush({
         const right = !occupied.has(`${previewPoint.x + 1}:${previewPoint.y}`)
         const top = !occupied.has(`${previewPoint.x}:${previewPoint.y - 1}`)
         const bottom = !occupied.has(`${previewPoint.x}:${previewPoint.y + 1}`)
+        if (left || right || top || bottom) outline.include(pixelRect)
         if (left) {
           context.moveTo(pixelRect.x, pixelRect.y)
           context.lineTo(pixelRect.x, pixelRect.y + pixelRect.height)
@@ -490,7 +479,7 @@ export function renderCanvasBrush({
         }
       }
       fillPreviewPixelRects(previewFillRects)
-      if (brushPreviewMode === 'edge' || brushPreviewMode === 'full-edge' || (erasing && brushPreviewMode === 'full')) context.stroke()
+      if (drawPreviewOutline) outline.stroke(context)
     }
     context.restore()
   }

@@ -35,6 +35,8 @@ export const commitFreeTileSourceEditInSession = (recordDocumentOperation: Works
   if (!sourceChanged && !placementChanged && !selectionChanged) return null
   const owner = freeTileSourceOwnerForId(session.document, sourceId)
   if (!owner || owner.source.id !== before.sourceId || owner.source.id !== after.sourceId) return null
+  const sourceAlreadyApplied = freeTileSourceEditSnapshotsEqual(after, { sourceId: owner.source.id, tilesetId: owner.tileset.id, width: owner.tileset.tileWidth, height: owner.tileset.tileHeight, pixels: owner.tileset.pixels, offsetX: owner.source.offsetX, offsetY: owner.source.offsetY })
+  const previewInvalidation = sourceAlreadyApplied && !placementChanged && session.contentInvalidation?.kind === 'region' ? session.contentInvalidation : null
   const applyBefore = (): void => {
     if (placementEdit) applyFreeTilePlacementEdit(session.document, placementEdit, 'before')
     if (sourceChanged) applyFreeTileSourceSnapshot(session.document, before)
@@ -43,15 +45,15 @@ export const commitFreeTileSourceEditInSession = (recordDocumentOperation: Works
       session.selectionPivot = beforeSelectionPivot ? { ...beforeSelectionPivot } : null
     }
   }
-  const applyAfter = (): void => {
-    if (sourceChanged) applyFreeTileSourceSnapshot(session.document, after)
+  const applyAfter = (skipSource = false): void => {
+    if (sourceChanged && !skipSource) applyFreeTileSourceSnapshot(session.document, after)
     if (placementEdit) applyFreeTilePlacementEdit(session.document, placementEdit, 'after')
     if (selectionEdit) {
       session.selection = cloneSelectionMask(afterSelection)
       session.selectionPivot = afterSelectionPivot ? { ...afterSelectionPivot } : null
     }
   }
-  applyAfter()
+  applyAfter(sourceAlreadyApplied)
   const contentChanged = sourceChanged || placementChanged
   const entry: HistoryEntry = {
     label,
@@ -61,7 +63,7 @@ export const commitFreeTileSourceEditInSession = (recordDocumentOperation: Works
       + (afterSelection?.mask?.byteLength ?? 0)
       + (selectionEdit ? 64 : 0),
     undo: applyBefore,
-    redo: applyAfter,
+    redo: () => applyAfter(),
     ...(contentChanged ? { invalidation: { kind: 'full' as const } } : {}),
     affectedLayerIds: freeTileLayerIdsForSource(session.document, owner.source.id),
     documentChanged: contentChanged,
@@ -70,7 +72,8 @@ export const commitFreeTileSourceEditInSession = (recordDocumentOperation: Works
   }
   session.history.push(entry)
   if (contentChanged) {
-    touch(session, true, { kind: 'full' })
+    touch(session, true, previewInvalidation?.rect ? { kind: 'region', rect: previewInvalidation.rect } : { kind: 'full' })
+    if (previewInvalidation && session.contentInvalidation?.kind === 'region') session.contentInvalidation.fromRevision = previewInvalidation.fromRevision
     recordDocumentOperation(session, { stroke: true })
   }
   return entry

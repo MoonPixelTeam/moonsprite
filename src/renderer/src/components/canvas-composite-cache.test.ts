@@ -116,6 +116,24 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it('applies an accumulated preview region after rendering an intermediate revision', () => {
+    const document = createDocument('accumulated source preview', 64, 64, 'rgba')
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context, { revision: 1, contentRevision: 1 })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    writeLayerColor(document, document.layers[0], 65, { r: 255, g: 0, b: 0, a: 255 })
+    draw(cache, document, context, { revision: 2, contentRevision: 2,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 2, rect: { x: 1, y: 1, width: 1, height: 1 } } })
+    writeLayerColor(document, document.layers[0], 66, { r: 0, g: 255, b: 0, a: 255 })
+    surface.context.putImageData.mockClear()
+    draw(cache, document, context, { revision: 3, contentRevision: 3,
+      contentInvalidation: { kind: 'region', fromRevision: 1, revision: 3, rect: { x: 1, y: 1, width: 2, height: 1 } } })
+    const uploads = surface.context.putImageData.mock.calls
+    expect(uploads.length).toBeGreaterThan(0)
+    expect(uploads.every(([image]) => image.width * image.height < 64 * 64)).toBe(true)
+    expect(surface.pixels.slice(65 * 4, 67 * 4)).toEqual(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]))
+  })
+
   it('keeps one unfinished bitmap capture across repeated invalidations', async () => {
     const document = createDocument('long stroke capture backlog', 256, 256, 'rgba')
     const cache = new CanvasCompositeCache()

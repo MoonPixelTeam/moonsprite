@@ -1,3 +1,4 @@
+import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 import { drawMagicWandPreview } from './canvas-magic-preview'
 import type { RgbaColor } from '@shared/types-color'
 import { rasterLinePoints, selectionContains } from '@/core/selection'
@@ -196,7 +197,7 @@ export function renderCanvasSelectionPreview({
       const sampled = sampleCompositeForPreview(point.x, point.y)
       const background = sampled.a > 0 ? sampled : transparencyColorAt(point.x, point.y, checkerboard)
       context.save()
-      context.strokeStyle = selectionPreviewColorForBackground(background)
+      context.strokeStyle = customSelectionPreviewColor ?? canvasAdaptiveContrast(context, pixelRect)
       context.lineWidth = 1
       context.strokeRect(pixelRect.x + 0.5, pixelRect.y + 0.5, Math.max(0, pixelRect.width - 1), Math.max(0, pixelRect.height - 1))
       context.restore()

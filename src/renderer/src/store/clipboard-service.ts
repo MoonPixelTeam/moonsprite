@@ -82,6 +82,13 @@ export interface LayerMaskClipboard {
 
 export interface LayerCollectionClipboard {
   sourceDocumentId?: string
+  freeTileInstances?: {
+    setId: string
+    offsetX: number
+    offsetY: number
+    instances: FreeTileCelData['instances']
+    sources: FreeTileSourceLayer[]
+  }
   animationFrames?: Array<{ duration: number }>
   tilesets?: Tileset[]
   layers: LayerClipboard[]
@@ -150,6 +157,11 @@ const cloneLayerClipboard = (clipboard: LayerClipboard): LayerClipboard => ({
 
 const cloneLayerCollectionClipboard = (clipboard: LayerCollectionClipboard): LayerCollectionClipboard => ({
   sourceDocumentId: clipboard.sourceDocumentId,
+  freeTileInstances: clipboard.freeTileInstances ? {
+    ...clipboard.freeTileInstances,
+    instances: clipboard.freeTileInstances.instances.map(instance => ({ ...instance })),
+    sources: clipboard.freeTileInstances.sources.map(source => ({ ...source, displayColor: source.displayColor ? { ...source.displayColor } : undefined }))
+  } : undefined,
   animationFrames: clipboard.animationFrames?.map((frame) => ({ ...frame })),
   tilesets: clipboard.tilesets?.map((tileset) => ({ ...tileset, tileIds: [...tileset.tileIds], tileSlots: tileset.tileSlots ? [...tileset.tileSlots] : undefined, pixels: tileset.pixels.slice() })),
   layers: clipboard.layers.map(cloneLayerClipboard),

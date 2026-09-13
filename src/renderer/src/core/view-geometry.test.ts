@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from './view-geometry'
+import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, viewportPointFromDocumentPointContinuous, viewportSegmentVisible, zoomViewAroundViewportPoint } from './view-geometry'
 
 describe('view rotation geometry', () => {
   it('snaps Shift-constrained view rotation to sixteen directions', () => {
@@ -39,6 +39,20 @@ describe('view rotation geometry', () => {
     const after = documentPointFromViewportPointContinuous(indicator, 800, 600, 128, 96, rotated, 'view')
     expect(after.x).toBeCloseTo(before.x)
     expect(after.y).toBeCloseTo(before.y)
+  })
+
+  it('round-trips document points through rotated and mirrored views', () => {
+    const view = { zoom: 3, panX: 48, panY: -27, rotation: 37, mirrored: true, mirroredVertical: true }
+    const documentPoint = { x: 31.5, y: 18.25 }
+    const viewportPoint = viewportPointFromDocumentPointContinuous(documentPoint, 640, 480, 96, 64, view, 'view')
+    const restored = documentPointFromViewportPointContinuous(viewportPoint, 640, 480, 96, 64, view, 'view')
+    expect(restored.x).toBeCloseTo(documentPoint.x)
+    expect(restored.y).toBeCloseTo(documentPoint.y)
+  })
+
+  it('detects line segments that cross the viewport with both endpoints outside', () => {
+    expect(viewportSegmentVisible({ x: -20, y: 40 }, { x: 220, y: 40 }, 200, 100)).toBe(true)
+    expect(viewportSegmentVisible({ x: -20, y: -10 }, { x: 220, y: -10 }, 200, 100)).toBe(false)
   })
 
 

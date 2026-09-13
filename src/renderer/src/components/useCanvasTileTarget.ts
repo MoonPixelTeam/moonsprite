@@ -215,7 +215,7 @@ export function useCanvasTileTarget(ports: Ports) {
   const commitFreeTileSourceDrag = (drag: DragState, label: string): boolean => {
     const sourceEdit = freeTileSourceEditForDrag(drag)
     if (!sourceEdit || !drag.freeTileSourceId) return false
-    const after = freeTileSourceSnapshotFromEditRaster(sourceEdit)
+    const after = freeTileSourceSnapshotFromEditRaster(sourceEdit, drag.kind === 'free-tile-edit' || drag.kind === 'airbrush' ? drag.edit?.dirtyRect : undefined)
     useWorkspace.getState().commitFreeTileSourceEdit(drag.freeTileSourceId, sourceEdit.before, after, label, drag.freeTilePlacementEdit)
     return true
   }

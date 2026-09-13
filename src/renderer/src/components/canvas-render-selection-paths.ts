@@ -7,6 +7,7 @@ import { tileRepeatMappedPointForCopies } from '@/core/tilemap'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { PolygonPathPreviewRenderCache, SELECTION_PATH_PREVIEW_BATCH_THRESHOLD } from './canvas-stage-helpers'
+import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 export function createCanvasSelectionPaths({
   selectionPreviewColorMode,
   selectionPreviewColor,
@@ -251,9 +252,12 @@ export function createCanvasSelectionPaths({
   }
   const drawSelectionCursorCorners = (pixelX: number, pixelY: number, color: string): void => {
     const pixelRect = previewPixelRect(pixelX, pixelY)
+    const marks = selectionCursorCornerRects(pixelRect, deviceScale.x)
+    const left = Math.min(...marks.map(mark => mark.x)), top = Math.min(...marks.map(mark => mark.y))
+    const right = Math.max(...marks.map(mark => mark.x + mark.width)), bottom = Math.max(...marks.map(mark => mark.y + mark.height))
     context.save()
-    context.fillStyle = color
-    for (const mark of selectionCursorCornerRects(pixelRect, deviceScale.x)) context.fillRect(mark.x, mark.y, mark.width, mark.height)
+    context.fillStyle = customSelectionPreviewColor ?? canvasAdaptiveContrast(context, { x: left, y: top, width: right - left, height: bottom - top })
+    for (const mark of marks) context.fillRect(mark.x, mark.y, mark.width, mark.height)
     context.restore()
   }
   return {

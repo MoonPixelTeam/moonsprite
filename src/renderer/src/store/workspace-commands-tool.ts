@@ -9,11 +9,13 @@ import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-prefer
 import { defaultToolSettings } from '@/core/tool-preferences'
 import { normalizeGapClosingThreshold } from '@/core/contiguous-region'
 import { normalizeBrushDitherSettings } from '@/core/gradient-color'
-import { defaultSymmetryCenter } from '@/core/symmetry'
+import { defaultSymmetryCenter, moveSymmetryCenter, symmetryAxisSegment, type SymmetryMode } from '@/core/symmetry'
 import { saveDocumentViewState } from '@/core/document-view-state'
+import { normalizeProjectDisplaySettings } from '@/core/project-metadata'
+import { documentPointFromViewportPointContinuous, viewportPointFromDocumentPointContinuous, viewportSegmentVisible } from '@/core/view-geometry'
 import { brushPressureFromDynamics, migrateBrushPressureSettings, normalizeBrushPressureSettings, patchBrushDynamicsGradientDither, patchBrushDynamicsMapping } from '@/core/pressure'
 import { encodeSelectionBackgroundPreset } from '@/core/background-preset-images'
-import { applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, copyCanvasToolSettings, isBrushTool, isToolAvailableForSession, persistToolSettings, rememberBrushProfile } from './workspace-session'
+import { applyBrushProfile, brushProfileFromSession, clearSelectionBrushPaintColors, copyCanvasToolSettings, isBrushTool, isToolAvailableForSession, persistToolSettings, rememberBrushProfile, touchMetadata } from './workspace-session'
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceToolCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
@@ -21,6 +23,57 @@ import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
 
 const brushDynamicsEnabled = (session: DocumentSession): boolean => Object.values(session.brushDynamics.effects).some((mapping) => mapping.sensor !== null)
+
+const persistSymmetryCenter = (session: DocumentSession): void => {
+  session.document.displaySettings = {
+    ...normalizeProjectDisplaySettings(session.document.displaySettings),
+    symmetryCenter: { ...session.symmetryCenter }
+  }
+  saveDocumentViewState(session.document, session.view, session.symmetryCenter)
+}
+
+const validSymmetryViewport = (session: DocumentSession): boolean =>
+  session.viewportSize.width > 0 && session.viewportSize.height > 0
+
+const symmetryCenterAtViewportCenter = (session: DocumentSession): typeof session.symmetryCenter => {
+  if (!validSymmetryViewport(session)) return defaultSymmetryCenter(session.document.width, session.document.height)
+  const position = loadEditorPreferences().rotationIndicatorPosition
+  const point = documentPointFromViewportPointContinuous(
+    { x: session.viewportSize.width / 2, y: session.viewportSize.height / 2 },
+    session.viewportSize.width,
+    session.viewportSize.height,
+    session.document.width,
+    session.document.height,
+    session.view,
+    position
+  )
+  return moveSymmetryCenter(session.symmetryCenter, 'center', point, session.document.width, session.document.height)
+}
+
+const symmetryAxisVisibleInViewport = (session: DocumentSession, axis: SymmetryMode): boolean => {
+  if (!validSymmetryViewport(session)) return true
+  const position = loadEditorPreferences().rotationIndicatorPosition
+  const toViewport = (point: typeof session.symmetryCenter) => viewportPointFromDocumentPointContinuous(
+    point,
+    session.viewportSize.width,
+    session.viewportSize.height,
+    session.document.width,
+    session.document.height,
+    session.view,
+    position
+  )
+  if (axis === 'rotational') {
+    const center = toViewport(session.symmetryCenter)
+    return center.x >= 0 && center.x <= session.viewportSize.width && center.y >= 0 && center.y <= session.viewportSize.height
+  }
+  const segment = symmetryAxisSegment(axis, session.document.width, session.document.height, session.symmetryCenter)
+  return Boolean(segment && viewportSegmentVisible(
+    toViewport(segment.start),
+    toViewport(segment.end),
+    session.viewportSize.width,
+    session.viewportSize.height
+  ))
+}
 
 const enableBrushDynamicsPreview = (): void => {
   const preferences = loadEditorPreferences()
@@ -359,19 +412,25 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
           diagonalDown: Boolean(session.symmetryAxes.diagonalDown),
           rotational: Boolean(session.symmetryAxes.rotational)
         }
-        if (enabled && !session.symmetryAxes[axis] && !initialized[axis] && !Object.values(session.symmetryAxes).some(Boolean)) {
-          session.symmetryCenter = defaultSymmetryCenter(session.document.width, session.document.height)
+        const turningOn = enabled && !session.symmetryAxes[axis]
+        const firstUse = !Object.values(initialized).some(Boolean)
+        if (turningOn && (firstUse || !symmetryAxisVisibleInViewport(session, axis))) {
+          const nextCenter = symmetryCenterAtViewportCenter(session)
+          if (nextCenter.x !== session.symmetryCenter.x || nextCenter.y !== session.symmetryCenter.y) {
+            session.symmetryCenter = nextCenter
+            persistSymmetryCenter(session)
+            touchMetadata(session)
+          }
         }
         session.symmetryAxesInitialized = { ...initialized, [axis]: initialized[axis] || enabled }
         session.symmetryAxes = { ...session.symmetryAxes, [axis]: enabled }
-        saveDocumentViewState(session.document, session.view, session.symmetryCenter)
         persistToolSettings(session)
       }, false)
     },
 
-    setSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center }; saveDocumentViewState(session.document, session.view, session.symmetryCenter) }, false) },
+    setSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center }; persistSymmetryCenter(session) }, 'metadata') },
 
-    resetSymmetryCenter() { get().mutateActive((session) => { session.symmetryCenter = { x: session.document.width / 2, y: session.document.height / 2 }; saveDocumentViewState(session.document, session.view, session.symmetryCenter) }, false) },
+    resetSymmetryCenter() { get().mutateActive((session) => { session.symmetryCenter = defaultSymmetryCenter(session.document.width, session.document.height); persistSymmetryCenter(session) }, 'metadata') },
 
     setLastPencilPoint(point) { get().mutateActive((session) => { session.lastPencilPoint = point ? { ...point } : null }, false) },
 

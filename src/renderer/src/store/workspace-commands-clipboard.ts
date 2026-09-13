@@ -1,3 +1,4 @@
+import { captureFreeTileInstances, pasteFreeTileInstances } from './workspace-free-tile-instance-clipboard'
 import { completeDocumentChange } from './workspace-document-change'
 import { type WorkspaceRecording } from './workspace-recording'
 import type { AnimationCelSurface } from '@shared/types-animation'
@@ -18,7 +19,7 @@ import { loadEditorPreferences } from '@/core/file-preferences'
 import { resolveClipboardPlacement } from '@/core/clipboard-placement'
 import { cloneTextCelData } from '@/core/text-raster'
 import { cloneLayerStyles } from '@/core/layer-styles'
-import { cloneTilemapCelData, cloneTileset, createBlankTileset, MAX_TILE_SIZE, writeTilesetTilePixels } from '@/core/tilemap'
+import { cloneTilemapCelData, cloneTileset, createBlankTileset, MAX_TILESET_PIXELS, writeTilesetTilePixels } from '@/core/tilemap'
 import { cloneFreeTileCelData, freeTileInstanceBounds, freeTileSourceForInstance, type FreeTileDrawingMode } from '@/core/free-tile'
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, freeTileLayersForSet, freeTileSetIdForLayer, rasterSurfaceToFreeTileStamps, replaceFreeTileSetSources, type FreeTileCelTarget, type FreeTilePlacementEdit } from '@/core/free-tile-document'
 import { createFreeTileSourceEditRaster, freeTileSourceSnapshotFromEditRaster } from '@/core/free-tile-edit'
@@ -265,7 +266,7 @@ const pasteSelectionClipboardIntoSelectedFreeTileInstance = (recordDocumentOpera
   }
   if (pixelCount === 0) return { status: 'outside', pixelCount: 0 }
   const after = freeTileSourceSnapshotFromEditRaster(sourceEdit)
-  if (after.width > MAX_TILE_SIZE || after.height > MAX_TILE_SIZE) return { status: 'too-large', pixelCount: 0 }
+  if (after.width * after.height > MAX_TILESET_PIXELS) return { status: 'too-large', pixelCount: 0 }
   commitFreeTileSourceEditInSession(recordDocumentOperation, session, source.id, sourceEdit.before, after, tr('workspace.history.pasteToLayer'))
   const tileId = source.tileset.tileIds[0] ?? null
   session.selectedTilesetId = source.tileset.id
@@ -401,9 +402,20 @@ function applyLayerClipboardAnimationCel(
   setAnimationMaskSlot(document, layer.id, frame.id, layerMaskFromClipboard(source.mask, layer.id) ?? null)
 }
 
-export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
+export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copyFreeTileInstances' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
   const { recordDocumentOperation } = recording
   return {
+    copyFreeTileInstances() {
+      get().commitFloatingPaste()
+      const session = activeSession(get())
+      const clipboard = session ? captureFreeTileInstances(session) : null
+      if (!clipboard) return false
+      clipboardService.setLayers(clipboard)
+      clipboardService.captureLayerCopySystemBaseline(() => window.moonSprite.readClipboardImage())
+      get().mutateActive(current => clearAnimationClipboards(current), false)
+      return true
+    },
+
     copyActiveLayerToClipboard() {
       get().copySelectedLayersToClipboard()
     },
@@ -472,7 +484,13 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     pasteLayersFromClipboard() {
       const clipboard = clipboardService.getLayers()
       const current = activeSession(get())
-      if (!clipboard || clipboard.layers.length === 0 || !current) return false
+      if (!clipboard || !current) return false
+      if (clipboard.freeTileInstances) {
+        let pasted = false
+        get().mutateActive(session => { pasted = pasteFreeTileInstances(session, clipboard, recordDocumentOperation) }, false)
+        return pasted
+      }
+      if (clipboard.layers.length === 0) return false
       get().mutateActive((session) => {
         const document = session.document
         const timeline = ensureAnimationDocument(document)
@@ -698,7 +716,9 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     copySelection() {
       get().commitFloatingPaste()
       const session = activeSession(get())
-      if (!session?.selection) { set({ message: tr('workspace.selectionRequired') }); return }
+      if (!session) return
+      if (!session.selection && get().copyFreeTileInstances()) return
+      if (!session.selection) { set({ message: tr('workspace.selectionRequired') }); return }
       const layer = getActiveLayer(session.document)
       const document = session.document
       const selection = clampSelection(document, session.selection)

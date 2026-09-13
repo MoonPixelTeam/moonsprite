@@ -3,6 +3,7 @@ import { loadEditorPreferences, type CursorScale } from '@/core/file-preferences
 import { PointerPressureAdapter } from '@/core/canvas-input'
 import { isPressurePointerType } from '@/core/pressure'
 import { cursorOverlayDescriptor, setNativeCursorVisible } from '@/platform/cursor-theme'
+import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
 interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly interfaceScale: 0.75 | 1 | 1.5 | 2
@@ -12,8 +13,8 @@ interface Ports {
 
 export function useCanvasPenCursor(ports: Ports) {
   const penCursorRef = useRef<HTMLImageElement>(null)
-
-  const penCursorStateRef = useRef({ active: false, x: 0, y: 0 })
+  const adaptiveCursorRef = useRef<HTMLSpanElement>(null)
+  const penCursorStateRef = useRef({ active: false, pressure: false, x: 0, y: 0 })
 
   const cursorPreferencesRef = useRef<{ useLocalCursors: boolean; cursorScale: CursorScale } | null>(null)
 
@@ -26,6 +27,8 @@ export function useCanvasPenCursor(ports: Ports) {
     const wasActive = penCursorStateRef.current.active
     penCursorStateRef.current.active = false
     if (penCursorRef.current) penCursorRef.current.hidden = true
+    if (adaptiveCursorRef.current) adaptiveCursorRef.current.hidden = true
+    if (ports.canvasRef.current) delete ports.canvasRef.current.dataset.adaptiveCursor
     if (!wasActive) return
     delete document.documentElement.dataset.penInput
     void setNativeCursorVisible(true).catch(() => undefined)
@@ -36,8 +39,23 @@ export function useCanvasPenCursor(ports: Ports) {
     const image = penCursorRef.current
     const pointer = penCursorStateRef.current
     if (!canvas || !image || !pointer.active) return
+    const adaptive = /^var\(--cursor-(?:pencil-(?:black|white)|selection-(?:black|white)|crosshair)\)$/.test(canvas.style.cursor)
     const preferences = cursorPreferencesRef.current
     const descriptor = cursorOverlayDescriptor(canvas.style.cursor, preferences?.useLocalCursors ?? false, preferences?.cursorScale ?? 1, ports.interfaceScale)
+    const overlay = adaptiveCursorRef.current
+    if (overlay) overlay.hidden = !adaptive || !descriptor
+    if (adaptive && descriptor && overlay) {
+      canvas.dataset.adaptiveCursor = 'true'
+      overlay.style.maskImage = `url("${descriptor.source}")`
+      overlay.style.backdropFilter = AUTO_CONTRAST_FILTER
+      overlay.style.width = `${descriptor.size}px`
+      overlay.style.height = `${descriptor.size}px`
+      overlay.style.transform = `translate3d(${pointer.x - descriptor.hotspotX}px, ${pointer.y - descriptor.hotspotY}px, 0)`
+      image.hidden = true
+      return
+    }
+    delete canvas.dataset.adaptiveCursor
+    if (!pointer.pressure) { image.hidden = true; return }
     if (!descriptor) {
       image.hidden = true
       return
@@ -54,19 +72,17 @@ export function useCanvasPenCursor(ports: Ports) {
 
   const syncPenCursor = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const pressurePointer = isPressurePointerType(event.pointerType) || ports.pressureAdapterRef.current.isPressureCapable(event.pointerId)
-    if (!pressurePointer) {
-      hidePenCursor()
-      return
-    }
     const bounds = ports.stageBounds()
-    const wasActive = penCursorStateRef.current.active
+    const wasPressure = penCursorStateRef.current.active && penCursorStateRef.current.pressure
     penCursorStateRef.current = {
       active: true,
+      pressure: pressurePointer,
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top
     }
-    document.documentElement.dataset.penInput = 'true'
-    if (!wasActive) void setNativeCursorVisible(false).catch(() => undefined)
+    if (pressurePointer) document.documentElement.dataset.penInput = 'true'
+    else delete document.documentElement.dataset.penInput
+    if (wasPressure !== pressurePointer) void setNativeCursorVisible(!pressurePointer).catch(() => undefined)
     refreshPenCursor()
   }
 
@@ -80,5 +96,5 @@ export function useCanvasPenCursor(ports: Ports) {
       hidePenCursor()
     }
   }, [])
-  return { penCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor }
+  return { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor }
 }

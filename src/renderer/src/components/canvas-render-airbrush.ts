@@ -1,3 +1,4 @@
+import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 import type { RgbaColor } from '@shared/types-color'
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from '@/core/grid'
 import { brushMaskOffsets, brushStampAnchor } from '@/core/tools-brush'
@@ -115,12 +116,18 @@ export function renderCanvasAirbrush({
       colorLuminance(sampled) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
     context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
     context.beginPath()
+    let outlineLeft = Infinity, outlineTop = Infinity, outlineRight = -Infinity, outlineBottom = -Infinity
     for (const sprayPoint of sprayPoints.values()) {
       const left = !sprayPoints.has(previewPointKey(sprayPoint.x - 1, sprayPoint.y) ?? '')
       const right = !sprayPoints.has(previewPointKey(sprayPoint.x + 1, sprayPoint.y) ?? '')
       const top = !sprayPoints.has(previewPointKey(sprayPoint.x, sprayPoint.y - 1) ?? '')
       const bottom = !sprayPoints.has(previewPointKey(sprayPoint.x, sprayPoint.y + 1) ?? '')
+      if (!left && !right && !top && !bottom) continue
       for (const pixelRect of previewPixelRects(sprayPoint.x, sprayPoint.y)) {
+        outlineLeft = Math.min(outlineLeft, pixelRect.x)
+        outlineTop = Math.min(outlineTop, pixelRect.y)
+        outlineRight = Math.max(outlineRight, pixelRect.x + pixelRect.width)
+        outlineBottom = Math.max(outlineBottom, pixelRect.y + pixelRect.height)
         if (left) {
           context.moveTo(pixelRect.x, pixelRect.y)
           context.lineTo(pixelRect.x, pixelRect.y + pixelRect.height)
@@ -165,7 +172,14 @@ export function renderCanvasAirbrush({
       if (mapped && (!previewSelection || selectionContains(previewSelection, mapped.local.x, mapped.local.y)))
         drawPreviewPixel(mapped.local.x, mapped.local.y, previewColorAt(mapped.local.x, mapped.local.y))
     }
-    context.stroke()
+    if (outlineRight > outlineLeft && outlineBottom > outlineTop) {
+      const padding = context.lineWidth + 1
+      context.strokeStyle = canvasAdaptiveContrast(context, {
+        x: outlineLeft - padding, y: outlineTop - padding,
+        width: outlineRight - outlineLeft + padding * 2, height: outlineBottom - outlineTop + padding * 2
+      })
+      context.stroke()
+    }
     context.restore()
   }
 }

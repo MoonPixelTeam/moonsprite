@@ -201,7 +201,7 @@ export function createDocument(name: string, width: number, height: number, colo
     customBrushes: [],
     tilesets: [],
     animation: { frames: [{ id: frameId, duration: 100 }], cels: [{ id: createId('cel'), layerId: layer.id, frameId, opacity: layer.opacity, surface: initialSurface }], layerMasks: [], groupMasks: [], loopSections: [], activeFrameId: frameId, loop: true },
-    displaySettings: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS, grid: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS.grid } },
+    displaySettings: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS, grid: { ...DEFAULT_PROJECT_DISPLAY_SETTINGS.grid }, symmetryCenter: { x: width / 2, y: height / 2 } },
     statistics: { ...DEFAULT_PROJECT_STATISTICS },
     timelapse: { ...DEFAULT_TIMELAPSE_SETTINGS, enabled: timelapseEnabled, snapshots: [] },
     slices: [],

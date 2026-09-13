@@ -1,5 +1,6 @@
 import type { SelectionMask } from '@shared/types-selection'
 import type { RasterContext2D } from './canvas-selection-renderer'
+import { canvasAdaptiveContrast, drawCanvasAdaptiveMask } from './canvas-adaptive-contrast'
 
 /** One bitmap or bounded merged rectangles, never a per-pixel composite sample. */
 export const drawMagicWandPreview = (
@@ -16,10 +17,15 @@ export const drawMagicWandPreview = (
   if (bitmap) {
     // Automatic black previews arrive from the worker as a white alpha mask.
     // Filter the source image only, preserving the bounded single-draw path.
-    if (automaticContrast && color === '#000000') context.filter = 'brightness(0)'
+    if (automaticContrast) {
+      drawCanvasAdaptiveMask(context, bitmap, { x, y, width: selection.width * zoom, height: selection.height * zoom })
+      context.restore()
+      return
+    }
     context.drawImage(bitmap, x, y, selection.width * zoom, selection.height * zoom)
   }
   else if (rectangles) {
+    if (automaticContrast) context.fillStyle = canvasAdaptiveContrast(context, { x, y, width: selection.width * zoom, height: selection.height * zoom })
     context.beginPath()
     for (let i = 0; i < rectangles.length; i += 4) {
       context.rect(x + rectangles[i] * zoom, y + rectangles[i + 1] * zoom, rectangles[i + 2] * zoom, rectangles[i + 3] * zoom)

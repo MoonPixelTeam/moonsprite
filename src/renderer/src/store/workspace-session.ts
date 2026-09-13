@@ -363,6 +363,12 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const settings = loadToolSettings()
   const editorPreferences = loadEditorPreferences()
   const storedView = loadDocumentViewState(document)
+  const symmetryCenter = document.displaySettings.symmetryCenter
+    ?? storedView?.symmetryCenter
+    ?? defaultSymmetryCenter(document.width, document.height)
+  // Keep the resolved center on the document so the next project save embeds
+  // it even when it originated from the legacy local view-state cache.
+  document.displaySettings.symmetryCenter = { ...symmetryCenter }
   const fallbackProfile = normalizePersistedBrushProfile(settings, defaultToolSettings)
   const persistedProfiles = settings.brushProfiles ?? Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, fallbackProfile])) as Record<BrushTool, PersistedBrushProfile>
   const brushProfiles = Object.fromEntries(BRUSH_TOOLS.map((tool) => [
@@ -472,7 +478,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
       diagonalDown: settings.symmetryAxes.diagonalDown,
       rotational: Boolean(settings.symmetryAxes.rotational)
     },
-    symmetryCenter: storedView?.symmetryCenter ?? defaultSymmetryCenter(document.width, document.height),
+    symmetryCenter: { ...symmetryCenter },
     lastPencilPoint: null,
     lastEraserPoint: null,
     canvasResizePreview: null,

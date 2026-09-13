@@ -122,7 +122,8 @@ export const createFreeTileSourceEditRaster = (
   source: FreeTileSourceRef,
   instanceBounds?: SelectionRect,
   editPoint?: { x: number; y: number },
-  instance?: Pick<FreeTileInstance, 'rotation' | 'flipHorizontal' | 'flipVertical'>
+  instance?: Pick<FreeTileInstance, 'rotation' | 'flipHorizontal' | 'flipVertical'>,
+  compact = false
 ): FreeTileSourceEditRaster | null => {
   const tileset = source.tileset
   const tileId = tileset.tileIds[0]
@@ -147,10 +148,10 @@ export const createFreeTileSourceEditRaster = (
   const sourceY = instanceBounds?.y ?? Math.floor((sourceDocument.height - transformedSource.bounds.height) / 2)
   const editX = Math.floor(editPoint?.x ?? sourceX)
   const editY = Math.floor(editPoint?.y ?? sourceY)
-  const left = Math.min(0, sourceX, editX) - padding
-  const top = Math.min(0, sourceY, editY) - padding
-  const right = Math.max(sourceDocument.width, sourceX + transformedSource.bounds.width, editX + 1) + padding
-  const bottom = Math.max(sourceDocument.height, sourceY + transformedSource.bounds.height, editY + 1) + padding
+  const left = Math.min(compact ? sourceX : 0, sourceX, editX) - padding
+  const top = Math.min(compact ? sourceY : 0, sourceY, editY) - padding
+  const right = Math.max(compact ? sourceX : sourceDocument.width, sourceX + transformedSource.bounds.width, editX + 1) + padding
+  const bottom = Math.max(compact ? sourceY : sourceDocument.height, sourceY + transformedSource.bounds.height, editY + 1) + padding
   const width = right - left
   const height = bottom - top
   const origin = { x: left, y: top }
@@ -203,23 +204,6 @@ export const createFreeTileSourceEditRaster = (
   }
 }
 
-const rgbaPixelsFromLayer = (sourceDocument: SpriteDocument, layer: RasterLayer): Uint8ClampedArray => {
-  const pixels = new Uint8ClampedArray(layer.width * layer.height * 4)
-  if (layer.format === 'rgba') {
-    pixels.set(layer.pixels)
-    return pixels
-  }
-  for (let index = 0; index < layer.pixels.length; index += 1) {
-    const color = getPaletteEntry(sourceDocument, layer.pixels[index]).color
-    const offset = index * 4
-    pixels[offset] = color.r
-    pixels[offset + 1] = color.g
-    pixels[offset + 2] = color.b
-    pixels[offset + 3] = color.a
-  }
-  return pixels
-}
-
 export interface CroppedFreeTileSource {
   pixels: Uint8ClampedArray
   width: number
@@ -230,14 +214,20 @@ export interface CroppedFreeTileSource {
 }
 
 /** Crops transparent padding while preserving the source anchor through the returned offset. */
-export const cropFreeTileSourceRaster = (sourceDocument: SpriteDocument, layer: RasterLayer): CroppedFreeTileSource => {
-  const rgba = rgbaPixelsFromLayer(sourceDocument, layer)
+export const cropFreeTileSourceRaster = (sourceDocument: SpriteDocument, layer: RasterLayer, bounds?: SelectionRect): CroppedFreeTileSource => {
+  const scanLeft = bounds ? Math.max(0, Math.floor(bounds.x)) : 0
+  const scanTop = bounds ? Math.max(0, Math.floor(bounds.y)) : 0
+  const scanRight = bounds ? Math.min(layer.width, Math.ceil(bounds.x + bounds.width)) : layer.width
+  const scanBottom = bounds ? Math.min(layer.height, Math.ceil(bounds.y + bounds.height)) : layer.height
+  const palette = layer.format === 'indexed' ? new Map(sourceDocument.palette.map(entry => [entry.id, entry.color])) : null
+  const colorAt = (index: number) => palette?.get(layer.pixels[index]) ?? getPaletteEntry(sourceDocument, layer.pixels[index]).color
   let left = layer.width
   let top = layer.height
   let right = -1
   let bottom = -1
-  for (let y = 0; y < layer.height; y += 1) for (let x = 0; x < layer.width; x += 1) {
-    if (rgba[(y * layer.width + x) * 4 + 3] === 0) continue
+  for (let y = scanTop; y < scanBottom; y += 1) for (let x = scanLeft; x < scanRight; x += 1) {
+    const index = y * layer.width + x
+    if ((layer.format === 'rgba' ? layer.pixels[index * 4 + 3] : colorAt(index).a) === 0) continue
     left = Math.min(left, x)
     top = Math.min(top, y)
     right = Math.max(right, x)
@@ -249,13 +239,28 @@ export const cropFreeTileSourceRaster = (sourceDocument: SpriteDocument, layer: 
   const pixels = new Uint8ClampedArray(width * height * 4)
   for (let y = 0; y < height; y += 1) {
     const from = ((top + y) * layer.width + left) * 4
-    pixels.set(rgba.subarray(from, from + width * 4), y * width * 4)
+    if (layer.format === 'rgba') pixels.set(layer.pixels.subarray(from, from + width * 4), y * width * 4)
+    else for (let x = 0; x < width; x++) {
+      const color = colorAt((top + y) * layer.width + left + x)
+      const offset = (y * width + x) * 4
+      pixels[offset] = color.r; pixels[offset + 1] = color.g; pixels[offset + 2] = color.b; pixels[offset + 3] = color.a
+    }
   }
   return { pixels, width, height, offsetX: left, offsetY: top, empty: false }
 }
 
-export const freeTileSourceSnapshotFromEditRaster = (edit: FreeTileSourceEditRaster): FreeTileSourceEditSnapshot => {
-  const cropped = cropFreeTileSourceRaster(edit.document, edit.layer)
+export const freeTileSourceSnapshotFromEditRaster = (edit: FreeTileSourceEditRaster, dirtyRect?: SelectionRect): FreeTileSourceEditSnapshot => {
+  // The edit starts blank except for the source. Brush edits track all touched
+  // pixels, so source bounds plus the cumulative dirty rectangle contain every
+  // possible non-transparent pixel, including growth beyond the original tile.
+  const leftBound = Math.min(edit.sourceOffset.x, dirtyRect?.x ?? edit.sourceOffset.x)
+  const topBound = Math.min(edit.sourceOffset.y, dirtyRect?.y ?? edit.sourceOffset.y)
+  const bounds = dirtyRect ? {
+    x: leftBound, y: topBound,
+    width: Math.max(edit.sourceOffset.x + edit.transformedSourceBounds.width, dirtyRect.x + dirtyRect.width) - leftBound,
+    height: Math.max(edit.sourceOffset.y + edit.transformedSourceBounds.height, dirtyRect.y + dirtyRect.height) - topBound
+  } : undefined
+  const cropped = cropFreeTileSourceRaster(edit.document, edit.layer, bounds)
   if (cropped.empty) {
     return {
       sourceId: edit.before.sourceId,
@@ -269,11 +274,15 @@ export const freeTileSourceSnapshotFromEditRaster = (edit: FreeTileSourceEditRas
   }
   const transformedX = edit.transformedSourceBounds.x + cropped.offsetX - edit.sourceOffset.x
   const transformedY = edit.transformedSourceBounds.y + cropped.offsetY - edit.sourceOffset.y
+  if (!edit.instanceTransform.rotation && !edit.instanceTransform.flipHorizontal && !edit.instanceTransform.flipVertical) {
+    return { sourceId: edit.before.sourceId, tilesetId: edit.before.tilesetId,
+      width: cropped.width, height: cropped.height, pixels: cropped.pixels, offsetX: transformedX, offsetY: transformedY }
+  }
   let left = Number.POSITIVE_INFINITY
   let top = Number.POSITIVE_INFINITY
   let right = Number.NEGATIVE_INFINITY
   let bottom = Number.NEGATIVE_INFINITY
-  for (let y = 0; y < cropped.height; y += 1) for (let x = 0; x < cropped.width; x += 1) {
+  for (const y of [0, cropped.height - 1]) for (const x of [0, cropped.width - 1]) {
     const point = freeTileInstanceInverseTransformPoint(edit.instanceTransform, transformedX + x, transformedY + y)
     left = Math.min(left, point.x)
     top = Math.min(top, point.y)
@@ -287,7 +296,10 @@ export const freeTileSourceSnapshotFromEditRaster = (edit: FreeTileSourceEditRas
     const point = freeTileInstanceInverseTransformPoint(edit.instanceTransform, transformedX + x, transformedY + y)
     const sourceOffset = (y * cropped.width + x) * 4
     const targetOffset = ((point.y - top) * width + point.x - left) * 4
-    pixels.set(cropped.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset)
+    pixels[targetOffset] = cropped.pixels[sourceOffset]
+    pixels[targetOffset + 1] = cropped.pixels[sourceOffset + 1]
+    pixels[targetOffset + 2] = cropped.pixels[sourceOffset + 2]
+    pixels[targetOffset + 3] = cropped.pixels[sourceOffset + 3]
   }
   return {
     sourceId: edit.before.sourceId,

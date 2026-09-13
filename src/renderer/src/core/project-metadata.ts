@@ -29,10 +29,15 @@ const safeCounter = (value: unknown): number =>
 
 export const normalizeProjectDisplaySettings = (value: unknown): ProjectDisplaySettings => {
   const candidate = value && typeof value === 'object' ? value as Partial<ProjectDisplaySettings> : {}
+  const symmetryCenter = candidate.symmetryCenter
+  const validSymmetryCenter = symmetryCenter
+    && Number.isFinite(symmetryCenter.x)
+    && Number.isFinite(symmetryCenter.y)
   return {
     showPixelGrid: candidate.showPixelGrid === true,
     showGrid: candidate.showGrid === true,
-    grid: normalizeGridSettings(candidate.grid)
+    grid: normalizeGridSettings(candidate.grid),
+    ...(validSymmetryCenter ? { symmetryCenter: { x: symmetryCenter.x, y: symmetryCenter.y } } : {})
   }
 }
 

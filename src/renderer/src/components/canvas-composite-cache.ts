@@ -586,7 +586,7 @@ export class CanvasCompositeCache {
     if (surface && animationFastPath && !isolatedLayerMask && !view.relativeLuminance && !sharedAnimationCompositeSurface(document, frameId, contentRevision)) {
       rememberSharedAnimationComposite(document, frameId, contentRevision, surface.canvas)
     }
-    const canApplyInvalidation = surface && surface.revision !== contentRevision && invalidation?.revision === contentRevision && invalidation.fromRevision === surface.revision
+    const canApplyInvalidation = surface && surface.revision !== contentRevision && invalidation?.revision === contentRevision && invalidation.fromRevision <= surface.revision
     const liveKey = `${document.id}:${frameId}`
     // A live stroke can enqueue several invalidation rectangles while the
     // document revision is still unchanged. The presence of a live-preview

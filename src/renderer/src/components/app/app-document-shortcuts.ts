@@ -30,6 +30,8 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
     return true
   if (runCommand('openScriptFolder', () => uiCommands['openScriptFolder']?.()))
     return true
+  if (commandScope() === 'layers' && session?.freeTileInstanceLayerId && session.selectedFreeTileInstanceId
+    && runCommand('copy', () => { workspace.copyFreeTileInstances() })) return true
   if (session?.selectedAnimationMaskCellKeys.length && !selectionOverride() && runCommand('copy', () => workspace.copySelectedAnimationMasks()))
     return true
   if (session?.selectedAnimationCellKeys.length && !selectionOverride() && runCommand('copy', () => workspace.copySelectedAnimationCels()))

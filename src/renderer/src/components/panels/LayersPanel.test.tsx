@@ -662,16 +662,154 @@ describe('LayersPanel animation', () => {
     expect(panel).toHaveClass('layer-density-huge')
     expect(container.querySelector('.cel-thumbnail')).toBeInTheDocument()
 
+    // Shift is the horizontal axis; Alt only accelerates it.
     const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(3_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
     list.scrollLeft = 0
-    fireEvent.wheel(panel, { altKey: true, deltaY: 120 })
+    fireEvent.wheel(panel, { altKey: true, shiftKey: true, deltaY: 120 })
     expect(list.scrollLeft).toBeGreaterThan(0)
+    scrollWidth.mockRestore()
+    clientWidth.mockRestore()
 
     const separator = screen.getByRole('separator', { name: '调整图层名称区域宽度' })
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
     expect(localStorage.getItem('moonsprite.layers.label-width')).toBe('202')
   })
 
+  it('keeps each wheel gesture on one axis and one action', () => {
+    const document = createDocument('wheel gestures', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const wheel = (init: { deltaX?: number; deltaY?: number; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+      const event = createEvent.wheel(panel, { cancelable: true, ...init })
+      fireEvent(panel, event)
+      return event
+    }
+    const atZero = () => { list.scrollTop = 0; list.scrollLeft = 0 }
+
+    // Plain wheel stays with the browser, so native vertical scrolling is untouched.
+    atZero()
+    expect(wheel({ deltaY: 120 }).defaultPrevented).toBe(false)
+    expect(list.scrollTop).toBe(0)
+    expect(list.scrollLeft).toBe(0)
+
+    // Shift is the horizontal axis on its own.
+    atZero()
+    expect(wheel({ shiftKey: true, deltaY: 120 }).defaultPrevented).toBe(false)
+    expect(list.scrollTop).toBe(0)
+
+    // Ctrl resizes only, and is consumed even at the size limit so the browser can
+    // never fall back to its own zoom.
+    atZero()
+    const densityBefore = panel.className
+    const ctrl = wheel({ ctrlKey: true, deltaY: -100 })
+    expect(ctrl.defaultPrevented).toBe(true)
+    expect(panel.className).not.toBe(densityBefore)
+    expect(list.scrollTop).toBe(0)
+    expect(list.scrollLeft).toBe(0)
+    expect(wheel({ ctrlKey: true, deltaY: -100 }).defaultPrevented).toBe(true)
+    expect(list.scrollTop).toBe(0)
+  })
+
+  it('uses Alt as an accelerator for the plain, Shift and Ctrl wheel', () => {
+    const document = createDocument('wheel acceleration', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const scrollHeight = vi.spyOn(list, 'scrollHeight', 'get').mockReturnValue(2_400)
+    const clientHeight = vi.spyOn(list, 'clientHeight', 'get').mockReturnValue(400)
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(2_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
+    const wheel = (init: { deltaX?: number; deltaY?: number; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean }) => {
+      const event = createEvent.wheel(panel, { cancelable: true, ...init })
+      fireEvent(panel, event)
+      return event
+    }
+    const atZero = () => { list.scrollTop = 0; list.scrollLeft = 0 }
+
+    // Alt + plain wheel accelerates the vertical scroll.
+    atZero()
+    expect(wheel({ altKey: true, deltaY: 120 }).defaultPrevented).toBe(true)
+    expect(list.scrollTop).toBe(600)
+    expect(list.scrollLeft).toBe(0)
+
+    // Alt + Shift accelerates the horizontal pan.
+    atZero()
+    wheel({ altKey: true, shiftKey: true, deltaY: 120 })
+    expect(list.scrollLeft).toBe(600)
+    expect(list.scrollTop).toBe(0)
+
+    // The accelerated pan still stops at the last reachable offset.
+    list.scrollLeft = 1_550
+    wheel({ altKey: true, shiftKey: true, deltaY: 120 })
+    expect(list.scrollLeft).toBe(1_600)
+    list.scrollTop = 1_550
+    wheel({ altKey: true, deltaY: 120 })
+    expect(list.scrollTop).toBe(2_000)
+
+    // Alt + Ctrl skips several display sizes per notch instead of one.
+    const sizes = ['compact', 'normal', 'detailed', 'expanded', 'large', 'huge']
+    const indexOfDensity = () => sizes.indexOf(sizes.find((size) => panel.classList.contains(`layer-density-${size}`))!)
+    const start = indexOfDensity()
+    wheel({ altKey: true, ctrlKey: true, deltaY: -100 })
+    expect(indexOfDensity() - start).toBe(3)
+
+    scrollHeight.mockRestore()
+    clientHeight.mockRestore()
+    scrollWidth.mockRestore()
+    clientWidth.mockRestore()
+  })
+
+  it('consumes the wheel before panning so native scroll cannot add a second axis', () => {
+    const document = createDocument('wheel ordering', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(3_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
+    const order: string[] = []
+    const originalPreventDefault = WheelEvent.prototype.preventDefault
+    WheelEvent.prototype.preventDefault = function (this: WheelEvent) {
+      order.push('preventDefault')
+      return originalPreventDefault.call(this)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft')
+    Object.defineProperty(list, 'scrollLeft', {
+      configurable: true,
+      get: () => 0,
+      set: () => { order.push('scroll') }
+    })
+    try {
+      fireEvent(panel, createEvent.wheel(panel, { cancelable: true, altKey: true, shiftKey: true, deltaY: 120 }))
+      expect(order[0]).toBe('preventDefault')
+      expect(order).toEqual(['preventDefault', 'scroll'])
+    } finally {
+      WheelEvent.prototype.preventDefault = originalPreventDefault
+      if (descriptor) Object.defineProperty(list, 'scrollLeft', descriptor)
+      else delete (list as unknown as Record<string, unknown>).scrollLeft
+      scrollWidth.mockRestore()
+      clientWidth.mockRestore()
+    }
+  })
+  it('listens for wheel on the panel with a non-passive listener', () => {
+    const document = createDocument('wheel listener options', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const addEventListener = vi.spyOn(HTMLElement.prototype, 'addEventListener')
+    render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+
+    // (type, listener, options) — the panel must own a non-passive wheel listener so
+    // preventDefault stays authoritative for the modifier branches.
+    const wheelCalls = addEventListener.mock.calls.filter(([type]) => type === 'wheel')
+    expect(wheelCalls.length).toBeGreaterThan(0)
+    expect(wheelCalls.some(([, , options]) => (options as AddEventListenerOptions | undefined)?.passive === false)).toBe(true)
+    addEventListener.mockRestore()
+  })
   it('shows a layer mask thumbnail after Ctrl+wheel enlarges the timeline', () => {
     const document = createDocument('mask thumbnail', 2, 2, 'rgba')
     getActiveLayer(document).pixels[3] = 255

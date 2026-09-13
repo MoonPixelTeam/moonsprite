@@ -295,7 +295,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get scheduleDraw() { return scheduleDraw }
   })
 
-  const { penCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor } = useCanvasPenCursor({
+  const { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor } = useCanvasPenCursor({
     get canvasRef() { return canvasRef },
     get interfaceScale() { return interfaceScale },
     get pressureAdapterRef() { return pressureAdapterRef },
@@ -383,6 +383,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     brushPreviewOverlaySupported,
     scheduleBrushPreviewOverlay
   } = useCanvasBrushOverlay({
+    get canvasRef() { return canvasRef },
     get inputRef() { return inputRef },
     get brushPreviewMode() { return brushPreviewMode },
     get drawingBrushPreviewEnabled() { return drawingBrushPreviewEnabled },
@@ -1461,6 +1462,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <canvas ref={selectionCanvasRef} style={rotationStyle} className="stage-selection-overlay" aria-hidden="true" />
         <canvas ref={brushPreviewCanvasRef} style={rotationStyle} className="stage-brush-preview-overlay" aria-hidden="true" />
         <img ref={penCursorRef} className="stage-pen-cursor" alt="" hidden aria-hidden="true" draggable={false} />
+        <span ref={adaptiveCursorRef} className="stage-pen-cursor stage-adaptive-cursor" hidden aria-hidden="true" />
         {eyedropperLens.overlay}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div

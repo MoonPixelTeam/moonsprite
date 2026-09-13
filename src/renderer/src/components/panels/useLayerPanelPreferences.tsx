@@ -22,6 +22,20 @@ import {
 } from '@/core/layer-panel-preferences'
 import type { AnimationContextMenu } from './layer-panel-contracts'
 const layerLabelWidthKey = 'moonsprite.layers.label-width'
+/** Alt makes every wheel gesture cover more ground. */
+const LAYER_PAN_ACCELERATION = 5
+/** Ctrl + Alt steps through several display sizes per notch. */
+const LAYER_DISPLAY_ACCELERATION = 3
+
+/**
+ * Clamps a requested scroll offset. `scrollSize === 0` means the element has not been
+ * laid out yet; the browser already clamps an assignment, so only clamp when the
+ * range is known.
+ */
+const clampLayerPanelScroll = (value: number, scrollSize: number, clientSize: number): number => {
+  const max = scrollSize > 0 ? Math.max(0, scrollSize - clientSize) : null
+  return max === null ? Math.max(0, value) : Math.max(0, Math.min(max, value))
+}
 export const layerLabelWidthLimits = { min: 140, max: 2_000 }
 const clampLayerLabelWidth = (value: number): number => Math.max(layerLabelWidthLimits.min, Math.min(layerLabelWidthLimits.max, Math.round(value)))
 const loadLayerLabelWidth = (): number => clampLayerLabelWidth(Number(localStorage.getItem(layerLabelWidthKey)) || 190)
@@ -204,28 +218,62 @@ export function useLayerPanelPreferences({
     window.addEventListener('pointercancel', end)
   }
 
-  const changeLayerDensity = (direction: -1 | 1): void => {
+  const changeLayerDensity = (direction: -1 | 1, step = 1): void => {
     setLayerDensity((current) => {
       const index = layerDensityOrder.indexOf(current)
-      const next = layerDensityOrder[Math.max(0, Math.min(layerDensityOrder.length - 1, index + direction))]
+      const next = layerDensityOrder[Math.max(0, Math.min(layerDensityOrder.length - 1, index + direction * step))]
+      // A larger step can saturate at the same size; do not persist or notify then.
+      if (next === current) return current
       saveLayerDensity(next)
       window.dispatchEvent(new Event('moonsprite:preferences-changed'))
       return next
     })
   }
 
-  const handleLayerPanelWheel = (event: React.WheelEvent<HTMLElement>): void => {
-    if (event.altKey && (event.deltaX !== 0 || event.deltaY !== 0)) {
+  // Three independent modifiers, so every combination stays predictable:
+  //   Shift       -> the gesture is horizontal instead of vertical
+  //   Alt         -> the gesture runs at LAYER_PAN_ACCELERATION and stacks with the
+  //                  plain, Shift and Ctrl wheel
+  //   Ctrl / Meta -> the gesture resizes the layer display instead of scrolling
+  // Ctrl/Meta is always consumed so the browser can never fall back to its own zoom.
+  // A plain or Shift scroll is left to the browser unless Alt asks for acceleration,
+  // which keeps native wheel and trackpad behaviour untouched.
+  const handleLayerPanelWheel = (event: WheelEvent): void => {
+    const accelerated = event.altKey
+    if (event.ctrlKey || event.metaKey) {
       event.preventDefault()
       event.stopPropagation()
-      if (layerListRef.current) layerListRef.current.scrollLeft += event.deltaX || event.deltaY
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
+      if (delta === 0) return
+      changeLayerDensity(delta < 0 ? 1 : -1, accelerated ? LAYER_DISPLAY_ACCELERATION : 1)
       return
     }
-    if (!event.ctrlKey || event.deltaY === 0) return
+    if (!accelerated) return
     event.preventDefault()
     event.stopPropagation()
-    changeLayerDensity(event.deltaY < 0 ? 1 : -1)
+    const list = layerListRef.current
+    if (!list) return
+    // Shift targets the timeline, the plain wheel keeps scrolling rows vertically.
+    const horizontal = event.shiftKey
+    const delta = horizontal
+      ? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY)
+      : (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX)
+    if (delta === 0) return
+    const amount = delta * LAYER_PAN_ACCELERATION
+    if (horizontal) list.scrollLeft = clampLayerPanelScroll(list.scrollLeft + amount, list.scrollWidth, list.clientWidth)
+    else list.scrollTop = clampLayerPanelScroll(list.scrollTop + amount, list.scrollHeight, list.clientHeight)
   }
+
+  const wheelHandlerRef = useRef(handleLayerPanelWheel)
+  wheelHandlerRef.current = handleLayerPanelWheel
+
+  useEffect(() => {
+    const panel = floating.ref.current
+    if (!panel) return
+    const listener = (event: WheelEvent): void => wheelHandlerRef.current(event)
+    panel.addEventListener('wheel', listener, { passive: false })
+    return () => panel.removeEventListener('wheel', listener)
+  }, [floating.ref])
 
   useEffect(
     () => () => {
@@ -266,7 +314,6 @@ export function useLayerPanelPreferences({
     applyLayerSettings,
     toggleOnionSkin,
     setStoredLayerLabelWidth,
-    beginLayerLabelResize,
-    handleLayerPanelWheel
+    beginLayerLabelResize
   }
 }

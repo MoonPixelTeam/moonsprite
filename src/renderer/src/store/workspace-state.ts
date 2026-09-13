@@ -536,6 +536,7 @@ export interface WorkspaceLayerCommands {
 }
 
 export interface WorkspaceClipboardCommands {
+  copyFreeTileInstances(): boolean
   copySelection(): void
   copyActiveLayerToClipboard(): void
   copySelectedLayersToClipboard(): void

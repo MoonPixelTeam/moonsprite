@@ -1,3 +1,4 @@
+import { growFreeTileStrokeRaster } from '@/core/free-tile-stroke-raster'
 import type { FreeTileInstance } from '@shared/types-tiles'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -248,12 +249,13 @@ export function createFreeTileCanvasInput(ports: Ports) {
       const { source, instance, placementEdit, sourceEdit, selection } = prepared
       const isoPointerStart = isoGridSnapActive ? (repeatedDocumentPointsAt(event.clientX, event.clientY, true, true)?.local ?? point) : point
       const strokePoint = isoGridSnapActive ? snapToIsoGrid(isoPointerStart) : point
-      const local = { x: strokePoint.x - sourceEdit.origin.x, y: strokePoint.y - sourceEdit.origin.y }
       const edit = beginPixelEdit(sourceEdit.layer.id)
+      const dynamics = brushDynamicsAtEvent(event)
+      growFreeTileStrokeRaster({ freeTileEditDocument: sourceEdit.document, freeTileEditLayer: sourceEdit.layer, freeTileEditOrigin: sourceEdit.origin, freeTileEditSourceOffset: sourceEdit.sourceOffset, freeTileEditSelection: selection, edit }, strokePoint, strokePoint, dynamics.size, activeBrushImage)
+      const local = { x: strokePoint.x - sourceEdit.origin.x, y: strokePoint.y - sourceEdit.origin.y }
       const patternOrigin = brushPatternOrigin(local)
       const colorReplacement =
         session.tool === 'eraser' && event.button === 2 ? { source: { ...session.primaryColor }, target: { ...session.secondaryColor } } : undefined
-      const dynamics = brushDynamicsAtEvent(event)
       const strokeColor = activeColor(event.button)
       const gradient = colorReplacement ? undefined : brushGradientAt(strokeColor, dynamics.gradientAmount)
       if (!isoGridSnapActive)
@@ -287,12 +289,11 @@ export function createFreeTileCanvasInput(ports: Ports) {
           optimizedRotationEnabled,
           session.tool === 'eraser' ? 'simple' : session.inkMode
         )
-      const after = freeTileSourceSnapshotFromEditRaster(sourceEdit)
+      const after = freeTileSourceSnapshotFromEditRaster(sourceEdit, edit.dirtyRect)
       const tileId = source.tileset.tileIds[0]
       if (tileId) state.setSelectedFreeTileInstance(instance.id, undefined, event.button === 2 ? 'secondary' : 'primary')
       else state.setSelectedFreeTileInstance(instance.id)
       state.previewFreeTileSource(source.id, after.width, after.height, after.pixels, after.offsetX, after.offsetY)
-      compositeCacheRef.current.invalidateAll()
       inputRef.current.drag = {
         kind: 'free-tile-edit',
         start: strokePoint,
@@ -660,7 +661,7 @@ export function createFreeTileCanvasInput(ports: Ports) {
   }
 
   function endFreeTileEdit({ drag, session, state }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState> }): boolean {
-    const { commitFreeTileSourceDrag, t, lineAnchorHistoryRef, compositeCacheRef, draw } = ports
+    const { commitFreeTileSourceDrag, t, lineAnchorHistoryRef, draw } = ports
     if (
       drag.kind === 'free-tile-edit' &&
       drag.freeTileSourceId &&
@@ -674,7 +675,6 @@ export function createFreeTileCanvasInput(ports: Ports) {
       lineAnchorHistoryRef.current = null
       if (session.tool === 'eraser') state.setLastEraserPoint(drag.last)
       else state.setLastPencilPoint(drag.last)
-      compositeCacheRef.current.invalidateAll()
       draw()
       return true
     }

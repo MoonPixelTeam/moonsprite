@@ -1,3 +1,4 @@
+import { growFreeTileStrokeRaster } from '@/core/free-tile-stroke-raster'
 import type { FreeTileInstance } from '@shared/types-tiles'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -409,7 +410,7 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
       drag.freeTileSourceBefore &&
       drag.freeTileEditSourceOffset
     ) {
-      let previous = drag.freeTileLastLocal ?? { x: previousPoint.x - drag.freeTileEditOrigin.x, y: previousPoint.y - drag.freeTileEditOrigin.y }
+      let previous = drag.freeTileLastLocal ? { ...drag.freeTileLastLocal } : { x: previousPoint.x - drag.freeTileEditOrigin.x, y: previousPoint.y - drag.freeTileEditOrigin.y }
       let previousSize = drag.lastBrushSize ?? session.brushSize
       let previousOpacity = drag.lastOpacityScale ?? 1
       if (drag.isoAlignedStroke && drag.isoGridPointer) {
@@ -427,6 +428,7 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
           )
           const strokes = advanceIsoGridBrushEdges(drag, documentPoint, targetDynamics)
           for (const stroke of strokes) {
+            growFreeTileStrokeRaster(drag, stroke.from, stroke.to, Math.max(session.brushSize, stroke.from.size ?? 1, stroke.to.size ?? 1), activeBrushImage)
             const localFrom = { x: stroke.from.x - drag.freeTileEditOrigin.x, y: stroke.from.y - drag.freeTileEditOrigin.y }
             const localTo = { x: stroke.to.x - drag.freeTileEditOrigin.x, y: stroke.to.y - drag.freeTileEditOrigin.y }
             const fromColor = stroke.from.color ?? drag.color ?? activeColor()
@@ -500,6 +502,7 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
           for (let index = 1; index < drag.path.length; index += 1) {
             const from = drag.path[index - 1]
             const to = drag.path[index]
+            growFreeTileStrokeRaster(drag, from, to, Math.max(session.brushSize, from.size ?? 1, to.size ?? 1), activeBrushImage)
             const localFrom = { x: from.x - drag.freeTileEditOrigin.x, y: from.y - drag.freeTileEditOrigin.y }
             const localTo = { x: to.x - drag.freeTileEditOrigin.x, y: to.y - drag.freeTileEditOrigin.y }
             const fromColor = from.color ?? drag.color ?? activeColor()
@@ -554,7 +557,6 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
         for (const sample of pointerSamples) {
           const documentPoint = localPointAt(sample.clientX, sample.clientY, true)
           if (!documentPoint) continue
-          const local = { x: documentPoint.x - drag.freeTileEditOrigin.x, y: documentPoint.y - drag.freeTileEditOrigin.y }
           const speedSample = updateBrushSpeedTracking(drag.brushSpeed, sample)
           drag.brushSpeed = speedSample.state
           const dynamics = brushDynamicsAt(
@@ -564,6 +566,10 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
             sample.pressureAvailable,
             sample.previousPressure
           )
+          const shift = growFreeTileStrokeRaster(drag, { x: previous.x + drag.freeTileEditOrigin.x, y: previous.y + drag.freeTileEditOrigin.y }, documentPoint, Math.max(session.brushSize, previousSize, dynamics.size), activeBrushImage)
+          previous.x += shift.x
+          previous.y += shift.y
+          const local = { x: documentPoint.x - drag.freeTileEditOrigin.x, y: documentPoint.y - drag.freeTileEditOrigin.y }
           const distance = Math.max(Math.abs(local.x - previous.x), Math.abs(local.y - previous.y))
           const size = activeBrushImage?.intrinsicSize ? dynamics.size : smoothBrushSizeEnvelope(previousSize, dynamics.size, session.brushSize, distance)
           paintLine(
@@ -624,9 +630,8 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
           height: drag.freeTileSourceBefore.height
         }
       }
-      const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit)
+      const cropped = freeTileSourceSnapshotFromEditRaster(sourceEdit, drag.edit.dirtyRect)
       state.previewFreeTileSource(drag.freeTileSourceId, cropped.width, cropped.height, cropped.pixels, cropped.offsetX, cropped.offsetY)
-      compositeCacheRef.current.invalidateAll()
       scheduleDraw()
       return true
     }

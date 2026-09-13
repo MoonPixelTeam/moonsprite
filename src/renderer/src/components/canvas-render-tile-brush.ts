@@ -1,3 +1,4 @@
+import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import type { TilemapCell } from '@shared/types-tiles'
 import { layerMaskDisplayColor, resolveLayerCanvasColor } from '@/core/document-model'
@@ -167,11 +168,13 @@ export function renderCanvasTileBrush({
               }
           }
           if (drawPreviewOutline) {
-            const sampled = sampleCompositeForPreview(point.x, point.y)
-            context.strokeStyle =
-              colorLuminance(sampled) > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
             context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
-            context.strokeRect(copy.originX + bounds.x * view.zoom, copy.originY + bounds.y * view.zoom, bounds.width * view.zoom, bounds.height * view.zoom)
+            const outline = new CanvasAdaptiveOutline()
+            const rect = { x: copy.originX + bounds.x * view.zoom, y: copy.originY + bounds.y * view.zoom, width: bounds.width * view.zoom, height: bounds.height * view.zoom }
+            outline.include(rect)
+            context.beginPath()
+            context.rect(rect.x, rect.y, rect.width, rect.height)
+            outline.stroke(context)
           }
           context.restore()
         }

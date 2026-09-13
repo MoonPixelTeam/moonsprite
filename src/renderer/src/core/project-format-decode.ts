@@ -82,10 +82,8 @@ const decodeManifestTilesets = (metadata: readonly ManifestTileset[], files: Rea
       ids.has(id) ||
       !Number.isSafeInteger(tileWidth) ||
       tileWidth < 1 ||
-      tileWidth > MAX_TILE_SIZE ||
       !Number.isSafeInteger(tileHeight) ||
       tileHeight < 1 ||
-      tileHeight > MAX_TILE_SIZE ||
       !Number.isSafeInteger(columns) ||
       columns < 1 ||
       !Number.isSafeInteger(rows) ||

@@ -11,12 +11,14 @@ import { createCanvasRenderPlan, deviceAlignedPixelRect } from '@/core/canvas-re
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { selectionContains } from '@/core/selection'
 import { CanvasInputState, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
-import { colorLuminance } from '@/core/canvas-visuals'
+import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
+import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
 import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { extensionToolContributionFor } from '@/core/extension-contributions'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
 interface Ports {
+  readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
   readonly drawingBrushPreviewEnabled: boolean
@@ -175,11 +177,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
         left: brushPoint.x - anchor.x + span.left,
         right: brushPoint.x - anchor.x + span.right
       }))
-      const sampled = ports.cursorCompositePointSamplerFor(currentSession)(point.x, point.y)
-      context.strokeStyle =
-        colorLuminance(sampled) > 145
-          ? ports.activeTheme.variables['--theme-selection-outline-dark']
-          : ports.activeTheme.variables['--theme-selection-outline-light']
       context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
       context.beginPath()
       const horizontalSegment = (left: number, right: number, y: number, bottom: boolean): void => {
@@ -223,6 +220,12 @@ export function useCanvasBrushOverlay(ports: Ports) {
           if (next.right < row.right) horizontalSegment(Math.max(row.left, next.right + 1), row.right, row.y, true)
         }
       }
+      context.strokeStyle = canvasAdaptiveContrast(context, {
+        x: renderPlan.originX + (brushPoint.x - anchor.x) * view.zoom - context.lineWidth,
+        y: renderPlan.originY + (brushPoint.y - anchor.y) * view.zoom - context.lineWidth,
+        width: previewSize * view.zoom + context.lineWidth * 2,
+        height: previewSize * view.zoom + context.lineWidth * 2
+      }, ports.canvasRef.current ?? undefined)
       context.stroke()
       context.restore()
       return
@@ -258,6 +261,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
     const brushPoint = ports.snapBrushPointToGrid(point, currentSession.brushSize, null, previewAngle, currentSession)
     const spans = solidBrushPreviewRowSpans(currentSession.brushSize, currentSession.brushShape, previewAngle, ports.optimizedRotationEnabled)
     const color = resolveLayerCanvasColor(currentSession.document, activePaintLayer(currentSession), currentSession.primaryColor)
+    const outline = new CanvasAdaptiveOutline()
     const rows = spans.flatMap((span) => {
       const y = brushPoint.y - before.y + span.y
       const left = Math.max(0, brushPoint.x - before.x + span.left)
@@ -269,14 +273,10 @@ export function useCanvasBrushOverlay(ports: Ports) {
     for (const row of rows) {
       const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.left, row.y, deviceScale)
       const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.right, row.y, deviceScale)
+      outline.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height })
       context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
     }
     context.fill()
-    const sampled = currentSession.primaryColor
-    context.strokeStyle =
-      colorLuminance(sampled) > 145
-        ? ports.activeTheme.variables['--theme-selection-outline-dark']
-        : ports.activeTheme.variables['--theme-selection-outline-light']
     context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
     context.beginPath()
     const horizontalSegment = (left: number, right: number, row: (typeof rows)[number], bottom: boolean): void => {
@@ -306,7 +306,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       exposedHorizontal(row, index > 0 ? rows[index - 1] : null, false)
       exposedHorizontal(row, index + 1 < rows.length ? rows[index + 1] : null, true)
     }
-    context.stroke()
+    outline.stroke(context, ports.canvasRef.current ?? undefined)
   }
 
   const scheduleBrushPreviewOverlay = (): void => {

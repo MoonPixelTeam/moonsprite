@@ -224,6 +224,35 @@ export function documentPointFromViewportPointContinuous(point: ViewportPoint, v
   return { x: (unrotated.x - origin.x) / view.zoom, y: (unrotated.y - origin.y) / view.zoom }
 }
 
+/** Convert a document coordinate to its displayed viewport coordinate. */
+export function viewportPointFromDocumentPointContinuous(point: ViewportPoint, viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): ViewportPoint {
+  const origin = viewCanvasOrigin(viewportWidth, viewportHeight, documentWidth, documentHeight, view)
+  const untransformed = { x: origin.x + point.x * view.zoom, y: origin.y + point.y * view.zoom }
+  const pivot = viewRotationPivot(viewportWidth, viewportHeight, view.panX, view.panY, position)
+  const mirrored = mirrorViewportPoint(untransformed, pivot, Boolean(view.mirrored), Boolean(view.mirroredVertical))
+  return rotateViewportPoint(mirrored, pivot, view.rotation)
+}
+
+/** Whether a displayed line segment intersects the viewport rectangle. */
+export function viewportSegmentVisible(start: ViewportPoint, end: ViewportPoint, width: number, height: number): boolean {
+  if (![start.x, start.y, end.x, end.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return false
+  let from = 0
+  let to = 1
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  for (const [distance, delta] of [[start.x, dx], [width - start.x, -dx], [start.y, dy], [height - start.y, -dy]] as const) {
+    if (delta === 0) {
+      if (distance < 0) return false
+      continue
+    }
+    const ratio = -distance / delta
+    if (delta > 0) from = Math.max(from, ratio)
+    else to = Math.min(to, ratio)
+    if (from > to) return false
+  }
+  return true
+}
+
 export function documentPointFromViewportPoint(point: ViewportPoint, viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): ViewportPoint {
   const continuous = documentPointFromViewportPointContinuous(point, viewportWidth, viewportHeight, documentWidth, documentHeight, view, position)
   return { x: Math.floor(continuous.x), y: Math.floor(continuous.y) }

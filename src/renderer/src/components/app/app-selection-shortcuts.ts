@@ -113,7 +113,8 @@ export function handleSelectionShortcuts(context: Pick<AppShortcutContext, 'poin
     )
   }))
     return true
-  const selectionOwnsCopy = Boolean(session?.selection) && (commandScope() === 'canvas' || selectionOverride())
+  const instanceListOwnsCopy = commandScope() === 'layers' && Boolean(session?.freeTileInstanceLayerId && session.selectedFreeTileInstanceId)
+  const selectionOwnsCopy = !instanceListOwnsCopy && Boolean(session?.selection) && (commandScope() === 'canvas' || selectionOverride())
   if (selectionOwnsCopy && runCommand('copy', () => workspace.copySelection()))
     return true
   if (session?.selectedAnimationCellKeys.length && !selectionOverride() && runCommand('copyAnimationCel', () => workspace.copySelectedAnimationCels()))

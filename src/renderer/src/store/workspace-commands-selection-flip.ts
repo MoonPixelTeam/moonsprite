@@ -23,6 +23,7 @@ import { tilemapEditBytes } from '@/core/tilemap'
 import { cloneFreeTileCelData, createFreeTileCelData, freeTileCelDataEqual } from '@/core/free-tile'
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, type FreeTilePlacementEdit } from '@/core/free-tile-document'
 import { freeTileTransformTargetToEditRaster } from '@/core/free-tile-edit'
+import { flipFreeTileSourceSelection } from './workspace-free-tile-selection-flip'
 import { activePaintLayer, cloneSelectionMask, selectedTransformLayersForSession, invalidateSessionContent } from './workspace-session'
 import type { WorkspaceViewSelectionCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
@@ -148,6 +149,10 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
           return
         }
         const tilemapLayer = activePaintLayer(session)
+        if (session.selection && tilemapLayer.kind === 'free-tile') {
+          flipFreeTileSourceSelection(session, axis, recordDocumentOperation)
+          return
+        }
         const freeTileInstanceIds = session.selectedFreeTileInstanceIds.length > 0 ? session.selectedFreeTileInstanceIds : session.selectedFreeTileInstanceId ? [session.selectedFreeTileInstanceId] : []
         // An instance picked on the canvas is a more specific target than a
         // previously selected timeline cel. Keep the cel selection intact for

@@ -12,6 +12,8 @@ export interface ProjectDisplaySettings {
   showPixelGrid: boolean
   showGrid: boolean
   grid: GridSettings
+  /** Symmetry origin in document pixel coordinates. */
+  symmetryCenter?: { x: number; y: number }
 }
 
 export interface ProjectStatistics {

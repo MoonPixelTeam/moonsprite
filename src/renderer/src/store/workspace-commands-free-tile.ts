@@ -1,3 +1,4 @@
+import { unionFreeTileSourceRects } from '@/core/free-tile-source-refresh'
 import { completeDocumentChange } from './workspace-document-change'
 import type { FreeTileCelData, FreeTileSourceLayer } from '@shared/types-tiles'
 import { type HistoryEntry } from '@/core/history'
@@ -561,25 +562,40 @@ export function createWorkspaceFreeTileCommands({ get, recording , services: { d
     },
 
     previewFreeTileSource(sourceId, width, height, pixels, offsetX, offsetY) {
+      const current = activeSession(get())
+      const target = current && freeTileSourceOwnerForId(current.document, sourceId)
+      if (!target) return false
+      // Source pages are single-tile sheets. Compare the owned pixels directly;
+      // preview needs no undo snapshot and unchanged input needs no publication.
+      if (target.tileset.columns === 1 && target.tileset.rows === 1
+        && target.tileset.tileWidth === width && target.tileset.tileHeight === height
+        && target.source.offsetX === offsetX && target.source.offsetY === offsetY
+        && target.tileset.pixels.length === pixels.length
+        && pixels.every((value, index) => value === target.tileset.pixels[index])) return false
       let changed = false
       get().mutateActive((session) => {
-        const before = captureFreeTileSourceSnapshot(session.document, sourceId)
-        if (!before) return
+        const refreshed: { rect: import('@shared/types-selection').SelectionRect | null } = { rect: null }
+        const owner = freeTileSourceOwnerForId(session.document, sourceId)
+        if (!owner) return
         changed = applyFreeTileSourceSnapshot(session.document, {
-          sourceId: before.sourceId,
-          tilesetId: before.tilesetId,
+          sourceId: owner.source.id,
+          tilesetId: owner.tileset.id,
           width,
           height,
           pixels,
           offsetX,
           offsetY
-        })
+        }, rect => { refreshed.rect = rect })
         if (changed) {
           const fromRevision = session.contentRevision
           session.revision += 1
           session.contentRevision += 1
           session.layersPanelRevision += 1
-          session.contentInvalidation = { kind: 'full', fromRevision, revision: session.contentRevision }
+          const previous = session.contentInvalidation
+          const dirty = refreshed.rect ?? { x: 0, y: 0, width: 0, height: 0 }
+          const accumulated = previous?.kind === 'region' && previous.revision === fromRevision && !previous.frameId ? previous : null
+          session.contentInvalidation = { kind: 'region', rect: accumulated ? unionFreeTileSourceRects(accumulated.rect, dirty) : dirty,
+            fromRevision: accumulated?.fromRevision ?? fromRevision, revision: session.contentRevision }
         }
       }, false)
       return changed

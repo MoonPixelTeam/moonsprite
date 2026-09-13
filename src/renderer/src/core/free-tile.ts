@@ -4,7 +4,7 @@ import { type ColorMode, type ImageResizeInterpolation } from '@shared/types-ras
 import { type FreeTileCelData, type FreeTileInstance, type FreeTileSourceLayer, type TilemapQuarterTurns, type Tileset } from '@shared/types-tiles'
 import { type SelectionRect } from '@shared/types-selection'
 import { blendOver, blendWithMode, relativeLuminanceColor } from './raster'
-import { MAX_TILESET_PIXELS, MAX_TILE_SIZE, readTilesetTilePixels } from './tilemap'
+import { MAX_TILESET_PIXELS, readTilesetTilePixels } from './tilemap'
 
 export const MAX_FREE_TILE_INSTANCES = 1_048_576
 export const MAX_FREE_TILE_COORDINATE = 67_108_864
@@ -542,7 +542,6 @@ export const resizeFreeTileTileset = (
   interpolation: ImageResizeInterpolation
 ): void => {
   if (!Number.isSafeInteger(tileWidth) || !Number.isSafeInteger(tileHeight) || tileWidth < 1 || tileHeight < 1
-    || tileWidth > MAX_TILE_SIZE || tileHeight > MAX_TILE_SIZE
     || tileset.columns * tileset.rows * tileWidth * tileHeight > MAX_TILESET_PIXELS) throw new Error('Free Tile source size is too large')
   if (tileWidth === tileset.tileWidth && tileHeight === tileset.tileHeight) return
   const sheetWidth = tileset.columns * tileWidth

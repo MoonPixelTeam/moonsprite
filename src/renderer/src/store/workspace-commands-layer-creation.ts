@@ -382,6 +382,10 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
           const document = session.document
           const before = captureDocumentStructureSnapshot(document)
           const beforeSelection = captureLayerUi(session)
+          // A background is added underneath the artwork, so it is not an editing
+          // target: the active layer and the timeline focus stay exactly as they were.
+          const previousActiveLayerId = document.activeLayerId
+          const previousActiveContext = { ...session.timelineActiveContext }
           const layer = createLayer(tr('workspace.layer.backgroundName'), document.width, document.height, document.colorMode)
           const presetPattern = typeof pattern === 'string' ? pattern : pattern.pattern
           layer.background = presetPattern ? { mode: 'preset', pattern: presetPattern } : { mode: 'canvas' }
@@ -394,13 +398,9 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
           document.layers.unshift(layer)
           const timeline = ensureAnimationDocument(document)
           connectAnimationCels(document, timeline.cels.filter((cel) => cel.layerId === layer.id).map((cel) => cel.id))
+          document.activeLayerId = previousActiveLayerId
+          session.timelineActiveContext = previousActiveContext
           refreshActiveAnimationFrame(document)
-          // Keep the timeline's active row in sync with the newly-created layer.
-          // The canvas sampler uses document.activeLayerId while the timeline UI
-          // uses timelineActiveContext; updating only one left the old layer
-          // visually active even though magic-wand sampled the background.
-          activateNewLayerContext(session, layer.id, timeline.activeFrameId)
-          session.selectedLayerIds = [layer.id]
           const after = captureDocumentStructureSnapshot(document)
           const afterSelection = captureLayerUi(session)
           const restore = (snapshot: DocumentStructureSnapshot, selection: ReturnType<typeof captureLayerUi>): void => {
