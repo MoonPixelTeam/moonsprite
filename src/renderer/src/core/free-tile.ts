@@ -1,4 +1,8 @@
-import { BLEND_MODES, type AnimationCelSurface, type BlendMode, type ColorMode, type FreeTileCelData, type FreeTileInstance, type FreeTileSourceLayer, type ImageResizeInterpolation, type RgbaColor, type SelectionRect, type TilemapQuarterTurns, type Tileset } from '@shared/types'
+import { BLEND_MODES, type BlendMode, type RgbaColor } from '@shared/types-color'
+import { type AnimationCelSurface } from '@shared/types-animation'
+import { type ColorMode, type ImageResizeInterpolation } from '@shared/types-raster'
+import { type FreeTileCelData, type FreeTileInstance, type FreeTileSourceLayer, type TilemapQuarterTurns, type Tileset } from '@shared/types-tiles'
+import { type SelectionRect } from '@shared/types-selection'
 import { blendOver, blendWithMode, relativeLuminanceColor } from './raster'
 import { MAX_TILESET_PIXELS, MAX_TILE_SIZE, readTilesetTilePixels } from './tilemap'
 

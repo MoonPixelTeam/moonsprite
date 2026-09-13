@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { classifyPerformanceAudit, classifyPerformanceImpact } from './performance-scope-rules.mjs'
 
+test('拆分后的渲染和命令模块仍进入定向性能检查', () => {
+  for (const file of ['components/canvas-render-frame.ts', 'core/document-composite.ts', 'core/tools-brush.ts', 'store/workspace-commands-layer.ts']) {
+    assert.equal(classifyPerformanceImpact([`src/renderer/src/${file}`]).level, 'P3', file)
+  }
+  assert.ok(classifyPerformanceImpact(['src/renderer/src/components/canvas-render-frame.ts']).suites.some((suite) => suite.id === 'canvas-targeted'))
+})
+
 test('文档和测试属于 P0', () => {
   assert.equal(classifyPerformanceImpact(['docs/testing/performance-baseline.md', 'src/core/example.test.ts']).level, 'P0')
   assert.equal(classifyPerformanceImpact(['src/renderer/src/core/example.spec.ts']).level, 'P0')

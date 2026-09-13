@@ -1,4 +1,5 @@
-import type { SelectionRect, SpriteDocument } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { ensureAnimationDocument, syncActiveAnimationFrame } from './animation'
 import { compositeAnimationFrame } from './onion-skin'
 

@@ -1,4 +1,4 @@
-import type { SelectionMask } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
 
 export interface AdjustmentPreviewController {
   suspend: () => void

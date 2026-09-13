@@ -1,4 +1,5 @@
-import type { BrushDitherSettings, BrushDitherTemplate, GradientDither, GradientStop, GradientType, RgbaColor } from '@shared/types'
+import type { BrushDitherSettings, BrushDitherTemplate, GradientDither, GradientStop, GradientType } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 
 export const GRADIENT_DITHER_PRESETS: readonly GradientDither[] = [
   'none', 'bayer-2', 'bayer-4', 'bayer-8', 'checker', 'diagonal', 'diagonal-reverse', 'horizontal', 'vertical'

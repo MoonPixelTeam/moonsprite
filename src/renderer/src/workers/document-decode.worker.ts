@@ -1,9 +1,9 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { decodeAseprite } from '@/core/aseprite'
 import { decodePsd } from '@/core/psd'
 import { setRuntimeAppLocale, type AppLocale } from '@/core/localization'
 import { decodeProject } from '@/core/project-format'
-import { compositeDocument } from '@/core/document'
+import { compositeDocument } from '@/core/document-composite'
 import { canPrepareInitialDocumentComposite } from '@/core/initial-document-composite'
 import { prepareRuntimeRasterDocumentForTransfer, prepareRuntimeRasterMetadata, rehydrateRuntimeRasterDocument } from '@/core/runtime-raster'
 

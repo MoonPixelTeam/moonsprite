@@ -1,28 +1,10 @@
-import type {
-  LuaScriptDialog,
-  LuaScriptDialogAction,
-  LuaScriptExecutionContext,
-  LuaScriptCreatedDocument,
-  LuaScriptCreatedLayer,
-  LuaScriptRunResult,
-  LuaScriptSurfaceSnapshot,
-  MoonSpriteApi,
-  RasterLayer,
-  RgbaColor,
-  SpriteDocument
-} from '@shared/types'
+import type { LuaScriptDialog, LuaScriptDialogAction, LuaScriptExecutionContext, LuaScriptCreatedDocument, LuaScriptCreatedLayer, LuaScriptRunResult, LuaScriptSurfaceSnapshot } from '@shared/types-scripting'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, ensureAnimationDocument, syncAnimationLayerAtFrame } from '@/core/animation'
-import {
-  createDocument,
-  createId,
-  createLayer,
-  getActiveLayer,
-  getLayer,
-  isLayerEffectivelyLocked,
-  markLayerContentChanged,
-  readLayerPacked,
-  setLayerStorageOrigin
-} from '@/core/document'
+import { createDocument, createId, createLayer, getActiveLayer, getLayer, isLayerEffectivelyLocked, markLayerContentChanged, readLayerPacked, setLayerStorageOrigin } from '@/core/document-model'
 import { beginPixelEdit, recordPixel, type HistoryEntry } from '@/core/history'
 import { translateCurrent as tr } from '@/core/localization'
 import type { DocumentSession } from './workspace-types'

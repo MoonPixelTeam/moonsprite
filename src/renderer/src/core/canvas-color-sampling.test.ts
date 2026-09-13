@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { beginCanvasColorSampling, endCanvasColorSampling, registerCanvasColorSamplingSurface, routeCanvasColorSampling, routeCanvasColorSamplingIntent, sampleCanvasColorAtClientPoint, setCanvasColorSamplingIntent } from './canvas-color-sampling'
 
 const color: RgbaColor = { r: 12, g: 34, b: 56, a: 255 }

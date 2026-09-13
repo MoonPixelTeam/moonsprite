@@ -1,7 +1,9 @@
-import type { AnimationLoopSection, AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types'
+import type { AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
 import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
-import { compositeDocument, compositeRegion } from './document'
+import { compositeDocument, compositeRegion } from './document-composite'
 
 const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], frameId: string, layerId?: string): SpriteDocument => {
   const animation = document.animation ? { ...document.animation, activeFrameId: frameId } : document.animation

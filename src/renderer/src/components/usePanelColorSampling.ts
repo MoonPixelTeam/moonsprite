@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ToolId } from '@shared/types'
+import type { ToolId } from '@shared/types-brush'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { loadShortcutBindings, modifierShortcutHeldByBindings, shortcutBindingsFor } from '@/core/shortcuts'
 import { useQuickToolShortcut } from '@/components/useQuickToolShortcut'

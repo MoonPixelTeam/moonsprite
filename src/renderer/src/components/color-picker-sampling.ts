@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 
 interface PickerSampler {
   sample: (x: number, y: number, target: Element) => RgbaColor | null

@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { readStoredString, writeStoredString } from './storage'
 
 export const THEME_PREFERENCE_KEY = 'moonsprite.preference.theme'

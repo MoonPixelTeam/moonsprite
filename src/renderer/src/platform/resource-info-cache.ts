@@ -1,4 +1,4 @@
-import type { ResourceInfo } from '@shared/types'
+import type { ResourceInfo } from '@shared/types-files'
 
 interface ResourceInfoReaderOptions {
   refreshAfterMs?: number

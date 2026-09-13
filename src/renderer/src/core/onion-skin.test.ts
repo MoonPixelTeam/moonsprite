@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createDocument, createLayer } from './document'
 import { addBlankAnimationFrame, animationCelAt, ensureAnimationDocument } from './animation'
 import { compositeAnimationFrame, onionSkinFrameRefs, tintOnionSkinPixels } from './onion-skin'
-import type { AnimationLoopSection } from '@shared/types'
+import type { AnimationLoopSection } from '@shared/types-animation'
 
 describe('onion skin helpers', () => {
   it('collects adjacent frames without wrapping at timeline edges', () => {

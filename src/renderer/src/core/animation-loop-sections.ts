@@ -1,4 +1,4 @@
-import type { AnimationFrame, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types'
+import type { AnimationFrame, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
 
 export const MAX_ANIMATION_LOOP_REPEAT_COUNT = 9_999
 export const MAX_ANIMATION_LOOP_SECTION_NAME_LENGTH = 64

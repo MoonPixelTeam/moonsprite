@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ColorMode } from '@shared/types'
+import type { ColorMode } from '@shared/types-raster'
 import { DEFAULT_DOCUMENT_SIZE_PRESETS, loadEditorPreferences, type DocumentSizePreset } from '@/core/file-preferences'
 import { AVAILABLE_APP_LOCALES, DEFAULT_APP_LOCALE, translate, type AppLocale } from '@/core/localization'
 import { useI18n } from './I18nProvider'

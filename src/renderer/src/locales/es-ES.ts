@@ -1,4 +1,4 @@
-import type { TranslationCatalog } from '@/core/localization'
+import type { TranslationCatalog } from './contracts'
 
 export const esESMessages = {
   'layers.splitLayerStyles': 'Separar estilos de capa',

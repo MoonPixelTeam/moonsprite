@@ -1,4 +1,5 @@
-import type { SelectionMask, SelectionRect, ViewState } from '@shared/types'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
+import type { ViewState } from '@shared/types-view'
 import type { RotationIndicatorPosition } from '@/core/file-preferences'
 import type { SelectionHandle } from '@/core/canvas-input'
 import { selectionBoundarySegments } from '@/core/selection'

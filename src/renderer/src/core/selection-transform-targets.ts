@@ -1,9 +1,10 @@
-import type { SelectionMask, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
+import type { SelectionMask, SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, createAnimationCelLookup, ensureAnimationDocument, parseAnimationCelKey, syncAnimationLayerAtFrame } from './animation'
 import type { PixelEdit } from './history'
 import type { SelectionShearTransform } from './selection'
 import type { SymmetryAxes, SymmetryCenter, SymmetryPoint } from './symmetry'
-import { applySelectionTransform, captureSelectionTransform, type SelectionTransformLayerState } from './tools'
+import { applySelectionTransform, captureSelectionTransform, type SelectionTransformLayerState } from './tools-selection-transform'
 
 export interface AnimationSelectionTargetPair {
   layerId: string

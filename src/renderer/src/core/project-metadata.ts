@@ -1,4 +1,5 @@
-import type { ProjectDisplaySettings, ProjectStatistics, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types'
+import type { ProjectDisplaySettings, ProjectStatistics } from '@shared/types-document'
+import type { TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types-timelapse'
 import { DEFAULT_GRID_SETTINGS, normalizeGridSettings } from './grid'
 
 export const DEFAULT_PROJECT_DISPLAY_SETTINGS: ProjectDisplaySettings = {

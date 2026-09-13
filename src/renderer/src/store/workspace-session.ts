@@ -1,4 +1,8 @@
-import type { ImageBrush, LayerMask, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
+import type { ImageBrush, ProceduralBrushId, ProceduralBrushSettings, ToolId } from '@shared/types-brush'
+import type { LayerMask, RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { HistoryStack, type ContentInvalidationHint } from '@/core/history'
 import { PROCEDURAL_BRUSH_IDS } from '@/core/brushes'
 import { packColor, unpackColor } from '@/core/raster'
@@ -17,7 +21,7 @@ import type { BrushProfile, DocumentSession } from './workspace-types'
 import { defaultSymmetryCenter } from '@/core/symmetry'
 import { ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
-import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document'
+import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { cloneBrushDynamicsSettings, normalizeBrushDynamicsSettings } from '@/core/pressure'
 import { applyProjectLayerPanelState, loadLocalLayerPanelState, normalizeProjectLayerPanelState } from '@/core/layer-panel-state'
 import { ensureTilemapTilesetOwnership } from '@/core/tilemap-document'
@@ -535,6 +539,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationMaskClipboard: [],
     animationMaskClipboardAnchorKey: null,
     animationFrameClipboard: [],
+    uiRevision: 0,
     revision: 0,
     contentRevision: 0,
     selectionGuidesPreservedAtContentRevision: undefined,

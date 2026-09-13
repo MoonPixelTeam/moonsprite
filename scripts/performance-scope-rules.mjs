@@ -26,6 +26,9 @@ const p4Patterns = [
 ]
 
 const p3Patterns = [
+  /\/components\/(?:canvas-render-frame|app\/document-canvas(?:-state)?)\.[jt]sx?$/,
+  /\/core\/(?:document|tools)-[\w-]+\.ts$/,
+  /\/store\/workspace-(?:commands-[\w-]+|mutation|recording)\.ts$/,
   /^vitest\.config\.[cm]?ts$/,
   /\/CanvasStage\.tsx$/,
   /\/(canvas|onion-skin)-composite-cache\.(ts|tsx)$/,
@@ -112,7 +115,7 @@ export function classifyPerformanceAudit(files, options = {}) {
   const profileHarness = paths.some((file) => profileHarnessPatterns.some((pattern) => pattern.test(file)))
   const vitestConfig = paths.some((file) => vitestConfigPattern.test(file))
   const dedicatedBenchmark = selectionAlgorithm || adjustmentAlgorithm || projectFormat || vitestConfig
-  const canvasHotPath = paths.some((file) => /\/(CanvasStage|canvas-(?:render-plan|composite-cache)|canvas-input|view-geometry|canvas-selection-renderer|useCanvasViewPreview)\./.test(file))
+  const canvasHotPath = paths.some((file) => /\/(CanvasStage|canvas-(?:render-plan|render-frame|composite-cache)|canvas-input|view-geometry|canvas-selection-renderer|useCanvasViewPreview)\./.test(file))
   const canvasTarget = canvasHotPath || (!dedicatedBenchmark && !complexDocument && !profileHarness)
   const suites = []
 

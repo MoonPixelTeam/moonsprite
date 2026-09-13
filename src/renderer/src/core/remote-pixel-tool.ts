@@ -1,4 +1,5 @@
-import type { RgbaColor, SelectionRect } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionRect } from '@shared/types-selection'
 
 export interface RemotePixelToolConfig {
   endpoint: string

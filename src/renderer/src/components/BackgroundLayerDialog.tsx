@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BackgroundPatternId, StoredBackgroundPreset } from '@shared/types'
+import type { BackgroundPatternId } from '@shared/types-layer'
+import type { StoredBackgroundPreset } from '@shared/types-library'
 import { renderBackgroundPatternRgba, renderBackgroundTileRgba, type BackgroundPatternTile } from '@/core/background-patterns'
 import { decodeBackgroundPresetTile } from '@/core/background-preset-images'
 import type { TranslationKey } from '@/core/localization'

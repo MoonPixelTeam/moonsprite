@@ -38,7 +38,7 @@
       "kind": "guard",
       "remaining": 0,
       "expiresAt": "permanent",
-      "target": "core 生产运行时依赖图无循环。"
+      "target": "前端生产运行时依赖图无循环，包含 renderer 与 shared 的跨目录边。"
     },
     "module-boundary-debt": {
       "kind": "guard",

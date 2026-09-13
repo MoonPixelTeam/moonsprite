@@ -1,4 +1,6 @@
-import type { RgbaColor, SelectionRect, TextCelData, TextCelTransform, TextStyleRun } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionRect } from '@shared/types-selection'
+import type { TextCelData, TextCelTransform, TextStyleRun } from '@shared/types-text'
 
 export const DEFAULT_TEXT_FONT_FAMILY = 'Fusion Pixel 10px Prop Zh_hans'
 export const DEFAULT_TEXT_FONT_SIZE = 10

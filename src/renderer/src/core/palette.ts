@@ -1,5 +1,6 @@
-import type { RgbaColor, SpriteDocument } from '@shared/types'
-import { compositeDocument } from './document'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
+import { compositeDocument } from './document-composite'
 import { encodePng } from './png-encode'
 import { translateCurrent as tr } from './localization'
 import { clampByte, hsvToRgb, packColor, rgbToHsv } from './raster'

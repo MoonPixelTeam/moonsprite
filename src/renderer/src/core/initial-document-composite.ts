@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 
 interface InitialDocumentComposite {
   width: number

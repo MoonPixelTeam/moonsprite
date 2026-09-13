@@ -1,6 +1,6 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer } from '@/core/document'
 import { addBlankAnimationFrame, animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'

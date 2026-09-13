@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { listExtensionToolContributions } from './extension-contributions'
-import type { StoredExtension } from '@shared/types'
+import type { StoredExtension } from '@shared/types-extensions'
 
 const extension = (enabled: boolean): StoredExtension => ({
   id: 'com.example.ai',

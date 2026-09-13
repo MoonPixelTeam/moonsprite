@@ -1,5 +1,6 @@
-import type { LayerGroup, SpriteDocument } from '@shared/types'
-import { getActiveLayer, getDescendantGroupIds, getGroup, getLayerIdsInGroup } from './document'
+import type { LayerGroup } from '@shared/types-layer'
+import type { SpriteDocument } from '@shared/types-document'
+import { getDescendantGroupIds, getGroup, getLayerIdsInGroup } from './document-model'
 import type { HistoryEntry } from './history'
 import { buildLayerPanelTree, type LayerPanelNode } from './layer-panel-layout'
 import { translateCurrent as tr } from './localization'

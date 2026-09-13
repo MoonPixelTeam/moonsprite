@@ -28,8 +28,8 @@ platform/tauri-api ----> Tauri commands ----> Windows/file system
 
 ## 当前维护风险状态
 
-- 计划状态：已完成
-- 未完成高风险拆分项：0
+- 既有九类边界迁移：已完成；集中度与流程所有权治理：进行中。
+- 上轮登记的高风险迁移项：0。这不表示画布主交互、图层时间轴或所有大型命令模块已经完全解耦；当前边界与剩余集中区域见 [编辑器解耦契约](../architecture-decoupling.md)。
 
 前一轮已经拆出多个高风险入口，但审计确认“拆文件”没有彻底解决写入所有权、历史快照、持久化主线程准备和根 Store 膨胀。本轮升级以数据流和职责所有权为单位，完成以下收口：
 
@@ -39,7 +39,7 @@ platform/tauri-api ----> Tauri commands ----> Windows/file system
 - 工程打开一次只解码一次，首帧合成和缓存复用已解码文档。
 - 根 Store 按会话、文档命令、历史、工具、视图、动画、Tilemap、工程 IO 和恢复拆分。
 - UI 刷新使用领域 revision 与精确 selector，不用字符串序列化大对象。
-- `core/` 运行时依赖保持无环，Tauri 访问全部收口到 `platform/`。
+- 前端运行时依赖保持无环，检查包含 renderer/shared 跨目录路径；Tauri 访问全部收口到 `platform/`。
 
 架构债务由 `scripts/architecture-debt-budget.json` 按类别登记，当前 9 类常驻护栏预算均为 0。该预算不是文件豁免；任何新债务都会立即失败，后续也不得回升或延期。规则分为 `guard`（常驻护栏，`expiresAt` 必须为 `permanent`）与 `migration`（迁移债务，必须给出到期版本）；规则可声明 `anchor`，一旦该正则在生产源码中不再命中，门禁就要求退役或替换——原 `workspace-root-command` 规则即按此退役，理由记录在同文件的 `retiredRules`。`pnpm check:architecture` 是机器可执行的状态来源。
 

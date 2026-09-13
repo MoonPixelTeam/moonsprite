@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDocument, createLayer, layerContentBounds, writeLayerColor } from '@/core/document'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
-import type { SelectionRect } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
 import { useWorkspace } from './workspace'
 
 const unionRects = (left: SelectionRect, right: SelectionRect): SelectionRect => {

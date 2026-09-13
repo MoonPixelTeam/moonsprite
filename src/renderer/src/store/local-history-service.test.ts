@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDocument, getActiveLayer, readLayerPacked, DocumentCompositeCache, compositeRegion } from '@/core/document'
 import { DEFAULT_EDITOR_PREFERENCES, saveEditorPreferences } from '@/core/file-preferences'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import type { DocumentSession } from './workspace-types'
 import { configureLocalHistory, flushLocalHistoryPersist, persistLocalHistory, recordLocalHistoryChange, restoreLocalHistory } from './local-history-service'
 import * as projectFormat from '@/core/project-format'

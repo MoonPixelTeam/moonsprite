@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { addBlankAnimationFrame, ensureAnimationDocument, resolveAnimationCel } from '@/core/animation'
 import { createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
 import { backgroundPatternColorAt, type BackgroundPatternTile } from '@/core/background-patterns'

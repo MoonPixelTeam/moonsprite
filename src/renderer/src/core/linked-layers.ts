@@ -1,5 +1,8 @@
-import type { AnimationCelSurface, RasterLayer, RgbaColor, SpriteDocument } from '@shared/types'
-import { getLayerStorageOrigin, setLayerStorageOrigin } from './document'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
+import { getLayerStorageOrigin, setLayerStorageOrigin } from './document-model'
 import { assignRasterStorage } from './runtime-raster'
 
 type LinkedRasterSurface = RasterLayer | AnimationCelSurface

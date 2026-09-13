@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LiquifyMode } from '@shared/types'
+import type { LiquifyMode } from '@shared/types-brush'
 import { createDocument, createLayerMask, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, revertPixelEdit } from './history'
 import { applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, temporaryLiquifyModeForShift } from './liquify'

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { initializeCanvas, readPsd } from 'ag-psd'
-import type { AnimationCel, LayerGroup } from '@shared/types'
+import type { AnimationCel } from '@shared/types-animation'
+import type { LayerGroup } from '@shared/types-layer'
 import { createLayer, createLayerMask, createDocument, getActiveLayer, writeLayerColor } from './document'
 import { createDefaultLayerStyles } from './layer-styles'
 import { decodePsd, encodePsd } from './psd'

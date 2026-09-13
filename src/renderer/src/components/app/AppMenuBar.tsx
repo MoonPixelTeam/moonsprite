@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import type { ColorMode, ExtensionBuiltInMenuId, ExtensionMenuItemPosition, ExtensionTopMenuPosition, LuaScriptEntry, StoredExtension, TileRepeatMode, ToolRailSide, WorkspacePanelId } from '@shared/types'
+import type { ColorMode, TileRepeatMode } from '@shared/types-raster'
+import type { ExtensionBuiltInMenuId, ExtensionMenuItemPosition, ExtensionTopMenuPosition, LuaScriptEntry, StoredExtension } from '@shared/types-extensions'
+import type { ToolRailSide, WorkspacePanelId } from '@shared/types-workspace'
 import type { AdjustmentKind } from '@/core/adjustments'
 import { FILTER_PRESETS } from '@/core/filter-presets'
 import { APP_CHANNEL_LABEL } from '@/core/app-meta'

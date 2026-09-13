@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { GridSettings } from '@shared/types'
+import type { GridSettings } from '@shared/types-view'
 import { normalizeGridSettings } from '@/core/grid'
 import { useI18n } from '@/components/I18nProvider'
 import { DialogHeader } from '@/components/DialogHeader'

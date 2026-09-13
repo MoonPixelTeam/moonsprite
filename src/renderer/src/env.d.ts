@@ -1,4 +1,6 @@
-import type { FillKind, MoonSpriteApi, ShapeKind, ToolId, ViewState } from '@shared/types'
+import type { FillKind, ShapeKind, ToolId } from '@shared/types-brush'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { ViewState } from '@shared/types-view'
 
 declare global {
   const __MOONSPRITE_PERFORMANCE_BUILD__: boolean

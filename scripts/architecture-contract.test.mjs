@@ -2,11 +2,47 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { analyzeArchitectureFiles, ARCHITECTURE_RULES } from './architecture-contract.mjs'
+import { analyzeArchitectureFiles, ARCHITECTURE_RULES, readArchitectureSourceFiles } from './architecture-contract.mjs'
 import { architectureAnchorErrors, architectureBudgetErrors, compareProjectVersions, PERMANENT_EXPIRY } from './architecture-budget.mjs'
 
 const fixturePath = fileURLToPath(new URL('./fixtures/architecture-contract/cases.json', import.meta.url))
 const fixtures = JSON.parse(await readFile(fixturePath, 'utf8'))
+
+test('production runtime graph includes shared contracts and has no cross-directory cycles', async () => {
+  const files = await readArchitectureSourceFiles()
+  assert.ok([...files.keys()].some(file => file.startsWith('src/shared/')))
+  const result = analyzeArchitectureFiles(files)
+  assert.equal(result.counts['core-runtime-cycle'], 0, JSON.stringify(result.findings.filter(finding => finding.rule === 'core-runtime-cycle')))
+})
+
+test('runtime graph ignores explicit and inline type-only imports and reexports', () => {
+  for (const statement of ["import type { B } from './b'", "import /* contract */ type { B } from './b'", "import { type B, } from './b'", "export type { B } from './b'", "export { type B } from './b'"]) {
+    const result = analyzeArchitectureFiles({
+      'src/renderer/src/core/a.ts': statement,
+      'src/renderer/src/core/b.ts': "import { A } from './a'",
+    })
+    assert.equal(result.counts['core-runtime-cycle'], 0, statement)
+  }
+})
+
+test('runtime graph detects cross-directory imports and shared reexports', () => {
+  const result = analyzeArchitectureFiles({
+    'src/renderer/src/core/a.ts': "import { type B, value } from '@/locales/b'",
+    'src/renderer/src/locales/b.ts': "export { value } from '@shared/c'",
+    'src/shared/c.ts': "import { value } from '../renderer/src/core/a'",
+  })
+  assert.equal(result.counts['core-runtime-cycle'], 3)
+})
+
+test('runtime graph keeps side effects and a value named type', () => {
+  for (const statement of ["import './b'", "import {} from './b'", "import { type as value } from './b'", "import('./b')"]) {
+    const result = analyzeArchitectureFiles({
+      'src/renderer/src/core/a.ts': statement,
+      'src/renderer/src/core/b.ts': "import './a'",
+    })
+    assert.equal(result.counts['core-runtime-cycle'], 2, statement)
+  }
+})
 
 test('valid architecture samples remain clean', () => {
   const result = analyzeArchitectureFiles(fixtures.valid)

@@ -1,7 +1,13 @@
-import { pixelSource, type PixelSource } from '@/components/pixel-source'
+import { layerBlendOptions } from './layer-blend-options'
+import { LayerPropertyEditor, type LayerPropertyEditorHandle } from './LayerPropertyEditor'
+import { selectedRowsForDrag, selectedRowsForProperties, hasUnsupportedPropertySelection } from './layer-panel-selection'
+import { pixelSource } from '@/components/pixel-source'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { AnimationCel, AnimationCelSurface, AnimationLoopSection, AnimationTimeline, BlendMode, LayerGroup, LayerMask, PaletteEntry, RasterLayer, RgbaColor, Tileset } from '@shared/types'
+import type { AnimationLoopSection } from '@shared/types-animation'
+import type { RgbaColor } from '@shared/types-color'
+import type { LayerGroup, RasterLayer } from '@shared/types-layer'
+import type { Tileset } from '@shared/types-tiles'
 import { AnimationLoopSectionDialog, type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { observeToolbarExtent } from '@/components/toolbar-extent'
@@ -12,30 +18,24 @@ import { ModalShell } from '@/components/ModalShell'
 import { NumberInput } from '@/components/NumberInput'
 import { PreferenceToggle } from '@/components/PreferenceToggle'
 import { RangeField } from '@/components/RangeField'
-import { TextAreaInput } from '@/components/TextAreaInput'
-import { TextInput } from '@/components/TextInput'
-import { ThemedSelect, type ThemedSelectGroup } from '@/components/ThemedSelect'
 import { Tooltip } from '@/components/Tooltip'
 import { openTextToolDialog } from '@/components/text-tool-events'
 import type { DockDragProps } from '@/components/workspace-panel-types'
-import { animationMaskAt, animationMaskSlotAt, createAnimationMaskLookup, getDescendantGroupIds, getGroupLockingAncestor, getLayerIdsInGroup, getLayerLockingGroup, isGroupEffectivelyLocked, isLayerEffectivelyLocked, resolveAnimationMask } from '@/core/document'
+import { animationMaskAt, animationMaskSlotAt, createAnimationMaskLookup, getDescendantGroupIds, getGroupLockingAncestor, getLayerLockingGroup, resolveAnimationMask } from '@/core/document-model'
 import { COMMAND_SCOPE_EVENT, EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { buildLayerPanelTree, getLayerPanelAncestorGroupIds, layerPanelRevealScrollTop, resolveLayerPanelDropTarget, resolveLayerPanelEdgeDropTarget, type LayerPanelNode } from '@/core/layer-panel-layout'
 import { DEFAULT_ONION_SKIN_PREFERENCES, loadEditorPreferences, saveEditorPreferences, type OnionSkinPreferences } from '@/core/file-preferences'
 import { animationCelHasContent, animationCelKey, animationGroupMaskAt, createAnimationCelLookup, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { animationLoopSectionAtFrame, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { decodeDocumentFileAsync } from '@/core/document-files'
-import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { formatShortcutBindingsForLocale, loadShortcutBindings, shortcutBindingsFor, type ShortcutId } from '@/core/shortcuts'
-import { useWorkspace, type DocumentSession, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from '@/store/workspace'
+import { useWorkspace, type DocumentSession, type LayerPropertyTarget } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
-import { CheckboxField } from '@/components/CheckboxField'
 import { PixelCheckbox } from '@/components/PixelCheckbox'
 import { CANVAS_SELECTION_PRESERVE_EVENT, CANVAS_SELECTION_STARTED_EVENT, LAYER_PANEL_REVEAL_EVENT, type CanvasSelectionPreserveDetail, type CanvasSelectionStartedDetail, type LayerPanelRevealDetail } from '@/components/layer-panel-reveal'
-import { rasterStorageIdentity } from '@/core/runtime-raster'
 import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, DEFAULT_LAYER_QUICK_ACTIONS, LAYER_DENSITY_ORDER as layerDensityOrder, LAYER_QUICK_ACTION_LIMIT, loadFreeTileInstancePanelLayout, loadLayerDensity, loadLayerQuickActions, loadLayerSideDockAutoHide, saveLayerDensity, saveLayerQuickActions, saveLayerSideDockAutoHide, type FreeTileInstancePanelLayout, type LayerDisplayDensity, type LayerQuickAction, type LayerQuickActionId } from '@/core/layer-panel-preferences'
 import { LayerStyleDialog } from '@/components/LayerStyleDialog'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles } from '@/core/layer-styles'
@@ -50,13 +50,11 @@ import { createAnimationTimelineVisualIndex, deriveAnimationTimelineVisualState,
 import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
 import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
-import { notifyAnimationCelThumbnailPreview, notifyLayerMaskThumbnailPreview, registerAnimationCelThumbnailPreviewListener, registerLayerMaskThumbnailPreviewListener } from '@/core/canvas-preview-lifecycle'
 import type { TranslationKey } from '@/core/localization'
+import { cachedCelHasContent, AnimationCelContent, ActiveLayerMaskThumbnail, useTimelineThumbnailContentSync, ActiveFrameSync } from './layer-timeline-thumbnails'
+import { layoutAnimationLoopSections, timelineWithLoopSectionPreview, type AnimationLoopSectionResizePreview } from './layer-timeline-layout'
 
 type LayerFormTarget = LayerPropertyTarget
-type BatchProperty = LayerPropertyField
-interface LayerFormState { id: string; kind: 'layer' | 'group'; targets: LayerFormTarget[]; batchChanges: BatchProperty[]; name: string; opacity: number; blendMode: BlendMode; cumulativeBlend: boolean; locked: boolean; displayColor: RgbaColor | null; description: string }
-const ALL_LAYER_PROPERTY_FIELDS: readonly LayerPropertyField[] = ['name', 'opacity', 'blendMode', 'cumulativeBlend', 'displayColor', 'description']
 interface LayerDragState { ids: string[]; groupIds: string[]; groupId?: string; row: LayerFormTarget; preserveSelection: boolean; selectOnClick: boolean; selectedLayerIds: string[]; selectedGroupIds: string[]; wholeGroupSelection: boolean; startX: number; startY: number; moved: boolean; copy: boolean }
 type LayerPanelToggleTarget =
   | { control: 'visibility'; ownerKind: 'layer'; id: string }
@@ -92,9 +90,7 @@ function LayerContextMenuItem({ icon, label, shortcut, onClick, danger = false, 
 }
 type AnimationContextMenu = { kind: 'playback'; x: number; y: number } | { kind: 'frame'; frameId: string; x: number; y: number } | { kind: 'loop-section'; sectionId: string; x: number; y: number } | { kind: 'cel' | 'mask'; layerId: string; frameId: string; x: number; y: number }
 interface AnimationLoopSectionEditorState { mode: 'create' | 'edit'; sectionId?: string; value: AnimationLoopSectionDraft }
-interface AnimationLoopSectionLayout { section: AnimationLoopSection; startIndex: number; span: number; lane: number; laneSpan: number }
 type AnimationLoopSectionResizeEdge = 'start' | 'end'
-interface AnimationLoopSectionResizePreview { sectionId: string; startIndex: number; endIndex: number }
 interface LayerDragGhost { y: number; items?: Array<{ id: string; kind: 'layer' | 'group'; name: string }>; name?: string; count: number }
 type AnimationPointerDrag =
   | { kind: 'frame'; sourceFrameId: string; frameIds: string[]; preserveSelection: boolean; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
@@ -135,55 +131,7 @@ const layerQuickActionMetadata = {
   convertLayerToRaster: { icon: 'image', label: 'layers.convertToRaster' }
 } satisfies Record<LayerQuickActionId, { icon: PixelUtilityIconKind; label: TranslationKey }>
 
-const layoutAnimationLoopSections = (timeline: AnimationTimeline): { items: AnimationLoopSectionLayout[]; laneCount: number } => {
-  const candidates = (timeline.loopSections ?? []).flatMap((section) => {
-    const range = resolveAnimationLoopSectionRange(timeline, section)
-    return range ? [{ section, startIndex: range.startIndex, endIndex: range.endIndex, span: range.endIndex - range.startIndex + 1, parentIndex: -1, lane: 0 }] : []
-  }).sort((left, right) => left.startIndex - right.startIndex || right.span - left.span || left.section.name.localeCompare(right.section.name))
-  const contains = (parent: typeof candidates[number], child: typeof candidates[number]): boolean =>
-    parent.startIndex <= child.startIndex && parent.endIndex >= child.endIndex && (parent.startIndex < child.startIndex || parent.endIndex > child.endIndex)
-  const overlaps = (left: typeof candidates[number], right: typeof candidates[number]): boolean =>
-    left.startIndex <= right.endIndex && right.startIndex <= left.endIndex
-  const laneItems: Array<Array<typeof candidates[number]>> = []
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index]
-    for (let parentIndex = 0; parentIndex < index; parentIndex += 1) {
-      const parent = candidates[parentIndex]
-      if (!contains(parent, candidate)) continue
-      if (candidate.parentIndex < 0 || parent.span < candidates[candidate.parentIndex].span) candidate.parentIndex = parentIndex
-    }
-    let lane = candidate.parentIndex >= 0 ? candidates[candidate.parentIndex].lane + 1 : 0
-    while (laneItems[lane]?.some((item) => overlaps(item, candidate))) lane += 1
-    candidate.lane = lane
-    if (!laneItems[lane]) laneItems[lane] = []
-    laneItems[lane].push(candidate)
-  }
-  const items = candidates.map(({ section, startIndex, span, lane }) => ({ section, startIndex, span, lane, laneSpan: 1 }))
-  for (let index = 0; index < candidates.length; index += 1) {
-    let parentIndex = candidates[index].parentIndex
-    while (parentIndex >= 0) {
-      items[parentIndex].laneSpan = Math.max(items[parentIndex].laneSpan, candidates[index].lane - candidates[parentIndex].lane + 1)
-      parentIndex = candidates[parentIndex].parentIndex
-    }
-  }
-  const laneCount = items.reduce((count, item) => Math.max(count, item.lane + 1), 0)
-  for (const item of items) item.laneSpan = Math.max(item.laneSpan, laneCount - item.lane)
-  return { items, laneCount }
-}
-const timelineWithLoopSectionPreview = (timeline: AnimationTimeline, preview: AnimationLoopSectionResizePreview | null): AnimationTimeline => {
-  if (!preview) return timeline
-  const startFrame = timeline.frames[preview.startIndex]
-  const endFrame = timeline.frames[preview.endIndex]
-  if (!startFrame || !endFrame) return timeline
-  return {
-    ...timeline,
-    loopSections: (timeline.loopSections ?? []).map((section) => section.id === preview.sectionId
-      ? { ...section, startFrameId: startFrame.id, endFrameId: endFrame.id }
-      : section)
-  }
-}
 
-const defaultLayerDisplayColor: RgbaColor = { r: 41, g: 121, b: 255, a: 255 }
 const layerLabelWidthKey = 'moonsprite.layers.label-width'
 const layerLabelWidthLimits = { min: 140, max: 2_000 }
 const layerDensityLabelKeys = {
@@ -204,268 +152,10 @@ const layerDensityDescriptionKeys = {
 } as const
 const clampLayerLabelWidth = (value: number): number => Math.max(layerLabelWidthLimits.min, Math.min(layerLabelWidthLimits.max, Math.round(value)))
 const loadLayerLabelWidth = (): number => clampLayerLabelWidth(Number(localStorage.getItem(layerLabelWidthKey)) || 190)
-const celContentCache = new WeakMap<object, Map<string, { revision: number; value: boolean }>>()
-const celThumbnailCache = new WeakMap<object, Map<string, { revision: number; pixels: Uint8ClampedArray }>>()
-const scheduleThumbnailRender = (render: () => void): (() => void) => {
-  let timeoutId: number | null = null
-  if (typeof window.requestAnimationFrame !== 'function') {
-    timeoutId = window.setTimeout(render, 0)
-    return () => { if (timeoutId !== null) window.clearTimeout(timeoutId) }
-  }
-  let frameId: number | null = window.requestAnimationFrame(() => {
-    frameId = null
-    timeoutId = window.setTimeout(render, 0)
-  })
-  return () => {
-    if (frameId !== null) window.cancelAnimationFrame(frameId)
-    if (timeoutId !== null) window.clearTimeout(timeoutId)
-  }
-}
-const paletteVisibilityKey = (palette: readonly PaletteEntry[]): string => palette.map((entry) => `${entry.id}:${entry.color.a}`).join(',')
-const paletteRenderKey = (palette: readonly PaletteEntry[]): string => palette.map((entry) => `${entry.id}:${entry.color.r},${entry.color.g},${entry.color.b},${entry.color.a}`).join('|')
-const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly PaletteEntry[], revision = 0): boolean => {
-  const surface = cel?.surface
-  if (!surface) return false
-  const key = surface.format === 'rgba' ? 'rgba' : paletteVisibilityKey(palette)
-  const storage = rasterStorageIdentity(surface)
-  const entries = celContentCache.get(storage) ?? new Map<string, { revision: number; value: boolean }>()
-  const cached = entries.get(key)
-  if (cached && (revision === 0 || cached.revision === revision)) return cached.value
-  const value = animationCelHasContent(cel, palette)
-  entries.set(key, { revision, value })
-  celContentCache.set(storage, entries)
-  return value
-}
-function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
-  const cel = celSource()
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    let cancelScheduledRender: (() => void) | null = null
-    const draw = (surface: AnimationCelSurface, livePalette: readonly PaletteEntry[], opacity: number, bypassCache = false): void => {
-      cancelScheduledRender?.()
-      cancelScheduledRender = scheduleThumbnailRender(() => {
-        const canvas = ref.current
-        if (!canvas) return
-        if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return
-        try {
-          const context = canvas.getContext('2d')
-          if (!context) return
-          const key = `${documentWidth}:${documentHeight}:${canvas.width}:${surface.width}:${surface.height}:${surface.offsetX}:${surface.offsetY}:${opacity}:${surface.format === 'rgba' ? 'rgba' : paletteRenderKey(livePalette)}`
-          const storage = rasterStorageIdentity(surface)
-          const entries = celThumbnailCache.get(storage) ?? new Map<string, { revision: number; pixels: Uint8ClampedArray }>()
-          const cached = entries.get(key)
-          const pixels = !bypassCache && cached && (revision === 0 || cached.revision === revision)
-            ? cached.pixels
-            : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity)
-          if (!bypassCache && (!cached || pixels !== cached.pixels)) {
-            entries.set(key, { revision, pixels })
-            celThumbnailCache.set(storage, entries)
-          }
-          const image = context.createImageData(canvas.width, canvas.height)
-          image.data.set(pixels)
-          context.putImageData(image, 0, 0)
-        } catch {
-          // Canvas rendering is unavailable in a few test and recovery environments.
-        }
-      })
-    }
-    if (cel.surface) draw(cel.surface, palette, cel.opacity ?? 1)
-    const unregisterPreview = registerAnimationCelThumbnailPreviewListener(documentId, (activeCelId, activeLayerId) => {
-      if (activeLayerId !== layerId || cel.id !== activeCelId) return
-      const current = useWorkspace.getState().sessions.find((item) => item.document.id === documentId)
-      if (!current) return
-      const liveLayer = current.document.layers.find((layer) => layer.id === activeLayerId)
-      if (liveLayer) draw(liveLayer, current.document.palette, cel.opacity ?? 1, true)
-    })
-    return () => {
-      unregisterPreview()
-      cancelScheduledRender?.()
-    }
-  }, [cel, documentHeight, documentId, documentWidth, layerId, palette, revision, thumbnailSize])
-  return <span className="cel-thumbnail" aria-hidden="true"><canvas ref={ref} width={thumbnailSize} height={thumbnailSize} /></span>
-}
-const drawLayerMaskThumbnail = (canvas: HTMLCanvasElement, mask: LayerMask, documentWidth: number, documentHeight: number): void => {
-  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return
-  try {
-    const context = canvas.getContext('2d')
-    if (!context) return
-    const pixels = renderLayerMaskThumbnailPixels(documentWidth, documentHeight, canvas.width, canvas.height, mask)
-    const image = context.createImageData(canvas.width, canvas.height)
-    image.data.set(pixels)
-    context.putImageData(image, 0, 0)
-  } catch {
-    // Canvas rendering is unavailable in a few test and recovery environments.
-  }
-}
-function LayerMaskThumbnail({ maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { maskSource: PixelSource<LayerMask>; revision: number | string; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const canvas = ref.current
-    if (!canvas) return
-    return scheduleThumbnailRender(() => drawLayerMaskThumbnail(canvas, maskSource(), documentWidth, documentHeight))
-  }, [maskSource, revision, documentWidth, documentHeight, thumbnailSize])
-  return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
-}
-function ActiveLayerMaskThumbnail({ documentId, ownerId, frameId, maskSource, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; ownerId: string; frameId: string; maskSource: PixelSource<LayerMask>; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    let cancelScheduledRender: (() => void) | null = null
-    const liveSession = () => useWorkspace.getState().sessions.find((item) => item.document.id === documentId)
-    const render = (): void => {
-      cancelScheduledRender?.()
-      cancelScheduledRender = scheduleThumbnailRender(() => {
-        const canvas = ref.current
-        const current = liveSession()
-        const timeline = current?.document.animation
-        const liveMask = timeline ? animationMaskAt(timeline, ownerId, frameId) : null
-        if (canvas) drawLayerMaskThumbnail(canvas, liveMask ?? maskSource(), documentWidth, documentHeight)
-      })
-    }
-    const belongsToActiveMaskGroup = (): boolean => {
-      const current = liveSession()
-      const timeline = current?.document.animation
-      if (!current?.activeLayerMaskId || !timeline) return false
-      return animationMaskAt(timeline, ownerId, frameId)?.id === current.activeLayerMaskId
-    }
-    render()
-    const unregisterPreview = registerLayerMaskThumbnailPreviewListener(documentId, (activeMaskId) => {
-      const current = liveSession()
-      const timeline = current?.document.animation
-      if (!timeline || animationMaskAt(timeline, ownerId, frameId)?.id !== activeMaskId || !belongsToActiveMaskGroup()) return
-      render()
-    })
-    return () => {
-      unregisterPreview()
-      cancelScheduledRender?.()
-    }
-  }, [documentHeight, documentId, documentWidth, frameId, maskSource, ownerId, revision, thumbnailSize])
-  return <canvas className="layer-mask-thumbnail" ref={ref} width={thumbnailSize} height={thumbnailSize} aria-hidden="true" />
-}
-const useTimelineThumbnailContentSync = (documentId: string): void => {
-  useEffect(() => {
-    let lastContentRevision = useWorkspace.getState().sessions.find((item) => item.document.id === documentId)?.contentRevision
-    return useWorkspace.subscribe((state) => {
-      const current = state.sessions.find((item) => item.document.id === documentId)
-      if (!current || current.contentRevision === lastContentRevision) return
-      lastContentRevision = current.contentRevision
-      if (current.activeLayerMaskId) {
-        notifyLayerMaskThumbnailPreview(documentId, current.activeLayerMaskId)
-        return
-      }
-      const timeline = current.document.animation
-      if (!timeline) return
-      const activeLayer = current.document.layers.find((layer) => layer.id === current.document.activeLayerId)
-      if (!activeLayer) return
-      const layerIds = activeLayer.linkedContentId
-        ? current.document.layers.filter((layer) => layer.linkedContentId === activeLayer.linkedContentId).map((layer) => layer.id)
-        : [activeLayer.id]
-      const lookup = createAnimationCelLookup(timeline)
-      for (const layerId of new Set(layerIds)) {
-        const cel = lookup.resolve(lookup.at(layerId, timeline.activeFrameId))
-        if (cel) notifyAnimationCelThumbnailPreview(documentId, cel.id, layerId)
-      }
-    })
-  }, [documentId])
-}
-function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
-  active: boolean
-  documentId: string
-  layerId: string
-  celSource: PixelSource<AnimationCel>
-  palette: readonly PaletteEntry[]
-  revision: number
-  documentWidth: number
-  documentHeight: number
-  thumbnailSize: number
-  showThumbnail: boolean
-  selectionMarker: boolean
-}) {
-  const cel = celSource()
-  const liveRevision = useWorkspace((state) => active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision)
-  const liveSession = active ? useWorkspace.getState().sessions.find((item) => item.document.id === documentId) : null
-  const livePalette = liveSession?.document.palette ?? palette
-  const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)
-  if (!hasContent) return null
-  return showThumbnail
-    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
-    : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
-}
-function ActiveFrameSync({ documentId, frameIds, containerRef, suppressActiveGuide, activeFrameIdOverride }: {
-  documentId: string
-  frameIds: readonly string[]
-  containerRef: { current: HTMLDivElement | null }
-  suppressActiveGuide: boolean
-  activeFrameIdOverride?: string | null
-}) {
-  const { t } = useI18n()
-  const storeActiveFrameId = useWorkspace((state) => state.sessions.find((item) => item.document.id === documentId)?.document.animation?.activeFrameId ?? frameIds[0] ?? '')
-  const activeFrameId = activeFrameIdOverride ?? storeActiveFrameId
-  const activeFrameIndex = Math.max(0, frameIds.indexOf(activeFrameId))
-  void activeFrameId
-  void activeFrameIndex
-  void containerRef
-  void suppressActiveGuide
-  return <span>{t('timeline.frameNumber', { number: activeFrameIndex + 1 })}</span>
-}
-
-const sameColor = (left: RgbaColor | null, right: RgbaColor | null): boolean => left === null || right === null
-  ? left === right
-  : left.r === right.r && left.g === right.g && left.b === right.b && left.a === right.a
-const selectedRowsForDrag = (session: DocumentSession): { ids: string[]; groupIds: string[] } => {
-  const selectedGroups = new Set(session.selectedGroupIds.length > 0 ? session.selectedGroupIds : session.selectedGroupId ? [session.selectedGroupId] : [])
-  const groupIds = [...selectedGroups].filter((groupId) => !session.document.groups.some((candidate) => selectedGroups.has(candidate.id) && getDescendantGroupIds(session.document, candidate.id).includes(groupId)))
-  const coveredGroups = new Set<string>()
-  for (const groupId of groupIds) {
-    coveredGroups.add(groupId)
-    for (const descendantId of getDescendantGroupIds(session.document, groupId)) coveredGroups.add(descendantId)
-  }
-  const ids = session.selectedLayerIds.filter((layerId) => {
-    const layer = session.document.layers.find((candidate) => candidate.id === layerId)
-    return Boolean(layer && (!layer.groupId || !coveredGroups.has(layer.groupId)))
-  })
-  return { ids, groupIds }
-}
-const selectedRowsForProperties = (session: DocumentSession): LayerFormTarget[] => {
-  const selectedGroupIds = session.selectedGroupIds.length > 0
-    ? session.selectedGroupIds
-    : session.selectedGroupId ? [session.selectedGroupId] : []
-  const groupIds = [...new Set(selectedGroupIds)].filter((id) => session.document.groups.some((group) => group.id === id))
-  // A single selected group mirrors its descendants into selectedLayerIds for
-  // whole-group commands. Those implicit members are not property-edit targets.
-  const selectedLayerIds = session.selectedGroupId && groupIds.length === 1 ? [] : session.selectedLayerIds
-  const layerIds = [...new Set(selectedLayerIds)].filter((id) => session.document.layers.some((layer) => layer.id === id))
-  return [
-    ...groupIds.map((id) => ({ id, kind: 'group' as const })),
-    ...layerIds.map((id) => ({ id, kind: 'layer' as const }))
-  ]
-}
-
-/** Mask rows are editable image surfaces, not layer/group property owners.
- * A range selection can contain both kinds of rows, so callers must not
- * silently apply layer properties to only the supported subset. */
-const hasUnsupportedPropertySelection = (session: DocumentSession): boolean =>
-  session.selectedAnimationMaskRowKeys.length > 0
 export function LayersPanel({ session, docked = false, sideDocked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession; sideDocked?: boolean } & DockDragProps) {
   const { locale, t } = useI18n()
   useTimelineThumbnailContentSync(session.document.id)
-  const blendOptions: Array<{ value: BlendMode; label: string }> = [
-    { value: 'normal', label: t('blend.normal') }, { value: 'darken', label: t('blend.darken') }, { value: 'multiply', label: t('blend.multiply') },
-    { value: 'color-burn', label: t('blend.colorBurn') }, { value: 'linear-burn', label: t('blend.linearBurn') }, { value: 'lighten', label: t('blend.lighten') },
-    { value: 'screen', label: t('blend.screen') }, { value: 'color-dodge', label: t('blend.colorDodge') }, { value: 'linear-dodge', label: t('blend.linearDodge') },
-    { value: 'overlay', label: t('blend.overlay') }, { value: 'soft-light', label: t('blend.softLight') }, { value: 'hard-light', label: t('blend.hardLight') },
-    { value: 'vivid-light', label: t('blend.vividLight') }, { value: 'linear-light', label: t('blend.linearLight') }, { value: 'pin-light', label: t('blend.pinLight') },
-    { value: 'hard-mix', label: t('blend.hardMix') }, { value: 'difference', label: t('blend.difference') }, { value: 'exclusion', label: t('blend.exclusion') },
-    { value: 'subtract', label: t('blend.subtract') }, { value: 'divide', label: t('blend.divide') }, { value: 'hue', label: t('blend.hue') },
-    { value: 'saturation', label: t('blend.saturation') }, { value: 'color', label: t('blend.color') }, { value: 'luminosity', label: t('blend.luminosity') }
-  ]
-  const blendOptionGroups: Array<ThemedSelectGroup<BlendMode>> = [
-    { label: t('blend.group.basic'), options: blendOptions.filter((option) => option.value === 'normal') },
-    { label: t('blend.group.darken'), options: blendOptions.filter((option) => ['darken', 'multiply', 'color-burn', 'linear-burn'].includes(option.value)) },
-    { label: t('blend.group.lighten'), options: blendOptions.filter((option) => ['lighten', 'screen', 'color-dodge', 'linear-dodge'].includes(option.value)) },
-    { label: t('blend.group.contrast'), options: blendOptions.filter((option) => ['overlay', 'soft-light', 'hard-light', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix'].includes(option.value)) },
-    { label: t('blend.group.compare'), options: blendOptions.filter((option) => ['difference', 'exclusion', 'subtract', 'divide'].includes(option.value)) },
-    { label: t('blend.group.components'), options: blendOptions.filter((option) => ['hue', 'saturation', 'color', 'luminosity'].includes(option.value)) }
-  ]
+  const blendOptions = layerBlendOptions(t)
   const store = useWorkspace.getState()
   const timelineActiveContext = useWorkspace((state) =>
     state.sessions.find((item) => item.document.id === session.document.id)?.timelineActiveContext
@@ -491,7 +181,8 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }
   const activeFrameIndex = Math.max(0, timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId))
   const floating = useFloatingPanel(null, false, true, 'moonsprite.layers-panel.v1', true, onFloatingDock, docked)
-  const [form, setForm] = useState<LayerFormState | null>(null)
+
+  const propertyEditorRef = useRef<LayerPropertyEditorHandle>(null)
   const [layerDisplayColorPresets, setLayerDisplayColorPresets] = useState(() => loadEditorPreferences().layerDisplayColorPresets)
   const [shortcuts, setShortcuts] = useState(() => loadShortcutBindings())
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
@@ -499,10 +190,10 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const value = ids.map((id) => formatShortcutBindingsForLocale(shortcutBindingsFor(shortcuts, id), locale)).filter(Boolean).join(' / ')
     return value ? <kbd aria-hidden="true">{value}</kbd> : null
   }
-  const propertyTransactionRef = useRef<string | null>(null)
+
   const timelinePropertiesHistoryRef = useRef<{ documentId: string; kind: 'frame' | 'cel' } | null>(null)
-  const pendingPropertyPreviewRef = useRef<LayerFormState | null>(null)
-  const propertyPreviewTimerRef = useRef<number | null>(null)
+
+
   const dragRef = useRef<LayerDragState | null>(null)
   const layerDragFrameRef = useRef<number | null>(null)
   const layerDragAutoScrollFrameRef = useRef<number | null>(null)
@@ -1988,7 +1679,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     const close = (event: Event): void => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (!target || target === 'layers') {
-        closeProperties()
+        propertyEditorRef.current?.close()
          setFrameProperties(null)
          setCelProperties(null)
         setLayerSettingsOpen(false)
@@ -2592,25 +2283,12 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
       : timelineVisualState.rows.findIndex((visualRow) => visualRow.row.ownerKind === 'group' && visualRow.active)
   const layerSelectionStart = selectedAnimationOutlineRows.length > 0 ? Math.min(...selectedAnimationOutlineRows) : 0
   const layerSelectionSpan = selectedAnimationOutlineRows.length > 0 ? Math.max(...selectedAnimationOutlineRows) - layerSelectionStart + 1 : 1
-  const beginProperties = (next: LayerFormState): void => {
-    const transactionId = store.beginLayerPropertiesTransaction(next.targets)
-    if (!transactionId) return
-    propertyTransactionRef.current = transactionId
-    setForm(next)
-  }
-  const editLayer = (layer: RasterLayer): void => beginProperties({ id: layer.id, kind: 'layer', targets: [{ id: layer.id, kind: 'layer' }], batchChanges: [], name: layer.name, opacity: Math.round(layer.opacity * 100), blendMode: layer.blendMode, cumulativeBlend: false, locked: layer.locked, displayColor: layer.displayColor ? { ...layer.displayColor } : null, description: layer.description ?? '' })
-  const editGroup = (group: LayerGroup): void => beginProperties({ id: group.id, kind: 'group', targets: [{ id: group.id, kind: 'group' }], batchChanges: [], name: group.name, opacity: Math.round(group.opacity * 100), blendMode: group.blendMode, cumulativeBlend: group.cumulativeBlend === true, locked: group.locked, displayColor: group.displayColor ? { ...group.displayColor } : null, description: group.description ?? '' })
+  const editLayer = (layer: RasterLayer): void => propertyEditorRef.current?.open([{kind: 'layer', id: layer.id}])
+  const editGroup = (group: LayerGroup): void => propertyEditorRef.current?.open([{kind: 'group', id: group.id}])
   const editSelectedRows = (frozenTargets?: readonly LayerFormTarget[]): void => {
-    // Menus are portalled. Read the live session rather than the render-time
-    // prop so a Shift/Ctrl row selection made immediately before right-click
-    // cannot be observed as its previous single-row state.
-    const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-    const targets = frozenTargets ? [...frozenTargets] : selectedRowsForProperties(current)
-    if (targets.length <= 1) return
-    const first = targets[0]
-    const source = first.kind === 'group' ? current.document.groups.find((group) => group.id === first.id) : current.document.layers.find((layer) => layer.id === first.id)
-    if (!source) return
-    beginProperties({ id: first.id, kind: first.kind, targets, batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' })
+    const current = useWorkspace.getState().sessions.find(item => item.document.id === session.document.id) ?? session
+    const targets = frozenTargets ?? selectedRowsForProperties(current)
+    if (targets.length > 1) propertyEditorRef.current?.open(targets)
   }
   const editLayerRow = (layer: RasterLayer): void => {
     const selectedTargets = selectedRowsForProperties(session)
@@ -2631,66 +2309,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     else editGroup(group)
   }
   const editGroupRow = (group: LayerGroup | Extract<LayerTreeNode, { kind: 'group' }>): void => editGroupRowForGroup('group' in group ? group.group : group)
-  const propertyValues = (next: LayerFormState): LayerPropertyValues => ({
-    name: next.name,
-    opacity: next.opacity / 100,
-    blendMode: next.blendMode,
-    cumulativeBlend: next.cumulativeBlend,
-    locked: next.locked,
-    displayColor: next.displayColor ? { ...next.displayColor } : null,
-    description: next.description
-  })
-  const propertyFields = (next: LayerFormState): readonly LayerPropertyField[] => next.targets.length > 1 ? next.batchChanges : ALL_LAYER_PROPERTY_FIELDS
-  const applyPropertyPreview = (next: LayerFormState): void => {
-    const transactionId = propertyTransactionRef.current
-    if (!transactionId) return
-    store.previewLayerPropertiesTransaction(transactionId, propertyValues(next), propertyFields(next))
-  }
-  const flushPropertyPreview = (): LayerFormState | null => {
-    if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
-    propertyPreviewTimerRef.current = null
-    const pending = pendingPropertyPreviewRef.current
-    pendingPropertyPreviewRef.current = null
-    if (pending) applyPropertyPreview(pending)
-    return pending
-  }
-  const previewProperties = (next: LayerFormState, batchProperty?: BatchProperty): void => {
-    if (next.targets.length > 1 && batchProperty && !next.batchChanges.includes(batchProperty)) next = { ...next, batchChanges: [...next.batchChanges, batchProperty] }
-    setForm(next)
-    if (next.targets.length === 1 || batchProperty === 'displayColor' || batchProperty === 'blendMode') {
-      flushPropertyPreview()
-      applyPropertyPreview(next)
-      return
-    }
-    pendingPropertyPreviewRef.current = next
-    if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
-    propertyPreviewTimerRef.current = window.setTimeout(() => { flushPropertyPreview() }, 40)
-  }
-  const closeProperties = (): void => {
-    const closingForm = flushPropertyPreview() ?? form
-    if (!closingForm) return
-    const transactionId = propertyTransactionRef.current
-    if (transactionId) store.commitLayerPropertiesTransaction(transactionId, propertyValues(closingForm), propertyFields(closingForm))
-    propertyTransactionRef.current = null
-    setForm(null)
-  }
-  useEffect(() => () => {
-    if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
-    pendingPropertyPreviewRef.current = null
-    const transactionId = propertyTransactionRef.current
-    if (transactionId) useWorkspace.getState().cancelLayerPropertiesTransaction(transactionId)
-    propertyTransactionRef.current = null
-  }, [])
-  useEffect(() => {
-    if (!form) return
-    const keyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      closeProperties()
-    }
-    window.addEventListener('keydown', keyDown, true)
-    return () => window.removeEventListener('keydown', keyDown, true)
-  }, [form])
   const isLayerRowControlTarget = (event: React.PointerEvent<HTMLElement>): boolean => {
     const target = event.target instanceof Element ? event.target : null
     return Boolean(target?.closest('.layer-visibility, .layer-lock-toggle, .layer-auto-link-toggle, .group-folder, .layer-status-icon-tooltip, .layer-style-indicator, .layer-instance-properties, .layer-tilemap-indicator'))
@@ -3287,9 +2905,6 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     store.setClippingMask(contextMenu.kind, contextMenu.id, !contextMenuClippingMaskEnabled)
     closeContextMenu()
   }
-  const singleFormTargetLocked = Boolean(form && form.targets.length === 1 && (form.kind === 'group'
-    ? session.document.groups.some((group) => group.id === form.id && isGroupEffectivelyLocked(session.document, group))
-    : session.document.layers.some((layer) => layer.id === form.id && isLayerEffectivelyLocked(session.document, layer))))
   const dragGhostItems = dragGhost?.items ?? (dragGhost ? [{ id: 'legacy', kind: 'layer' as const, name: dragGhost.name ?? t('layers.fallbackName') }] : [])
   const hiddenDragGhostCount = dragGhost ? Math.max(0, dragGhost.count - Math.min(4, dragGhostItems.length)) : 0
   const animationMenuLoopSection = animationMenu?.kind === 'loop-section' ? (timeline.loopSections ?? []).find((section) => section.id === animationMenu.sectionId) ?? null : null
@@ -4104,24 +3719,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
         <footer><button type="button" className="quiet-button" onClick={resetLayerSettings}><PixelUtilityIcon kind="restore" />{t('common.reset')}</button><span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={() => setLayerSettingsOpen(false)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
       </ModalShell>
     </div>, document.body)}
-    {form && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
-      <ModalShell as="form" storageKey="layer-properties-v2" defaultWidth={380} defaultHeight={470} fitContentKey={`${form.kind}:${form.targets.length}:${form.targets.every((target) => target.kind === 'group')}`} minWidth={340} minHeight={340} maxWidth={520} maxHeight={700} className="layer-modal" onSubmit={(event) => { event.preventDefault(); closeProperties() }} onKeyDown={(event) => {
-        if (event.defaultPrevented || event.key !== 'Enter' || event.nativeEvent.isComposing || (event.target as HTMLElement).tagName === 'TEXTAREA') return
-        event.preventDefault()
-        event.stopPropagation()
-        closeProperties()
-      }}>
-        <DialogHeader eyebrow={form.targets.length > 1 ? 'MULTIPLE PROPERTIES' : form.kind === 'group' ? 'GROUP PROPERTIES' : 'LAYER PROPERTIES'} title={t(form.targets.length > 1 ? 'layers.multipleProperties' : form.kind === 'group' ? 'layers.groupProperties' : 'layers.layerPropertiesNamed', form.kind === 'layer' ? { name: form.name } : undefined)} closeLabel={t('common.close')} onClose={closeProperties} />
-        <div className="modal-body layer-properties-body">
-          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.name')}><TextInput autoFocus onFocus={(event) => event.currentTarget.select()} value={form.name} onChange={(event) => previewProperties({ ...form, name: event.target.value }, 'name')} /></FormField>
-          <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} preserveAnimationSelection onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
-          <RangeField className="layer-opacity-control" disabled={singleFormTargetLocked} label={t('layers.opacity')} min={0} max={100} suffix="%" value={form.opacity} onChange={(opacity) => previewProperties({ ...form, opacity }, 'opacity')} />
-          {form.targets.every((target) => target.kind === 'group') && <CheckboxField className="tool-checkbox layer-cumulative-blend" checked={form.cumulativeBlend} disabled={singleFormTargetLocked} label={<><strong>{t('layers.cumulativeBlend')}</strong><small>{t('layers.cumulativeBlendDescription')}</small></>} onChange={(cumulativeBlend) => previewProperties({ ...form, cumulativeBlend }, 'cumulativeBlend')} />}
-          <FormField className="layer-display-color-field" label={t('layers.displayColor')}><div className="layer-display-color-options"><button type="button" className={`layer-color-preset no-color ${form.displayColor === null ? 'selected' : ''}`} aria-label={t('layers.noDisplayColor')} aria-pressed={form.displayColor === null} onClick={() => previewProperties({ ...form, displayColor: null }, 'displayColor')}><span /></button>{layerDisplayColorPresets.map((color) => <button key={`${color.r}-${color.g}-${color.b}`} type="button" className={`layer-color-preset ${sameColor(form.displayColor, color) ? 'selected' : ''}`} aria-label={t('layers.displayColorRgb', { r: color.r, g: color.g, b: color.b })} aria-pressed={sameColor(form.displayColor, color)} style={{ '--layer-preset-color': `rgb(${color.r} ${color.g} ${color.b})` } as React.CSSProperties} onClick={() => previewProperties({ ...form, displayColor: { ...color } }, 'displayColor')}><span /></button>)}<ColorValueControl color={form.displayColor ?? defaultLayerDisplayColor} density="compact" onChange={(displayColor) => previewProperties({ ...form, displayColor }, 'displayColor')} label={t('layers.colorControl')} roleLabel={t('layers.custom')} className="layer-custom-color-trigger" fillWithColor /></div></FormField>
-          <FormField className="layer-description-field" label={t('layers.description')}><TextAreaInput rows={3} value={form.description} placeholder={t('layers.descriptionPlaceholder')} onChange={(event) => previewProperties({ ...form, description: event.target.value }, 'description')} /></FormField>
-        </div>
-      </ModalShell>
-    </div>, document.body)}
+    <LayerPropertyEditor key={session.document.id} ref={propertyEditorRef} documentId={session.document.id} layerDisplayColorPresets={layerDisplayColorPresets} />
     {layerStyleDialog && layerStyleOwner && <LayerStyleDialog key={`${layerStyleDialog.source.kind}:${layerStyleDialog.source.id}:${layerStyleDialog.targets.map((target) => `${target.kind}:${target.id}`).join('|')}`} ownerKind={layerStyleDialog.source.kind} owner={layerStyleOwner} targets={layerStyleDialog.targets} onClose={() => setLayerStyleDialog(null)} />}
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
   </section>

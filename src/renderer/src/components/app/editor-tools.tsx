@@ -1,4 +1,5 @@
-import type { FillKind, GradientType, LineKind, LiquifyMode, MoveKind, SelectionKind, SelectionMode, ShapeKind, ToolId } from '@shared/types'
+import type { FillKind, GradientType, LineKind, LiquifyMode, MoveKind, ShapeKind, ToolId } from '@shared/types-brush'
+import type { SelectionKind, SelectionMode } from '@shared/types-selection'
 import type { CSSProperties } from 'react'
 import type { ShortcutId } from '@/core/shortcuts'
 import { DEFAULT_APP_LOCALE, type AppLocale } from '@/core/localization'

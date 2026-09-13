@@ -1,4 +1,6 @@
-import type { RasterLayer, SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { applyColorAdjustmentDirect, isColorAdjustmentIdentity, type ColorAdjustment } from './adjustments'
 import { setRuntimeAppLocale } from './localization'
 import type { AdjustmentPreviewBaseline, AdjustmentPreviewResult, AdjustmentPreviewResultLayer } from './adjustment-preview-protocol'

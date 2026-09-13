@@ -2,6 +2,26 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { moduleBoundaryErrors, moduleBoundaryFindingsForFiles } from './check-module-boundaries.mjs'
 
+test('领域契约不回流到类型总入口，快捷键匹配不加载语言标签', () => {
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/brush.ts', "import type { RgbaColor } from '@shared/types'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/brush.ts', "import type { RgbaColor } from '@shared/types-color'").length, 0)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/shortcuts.ts', "import { labels } from '@/locales/shortcuts'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/store/workspace-commands-color.ts', "import { tr } from './workspace-command-support'").length, 1)
+})
+
+test('解耦边界阻止兼容入口回流和业务模块引用根 Store', () => {
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/document-model.ts', "import { compositeRegion } from './document-composite'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/tools-fill.ts', "import { paintBrush } from './tools'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/tools-pixel-edit.ts', "import { compositeRegion } from './document-composite'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/store/workspace-commands-layer.ts', "import { useWorkspace } from './workspace'").length, 1)
+  assert.equal(moduleBoundaryErrors('src/renderer/src/core/document-composite.ts', "import { getLayer } from './document-model'").length, 0)
+})
+
+test('根 Store 规模预算真实执行，不能重新堆积业务命令', () => {
+  const oversized = Array.from({ length: 91 }, () => '// command').join('\n')
+  assert.match(moduleBoundaryErrors('src/renderer/src/store/workspace.ts', oversized)[0], /模块规模/)
+})
+
 test('core 禁止依赖 React、Store 和平台模块', () => {
   const source = "import React from 'react'\nimport { useWorkspace } from '@/store/workspace'\nimport { api } from '@/platform/tauri-api'"
   assert.equal(moduleBoundaryErrors('src/renderer/src/core/example.ts', source).length, 3)

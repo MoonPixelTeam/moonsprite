@@ -1,6 +1,8 @@
-import type { AnimationCelSurface, RasterLayer, SpriteDocument } from '@shared/types'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SpriteDocument } from '@shared/types-document'
 import { getCommittedPixelChanges, type HistoryEntry, type ContentInvalidationHint } from './history'
-import { getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from './document'
+import { getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from './document-model'
 import { detachRuntimeRaster, lazyRuntimeRasterForSurface, rehydrateRuntimeRasterDocument } from './runtime-raster'
 
 export function prepareHistoryDocument(source: SpriteDocument): SpriteDocument {

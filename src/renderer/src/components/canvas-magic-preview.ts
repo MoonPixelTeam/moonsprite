@@ -1,4 +1,4 @@
-import type { SelectionMask } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
 import type { RasterContext2D } from './canvas-selection-renderer'
 
 /** One bitmap or bounded merged rectangles, never a per-pixel composite sample. */

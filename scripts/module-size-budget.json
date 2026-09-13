@@ -1,0 +1,20 @@
+{
+  "src/renderer/src/store/workspace.ts": 90,
+  "src/renderer/src/store/workspace-commands-layer.ts": 25,
+  "src/renderer/src/store/workspace-commands-animation.ts": 2600,
+  "src/renderer/src/store/workspace-commands-view-selection.ts": 2250,
+  "src/renderer/src/components/CanvasStage.tsx": 8350,
+  "src/renderer/src/components/canvas-render-frame.ts": 2650,
+  "src/renderer/src/core/document.ts": 10,
+  "src/renderer/src/core/document-model.ts": 1300,
+  "src/renderer/src/core/document-composite.ts": 2025,
+  "src/renderer/src/core/tools.ts": 15,
+  "src/renderer/src/core/tools-pixel-edit.ts": 300,
+  "src/renderer/src/core/tools-brush.ts": 1000,
+  "src/renderer/src/core/tools-fill.ts": 850,
+  "src/renderer/src/core/tools-outline.ts": 470,
+  "src/renderer/src/core/tools-shapes.ts": 550,
+  "src/renderer/src/core/tools-selection-transform.ts": 1680,
+  "src/renderer/src/components/panels/LayersPanel.tsx": 3750,
+  "src/renderer/src/App.tsx": 3010
+}

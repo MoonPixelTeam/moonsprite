@@ -7,7 +7,7 @@ import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { TextInput } from './TextInput'
 import { ThemedSelect } from './ThemedSelect'
 import { useI18n } from './I18nProvider'
-import type { Tileset } from '@shared/types'
+import type { Tileset } from '@shared/types-tiles'
 import type { TilemapLayerOptions } from '@/store/workspace'
 
 const NEW_TILESET_OPTION = '__new-tileset__'

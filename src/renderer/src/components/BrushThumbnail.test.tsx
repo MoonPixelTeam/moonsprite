@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ImageBrush } from '@shared/types'
+import type { ImageBrush } from '@shared/types-brush'
 import { BrushThumbnail } from './BrushThumbnail'
 import { pixelSource } from './pixel-source'
 

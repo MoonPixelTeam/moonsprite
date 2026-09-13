@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { PaletteEntry, RasterLayer } from '@shared/types'
+import type { PaletteEntry } from '@shared/types-color'
+import type { RasterLayer } from '@shared/types-layer'
 import { MagicWandWorkerClient } from './magic-wand-worker'
 
 class FakeWorker {

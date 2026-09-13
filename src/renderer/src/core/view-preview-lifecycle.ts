@@ -1,4 +1,4 @@
-import type { ViewState } from '@shared/types'
+import type { ViewState } from '@shared/types-view'
 
 type ViewPreviewFlusher = () => void
 type ViewPreviewListener = (view: ViewState) => void

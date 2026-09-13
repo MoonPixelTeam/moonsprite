@@ -1,5 +1,6 @@
-import type { FillKind, LineKind, MoveKind, SelectionKind, SelectionMode, ShapeKind, ToolId } from '@shared/types'
-import type { AppLocale } from '@/core/localization'
+import type { FillKind, LineKind, MoveKind, ShapeKind, ToolId } from '@shared/types-brush'
+import type { SelectionKind, SelectionMode } from '@shared/types-selection'
+import type { AppLocale } from './contracts'
 
 interface ToolCopy { label: string; description: string }
 

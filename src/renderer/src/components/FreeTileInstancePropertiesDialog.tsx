@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BlendMode } from '@shared/types'
+import type { BlendMode } from '@shared/types-color'
 import { DialogHeader } from './DialogHeader'
 import { FormField } from './FormField'
 import { ModalShell } from './ModalShell'

@@ -1,13 +1,4 @@
-import type {
-  ExtensionBuiltInMenuId,
-  ExtensionMenuItemPosition,
-  StoredExtension,
-  StoredExtensionCommand,
-  StoredExtensionMenuItem,
-  StoredExtensionPanel,
-  StoredExtensionTool,
-  StoredExtensionTopMenu
-} from '@shared/types'
+import type { ExtensionBuiltInMenuId, ExtensionMenuItemPosition, StoredExtension, StoredExtensionCommand, StoredExtensionMenuItem, StoredExtensionPanel, StoredExtensionTool, StoredExtensionTopMenu } from '@shared/types-extensions'
 import { readStoredString, writeStoredString } from './storage'
 
 const EXTENSION_PANEL_VISIBILITY_PREFIX = 'moonsprite.extension-panel-visible.v1.'

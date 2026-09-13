@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { createDocument, getActiveLayer, writeLayerColor } from '@/core/document'
 import { clipboardService } from './clipboard-service'

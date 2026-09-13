@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { clampByte, hsvToRgb, rgbToHsv } from './raster'
 
 export type ColorValueMode = 'rgb' | 'hsv' | 'hsl' | 'gray' | 'lab' | 'cmyk' | 'palette'

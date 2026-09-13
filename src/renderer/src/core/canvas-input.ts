@@ -1,7 +1,14 @@
-import type { AnimationCel, GradientStop, LiquifyMode, MoveKind, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, ShapeRatio, SpriteDocument, TilemapCell, ToolId } from '@shared/types'
+import type { LayerMoveState } from './layer-move-state'
+import type { GradientStop, LiquifyMode, MoveKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import type { TilemapCell } from '@shared/types-tiles'
 import { pixelEditHasChanges, revertPixelEdit, type PixelEdit } from './history'
-import { restoreSelectionTranslationPreview, type BrushGradientSample, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from './tools'
-import { combineSelection, inverseSelectionQuadPoint, inverseTransformedSelectionPoint, rasterLinePoints, rectSelection, remapTransformedSelectionPoint, selectionBoundarySegments, selectionContains, selectionQuadBounds, selectionQuadFromRect, selectionQuadPoint, selectionQuadSourcePoint, selectionQuadTransformFor, transformedSelectionBounds, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from './selection'
+import { restoreSelectionTranslationPreview, type SelectionTransformLayerState, type SelectionTransformSource, type SelectionTranslationPreview } from './tools-selection-transform'
+import { type BrushGradientSample } from './tools-pixel-edit'
+import { combineSelection, inverseSelectionQuadPoint, inverseTransformedSelectionPoint, rasterLinePoints, rectSelection, remapTransformedSelectionPoint, selectionBoundarySegments, selectionContains, transformedSelectionBounds, transformedSelectionControlPoints, transformedSelectionPivotPreset, type SelectionShearTransform } from './selection'
 import { balancedStairLinePoints } from './pixel-line'
 import { modifierShortcutHeld } from './shortcuts'
 import type { TilemapEdit, TilemapSelectionMoveSource } from './tilemap'
@@ -350,7 +357,7 @@ export const selectionResizeHit = (
   return nearest
 }
 
-export interface CanvasDragState {
+export interface CanvasDragState extends LayerMoveState {
   kind: 'draw' | 'tile-draw' | 'free-tile-draw' | 'free-tile-edit' | 'free-tile-instance-move' | 'airbrush' | 'liquify' | 'smooth' | 'extension-tool' | 'shape' | 'freeform-shape' | 'polygon-shape' | 'line-shape' | 'curve-shape' | 'gradient' | 'marquee' | 'lasso' | 'polygon-lasso' | 'magic-preview' | 'sample-color' | 'move-content' | 'move-selection' | 'move-selection-pivot' | 'transform-content' | 'rotate-content' | 'shear-content' | 'move-layer' | 'create-text-box' | 'transform-text-box' | 'create-slice' | 'move-slice' | 'resize-slice' | 'brush-size' | 'canvas-resize' | 'canvas-move' | 'zoom-drag' | 'rotate-view' | 'pan'
   start: CanvasPoint
   last: CanvasPoint
@@ -396,7 +403,6 @@ export interface CanvasDragState {
   freeTileLastStampOrigin?: CanvasPoint
   tileRepeatPoint?: CanvasPoint
   tileRepeatStart?: CanvasPoint
-  selectionStart?: SelectionMask | null
   selectionMode?: SelectionMode
   magicWorkerPending?: boolean
   magicRequest?: (point: { x: number; y: number }) => void
@@ -485,13 +491,6 @@ export interface CanvasDragState {
   deferredSelectionRestoreShear?: SelectionShearTransform
   deferredSelectionWasMaterialized?: boolean
   translationPreview?: SelectionTranslationPreview | null
-  layerId?: string
-  layerOffset?: CanvasPoint
-  layerIds?: string[]
-  layerOffsets?: Record<string, CanvasPoint>
-  layerContentBounds?: Record<string, SelectionRect | null>
-  layerPreviewOffset?: CanvasPoint
-  animationMaskOffsets?: Record<string, CanvasPoint>
   alignmentMovingBounds?: SelectionRect[]
   alignmentTargetBounds?: SelectionRect[]
   alignmentGuides?: AlignmentGuide[]
@@ -499,15 +498,7 @@ export interface CanvasDragState {
   alignmentSnapToGridOrigin?: boolean
   alignmentSmartEnabled?: boolean
   alignmentThreshold?: number
-  layerFrameId?: string
-  animationCellKeys?: string[]
-  animationCellOffsets?: Record<string, CanvasPoint>
   duplicateOnDrag?: boolean
-  duplicatedLayerId?: string
-  duplicatedLayer?: RasterLayer
-  duplicatedAnimationCels?: AnimationCel[]
-  duplicatedLayerIndex?: number
-  originalSelectedLayerIds?: string[]
   clickLayerId?: string
   sliceId?: string
   sliceStart?: SelectionRect

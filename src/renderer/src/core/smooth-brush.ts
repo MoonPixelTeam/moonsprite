@@ -1,8 +1,11 @@
-import type { BrushShape, RasterLayer, SelectionMask, SpriteDocument } from '@shared/types'
-import { layerIndexAt, readLayerPacked } from './document'
+import type { BrushShape } from '@shared/types-brush'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import { layerIndexAt, readLayerPacked } from './document-model'
 import { recordPixelKnownCurrent, type PixelEdit } from './history'
 import { selectionContains } from './selection'
-import { brushStampAnchor, solidBrushPreviewRowSpans } from './tools'
+import { brushStampAnchor, solidBrushPreviewRowSpans } from './tools-brush'
 
 export const SMOOTH_BRUSH_OVERLAY = 'rgba(230, 0, 255, 0.35)'
 export interface SmoothBrushStroke { visited: Set<number> }

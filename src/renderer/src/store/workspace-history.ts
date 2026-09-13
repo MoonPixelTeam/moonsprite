@@ -1,11 +1,11 @@
-import { cacheRasterContentBounds, cachedRasterContentBounds, getActiveLayer, getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from '@/core/document'
+import { cacheRasterContentBounds, cachedRasterContentBounds, getActiveLayer, getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from '@/core/document-model'
 import { animationCelAt, ensureAnimationDocument } from '@/core/animation'
 import type { LayerMergeSuccess } from '@/core/layer-merge'
 import type { AdjustmentSnapshot, DocumentSession } from './workspace-types'
 import { touch } from './workspace-session'
 import { translateCurrent as tr } from '@/core/localization'
 import { captureDocumentStructureSnapshot, documentStructureDeltaBytes, restoreDocumentStructureSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
-import type { SelectionRect } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
 
 const adjustmentTargetLayerIds = (session: DocumentSession): string[] => {
   if (session.selection) return [getActiveLayer(session.document).id]

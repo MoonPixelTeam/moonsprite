@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createGradientColorSampler, GRADIENT_DITHER_PRESETS } from './gradient-color'
 import { createLinearDitherPreviewSampler } from './gradient-dither-preview'
-import type { GradientStop } from '@shared/types'
+import type { GradientStop } from '@shared/types-brush'
 import { packColor } from './raster'
 
 const first = { r: 255, g: 17, b: 90, a: 0 }, last = { r: 20, g: 150, b: 250, a: 255 }

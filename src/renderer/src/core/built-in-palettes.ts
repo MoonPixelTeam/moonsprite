@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import type { TranslationKey } from './localization'
 
 export interface BuiltInPalette {

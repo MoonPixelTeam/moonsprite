@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi, RgbaColor } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from './ColorValueControl'
 import { registerColorPickerSampler } from './color-picker-sampling'
 import { DEFAULT_EDITOR_PREFERENCES, saveEditorPreferences } from '@/core/file-preferences'

@@ -1,4 +1,6 @@
-import type { AnimationCelSurface, BackgroundLayerSettings, BackgroundPatternId, RasterLayer, RgbaColor } from '@shared/types'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { BackgroundLayerSettings, BackgroundPatternId, RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
 import { readSurfacePackedLocal } from './runtime-raster'
 
 type BackgroundSurface = RasterLayer | AnimationCelSurface

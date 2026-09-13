@@ -1,4 +1,4 @@
-import type { TranslationCatalog } from '@/core/localization'
+import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
   'layers.splitLayerStyles': '레이어 스타일 분리',

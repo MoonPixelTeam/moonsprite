@@ -1,4 +1,7 @@
-import type { FillConnectivity, FreeTileInstance, SelectionMask, SelectionMode, SelectionRect, SpriteDocument, TilemapCelData } from '@shared/types'
+import type { FillConnectivity } from '@shared/types-brush'
+import type { FreeTileInstance, TilemapCelData } from '@shared/types-tiles'
+import type { SelectionMask, SelectionMode, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import type { FreeTileSourceRef } from './free-tile'
 import { createFreeTileSourceEditRaster, freeTileSelectionFromEditRaster } from './free-tile-edit'
 import { combineSelection, magicWandSelection } from './selection'

@@ -11,6 +11,14 @@ import {
 
 const validationScript = fileURLToPath(new URL('./run-validation.mjs', import.meta.url))
 
+test('拆出的输入、渲染、算法和持久化模块保留 D3 检查', () => {
+  for (const file of [
+    'components/canvas-render-frame.ts', 'components/app/document-canvas.tsx',
+    'core/tools-selection-transform.ts', 'store/workspace-recording.ts',
+    'store/workspace-commands-document-io.ts',
+  ]) assert.equal(classifyDevTier([`src/renderer/src/${file}`]), 'D3', file)
+})
+
 test('dev validation requires an explicit file list', () => {
   const policy = evaluateDevValidationRequest([])
   assert.equal(policy.errors.length, 1)

@@ -1,4 +1,4 @@
-import type { StoredFont } from '@shared/types'
+import type { StoredFont } from '@shared/types-library'
 import { TEXT_FONT_FAMILIES } from '@/core/text-raster'
 
 const loadedFonts = new Map<string, FontFace>()

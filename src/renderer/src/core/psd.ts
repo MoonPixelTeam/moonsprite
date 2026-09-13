@@ -9,9 +9,14 @@ import {
   type PixelData,
   type Psd
 } from 'ag-psd'
-import { BLEND_MODES, type AnimationCel, type BlendMode, type LayerGroup, type LayerMask, type LayerStyles, type RasterLayer, type RgbaColor, type SpriteDocument } from '@shared/types'
+import { BLEND_MODES, type BlendMode, type RgbaColor } from '@shared/types-color'
+import { type AnimationCel } from '@shared/types-animation'
+import { type LayerGroup, type LayerMask, type RasterLayer } from '@shared/types-layer'
+import { type LayerStyles } from '@shared/types-layer-style'
+import { type SpriteDocument } from '@shared/types-document'
 import { cloneDocumentForAnimationFrame, refreshActiveAnimationFrame } from './animation'
-import { animationMaskAt, compositeDocument, createDocument, createId, createLayer, createLayerMask, getPaletteEntry, layerContentBounds, readLayerPacked } from './document'
+import { animationMaskAt, createDocument, createId, createLayer, createLayerMask, getPaletteEntry, layerContentBounds, readLayerPacked } from './document-model'
+import { compositeDocument } from './document-composite'
 import { applyImportedRgbaPalette } from './imported-palette'
 import { buildLayerPanelTree } from './layer-panel-layout'
 import { hasEnabledLayerStyles } from './layer-styles'

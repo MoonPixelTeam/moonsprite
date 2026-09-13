@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TilemapCell } from '@shared/types'
+import type { TilemapCell } from '@shared/types-tiles'
 import {
   applyTilemapEdit,
   appendBlankTilesetTile,

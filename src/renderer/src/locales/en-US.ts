@@ -1,4 +1,4 @@
-import type { TranslationCatalog } from '@/core/localization'
+import type { TranslationCatalog } from './contracts'
 
 export const enUSMessages = {
   'layers.splitLayerStyles': 'Split Layer Styles',

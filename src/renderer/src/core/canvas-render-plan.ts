@@ -1,4 +1,5 @@
-import type { SpriteDocument, ViewState } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
+import type { ViewState } from '@shared/types-view'
 import type { RotationIndicatorPosition } from './file-preferences'
 import { unrotatedViewportBounds, viewCanvasOrigin, type ViewportBounds } from './view-geometry'
 

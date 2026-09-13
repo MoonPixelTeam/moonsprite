@@ -1,4 +1,6 @@
-import type { MoonSpriteApi, RecoveryRecord, SpriteDocument } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { RecoveryRecord } from '@shared/types-files'
+import type { SpriteDocument } from '@shared/types-document'
 import { clearProjectSaveBaseline, encodeProjectAsync } from '@/core/project-format'
 import { decodeDocumentFileAsync } from '@/core/document-files'
 import { translateCurrent as tr } from '@/core/localization'

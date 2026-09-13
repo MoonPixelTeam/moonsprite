@@ -1,6 +1,10 @@
-import type { AnimationCel, AnimationCelSurface, RasterLayer, SelectionMask, SpriteDocument, TilemapCelData, TilemapCell, Tileset } from '@shared/types'
+import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import type { TilemapCelData, TilemapCell, Tileset } from '@shared/types-tiles'
 import { ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel } from './animation'
-import { getLayerStorageOrigin, markRasterStorageContentChanged, markRasterSurfaceContentChanged, paletteColorIdForCanvas, readLayerColorAt } from './document'
+import { getLayerStorageOrigin, markRasterStorageContentChanged, markRasterSurfaceContentChanged, paletteColorIdForCanvas, readLayerColorAt } from './document-model'
 import { revertPixelEdit, type PixelEdit } from './history'
 import { appendTilesetTileInPlace, applyTilemapEdit, beginTilemapEdit, cloneTilemapCell, cloneTileset, findTilesetTileByPixels, readTilesetTilePixels, recordTilemapCell, renderTilemapCellIntoSurface, replaceTilesetContents, tilemapCellIndexAtPoint, tilemapCellIndexesForSelection, tilemapSourcePointForCell, tilesetHasOnlyTransparentTile, writeTilesetTilePixels, type TilemapDrawingMode, type TilemapEdit, type TilemapSelectionMoveSource, type TilemapTilesetEdit } from './tilemap'
 

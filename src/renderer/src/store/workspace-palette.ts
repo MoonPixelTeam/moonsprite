@@ -1,5 +1,6 @@
-import type { PaletteSlotLayout, RgbaColor } from '@shared/types'
-import { applyIndexedPaletteRemap, findOrAddPaletteColor, remapIndexedDocumentToVisiblePalette, type IndexedPaletteRemap } from '@/core/document'
+import type { PaletteSlotLayout } from '@shared/types-files'
+import type { RgbaColor } from '@shared/types-color'
+import { applyIndexedPaletteRemap, findOrAddPaletteColor, remapIndexedDocumentToVisiblePalette, type IndexedPaletteRemap } from '@/core/document-model'
 import { colorEquals } from '@/core/raster'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { translate, type TranslationKey, type TranslationParams } from '@/core/localization'

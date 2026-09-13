@@ -1,49 +1,16 @@
 import type { LocalHistorySnapshot } from '@/core/local-history-archive'
-import type {
-  AnimationCel,
-  AnimationCelSurface,
-  AnimationGroupMask,
-  AnimationLayerMask,
-  BrushDitherSettings,
-  BrushPaintMode,
-  BrushShape,
-  BrushTexture,
-  FillKind,
-  FillConnectivity,
-  FillMode,
-  FillReference,
-  GradientDither,
-  GradientStop,
-  GradientType,
-  ImageBrush,
-  InkMode,
-  LayerMask,
-  LiquifyMode,
-  ImageBrushSettings,
-  LineKind,
-  MoveKind,
-  OutlineDirections,
-  OutlineKernel,
-  OutlinePosition,
-  ProceduralBrushId,
-  ProceduralBrushSettings,
-  RecoveryRecord,
-  RgbaColor,
-  SelectionKind,
-  SelectionMask,
-  SelectionMode,
-  SelectionQuad,
-  SelectionRect,
-  ShapeKind,
-  ShapeRatio,
-  SpriteDocument,
-  ToolId,
-  TextCelData,
-  ViewState
-} from '@shared/types'
+import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
+import type { AnimationGroupMask, AnimationLayerMask, LayerMask } from '@shared/types-layer'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, LiquifyMode, ImageBrushSettings, LineKind, MoveKind, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { OutlineDirections, OutlineKernel, OutlinePosition, SelectionKind, SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { RecoveryRecord } from '@shared/types-files'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
+import type { TextCelData } from '@shared/types-text'
+import type { ViewState } from '@shared/types-view'
 import type { ContentInvalidationHint, HistoryStack, PixelEdit } from '@/core/history'
 import type { SelectionShearTransform } from '@/core/selection'
-import type { SelectionTransformLayerState, SelectionTransformSource, SelectionTranslationPreview } from '@/core/tools'
+import type { SelectionTransformLayerState, SelectionTransformSource, SelectionTranslationPreview } from '@/core/tools-selection-transform'
 import type { SymmetryAxes, SymmetryCenter, SymmetryMode } from '@/core/symmetry'
 import type { BrushTool } from '@/core/tool-preferences'
 import type { BrushDynamicsSettings, BrushPressureSettings } from '@/core/pressure'
@@ -357,6 +324,8 @@ export interface DocumentSession {
   animationMaskClipboard: AnimationMaskClipboardItem[]
   animationMaskClipboardAnchorKey: string | null
   animationFrameClipboard: AnimationFrameClipboardItem[]
+  /** UI notifications independent of pixel/cache revisions. */
+  uiRevision: number
   revision: number
   contentRevision: number
   /** Content revision produced by a selection transform whose guides must remain visible. */

@@ -1,5 +1,6 @@
+import { useShallow } from 'zustand/react/shallow'
 import { createPortal, flushSync } from 'react-dom'
-import { lazy, memo, Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { memo, Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { createDocumentPaneLayout, insertDocumentPane, resizeDocumentPane, type DocumentPaneDirection, type DocumentPaneNode, type DocumentPaneOrientation, type DocumentPanePlacement } from '@/core/document-pane-layout'
@@ -12,10 +13,8 @@ import { useI18n } from '@/components/I18nProvider'
 import type { ShortcutId } from '@/core/shortcuts'
 import type { QuickCommandSettingsTarget } from './quick-command-registry'
 
-const loadCanvasStage = () => import('@/components/CanvasStage').then(({ CanvasStage }) => ({ default: CanvasStage }))
-const LazyCanvasStage = lazy(loadCanvasStage)
-
-export const preloadCanvasStage = (): void => { void loadCanvasStage() }
+import { DocumentCanvas } from './document-canvas'
+export { preloadCanvasStage } from './document-canvas'
 
 interface EditorCanvasHostProps {
   documentPaneLayout: DocumentPaneNode | null
@@ -77,7 +76,8 @@ const positionPaneDragGhost = (pointerX: number, pointerY: number, pointerOffset
 
 export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds, onDocumentPaneLayoutChange, onDocumentPaneMove, onDocumentPaneReturnToTabs, onDocumentPaneFloat, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings }: EditorCanvasHostProps) {
   const { t } = useI18n()
-  const sessions = useWorkspace((state) => state.sessions)
+  useWorkspace(useShallow((state) => state.sessions.flatMap(({ document }) => [document.id, document.name, document.dirty])))
+  const sessions = useWorkspace.getState().sessions
   const activeId = useWorkspace((state) => documentPaneLayout ? state.activeId : null)
   const stageRootRef = useRef<HTMLDivElement | null>(null)
   const paneResizeRef = useRef<{ splitId: string; orientation: DocumentPaneOrientation; pointerId: number; startX: number; startY: number; startRatio: number; container: HTMLElement; captureTarget: HTMLElement | null } | null>(null)
@@ -283,7 +283,7 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
       const showPaneHeader = paneOnlyDocumentIds.includes(paneSession.document.id)
       return <section key={node.id} data-document-pane-id={node.id} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={(event) => { if (canvasColorSamplingIntentActive() && (event.target as Element).closest('canvas.stage-canvas')) return; const workspace = useWorkspace.getState(); workspace.syncCanvasToolSettings(paneSession.document.id); workspace.setActive(paneSession.document.id) }} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
         {showPaneHeader && <header onPointerDown={(event) => beginPaneDrag(event, paneSession.document.id)} onContextMenu={(event) => { if (!onDocumentPaneFloat) return; event.preventDefault(); event.stopPropagation(); useWorkspace.getState().setActive(paneSession.document.id); setPaneContextMenu({ documentId: paneSession.document.id, x: event.clientX, y: event.clientY }) }}><PixelUtilityIcon kind="image" /><span>{paneSession.document.name}</span>{paneSession.document.dirty && <i />}<button title={t('common.close')} aria-label={t('tabs.closeAria', { name: paneSession.document.name })} onClick={() => { void useWorkspace.getState().closeDocument(paneSession.document.id) }}><PixelUtilityIcon kind="close" /></button></header>}
-        <div className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><LazyCanvasStage session={paneSession} /></div></div>
+        <div className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><DocumentCanvas documentId={paneSession.document.id} /></div></div>
       </section>
     }
     const splitStyle: CSSProperties = node.orientation === 'horizontal'
@@ -302,7 +302,7 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
       const isActive = item.document.id === session.document.id
       return <div key={item.document.id} data-document-id={item.document.id} className={`document-tab-stage ${isActive ? 'is-active' : ''}`} aria-hidden={!isActive}>
         <QuickCommandBar documentId={item.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
-        <div className="document-pane-canvas-content"><LazyCanvasStage session={item} /></div>
+        <div className="document-pane-canvas-content"><DocumentCanvas documentId={item.document.id} /></div>
       </div>
     })}</div> : null
 

@@ -1,4 +1,6 @@
-import type { RgbaColor, SelectionMask, ToolId } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMask } from '@shared/types-selection'
+import type { ToolId } from '@shared/types-brush'
 import type { SelectionHandle, SelectionRotationHandle, SelectionShearHandle } from './canvas-input'
 import { DEFAULT_CHECKERBOARD_PREFERENCES, type CheckerboardPreferences } from './file-preferences'
 

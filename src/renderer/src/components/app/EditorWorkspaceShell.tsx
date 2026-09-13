@@ -1,5 +1,5 @@
 import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
-import type { ToolRailSide } from '@shared/types'
+import type { ToolRailSide } from '@shared/types-workspace'
 import type { DocumentSession } from '@/store/workspace'
 import { InspectorPanels, type PanelDock, type WorkspacePanelId } from '@/components/WorkspacePanels'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'

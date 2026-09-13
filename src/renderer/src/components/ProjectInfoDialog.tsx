@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { DialogHeader } from './DialogHeader'
 import { ModalShell } from './ModalShell'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from './PixelUtilityIcon'

@@ -1,5 +1,6 @@
 import { memo, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import type { ToolId, ToolRailSide } from '@shared/types'
+import type { ToolId } from '@shared/types-brush'
+import type { ToolRailSide } from '@shared/types-workspace'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { Tooltip } from '@/components/Tooltip'

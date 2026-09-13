@@ -23,7 +23,7 @@ export const ARCHITECTURE_RULES = {
   'project-open-secondary-decode': '一次工程打开执行第二次完整解码',
   'async-project-main-thread-preparation': '异步工程任务在 Worker 前完整同步准备',
   'recovery-error-swallow': '恢复路径静默吞掉错误',
-  'core-runtime-cycle': 'core 生产运行时循环依赖文件',
+  'core-runtime-cycle': '前端生产运行时循环依赖文件（含跨目录依赖）',
   'module-boundary-debt': '既有模块边界迁移债务',
   'permanent-boundary-allowlist': '按文件永久边界白名单或忽略指令',
   'render-key-pixel-serialization': '渲染键序列化像素或整份文档',
@@ -201,23 +201,25 @@ const runtimeImports = (source) => {
     }
     if (previous?.kind !== SyntaxKind.FromKeyword && previous?.kind !== SyntaxKind.ImportKeyword) continue
     let statementStart = index - 1
-    while (statementStart >= 0 && ![SyntaxKind.ImportKeyword, SyntaxKind.ExportKeyword, SyntaxKind.SemicolonToken, SyntaxKind.CloseBraceToken].includes(tokens[statementStart].kind)) statementStart -= 1
-    if (tokens[statementStart]?.kind === SyntaxKind.SemicolonToken || tokens[statementStart]?.kind === SyntaxKind.CloseBraceToken) statementStart += 1
-    const statement = source.slice(tokens[statementStart]?.pos ?? 0, token.end)
+    // A named import's closing brace is part of the statement, not a boundary.
+    while (statementStart >= 0 && ![SyntaxKind.ImportKeyword, SyntaxKind.ExportKeyword, SyntaxKind.SemicolonToken].includes(tokens[statementStart].kind)) statementStart -= 1
+    if (tokens[statementStart]?.kind === SyntaxKind.SemicolonToken) continue
+    const statement = tokens.slice(statementStart, index + 1).map((part) => source.slice(part.pos, part.end)).join(' ')
     if (/^\s*(?:import|export)\s+type\b/.test(statement)) continue
-    const namedOnly = /^\s*import\s*\{([\s\S]*?)\}\s*from/.exec(statement)
-    if (namedOnly && namedOnly[1].split(',').filter(Boolean).every((part) => /^\s*type\b/.test(part))) continue
+    const namedOnly = /^\s*(?:import|export)\s*\{([\s\S]*?)\}\s*from/.exec(statement)
+    const members = namedOnly?.[1].split(',').map((part) => part.trim()).filter(Boolean)
+    if (members?.length && members.every((part) => /^type\s+(?!as\b)/.test(part))) continue
     modules.push(token.value)
   }
   return modules
 }
 
-const resolveCoreImport = (file, specifier, files) => {
+const resolveFrontendImport = (file, specifier, files) => {
   let base = null
-  if (specifier.startsWith('@/core/')) base = `${CORE_ROOT}${specifier.slice('@/core/'.length)}`
-  else if (specifier === '@/core') base = `${CORE_ROOT}index`
+  if (specifier.startsWith('@/')) base = `${RENDERER_ROOT}/${specifier.slice(2)}`
+  else if (specifier.startsWith('@shared/')) base = `src/shared/${specifier.slice('@shared/'.length)}`
   else if (specifier.startsWith('.')) base = normalize(join(dirname(file), specifier))
-  if (!base || !base.startsWith(CORE_ROOT)) return null
+  if (!base) return null
   const candidates = extname(base)
     ? [base]
     : [`${base}.ts`, `${base}.tsx`, `${base}.mts`, `${base}.cts`, `${base}/index.ts`, `${base}/index.tsx`]
@@ -225,12 +227,13 @@ const resolveCoreImport = (file, specifier, files) => {
 }
 
 const coreCycleFindings = (files) => {
-  const coreFiles = [...files.keys()].filter((file) => file.startsWith(CORE_ROOT) && isProductionSource(file))
+  // Keep the historical rule id so its zero-debt budget remains effective.
+  const coreFiles = [...files.keys()].filter((file) => (file.startsWith(`${RENDERER_ROOT}/`) || file.startsWith('src/shared/')) && isProductionSource(file))
   const graph = new Map(coreFiles.map((file) => [file, new Set()]))
   for (const file of coreFiles) {
     for (const specifier of runtimeImports(files.get(file))) {
-      const target = resolveCoreImport(file, specifier, files)
-      if (target) graph.get(file).add(target)
+      const target = resolveFrontendImport(file, specifier, files)
+      if (target && graph.has(target)) graph.get(file).add(target)
     }
   }
 
@@ -358,6 +361,7 @@ const collectFiles = async (root, directory, extensions) => {
 export const readArchitectureSourceFiles = async (root = process.cwd()) => {
   const paths = [
     ...await collectFiles(root, RENDERER_ROOT, ['.ts', '.tsx', '.mts', '.cts']),
+    ...await collectFiles(root, 'src/shared', ['.ts', '.tsx', '.mts', '.cts']),
     ...await collectFiles(root, 'scripts', ['.mjs', '.js']),
   ]
   const files = new Map()

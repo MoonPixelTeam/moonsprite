@@ -1,7 +1,7 @@
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
 import { invoke } from '@tauri-apps/api/core'
 import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window'
-import type { WorkspaceLayout } from '@shared/types'
+import type { WorkspaceLayout } from '@shared/types-workspace'
 
 export type AppWindowLayout = NonNullable<WorkspaceLayout['mainWindow']>
 

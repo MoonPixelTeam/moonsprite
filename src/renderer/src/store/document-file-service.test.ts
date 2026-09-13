@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initializeCanvas } from 'ag-psd'
-import type { MoonSpriteApi, ScaledPngWriteOptions } from '@shared/types'
+import type { MoonSpriteApi, ScaledPngWriteOptions } from '@shared/types-platform'
 import { createDocument } from '@/core/document'
 import { setRuntimeAppLocale } from '@/core/localization'
 import { decodePng } from '@/core/png'

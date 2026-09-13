@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi, StoredPalette } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { StoredPalette } from '@shared/types-files'
 import { animationMaskAt, compositeDocument, createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel, revertPixelEdit } from '@/core/history'
 import { packColor, relativeLuminanceColor } from '@/core/raster'

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { TimelapseExportFormat, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types'
+import type { TimelapseExportFormat, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types-timelapse'
 import { isTimelapseVideoFormat, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapseSourceDurationMs, timelapseVideoFramePlan, type TimelapseExportMode, type TimelapseExportOptions } from '@/core/timelapse'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { resolveTheme } from '@/core/theme'

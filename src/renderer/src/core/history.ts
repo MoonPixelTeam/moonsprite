@@ -1,6 +1,8 @@
-import type { RasterLayer, SelectionRect, SpriteDocument } from '@shared/types'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, setAnimationLayerOffsetsAtFrame } from './animation'
-import { cacheRasterContentBounds, cachedRasterContentBounds, getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document'
+import { cacheRasterContentBounds, cachedRasterContentBounds, getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
 
 export interface HistoryEntry {
   label: string

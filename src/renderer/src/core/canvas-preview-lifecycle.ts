@@ -1,6 +1,7 @@
-import type { SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
+import type { SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import type { SelectionShearTransform } from './selection'
-import type { SelectionTransformSource } from './tools'
+import type { SelectionTransformSource } from './tools-selection-transform'
 
 export interface CanvasPreviewSelection {
   layerId: string

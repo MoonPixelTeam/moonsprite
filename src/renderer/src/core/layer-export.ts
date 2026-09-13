@@ -1,4 +1,5 @@
-import type { RasterLayer, SpriteDocument } from '@shared/types'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SpriteDocument } from '@shared/types-document'
 
 /** Builds an isolated visual document without changing the source document. */
 export const documentForLayerExport = (document: SpriteDocument, layerId?: string): SpriteDocument => {

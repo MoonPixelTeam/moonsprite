@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ViewState } from '@shared/types'
+import type { ViewState } from '@shared/types-view'
 import type { CanvasPoint as Point } from '@/core/canvas-input'
 import { useWorkspace } from '@/store/workspace'
 import { notifyViewPreview, registerViewPreviewFlusher } from '@/core/view-preview-lifecycle'

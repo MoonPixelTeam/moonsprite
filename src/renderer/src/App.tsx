@@ -1,12 +1,17 @@
+import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
+import { createApplicationCloseCoordinator, resolveDocumentClose } from '@/store/workspace-close-coordinator'
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, ExternalLink, GitFork } from 'lucide-react'
-import type { ColorMode, ImageResizeInterpolation, LuaScriptDialogAction, LuaScriptEntry, ProjectBackupRecord, StoredExtension, StoredWorkspace, TextCelData, ToolRailSide, WorkspaceLayout, ExtensionPackagePreview } from '@shared/types'
+import type { ColorMode, ImageResizeInterpolation } from '@shared/types-raster'
+import type { LuaScriptDialogAction } from '@shared/types-scripting'
+import type { LuaScriptEntry, StoredExtension, ExtensionPackagePreview } from '@shared/types-extensions'
+import type { ProjectBackupRecord } from '@shared/types-files'
+import type { StoredWorkspace, ToolRailSide, WorkspaceLayout } from '@shared/types-workspace'
+import type { TextCelData } from '@shared/types-text'
 import type { AdjustmentKind } from '@/core/adjustments'
-import { compositePixelWithLayerColor, getActiveLayer, isLayerEffectivelyVisible, readLayerColorAt } from '@/core/document'
 import { decodeBrowserRasterImage } from '@/core/raster-image'
 import { decodeDocumentFileAsync } from '@/core/document-files'
-import { blendOver, packColor, unpackColor } from '@/core/raster'
 import type { PanelDock, WorkspacePanelId } from '@/components/WorkspacePanels'
 import { AppMenuBar } from '@/components/app/AppMenuBar'
 import { ExtensionPanelHost } from '@/components/extensions/ExtensionPanelHost'
@@ -89,7 +94,7 @@ import { applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
 import { openRuntimeDiagnosticLogs } from '@/platform/runtime-diagnostics'
 import { initializeUsageStatistics } from '@/platform/usage-statistics'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
-import { ACTIVE_WORKSPACE_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_STORAGE_KEY, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, constrainBottomDockHeight, constrainInspectorWidth, constrainLeftDockWidth, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO, DEFAULT_INSPECTOR_WIDTH_RATIO, DEFAULT_LEFT_DOCK_WIDTH_RATIO, DEFAULT_PANEL_DOCKS, dockSizeRatio, FLOATING_PANEL_STORAGE_KEYS, INSPECTOR_LAYOUT_STORAGE_KEY, INSPECTOR_WIDTH_RATIO_STORAGE_KEY, INSPECTOR_WIDTH_STORAGE_KEY, LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, LEFT_DOCK_WIDTH_STORAGE_KEY, PANEL_DOCKS_STORAGE_KEY, resolveDockSizeRatio, TOOL_RAIL_SIDE_STORAGE_KEY, loadBottomDockHeight, loadInspectorWidth, loadLeftDockWidth, loadMainWindowState, loadPanelDocks, loadPanelVisibility, loadToolRailSide, normalizeWorkspaceLayout, readLayoutStorage, saveMainWindowState, savePanelDocks, savePanelVisibility, toolRailDockTargetAtPointer, workspaceDockSizesForParent, workspacePanelDockPresence, writeLayoutStorage } from '@/core/workspace-layout-preferences'
+import { ACTIVE_WORKSPACE_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_RATIO_STORAGE_KEY, BOTTOM_DOCK_HEIGHT_STORAGE_KEY, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, constrainBottomDockHeight, constrainInspectorWidth, constrainLeftDockWidth, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO, DEFAULT_INSPECTOR_WIDTH_RATIO, DEFAULT_LEFT_DOCK_WIDTH_RATIO, DEFAULT_PANEL_DOCKS, dockSizeRatio, FLOATING_PANEL_STORAGE_KEYS, INSPECTOR_LAYOUT_STORAGE_KEY, INSPECTOR_WIDTH_RATIO_STORAGE_KEY, INSPECTOR_WIDTH_STORAGE_KEY, LEFT_DOCK_WIDTH_RATIO_STORAGE_KEY, LEFT_DOCK_WIDTH_STORAGE_KEY, resolveDockSizeRatio, TOOL_RAIL_SIDE_STORAGE_KEY, loadBottomDockHeight, loadInspectorWidth, loadLeftDockWidth, loadMainWindowState, loadPanelDocks, loadPanelVisibility, loadToolRailSide, normalizeWorkspaceLayout, readLayoutStorage, saveMainWindowState, savePanelDocks, savePanelVisibility, toolRailDockTargetAtPointer, workspaceDockSizesForParent, workspacePanelDockPresence, writeLayoutStorage } from '@/core/workspace-layout-preferences'
 import { type ExportOptions, type SaveAsOptions, type TextCelPreview, type TextLayerDraftTarget, useWorkspace } from '@/store/workspace'
 import { waitForDocumentCloseTasks } from '@/store/document-close-tasks'
 import { flushLocalHistoryPersist } from '@/store/local-history-service'
@@ -352,7 +357,6 @@ export default function App() {
   const inspectorWidthRef = useRef(inspectorWidth)
   const preferredInspectorWidthRef = useRef(inspectorWidth)
   const inspectorWidthRatioRef = useRef(dockSizeRatio(inspectorWidth, initialDockParentSize.width, DEFAULT_INSPECTOR_WIDTH_RATIO))
-  const closeInProgress = useRef(false)
   const saveActiveOperationRef = useRef<Promise<boolean> | null>(null)
   const exportActiveOperationRef = useRef<Promise<boolean> | null>(null)
   const luaScriptSessionRef = useRef<LuaScriptClientSession | null>(null)
@@ -1449,33 +1453,30 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const unsubscribe = window.moonSprite.onRequestClose(async () => {
-      if (closeInProgress.current) return
-      if (useWorkspace.getState().dialog) { window.moonSprite.cancelClose(); return }
-      closeInProgress.current = true
-      flushColorRolePreferences()
-      try { await persistMainWindowState() } catch { /* Closing must continue if geometry persistence fails. */ }
-      const dirty = useWorkspace.getState().sessions.filter((item) => item.document.dirty)
-      for (const item of dirty) {
-        useWorkspace.getState().setActive(item.document.id)
-        const choice = await useWorkspace.getState().requestDialog({ title: t('app.unsaved.title'), message: t('app.unsaved.message', { name: item.document.name }), detail: t('app.unsaved.detail'), choices: [{ id: 'cancel', label: t('common.cancel'), tone: 'quiet' }, { id: 'discard', label: t('app.discard'), tone: 'danger' }, { id: 'save', label: t('common.save'), tone: 'primary' }] })
-        if (choice === 'cancel') { closeInProgress.current = false; window.moonSprite.cancelClose(); return }
-        if (choice === 'save' && !(await useWorkspace.getState().saveActive())) { closeInProgress.current = false; window.moonSprite.cancelClose(); return }
-        if (choice === 'discard' && item.recoveryOriginId === null) await useWorkspace.getState().discardRecovery(item.document.id)
-      }
-      try {
-        await waitForDocumentCloseTasks()
-        await Promise.all(useWorkspace.getState().sessions.map(session => flushLocalHistoryPersist(window.moonSprite, session)))
-        await waitForDocumentCloseTasks()
-      } catch (error) {
+    const close = createApplicationCloseCoordinator({
+      hasDialog: () => Boolean(useWorkspace.getState().dialog),
+      sessions: () => useWorkspace.getState().sessions,
+      prepare: async () => {
+        flushColorRolePreferences()
+        try { await persistMainWindowState() } catch (error) {
+          recordRuntimeDiagnostic('error', 'app.close.window-state', { message: error instanceof Error ? error.message : String(error) })
+        }
+      },
+      confirm: (session) => resolveDocumentClose(session.document.dirty, () => {
+        useWorkspace.getState().setActive(session.document.id)
+        return useWorkspace.getState().requestDialog({ title: t('app.unsaved.title'), message: t('app.unsaved.message', { name: session.document.name }), detail: t('app.unsaved.detail'), choices: [{ id: 'cancel', label: t('common.cancel'), tone: 'quiet' }, { id: 'discard', label: t('app.discard'), tone: 'danger' }, { id: 'save', label: t('common.save'), tone: 'primary' }] })
+      }, () => useWorkspace.getState().saveActive()),
+      discardRecovery: (id) => useWorkspace.getState().discardRecovery(id),
+      waitForDocumentCloses: waitForDocumentCloseTasks,
+      flushHistory: (session) => flushLocalHistoryPersist(window.moonSprite, session),
+      approve: () => window.moonSprite.approveClose(),
+      cancel: () => window.moonSprite.cancelClose(),
+      reportError: (error) => {
         console.error('MoonSprite history flush before exit failed', error)
-        useWorkspace.setState({ message: error instanceof Error ? error.message : String(error) })
-        closeInProgress.current = false
-        window.moonSprite.cancelClose()
-        return
+        useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error))
       }
-      window.moonSprite.approveClose()
     })
+    const unsubscribe = window.moonSprite.onRequestClose(close)
     return unsubscribe
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

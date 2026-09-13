@@ -63,7 +63,7 @@ import { ThemePreferencesSection } from './ThemePreferencesSection'
 import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
 import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
-import type { LuaScriptEntry, StoredExtension } from '@shared/types'
+import type { LuaScriptEntry, StoredExtension } from '@shared/types-extensions'
 import { initializeUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
 
 interface PreferencesDialogProps {

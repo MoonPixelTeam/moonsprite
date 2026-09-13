@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { animationMaskAt } from './document'
 import { createAnimationTimelineVisualIndex, deriveAnimationTimelineVisualState, resolveTimelineMaskVisualFlags, shouldRenderTimelineCelSelectionMarker, type TimelineVisualCell, type TimelineVisualRow } from './animation-timeline-visual-state'
 import { timelineCellSlotKey } from './animation-timeline-identity'
-import type { AnimationTimeline, LayerMask } from '@shared/types'
+import type { AnimationTimeline } from '@shared/types-animation'
+import type { LayerMask } from '@shared/types-layer'
 
 const rows: TimelineVisualRow[] = [
   { id: 'layer-a', ownerId: 'layer-a', ownerKind: 'layer', kind: 'layer' },

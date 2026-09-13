@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AnimationCelSurface, RgbaLayer, RuntimeRasterTiles } from '@shared/types'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { RgbaLayer } from '@shared/types-layer'
+import type { RuntimeRasterTiles } from '@shared/types-raster'
 import { compositeRegion, createDocument, markLayerContentChanged } from './document'
 import {
   assignRasterStorage,
