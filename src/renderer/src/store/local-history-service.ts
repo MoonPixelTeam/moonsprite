@@ -1,6 +1,6 @@
 import { strFromU8, unzip } from 'fflate'
 import type { MoonSpriteApi, SpriteDocument } from '@shared/types'
-import { decodeProject, encodeProjectAsync } from '@/core/project-format'
+import { encodeProjectAsync } from '@/core/project-format'
 import { HistoryStack, type HistoryEntry, type HistoryStackChange } from '@/core/history'
 import { captureCommittedHistoryDelta, cloneHistoryDocument, historyDocumentTransferView, hydrateLocalHistoryDelta, historyDocumentBytes } from '@/core/local-history-delta'
 import { decodeHistoryDelta, materializeLocalHistorySnapshot, unpackLocalHistorySnapshots, type LocalHistoryManifest, type LocalHistorySnapshot } from '@/core/local-history-archive'
@@ -281,7 +281,7 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     const existing = structuralSnapshots.get(index)
     if (existing) return existing
     const source = snapshots[index]
-    const snapshot = 'archive' in source ? decodeProject(source.archive) : materializeLocalHistorySnapshot(source)
+    const snapshot = materializeLocalHistorySnapshot(source)
     structuralSnapshots.set(index, snapshot)
     return snapshot
   }
