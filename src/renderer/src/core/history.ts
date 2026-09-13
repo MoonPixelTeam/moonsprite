@@ -432,6 +432,37 @@ export function beginPixelEdit(layerId: string): PixelEdit {
   return { layerId, before: new Map(), after: new Map() }
 }
 
+/** Merge consecutive live brush edits without replaying their accumulated pixels. */
+export function mergePixelEdits(first: PixelEdit, second: PixelEdit): PixelEdit {
+  if (first.layerId !== second.layerId) throw new Error('Cannot merge pixel edits from different layers')
+  const merged = beginPixelEdit(first.layerId)
+  merged.frameId = first.frameId ?? second.frameId
+  const append = (edit: PixelEdit): void => {
+    for (const [index, before] of edit.before) {
+      if (!merged.before.has(index)) merged.before.set(index, before)
+      merged.after.set(index, edit.after.get(index) ?? before)
+    }
+    if (edit.points) for (let offset = 0; offset < edit.points.count; offset += 1) {
+      const index = edit.points.indices[offset]
+      if (!merged.before.has(index)) merged.before.set(index, edit.points.before[offset])
+      merged.after.set(index, edit.points.after[offset])
+    }
+    if (edit.dirtyRect) {
+      if (!merged.dirtyRect) merged.dirtyRect = { ...edit.dirtyRect }
+      else {
+        const left = Math.min(merged.dirtyRect.x, edit.dirtyRect.x)
+        const top = Math.min(merged.dirtyRect.y, edit.dirtyRect.y)
+        const right = Math.max(merged.dirtyRect.x + merged.dirtyRect.width, edit.dirtyRect.x + edit.dirtyRect.width)
+        const bottom = Math.max(merged.dirtyRect.y + merged.dirtyRect.height, edit.dirtyRect.y + edit.dirtyRect.height)
+        merged.dirtyRect = { x: left, y: top, width: right - left, height: bottom - top }
+      }
+    }
+  }
+  append(first)
+  append(second)
+  return merged
+}
+
 /** Includes every edit storage format, including compact brush/transform records. */
 export const pixelEditHasChanges = (edit: PixelEdit | null | undefined): boolean => Boolean(edit && (
   edit.before.size > 0 || edit.points?.count || edit.runs?.length || edit.denseRegion?.count || edit.layerOffset

@@ -2172,6 +2172,23 @@ describe('color mode history', () => {
     expect(document.nextColorId).toBe(indexedNextColorId)
     expect(readLayerColor(document, layer, 0)).toEqual(indexedColor)
   })
+
+  it('restores RGBA pixels when converting to grayscale', async () => {
+    const document = createDocument('grayscale undo', 2, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const custom = { r: 17, g: 93, b: 201, a: 173 }
+    writeLayerColor(document, layer, 0, custom)
+    useWorkspace.getState().addSession(document)
+    expect(readLayerColor(document, layer, 0)).toEqual(custom)
+    expect(Array.from(ensureAnimationDocument(document).cels[0].surface!.pixels.slice(0, 4))).toEqual([17, 93, 201, 173])
+
+    await useWorkspace.getState().convertColorMode('grayscale')
+    expect(document.colorMode).toBe('grayscale')
+    useWorkspace.getState().undo()
+
+    expect(document.colorMode).toBe('rgba')
+    expect(readLayerColor(document, layer, 0)).toEqual(custom)
+  })
 })
 
 describe('save concurrency', () => {

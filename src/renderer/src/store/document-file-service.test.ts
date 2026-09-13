@@ -217,6 +217,51 @@ describe('native PNG export service', () => {
   })
 })
 
+describe('slice export conflict handling', () => {
+  it('resolves a GIF slice conflict before it reports encoding progress', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/Slice 1.gif')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Slice conflict', 1, 1, 'rgba')
+    document.slices = [{ id: 'slice-1', name: 'Slice 1', x: 0, y: 0, width: 1, height: 1 }]
+    let encodeStarts = 0
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'slice-conflict', format: 'gif', scalePercent: 100, target: 'slices', directory: 'D:/exports'
+    }, {
+      onEncodeStart: () => { encodeStarts += 1 },
+      onConflict: async () => {
+        expect(encodeStarts).toBe(0)
+        return 'rename'
+      }
+    })).resolves.toContain('1')
+
+    expect(encodeStarts).toBe(1)
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/Slice 1 (1).gif', expect.any(Uint8Array))
+  })
+
+  it('resolves a frame export conflict before fallback encoding begins', async () => {
+    const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
+    const fileExists = vi.fn(async (filePath: string) => filePath === 'D:/exports/frames-001.png')
+    const api = { fileExists, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Frame conflict', 1, 1, 'rgba')
+    let encodeStarts = 0
+
+    await expect(exportDocumentFile(api, document, {
+      name: 'frames', format: 'png-rgba', scalePercent: 100, target: 'frames', directory: 'D:/exports'
+    }, {
+      onEncodeStart: () => { encodeStarts += 1 },
+      onConflict: async () => {
+        expect(encodeStarts).toBe(0)
+        return 'rename'
+      }
+    })).resolves.toContain('1')
+
+    expect(encodeStarts).toBe(1)
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/frames-001 (1).png', expect.any(Uint8Array))
+  })
+})
+
 describe('timelapse image sequence export service', () => {
   it('chooses one path and writes numbered PNG frames at the requested scale', async () => {
     const exportImage = vi.fn(async () => ({ canceled: false, filePath: 'D:/exports/process.png' }))

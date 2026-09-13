@@ -218,6 +218,25 @@ describe('canvas input helpers', () => {
     expect(readLayerColor(document, layer, 1 * layer.width + 2).a).toBe(0)
   })
 
+  it('reverts both parts of a split perfect-pixel stroke when cancelled', () => {
+    const document = createDocument('cancelled split stroke', 4, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    const committed = beginPixelEdit(layer.id)
+    paintBrush(document, layer, committed, 1, 1, 1, { r: 20, g: 40, b: 60, a: 255 }, 'square')
+    const tail = beginPixelEdit(layer.id)
+    paintBrush(document, layer, tail, 2, 1, 1, { r: 20, g: 40, b: 60, a: 255 }, 'square')
+
+    expect(revertCancelledCanvasDragPixelChanges(document, {
+      kind: 'draw',
+      start: { x: 1, y: 1 },
+      last: { x: 2, y: 1 },
+      edit: tail,
+      perfectPixelCommittedEdit: committed
+    })).toBe(true)
+    expect(readLayerColor(document, layer, 1 * layer.width + 1).a).toBe(0)
+    expect(readLayerColor(document, layer, 1 * layer.width + 2).a).toBe(0)
+  })
+
   it('uses the balanced stair algorithm for polygon lasso preview and closed edges when enabled', () => {
     const path = [{ x: 0, y: 0 }, { x: 8, y: 2 }, { x: 7, y: 7 }]
     expect(polygonLassoPreviewPoints(path, { x: 2, y: 8 }, false, true)).toEqual([

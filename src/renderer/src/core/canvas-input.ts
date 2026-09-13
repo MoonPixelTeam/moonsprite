@@ -355,6 +355,8 @@ export interface CanvasDragState {
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
+  perfectPixelCommittedEdit?: PixelEdit
+  perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }
   extensionToolMask?: Set<number>
   extensionToolBounds?: SelectionRect | null
@@ -631,6 +633,11 @@ export const revertCancelledCanvasDragPixelChanges = (document: SpriteDocument, 
   if (!edit) return false
   const changed = pixelEditHasChanges(edit)
   revertPixelEdit(document, edit)
+  if (drag.kind === 'draw' && drag.perfectPixelCommittedEdit) {
+    const committedChanged = pixelEditHasChanges(drag.perfectPixelCommittedEdit)
+    revertPixelEdit(document, drag.perfectPixelCommittedEdit)
+    return changed || committedChanged
+  }
   return changed
 }
 

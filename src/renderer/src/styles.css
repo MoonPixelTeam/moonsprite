@@ -1424,8 +1424,10 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .floating-resize-handle.resize-nw { top: -6px; left: -6px; cursor: var(--cursor-nwse-resize); }
 .floating-resize-handle.resize-se { right: -6px; bottom: -6px; cursor: var(--cursor-nwse-resize); }
 .floating-resize-handle.resize-sw { bottom: -6px; left: -6px; cursor: var(--cursor-nesw-resize); }
-.floating-resize-portal { position: fixed; overflow: visible; pointer-events: none; isolation: isolate; background: transparent; }
+.floating-resize-portal { position: fixed; overflow: visible; pointer-events: none; isolation: isolate; contain: strict; background: transparent !important; box-shadow: none !important; filter: none !important; mix-blend-mode: normal; }
+.floating-resize-portal::before, .floating-resize-portal::after { content: none !important; display: none !important; }
 .floating-resize-portal .floating-resize-handle { pointer-events: auto; }
+.floating-resize-portal .floating-resize-handle { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 .canvas-resize-modal { width: min(340px, calc(100vw - 32px)); }
 .grid-settings-modal { width: min(360px, calc(100vw - 32px)); }
 .grid-settings-modal > .modal-body { flex: 0 0 auto; }
@@ -2603,8 +2605,9 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .quiet-button:hover { border-color: var(--theme-border-muted); background: var(--theme-surface-hover); }
 .modal-backdrop { position: fixed; inset: 0; z-index: 200; pointer-events: none; background: transparent; }
 .dialog-backdrop { z-index: 400; }
-.modal { position: fixed; top: 50%; left: 50%; z-index: 210; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: auto; pointer-events: auto; background: var(--theme-dialog-content); border: 1px solid var(--theme-border-muted); transform: translate(-50%, -50%); }
+.modal { position: fixed; top: 50%; left: 50%; z-index: 210; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: auto; pointer-events: auto; background: var(--theme-dialog-content); border: 1px solid var(--theme-border-muted); box-shadow: none !important; transform: translate(-50%, -50%); isolation: isolate; contain: paint; }
 .modal.resizable-modal { top: auto; left: auto; display: flex; flex-direction: column; overflow: hidden; transform: none; isolation: isolate; contain: paint; }
+.modal.resizable-modal { box-shadow: none !important; filter: none !important; outline: 0; }
 :root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal:not(.resizable-modal):not(.simulated-progress-modal):not(.component-save-progress-card):not(.settings-modal) { animation: ui-modal-enter var(--ui-motion-panel) ease-out both; }
 :root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal.resizable-modal:not(.settings-modal) { animation: ui-resizable-modal-enter var(--ui-motion-panel) ease-out both; }
 @keyframes ui-modal-enter {

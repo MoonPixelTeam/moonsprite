@@ -135,13 +135,22 @@ export function ModalShell({
     style: modalStyle,
     onFocusCapture: (event: ReactFocusEvent<HTMLElement>) => {
       if (!event.currentTarget.contains(event.target as Node)) return
-      windowStack.bringToFront()
+      // Form controls are already inside the active modal. Raising the whole
+      // floating stack while a button is focused can synchronously rewrite the
+      // modal's z-index during the native press gesture. Chromium may then
+      // briefly paint the old composited layer as a dark strip outside the
+      // dialog. Only non-control focus should change the window order.
+      const target = event.target as HTMLElement
+      const isInteractive = Boolean(target.closest('button, input, select, textarea, [role="button"], [contenteditable="true"]'))
+      if (!isInteractive) windowStack.bringToFront()
       onFocusCapture?.(event)
     },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
       if (!event.currentTarget.contains(event.target as Node)) return
-      windowStack.bringToFront()
-      const header = (event.target as HTMLElement).closest('header')
+      const target = event.target as HTMLElement
+      const isInteractive = Boolean(target.closest('button, input, select, textarea, [role="button"], [contenteditable="true"]'))
+      if (!isInteractive) windowStack.bringToFront()
+      const header = target.closest('header')
       if (header && event.currentTarget.contains(header) && header.closest('.modal') === event.currentTarget) floating.startDrag(event)
       onPointerDown?.(event)
     }

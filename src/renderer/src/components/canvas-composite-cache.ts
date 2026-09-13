@@ -139,6 +139,8 @@ interface DrawCompositeOptions {
   imageSmoothingQuality?: ImageSmoothingQuality
   /** Skip per-pixel alignment work while an interactive view preview is active. */
   fastViewPreview?: boolean
+  /** Pixels are still being edited; defer optional full-surface bitmap copies. */
+  liveRasterEdit?: boolean
   /** Prefer browser compositing for animation frames that use a supported stack. */
   animationPlayback?: boolean
   /** Reuse the editor's latest frame instead of competing to build one. */
@@ -280,6 +282,18 @@ const mergeOverlappingRects = (rects: readonly SelectionRect[]): SelectionRect[]
     merged.push(candidate)
   }
   return merged
+}
+
+const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32): SelectionRect[] => {
+  const merged = mergeOverlappingRects(rects)
+  if (merged.length <= limit) return merged
+  // Preserve the newest local regions and collapse the oldest backlog into
+  // one conservative rectangle. This is mainly for cached surfaces that are
+  // not currently visible; their queue must not grow for the whole gesture.
+  const overflow = merged.length - limit + 1
+  let oldest = merged[0]
+  for (let index = 1; index < overflow; index += 1) oldest = unionRect(oldest, merged[index])
+  return [oldest, ...merged.slice(overflow)]
 }
 
 const subtractRect = (source: SelectionRect, removed: SelectionRect): SelectionRect[] => {
@@ -480,6 +494,12 @@ export class CanvasCompositeCache {
   private livePreviewPending = new Set<string>()
   private livePreviewCommitRevisions = new Map<string, number>()
   private fullPreviewInvalidationPending = false
+  // Several brush segments can invalidate the same source caches before the
+  // next RAF. Coalesce those resets so a long eraser drag pays the rebuild
+  // cost once per frame instead of once per dirty rectangle.
+  private liveSourceCachesInvalidated = false
+  private liveSurfaceInvalidationPending = false
+  private liveRasterEdit = false
   private lastConsumedFullContentRevision = -1
   private compositeCache = new DocumentCompositeCache()
   private movePreview: MovePreviewSurface | null = null
@@ -553,13 +573,18 @@ export class CanvasCompositeCache {
     if (right <= left || bottom <= top) return
     const dirtyRects = this.dirtyRects.get(frameId) ?? []
     dirtyRects.push({ x: left, y: top, width: right - left, height: bottom - top })
-    this.dirtyRects.set(frameId, dirtyRects)
+    // Live strokes can emit hundreds of tiny regions. Keep the queue bounded;
+    // otherwise every subsequent frame spends more time merging old regions.
+    this.dirtyRects.set(frameId, dirtyRects.length > 32 ? boundedDirtyRects(dirtyRects) : dirtyRects)
   }
 
   invalidateDocumentRect(selection: SelectionRect | null | undefined, document: SpriteDocument, frameId = this.lastDrawnFrameId, affectedOwnerIds?: readonly string[]): void {
     if (!selection) return
     this.invalidatedInitialDocuments.add(document)
-    this.compositeCache.invalidateLiveSourceCaches()
+    if (!this.liveSourceCachesInvalidated) {
+      this.compositeCache.invalidateLiveSourceCaches()
+      this.liveSourceCachesInvalidated = true
+    }
     this.compositeCache.invalidateStyleSources(document, selection, affectedOwnerIds)
     const expanded = expandLayerStyleInvalidationRect(document, selection, affectedOwnerIds)
     // The document has already changed, but the cached surface has not been
@@ -585,8 +610,12 @@ export class CanvasCompositeCache {
     // Live edits keep the content revision stable until pointer-up. Mark the
     // existing surface directly so the next frame consumes the dirty region
     // even though the revision-based invalidation path is not involved yet.
-    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
-      surface.pendingDirtyRects = [...(surface.pendingDirtyRects ?? []), expanded]
+    if (!this.liveSurfaceInvalidationPending) {
+      this.liveSurfaceInvalidationPending = true
+      for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
+        const pending = [...(surface.pendingDirtyRects ?? []), expanded]
+        surface.pendingDirtyRects = pending.length > 32 ? boundedDirtyRects(pending) : pending
+      }
     }
   }
 
@@ -602,7 +631,12 @@ export class CanvasCompositeCache {
     return { kind: 'region', rect: { ...hint.rect } }
   }
 
-  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
+  draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, liveRasterEdit = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
+    this.liveRasterEdit = liveRasterEdit
+    // The previous frame has consumed all live source invalidations. Allow
+    // the next pointer batch to invalidate once again.
+    this.liveSourceCachesInvalidated = false
+    this.liveSurfaceInvalidationPending = false
     this.currentDevicePixelRatio = devicePixelRatio
     this.lastDocument = document
     // A full content invalidation cannot be repaired by dirty-rect uploads:
@@ -1550,7 +1584,7 @@ export class CanvasCompositeCache {
   /** Build a GPU-backed snapshot once; panning can then sample it without
    * repeatedly uploading a large CPU-backed OffscreenCanvas texture. */
   private scheduleSurfaceBitmap(surface: CompositeSurface): void {
-    if (surface.transient) return
+    if (surface.transient || this.liveRasterEdit) return
     if (surface.canvas.width * surface.canvas.height < 256 * 256) return
     if (surface.bitmap || surface.bitmapPending || typeof createImageBitmap !== 'function') return
     const revision = surface.revision
@@ -1569,7 +1603,8 @@ export class CanvasCompositeCache {
     surface.bitmap?.close()
     surface.bitmap = undefined
     surface.bitmapGeneration = (surface.bitmapGeneration ?? 0) + 1
-    surface.bitmapPending = undefined
+    // Invalidating pixels does not cancel createImageBitmap. Keep its promise
+    // until it settles so later frames cannot enqueue overlapping full copies.
   }
 
   private rememberAnimationLayerSource(document: SpriteDocument, identity: object, source: CanvasImageSource, layer: RasterLayer, revision: number): void {
@@ -1769,7 +1804,12 @@ export class CanvasCompositeCache {
       // intermediate cache contents as a top-to-bottom wipe. Offscreen areas
       // remain lazy, and unchanged pixels are still excluded from recomposition.
       const activeRects = mergeOverlappingRects(dirtyRects)
-      surface.pendingDirtyRects = pendingDirtyRects.length > 0 ? mergeOverlappingRects(pendingDirtyRects) : undefined
+      // A visible viewport can split every incoming rect into up to four
+      // offscreen pieces. Keep that deferred queue bounded as well; otherwise
+      // a long stroke slowly turns each frame into a larger merge/recompose.
+      surface.pendingDirtyRects = pendingDirtyRects.length > 0
+        ? boundedDirtyRects(pendingDirtyRects)
+        : undefined
       if (activeRects.length > 0) this.invalidateSurfaceBitmap(surface)
       recordCanvasStage('canvas.cache-invalidation', invalidationStartedAt, {
         dirtyRects: activeRects.length,
@@ -1895,7 +1935,7 @@ export class CanvasCompositeCache {
           if (!livePreviewAlreadyPainted) {
             const pending = this.dirtyRects.get(frameId) ?? []
             pending.push(isolatedLayerMask ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
-            this.dirtyRects.set(frameId, pending)
+            this.dirtyRects.set(frameId, pending.length > 32 ? boundedDirtyRects(pending) : pending)
           }
         } else {
           this.dirtyRects.set(frameId, [{ x, y, width, height }])

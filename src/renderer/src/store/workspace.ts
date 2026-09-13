@@ -954,6 +954,13 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
 const shouldCaptureTimelapseHistoryStep = (session: DocumentSession): boolean =>
   normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? []).recordUndoSteps === true
 
+const removeLatestTimelapseSnapshot = (session: DocumentSession): void => {
+  const settings = normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? [])
+  if (settings.snapshots.length === 0) return
+  settings.snapshots = settings.snapshots.slice(0, -1)
+  session.document.timelapse = settings
+}
+
 const persistDisplaySettings = (session: DocumentSession, view: Partial<ViewState>): boolean => {
   if (!('showPixelGrid' in view) && !('showGrid' in view) && !('grid' in view)) return false
   const current = normalizeProjectDisplaySettings(session.document.displaySettings)
@@ -5707,7 +5714,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const cache = timelapseCaptureCaches.get(session.document)
       if (cache) resetTimelapseSmartCapture(cache)
     }
-    if (current.mode !== next.mode || !next.enabled) timelapseCaptureGenerations.set(session.document, (timelapseCaptureGenerations.get(session.document) ?? 0) + 1)
+    if (current.mode !== next.mode
+      || current.recordUndoSteps !== next.recordUndoSteps
+      || !next.enabled) {
+      // Invalidate captures already waiting for PNG encoding as well. Without
+      // this, disabling "record undo steps" could still append a queued undo
+      // snapshot after the toggle had been switched off.
+      timelapseCaptureGenerations.set(session.document, (timelapseCaptureGenerations.get(session.document) ?? 0) + 1)
+    }
     touch(session)
     set({ sessions: [...state.sessions] })
   },
@@ -5854,6 +5868,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const entry = session.history.undo()
       Object.assign(session.view, view)
       if (!entry) return
+      // Undo moves the document back along the creation history. Remove the
+      // corresponding timelapse branch frame instead of recording the undo as
+      // a new frame; a later edit must continue from the surviving prefix.
+      removeLatestTimelapseSnapshot(session)
       session.liquifyResetHistoryPosition = null
       session.liquifyResetHistoryRevision = null
       if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
@@ -5865,7 +5883,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (entry.documentChanged !== false) {
         if (entry.contentChanged === false) touchMetadata(session)
         else touch(session, true, entry.invalidation)
-        recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
+        recordDocumentOperation(session, undefined, false)
       }
     }, false)
     const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)
@@ -12639,6 +12657,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const resources = await window.moonSprite.getResourceInfo()
     const check = checkResourceLimit(current.document.width, current.document.height, current.document.layers.length, mode, resources)
     if (!check.allowed) { set({ message: check.reason }); return }
+    // Conversion updates every layer/cel surface in place. Avoid the generic
+    // animation surface sync, which would rebind cels to the converted layer
+    // buffer and invalidate the undo snapshot's object references.
     get().mutateActive((session) => {
       if (session.document.colorMode === mode) return
       const before = captureDocumentColorModeSnapshot(session.document)
@@ -12649,9 +12670,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         undo: () => restoreDocumentColorModeSnapshot(session.document, before),
         redo: () => restoreDocumentColorModeSnapshot(session.document, after),
         invalidation: { kind: 'full' },
+        // Color-mode conversion changes every raster representation and must
+        // remain a standalone document history entry. Explicit flags prevent
+        // generic history handling from treating it as a metadata-only edit.
+        documentChanged: true,
+        contentChanged: true,
         requiresAnimationSync: false
       })
-    })
+    }, 'content')
   },
 
   async saveActive(saveAs = false, options?: SaveAsOptions) {

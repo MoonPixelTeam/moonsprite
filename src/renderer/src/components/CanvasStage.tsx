@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { FreeTileInstance, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, TilemapCell } from '@shared/types'
 import { animationMaskAt, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
-import { beginPixelEdit, recordPixel, revertPixelEdit, type HistoryEntry } from '@/core/history'
+import { beginPixelEdit, mergePixelEdits, recordPixel, revertPixelEdit, type HistoryEntry } from '@/core/history'
 import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture } from '@/core/canvas-tool-gesture-lock'
 import { blendOver, hexToColor, packColor, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
 import { applyGradient, constrainGradientEndpoint, createGradientColorSampler, gradientRegionSelection, resolveRadialGradientGeometry, type GradientGeometryOptions } from '@/core/gradient'
@@ -2339,7 +2339,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const draw = (): void => {
     const performanceProbe = window.__moonSpriteCanvasProbe
-    const drawStartedAt = performanceProbe || isWorkspaceResizing() ? performance.now() : 0
+    const drawStartedAt = performance.now()
     const canvas = canvasRef.current
     if (!canvas) return
     // Ctrl+Alt is the brush-size modifier, while Ctrl alone is the temporary
@@ -2665,6 +2665,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         imageSmoothingEnabled: smoothPixelSampling,
         imageSmoothingQuality: pixelSamplingQuality,
         fastViewPreview: viewPreviewActive,
+        liveRasterEdit: activeDrag?.kind === 'draw' || activeDrag?.kind === 'airbrush' || activeDrag?.kind === 'liquify' || activeDrag?.kind === 'smooth',
         animationPlayback: currentSession.animationPlaying,
         devicePixelRatio: deviceScale,
         movingLayerIds: layerMovePreviewActive(activeDrag) && !activeDrag.duplicatedLayer
@@ -4305,7 +4306,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         // No drawing-time preview work is required.
       } else if (fastSolidPreview && solidPreviewSpans) {
         const sampled = erasing
-          ? sampleCompositeForPreview(brushPoint.x, brushPoint.y)
+          ? drawing ? transparencyColorAt(brushPoint.x, brushPoint.y, checkerboard) : sampleCompositeForPreview(brushPoint.x, brushPoint.y)
           : resolveLayerCanvasColor(document, currentActiveLayer, currentSession.primaryColor)
         const luminance = colorLuminance(sampled)
         const rowBounds = solidPreviewSpans.map((span) => ({
@@ -4395,7 +4396,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         const occupied = new Set(renderedPreviewPoints.keys())
         const previewFillRects: Array<{ pixelRect: { x: number; y: number; width: number; height: number }; sampleX: number; sampleY: number; color: RgbaColor }> = []
         const sampled = erasing
-          ? sampleCompositeForPreview(brushPoint.x, brushPoint.y)
+          ? drawing ? transparencyColorAt(brushPoint.x, brushPoint.y, checkerboard) : sampleCompositeForPreview(brushPoint.x, brushPoint.y)
           : resolveLayerCanvasColor(document, currentActiveLayer, drawing ? drag?.color ?? currentSession.primaryColor : currentSession.primaryColor)
         const luminance = colorLuminance(sampled)
         context.strokeStyle = luminance > 145 ? activeTheme.variables['--theme-selection-outline-dark'] : activeTheme.variables['--theme-selection-outline-light']
@@ -4734,6 +4735,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     }
     const drawDuration = drawStartedAt ? performance.now() - drawStartedAt : 0
     if (drawDuration >= 50) recordRuntimeDiagnostic('operation-stage', 'canvas.stage.draw', {
+      bitmapPolicy: 'defer-live-v1',
+      tool: currentSession.tool,
+      gesture: activeDrag?.kind ?? 'none',
       documentId: document.id,
       durationMs: Math.round(drawDuration * 10) / 10,
       width: document.width,
@@ -4746,23 +4750,24 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const scheduleDraw = (): void => {
-    const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-    const currentMask = activeLayerMask(currentSession)
-    const activeDrag = inputRef.current.drag
-    if (activeDrag && !nonContentPreviewDragKinds.has(activeDrag.kind)) {
-      if (currentMask) {
-        notifyLayerMaskThumbnailPreview(session.document.id, currentMask.id)
-      } else {
-        const timeline = currentSession.document.animation
-        const activeCel = timeline
-          ? resolveAnimationCel(timeline, timeline.cels.find((cel) => cel.layerId === currentSession.document.activeLayerId && cel.frameId === timeline.activeFrameId) ?? null)
-          : null
-        if (activeCel) notifyAnimationCelThumbnailPreview(session.document.id, activeCel.id, currentSession.document.activeLayerId)
-      }
-    }
     if (drawRequestRef.current !== null) return
     drawRequestRef.current = window.requestAnimationFrame(() => {
       drawRequestRef.current = null
+      // Auxiliary thumbnails follow the canvas RAF. Emitting this from every
+      // pointer event makes a long stroke enqueue redundant thumbnail renders.
+      const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+      const currentMask = activeLayerMask(currentSession)
+      const activeDrag = inputRef.current.drag
+      if (activeDrag && !nonContentPreviewDragKinds.has(activeDrag.kind)) {
+        if (currentMask) notifyLayerMaskThumbnailPreview(session.document.id, currentMask.id)
+        else {
+          const timeline = currentSession.document.animation
+          const activeCel = timeline
+            ? resolveAnimationCel(timeline, timeline.cels.find((item) => item.layerId === currentSession.document.activeLayerId && item.frameId === timeline.activeFrameId) ?? null)
+            : null
+          if (activeCel) notifyAnimationCelThumbnailPreview(session.document.id, activeCel.id, currentSession.document.activeLayerId)
+        }
+      }
       drawRef.current()
     })
   }
@@ -6542,6 +6547,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (drag?.kind === 'move-layer') {
       inputRef.current.sampling = false
       canvas.style.cursor = drag.duplicateOnDrag ? canvasCursors.copy : canvasCursors.move
+      return
+    }
+    // Drawing already owns the pointer hot path. Avoid rebuilding a composite
+    // point sampler for every coalesced eraser sample just to choose the
+    // cursor contrast; that synchronous layer-tree walk can block the RAF
+    // responsible for the live stroke preview.
+    if (drag?.kind === 'draw' || drag?.kind === 'airbrush') {
+      inputRef.current.sampling = false
+      canvas.style.cursor = canvasToolCursor(session.tool, session.primaryColor)
       return
     }
     if (drag?.kind === 'create-slice' || drag?.kind === 'move-slice' || drag?.kind === 'resize-slice') {
@@ -9469,6 +9483,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       let segmentStartColor = drag.lastBrushColor ?? drag.color ?? activeColor()
       let segmentStartGradient = drag.path?.at(-1)?.gradient
       let rebuiltStroke = false
+      const perfectPixelInvalidations: SelectionRect[] = []
       const paintRepeatedSegment = (
         from: Point,
         to: Point,
@@ -9601,11 +9616,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // completely. Painting every sample repeats the same wide stamp work;
       // connecting the previous point to the newest sample preserves the path
       // while keeping the pointer handler within one frame.
-      const strokeSamples = session.brushSize >= 64
+      const collapseCoalescedStrokeSamples = (session.tool === 'eraser' || session.brushSize >= 64)
         && activeBrushTexture === 'solid'
         && !activeBrushImage
         && !activeBrushDither?.enabled
         && pointerSamples.length > 1
+      const strokeSamples = collapseCoalescedStrokeSamples
         ? [pointerSamples[pointerSamples.length - 1]]
         : pointerSamples
       for (const sample of strokeSamples) {
@@ -9654,6 +9670,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         drag.lastBrushGradientActive = Boolean(sampleGradient)
         if (session.perfectPixels) {
           const path = drag.path ?? [{ ...segmentStart, size: segmentStartSize, opacityScale: segmentStartOpacityScale, angle: segmentStartAngle, color: segmentStartColor, gradient: segmentStartGradient }]
+          const previousTailDirty = drag.edit.dirtyRect ? { ...drag.edit.dirtyRect } : null
+          // Perfect-pixel correction only needs the last two path points. Keep
+          // those in a small reversible tail edit and seal older points into
+          // an accumulated edit. Replaying the whole stroke at every corrected
+          // corner made long eraser gestures progressively slower.
+          revertPixelEdit(session.document, drag.edit)
           if (samePoint) {
             const last = path.at(-1)
             if (last) {
@@ -9663,24 +9685,29 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
               last.color = sampleColor
               last.gradient = sampleGradient
             }
-          paintBrush(session.document, activePaintLayer(session), drag.edit, point.x, point.y, acceptedSize, sampleColor, session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, dynamics.opacityScale, undefined, false, sampleGradient, repeatMode, activeBrushDither, brushAngleWithDynamics(session, dynamics.angle), optimizedRotationEnabled, session.tool === 'eraser' ? 'simple' : session.inkMode)
           } else {
-            const removedCorner = appendPerfectPixelSegment(path, { ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: brushAngleWithDynamics(session, dynamics.angle), color: sampleColor, gradient: sampleGradient })
-            if (removedCorner) {
-              revertPixelEdit(session.document, drag.edit)
-              const paintLayer = activePaintLayer(session)
-              const edit = beginPixelEdit(paintLayer.id)
-              for (const center of path) {
-                const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)
-                paintBrush(session.document, paintLayer, edit, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither, center.angle, optimizedRotationEnabled, session.tool === 'eraser' ? 'simple' : session.inkMode)
-              }
-              drag.edit = edit
-              rebuiltStroke = true
-            } else {
-              paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartAngle, brushAngleWithDynamics(session, dynamics.angle), segmentStartColor, segmentStartGradient, sampleGradient)
-            }
+            appendPerfectPixelSegment(path, { ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: brushAngleWithDynamics(session, dynamics.angle), color: sampleColor, gradient: sampleGradient })
             drag.path = path
           }
+          const paintLayer = activePaintLayer(session)
+          const committed = drag.perfectPixelCommittedEdit ?? beginPixelEdit(paintLayer.id)
+          const stableEnd = Math.max(0, path.length - 2)
+          for (let index = drag.perfectPixelStablePathLength ?? 0; index < stableEnd; index += 1) {
+            const center = path[index]
+            const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)
+            paintBrush(session.document, paintLayer, committed, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither, center.angle, optimizedRotationEnabled, session.tool === 'eraser' ? 'simple' : session.inkMode)
+          }
+          const tail = beginPixelEdit(paintLayer.id)
+          for (let index = stableEnd; index < path.length; index += 1) {
+            const center = path[index]
+            const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)
+            paintBrush(session.document, paintLayer, tail, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither, center.angle, optimizedRotationEnabled, session.tool === 'eraser' ? 'simple' : session.inkMode)
+          }
+          drag.perfectPixelCommittedEdit = committed
+          drag.perfectPixelStablePathLength = stableEnd
+          drag.edit = tail
+          if (previousTailDirty) perfectPixelInvalidations.push(previousTailDirty)
+          if (tail.dirtyRect) perfectPixelInvalidations.push({ ...tail.dirtyRect })
         } else {
           paintRepeatedSegment(segmentStart, repeatedPoint, segmentStartSize, acceptedSize, segmentStartOpacityScale, dynamics.opacityScale, segmentStartAngle, brushAngleWithDynamics(session, dynamics.angle), segmentStartColor, segmentStartGradient, sampleGradient)
           drag.path = [{ ...repeatedPoint, size: acceptedSize, opacityScale: dynamics.opacityScale, angle: brushAngleWithDynamics(session, dynamics.angle), color: sampleColor, gradient: sampleGradient }]
@@ -9714,6 +9741,10 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // large projects.
       for (const rect of batchedFineInvalidations) invalidateCompositeRect(rect)
       if (batchedStrokeInvalidation) invalidateCompositeRect(batchedStrokeInvalidation)
+      for (const rect of perfectPixelInvalidations) invalidateCompositeRect(rect)
+      // Map size is not a change counter: compact strokes use edit.points,
+      // and partial opacity can modify existing entries without growing it.
+      if (perfectPixelInvalidations.length === 0 && batchedFineInvalidations.length === 0 && !batchedStrokeInvalidation && batchSimpleStrokeInvalidation) return
       scheduleDraw(); return
     }
     if (drag.kind === 'airbrush') {
@@ -10331,6 +10362,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       // preview as authoritative is what produces visible gaps until an eye
       // toggle forces a redraw. The committed dirty rect below is the source
       // of truth and will repaint every affected strip.
+      if (drag.perfectPixelCommittedEdit) drag.edit = mergePixelEdits(drag.perfectPixelCommittedEdit, drag.edit)
       const entry = state.commitPixelEdit(drag.edit, session.tool === 'eraser' ? t('canvas.history.eraser') : t('canvas.history.draw'), { stroke: true, durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now())) })
       if (!entry) compositeCacheRef.current.clearLivePreview(session.document)
       // `commitPixelEdit` already publishes the edit's dirty rectangle through

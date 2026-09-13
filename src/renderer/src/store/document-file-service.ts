@@ -533,17 +533,21 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     if (slices.length === 0) throw new Error(translate(loadEditorPreferences().language, 'file.export.sliceMissing'))
     const directoryPath = await resolveBatchExportDirectory(api, options.directory)
     if (!directoryPath) return null
+    // Resolve every destination before reporting encoding progress.  The
+    // fallback renderer path is synchronous, so resolving a collision from
+    // inside its encode loop otherwise leaves the progress dialog visible
+    // behind the conflict dialog.
+    const extension = exportFileExtension(format)
+    const usedSliceNames = new Set<string>()
+    const destinations: Array<{ slice: DocumentSlice; path: string }> = []
+    for (const slice of slices) {
+      throwIfExportCanceled(lifecycle)
+      const requestedPath = joinDirectoryPath(directoryPath, sliceExportFileName(slice, extension, usedSliceNames))
+      const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
+      if (!resolvedPath) return null
+      destinations.push({ slice, path: resolvedPath })
+    }
     if (typeof Worker !== 'undefined') {
-      const extension = exportFileExtension(format)
-      const used = new Set<string>()
-      const destinations: Array<{ slice: DocumentSlice; path: string }> = []
-      for (const slice of slices) {
-        throwIfExportCanceled(lifecycle)
-        const requestedPath = joinDirectoryPath(directoryPath, sliceExportFileName(slice, extension, used))
-        const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
-        if (!resolvedPath) return null
-        destinations.push({ slice, path: resolvedPath })
-      }
       lifecycle?.onEncodeStart?.()
       let lastPath = directoryPath
       await exportDocumentInWorker(document, {
@@ -581,17 +585,12 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     }
     throwIfExportCanceled(lifecycle)
     lifecycle?.onEncodeStart?.()
-    const used = new Set<string>()
     let lastPath = directoryPath
-    for (const [index, slice] of slices.entries()) {
+    for (const [index, { slice, path }] of destinations.entries()) {
       throwIfExportCanceled(lifecycle)
       lifecycle?.onExportTaskStart?.(index + 1, slices.length)
       if (isPngFileFormat(format) && api.writeScaledPngAtomic) {
-        const fileName = sliceExportFileName(slice, 'png', used)
-        lastPath = joinDirectoryPath(directoryPath, fileName)
-        const resolvedSlicePath = await resolveExportPath(api, lastPath, lifecycle)
-        if (!resolvedSlicePath) return null
-        lastPath = resolvedSlicePath
+        lastPath = path
         await writeDocumentPngAtomic(api, lastPath, document, scalePercent, format, slice, (value) => {
           throwIfExportCanceled(lifecycle)
           lifecycle?.onEncodeProgress?.((index + value / 100) / slices.length * 100)
@@ -604,11 +603,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
         ? { ...exportAnimationGif(document, { scalePercent, frameStart: options?.gifFrameRange === 'range' ? options.gifFrameStart : undefined, frameEnd: options?.gifFrameRange === 'range' ? options.gifFrameEnd : undefined, loopSectionId: options?.gifFrameRange === 'loop-section' ? options.gifLoopSectionId : undefined, direction: options?.gifDirection ?? 'forward', crop: slice }), extension: 'gif' as const, indexed: false }
         : await exportDocumentSliceImage(document, slice, scalePercent, format)
       throwIfExportCanceled(lifecycle)
-      const fileName = sliceExportFileName(slice, output.extension, used)
-      lastPath = joinDirectoryPath(directoryPath, fileName)
-      const resolvedSlicePath = await resolveExportPath(api, lastPath, lifecycle)
-      if (!resolvedSlicePath) return null
-      lastPath = resolvedSlicePath
+      lastPath = path
       lifecycle?.onWriteStart?.()
       await api.writeBinaryAtomic(lastPath, output.bytes)
       throwIfExportCanceled(lifecycle)
@@ -633,17 +628,17 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     if (!directoryPath) return null
     const frameIds = document.animation?.frames.map((frame) => frame.id) ?? [null]
     const digits = Math.max(3, String(frameIds.length).length)
+    const extension = exportFileExtension(format)
+    const destinations: Array<{ frameId: string | null; path: string }> = []
+    for (const [index, frameId] of frameIds.entries()) {
+      throwIfExportCanceled(lifecycle)
+      const frameNumber = String(index + 1).padStart(digits, '0')
+      const requestedPath = joinDirectoryPath(directoryPath, `${requestedName}-${frameNumber}.${extension}`)
+      const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
+      if (!resolvedPath) return null
+      destinations.push({ frameId, path: resolvedPath })
+    }
     if (typeof Worker !== 'undefined') {
-      const extension = exportFileExtension(format)
-      const destinations: Array<{ frameId: string | null; path: string }> = []
-      for (const [index, frameId] of frameIds.entries()) {
-        throwIfExportCanceled(lifecycle)
-        const frameNumber = String(index + 1).padStart(digits, '0')
-        const requestedPath = joinDirectoryPath(directoryPath, `${requestedName}-${frameNumber}.${extension}`)
-        const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
-        if (!resolvedPath) return null
-        destinations.push({ frameId, path: resolvedPath })
-      }
       lifecycle?.onEncodeStart?.()
       let lastPath = directoryPath
       await exportDocumentInWorker(document, {
@@ -676,16 +671,12 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     throwIfExportCanceled(lifecycle)
     lifecycle?.onEncodeStart?.()
     let lastPath = directoryPath
-    for (const [index, frameId] of frameIds.entries()) {
+    for (const [index, { frameId, path }] of destinations.entries()) {
       throwIfExportCanceled(lifecycle)
       lifecycle?.onExportTaskStart?.(index + 1, frameIds.length)
       const frameDocument = frameId ? cloneDocumentForAnimationFrame(document, frameId) : document
-      const frameNumber = String(index + 1).padStart(digits, '0')
       if (isPngFileFormat(format) && api.writeScaledPngAtomic) {
-        lastPath = joinDirectoryPath(directoryPath, `${requestedName}-${frameNumber}.png`)
-        const resolvedFramePath = await resolveExportPath(api, lastPath, lifecycle)
-        if (!resolvedFramePath) return null
-        lastPath = resolvedFramePath
+        lastPath = path
         await writeDocumentPngAtomic(api, lastPath, frameDocument, scalePercent, format, undefined, (value) => {
           throwIfExportCanceled(lifecycle)
           lifecycle?.onEncodeProgress?.((index + value / 100) / frameIds.length * 100)
@@ -696,10 +687,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
       throwIfExportCanceled(lifecycle)
       const output = await exportDocumentImage(frameDocument, scalePercent, format)
       throwIfExportCanceled(lifecycle)
-      lastPath = joinDirectoryPath(directoryPath, `${requestedName}-${frameNumber}.${output.extension}`)
-      const resolvedFramePath = await resolveExportPath(api, lastPath, lifecycle)
-      if (!resolvedFramePath) return null
-      lastPath = resolvedFramePath
+      lastPath = path
       if (index === 0) lifecycle?.onWriteStart?.()
       await api.writeBinaryAtomic(lastPath, output.bytes)
       throwIfExportCanceled(lifecycle)

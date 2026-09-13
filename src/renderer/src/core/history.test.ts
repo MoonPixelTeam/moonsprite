@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDocument, createLayer, expandLayerToRect, getActiveLayer, readLayerPacked } from './document'
-import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel, recordPixelKnownCurrent } from './history'
+import { beginPixelEdit, commitPixelEdit, HistoryStack, mergePixelEdits, recordPixel, recordPixelKnownCurrent } from './history'
 
 const entry = (state: { value: number }, next: number, label = 'edit') => ({
   label,
@@ -10,6 +10,26 @@ const entry = (state: { value: number }, next: number, label = 'edit') => ({
 })
 
 describe('HistoryStack', () => {
+  it('merges a sealed brush prefix and reversible tail with the original baseline', () => {
+    const prefix = beginPixelEdit('layer')
+    prefix.before.set(1, 10)
+    prefix.after.set(1, 20)
+    prefix.before.set(2, 30)
+    prefix.after.set(2, 40)
+    prefix.dirtyRect = { x: 1, y: 0, width: 2, height: 1 }
+    const tail = beginPixelEdit('layer')
+    tail.before.set(2, 40)
+    tail.after.set(2, 50)
+    tail.before.set(3, 60)
+    tail.after.set(3, 70)
+    tail.dirtyRect = { x: 2, y: 0, width: 2, height: 1 }
+
+    const merged = mergePixelEdits(prefix, tail)
+
+    expect([...merged.before]).toEqual([[1, 10], [2, 30], [3, 60]])
+    expect([...merged.after]).toEqual([[1, 20], [2, 50], [3, 70]])
+    expect(merged.dirtyRect).toEqual({ x: 1, y: 0, width: 3, height: 1 })
+  })
   it('commits known-current pixel writes without retaining reverted pixels', () => {
     const document = createDocument('pixel history', 3, 2, 'rgba')
     const layer = getActiveLayer(document)

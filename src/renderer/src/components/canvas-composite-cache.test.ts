@@ -116,6 +116,47 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('CanvasCompositeCache', () => {
+  it('keeps one unfinished bitmap capture across repeated invalidations', async () => {
+    const document = createDocument('long stroke capture backlog', 256, 256, 'rgba')
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const pending: Array<(bitmap: { close: () => void }) => void> = []
+    const capture = vi.fn(() => new Promise<{ close: () => void }>(resolve => pending.push(resolve)))
+    vi.stubGlobal('createImageBitmap', capture)
+    draw(cache, document, context)
+    for (let x = 0; x < 60; x += 1) {
+      writeLayerColor(document, document.layers[0], x, { r: x, g: 0, b: 0, a: 255 })
+      cache.invalidateDocumentRect({ x, y: 0, width: 1, height: 1 }, document)
+      draw(cache, document, context)
+    }
+    expect(capture).toHaveBeenCalledTimes(1)
+    const close = vi.fn()
+    pending[0]({ close })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(close).toHaveBeenCalledTimes(1)
+    draw(cache, document, context)
+    expect(capture).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([true, false])('defers bitmap captures during a long stroke (full surface: %s)', async (fullSurface) => {
+    const document = createDocument('live stroke without snapshots', 256, 256, 'rgba')
+    const cache = fullSurface ? new CanvasCompositeCache() : new CanvasCompositeCache(1)
+    const context = makeContext()
+    const capture = vi.fn(async () => ({ close: vi.fn() }))
+    vi.stubGlobal('createImageBitmap', capture)
+    for (let x = 0; x < 60; x += 1) {
+      writeLayerColor(document, document.layers[0], x, { r: x, g: 0, b: 0, a: 255 })
+      cache.invalidateDocumentRect({ x, y: 0, width: 1, height: 1 }, document)
+      draw(cache, document, context, { liveRasterEdit: true })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    expect(capture).not.toHaveBeenCalled()
+    const source = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(source.pixels.slice(59 * 4, 60 * 4))).toEqual([59, 0, 0, 255])
+    draw(cache, document, context, { liveRasterEdit: false })
+    expect(capture).toHaveBeenCalledTimes(1)
+  })
+
   it('shows a moved layer across enabled tile-repeat boundaries', () => {
     const document = createDocument('repeated moved layer', 4, 1, 'rgba')
     const moving = createLayer('moving', 4, 1, 'rgba')
