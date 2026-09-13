@@ -273,7 +273,12 @@ mod tests {
 
         assert_eq!(
             names,
-            vec!["animation.ASEPRITE", "layers.psd", "project.moonsprite", "sprite.png"]
+            vec![
+                "animation.ASEPRITE",
+                "layers.psd",
+                "project.moonsprite",
+                "sprite.png"
+            ]
         );
         fs::remove_dir_all(directory).unwrap();
     }

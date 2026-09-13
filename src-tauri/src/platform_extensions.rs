@@ -592,7 +592,9 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         }
         if tool.preview_color.len() != 9
             || !tool.preview_color.starts_with('#')
-            || !tool.preview_color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !tool.preview_color[1..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(format!("扩展工具“{}”的预览色必须是 #RRGGBBAA。", tool.id));
         }
@@ -1187,7 +1189,9 @@ pub(crate) fn list_extensions() -> Result<ExtensionListing, String> {
 }
 
 #[tauri::command]
-pub(crate) fn inspect_extension_package(package_path: String) -> Result<ExtensionPackagePreview, String> {
+pub(crate) fn inspect_extension_package(
+    package_path: String,
+) -> Result<ExtensionPackagePreview, String> {
     let package_path = PathBuf::from(package_path.trim());
     if !is_extension_package_path(&package_path) {
         return Err("只能预览 .msext 扩展包。".to_string());

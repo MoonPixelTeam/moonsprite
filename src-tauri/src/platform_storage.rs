@@ -64,11 +64,17 @@ pub fn atomic_write_with_validation_and_backup(
         }
         let project_directory = backup_directory.join(project_backup_directory_name(path));
         fs::create_dir_all(&project_directory).map_err(|error| error.to_string())?;
-        let backup = project_directory.join(format!("backup-{}{}", backup_timestamp(), PROJECT_BACKUP_EXTENSION));
+        let backup = project_directory.join(format!(
+            "backup-{}{}",
+            backup_timestamp(),
+            PROJECT_BACKUP_EXTENSION
+        ));
         fs::hard_link(path, &backup)
             .or_else(|_| fs::copy(path, &backup).map(|_| ()))
             .map_err(|error| error.to_string())?;
-        if let Err(error) = prune_project_backups(backup_directory, max_versions_per_project, retention) {
+        if let Err(error) =
+            prune_project_backups(backup_directory, max_versions_per_project, retention)
+        {
             eprintln!("无法清理工程备份：{error}");
         }
         Ok(())
@@ -82,7 +88,11 @@ struct ProjectBackupEntry {
     project_key: String,
 }
 
-fn prune_project_backups(directory: &Path, max_versions_per_project: usize, retention: Duration) -> Result<(), String> {
+fn prune_project_backups(
+    directory: &Path,
+    max_versions_per_project: usize,
+    retention: Duration,
+) -> Result<(), String> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -92,19 +102,43 @@ fn prune_project_backups(directory: &Path, max_versions_per_project: usize, rete
     for entry in entries {
         let path = entry.map_err(|error| error.to_string())?.path();
         if path.is_file() {
-            let Some(project_key) = legacy_project_backup_key(&path) else { continue };
+            let Some(project_key) = legacy_project_backup_key(&path) else {
+                continue;
+            };
             let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
-            backups.push(ProjectBackupEntry { path, size: metadata.len(), modified: metadata.modified().unwrap_or(UNIX_EPOCH), project_key });
+            backups.push(ProjectBackupEntry {
+                path,
+                size: metadata.len(),
+                modified: metadata.modified().unwrap_or(UNIX_EPOCH),
+                project_key,
+            });
             continue;
         }
-        if !path.is_dir() { continue; }
-        let project_key = path.file_name().and_then(|value| value.to_str()).unwrap_or_default().to_string();
-        if project_key.is_empty() { continue; }
+        if !path.is_dir() {
+            continue;
+        }
+        let project_key = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if project_key.is_empty() {
+            continue;
+        }
         for child in fs::read_dir(&path).map_err(|error| error.to_string())? {
             let child = child.map_err(|error| error.to_string())?.path();
-            if !child.is_file() || child.extension().and_then(|value| value.to_str()) != Some("moonsprite") { continue; }
+            if !child.is_file()
+                || child.extension().and_then(|value| value.to_str()) != Some("moonsprite")
+            {
+                continue;
+            }
             let metadata = fs::metadata(&child).map_err(|error| error.to_string())?;
-            backups.push(ProjectBackupEntry { path: child, size: metadata.len(), modified: metadata.modified().unwrap_or(UNIX_EPOCH), project_key: project_key.clone() });
+            backups.push(ProjectBackupEntry {
+                path: child,
+                size: metadata.len(),
+                modified: metadata.modified().unwrap_or(UNIX_EPOCH),
+                project_key: project_key.clone(),
+            });
         }
     }
     backups.sort_by(|left, right| right.modified.cmp(&left.modified));
@@ -117,7 +151,10 @@ fn prune_project_backups(directory: &Path, max_versions_per_project: usize, rete
             .map(|age| age > retention)
             .unwrap_or(false);
         let over_count = index >= MAX_PROJECT_BACKUPS;
-        let project_count = retained_per_project.get(&backup.project_key).copied().unwrap_or(0);
+        let project_count = retained_per_project
+            .get(&backup.project_key)
+            .copied()
+            .unwrap_or(0);
         let over_project_count = project_count >= max_versions_per_project;
         let over_size = retained_bytes.saturating_add(backup.size) > MAX_PROJECT_BACKUP_BYTES;
         // Always retain the newest backup. It is the immediate rollback point
@@ -144,13 +181,28 @@ fn legacy_project_backup_key(path: &Path) -> Option<String> {
 }
 
 fn backup_project_name(path: &Path) -> String {
-    let source = path.file_stem().and_then(|value| value.to_str()).unwrap_or("project");
-    let name = source.chars().filter(|value| value.is_alphanumeric() || matches!(value, '-' | '_')).take(64).collect::<String>();
-    if name.is_empty() { "project".to_string() } else { name }
+    let source = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("project");
+    let name = source
+        .chars()
+        .filter(|value| value.is_alphanumeric() || matches!(value, '-' | '_'))
+        .take(64)
+        .collect::<String>();
+    if name.is_empty() {
+        "project".to_string()
+    } else {
+        name
+    }
 }
 
 pub fn project_backup_directory_name(path: &Path) -> String {
-    format!("{}-{:016x}", backup_project_name(path), stable_path_hash(path))
+    format!(
+        "{}-{:016x}",
+        backup_project_name(path),
+        stable_path_hash(path)
+    )
 }
 
 pub fn project_backup_legacy_key(path: &Path) -> String {
@@ -238,8 +290,9 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), String> {
 mod tests {
     use super::{
         atomic_write, atomic_write_with, atomic_write_with_validation,
-        atomic_write_with_validation_and_backup, prune_project_backups, DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
-        LEGACY_PROJECT_BACKUP_SUFFIX, MAX_PROJECT_BACKUPS, PROJECT_BACKUP_RETENTION,
+        atomic_write_with_validation_and_backup, prune_project_backups,
+        DEFAULT_PROJECT_BACKUPS_PER_PROJECT, LEGACY_PROJECT_BACKUP_SUFFIX, MAX_PROJECT_BACKUPS,
+        PROJECT_BACKUP_RETENTION,
     };
     use std::{
         fs,
@@ -329,7 +382,13 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(backups.len(), 1);
-        assert_eq!(backups[0].path().extension().and_then(|value| value.to_str()), Some("moonsprite"));
+        assert_eq!(
+            backups[0]
+                .path()
+                .extension()
+                .and_then(|value| value.to_str()),
+            Some("moonsprite")
+        );
         assert_eq!(fs::read(backups[0].path()).unwrap(), b"original");
         let _ = fs::remove_dir_all(directory);
     }
@@ -348,8 +407,7 @@ mod tests {
                 DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
                 PROJECT_BACKUP_RETENTION,
                 |file| {
-                    std::io::Write::write_all(file, replacement)
-                        .map_err(|error| error.to_string())
+                    std::io::Write::write_all(file, replacement).map_err(|error| error.to_string())
                 },
                 |_| Ok(()),
             )
@@ -359,7 +417,10 @@ mod tests {
         let project_directory = fs::read_dir(&backup_directory)
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
-            .unwrap().pop().unwrap().path();
+            .unwrap()
+            .pop()
+            .unwrap()
+            .path();
         let mut contents = fs::read_dir(project_directory)
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
@@ -384,7 +445,12 @@ mod tests {
             )
             .unwrap();
         }
-        prune_project_backups(&directory, DEFAULT_PROJECT_BACKUPS_PER_PROJECT, PROJECT_BACKUP_RETENTION).unwrap();
+        prune_project_backups(
+            &directory,
+            DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
+            PROJECT_BACKUP_RETENTION,
+        )
+        .unwrap();
         let backups = fs::read_dir(&project_directory)
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
@@ -404,7 +470,12 @@ mod tests {
             )
             .unwrap();
         }
-        prune_project_backups(&directory, DEFAULT_PROJECT_BACKUPS_PER_PROJECT, PROJECT_BACKUP_RETENTION).unwrap();
+        prune_project_backups(
+            &directory,
+            DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
+            PROJECT_BACKUP_RETENTION,
+        )
+        .unwrap();
         let backups = fs::read_dir(&directory)
             .unwrap()
             .collect::<Result<Vec<_>, _>>()

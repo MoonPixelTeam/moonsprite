@@ -1,6 +1,7 @@
 use crate::platform_storage::{
-    atomic_write, atomic_write_with, atomic_write_with_validation, atomic_write_with_validation_and_backup,
-    project_backup_directory_name, project_backup_legacy_key, DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
+    atomic_write, atomic_write_with, atomic_write_with_validation,
+    atomic_write_with_validation_and_backup, project_backup_directory_name,
+    project_backup_legacy_key, DEFAULT_PROJECT_BACKUPS_PER_PROJECT,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -160,24 +161,41 @@ fn request_positive_u32_header(request: &Request<'_>, header: &str) -> Result<u3
 }
 
 fn project_backup_policy(request: &Request<'_>) -> Option<(usize, Duration)> {
-    if request.headers().get(PROJECT_BACKUP_ENABLED_HEADER).and_then(|value| value.to_str().ok()) == Some("0") {
+    if request
+        .headers()
+        .get(PROJECT_BACKUP_ENABLED_HEADER)
+        .and_then(|value| value.to_str().ok())
+        == Some("0")
+    {
         return None;
     }
-    let versions = request.headers().get(PROJECT_BACKUP_VERSIONS_HEADER)
+    let versions = request
+        .headers()
+        .get(PROJECT_BACKUP_VERSIONS_HEADER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<usize>().ok())
         .map(|value| value.clamp(1, DEFAULT_PROJECT_BACKUPS_PER_PROJECT))
         .unwrap_or(DEFAULT_PROJECT_BACKUPS_PER_PROJECT);
-    let days = request.headers().get(PROJECT_BACKUP_RETENTION_DAYS_HEADER)
+    let days = request
+        .headers()
+        .get(PROJECT_BACKUP_RETENTION_DAYS_HEADER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok())
         .map(|value| value.clamp(1, 365))
         .unwrap_or(DEFAULT_PROJECT_BACKUP_RETENTION_DAYS);
-    Some((versions, Duration::from_secs(days.saturating_mul(24 * 60 * 60))))
+    Some((
+        versions,
+        Duration::from_secs(days.saturating_mul(24 * 60 * 60)),
+    ))
 }
 
-fn project_backup_directory_from_request(app: &AppHandle, request: &Request<'_>) -> Result<PathBuf, String> {
-    let directory_path = request.headers().get(PROJECT_BACKUP_DIRECTORY_HEADER)
+fn project_backup_directory_from_request(
+    app: &AppHandle,
+    request: &Request<'_>,
+) -> Result<PathBuf, String> {
+    let directory_path = request
+        .headers()
+        .get(PROJECT_BACKUP_DIRECTORY_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(decode_file_path_header)
         .transpose()?;
@@ -239,8 +257,14 @@ fn project_backup_directory(app: &AppHandle) -> Result<std::path::PathBuf, Strin
         .map_err(|error| error.to_string())
 }
 
-fn configured_project_backup_directory(app: &AppHandle, directory_path: Option<&str>) -> Result<PathBuf, String> {
-    let Some(directory_path) = directory_path.map(str::trim).filter(|value| !value.is_empty()) else {
+fn configured_project_backup_directory(
+    app: &AppHandle,
+    directory_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    let Some(directory_path) = directory_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return project_backup_directory(app);
     };
     let directory = PathBuf::from(directory_path);
@@ -251,7 +275,10 @@ fn configured_project_backup_directory(app: &AppHandle, directory_path: Option<&
 }
 
 #[tauri::command]
-pub fn open_project_backup_folder(app: AppHandle, directory_path: Option<String>) -> Result<(), String> {
+pub fn open_project_backup_folder(
+    app: AppHandle,
+    directory_path: Option<String>,
+) -> Result<(), String> {
     let directory = configured_project_backup_directory(&app, directory_path.as_deref())?;
     fs::create_dir_all(&directory).map_err(|error| format!("无法创建工程备份文件夹：{error}"))?;
     #[cfg(target_os = "windows")]
@@ -291,31 +318,55 @@ pub fn list_project_backups(
     if let Ok(entries) = fs::read_dir(&project_directory) {
         for entry in entries {
             let path = entry.map_err(|error| error.to_string())?.path();
-            if !path.is_file() || !path.extension().and_then(|value| value.to_str()).is_some_and(|value| value.eq_ignore_ascii_case("moonsprite")) {
+            if !path.is_file()
+                || !path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value.eq_ignore_ascii_case("moonsprite"))
+            {
                 continue;
             }
             let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
-            let modified_at = metadata.modified().ok()
+            let modified_at = metadata
+                .modified()
+                .ok()
                 .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
                 .map(|value| value.as_millis().min(u64::MAX as u128) as u64)
                 .unwrap_or_default();
-            records.push(ProjectBackupRecord { file_path: path.to_string_lossy().to_string(), modified_at, size_bytes: metadata.len() });
+            records.push(ProjectBackupRecord {
+                file_path: path.to_string_lossy().to_string(),
+                modified_at,
+                size_bytes: metadata.len(),
+            });
         }
     }
     let legacy_key = project_backup_legacy_key(project);
     if let Ok(entries) = fs::read_dir(&directory) {
         for entry in entries {
             let path = entry.map_err(|error| error.to_string())?.path();
-            let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-            if !path.is_file() || !(name == format!("{legacy_key}.moonsprite.bak") || name.starts_with(&format!("{legacy_key}-")) && name.ends_with(".moonsprite.bak")) {
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            if !path.is_file()
+                || !(name == format!("{legacy_key}.moonsprite.bak")
+                    || name.starts_with(&format!("{legacy_key}-"))
+                        && name.ends_with(".moonsprite.bak"))
+            {
                 continue;
             }
             let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
-            let modified_at = metadata.modified().ok()
+            let modified_at = metadata
+                .modified()
+                .ok()
                 .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
                 .map(|value| value.as_millis().min(u64::MAX as u128) as u64)
                 .unwrap_or_default();
-            records.push(ProjectBackupRecord { file_path: path.to_string_lossy().to_string(), modified_at, size_bytes: metadata.len() });
+            records.push(ProjectBackupRecord {
+                file_path: path.to_string_lossy().to_string(),
+                modified_at,
+                size_bytes: metadata.len(),
+            });
         }
     }
     records.sort_by(|left, right| right.modified_at.cmp(&left.modified_at));
@@ -1395,7 +1446,16 @@ fn supports_preview_cache(path: &Path) -> bool {
         .is_some_and(|value| {
             matches!(
                 value.to_ascii_lowercase().as_str(),
-                "moonsprite" | "ase" | "aseprite" | "psd" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
+                "moonsprite"
+                    | "ase"
+                    | "aseprite"
+                    | "psd"
+                    | "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "webp"
+                    | "bmp"
+                    | "gif"
             )
         })
 }
@@ -1582,20 +1642,26 @@ pub fn write_binary_atomic(app: AppHandle, request: Request<'_>) -> Result<(), S
     let data = raw_request_data(&request)?;
     let path = Path::new(&file_path);
     let backup_policy = project_backup_policy(&request);
-    let backup_directory = backup_policy.as_ref()
+    let backup_directory = backup_policy
+        .as_ref()
         .map(|_| project_backup_directory_from_request(&app, &request))
         .transpose()?;
     if is_moonsprite_backup_path(path) {
         return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
     }
-    if backup_directory.as_ref().is_some_and(|directory| path.starts_with(directory)) {
+    if backup_directory
+        .as_ref()
+        .is_some_and(|directory| path.starts_with(directory))
+    {
         return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
     }
     if is_moonsprite_project_path(path) {
         if let Some((backup_versions, backup_retention)) = backup_policy {
             atomic_write_with_validation_and_backup(
                 path,
-                backup_directory.as_deref().expect("backup directory exists when backups are enabled"),
+                backup_directory
+                    .as_deref()
+                    .expect("backup directory exists when backups are enabled"),
                 backup_versions,
                 backup_retention,
                 |output| output.write_all(data).map_err(|error| error.to_string()),
@@ -1696,10 +1762,14 @@ pub async fn write_project_incremental(app: AppHandle, request: Request<'_>) -> 
     }
     let patch = raw_request_data(&request)?.to_vec();
     let backup_policy = project_backup_policy(&request);
-    let backup_directory = backup_policy.as_ref()
+    let backup_directory = backup_policy
+        .as_ref()
         .map(|_| project_backup_directory_from_request(&app, &request))
         .transpose()?;
-    if backup_directory.as_ref().is_some_and(|directory| Path::new(&file_path).starts_with(directory)) {
+    if backup_directory
+        .as_ref()
+        .is_some_and(|directory| Path::new(&file_path).starts_with(directory))
+    {
         return Err("工程备份为只读文件，请另存为新的 .moonsprite 工程。".to_string());
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -1707,7 +1777,9 @@ pub async fn write_project_incremental(app: AppHandle, request: Request<'_>) -> 
         if let Some((backup_versions, backup_retention)) = backup_policy {
             atomic_write_with_validation_and_backup(
                 Path::new(&file_path),
-                backup_directory.as_deref().expect("backup directory exists when backups are enabled"),
+                backup_directory
+                    .as_deref()
+                    .expect("backup directory exists when backups are enabled"),
                 backup_versions,
                 backup_retention,
                 |output| merge_project_archive(source, &patch, output),

@@ -20,7 +20,9 @@ pub(crate) struct DiagnosticState {
 // This runs in the host process: renderer-side error handlers cannot report a
 // renderer crash, because they disappear together with the failed process.
 #[cfg(windows)]
-pub(crate) fn install_webview_failure_diagnostics(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+pub(crate) fn install_webview_failure_diagnostics(
+    window: &tauri::WebviewWindow,
+) -> tauri::Result<()> {
     use webview2_com::{Microsoft::Web::WebView2::Win32::*, ProcessFailedEventHandler};
     use windows_core::Interface;
 
@@ -84,7 +86,9 @@ pub(crate) fn install_webview_failure_diagnostics(window: &tauri::WebviewWindow)
 }
 
 #[cfg(not(windows))]
-pub(crate) fn install_webview_failure_diagnostics(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
+pub(crate) fn install_webview_failure_diagnostics(
+    _window: &tauri::WebviewWindow,
+) -> tauri::Result<()> {
     Ok(())
 }
 
