@@ -51,7 +51,7 @@ During continuous development, validate only the files changed by the current ta
 pnpm check:dev -- <changed-files...>
 ```
 
-Protected architecture boundaries, releases, and packaging use separate gates. See the [AI and automated development workflow](docs/agent-workflow.en.md). `pnpm package` produces an NSIS installer and portable build under `release/`. That directory is not committed, and packaging is run only when a deliverable is explicitly requested.
+Protected architecture boundaries, releases, and packaging use separate gates. See the Chinese-only `docs/agent-workflow.md`. `pnpm package` produces an NSIS installer and portable build under `release/`. That directory is not committed, and packaging is run only when a deliverable is explicitly requested.
 
 ## Runtime Directories
 
@@ -83,4 +83,3 @@ These runtime directories are not committed. The source repository's own `script
 - [Changelog](CHANGELOG.md) (canonical release record, Chinese)
 - [Product behavior contract](docs/product/behavior.en.md)
 - [File format](docs/file-format.en.md)
-- [Release checklist](docs/release/release-checklist.en.md)

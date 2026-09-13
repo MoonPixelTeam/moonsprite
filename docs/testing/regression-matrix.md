@@ -1,7 +1,6 @@
 # 高风险回归矩阵
 
-中文 | [English](regression-matrix.en.md)
-
+中文
 本文件只保存长期值得维护的高风险契约，不记录每次 Debug 的具体现象。精简前的 363 条场景保存在 [DEV.3 Debug 回归明细归档](../archive/regression-matrix-dev3-debug-detail.md)，普通开发不得加载该归档。
 
 ## 收录标准

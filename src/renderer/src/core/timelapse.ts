@@ -3,6 +3,7 @@ import { compositeRegion, createCompositePointSampler, createId, createNormalCom
 import { encodePng } from './png-encode'
 import { normalizeTimelapseSettings } from './project-metadata'
 import { translateCurrent as tr } from './localization'
+import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from './runtime-diagnostics'
 
 export type TimelapseExportMode = 'duration' | 'speed'
 
@@ -386,12 +387,19 @@ const planSmartTimelapseCapture = (settings: TimelapseSettings, cache?: Timelaps
   }
 }
 
-const applySmartTimelapsePlan = (settings: TimelapseSettings, cache: TimelapseCaptureCache | undefined, plan: SmartTimelapsePlan): void => {
+const applySmartTimelapsePlan = (settings: TimelapseSettings, cache: TimelapseCaptureCache | undefined, plan: SmartTimelapsePlan, documentId: string): void => {
   if (!cache || plan.mode !== 'smart') {
     if (cache) resetTimelapseSmartCapture(cache)
     return
   }
-  if (plan.transition) settings.snapshots = decimateTimelapseSnapshots(settings.snapshots)
+  if (plan.transition) {
+    const before = settings.snapshots.length
+    settings.snapshots = decimateTimelapseSnapshots(settings.snapshots)
+    if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'timelapse.compact', {
+      documentId, reason: 'smart-sampling', beforeFrames: before, retainedFrames: settings.snapshots.length,
+      samplingStride: plan.nextStride
+    })
+  }
   cache.smartMode = plan.mode
   cache.smartStride = plan.nextStride
   cache.smartSamplingPhase = plan.nextSamplingPhase
@@ -446,7 +454,7 @@ export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, 
   if (!settings.enabled) return
   const plan = planSmartTimelapseCapture(settings, snapshot.cache)
   if (!plan.keep) {
-    if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan)
+    if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan, document.id)
     return
   }
   const data = await encodeTimelapsePngAsync(snapshot.pixels, snapshot.width, snapshot.height)
@@ -455,7 +463,7 @@ export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, 
   document.timelapse = latestSettings
   if (!latestSettings.enabled) return
   if ((latestSettings.mode ?? 'full') !== plan.mode) return
-  applySmartTimelapsePlan(latestSettings, snapshot.cache, plan)
+  applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
   appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, data)
   markSmartTimelapseSnapshotAdded(latestSettings, snapshot.cache)
 }
@@ -465,11 +473,11 @@ export function captureTimelapseSnapshot(document: SpriteDocument, now = Date.no
   if (!capture) return
   const plan = planSmartTimelapseCapture(capture.settings, capture.cache)
   if (!plan.keep) {
-    applySmartTimelapsePlan(capture.settings, capture.cache, plan)
+    applySmartTimelapsePlan(capture.settings, capture.cache, plan, document.id)
     return
   }
   const data = encodePng(capture.pixels, capture.width, capture.height, true).bytes
-  applySmartTimelapsePlan(capture.settings, capture.cache, plan)
+  applySmartTimelapsePlan(capture.settings, capture.cache, plan, document.id)
   appendTimelapseSnapshot(capture.settings, now, capture.width, capture.height, data)
   markSmartTimelapseSnapshotAdded(capture.settings, capture.cache)
 }
@@ -483,7 +491,7 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   if (!capture || options.shouldCommit?.() === false) return
   const plan = planSmartTimelapseCapture(settings, cache)
   if (!plan.keep) {
-    if (options.shouldCommit?.() !== false) applySmartTimelapsePlan(settings, cache, plan)
+    if (options.shouldCommit?.() !== false) applySmartTimelapsePlan(settings, cache, plan, document.id)
     return
   }
   const data = await encodeTimelapsePngAsync(capture.pixels, capture.width, capture.height)
@@ -492,7 +500,7 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   document.timelapse = latestSettings
   if (!latestSettings.enabled) return
   if ((latestSettings.mode ?? 'full') !== plan.mode) return
-  applySmartTimelapsePlan(latestSettings, cache, plan)
+  applySmartTimelapsePlan(latestSettings, cache, plan, document.id)
   appendTimelapseSnapshot(latestSettings, now, capture.width, capture.height, data)
   markSmartTimelapseSnapshotAdded(latestSettings, cache)
 }

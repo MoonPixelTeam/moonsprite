@@ -2,9 +2,9 @@
 
 [中文](README.md) | English
 
-> Human-facing English mirror. AI agents use `docs/README.md` and Chinese contracts as their sole routine documentation context. Do not load this index during ordinary development.
+> Human-facing English mirror. AI agents use `docs/README.md` and the Chinese contracts as their sole routine documentation context. Do not load this index during ordinary development.
 
-This index is maintained for English-speaking human readers. English mirrors are synchronized only for explicitly requested translation work, bilingual audits, or the files actually changed during a release cycle.
+This is the project's Chinese canonical entry point, and the only documentation version AI reads and maintains day to day. The English link at the top of each page is for human readers; ordinary tasks must not follow it into `*.en.md`. When code and documentation disagree, confirm the current implementation and tests first, then update the matching Chinese contract — two contradictory documents must never be left standing side by side.
 
 ## Product and Architecture
 
@@ -14,7 +14,7 @@ This index is maintained for English-speaking human readers. English mirrors are
 - [State and history](architecture/state-history.en.md): sessions, dirty state, undo, and view state.
 - [Coordinates and rendering](architecture/coordinates-rendering.en.md): screen, view, canvas, and layer coordinates.
 - [Localization architecture](architecture/localization.en.md): language resources, fallback, persistence, and adding-language gates.
-- [File format](file-format.en.md): the `.moonsprite` v16 container.
+- [File format](file-format.en.md): the `.moonsprite` v18 container.
 
 ## Interaction Contracts
 
@@ -30,23 +30,13 @@ This index is maintained for English-speaking human readers. English mirrors are
 
 ## Quality and Release
 
-- [Regression matrix](testing/regression-matrix.en.md)
-- [Performance baseline](testing/performance-baseline.en.md)
-- [Performance history](testing/performance-history.md) (canonical audit ledger, Chinese)
-- [Complete changelog policy](release/changelog-policy.en.md)
-- [Development version cycle](release/development-cycle.md) (current maintainer state, Chinese)
+- [Regression matrix](testing/regression-matrix.md) (Chinese; maintainer-facing)
+- [Performance baseline](testing/performance-baseline.md) (Chinese; maintainer-facing)
+- [Performance history](testing/performance-history.md) (Chinese; canonical audit ledger)
+- [Complete changelog policy](release/changelog-policy.md) (Chinese; maintainer-facing)
+- [Development version cycle](release/development-cycle.md) (Chinese; current maintainer state)
 - [Historical changelog archive](changelog/README.md) (Chinese release archive)
-- [Release checklist](release/release-checklist.en.md)
+- [Release checklist](release/release-checklist.md) (Chinese; maintainer-facing)
 - [Architecture decision records](adr/README.en.md)
 
-## Update Rules
-
-- Behavior change: update the product or interaction contract.
-- State, history, coordinates, or file-format change: update the architecture documentation and add an ADR.
-- Bug fix: recurring or hard-to-detect bugs, shared algorithms, and coordinate, undo, file-data, or platform-security bugs require a regression scenario. Users validate ordinary visual issues.
-- Performance validation: ordinary requests do not run benchmarks. Every `dev.X` or formal release performs at least one P3 audit. Strengthen and record validation for dedicated performance work, actual regressions, or explicit user requests according to the [performance baseline](testing/performance-baseline.en.md).
-- Software changes: at `dev.X` release time, update the root `CHANGELOG.md` from the complete diff after the cycle baseline. Keep a separate entry for every independently describable effective change.
-- Language synchronization: routine development updates Chinese documentation only. During release, synchronize only English mirrors corresponding to files actually changed in the cycle. Translation, English-document maintenance, and bilingual audits are explicit tasks, not routine side work.
-- Release: complete every item in the release checklist.
-
-Documentation describes current effective rules, not a day-by-day chat history. Move obsolete material with historical value into `archive/`.
+Daily agent rules, risk tiers, and command entry points live in [AGENTS.md](../AGENTS.md); release, performance, and context-recovery procedures live in [the development workflow](agent-workflow.md), which is maintained in Chinese only. Read other documents only when a task touches them, and move outdated material into `archive/`.

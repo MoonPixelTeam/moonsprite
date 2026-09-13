@@ -3,7 +3,13 @@ import { readdir, readFile } from 'node:fs/promises'
 import { dirname, extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createScanner, SyntaxKind } from 'typescript/unstable/ast'
-import { architectureBudgetErrors, ARCHITECTURE_BUDGET_FILE, parseArchitectureBudget, readArchitectureBudget } from './architecture-budget.mjs'
+import {
+  architectureAnchorErrors,
+  architectureBudgetErrors,
+  ARCHITECTURE_BUDGET_FILE,
+  parseArchitectureBudget,
+  readArchitectureBudget,
+} from './architecture-budget.mjs'
 import { moduleBoundaryFindings } from './check-module-boundaries.mjs'
 
 const RENDERER_ROOT = 'src/renderer/src'
@@ -20,7 +26,6 @@ export const ARCHITECTURE_RULES = {
   'core-runtime-cycle': 'core 生产运行时循环依赖文件',
   'module-boundary-debt': '既有模块边界迁移债务',
   'permanent-boundary-allowlist': '按文件永久边界白名单或忽略指令',
-  'workspace-root-command': 'WorkspaceState 根接口领域命令',
   'render-key-pixel-serialization': '渲染键序列化像素或整份文档',
 }
 
@@ -289,18 +294,8 @@ const permanentAllowlistFindings = (file, source) => {
   return results
 }
 
-const workspaceRootFindings = (file, source) => {
-  if (!file.startsWith(STORE_ROOT) || !isProductionSource(file)) return []
-  const match = /\binterface\s+WorkspaceState\s*\{([\s\S]*?)\n\}/.exec(source)
-  if (!match) return []
-  const bodyStart = match.index + match[0].indexOf(match[1])
-  const results = []
-  for (const method of match[1].matchAll(/^\s{2}([A-Za-z_$][\w$]*)\s*\(/gm)) {
-    results.push(finding('workspace-root-command', file, source, bodyStart + method.index, `WorkspaceState 根命令：${method[1]}。`))
-  }
-  return results
-}
-
+// 原 workspace-root-command 规则已退役（见 scripts/architecture-debt-budget.json 的 retiredRules）：
+// 它守护的 `interface WorkspaceState` 形态已不存在于 store/，命中面为 0 的规则等于永久绿灯。
 const renderKeyFindings = (file, source) => {
   if (!/render-keys?\.[cm]?[jt]sx?$/.test(file) || !isProductionSource(file)) return []
   const results = []
@@ -335,7 +330,6 @@ export const analyzeArchitectureFiles = (inputFiles) => {
     findings.push(...asyncPreparationFindings(file, source))
     findings.push(...recoverySwallowFindings(file, source))
     findings.push(...permanentAllowlistFindings(file, source))
-    findings.push(...workspaceRootFindings(file, source))
     findings.push(...renderKeyFindings(file, source))
     if (file.startsWith(RENDERER_ROOT) && isProductionSource(file)) {
       for (const boundary of moduleBoundaryFindings(file, source)) {
@@ -380,18 +374,34 @@ const previousBudgetAtHead = (root) => {
   }
 }
 
+/** 规则必须仍能在真实源码里命中：命中面为 0 的护栏等于永久绿灯。 */
+const anchorMatches = (files, rules) => {
+  const production = [...files].filter(([file]) => file.startsWith(RENDERER_ROOT) && isProductionSource(file))
+  const matches = {}
+  for (const [ruleId, entry] of Object.entries(rules)) {
+    if (typeof entry?.anchor !== 'string' || !entry.anchor.trim()) continue
+    const pattern = new RegExp(entry.anchor)
+    matches[ruleId] = production.some(([file, source]) => pattern.test(file) || pattern.test(source))
+  }
+  return matches
+}
+
 export const runArchitectureContract = async (root = process.cwd(), { report = false } = {}) => {
   const files = await readArchitectureSourceFiles(root)
   const analysis = analyzeArchitectureFiles(files)
   const budget = await readArchitectureBudget(root)
   const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const errors = architectureBudgetErrors({
-    budget,
-    counts: analysis.counts,
-    currentVersion: packageJson.version,
-    knownRuleIds: Object.keys(ARCHITECTURE_RULES),
-    previousBudget: previousBudgetAtHead(root),
-  })
+  const ruleCount = Object.keys(ARCHITECTURE_RULES).length
+  const errors = [
+    ...architectureBudgetErrors({
+      budget,
+      counts: analysis.counts,
+      currentVersion: packageJson.version,
+      knownRuleIds: Object.keys(ARCHITECTURE_RULES),
+      previousBudget: previousBudgetAtHead(root),
+    }),
+    ...architectureAnchorErrors({ budget, anchorMatches: anchorMatches(files, budget.rules) }),
+  ]
 
   if (report || errors.length > 0) {
     console.log('架构契约扫描：')
@@ -413,7 +423,7 @@ export const runArchitectureContract = async (root = process.cwd(), { report = f
   }
 
   const debt = Object.values(analysis.counts).reduce((sum, count) => sum + count, 0)
-  console.log(`架构契约检查通过：10 类规则，当前登记迁移债务 ${debt} 项；预算只能递减，不能延期。`)
+  console.log(`架构契约检查通过：${ruleCount} 类规则，当前登记迁移债务 ${debt} 项；预算只能递减、不能延期，规则失效会被自检拦下。`)
   return { ...analysis, errors: [] }
 }
 

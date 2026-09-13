@@ -2059,7 +2059,7 @@ export const zhCNMessages = {
   'timelapse.title': '缩时视频',
   'timelapse.recording': '记录绘画过程',
   'timelapse.recordUndoSteps': '记录撤销步骤',
-  'timelapse.recordUndoStepsHint': '开启后，撤销、重做和历史记录跳转也会加入缩时视频；关闭时只保留有效编辑步骤。',
+  'timelapse.recordUndoStepsHint': '开启后，撤销、重做和历史记录跳转也会加入缩时视频；关闭时不额外录制这些操作。已录制的绘制过程不会因撤销而删除。',
   'timelapse.recordingMode': '录制方式',
   'timelapse.recordingModeFull': '全程录制',
   'timelapse.recordingModeFullHint': '保留每次操作帧，记录最完整，但项目文件会持续变大。',

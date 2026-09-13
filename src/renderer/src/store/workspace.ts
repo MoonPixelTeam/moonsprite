@@ -963,6 +963,8 @@ const queueTimelapseCapture = (session: DocumentSession): Promise<void> => {
           windowMs: Math.round(now - diagnostics.lastReportAt), pending: diagnostics.pending,
           peakPending: diagnostics.peak, completed: diagnostics.completed, skipped: diagnostics.skipped,
           failed: diagnostics.failed, maxQueueMs: Math.round(diagnostics.maxQueueMs), maxEncodeMs: Math.round(diagnostics.maxEncodeMs),
+          mode: document.timelapse?.mode ?? 'smart', recordUndoSteps: document.timelapse?.recordUndoSteps === true,
+          samplingStride: captureCacheFor(document).smartStride,
           frames: document.timelapse?.snapshots.length ?? 0
         })
         Object.assign(diagnostics, { peak: diagnostics.pending, completed: 0, skipped: 0, failed: 0, maxQueueMs: 0, maxEncodeMs: 0, lastReportAt: now })
@@ -1008,13 +1010,6 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
 
 const shouldCaptureTimelapseHistoryStep = (session: DocumentSession): boolean =>
   normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? []).recordUndoSteps === true
-
-const removeLatestTimelapseSnapshot = (session: DocumentSession): void => {
-  const settings = normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? [])
-  if (settings.snapshots.length === 0) return
-  settings.snapshots = settings.snapshots.slice(0, -1)
-  session.document.timelapse = settings
-}
 
 const persistDisplaySettings = (session: DocumentSession, view: Partial<ViewState>): boolean => {
   if (!('showPixelGrid' in view) && !('showGrid' in view) && !('grid' in view)) return false
@@ -5926,10 +5921,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const entry = session.history.undo()
       Object.assign(session.view, view)
       if (!entry) return
-      // Undo moves the document back along the creation history. Remove the
-      // corresponding timelapse branch frame instead of recording the undo as
-      // a new frame; a later edit must continue from the surviving prefix.
-      removeLatestTimelapseSnapshot(session)
+      // Recordings are a chronology, not a one-frame-per-history-entry stack.
+      // Smart sampling and asynchronous encoding break that correspondence;
+      // popping here would erase unrelated earlier drawing stages.
       session.liquifyResetHistoryPosition = null
       session.liquifyResetHistoryRevision = null
       if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
@@ -5941,7 +5935,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (entry.documentChanged !== false) {
         if (entry.contentChanged === false) touchMetadata(session)
         else touch(session, true, entry.invalidation)
-        recordDocumentOperation(session, undefined, false)
+        recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
       }
     }, false)
     const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)

@@ -5375,7 +5375,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         emittedCombo = combo.join(' + ')
         const id = ++keyDisplayIdRef.current
         setKeyDisplayEntries((current) => [...current, { id, label: emittedCombo }].slice(-10))
-        window.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), keyDisplayDuration)
+        globalThis.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), keyDisplayDuration)
         keyDisplayGestureRef.current.clear()
         keyDisplayActiveEntryRef.current = null
       }
