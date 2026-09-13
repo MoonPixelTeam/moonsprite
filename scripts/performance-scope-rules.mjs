@@ -31,10 +31,10 @@ const p3Patterns = [
   /\/store\/workspace-(?:commands-[\w-]+|mutation|recording)\.ts$/,
   /^vitest\.config\.[cm]?ts$/,
   /\/CanvasStage\.tsx$/,
-  /\/(canvas|onion-skin)-composite-cache\.(ts|tsx)$/,
+  /\/(canvas|onion-skin)-composite-cache(?:-[\w-]+)?\.(ts|tsx)$/,
   /\/canvas-render-plan\.(ts|tsx)$/,
   /\/core\/(animation|animation-thumbnail|document|gif|onion-skin|raster|timelapse|tools)\.ts$/,
-  /\/core\/(project-format|document-files)\.ts$/,
+  /\/core\/(project-format(?:-[\w-]+)?|document-files)\.ts$/,
   /\/workers\/(document-decode|timelapse-encode)\.worker\.ts$/,
   /\/store\/workspace(-session|-history|-palette)?\.ts$/,
   /\/components\/(WorkspacePanels|PerformanceProfiler)\.tsx$/,
@@ -44,7 +44,7 @@ const p3Patterns = [
 ]
 
 const p2Patterns = [
-  /\/core\/(adjustments|canvas-input|selection|view-geometry|palette|palette-layout|layer-operations|panel-render-keys)\.ts$/,
+  /\/core\/(adjustments|canvas-input(?:-[\w-]+)?|selection|view-geometry|palette|palette-layout|layer-operations|panel-render-keys)\.ts$/,
   /\/components\/(ColorPicker|canvas-selection-renderer|useCanvasViewPreview)\.tsx?$/,
   /\/components\/panels\/(PalettePanel|LayersPanel|ColorPanel|PreviewPanel)\.tsx$/,
 ]
@@ -115,7 +115,7 @@ export function classifyPerformanceAudit(files, options = {}) {
   const profileHarness = paths.some((file) => profileHarnessPatterns.some((pattern) => pattern.test(file)))
   const vitestConfig = paths.some((file) => vitestConfigPattern.test(file))
   const dedicatedBenchmark = selectionAlgorithm || adjustmentAlgorithm || projectFormat || vitestConfig
-  const canvasHotPath = paths.some((file) => /\/(CanvasStage|canvas-(?:render-plan|render-frame|composite-cache)|canvas-input|view-geometry|canvas-selection-renderer|useCanvasViewPreview)\./.test(file))
+  const canvasHotPath = paths.some((file) => /\/(CanvasStage|canvas-(?:render-plan|render-frame|composite-cache(?:-[\w-]+)?)|canvas-input(?:-[\w-]+)?|view-geometry|canvas-selection-renderer|useCanvasViewPreview)\./.test(file))
   const canvasTarget = canvasHotPath || (!dedicatedBenchmark && !complexDocument && !profileHarness)
   const suites = []
 

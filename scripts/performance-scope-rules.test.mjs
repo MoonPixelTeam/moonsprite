@@ -166,3 +166,12 @@ test('定向 P3 对复杂工程保留一个代表场景，完整复杂矩阵只�
   assert.equal(release.suites.some((suite) => suite.id === 'canvas-complex'), true)
   assert.equal(release.suites.some((suite) => suite.id === 'canvas-complex-targeted'), false)
 })
+
+
+test('职责子模块保留原性能分级和画布定向范围', () => {
+  for (const file of ['components/canvas-composite-cache-selection.ts', 'core/document-composite-raster.ts', 'core/project-format-decode.ts', 'core/tools-selection-transform-translation.ts', 'store/workspace-commands-animation-frame.ts']) {
+    assert.equal(classifyPerformanceImpact(['src/renderer/src/' + file]).level, 'P3', file)
+  }
+  assert.equal(classifyPerformanceImpact(['src/renderer/src/core/canvas-input-pointer.ts']).level, 'P2')
+  assert.ok(classifyPerformanceImpact(['src/renderer/src/components/canvas-composite-cache-gpu.ts']).suites.some(suite => suite.id === 'canvas-targeted'))
+})

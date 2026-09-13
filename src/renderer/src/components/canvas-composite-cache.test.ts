@@ -510,12 +510,13 @@ describe('CanvasCompositeCache', () => {
       selectionPreview: { layerId: layer.id, source, target: { x: 3, y: 0, width: 3, height: 1 }, angle: 0, copy: false }
     })
 
-    const preview = (cache as unknown as { selectionPreview?: { canvas: MockOffscreenCanvas } }).selectionPreview
-    if (!preview) throw new Error('selection preview surface was not created')
-    expect(Array.from(preview.canvas.pixels.slice(0, 4))).toEqual([0, 0, 0, 0])
-    expect(Array.from(preview.canvas.pixels.slice(3 * 4, 4 * 4))).toEqual([255, 0, 0, 255])
-    expect(Array.from(preview.canvas.pixels.slice(4 * 4, 5 * 4))).toEqual([0, 80, 255, 255])
-    expect(Array.from(preview.canvas.pixels.slice(5 * 4, 6 * 4))).toEqual([0, 200, 80, 255])
+    // Assert the surface actually presented, independent of which renderer owns it.
+    const preview = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(preview).toBeInstanceOf(MockOffscreenCanvas)
+    expect(Array.from(preview.pixels.slice(0, 4))).toEqual([0, 0, 0, 0])
+    expect(Array.from(preview.pixels.slice(3 * 4, 4 * 4))).toEqual([255, 0, 0, 255])
+    expect(Array.from(preview.pixels.slice(4 * 4, 5 * 4))).toEqual([0, 80, 255, 255])
+    expect(Array.from(preview.pixels.slice(5 * 4, 6 * 4))).toEqual([0, 200, 80, 255])
   })
 
   it('keeps selection previews available when the active layer has styles', () => {

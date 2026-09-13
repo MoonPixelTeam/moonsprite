@@ -206,3 +206,12 @@ test('dev command rejects protected paths without an explicit test', () => {
   assert.equal(result.status, 1)
   assert.match(result.stderr, /D3 高风险开发检查必须显式传入至少一个定向测试文件/)
 })
+
+
+test('拆出的输入、缓存、文件和命令模块仍要求 D3 定向测试', () => {
+  for (const file of ['core/canvas-input-resize.ts', 'components/canvas-composite-cache-gpu.ts', 'core/project-format-decode.ts', 'core/document-composite-raster.ts', 'core/tools-selection-transform-translation.ts', 'store/workspace-commands-selection-floating.ts']) {
+    const path = 'src/renderer/src/' + file
+    assert.equal(classifyDevTier([path]), 'D3', file)
+    assert.ok(evaluateDevValidationRequest([path]).errors.length > 0, file)
+  }
+})

@@ -9,6 +9,7 @@ const javascriptSourcePattern = new RegExp(`\\.${sourceExtension}$`)
 const nonApplicationPattern = /^(?:docs\/|CHANGELOG(?:\.[^/]+)?$|.*\.(?:css|md|scss|txt)$)/
 const quickRendererPattern = /^src\/renderer\/src\/(?:components\/|styles\.css$|locales\/|assets\/)/
 const highRiskPathPatterns = [
+  /^src\/renderer\/src\/(?:core\/canvas-input-[\w-]+|components\/canvas-composite-cache-[\w-]+)\.[cm]?[jt]sx?$/,
   /^src\/renderer\/src\/components\/(?:canvas-(?:render-frame|keyboard-router)|app\/document-canvas(?:-state)?)\.[cm]?[jt]sx?$/,
   /^src\/renderer\/src\/core\/(?:tools-[\w-]+|layer-move-state)\.[cm]?[jt]sx?$/,
   /^src\/renderer\/src\/store\/workspace-(?:commands-[\w-]+|mutation|recording|close-coordinator)\.[cm]?[jt]sx?$/,
