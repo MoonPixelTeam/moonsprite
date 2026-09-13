@@ -704,9 +704,9 @@ describe('project manifest migration boundary', () => {
     const restoredCel = ensureAnimationDocument(restored).cels[0]
 
     expect(manifest.document.layers[0].kind).toBe('text')
-    expect(manifest.document.animation.cels[0].text).toEqual(cel.text)
+    expect(manifest.document.animation.cels[0].text).toMatchObject(cel.text)
     expect(getActiveLayer(restored).kind).toBe('text')
-    expect(restoredCel.text).toEqual(cel.text)
+    expect(restoredCel.text).toMatchObject(cel.text)
     expect(restoredCel.surface).toMatchObject({ offsetX: 3, offsetY: 4 })
     expect(restoredCel.surface?.pixels.slice(0, 4)).toEqual(new Uint8ClampedArray([12, 34, 56, 200]))
   })

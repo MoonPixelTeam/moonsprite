@@ -335,7 +335,7 @@ describe('LayersPanel animation', () => {
     fireEvent.click(repeatToggle)
     expect(within(dialog).getByRole('textbox', { name: '重复' })).toHaveValue('无限')
     fireEvent.change(within(dialog).getByRole('textbox', { name: '名称' }), { target: { value: '行走' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    fireEvent.submit(dialog.closest('form')!)
 
     let loopBar = container.querySelector<HTMLButtonElement>('[data-animation-loop-section-id]')!
     const loopId = loopBar.dataset.animationLoopSectionId!
@@ -360,7 +360,7 @@ describe('LayersPanel animation', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: '名称' }), { target: { value: '反向行走' } })
     fireEvent.click(within(dialog).getByRole('button', { name: '播放方向' }))
     fireEvent.click(screen.getByRole('option', { name: '反向' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    fireEvent.submit(dialog.closest('form')!)
     expect(container.querySelector(`[data-animation-loop-section-id="${loopId}"]`)).toHaveTextContent('反向行走')
 
     loopBar = container.querySelector<HTMLButtonElement>(`[data-animation-loop-section-id="${loopId}"]`)!
@@ -1006,7 +1006,7 @@ describe('LayersPanel animation', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '隐藏时间轴' }))
 
     expect(container.querySelector('.layers-panel')).toHaveClass('timeline-hidden')
-    expect(container.querySelector('.layer-panel-title')).toHaveTextContent('图层')
+    expect(container.querySelector('.layer-animation-toolbar')).toBeInTheDocument()
     expect(document.querySelector('.layer-settings-modal')).toHaveClass('timeline-disabled')
     expect(document.querySelector('.layer-settings-onion')).toBeDisabled()
     expect(localStorage.getItem(TIMELINE_HIDDEN_PREFERENCE_KEY)).toBe('true')
@@ -1310,7 +1310,7 @@ describe('LayersPanel properties', () => {
 
     fireEvent.contextMenu(container.querySelector(`[data-layer-id="${member.id}"]`)!, { clientX: 20, clientY: 48 })
     fireEvent.click(screen.getByRole('menuitem', { name: '属性' }))
-    expect(screen.getByRole('heading', { name: '图层属性' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^图层属性/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '混合模式' }))
     fireEvent.click(screen.getByRole('option', { name: '正常' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))

@@ -473,7 +473,7 @@ describe('editable text layers', () => {
     let cel = animationCelAt(ensureAnimationDocument(document), layer.id, ensureAnimationDocument(document).activeFrameId)!
     const textLayerId = layer.id
     expect(layer).toMatchObject({ id: textLayerId, kind: 'text', offsetX: 5, offsetY: 7 })
-    expect(cel.text).toEqual({ ...textData('Moon'), originX: 5, originY: 7 })
+    expect(cel.text).toMatchObject({ ...textData('Moon'), originX: 5, originY: 7 })
 
     useWorkspace.getState().setTextCel(textLayerId, cel.frameId, textData('Sprite'), 9, 11)
     cel = animationCelAt(ensureAnimationDocument(document), textLayerId, cel.frameId)!

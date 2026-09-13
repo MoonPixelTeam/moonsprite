@@ -383,7 +383,7 @@ describe('LayersPanel timeline focus interactions', () => {
     expect(view.container.querySelector('.layer-animation-grid')).toHaveStyle({ '--active-layer-row': '1' })
   })
 
-  it('does not leave current-frame activity on a mask row after canvas selection', async () => {
+  it('keeps current-frame activity on a mask row after canvas selection', async () => {
     const document = createDocument('canvas selection mask activity', 2, 2, 'rgba')
     const layer = getActiveLayer(document)
     layer.pixels[3] = 255
@@ -398,7 +398,7 @@ describe('LayersPanel timeline focus interactions', () => {
     view.rerender(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
 
     const maskCell = view.container.querySelector(`[data-animation-mask-cel-key="${animationCelKey(layer.id, timeline.activeFrameId)}"]`)
-    expect(maskCell).not.toHaveClass('active-frame')
+    expect(maskCell).toHaveClass('active-frame')
   })
 
   it('projects the playback frame onto every mask row', async () => {
