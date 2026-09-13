@@ -1,6 +1,8 @@
 import { createGradientPreviewDiagnostics, GRADIENT_PREVIEW_DIAGNOSTIC_VERSION } from '../core/gradient-preview-diagnostics'
-import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '../core/runtime-diagnostics'
+import { createRuntimeLatencyReporter } from '@/core/runtime-diagnostic-stages'
 import { useEffect, useLayoutEffect, useRef } from 'react'
+import { canvasStageIsVisible } from './canvas-stage-visibility'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import {
@@ -33,6 +35,7 @@ interface Ports {
   readonly activeBrushImage: import('@shared/types-brush').ImageBrush | null
   readonly symmetryCenter: import('@/core/symmetry').SymmetryCenter
   readonly inputRef: import('react').RefObject<CanvasInputState>
+  readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly drawRef: import('react').RefObject<() => void>
   readonly requestDrawRef: import('react').RefObject<() => void>
   readonly canvasResizePreviewRef: import('react').RefObject<import('@/store/workspace').CanvasResizePreview | null>
@@ -206,10 +209,20 @@ export function useCanvasRenderEngine(ports: Ports) {
     onionSkinCacheRef.current.invalidateFrames(frameIds)
   }
 
+  const frameWaitRef = useRef<ReturnType<typeof createRuntimeLatencyReporter> | null>(null)
+  frameWaitRef.current ??= createRuntimeLatencyReporter('canvas.frame.wait')
+  useEffect(() => () => frameWaitRef.current?.flush(), [])
+
   const scheduleDraw = (): void => {
+    if (!canvasStageIsVisible(ports.canvasRef.current, useWorkspace.getState().activeId)) return
     if (drawRequestRef.current !== null) return
+    const queuedAt = runtimeDiagnosticsActive() ? performance.now() : null
     drawRequestRef.current = window.requestAnimationFrame(() => {
       drawRequestRef.current = null
+      // The tab may have been hidden after this frame was queued. Skip both
+      // the expensive draw and its auxiliary thumbnail notifications.
+      if (!canvasStageIsVisible(ports.canvasRef.current, useWorkspace.getState().activeId)) return
+      frameWaitRef.current?.record(queuedAt, () => ({ documentId: ports.session.document.id }))
       // Auxiliary thumbnails follow the canvas RAF. Emitting this from every
       // pointer event makes a long stroke enqueue redundant thumbnail renders.
       const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
@@ -233,6 +246,13 @@ export function useCanvasRenderEngine(ports: Ports) {
   }
 
   ports.requestDrawRef.current = scheduleDraw
+
+  useEffect(() => useWorkspace.subscribe((state, previous) => {
+    if (state.activeId !== previous.activeId && state.activeId === ports.session.document.id) scheduleDraw()
+    // Hidden changes retain their normal invalidations. Paint the latest
+    // content once on activation, including updates that happened offscreen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [ports.session.document.id])
 
   useEffect(
     () => () => {

@@ -233,6 +233,9 @@ export function createWorkspaceSessionCommands({ get, set, recording, services: 
     },
 
     setActive(id) {
+      // Split panes activate on pointer/wheel capture. Re-entering the active
+      // pane must not merge a floating paste into its layer before dragging it.
+      if (get().activeId === id) return
       const switchStartedAt = runtimeDiagnosticsActive() ? performance.now() : 0
       get().commitFloatingPaste()
       const state = get()

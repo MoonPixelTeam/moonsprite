@@ -12,7 +12,7 @@ import { exportAnimationGif } from '@/core/gif'
 import { encodeTimelapseVideo, isTimelapseVideoFormat, type TimelapseExportOptions } from '@/core/timelapse'
 import { normalizeTimelapseSettings } from '@/core/project-metadata'
 import { RECENT_EXPORTS_CHANGED_EVENT, exportFileExtension, parentDirectoryFromPath, recordRecentExportPath, saveDocumentExportSettings, withExportFileExtension, type DocumentExportSettings } from '@/core/export-settings'
-import { acceptProjectSaveBaseline, encodeProjectAsync, encodeProjectSaveAsync, registerProjectSaveBaseline } from '@/core/project-format'
+import { acceptProjectSaveBaseline, encodeProjectAsync, encodeProjectSaveAsync, registerProjectSaveBaseline, type ProjectDecodeReport } from '@/core/project-format'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
 import { compositeRegion, compositeRegionAsync } from '@/core/document-composite'
 import { selectionContains } from '@/core/selection'
@@ -232,6 +232,8 @@ export interface OpenDocumentLifecycle {
   onReadProgress?: (bytesRead: number, totalBytes: number) => void
   onDecodeStart?: () => void
   onDecodeProgress?: (value: number) => void
+  /** Timelapse frames the archive declared but could not restore. */
+  onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void
 }
 
 const EXPORT_CANCELED_MESSAGE = 'MoonSprite export canceled.'
@@ -832,28 +834,37 @@ export async function exportSpriteSheetFile(
 
 export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDocument, format: TimelapseExportFormat, options: TimelapseExportOptions, lifecycle?: FileOperationLifecycle): Promise<string | null> {
   throwIfExportCanceled(lifecycle)
-  const settings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
+  const settings = normalizeTimelapseSettings({ ...document.timelapse, ...(options.quality ? { quality: options.quality } : {}), ...(options.speed !== undefined ? { speed: options.speed } : {}) }, document.timelapse?.snapshots ?? [])
   if (settings.snapshots.length === 0) throw new Error(translate(loadEditorPreferences().language, 'timelapse.noFrames'))
   const fallbackName = sanitizeFileStem(document.name, 'MoonSprite-timelapse')
   const extension = format === 'jpeg' ? 'jpg' : format
-  const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${fallbackName}-timelapse.${extension}`), format)
-  if (result.canceled || !result.filePath) return null
+  const requestedName = sanitizeFileStem((options.name ?? '').replace(/\.(mp4|webm)$/i, ''), `${fallbackName}-timelapse`)
+  const selectedDirectory = options.directory?.trim()
+  let selectedPath = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
+  if (!selectedPath) {
+    const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${requestedName}.${extension}`), format)
+    if (result.canceled || !result.filePath) return null
+    selectedPath = result.filePath
+  }
+  throwIfExportCanceled(lifecycle)
 
   if (!isTimelapseVideoFormat(format)) {
     const scalePercent = Math.max(1, Math.min(6400, Math.round(options.scalePercent ?? 100)))
-    const requestedStem = sanitizeFileStem(fileNameFromPath(result.filePath), fallbackName)
-    const directory = parentDirectoryFromPath(result.filePath)
+    const requestedStem = sanitizeFileStem(fileNameFromPath(selectedPath), fallbackName)
+    const directory = parentDirectoryFromPath(selectedPath)
     const digits = Math.max(3, String(settings.snapshots.length).length)
+    // Resolve every destination before progress UI or encoding starts.
+    const destinations: string[] = []
+    for (let index = 0; index < settings.snapshots.length; index += 1) {
+      throwIfExportCanceled(lifecycle)
+      const frameNumber = String(index + 1).padStart(digits, '0')
+      const requestedPath = joinDirectoryPath(directory, `${requestedStem}-${frameNumber}.${extension}`)
+      const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
+      if (!resolvedPath) return null
+      destinations.push(resolvedPath)
+    }
+    throwIfExportCanceled(lifecycle)
     if (typeof Worker !== 'undefined') {
-      const destinations: string[] = []
-      for (let index = 0; index < settings.snapshots.length; index += 1) {
-        throwIfExportCanceled(lifecycle)
-        const frameNumber = String(index + 1).padStart(digits, '0')
-        const requestedPath = joinDirectoryPath(directory, `${requestedStem}-${frameNumber}.${extension}`)
-        const resolvedPath = await resolveExportPath(api, requestedPath, lifecycle)
-        if (!resolvedPath) return null
-        destinations.push(resolvedPath)
-      }
       lifecycle?.onEncodeStart?.()
       let lastPath = directory
       await exportDocumentInWorker(document, {
@@ -877,17 +888,13 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
       return translate(loadEditorPreferences().language, 'timelapse.exportedImages', { count: settings.snapshots.length, format: format === 'jpeg' ? 'JPG' : 'PNG' })
     }
     lifecycle?.onEncodeStart?.()
-    let lastPath = result.filePath
+    let lastPath = selectedPath
     for (const [index, snapshot] of settings.snapshots.entries()) {
       throwIfExportCanceled(lifecycle)
       lifecycle?.onExportTaskStart?.(index + 1, settings.snapshots.length)
       const frameDocument = decodePng(snapshot.data, `${document.name}-${index + 1}`)
-      const frameNumber = String(index + 1).padStart(digits, '0')
+      lastPath = destinations[index]
       if (format === 'png' && api.writeScaledPngAtomic) {
-        lastPath = joinDirectoryPath(directory, `${requestedStem}-${frameNumber}.png`)
-        const resolvedPath = await resolveExportPath(api, lastPath, lifecycle)
-        if (!resolvedPath) return null
-        lastPath = resolvedPath
         await writeDocumentPngAtomic(api, lastPath, frameDocument, scalePercent, 'png-rgba', undefined, (value) => {
           throwIfExportCanceled(lifecycle)
           lifecycle?.onEncodeProgress?.((index + value / 100) / settings.snapshots.length * 100)
@@ -896,10 +903,6 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
         throwIfExportCanceled(lifecycle)
         const output = await exportDocumentImage(frameDocument, scalePercent, format === 'jpeg' ? 'jpeg' : 'png-rgba')
         throwIfExportCanceled(lifecycle)
-        lastPath = joinDirectoryPath(directory, `${requestedStem}-${frameNumber}.${output.extension}`)
-        const resolvedPath = await resolveExportPath(api, lastPath, lifecycle)
-        if (!resolvedPath) return null
-        lastPath = resolvedPath
         if (index === 0) lifecycle?.onWriteStart?.()
         await api.writeBinaryAtomic(lastPath, output.bytes)
       }
@@ -914,6 +917,10 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
   // Chromium exposes MediaRecorder/captureStream on the window canvas, not
   // reliably in dedicated workers. Keep this video-only path on the renderer;
   // still-image/timelapse-frame exports above use the document worker.
+  const filePath = selectedPath.toLowerCase().endsWith(`.${extension}`) ? selectedPath : `${selectedPath}.${extension}`
+  const resolvedFilePath = await resolveExportPath(api, filePath, lifecycle)
+  if (!resolvedFilePath) return null
+  throwIfExportCanceled(lifecycle)
   lifecycle?.onEncodeStart?.()
   throwIfExportCanceled(lifecycle)
   const bytes = await encodeTimelapseVideo(settings, format, options, (value) => {
@@ -921,9 +928,6 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
     lifecycle?.onEncodeProgress?.(value)
   })
   throwIfExportCanceled(lifecycle)
-  const filePath = result.filePath.toLowerCase().endsWith(`.${extension}`) ? result.filePath : `${result.filePath}.${extension}`
-  const resolvedFilePath = await resolveExportPath(api, filePath, lifecycle)
-  if (!resolvedFilePath) return null
   lifecycle?.onWriteStart?.()
   await api.writeBinaryAtomic(resolvedFilePath, bytes)
   throwIfExportCanceled(lifecycle)
@@ -941,7 +945,7 @@ export async function openDocumentFile(api: MoonSpriteApi, filePath: string, lif
     const bytes = await api.readBinary(filePath, ({ bytesRead, totalBytes }) => lifecycle?.onReadProgress?.(bytesRead, totalBytes))
     diagnostic?.mark('read-complete', { archiveBytes: bytes.byteLength })
     lifecycle?.onDecodeStart?.()
-    const document = await decodeDocumentFileAsync(bytes, filePath, lifecycle?.onDecodeProgress)
+    const document = await decodeDocumentFileAsync(bytes, filePath, lifecycle?.onDecodeProgress, lifecycle?.onDroppedTimelapseFrames)
     diagnostic?.mark('decode-complete', {
       ...documentDiagnosticDetail(document),
       width: document.width,

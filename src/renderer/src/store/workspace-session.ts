@@ -26,7 +26,7 @@ import { cloneBrushDynamicsSettings, normalizeBrushDynamicsSettings } from '@/co
 import { applyProjectLayerPanelState, loadLocalLayerPanelState, normalizeProjectLayerPanelState } from '@/core/layer-panel-state'
 import { ensureTilemapTilesetOwnership } from '@/core/tilemap-document'
 import { ensureFreeTileTilesetOwnership } from '@/core/free-tile-document'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preferences'
 import { loadDocumentViewState } from '@/core/document-view-state'
 
 const defaultColor: RgbaColor = { r: 41, g: 121, b: 255, a: 255 }
@@ -376,7 +376,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const initialTileset = document.tilesets?.find((tileset) => tileset.id === initialTilesetId) ?? document.tilesets?.[0]
   const session = {
     document,
-    history: new HistoryStack(),
+    history: new HistoryStack(undefined, historyEntryLimit(editorPreferences)),
     localHistory: null,
     tool: 'pencil',
     extensionToolId: null,

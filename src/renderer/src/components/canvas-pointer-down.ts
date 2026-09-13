@@ -3,6 +3,7 @@ import { createCanvasRasterStart } from './canvas-raster-start'
 import { createNavigationCanvasInput } from './canvas-input-navigation'
 import { createSelectionCanvasInput } from './canvas-input-selection'
 import { createSelectionBeginCanvasInput } from './canvas-input-selection-begin'
+import { measureRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
 import { createBoundsCanvasInput } from './canvas-input-bounds'
@@ -743,7 +744,7 @@ export function createCanvasPointerDown(ports: Ports) {
       return
     const tilemapTarget = editableLayer.kind === 'tilemap' ? activeTilemapCelTarget(session.document) : null
     if (tilemapTarget && session.tilemapMode === 'paint' && tileInput.beginTile({ tilemapTarget, session, point, event })) return
-    startRaster({
+    measureRuntimeDiagnostic('canvas.stroke.initialize', () => startRaster({
       tilemapPixelEditBlocked,
       session,
       brushDynamicsAtEvent,
@@ -760,6 +761,6 @@ export function createCanvasPointerDown(ports: Ports) {
       activeBrushPaintMode,
       activeBrushDither,
       tilemapEditDragState
-    })
+    }), () => ({ documentId: session.document.id, layerId: editableLayer.id, tool: session.tool }))
   }
 }

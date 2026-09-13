@@ -1,5 +1,5 @@
 import { registerCanvasKeyboard } from './canvas-keyboard-router'
-import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '../core/runtime-diagnostics'
 import { useEffect, useRef, useState } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -265,7 +265,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         repeat: event.repeat,
         blockedTarget: keyDisplayBlocked
       })
-      recordRuntimeDiagnostic('operation-stage', 'key-display.keydown', {
+      if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'key-display.keydown', {
         key: event.key,
         code: event.code,
         trusted: event.isTrusted,
@@ -549,7 +549,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         keyDisplayGestureRef.current.clear()
         keyDisplayActiveEntryRef.current = null
       }
-      recordRuntimeDiagnostic('operation-stage', 'key-display.keyup', {
+      if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'key-display.keyup', {
         key: event.key,
         code: event.code,
         enabled: ports.keyDisplayEnabled,

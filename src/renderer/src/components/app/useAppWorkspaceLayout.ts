@@ -1,4 +1,6 @@
 import { persistMainWindowState } from './app-window-state'
+import { beginDocumentPaneDockResize } from './document-pane-dock-resize'
+import type { DocumentPaneNode } from '@/core/document-pane-layout'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { StoredWorkspace, ToolRailSide, WorkspaceLayout } from '@shared/types-workspace'
 import type { PanelDock, WorkspacePanelId } from '@/components/WorkspacePanels'
@@ -108,7 +110,12 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   }
 })
 
-export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean; session: DocumentSession | null }) {
+export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, onDocumentPaneLayoutChange }: {
+  homeOpen: boolean
+  session: DocumentSession | null
+  documentPaneLayout: DocumentPaneNode | null
+  onDocumentPaneLayoutChange: (layout: DocumentPaneNode | null) => void
+}) {
   const { t } = useI18n()
   const workspace = useWorkspace.getState()
   const builtInDefaultWorkspace = useMemo(() => createBuiltInDefaultWorkspace(t('app.workspace.default')), [t])
@@ -152,6 +159,9 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
   const [workspaceLayoutRevision, setWorkspaceLayoutRevision] = useState(0)
 
   const resizeStart = useRef<{ x: number; width: number; parentWidth: number } | null>(null)
+  const paneDockResizeRef = useRef<ReturnType<typeof beginDocumentPaneDockResize>>(null)
+  const paneLayoutRef = useRef({ layout: documentPaneLayout, change: onDocumentPaneLayoutChange })
+  paneLayoutRef.current = { layout: documentPaneLayout, change: onDocumentPaneLayoutChange }
 
   const bottomLayersResizeStart = useRef<{ y: number; height: number; parentHeight: number } | null>(null)
 
@@ -584,6 +594,7 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
         bottomLayersHeightRatioRef.current = dockSizeRatio(next, bottom.parentHeight, DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO)
         workArea?.style.setProperty('--bottom-layers-height', `${next}px`)
       }
+      paneDockResizeRef.current?.update()
     })
     const move = (event: PointerEvent): void => {
       if (resizeStart.current || leftDockResizeStart.current || bottomLayersResizeStart.current) frame.push(event)
@@ -608,6 +619,12 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
       }
       resizeStart.current = leftDockResizeStart.current = null
       bottomLayersResizeStart.current = null
+      const paneResize = paneDockResizeRef.current
+      paneDockResizeRef.current = null
+      if (paneResize) {
+        const next = paneResize.finish()
+        if (next !== paneLayoutRef.current.layout) paneLayoutRef.current.change(next)
+      }
       if (resizing) endWorkspaceResize()
     }
     window.addEventListener('pointermove', move)
@@ -616,6 +633,8 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
     window.addEventListener('blur', up)
     return () => {
       frame.cancel()
+      paneDockResizeRef.current?.finish(true)
+      paneDockResizeRef.current = null
       if (resizeStart.current || leftDockResizeStart.current || bottomLayersResizeStart.current) endWorkspaceResize()
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
@@ -671,6 +690,7 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
   const beginLeftDockResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>): void => {
       if (event.button !== 0) return
+      paneDockResizeRef.current = beginDocumentPaneDockResize(workAreaRef.current, paneLayoutRef.current.layout, 'left')
       beginWorkspaceResize()
       leftDockResizeStart.current = { x: event.clientX, width: leftDockWidthRef.current, parentWidth: workspaceDockParentSize(workAreaRef.current).width }
       event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -682,6 +702,7 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
   const beginBottomDockResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>): void => {
       if (event.button !== 0) return
+      paneDockResizeRef.current = beginDocumentPaneDockResize(workAreaRef.current, paneLayoutRef.current.layout, 'bottom')
       beginWorkspaceResize()
       bottomLayersResizeStart.current = {
         y: event.clientY,
@@ -697,6 +718,7 @@ export function useAppWorkspaceLayout({ homeOpen, session }: { homeOpen: boolean
   const beginInspectorResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>): void => {
       if (event.button !== 0) return
+      paneDockResizeRef.current = beginDocumentPaneDockResize(workAreaRef.current, paneLayoutRef.current.layout, 'right')
       beginWorkspaceResize()
       resizeStart.current = { x: event.clientX, width: inspectorWidthRef.current, parentWidth: workspaceDockParentSize(workAreaRef.current).width }
       event.currentTarget.setPointerCapture(event.pointerId)

@@ -486,6 +486,9 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
         if (pixelEntry)
           session.history.push({
             ...pixelEntry,
+            // Arrow moves reuse materialized preview surfaces at intermediate
+            // positions. Undo/redo must discard them, not patch the final rect.
+            invalidation: pending.translationPreview ? { kind: 'full' } : pixelEntry.invalidation,
             bytes: pixelEntry.bytes + (beforeSelection?.mask?.byteLength ?? 0) + (afterSelection?.mask?.byteLength ?? 0) + 64,
             undo: () => {
               pixelEntry.undo()

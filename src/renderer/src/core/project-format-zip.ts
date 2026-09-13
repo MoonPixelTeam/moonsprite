@@ -100,12 +100,29 @@ export const projectZipFiles = (data: Uint8Array, directory: ReadonlyMap<string,
   return files
 }
 
+/** Bound additional allocations for deflated frames; stored entries are zero-copy views. */
+export const MAX_TIMELAPSE_ARCHIVE_BYTES = 512 * 1024 * 1024
+
+/**
+ * Reads the timelapse frames an archive already stores verbatim. Entries written by
+ * MoonSprite use level 0, but a project re-packed by another tool may deflate them,
+ * so the storage method is not part of the contract: any entry `projectZipEntryData`
+ * can decode is accepted. Dropping the frames instead would silently lose a recording
+ * that is still present in the archive.
+ */
 export const storedTimelapseEntryViews = (data: Uint8Array, directory: ReadonlyMap<string, ProjectZipEntry>): Map<string, Uint8Array> => {
   const entries = new Map<string, Uint8Array>()
+  let expandedBytes = 0
   for (const [name, entry] of directory) {
-    if (!/^timelapse\/.*\.png$/i.test(name) || entry.compression !== 0 || entry.compressedSize !== entry.uncompressedSize) continue
+    if (!/^timelapse\/.*\.png$/i.test(name)) continue
+    if (entry.compression !== 0 && entry.compression !== 8) continue
+    if (entry.compression === 8 && expandedBytes + entry.uncompressedSize > MAX_TIMELAPSE_ARCHIVE_BYTES) {
+      throw new Error('Timelapse decompression exceeds the memory limit; opening was stopped to preserve the complete recording.')
+    }
     const bytes = projectZipEntryData(data, entry)
-    if (bytes) entries.set(name, bytes)
+    if (!bytes) continue
+    if (entry.compression === 8) expandedBytes += bytes.byteLength
+    entries.set(name, bytes)
   }
   return entries
 }

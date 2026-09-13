@@ -102,6 +102,7 @@ export function useAppWindowLifecycle() {
           recordRuntimeDiagnostic('error', 'app.close.window-state', { message: error instanceof Error ? error.message : String(error) })
         }
       },
+      flushRecordings: (sessions) => useWorkspace.getState().flushRecordings(sessions),
       confirm: (session) =>
         resolveDocumentClose(
           session.document.dirty,

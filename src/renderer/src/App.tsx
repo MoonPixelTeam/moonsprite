@@ -143,7 +143,7 @@ export default function App() {
     editorColumns,
     editorRows,
     editorAreas
-  } = useAppWorkspaceLayout({ homeOpen, session })
+  } = useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout: visibleDocumentPaneLayout, onDocumentPaneLayoutChange: updateDocumentPaneLayout })
   const {
     extensions,
     extensionPanelVisibility,

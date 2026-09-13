@@ -19,6 +19,8 @@ export interface ApplicationClosePorts {
   hasDialog: () => boolean
   sessions: () => readonly DocumentSession[]
   prepare: () => Promise<void>
+  /** Lands recordings still waiting for PNG encoding before any dirty check. */
+  flushRecordings: (sessions: readonly DocumentSession[]) => Promise<void>
   confirm: (session: DocumentSession) => Promise<DocumentCloseChoice | 'clean'>
   discardRecovery: (id: string) => Promise<void>
   waitForDocumentCloses: () => Promise<void>
@@ -38,12 +40,16 @@ export function createApplicationCloseCoordinator(ports: ApplicationClosePorts):
     let approved = false
     try {
       await ports.prepare()
+      // Flush before the dirty check: a produced frame that has not finished
+      // encoding yet must reach the archive instead of being dropped on exit.
+      await ports.flushRecordings(ports.sessions())
       for (const session of ports.sessions().filter((item) => item.document.dirty)) {
         const choice = await ports.confirm(session)
         if (choice === 'cancel') return
         if (choice === 'discard' && session.recoveryOriginId === null) await ports.discardRecovery(session.document.id)
       }
       await ports.waitForDocumentCloses()
+      await ports.flushRecordings(ports.sessions())
       await Promise.all(ports.sessions().map(ports.flushHistory))
       await ports.waitForDocumentCloses()
       ports.approve()

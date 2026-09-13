@@ -4,6 +4,9 @@ import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, setAnimationLayerOffsetsAtFrame } from './animation'
 import { cacheRasterContentBounds, cachedRasterContentBounds, getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
 
+const normalizeHistoryEntryLimit = (value: number): number =>
+  value === Infinity ? Infinity : Number.isFinite(value) ? Math.max(1, Math.min(10000, Math.round(value))) : 1000
+
 export interface HistoryEntry {
   label: string
   bytes: number
@@ -59,10 +62,11 @@ export interface HistoryTimeline {
  * serializable. Persistent history records document snapshots separately.
  */
 export interface HistoryStackChange {
-  kind: 'push' | 'undo' | 'redo' | 'clear'
+  kind: 'push' | 'undo' | 'redo' | 'clear' | 'trim'
   entry?: HistoryEntry
-  /** Number of oldest undo entries removed by the byte budget during a push. */
+  /** Number of oldest undo entries removed by a history limit. */
   discardedUndoEntries?: number
+  discardedRedoEntries?: number
 }
 
 export type ContentInvalidationHint =
@@ -105,7 +109,11 @@ export class HistoryStack {
   private animationSelectionNormalizationRequested = false
   private changeListener: ((change: HistoryStackChange) => void) | null = null
 
-  constructor(private readonly maxBytes = 256 * 1024 * 1024) {}
+  constructor(private readonly maxBytes = 256 * 1024 * 1024, maxEntries = Infinity) {
+    this.maxEntries = normalizeHistoryEntryLimit(maxEntries)
+  }
+
+  private maxEntries: number
 
   get canUndo(): boolean { return this.undoEntries.length > 0 }
   get canRedo(): boolean { return this.redoEntries.length > 0 }
@@ -114,6 +122,7 @@ export class HistoryStack {
   get position(): number { return this.undoEntries.length }
   get length(): number { return this.undoEntries.length + this.redoEntries.length }
   get revision(): number { return this.stackRevision }
+  get entryLimit(): number { return this.maxEntries }
   get timeline(): HistoryTimeline {
     const entries = [...this.undoEntries, ...[...this.redoEntries].reverse()]
       .map((entry, index) => ({ label: entry.label, position: index + 1 }))
@@ -128,8 +137,12 @@ export class HistoryStack {
   restoreTimeline(entries: readonly HistoryEntry[], position: number): void {
     if (this.compoundDepth) throw new Error('Cannot restore history during a transaction')
     if (!Number.isInteger(position) || position < 0 || position > entries.length) throw new Error('Invalid history position')
-    this.undoEntries = entries.slice(0, position)
-    this.redoEntries = entries.slice(position).reverse()
+    // Preserve the next redo operation when the current position is near the start.
+    const discarded = Math.min(position, Math.max(0, entries.length - this.maxEntries))
+    const retained = entries.slice(discarded, discarded + this.maxEntries)
+    const retainedPosition = Math.max(0, position - discarded)
+    this.undoEntries = retained.slice(0, retainedPosition)
+    this.redoEntries = retained.slice(retainedPosition).reverse()
     this.bytes = this.undoEntries.reduce((sum, entry) => sum + entry.bytes, 0)
     this.stackRevision += 1
   }
@@ -154,6 +167,18 @@ export class HistoryStack {
     this.animationSelectionNormalizationRequested = requested
   }
 
+  setMaxEntries(maxEntries: number): void {
+    const next = normalizeHistoryEntryLimit(maxEntries)
+    if (next === this.maxEntries) return
+    this.maxEntries = next
+    const discardedUndoEntries = this.trimOldestUndoEntries()
+    const discardedRedoEntries = Math.max(0, this.length - this.maxEntries)
+    this.redoEntries.splice(0, discardedRedoEntries)
+    if (discardedUndoEntries === 0 && discardedRedoEntries === 0) return
+    this.stackRevision += 1
+    this.notify({ kind: 'trim', discardedUndoEntries, discardedRedoEntries })
+  }
+
   push(entry: HistoryEntry): void {
     if (this.animationSelectionNormalizationRequested && entry.requiresAnimationSelectionNormalization !== true) {
       entry = { ...entry, requiresAnimationSelectionNormalization: true }
@@ -166,12 +191,22 @@ export class HistoryStack {
     this.bytes += entry.bytes
     this.redoEntries = []
     let discardedUndoEntries = 0
-    while (this.bytes > this.maxBytes && this.undoEntries.length > 1) {
-      this.bytes -= this.undoEntries.shift()!.bytes
-      discardedUndoEntries += 1
-    }
+    discardedUndoEntries += this.trimOldestUndoEntries()
     this.stackRevision += 1
     this.notify({ kind: 'push', entry, discardedUndoEntries })
+  }
+
+  private trimOldestUndoEntries(): number {
+    let discarded = 0
+    while (this.bytes > this.maxBytes && this.undoEntries.length > 1) {
+      this.bytes -= this.undoEntries.shift()!.bytes
+      discarded += 1
+    }
+    while (this.length > this.maxEntries && this.undoEntries.length > 0) {
+      this.bytes -= this.undoEntries.shift()!.bytes
+      discarded += 1
+    }
+    return discarded
   }
 
   beginCompound(): void {

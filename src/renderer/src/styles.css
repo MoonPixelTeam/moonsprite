@@ -1310,6 +1310,18 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .document-tab-drag-ghost { position: fixed; display: flex; align-items: center; gap: var(--ui-space-3); min-width: 80px; max-width: min(240px, 32vw); min-height: var(--ui-command-button-height); padding: 0 var(--ui-space-5); overflow: hidden; color: var(--theme-text-primary); background: var(--theme-raised-surface); border: 0; box-shadow: 0 6px 18px var(--theme-shadow); font-size: var(--ui-font-regular); opacity: .92; }
 .document-tab-drag-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .document-pane-tab-return-preview { position: fixed; z-index: 920; width: 2px; background: var(--theme-accent); box-shadow: 0 0 0 1px var(--theme-accent-soft); pointer-events: none; }
+.document-pane-dock-preview-layer { position: fixed; inset: 0; z-index: 860; pointer-events: none; }
+/* The dragged document tab must stay readable above the dock preview: the tab strip owns
+   the tab's stacking context, so the strip itself is raised for the duration of a drag. */
+.document-tabs-dragging .tab-strip, .document-pane-dragging .tab-strip { z-index: 880; }
+.document-pane-dock-preview-band { position: fixed; box-sizing: border-box; background: var(--theme-raised-surface); border: 1px solid var(--theme-border); box-shadow: inset 0 0 0 1px var(--theme-surface); pointer-events: none; }
+.document-pane-dock-preview-band[data-direction='left'],
+.document-pane-dock-preview-band[data-direction='right'] { animation: document-pane-dock-preview-band-inline var(--ui-motion-panel) cubic-bezier(.2, .8, .2, 1); }
+.document-pane-dock-preview-band[data-direction='top'],
+.document-pane-dock-preview-band[data-direction='bottom'] { animation: document-pane-dock-preview-band-block var(--ui-motion-panel) cubic-bezier(.2, .8, .2, 1); }
+@keyframes document-pane-dock-preview-band-inline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes document-pane-dock-preview-band-block { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .document-pane-dock-preview-band { animation: none; } }
 .floating-document-tab-return-preview { z-index: 10060; }
 .floating-document-tab-ghost { position: fixed; z-index: 10061; min-width: 120px; max-width: 240px; pointer-events: none; box-shadow: 0 4px 12px var(--theme-shadow-strong); }
 .floating-document-context-menu, .document-pane-context-menu { position: fixed; z-index: 10070; }

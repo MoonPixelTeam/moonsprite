@@ -13,10 +13,12 @@ import {
 } from './document-model'
 import { createAnimationCelLookup, ensureAnimationDocument, normalizeAnimationTimeline, refreshActiveAnimationFrame } from './animation'
 import { normalizeOutlineSettings } from './outline-settings'
-import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from './project-metadata'
+import { normalizeProjectDisplaySettings, normalizeProjectStatistics } from './project-metadata'
 import { translateCurrent as tr } from './localization'
 import { normalizePaletteColumns, normalizePaletteSlots } from './palette-layout'
 import { normalizeProjectLayerPanelState } from './layer-panel-state'
+import { restoreProjectTimelapse, type ProjectDecodeReport } from './project-format-timelapse'
+export type { ProjectDecodeReport, TimelapseFrameDropReason } from './project-format-timelapse'
 import { installRuntimeRaster, rasterStorageIdentity } from './runtime-raster'
 import { normalizeDocumentSlices } from './slices'
 import { normalizeTextCelData } from './text-cel-data'
@@ -177,7 +179,14 @@ const decodeManifestFreeTiles = (value: ManifestFreeTileCelData, sources: FreeTi
   return normalized
 }
 
-export function decodeProject(input: Uint8Array, onProgress?: (value: number) => void): SpriteDocument {
+export interface ProjectDecodeOptions {
+  onProgress?: (value: number) => void
+  /** Diagnoses frames the archive could not restore instead of dropping them silently. */
+  onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void
+}
+
+export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions = {}): SpriteDocument {
+  const onProgress = options.onProgress
   const reportProgress = (value: number): void => onProgress?.(Math.max(0, Math.min(1, value)))
   reportProgress(0)
   const directory = projectZipDirectory(input)
@@ -465,26 +474,7 @@ export function decodeProject(input: Uint8Array, onProgress?: (value: number) =>
   const outlineSettings = normalizeOutlineSettings(source.outlineSettings)
   const displaySettings = normalizeProjectDisplaySettings(source.displaySettings)
   const statistics = normalizeProjectStatistics(source.statistics)
-  const manifestTimelapse = source.timelapse && typeof source.timelapse === 'object' ? source.timelapse : undefined
-  const timelapseSnapshots = (Array.isArray(manifestTimelapse?.snapshots) ? manifestTimelapse.snapshots : []).flatMap((snapshot) => {
-    if (!snapshot || typeof snapshot.id !== 'string' || typeof snapshot.dataFile !== 'string') return []
-    const width = Number(snapshot.width)
-    const height = Number(snapshot.height)
-    const data = storedTimelapseFiles.get(snapshot.dataFile) ?? files[snapshot.dataFile]
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || !data?.byteLength) return []
-    reportItem()
-    return [
-      {
-        id: snapshot.id,
-        capturedAt: Math.max(0, Math.trunc(Number(snapshot.capturedAt) || 0)),
-        elapsedMs: Math.max(0, Math.trunc(Number(snapshot.elapsedMs) || 0)),
-        width,
-        height,
-        data
-      }
-    ]
-  })
-  const timelapse = normalizeTimelapseSettings(manifestTimelapse, timelapseSnapshots)
+  const timelapse = restoreProjectTimelapse(source.timelapse, storedTimelapseFiles, files, reportItem, options.onDroppedTimelapseFrames)
   const animation = normalizeAnimationTimeline(source.animation)
   const manifestCels = Array.isArray(source.animation?.cels) ? source.animation.cels : []
   const layersById = new Map(layers.map((layer) => [layer.id, layer]))

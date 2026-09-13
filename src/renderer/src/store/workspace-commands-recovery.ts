@@ -4,7 +4,7 @@ import type { WorkspaceCommandContext } from './workspace-command-context'
 
 import { tr } from './workspace-translation'
 
-export function createWorkspaceRecoveryCommands({ get, set , services: { recoveryService } }: WorkspaceCommandContext<'addSession', 'recoveryService'>): WorkspaceRecoveryCommands {
+export function createWorkspaceRecoveryCommands({ get, set , services: { recoveryService } }: WorkspaceCommandContext<'addSession' | 'flushRecordings', 'recoveryService'>): WorkspaceRecoveryCommands {
   return {
     async restoreRecoveries() {
       try {
@@ -32,9 +32,17 @@ export function createWorkspaceRecoveryCommands({ get, set , services: { recover
     async autosaveDirty() {
       const dirty = get().sessions
         .filter((session) => session.document.dirty && !session.recoverySuppressed)
-        .map((session) => ({ id: session.recoveryOriginId ?? session.document.id, document: session.document }))
+      // Recovery serializes `document.timelapse.snapshots` directly. Landing the
+      // encodes that are already in flight keeps the archive from silently missing
+      // the most recent frames when the process dies before the next cycle.
+      try { await get().flushRecordings(dirty) } catch (error) {
+        // Preserve the drawing and completed frames even if a pending recording
+        // cannot encode. The retained failure still blocks save/close success.
+        console.error('MoonSprite recording flush before recovery failed', error)
+        set({ message: error instanceof Error ? error.message : String(error) })
+      }
       try {
-        await recoveryService.autosave(window.moonSprite, dirty)
+        await recoveryService.autosave(window.moonSprite, dirty.map((session) => ({ id: session.recoveryOriginId ?? session.document.id, document: session.document })))
       } catch (error) {
         console.error('MoonSprite recovery autosave failed', error)
         set({ message: tr('workspace.recovery.autosaveError') })

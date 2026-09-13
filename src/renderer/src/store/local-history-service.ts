@@ -7,7 +7,7 @@ import { captureCommittedHistoryDelta, cloneHistoryDocument, historyDocumentTran
 import { decodeHistoryDelta, materializeLocalHistorySnapshot, unpackLocalHistorySnapshots, type LocalHistoryManifest, type LocalHistorySnapshot } from '@/core/local-history-archive'
 import { packLocalHistoryAsync } from '@/core/local-history-worker'
 import { getLayerStorageOrigin, setLayerStorageOrigin } from '@/core/document-model'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preferences'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import type { DocumentSession } from './workspace-types'
 import { invalidateSessionContent } from './workspace-session'
@@ -93,6 +93,7 @@ const trimSnapshots = (session: DocumentSession): void => {
 
 /** Starts or stops recording a session according to the current preference. */
 export const configureLocalHistory = (session: DocumentSession, api: MoonSpriteApi): void => {
+  session.history.setMaxEntries(historyEntryLimit(loadEditorPreferences()))
   if (!loadEditorPreferences().localHistoryEnabled) {
     session.localHistory = null
     session.history.setChangeListener(null)
@@ -131,6 +132,21 @@ export const recordLocalHistoryChange = (session: DocumentSession, change: Histo
         state.snapshots.splice(0, discarded)
         state.labels.splice(0, discarded)
         state.position = Math.max(0, state.position - discarded)
+      }
+      trimSnapshots(session)
+      break
+    }
+    case 'trim': {
+      const discarded = change.discardedUndoEntries ?? 0
+      if (discarded > 0) {
+        state.snapshots.splice(0, discarded)
+        state.labels.splice(0, discarded)
+        state.position = Math.max(0, state.position - discarded)
+      }
+      const discardedRedo = change.discardedRedoEntries ?? 0
+      if (discardedRedo > 0) {
+        state.labels.splice(Math.max(state.position, state.labels.length - discardedRedo))
+        state.snapshots.splice(state.labels.length + 1)
       }
       trimSnapshots(session)
       break
@@ -286,7 +302,7 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     structuralSnapshots.set(index, snapshot)
     return snapshot
   }
-  const restoredStack = new HistoryStack()
+  const restoredStack = new HistoryStack(undefined, historyEntryLimit(loadEditorPreferences()))
   const entries: HistoryEntry[] = []
   for (let index = 0; index < manifest.labels.length; index++) {
     const cached = deltas[index]
@@ -302,6 +318,7 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
       await new Promise<void>(resolve => window.setTimeout(resolve, 0))
     }
   }
+  // Changing the step limit must not advance the saved document's history position.
   const current = decodeSnapshot(position)
   // Project recordings are authoritative for every history format, including
   // baseline-only and legacy archives captured before recording was enabled.
@@ -318,8 +335,12 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
   invalidateSessionContent(session)
   restoredStack.restoreTimeline(entries, position)
   session.history = restoredStack
-  session.localHistory = { snapshots, labels: [...manifest.labels], position }
-  snapshotShapes.set(snapshots[position], documentShape(session.document))
+  const retainedHistoryOffset = Math.min(position, Math.max(0, entries.length - restoredStack.entryLimit))
+  const retainedSnapshots = snapshots.slice(retainedHistoryOffset, retainedHistoryOffset + restoredStack.length + 1)
+  const retainedLabels = manifest.labels.slice(retainedHistoryOffset, retainedHistoryOffset + restoredStack.length)
+  const retainedPosition = Math.max(0, position - retainedHistoryOffset)
+  session.localHistory = { snapshots: retainedSnapshots, labels: [...retainedLabels], position: retainedPosition }
+  snapshotShapes.set(retainedSnapshots[retainedPosition], documentShape(session.document))
   if (hasCache && !writeQueues.has(manifest.projectKey)) {
     const record: HistoryWrite = { manifest: { ...manifest, position }, snapshots: [...snapshots], completion: Promise.resolve() }
     sessionWrites.set(session, record)

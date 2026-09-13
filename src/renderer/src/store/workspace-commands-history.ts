@@ -1,6 +1,7 @@
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { AnimationCel } from '@shared/types-animation'
 import { beginPixelEdit, commitPixelEdit, pixelEditHasChanges, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
+import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
 import { applySmoothBrush, smoothChangedLiquifyPixels } from '@/core/smooth-brush'
 import { createId, findLayerMask, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { cloneAnimationCel, disconnectAnimationCels, ensureAnimationDocument, refreshActiveAnimationFrame, restoreAnimationCels, syncActiveAnimationFrame, syncActiveAnimationLayer } from '@/core/animation'
@@ -363,14 +364,12 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
       session.document.timelapse = next
       if (current.mode !== next.mode || !next.enabled) {
         recording.resetSmartCapture(session.document)
-      }
-      if (current.mode !== next.mode
-        || current.recordUndoSteps !== next.recordUndoSteps
-        || !next.enabled) {
-        // Invalidate captures already waiting for PNG encoding as well. Without
-        // this, disabling "record undo steps" could still append a queued undo
-        // snapshot after the toggle had been switched off.
-        recording.cancelPending(session.document)
+        // Already captured drawing frames still belong to the recording.
+      } else if (current.recordUndoSteps !== next.recordUndoSteps) {
+        // Toggling "record undo steps" only invalidates undo-step captures. A drawing
+        // frame that is already waiting for PNG encoding must still be appended,
+        // otherwise the operation the user just made disappears from the recording.
+        recording.cancelPendingUndoSteps(session.document)
       }
       touch(session)
       set({ sessions: [...state.sessions] })
@@ -390,7 +389,6 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
     async exportTimelapse(format, options) {
       const session = activeSession(get())
       if (!session) return false
-      await flushTimelapseCapture(session)
       let progressStarted = false
       let exportTaskCurrent = 1
       let exportTaskTotal = 1
@@ -416,6 +414,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         set({ saveProgress: { title: exportProgressTitle(), value: Math.max(0, Math.min(100, Math.round(value))), label } })
       }
       try {
+        await flushTimelapseCapture(session)
         const videoExport = isTimelapseVideoFormat(format)
         exportTaskTotal = videoExport ? 1 : normalizeTimelapseSettings(session.document.timelapse, session.document.timelapse?.snapshots ?? []).snapshots.length
         const encodingLabel = tr(videoExport ? 'workspace.export.videoEncoding' : 'workspace.export.encoding')
@@ -532,7 +531,10 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         if (entry.documentChanged !== false) {
           if (entry.contentChanged === false) touchMetadata(session)
           else touch(session, true, entry.invalidation)
-          recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
+          // A preview published before Ctrl+D can outlive the editor's next
+          // frame. History owns the restored pixels; drop that stale snapshot.
+          if (entry.contentChanged !== false) notifyCanvasPreview(session.document.id, null)
+          recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session), 'undo-step')
         }
       }, false)
       const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)
@@ -582,7 +584,8 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         if (entry.documentChanged !== false) {
           if (entry.contentChanged === false) touchMetadata(session)
           else touch(session, true, entry.invalidation)
-          recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session))
+          if (entry.contentChanged !== false) notifyCanvasPreview(session.document.id, null)
+          recordDocumentOperation(session, undefined, entry.contentChanged !== false && shouldCaptureTimelapseHistoryStep(session), 'undo-step')
         }
       }, false)
       const hasTilesetPanelContent = documentUsesTilesetPanel(activeSession(get())?.document)

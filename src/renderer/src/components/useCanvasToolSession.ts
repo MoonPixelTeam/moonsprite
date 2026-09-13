@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { deriveShortcutConflicts, loadShortcutBindings, matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor } from '@/core/shortcuts'
+import { matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor } from '@/core/shortcuts'
 import {
   CanvasInputState,
   brushLineConnectionOverridesTemporaryMove,
@@ -9,7 +8,8 @@ import {
   temporaryMoveToolAllowed
 } from '@/core/canvas-input'
 import { applyQuickToolTarget, quickToolNeedsContextualCanvasHandling } from '@/core/quick-tools'
-import { currentQuickToolMatch, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
+import { currentQuickToolMatch, quickToolConflictsFor, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
+import { useCanvasShortcutBindings } from './useCanvasShortcutBindings'
 import { shareCanvasToolSettings } from './canvas-stage-helpers'
 interface Ports {
   readonly storedSession: DocumentSession
@@ -23,21 +23,16 @@ interface Ports {
 }
 
 export function useCanvasToolSession(ports: Ports) {
-  const [shortcuts, setShortcuts] = useState(loadShortcutBindings)
+  const shortcuts = useCanvasShortcutBindings()
 
-  const shortcutConflictState = useMemo(() => deriveShortcutConflicts(shortcuts), [shortcuts])
+  const shortcutConflictState = quickToolConflictsFor(shortcuts)
 
   const quickToolMatch = useQuickToolShortcut(shortcuts)
 
   const directQuickToolTarget = quickToolMatch && !quickToolNeedsContextualCanvasHandling(quickToolMatch.target) ? quickToolMatch.target : null
 
-  // Keep inactive, resident stages out of the switch update. Only the stage
-  // becoming active and the one being left need the active-session payload.
+  // Only the stage becoming active and the one being left need a switch update.
   const activeDocumentId = useWorkspace((state) => (state.activeId === ports.storedSession.document.id ? state.activeId : null))
-
-  const activeToolSession = useWorkspace((state) =>
-    state.activeId === ports.storedSession.document.id ? (state.sessions.find((item) => item.document.id === state.activeId) ?? null) : null
-  )
 
   // Sessions are updated in place, so subscribe to the scalar that drives the
   // hover preview as well as the active session reference.
@@ -47,12 +42,7 @@ export function useCanvasToolSession(ports: Ports) {
     return active ? (active.tool === 'liquify' ? active.liquifyRadius : active.brushSize) : null
   })
 
-  const localSession = applyQuickToolTarget(ports.storedSession, directQuickToolTarget)
-
-  const session =
-    activeToolSession && activeToolSession.document.id !== ports.storedSession.document.id
-      ? shareCanvasToolSettings(localSession, applyQuickToolTarget(activeToolSession, directQuickToolTarget))
-      : localSession
+  const session = applyQuickToolTarget(ports.storedSession, directQuickToolTarget)
 
   const currentQuickTool = () => currentQuickToolMatch(shortcuts, shortcutConflictState)
 
@@ -160,11 +150,6 @@ export function useCanvasToolSession(ports: Ports) {
         lineConnectionActive(event)
     )
 
-  useEffect(() => {
-    const refresh = (): void => setShortcuts(loadShortcutBindings())
-    window.addEventListener('moonsprite:shortcuts-changed', refresh)
-    return () => window.removeEventListener('moonsprite:shortcuts-changed', refresh)
-  }, [])
   return {
     shortcuts,
     shortcutConflictState,

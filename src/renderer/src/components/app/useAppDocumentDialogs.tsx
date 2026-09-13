@@ -147,6 +147,9 @@ export function useAppDocumentDialogs({
       )}
       {session && timelapseOpen && (
         <TimelapseDialog
+          key={session.document.id}
+          documentName={session.document.name}
+          defaultDirectory={defaultFileDirectories.exportDirectory}
           settings={session.document.timelapse!}
           onChange={(settings) => workspace.setTimelapseSettings(settings)}
           onClear={() => {

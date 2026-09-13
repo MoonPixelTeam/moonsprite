@@ -8,6 +8,7 @@ function ports(): ApplicationClosePorts {
     hasDialog: () => false,
     sessions: () => [],
     prepare: vi.fn(async () => {}),
+    flushRecordings: vi.fn(async () => {}),
     confirm: vi.fn(async () => 'discard' as const),
     discardRecovery: vi.fn(async () => {}),
     waitForDocumentCloses: vi.fn(async () => {}),

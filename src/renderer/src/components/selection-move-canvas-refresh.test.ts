@@ -3,6 +3,7 @@ import { createDocument, writeLayerColor } from '@/core/document'
 import { applySelectionTransform, captureSelectionTransform } from '@/core/tools'
 import { CanvasCompositeCache } from './canvas-composite-cache'
 import { useWorkspace } from '@/store/workspace'
+import { notifyCanvasPreview, registerCanvasPreviewListener, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
 
 class MockImageData {
   constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
@@ -110,6 +111,49 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
  * repaint (toggling a layer's eye, for example).
  */
 describe('selection move canvas refresh after undo', () => {
+  it('refreshes the canvas and preview after arrow nudges, Ctrl+D and undo', () => {
+    const { document, layer, selection } = setup()
+    const original = layer.pixels.slice()
+    const consumers = [new CanvasCompositeCache(), new CanvasCompositeCache()].map(cache => ({ cache, context: makeContext() }))
+    let livePreview: CanvasPreviewSnapshot | null = null
+    const stopPreview = registerCanvasPreviewListener(document.id, snapshot => {
+      if (!snapshot && livePreview) consumers[1].cache.invalidateAll()
+      livePreview = snapshot
+    })
+    const paint = () => {
+      const session = useWorkspace.getState().sessions[0]
+      for (const [index, { cache, context }] of consumers.entries()) draw(cache, document, context, {
+        revision: index === 1 && livePreview ? livePreview.revision : session.revision,
+        contentRevision: index === 1 && livePreview ? livePreview.contentRevision : session.contentRevision,
+        contentInvalidation: index === 1 && livePreview ? null : session.contentInvalidation
+      })
+    }
+    paint()
+    for (let i = 0; i < 8; i++) {
+      useWorkspace.getState().moveActiveSelectionWithSelectionHistory(1, 0, true)
+      const session = useWorkspace.getState().sessions[0]
+      notifyCanvasPreview(document.id, { document, frameId: document.animation?.activeFrameId ?? 'static', revision: session.revision, contentRevision: session.contentRevision })
+      paint()
+    }
+    expect(Array.from(drawnPixels(consumers[0].context).slice(32, 36))).toEqual([255, 0, 0, 255])
+    useWorkspace.getState().commitFloatingPaste('Ctrl+D')
+    paint()
+    useWorkspace.getState().undo() // Restore the deselected box first.
+    paint()
+    expect(useWorkspace.getState().sessions[0].selection).toMatchObject({ ...selection, x: 8 })
+    useWorkspace.getState().undo() // Then roll back the grouped arrow movement.
+    expect(layer.pixels).toEqual(original)
+    expect(useWorkspace.getState().sessions[0].contentInvalidation?.kind).toBe('full')
+    paint()
+    for (const { context } of consumers) {
+      expect(drawnPixels(context)).toEqual(original)
+    }
+    useWorkspace.getState().redo()
+    paint()
+    for (const { context } of consumers) expect(Array.from(drawnPixels(context).slice(32, 36))).toEqual([255, 0, 0, 255])
+    stopPreview()
+  })
+
   const setup = () => {
     const document = createDocument('canvas refresh after undo', 16, 1, 'rgba')
     const layer = document.layers[0]

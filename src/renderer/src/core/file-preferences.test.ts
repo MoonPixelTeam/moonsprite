@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_EDITOR_PREFERENCES,
   DEFAULT_ISO_VIEW_PREFERENCES,
+  HISTORY_LIMIT_PREFERENCE_KEY,
+  HISTORY_LIMIT_ENABLED_PREFERENCE_KEY,
+  historyEntryLimit,
   ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY,
   ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY,
   ANIMATION_RETURN_TO_START_PREFERENCE_KEY,
@@ -44,6 +47,21 @@ const memoryStorage = (): Storage => {
 }
 
 describe('editor preferences boundary', () => {
+  it('defaults to unlimited steps and remembers the count while the limit is off', () => {
+    const storage = memoryStorage()
+    // Older settings only stored a count; the new opt-in switch defaults off.
+    storage.setItem(HISTORY_LIMIT_PREFERENCE_KEY, '42')
+    const preferences = loadEditorPreferences(storage)
+    expect(preferences.historyLimitEnabled).toBe(false)
+    expect(historyEntryLimit(preferences)).toBe(Infinity)
+    saveEditorPreferences({ ...preferences, historyLimitEnabled: true }, storage)
+    expect(historyEntryLimit(loadEditorPreferences(storage))).toBe(42)
+    saveEditorPreferences({ ...loadEditorPreferences(storage), historyLimitEnabled: false }, storage)
+    const reopened = loadEditorPreferences(storage)
+    expect(reopened.historyLimit).toBe(42)
+    expect(historyEntryLimit(reopened)).toBe(Infinity)
+  })
+
   it('keeps tablet settings backward compatible and normalizes unsupported values', () => {
     expect(parseTabletPreferences(null)).toEqual(DEFAULT_EDITOR_PREFERENCES.tablet)
     expect(parseTabletPreferences(JSON.stringify({ api: 'invalid', touchMode: 'invalid', barrelButtonAction: 'invalid', pressureEnabled: false, twoFingerZoomEnabled: false }))).toMatchObject({
@@ -82,6 +100,8 @@ describe('editor preferences boundary', () => {
       projectBackupDirectory: '',
       localHistoryEnabled: false,
       localHistoryLimit: 50,
+      historyLimit: 1000,
+      historyLimitEnabled: false,
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
     expect(parseUiScale('1.25')).toBe(1)
@@ -153,6 +173,8 @@ describe('editor preferences boundary', () => {
       projectBackupDirectory: 'D:/MoonSprite backups',
       localHistoryEnabled: true,
       localHistoryLimit: 999,
+      historyLimit: 1234,
+      historyLimitEnabled: true,
       animationPlaybackRate: 1.5,
       animationPlaybackMode: 'tag',
       animationReturnToStart: true,
@@ -177,6 +199,9 @@ describe('editor preferences boundary', () => {
     expect(loaded.projectBackupDirectory).toBe('D:/MoonSprite backups')
     expect(loaded.localHistoryEnabled).toBe(true)
     expect(loaded.localHistoryLimit).toBe(200)
+    expect(loaded.historyLimit).toBe(1234)
+    expect(loaded.historyLimitEnabled).toBe(true)
+    expect(historyEntryLimit(loaded)).toBe(1234)
     expect(loaded.animationPlaybackRate).toBe(1.5)
     expect(loaded.animationPlaybackMode).toBe('tag')
     expect(loaded.animationReturnToStart).toBe(true)
@@ -192,6 +217,8 @@ describe('editor preferences boundary', () => {
     expect(storage.getItem(PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY)).toBe('6')
     expect(storage.getItem(PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY)).toBe('90')
     expect(storage.getItem(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)).toBe('D:/MoonSprite backups')
+    expect(storage.getItem(HISTORY_LIMIT_PREFERENCE_KEY)).toBe('1234')
+    expect(storage.getItem(HISTORY_LIMIT_ENABLED_PREFERENCE_KEY)).toBe('true')
     expect(storage.getItem(ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY)).toBe('1.5')
     expect(storage.getItem(ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY)).toBe('tag')
     expect(storage.getItem(ANIMATION_RETURN_TO_START_PREFERENCE_KEY)).toBe('true')

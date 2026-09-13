@@ -21,4 +21,4 @@ export {
 } from './project-format-save'
 export { encodeProject } from './project-format-encode'
 export { readProjectExpandedRasterBytes, readProjectGalleryMetadata } from './project-format-metadata'
-export { decodeProject } from './project-format-decode'
+export { decodeProject, type ProjectDecodeOptions, type ProjectDecodeReport, type TimelapseFrameDropReason } from './project-format-decode'

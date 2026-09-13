@@ -14,6 +14,10 @@ export interface TimelapseExportOptions {
   mode: TimelapseExportMode
   durationSeconds: number
   scalePercent?: number
+  quality?: TimelapseQuality
+  speed?: number
+  name?: string
+  directory?: string
 }
 
 export interface TimelapseVideoFrame {
@@ -52,6 +56,8 @@ export interface TimelapseCaptureOptions {
 }
 
 export interface PreparedTimelapseSnapshot {
+  /** Recording policy at the edit boundary, before a later settings change. */
+  mode?: TimelapseRecordingMode
   capturedAt: number
   width: number
   height: number
@@ -415,25 +421,77 @@ const markSmartTimelapseSnapshotAdded = (settings: TimelapseSettings, cache: Tim
 
 interface TimelapseEncodeWorkerResponse { id: number; data?: Uint8Array; error?: string }
 let timelapseEncodeSequence = 0
+let timelapseEncodeWorker: Worker | null = null
+
+interface PendingTimelapseEncode {
+  resolve: (data: Uint8Array) => void
+  reject: (error: Error) => void
+}
+
+const pendingTimelapseEncodes = new Map<number, PendingTimelapseEncode>()
+
+const resetTimelapseEncodeWorker = (error?: Error): void => {
+  timelapseEncodeWorker?.terminate()
+  timelapseEncodeWorker = null
+  if (!error) return
+  for (const pending of pendingTimelapseEncodes.values()) pending.reject(error)
+  pendingTimelapseEncodes.clear()
+}
+
+// A recording session encodes hundreds of frames. Creating and terminating a worker
+// per frame costs more than the encode itself, so one worker is kept per session and
+// requests are matched by id.
+const ensureTimelapseEncodeWorker = (): Worker => {
+  if (timelapseEncodeWorker) return timelapseEncodeWorker
+  const worker = new Worker(new URL('../workers/timelapse-encode.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-timelapse-encode' })
+  worker.onmessage = (event: MessageEvent<TimelapseEncodeWorkerResponse>) => {
+    const pending = pendingTimelapseEncodes.get(event.data.id)
+    if (!pending) return
+    pendingTimelapseEncodes.delete(event.data.id)
+    if (event.data.data) pending.resolve(event.data.data)
+    else pending.reject(new Error(event.data.error || 'Timelapse encode failed'))
+  }
+  worker.onerror = (event) => {
+    resetTimelapseEncodeWorker(new Error(event.message || 'Timelapse encode worker failed'))
+  }
+  worker.onmessageerror = () => resetTimelapseEncodeWorker(new Error('Timelapse encode worker message failed'))
+  timelapseEncodeWorker = worker
+  return worker
+}
 
 const encodeTimelapsePngAsync = (pixels: Uint8ClampedArray, width: number, height: number): Promise<Uint8Array> => {
   if (typeof Worker === 'undefined') return Promise.resolve(encodePng(pixels, width, height, true).bytes)
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../workers/timelapse-encode.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-timelapse-encode' })
+  return new Promise<Uint8Array>((resolve, reject) => {
     const id = ++timelapseEncodeSequence
+    // The worker takes ownership of the buffer, so it never receives the shared
+    // capture cache.
     const transferredPixels = pixels.slice()
-    const finish = (): void => worker.terminate()
-    worker.onmessage = (event: MessageEvent<TimelapseEncodeWorkerResponse>) => {
-      if (event.data.id !== id) return
-      finish()
-      if (event.data.data) resolve(event.data.data)
-      else reject(new Error(event.data.error || 'Timelapse encode failed'))
+    let worker: Worker
+    try {
+      worker = ensureTimelapseEncodeWorker()
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)))
+      return
     }
-    worker.onerror = (event) => {
-      finish()
-      reject(new Error(event.message || 'Timelapse encode worker failed'))
+    const timeout = setTimeout(() => {
+      if (pendingTimelapseEncodes.has(id)) resetTimelapseEncodeWorker(new Error('Timelapse encode worker timed out'))
+    }, 30_000)
+    pendingTimelapseEncodes.set(id, {
+      resolve: (data) => { clearTimeout(timeout); resolve(data) },
+      reject: (error) => { clearTimeout(timeout); reject(error) }
+    })
+    try {
+      worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+    } catch (error) {
+      clearTimeout(timeout)
+      pendingTimelapseEncodes.delete(id)
+      reject(error instanceof Error ? error : new Error(String(error)))
     }
-    worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+  }).catch((error) => {
+    recordRuntimeDiagnostic('error', 'timelapse.encode.fallback', { message: error instanceof Error ? error.message : String(error) })
+    // The transferred buffer is a copy. Retain the original so a failed worker
+    // does not erase this operation; the exceptional fallback runs only once.
+    return encodePng(pixels, width, height, true).bytes
   })
 }
 
@@ -447,15 +505,15 @@ const prepareTimelapseCapture = (document: SpriteDocument, options: TimelapseCap
 
 export function prepareTimelapseSnapshot(document: SpriteDocument, now = Date.now(), options: TimelapseCaptureOptions = {}): PreparedTimelapseSnapshot | null {
   const capture = prepareTimelapseCapture(document, options)
-  return capture ? { capturedAt: now, width: capture.width, height: capture.height, pixels: capture.pixels.slice(), cache: capture.cache } : null
+  return capture ? { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height, pixels: capture.pixels.slice(), cache: capture.cache } : null
 }
 
 export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<void> {
   if (!shouldCommit()) return
   const settings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = settings
-  if (!settings.enabled) return
-  const plan = planSmartTimelapseCapture(settings, snapshot.cache)
+  if (!settings.enabled && snapshot.mode === undefined) return
+  const plan = planSmartTimelapseCapture({ ...settings, mode: snapshot.mode ?? settings.mode }, snapshot.cache)
   if (!plan.keep) {
     if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan, document.id)
     return
@@ -464,9 +522,10 @@ export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, 
   if (!shouldCommit()) return
   const latestSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = latestSettings
-  if (!latestSettings.enabled) return
-  if ((latestSettings.mode ?? 'full') !== plan.mode) return
-  applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
+  if (!latestSettings.enabled && snapshot.mode === undefined) return
+  // Switching policy affects future edits. Preserve this already captured frame
+  // without applying an old policy's compaction to the new recording settings.
+  if ((latestSettings.mode ?? 'full') === plan.mode) applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
   appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, data)
   markSmartTimelapseSnapshotAdded(latestSettings, snapshot.cache)
 }

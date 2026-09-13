@@ -1,5 +1,6 @@
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
 import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { createRuntimeLatencyReporter, measureRuntimeStages, runtimeEventStartTime } from '@/core/runtime-diagnostic-stages'
 import { documentDiagnosticDetail } from '../core/document-diagnostics'
 import { useEffect, useRef } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
@@ -96,6 +97,9 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const wheelBrushSizePreviewRef = useRef(false)
 
   const nativeWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {})
+  const inputWaitRef = useRef<ReturnType<typeof createRuntimeLatencyReporter> | null>(null)
+  inputWaitRef.current ??= createRuntimeLatencyReporter('canvas.input.wait')
+  useEffect(() => () => inputWaitRef.current?.flush(), [])
 
   const lastNativeWheelRef = useRef<{ at: number; delta: number; type: string } | null>(null)
 
@@ -144,6 +148,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     const previous = lastNativeWheelRef.current
     if (previous && previous.type !== event.type && now - previous.at < 12 && Math.sign(previous.delta) === Math.sign(delta)) return
     lastNativeWheelRef.current = { at: now, delta, type: event.type }
+    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'wheel' }))
     const rect = ports.stageBounds()
     const eventPointInside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
     if (ports.keyDisplayEnabled && (targetsCanvas || eventPointInside)) {
@@ -214,7 +219,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
     )
   }
 
-  nativeWheelHandlerRef.current = onWheel
+  nativeWheelHandlerRef.current = (event) => measureRuntimeDiagnostic('canvas.wheel', () => onWheel(event),
+    () => ({ documentId: ports.session.document.id, zoom: ports.liveViewRef.current.zoom }))
 
   useEffect(() => {
     const listener = (event: Event): void => nativeWheelHandlerRef.current(event as WheelEvent)
@@ -274,7 +280,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
     grabbingCursor: canvasCursors.grabbing
   }
 
-  const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+  const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => measureRuntimeStages('canvas.pointer-down.total', checkpoint => {
+    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down' }))
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
@@ -306,9 +313,12 @@ export function useCanvasDeviceRouter(ports: Ports) {
         if (tool) ports.inputRef.current.setTemporaryTool(event.pointerId, tool)
       }
     }
+    checkpoint('device-routing')
     measurePointerInput('pointer-down', () => ports.handlePointerDown(event))
+    checkpoint('tool-handler')
     ports.syncPenCursor(event)
-  }
+    checkpoint('cursor')
+  }, () => ({ documentId: ports.session.document.id, tool: ports.session.tool }))
 
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (touchNavigation.move(event)) return

@@ -1,11 +1,11 @@
 import { createPortal, flushSync } from 'react-dom'
-import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
 import { documentTabsRenderKey } from '@/components/app/app-render-keys'
 import type { DocumentPaneDirection, DocumentPanePlacement } from '@/core/document-pane-layout'
 import { captureDocumentPaneDockTargets, paneDockTargetAtPoint, type DocumentPaneDockTarget } from './document-pane-hit-test'
-import { clearDocumentPaneDockPreview, updateDocumentPaneDockPreview } from './document-pane-dock-preview'
+import { clearDocumentPaneDockPreview, documentPaneDockPreviewBar, subscribeDocumentPaneDockPreviewBar, updateDocumentPaneDockPreview } from './document-pane-dock-preview'
 import { useWorkspace } from '@/store/workspace'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 
@@ -133,6 +133,7 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
   const { t } = useI18n()
   const renderKey = useWorkspace(documentTabsRenderKey)
   const [contextMenu, setContextMenu] = useState<{ documentId: string; x: number; y: number } | null>(null)
+  const dockPreviewBand = useSyncExternalStore(subscribeDocumentPaneDockPreviewBar, documentPaneDockPreviewBar, documentPaneDockPreviewBar)
   const [dragPreview, setDragPreview] = useState<DocumentTabDragPreview | null>(null)
   const [dragVisual, setDragVisual] = useState<{ id: string; detached: boolean } | null>(null)
   const dragRef = useRef<DocumentTabDragState | null>(null)
@@ -387,5 +388,6 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
     {dragPreview && createPortal(<div className="document-tab-drag-layer" aria-hidden="true">
       <div className="document-tab-drag-ghost" data-document-tab-drag-ghost="true" style={{ left: dragPreview.pointerX - dragPreview.pointerOffsetX, top: dragPreview.pointerY - dragPreview.pointerOffsetY, width: dragPreview.width, height: dragPreview.height }}><PixelUtilityIcon kind="image" /><span>{dragPreview.name}</span></div>
     </div>, document.body)}
+    {dockPreviewBand && createPortal(<div className="document-pane-dock-preview-layer" aria-hidden="true"><div className="document-pane-dock-preview-band" data-direction={dockPreviewBand.direction} style={{ left: dockPreviewBand.left, top: dockPreviewBand.top, width: dockPreviewBand.width, height: dockPreviewBand.height }} /></div>, document.body)}
   </></PerformanceProfiler>
 })

@@ -5,7 +5,7 @@ import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { expandLayerToRect, getLayerStorageOrigin, getPaletteEntry, isLayerMask, layerIndexAtStoragePoint, paletteColorIdForCanvas, readLayerColor, readLayerPacked } from './document-model'
 import { type PixelEdit } from './history'
-import { blendOver, packColor, unpackColor } from './raster'
+import { blendOver, clampByte, packColor, unpackColor } from './raster'
 import { selectionContains } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 
@@ -57,11 +57,27 @@ export /**
  */
 const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {
   if (isLayerMask(layer)) return value
-  const top = layer.format === 'rgba' ? unpackColor(value) : getPaletteEntry(document, value).color
+  // Pasted images often contain millions of opaque pixels. Their packed
+  // value is already the source-over result; avoid allocating colors and
+  // rounding/repacking every channel during both translation passes.
+  if (layer.format === 'rgba') {
+    const alpha = value >>> 24
+    if (alpha === 0) return destination
+    if (alpha === 255 || (destination >>> 24) === 0) return value >>> 0
+    // Match blendOver's operation order and byte rounding, without creating
+    // top/base/result color objects for translucent clipboard pixels.
+    const topAlpha = alpha / 255
+    const bottomAlpha = (destination >>> 24) / 255
+    const outAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
+    const r = clampByte(((value & 0xff) * topAlpha + (destination & 0xff) * bottomAlpha * (1 - topAlpha)) / outAlpha)
+    const g = clampByte((((value >>> 8) & 0xff) * topAlpha + ((destination >>> 8) & 0xff) * bottomAlpha * (1 - topAlpha)) / outAlpha)
+    const b = clampByte((((value >>> 16) & 0xff) * topAlpha + ((destination >>> 16) & 0xff) * bottomAlpha * (1 - topAlpha)) / outAlpha)
+    return (r | (g << 8) | (b << 16) | (clampByte(outAlpha * 255) << 24)) >>> 0
+  }
+  const top = getPaletteEntry(document, value).color
   if (top.a === 0) return destination
-  const base = layer.format === 'rgba' ? unpackColor(destination) : getPaletteEntry(document, destination).color
-  const blended = blendOver(base, top)
-  return layer.format === 'rgba' ? packColor(blended) : paletteColorIdForCanvas(document, blended)
+  const base = getPaletteEntry(document, destination).color
+  return paletteColorIdForCanvas(document, blendOver(base, top))
 }
 
 export /**

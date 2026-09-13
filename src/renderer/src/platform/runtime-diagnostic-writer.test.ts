@@ -7,6 +7,26 @@ const event = (sequence: number, kind: RuntimeDiagnosticEvent['kind'] = 'operati
 })
 
 describe('diagnostic persistence batching', () => {
+  it('discards queued writes and suppresses fallback for an in-flight failure after disabling', async () => {
+    vi.useFakeTimers()
+    let rejectWrite!: (reason: Error) => void
+    const persist = vi.fn(() => new Promise<void>((_, reject) => { rejectWrite = reject }))
+    const fallback = vi.fn()
+    const writer = createDiagnosticWriter(persist, fallback)
+    writer.enqueue([event(1)])
+    writer.discardPending()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(persist).not.toHaveBeenCalled()
+    writer.enqueue([event(2, 'error')])
+    writer.enqueue([event(3)])
+    writer.discardPending()
+    writer.checkpoint()
+    rejectWrite(new Error('write failed'))
+    await writer.flush()
+    expect(fallback).not.toHaveBeenCalled()
+    expect(persist).toHaveBeenCalledTimes(1)
+  })
+
   afterEach(() => { vi.useRealTimers() })
 
   it('defers a burst of 80 events to one write and preserves their order', async () => {

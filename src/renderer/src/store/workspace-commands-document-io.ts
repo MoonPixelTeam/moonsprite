@@ -134,8 +134,9 @@ const commitCanvasResize = (
 }
 
 export function createWorkspaceDocumentIoCommands({ get, set, recording, services: { recoveryService, documentTransactions } }: WorkspaceCommandContext<'addSession' | 'autosaveDirty' | 'commitFloatingPaste' | 'discardRecovery' | 'mutateActive' | 'openFiles' | 'openPath' | 'requestDialog' | 'saveActive' | 'setActive', 'recoveryService' | 'documentTransactions'>): WorkspaceDocumentIoCommands {
-  const { flushTimelapseCapture } = recording
+  const { flushTimelapseCapture, flushTimelapseCaptures } = recording
   return {
+    flushRecordings: (sessions) => flushTimelapseCaptures(sessions),
     async resizeActiveCanvas(width, height, anchor, offsetX, offsetY, trimOutside = false) {
       const current = activeSession(get())
       if (!current || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) { set({ message: tr('workspace.canvasSizePositive') }); return }
@@ -297,7 +298,12 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         })
       }
       get().commitFloatingPaste()
-      await flushTimelapseCapture(session)
+      try {
+        await flushTimelapseCapture(session)
+      } catch (error) {
+        set({ message: `${session.document.name}: ${error instanceof Error ? error.message : String(error)}` })
+        return false
+      }
       session = get().sessions.find((item) => item.document.id === documentId) ?? null
       if (!session) return false
       persistProjectLayerPanelState(session)
@@ -448,7 +454,14 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
       const finishOpenProgress = openProgress.begin()
       try {
         await waitForDocumentCloseTasks(filePath)
-        const parsed = await openDocumentFile(window.moonSprite, filePath)
+        let droppedTimelapseFrames = 0
+        let restoredTimelapseFrames = 0
+        const parsed = await openDocumentFile(window.moonSprite, filePath, {
+          onDroppedTimelapseFrames: (report) => {
+            droppedTimelapseFrames += report.droppedTimelapseFrames
+            restoredTimelapseFrames = report.timelapseFrames
+          }
+        })
         if (options?.duplicate) parsed.id = createId('doc')
         options?.onBeforeSession?.()
         get().addSession(parsed)
@@ -463,6 +476,10 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         }
         recordRecentProject(filePath, parsed.name)
         finishOpenProgress()
+        // A damaged archive must not look like a clean restore of every frame.
+        if (droppedTimelapseFrames > 0) {
+          set({ message: tr('workspace.open.timelapseFramesDropped', { dropped: droppedTimelapseFrames, count: restoredTimelapseFrames }) })
+        }
         return true
       } catch (error) {
         finishOpenProgress(false)
@@ -476,8 +493,20 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
       if (!session) return
       const preserveOpenedRecovery = session.recoveryOriginId !== null
       const recoverySuppressedBeforeClose = session.recoverySuppressed
-      let discardClosedRecovery = !session.document.dirty && !preserveOpenedRecovery
       if (documentTransactions.cancelDocument(id, session)) set((state) => ({ sessions: [...state.sessions] }))
+      // Land the recording before deciding what to do with the document. A frame that
+      // is still waiting for PNG encoding would otherwise be cancelled below and lost
+      // even when the user chose to save, or silently with a clean document.
+      try {
+        await flushTimelapseCapture(session)
+      } catch (error) {
+        recordRuntimeDiagnostic('error', 'timelapse.flush', {
+          documentId: id, message: error instanceof Error ? error.message : String(error)
+        })
+        set({ message: `${session.document.name}: ${error instanceof Error ? error.message : String(error)}` })
+        return
+      }
+      let discardClosedRecovery = !session.document.dirty && !preserveOpenedRecovery
       const choice = await resolveDocumentClose(session.document.dirty, () => get().requestDialog({ title: tr('workspace.unsaved.title'), message: tr('workspace.unsaved.message', { name: session.document.name }), detail: tr('workspace.unsaved.detail'), choices: [{ id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }, { id: 'discard', label: tr('app.discard'), tone: 'danger' }, { id: 'save', label: tr('common.save'), tone: 'primary' }] }), async () => {
         get().setActive(id)
         return get().saveActive()

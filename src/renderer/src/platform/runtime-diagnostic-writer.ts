@@ -11,6 +11,7 @@ export const createDiagnosticWriter = (
   let timer: ReturnType<typeof setTimeout> | undefined
   let running: Promise<void> | undefined
   let inFlight: RuntimeDiagnosticEvent[] = []
+  let generation = 0
   const cancelTimer = (): void => {
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
@@ -22,10 +23,11 @@ export const createDiagnosticWriter = (
     const drain = async (): Promise<void> => {
       while (pending.length) {
         inFlight = pending.splice(0, MAX_BATCH_EVENTS)
+        const batchGeneration = generation
         try {
           await persist(inFlight)
         } catch {
-          fallback(inFlight)
+          if (batchGeneration === generation) fallback(inFlight)
         } finally {
           inFlight = []
         }
@@ -57,5 +59,11 @@ export const createDiagnosticWriter = (
     const events = [...inFlight, ...pending]
     if (events.length) fallback(events)
   }
-  return { enqueue, flush, checkpoint }
+  const discardPending = (): void => {
+    generation++
+    cancelTimer()
+    pending.length = 0
+    inFlight = []
+  }
+  return { enqueue, flush, checkpoint, discardPending }
 }

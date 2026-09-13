@@ -92,6 +92,105 @@ describe('timelapse save interleaving', () => {
   })
 })
 
+describe('timelapse durability on close', () => {
+  it.each([{ enabled: false }, { mode: 'smart' as const }])('preserves queued drawing frames when changing settings to %j', async (settings) => {
+    const document = createDocument('queued settings change', 2, 2, 'rgba', true)
+    document.timelapse!.mode = 'full'
+    useWorkspace.getState().addSession(document)
+    const gate = deferred()
+    const original = timelapse.commitPreparedTimelapseSnapshot
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation(async (...args) => {
+      await gate.promise
+      return original(...args)
+    })
+    for (const red of [40, 80]) useWorkspace.getState().mutateActive(session => {
+      writeLayerColor(session.document, getActiveLayer(session.document), 0, { r: red, g: 0, b: 0, a: 255 })
+    })
+    useWorkspace.getState().setTimelapseSettings(settings)
+    gate.resolve()
+    await useWorkspace.getState().flushRecordings(useWorkspace.getState().sessions)
+    expect(document.timelapse!.snapshots.map(frame => getActiveLayer(decodePng(frame.data, 'frame')).pixels[0])).toEqual([40, 80])
+  })
+
+  it('keeps a document open and reports failed recording instead of saving or exporting incomplete frames', async () => {
+    const document = createDocument('failed recording', 2, 2, 'rgba', true)
+    useWorkspace.getState().addSession(document)
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockRejectedValue(new Error('PNG unavailable'))
+    useWorkspace.getState().mutateActive(session => {
+      writeLayerColor(session.document, getActiveLayer(session.document), 0, { r: 70, g: 0, b: 0, a: 255 })
+    })
+    await useWorkspace.getState().closeDocument(document.id)
+    expect(useWorkspace.getState().sessions.some(session => session.document === document)).toBe(true)
+    expect(useWorkspace.getState().message).toContain('PNG unavailable')
+    await expect(useWorkspace.getState().saveActive()).resolves.toBe(false)
+    await expect(useWorkspace.getState().exportTimelapse('png', { mode: 'duration', durationSeconds: 1 })).resolves.toBe(false)
+    expect(useWorkspace.getState().message).toContain('PNG unavailable')
+    useWorkspace.getState().clearTimelapse()
+  })
+
+  it('lands an in-flight frame before a clean document is closed', async () => {
+    const document = createDocument('close durability', 2, 2, 'rgba', true)
+    document.timelapse = { ...document.timelapse!, mode: 'full', enabled: true }
+    document.filePath = 'D:/close-durability.moonsprite'
+    useWorkspace.getState().addSession(document)
+    const gate = deferred()
+    const commit = timelapse.commitPreparedTimelapseSnapshot
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation(async (...args) => {
+      await gate.promise
+      return commit(...args)
+    })
+    const paint = (red: number) => useWorkspace.getState().mutateActive((session) => {
+      writeLayerColor(session.document, getActiveLayer(session.document), 0, { r: red, g: 0, b: 0, a: 255 })
+    })
+
+    paint(90)
+    // The clean-close path is the one with no save to fall back on: the frame is still
+    // waiting for PNG encoding while the document already reads as clean.
+    document.dirty = false
+    const snapshotsBeforeClose = document.timelapse!.snapshots
+
+    const closing = useWorkspace.getState().closeDocument(document.id)
+    // Closing must wait on the encoder instead of cancelling the queued capture.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(document.timelapse!.snapshots).toBe(snapshotsBeforeClose)
+
+    gate.resolve()
+    await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 300))])
+
+    // The frame reached the recording before the session went away.
+    expect(document.timelapse!.snapshots).not.toBe(snapshotsBeforeClose)
+    expect(document.timelapse!.snapshots).toHaveLength(1)
+    expect(getActiveLayer(decodePng(document.timelapse!.snapshots[0].data, 'close')).pixels[0]).toBe(90)
+  })
+
+  it('flushRecordings awaits every pending encode for the given sessions', async () => {
+    const document = createDocument('flush recordings', 2, 2, 'rgba', true)
+    document.timelapse = { ...document.timelapse!, mode: 'full', enabled: true }
+    useWorkspace.getState().addSession(document)
+    const gate = deferred()
+    const commit = timelapse.commitPreparedTimelapseSnapshot
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation(async (...args) => {
+      await gate.promise
+      return commit(...args)
+    })
+
+    useWorkspace.getState().mutateActive((session) => {
+      writeLayerColor(session.document, getActiveLayer(session.document), 0, { r: 12, g: 0, b: 0, a: 255 })
+    })
+    const session = useWorkspace.getState().sessions[0]
+    let flushed = false
+    const flushing = useWorkspace.getState().flushRecordings([session]).then(() => { flushed = true })
+
+    await Promise.resolve()
+    expect(flushed).toBe(false)
+    gate.resolve()
+    await flushing
+
+    expect(flushed).toBe(true)
+    expect(document.timelapse?.snapshots).toHaveLength(1)
+  })
+})
+
 describe('timelapse history retention', () => {
   const setupRecording = (mode: 'smart' | 'full' = 'smart', recordUndoSteps = false) => {
     const document = createDocument('recording retention', 2, 2, 'rgba', true)
@@ -172,6 +271,49 @@ describe('timelapse history retention', () => {
     useWorkspace.getState().setTimelapseSettings({ enabled: false })
     useWorkspace.getState().undo()
     expect(document.timelapse?.snapshots).toBe(earlier)
+  })
+
+  it('keeps an in-flight drawing frame when "record undo steps" is toggled', async () => {
+    const document = createDocument('undo-step toggle', 2, 2, 'rgba', true)
+    document.timelapse = { ...document.timelapse!, mode: 'full', recordUndoSteps: false }
+    useWorkspace.getState().addSession(document)
+    const gate = deferred()
+    const commit = timelapse.commitPreparedTimelapseSnapshot
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation(async (...args) => {
+      await gate.promise
+      return commit(...args)
+    })
+    const paint = (red: number) => useWorkspace.getState().mutateActive((session) => {
+      writeLayerColor(session.document, getActiveLayer(session.document), 0, { r: red, g: 0, b: 0, a: 255 })
+    })
+
+    paint(50)
+    // The toggled setting only invalidates undo-step captures, never this drawing frame.
+    useWorkspace.getState().setTimelapseSettings({ recordUndoSteps: true })
+    gate.resolve()
+    await vi.waitFor(() => expect(document.timelapse?.snapshots).toHaveLength(1))
+    expect(getActiveLayer(decodePng(document.timelapse!.snapshots[0].data, 'toggle')).pixels[0]).toBe(50)
+  })
+
+  it('drops queued undo-step frames when "record undo steps" is switched off', async () => {
+    const { document, paint, drain } = setupRecording('full', true)
+    paint(50); await drain()
+    expect(document.timelapse?.snapshots).toHaveLength(1)
+
+    const gate = deferred()
+    const commit = timelapse.commitPreparedTimelapseSnapshot
+    vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockImplementation(async (...args) => {
+      await gate.promise
+      return commit(...args)
+    })
+    useWorkspace.getState().setTimelapseSettings({ recordUndoSteps: false })
+    useWorkspace.getState().undo()
+    gate.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    // The undo step was captured while it was still enabled, so switching the
+    // toggle off must discard exactly that pending frame.
+    expect(document.timelapse?.snapshots).toHaveLength(1)
   })
 
   it('preserves chronological frames when undo happens before queued PNGs finish', async () => {

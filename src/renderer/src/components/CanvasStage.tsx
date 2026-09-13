@@ -67,6 +67,7 @@ import rotationBackground5 from '@/assets/rotation-indicator/background-5.png'
 import rotationBackground6 from '@/assets/rotation-indicator/background-6.png'
 import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
+import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
@@ -184,7 +185,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     activeViewDrag,
     canvasRef,
     selectionCanvasRef,
-    drawRef,
     requestDrawRef
   })
   const {
@@ -426,6 +426,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     cursorCompositePointSamplerFor,
     cursorCompositePointReplacementSamplerFor
   } = useCanvasRenderEngine({
+    get canvasRef() { return canvasRef },
     get storedSession() { return storedSession },
     get session() { return session },
     get activeBrushImage() { return activeBrushImage },
@@ -815,7 +816,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     },
     [session.document.id]
   )
-  const draw = (): void =>
+  const draw = (): void => {
+    if (!canvasStageIsVisible(canvasRef.current, useWorkspace.getState().activeId)) return
     renderCanvasFrame({
       resources: {
         canvasRef,
@@ -926,6 +928,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       },
       readSession: () => useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     })
+  }
 
   drawRef.current = draw
   const { quickSelectionPressRef, quickSelectionHandledAtRef, quickSelectionCellAt, quickSelectCell } = useCanvasQuickSelection({

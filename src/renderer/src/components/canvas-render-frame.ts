@@ -16,7 +16,7 @@ import { renderCanvasAirbrush } from './canvas-render-airbrush'
 import { renderCanvasStatus } from './canvas-render-status'
 import { publishCanvasFramePreview } from './canvas-render-publish'
 import { isWorkspaceResizing, recordWorkspaceResizeStage, recordWorkspaceResizeContext } from './workspace-resize'
-import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { activeLayerMask, activePaintLayer, selectedTransformLayersAreEditable } from '@/store/workspace-session'
 import { createCanvasRenderPlan, deviceAlignedCanvasRect, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
@@ -524,6 +524,17 @@ export interface CanvasRenderContext {
 /** Paints a frame from explicit resources, settings and geometry.
  * The renderer never subscribes to or retrieves the global workspace. */
 export function renderCanvasFrame(frame: CanvasRenderContext): void {
+  measureRuntimeStages('canvas.stage.draw', checkpoint => renderFrame(frame, checkpoint), () => {
+    const session = frame.readSession()
+    return { documentId: session.document.id, tool: session.tool, contentRevision: session.contentRevision,
+      zoom: frame.resources.liveViewRef.current.zoom, gesture: frame.resources.inputRef.current.drag?.kind ?? 'none',
+      viewPreview: frame.resources.zoomPreviewStartRef.current !== null, timingScope: 'cpu-submit',
+      width: session.document.width, height: session.document.height,
+      active: frame.settings.activeDocumentId === session.document.id }
+  })
+}
+
+function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => void): void {
   const {
     canvasRef,
     inputRef,
@@ -602,8 +613,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     moveLayerContentPreviewEnabled,
     sliceOutlinesVisible,
     sliceColor,
-    t,
-    activeDocumentId
+    t
   } = frame.settings
   const {
     sharedCanvasSession,
@@ -670,6 +680,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
       : currentHasRasterSelection &&
         isLayerEffectivelyVisible(currentSession.document, currentActiveLayer) &&
         !isLayerEffectivelyLocked(currentSession.document, currentActiveLayer))
+  checkpoint('session-prepare')
   const rect = stageSize()
   const displaySize = stageDisplaySize()
   const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, interfaceScale)
@@ -677,6 +688,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     previousBackingHeight = canvas.height
   const backingStarted = isWorkspaceResizing() ? performance.now() : 0
   const deviceScale = syncCanvasDisplaySize(canvas, rect.width, rect.height, dpr, displaySize.width, displaySize.height, isWorkspaceResizing())
+  checkpoint('viewport-backing')
   if (backingStarted) {
     recordWorkspaceResizeStage('backing', performance.now() - backingStarted)
     if (canvas.width !== previousBackingWidth || canvas.height !== previousBackingHeight)
@@ -775,6 +787,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     targetContext.rect(baseCanvasBoundary.left, baseCanvasBoundary.top, baseCanvasBoundary.width, baseCanvasBoundary.height)
     targetContext.clip()
   }
+  checkpoint('view-geometry')
   const { drawGrid, drawIsoGuides } = createCanvasBackground({
     checkerboard,
     view,
@@ -791,6 +804,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     isoViewPreferences,
     isoGuideTileRef
   })
+  checkpoint('background')
   const { paintedMoveLayerFlash } = renderCanvasContent({
     repeatCopies,
     isolatedLayerMask,
@@ -823,6 +837,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     drawIsoGuides,
     inputRef
   })
+  checkpoint('content')
   const {
     activeLayer,
     compositePointSampler,
@@ -1227,6 +1242,7 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     drawSelectionOverlay,
     brushPreviewDrawRef
   })
+  checkpoint('overlays')
   publishCanvasFramePreview({
     activeDrag,
     selectionPreviewOwner,
@@ -1241,20 +1257,8 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
     recordWorkspaceResizeStage('main', performance.now() - drawStartedAt)
     recordWorkspaceResizeContext({ width: document.width, height: document.height, layers: document.layers.length, zoom: view.zoom })
   }
+  checkpoint('publish')
   const drawDuration = drawStartedAt ? performance.now() - drawStartedAt : 0
-  if (drawDuration >= 50)
-    recordRuntimeDiagnostic('operation-stage', 'canvas.stage.draw', {
-      bitmapPolicy: 'defer-live-v1',
-      tool: currentSession.tool,
-      gesture: activeDrag?.kind ?? 'none',
-      documentId: document.id,
-      durationMs: Math.round(drawDuration * 10) / 10,
-      width: document.width,
-      height: document.height,
-      layers: document.layers.length,
-      contentRevision: currentSession.contentRevision,
-      active: activeDocumentId === session.document.id
-    })
   performanceProbe?.recordDraw(drawDuration)
   // Slow selection/composition must not consume the flash before it is visible.
   if (paintedMoveLayerFlash && moveLayerClickFlashRef.current === paintedMoveLayerFlash && presentCanvasClickFlash(paintedMoveLayerFlash, performance.now())) {
