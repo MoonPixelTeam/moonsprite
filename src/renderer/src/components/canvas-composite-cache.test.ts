@@ -113,7 +113,7 @@ beforeEach(() => {
   vi.stubGlobal('ImageData', MockImageData)
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
   it('keeps one unfinished bitmap capture across repeated invalidations', async () => {
@@ -1013,4 +1013,79 @@ it('refreshes a cancelled liquify preview through Store invalidation without add
   expect(readLayerColor(document, layer, 5).a).toBe(0)
   expect(session.history.position).toBe(0)
   expect(document.dirty).toBe(dirty)
+})
+
+
+describe('styled layer placement previews', () => {
+  it.each(['stroke', 'shadow', 'innerGlow', 'combined'])('reuses %s pixels through drag, cancellation and a subsequent edit', effect => {
+    const document = createDocument('styled move reuse', 64, 48, 'rgba')
+    const layer = document.layers[0]
+    const styles = createDefaultLayerStyles()
+    if (effect === 'stroke' || effect === 'combined') styles.stroke = { ...styles.stroke, enabled: true, size: 2 }
+    if (effect === 'shadow' || effect === 'combined') styles.shadow = { ...styles.shadow, enabled: true, blur: 2, offsetX: 2, offsetY: 2 }
+    if (effect === 'innerGlow' || effect === 'combined') styles.innerGlow = { ...styles.innerGlow, enabled: true, size: 2 }
+    layer.layerStyles = styles
+    for (let y = 6; y < 12; y += 1) for (let x = 6; x < 12; x += 1) writeLayerColor(document, layer, y * layer.width + x, { r: 20, g: 110, b: 240, a: 180 })
+    const cache = new CanvasCompositeCache()
+    const preview = new CanvasCompositeCache()
+    const context = makeContext(), previewContext = makeContext()
+    const frameId = document.animation!.activeFrameId
+    const rect = { x: 0, y: 0, width: 64, height: 48 }
+    const blocks = vi.spyOn(DocumentCompositeCache.prototype as unknown as { renderStyledLayerBlock: (...args: unknown[]) => Uint8ClampedArray }, 'renderStyledLayerBlock')
+    draw(cache, document, context)
+    draw(preview, document, previewContext)
+    for (const offset of [2, 5, 0]) {
+      layer.offsetX = offset
+      cache.invalidateDocumentPlacementRect(rect, document, frameId, [layer.id])
+      const invalidation = cache.consumePreviewInvalidation(frameId)
+      expect(invalidation).toEqual({ kind: 'region', rect, placementOnly: true, layerIds: [layer.id] })
+      preview.invalidateDocumentPlacementRect(rect, document, frameId, invalidation?.kind === 'region' ? invalidation.layerIds : undefined)
+      blocks.mockClear()
+      draw(cache, document, context, { movingLayerIds: [layer.id] })
+      draw(preview, document, previewContext, { movingLayerIds: [layer.id] })
+      expect(blocks).not.toHaveBeenCalled()
+      const expected = compositeRegion(document, 0, 0, 64, 48, new DocumentCompositeCache(), 1)
+      expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(expected)
+      expect((previewContext.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(expected)
+    }
+    writeLayerColor(document, layer, 8 * layer.width + 8, { r: 255, g: 0, b: 0, a: 255 })
+    cache.invalidateDocumentRect({ x: 8, y: 8, width: 1, height: 1 }, document, frameId, [layer.id])
+    blocks.mockClear()
+    draw(cache, document, context, { revision: 2, contentRevision: 2 })
+    expect(blocks).toHaveBeenCalled()
+    expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+      .toEqual(compositeRegion(document, 0, 0, 64, 48, new DocumentCompositeCache(), 2))
+  })
+
+  it('refreshes ancestor group styles when a child moves inside unchanged group bounds', () => {
+    const document = createDocument('group style placement', 32, 24, 'rgba')
+    const moving = document.layers[0]
+    moving.groupId = 'group'
+    writeLayerColor(document, moving, 8 * 32 + 8, { r: 255, g: 0, b: 0, a: 255 })
+    const anchor = createLayer('fixed group extent', 32, 24, 'rgba')
+    anchor.groupId = 'group'
+    writeLayerColor(document, anchor, 3 * 32 + 3, { r: 0, g: 0, b: 255, a: 255 })
+    writeLayerColor(document, anchor, 18 * 32 + 25, { r: 0, g: 0, b: 255, a: 255 })
+    document.layers.push(anchor)
+    const layerStyles = createDefaultLayerStyles()
+    layerStyles.stroke = { ...layerStyles.stroke, enabled: true, size: 1 }
+    document.groups = [{ id: 'group', name: 'Group', parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal', layerStyles }]
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    moving.offsetX = 4
+    cache.invalidateDocumentPlacementRect({ x: 0, y: 0, width: 32, height: 24 }, document, document.animation!.activeFrameId, [moving.id])
+    draw(cache, document, context, { movingLayerIds: [moving.id] })
+    expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+      .toEqual(compositeRegion(document, 0, 0, 32, 24, new DocumentCompositeCache(), 1))
+  })
+
+  it('preserves pixel invalidation when an edit and a move share a preview frame', () => {
+    const document = createDocument('mixed preview updates', 16, 16, 'rgba')
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context)
+    const frameId = document.animation!.activeFrameId
+    cache.invalidateDocumentRect({ x: 1, y: 1, width: 1, height: 1 }, document, frameId)
+    cache.invalidateDocumentPlacementRect({ x: 5, y: 5, width: 1, height: 1 }, document, frameId, [document.activeLayerId])
+    expect(cache.consumePreviewInvalidation(frameId)).toEqual({ kind: 'region', rect: { x: 1, y: 1, width: 5, height: 5 } })
+  })
 })

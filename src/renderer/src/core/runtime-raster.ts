@@ -182,6 +182,41 @@ export const readSurfacePackedLocal = (surface: RasterSurface, x: number, y: num
   return (surface.pixels[offset] | (surface.pixels[offset + 1] << 8) | (surface.pixels[offset + 2] << 16) | (surface.pixels[offset + 3] << 24)) >>> 0
 }
 
+/** Visit existing row storage without allocating a region or materializing sparse tiles.
+ * packedBytes is true for RGBA bytes and sparse indexed IDs encoded as four bytes;
+ * dense indexed rows expose Uint32 IDs directly. Coordinates are surface-local.
+ */
+export const visitSurfaceRasterRows = (
+  surface: RasterSurface, x: number, y: number, width: number, height: number,
+  visit: (data: Uint8Array | RasterPixels, offset: number, count: number, x: number, y: number, packedBytes: boolean) => void
+): void => {
+  const left = Math.max(0, x), top = Math.max(0, y)
+  const right = Math.min(surface.width, x + width), bottom = Math.min(surface.height, y + height)
+  if (right <= left || bottom <= top) return
+  const runtime = lazyRuntimeRasterForSurface(surface)
+  if (runtime) {
+    const columns = Math.ceil(runtime.width / runtime.tileSize)
+    const fromTileX = Math.floor(left / runtime.tileSize), toTileX = Math.floor((right - 1) / runtime.tileSize)
+    const fromTileY = Math.floor(top / runtime.tileSize), toTileY = Math.floor((bottom - 1) / runtime.tileSize)
+    for (let tileY = fromTileY; tileY <= toTileY; tileY += 1) for (let tileX = fromTileX; tileX <= toTileX; tileX += 1) {
+      const encodedOffset = runtime.tileOffsets[tileY * columns + tileX]
+      if (!encodedOffset) continue
+      const tileLeft = tileX * runtime.tileSize, tileTop = tileY * runtime.tileSize
+      const tileWidth = Math.min(runtime.tileSize, runtime.width - tileLeft)
+      const copyLeft = Math.max(left, tileLeft), copyRight = Math.min(right, tileLeft + tileWidth)
+      const copyTop = Math.max(top, tileTop), copyBottom = Math.min(bottom, tileTop + Math.min(runtime.tileSize, runtime.height - tileTop))
+      for (let row = copyTop; row < copyBottom; row += 1) {
+        visit(runtime.data, encodedOffset - 1 + ((row - tileTop) * tileWidth + copyLeft - tileLeft) * 4, copyRight - copyLeft, copyLeft, row, true)
+      }
+    }
+    return
+  }
+  const pixels = surface.pixels
+  const packedBytes = surface.format === 'rgba'
+  const stride = packedBytes ? 4 : 1
+  for (let row = top; row < bottom; row += 1) visit(pixels, (row * surface.width + left) * stride, right - left, left, row, packedBytes)
+}
+
 export const readSurfacePackedRegion = (surface: RasterSurface, x: number, y: number, width: number, height: number): Uint32Array => {
   const output = new Uint32Array(Math.max(0, width * height))
   if (width <= 0 || height <= 0) return output

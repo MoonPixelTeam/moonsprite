@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { createDiagnosticWriter } from './runtime-diagnostic-writer'
+import { playExportSuccessSound } from './export-success-sound'
 import {
   configureRuntimeDiagnostics,
   installRuntimeDiagnosticWatchdog,
@@ -68,4 +69,5 @@ export const openRuntimeDiagnosticLogs = async (): Promise<void> => {
   anchor.download = `moonsprite-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
   anchor.click()
   URL.revokeObjectURL(url)
+  playExportSuccessSound()
 }

@@ -489,6 +489,7 @@ export class CanvasCompositeCache {
   private regions = new Map<string, CompositeRegionSurface>()
   private dirtyRects = new Map<string, SelectionRect[]>()
   /** Raw source regions changed during a live gesture, before style expansion. */
+  private placementDirtyHints = new Map<string, { rect: SelectionRect; layerIds?: readonly string[] }>()
   private sourceDirtyHints = new Map<string, { rect: SelectionRect; used: boolean }>()
   /** A live stroke may already have been painted into the cached surface. */
   private livePreviewPending = new Set<string>()
@@ -525,6 +526,7 @@ export class CanvasCompositeCache {
     this.regions.clear()
     this.dirtyRects.clear()
     this.sourceDirtyHints.clear()
+    this.placementDirtyHints.clear()
     this.livePreviewPending.clear()
     this.livePreviewCommitRevisions.clear()
     this.compositeCache.invalidateAll()
@@ -619,16 +621,36 @@ export class CanvasCompositeCache {
     }
   }
 
+  /** Redraw translated output without treating the old/new positions as pixel edits.
+   * Rectangles already include layer-style extents at the move boundary. */
+  invalidateDocumentPlacementRect(rect: SelectionRect, document: SpriteDocument, frameId = this.lastDrawnFrameId, layerIds?: readonly string[]): void {
+    this.invalidatedInitialDocuments.add(document)
+    this.compositeCache.invalidateLayerPlacementCaches()
+    this.compositeCache.invalidateLayerPlacementSources(document, rect, layerIds)
+    this.invalidateRect(rect, document.width, document.height, frameId)
+    const previous = this.placementDirtyHints.get(frameId)
+    this.placementDirtyHints.set(frameId, {
+      rect: previous ? unionRect(previous.rect, rect) : { ...rect },
+      layerIds: previous ? previous.layerIds && layerIds ? [...new Set([...previous.layerIds, ...layerIds])] : undefined : layerIds
+    })
+    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
+      const pending = [...(surface.pendingDirtyRects ?? []), rect]
+      surface.pendingDirtyRects = pending.length > 32 ? boundedDirtyRects(pending) : pending
+    }
+  }
+
   consumePreviewInvalidation(frameId = this.lastDrawnFrameId): CanvasPreviewInvalidation | null {
+    const placement = this.placementDirtyHints.get(frameId)
+    this.placementDirtyHints.delete(frameId)
     if (this.fullPreviewInvalidationPending) {
       this.fullPreviewInvalidationPending = false
       this.sourceDirtyHints.delete(frameId)
       return { kind: 'full' }
     }
     const hint = this.sourceDirtyHints.get(frameId)
-    if (!hint) return null
     this.sourceDirtyHints.delete(frameId)
-    return { kind: 'region', rect: { ...hint.rect } }
+    if (hint) return { kind: 'region', rect: placement ? unionRect(hint.rect, placement.rect) : { ...hint.rect } }
+    return placement ? { kind: 'region', rect: { ...placement.rect }, placementOnly: true, layerIds: placement.layerIds } : null
   }
 
   draw({ context, document, view, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY, revision, contentRevision = revision, contentInvalidation = null, frameId, isolatedLayerMask, imageSmoothingEnabled = false, imageSmoothingQuality = 'high', fastViewPreview = false, liveRasterEdit = false, animationPlayback = false, animationConsumerOnly = false, devicePixelRatio = 1, movingLayerIds, selectionPreview }: DrawCompositeOptions): void {
@@ -672,7 +694,10 @@ export class CanvasCompositeCache {
     // A single draw pass can render several tile-repeat copies. Keep the hint
     // available to every copy; a later edit resets it in invalidateDocumentRect.
     if (liveSourceDirtyHint) liveSourceDirtyHint.used = true
-    const committedSourceDirtyRect = invalidationRegion(contentInvalidation)
+    // The last committed edit remains attached to the session throughout a
+    // drag. Its source change has already been consumed before this placement.
+    const committedSourceDirtyRect = this.placementDirtyHints.has(effectiveFrameId)
+      ? undefined : invalidationRegion(contentInvalidation)
     const sourceDirtyRect = liveSourceDirtyRect && committedSourceDirtyRect
       ? unionRect(liveSourceDirtyRect, committedSourceDirtyRect)
       : liveSourceDirtyRect ?? committedSourceDirtyRect
@@ -1497,6 +1522,7 @@ export class CanvasCompositeCache {
     if (width <= 0 || height <= 0) return true
     const movingIds = new Set(movingLayerIds)
     const layers = this.compositeCache.movePreviewLayersFor(document, contentRevision)
+      ?? this.compositeCache.renderLayersFor(document, contentRevision)
     if (!layers) {
       // A group with its own opacity/blend mode must be isolated before it is
       // applied to the backdrop. The recursive GPU stack preserves that
@@ -1533,7 +1559,7 @@ export class CanvasCompositeCache {
     // the move preview surface still has the same document revision. Without
     // this component, the first move after mirroring reuses the old preview
     // and leaves stale/cropped style pixels behind.
-    const previewLayerRevision = (layer: RasterLayer): string => `${layer.id}:${getLayerContentRevision(layer)}`
+    const previewLayerRevision = (layer: RasterLayer): string => `${layer.id}:${getLayerContentRevision(this.compositeCache.sourceLayerFor(layer))}`
     const key = `${document.id}:${frameId}:${contentRevision}:${x}:${y}:${width}:${height}:${view.tileRepeatMode ?? 'off'}:${movingLayers.map(previewLayerRevision).join(',')}:${layers.slice(lastMovingIndex + 1).map(previewLayerRevision).join(',')}`
     let preview = this.movePreview
     if (!preview || preview.key !== key) {

@@ -77,6 +77,58 @@ describe('workspace Free Tile layer ownership', () => {
     expect(document.layers.some((layer) => layer.id === freeTileLayer.id)).toBe(false)
   })
 
+  it('mirrors only the picked Free Tile instance after mirroring its selected cel', async () => {
+    const document = createDocument('free tile instance mirror priority', 4, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    await useWorkspace.getState().createFreeTileLayer({ name: 'Props' })
+    const target = activeFreeTileCelTarget(document)!
+    const sourceId = target.layer.freeTileSources![0].id
+    const placement = useWorkspace.getState().beginFreeTilePlacement()!
+    placement.after.instances = [
+      { id: 'picked-instance', sourceId, x: 0, y: 0 },
+      { id: 'other-instance', sourceId, x: 2, y: 0 }
+    ]
+    expect(useWorkspace.getState().previewFreeTilePlacement(placement)).toBe(true)
+    expect(useWorkspace.getState().commitFreeTilePlacement(placement, 'Place instances')).not.toBeNull()
+
+    useWorkspace.getState().selectAnimationCell(animationCelKey(target.layer.id, target.cel.frameId))
+    useWorkspace.getState().flipActiveSelection('horizontal')
+    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.flipHorizontal === true)).toBe(true)
+
+    useWorkspace.getState().setSelectedFreeTileInstance('picked-instance', 'edit')
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(target.layer.id, target.cel.frameId)])
+    useWorkspace.getState().flipActiveSelection('horizontal')
+
+    const instances = activeFreeTileCelTarget(document)!.freeTiles.instances
+    expect(instances.find((instance) => instance.id === 'picked-instance')).toMatchObject({ flipHorizontal: false })
+    expect(instances.find((instance) => instance.id === 'other-instance')).toMatchObject({ flipHorizontal: true })
+  })
+
+  it('clears the Free Tile instance selection when selecting its timeline cel', async () => {
+    const document = createDocument('free tile cel clears instance selection', 4, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    await useWorkspace.getState().createFreeTileLayer({ name: 'Props' })
+    const target = activeFreeTileCelTarget(document)!
+    const sourceId = target.layer.freeTileSources![0].id
+    const placement = useWorkspace.getState().beginFreeTilePlacement()!
+    placement.after.instances = [
+      { id: 'picked-instance', sourceId, x: 0, y: 0 },
+      { id: 'other-instance', sourceId, x: 2, y: 0 }
+    ]
+    expect(useWorkspace.getState().previewFreeTilePlacement(placement)).toBe(true)
+    expect(useWorkspace.getState().commitFreeTilePlacement(placement, 'Place instances')).not.toBeNull()
+
+    useWorkspace.getState().setSelectedFreeTileInstance('picked-instance', 'edit')
+    useWorkspace.getState().selectAnimationCell(animationCelKey(target.layer.id, target.cel.frameId))
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.selectedFreeTileInstanceId).toBeNull()
+    expect(session.selectedFreeTileInstanceIds).toEqual([])
+    expect(session.freeTileInstanceLayerId).toBeNull()
+
+    useWorkspace.getState().flipActiveSelection('horizontal')
+    expect(activeFreeTileCelTarget(document)!.freeTiles.instances.every((instance) => instance.flipHorizontal === true)).toBe(true)
+  })
+
   it('reuses one Free Tile source set across multiple layers', async () => {
     const document = createDocument('shared free tile set', 6, 2, 'rgba')
     useWorkspace.getState().addSession(document)

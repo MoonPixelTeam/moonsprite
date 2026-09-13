@@ -30,7 +30,6 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
   const [previewFrame, setPreviewFrame] = useState(0)
   const [format, setFormat] = useState<TimelapseExportFormat>('mp4')
   const [exportMode, setExportMode] = useState<TimelapseExportMode>('duration')
-  const [clearConfirm, setClearConfirm] = useState(false)
   const [imageScalePercent, setImageScalePercent] = useState(() => {
     const presets = loadEditorPreferences().exportScalePresets
     return presets.includes(100) ? 100 : presets[0] ?? 100
@@ -201,7 +200,7 @@ export function TimelapseDialog({ settings, onChange, onClear, onExport, onClose
       </div>
       <footer className="timelapse-footer">
         <div className="timelapse-clear-actions">
-          {!clearConfirm ? <button type="button" className="quiet-button timelapse-clear" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setClearConfirm(true) }}><PixelUtilityIcon kind="clearRecords" />{t('timelapse.clear')}</button> : <><span className="timelapse-clear-confirm-label">{t('timelapse.clearConfirm')}</span><button type="button" className="quiet-button" onClick={() => setClearConfirm(false)}>{t('common.cancel')}</button><button type="button" className="danger-button" onClick={() => { setClearConfirm(false); setPreviewFrame(0); onClear() }}>{t('timelapse.confirmClear')}</button></>}
+          <button type="button" className="quiet-button timelapse-clear" disabled={settings.snapshots.length === 0} onClick={() => { setPreviewPlaying(false); setPreviewFrame(0); onClear() }}><PixelUtilityIcon kind="clearRecords" />{t('timelapse.clear')}</button>
         </div>
         <div className="timelapse-footer-actions"><button className="quiet-button" onClick={onClose}>{t('common.close')}</button><button className="primary-button" disabled={settings.snapshots.length === 0} onClick={() => { void onExport(format, exportOptions) }}><PixelUtilityIcon kind="export" />{t(videoFormat ? 'timelapse.exportVideo' : 'timelapse.exportImages')}</button></div>
       </footer>

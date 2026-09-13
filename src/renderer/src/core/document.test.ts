@@ -3,7 +3,7 @@ import { BLEND_MODES } from '@shared/types'
 import { blendWithMode, blendWithModeInto, packColor, writeRgbaPixel } from './raster'
 import { createDefaultLayerStyles } from './layer-styles'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument } from './animation'
-import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, compositeRegionAsync, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
+import { cachedLayerContentBounds, captureDocumentImageResizeSnapshot, compositePixelWithLayerColor, compositeRegion, compositeRegionAsync, createCompositePointReplacementSampler, createCompositePointSampler, createCompositeSampler, createDocument, createLayer, createLayerMask, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, DocumentCompositeCache, getPaletteEntry, invalidateRasterContentBounds, layerContentBounds, markLayerContentChanged, normalCompositeLayers, paletteColorIdForCanvas, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, renderLayerMaskRegion, resizeDocumentAt, resizeDocumentImage, resolveLayerCanvasColor, restoreDocumentImageResizeSnapshot, writeLayerColor, writeLayerPackedRun } from './document'
 import { assignRasterStorage, installRuntimeRaster, surfacePixelsMaterialized } from './runtime-raster'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
@@ -266,4 +266,39 @@ describe('document compositing', () => {
 
 
 
+})
+
+
+describe('content bounds from native row edges', () => {
+  it('reads dense storage a bounded number of times when refreshing erased edges', () => {
+    const document = createDocument('dense edge refresh', 256, 128, 'rgba')
+    const layer = document.layers[0]
+    const pixels = new Uint8ClampedArray(256 * 128 * 4).fill(255)
+    for (let y = 0; y < 128; y += 1) pixels[y * 256 * 4 + 3] = 0
+    let reads = 0
+    Object.defineProperty(layer, 'pixels', { configurable: true, get: () => { reads += 1; return pixels } })
+    invalidateRasterContentBounds(layer)
+    expect(layerContentBounds(document, layer)).toEqual({ x: 1, y: 0, width: 255, height: 128 })
+    expect(reads).toBeLessThan(20)
+  })
+
+  it.each(['rgba', 'indexed'] as const)('matches visible pixels through holes and edge changes in %s storage', format => {
+    const document = createDocument('row edge patterns', 23, 11, format)
+    const layer = document.layers[0]
+    layer.offsetX = -9; layer.offsetY = 15
+    const ink = document.palette.find(entry => entry.color.a > 0)!.color
+    for (let step = 0; step < 6; step += 1) {
+      for (let y = 0; y < 11; y += 1) for (let x = 0; x < 23; x += 1) {
+        const visible = step > 0 && (x * 7 + y * 11 + step) % 13 === 0 && x >= step && y >= step - 1
+        writeLayerColor(document, layer, y * 23 + x, visible ? ink : { r: 0, g: 0, b: 0, a: 0 })
+      }
+      const visible = []
+      for (let y = 0; y < 11; y += 1) for (let x = 0; x < 23; x += 1) {
+        if (readLayerColorAt(document, layer, x - 9, y + 15).a > 0) visible.push({ x: x - 9, y: y + 15 })
+      }
+      const left = Math.min(...visible.map(p => p.x)), right = Math.max(...visible.map(p => p.x))
+      const top = Math.min(...visible.map(p => p.y)), bottom = Math.max(...visible.map(p => p.y))
+      expect(layerContentBounds(document, layer)).toEqual(visible.length ? { x: left, y: top, width: right - left + 1, height: bottom - top + 1 } : null)
+    }
+  })
 })

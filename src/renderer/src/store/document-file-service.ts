@@ -15,6 +15,7 @@ import { compositeRegion, compositeRegionAsync } from '@/core/document'
 import { selectionContains } from '@/core/selection'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
+import { documentDiagnosticDetail } from '@/core/document-diagnostics'
 import { documentForLayerExport } from '@/core/layer-export'
 import { exportLayersInWorker } from '@/core/layer-export-worker-client'
 import { exportDocumentInWorker } from '@/core/document-export-worker-client'
@@ -939,6 +940,7 @@ export async function openDocumentFile(api: MoonSpriteApi, filePath: string, lif
     lifecycle?.onDecodeStart?.()
     const document = await decodeDocumentFileAsync(bytes, filePath, lifecycle?.onDecodeProgress)
     diagnostic?.mark('decode-complete', {
+      ...documentDiagnosticDetail(document),
       width: document.width,
       height: document.height,
       layers: document.layers.length,

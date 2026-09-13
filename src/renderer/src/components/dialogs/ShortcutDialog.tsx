@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { createPortal } from 'react-dom'
 import {
   DEFAULT_SHORTCUT_BINDINGS,
@@ -212,6 +213,7 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
       if (result.canceled || !result.filePath) return
       const bytes = new TextEncoder().encode(JSON.stringify(createShortcutSettingsFile(draftShortcuts), null, 2))
       await window.moonSprite.writeBinaryAtomic(result.filePath, bytes)
+      playExportSuccessSound()
       setImportNotice(null)
     } catch {
       setImportNotice({ tone: 'error', text: t('shortcuts.exportError') })

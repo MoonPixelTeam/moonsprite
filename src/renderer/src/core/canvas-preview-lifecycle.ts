@@ -17,7 +17,7 @@ export interface CanvasPreviewSelection {
 
 export type CanvasPreviewInvalidation =
   | { kind: 'full' }
-  | { kind: 'region'; rect: SelectionRect }
+  | { kind: 'region'; rect: SelectionRect; placementOnly?: boolean; layerIds?: readonly string[] }
 
 export interface CanvasPreviewSnapshot {
   document: SpriteDocument

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { usePaletteGridColumns } from '@/components/use-palette-grid-columns'
 import { paletteGridLines, paletteGridLineClass, paletteAutoCellClass } from '@/components/palette-grid-resize'
 import { palettePanelRenderKey } from '@/core/panel-render-keys'
@@ -669,6 +670,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       if (result.canceled || !result.filePath) return
       const encoded = encodePalettePng(orderedColors)
       await window.moonSprite.writeBinaryAtomic(result.filePath, encoded.bytes)
+      playExportSuccessSound()
       if (recordRecentExportPath(result.filePath)) window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
       setSaveOpen(false)
       store.setMessage(t('palette.imageSaved', { path: result.filePath }))

@@ -26,6 +26,27 @@ const sessionWithLocalHistory = (): DocumentSession => {
 }
 
 describe('local history snapshots', () => {
+  it('preserves the saved recording when restoring a history with only a baseline snapshot', async () => {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
+    const source = sessionWithLocalHistory()
+    source.document.filePath = 'D:/history/recording-baseline.moonsprite'
+    let archive = new Uint8Array()
+    const api = {
+      writeLocalHistory: vi.fn(async (_key: string, data: Uint8Array) => { archive = data.slice() }),
+      readLocalHistory: vi.fn(async () => archive)
+    } as unknown as MoonSpriteApi
+    await flushLocalHistoryPersist(api, source)
+    const reopened = sessionWithLocalHistory()
+    reopened.document.filePath = source.document.filePath
+    const recording = reopened.document.timelapse!
+    recording.enabled = true
+    recording.snapshots = [{ id: 'saved-frame', capturedAt: 1, elapsedMs: 0, width: 1, height: 1, data: new Uint8Array([1, 2, 3]) }]
+
+    expect(await restoreLocalHistory(api, reopened)).toBe(true)
+    expect(reopened.document.timelapse).toBe(recording)
+    expect(reopened.document.timelapse?.snapshots).toHaveLength(1)
+  })
+
   it.each(['rgba', 'indexed'] as const)('records %s drawing changes without cloning a document and restores navigation/branches', async mode => {
     saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
     const source = sessionWithLocalHistory()

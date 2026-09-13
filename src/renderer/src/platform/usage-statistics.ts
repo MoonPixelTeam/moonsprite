@@ -1,4 +1,5 @@
 import { addUsageInterval, emptyUsageStatistics, parseUsageStatistics, summarizeUsageStatistics, type UsageStatisticsData, type UsageStatisticsSummary } from '@/core/usage-statistics'
+import { playExportSuccessSound } from './export-success-sound'
 
 type UsageEvent = 'newProject' | 'save' | 'drawingStroke'
 
@@ -135,6 +136,7 @@ export const exportUsageStatistics = async (): Promise<boolean> => {
   if (result.canceled || !result.filePath) return false
   const encoded = new TextEncoder().encode(JSON.stringify(snapshotData(), null, 2))
   await window.moonSprite.writeBinaryAtomic(result.filePath, encoded)
+  playExportSuccessSound()
   return true
 }
 

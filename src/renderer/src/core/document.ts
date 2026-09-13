@@ -1004,17 +1004,35 @@ export function rasterContentBounds(surface: RasterContentSurface, palette: read
   let minY = surface.height
   let maxX = -1
   let maxY = -1
-  for (let y = 0; y < surface.height; y += 1) {
-    for (let x = 0; x < surface.width; x += 1) {
-      const index = y * surface.width + x
-      const opaque = surface.format === 'rgba'
-        ? surface.pixels[index * 4 + 3] > 0
-        : opaquePaletteIds!.has(surface.pixels[index])
-      if (!opaque) continue
-      minX = Math.min(minX, x)
+  // Only each row's first and last visible pixels can expand the bounds.
+  // Hold native storage once: surface.pixels may be an accessor, and repeated
+  // color sampling or visiting opaque interiors makes post-erase clicks stall.
+  const pixels = surface.pixels
+  if (surface.format === 'rgba') {
+    for (let y = 0; y < surface.height; y += 1) {
+      const row = y * surface.width * 4
+      let left = 0
+      while (left < surface.width && !(pixels[row + left * 4 + 3] > 0)) left += 1
+      if (left === surface.width) continue
+      minX = Math.min(minX, left)
       minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x)
-      maxY = Math.max(maxY, y)
+      maxY = y
+      let right = surface.width - 1
+      while (right > maxX && right > left && !(pixels[row + right * 4 + 3] > 0)) right -= 1
+      maxX = Math.max(maxX, right)
+    }
+  } else {
+    for (let y = 0; y < surface.height; y += 1) {
+      const row = y * surface.width
+      let left = 0
+      while (left < surface.width && !opaquePaletteIds!.has(pixels[row + left])) left += 1
+      if (left === surface.width) continue
+      minX = Math.min(minX, left)
+      minY = Math.min(minY, y)
+      maxY = y
+      let right = surface.width - 1
+      while (right > maxX && right > left && !opaquePaletteIds!.has(pixels[row + right])) right -= 1
+      maxX = Math.max(maxX, right)
     }
   }
   const bounds = maxX < minX || maxY < minY ? null : {
@@ -1912,6 +1930,20 @@ export class DocumentCompositeCache {
   invalidateLiveSourceCaches(): void {
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
+  }
+
+  /** A translation preserves a layer's own style pixels, but changes the
+   * composite inside ancestor groups and masks that do not follow the owner. */
+  invalidateLayerPlacementSources(document: SpriteDocument, rect: SelectionRect, layerIds?: readonly string[]): void {
+    const ids = layerIds ? new Set(layerIds) : null
+    const affected = new Set<string>()
+    for (const layer of document.layers) {
+      if (ids && !ids.has(layer.id)) continue
+      if (layer.groupId) affected.add(layer.groupId)
+      const mask = document.animation ? animationMaskAt(document.animation, layer.id, document.animation.activeFrameId) : null
+      if (layer.clippingMask || mask?.moveWithOwner === false) affected.add(layer.id)
+    }
+    if (affected.size) this.invalidateStyleSources(document, rect, [...affected])
   }
 
   /** Drop placement plans while a live move mutates layer offsets in place. */

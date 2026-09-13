@@ -14,7 +14,9 @@ import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-to
 import { consumeCanvasResizePreviewHistory } from '@/core/canvas-resize-preview'
 import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
 import { openProgress } from '@/core/open-progress'
-import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
+import { beginRuntimeDiagnosticOperation, measureRuntimeDiagnostic, recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
+import { documentDiagnosticDetail } from '@/core/document-diagnostics'
+import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { saveProgress } from '@/core/save-progress'
 import { createSelectionBrush, encodeBrushPng } from '@/core/brushes'
 import { buildSpriteSheetExportDocument, createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
@@ -889,6 +891,7 @@ const renderTextAtCurrentSurface = (document: SpriteDocument, raw: TextCelData, 
 const timelapseCaptureCaches = new WeakMap<SpriteDocument, TimelapseCaptureCache>()
 const timelapseCaptureTasks = new WeakMap<SpriteDocument, Promise<void>>()
 const timelapseCaptureGenerations = new WeakMap<SpriteDocument, number>()
+const timelapseDiagnosticQueues = new WeakMap<SpriteDocument, { pending: number; peak: number; completed: number; skipped: number; failed: number; maxQueueMs: number; maxEncodeMs: number; lastReportAt: number }>()
 
 const captureCacheFor = (document: SpriteDocument): TimelapseCaptureCache => {
   const cached = timelapseCaptureCaches.get(document)
@@ -902,28 +905,69 @@ const queueTimelapseCapture = (session: DocumentSession): Promise<void> => {
   const document = session.document
   const captureRevision = session.contentRevision
   const captureInvalidation = session.contentInvalidation
-  const prepared = prepareTimelapseSnapshot(document, Date.now(), {
+  const prepared = measureRuntimeDiagnostic('timelapse.prepare', () => prepareTimelapseSnapshot(document, Date.now(), {
     cache: captureCacheFor(document),
     contentRevision: captureRevision,
     contentInvalidation: captureInvalidation
-  })
+  }), () => ({ ...documentDiagnosticDetail(document), tool: session.tool, contentRevision: captureRevision }))
   if (!prepared) return Promise.resolve()
+  const queuedAt = runtimeDiagnosticsActive() ? performance.now() : null
+  let diagnostics = timelapseDiagnosticQueues.get(document)
+  if (queuedAt !== null) {
+    if (!diagnostics) {
+      diagnostics = { pending: 0, peak: 0, completed: 0, skipped: 0, failed: 0, maxQueueMs: 0, maxEncodeMs: 0, lastReportAt: queuedAt }
+      timelapseDiagnosticQueues.set(document, diagnostics)
+    }
+    diagnostics.pending += 1
+    diagnostics.peak = Math.max(diagnostics.peak, diagnostics.pending)
+  }
   const generation = timelapseCaptureGenerations.get(document) ?? 0
   const previous = timelapseCaptureTasks.get(document) ?? Promise.resolve()
   let tracked = Promise.resolve()
   tracked = previous.catch(() => undefined).then(async () => {
+    const encodingAt = queuedAt !== null ? performance.now() : null
+    if (diagnostics && encodingAt !== null && queuedAt !== null) diagnostics.maxQueueMs = Math.max(diagnostics.maxQueueMs, encodingAt - queuedAt)
+    const snapshots = document.timelapse?.snapshots
     await commitPreparedTimelapseSnapshot(document, prepared, () => (timelapseCaptureGenerations.get(document) ?? 0) === generation)
+    const skipped = (timelapseCaptureGenerations.get(document) ?? 0) !== generation || document.timelapse?.snapshots === snapshots
+    if (diagnostics && encodingAt !== null) {
+      diagnostics.maxEncodeMs = Math.max(diagnostics.maxEncodeMs, performance.now() - encodingAt)
+      if (skipped) diagnostics.skipped += 1
+      else diagnostics.completed += 1
+    }
+    if (skipped) return
     const currentSessions = useWorkspace.getState().sessions
     const currentSession = currentSessions.find((current) => current.document === document)
     if (currentSession) {
-      // The PNG encoding finishes asynchronously, after the drawing
-      // transaction. Make the newly appended timelapse snapshot a real
-      // document change so a save performed immediately afterwards cannot
-      // reuse the previous clean revision and omit the recording.
+      // Encoding can finish after a save. Persist the appended recording
+      // without invalidating the unchanged canvas composite and capture cache.
+      touchMetadata(currentSession)
       currentSession.revision += 1
       useWorkspace.setState({ sessions: [...currentSessions] })
     }
+  }).catch((error) => {
+    if (diagnostics) diagnostics.failed += 1
+    recordRuntimeDiagnostic('error', 'timelapse.capture', {
+      documentId: document.id, contentRevision: captureRevision,
+      pending: diagnostics?.pending ?? 0,
+      message: error instanceof Error ? error.message : String(error)
+    })
+    throw error
   }).finally(() => {
+    if (diagnostics && queuedAt !== null) {
+      diagnostics.pending -= 1
+      const now = performance.now()
+      if (now - diagnostics.lastReportAt >= 5000) {
+        recordRuntimeDiagnostic('operation-stage', 'timelapse.queue', {
+          documentId: document.id, timing: 'async-wall',
+          windowMs: Math.round(now - diagnostics.lastReportAt), pending: diagnostics.pending,
+          peakPending: diagnostics.peak, completed: diagnostics.completed, skipped: diagnostics.skipped,
+          failed: diagnostics.failed, maxQueueMs: Math.round(diagnostics.maxQueueMs), maxEncodeMs: Math.round(diagnostics.maxEncodeMs),
+          frames: document.timelapse?.snapshots.length ?? 0
+        })
+        Object.assign(diagnostics, { peak: diagnostics.pending, completed: 0, skipped: 0, failed: 0, maxQueueMs: 0, maxEncodeMs: 0, lastReportAt: now })
+      }
+    }
     if (timelapseCaptureTasks.get(document) === tracked) timelapseCaptureTasks.delete(document)
   })
   timelapseCaptureTasks.set(document, tracked)
@@ -938,7 +982,18 @@ const scheduleTimelapseCapture = (session: DocumentSession): void => {
 }
 
 const flushTimelapseCapture = async (session: DocumentSession): Promise<void> => {
-  await timelapseCaptureTasks.get(session.document)
+  const document = session.document
+  const diagnostic = runtimeDiagnosticsActive() ? beginRuntimeDiagnosticOperation('timelapse.flush', {
+    documentId: document.id, frames: document.timelapse?.snapshots.length ?? 0,
+    pending: timelapseDiagnosticQueues.get(document)?.pending ?? 0, timing: 'async-wall'
+  }) : null
+  try {
+    await timelapseCaptureTasks.get(document)
+    diagnostic?.finish('ok', { frames: document.timelapse?.snapshots.length ?? 0, pending: timelapseDiagnosticQueues.get(document)?.pending ?? 0 })
+  } catch (error) {
+    diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
+    throw error
+  }
 }
 
 const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?: boolean; durationMs?: number }, captureTimelapse = true): void => {
@@ -3121,6 +3176,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (!path) return false
         set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
         recordUsageExport('png-sprite-sheet')
+        playExportSuccessSound()
         return true
       }
       const result = await buildSpriteSheetResult(sourceSession, options)
@@ -3136,6 +3192,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         get().addSession(result.document)
         set({ message: tr('workspace.spriteSheet.created', { count: 1 }) })
       }
+      playExportSuccessSound()
       return true
     } catch (error) {
       set({ message: error instanceof Error ? error.message : tr('workspace.spriteSheet.error') })
@@ -4573,7 +4630,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const historyNormalization = session.history
     historyNormalization.setAnimationSelectionNormalizationRequested(markSelectionNormalizationHistory)
     try {
-      mutator(session)
+      measureRuntimeDiagnostic('workspace.mutate', () => mutator(session), () => ({ ...documentDiagnosticDetail(session.document), tool: session.tool }))
     } finally {
       historyNormalization.setAnimationSelectionNormalizationRequested(false)
     }
@@ -4585,7 +4642,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       clearFreeTileInstanceSelection(session)
     }
     if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null
-    if (dirty === true) syncActiveAnimationFrame(session.document)
+    if (dirty === true) measureRuntimeDiagnostic('workspace.animation-sync', () => syncActiveAnimationFrame(session.document))
     ensureLayerSelection(session)
     if (normalizeSelection) normalizeAnimationSelection(session, { preserveEmptyCelSlots: dirty === false })
     ensureTimelineActiveContext(session)
@@ -5787,6 +5844,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       if (!message) return false
       set({ message, saveProgress: progressStarted ? { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
       recordUsageExport(format)
+      playExportSuccessSound()
       return true
     } catch (error) {
       if (canceled) {
@@ -6162,7 +6220,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     get().mutateActive((session) => {
       const target = parseAnimationCelKey(key)
       const timeline = session.document.animation
-      if (!target || !timeline || !timeline.frames.some((frame) => frame.id === target.frameId) || !session.document.layers.some((layer) => layer.id === target.layerId)) return
+      const targetLayer = target ? session.document.layers.find((layer) => layer.id === target.layerId) : null
+      if (!target || !timeline || !targetLayer || !timeline.frames.some((frame) => frame.id === target.frameId)) return
+      if (targetLayer.kind === 'free-tile') {
+        session.freeTileInstanceLayerId = null
+        clearFreeTileInstanceSelection(session)
+      }
       const implicitAnchorKey = mode !== 'replace' && session.selectedAnimationCellKeys.length === 0
         ? animationCelKey(session.document.activeLayerId, timeline.activeFrameId)
         : null
@@ -7803,6 +7866,125 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       session.selectionPivot = null
       clearAnimationItemSelection(session)
     }, true, true)
+  },
+
+  importGifAnimationLayer(source, startFrameIndex) {
+    const current = activeSession(get())
+    const sourceTimeline = source.animation
+    const sourceLayer = source.layers[0]
+    if (!current || !sourceTimeline || !sourceLayer || sourceTimeline.frames.length === 0) return false
+
+    let imported = false
+    get().mutateActive((session) => {
+      const document = session.document
+      const timeline = ensureAnimationDocument(document)
+      const beforeDocument = captureDocumentStructureSnapshot(document)
+      const beforeSelection = captureAnimationSelectionHistory(session)
+      const start = Math.max(0, Math.min(timeline.frames.length, Math.trunc(startFrameIndex)))
+      const insertedFrames = sourceTimeline.frames.map((sourceFrame) => ({
+        id: createId('frame'),
+        duration: sourceFrame.duration,
+        ...(sourceFrame.disabled ? { disabled: true } : {})
+      }))
+      timeline.frames.splice(start, 0, ...insertedFrames)
+
+      const layer = createLayer(source.name || 'GIF', sourceLayer.width, sourceLayer.height, document.colorMode)
+      layer.offsetX = sourceLayer.offsetX
+      layer.offsetY = sourceLayer.offsetY
+      document.layers.push(layer)
+
+      // Add the complete set of layer/frame slots first, then replace the
+      // imported slots. This keeps the new layer a normal timeline layer and
+      // lets the existing animation normalization handle blank slots.
+      ensureAnimationDocument(document)
+      const sourceCels = new Map(sourceTimeline.cels.filter((cel) => cel.layerId === sourceLayer.id).map((cel) => [cel.frameId, cel]))
+      const importedKeys: string[] = []
+      let firstSurface: AnimationCelSurface | null = null
+
+      for (let index = 0; index < sourceTimeline.frames.length; index += 1) {
+        const sourceFrame = sourceTimeline.frames[index]
+        const sourceCel = sourceCels.get(sourceFrame.id)
+        const sourceSurface = sourceCel?.surface
+        const targetFrame = insertedFrames[index]
+        if (!sourceSurface || !targetFrame) continue
+        const rgbaPixels = sourceSurface.format === 'rgba'
+          ? new Uint8ClampedArray(sourceSurface.pixels)
+          : new Uint8ClampedArray(sourceSurface.width * sourceSurface.height * 4)
+        if (sourceSurface.format === 'indexed') {
+          for (let pixelIndex = 0; pixelIndex < sourceSurface.pixels.length; pixelIndex += 1) {
+            const color = source.palette.find((entry) => entry.id === sourceSurface.pixels[pixelIndex])?.color ?? { r: 0, g: 0, b: 0, a: 0 }
+            const offset = pixelIndex * 4
+            rgbaPixels[offset] = color.r
+            rgbaPixels[offset + 1] = color.g
+            rgbaPixels[offset + 2] = color.b
+            rgbaPixels[offset + 3] = color.a
+          }
+        }
+        const surface: AnimationCelSurface = document.colorMode === 'indexed'
+          ? {
+              format: 'indexed',
+              width: sourceSurface.width,
+              height: sourceSurface.height,
+              offsetX: sourceSurface.offsetX,
+              offsetY: sourceSurface.offsetY,
+              pixels: Uint32Array.from({ length: sourceSurface.width * sourceSurface.height }, (_, pixelIndex) => {
+                const offset = pixelIndex * 4
+                return paletteColorIdForCanvas(document, { r: rgbaPixels[offset], g: rgbaPixels[offset + 1], b: rgbaPixels[offset + 2], a: rgbaPixels[offset + 3] })
+              })
+            }
+          : {
+              format: 'rgba',
+              width: sourceSurface.width,
+              height: sourceSurface.height,
+              offsetX: sourceSurface.offsetX,
+              offsetY: sourceSurface.offsetY,
+              pixels: rgbaPixels
+            }
+        const targetCel = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === targetFrame.id)
+        if (!targetCel) continue
+        targetCel.linkedCelId = null
+        targetCel.opacity = sourceCel.opacity ?? layer.opacity
+        targetCel.zIndex = normalizeAnimationCelZIndex(sourceCel.zIndex)
+        targetCel.surface = surface
+        delete targetCel.text
+        delete targetCel.tilemap
+        delete targetCel.freeTiles
+        importedKeys.push(animationCelKey(layer.id, targetFrame.id))
+        if (!firstSurface) firstSurface = surface
+      }
+
+      if (importedKeys.length === 0) return
+      if (firstSurface) layer.pixels = firstSurface.pixels instanceof Uint8ClampedArray ? new Uint8ClampedArray(firstSurface.pixels) : new Uint32Array(firstSurface.pixels)
+      const firstFrameId = timeline.frames[start]?.id
+      if (!firstFrameId) return
+      applyLayerRowSelection(session, [layer.id], [], { kind: 'layer', id: layer.id })
+      activateAnimationFrame(document, firstFrameId)
+      session.activeLayerMaskId = null
+      session.layerMaskIsolatedView = false
+      session.selectedAnimationFrameIds = []
+      session.animationFrameSelectionAnchorId = null
+      session.selectedAnimationCellKeys = importedKeys
+      session.animationCellSelectionAnchorKey = importedKeys.at(-1) ?? null
+      session.animationCellSelectionExplicit = true
+      session.selectedAnimationMaskCellKeys = []
+      session.selectedAnimationMaskRowKeys = []
+      session.animationMaskCellSelectionAnchorKey = null
+      setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layer.id }, firstFrameId, null)
+      refreshActiveAnimationFrame(document)
+      const afterDocument = captureDocumentStructureSnapshot(document)
+      const afterSelection = captureAnimationSelectionHistory(session)
+      session.history.push({
+        label: '导入 GIF 到时间轴',
+        bytes: documentStructureDeltaBytes(beforeDocument, afterDocument),
+        undo: () => { restoreDocumentStructureSnapshot(document, beforeDocument); restoreAnimationSelectionHistory(session, beforeSelection) },
+        redo: () => { restoreDocumentStructureSnapshot(document, afterDocument); restoreAnimationSelectionHistory(session, afterSelection) },
+        invalidation: { kind: 'full' },
+        requiresAnimationSync: false
+      })
+      imported = true
+    }, true, true)
+    if (imported) set({ message: 'GIF 已导入时间轴' })
+    return imported
   },
 
   deleteAnimationFrame(normalizeSelection = true, markSelectionNormalizationHistory = normalizeSelection) {
@@ -12284,6 +12466,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return
       }
       const tilemapLayer = activePaintLayer(session)
+      const freeTileInstanceIds = session.selectedFreeTileInstanceIds.length > 0
+        ? session.selectedFreeTileInstanceIds
+        : session.selectedFreeTileInstanceId ? [session.selectedFreeTileInstanceId] : []
+      // An instance picked on the canvas is a more specific target than a
+      // previously selected timeline cel. Keep the cel selection intact for
+      // timeline workflows, but do not let it broaden this transform.
+      const selectedFreeTileInstanceTakesPriority = !session.selection
+        && tilemapLayer.kind === 'free-tile'
+        && freeTileInstanceIds.length > 0
       // A selected free-tile cel mirrors all of its frame-local instances.
       // Do this before the instance-only path so Shift+H/V on a timeline cel
       // persists in the cel data and cannot be lost on the next refresh.
@@ -12295,7 +12486,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
       }
       const freeTileCelEdits = timelineForFreeTiles.cels
-        .filter((cel) => selectedFreeTileCelKeys.has(animationCelKey(cel.layerId, cel.frameId)) && session.document.layers.some((layer) => layer.id === cel.layerId && layer.kind === 'free-tile'))
+        .filter((cel) => !selectedFreeTileInstanceTakesPriority && selectedFreeTileCelKeys.has(animationCelKey(cel.layerId, cel.frameId)) && session.document.layers.some((layer) => layer.id === cel.layerId && layer.kind === 'free-tile'))
         .map((cel) => {
           if (!cel.freeTiles) cel.freeTiles = createFreeTileCelData()
           const before = cloneFreeTileCelData(cel.freeTiles)
@@ -12329,9 +12520,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // operation on the instance metadata (rather than flipping the
       // rendered raster), otherwise the next canvas refresh restores the
       // pre-flip appearance.
-      const freeTileInstanceIds = session.selectedFreeTileInstanceIds.length > 0
-        ? session.selectedFreeTileInstanceIds
-        : session.selectedFreeTileInstanceId ? [session.selectedFreeTileInstanceId] : []
       if (!session.selection && tilemapLayer.kind === 'free-tile' && freeTileInstanceIds.length > 0) {
         const target = activeFreeTileCelTarget(session.document)
         if (target) {
@@ -12716,12 +12904,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const finish = finishSaveProgress
       if (finish) finish(succeeded)
     }
+    let encodedTimelapseSnapshots = session.document.timelapse?.snapshots
     try {
       const result = await saveDocumentFile({
         api: window.moonSprite,
         documentId,
         getDocument: () => {
           const current = get().sessions.find((item) => item.document.id === documentId)
+          encodedTimelapseSnapshots = current?.document.timelapse?.snapshots
           return current ? { document: current.document, revision: current.contentRevision } : null
         },
         saveAs,
@@ -12739,6 +12929,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       saved.document.name = fileNameFromPath(result.filePath)
       persistProjectLayerPanelState(saved)
       const fullySaved = saved.contentRevision === result.revision
+        && saved.document.timelapse?.snapshots === encodedTimelapseSnapshots
+      if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'project.save.recording', {
+        documentId, encodedFrames: encodedTimelapseSnapshots?.length ?? 0,
+        currentFrames: saved.document.timelapse?.snapshots.length ?? 0,
+        pending: timelapseDiagnosticQueues.get(saved.document)?.pending ?? 0,
+        format: result.filePath.split('.').pop()?.toLowerCase() ?? '',
+        fullySaved, encodedRevision: result.revision, currentRevision: saved.contentRevision
+      })
       saved.document.dirty = !fullySaved
       set({ sessions: [...get().sessions] })
       recordRecentProject(result.filePath, saved.document.name)
@@ -12815,6 +13013,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ message, ...(progressVisible ? { saveProgress: { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done') } } : {}) })
       if (progressVisible) window.setTimeout(() => { if (get().saveProgress?.value === 100) set({ saveProgress: null }) }, 180)
       recordUsageExport(exportOptions?.format ?? 'png')
+      playExportSuccessSound()
       return true
     } catch (error) {
       if (canceled) {

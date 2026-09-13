@@ -24,6 +24,7 @@ import { buildLayerPanelTree, getLayerPanelAncestorGroupIds, layerPanelRevealScr
 import { DEFAULT_ONION_SKIN_PREFERENCES, loadEditorPreferences, saveEditorPreferences, type OnionSkinPreferences } from '@/core/file-preferences'
 import { animationCelHasContent, animationCelKey, animationGroupMaskAt, createAnimationCelLookup, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { animationLoopSectionAtFrame, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
+import { decodeDocumentFileAsync } from '@/core/document-files'
 import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { formatShortcutBindingsForLocale, loadShortcutBindings, shortcutBindingsFor, type ShortcutId } from '@/core/shortcuts'
 import { useWorkspace, type DocumentSession, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from '@/store/workspace'
@@ -509,6 +510,36 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   const pendingLayerDragRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null)
   const layerListRef = useRef<HTMLDivElement>(null)
   const layerAnimationToolbarRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const handleGifDrop = (event: Event): void => {
+      const detail = (event as CustomEvent<{ documentId?: string; path?: string; x?: number; y?: number }>).detail
+      if (!detail?.documentId || detail.documentId !== session.document.id || !detail.path || !/\.gif$/i.test(detail.path)) return
+      if (!Number.isFinite(detail.x) || !Number.isFinite(detail.y)) return
+      const target = globalThis.document.elementFromPoint(detail.x!, detail.y!)
+      const dropzone = target?.closest<HTMLElement>('.layer-animation-grid')
+      if (!dropzone) return
+      const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
+      const liveTimeline = liveSession?.document.animation
+      if (!liveSession || !liveTimeline) return
+      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
+      const frameIndex = Number(frameTarget?.dataset.frameIndex)
+      const startFrameIndex = Number.isInteger(frameIndex) ? frameIndex + 1 : liveTimeline.frames.length
+      void (async () => {
+        try {
+          const bytes = await window.moonSprite.readBinary(detail.path!)
+          const source = await decodeDocumentFileAsync(bytes, detail.path!)
+          if (!source.animation?.frames.length) throw new Error('GIF 没有可导入的动画帧。')
+          const state = useWorkspace.getState()
+          if (state.activeId !== session.document.id) return
+          state.importGifAnimationLayer(source, startFrameIndex)
+        } catch (error) {
+          useWorkspace.getState().setMessage(error instanceof Error ? error.message : '无法导入 GIF。')
+        }
+      })()
+    }
+    window.addEventListener('moonsprite:animation-gif-drop', handleGifDrop)
+    return () => window.removeEventListener('moonsprite:animation-gif-drop', handleGifDrop)
+  }, [session.document.id])
   const animationLoopSectionTrackRef = useRef<HTMLDivElement>(null)
   const revealSequenceRef = useRef(0)
   const [layerRevealRequest, setLayerRevealRequest] = useState<{ layerId: string; sequence: number } | null>(null)
@@ -561,6 +592,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
   }, [selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys.length, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
   const animationFrameDropTargetRef = useRef<{ frameId: string; insertAfter: boolean } | null>(null)
   const [animationFrameDropTarget, setAnimationFrameDropTarget] = useState<{ frameId: string; insertAfter: boolean } | null>(null)
+  const [gifDropTargetIndex, setGifDropTargetIndex] = useState<number | null>(null)
   const [contextMenu, setContextMenu] = useState<LayerContextMenu | null>(null)
   const [layerCreateMenu, setLayerCreateMenu] = useState<LayerCreateContextMenu | null>(null)
   const [backgroundLayerDialogOpen, setBackgroundLayerDialogOpen] = useState(false)
@@ -3479,6 +3511,66 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     setDraggedLayerQuickAction(id)
   }
   useEffect(() => {
+    const isGifFileDrag = (event: DragEvent): boolean => {
+      const items = Array.from(event.dataTransfer?.items ?? [])
+      const hasFile = items.some((item) => item.kind === 'file') || event.dataTransfer?.types.includes('Files') === true
+      if (!hasFile) return false
+      const names = Array.from(event.dataTransfer?.files ?? []).map((file) => file.name).filter(Boolean)
+      return names.length === 0 || names.every((name) => /\.gif$/i.test(name))
+    }
+    const isGifPathDrag = (paths: readonly string[]): boolean => paths.length > 0 && paths.every((path) => /\.gif$/i.test(path))
+    const clearGifDropPreview = (): void => setGifDropTargetIndex(null)
+    const updateGifDropAtPoint = (x: number, y: number, isGif: boolean): void => {
+      if (useWorkspace.getState().activeId !== session.document.id || !isGif) {
+        clearGifDropPreview()
+        return
+      }
+      const target = globalThis.document.elementFromPoint(x, y)
+      const grid = target?.closest<HTMLElement>('.layer-animation-grid')
+      if (!grid) {
+        clearGifDropPreview()
+        return
+      }
+      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
+      let insertionIndex = Number(frameTarget?.dataset.frameIndex) + 1
+      if (!frameTarget || !Number.isInteger(insertionIndex)) {
+        const firstFrame = grid.querySelector<HTMLElement>('[data-frame-index]')
+        const frameWidth = firstFrame?.getBoundingClientRect().width ?? (grid.getBoundingClientRect().width / Math.max(1, timeline.frames.length))
+        const relativeX = x - grid.getBoundingClientRect().left
+        insertionIndex = Math.ceil(relativeX / Math.max(1, frameWidth))
+      }
+      setGifDropTargetIndex(Math.max(0, Math.min(timeline.frames.length, insertionIndex)))
+    }
+    const updateGifDropPreview = (event: DragEvent): void => {
+      if (!isGifFileDrag(event)) {
+        clearGifDropPreview()
+        return
+      }
+      updateGifDropAtPoint(event.clientX, event.clientY, true)
+      event.preventDefault()
+    }
+    const updateNativeGifDropPreview = (event: Event): void => {
+      const detail = (event as CustomEvent<{ paths?: string[]; x?: number; y?: number; documentId?: string }>).detail
+      if (!detail?.paths || detail.documentId !== session.document.id || !Number.isFinite(detail.x) || !Number.isFinite(detail.y)) {
+        clearGifDropPreview()
+        return
+      }
+      updateGifDropAtPoint(detail.x!, detail.y!, isGifPathDrag(detail.paths))
+    }
+    window.addEventListener('dragover', updateGifDropPreview, true)
+    window.addEventListener('drop', clearGifDropPreview, true)
+    window.addEventListener('dragend', clearGifDropPreview, true)
+    window.addEventListener('moonsprite:document-drag-over', updateNativeGifDropPreview)
+    window.addEventListener('moonsprite:document-drag-leave', clearGifDropPreview)
+    return () => {
+      window.removeEventListener('dragover', updateGifDropPreview, true)
+      window.removeEventListener('drop', clearGifDropPreview, true)
+      window.removeEventListener('dragend', clearGifDropPreview, true)
+      window.removeEventListener('moonsprite:document-drag-over', updateNativeGifDropPreview)
+      window.removeEventListener('moonsprite:document-drag-leave', clearGifDropPreview)
+    }
+  }, [session.document.id, timeline.frames.length])
+  useEffect(() => {
     const stopAutoScroll = (): void => {
       layerQuickActionAutoScrollDirectionRef.current = 0
       if (layerQuickActionAutoScrollFrameRef.current !== null) {
@@ -3563,6 +3655,7 @@ export function LayersPanel({ session, docked = false, sideDocked = false, onDoc
     {selectedCellLayerRows.map((row) => <span key={`active-cell-layer-${row}`} className="animation-active-cell-row" style={{ '--animation-row-top': displayRowTop(row), '--animation-row-height': displayRowSpanHeight(row, 1) } as CSSProperties} aria-hidden="true" />)}
     {selectionOutlineVisible && selectedFrameRanges.map((range) => <span key={`${range.start}-${range.span}`} data-animation-frame-selection={timeline.frames.slice(range.start, range.start + range.span).map((frame) => frame.id).join(' ')} className="animation-frame-selection-column" style={{ '--animation-frame-index': range.start, '--animation-frame-span': range.span } as CSSProperties} aria-hidden="true" />)}
     {animationFrameDropTarget && timeline.frames.findIndex((frame) => frame.id === animationFrameDropTarget.frameId) >= 0 && <span className="animation-frame-drop-line" style={{ '--animation-frame-drop-index': timeline.frames.findIndex((frame) => frame.id === animationFrameDropTarget.frameId) + (animationFrameDropTarget.insertAfter ? 1 : 0) } as CSSProperties} aria-hidden="true" />}
+    {gifDropTargetIndex !== null && <span className="animation-frame-drop-line animation-gif-drop-line" style={{ '--animation-frame-drop-index': gifDropTargetIndex } as CSSProperties} aria-hidden="true" />}
   </>
   const animationFrameHeaders = timeline.frames.map((frame, index) => {
     const visualFrame = visualFrameStateById.get(frame.id)

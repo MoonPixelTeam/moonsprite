@@ -11,10 +11,27 @@ export interface NativeDocumentDrop {
   position: { x: number; y: number }
 }
 
-export const subscribeToNativeDocumentDrops = async (source: NativeDocumentDropSource, onDrop: (drop: NativeDocumentDrop) => void): Promise<() => void> =>
-  source.onDragDropEvent((event) => {
-    if (event.payload.type === 'drop' && event.payload.paths?.length) onDrop({ paths: event.payload.paths, position: event.payload.position })
+export const subscribeToNativeDocumentDrops = async (
+  source: NativeDocumentDropSource,
+  onDrop: (drop: NativeDocumentDrop) => void,
+  onDragOver?: (drop: NativeDocumentDrop) => void,
+  onDragLeave?: () => void
+): Promise<() => void> => {
+  let activePaths: string[] = []
+  return source.onDragDropEvent((event) => {
+    if (event.payload.type === 'enter') activePaths = [...event.payload.paths]
+    if (event.payload.type === 'enter' || event.payload.type === 'over') {
+      if (activePaths.length > 0) onDragOver?.({ paths: activePaths, position: event.payload.position })
+    } else if (event.payload.type === 'leave') {
+      activePaths = []
+      onDragLeave?.()
+    } else if (event.payload.type === 'drop' && event.payload.paths?.length) {
+      activePaths = []
+      onDragLeave?.()
+      onDrop({ paths: event.payload.paths, position: event.payload.position })
+    }
   })
+}
 
 export const subscribeToNativeDocumentDropSources = async (
   sources: NativeDocumentDropSource[],

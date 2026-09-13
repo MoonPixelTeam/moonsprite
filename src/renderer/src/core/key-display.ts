@@ -9,3 +9,21 @@ export function keyDisplayLabel(key: string): string {
   }
   return labels[key] ?? (key.length === 1 ? key.toUpperCase() : key)
 }
+
+export interface KeyDisplayKeydownState {
+  isTrusted: boolean
+  syntheticWheelWithModifier: boolean
+  enabled: boolean
+  activeDocument: boolean
+  repeat: boolean
+  blockedTarget: boolean
+}
+
+/** Keyboard display is document-scoped, not pointer-scoped. */
+export function keyDisplayKeydownAccepted(state: KeyDisplayKeydownState): boolean {
+  return (state.isTrusted || state.syntheticWheelWithModifier)
+    && state.enabled
+    && state.activeDocument
+    && !state.repeat
+    && !state.blockedTarget
+}

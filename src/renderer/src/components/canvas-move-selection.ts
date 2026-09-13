@@ -1,3 +1,5 @@
+import type { RasterLayer, SelectionRect, SpriteDocument } from '@shared/types'
+import { layerContentBounds } from '@/core/document'
 import { animationCelKey, parseAnimationCelKey } from '@/core/animation'
 
 interface CanvasMoveAnimationCellSelection {
@@ -65,4 +67,18 @@ export function resolveCanvasMoveAnimationCellKeys({
   if (selectedAnimationFrameIds.length > 1) return selectedAnimationFrameIds.map((frameId) => animationCelKey(targetLayerId, frameId))
   if (moveAllSelectedLayers) return selectedLayerIds.map((layerId) => animationCelKey(layerId, currentFrameId))
   return [targetKey]
+}
+
+
+export interface CanvasMoveLayerContentPreview {
+  layerId: string
+  bounds: SelectionRect
+  layerOffsetX: number
+  layerOffsetY: number
+}
+
+/** Refresh on every move-tool press, including a press on the already selected cel. */
+export function canvasMoveLayerContentPreview(document: SpriteDocument, layer: RasterLayer): CanvasMoveLayerContentPreview | null {
+  const bounds = layerContentBounds(document, layer)
+  return bounds ? { layerId: layer.id, bounds, layerOffsetX: layer.offsetX, layerOffsetY: layer.offsetY } : null
 }

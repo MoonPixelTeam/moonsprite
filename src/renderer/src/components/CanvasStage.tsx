@@ -1,7 +1,8 @@
 import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage, recordWorkspaceResizeContext } from './workspace-resize'
 import { createLinearDitherPreviewSampler } from '../core/gradient-dither-preview'
 import { createGradientPreviewDiagnostics, GRADIENT_PREVIEW_DIAGNOSTIC_VERSION } from '../core/gradient-preview-diagnostics'
-import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { measureRuntimeDiagnostic, recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
+import { documentDiagnosticDetail } from '../core/document-diagnostics'
 import { createGradientCompositePreview, compositeGradientPreviewAt, fillGradientPreviewBlock, gradientReplacementColor, type GradientCompositePreview } from '@/core/gradient-preview'
 import { drawMagicWandPreview } from './canvas-magic-preview'
 import { MagicWandGesture } from '@/core/magic-wand-gesture'
@@ -11,7 +12,7 @@ import { prepareMagicWandOperation, type MagicWandOperation } from '@/core/magic
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { FreeTileInstance, RasterLayer, RgbaColor, SelectionMask, SelectionMode, SelectionQuad, SelectionRect, TilemapCell } from '@shared/types'
-import { animationMaskAt, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
+import { animationMaskAt, cachedLayerContentBounds, compositePixelWithLayerColor, compositeRegion, createCompositePointReplacementSampler, createCompositePointSampler, createId, createNormalCompositePointReplacementSampler, createNormalCompositePointSampler, expandLayerStyleInvalidationRect, getActiveLayer, getLayerIdsInGroup, getPaletteEntry, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, layerIndexAt, layerMaskDisplayColor, readLayerColor, readLayerColorAt, readLayerMaskDisplayColorAt, readLayerVisibleColorAt, renderLayerMaskRegion, resolveLayerCanvasColor } from '@/core/document'
 import { beginPixelEdit, mergePixelEdits, recordPixel, revertPixelEdit, type HistoryEntry } from '@/core/history'
 import { beginCanvasToolGesture, clearCanvasToolGestures, endCanvasToolGesture } from '@/core/canvas-tool-gesture-lock'
 import { blendOver, hexToColor, packColor, relativeLuminanceColor, TRANSPARENT, unpackColor } from '@/core/raster'
@@ -50,9 +51,10 @@ import { defaultSymmetryCenter, hasSymmetry, moveSymmetryCenter, symmetryAxisDra
 import { beginAdjustmentPreviewEdit, endAdjustmentPreviewEdit, hasAdjustmentPreviewController, prepareAdjustmentPreviewEdit, renderAdjustmentPreviewEdit } from '@/core/adjustment-preview-lifecycle'
 import { notifyAnimationCelThumbnailPreview, notifyCanvasPreview, notifyLayerMaskThumbnailPreview, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
 import { timelineSelectionPrecedesMarquee } from '@/core/animation-timeline-focus'
+import { CanvasClickFlashCache, presentCanvasClickFlash, type CanvasClickFlashTiming } from './canvas-click-flash'
 import { canvasCompositeCacheFor } from '@/components/canvas-composite-cache'
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
-import { animationFrameIdsForCellKeys, resolveCanvasMoveAnimationCellKeys, resolveCanvasMoveLayerIds, shouldUseFreeTileInstanceMove } from '@/components/canvas-move-selection'
+import { animationFrameIdsForCellKeys, canvasMoveLayerContentPreview, type CanvasMoveLayerContentPreview, resolveCanvasMoveAnimationCellKeys, resolveCanvasMoveLayerIds, shouldUseFreeTileInstanceMove } from '@/components/canvas-move-selection'
 import { drawSelectionOutline, drawSelectionSizeLabel, selectionScreenBox, selectionScreenPoint, type RasterContext2D, type SelectionBoundaryCache } from '@/components/canvas-selection-renderer'
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
@@ -98,7 +100,7 @@ import { cursorOverlayDescriptor, setNativeCursorVisible } from '@/platform/curs
 import { createPolygonPathRasterCache } from '@/core/canvas-input'
 import { brushPreviewAllowedDuringDrag } from '@/core/canvas-input'
 import { isPenBarrelButtonEvent, isPenEraserEvent } from '@/core/canvas-input'
-import { keyDisplayLabel } from '@/core/key-display'
+import { keyDisplayKeydownAccepted, keyDisplayLabel } from '@/core/key-display'
 
 const nonContentPreviewDragKinds = new Set([
   'pan',
@@ -193,8 +195,8 @@ interface BrushPreviewStackCache {
   upper: Uint8ClampedArray
 }
 interface SymmetryDragState { axis: SymmetryAxis | 'center'; pointerId: number }
-interface MoveLayerContentPreview { layerId: string; bounds: SelectionRect; layerOffsetX: number; layerOffsetY: number }
-interface MoveLayerClickFlash extends MoveLayerContentPreview { expiresAt: number }
+type MoveLayerContentPreview = CanvasMoveLayerContentPreview
+interface MoveLayerClickFlash extends MoveLayerContentPreview, CanvasClickFlashTiming {}
 interface FreeTileInstanceFlash { instanceId: string; expiresAt: number }
 interface LineAnchorHistory {
   documentId: string
@@ -538,10 +540,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const canvasResizeFrameRef = useRef<number | null>(null)
   const moveLayerContentPreviewRef = useRef<MoveLayerContentPreview | null>(null)
   const moveLayerContentPreviewTimerRef = useRef<number | null>(null)
+  const clickFlashCacheRef = useRef(new CanvasClickFlashCache())
   const moveLayerClickFlashRef = useRef<MoveLayerClickFlash | null>(null)
   const moveLayerClickFlashTimerRef = useRef<number | null>(null)
   const freeTileInstanceFlashRef = useRef<FreeTileInstanceFlash | null>(null)
   const freeTileInstanceFlashTimerRef = useRef<number | null>(null)
+  const layerHitOrderCacheRef = useRef<{ document: object; revision: number; order: string[]; layers: Map<string, RasterLayer> } | null>(null)
   const lineAnchorHistoryRef = useRef<LineAnchorHistory | null>(null)
   const selectionPivotImageRef = useRef<HTMLImageElement | null>(null)
   useEffect(() => {
@@ -1159,6 +1163,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   useEffect(() => {
     moveLayerContentPreviewRef.current = null
+    clickFlashCacheRef.current.clear()
     moveLayerClickFlashRef.current = null
     freeTileInstanceFlashRef.current = null
     if (moveLayerContentPreviewTimerRef.current !== null) window.clearTimeout(moveLayerContentPreviewTimerRef.current)
@@ -1168,6 +1173,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     if (freeTileInstanceFlashTimerRef.current !== null) window.clearTimeout(freeTileInstanceFlashTimerRef.current)
     freeTileInstanceFlashTimerRef.current = null
     return () => {
+      clickFlashCacheRef.current.clear()
       if (moveLayerContentPreviewTimerRef.current !== null) window.clearTimeout(moveLayerContentPreviewTimerRef.current)
       if (moveLayerClickFlashTimerRef.current !== null) window.clearTimeout(moveLayerClickFlashTimerRef.current)
       if (freeTileInstanceFlashTimerRef.current !== null) window.clearTimeout(freeTileInstanceFlashTimerRef.current)
@@ -2340,6 +2346,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const draw = (): void => {
     const performanceProbe = window.__moonSpriteCanvasProbe
     const drawStartedAt = performance.now()
+    let paintedMoveLayerFlash: MoveLayerClickFlash | null = null
     const canvas = canvasRef.current
     if (!canvas) return
     // Ctrl+Alt is the brush-size modifier, while Ctrl alone is the temporary
@@ -2645,7 +2652,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         }
       }
       const compositeStarted = isWorkspaceResizing() ? performance.now() : 0
-      compositeCacheRef.current.draw({
+      measureRuntimeDiagnostic('canvas.composite', () => compositeCacheRef.current.draw({
         context,
         document,
         view,
@@ -2696,7 +2703,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
                 optimizedRotation: currentSession.selectionRotationAlgorithm === 'rotsprite'
               }
             : undefined
-      })
+      }), () => ({ ...documentDiagnosticDetail(document), tool: currentSession.tool, gesture: activeDrag?.kind ?? 'none' }))
       if (compositeStarted) recordWorkspaceResizeStage('composite', performance.now() - compositeStarted)
       const textPreview = textToolPreviewRef.current
       if (textPreview?.format === 'rgba') {
@@ -2723,7 +2730,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         context.restore()
       }
       let moveLayerFlash = moveLayerClickFlashEnabled ? moveLayerClickFlashRef.current : null
-      if (moveLayerFlash && performance.now() >= moveLayerFlash.expiresAt) {
+      if (moveLayerFlash && moveLayerFlash.expiresAt !== null && performance.now() >= moveLayerFlash.expiresAt) {
         moveLayerClickFlashRef.current = null
         moveLayerFlash = null
       }
@@ -2739,39 +2746,19 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           const visibleWidth = Math.max(0, visibleRight - visibleX)
           const visibleHeight = Math.max(0, visibleBottom - visibleY)
           if (visibleWidth > 0 && visibleHeight > 0) {
-            const flashPixels = new Uint8ClampedArray(visibleWidth * visibleHeight * 4)
-            for (let y = 0; y < visibleHeight; y += 1) {
-              for (let x = 0; x < visibleWidth; x += 1) {
-                const source = readLayerColorAt(document, layer, visibleX + x, visibleY + y)
-                if (source.a === 0) continue
-                const value = colorLuminance(source) > 145 ? 0 : 255
-                const index = (y * visibleWidth + x) * 4
-                flashPixels[index] = value
-                flashPixels[index + 1] = value
-                flashPixels[index + 2] = value
-                flashPixels[index + 3] = source.a
-              }
-            }
-            const flashCanvas = new OffscreenCanvas(visibleWidth, visibleHeight)
-            flashCanvas.getContext('2d')?.putImageData(new ImageData(flashPixels, visibleWidth, visibleHeight), 0, 0)
             context.save()
             clipCanvasCopy(context, copy)
             context.globalCompositeOperation = 'source-over'
             context.imageSmoothingEnabled = false
-            const flashBoundary = deviceAlignedCanvasRect(
-              copy.originX + visibleX * view.zoom,
-              copy.originY + visibleY * view.zoom,
-              visibleWidth * view.zoom,
-              visibleHeight * view.zoom,
-              deviceScale
-            )
-            context.drawImage(
-              flashCanvas,
-              flashBoundary.left,
-              flashBoundary.top,
-              flashBoundary.width,
-              flashBoundary.height
-            )
+            const layerOffsetX = layer.offsetX, layerOffsetY = layer.offsetY
+            const frameId = document.animation?.activeFrameId
+            const ready = clickFlashCacheRef.current.draw(context, {
+              contentKey: `${document.id}:${currentSession.contentRevision}:${frameId}:${layer.id}:${layerOffsetX}:${layerOffsetY}`,
+              region: { x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight },
+              originX: copy.originX, originY: copy.originY, zoom: view.zoom, deviceScale,
+              layer, palette: document.palette
+            })
+            if (ready) paintedMoveLayerFlash = moveLayerFlash
             context.restore()
           }
         }
@@ -4747,6 +4734,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       active: activeDocumentId === session.document.id
     })
     performanceProbe?.recordDraw(drawDuration)
+    // Slow selection/composition must not consume the flash before it is visible.
+    if (paintedMoveLayerFlash && moveLayerClickFlashRef.current === paintedMoveLayerFlash
+      && presentCanvasClickFlash(paintedMoveLayerFlash, performance.now())) {
+      const flash = paintedMoveLayerFlash
+      moveLayerClickFlashTimerRef.current = window.setTimeout(() => {
+        if (moveLayerClickFlashRef.current !== flash) return
+        moveLayerClickFlashRef.current = null
+        moveLayerClickFlashTimerRef.current = null
+        scheduleDraw()
+      }, flash.duration)
+    }
   }
 
   const scheduleDraw = (): void => {
@@ -5143,10 +5141,16 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       if (!event.isTrusted && !syntheticWheelWithModifier) keyDisplayReasons.push('untrusted-event')
       if (!keyDisplayEnabled) keyDisplayReasons.push('disabled')
       if (activeDocumentId !== session.document.id) keyDisplayReasons.push('inactive-document')
-      if (!inputRef.current.pointer.visible) keyDisplayReasons.push('pointer-hidden')
       if (event.repeat) keyDisplayReasons.push('repeat')
       if (keyDisplayBlocked) keyDisplayReasons.push('blocked-target')
-      const keyDisplayAccepted = keyDisplayReasons.length === 0
+      const keyDisplayAccepted = keyDisplayKeydownAccepted({
+        isTrusted: event.isTrusted,
+        syntheticWheelWithModifier,
+        enabled: keyDisplayEnabled,
+        activeDocument: activeDocumentId === session.document.id,
+        repeat: event.repeat,
+        blockedTarget: keyDisplayBlocked
+      })
       recordRuntimeDiagnostic('operation-stage', 'key-display.keydown', {
         key: event.key,
         code: event.code,
@@ -6004,12 +6008,27 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   }
 
   const topEditableLayerAt = (point: Point) => {
-    const layerById = new Map(session.document.layers.map((layer) => [layer.id, layer]))
-    for (const layerId of layerIdsInVisualStackOrder(session.document.layers, session.document.groups)) {
-      const layer = layerById.get(layerId)
+    const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+    const cached = layerHitOrderCacheRef.current
+    const hitCache = cached && cached.document === currentSession.document && cached.revision === currentSession.revision
+      ? cached
+      : (() => {
+          const next = {
+            document: currentSession.document,
+            revision: currentSession.revision,
+            order: layerIdsInVisualStackOrder(currentSession.document.layers, currentSession.document.groups),
+            layers: new Map(currentSession.document.layers.map((layer) => [layer.id, layer]))
+          }
+          layerHitOrderCacheRef.current = next
+          return next
+        })()
+    for (const layerId of hitCache.order) {
+      const layer = hitCache.layers.get(layerId)
       if (!layer) continue
-      if (!isLayerEffectivelyVisible(session.document, layer) || isLayerEffectivelyLocked(session.document, layer)) continue
-      if (readLayerVisibleColorAt(session.document, layer, point.x, point.y).a > 0) return layer
+      if (!isLayerEffectivelyVisible(currentSession.document, layer) || isLayerEffectivelyLocked(currentSession.document, layer)) continue
+      const bounds = cachedLayerContentBounds(currentSession.document, layer)
+      if (bounds !== undefined && (!bounds || point.x < bounds.x || point.y < bounds.y || point.x >= bounds.x + bounds.width || point.y >= bounds.y + bounds.height)) continue
+      if (readLayerVisibleColorAt(currentSession.document, layer, point.x, point.y).a > 0) return layer
     }
     return null
   }
@@ -6052,7 +6071,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const alignmentDragFields = (movingBounds: readonly SelectionRect[], excludedLayerIds: readonly string[] = [], snapToGridOrigin = false) => ({
     alignmentMovingBounds: movingBounds.map((bounds) => ({ ...bounds })),
-    alignmentTargetBounds: alignmentTargetBoundsForLayers(excludedLayerIds),
+    alignmentTargetBounds: alignmentPreferences.smartAlignmentEnabled ? alignmentTargetBoundsForLayers(excludedLayerIds) : [],
     alignmentGridEnabled: alignmentPreferences.gridAlignmentEnabled,
     alignmentSnapToGridOrigin: snapToGridOrigin,
     alignmentSmartEnabled: alignmentPreferences.smartAlignmentEnabled,
@@ -6109,25 +6128,19 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const showMoveLayerContentPreview = (layer: RasterLayer): void => {
     if (!moveLayerContentPreviewEnabled) return
-    const bounds = layerContentBounds(session.document, layer)
-    if (!bounds) {
-      hideMoveLayerContentPreview()
-      return
-    }
     if (moveLayerContentPreviewTimerRef.current !== null) window.clearTimeout(moveLayerContentPreviewTimerRef.current)
     moveLayerContentPreviewTimerRef.current = null
-    moveLayerContentPreviewRef.current = {
-      layerId: layer.id,
-      bounds,
-      layerOffsetX: layer.offsetX,
-      layerOffsetY: layer.offsetY
-    }
+    const currentSession = useWorkspace.getState().sessions.find(item => item.document.id === session.document.id) ?? session
+    const currentLayer = currentSession.document.layers.find(item => item.id === layer.id)
+    moveLayerContentPreviewRef.current = currentLayer ? canvasMoveLayerContentPreview(currentSession.document, currentLayer) : null
     scheduleDraw()
   }
 
   const flashMoveLayer = (layer: RasterLayer): void => {
     if (!moveLayerClickFlashEnabled) return
-    const bounds = layerContentBounds(session.document, layer)
+    const cachedBounds = cachedLayerContentBounds(session.document, layer)
+    const bounds = cachedBounds === null ? null : cachedBounds
+      ?? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }
     if (!bounds) return
     if (moveLayerClickFlashTimerRef.current !== null) window.clearTimeout(moveLayerClickFlashTimerRef.current)
     moveLayerClickFlashRef.current = {
@@ -6135,14 +6148,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       bounds,
       layerOffsetX: layer.offsetX,
       layerOffsetY: layer.offsetY,
-      expiresAt: performance.now() + moveLayerClickFlashDuration
+      duration: moveLayerClickFlashDuration,
+      expiresAt: null
     }
+    moveLayerClickFlashTimerRef.current = null
     scheduleDraw()
-    moveLayerClickFlashTimerRef.current = window.setTimeout(() => {
-      moveLayerClickFlashRef.current = null
-      moveLayerClickFlashTimerRef.current = null
-      scheduleDraw()
-    }, moveLayerClickFlashDuration)
   }
 
   const selectionHitAt = (clientX: number, clientY: number): SelectionHit => {
@@ -7638,7 +7648,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         state.activateLayerForCanvas(hitTarget.id)
         selectedLayerIds = [hitTarget.id]
         revealLayerInPanel(session.document.id, hitTarget.id)
-        showMoveLayerContentPreview(hitTarget)
       }
       const frameSelectionAcrossLayers = session.selectedAnimationFrameIds.length > 0
       let selectedMovableLayers = (textCopyTarget ? [textCopyTarget.id] : frameSelectionAcrossLayers ? session.document.layers.map((layer) => layer.id) : selectedLayerIds)
@@ -7649,7 +7658,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         ? selectedMovableLayers.find((layer) => layer.id === session.document.activeLayerId) ?? selectedMovableLayers[0]
         : session.moveAutoSelect ? (hitTarget ?? (canMoveActiveLayer ? movableActiveLayer : null)) : (canMoveActiveLayer ? movableActiveLayer : null))
       if (!target) { if (eyedropperHeld) sampleAtPoint(); return }
-      flashMoveLayer(hitTarget ?? target)
       if (!additiveSelection && session.moveAutoSelect && !moveAllSelectedLayers) {
         const currentFrameId = session.document.animation?.activeFrameId
         const targetKey = currentFrameId ? animationCelKey(target.id, currentFrameId) : null
@@ -7659,9 +7667,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           selectedMovableLayers = [target]
           moveAllSelectedLayers = false
           revealLayerInPanel(session.document.id, target.id)
-          showMoveLayerContentPreview(target)
         }
       }
+      // Selection changes and click feedback are independent. In particular,
+      // erasing an edge invalidates bounds without changing the selected cel.
+      showMoveLayerContentPreview(hitTarget ?? target)
+      flashMoveLayer(hitTarget ?? target)
       const activeSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
       const currentFrameId = activeSession.document.animation?.activeFrameId
       const layerSelectionAcrossFrames = !frameSelectionAcrossLayers
@@ -7696,7 +7707,17 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       }))
       const rawLayerContentBoundsById = Object.fromEntries(layerIds.map((id) => {
         const layer = session.document.layers.find((candidate) => candidate.id === id)!
-        return [id, layerContentBounds(session.document, layer)]
+        // A canvas click must never synchronously scan a whole raster. The
+        // old path called layerContentBounds here, which walks every pixel
+        // when the derived bounds cache was cold. That made Ctrl-click auto
+        // select block the renderer for seconds on large documents. Reuse an
+        // established bound; while it is cold, the layer rectangle is a safe
+        // conservative invalidation/move bound and can be narrowed later by
+        // the normal cache-building paths.
+        const cachedBounds = cachedLayerContentBounds(session.document, layer)
+        return [id, cachedBounds === undefined
+          ? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }
+          : cachedBounds]
       }))
       const layerContentBoundsById = Object.fromEntries(layerIds.map((id) => {
         const bounds = rawLayerContentBoundsById[id]
@@ -9120,8 +9141,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         for (const bounds of Object.values(drag.layerContentBounds)) {
           if (!bounds) continue
           dirtyPixels += bounds.width * bounds.height * 2
-          invalidateCompositeRect(translatedSelectionRect(bounds, previousDistance), moveInvalidationLayerIds)
-          invalidateCompositeRect(translatedSelectionRect(bounds, distance), moveInvalidationLayerIds)
+          if (drag.duplicatedLayer) {
+            invalidateCompositeRect(translatedSelectionRect(bounds, previousDistance), moveInvalidationLayerIds)
+            invalidateCompositeRect(translatedSelectionRect(bounds, distance), moveInvalidationLayerIds)
+          } else {
+            compositeCacheRef.current.invalidateDocumentPlacementRect(translatedSelectionRect(bounds, previousDistance), session.document, session.document.animation?.activeFrameId, moveInvalidationLayerIds)
+            compositeCacheRef.current.invalidateDocumentPlacementRect(translatedSelectionRect(bounds, distance), session.document, session.document.animation?.activeFrameId, moveInvalidationLayerIds)
+          }
         }
         window.__moonSpriteCanvasProbe?.recordOperationStage?.('move-layer.cache-invalidation', 0, { dirtyPixels })
       } else {
@@ -10694,9 +10720,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const measurePointerInput = (kind: 'pointer-down' | 'pointer-move' | 'pointer-up', action: () => void): void => {
     const performanceProbe = window.__moonSpriteCanvasProbe
-    if (!performanceProbe?.recordInput) { action(); return }
-    const startedAt = performance.now()
-    try { action() } finally { performanceProbe.recordInput(kind, performance.now() - startedAt) }
+    const startedAt = performanceProbe?.recordInput ? performance.now() : 0
+    try {
+      measureRuntimeDiagnostic(`canvas.${kind}`, action, () => {
+        const current = liveInputSession()
+        return { ...documentDiagnosticDetail(current.document), tool: current.tool }
+      })
+    } finally { performanceProbe?.recordInput?.(kind, performance.now() - startedAt) }
   }
   const touchPoints = (): Array<{ x: number; y: number }> => Array.from(touchPointersRef.current.values())
   const touchCenter = (points: Array<{ x: number; y: number }>): { x: number; y: number } => ({

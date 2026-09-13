@@ -207,7 +207,9 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       }
       liveCanvasPreviewRef.current = snapshot
       if (snapshot?.invalidation?.kind === 'region') {
-        compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
+        if (snapshot.invalidation.placementOnly) {
+          compositeCacheRef.current.invalidateDocumentPlacementRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId, snapshot.invalidation.layerIds)
+        } else compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
       } else if (snapshot?.invalidation?.kind === 'full') compositeCacheRef.current.invalidateAll()
       scheduleDraw()
     })

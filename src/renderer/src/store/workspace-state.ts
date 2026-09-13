@@ -459,6 +459,7 @@ export interface WorkspaceAnimationCommands {
   addAnimationFrame(): void
   addLinkedAnimationFrame(): void
   duplicateAnimationFrame(): void
+  importGifAnimationLayer(source: SpriteDocument, startFrameIndex: number): boolean
   deleteAnimationFrame(normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
   setActiveAnimationFrameDuration(duration: number): void
   setAnimationLoop(loop: boolean): void

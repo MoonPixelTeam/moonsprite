@@ -2,7 +2,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { I18nProvider } from './components/I18nProvider'
 import { PerformanceProfiler } from './components/PerformanceProfiler'
-import { loadEditorPreferences } from './core/file-preferences'
+import { loadEditorPreferences, LOCAL_HISTORY_ENABLED_PREFERENCE_KEY, PROJECT_BACKUP_ENABLED_PREFERENCE_KEY, RECOVERY_PREFERENCE_KEY } from './core/file-preferences'
+import { readStoredString } from './core/storage'
 import { warmDocumentDecodeWorker } from './core/document-files'
 import { preloadCanvasStage } from './components/app/EditorCanvasHost'
 import { applyThemeToDocument } from './core/theme'
@@ -13,7 +14,9 @@ import { applyToolIconScale, applyUiScale } from './platform/ui-scale'
 import { loadTextFontCatalog } from './platform/font-service'
 import { showAppWindow } from './platform/app-window'
 import { installRuntimeDiagnostics } from './platform/runtime-diagnostics'
+import { installExportSuccessSound } from './platform/export-success-sound'
 import type { RuntimeDiagnosticDetail } from './core/runtime-diagnostics'
+import { documentDiagnosticDetail } from './core/document-diagnostics'
 import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
 import { NativeTooltipBridge } from './components/Tooltip'
@@ -31,12 +34,14 @@ void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferenc
 void installTauriApi()
   .then(async () => {
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)
+    installExportSuccessSound()
     installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {
       const state = useWorkspace.getState()
       const session = state.sessions.find((item) => item.document.id === state.activeId) ?? null
       if (!session) return { activeDocument: false, sessionCount: state.sessions.length }
       const document = session.document
       return {
+        ...documentDiagnosticDetail(document),
         activeDocument: true,
         sessionCount: state.sessions.length,
         canvasWidth: document.width,
@@ -47,7 +52,12 @@ void installTauriApi()
         residentRasterBytes: runtimeRasterResidentBytes(document),
         tool: session.tool,
         zoom: session.view.zoom,
-        dirty: document.dirty
+        dirty: document.dirty,
+        historyBytes: session.history.memoryBytes,
+        historyEntries: session.history.length,
+        contentRevision: session.contentRevision,
+        editingMaskId: session.activeLayerMaskId,
+        backgroundWrites: `autosave:${readStoredString(RECOVERY_PREFERENCE_KEY) !== 'false'},history:${readStoredString(LOCAL_HISTORY_ENABLED_PREFERENCE_KEY) === 'true'},backup:${readStoredString(PROJECT_BACKUP_ENABLED_PREFERENCE_KEY) !== 'false'}`
       }
     })
     void loadTextFontCatalog().catch(() => undefined)

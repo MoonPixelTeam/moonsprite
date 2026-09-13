@@ -15,7 +15,8 @@ import {
   runtimeRasterForSurface,
   runtimeRasterResidentBytes,
   runtimeRasterVisibleBounds,
-  surfacePixelsMaterialized
+  surfacePixelsMaterialized,
+  visitSurfaceRasterRows
 } from './runtime-raster'
 
 const rgbaRuntime = (): RuntimeRasterTiles => ({
@@ -117,5 +118,36 @@ describe('runtime sparse raster', () => {
       1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0
     ])
     expect(surfacePixelsMaterialized(layer)).toBe(false)
+  })
+})
+
+
+describe('native raster row traversal', () => {
+  it('clips sparse rows and skips absent tiles without materializing storage', () => {
+    const layer = rgbaLayer()
+    const runtime = rgbaRuntime()
+    const unaligned = new Uint8Array(runtime.data.length + 1)
+    unaligned.set(runtime.data, 1)
+    runtime.data = unaligned.subarray(1)
+    installRuntimeRaster(layer, runtime)
+    const samples: number[][] = []
+    visitSurfaceRasterRows(layer, 1, -2, 10, 10, (data, offset, count, x, y, packedBytes) => {
+      expect(packedBytes).toBe(true)
+      samples.push([x, y, count, ...data.subarray(offset, offset + count * 4)])
+    })
+    expect(samples).toEqual([[1, 0, 1, 5, 6, 7, 8], [1, 1, 1, 13, 14, 15, 16]])
+    expect(surfacePixelsMaterialized(layer)).toBe(false)
+  })
+
+  it('visits dense indexed IDs directly and clips ranges outside the surface', () => {
+    const layer = createDocument('indexed rows', 4, 4, 'indexed').layers[0]
+    layer.pixels[5] = 500
+    const rows: number[][] = []
+    visitSurfaceRasterRows(layer, 1, 1, 5, 1, (data, offset, count, x, y, packedBytes) => {
+      expect(packedBytes).toBe(false)
+      rows.push([x, y, ...data.subarray(offset, offset + count)])
+    })
+    expect(rows).toEqual([[1, 1, 500, 0, 0]])
+    visitSurfaceRasterRows(layer, 10, 10, 1, 1, () => { throw new Error('Outside rows must not be visited') })
   })
 })

@@ -1502,10 +1502,31 @@ export default function App() {
         }
         if (!position) return false
         const target = document.elementFromPoint(position.x, position.y)
+        if (paths.length === 1 && /\.gif$/i.test(paths[0])) {
+          const timelineDropzone = target?.closest<HTMLElement>('.layer-animation-grid')
+          if (timelineDropzone) {
+            window.dispatchEvent(new CustomEvent('moonsprite:animation-gif-drop', {
+              detail: {
+                documentId: useWorkspace.getState().activeId ?? '',
+                path: paths[0],
+                x: position.x,
+                y: position.y
+              }
+            }))
+            return true
+          }
+        }
         if (!target?.closest('[data-brush-library-dropzone]')) return false
         publishBrushLibraryImportPaths(paths)
         return true
       },
+      onDragOver: (paths, position) => {
+        if (!position) return
+        window.dispatchEvent(new CustomEvent('moonsprite:document-drag-over', {
+          detail: { paths, x: position.x, y: position.y, documentId: useWorkspace.getState().activeId ?? '' }
+        }))
+      },
+      onDragLeave: () => window.dispatchEvent(new Event('moonsprite:document-drag-leave')),
       onOpened: () => setHomeOpen(false)
     })
   }, [])
@@ -2929,7 +2950,7 @@ export default function App() {
     {session && projectRollbackOpen && runtimePreferences.projectBackupEnabled && session.document.filePath && <ProjectRollbackDialog projectPath={session.document.filePath} onClose={() => setProjectRollbackOpen(false)} onRestore={restoreProjectBackup} />}
     {luaScriptSession && <LuaScriptDialogs busy={luaScriptRunning} dialogs={luaScriptSession.dialogs} sessionId={luaScriptSession.sessionId} onAction={(action) => { void dispatchLuaScriptDialog(action) }} />}
     {luaScriptReport && <LuaScriptResultDialog report={luaScriptReport} onClose={() => setLuaScriptReport(null)} />}
-    {session && timelapseOpen && <TimelapseDialog settings={session.document.timelapse!} onChange={(settings) => workspace.setTimelapseSettings(settings)} onClear={() => workspace.clearTimelapse()} onExport={(format, options) => workspace.exportTimelapse(format, options)} onClose={() => setTimelapseOpen(false)} />}
+    {session && timelapseOpen && <TimelapseDialog settings={session.document.timelapse!} onChange={(settings) => workspace.setTimelapseSettings(settings)} onClear={() => { void workspace.requestDialog({ title: t('timelapse.clear'), message: t('timelapse.clearConfirm'), choices: [{ id: 'cancel', label: t('common.cancel'), tone: 'quiet' }, { id: 'clear', label: t('timelapse.confirmClear'), tone: 'danger' }] }).then((choice) => { if (choice === 'clear') workspace.clearTimelapse() }) }} onExport={(format, options) => workspace.exportTimelapse(format, options)} onClose={() => setTimelapseOpen(false)} />}
     {textToolRequest && <TextToolDialog key={`${textToolRequest.documentId}\0${textToolRequest.layerId ?? 'new'}\0${textToolRequest.frameId ?? 'new'}\0${textToolRequest.x}\0${textToolRequest.y}`} editing={Boolean(textToolRequest.layerId && !textLayerDraftRef.current)} initial={textToolInitial} box={textToolBox} onChange={changeTextTool} onPreview={previewTextTool} onClose={() => {
       const draft = textLayerDraftRef.current
       clearTextToolPreview()

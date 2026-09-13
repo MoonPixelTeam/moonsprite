@@ -302,14 +302,15 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     }
   }
   const current = decodeSnapshot(position)
-  // A drawing journal changes pixels, not the independently saved recording.
-  const recording = manifest.snapshotDeltas?.some(Boolean) ? { timelapse: session.document.timelapse } : null
+  // Project recordings are authoritative for every history format, including
+  // baseline-only and legacy archives captured before recording was enabled.
+  const recording = session.document.timelapse
   const prepareCompleted = performance.now()
   // The session is already visible while history loads. Never overwrite an edit
   // or a new history stack that arrived during asynchronous preparation.
   if (session.document !== initialDocument || session.revision !== initialRevision || session.history !== initialHistory || session.history?.revision !== initialHistoryRevision) return false
-  replaceDocument(session.document, recording ? { ...current, timelapse: undefined } : current)
-  if (recording) session.document.timelapse = recording.timelapse
+  replaceDocument(session.document, { ...current, timelapse: undefined })
+  session.document.timelapse = recording
   // The session can already have render plans and point samplers referring to
   // the pre-restore layers. Replace their generation before the first live edit,
   // without marking the saved document dirty or adding an undo entry.
@@ -336,6 +337,10 @@ export const restoreLocalHistory = async (api: MoonSpriteApi, session: DocumentS
     historyEntries: entries.length,
     snapshots: snapshots.length,
     decodedSnapshots: structuralSnapshots.size,
+    documentId: session.document.id,
+    projectTimelapseFrames: recording?.snapshots.length ?? 0,
+    historyTimelapseFrames: current.timelapse?.snapshots.length ?? 0,
+    restoredTimelapseFrames: session.document.timelapse?.snapshots.length ?? 0,
     deltaEntries: deltas.filter(Boolean).length,
     width: session.document.width,
     height: session.document.height
