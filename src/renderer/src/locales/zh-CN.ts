@@ -869,6 +869,7 @@ export const zhCNMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite 扩展（.msext）',
   'newDocument.eyebrow': 'NEW DOCUMENT',
   'newDocument.title': '新建画布',
+  'newDocument.preset': '新建预设',
   'newDocument.name': '名称',
   'newDocument.widthAria': '画布宽度',
   'newDocument.heightAria': '画布高度',

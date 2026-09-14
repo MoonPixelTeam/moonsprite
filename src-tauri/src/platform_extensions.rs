@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     ffi::OsStr,
     fs::{self, File, OpenOptions},
-    io::{self, Read, Seek},
+    io::{self, BufReader, Read, Seek},
     path::{Component, Path, PathBuf},
 };
 use zip::ZipArchive;
@@ -30,6 +30,10 @@ const MAX_EXTENSION_PANELS: usize = 16;
 const MAX_EXTENSION_MENU_ITEMS: usize = 32;
 const MAX_EXTENSION_TOP_MENUS: usize = 16;
 const MAX_EXTENSION_TOOLS: usize = 16;
+const MAX_EXTENSION_PETS: usize = 8;
+const MAX_PET_ANIMATIONS: usize = 16;
+const MAX_PET_ANIMATION_FRAMES: usize = 128;
+const MAX_PET_FRAME_DIMENSION: u32 = 512;
 const MAX_PANEL_COMMANDS: usize = 32;
 const MAX_MENU_COMMANDS: usize = 32;
 
@@ -51,8 +55,30 @@ pub(crate) struct StoredExtension {
     top_menus: Vec<StoredExtensionTopMenu>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<StoredExtensionTool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pets: Vec<StoredExtensionPet>,
     file_path: String,
     enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StoredExtensionPet {
+    id: String,
+    name: String,
+    description: String,
+    sprite_sheet: String,
+    frame_width: u32,
+    frame_height: u32,
+    animations: Vec<StoredExtensionPetAnimation>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StoredExtensionPetAnimation {
+    state: String,
+    frames: Vec<u32>,
+    fps: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -134,6 +160,7 @@ pub(crate) struct ExtensionPackagePreview {
     panel_count: usize,
     menu_count: usize,
     tool_count: usize,
+    pet_count: usize,
 }
 
 /// A validated Lua entry point belonging to an enabled extension.
@@ -221,6 +248,28 @@ struct ExtensionToolManifest {
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+struct ExtensionPetAnimationManifest {
+    state: String,
+    frames: Vec<u32>,
+    #[serde(default = "default_pet_animation_fps")]
+    fps: u32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionPetManifest {
+    id: String,
+    name: String,
+    #[serde(default)]
+    description: String,
+    sprite_sheet: String,
+    frame_width: u32,
+    frame_height: u32,
+    animations: Vec<ExtensionPetAnimationManifest>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ExtensionToolModeManifest {
     id: String,
     name: String,
@@ -253,6 +302,8 @@ struct ExtensionManifest {
     top_menus: Vec<ExtensionTopMenuManifest>,
     #[serde(default)]
     tools: Vec<ExtensionToolManifest>,
+    #[serde(default)]
+    pets: Vec<ExtensionPetManifest>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -342,6 +393,20 @@ fn default_tool_icon() -> String {
 
 fn default_tool_preview_color() -> String {
     "#2979ff66".to_string()
+}
+
+fn default_pet_animation_fps() -> u32 { 8 }
+
+fn valid_pet_animation_state(value: &str) -> bool {
+    matches!(value, "show" | "idle" | "drag" | "inspect" | "save" | "export-complete" | "unsaved-reminder" | "break-reminder" | "sleep")
+}
+
+fn validate_pet_sprite_path(path: &str) -> Result<(), String> {
+    validate_package_relative_path(path, "宠物精灵图")?;
+    if Path::new(path).extension().and_then(OsStr::to_str).is_none_or(|extension| !extension.eq_ignore_ascii_case("png")) {
+        return Err("宠物精灵图必须是 PNG 文件。".to_string());
+    }
+    Ok(())
 }
 
 fn valid_builtin_menu(value: &str) -> bool {
@@ -599,6 +664,37 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
             return Err(format!("扩展工具“{}”的预览色必须是 #RRGGBBAA。", tool.id));
         }
     }
+    if manifest.pets.len() > MAX_EXTENSION_PETS {
+        return Err(format!("扩展宠物数量不能超过 {MAX_EXTENSION_PETS} 个。"));
+    }
+    let mut pet_ids = HashSet::new();
+    for pet in &manifest.pets {
+        if !valid_extension_id(&pet.id) || !pet_ids.insert(pet.id.to_ascii_lowercase()) {
+            return Err("扩展宠物 ID 无效或重复。".to_string());
+        }
+        if !valid_text(&pet.name, MAX_NAME_BYTES, true) || !valid_text(&pet.description, MAX_DESCRIPTION_BYTES, false) {
+            return Err(format!("扩展宠物“{}”的名称或描述无效。", pet.id));
+        }
+        validate_pet_sprite_path(&pet.sprite_sheet)?;
+        if pet.frame_width == 0 || pet.frame_height == 0 || pet.frame_width > MAX_PET_FRAME_DIMENSION || pet.frame_height > MAX_PET_FRAME_DIMENSION {
+            return Err(format!("扩展宠物“{}”的帧尺寸无效。", pet.id));
+        }
+        if pet.animations.is_empty() || pet.animations.len() > MAX_PET_ANIMATIONS {
+            return Err(format!("扩展宠物“{}”必须声明 1 至 {MAX_PET_ANIMATIONS} 个动画。", pet.id));
+        }
+        let mut states = HashSet::new();
+        for animation in &pet.animations {
+            if !valid_pet_animation_state(&animation.state) || !states.insert(animation.state.clone()) {
+                return Err(format!("扩展宠物“{}”包含未知或重复的动画状态。", pet.id));
+            }
+            if animation.fps == 0 || animation.fps > 60 || animation.frames.is_empty() || animation.frames.len() > MAX_PET_ANIMATION_FRAMES {
+                return Err(format!("扩展宠物“{}”的动画帧或速度无效。", pet.id));
+            }
+        }
+        if !states.contains("idle") {
+            return Err(format!("扩展宠物“{}”必须声明 idle 动画。", pet.id));
+        }
+    }
     Ok(())
 }
 
@@ -766,6 +862,11 @@ fn inspect_archive<R: Read + Seek>(reader: R) -> Result<PackageInspection, Strin
             return Err(format!("扩展命令“{}”指定的入口文件不存在。", command.name));
         }
     }
+    for pet in &manifest.pets {
+        if !entries.iter().any(|candidate| !candidate.is_dir && candidate.name == pet.sprite_sheet) {
+            return Err(format!("扩展宠物“{}”指定的精灵图不存在。", pet.name));
+        }
+    }
     Ok(PackageInspection { manifest, entries })
 }
 
@@ -892,7 +993,58 @@ fn manifest_from_directory(path: &Path) -> Result<ExtensionManifest, String> {
     let manifest = serde_json::from_slice::<ExtensionManifest>(&bytes)
         .map_err(|error| format!("扩展清单无效：{error}"))?;
     validate_manifest(&manifest)?;
+    validate_pet_assets_at(path, &manifest)?;
     Ok(manifest)
+}
+
+fn pet_sprite_path_at(root: &Path, pet: &ExtensionPetManifest) -> Result<PathBuf, String> {
+    let parts = validate_package_relative_path(&pet.sprite_sheet, "宠物精灵图")?;
+    let path = parts.iter().fold(root.to_path_buf(), |current, part| current.join(part));
+    let metadata = fs::symlink_metadata(&path).map_err(|error| format!("宠物精灵图不存在或无法访问：{error}"))?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("宠物精灵图必须是普通 PNG 文件。".to_string());
+    }
+    let canonical_root = fs::canonicalize(root).map_err(|error| format!("无法确定扩展目录位置：{error}"))?;
+    let canonical_path = fs::canonicalize(&path).map_err(|error| format!("无法确定宠物精灵图位置：{error}"))?;
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err("宠物精灵图不能位于扩展目录之外。".to_string());
+    }
+    Ok(path)
+}
+
+fn validate_pet_assets_at(root: &Path, manifest: &ExtensionManifest) -> Result<(), String> {
+    for pet in &manifest.pets {
+        let path = pet_sprite_path_at(root, pet)?;
+        let decoder = png::Decoder::new(BufReader::new(File::open(path).map_err(|error| format!("无法读取宠物精灵图：{error}"))?));
+        let reader = decoder.read_info().map_err(|error| format!("宠物精灵图不是有效 PNG：{error}"))?;
+        let info = reader.info();
+        if info.width == 0 || info.height == 0 || info.width % pet.frame_width != 0 || info.height % pet.frame_height != 0 {
+            return Err(format!("扩展宠物“{}”的精灵图尺寸不能被帧尺寸整除。", pet.id));
+        }
+        let frame_count = (u64::from(info.width) / u64::from(pet.frame_width)) * (u64::from(info.height) / u64::from(pet.frame_height));
+        if pet.animations.iter().flat_map(|animation| animation.frames.iter()).any(|frame| u64::from(*frame) >= frame_count) {
+            return Err(format!("扩展宠物“{}”引用了精灵图之外的帧。", pet.id));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn read_enabled_pet_sprite(extension_id: &str, pet_id: &str) -> Result<Vec<u8>, String> {
+    let directory = extension_directory()?;
+    if !valid_extension_id(extension_id) || !valid_extension_id(pet_id) {
+        return Err("无效的扩展宠物标识。".to_string());
+    }
+    let state = read_state(&directory)?;
+    if !state.enabled.get(extension_id).copied().unwrap_or(true) {
+        return Err("扩展已停用。".to_string());
+    }
+    let root = installed_extension_path(&directory, extension_id)?;
+    let manifest = manifest_from_directory(&root)?;
+    if manifest.id != extension_id {
+        return Err("扩展清单与扩展 ID 不一致。".to_string());
+    }
+    let pet = manifest.pets.iter().find(|candidate| candidate.id == pet_id).ok_or_else(|| "扩展宠物不存在。".to_string())?;
+    fs::read(pet_sprite_path_at(&root, pet)?).map_err(|error| format!("无法读取宠物精灵图：{error}"))
 }
 
 fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> StoredExtension {
@@ -961,6 +1113,23 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
             preview_color: tool.preview_color.clone(),
         })
         .collect();
+    let pets = manifest
+        .pets
+        .iter()
+        .map(|pet| StoredExtensionPet {
+            id: pet.id.clone(),
+            name: pet.name.clone(),
+            description: pet.description.clone(),
+            sprite_sheet: pet.sprite_sheet.clone(),
+            frame_width: pet.frame_width,
+            frame_height: pet.frame_height,
+            animations: pet.animations.iter().map(|animation| StoredExtensionPetAnimation {
+                state: animation.state.clone(),
+                frames: animation.frames.clone(),
+                fps: animation.fps,
+            }).collect(),
+        })
+        .collect();
     StoredExtension {
         id: manifest.id,
         name: manifest.name,
@@ -974,6 +1143,7 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
         menu_items,
         top_menus,
         tools,
+        pets,
         file_path: path.to_string_lossy().to_string(),
         enabled,
     }
@@ -1218,6 +1388,7 @@ pub(crate) fn inspect_extension_package(
         panel_count: manifest.panels.len(),
         menu_count: manifest.menu_items.len() + manifest.top_menus.len(),
         tool_count: manifest.tools.len(),
+        pet_count: manifest.pets.len(),
     })
 }
 
@@ -1481,6 +1652,24 @@ mod tests {
         let inspection = inspect_archive(Cursor::new(bytes)).unwrap();
         assert_eq!(inspection.manifest.tools.len(), 1);
         assert_eq!(inspection.manifest.tools[0].kind, "remote-pixel-brush");
+    }
+
+    #[test]
+    fn accepts_a_host_rendered_pet_declaration_with_a_packaged_sprite() {
+        let bytes = archive(&[
+            ("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"idle","frames":[0],"fps":8}]}]}"#),
+            ("assets/pet.png", b"not-decoded-until-install"),
+        ]);
+        let inspection = inspect_archive(Cursor::new(bytes)).unwrap();
+        assert_eq!(inspection.manifest.pets[0].id, "companion");
+    }
+
+    #[test]
+    fn rejects_pet_declarations_with_unknown_states_or_missing_sprites() {
+        let unknown_state = archive(&[("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"dance","frames":[0]}]}]}"#)]);
+        let missing_sprite = archive(&[("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"idle","frames":[0]}]}]}"#)]);
+        assert!(inspect_archive(Cursor::new(unknown_state)).is_err());
+        assert!(inspect_archive(Cursor::new(missing_sprite)).is_err());
     }
 
     #[test]

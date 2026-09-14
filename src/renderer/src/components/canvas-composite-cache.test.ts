@@ -7,7 +7,7 @@ import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from '@/core/initial-document-composite'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { useWorkspace } from '@/store/workspace'
-import { CanvasCompositeCache } from './canvas-composite-cache'
+import { CanvasCompositeCache, canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-cache'
 import { installRuntimeRaster } from '@/core/runtime-raster'
 
 class MockOffscreenCanvas {
@@ -154,6 +154,21 @@ describe('CanvasCompositeCache', () => {
     expect(close).toHaveBeenCalledTimes(1)
     draw(cache, document, context)
     expect(capture).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases a closed document cache and closes a bitmap capture that finishes late', async () => {
+    const document = createDocument('closed document resources', 256, 256, 'rgba')
+    const cache = canvasCompositeCacheFor(document)
+    const context = makeContext()
+    let finishCapture!: (bitmap: { close: () => void }) => void
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise<{ close: () => void }>(resolve => { finishCapture = resolve })))
+    draw(cache, document, context)
+    releaseCanvasCompositeCache(document)
+    const close = vi.fn()
+    finishCapture({ close })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(canvasCompositeCacheFor(document)).not.toBe(cache)
   })
 
   it.each([true, false])('defers bitmap captures during a long stroke (full surface: %s)', async (fullSurface) => {

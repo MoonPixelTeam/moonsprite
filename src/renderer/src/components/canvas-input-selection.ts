@@ -14,6 +14,7 @@ import { canvasCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { symmetrySelection, symmetrySelectionDragDelta } from '@/core/symmetry'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
+import { tileRepeatIncludesX, tileRepeatIncludesY } from '@/core/tilemap'
 import { timelineSelectionPrecedesCanvasMarquee } from './canvas-stage-helpers'
 
 interface Ports {
@@ -241,10 +242,13 @@ export function createSelectionCanvasInput(ports: Ports) {
     return false
   }
 
-  function moveLasso({ drag, point }: { drag: DragState; point: Point }): boolean {
-    const { scheduleDraw } = ports
+  function moveLasso({ drag, event, point }: { drag: DragState; event: React.PointerEvent<HTMLCanvasElement>; point: Point }): boolean {
+    const { scheduleDraw, repeatedDocumentPointsAt } = ports
     if (drag.kind === 'lasso') {
-      appendCanvasPathStep(drag, point)
+      const lassoPoint = drag.tileRepeatStart
+        ? (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
+        : point
+      appendCanvasPathStep(drag, lassoPoint)
       scheduleDraw()
       return true
     }
@@ -357,13 +361,32 @@ export function createSelectionCanvasInput(ports: Ports) {
   }
 
   function endLasso({ drag, session, state }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState> }): boolean {
-    const { tilemapPaintSelectionForIncoming, symmetryCenter, t } = ports
+    const { tilemapPaintSelectionForIncoming, symmetryCenter, liveViewRef, t } = ports
     if (drag.kind === 'lasso') {
       const mode = drag.selectionMode ?? session.selectionMode
       const before = drag.selectionStart ?? null
+      const path = drag.path ?? []
+      const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
+      const repeatX = tileRepeatIncludesX(repeatMode)
+      const repeatY = tileRepeatIncludesY(repeatMode)
+      // Match the marquee's repeated-space behavior without ever rasterizing
+      // one unbounded lasso mask. Normalize around the starting copy, then
+      // clip the lasso independently against its finite neighboring copies.
+      const originX = drag.tileRepeatStart && repeatX ? Math.floor(drag.tileRepeatStart.x / session.document.width) * session.document.width : 0
+      const originY = drag.tileRepeatStart && repeatY ? Math.floor(drag.tileRepeatStart.y / session.document.height) * session.document.height : 0
+      const normalizedPath = (originX === 0 && originY === 0) ? path : path.map((point) => ({ x: point.x - originX, y: point.y - originY }))
+      const xOffsets = repeatX ? [-session.document.width, 0, session.document.width] : [0]
+      const yOffsets = repeatY ? [-session.document.height, 0, session.document.height] : [0]
+      let incomingSelection = null
+      for (const offsetY of yOffsets) for (const offsetX of xOffsets) {
+        const copyPath = (offsetX === 0 && offsetY === 0)
+          ? normalizedPath
+          : normalizedPath.map((point) => ({ x: point.x - offsetX, y: point.y - offsetY }))
+        incomingSelection = combineSelection(incomingSelection, lassoSelection(session.document, copyPath), 'add')
+      }
       const incoming = tilemapPaintSelectionForIncoming(
         symmetrySelection(
-          lassoSelection(session.document, drag.path ?? []),
+          incomingSelection,
           session.document.width,
           session.document.height,
           session.symmetryAxes,

@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom'
 import { CheckCircle2 } from 'lucide-react'
 import { AppMenuBar } from '@/components/app/AppMenuBar'
 import { ExtensionPanelHost } from '@/components/extensions/ExtensionPanelHost'
+import { ExtensionPetHost } from '@/components/extensions/ExtensionPetHost'
 import { AppWindowTitleBar } from '@/components/app/AppWindowTitleBar'
 import { DocumentTabs } from '@/components/app/DocumentTabs'
 import { EditorStatusBar } from '@/components/app/EditorStatusBar'
@@ -731,6 +732,7 @@ export default function App() {
           void runLuaScript(scriptId)
         }}
       />
+      <ExtensionPetHost extensions={extensions} session={session} homeOpen={homeOpen} />
 
       <EditorStatusBar homeOpen={homeOpen} resourceLabel={resourceLabel} />
       <OpenProgressOverlay />

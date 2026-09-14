@@ -101,7 +101,7 @@ export function useAppExtensions({
       `作者：${preview.author || '未提供'}　版本：${preview.version || '未提供'}`,
       `标识：${preview.id}`,
       preview.description || '此扩展未提供描述。',
-      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount} · 工具 ${preview.toolCount}`
+      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount} · 工具 ${preview.toolCount} · 宠物 ${preview.petCount}`
     ]
       .filter(Boolean)
       .join('\n')

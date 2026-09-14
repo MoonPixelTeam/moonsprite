@@ -848,6 +848,7 @@ export const jaJPMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite 拡張機能 (.データ)',
   'newDocument.eyebrow': '新規 ドキュメント',
   'newDocument.title': '新規 キャンバス',
+  'newDocument.preset': '新規プロジェクトプリセット',
   'newDocument.name': '名前',
   'newDocument.widthAria': 'キャンバス 幅',
   'newDocument.heightAria': 'キャンバス 高さ',

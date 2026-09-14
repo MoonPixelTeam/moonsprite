@@ -21,6 +21,7 @@ mod platform_fonts;
 mod platform_gallery;
 mod platform_local_history;
 mod platform_palette;
+mod platform_pets;
 mod platform_paths;
 mod platform_recovery;
 mod platform_resources;
@@ -196,6 +197,13 @@ pub fn run() {
             platform_extensions::set_extension_enabled,
             platform_extensions::uninstall_extension,
             platform_extensions::open_extension_folder,
+            platform_pets::read_extension_pet_sprite,
+            platform_pets::show_extension_pet,
+            platform_pets::hide_extension_pet,
+            platform_pets::set_extension_pet_hit_region,
+            platform_pets::start_extension_pet_drag_if_primary_pressed,
+            platform_pets::report_extension_pet_position,
+            platform_pets::report_extension_pet_inspection,
             platform_files::file_exists,
             platform_files::read_binary,
             platform_files::read_project_preview,

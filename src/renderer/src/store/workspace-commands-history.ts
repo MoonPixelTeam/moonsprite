@@ -436,6 +436,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         set({ message, saveProgress: progressStarted ? { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
         recordUsageExport(format)
         playExportSuccessSound()
+        window.dispatchEvent(new Event('moonsprite:extension-pet-export'))
         return true
       } catch (error) {
         if (canceled) {

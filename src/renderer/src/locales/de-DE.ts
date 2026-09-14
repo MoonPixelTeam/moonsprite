@@ -848,6 +848,7 @@ export const deDEMessages = {
   "preferences.extensions.packageFilter": "Nicht angegeben",
   "newDocument.eyebrow": "Neues Dokument",
   "newDocument.title": "Neu Leinwand",
+  'newDocument.preset': 'Vorlage für neue Projekte',
   "newDocument.name": "Nicht angegeben",
   "newDocument.widthAria": "Leinwand Breite",
   "newDocument.heightAria": "Leinwand Höhe",

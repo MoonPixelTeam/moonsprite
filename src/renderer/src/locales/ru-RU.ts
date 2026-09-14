@@ -848,6 +848,7 @@ export const ruRUMessages = {
   "preferences.extensions.packageFilter": "Не указано",
   "newDocument.eyebrow": "Новый документ",
   "newDocument.title": "Новый Холст",
+  'newDocument.preset': 'Шаблон нового проекта',
   "newDocument.name": "Имя",
   "newDocument.widthAria": "Холст Ширина",
   "newDocument.heightAria": "Холст Высота",

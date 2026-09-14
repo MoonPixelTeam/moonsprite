@@ -1223,20 +1223,22 @@ const rasterizeLassoSelection = (
   const clipMaxX = clip ? Math.floor(clip.x + clip.width - 1) : document.width - 1
   const clipMinY = clip ? Math.ceil(clip.y) : 0
   const clipMaxY = clip ? Math.floor(clip.y + clip.height - 1) : document.height - 1
-  const minX = Math.max(0, pathMinX, clipMinX)
-  const maxX = Math.min(document.width - 1, pathMaxX, clipMaxX)
-  const minY = Math.max(0, pathMinY, clipMinY)
-  const maxY = Math.min(document.height - 1, pathMaxY, clipMaxY)
+  // A selection mask is always document-local.  A preview clip may reduce
+  // that area, but must never expand it beyond the finite document.
+  const minX = Math.max(0, clip ? clipMinX : 0, pathMinX)
+  const maxX = Math.min(document.width - 1, clip ? clipMaxX : document.width - 1, pathMaxX)
+  const minY = Math.max(0, clip ? clipMinY : 0, pathMinY)
+  const maxY = Math.min(document.height - 1, clip ? clipMaxY : document.height - 1, pathMaxY)
   if (maxX < minX || maxY < minY) return null
 
   const width = maxX - minX + 1
   const height = maxY - minY + 1
   const mask = new Uint8Array(width * height)
   let hasSelected = false
-  let selectedMinX = document.width
-  let selectedMaxX = -1
-  let selectedMinY = document.height
-  let selectedMaxY = -1
+  let selectedMinX = maxX + 1
+  let selectedMaxX = minX - 1
+  let selectedMinY = maxY + 1
+  let selectedMaxY = minY - 1
   const select = (x: number, y: number): void => {
     if (x < minX || y < minY || x > maxX || y > maxY) return
     const offset = (y - minY) * width + x - minX
@@ -1325,8 +1327,11 @@ const rasterizeLassoSelection = (
   return { x: selectedMinX, y: selectedMinY, width: trimmedWidth, height: trimmedHeight, mask: trimmed }
 }
 
-export const lassoSelection = (document: SpriteDocument, path: readonly { x: number; y: number }[]): SelectionMask | null =>
-  rasterizeLassoSelection(document, path)
+/** Rasterizes a lasso into the finite document mask. */
+export const lassoSelection = (
+  document: SpriteDocument,
+  path: readonly { x: number; y: number }[]
+): SelectionMask | null => rasterizeLassoSelection(document, path)
 
 const visitPolygonBoundary = (
   vertices: readonly { x: number; y: number }[],

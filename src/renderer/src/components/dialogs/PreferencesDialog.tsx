@@ -66,6 +66,7 @@ import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
 import type { LuaScriptEntry, StoredExtension } from '@shared/types-extensions'
 import { initializeUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
+import { loadPetPreferences, savePetPreferences, type PetPreferences } from '@/core/pet-preferences'
 
 interface PreferencesDialogProps {
   initialSection?: PreferenceSection
@@ -144,6 +145,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [preferences, setPreferences] = useState(loadEditorPreferences)
   const [defaultDirectories, setDefaultDirectories] = useState({ saveDirectory: 'gallery', exportDirectory: 'exports' })
   const [extensions, setExtensions] = useState<StoredExtension[]>([])
+  const [petPreferences, setPetPreferences] = useState<PetPreferences>(loadPetPreferences)
   const [extensionsLoading, setExtensionsLoading] = useState(false)
   const [extensionBusyId, setExtensionBusyId] = useState<string | null>(null)
   const [luaScripts, setLuaScripts] = useState<LuaScriptEntry[]>([])
@@ -157,6 +159,12 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const preferenceAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0)
   const preferenceAutoScrollFrameRef = useRef<number | null>(null)
   const update = <K extends keyof typeof preferences>(key: K, value: typeof preferences[K]): void => setPreferences((current) => ({ ...current, [key]: value }))
+  const updatePetPreferences = (patch: Partial<PetPreferences>): void => setPetPreferences((current) => {
+    const next = { ...current, ...patch }
+    savePetPreferences(next)
+    window.dispatchEvent(new Event('moonsprite:pets-preferences-changed'))
+    return next
+  })
   const updateDocumentSize = (index: number, key: keyof DocumentSizePreset, value: number): void => update('documentSizePresets', preferences.documentSizePresets.map((preset, presetIndex) => presetIndex === index ? { ...preset, [key]: value } : preset))
   const updateLayerColorPreset = (index: number, color: typeof preferences.layerDisplayColorPresets[number]): void => update('layerDisplayColorPresets', preferences.layerDisplayColorPresets.map((preset, presetIndex) => presetIndex === index ? { ...color, a: 255 } : preset))
   const setVisualOverride = (key: keyof ThemeVisualDefaults, color: typeof preferences.pixelGridColor): void => setPreferences((current) => {
@@ -654,6 +662,13 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {extension.description && <p className="preference-extension-description">{extension.description}</p>}
           <div className="preference-extension-actions"><PreferenceToggle className="preference-extension-toggle" label={t('preferences.extensions.enable')} checked={extension.enabled} disabled={extensionBusyId !== null} onChange={() => void toggleExtension(extension)} /><button type="button" className="quiet-button" disabled={extensionBusyId !== null} onClick={() => void uninstallExtension(extension)}><PixelUtilityIcon kind="delete" />{t('preferences.extensions.uninstall')}</button></div>
         </article>)}</div>}
+      </PreferenceGroup>}
+      {section === 'extensions' && extensions.some((extension) => extension.pets?.length) && <PreferenceGroup title="宠物">
+        <PreferenceToggle label="显示宠物" checked={petPreferences.enabled} onChange={() => updatePetPreferences({ enabled: !petPreferences.enabled })} />
+        <FormField className="preference-field" label="宠物缩放"><NumberInput min={1} max={4} suffix="x" value={petPreferences.scale} disabled={!petPreferences.enabled} onValueChange={(value) => updatePetPreferences({ scale: Math.round(value) })} /></FormField>
+        <PreferenceToggle label="低打扰提醒" checked={petPreferences.remindersEnabled} disabled={!petPreferences.enabled} onChange={() => updatePetPreferences({ remindersEnabled: !petPreferences.remindersEnabled })} />
+        <FormField className="preference-field" label="未保存提醒" hint="达到设定时间后播放一次提醒动作。"><NumberInput min={5} max={120} suffix="分钟" value={petPreferences.unsavedMinutes} disabled={!petPreferences.enabled || !petPreferences.remindersEnabled} onValueChange={(value) => updatePetPreferences({ unsavedMinutes: Math.round(value) })} /></FormField>
+        <FormField className="preference-field" label="连续绘制提醒" hint="达到设定时间后播放一次休息提醒动作。"><NumberInput min={15} max={180} suffix="分钟" value={petPreferences.breakMinutes} disabled={!petPreferences.enabled || !petPreferences.remindersEnabled} onValueChange={(value) => updatePetPreferences({ breakMinutes: Math.round(value) })} /></FormField>
       </PreferenceGroup>}
       {section === 'extensions' && <PreferenceGroup className="preference-scripts-group" title={t('app.menu.file.scripts')} actions={<><button type="button" onClick={() => void openLuaScriptFolder()}><PixelUtilityIcon kind="folderOpen" />{t('app.menu.file.openScriptFolder')}</button><button type="button" onClick={() => void refreshLuaScripts()} disabled={luaScriptsLoading}><PixelUtilityIcon kind="restore" />{t('common.refresh')}</button></>}>
         {luaScriptsLoading && luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.loadingScripts')}</p> : luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.noScripts')}</p> : <div className="preference-script-list">{luaScripts.map((script) => <article className="preference-script-row" key={script.id}><div className="preference-script-name">{script.name}</div>{script.extensionName && <div className="preference-script-meta">{script.extensionName}</div>}<button type="button" className="icon-button preference-script-delete" aria-label={t('preferences.scripts.deleteAria', { name: script.name })} title={script.extensionId ? t('preferences.scripts.extensionManaged') : t('common.delete')} disabled={Boolean(script.extensionId) || luaScriptBusyId !== null} onClick={() => void deleteLuaScript(script)}><PixelUtilityIcon kind="delete" /></button></article>)}</div>}

@@ -52,6 +52,7 @@ interface Ports {
   autoPanSelection: ReturnType<typeof createCanvasAutoPan>
   lineConnectionPreviewActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>) => boolean
   localPoint: (event: React.PointerEvent<HTMLCanvasElement>, allowOutsideCopies?: boolean) => Point | null
+  repeatedDocumentPointsAt: (clientX: number, clientY: number, continuous?: boolean, allowOutsideCopies?: boolean) => { local: Point; repeated: Point } | null
   localContinuousPointAt: (clientX: number, clientY: number) => Point | null
   selectionCrosshair: boolean
   activeLayer: RasterLayer
@@ -225,9 +226,10 @@ export function createCanvasPointerMove(ports: Ports) {
     inputRef.current.shiftLinePreview = lineConnectionPreviewActive(event.nativeEvent)
     const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
     const repeatedMarquee = inputRef.current.drag?.kind === 'marquee' && !inputRef.current.drag.quickSelectCell && repeatMode !== 'off'
+    const repeatedLasso = inputRef.current.drag?.kind === 'lasso' && repeatMode !== 'off'
     const repeatedSelectionMove = (inputRef.current.drag?.kind === 'move-content' || inputRef.current.drag?.kind === 'move-selection') && repeatMode !== 'off'
     const allowOutsideCopies = Boolean(
-      (inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || repeatedMarquee || repeatedSelectionMove) &&
+      (inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || repeatedMarquee || repeatedLasso || repeatedSelectionMove) &&
         repeatMode !== 'off'
     )
     const textBoxInteraction = inputRef.current.drag?.kind === 'create-text-box' || inputRef.current.drag?.kind === 'transform-text-box'
@@ -363,7 +365,7 @@ export function createCanvasPointerMove(ports: Ports) {
     if (drag.kind === 'move-slice' && drag.sliceStart && sliceInput.moveSlice({ drag, event, point, session })) return
     if (drag.kind === 'resize-slice' && drag.sliceStart && drag.handle && sliceInput.moveSliceResize({ drag, point, session })) return
     if (drag.kind === 'magic-preview' && selectionInput.moveMagic({ drag, point, previousPoint })) return
-    if (drag.kind === 'lasso' && selectionInput.moveLasso({ drag, point })) return
+    if (drag.kind === 'lasso' && selectionInput.moveLasso({ drag, event, point })) return
     if (drag.kind === 'polygon-lasso' && selectionInput.movePolygonLasso({ drag })) return
     if (drag.kind === 'move-content' && drag.selectionStart && drag.tilemapSelectionMoveSource && tileInput.moveTileSelection({ drag, event, point, session }))
       return

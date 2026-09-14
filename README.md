@@ -24,7 +24,7 @@ MoonSprite 是面向 Windows 的原创源码可见像素画工作台，使用 Ta
 
 普通 Lua 脚本放入程序运行目录的 `scripts/` 文件夹后，会显示在“文件 > 脚本”中。脚本运行在受限 Lua 5.4 沙箱内，可以读取当前文档状态，并通过事务执行可撤销的画布操作；不能直接访问文件、网络、进程或任意本地模块。
 
-`.msext` 是 MoonSprite 的扩展包格式。扩展可声明 Lua 命令、把命令插入现有菜单、新增顶层菜单，并提供由 MoonSprite 渲染的浮动栏目。扩展不能注入任意 React、DOM、CSS、JavaScript 或原生代码。扩展可在“首选项 > 扩展”中安装、启用、禁用和卸载，也支持双击或拖入 `.msext` 文件安装。
+`.msext` 是 MoonSprite 的扩展包格式。扩展可声明 Lua 命令、把命令插入现有菜单、新增顶层菜单、由 MoonSprite 渲染的浮动栏目，以及宿主渲染的宠物图集。扩展不能注入任意 React、DOM、CSS、JavaScript 或原生代码。扩展可在“首选项 > 扩展”中安装、启用、禁用和卸载，也支持双击或拖入 `.msext` 文件安装。
 
 - [Lua 脚本与扩展入门](docs/scripting/README.md)
 - [MSE API 参考](docs/scripting/mse-api.md)

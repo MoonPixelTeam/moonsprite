@@ -223,6 +223,9 @@
 
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
 html, body, #root { width: 100%; min-width: 0; height: 100%; min-height: 0; margin: 0; overflow: hidden; }
+html[data-extension-pet-window],
+html[data-extension-pet-window] body,
+html[data-extension-pet-window] #root { background: transparent !important; }
 button, input, select { font: inherit; }
 body { cursor: var(--cursor-default); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); letter-spacing: 0; }
 body.relative-luminance-app { filter: grayscale(1); }
@@ -882,8 +885,8 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .brush-swatch.dragging { opacity: .24; }
 .brush-drag-ghost { position: fixed; z-index: 10090; padding: 1px; overflow: hidden; background: var(--theme-control-background); opacity: .5; pointer-events: none; }
 .brush-drag-ghost > .brush-thumbnail { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
-.brush-drag-ghost > span { position: absolute; right: 1px; bottom: 1px; display: grid; min-width: 10px; height: 10px; place-items: center; padding: 0 2px; color: var(--theme-on-accent); background: var(--theme-accent); font: 7px/10px ui-monospace, Consolas, monospace; }
-.brush-project-badge { position: absolute; right: 1px; bottom: 1px; display: grid; place-items: center; width: 9px; height: 9px; color: var(--theme-on-accent); background: var(--theme-accent); font: 7px/9px ui-monospace, Consolas, monospace; pointer-events: none; }
+.brush-drag-ghost > span { position: absolute; right: 1px; bottom: 1px; display: grid; min-width: 10px; height: 10px; place-items: center; padding: 0 2px; color: var(--theme-on-accent); background: var(--theme-accent); font: 8px/10px ui-monospace, Consolas, monospace; }
+.brush-project-badge { position: absolute; right: 1px; bottom: 1px; display: grid; place-items: center; width: 9px; height: 9px; color: var(--theme-on-accent); background: var(--theme-accent); font: 8px/9px ui-monospace, Consolas, monospace; pointer-events: none; }
 .brush-swatch-grid.is-empty { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); align-items: center; justify-items: center; min-height: 100%; padding: var(--ui-space-5); }
 .brush-library-panel-state { display: grid; align-content: center; justify-items: center; gap: var(--ui-space-2); width: min(100%, 240px); min-width: 0; margin: 0; padding: var(--ui-space-2); color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); text-align: center; }
 .brush-library-panel-state strong { color: var(--theme-text-secondary-strong); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
@@ -1426,6 +1429,15 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .extension-panel-command strong, .extension-panel-command small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extension-panel-command strong { font-size: var(--ui-font-regular); }
 .extension-panel-command small { margin-top: var(--ui-space-1); color: var(--theme-text-muted); font-size: var(--ui-font-small); }
+.extension-pet-window { width: 100vw; height: 100vh; overflow: hidden; background: transparent; }
+.extension-pet-sprite { display: block; width: 100%; height: 100%; padding: 0; cursor: var(--cursor-grab); image-rendering: pixelated; background-repeat: no-repeat; border: 0; box-shadow: none; }
+.extension-pet-sprite:active { cursor: var(--cursor-grab); }
+.extension-pet-project-info, .extension-pet-message { position: fixed; z-index: 20; width: 208px; display: grid; gap: 2px; padding: 8px; color: #f4f7fb; font-size: 12px; line-height: 16px; text-align: left; background: #151a22e8; border: 1px solid #64748b; }
+.extension-pet-project-info { pointer-events: auto; }
+.extension-pet-message { width: 220px; min-height: 56px; align-content: center; pointer-events: none; }
+.extension-pet-project-info header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #ffffff; }
+.extension-pet-project-info header button { width: 16px; min-width: 16px; height: 16px; min-height: 16px; padding: 0; color: inherit; background: transparent; border: 0; box-shadow: none; }
+.extension-pet-project-info small { color: #a9b7c8; }
 .inspector-dock-preview { z-index: 10000; pointer-events: none; background: color-mix(in srgb, var(--theme-accent) 14%, transparent); border: 2px solid var(--theme-accent); box-shadow: inset 0 0 0 1px var(--theme-workspace-background); }
 .floating-resize-handle { position: absolute; z-index: 8; display: block; touch-action: none; }
 .floating-resize-handle.resize-n, .floating-resize-handle.resize-s { left: 6px; right: 6px; height: 8px; cursor: var(--cursor-ns-resize); }

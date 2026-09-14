@@ -848,6 +848,7 @@ export const koKRMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite 확장 기능 (.데이터)',
   'newDocument.eyebrow': '새로 만들기 문서',
   'newDocument.title': '새로 만들기 캔버스',
+  'newDocument.preset': '새 프로젝트 프리셋',
   'newDocument.name': '이름',
   'newDocument.widthAria': '캔버스 너비',
   'newDocument.heightAria': '캔버스 높이',

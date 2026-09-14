@@ -840,14 +840,22 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         return true
       }
       if (session.selectionKind === 'lasso') {
+        // Use the same discrete repeated coordinate as marquee. Continuous
+        // coordinates are only for translation gestures; feeding them into a
+        // path makes an ordinary lasso span an unbounded repeat distance.
+        const lassoTileStart = repeatMode === 'off'
+          ? undefined
+          : repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated
+        const lassoStart = lassoTileStart ?? point
         inputRef.current.drag = {
           kind: 'lasso',
-          start: point,
-          last: point,
+          start: lassoStart,
+          last: lassoStart,
           selectionStart: cloneSelection(currentSelection),
           selectionMode: mode,
           previewSelection: cloneSelection(currentSelection),
-          path: [point]
+          path: [lassoStart],
+          ...(lassoTileStart ? { tileRepeatStart: lassoTileStart } : {})
         }
         event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
         return true

@@ -848,6 +848,7 @@ export const esESMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite extension (.msext)',
   'newDocument.eyebrow': 'Nuevo documento',
   'newDocument.title': 'Nuevo documento',
+  'newDocument.preset': 'Preajuste de nuevo proyecto',
   'newDocument.name': 'Name',
   'newDocument.widthAria': 'Lienzo Ancho',
   'newDocument.heightAria': 'Lienzo Alto',

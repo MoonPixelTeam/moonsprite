@@ -22,12 +22,13 @@ import {
   notifyLayerMaskThumbnailPreview,
   type CanvasPreviewSnapshot
 } from '@/core/canvas-preview-lifecycle'
-import { canvasCompositeCacheFor } from '@/components/canvas-composite-cache'
+import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from '@/components/canvas-composite-cache'
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { animationFrameIdsForCellKeys } from '@/components/canvas-move-selection'
 import { type SelectionBoundaryCache } from '@/components/canvas-selection-renderer'
 import { resolveAnimationCel } from '@/core/animation'
 import { clearTilesetTilePreview } from '@/components/tileset-preview-events'
+import { releaseInitialDocumentComposite } from '@/core/initial-document-composite'
 import { GradientPreviewSurface, GradientCompositePreviewCache, GradientPreviewCoverageCache, nonContentPreviewDragKinds } from './canvas-stage-helpers'
 interface Ports {
   readonly storedSession: DocumentSession
@@ -483,9 +484,32 @@ export function useCanvasRenderEngine(ports: Ports) {
     return sampler
   }
   useEffect(
-    () => () => {
-      if (drawRequestRef.current !== null) window.cancelAnimationFrame(drawRequestRef.current)
-      drawRequestRef.current = null
+    () => {
+      const document = ports.storedSession.document
+      return () => {
+        if (drawRequestRef.current !== null) window.cancelAnimationFrame(drawRequestRef.current)
+        drawRequestRef.current = null
+        onionSkinCacheRef.current.invalidateAll()
+        for (const canvas of [rotationSceneRef.current, checkerboardTileRef.current?.canvas, isoGuideTileRef.current?.canvas, gradientPreviewSurfaceRef.current?.canvas]) {
+          if (!canvas) continue
+          canvas.width = 1
+          canvas.height = 1
+        }
+        rotationSceneRef.current = null
+        checkerboardTileRef.current = null
+        isoGuideTileRef.current = null
+        gradientPreviewSurfaceRef.current = null
+        gradientCompositePreviewCacheRef.current = null
+        gradientPreviewCoverageCacheRef.current = null
+        compositeReplacementSamplerRef.current = null
+        compositePointSamplerRef.current = null
+        cursorCompositePointSamplerRef.current = null
+        cursorCompositePointReplacementSamplerRef.current = null
+        if (!useWorkspace.getState().sessions.some((session) => session.document === document)) {
+          releaseCanvasCompositeCache(document)
+          releaseInitialDocumentComposite(document)
+        }
+      }
     },
     [ports.session.document.id]
   )

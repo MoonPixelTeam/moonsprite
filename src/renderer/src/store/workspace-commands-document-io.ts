@@ -430,6 +430,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         if (progressVisible) window.setTimeout(() => { if (get().saveProgress?.value === 100) set({ saveProgress: null }) }, 180)
         recordUsageExport(exportOptions?.format ?? 'png')
         playExportSuccessSound()
+        window.dispatchEvent(new Event('moonsprite:extension-pet-export'))
         return true
       } catch (error) {
         if (canceled) {

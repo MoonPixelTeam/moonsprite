@@ -14,6 +14,17 @@ const initialCompositeListeners = new WeakMap<SpriteDocument, Set<() => void>>()
 const MAX_INITIAL_COMPOSITE_DIMENSION = 8192
 const MAX_INITIAL_COMPOSITE_BYTES = 128 * 1024 * 1024
 
+export const releaseInitialDocumentComposite = (document: SpriteDocument): void => {
+  const composite = initialComposites.get(document)
+  if (composite?.canvas) {
+    composite.canvas.width = 1
+    composite.canvas.height = 1
+  }
+  initialComposites.delete(document)
+  pendingInitialComposites.delete(document)
+  initialCompositeListeners.delete(document)
+}
+
 export const canPrepareInitialDocumentComposite = (width: number, height: number): boolean =>
   width > 0 && height > 0
   && width <= MAX_INITIAL_COMPOSITE_DIMENSION

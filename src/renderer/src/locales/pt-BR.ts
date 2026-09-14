@@ -848,6 +848,7 @@ export const ptBRMessages = {
   "preferences.extensions.packageFilter": "Não especificado",
   "newDocument.eyebrow": "Novo documento",
   "newDocument.title": "Novo Tela",
+  'newDocument.preset': 'Predefinição de novo projeto',
   "newDocument.name": "Nome",
   "newDocument.widthAria": "Tela Largura",
   "newDocument.heightAria": "Tela Altura",

@@ -79,10 +79,10 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
           ? timeline.frames.find((candidate) => candidate.id === (loopSectionFrameId ?? ''))
           : timeline.frames[current < 0 ? (direction > 0 ? 0 : timeline.frames.length - 1) : (current + direction + timeline.frames.length) % timeline.frames.length]
       if (!frame || frame.id === timeline.activeFrameId) return
-      if (session.selectedAnimationFrameIds.length > 0) {
-        get().selectAnimationFrame(frame.id)
-        return
-      }
+      // Keyboard frame stepping is active-only navigation. Any explicit
+      // timeline item selection belongs to the frame that was just left and
+      // must not be carried over to the destination frame.
+      clearAnimationItemSelection(session)
       // Keep implicit timeline navigation free of selection normalization. The
       // generic setActiveAnimationFrame command intentionally repairs layer
       // selection, but arrow-key active-only navigation must not synthesize

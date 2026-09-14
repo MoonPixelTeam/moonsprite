@@ -27,8 +27,38 @@ export interface StoredExtension {
   topMenus: StoredExtensionTopMenu[]
   /** Declarative tools exposed by the extension host. */
   tools?: StoredExtensionTool[]
+  /** Host-rendered companion pets. Extension code never controls their UI. */
+  pets?: StoredExtensionPet[]
   filePath: string
   enabled: boolean
+}
+
+export type ExtensionPetAnimationState =
+  | 'show'
+  | 'idle'
+  | 'drag'
+  | 'inspect'
+  | 'save'
+  | 'export-complete'
+  | 'unsaved-reminder'
+  | 'break-reminder'
+  | 'sleep'
+
+export interface StoredExtensionPetAnimation {
+  state: ExtensionPetAnimationState
+  frames: number[]
+  fps: number
+}
+
+/** A sprite-sheet pet interpreted exclusively by the MoonSprite host. */
+export interface StoredExtensionPet {
+  id: string
+  name: string
+  description: string
+  spriteSheet: string
+  frameWidth: number
+  frameHeight: number
+  animations: StoredExtensionPetAnimation[]
 }
 
 export type ExtensionToolKind = 'remote-pixel-brush'
@@ -108,4 +138,5 @@ export interface ExtensionPackagePreview {
   panelCount: number
   menuCount: number
   toolCount: number
+  petCount: number
 }

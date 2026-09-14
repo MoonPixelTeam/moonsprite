@@ -848,6 +848,7 @@ export const frFRMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite extension (.msext)',
   'newDocument.eyebrow': 'Nouveau document',
   'newDocument.title': 'Nouveau document',
+  'newDocument.preset': 'Préréglage de nouveau projet',
   'newDocument.name': 'Name',
   'newDocument.widthAria': 'Canevas Largeur',
   'newDocument.heightAria': 'Canevas Hauteur',

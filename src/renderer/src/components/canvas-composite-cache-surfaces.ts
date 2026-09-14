@@ -178,6 +178,33 @@ export interface SharedAnimationLayerSourceState {
 
 export const sharedAnimationLayerSources = new WeakMap<SpriteDocument, SharedAnimationLayerSourceState>()
 
+/** Explicitly release browser-backed animation resources when a document closes. */
+export const releaseSharedAnimationResources = (document: SpriteDocument): void => {
+  const composites = sharedAnimationComposites.get(document)
+  if (composites) {
+    for (const entry of composites.entries.values()) {
+      entry.canvas.width = 1
+      entry.canvas.height = 1
+    }
+    composites.entries.clear()
+    composites.bytes = 0
+    sharedAnimationComposites.delete(document)
+  }
+  const sources = sharedAnimationLayerSources.get(document)
+  if (sources) {
+    for (const entry of sources.entries.values()) {
+      if (typeof ImageBitmap !== 'undefined' && entry.source instanceof ImageBitmap) entry.source.close()
+      else if (typeof OffscreenCanvas !== 'undefined' && entry.source instanceof OffscreenCanvas) {
+        entry.source.width = 1
+        entry.source.height = 1
+      }
+    }
+    sources.entries.clear()
+    sources.bytes = 0
+    sharedAnimationLayerSources.delete(document)
+  }
+}
+
 export const sharedAnimationCompositeSurface = (document: SpriteDocument, frameId: string, contentRevision: number): OffscreenCanvas | null => {
   const state = sharedAnimationComposites.get(document)
   const entry = state?.entries.get(frameId)

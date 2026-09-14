@@ -92,6 +92,16 @@ export class OnionSkinCompositeCache {
   invalidateAll(): void {
     this.namespace = ''
     this.revision = Number.NaN
+    for (const frame of this.frames.values()) {
+      for (const tile of frame.tiles.values()) {
+        tile.canvas.width = 1
+        tile.canvas.height = 1
+      }
+      if (frame.region) {
+        frame.region.canvas.width = 1
+        frame.region.canvas.height = 1
+      }
+    }
     this.frames.clear()
   }
 

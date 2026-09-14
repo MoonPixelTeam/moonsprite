@@ -44,6 +44,7 @@ import {
   sharedAnimationCompositeSurface,
   latestSharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
+  releaseSharedAnimationResources,
   imageData,
   gpuBlendModeFor,
   shouldCacheFullCompositeSurface,
@@ -66,6 +67,12 @@ export const canvasCompositeCacheFor = (document: SpriteDocument): CanvasComposi
     documentCompositeCaches.set(document, cache)
   }
   return cache
+}
+
+export const releaseCanvasCompositeCache = (document: SpriteDocument): void => {
+  documentCompositeCaches.get(document)?.dispose()
+  documentCompositeCaches.delete(document)
+  releaseSharedAnimationResources(document)
 }
 
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
@@ -119,12 +126,23 @@ export class CanvasCompositeCache {
 
   private compositeCache = new DocumentCompositeCache()
 
+  dispose(): void {
+    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
+      surface.canvas.width = 1
+      surface.canvas.height = 1
+    }
+    this.invalidateSurface()
+    this.lastDocument = null
+    this.namespace = ''
+    this.invalidatedInitialDocuments = new WeakSet<SpriteDocument>()
+  }
+
   supportsSelectionPreview(document: SpriteDocument, contentRevision: number, layerId: string): boolean {
     return Boolean(this.compositeCache.renderLayersFor(document, contentRevision)?.some((layer) => layer.id === layerId))
   }
 
   invalidateSurface(): void {
-    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) surface.bitmap?.close()
+    for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
     this.surfaces.clear()
     this.regions.clear()
     this.dirtyRects.clear()

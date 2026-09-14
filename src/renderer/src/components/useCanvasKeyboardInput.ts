@@ -1,5 +1,4 @@
 import { registerCanvasKeyboard } from './canvas-keyboard-router'
-import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '../core/runtime-diagnostics'
 import { useEffect, useRef, useState } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -244,19 +243,10 @@ export function useCanvasKeyboardInput(ports: Ports) {
     const keyDown = (event: KeyboardEvent): void => {
       const eventTarget = event.target instanceof Element ? event.target : null
       const keyDisplayBlocked = Boolean(eventTarget?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop'))
-      const keyDisplayTarget = eventTarget
-        ? `${eventTarget.tagName.toLowerCase()}${eventTarget.className && typeof eventTarget.className === 'string' ? `.${eventTarget.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`
-        : 'unknown'
       // Plain wheel shortcuts are represented as synthetic keyboard events and
       // stay hidden; a modifier + wheel is an intentional shortcut and remains
       // visible (for example Ctrl + ↑).
       const syntheticWheelWithModifier = !event.isTrusted && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)
-      const keyDisplayReasons: string[] = []
-      if (!event.isTrusted && !syntheticWheelWithModifier) keyDisplayReasons.push('untrusted-event')
-      if (!ports.keyDisplayEnabled) keyDisplayReasons.push('disabled')
-      if (ports.activeDocumentId !== ports.session.document.id) keyDisplayReasons.push('inactive-document')
-      if (event.repeat) keyDisplayReasons.push('repeat')
-      if (keyDisplayBlocked) keyDisplayReasons.push('blocked-target')
       const keyDisplayAccepted = keyDisplayKeydownAccepted({
         isTrusted: event.isTrusted,
         syntheticWheelWithModifier,
@@ -264,20 +254,6 @@ export function useCanvasKeyboardInput(ports: Ports) {
         activeDocument: ports.activeDocumentId === ports.session.document.id,
         repeat: event.repeat,
         blockedTarget: keyDisplayBlocked
-      })
-      if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'key-display.keydown', {
-        key: event.key,
-        code: event.code,
-        trusted: event.isTrusted,
-        repeat: event.repeat,
-        enabled: ports.keyDisplayEnabled,
-        activeDocument: ports.activeDocumentId === ports.session.document.id,
-        pointerVisible: ports.inputRef.current.pointer.visible,
-        blocked: keyDisplayBlocked,
-        target: keyDisplayTarget,
-        defaultPrevented: event.defaultPrevented,
-        accepted: keyDisplayAccepted,
-        rejectedBy: keyDisplayReasons.join(',')
       })
       if (keyDisplayAccepted) {
         const keyId = event.key
@@ -534,7 +510,6 @@ export function useCanvasKeyboardInput(ports: Ports) {
         Array.from(keyDisplayGestureRef.current).every((key) => key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt')
       const pendingKeys = Array.from(keyDisplayGestureRef.current)
       const shouldEmitKeyDisplay = keyDisplayHeldRef.current.size === 0 && pendingKeys.length > 0 && !wheelOnlyModifiers
-      let emittedCombo = ''
       if (shouldEmitKeyDisplay) {
         const combo = pendingKeys
           .sort((left, right) => {
@@ -542,23 +517,12 @@ export function useCanvasKeyboardInput(ports: Ports) {
             return rank(left) - rank(right)
           })
           .map((heldKey) => keyDisplayLabel(heldKey))
-        emittedCombo = combo.join(' + ')
         const id = ++keyDisplayIdRef.current
-        setKeyDisplayEntries((current) => [...current, { id, label: emittedCombo }].slice(-10))
+        setKeyDisplayEntries((current) => [...current, { id, label: combo.join(' + ') }].slice(-10))
         globalThis.setTimeout(() => setKeyDisplayEntries((current) => current.filter((entry) => entry.id !== id)), ports.keyDisplayDuration)
         keyDisplayGestureRef.current.clear()
         keyDisplayActiveEntryRef.current = null
       }
-      if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'key-display.keyup', {
-        key: event.key,
-        code: event.code,
-        enabled: ports.keyDisplayEnabled,
-        heldCount: keyDisplayHeldRef.current.size,
-        pendingCount: pendingKeys.length,
-        wheelOnlyModifiers,
-        emitted: shouldEmitKeyDisplay,
-        combo: emittedCombo
-      })
       if (keyDisplayHeldRef.current.size === 0) keyDisplayWheelRef.current = false
       const temporaryPanReleased = shortcutReleasedByBindings(event, shortcutBindingsFor(ports.shortcuts, 'tool.hand.quick'))
       const quickEyedropperReleased = shortcutReleasedByBindings(event, quickEyedropperShortcuts)

@@ -20,19 +20,31 @@ import { documentDiagnosticDetail } from './core/document-diagnostics'
 import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
 import { NativeTooltipBridge } from './components/Tooltip'
+import { PetWindow } from './components/extensions/PetWindow'
 
 const rootElement = document.getElementById('root')
 
 if (!rootElement) throw new Error('MoonSprite root element is missing.')
 
+const petWindow = new URLSearchParams(window.location.search).has('moonpet')
+if (petWindow) {
+  for (const element of [document.documentElement, document.body, rootElement]) {
+    element.style.setProperty('background', 'transparent', 'important')
+  }
+}
 const startupPreferences = loadEditorPreferences()
 applyThemeToDocument(startupPreferences.theme)
 document.documentElement.dataset.uiMotion = startupPreferences.uiMotionLevel
+if (petWindow) document.documentElement.dataset.extensionPetWindow = 'true'
 applyToolIconScale(startupPreferences.toolIconScale)
 void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferences.cursorScale).catch(() => undefined)
 
 void installTauriApi()
   .then(async () => {
+    if (petWindow) {
+      createRoot(rootElement).render(<PetWindow />)
+      return
+    }
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)
     installExportSuccessSound()
     installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {

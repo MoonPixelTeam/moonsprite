@@ -7,6 +7,7 @@ import { CanvasStage } from './CanvasStage'
 import { useCanvasSelectionTransform } from './useCanvasSelectionTransform'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
+import { canvasCompositeCacheFor } from './canvas-composite-cache'
 
 // Keep real controllers, geometry, pointer routing and Store commands. Rendering
 // pixels belongs to the renderer tests and requires a browser canvas backend.
@@ -178,6 +179,15 @@ describe('CanvasStage controller composition', () => {
     vi.mocked(renderCanvasFrame).mockClear()
     act(() => vi.advanceTimersByTime(500))
     expect(renderCanvasFrame).not.toHaveBeenCalled()
+  })
+
+  it('releases the document render cache when its closed canvas unmounts', () => {
+    const session = addSession('closed render resources')
+    const cache = canvasCompositeCacheFor(session.document)
+    const { unmount } = render(<CanvasStage session={session} />)
+    act(() => useWorkspace.setState({ sessions: [], activeId: null }))
+    unmount()
+    expect(canvasCompositeCacheFor(session.document)).not.toBe(cache)
   })
 
   it('cancels a pending selection preview on document switch and unmount without a viewport owner', () => {

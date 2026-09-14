@@ -576,7 +576,7 @@ describe('layer, frame, and cel selection modes', () => {
     expect(next.document.animation?.activeFrameId).not.toBe(second)
   })
 
-  it('keeps continuous active-only frame stepping free of selection side effects', () => {
+  it('clears timeline item selections while continuously stepping frames', () => {
     const document = createDocument('continuous active-only frame navigation', 2, 2, 'rgba')
     const timeline = ensureAnimationDocument(document)
     const first = timeline.activeFrameId
@@ -603,7 +603,7 @@ describe('layer, frame, and cel selection modes', () => {
     const next = useWorkspace.getState().sessions[0]
     expect(next.document.animation?.activeFrameId).toBe(first)
     expect(next.selectedAnimationFrameIds).toEqual([])
-    expect(next.selectedAnimationCellKeys).toEqual([celKey])
+    expect(next.selectedAnimationCellKeys).toEqual([])
     expect(next.selectedAnimationMaskCellKeys).toEqual([])
     expect(next.selectedLayerIds).toEqual([])
     expect(next.selectedGroupIds).toEqual([])
@@ -612,7 +612,7 @@ describe('layer, frame, and cel selection modes', () => {
     expect(second).not.toBe(third)
   })
 
-  it('preserves explicit frame selection while stepping', () => {
+  it('clears explicit frame selection while stepping', () => {
     const document = createDocument('explicit frame navigation', 2, 2, 'rgba')
     const timeline = ensureAnimationDocument(document)
     const first = timeline.activeFrameId
@@ -624,6 +624,6 @@ describe('layer, frame, and cel selection modes', () => {
 
     const next = useWorkspace.getState().sessions[0]
     expect(next.document.animation?.activeFrameId).toBe(second)
-    expect(next.selectedAnimationFrameIds).toEqual([second])
+    expect(next.selectedAnimationFrameIds).toEqual([])
   })
 })

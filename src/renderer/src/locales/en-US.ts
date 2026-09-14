@@ -867,6 +867,7 @@ export const enUSMessages = {
   'preferences.extensions.packageFilter': 'MoonSprite extension (.msext)',
   'newDocument.eyebrow': 'NEW DOCUMENT',
   'newDocument.title': 'New Canvas',
+  'newDocument.preset': 'New Project Preset',
   'newDocument.name': 'Name',
   'newDocument.widthAria': 'Canvas width',
   'newDocument.heightAria': 'Canvas height',
