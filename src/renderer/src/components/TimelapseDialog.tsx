@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TimelapseExportFormat, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types-timelapse'
-import { timelapseVideoFramePlan, type TimelapseExportOptions } from '@/core/timelapse'
+import { timelapsePreviewFramePlan, type TimelapseExportOptions } from '@/core/timelapse'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { resolveTheme } from '@/core/theme'
 import { DialogHeader } from './DialogHeader'
@@ -28,6 +28,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
   const { t } = useI18n()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewStartFrameRef = useRef(0)
+  const previewBitmapCacheRef = useRef(new Map<string, ImageBitmap>())
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [previewFrame, setPreviewFrame] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
@@ -35,10 +36,15 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
     const preferences = loadEditorPreferences()
     return { checkerboard: preferences.checkerboard, background: resolveTheme(preferences.theme).variables['--theme-deep-surface'] }
   })
-  const previewPlan = useMemo(() => timelapseVideoFramePlan(settings, { mode: 'speed', durationSeconds: 1 }), [settings.fps, settings.snapshots, settings.speed])
+  const previewPlan = useMemo(() => timelapsePreviewFramePlan(settings), [settings.fps, settings.snapshots, settings.speed])
+  const previewTimeline = useMemo(() => {
+    const offsets = [0]
+    for (const frame of previewPlan) offsets.push(offsets[offsets.length - 1] + frame.durationMs)
+    return offsets
+  }, [previewPlan])
   const previewPlanFrame = previewPlan[Math.min(previewFrame, Math.max(0, previewPlan.length - 1))]
   const snapshot = previewPlanFrame ? settings.snapshots[previewPlanFrame.snapshotIndex] : undefined
-  const previewDurationMs = previewPlan.reduce((total, frame) => total + frame.durationMs, 0)
+  const previewDurationMs = previewTimeline.at(-1) ?? 0
   const togglePreviewPlayback = (): void => {
     if (previewPlaying) {
       setPreviewPlaying(false)
@@ -69,7 +75,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
     if (!previewPlaying || previewPlan.length < 2 || previewDurationMs <= 0) return
     const lastFrame = previewPlan.length - 1
     const startFrame = Math.min(previewStartFrameRef.current, lastFrame)
-    const startOffset = previewPlan.slice(0, startFrame).reduce((total, frame) => total + frame.durationMs, 0)
+    const startOffset = previewTimeline[startFrame] ?? 0
     const startedAt = performance.now()
     let animationFrame = 0
     const advance = (now: number): void => {
@@ -79,18 +85,25 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
         setPreviewPlaying(false)
         return
       }
-      let nextFrame = 0
-      let elapsedFrame = 0
-      while (nextFrame < lastFrame && elapsed >= elapsedFrame + previewPlan[nextFrame].durationMs) {
-        elapsedFrame += previewPlan[nextFrame].durationMs
-        nextFrame += 1
+      let low = 0
+      let high = lastFrame
+      while (low < high) {
+        const middle = Math.ceil((low + high) / 2)
+        if ((previewTimeline[middle] ?? 0) <= elapsed) low = middle
+        else high = middle - 1
       }
+      const nextFrame = low
       setPreviewFrame((frame) => frame === nextFrame ? frame : nextFrame)
       animationFrame = window.requestAnimationFrame(advance)
     }
     animationFrame = window.requestAnimationFrame(advance)
     return () => window.cancelAnimationFrame(animationFrame)
-  }, [previewDurationMs, previewPlan, previewPlaying])
+  }, [previewDurationMs, previewPlan.length, previewPlaying, previewTimeline])
+
+  useEffect(() => () => {
+    for (const bitmap of previewBitmapCacheRef.current.values()) bitmap.close()
+    previewBitmapCacheRef.current.clear()
+  }, [])
 
   useEffect(() => {
     if (exportOpen) return
@@ -111,10 +124,27 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
     let canceled = false
     const render = async (frame: TimelapseSnapshot): Promise<void> => {
       const previewWidth = 480
-      const previewHeight = Math.max(160, Math.min(300, Math.round(previewWidth * frame.height / frame.width)))
-      const buffer = frame.data.buffer.slice(frame.data.byteOffset, frame.data.byteOffset + frame.data.byteLength) as ArrayBuffer
-      const bitmap = await createImageBitmap(new Blob([buffer], { type: 'image/png' }))
-      if (canceled) { bitmap.close(); return }
+      const previewHeight = 270
+      let bitmap = previewBitmapCacheRef.current.get(frame.id)
+      if (!bitmap) {
+        const buffer = frame.data.buffer.slice(frame.data.byteOffset, frame.data.byteOffset + frame.data.byteLength) as ArrayBuffer
+        bitmap = await createImageBitmap(new Blob([buffer], { type: 'image/png' }))
+        previewBitmapCacheRef.current.set(frame.id, bitmap)
+        while (previewBitmapCacheRef.current.size > 8) {
+          const oldest = previewBitmapCacheRef.current.keys().next().value
+          if (!oldest) break
+          previewBitmapCacheRef.current.get(oldest)?.close()
+          previewBitmapCacheRef.current.delete(oldest)
+        }
+      } else {
+        previewBitmapCacheRef.current.delete(frame.id)
+        previewBitmapCacheRef.current.set(frame.id, bitmap)
+      }
+      if (canceled) {
+        previewBitmapCacheRef.current.delete(frame.id)
+        bitmap.close()
+        return
+      }
       canvas.width = previewWidth
       canvas.height = previewHeight
       const context = canvas.getContext('2d')

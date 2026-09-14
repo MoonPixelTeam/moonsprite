@@ -1528,8 +1528,13 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .timelapse-speed-control { gap: var(--ui-space-3) !important; }
 .timelapse-speed-control .number-input { width: 100%; min-width: 0; }
 .timelapse-speed-control small { color: var(--theme-icon-muted); font-size: var(--ui-font-small); line-height: 1.4; }
-.timelapse-output-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; border: 1px solid var(--theme-border); background: var(--theme-border); }
+.timelapse-export-modal > .export-modal-body { min-height: 0; }
+.timelapse-export-modal .timelapse-config-grid, .timelapse-export-modal .timelapse-export-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.timelapse-export-modal .timelapse-scale-presets { grid-column: 1 / -1; display: flex; flex-wrap: nowrap; min-width: 0; gap: var(--ui-space-1); }
+.timelapse-export-modal .timelapse-scale-presets button { flex: 1 1 0; min-width: 0; }
+.timelapse-output-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--theme-border); background: var(--theme-border); }
 .timelapse-output-summary > div { display: grid; gap: var(--ui-space-2); min-width: 0; min-height: 54px; padding: var(--ui-space-4); background: var(--theme-deep-surface); }
+.timelapse-output-summary.is-image > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .timelapse-output-summary span { color: var(--theme-text-faint); font-size: var(--ui-font-small); }
 .timelapse-output-summary strong { overflow: hidden; color: var(--theme-text-primary); font: 600 var(--ui-font-regular)/1.1 ui-monospace, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .timelapse-footer { align-items: center; justify-content: space-between !important; flex-wrap: wrap; }
@@ -1542,6 +1547,10 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
   .timelapse-footer { align-items: stretch; }
   .timelapse-clear-actions { width: 100%; }
   .timelapse-footer-actions { margin-left: auto; }
+}
+@media (max-width: 460px) {
+  .timelapse-export-modal .timelapse-config-grid, .timelapse-export-modal .timelapse-export-grid, .timelapse-output-summary { grid-template-columns: 1fr; }
+  .timelapse-output-summary.is-image > div:last-child:nth-child(odd) { grid-column: auto; }
 }
 .outline-modal { width: min(400px, calc(100vw - 24px)); }
 .modal-body.outline-modal-body { --outline-dialog-label-width: 84px; align-content: start; gap: 10px; padding: var(--ui-space-5); overflow-y: auto; }

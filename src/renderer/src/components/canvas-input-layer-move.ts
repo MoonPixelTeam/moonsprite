@@ -87,6 +87,11 @@ export function createLayerMoveCanvasInput(ports: Ports) {
         selectedGroupIds: session.selectedGroupIds,
         layerIdsForGroup: (groupId) => getLayerIdsInGroup(session.document, groupId)
       })
+      // Keep the user's explicit layer/group selection separate from the
+      // temporary hit target that auto-select may assign below.  The latter
+      // must not expand an animated move from the active cel to every frame.
+      const hasExplicitLayerSelection = session.layerSelectionExplicit === true
+        && (session.selectedLayerIds.length > 0 || session.selectedGroupIds.length > 0)
       if (additiveSelection && hitTarget) {
         state.selectMoveToolLayer(hitTarget.id, true)
         const selectedSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
@@ -149,7 +154,11 @@ export function createLayerMoveCanvasInput(ports: Ports) {
         activeSession.selectedAnimationFrameIds.length === 0 &&
         activeSession.selectedAnimationCellKeys.length === 0 &&
         activeSession.selectedAnimationMaskCellKeys.length === 0
-      if (layerSelectionAcrossFrames && !textCopyTarget) moveAllSelectedLayers = true
+      // An animated document with no explicit timeline selection still has a
+      // concrete editing cel.  Moving from the canvas must scope that
+      // implicit target to the active cel; only a static layer (or an
+      // explicitly selected layer/group) should expand to every frame.
+      if (layerSelectionAcrossFrames && !textCopyTarget && hasExplicitLayerSelection) moveAllSelectedLayers = true
       const selectedCellKeys = resolveCanvasMoveAnimationCellKeys({
         selectedAnimationCellKeys: activeSession.selectedAnimationCellKeys,
         selectedAnimationFrameIds: activeSession.selectedAnimationFrameIds,

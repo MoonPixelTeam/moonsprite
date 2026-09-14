@@ -354,6 +354,7 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
         elapsedMs: snapshot.elapsedMs,
         width: snapshot.width,
         height: snapshot.height,
+        changeScore: snapshot.changeScore,
         dataFile
       }
     })

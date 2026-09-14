@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captureTimelapseSnapshot, captureTimelapseSnapshotAsync, commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resolveTimelapseMimeType, TIMELAPSE_SMART_TARGET_FRAMES, timelapseFrameDurations, timelapseFrameHoldMs, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapseSourceDurationMs, timelapseVideoFramePlan } from './timelapse'
+import { captureTimelapseSnapshot, captureTimelapseSnapshotAsync, commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resolveTimelapseMimeType, TIMELAPSE_SMART_TARGET_FRAMES, timelapseFrameDurations, timelapseFrameHoldMs, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapsePreviewFramePlan, timelapseSourceDurationMs, timelapseVideoFramePlan } from './timelapse'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 import { decodePng } from './png'
 import { normalizeTimelapseSettings } from './project-metadata'
@@ -11,7 +11,7 @@ describe('timelapse video encoding helpers', () => {
     expect(normalizeTimelapseSettings({ recordUndoSteps: true }).recordUndoSteps).toBe(true)
   })
 
-  it('defaults timelapse recording to smart cropping', () => {
+  it('defaults timelapse recording to smart sampling', () => {
     expect(normalizeTimelapseSettings(undefined).mode).toBe('smart')
     expect(normalizeTimelapseSettings({ mode: 'full' }).mode).toBe('full')
   })
@@ -46,6 +46,14 @@ describe('timelapse video encoding helpers', () => {
     expect(oneSecond.at(-1)?.snapshotIndex).toBe(99)
     expect(new Set(oneSecond.map((frame) => frame.snapshotIndex)).size).toBeGreaterThan(10)
     expect(timelapseImageOutputDimensions([{ width: 8, height: 4 }, { width: 16, height: 8 }] as never, 200)).toEqual({ width: 32, height: 16 })
+  })
+
+  it('previews every retained snapshot before export sampling', () => {
+    const snapshots = Array.from({ length: 240 }, (_, index) => ({ elapsedMs: index * 10 }))
+    const plan = timelapsePreviewFramePlan({ fps: 12, speed: 4, snapshots } as never)
+    expect(plan).toHaveLength(240)
+    expect(plan[0].snapshotIndex).toBe(0)
+    expect(plan.at(-1)?.snapshotIndex).toBe(239)
   })
 
 

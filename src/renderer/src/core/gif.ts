@@ -1,6 +1,7 @@
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { ensureAnimationDocument, syncActiveAnimationFrame } from './animation'
+import { animationLoopFrameIdsForExport } from './animation-loop-sections'
 import { compositeAnimationFrame } from './onion-skin'
 
 export type GifDirection = 'forward' | 'reverse' | 'forward-ping-pong' | 'reverse-ping-pong'
@@ -200,19 +201,18 @@ export const exportAnimationGif = (document: SpriteDocument, options: GifExportO
   const end = hasValidLoopSection
     ? Math.max(loopStart, loopEnd)
     : Math.max(start, Math.min(timeline.frames.length - 1, Math.round(options.frameEnd ?? timeline.frames.length) - 1))
-  const selected = timeline.frames.slice(start, end + 1).map((frame) => {
+  const selectedFrameIds = animationLoopFrameIdsForExport(timeline, start, end, hasValidLoopSection ? loopSection?.id : undefined)
+  const selected = selectedFrameIds.map((frameId) => {
+    const frame = timeline.frames.find((candidate) => candidate.id === frameId)
+    if (!frame) return null
     const composite = compositeAnimationFrame(document, frame.id, options.layerId)
     const pixels = crop.x === 0 && crop.y === 0 && crop.width === document.width && crop.height === document.height
       ? composite
       : cropPixels(composite, document.width, crop)
     return { frame, pixels }
-  })
+  }).filter((frame): frame is { frame: typeof timeline.frames[number]; pixels: Uint8ClampedArray } => frame !== null)
   const ordered = gifFrameSequence(selected, options.direction)
-  const repeatCount = hasValidLoopSection && loopSection?.repeatCount !== null
-    ? Math.max(1, loopSection?.repeatCount ?? 1)
-    : 1
-  const repeated = Array.from({ length: repeatCount }, () => ordered).flat()
-  const scaled = repeated.map(({ frame, pixels }) => ({ ...scalePixels(pixels, crop.width, crop.height, options.scalePercent), duration: frame.duration }))
+  const scaled = ordered.map(({ frame, pixels }) => ({ ...scalePixels(pixels, crop.width, crop.height, options.scalePercent), duration: frame.duration }))
   const width = scaled[0]?.width ?? Math.max(1, crop.width)
   const height = scaled[0]?.height ?? Math.max(1, crop.height)
   const frames = scaled.map(({ pixels, duration }) => ({ pixels, duration }))

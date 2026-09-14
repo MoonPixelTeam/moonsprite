@@ -15,6 +15,8 @@ export interface TimelapseSnapshot {
   elapsedMs: number
   width: number
   height: number
+  /** Approximate visual change ratio used only for smart history compaction. */
+  changeScore?: number
   data: Uint8Array
 }
 

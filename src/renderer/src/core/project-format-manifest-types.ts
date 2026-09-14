@@ -136,6 +136,7 @@ interface ManifestTimelapseSnapshot {
   elapsedMs: number
   width: number
   height: number
+  changeScore?: number
   dataFile: string
 }
 

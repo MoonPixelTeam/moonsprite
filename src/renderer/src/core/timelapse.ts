@@ -61,6 +61,7 @@ export interface PreparedTimelapseSnapshot {
   capturedAt: number
   width: number
   height: number
+  changeScore: number
   pixels: Uint8ClampedArray
   cache?: TimelapseCaptureCache
 }
@@ -129,7 +130,9 @@ export const createTimelapseCaptureCache = (): TimelapseCaptureCache => ({
 })
 
 /** Target number of retained frames before the next adaptive compaction. */
-export const TIMELAPSE_SMART_TARGET_FRAMES = 120
+export const TIMELAPSE_SMART_TARGET_FRAMES = 180
+const TIMELAPSE_SMART_COMPACT_TARGET_FRAMES = 120
+const TIMELAPSE_SMART_RECENT_FRAMES = 60
 /** Prevent integer overflow after extremely long recordings. */
 export const TIMELAPSE_SMART_MAX_STRIDE = 2 ** 30
 
@@ -343,14 +346,15 @@ const compositeTimelapsePixelsAsync = async (document: SpriteDocument, maximumDi
   return { pixels: cachedPixels, width, height }
 }
 
-const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, data: Uint8Array): void => {
+const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, changeScore: number, data: Uint8Array): void => {
   const previous = settings.snapshots.at(-1)
   const snapshot: TimelapseSnapshot = {
     id: createId('timelapse'),
     capturedAt: now,
-    elapsedMs: previous ? 1 : 0,
+    elapsedMs: previous ? Math.max(0, now - previous.capturedAt) : 0,
     width,
     height,
+    changeScore: Math.max(0, Math.min(1, changeScore)),
     data
   }
   settings.snapshots = [...settings.snapshots, snapshot]
@@ -364,8 +368,29 @@ interface SmartTimelapsePlan {
   nextSamplingPhase: number
 }
 
-const decimateTimelapseSnapshots = (snapshots: TimelapseSnapshot[]): TimelapseSnapshot[] =>
-  snapshots.length < 2 ? snapshots : snapshots.filter((_snapshot, index) => index % 2 === 0)
+const compactTimelapseSnapshots = (snapshots: TimelapseSnapshot[]): TimelapseSnapshot[] => {
+  if (snapshots.length <= TIMELAPSE_SMART_COMPACT_TARGET_FRAMES) return snapshots
+  const recent = snapshots.slice(-TIMELAPSE_SMART_RECENT_FRAMES)
+  const older = snapshots.slice(0, -TIMELAPSE_SMART_RECENT_FRAMES)
+  const targetOlder = TIMELAPSE_SMART_COMPACT_TARGET_FRAMES - recent.length
+  const selected: TimelapseSnapshot[] = []
+  for (let slot = 0; slot < targetOlder; slot += 1) {
+    const start = Math.floor(slot * older.length / targetOlder)
+    const end = Math.max(start + 1, Math.floor((slot + 1) * older.length / targetOlder))
+    let best = older[start]
+    for (let index = start + 1; index < end; index += 1) {
+      if ((older[index].changeScore ?? 0) > (best.changeScore ?? 0)) best = older[index]
+    }
+    selected.push(best)
+  }
+  return [...selected, ...recent]
+}
+
+const timelapseChangeScore = (document: SpriteDocument, invalidation?: TimelapseCaptureInvalidation | null): number => {
+  if (!invalidation || invalidation.kind === 'full' || !invalidation.rect) return 1
+  const area = Math.max(0, invalidation.rect.width) * Math.max(0, invalidation.rect.height)
+  return Math.max(0.01, Math.min(1, area / Math.max(1, document.width * document.height)))
+}
 
 /**
  * Plans one source operation without mutating the document or cache. The
@@ -383,7 +408,9 @@ const planSmartTimelapseCapture = (settings: TimelapseSettings, cache?: Timelaps
     && settings.snapshots.length >= TIMELAPSE_SMART_TARGET_FRAMES
     && stride < TIMELAPSE_SMART_MAX_STRIDE
   if (transition) {
-    stride = Math.min(TIMELAPSE_SMART_MAX_STRIDE, stride * 2)
+    // Compaction itself reduces the retained history. Keep sampling every
+    // subsequent operation so the recent window remains complete.
+    stride = 1
     samplingPhase = 0
   }
   const keep = transition || samplingPhase === 0
@@ -403,10 +430,10 @@ const applySmartTimelapsePlan = (settings: TimelapseSettings, cache: TimelapseCa
   }
   if (plan.transition) {
     const before = settings.snapshots.length
-    settings.snapshots = decimateTimelapseSnapshots(settings.snapshots)
+    settings.snapshots = compactTimelapseSnapshots(settings.snapshots)
     if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'timelapse.compact', {
       documentId, reason: 'smart-sampling', beforeFrames: before, retainedFrames: settings.snapshots.length,
-      samplingStride: plan.nextStride
+      samplingStride: plan.nextStride, recentFrames: TIMELAPSE_SMART_RECENT_FRAMES
     })
   }
   cache.smartMode = plan.mode
@@ -505,7 +532,7 @@ const prepareTimelapseCapture = (document: SpriteDocument, options: TimelapseCap
 
 export function prepareTimelapseSnapshot(document: SpriteDocument, now = Date.now(), options: TimelapseCaptureOptions = {}): PreparedTimelapseSnapshot | null {
   const capture = prepareTimelapseCapture(document, options)
-  return capture ? { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height, pixels: capture.pixels.slice(), cache: capture.cache } : null
+  return capture ? { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height, changeScore: timelapseChangeScore(document, options.contentInvalidation), pixels: capture.pixels.slice(), cache: capture.cache } : null
 }
 
 export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<void> {
@@ -526,7 +553,7 @@ export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, 
   // Switching policy affects future edits. Preserve this already captured frame
   // without applying an old policy's compaction to the new recording settings.
   if ((latestSettings.mode ?? 'full') === plan.mode) applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
-  appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, data)
+  appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, snapshot.changeScore, data)
   markSmartTimelapseSnapshotAdded(latestSettings, snapshot.cache)
 }
 
@@ -540,7 +567,7 @@ export function captureTimelapseSnapshot(document: SpriteDocument, now = Date.no
   }
   const data = encodePng(capture.pixels, capture.width, capture.height, true).bytes
   applySmartTimelapsePlan(capture.settings, capture.cache, plan, document.id)
-  appendTimelapseSnapshot(capture.settings, now, capture.width, capture.height, data)
+  appendTimelapseSnapshot(capture.settings, now, capture.width, capture.height, timelapseChangeScore(document, options.contentInvalidation), data)
   markSmartTimelapseSnapshotAdded(capture.settings, capture.cache)
 }
 
@@ -563,7 +590,7 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   if (!latestSettings.enabled) return
   if ((latestSettings.mode ?? 'full') !== plan.mode) return
   applySmartTimelapsePlan(latestSettings, cache, plan, document.id)
-  appendTimelapseSnapshot(latestSettings, now, capture.width, capture.height, data)
+  appendTimelapseSnapshot(latestSettings, now, capture.width, capture.height, timelapseChangeScore(document, options.contentInvalidation), data)
   markSmartTimelapseSnapshotAdded(latestSettings, cache)
 }
 
@@ -606,6 +633,14 @@ export const timelapseVideoFramePlan = (
     durationMs
   }))
 }
+
+/** Preview every retained recording snapshot before export settings are chosen. */
+export const timelapsePreviewFramePlan = (
+  settings: Pick<TimelapseSettings, 'fps' | 'speed' | 'snapshots'>
+): TimelapseVideoFrame[] => settings.snapshots.map((_snapshot, snapshotIndex) => ({
+  snapshotIndex,
+  durationMs: timelapseFrameHoldMs(_snapshot, settings)
+}))
 
 export const isTimelapseVideoFormat = (format: TimelapseExportFormat): format is TimelapseVideoFormat => format === 'mp4' || format === 'webm'
 

@@ -221,23 +221,24 @@ describe('timelapse history retention', () => {
 
   it('retains sampled earlier stages through repeated draw/undo and history navigation', async () => {
     const { document, paint, drain } = setupRecording()
-    for (let i = 1; i <= 121; i++) { paint(i); await drain() }
-    expect(document.timelapse?.snapshots).toHaveLength(61)
+    for (let i = 1; i <= 181; i++) { paint(i); await drain() }
+    expect(document.timelapse?.snapshots).toHaveLength(121)
     expect(runtimeDiagnosticSnapshot().find((event) => event.name === 'timelapse.compact')?.detail)
-      .toMatchObject({ documentId: document.id, reason: 'smart-sampling', beforeFrames: 120, retainedFrames: 60, samplingStride: 2 })
+      .toMatchObject({ documentId: document.id, reason: 'smart-sampling', beforeFrames: 180, retainedFrames: 120, samplingStride: 1, recentFrames: 60 })
     const earlier = [...document.timelapse!.snapshots]
-    // At stride 2 the next stroke is skipped. Undoing it must not delete an
+    // The recent window samples every operation. Undoing it must not delete an
     // older retained frame, which may represent several earlier edits.
     paint(200)
     await drain()
+    const afterLatest = [...document.timelapse!.snapshots]
     useWorkspace.getState().undo()
-    expect(document.timelapse?.snapshots).toEqual(earlier)
+    expect(document.timelapse?.snapshots).toEqual(afterLatest)
     const session = useWorkspace.getState().sessions[0]
     useWorkspace.getState().setHistoryPosition(session.history.position - 25)
-    expect(document.timelapse?.snapshots).toEqual(earlier)
+    expect(document.timelapse?.snapshots).toEqual(afterLatest)
     useWorkspace.getState().setHistoryPosition(session.history.length)
     await drain()
-    expect(document.timelapse?.snapshots).toEqual(earlier)
+    expect(document.timelapse?.snapshots).toEqual(afterLatest)
     paint(220)
     await drain()
     expect(document.timelapse?.snapshots.slice(0, earlier.length)).toEqual(earlier)

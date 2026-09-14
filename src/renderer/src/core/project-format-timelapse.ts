@@ -47,6 +47,7 @@ export function restoreProjectTimelapse(
         elapsedMs: Math.max(0, Math.trunc(Number(snapshot.elapsedMs) || 0)),
         width,
         height,
+        changeScore: Number.isFinite(snapshot.changeScore) ? Math.max(0, Math.min(1, Number(snapshot.changeScore))) : undefined,
         data
       }
     ]
