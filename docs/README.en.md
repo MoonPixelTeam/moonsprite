@@ -26,7 +26,9 @@ This is the project's Chinese canonical entry point, and the only documentation 
 ## Script Development
 
 - [Lua scripting and MSE API](scripting/README.en.md)
+- [.msext extension development](extensions/README.en.md): package layout, manifest fields, contributions, limits, and lifecycle.
 - See the [extension package ADR](adr/0020-extension-package-format.en.md) for `.msext` package format and installation behavior.
+- See [Extension Runtime v1](extensions/runtime-api.en.md) for resident extension permissions, events, and host APIs.
 
 ## Quality and Release
 

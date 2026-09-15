@@ -10,6 +10,7 @@ import { consumePendingCanvasGestureHistory } from '@/core/canvas-input'
 import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import { consumeCanvasResizePreviewHistory } from '@/core/canvas-resize-preview'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
+import { broadcastExtensionRuntimeEvent } from '@/core/extension-runtime'
 import { applySelectionTranslationCommit } from '@/core/tools-selection-transform'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { normalizeTimelapseSettings } from '@/core/project-metadata'
@@ -436,7 +437,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         set({ message, saveProgress: progressStarted ? { title: exportProgressTitle(), value: 100, label: tr('workspace.export.done'), requiresConfirmation: true } : null })
         recordUsageExport(format)
         playExportSuccessSound()
-        window.dispatchEvent(new Event('moonsprite:extension-pet-export'))
+        broadcastExtensionRuntimeEvent({ type: 'export-complete', projectId: session.document.id, format })
         return true
       } catch (error) {
         if (canceled) {

@@ -31,6 +31,6 @@ Each ADR contains context, a decision, consequences, and alternatives. Record on
 - [0017: Share Project Tilesets Across Tilemap Layers](0017-shared-tilemap-tilesets.en.md)
 - [0018: Use Stable Frame Endpoints for Animation Loop Sections](0018-animation-loop-sections.en.md)
 - [0019: Use Snapshots and Typed Transaction Boundaries for Lua Scripts](0019-lua-script-snapshot-transactions.en.md)
-- [0020: Use a Restricted ZIP Format and Atomic Installation Boundary for Extension Packages](0020-extension-package-format.en.md)
+- [0020: Use a Restricted ZIP, Atomic Installation, and Runtime Security Boundary for Extension Packages](0020-extension-package-format.en.md)
 
 Increment the number when adding an ADR. Keep deprecated decisions in place and link them to the superseding ADR.

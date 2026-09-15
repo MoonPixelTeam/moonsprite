@@ -4,7 +4,7 @@
 
 MoonSprite is an original, source-available pixel art workstation for Windows, built with Tauri 2, React, TypeScript, Zustand, and Canvas. It is not affiliated with Aseprite and does not use Aseprite source code, branding, or visual assets.
 
-The current development channel is `DEV.6`, with the internal version `0.1.0-dev.6`.
+The current Beta channel is `1.0.0-beta3`, and the latest packaged version is `1.0.0-beta3`.
 
 ## Current Capabilities
 
@@ -24,11 +24,13 @@ See the [product behavior contract](docs/product/behavior.en.md) and [interactio
 
 Place ordinary Lua scripts in the `scripts/` directory beside the installed application. They appear under File > Scripts. Scripts run in a restricted Lua 5.4 sandbox, can inspect the active document, and can perform undoable canvas operations through transactions. They cannot directly access files, the network, processes, or arbitrary local modules.
 
-`.msext` is the MoonSprite extension package format. An extension can declare Lua commands, insert commands into existing menus, add top-level menus, and provide floating panels rendered by MoonSprite. Extensions cannot inject arbitrary React, DOM, CSS, JavaScript, or native code. They can be installed, enabled, disabled, and uninstalled under Preferences > Extensions, and `.msext` files can also be installed by double-clicking or dragging them into MoonSprite.
+`.msext` is the MoonSprite extension package format and supports two execution models. `schemaVersion: 1` uses restricted Lua/MSE snapshot transactions and declarative UI rendered by the host. `schemaVersion: 2` uses Extension Runtime v1, which may run persistent sandboxed HTML/JavaScript and contribute menus, host-component settings or a custom sandboxed settings page, and owner-bound auxiliary windows according to manifest permissions. A Runtime cannot access React, the Zustand Store, Tauri, installation paths, or internal document objects. Complex document writes still go through restricted Lua commands and Store transactions. Extensions can be installed, enabled, disabled, and uninstalled under Preferences > Extensions, and `.msext` files can also be installed by double-clicking or dragging them into MoonSprite.
 
 - [Lua scripting and extension guide](docs/scripting/README.en.md)
 - [MSE API reference](docs/scripting/mse-api.en.md)
 - [LuaLS type definitions](docs/scripting/mse-api.lua)
+- [.msext extension development overview](docs/extensions/README.en.md)
+- [Extension Runtime v1 API](docs/extensions/runtime-api.en.md)
 - [Extension package format and security boundary](docs/adr/0020-extension-package-format.en.md)
 
 `app.*` exposes the implemented Aseprite-compatible subset. `mse.*` is the MoonSprite-specific API. Scripts should use capability detection before calling an endpoint and must not treat planned endpoints in the documentation as already implemented.

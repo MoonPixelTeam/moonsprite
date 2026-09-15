@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom'
 import { CheckCircle2 } from 'lucide-react'
 import { AppMenuBar } from '@/components/app/AppMenuBar'
 import { ExtensionPanelHost } from '@/components/extensions/ExtensionPanelHost'
-import { ExtensionPetHost } from '@/components/extensions/ExtensionPetHost'
+import { ExtensionRuntimeHost } from '@/components/extensions/ExtensionRuntimeHost'
 import { AppWindowTitleBar } from '@/components/app/AppWindowTitleBar'
 import { DocumentTabs } from '@/components/app/DocumentTabs'
 import { EditorStatusBar } from '@/components/app/EditorStatusBar'
@@ -36,6 +36,7 @@ import { ModalShell } from '@/components/ModalShell'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { shouldHandleAnimationPlaybackShortcut } from '@/core/command-context'
+import { executeExtensionCommand } from '@/core/extension-runtime'
 import { formatBytes } from '@/core/resource-policy'
 import { saveProgress } from '@/core/save-progress'
 import { shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesEvent } from '@/core/shortcuts'
@@ -232,11 +233,14 @@ export default function App() {
     setPreferencesOpen,
     shortcutOpen,
     setShortcutOpen,
+    extensionSettingsOpen,
+    openExtensionSettings,
+    closeExtensionSettings,
     openPreferences,
     openQuickCommandPreferences,
     openQuickCommandSettings,
     appSettingsDialogsSurface
-  } = useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts })
+  } = useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts, extensions })
 
   void coordinatorRenderKey
 
@@ -328,6 +332,7 @@ export default function App() {
       else if (outlineOpen) setOutlineOpen(false)
       else if (lcdScreenOpen) setLcdScreenOpen(false)
       else if (colorReplacementOpen) setColorReplacementOpen(false)
+      else if (extensionSettingsOpen) closeExtensionSettings()
       else if (preferencesOpen) setPreferencesOpen(false)
       else if (shortcutOpen) setShortcutOpen(false)
       else if (aboutOpen) setAboutOpen(false)
@@ -524,6 +529,7 @@ export default function App() {
         onOpenLcdScreenFilter={() => setLcdScreenOpen(true)}
         onOpenShortcuts={() => setShortcutOpen(true)}
         onOpenPreferences={() => openPreferences()}
+        onOpenExtensionSettings={openExtensionSettings}
         onOpenCanvasResize={() => setCanvasResizeOpen(true)}
         onOpenImageResize={() => setImageResizeOpen(true)}
         onOpenGridSettings={() => setGridSettingsOpen(true)}
@@ -728,11 +734,18 @@ export default function App() {
         documentAvailable={Boolean(session)}
         commandRunning={scriptRuntime.busy}
         onVisibilityChange={setExtensionPanelVisible}
-        onRunCommand={(scriptId) => {
-          void runLuaScript(scriptId)
+        onRunCommand={(extensionId, command) => {
+          const extension = extensions.find((candidate) => candidate.id === extensionId)
+          if (extension) executeExtensionCommand(extension, command, { runLua: (scriptId) => { void runLuaScript(scriptId) }, openSettings: openExtensionSettings })
         }}
       />
-      <ExtensionPetHost extensions={extensions} session={session} homeOpen={homeOpen} />
+      <ExtensionRuntimeHost
+        extensions={extensions}
+        session={session}
+        homeOpen={homeOpen}
+        onRunLuaScript={(scriptId) => { void runLuaScript(scriptId) }}
+        onOpenSettings={openExtensionSettings}
+      />
 
       <EditorStatusBar homeOpen={homeOpen} resourceLabel={resourceLabel} />
       <OpenProgressOverlay />

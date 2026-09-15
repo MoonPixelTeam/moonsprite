@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "MoonSprite desktop window permissions",
-  "windows": ["main", "moonpet"],
+  "windows": ["main", "moonpet", "msext-*"],
   "permissions": [
     "core:default",
     "core:window:allow-center",

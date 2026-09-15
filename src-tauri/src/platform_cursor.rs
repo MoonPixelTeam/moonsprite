@@ -17,14 +17,18 @@ mod windows_cursor {
     };
 
     use windows_sys::Win32::{
-        Foundation::{BOOL, HWND, LPARAM},
+        Foundation::{BOOL, HWND, LPARAM, POINT, WPARAM},
         Graphics::Gdi::{
-            CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, BITMAPINFO,
-            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
+            CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, ScreenToClient,
+            BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, RGBQUAD,
         },
-        UI::WindowsAndMessaging::{
-            CreateIconIndirect, EnumChildWindows, GetClassLongPtrW, SetClassLongPtrW, SetCursor,
-            GCLP_HCURSOR, HCURSOR, ICONINFO,
+        UI::{
+            Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
+            WindowsAndMessaging::{
+                CreateIconIndirect, EnumChildWindows, GetClassLongPtrW, SetClassLongPtrW,
+                SetCursor, SetWindowPos, GCLP_HCURSOR, HCURSOR, HTTRANSPARENT, ICONINFO,
+                SWP_NOACTIVATE, SWP_NOZORDER, WM_NCDESTROY, WM_NCHITTEST,
+            },
         },
     };
 
@@ -32,14 +36,25 @@ mod windows_cursor {
         include_bytes!("../../src/renderer/src/assets/pixel-icons/01-Slice-1.png");
     const CURSOR_HOTSPOT: (u32, u32) = (9, 5);
 
-    // Raw Win32 handles are represented as usize so the cache remains safely
-    // shareable between Tauri command calls. The cursor is intentionally kept
-    // alive for the process lifetime; destroying an active HCURSOR is unsafe.
+    // Raw Win32 handles are represented as usize so the caches remain safely
+    // shareable between Tauri command calls. Cursor and subclass handles stay
+    // alive for the process lifetime.
     static CURSOR_HANDLE: OnceLock<Result<usize, String>> = OnceLock::new();
     static ORIGINAL_CLASS_CURSORS: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
+    static HIT_REGIONS: OnceLock<Mutex<HashMap<usize, Vec<(i32, i32, i32, i32)>>>> =
+        OnceLock::new();
+    const HIT_TEST_SUBCLASS_ID: usize = 0x4d53_4854;
 
     fn class_cursors() -> &'static Mutex<HashMap<usize, usize>> {
         ORIGINAL_CLASS_CURSORS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn hit_regions() -> &'static Mutex<HashMap<usize, Vec<(i32, i32, i32, i32)>>> {
+        HIT_REGIONS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn delete_bitmap(bitmap: HBITMAP) {
+        unsafe { DeleteObject(bitmap.cast()) };
     }
 
     fn make_cursor() -> Result<usize, String> {
@@ -80,7 +95,12 @@ mod windows_cursor {
         };
         let bitmap_info = BITMAPINFO {
             bmiHeader: header,
-            bmiColors: [unsafe { std::mem::zeroed() }],
+            bmiColors: [RGBQUAD {
+                rgbBlue: 0,
+                rgbGreen: 0,
+                rgbRed: 0,
+                rgbReserved: 0,
+            }],
         };
         let screen_dc = unsafe { GetDC(null_mut()) };
         if screen_dc.is_null() {
@@ -88,16 +108,17 @@ mod windows_cursor {
         }
         let mut dib_bits = null_mut();
         let color_bitmap = unsafe {
-            CreateDIBSection(
+            let bitmap = CreateDIBSection(
                 screen_dc,
                 &bitmap_info,
                 DIB_RGB_COLORS,
                 &mut dib_bits,
                 null_mut(),
                 0,
-            )
+            );
+            ReleaseDC(null_mut(), screen_dc);
+            bitmap
         };
-        unsafe { ReleaseDC(null_mut(), screen_dc) };
         if color_bitmap.is_null() || dib_bits.is_null() {
             return Err("CreateDIBSection failed while creating the native cursor".to_string());
         }
@@ -126,7 +147,7 @@ mod windows_cursor {
             )
         };
         if mask_bitmap.is_null() {
-            unsafe { DeleteObject(color_bitmap.cast()) };
+            delete_bitmap(color_bitmap);
             return Err("CreateBitmap failed while creating the native cursor mask".to_string());
         }
         let icon_info = ICONINFO {
@@ -137,10 +158,8 @@ mod windows_cursor {
             hbmColor: color_bitmap,
         };
         let cursor = unsafe { CreateIconIndirect(&icon_info) };
-        unsafe {
-            DeleteObject(color_bitmap.cast());
-            DeleteObject(mask_bitmap.cast());
-        }
+        delete_bitmap(color_bitmap);
+        delete_bitmap(mask_bitmap);
         if cursor.is_null() {
             return Err("CreateIconIndirect failed while creating the native cursor".to_string());
         }
@@ -158,6 +177,58 @@ mod windows_cursor {
 
     unsafe extern "system" fn install_on_child(hwnd: HWND, enabled: LPARAM) -> BOOL {
         install_on_window(hwnd, enabled != 0);
+        1
+    }
+
+    unsafe extern "system" fn hit_test_subclass(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _subclass_id: usize,
+        root_handle: usize,
+    ) -> isize {
+        if message == WM_NCHITTEST {
+            let mut point = POINT {
+                x: (lparam as u32 & 0xffff) as i16 as i32,
+                y: ((lparam as u32 >> 16) & 0xffff) as i16 as i32,
+            };
+            if ScreenToClient(root_handle as HWND, &mut point) != 0 {
+                let is_opaque = hit_regions()
+                    .lock()
+                    .map(|regions| {
+                        regions.get(&root_handle).is_none_or(|rectangles| {
+                            rectangles.iter().any(|&(left, top, right, bottom)| {
+                                point.x >= left
+                                    && point.x < right
+                                    && point.y >= top
+                                    && point.y < bottom
+                            })
+                        })
+                    })
+                    .unwrap_or(true);
+                if !is_opaque {
+                    return HTTRANSPARENT as isize;
+                }
+            }
+        } else if message == WM_NCDESTROY {
+            RemoveWindowSubclass(hwnd, Some(hit_test_subclass), HIT_TEST_SUBCLASS_ID);
+            if hwnd as usize == root_handle {
+                if let Ok(mut regions) = hit_regions().lock() {
+                    regions.remove(&root_handle);
+                }
+            }
+        }
+        DefSubclassProc(hwnd, message, wparam, lparam)
+    }
+
+    unsafe extern "system" fn install_hit_test_on_child(hwnd: HWND, root: LPARAM) -> BOOL {
+        SetWindowSubclass(
+            hwnd,
+            Some(hit_test_subclass),
+            HIT_TEST_SUBCLASS_ID,
+            root as usize,
+        );
         1
     }
 
@@ -197,6 +268,62 @@ mod windows_cursor {
         }
         Ok(())
     }
+
+    pub fn set_window_bounds(
+        window: &tauri::WebviewWindow,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as HWND;
+        let updated = unsafe {
+            SetWindowPos(
+                hwnd,
+                null_mut(),
+                x,
+                y,
+                width as i32,
+                height as i32,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )
+        };
+        if updated == 0 {
+            return Err(format!(
+                "无法调整扩展窗口边界：{}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn set_window_hit_region(
+        window: &tauri::WebviewWindow,
+        rectangles: &[(i32, i32, i32, i32)],
+    ) -> Result<(), String> {
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as HWND;
+        let root_handle = hwnd as usize;
+        hit_regions()
+            .lock()
+            .map_err(|_| "扩展窗口命中区域状态不可用。".to_string())?
+            .insert(root_handle, rectangles.to_vec());
+        unsafe {
+            if SetWindowSubclass(
+                hwnd,
+                Some(hit_test_subclass),
+                HIT_TEST_SUBCLASS_ID,
+                root_handle,
+            ) == 0
+            {
+                if let Ok(mut regions) = hit_regions().lock() {
+                    regions.remove(&root_handle);
+                }
+                return Err("无法安装扩展窗口命中测试。".to_string());
+            }
+            EnumChildWindows(hwnd, Some(install_hit_test_on_child), hwnd as LPARAM);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(windows))]
@@ -209,4 +336,31 @@ pub fn set_native_cursor(_window: tauri::WebviewWindow, _enabled: bool) -> Resul
 #[tauri::command]
 pub fn set_native_cursor(window: tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
     windows_cursor::set_native_cursor(window, enabled)
+}
+
+#[cfg(windows)]
+pub(crate) fn set_window_hit_region(
+    window: &tauri::WebviewWindow,
+    rectangles: &[(i32, i32, i32, i32)],
+) -> Result<(), String> {
+    windows_cursor::set_window_hit_region(window, rectangles)
+}
+
+#[cfg(windows)]
+pub(crate) fn set_window_bounds(
+    window: &tauri::WebviewWindow,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    windows_cursor::set_window_bounds(window, x, y, width, height)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn set_window_hit_region(
+    _window: &tauri::WebviewWindow,
+    _rectangles: &[(i32, i32, i32, i32)],
+) -> Result<(), String> {
+    Ok(())
 }

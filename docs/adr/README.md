@@ -31,7 +31,7 @@ ADR 用于记录会长期影响实现的决定，避免后续只看到代码而�
 - [0017：Tilemap 图层共享项目瓦片集](0017-shared-tilemap-tilesets.md)
 - [0018：动画循环节使用稳定帧端点](0018-animation-loop-sections.md)
 - [0019：Lua 脚本使用快照与类型化事务边界](0019-lua-script-snapshot-transactions.md)
-- [0020：扩展包使用受限 ZIP 与原子安装边界](0020-extension-package-format.md)
+- [0020：扩展包使用受限 ZIP、原子安装与 Runtime 安全边界](0020-extension-package-format.md)
 - [0021：关联图层使用稳定身份与共享栅格存储](0021-linked-layers.md)
 - [0022：自由瓦片图层共享稳定源集合](0022-shared-free-tile-sets.md)
 

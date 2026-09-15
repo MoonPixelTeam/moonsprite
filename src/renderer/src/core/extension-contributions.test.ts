@@ -8,12 +8,13 @@ const extension = (enabled: boolean): StoredExtension => ({
   version: '1.0.0',
   description: '',
   author: '',
+  hasLuaEntry: false,
+  hasSettings: false,
   commands: [],
   panels: [],
   menuItems: [],
   topMenus: [],
   tools: [{ id: 'remote', name: 'Remote', description: 'desc', kind: 'remote-pixel-brush', placement: 'pencil', icon: 'tool-smooth', modes: [{ id: 'default', name: 'Default', description: '' }], defaultMode: 'default', previewColor: '#2979ff66' }],
-  filePath: 'extensions/com.example.ai',
   enabled
 })
 

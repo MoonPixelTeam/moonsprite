@@ -1,3 +1,5 @@
+import type { StoredExtensionRuntime } from './types-extension-runtime'
+
 export interface LuaScriptEntry {
   id: string
   name: string
@@ -20,46 +22,77 @@ export interface StoredExtension {
   description: string
   author: string
   apiVersion?: string
-  entry?: string
+  hasLuaEntry: boolean
+  /** Whether the package supplies host-rendered settings or a sandboxed HTML fallback. */
+  hasSettings: boolean
+  settingsUi?: StoredExtensionSettingsUi
+  runtime?: StoredExtensionRuntime
   commands: StoredExtensionCommand[]
   panels: StoredExtensionPanel[]
   menuItems: StoredExtensionMenuItem[]
   topMenus: StoredExtensionTopMenu[]
   /** Declarative tools exposed by the extension host. */
   tools?: StoredExtensionTool[]
-  /** Host-rendered companion pets. Extension code never controls their UI. */
-  pets?: StoredExtensionPet[]
-  filePath: string
   enabled: boolean
 }
 
-export type ExtensionPetAnimationState =
-  | 'show'
-  | 'idle'
-  | 'drag'
-  | 'inspect'
-  | 'save'
-  | 'export-complete'
-  | 'unsaved-reminder'
-  | 'break-reminder'
-  | 'sleep'
-
-export interface StoredExtensionPetAnimation {
-  state: ExtensionPetAnimationState
-  frames: number[]
-  fps: number
+export interface StoredExtensionSettingsUi {
+  storageKey: string
+  controls: StoredExtensionSettingsControl[]
 }
 
-/** A sprite-sheet pet interpreted exclusively by the MoonSprite host. */
-export interface StoredExtensionPet {
+interface StoredExtensionSettingsControlBase {
   id: string
-  name: string
+  label: string
   description: string
-  spriteSheet: string
-  frameWidth: number
-  frameHeight: number
-  animations: StoredExtensionPetAnimation[]
 }
+
+export interface StoredExtensionSettingsCheckbox extends StoredExtensionSettingsControlBase {
+  type: 'checkbox'
+  defaultValue: boolean
+}
+
+export interface StoredExtensionSettingsNumber extends StoredExtensionSettingsControlBase {
+  type: 'number'
+  defaultValue: number
+  min?: number
+  max?: number
+  step?: number
+  suffix?: string
+}
+
+export interface StoredExtensionSettingsText extends StoredExtensionSettingsControlBase {
+  type: 'text'
+  defaultValue: string
+  placeholder?: string
+  maxLength?: number
+}
+
+export interface StoredExtensionSettingsSelectOption {
+  value: string
+  label: string
+  description: string
+}
+
+export interface StoredExtensionSettingsSelect extends StoredExtensionSettingsControlBase {
+  type: 'select'
+  defaultValue: string
+  options: StoredExtensionSettingsSelectOption[]
+}
+
+export interface StoredExtensionSettingsButton extends StoredExtensionSettingsControlBase {
+  type: 'button'
+  commandId: string
+  variant: 'primary' | 'secondary' | 'danger'
+  closeOnRun: boolean
+}
+
+export type StoredExtensionSettingsControl =
+  | StoredExtensionSettingsCheckbox
+  | StoredExtensionSettingsNumber
+  | StoredExtensionSettingsText
+  | StoredExtensionSettingsSelect
+  | StoredExtensionSettingsButton
 
 export type ExtensionToolKind = 'remote-pixel-brush'
 
@@ -91,7 +124,9 @@ export interface StoredExtensionCommand {
   id: string
   name: string
   description: string
-  entry: string
+  handler: 'lua' | 'runtime' | 'settings'
+  runtimeEvent?: string
+  opensSettings?: boolean
 }
 
 export interface StoredExtensionPanel {
@@ -110,6 +145,8 @@ export type ExtensionTopMenuPosition = ExtensionMenuItemPosition | `before:${Ext
 
 export interface StoredExtensionMenuItem {
   id: string
+  name?: string
+  description?: string
   menu: ExtensionBuiltInMenuId
   position: ExtensionMenuItemPosition
   commands: string[]
@@ -124,7 +161,6 @@ export interface StoredExtensionTopMenu {
 }
 
 export interface ExtensionListing {
-  directoryPath: string
   extensions: StoredExtension[]
 }
 
@@ -138,5 +174,4 @@ export interface ExtensionPackagePreview {
   panelCount: number
   menuCount: number
   toolCount: number
-  petCount: number
 }

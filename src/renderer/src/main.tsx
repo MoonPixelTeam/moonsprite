@@ -20,14 +20,14 @@ import { documentDiagnosticDetail } from './core/document-diagnostics'
 import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
 import { NativeTooltipBridge } from './components/Tooltip'
-import { PetWindow } from './components/extensions/PetWindow'
+import { ExtensionWindow } from './components/extensions/ExtensionWindow'
 
 const rootElement = document.getElementById('root')
 
 if (!rootElement) throw new Error('MoonSprite root element is missing.')
 
-const petWindow = new URLSearchParams(window.location.search).has('moonpet')
-if (petWindow) {
+const extensionWindow = new URLSearchParams(window.location.search).has('extensionWindow')
+if (extensionWindow) {
   for (const element of [document.documentElement, document.body, rootElement]) {
     element.style.setProperty('background', 'transparent', 'important')
   }
@@ -35,14 +35,14 @@ if (petWindow) {
 const startupPreferences = loadEditorPreferences()
 applyThemeToDocument(startupPreferences.theme)
 document.documentElement.dataset.uiMotion = startupPreferences.uiMotionLevel
-if (petWindow) document.documentElement.dataset.extensionPetWindow = 'true'
+if (extensionWindow) document.documentElement.dataset.extensionWindow = 'true'
 applyToolIconScale(startupPreferences.toolIconScale)
 void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferences.cursorScale).catch(() => undefined)
 
 void installTauriApi()
   .then(async () => {
-    if (petWindow) {
-      createRoot(rootElement).render(<PetWindow />)
+    if (extensionWindow) {
+      createRoot(rootElement).render(<ExtensionWindow />)
       return
     }
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)

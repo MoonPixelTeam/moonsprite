@@ -15,13 +15,13 @@ mod platform_clipboard;
 mod platform_cursor;
 mod platform_diagnostics;
 mod platform_dialogs;
+mod platform_extension_windows;
 mod platform_extensions;
 mod platform_files;
 mod platform_fonts;
 mod platform_gallery;
 mod platform_local_history;
 mod platform_palette;
-mod platform_pets;
 mod platform_paths;
 mod platform_recovery;
 mod platform_resources;
@@ -197,13 +197,16 @@ pub fn run() {
             platform_extensions::set_extension_enabled,
             platform_extensions::uninstall_extension,
             platform_extensions::open_extension_folder,
-            platform_pets::read_extension_pet_sprite,
-            platform_pets::show_extension_pet,
-            platform_pets::hide_extension_pet,
-            platform_pets::set_extension_pet_hit_region,
-            platform_pets::start_extension_pet_drag_if_primary_pressed,
-            platform_pets::report_extension_pet_position,
-            platform_pets::report_extension_pet_inspection,
+            platform_extensions::read_extension_settings_entry,
+            platform_extensions::read_extension_runtime_entry,
+            platform_extensions::read_extension_runtime_resource,
+            platform_extension_windows::show_extension_window,
+            platform_extension_windows::close_extension_windows,
+            platform_extension_windows::emit_extension_window_message,
+            platform_extension_windows::start_extension_window_drag,
+            platform_extension_windows::get_extension_window_bounds,
+            platform_extension_windows::set_extension_window_bounds,
+            platform_extension_windows::set_extension_window_hit_region,
             platform_files::file_exists,
             platform_files::read_binary,
             platform_files::read_project_preview,
@@ -288,6 +291,9 @@ pub fn run() {
                 return;
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
                 api.prevent_close();
                 let pending = window.state::<AppState>().close_requests.clone();
                 let Some(generation) = pending.begin() else {

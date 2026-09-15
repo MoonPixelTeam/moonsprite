@@ -6,6 +6,7 @@ import { createDocument } from '@/core/document-model'
 import { flushViewPreview } from '@/core/view-preview-lifecycle'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
+import { broadcastExtensionRuntimeEvent } from '@/core/extension-runtime'
 import { createSpriteSheetDocument, createSpriteSheetExportTargets, EmptySpriteSheetError, resolveSpriteSheetArea, stackSpriteSheetDocuments, type SpriteSheetExportOptions } from '@/core/sprite-sheet'
 import { readStoredString } from '@/core/storage'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY } from '@/core/panel-preferences'
@@ -123,6 +124,7 @@ export function createWorkspaceSessionCommands({ get, set, recording, services: 
           set({ message: tr('workspace.spriteSheet.exported', { count: 1 }) })
           recordUsageExport('png-sprite-sheet')
           playExportSuccessSound()
+          broadcastExtensionRuntimeEvent({ type: 'export-complete', projectId: sourceSession.document.id, format: 'png-sprite-sheet' })
           return true
         }
         const result = await buildSpriteSheetResult(sourceSession, options)
@@ -139,6 +141,7 @@ export function createWorkspaceSessionCommands({ get, set, recording, services: 
           set({ message: tr('workspace.spriteSheet.created', { count: 1 }) })
         }
         playExportSuccessSound()
+        if (options.outputFile) broadcastExtensionRuntimeEvent({ type: 'export-complete', projectId: sourceSession.document.id, format: 'png-sprite-sheet' })
         return true
       } catch (error) {
         set({ message: error instanceof Error ? error.message : tr('workspace.spriteSheet.error') })

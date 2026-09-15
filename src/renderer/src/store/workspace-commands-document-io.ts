@@ -8,6 +8,7 @@ import { resizeAnimationCelsAt, syncActiveAnimationFrame, synchronizeLinkedLayer
 import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
 import { openProgress } from '@/core/open-progress'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
+import { broadcastExtensionRuntimeEvent } from '@/core/extension-runtime'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { saveProgress } from '@/core/save-progress'
 import { clampSelection } from '@/core/tools-pixel-edit'
@@ -430,7 +431,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         if (progressVisible) window.setTimeout(() => { if (get().saveProgress?.value === 100) set({ saveProgress: null }) }, 180)
         recordUsageExport(exportOptions?.format ?? 'png')
         playExportSuccessSound()
-        window.dispatchEvent(new Event('moonsprite:extension-pet-export'))
+        broadcastExtensionRuntimeEvent({ type: 'export-complete', projectId: session.document.id, format: exportOptions?.format })
         return true
       } catch (error) {
         if (canceled) {

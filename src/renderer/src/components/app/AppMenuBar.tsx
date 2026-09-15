@@ -21,6 +21,7 @@ import {
   listExtensionPanelContributions,
   listExtensionTopMenuContributions
 } from '@/core/extension-contributions'
+import { executeExtensionCommand } from '@/core/extension-runtime'
 import type { ShortcutId } from '@/core/shortcuts'
 
 const Check = (_props: { size?: number }) => <PixelUtilityIcon kind="check" />
@@ -78,6 +79,7 @@ interface AppMenuBarProps {
   onOpenLcdScreenFilter: () => void
   onOpenShortcuts: () => void
   onOpenPreferences: () => void
+  onOpenExtensionSettings: (extensionId: string) => void
   onOpenCanvasResize: () => void
   onOpenImageResize: () => void
   onOpenGridSettings: () => void
@@ -138,6 +140,7 @@ export function AppMenuBar({
   onOpenLcdScreenFilter,
   onOpenShortcuts,
   onOpenPreferences,
+  onOpenExtensionSettings,
   onOpenCanvasResize,
   onOpenImageResize,
   onOpenGridSettings,
@@ -191,12 +194,19 @@ export function AppMenuBar({
   }))
   const fileLuaScripts = luaScripts.filter((script) =>
     !script.extensionCommandId || !placedExtensionCommandIds.has(script.id))
-  const renderExtensionCommandButton = (extensionId: string, command: StoredExtension['commands'][number], key: string): ReactNode => <button
-    key={key}
-    disabled={!session || luaScriptRunning}
-    title={command.description || command.name}
-    onClick={() => { onRunLuaScript(extensionCommandScriptId(extensionId, command.id)); closeMenu() }}
-  >{command.name}</button>
+  const renderExtensionCommandButton = (extensionId: string, command: StoredExtension['commands'][number], key: string): ReactNode => {
+    const extension = extensions.find((candidate) => candidate.id === extensionId)
+    const disabled = !extension || (command.handler === 'lua' && (!session || luaScriptRunning))
+    return <button
+      key={key}
+      disabled={disabled}
+      title={command.description || command.name}
+      onClick={() => {
+        if (extension) executeExtensionCommand(extension, command, { runLua: onRunLuaScript, openSettings: onOpenExtensionSettings })
+        closeMenu()
+      }}
+    >{command.name}</button>
+  }
   const renderExtensionTopMenusAt = (position: ExtensionTopMenuPosition): ReactNode => extensionTopMenus
     .filter((contribution) => contribution.topMenu.position === position)
     .map((contribution) => <div className="menu-item extension-top-menu-item" key={contribution.key}>
@@ -220,11 +230,14 @@ export function AppMenuBar({
     if (position === 'end') nodes.push(<span className="menu-divider" key={`${menu}:${position}:leading-divider`} />)
     contributions.forEach((contribution, contributionIndex) => {
       if (contributionIndex > 0) nodes.push(<span className="menu-divider" key={`${contribution.key}:divider`} />)
-      contribution.commands.forEach((command) => nodes.push(renderExtensionCommandButton(
-        contribution.extensionId,
-        command,
-        `${contribution.key}:${command.id}`
-      )))
+      const commands = contribution.commands.map((command) => renderExtensionCommandButton(
+        contribution.extensionId, command, `${contribution.key}:${command.id}`
+      ))
+      if (contribution.menuItem.name) nodes.push(<div className="menu-submenu" key={contribution.key}>
+            <SubmenuTrigger>{contribution.menuItem.name}</SubmenuTrigger>
+            <div className="menu-popover menu-submenu-popover" title={contribution.menuItem.description}>{commands}</div>
+          </div>)
+      else nodes.push(...commands)
     })
     if (position === 'start') nodes.push(<span className="menu-divider" key={`${menu}:${position}:trailing-divider`} />)
     return nodes

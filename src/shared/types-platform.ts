@@ -2,7 +2,7 @@ import type { OpenDialogResult, SaveDialogResult, DefaultFileDirectories, Direct
 import type { SaveDialogFormat, ImageExportFormat, RgbaColor } from './types-color'
 import type { WorkspaceListing, WorkspaceLayout, StoredWorkspace } from './types-workspace'
 import type { BrushListing, StoredBrush, StoredBrushFolder, FontListing, StoredFont, BackgroundPresetListing, StoredBackgroundPreset } from './types-library'
-import type { ExtensionPetAnimationState, LuaScriptListing, ExtensionListing, ExtensionPackagePreview, StoredExtension } from './types-extensions'
+import type { LuaScriptListing, ExtensionListing, ExtensionPackagePreview, StoredExtension } from './types-extensions'
 import type { LuaScriptExecutionContext, LuaScriptRunResult, LuaScriptDialogAction } from './types-scripting'
 
 export interface ScaledPngWriteOptions {
@@ -105,12 +105,12 @@ export interface MoonSpriteApi {
   setExtensionEnabled(id: string, enabled: boolean): Promise<StoredExtension>
   uninstallExtension(id: string): Promise<void>
   openExtensionFolder(): Promise<void>
-  readExtensionPetSprite(extensionId: string, petId: string): Promise<Uint8Array>
-  showExtensionPet(extensionId: string, petId: string, bounds: ExtensionPetBounds, summary: ExtensionPetProjectSummary): Promise<void>
-  hideExtensionPet(): Promise<void>
-  setExtensionPetHitRegion(sourceWidth: number, sourceHeight: number, spans: ExtensionPetHitSpan[]): Promise<void>
-  reportExtensionPetPosition(extensionId: string, petId: string): Promise<void>
-  reportExtensionPetInspection(extensionId: string, petId: string): Promise<void>
+  readExtensionSettingsEntry(extensionId: string): Promise<string>
+  readExtensionRuntimeEntry(extensionId: string): Promise<string>
+  readExtensionRuntimeResource(extensionId: string, resourceId: string): Promise<Uint8Array>
+  showExtensionWindow(extensionId: string, windowId: string, resourceId: string, options: ExtensionWindowOptions): Promise<void>
+  closeExtensionWindows(extensionId: string, windowId?: string): Promise<void>
+  emitExtensionWindowMessage(extensionId: string, windowId: string, message: unknown): Promise<void>
   getResourceInfo(): Promise<ResourceInfo>
   confirmUnsaved(name: string): Promise<'save' | 'discard' | 'cancel'>
   pathForFile(file: unknown): string
@@ -119,27 +119,11 @@ export interface MoonSpriteApi {
   approveClose(): void
 }
 
-export interface ExtensionPetBounds {
+export interface ExtensionWindowOptions {
   x: number
   y: number
   width: number
   height: number
-}
-
-export interface ExtensionPetHitSpan {
-  x: number
-  y: number
-  width: number
-}
-
-export interface ExtensionPetProjectSummary {
-  name: string
-  width: number
-  height: number
-  colorMode: string
-  layerCount: number
-  frameCount: number
-  dirty: boolean
-  drawingMinutes: number
-  animationState?: ExtensionPetAnimationState
+  transparent?: boolean
+  focusable?: boolean
 }

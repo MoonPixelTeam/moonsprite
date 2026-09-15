@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     ffi::OsStr,
     fs::{self, File, OpenOptions},
-    io::{self, BufReader, Read, Seek},
+    io::{self, Read, Seek},
     path::{Component, Path, PathBuf},
 };
 use zip::ZipArchive;
@@ -18,6 +18,10 @@ const MAX_PACKAGE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_PACKAGE_FILES: usize = 256;
 const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: usize = 256 * 1024;
+const MAX_SETTINGS_ENTRY_BYTES: usize = 512 * 1024;
+const MAX_RUNTIME_ENTRY_BYTES: usize = 1024 * 1024;
+const MAX_RUNTIME_RESOURCE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_RUNTIME_RESOURCES: usize = 64;
 const MAX_ID_BYTES: usize = 80;
 const MAX_NAME_BYTES: usize = 160;
 const MAX_VERSION_BYTES: usize = 80;
@@ -30,12 +34,35 @@ const MAX_EXTENSION_PANELS: usize = 16;
 const MAX_EXTENSION_MENU_ITEMS: usize = 32;
 const MAX_EXTENSION_TOP_MENUS: usize = 16;
 const MAX_EXTENSION_TOOLS: usize = 16;
-const MAX_EXTENSION_PETS: usize = 8;
-const MAX_PET_ANIMATIONS: usize = 16;
-const MAX_PET_ANIMATION_FRAMES: usize = 128;
-const MAX_PET_FRAME_DIMENSION: u32 = 512;
+const MAX_EXTENSION_SETTINGS_CONTROLS: usize = 64;
+const MAX_EXTENSION_SETTINGS_OPTIONS: usize = 64;
 const MAX_PANEL_COMMANDS: usize = 32;
 const MAX_MENU_COMMANDS: usize = 32;
+const EXTENSION_RUNTIME_API_VERSION: &str = "1.0.0";
+const EXTENSION_RUNTIME_PERMISSIONS: &[&str] = &[
+    "runtime",
+    "commands",
+    "menus",
+    "ui",
+    "windows",
+    "workspace.read",
+    "workspace.write",
+    "document.read",
+    "document.write",
+    "events",
+    "storage",
+    "resources",
+    "tools",
+    "io",
+    "clipboard",
+    "notifications",
+    "network",
+    "diagnostics",
+];
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,38 +74,19 @@ pub(crate) struct StoredExtension {
     author: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     api_version: Option<String>,
+    has_lua_entry: bool,
+    has_settings: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<String>,
+    settings_ui: Option<ExtensionSettingsUiManifest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<StoredExtensionRuntime>,
     commands: Vec<StoredExtensionCommand>,
     panels: Vec<StoredExtensionPanel>,
     menu_items: Vec<StoredExtensionMenuItem>,
     top_menus: Vec<StoredExtensionTopMenu>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<StoredExtensionTool>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pets: Vec<StoredExtensionPet>,
-    file_path: String,
     enabled: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StoredExtensionPet {
-    id: String,
-    name: String,
-    description: String,
-    sprite_sheet: String,
-    frame_width: u32,
-    frame_height: u32,
-    animations: Vec<StoredExtensionPetAnimation>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StoredExtensionPetAnimation {
-    state: String,
-    frames: Vec<u32>,
-    fps: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -87,7 +95,18 @@ pub(crate) struct StoredExtensionCommand {
     id: String,
     name: String,
     description: String,
-    entry: String,
+    handler: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_event: Option<String>,
+    #[serde(skip_serializing_if = "is_false")]
+    opens_settings: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StoredExtensionRuntime {
+    permissions: Vec<String>,
+    resources: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -104,6 +123,10 @@ pub(crate) struct StoredExtensionPanel {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StoredExtensionMenuItem {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     menu: String,
     position: String,
     commands: Vec<String>,
@@ -144,7 +167,6 @@ pub(crate) struct StoredExtensionToolMode {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExtensionListing {
-    directory_path: String,
     extensions: Vec<StoredExtension>,
 }
 
@@ -160,7 +182,6 @@ pub(crate) struct ExtensionPackagePreview {
     panel_count: usize,
     menu_count: usize,
     tool_count: usize,
-    pet_count: usize,
 }
 
 /// A validated Lua entry point belonging to an enabled extension.
@@ -186,7 +207,12 @@ struct ExtensionCommandManifest {
     name: String,
     #[serde(default)]
     description: String,
-    entry: String,
+    #[serde(default)]
+    entry: Option<String>,
+    #[serde(default)]
+    runtime_event: Option<String>,
+    #[serde(default)]
+    opens_settings: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -206,11 +232,75 @@ struct ExtensionPanelManifest {
 #[serde(rename_all = "camelCase")]
 struct ExtensionMenuItemManifest {
     id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
     menu: String,
     #[serde(default = "default_menu_item_position")]
     position: String,
     #[serde(default)]
     commands: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionRuntimeManifest {
+    entry: String,
+    #[serde(default)]
+    permissions: Vec<String>,
+    #[serde(default)]
+    resources: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionSettingsUiManifest {
+    storage_key: String,
+    #[serde(default)]
+    controls: Vec<ExtensionSettingsControlManifest>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionSettingsControlManifest {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    label: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    default_value: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    step: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    suffix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_length: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    options: Vec<ExtensionSettingsOptionManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command_id: Option<String>,
+    #[serde(default = "default_settings_button_variant")]
+    variant: String,
+    #[serde(default)]
+    close_on_run: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionSettingsOptionManifest {
+    value: String,
+    label: String,
+    #[serde(default)]
+    description: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -248,28 +338,6 @@ struct ExtensionToolManifest {
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct ExtensionPetAnimationManifest {
-    state: String,
-    frames: Vec<u32>,
-    #[serde(default = "default_pet_animation_fps")]
-    fps: u32,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ExtensionPetManifest {
-    id: String,
-    name: String,
-    #[serde(default)]
-    description: String,
-    sprite_sheet: String,
-    frame_width: u32,
-    frame_height: u32,
-    animations: Vec<ExtensionPetAnimationManifest>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 struct ExtensionToolModeManifest {
     id: String,
     name: String,
@@ -293,6 +361,12 @@ struct ExtensionManifest {
     #[serde(default)]
     entry: Option<String>,
     #[serde(default)]
+    settings_entry: Option<String>,
+    #[serde(default)]
+    settings_ui: Option<ExtensionSettingsUiManifest>,
+    #[serde(default)]
+    runtime: Option<ExtensionRuntimeManifest>,
+    #[serde(default)]
     commands: Vec<ExtensionCommandManifest>,
     #[serde(default)]
     panels: Vec<ExtensionPanelManifest>,
@@ -302,8 +376,6 @@ struct ExtensionManifest {
     top_menus: Vec<ExtensionTopMenuManifest>,
     #[serde(default)]
     tools: Vec<ExtensionToolManifest>,
-    #[serde(default)]
-    pets: Vec<ExtensionPetManifest>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -395,18 +467,32 @@ fn default_tool_preview_color() -> String {
     "#2979ff66".to_string()
 }
 
-fn default_pet_animation_fps() -> u32 { 8 }
-
-fn valid_pet_animation_state(value: &str) -> bool {
-    matches!(value, "show" | "idle" | "drag" | "inspect" | "save" | "export-complete" | "unsaved-reminder" | "break-reminder" | "sleep")
+fn default_settings_button_variant() -> String {
+    "secondary".to_string()
 }
 
-fn validate_pet_sprite_path(path: &str) -> Result<(), String> {
-    validate_package_relative_path(path, "宠物精灵图")?;
-    if Path::new(path).extension().and_then(OsStr::to_str).is_none_or(|extension| !extension.eq_ignore_ascii_case("png")) {
-        return Err("宠物精灵图必须是 PNG 文件。".to_string());
+fn validate_settings_entry_path(path: &str) -> Result<Vec<String>, String> {
+    let parts = validate_package_relative_path(path, "扩展设置页面")?;
+    if Path::new(path)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_none_or(|extension| !matches!(extension.to_ascii_lowercase().as_str(), "html" | "htm"))
+    {
+        return Err("扩展设置页面必须是 HTML 文件。".to_string());
     }
-    Ok(())
+    Ok(parts)
+}
+
+fn validate_runtime_entry_path(path: &str) -> Result<Vec<String>, String> {
+    let parts = validate_package_relative_path(path, "扩展运行时页面")?;
+    if Path::new(path)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_none_or(|extension| !matches!(extension.to_ascii_lowercase().as_str(), "html" | "htm"))
+    {
+        return Err("扩展运行时页面必须是 HTML 文件。".to_string());
+    }
+    Ok(parts)
 }
 
 fn valid_builtin_menu(value: &str) -> bool {
@@ -444,8 +530,133 @@ fn validate_lua_entry_path(entry: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_settings_ui(settings: &ExtensionSettingsUiManifest) -> Result<(), String> {
+    if !valid_extension_id(&settings.storage_key) {
+        return Err("扩展组件设置的 storageKey 无效。".to_string());
+    }
+    if settings.controls.is_empty() || settings.controls.len() > MAX_EXTENSION_SETTINGS_CONTROLS {
+        return Err(format!(
+            "扩展组件设置必须包含 1 至 {MAX_EXTENSION_SETTINGS_CONTROLS} 个控件。"
+        ));
+    }
+    let mut ids = HashSet::new();
+    for control in &settings.controls {
+        if !valid_extension_id(&control.id) || !ids.insert(control.id.to_ascii_lowercase()) {
+            return Err("扩展设置控件 ID 无效或重复。".to_string());
+        }
+        if !valid_text(&control.label, MAX_NAME_BYTES, true)
+            || !valid_text(&control.description, MAX_DESCRIPTION_BYTES, false)
+        {
+            return Err("扩展设置控件文案无效或过长。".to_string());
+        }
+        for value in [&control.suffix, &control.placeholder]
+            .into_iter()
+            .flatten()
+        {
+            if !valid_text(value, MAX_NAME_BYTES, false) {
+                return Err("扩展设置控件辅助文案无效或过长。".to_string());
+            }
+        }
+        match control.kind.as_str() {
+            "checkbox" => {
+                if !control.default_value.is_boolean() {
+                    return Err(format!(
+                        "复选框“{}”必须提供布尔 defaultValue。",
+                        control.label
+                    ));
+                }
+            }
+            "number" => {
+                let Some(default_value) = control.default_value.as_f64() else {
+                    return Err(format!(
+                        "数值控件“{}”必须提供数值 defaultValue。",
+                        control.label
+                    ));
+                };
+                if control.min.is_some_and(|value| !value.is_finite())
+                    || control.max.is_some_and(|value| !value.is_finite())
+                    || control
+                        .step
+                        .is_some_and(|value| !value.is_finite() || value <= 0.0)
+                    || control
+                        .min
+                        .zip(control.max)
+                        .is_some_and(|(min, max)| min > max)
+                    || control.min.is_some_and(|min| default_value < min)
+                    || control.max.is_some_and(|max| default_value > max)
+                {
+                    return Err(format!(
+                        "数值控件“{}”的范围、步长或默认值无效。",
+                        control.label
+                    ));
+                }
+            }
+            "text" => {
+                let Some(default_value) = control.default_value.as_str() else {
+                    return Err(format!(
+                        "文本控件“{}”必须提供字符串 defaultValue。",
+                        control.label
+                    ));
+                };
+                let max_length = control.max_length.unwrap_or(1024);
+                if max_length == 0
+                    || max_length > 4096
+                    || default_value.chars().count() > max_length as usize
+                {
+                    return Err(format!(
+                        "文本控件“{}”的 maxLength 或默认值无效。",
+                        control.label
+                    ));
+                }
+            }
+            "select" => {
+                let Some(default_value) = control.default_value.as_str() else {
+                    return Err(format!(
+                        "选择控件“{}”必须提供字符串 defaultValue。",
+                        control.label
+                    ));
+                };
+                if control.options.is_empty()
+                    || control.options.len() > MAX_EXTENSION_SETTINGS_OPTIONS
+                {
+                    return Err(format!("选择控件“{}”的选项数量无效。", control.label));
+                }
+                let mut values = HashSet::new();
+                for option in &control.options {
+                    if !valid_text(&option.value, MAX_NAME_BYTES, true)
+                        || !valid_text(&option.label, MAX_NAME_BYTES, true)
+                        || !valid_text(&option.description, MAX_DESCRIPTION_BYTES, false)
+                        || !values.insert(option.value.to_ascii_lowercase())
+                    {
+                        return Err(format!("选择控件“{}”包含无效或重复选项。", control.label));
+                    }
+                }
+                if !control
+                    .options
+                    .iter()
+                    .any(|option| option.value == default_value)
+                {
+                    return Err(format!("选择控件“{}”的默认值不在选项中。", control.label));
+                }
+            }
+            "button" => {
+                if control
+                    .command_id
+                    .as_deref()
+                    .is_none_or(|id| !valid_extension_id(id))
+                    || !matches!(control.variant.as_str(), "primary" | "secondary" | "danger")
+                {
+                    return Err(format!("按钮“{}”的命令或样式无效。", control.label));
+                }
+            }
+            _ => return Err(format!("扩展设置控件“{}”的类型不受支持。", control.label)),
+        }
+    }
+    Ok(())
+}
+
 fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
-    if manifest.schema_version != 1 {
+    if !matches!(manifest.schema_version, 1 | 2) {
         return Err("扩展清单版本不受支持。".to_string());
     }
     if !valid_extension_id(&manifest.id) {
@@ -471,6 +682,58 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
     if let Some(entry) = &manifest.entry {
         validate_lua_entry_path(entry, "扩展入口")?;
     }
+    if let Some(settings_entry) = &manifest.settings_entry {
+        validate_settings_entry_path(settings_entry)?;
+    }
+    if manifest.settings_entry.is_some() && manifest.settings_ui.is_some() {
+        return Err("扩展不能同时声明 settingsEntry 和 settingsUi。".to_string());
+    }
+    if let Some(settings_ui) = &manifest.settings_ui {
+        if manifest.schema_version != 2 {
+            return Err("宿主组件设置仅支持 schemaVersion 2。".to_string());
+        }
+        validate_settings_ui(settings_ui)?;
+    }
+    if let Some(runtime) = &manifest.runtime {
+        if manifest.schema_version != 2 {
+            return Err("Extension Runtime 仅支持 schemaVersion 2。".to_string());
+        }
+        if manifest.api_version.as_deref() != Some(EXTENSION_RUNTIME_API_VERSION) {
+            return Err(format!(
+                "Extension Runtime 需要 apiVersion {EXTENSION_RUNTIME_API_VERSION}。"
+            ));
+        }
+        validate_runtime_entry_path(&runtime.entry)?;
+        let mut permissions = HashSet::new();
+        for permission in &runtime.permissions {
+            if !EXTENSION_RUNTIME_PERMISSIONS.contains(&permission.as_str()) {
+                return Err(format!("扩展声明了未知权限“{permission}”。"));
+            }
+            if !permissions.insert(permission.to_ascii_lowercase()) {
+                return Err(format!("扩展权限“{permission}”不能重复声明。"));
+            }
+        }
+        if !permissions.contains("runtime") {
+            return Err("Extension Runtime 必须声明 runtime 权限。".to_string());
+        }
+        if runtime.resources.len() > MAX_RUNTIME_RESOURCES {
+            return Err(format!(
+                "扩展运行时资源不能超过 {MAX_RUNTIME_RESOURCES} 个。"
+            ));
+        }
+        let mut resource_ids = HashSet::new();
+        for (resource_id, path) in &runtime.resources {
+            if !valid_extension_id(resource_id)
+                || !resource_ids.insert(resource_id.to_ascii_lowercase())
+            {
+                return Err("扩展运行时资源 ID 无效或重复。".to_string());
+            }
+            validate_package_relative_path(path, "扩展运行时资源")?;
+            if path.eq_ignore_ascii_case("manifest.json") || path == &runtime.entry {
+                return Err(format!("扩展运行时资源“{resource_id}”不能指向受保护入口。"));
+            }
+        }
+    }
     if manifest.commands.len() > MAX_EXTENSION_COMMANDS {
         return Err(format!(
             "扩展命令数量不能超过 {MAX_EXTENSION_COMMANDS} 个。"
@@ -492,7 +755,64 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
             return Err("扩展命令 ID 不能重复。".to_string());
         }
         command_ids.insert(command.id.clone());
-        validate_lua_entry_path(&command.entry, "扩展命令入口")?;
+        let handler_count = usize::from(command.entry.is_some())
+            + usize::from(command.runtime_event.is_some())
+            + usize::from(command.opens_settings);
+        if handler_count != 1 {
+            return Err(format!(
+                "扩展命令“{}”必须且只能声明 entry、runtimeEvent 或 opensSettings 中的一种处理方式。",
+                command.name
+            ));
+        }
+        if let Some(entry) = &command.entry {
+            validate_lua_entry_path(entry, "扩展命令入口")?;
+        }
+        if let Some(runtime_event) = &command.runtime_event {
+            if manifest.runtime.is_none() {
+                return Err(format!(
+                    "扩展命令“{}”需要 Extension Runtime。",
+                    command.name
+                ));
+            }
+            if !manifest.runtime.as_ref().is_some_and(|runtime| {
+                runtime
+                    .permissions
+                    .iter()
+                    .any(|permission| permission == "commands")
+            }) {
+                return Err(format!("扩展命令“{}”需要 commands 权限。", command.name));
+            }
+            if !valid_extension_id(runtime_event) {
+                return Err(format!("扩展命令“{}”的 runtimeEvent 无效。", command.name));
+            }
+        }
+        if command.opens_settings
+            && manifest.settings_entry.is_none()
+            && manifest.settings_ui.is_none()
+        {
+            return Err(format!(
+                "扩展命令“{}”需要 settingsEntry 或 settingsUi。",
+                command.name
+            ));
+        }
+    }
+    if let Some(settings_ui) = &manifest.settings_ui {
+        for control in &settings_ui.controls {
+            if control.kind != "button" {
+                continue;
+            }
+            let command_id = control.command_id.as_deref().unwrap_or_default();
+            if !manifest
+                .commands
+                .iter()
+                .any(|command| command.id == command_id && command.runtime_event.is_some())
+            {
+                return Err(format!(
+                    "设置按钮“{}”必须引用本扩展的 Runtime 命令。",
+                    control.label
+                ));
+            }
+        }
     }
     if manifest.panels.len() > MAX_EXTENSION_PANELS {
         return Err(format!("扩展栏目数量不能超过 {MAX_EXTENSION_PANELS} 个。"));
@@ -544,6 +864,20 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         }
         if !menu_item_ids.insert(menu_item.id.to_ascii_lowercase()) {
             return Err("扩展现有菜单贡献 ID 不能重复。".to_string());
+        }
+        if menu_item
+            .name
+            .as_deref()
+            .is_some_and(|name| !valid_text(name, MAX_NAME_BYTES, true))
+        {
+            return Err("扩展子菜单名称无效或过长。".to_string());
+        }
+        if menu_item
+            .description
+            .as_deref()
+            .is_some_and(|description| !valid_text(description, MAX_DESCRIPTION_BYTES, false))
+        {
+            return Err("扩展子菜单描述过长或包含控制字符。".to_string());
         }
         if !valid_builtin_menu(&menu_item.menu) {
             return Err("扩展引用了不存在的内置菜单。".to_string());
@@ -662,37 +996,6 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
                 .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(format!("扩展工具“{}”的预览色必须是 #RRGGBBAA。", tool.id));
-        }
-    }
-    if manifest.pets.len() > MAX_EXTENSION_PETS {
-        return Err(format!("扩展宠物数量不能超过 {MAX_EXTENSION_PETS} 个。"));
-    }
-    let mut pet_ids = HashSet::new();
-    for pet in &manifest.pets {
-        if !valid_extension_id(&pet.id) || !pet_ids.insert(pet.id.to_ascii_lowercase()) {
-            return Err("扩展宠物 ID 无效或重复。".to_string());
-        }
-        if !valid_text(&pet.name, MAX_NAME_BYTES, true) || !valid_text(&pet.description, MAX_DESCRIPTION_BYTES, false) {
-            return Err(format!("扩展宠物“{}”的名称或描述无效。", pet.id));
-        }
-        validate_pet_sprite_path(&pet.sprite_sheet)?;
-        if pet.frame_width == 0 || pet.frame_height == 0 || pet.frame_width > MAX_PET_FRAME_DIMENSION || pet.frame_height > MAX_PET_FRAME_DIMENSION {
-            return Err(format!("扩展宠物“{}”的帧尺寸无效。", pet.id));
-        }
-        if pet.animations.is_empty() || pet.animations.len() > MAX_PET_ANIMATIONS {
-            return Err(format!("扩展宠物“{}”必须声明 1 至 {MAX_PET_ANIMATIONS} 个动画。", pet.id));
-        }
-        let mut states = HashSet::new();
-        for animation in &pet.animations {
-            if !valid_pet_animation_state(&animation.state) || !states.insert(animation.state.clone()) {
-                return Err(format!("扩展宠物“{}”包含未知或重复的动画状态。", pet.id));
-            }
-            if animation.fps == 0 || animation.fps > 60 || animation.frames.is_empty() || animation.frames.len() > MAX_PET_ANIMATION_FRAMES {
-                return Err(format!("扩展宠物“{}”的动画帧或速度无效。", pet.id));
-            }
-        }
-        if !states.contains("idle") {
-            return Err(format!("扩展宠物“{}”必须声明 idle 动画。", pet.id));
         }
     }
     Ok(())
@@ -854,17 +1157,41 @@ fn inspect_archive<R: Read + Seek>(reader: R) -> Result<PackageInspection, Strin
             return Err("扩展清单指定的入口文件不存在。".to_string());
         }
     }
-    for command in &manifest.commands {
+    if let Some(settings_entry) = &manifest.settings_entry {
         if !entries
             .iter()
-            .any(|candidate| !candidate.is_dir && candidate.name == command.entry.as_str())
+            .any(|candidate| !candidate.is_dir && candidate.name == settings_entry.as_str())
         {
-            return Err(format!("扩展命令“{}”指定的入口文件不存在。", command.name));
+            return Err("扩展清单指定的设置页面不存在。".to_string());
         }
     }
-    for pet in &manifest.pets {
-        if !entries.iter().any(|candidate| !candidate.is_dir && candidate.name == pet.sprite_sheet) {
-            return Err(format!("扩展宠物“{}”指定的精灵图不存在。", pet.name));
+    if let Some(runtime) = &manifest.runtime {
+        if !entries
+            .iter()
+            .any(|candidate| !candidate.is_dir && candidate.name == runtime.entry)
+        {
+            return Err("扩展清单指定的运行时页面不存在。".to_string());
+        }
+        for (resource_id, path) in &runtime.resources {
+            let Some(entry) = entries
+                .iter()
+                .find(|candidate| !candidate.is_dir && candidate.name == path.as_str())
+            else {
+                return Err(format!("扩展运行时资源“{resource_id}”不存在。"));
+            };
+            if entry.size > MAX_RUNTIME_RESOURCE_BYTES as u64 {
+                return Err(format!("扩展运行时资源“{resource_id}”超过大小限制。"));
+            }
+        }
+    }
+    for command in &manifest.commands {
+        if let Some(entry) = &command.entry {
+            if !entries
+                .iter()
+                .any(|candidate| !candidate.is_dir && candidate.name == entry.as_str())
+            {
+                return Err(format!("扩展命令“{}”指定的入口文件不存在。", command.name));
+            }
         }
     }
     Ok(PackageInspection { manifest, entries })
@@ -993,46 +1320,78 @@ fn manifest_from_directory(path: &Path) -> Result<ExtensionManifest, String> {
     let manifest = serde_json::from_slice::<ExtensionManifest>(&bytes)
         .map_err(|error| format!("扩展清单无效：{error}"))?;
     validate_manifest(&manifest)?;
-    validate_pet_assets_at(path, &manifest)?;
     Ok(manifest)
 }
 
-fn pet_sprite_path_at(root: &Path, pet: &ExtensionPetManifest) -> Result<PathBuf, String> {
-    let parts = validate_package_relative_path(&pet.sprite_sheet, "宠物精灵图")?;
-    let path = parts.iter().fold(root.to_path_buf(), |current, part| current.join(part));
-    let metadata = fs::symlink_metadata(&path).map_err(|error| format!("宠物精灵图不存在或无法访问：{error}"))?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return Err("宠物精灵图必须是普通 PNG 文件。".to_string());
-    }
-    let canonical_root = fs::canonicalize(root).map_err(|error| format!("无法确定扩展目录位置：{error}"))?;
-    let canonical_path = fs::canonicalize(&path).map_err(|error| format!("无法确定宠物精灵图位置：{error}"))?;
-    if !canonical_path.starts_with(&canonical_root) {
-        return Err("宠物精灵图不能位于扩展目录之外。".to_string());
-    }
-    Ok(path)
-}
-
-fn validate_pet_assets_at(root: &Path, manifest: &ExtensionManifest) -> Result<(), String> {
-    for pet in &manifest.pets {
-        let path = pet_sprite_path_at(root, pet)?;
-        let decoder = png::Decoder::new(BufReader::new(File::open(path).map_err(|error| format!("无法读取宠物精灵图：{error}"))?));
-        let reader = decoder.read_info().map_err(|error| format!("宠物精灵图不是有效 PNG：{error}"))?;
-        let info = reader.info();
-        if info.width == 0 || info.height == 0 || info.width % pet.frame_width != 0 || info.height % pet.frame_height != 0 {
-            return Err(format!("扩展宠物“{}”的精灵图尺寸不能被帧尺寸整除。", pet.id));
-        }
-        let frame_count = (u64::from(info.width) / u64::from(pet.frame_width)) * (u64::from(info.height) / u64::from(pet.frame_height));
-        if pet.animations.iter().flat_map(|animation| animation.frames.iter()).any(|frame| u64::from(*frame) >= frame_count) {
-            return Err(format!("扩展宠物“{}”引用了精灵图之外的帧。", pet.id));
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn read_enabled_pet_sprite(extension_id: &str, pet_id: &str) -> Result<Vec<u8>, String> {
+#[tauri::command]
+pub(crate) fn read_extension_settings_entry(extension_id: String) -> Result<String, String> {
     let directory = extension_directory()?;
-    if !valid_extension_id(extension_id) || !valid_extension_id(pet_id) {
-        return Err("无效的扩展宠物标识。".to_string());
+    if !valid_extension_id(&extension_id) {
+        return Err("无效的扩展 ID。".to_string());
+    }
+    let state = read_state(&directory)?;
+    if !state.enabled.get(&extension_id).copied().unwrap_or(true) {
+        return Err("扩展已停用。".to_string());
+    }
+    let root = installed_extension_path(&directory, &extension_id)?;
+    let manifest = manifest_from_directory(&root)?;
+    if manifest.id != extension_id {
+        return Err("扩展清单与扩展 ID 不一致。".to_string());
+    }
+    let entry = manifest
+        .settings_entry
+        .ok_or_else(|| "该扩展未提供设置页面。".to_string())?;
+    let parts = validate_settings_entry_path(&entry)?;
+    let path = parts.iter().fold(root, |path, part| path.join(part));
+    let bytes = fs::read(path).map_err(|error| format!("无法读取扩展设置页面：{error}"))?;
+    if bytes.len() > MAX_SETTINGS_ENTRY_BYTES {
+        return Err("扩展设置页面超过大小限制。".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "扩展设置页面必须是 UTF-8 编码。".to_string())
+}
+
+#[tauri::command]
+pub(crate) fn read_extension_runtime_entry(extension_id: String) -> Result<String, String> {
+    let directory = extension_directory()?;
+    if !valid_extension_id(&extension_id) {
+        return Err("无效的扩展 ID。".to_string());
+    }
+    let state = read_state(&directory)?;
+    if !state.enabled.get(&extension_id).copied().unwrap_or(true) {
+        return Err("扩展已停用。".to_string());
+    }
+    let root = installed_extension_path(&directory, &extension_id)?;
+    let manifest = manifest_from_directory(&root)?;
+    if manifest.id != extension_id {
+        return Err("扩展清单与扩展 ID 不一致。".to_string());
+    }
+    let runtime = manifest
+        .runtime
+        .ok_or_else(|| "该扩展未提供运行时页面。".to_string())?;
+    let parts = validate_runtime_entry_path(&runtime.entry)?;
+    let path = parts.iter().fold(root, |path, part| path.join(part));
+    let bytes = fs::read(path).map_err(|error| format!("无法读取扩展运行时页面：{error}"))?;
+    if bytes.len() > MAX_RUNTIME_ENTRY_BYTES {
+        return Err("扩展运行时页面超过大小限制。".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "扩展运行时页面必须是 UTF-8 编码。".to_string())
+}
+
+#[tauri::command]
+pub(crate) fn read_extension_runtime_resource(
+    extension_id: String,
+    resource_id: String,
+) -> Result<Vec<u8>, String> {
+    read_enabled_runtime_resource(&extension_id, &resource_id)
+}
+
+pub(crate) fn ensure_extension_runtime_permission(
+    extension_id: &str,
+    permission: &str,
+) -> Result<(), String> {
+    let directory = extension_directory()?;
+    if !valid_extension_id(extension_id) || !EXTENSION_RUNTIME_PERMISSIONS.contains(&permission) {
+        return Err("无效的扩展或权限 ID。".to_string());
     }
     let state = read_state(&directory)?;
     if !state.enabled.get(extension_id).copied().unwrap_or(true) {
@@ -1043,11 +1402,47 @@ pub(crate) fn read_enabled_pet_sprite(extension_id: &str, pet_id: &str) -> Resul
     if manifest.id != extension_id {
         return Err("扩展清单与扩展 ID 不一致。".to_string());
     }
-    let pet = manifest.pets.iter().find(|candidate| candidate.id == pet_id).ok_or_else(|| "扩展宠物不存在。".to_string())?;
-    fs::read(pet_sprite_path_at(&root, pet)?).map_err(|error| format!("无法读取宠物精灵图：{error}"))
+    let runtime = manifest
+        .runtime
+        .ok_or_else(|| "该扩展未提供运行时页面。".to_string())?;
+    if !runtime
+        .permissions
+        .iter()
+        .any(|candidate| candidate == permission)
+    {
+        return Err(format!("扩展未获准使用 {permission}。"));
+    }
+    Ok(())
 }
 
-fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> StoredExtension {
+pub(crate) fn read_enabled_runtime_resource(
+    extension_id: &str,
+    resource_id: &str,
+) -> Result<Vec<u8>, String> {
+    ensure_extension_runtime_permission(extension_id, "resources")?;
+    if !valid_extension_id(resource_id) {
+        return Err("无效的扩展资源 ID。".to_string());
+    }
+    let directory = extension_directory()?;
+    let root = installed_extension_path(&directory, extension_id)?;
+    let manifest = manifest_from_directory(&root)?;
+    let runtime = manifest
+        .runtime
+        .ok_or_else(|| "该扩展未提供运行时页面。".to_string())?;
+    let resource = runtime
+        .resources
+        .get(resource_id)
+        .ok_or_else(|| "扩展运行时资源不存在。".to_string())?;
+    let parts = validate_package_relative_path(resource, "扩展运行时资源")?;
+    let path = parts.iter().fold(root, |path, part| path.join(part));
+    let bytes = fs::read(path).map_err(|error| format!("无法读取扩展运行时资源：{error}"))?;
+    if bytes.len() > MAX_RUNTIME_RESOURCE_BYTES {
+        return Err("扩展运行时资源超过大小限制。".to_string());
+    }
+    Ok(bytes)
+}
+
+fn stored_extension(_path: &Path, manifest: ExtensionManifest, enabled: bool) -> StoredExtension {
     let commands = manifest
         .commands
         .iter()
@@ -1055,7 +1450,16 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
             id: command.id.clone(),
             name: command.name.clone(),
             description: command.description.clone(),
-            entry: command.entry.clone(),
+            handler: if command.entry.is_some() {
+                "lua"
+            } else if command.runtime_event.is_some() {
+                "runtime"
+            } else {
+                "settings"
+            }
+            .to_string(),
+            runtime_event: command.runtime_event.clone(),
+            opens_settings: command.opens_settings,
         })
         .collect();
     let panels = manifest
@@ -1074,6 +1478,8 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
         .iter()
         .map(|menu_item| StoredExtensionMenuItem {
             id: menu_item.id.clone(),
+            name: menu_item.name.clone(),
+            description: menu_item.description.clone(),
             menu: menu_item.menu.clone(),
             position: menu_item.position.clone(),
             commands: menu_item.commands.clone(),
@@ -1113,23 +1519,6 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
             preview_color: tool.preview_color.clone(),
         })
         .collect();
-    let pets = manifest
-        .pets
-        .iter()
-        .map(|pet| StoredExtensionPet {
-            id: pet.id.clone(),
-            name: pet.name.clone(),
-            description: pet.description.clone(),
-            sprite_sheet: pet.sprite_sheet.clone(),
-            frame_width: pet.frame_width,
-            frame_height: pet.frame_height,
-            animations: pet.animations.iter().map(|animation| StoredExtensionPetAnimation {
-                state: animation.state.clone(),
-                frames: animation.frames.clone(),
-                fps: animation.fps,
-            }).collect(),
-        })
-        .collect();
     StoredExtension {
         id: manifest.id,
         name: manifest.name,
@@ -1137,14 +1526,18 @@ fn stored_extension(path: &Path, manifest: ExtensionManifest, enabled: bool) -> 
         description: manifest.description,
         author: manifest.author,
         api_version: manifest.api_version,
-        entry: manifest.entry,
+        has_lua_entry: manifest.entry.is_some(),
+        has_settings: manifest.settings_entry.is_some() || manifest.settings_ui.is_some(),
+        settings_ui: manifest.settings_ui,
+        runtime: manifest.runtime.map(|runtime| StoredExtensionRuntime {
+            permissions: runtime.permissions,
+            resources: runtime.resources.into_keys().collect(),
+        }),
         commands,
         panels,
         menu_items,
         top_menus,
         tools,
-        pets,
-        file_path: path.to_string_lossy().to_string(),
         enabled,
     }
 }
@@ -1233,7 +1626,10 @@ fn resolve_enabled_lua_entry_for_manifest_at(
                 .find(|command| command.id == command_id)
                 .ok_or_else(|| "扩展命令不存在。".to_string())?;
             (
-                command.entry.clone(),
+                command
+                    .entry
+                    .clone()
+                    .ok_or_else(|| "该扩展命令不是 Lua 命令。".to_string())?,
                 Some(command.name.clone()),
                 (!command.description.is_empty()).then(|| command.description.clone()),
             )
@@ -1312,12 +1708,15 @@ fn list_enabled_lua_entries_at(directory: &Path) -> Result<Vec<ExtensionLuaEntry
     let extensions = list_installed_extensions(directory, &state)?;
     let mut entries = Vec::new();
     for extension in extensions.into_iter().filter(|extension| extension.enabled) {
-        if extension.entry.is_some() {
+        if extension.has_lua_entry {
             if let Ok(entry) = resolve_enabled_lua_entry_at(directory, &extension.id) {
                 entries.push(entry);
             }
         }
         for command in extension.commands {
+            if command.handler != "lua" {
+                continue;
+            }
             if let Ok(entry) = resolve_enabled_lua_command_at(directory, &extension.id, &command.id)
             {
                 entries.push(entry);
@@ -1353,7 +1752,6 @@ pub(crate) fn list_extensions() -> Result<ExtensionListing, String> {
     let directory = extension_directory()?;
     let state = read_state(&directory)?;
     Ok(ExtensionListing {
-        directory_path: directory.to_string_lossy().to_string(),
         extensions: list_installed_extensions(&directory, &state)?,
     })
 }
@@ -1388,7 +1786,6 @@ pub(crate) fn inspect_extension_package(
         panel_count: manifest.panels.len(),
         menu_count: manifest.menu_items.len() + manifest.top_menus.len(),
         tool_count: manifest.tools.len(),
-        pet_count: manifest.pets.len(),
     })
 }
 
@@ -1588,9 +1985,9 @@ pub(crate) fn open_extension_folder() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        inspect_archive, is_extension_package_path, list_enabled_lua_entries_at,
-        resolve_enabled_lua_command_at, resolve_enabled_lua_entry_at, set_extension_enabled_at,
-        valid_extension_id, MAX_MANIFEST_BYTES,
+        MAX_MANIFEST_BYTES, inspect_archive, is_extension_package_path,
+        list_enabled_lua_entries_at, resolve_enabled_lua_command_at, resolve_enabled_lua_entry_at,
+        set_extension_enabled_at, valid_extension_id,
     };
     use std::{
         fs,
@@ -1598,7 +1995,7 @@ mod tests {
         path::Path,
         time::{SystemTime, UNIX_EPOCH},
     };
-    use zip::{write::SimpleFileOptions, ZipWriter};
+    use zip::{ZipWriter, write::SimpleFileOptions};
 
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
@@ -1644,6 +2041,76 @@ mod tests {
     }
 
     #[test]
+    fn accepts_a_sandboxed_runtime_with_opaque_resources() {
+        let bytes = archive(&[
+            (
+                "manifest.json",
+                br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","settingsEntry":"settings.html","runtime":{"entry":"runtime.html","permissions":["runtime","resources","windows"],"resources":{"window":"window.html","image":"image.png"}},"commands":[{"id":"show","name":"Show","runtimeEvent":"show"},{"id":"settings","name":"Settings","opensSettings":true}],"menuItems":[{"id":"menu","name":"Example","menu":"window","commands":["show","settings"]}]}"#,
+            ),
+            ("runtime.html", b"<!doctype html>"),
+            ("settings.html", b"<!doctype html>"),
+            ("window.html", b"<!doctype html>"),
+            ("image.png", b"opaque runtime resource"),
+        ]);
+        assert!(inspect_archive(Cursor::new(bytes)).is_ok());
+    }
+
+    #[test]
+    fn accepts_host_rendered_extension_settings_components() {
+        let bytes = archive(&[
+            (
+                "manifest.json",
+                br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.components","name":"Components","version":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime","commands"]},"settingsUi":{"storageKey":"preferences","controls":[{"id":"enabled","type":"checkbox","label":"Enabled","defaultValue":true},{"id":"scale","type":"number","label":"Scale","defaultValue":2,"min":1,"max":4,"step":1},{"id":"name","type":"text","label":"Name","defaultValue":"Moon","maxLength":32},{"id":"mode","type":"select","label":"Mode","defaultValue":"idle","options":[{"value":"idle","label":"Idle"},{"value":"active","label":"Active"}]},{"id":"apply","type":"button","label":"Apply","commandId":"apply","variant":"primary"}]},"commands":[{"id":"apply","name":"Apply","runtimeEvent":"apply"},{"id":"settings","name":"Settings","opensSettings":true}]}"#,
+            ),
+            ("runtime.html", b"<!doctype html>"),
+        ]);
+        let inspection = inspect_archive(Cursor::new(bytes));
+        assert!(inspection.is_ok());
+        assert_eq!(
+            inspection
+                .as_ref()
+                .ok()
+                .and_then(|value| value.manifest.settings_ui.as_ref())
+                .map(|settings| settings.controls.len()),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_host_rendered_extension_settings() {
+        let unknown_control = archive(&[(
+            "manifest.json",
+            br#"{"schemaVersion":2,"id":"com.example.bad","name":"Bad","version":"1.0.0","settingsUi":{"storageKey":"preferences","controls":[{"id":"bad","type":"slider","label":"Bad","defaultValue":1}]}}"#,
+        )]);
+        let missing_button_command = archive(&[(
+            "manifest.json",
+            br#"{"schemaVersion":2,"id":"com.example.bad","name":"Bad","version":"1.0.0","settingsUi":{"storageKey":"preferences","controls":[{"id":"run","type":"button","label":"Run","commandId":"missing"}]}}"#,
+        )]);
+        assert!(inspect_archive(Cursor::new(unknown_control)).is_err());
+        assert!(inspect_archive(Cursor::new(missing_button_command)).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_runtime_permissions_and_command_handlers() {
+        let unknown_permission = archive(&[
+            ("manifest.json", br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime","system.raw"]}}"#),
+            ("runtime.html", b"<!doctype html>"),
+        ]);
+        let duplicate_permission = archive(&[
+            ("manifest.json", br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime","runtime"]}}"#),
+            ("runtime.html", b"<!doctype html>"),
+        ]);
+        let multiple_handlers = archive(&[
+            ("manifest.json", br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","runtime":{"entry":"runtime.html","permissions":["runtime"]},"commands":[{"id":"bad","name":"Bad","entry":"bad.lua","runtimeEvent":"bad"}]}"#),
+            ("runtime.html", b"<!doctype html>"),
+            ("bad.lua", b"return 1"),
+        ]);
+        assert!(inspect_archive(Cursor::new(unknown_permission)).is_err());
+        assert!(inspect_archive(Cursor::new(duplicate_permission)).is_err());
+        assert!(inspect_archive(Cursor::new(multiple_handlers)).is_err());
+    }
+
+    #[test]
     fn accepts_host_owned_tool_contribution() {
         let bytes = archive(&[(
             "manifest.json",
@@ -1652,24 +2119,6 @@ mod tests {
         let inspection = inspect_archive(Cursor::new(bytes)).unwrap();
         assert_eq!(inspection.manifest.tools.len(), 1);
         assert_eq!(inspection.manifest.tools[0].kind, "remote-pixel-brush");
-    }
-
-    #[test]
-    fn accepts_a_host_rendered_pet_declaration_with_a_packaged_sprite() {
-        let bytes = archive(&[
-            ("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"idle","frames":[0],"fps":8}]}]}"#),
-            ("assets/pet.png", b"not-decoded-until-install"),
-        ]);
-        let inspection = inspect_archive(Cursor::new(bytes)).unwrap();
-        assert_eq!(inspection.manifest.pets[0].id, "companion");
-    }
-
-    #[test]
-    fn rejects_pet_declarations_with_unknown_states_or_missing_sprites() {
-        let unknown_state = archive(&[("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"dance","frames":[0]}]}]}"#)]);
-        let missing_sprite = archive(&[("manifest.json", br#"{"schemaVersion":1,"id":"com.example.pet","name":"Pet","version":"1.0.0","pets":[{"id":"companion","name":"Companion","spriteSheet":"assets/pet.png","frameWidth":16,"frameHeight":16,"animations":[{"state":"idle","frames":[0]}]}]}"#)]);
-        assert!(inspect_archive(Cursor::new(unknown_state)).is_err());
-        assert!(inspect_archive(Cursor::new(missing_sprite)).is_err());
     }
 
     #[test]
@@ -1887,7 +2336,7 @@ mod tests {
     fn rejects_missing_or_invalid_manifests() {
         let missing = archive(&[("main.lua", b"ok")]);
         assert!(inspect_archive(Cursor::new(missing)).is_err());
-        let invalid = archive(&[("manifest.json", br#"{"schemaVersion":2}"#)]);
+        let invalid = archive(&[("manifest.json", br#"{"schemaVersion":3}"#)]);
         assert!(inspect_archive(Cursor::new(invalid)).is_err());
     }
 
