@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { boundsFromPixelMask, chatCompletionsEndpoint, chatCompletionsEndpoints, normalizeRemotePixelToolPatch, requestRemotePixelToolPatch, testRemotePixelToolConnection } from './remote-pixel-tool'
+import { boundsFromPixelMask, chatCompletionsEndpoint, chatCompletionsEndpoints, loadRemotePixelToolConfig, normalizeRemotePixelToolPatch, requestRemotePixelToolPatch, saveRemotePixelToolConfig, testRemotePixelToolConnection } from './remote-pixel-tool'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('remote pixel extension tool', () => {
   it('calculates a compact bounds from touched document indexes', () => {
     expect(boundsFromPixelMask([1, 2, 6, 7], 4, 4)).toEqual({ x: 1, y: 0, width: 3, height: 2 })
+  })
+
+  it('keeps API keys out of persistent browser storage', () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('window', { localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key)
+    } })
+    saveRemotePixelToolConfig('secure-tool', { endpoint: 'https://api.example.com', apiKey: 'secret', model: 'test' })
+    expect([...storage.values()].join('')).not.toContain('secret')
+    expect(loadRemotePixelToolConfig('secure-tool')).toMatchObject({ apiKey: 'secret' })
   })
 
   it('accepts only a complete RGBA patch matching the requested bounds', () => {

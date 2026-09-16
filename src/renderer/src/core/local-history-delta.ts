@@ -74,6 +74,11 @@ export interface LocalHistoryDelta {
   requiresAnimationSelectionNormalization: boolean
 }
 const identityKeys = new Set(['id', 'filePath', 'sourceFilePath'])
+const unsafePathKeys = new Set(['__proto__', 'prototype', 'constructor'])
+
+function isSafePath(path: Path): boolean {
+  return path.length > 0 && path.every((key) => !unsafePathKeys.has(key))
+}
 
 /** Capture already committed pixel buffers, without scanning or cloning the document. */
 export function captureCommittedHistoryDelta(document: SpriteDocument, entry: HistoryEntry): LocalHistoryDelta | null {
@@ -198,9 +203,13 @@ export function compileLocalHistoryDelta(before: SpriteDocument, after: SpriteDo
 export function hydrateLocalHistoryDelta(target: SpriteDocument, delta: LocalHistoryDelta): HistoryEntry {
   const { patches, origins, ...metadata } = delta
   const affected = new Set(delta.affectedLayerIds)
-  const resolve = (root: unknown, path: Path): unknown => path.reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], root)
+  const resolve = (root: unknown, path: Path): unknown => path.reduce<unknown>((value, key) => {
+    if (!value || typeof value !== 'object' || !Object.hasOwn(value, key)) throw new Error('本地历史记录包含无效路径。')
+    return (value as Record<string, unknown>)[key]
+  }, root)
   const apply = (side: 'before' | 'after'): void => {
     for (const patch of patches) {
+      if (!isSafePath(patch.path) || patch.aliases?.some((path) => !isSafePath(path))) continue
       if (patch.aliases) {
         const value = structuredClone(patch[side])
         for (const path of patch.aliases) {

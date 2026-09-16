@@ -29,17 +29,22 @@ export interface RemotePixelToolConnectionResult {
 }
 
 const storageKey = (toolId: string): string => `moonsprite.extension-tool-config.v1.${toolId}`
+const sessionConfigs = new Map<string, RemotePixelToolConfig>()
 
 export const defaultRemotePixelToolConfig = (): RemotePixelToolConfig => ({ endpoint: '', apiKey: '', model: '' })
 
 export const loadRemotePixelToolConfig = (toolId: string): RemotePixelToolConfig => {
+  const sessionConfig = sessionConfigs.get(toolId)
+  if (sessionConfig) return { ...sessionConfig }
   try {
     const raw = window.localStorage.getItem(storageKey(toolId))
     if (!raw) return defaultRemotePixelToolConfig()
-    const parsed = JSON.parse(raw) as Partial<RemotePixelToolConfig>
+    const parsed = JSON.parse(raw) as Partial<Pick<RemotePixelToolConfig, 'endpoint' | 'model'>>
+    // Remove credentials written by older versions. Secrets are session-only.
+    window.localStorage.removeItem(storageKey(toolId))
     return {
       endpoint: typeof parsed.endpoint === 'string' ? parsed.endpoint : '',
-      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+      apiKey: '',
       model: typeof parsed.model === 'string' ? parsed.model : ''
     }
   } catch {
@@ -48,7 +53,10 @@ export const loadRemotePixelToolConfig = (toolId: string): RemotePixelToolConfig
 }
 
 export const saveRemotePixelToolConfig = (toolId: string, config: RemotePixelToolConfig): void => {
-  try { window.localStorage.setItem(storageKey(toolId), JSON.stringify(config)) } catch { /* renderer storage may be unavailable */ }
+  sessionConfigs.set(toolId, { ...config })
+  try {
+    window.localStorage.setItem(storageKey(toolId), JSON.stringify({ endpoint: config.endpoint, model: config.model }))
+  } catch { /* renderer storage may be unavailable */ }
 }
 
 export const boundsFromPixelMask = (mask: Iterable<number>, width: number, height: number): SelectionRect | null => {
