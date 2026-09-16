@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const jaJPMessages = {
+  'preferences.tablet.rightClick': "キャンバスの右クリック",
+  'preferences.tablet.rightClickHint': "マウスの右クリックと、右クリックに割り当てたペンボタンに適用します。",
+  'preferences.tablet.rightClick.background': "背景色で描画",
+  'preferences.tablet.rightClick.foreground': "前景色を取得",
+
   'preferences.diagnostics.mode': "診断ログ",
   'preferences.diagnostics.off': "オフ（収集しない）",
   'preferences.diagnostics.memory': "収集のみ（メモリ）",
@@ -1813,6 +1818,7 @@ export const jaJPMessages = {
   'layers.density.hugeDescription': 'データ データ データ へ データ レイヤー と フレーム データ.',
   'layers.onionSkin': 'データ データ',
   'layers.onionSkinEnabled': '有効化 データ データ',
+  'layers.onionSkinDuringPlayback': '再生中にオニオンスキンを表示',
   'layers.onionSkinRange': 'フレーム 範囲',
   'layers.onionSkinOpacity': 'オーバーレイ 不透明度',
   'layers.onionSkinColors': 'フレーム カラー',

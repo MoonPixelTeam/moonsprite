@@ -217,6 +217,18 @@ describe('LayersPanel Free Tile instances', () => {
 })
 
 describe('LayersPanel animation', () => {
+  it('does not focus the onion-skin toggle after a pointer click', () => {
+    const document = createDocument('onion keyboard focus', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+
+    const onionToggle = screen.getByRole('button', { name: '启用洋葱皮' })
+    fireEvent.pointerDown(onionToggle)
+    fireEvent.click(onionToggle)
+
+    expect(onionToggle).not.toHaveFocus()
+  })
+
   it('uses compact density by default', () => {
     const document = createDocument('default compact density', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -406,12 +418,12 @@ describe('LayersPanel animation', () => {
   it('renders a contained loop section inside its parent bracket', () => {
     const document = createDocument('nested timeline loop sections', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
-    for (let index = 0; index < 5; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    for (let index = 0; index < 7; index += 1) useWorkspace.getState().duplicateAnimationFrame()
     const timeline = ensureAnimationDocument(document)
     const parentId = useWorkspace.getState().createAnimationLoopSection({
       name: '父循环节',
       startFrameId: timeline.frames[0].id,
-      endFrameId: timeline.frames[4].id,
+      endFrameId: timeline.frames[6].id,
       direction: 'forward',
       repeatCount: null
     })!
@@ -422,10 +434,24 @@ describe('LayersPanel animation', () => {
       direction: 'forward',
       repeatCount: null
     })!
+    const crossingChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: '交叉子循环节',
+      startFrameId: timeline.frames[2].id,
+      endFrameId: timeline.frames[4].id,
+      direction: 'forward',
+      repeatCount: null
+    })!
+    const trailingChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: '后续子循环节',
+      startFrameId: timeline.frames[5].id,
+      endFrameId: timeline.frames[6].id,
+      direction: 'forward',
+      repeatCount: null
+    })!
     const independentId = useWorkspace.getState().createAnimationLoopSection({
       name: '独立循环节',
-      startFrameId: timeline.frames[5].id,
-      endFrameId: timeline.frames[5].id,
+      startFrameId: timeline.frames[7].id,
+      endFrameId: timeline.frames[7].id,
       direction: 'forward',
       repeatCount: null
     })!
@@ -433,10 +459,14 @@ describe('LayersPanel animation', () => {
 
     const parent = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${parentId}"]`)!
     const child = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${childId}"]`)!
+    const crossingChild = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${crossingChildId}"]`)!
+    const trailingChild = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${trailingChildId}"]`)!
     const independent = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${independentId}"]`)!
-    expect(parent.style.gridRow).toBe('1 / span 2')
-    expect(child.style.gridRow).toBe('2 / span 1')
-    expect(independent.style.gridRow).toBe('1 / span 2')
+    expect(parent.style.gridRow).toBe('1 / span 3')
+    expect(child.style.gridRow).toBe('3 / span 1')
+    expect(crossingChild.style.gridRow).toBe('2 / span 2')
+    expect(trailingChild.style.gridRow).toBe('3 / span 1')
+    expect(independent.style.gridRow).toBe('3 / span 1')
     expect(Number(child.style.zIndex)).toBeGreaterThan(Number(parent.style.zIndex))
   })
 
@@ -1123,12 +1153,15 @@ describe('LayersPanel animation', () => {
     expect(modal!.querySelector('.layer-settings-pair')).toBeNull()
     const skipDisabledFrames = screen.getByRole('checkbox', { name: '左右切换时跳过停用帧' })
     expect(skipDisabledFrames).toBeChecked()
+    const onionPlayback = screen.getByRole('checkbox', { name: '播放动画时显示洋葱皮' })
+    expect(onionPlayback).toBeChecked()
+    fireEvent.click(onionPlayback)
     fireEvent.click(skipDisabledFrames)
     fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     expect(modal!.querySelector('.layer-settings-pair')).not.toBeNull()
     fireEvent.submit(modal!)
 
-    expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, previousFrames: 1, nextFrames: 1 })
+    expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, showDuringPlayback: false, previousFrames: 1, nextFrames: 1 })
     expect(localStorage.getItem(SKIP_DISABLED_FRAMES_PREFERENCE_KEY)).toBe('false')
   })
 

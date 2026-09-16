@@ -1,3 +1,4 @@
+import { deviceTemporaryTool, deviceSampleUsesSecondary } from './canvas-device-tools'
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
 import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import { createRuntimeLatencyReporter, measureRuntimeStages, runtimeEventStartTime } from '@/core/runtime-diagnostic-stages'
@@ -27,7 +28,6 @@ import {
 } from '@/core/canvas-input'
 import { canvasCursors, canvasToolCursor, selectionCreationCursor } from '@/core/canvas-visuals'
 import { isPressurePointerType } from '@/core/pressure'
-import { isPenBarrelButtonEvent, isPenEraserEvent } from '@/core/canvas-input'
 interface Ports {
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly session: DocumentSession
@@ -281,7 +281,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => measureRuntimeStages('canvas.pointer-down.total', checkpoint => {
-    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down' }))
+    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down', pointerType: event.pointerType }))
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
@@ -289,29 +289,17 @@ export function useCanvasDeviceRouter(ports: Ports) {
     ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
     pressureAdapterRef.current.release(event.pointerId)
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent, event.pointerType === 'mouse')) return
+    const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
+    if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
     const session = ports.liveInputSession()
     const navigationGesture =
       event.button === 1 ||
       (event.button === 0 &&
         (session.animationPlaying || event.ctrlKey || event.metaKey || ports.inputRef.current.spaceHeld || isCanvasViewNavigationTool(session.tool)))
-    if (!navigationGesture && routeCanvasColorSamplingIntent(event.clientX, event.clientY, event.button === 2)) {
+    if (!navigationGesture && routeCanvasColorSamplingIntent(event.clientX, event.clientY, deviceSampleUsesSecondary(event.button, deviceTool))) {
       event.preventDefault()
       event.stopPropagation()
       return
-    }
-    if (event.pointerType === 'pen') {
-      if (ports.tabletPreferences.eraserTipEnabled && isPenEraserEvent(event.nativeEvent)) ports.inputRef.current.setTemporaryTool(event.pointerId, 'eraser')
-      else if (isPenBarrelButtonEvent(event.nativeEvent)) {
-        const tool =
-          ports.tabletPreferences.barrelButtonAction === 'eraser'
-            ? 'eraser'
-            : ports.tabletPreferences.barrelButtonAction === 'eyedropper'
-              ? 'eyedropper'
-              : ports.tabletPreferences.barrelButtonAction === 'hand'
-                ? 'hand'
-                : null
-        if (tool) ports.inputRef.current.setTemporaryTool(event.pointerId, tool)
-      }
     }
     checkpoint('device-routing')
     measurePointerInput('pointer-down', () => ports.handlePointerDown(event))
@@ -323,33 +311,14 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
-    if (event.pointerType === 'pen' && ports.inputRef.current.temporaryToolPointerId === event.pointerId) {
-      const barrelTool = isPenBarrelButtonEvent(event.nativeEvent)
-        ? ports.tabletPreferences.barrelButtonAction === 'eraser'
-          ? 'eraser'
-          : ports.tabletPreferences.barrelButtonAction === 'eyedropper'
-            ? 'eyedropper'
-            : ports.tabletPreferences.barrelButtonAction === 'hand'
-              ? 'hand'
-              : null
-        : null
-      if (barrelTool) ports.inputRef.current.setTemporaryTool(event.pointerId, barrelTool)
-      else if (!isPenEraserEvent(event.nativeEvent)) ports.inputRef.current.clearTemporaryTool(event.pointerId)
-    } else if (event.pointerType === 'pen' && isPenBarrelButtonEvent(event.nativeEvent)) {
-      const barrelTool =
-        ports.tabletPreferences.barrelButtonAction === 'eraser'
-          ? 'eraser'
-          : ports.tabletPreferences.barrelButtonAction === 'eyedropper'
-            ? 'eyedropper'
-            : ports.tabletPreferences.barrelButtonAction === 'hand'
-              ? 'hand'
-              : null
-      if (barrelTool) ports.inputRef.current.setTemporaryTool(event.pointerId, barrelTool)
-    }
+    const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
+    if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
+    else ports.inputRef.current.clearTemporaryTool(event.pointerId)
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
       event.preventDefault()
       return
     }
+    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
     measurePointerInput('pointer-move', () => ports.handlePointerMove(event))
     ports.syncPenCursor(event)
   }
@@ -358,6 +327,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     if (touchNavigation.up(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
+    inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-up', pointerType: event.pointerType }))
     try {
       measurePointerInput('pointer-up', () => ports.handlePointerUp(event))
       ports.syncPenCursor(event)
@@ -373,10 +343,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
     if (event.pointerType === 'touch') {
       if (touchNavigation.up(event, true)) return
     }
-    if (event.pointerType === 'pen') {
-      ports.inputRef.current.clearTemporaryTool(event.pointerId)
-      ports.inputRef.current.clearTemporaryEraser(event.pointerId)
-    }
+    ports.inputRef.current.clearTemporaryTool(event.pointerId)
+    ports.inputRef.current.clearTemporaryEraser(event.pointerId)
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
       event.preventDefault()
       return

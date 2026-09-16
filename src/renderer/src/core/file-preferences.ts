@@ -129,6 +129,7 @@ export interface TabletPreferences {
   twistEnabled: boolean
   eraserTipEnabled: boolean
   barrelButtonAction: TabletBarrelButtonAction
+  rightClickAction: 'background' | 'foreground-eyedropper'
   touchMode: TabletTouchMode
   twoFingerZoomEnabled: boolean
   twoFingerRotateEnabled: boolean
@@ -140,6 +141,7 @@ export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   twistEnabled: false,
   eraserTipEnabled: true,
   barrelButtonAction: 'eraser',
+  rightClickAction: 'background',
   touchMode: 'navigate',
   twoFingerZoomEnabled: true,
   twoFingerRotateEnabled: false
@@ -515,6 +517,7 @@ export const DEFAULT_COLOR_EDITOR_MODES: ColorEditorModePreference[] = [
 const LEGACY_DEFAULT_COLOR_EDITOR_MODES: ColorValueMode[] = ['rgb', 'hsv', 'hsl', 'gray', 'lab', 'cmyk']
 export interface OnionSkinPreferences {
   enabled: boolean
+  showDuringPlayback: boolean
   previousFrames: number
   nextFrames: number
   previousOpacity: number
@@ -524,6 +527,7 @@ export interface OnionSkinPreferences {
 }
 export const DEFAULT_ONION_SKIN_PREFERENCES: OnionSkinPreferences = {
   enabled: false,
+  showDuringPlayback: true,
   previousFrames: 1,
   nextFrames: 1,
   previousOpacity: 35,
@@ -925,6 +929,9 @@ export function parseOnionSkinPreferences(value: string | null): OnionSkinPrefer
     const opacity = (candidate: unknown, fallback: number): number => typeof candidate === 'number' && Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : fallback
     return {
       enabled: parsed.enabled === true,
+      // Existing preferences predate this option. Preserve the new default
+      // rather than treating their missing field as an explicit opt-out.
+      showDuringPlayback: parsed.showDuringPlayback !== false,
       previousFrames: count(parsed.previousFrames, DEFAULT_ONION_SKIN_PREFERENCES.previousFrames),
       nextFrames: count(parsed.nextFrames, DEFAULT_ONION_SKIN_PREFERENCES.nextFrames),
       previousOpacity: opacity(parsed.previousOpacity, DEFAULT_ONION_SKIN_PREFERENCES.previousOpacity),
@@ -1138,6 +1145,7 @@ export function parseTabletPreferences(value: string | null): TabletPreferences 
       twistEnabled: parsed.twistEnabled === true,
       eraserTipEnabled: parsed.eraserTipEnabled !== false,
       barrelButtonAction,
+      rightClickAction: parsed.rightClickAction === 'foreground-eyedropper' ? 'foreground-eyedropper' : 'background',
       touchMode,
       twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
       twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true

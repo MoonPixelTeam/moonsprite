@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document-model'
-import { createDocumentPaneLayout, insertDocumentPane } from '@/core/document-pane-layout'
+import { createDocumentPaneLayout, insertDocumentPane, replaceDocumentPaneDocument } from '@/core/document-pane-layout'
 import { useWorkspace } from '@/store/workspace'
 import { isWorkspaceResizing } from '../workspace-resize'
 import { EditorCanvasHost } from './EditorCanvasHost'
@@ -35,6 +35,25 @@ function mountSplit(direction: 'right' | 'bottom' = 'right') {
   fireEvent.pointerDown(separator, { pointerId: 1, button: 0, clientX: 100, clientY: 100 })
   return { ...view, changed, separator, layout }
 }
+
+it('retains the main panel, sibling canvas and separator DOM when changing main tabs', () => {
+  const documents = ['A', 'B', 'C'].map(name => createDocument(name, 8, 8, 'rgba', false))
+  documents.forEach(document => useWorkspace.getState().addSession(document))
+  const [a, b, c] = documents.map(document => document.id)
+  const layout = insertDocumentPane(createDocumentPaneLayout(a), a, b, 'right')
+  const props = { documentPaneLayout: layout, workspaceDocumentId: a, paneOnlyDocumentIds: [b],
+    onDocumentPaneLayoutChange: vi.fn(), onDocumentPaneMove: vi.fn(), onDocumentPaneReturnToTabs: vi.fn(),
+    shortcutFor: () => '', onToggleMirror: vi.fn(), onOpenAntiAlias: vi.fn(), onOpenPreferences: vi.fn() }
+  const { container, rerender } = render(<EditorCanvasHost {...props} />)
+  const main = container.querySelector(`[data-document-pane-id="${a}"]`)
+  const sibling = container.querySelector(`[data-document-pane-id="${b}"] canvas`)
+  const separator = container.querySelector('[role="separator"]')
+  rerender(<EditorCanvasHost {...props} workspaceDocumentId={c} documentPaneLayout={replaceDocumentPaneDocument(layout, a, c)} />)
+  expect(container.querySelector(`[data-document-pane-id="${c}"]`)).toBe(main)
+  expect(container.querySelector(`[data-document-pane-id="${b}"] canvas`)).toBe(sibling)
+  expect(container.querySelector('[role="separator"]')).toBe(separator)
+  expect(container.querySelector(`[data-document-pane-id="${a}"]`)).toBeNull()
+})
 
 it.each(['right', 'bottom'] as const)('previews a %s split without publishing layout and commits the final release point once', direction => {
   const { changed, layout } = mountSplit(direction)

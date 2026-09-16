@@ -269,12 +269,33 @@ async function resolveExportPath(api: MoonSpriteApi, filePath: string, lifecycle
 }
 
 const saveOperations = new Map<string, Promise<SaveDocumentResult | null>>()
+// Entries live only as long as their result/pending callers. A newer generation
+// must pass through the queue and encode again, including newly recorded frames.
+const savedGenerations = new WeakMap<SaveDocumentResult, {
+  document: SpriteDocument
+  revision: number
+  snapshots: NonNullable<SpriteDocument['timelapse']>['snapshots'] | undefined
+  metadata: string
+}>()
+const saveMetadata = (document: SpriteDocument): string => JSON.stringify([
+  document.name, document.filePath, document.sourceFilePath, document.displaySettings,
+  document.statistics, document.layerPanelState, document.updatedAt,
+  { ...document.timelapse, snapshots: undefined }, document.timelapse?.snapshots
+    ? [document.timelapse.snapshots.length, document.timelapse.snapshots.at(-1)?.id] : null
+])
 
 export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocumentResult | null> {
   const pending = saveOperations.get(request.documentId)
   const operation = (async (): Promise<SaveDocumentResult | null> => {
     if (pending) {
-      try { await pending } catch { /* A failed earlier save must not block the queued retry. */ }
+      try {
+        const result = await pending
+        const saved = result ? savedGenerations.get(result) : undefined
+        const current = request.getDocument()
+        if (!request.saveAs && !request.options && result && saved && current
+          && saved.document === current.document && saved.revision === current.revision
+          && saved.snapshots === current.document.timelapse?.snapshots && saved.metadata === saveMetadata(current.document)) return result
+      } catch { /* A failed earlier save must not block the queued retry. */ }
     }
     const initial = request.getDocument()
     if (!initial) return null
@@ -320,6 +341,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
     }
     const source = request.getDocument()
     if (!source || !filePath) return null
+    const generation = { document: source.document, revision: source.revision, snapshots: source.document.timelapse?.snapshots, metadata: saveMetadata(source.document) }
     request.lifecycle?.onEncodeStart?.()
     if (!imageFormat) {
       const encoded = await encodeProjectSaveAsync(source.document, { onProgress: request.lifecycle?.onEncodeProgress })
@@ -328,7 +350,8 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
       if (encoded.sourcePath && encoded.reusableEntries.length > 0) {
         try {
           await request.api.writeProjectIncremental(filePath, encoded.sourcePath, encoded.data)
-        } catch {
+        } catch (error) {
+          console.warn('MoonSprite incremental save failed; retrying with a complete archive', error)
           const completeArchive = await encodeProjectAsync(source.document)
           await request.api.writeBinaryAtomic(filePath, completeArchive)
           // The fallback has a fresh, complete archive. Register it only after the write succeeds.
@@ -347,7 +370,9 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
         await request.api.writeBinaryAtomic(filePath, data)
       }
     }
-    return { filePath, revision: source.revision, setDocumentFilePath: true }
+    const result = { filePath, revision: source.revision, setDocumentFilePath: true }
+    if (!imageFormat && !request.saveAs && !request.options) savedGenerations.set(result, generation)
+    return result
   })()
   saveOperations.set(request.documentId, operation)
   void operation.finally(() => {

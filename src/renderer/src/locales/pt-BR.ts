@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ptBRMessages = {
+  'preferences.tablet.rightClick': "Clique direito na tela",
+  'preferences.tablet.rightClickHint': "Aplica-se ao mouse e aos botões da caneta associados ao clique direito.",
+  'preferences.tablet.rightClick.background': "Desenhar com a cor de fundo",
+  'preferences.tablet.rightClick.foreground': "Capturar cor de primeiro plano",
+
   'preferences.diagnostics.mode': "Logs de diagnóstico",
   'preferences.diagnostics.off': "Desativado (sem coleta)",
   'preferences.diagnostics.memory': "Apenas coletar (memória)",
@@ -1806,6 +1811,7 @@ export const ptBRMessages = {
   "layers.density.hugeDescription": "Uses O Grandest Pré-visualizaçãos para prioritize Camada e Quadro detalhe.",
   "layers.onionSkin": "Não especificado",
   "layers.onionSkinEnabled": "Ativar Onion Skin",
+  "layers.onionSkinDuringPlayback": "Mostrar Onion Skin durante a reprodução",
   "layers.onionSkinRange": "Quadro Intervalo",
   "layers.onionSkinOpacity": "Overlay Opacidade",
   "layers.onionSkinColors": "Quadro Cores",

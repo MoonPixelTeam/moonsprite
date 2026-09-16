@@ -218,6 +218,7 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
             <div className="layer-settings-section-heading"><h3>{t('layers.onionSkin')}</h3></div>
             <fieldset className="layer-settings-onion" disabled={layerSettings.timelineHidden} aria-disabled={layerSettings.timelineHidden} aria-label={t('layers.onionSkin')}>
               <PreferenceToggle className="layer-settings-toggle layer-onion-toggle" label={t('layers.onionSkinEnabled')} checked={layerSettings.onionSkin.enabled} onChange={(enabled) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, enabled } })} />
+              <PreferenceToggle className="layer-settings-toggle layer-onion-playback-toggle" label={t('layers.onionSkinDuringPlayback')} checked={layerSettings.onionSkin.showDuringPlayback} onChange={(showDuringPlayback) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, showDuringPlayback } })} />
               {layerSettings.onionSkin.enabled && <div className="layer-settings-pair" role="group" aria-label={t('layers.onionSkin')}>
                 <span aria-hidden="true" />
                 <span className="layer-settings-pair-heading">{t('layers.previous')}</span>

@@ -33,7 +33,7 @@ import {
 } from './workspace-animation-mask-slots'
 import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 import { layerContentKind, animationCelContentKind } from './workspace-animation-commands-helpers'
-import { animationCelClipboardSnapshot, animationCelForTarget } from './workspace-animation-cel-conversion'
+import { animationCelClipboardSnapshot, animationCelForTarget, clipAnimationCelToSelection } from './workspace-animation-cel-conversion'
 
 function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: AnimationCelClipboardSnapshot): void {
   const timeline = ensureAnimationDocument(session.document)
@@ -146,7 +146,11 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
         const selectedCels = timeline.cels
           .filter((cel) => keys.has(animationCelKey(cel.layerId, cel.frameId)))
           .sort((left, right) => (layerIndexes.get(left.layerId) ?? 0) - (layerIndexes.get(right.layerId) ?? 0) || (frameIndexes.get(left.frameId) ?? 0) - (frameIndexes.get(right.frameId) ?? 0))
-          .map(cloneAnimationCel)
+          .map((cel) => {
+            if (!session.selection) return cloneAnimationCel(cel)
+            const source = resolveAnimationCel(timeline, cel) ?? cel
+            return clipAnimationCelToSelection({ ...cloneAnimationCel(source), id: cel.id, layerId: cel.layerId, frameId: cel.frameId, opacity: cel.opacity, zIndex: cel.zIndex }, session.selection)
+          })
         const cels = selectedCels.map((cel) => ({ ...cel, linkedCelId: null }))
         session.animationCellClipboard = cels
         session.animationCellClipboardAnchorKey = cels[0] ? animationCelKey(cels[0].layerId, cels[0].frameId) : null

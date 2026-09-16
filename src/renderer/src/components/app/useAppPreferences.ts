@@ -16,10 +16,9 @@ import { applyThemeToDocument } from '@/core/theme'
 import { readStoredString } from '@/core/storage'
 import { applyCursorPreferences } from '@/platform/cursor-theme'
 import { applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
-import type { DocumentSession } from '@/store/workspace'
 type AlignmentPreferenceKey = 'gridAlignmentEnabled' | 'smartAlignmentEnabled' | 'alignmentGuidesVisible'
 
-export function useAppPreferences({ session }: { session: DocumentSession | null }) {
+export function useAppPreferences({ relativeLuminance }: { relativeLuminance: boolean }) {
   const [defaultFileDirectories, setDefaultFileDirectories] = useState({ saveDirectory: 'gallery', exportDirectory: 'exports' })
 
   const [documentSizePresets, setDocumentSizePresets] = useState(() => parseDocumentSizePresets(readStoredString(NEW_DOCUMENT_SIZE_PRESETS_KEY)))
@@ -115,12 +114,12 @@ export function useAppPreferences({ session }: { session: DocumentSession | null
   }, [runtimePreferences.toolIconScale])
 
   useEffect(() => {
-    const enabled = Boolean(session?.view.relativeLuminance && relativeLuminanceScope === 'app')
+    const enabled = Boolean(relativeLuminance && relativeLuminanceScope === 'app')
     document.body.classList.toggle('relative-luminance-app', enabled)
     return () => {
       document.body.classList.remove('relative-luminance-app')
     }
-  }, [relativeLuminanceScope, session?.view.relativeLuminance])
+  }, [relativeLuminanceScope, relativeLuminance])
   return {
     defaultFileDirectories,
     documentSizePresets,

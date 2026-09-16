@@ -1,3 +1,4 @@
+import { withDeviceTemporaryTool } from './canvas-device-tools'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor } from '@/core/shortcuts'
 import {
@@ -66,7 +67,7 @@ export function useCanvasToolSession(ports: Ports) {
     if (!current) return session
     const resolved = sessionWithActiveQuickTool(sharedCanvasSession(current))
     const temporaryTool = ports.inputRef.current.temporaryTool
-    return temporaryTool ? { ...resolved, tool: temporaryTool } : resolved
+    return withDeviceTemporaryTool(resolved, temporaryTool)
   }
 
   const modifierActive = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: keyof typeof shortcuts): boolean =>

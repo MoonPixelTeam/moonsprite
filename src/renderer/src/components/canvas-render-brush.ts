@@ -55,7 +55,7 @@ export function renderCanvasBrush({
   canRenderToolPreview: boolean
   inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
   activeDrag: DragState | null
-  pointerOverCanvas: boolean
+  pointerOverCanvas: () => boolean
   drag: DragState | null
   drawingBrushPreviewEnabled: boolean
   brushPreviewOverlaySupported: (currentSession: import('@/store/workspace-types').DocumentSession) => boolean
@@ -152,11 +152,13 @@ export function renderCanvasBrush({
     canRenderToolPreview &&
     !inputRef.current.spaceHeld &&
     inputRef.current.pointer.visible &&
-    (activeDrag?.kind === 'draw' || pointerOverCanvas) &&
     !inputRef.current.sampling &&
     (!drag || (drag.kind === 'draw' && drawingBrushPreviewEnabled)) &&
     (currentSession.tool === 'pencil' || currentSession.tool === 'eraser') &&
-    !brushPreviewOverlaySupported(currentSession)
+    !brushPreviewOverlaySupported(currentSession) &&
+    // Hit testing can flush browser rendering work. Only pay for it when an
+    // idle brush preview needs it; navigation and active strokes do not.
+    (activeDrag?.kind === 'draw' || pointerOverCanvas())
   ) {
     const pointerLocation = repeatedDocumentPointsAt(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY)
     const point = pointerLocation?.local ?? inputRef.current.pointer.point

@@ -19,7 +19,7 @@ it.each(['solid', 'grain'] as const)('bounds the %s brush backdrop to its render
   const args = {
     currentActiveLayer: getActiveLayer(document), currentSession: session, document,
     brushPreviewMode: 'edge', canRenderToolPreview: true, inputRef: { current: input },
-    activeDrag: null, drag: null, pointerOverCanvas: true, drawingBrushPreviewEnabled: true,
+    activeDrag: null, drag: null, pointerOverCanvas: vi.fn(() => true), drawingBrushPreviewEnabled: true,
     brushPreviewOverlaySupported: () => false, repeatedDocumentPointsAt: () => null,
     tilemapEditSelectionAtPoint: () => undefined, paintSelectionForDrag: () => null,
     snapBrushPointToGrid: (point: unknown) => point, brushPatternOrigin: () => ({ x: 0, y: 0 }),
@@ -31,6 +31,7 @@ it.each(['solid', 'grain'] as const)('bounds the %s brush backdrop to its render
     fillPreviewPixelRects: vi.fn()
   } as unknown as Parameters<typeof renderCanvasBrush>[0]
   renderCanvasBrush(args)
+  expect(args.pointerOverCanvas).toHaveBeenCalledOnce()
   expect(context.stroke).toHaveBeenCalledOnce()
   expect(context.lineTo.mock.calls.length).toBeGreaterThan(0)
   const bounds = vi.mocked(canvasAdaptiveContrast).mock.lastCall?.[1]
@@ -49,5 +50,29 @@ it.each(['solid', 'grain'] as const)('bounds the %s brush backdrop to its render
   input.pointer.point = { x: -100, y: -100 }
   renderCanvasBrush(args)
   expect(canvasAdaptiveContrast).not.toHaveBeenCalled()
+  expect(context.stroke).not.toHaveBeenCalled()
+
+  // View navigation and an independent brush overlay never need this DOM read.
+  input.pointer.point = { x: 200, y: 200 }
+  for (const kind of ['pan', 'zoom-drag', 'rotate-view'] as const) {
+    vi.mocked(args.pointerOverCanvas).mockClear()
+    args.drag = { kind } as NonNullable<typeof args.drag>
+    args.activeDrag = args.drag
+    renderCanvasBrush(args)
+    expect(args.pointerOverCanvas).not.toHaveBeenCalled()
+    expect(context.stroke).not.toHaveBeenCalled()
+  }
+  args.drag = null
+  args.activeDrag = null
+  args.brushPreviewOverlaySupported = () => true
+  renderCanvasBrush(args)
+  expect(args.pointerOverCanvas).not.toHaveBeenCalled()
+  expect(context.stroke).not.toHaveBeenCalled()
+
+  // Retain hit testing for idle previews, including its rejection result.
+  args.brushPreviewOverlaySupported = () => false
+  vi.mocked(args.pointerOverCanvas).mockReturnValue(false)
+  renderCanvasBrush(args)
+  expect(args.pointerOverCanvas).toHaveBeenCalledOnce()
   expect(context.stroke).not.toHaveBeenCalled()
 })

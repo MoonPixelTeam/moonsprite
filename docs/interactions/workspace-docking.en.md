@@ -47,6 +47,13 @@
 - The default workspace cannot be deleted, but it can be modified and reset.
 - An old workspace without `panelVisibility` shows color, palette, layers, and brush library by default and migrates Preview visibility from the old `previewOpen` value.
 
+## Document Split Panes
+
+- Split panes use independent panels and nested splitters, following Aseprite's [`WorkspacePanel::setActiveView` and `dropViewAt`](https://github.com/aseprite/aseprite/blob/main/src/app/ui/workspace_panel.cpp). Layout containers are nested; documents do not own other panes.
+- Switching top tabs changes only the document shown in the main panel. When A and B are split and C is selected, C takes A's region while B and any further splits retain their position, size ratios, and canvas components. Creating, opening, and switching documents through shortcuts follow the same rule.
+- Panel identity is independent of document identity. After switching the main document, docking the previous document, moving panes, and resizing splitters remain available. Clicking a secondary panel activates its document without replacing the main panel's content; views, tools, and undo remain managed by their document sessions.
+- Closing the main document first selects another top-tab document in that panel. Closing the last document in a secondary panel collapses only that empty panel, allowing its neighbor to fill the space without importing an unrelated document. Floating and returning retain the existing explicit move rules. Layout changes never enter document undo history.
+
 ## Project Canvas Snapping
 
 - When dragging a project tab out from the top, hit testing uses only the pointer point. The original canvas is fully divided into top, bottom, left, and right snap regions with no invalid center. A snap indicator must not appear while the pointer remains outside the canvas.

@@ -50,7 +50,6 @@ import {
 } from '@/core/workspace-layout-preferences'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
-import type { DocumentSession } from '@/store/workspace'
 const workspaceDockParentSize = (workArea: HTMLElement | null): { width: number; height: number } => {
   const editorBounds = workArea?.parentElement?.getBoundingClientRect()
   const workBounds = workArea?.getBoundingClientRect()
@@ -110,14 +109,14 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   }
 })
 
-export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, onDocumentPaneLayoutChange }: {
+export function useAppWorkspaceLayout({ homeOpen, documentId, documentPaneLayout, onDocumentPaneLayoutChange }: {
   homeOpen: boolean
-  session: DocumentSession | null
+  documentId: string | null
   documentPaneLayout: DocumentPaneNode | null
   onDocumentPaneLayoutChange: (layout: DocumentPaneNode | null) => void
 }) {
   const { t } = useI18n()
-  const workspace = useWorkspace.getState()
+  const { setMessage, requestDialog } = useWorkspace.getState()
   const builtInDefaultWorkspace = useMemo(() => createBuiltInDefaultWorkspace(t('app.workspace.default')), [t])
 
   const [workspaceSaveOpen, setWorkspaceSaveOpen] = useState(false)
@@ -206,7 +205,7 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
 
   const inspectorWidthRatioRef = useRef(dockSizeRatio(inspectorWidth, initialDockParentSize.width, DEFAULT_INSPECTOR_WIDTH_RATIO))
 
-  useEffect(() => setPopupPanelId(null), [homeOpen, session?.document.id])
+  useEffect(() => setPopupPanelId(null), [homeOpen, documentId])
 
   const updatePanelDock = useCallback((id: WorkspacePanelId, dock: PanelDock): void => {
     setPanelDocks((current) => {
@@ -356,7 +355,7 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
       // The platform adapter skips that work when the saved maximized state already matches.
       await applyAppWindowLayout(state)
     } catch {
-      workspace.setMessage(t('app.workspace.windowRestoreError'))
+      setMessage(t('app.workspace.windowRestoreError'))
     }
   }
 
@@ -405,7 +404,7 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
     writeStoredString(ACTIVE_WORKSPACE_STORAGE_KEY, saved.id)
     try {
       await applySavedMainWindow(layout.mainWindow)
-      if (announce) workspace.setMessage(t('app.workspace.loaded', { name: saved.name }))
+      if (announce) setMessage(t('app.workspace.loaded', { name: saved.name }))
     } finally {
       window.setTimeout(() => {
         workspaceApplyInProgress.current = false
@@ -425,10 +424,10 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
       writeStoredString(ACTIVE_WORKSPACE_STORAGE_KEY, saved.id)
       setWorkspaceSaveName(saved.name)
       await loadSavedWorkspaces()
-      workspace.setMessage(t('app.workspace.saved', { name: saved.name }))
+      setMessage(t('app.workspace.saved', { name: saved.name }))
       setWorkspaceSaveOpen(false)
     } catch (error) {
-      workspace.setMessage(error instanceof Error ? error.message : t('app.workspace.saveError'))
+      setMessage(error instanceof Error ? error.message : t('app.workspace.saveError'))
     } finally {
       setWorkspaceBusy(false)
     }
@@ -437,7 +436,7 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
   const resetCurrentWorkspace = async (): Promise<void> => {
     const current = activeWorkspaceRef.current
     if (!current || current.id !== activeWorkspaceId) {
-      workspace.setMessage(t('app.workspace.loadFirst'))
+      setMessage(t('app.workspace.loadFirst'))
       return
     }
     if (workspaceAutoSaveTimer.current !== null) {
@@ -449,19 +448,19 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
       const reset = await window.moonSprite.saveWorkspace(current.id, current.name, current.initialLayout)
       await applyWorkspaceLayout(reset, false)
       setSavedWorkspaces((items) => items.map((item) => (item.id === reset.id ? reset : item)))
-      workspace.setMessage(t('app.workspace.reset', { name: current.name }))
+      setMessage(t('app.workspace.reset', { name: current.name }))
     } catch (error) {
       workspaceApplyInProgress.current = false
-      workspace.setMessage(error instanceof Error ? error.message : t('app.workspace.resetError'))
+      setMessage(error instanceof Error ? error.message : t('app.workspace.resetError'))
     }
   }
 
   const deleteSavedWorkspace = async (saved: StoredWorkspace): Promise<void> => {
     if (saved.builtIn) {
-      workspace.setMessage(t('app.workspace.builtInDelete'))
+      setMessage(t('app.workspace.builtInDelete'))
       return
     }
-    const choice = await workspace.requestDialog({
+    const choice = await requestDialog({
       title: t('app.workspace.deleteTitle'),
       message: t('app.workspace.deleteMessage', { name: saved.name }),
       detail: t('app.workspace.deleteDetail'),
@@ -478,9 +477,9 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
         await applyWorkspaceLayout(fallback, false)
       }
       await loadSavedWorkspaces()
-      workspace.setMessage(t('app.workspace.deleted', { name: saved.name }))
+      setMessage(t('app.workspace.deleted', { name: saved.name }))
     } catch (error) {
-      workspace.setMessage(error instanceof Error ? error.message : t('app.workspace.deleteError'))
+      setMessage(error instanceof Error ? error.message : t('app.workspace.deleteError'))
     }
   }
 
@@ -522,7 +521,7 @@ export function useAppWorkspaceLayout({ homeOpen, session, documentPaneLayout, o
           setSavedWorkspaces((current) => current.map((item) => (item.id === saved.id ? saved : item)))
         })
         .catch(() => {
-          workspace.setMessage(t('app.workspace.autosaveError'))
+          setMessage(t('app.workspace.autosaveError'))
         })
     }, 320)
     return () => {

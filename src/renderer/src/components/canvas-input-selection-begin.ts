@@ -213,6 +213,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         pointerId: event.pointerId,
         timeStamp: event.timeStamp
       }
+      quickSelectionHandledAtRef.current = null
       const quickSelectionSecondPress =
         !freeTransformActive &&
         event.button === 0 &&

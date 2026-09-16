@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ruRUMessages = {
+  'preferences.tablet.rightClick': "Правая кнопка на холсте",
+  'preferences.tablet.rightClickHint': "Для правой кнопки мыши и кнопок пера, назначенных на правый щелчок.",
+  'preferences.tablet.rightClick.background': "Рисовать фоновым цветом",
+  'preferences.tablet.rightClick.foreground': "Выбрать основной цвет",
+
   'preferences.diagnostics.mode': "Журнал диагностики",
   'preferences.diagnostics.off': "Выключено (без сбора)",
   'preferences.diagnostics.memory': "Только сбор (в памяти)",
@@ -1806,6 +1811,7 @@ export const ruRUMessages = {
   "layers.density.hugeDescription": "Uses Этот Большойst Предпросмотрs в prioritize Слой и Кадр детали.",
   "layers.onionSkin": "Не указано",
   "layers.onionSkinEnabled": "Включить Onion Skin",
+  "layers.onionSkinDuringPlayback": "Показывать Onion Skin при воспроизведении",
   "layers.onionSkinRange": "Кадр Диапазон",
   "layers.onionSkinOpacity": "Overlay Непрозрачность",
   "layers.onionSkinColors": "Кадр Цвета",

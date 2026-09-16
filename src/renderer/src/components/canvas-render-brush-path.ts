@@ -113,7 +113,8 @@ export function createCanvasBrushPath({
       sampleX: number
       sampleY: number
       color: RgbaColor
-    }>
+    }>,
+    preserveOnionSkin?: boolean
   ) => void
   drawPreviewPixel: (
     pixelX: number,
@@ -267,7 +268,7 @@ export function createCanvasBrushPath({
       drawTilemapEditPreviewTiles(previewTilePixels)
       queueTilesetTilePreview(tilemapTileset?.id, previewTilePixels)
     }
-    fillPreviewPixelRects(previewFillRects)
+    fillPreviewPixelRects(previewFillRects, erase)
   }
   const drawShapeContourPreview = (points: Iterable<Point>, color: RgbaColor, selection: SelectionMask | null): void => {
     const drawn = new Set<number>()

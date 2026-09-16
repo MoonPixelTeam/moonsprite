@@ -136,7 +136,7 @@ export function renderCanvasContent({
   let paintedMoveLayerFlash: MoveLayerClickFlash | null = null
   for (const copy of repeatCopies) {
     if (copy.toX <= copy.fromX || copy.toY <= copy.fromY) continue
-    if (!isolatedLayerMask && !timelineHidden && onionSkin.enabled && !currentSession.animationPlaying) {
+    if (!isolatedLayerMask && !timelineHidden && onionSkin.enabled && (!currentSession.animationPlaying || onionSkin.showDuringPlayback)) {
       const timeline = currentSession.document.animation
       if (timeline && timeline.frames.length > 1) {
         const loopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)

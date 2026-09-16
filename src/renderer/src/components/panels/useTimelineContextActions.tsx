@@ -9,7 +9,7 @@ import { RangeField } from '@/components/RangeField'
 import { Tooltip } from '@/components/Tooltip'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { AnimationLoopSection } from '@shared/types-animation'
 import { type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { animationMaskAt, animationMaskSlotAt, resolveAnimationMask } from '@/core/document-model'
@@ -46,7 +46,7 @@ export function useTimelineContextActions({
 }: Options) {
   const { t } = useI18n()
   const store = useWorkspace.getState()
-  const timelinePropertiesHistoryRef = useRef<{ documentId: string; kind: 'frame' | 'cel' } | null>(null)
+  const timelinePropertiesHistoryRef = useRef<{ documentId: string; kind: 'frame' | 'cel'; label: string } | null>(null)
 
   const [animationMenu, setAnimationMenu] = useState<AnimationContextMenu | null>(null)
 
@@ -59,6 +59,32 @@ export function useTimelineContextActions({
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
 
   const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; targetKeys: string[]; opacity: number; zIndex: number } | null>(null)
+
+  const commitPropertiesTransaction = useCallback((kind?: 'frame' | 'cel'): void => {
+    const transaction = timelinePropertiesHistoryRef.current
+    if (!transaction || (kind && transaction.kind !== kind)) return
+    // Clear ownership before publishing a store update to avoid double commits.
+    timelinePropertiesHistoryRef.current = null
+    useWorkspace.getState().commitLayerPanelTransaction(transaction.documentId, transaction.label)
+  }, [])
+
+  const saveFrameProperties = useCallback((): void => {
+    commitPropertiesTransaction('frame')
+    setFrameProperties(null)
+  }, [commitPropertiesTransaction])
+
+  const saveCelProperties = useCallback((): void => {
+    commitPropertiesTransaction('cel')
+    setCelProperties(null)
+  }, [commitPropertiesTransaction])
+
+  useEffect(() => {
+    setFrameProperties(null)
+    setCelProperties(null)
+    // Previews already changed the document; preserve them as one undo step
+    // when the owning panel disappears or switches to a different document.
+    return () => commitPropertiesTransaction()
+  }, [session.document.id, commitPropertiesTransaction])
 
   useLayoutEffect(() => {
     if (!animationMenu || animationMenu.kind === 'playback') return
@@ -123,8 +149,9 @@ export function useTimelineContextActions({
       )
       if (frame) {
         const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+        commitPropertiesTransaction()
         store.beginLayerPanelTransaction(session.document.id)
-        timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
+        timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame', label: t('workspace.history.animationFrameDuration') }
         setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
       }
     })
@@ -134,20 +161,11 @@ export function useTimelineContextActions({
     if (!frame) return
     if (ensureAnimationDocument(session.document).activeFrameId !== frameId) store.setActiveAnimationFrame(frameId)
     const targetFrameIds = session.selectedAnimationFrameIds.includes(frame.id) ? [...session.selectedAnimationFrameIds] : [frame.id]
+    commitPropertiesTransaction()
     store.beginLayerPanelTransaction(session.document.id)
-    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame' }
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'frame', label: t('workspace.history.animationFrameDuration') }
     setFrameProperties({ frameId: frame.id, targetFrameIds, duration: frame.duration })
     setAnimationMenu(null)
-  }
-
-  const saveFrameProperties = (): void => {
-    if (!frameProperties) return
-    const transaction = timelinePropertiesHistoryRef.current
-    if (transaction?.kind === 'frame') {
-      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationFrameDuration'))
-      timelinePropertiesHistoryRef.current = null
-    }
-    setFrameProperties(null)
   }
 
   const previewFrameProperties = (duration: number): void => {
@@ -235,20 +253,11 @@ export function useTimelineContextActions({
     const key = animationCelKey(layerId, frameId)
     const targetKeys = session.selectedAnimationCellKeys.includes(key) ? [...session.selectedAnimationCellKeys] : [key]
     if (!session.selectedAnimationCellKeys.includes(key)) store.selectAnimationCell(key)
+    commitPropertiesTransaction()
     store.beginLayerPanelTransaction(session.document.id)
-    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'cel' }
+    timelinePropertiesHistoryRef.current = { documentId: session.document.id, kind: 'cel', label: t('workspace.history.animationCelProperties') }
     setCelProperties({ layerId, frameId, targetKeys, opacity: Math.round((source.opacity ?? 1) * 100), zIndex: source.zIndex ?? 0 })
     setAnimationMenu(null)
-  }
-
-  const saveCelProperties = (): void => {
-    if (!celProperties) return
-    const transaction = timelinePropertiesHistoryRef.current
-    if (transaction?.kind === 'cel') {
-      store.commitLayerPanelTransaction(transaction.documentId, t('workspace.history.animationCelProperties'))
-      timelinePropertiesHistoryRef.current = null
-    }
-    setCelProperties(null)
   }
 
   const previewCelProperties = (next: NonNullable<typeof celProperties>): void => {
@@ -876,8 +885,8 @@ export function useTimelineContextActions({
   return {
     timelineContextSurfaces,
     setAnimationMenu,
-    setFrameProperties,
-    setCelProperties,
+    closeFrameProperties: saveFrameProperties,
+    closeCelProperties: saveCelProperties,
     selectAnimationFrame,
     selectAnimationEdge,
     selectAnimationStep,

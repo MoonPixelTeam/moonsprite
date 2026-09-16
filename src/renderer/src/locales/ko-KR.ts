@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
+  'preferences.tablet.rightClick': "캔버스 오른쪽 클릭",
+  'preferences.tablet.rightClickHint': "마우스 오른쪽 버튼 및 오른쪽 클릭에 할당된 펜 버튼에 적용됩니다.",
+  'preferences.tablet.rightClick.background': "배경색으로 그리기",
+  'preferences.tablet.rightClick.foreground': "전경색 추출",
+
   'preferences.diagnostics.mode': "진단 로그",
   'preferences.diagnostics.off': "끔 (수집 안 함)",
   'preferences.diagnostics.memory': "수집만 (메모리)",
@@ -1813,6 +1818,7 @@ export const koKRMessages = {
   'layers.density.hugeDescription': '데이터 데이터 데이터 으로 데이터 레이어 및 프레임 데이터.',
   'layers.onionSkin': '데이터 데이터',
   'layers.onionSkinEnabled': '활성화 데이터 데이터',
+  'layers.onionSkinDuringPlayback': '재생 중 어니언 스킨 표시',
   'layers.onionSkinRange': '프레임 범위',
   'layers.onionSkinOpacity': '오버레이 불투명도',
   'layers.onionSkinColors': '프레임 색상',

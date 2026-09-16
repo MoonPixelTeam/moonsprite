@@ -293,8 +293,8 @@ export function LayersPanel({
   })
   const {
     setAnimationMenu,
-    setFrameProperties,
-    setCelProperties,
+    closeFrameProperties,
+    closeCelProperties,
     selectAnimationFrame,
     selectAnimationEdge,
     selectAnimationStep,
@@ -409,8 +409,8 @@ export function LayersPanel({
     const keyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       closeMenus()
-      setFrameProperties(null)
-      setCelProperties(null)
+      closeFrameProperties()
+      closeCelProperties()
     }
     window.addEventListener('pointerdown', closeMenus)
     window.addEventListener('resize', closeMenus)
@@ -461,8 +461,8 @@ export function LayersPanel({
       const target = (event as CustomEvent<{ target?: string }>).detail?.target
       if (!target || target === 'layers') {
         propertyEditorRef.current?.close()
-        setFrameProperties(null)
-        setCelProperties(null)
+        closeFrameProperties()
+        closeCelProperties()
         layerSettingsEditorRef.current?.close()
         setAnimationMenu(null)
         setBackgroundLayerDialogOpen(false)
@@ -884,6 +884,10 @@ export function LayersPanel({
                     title={t('layers.onionSkinEnabled')}
                     aria-label={t('layers.onionSkinEnabled')}
                     aria-pressed={layerSettings.onionSkin.enabled}
+                    // Keep the canvas shortcut target focused after a pointer
+                    // click. Otherwise native button Enter activation toggles
+                    // onion skin instead of letting Enter control playback.
+                    onPointerDown={(event) => event.preventDefault()}
                     onClick={toggleOnionSkin}
                   >
                     <PixelUtilityIcon kind="onion" />

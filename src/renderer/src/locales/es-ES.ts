@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const esESMessages = {
+  'preferences.tablet.rightClick': "Clic derecho en el lienzo",
+  'preferences.tablet.rightClickHint': "Se aplica al ratón y a los botones del lápiz asignados al clic derecho.",
+  'preferences.tablet.rightClick.background': "Dibujar con el color de fondo",
+  'preferences.tablet.rightClick.foreground': "Tomar el color de primer plano",
+
   'preferences.diagnostics.mode': "Registros de diagnóstico",
   'preferences.diagnostics.off': "Desactivado (sin recopilar)",
   'preferences.diagnostics.memory': "Solo recopilar (memoria)",
@@ -1813,6 +1818,7 @@ export const esESMessages = {
   'layers.density.hugeDescription': 'Uses el largest previews a prioritize Capa y frame detail.',
   'layers.onionSkin': 'Onion Skin',
   'layers.onionSkinEnabled': 'Enable Onion Skin',
+  'layers.onionSkinDuringPlayback': 'Show Onion Skin During Playback',
   'layers.onionSkinRange': 'Frame Range',
   'layers.onionSkinOpacity': 'Overlay Opacidad',
   'layers.onionSkinColors': 'Frame Colores',

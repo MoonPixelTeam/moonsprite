@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { resolveFloatingDocumentReturnTarget } from '@/components/app/floating-document-return'
 import {
   detachDocumentPaneWorkspace,
@@ -7,6 +8,7 @@ import {
   moveDocumentPane,
   removeDocumentPane,
   replaceDocumentPaneDocument,
+  selectDocumentPaneMainView,
   splitDocumentPaneFromTab,
   type DocumentPaneDirection,
   type DocumentPaneNode,
@@ -39,8 +41,9 @@ const createFloatingDocumentPosition = (documentId: string, anchor: { x: number;
 }
 
 export function useAppDocumentPanes({ setHomeOpen }: { setHomeOpen: (open: boolean) => void }) {
+  useWorkspace(useShallow(state => [state.activeId, ...state.sessions.map(session => session.document.id)]))
   const workspace = useWorkspace.getState()
-  const [documentPaneLayout, setDocumentPaneLayout] = useState<DocumentPaneNode | null>(null)
+  const [storedDocumentPaneLayout, setDocumentPaneLayout] = useState<DocumentPaneNode | null>(null)
 
   const [paneOnlyDocumentIds, setPaneOnlyDocumentIds] = useState<string[]>([])
 
@@ -55,6 +58,14 @@ export function useAppDocumentPanes({ setHomeOpen }: { setHomeOpen: (open: boole
   const floatingDocumentIds = useMemo(() => floatingDocuments.map((item) => item.documentId), [floatingDocuments])
 
   const hiddenDocumentIds = useMemo(() => [...new Set([...paneOnlyDocumentIds, ...floatingDocumentIds])], [floatingDocumentIds, paneOnlyDocumentIds])
+
+  // Reconcile before committing children, so switching tabs never renders a
+  // temporary unsplit workspace or unmounts the other panels' canvases.
+  const documentPaneLayout = workspaceDocumentId && !hiddenDocumentIds.includes(workspaceDocumentId)
+    && workspace.sessions.some(session => session.document.id === workspaceDocumentId)
+    ? selectDocumentPaneMainView(storedDocumentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds)
+    : storedDocumentPaneLayout
+  if (documentPaneLayout !== storedDocumentPaneLayout) setDocumentPaneLayout(documentPaneLayout)
 
   const visibleDocumentPaneLayout = useMemo(() => {
     if (!workspaceDocumentId) return null
@@ -80,7 +91,9 @@ export function useAppDocumentPanes({ setHomeOpen }: { setHomeOpen: (open: boole
       let next: DocumentPaneNode | null = current
       for (const documentId of closedIds) {
         if (!next || !documentPaneContains(next, documentId)) continue
-        const replacementId = replacementCandidates.find((candidate) => !documentPaneContains(next!, candidate))
+        const replacementId = documentId === closedMainDocumentId
+          ? replacementCandidates.find((candidate) => !documentPaneContains(next!, candidate))
+          : undefined
         next = replacementId ? replaceDocumentPaneDocument(next, documentId, replacementId) : (removeDocumentPane(next, documentId) ?? null)
       }
       return next?.kind === 'split' ? next : null
@@ -128,14 +141,6 @@ export function useAppDocumentPanes({ setHomeOpen }: { setHomeOpen: (open: boole
   }, [floatingDocumentIds, paneOnlyDocumentIds, workspace.activeId, workspace.sessions])
 
   const activateDocumentTab = useCallback((documentId: string): void => {
-    startTransition(() => {
-      setHomeOpen(false)
-      setWorkspaceDocumentId(documentId)
-      useWorkspace.getState().setActive(documentId)
-    })
-  }, [])
-
-  const contextActivateDocumentTab = useCallback((documentId: string): void => {
     startTransition(() => {
       setHomeOpen(false)
       setWorkspaceDocumentId(documentId)
@@ -276,7 +281,7 @@ export function useAppDocumentPanes({ setHomeOpen }: { setHomeOpen: (open: boole
     hiddenDocumentIds,
     visibleDocumentPaneLayout,
     activateDocumentTab,
-    contextActivateDocumentTab,
+    contextActivateDocumentTab: activateDocumentTab,
     splitDocumentFromTab,
     updateDocumentPaneLayout,
     moveDocumentPaneView,

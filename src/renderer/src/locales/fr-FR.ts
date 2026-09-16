@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const frFRMessages = {
+  'preferences.tablet.rightClick': "Clic droit sur le canevas",
+  'preferences.tablet.rightClickHint': "Concerne la souris et les boutons du stylet associés au clic droit.",
+  'preferences.tablet.rightClick.background': "Dessiner avec la couleur de fond",
+  'preferences.tablet.rightClick.foreground': "Prélever la couleur de premier plan",
+
   'preferences.diagnostics.mode': "Journaux de diagnostic",
   'preferences.diagnostics.off': "Désactivé (aucune collecte)",
   'preferences.diagnostics.memory': "Collecte seule (mémoire)",
@@ -1813,6 +1818,7 @@ export const frFRMessages = {
   'layers.density.hugeDescription': 'Uses le largest previews à prioritize Calque et frame detail.',
   'layers.onionSkin': 'Onion Skin',
   'layers.onionSkinEnabled': 'Enable Onion Skin',
+  'layers.onionSkinDuringPlayback': 'Show Onion Skin During Playback',
   'layers.onionSkinRange': 'Frame Range',
   'layers.onionSkinOpacity': 'Overlay Opacité',
   'layers.onionSkinColors': 'Frame Couleurs',

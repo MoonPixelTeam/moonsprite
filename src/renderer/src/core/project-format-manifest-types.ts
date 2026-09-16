@@ -241,6 +241,12 @@ export interface ProjectArchiveResource {
 export interface ProjectArchiveBuild {
   files: Record<string, Uint8Array>
   resources: ProjectArchiveResource[]
+  preview?: ProjectPreviewCache
+}
+
+export interface ProjectPreviewCache {
+  key: string
+  data: Uint8Array
 }
 
 export interface ProjectArchiveReuseEntry {
@@ -253,6 +259,7 @@ export interface ProjectArchiveReuseEntry {
 }
 
 export interface ProjectSaveBaseline {
+  preview?: ProjectPreviewCache
   sourcePath: string
   schemaVersion: number
   resources: Map<
@@ -269,6 +276,7 @@ export interface ProjectSaveBaseline {
 
 interface ProjectSaveBaselineCandidate {
   resources: Array<ProjectArchiveResource & { crc32: number }>
+  preview?: ProjectPreviewCache
 }
 
 export interface EncodedProjectSave {
@@ -279,6 +287,7 @@ export interface EncodedProjectSave {
 }
 
 interface SerializedProjectSaveBaseline {
+  preview?: ProjectPreviewCache
   sourcePath: string
   schemaVersion: number
   resources: Array<

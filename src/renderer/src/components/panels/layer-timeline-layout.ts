@@ -29,14 +29,34 @@ export const layoutAnimationLoopSections = (timeline: AnimationTimeline): { item
     laneItems[lane].push(candidate)
   }
   const items = candidates.map(({ section, startIndex, span, lane }) => ({ section, startIndex, span, lane, laneSpan: 1 }))
+  const laneCount = items.reduce((count, item) => Math.max(count, item.lane + 1), 0)
+  const parentIndexes = new Set(candidates.map((candidate) => candidate.parentIndex).filter((index) => index >= 0))
+  const leafIndexes = candidates
+    .map((_, index) => index)
+    .filter((index) => !parentIndexes.has(index))
+  const placedLeafIndexes = new Set<number>()
+  for (const index of leafIndexes) {
+    const parentLane = candidates[index].parentIndex >= 0 ? items[candidates[index].parentIndex].lane : -1
+    for (let lane = laneCount - 1; lane > parentLane; lane -= 1) {
+      const blocked = items.some((item, itemIndex) =>
+        itemIndex !== index &&
+        (parentIndexes.has(itemIndex) || placedLeafIndexes.has(itemIndex)) &&
+        item.lane === lane &&
+        overlaps(candidates[itemIndex], candidates[index])
+      )
+      if (blocked) continue
+      items[index].lane = lane
+      break
+    }
+    placedLeafIndexes.add(index)
+  }
   for (let index = 0; index < candidates.length; index += 1) {
     let parentIndex = candidates[index].parentIndex
     while (parentIndex >= 0) {
-      items[parentIndex].laneSpan = Math.max(items[parentIndex].laneSpan, candidates[index].lane - candidates[parentIndex].lane + 1)
+      items[parentIndex].laneSpan = Math.max(items[parentIndex].laneSpan, items[index].lane - items[parentIndex].lane + 1)
       parentIndex = candidates[parentIndex].parentIndex
     }
   }
-  const laneCount = items.reduce((count, item) => Math.max(count, item.lane + 1), 0)
   for (const item of items) item.laneSpan = Math.max(item.laneSpan, laneCount - item.lane)
   return { items, laneCount }
 }

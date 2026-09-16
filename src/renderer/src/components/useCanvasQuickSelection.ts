@@ -40,7 +40,9 @@ export function useCanvasQuickSelection(ports: Ports) {
     }
     if (ports.session.tool !== 'selection' || ports.session.selectionKind !== 'rectangle') return
     const handledAt = quickSelectionHandledAtRef.current
-    if (handledAt !== null && event.timeStamp - handledAt >= 0 && event.timeStamp - handledAt < 1000) {
+    // dblclick arrives after pointerup, even when its second press was held
+    // for a long drag. The next press resets this gesture-owned marker.
+    if (handledAt !== null) {
       quickSelectionHandledAtRef.current = null
       event.preventDefault()
       return

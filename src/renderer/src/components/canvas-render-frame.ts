@@ -702,7 +702,6 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const document = currentSession.document
   const view = liveViewRef.current
   const activeDrag = inputRef.current.drag
-  const pointerOverCanvas = pointerIsOverCanvas(canvas, inputRef.current.pointer)
   const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
   const smoothPixelSampling = pixelSamplingMode(view.zoom) === 'smooth'
   // View gestures (zoom, pan, and rotate) redraw the cached bitmap every
@@ -864,6 +863,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     deviceScale,
     repeatCopies,
     checkerboard,
+    onionSkin,
+    timelineHidden,
     context
   })
   const { pendingTilesetTilePreview, queueTilesetTilePreview, drawTilemapEditPreviewTiles } = createCanvasTilePreview({
@@ -1130,7 +1131,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canRenderToolPreview,
     inputRef,
     activeDrag,
-    pointerOverCanvas,
+    pointerOverCanvas: () => pointerIsOverCanvas(canvas, inputRef.current.pointer),
     drag,
     drawingBrushPreviewEnabled,
     brushPreviewOverlaySupported,

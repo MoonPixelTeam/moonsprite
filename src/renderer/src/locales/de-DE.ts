@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const deDEMessages = {
+  'preferences.tablet.rightClick': "Rechtsklick auf der Leinwand",
+  'preferences.tablet.rightClickHint': "Gilt für die rechte Maustaste und entsprechend belegte Stifttasten.",
+  'preferences.tablet.rightClick.background': "Mit Hintergrundfarbe zeichnen",
+  'preferences.tablet.rightClick.foreground': "Vordergrundfarbe aufnehmen",
+
   'preferences.diagnostics.mode': "Diagnoseprotokolle",
   'preferences.diagnostics.off': "Aus (keine Erfassung)",
   'preferences.diagnostics.memory': "Nur erfassen (Arbeitsspeicher)",
@@ -1806,6 +1811,7 @@ export const deDEMessages = {
   "layers.density.hugeDescription": "Uses Die Großst Vorschaus zu prioritize Ebene und Frame Detail.",
   "layers.onionSkin": "Nicht angegeben",
   "layers.onionSkinEnabled": "Aktivieren Onion Skin",
+  "layers.onionSkinDuringPlayback": "Onion Skin während der Wiedergabe anzeigen",
   "layers.onionSkinRange": "Frame Bereich",
   "layers.onionSkinOpacity": "Overlay Deckkraft",
   "layers.onionSkinColors": "Frame Farben",

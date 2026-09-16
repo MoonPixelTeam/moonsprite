@@ -30,7 +30,8 @@ import {
   type ProjectManifest
 } from './project-format-manifest-types'
 import { encodeRuntimeRasterData, encodeSparseRasterData, toU8 } from './project-format-raster'
-import { manifestTilemapFromData, manifestFreeTilesFromData, encodeProjectPreview } from './project-format-manifest'
+import { manifestTilemapFromData, manifestFreeTilesFromData } from './project-format-manifest'
+import { createSavedProjectPreview } from './project-save-preview'
 
 const rasterGeometryMatchesSurface = (raster: ProjectArchiveResource['raster'], surface: RasterLayer | AnimationCelSurface): boolean =>
   Boolean(raster && raster.width === surface.width && raster.height === surface.height && raster.offsetX === surface.offsetX && raster.offsetY === surface.offsetY)
@@ -400,8 +401,9 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
     }
   }
   files['manifest.json'] = strToU8(JSON.stringify(manifest))
-  if (options.includePreview !== false) files['preview.png'] = encodeProjectPreview(document)
-  return { files, resources }
+  const preview = options.includePreview !== false ? createSavedProjectPreview(document, manifest, files, baseline) : undefined
+  if (preview) files['preview.png'] = preview.data
+  return { files, resources, preview }
 }
 
 export const createProjectZipEntries = (files: Record<string, Uint8Array>): Zippable => {

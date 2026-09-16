@@ -13,8 +13,16 @@ import { deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 import { transparencyColorAt } from '@/core/canvas-visuals'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
 import { tileRepeatMappedPointForCopies, tileRepeatPreviewPlacements } from '@/core/tilemap'
+import { animationLoopSectionAtFrame } from '@/core/animation-loop-sections'
+import { createOnionSkinPointSampler, onionSkinFrameRefs } from '@/core/onion-skin'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
+
+export const canvasPreviewDisplayColor = (color: RgbaColor, relativeLuminance: boolean, onionColor: RgbaColor | null = null): RgbaColor => {
+  const foreground = relativeLuminance ? relativeLuminanceColor(color) : color
+  return onionColor ? blendOver(onionColor, foreground) : foreground
+}
+
 export function createCanvasPreviewPixels({
   currentSession,
   compositePointSamplerRef,
@@ -28,6 +36,8 @@ export function createCanvasPreviewPixels({
   deviceScale,
   repeatCopies,
   checkerboard,
+  onionSkin,
+  timelineHidden,
   context
 }: {
   currentSession: DocumentSession
@@ -60,6 +70,8 @@ export function createCanvasPreviewPixels({
     toY: number
   }[]
   checkerboard: import('@/core/file-preferences').CheckerboardPreferences
+  onionSkin: import('@/core/file-preferences').OnionSkinPreferences
+  timelineHidden: boolean
   context: RasterContext2D
 }) {
   const activeLayer = activePaintLayer(currentSession)
@@ -80,6 +92,20 @@ export function createCanvasPreviewPixels({
       : (createNormalCompositePointReplacementSampler(document, activeLayer.id) ?? createCompositePointReplacementSampler(document, activeLayer.id))
   if (compositePointReplacementSampler !== cachedReplacementSampler?.sampler) {
     compositeReplacementSamplerRef.current = { document, revision: currentSession.revision, layerId: activeLayer.id, sampler: compositePointReplacementSampler }
+  }
+  let onionSkinPointSampler: ((x: number, y: number) => RgbaColor) | null | undefined
+  const sampleOnionSkinForPreview = (x: number, y: number): RgbaColor | null => {
+    if (onionSkinPointSampler === undefined) {
+      const timeline = document.animation
+      if (isolatedLayerMask || timelineHidden || !onionSkin.enabled || (currentSession.animationPlaying && !onionSkin.showDuringPlayback) || !timeline || timeline.frames.length <= 1) {
+        onionSkinPointSampler = null
+      } else {
+        const loopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
+        const refs = onionSkinFrameRefs(timeline, onionSkin.previousFrames, onionSkin.nextFrames, loopSection)
+        onionSkinPointSampler = refs.length > 0 ? createOnionSkinPointSampler(document, refs, onionSkin) : null
+      }
+    }
+    return onionSkinPointSampler?.(x, y) ?? null
   }
   const sampleCompositeForPreview = (x: number, y: number): RgbaColor => {
     if (isolatedLayerMask) return readLayerMaskDisplayColorAt(isolatedLayerMask, x, y)
@@ -138,10 +164,11 @@ export function createCanvasPreviewPixels({
     pixelRect: { x: number; y: number; width: number; height: number },
     sampleX: number,
     sampleY: number,
-    color: RgbaColor
+    color: RgbaColor,
+    onionColor: RgbaColor | null = null
   ): void => {
     const transparency = transparencyColorAt(sampleX, sampleY, checkerboard)
-    const displayColor = view.relativeLuminance ? relativeLuminanceColor(color) : color
+    const displayColor = canvasPreviewDisplayColor(color, Boolean(view.relativeLuminance), onionColor)
     context.fillStyle = `rgb(${transparency.r} ${transparency.g} ${transparency.b})`
     context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
     if (displayColor.a > 0) {
@@ -156,11 +183,15 @@ export function createCanvasPreviewPixels({
    * sharing a path lets the rasterizer resolve touching edges as one region.
    */
   const fillPreviewPixelRects = (
-    entries: ReadonlyArray<{ pixelRect: { x: number; y: number; width: number; height: number }; sampleX: number; sampleY: number; color: RgbaColor }>
+    entries: ReadonlyArray<{ pixelRect: { x: number; y: number; width: number; height: number }; sampleX: number; sampleY: number; color: RgbaColor }>,
+    preserveOnionSkin = false
   ): void => {
     if (entries.length === 0) return
     if (typeof Path2D === 'undefined') {
-      for (const entry of entries) fillPreviewPixelRect(entry.pixelRect, entry.sampleX, entry.sampleY, entry.color)
+      for (const entry of entries) {
+        const onionColor = preserveOnionSkin ? sampleOnionSkinForPreview(entry.sampleX, entry.sampleY) : null
+        fillPreviewPixelRect(entry.pixelRect, entry.sampleX, entry.sampleY, entry.color, onionColor)
+      }
       return
     }
     const backgrounds = new Map<string, Path2D>()
@@ -176,7 +207,8 @@ export function createCanvasPreviewPixels({
     for (const entry of entries) {
       const transparency = transparencyColorAt(entry.sampleX, entry.sampleY, checkerboard)
       addRect(backgrounds, `rgb(${transparency.r} ${transparency.g} ${transparency.b})`, entry.pixelRect)
-      const displayColor = view.relativeLuminance ? relativeLuminanceColor(entry.color) : entry.color
+      const onionColor = preserveOnionSkin ? sampleOnionSkinForPreview(entry.sampleX, entry.sampleY) : null
+      const displayColor = canvasPreviewDisplayColor(entry.color, Boolean(view.relativeLuminance), onionColor)
       if (displayColor.a > 0) {
         addRect(foregrounds, `rgb(${displayColor.r} ${displayColor.g} ${displayColor.b} / ${displayColor.a / 255})`, entry.pixelRect)
       }

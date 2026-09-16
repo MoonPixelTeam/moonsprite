@@ -1,7 +1,6 @@
-import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
-import { compositeAnimationFrameRegion, tintOnionSkinPixels, type OnionSkinFrameRef } from '@/core/onion-skin'
+import { compositeAnimationFrameRegion, tintOnionSkinPixels, type OnionSkinFrameRef, type OnionSkinStyle } from '@/core/onion-skin'
 import { deviceAlignedCanvasRect, type CanvasDeviceScaleInput } from '@/core/canvas-render-plan'
 import type { RasterContext2D } from './canvas-selection-renderer'
 
@@ -31,12 +30,7 @@ interface OnionSkinFrameCache {
   region?: OnionSkinRegion
 }
 
-export interface OnionSkinCompositeStyle {
-  previousColor: RgbaColor
-  nextColor: RgbaColor
-  previousOpacity: number
-  nextOpacity: number
-}
+export type OnionSkinCompositeStyle = OnionSkinStyle
 
 interface OnionSkinInvalidation {
   kind: 'full' | 'region'

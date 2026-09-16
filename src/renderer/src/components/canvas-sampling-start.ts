@@ -1,3 +1,4 @@
+import { deviceSampleUsesSecondary } from './canvas-device-tools'
 import type { FreeTileInstance, TilemapCell } from '@shared/types-tiles'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerMaskDisplayColorAt } from '@/core/document-model'
@@ -74,12 +75,13 @@ export function createCanvasSamplingStart(ports: {
       })
     }
     const sampleAtPoint = (temporarySampling = true): void => {
+      temporarySampling ||= inputRef.current.temporaryTool === 'eyedropper'
       const session = readSession()
       // Sampling owns the pointer overlay. Prevent a stale rotate indicator
       // from rendering underneath the eyedropper magnifier/cursor.
       updateRotationIndicator(liveViewRef.current.rotation, false)
       if (point.x < 0 || point.y < 0 || point.x >= session.document.width || point.y >= session.document.height) return
-      const secondary = event.button === 2
+      const secondary = deviceSampleUsesSecondary(event.button, inputRef.current.temporaryTool)
       const sampledFreeTile = freeTileAtPoint(point)
       if (sampledFreeTile !== undefined) {
         if (sampledFreeTile) {

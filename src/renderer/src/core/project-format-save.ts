@@ -181,6 +181,7 @@ const createProjectEncodeWorkerPayload = (document: SpriteDocument, options: Pro
       ? {
           sourcePath: baseline.sourcePath,
           schemaVersion: baseline.schemaVersion,
+          preview: baseline.preview,
           resources: [...baseline.resources.entries()]
         }
       : undefined,
@@ -198,10 +199,11 @@ export function encodeProjectWorkerPayload(payload: ProjectEncodeWorkerPayload):
     ? {
         sourcePath: payload.baseline.sourcePath,
         schemaVersion: payload.baseline.schemaVersion,
+        preview: payload.baseline.preview,
         resources: new Map(payload.baseline.resources)
       }
     : undefined
-  const { files, resources } = createProjectArchiveFiles(
+  const { files, resources, preview } = createProjectArchiveFiles(
     payload.document,
     {
       includePreview: payload.includePreview,
@@ -257,7 +259,7 @@ export function encodeProjectWorkerPayload(payload: ProjectEncodeWorkerPayload):
     data,
     sourcePath: baseline?.sourcePath ?? null,
     reusableEntries,
-    baseline: { resources: baselineResources }
+    baseline: { resources: baselineResources, preview }
   }
 }
 
@@ -424,6 +426,7 @@ export function acceptProjectSaveBaseline(document: SpriteDocument, filePath: st
   projectSaveBaselines.set(document, {
     sourcePath: filePath,
     schemaVersion: PROJECT_SCHEMA_VERSION,
+    preview: encoded.baseline.preview,
     resources
   })
 }
