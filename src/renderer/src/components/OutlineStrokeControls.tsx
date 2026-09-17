@@ -1,4 +1,4 @@
-import type { OutlineDirection, OutlineDirections, OutlineKernel, OutlinePosition } from '@shared/types'
+import type { OutlineDirection, OutlineDirections, OutlineKernel, OutlinePosition } from '@shared/types-selection'
 import { outlineDirectionsForKernel, outlineDirectionsMatchKernel } from '@/core/outline-settings'
 import { RangeField } from './RangeField'
 import { SegmentedControl } from './SegmentedControl'

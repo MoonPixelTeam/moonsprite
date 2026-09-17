@@ -21,6 +21,9 @@
 - D2：一般 Core、Store、Shared 和快捷键；稳定后运行一次 `pnpm check:dev -- <文件...>`。
 - D3：坐标、选区、撤销、文件格式、持久化、平台安全、共享核心算法，以及画布、工程 IO、恢复和解码路径；运行 `pnpm check:dev -- --risk=high <源文件...> <定向测试...>`。
 - 验证脚本会自动识别 D3 路径；JavaScript/TypeScript D3 必须带一个真实定向测试（`.test`、`.spec` 或 `.bench`），Rust D3 默认运行对应 `cargo check`，显式传入 `src-tauri/**/tests/*.rs` 时改跑对应 `cargo test --test`，不得附带无关 JS 测试。
+- `pnpm check:dev` 的验证范围会与 git 实际改动交叉校验：已被改动的高风险文件如果不在传入清单里，检查直接失败。不要靠少报文件缩小检查范围。
+- Rust 侧受 `scripts/rust-risk-budget.json` 的风险额度约束：每个文件的 panic（`.unwrap()` / `.expect(`）、静默吞错（`let _ =`）与 `unsafe` 计数不得上升，未登记文件不得出现计数，`src-tauri/src` 内零容忍 `panic!`/`todo!`/`unimplemented!`/`unreachable!`。新增 Rust 平台代码要返回可展示错误，不要 panic。
+- 中英文档配对受 `scripts/check-doc-pairs.mjs` 约束：英文副本必须与中文正本逐级标题数一致并互相链接；尚未同步的配对登记在 `scripts/doc-pair-budget.json`，登记表只应缩小。英文镜像不再保留的文档，要同时去掉中文正本顶部的 English 跳转链接。
 - 性能审计是昂贵入口：`check:performance` 和 `check:performance:release` 必须显式传文件；只有明确全仓库审计时才传 `--all`，不得把省略文件当作全量。
 - 普通开发不运行维护门禁、全量测试、性能矩阵、完整构建、浏览器自动验收或桌面回归。出现确定错误时只重跑受影响的检查。
 - 超大源码文件先用 `rg` 定位符号，再按行段读取；不要一次性加载整个 `CanvasStage.tsx`、`workspace.ts` 或完整历史日志。
@@ -33,6 +36,7 @@
 - `encodeProject`/`decodeProject` 只属于文件和恢复边界，不用于撤销快照；一次打开只完整解码一次，异步工程任务不得先在 UI 线程复制整份文档。
 - 保存和恢复错误必须进入可观测通道；禁止空 `catch` 静默吞错。
 - `core/` 不依赖 React、components、platform 或 store；`store/` 不反向依赖 components；Tauri API 只从 `platform/` 访问；渲染键不得序列化像素或整份文档。
+- 架构规则必须仍能在真实源码中命中：`guard` 用 `expiresAt: permanent`，`migration` 必须带到期版本；规则守护的形态消失时必须退役或替换，不得保留命中面为 0 的永久绿灯。
 - UI 优先复用组件库和像素图标，容器保持直角，主操作色为 `#2979FF`。
 - 不强制推送，不提交生成物、安装包、用户工程、恢复文件或密钥。
 

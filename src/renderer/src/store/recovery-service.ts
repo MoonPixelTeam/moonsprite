@@ -1,8 +1,11 @@
-import type { MoonSpriteApi, RecoveryRecord, SpriteDocument } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { RecoveryRecord } from '@shared/types-files'
+import type { SpriteDocument } from '@shared/types-document'
 import { clearProjectSaveBaseline, encodeProjectAsync } from '@/core/project-format'
 import { decodeDocumentFileAsync } from '@/core/document-files'
 import { translateCurrent as tr } from '@/core/localization'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
+import { prepareLocalTimelapseSave } from './timelapse-library-service'
 
 export interface RecoveryAutosaveTarget {
   id: string
@@ -52,6 +55,7 @@ export class RecoveryService {
       for (const [index, { id, document }] of targets.entries()) {
         try {
           diagnostic?.mark('encode-start', { index, width: document.width, height: document.height, layers: document.layers.length })
+          await prepareLocalTimelapseSave(document, api)
           // Recovery only needs editable project data. Serial processing prevents
           // multiple large documents from being cloned and compressed together.
           const data = await encodeProjectAsync(document, { includePreview: false, compressionLevel: 1 })

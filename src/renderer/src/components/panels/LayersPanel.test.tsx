@@ -1,6 +1,6 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer } from '@/core/document'
 import { addBlankAnimationFrame, animationCelAt, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
@@ -38,6 +38,20 @@ function ConnectedLayersPanel() {
 }
 
 describe('LayersPanel Free Tile instances', () => {
+  it('does not highlight a child cel during playback when its folder is active', () => {
+    const document = createDocument('folder playback focus', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const group = { id: 'playback-folder', name: 'Folder', visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups.push(group)
+    layer.groupId = group.id
+    layer.pixels.set([255, 0, 0, 255])
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectGroup(group.id)
+    useWorkspace.getState().setAnimationPlaying(true)
+    const { container } = render(<ConnectedLayersPanel />)
+    expect(container.querySelector('.cel-content-marker.selection-marker')).toBeNull()
+    expect(useWorkspace.getState().sessions[0].selectedGroupId).toBe(group.id)
+  })
   it('keeps the instance layout control out of the general layer settings', () => {
     const document = createDocument('layer settings without instance layout', 8, 8, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -217,6 +231,18 @@ describe('LayersPanel Free Tile instances', () => {
 })
 
 describe('LayersPanel animation', () => {
+  it('does not focus the onion-skin toggle after a pointer click', () => {
+    const document = createDocument('onion keyboard focus', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+
+    const onionToggle = screen.getByRole('button', { name: '启用洋葱皮' })
+    fireEvent.pointerDown(onionToggle)
+    fireEvent.click(onionToggle)
+
+    expect(onionToggle).not.toHaveFocus()
+  })
+
   it('uses compact density by default', () => {
     const document = createDocument('default compact density', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
@@ -406,12 +432,12 @@ describe('LayersPanel animation', () => {
   it('renders a contained loop section inside its parent bracket', () => {
     const document = createDocument('nested timeline loop sections', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
-    for (let index = 0; index < 5; index += 1) useWorkspace.getState().duplicateAnimationFrame()
+    for (let index = 0; index < 7; index += 1) useWorkspace.getState().duplicateAnimationFrame()
     const timeline = ensureAnimationDocument(document)
     const parentId = useWorkspace.getState().createAnimationLoopSection({
       name: '父循环节',
       startFrameId: timeline.frames[0].id,
-      endFrameId: timeline.frames[4].id,
+      endFrameId: timeline.frames[6].id,
       direction: 'forward',
       repeatCount: null
     })!
@@ -422,10 +448,24 @@ describe('LayersPanel animation', () => {
       direction: 'forward',
       repeatCount: null
     })!
+    const crossingChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: '交叉子循环节',
+      startFrameId: timeline.frames[2].id,
+      endFrameId: timeline.frames[4].id,
+      direction: 'forward',
+      repeatCount: null
+    })!
+    const trailingChildId = useWorkspace.getState().createAnimationLoopSection({
+      name: '后续子循环节',
+      startFrameId: timeline.frames[5].id,
+      endFrameId: timeline.frames[6].id,
+      direction: 'forward',
+      repeatCount: null
+    })!
     const independentId = useWorkspace.getState().createAnimationLoopSection({
       name: '独立循环节',
-      startFrameId: timeline.frames[5].id,
-      endFrameId: timeline.frames[5].id,
+      startFrameId: timeline.frames[7].id,
+      endFrameId: timeline.frames[7].id,
       direction: 'forward',
       repeatCount: null
     })!
@@ -433,10 +473,14 @@ describe('LayersPanel animation', () => {
 
     const parent = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${parentId}"]`)!
     const child = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${childId}"]`)!
+    const crossingChild = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${crossingChildId}"]`)!
+    const trailingChild = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${trailingChildId}"]`)!
     const independent = container.querySelector<HTMLElement>(`[data-animation-loop-section-id="${independentId}"]`)!
-    expect(parent.style.gridRow).toBe('1 / span 2')
-    expect(child.style.gridRow).toBe('2 / span 1')
-    expect(independent.style.gridRow).toBe('1 / span 2')
+    expect(parent.style.gridRow).toBe('1 / span 3')
+    expect(child.style.gridRow).toBe('3 / span 1')
+    expect(crossingChild.style.gridRow).toBe('2 / span 2')
+    expect(trailingChild.style.gridRow).toBe('3 / span 1')
+    expect(independent.style.gridRow).toBe('3 / span 1')
     expect(Number(child.style.zIndex)).toBeGreaterThan(Number(parent.style.zIndex))
   })
 
@@ -662,16 +706,154 @@ describe('LayersPanel animation', () => {
     expect(panel).toHaveClass('layer-density-huge')
     expect(container.querySelector('.cel-thumbnail')).toBeInTheDocument()
 
+    // Shift is the horizontal axis; Alt only accelerates it.
     const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(3_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
     list.scrollLeft = 0
-    fireEvent.wheel(panel, { altKey: true, deltaY: 120 })
+    fireEvent.wheel(panel, { altKey: true, shiftKey: true, deltaY: 120 })
     expect(list.scrollLeft).toBeGreaterThan(0)
+    scrollWidth.mockRestore()
+    clientWidth.mockRestore()
 
     const separator = screen.getByRole('separator', { name: '调整图层名称区域宽度' })
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
     expect(localStorage.getItem('moonsprite.layers.label-width')).toBe('202')
   })
 
+  it('keeps each wheel gesture on one axis and one action', () => {
+    const document = createDocument('wheel gestures', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const wheel = (init: { deltaX?: number; deltaY?: number; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+      const event = createEvent.wheel(panel, { cancelable: true, ...init })
+      fireEvent(panel, event)
+      return event
+    }
+    const atZero = () => { list.scrollTop = 0; list.scrollLeft = 0 }
+
+    // Plain wheel stays with the browser, so native vertical scrolling is untouched.
+    atZero()
+    expect(wheel({ deltaY: 120 }).defaultPrevented).toBe(false)
+    expect(list.scrollTop).toBe(0)
+    expect(list.scrollLeft).toBe(0)
+
+    // Shift is the horizontal axis on its own.
+    atZero()
+    expect(wheel({ shiftKey: true, deltaY: 120 }).defaultPrevented).toBe(false)
+    expect(list.scrollTop).toBe(0)
+
+    // Ctrl resizes only, and is consumed even at the size limit so the browser can
+    // never fall back to its own zoom.
+    atZero()
+    const densityBefore = panel.className
+    const ctrl = wheel({ ctrlKey: true, deltaY: -100 })
+    expect(ctrl.defaultPrevented).toBe(true)
+    expect(panel.className).not.toBe(densityBefore)
+    expect(list.scrollTop).toBe(0)
+    expect(list.scrollLeft).toBe(0)
+    expect(wheel({ ctrlKey: true, deltaY: -100 }).defaultPrevented).toBe(true)
+    expect(list.scrollTop).toBe(0)
+  })
+
+  it('uses Alt as an accelerator for the plain, Shift and Ctrl wheel', () => {
+    const document = createDocument('wheel acceleration', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+    const scrollHeight = vi.spyOn(list, 'scrollHeight', 'get').mockReturnValue(2_400)
+    const clientHeight = vi.spyOn(list, 'clientHeight', 'get').mockReturnValue(400)
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(2_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
+    const wheel = (init: { deltaX?: number; deltaY?: number; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean }) => {
+      const event = createEvent.wheel(panel, { cancelable: true, ...init })
+      fireEvent(panel, event)
+      return event
+    }
+    const atZero = () => { list.scrollTop = 0; list.scrollLeft = 0 }
+
+    // Alt + plain wheel accelerates the vertical scroll.
+    atZero()
+    expect(wheel({ altKey: true, deltaY: 120 }).defaultPrevented).toBe(true)
+    expect(list.scrollTop).toBe(600)
+    expect(list.scrollLeft).toBe(0)
+
+    // Alt + Shift accelerates the horizontal pan.
+    atZero()
+    wheel({ altKey: true, shiftKey: true, deltaY: 120 })
+    expect(list.scrollLeft).toBe(600)
+    expect(list.scrollTop).toBe(0)
+
+    // The accelerated pan still stops at the last reachable offset.
+    list.scrollLeft = 1_550
+    wheel({ altKey: true, shiftKey: true, deltaY: 120 })
+    expect(list.scrollLeft).toBe(1_600)
+    list.scrollTop = 1_550
+    wheel({ altKey: true, deltaY: 120 })
+    expect(list.scrollTop).toBe(2_000)
+
+    // Alt + Ctrl skips several display sizes per notch instead of one.
+    const sizes = ['compact', 'normal', 'detailed', 'expanded', 'large', 'huge']
+    const indexOfDensity = () => sizes.indexOf(sizes.find((size) => panel.classList.contains(`layer-density-${size}`))!)
+    const start = indexOfDensity()
+    wheel({ altKey: true, ctrlKey: true, deltaY: -100 })
+    expect(indexOfDensity() - start).toBe(3)
+
+    scrollHeight.mockRestore()
+    clientHeight.mockRestore()
+    scrollWidth.mockRestore()
+    clientWidth.mockRestore()
+  })
+
+  it('consumes the wheel before panning so native scroll cannot add a second axis', () => {
+    const document = createDocument('wheel ordering', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+    const panel = container.querySelector('.layers-panel') as HTMLElement
+    const list = container.querySelector('.layer-animation-list') as HTMLElement
+
+    const scrollWidth = vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(3_000)
+    const clientWidth = vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(400)
+    const order: string[] = []
+    const originalPreventDefault = WheelEvent.prototype.preventDefault
+    WheelEvent.prototype.preventDefault = function (this: WheelEvent) {
+      order.push('preventDefault')
+      return originalPreventDefault.call(this)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft')
+    Object.defineProperty(list, 'scrollLeft', {
+      configurable: true,
+      get: () => 0,
+      set: () => { order.push('scroll') }
+    })
+    try {
+      fireEvent(panel, createEvent.wheel(panel, { cancelable: true, altKey: true, shiftKey: true, deltaY: 120 }))
+      expect(order[0]).toBe('preventDefault')
+      expect(order).toEqual(['preventDefault', 'scroll'])
+    } finally {
+      WheelEvent.prototype.preventDefault = originalPreventDefault
+      if (descriptor) Object.defineProperty(list, 'scrollLeft', descriptor)
+      else delete (list as unknown as Record<string, unknown>).scrollLeft
+      scrollWidth.mockRestore()
+      clientWidth.mockRestore()
+    }
+  })
+  it('listens for wheel on the panel with a non-passive listener', () => {
+    const document = createDocument('wheel listener options', 2, 2, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const addEventListener = vi.spyOn(HTMLElement.prototype, 'addEventListener')
+    render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+
+    // (type, listener, options) — the panel must own a non-passive wheel listener so
+    // preventDefault stays authoritative for the modifier branches.
+    const wheelCalls = addEventListener.mock.calls.filter(([type]) => type === 'wheel')
+    expect(wheelCalls.length).toBeGreaterThan(0)
+    expect(wheelCalls.some(([, , options]) => (options as AddEventListenerOptions | undefined)?.passive === false)).toBe(true)
+    addEventListener.mockRestore()
+  })
   it('shows a layer mask thumbnail after Ctrl+wheel enlarges the timeline', () => {
     const document = createDocument('mask thumbnail', 2, 2, 'rgba')
     getActiveLayer(document).pixels[3] = 255
@@ -985,12 +1167,15 @@ describe('LayersPanel animation', () => {
     expect(modal!.querySelector('.layer-settings-pair')).toBeNull()
     const skipDisabledFrames = screen.getByRole('checkbox', { name: '左右切换时跳过停用帧' })
     expect(skipDisabledFrames).toBeChecked()
+    const onionPlayback = screen.getByRole('checkbox', { name: '播放动画时显示洋葱皮' })
+    expect(onionPlayback).toBeChecked()
+    fireEvent.click(onionPlayback)
     fireEvent.click(skipDisabledFrames)
     fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     expect(modal!.querySelector('.layer-settings-pair')).not.toBeNull()
     fireEvent.submit(modal!)
 
-    expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, previousFrames: 1, nextFrames: 1 })
+    expect(JSON.parse(localStorage.getItem(ONION_SKIN_PREFERENCE_KEY) ?? '{}')).toMatchObject({ enabled: true, showDuringPlayback: false, previousFrames: 1, nextFrames: 1 })
     expect(localStorage.getItem(SKIP_DISABLED_FRAMES_PREFERENCE_KEY)).toBe('false')
   })
 

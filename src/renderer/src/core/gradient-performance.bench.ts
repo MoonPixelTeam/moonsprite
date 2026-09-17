@@ -1,5 +1,6 @@
 import { bench, describe } from 'vitest'
-import type { GradientStop, RgbaColor } from '@shared/types'
+import type { GradientStop } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 import { createDocument, getActiveLayer, markLayerContentChanged } from './document'
 import { applyGradient, gradientRegionSelection } from './gradient'
 

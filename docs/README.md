@@ -24,7 +24,9 @@
 ## 脚本开发
 
 - [Lua 脚本与 MSE API](scripting/README.md)
+- [.msext 扩展开发](extensions/README.md)：包结构、清单字段、贡献点、限制和生命周期。
 - `.msext` 扩展包格式与安装行为见 [扩展包 ADR](adr/0020-extension-package-format.md)。
+- 常驻扩展的权限、事件和宿主 API 见 [Extension Runtime v1](extensions/runtime-api.md)。
 
 ## 质量与发布
 

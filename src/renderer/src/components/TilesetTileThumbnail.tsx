@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import type { Tileset } from '@shared/types'
-import { getRasterContentRevision } from '@/core/document'
+import type { Tileset } from '@shared/types-tiles'
+import { getRasterContentRevision } from '@/core/document-model'
 import { readTilesetTilePixels } from '@/core/tilemap'
 
 export function TilesetTileThumbnail({ tileset, tileId, previewPixels, className, renderRevision }: { tileset: Tileset; tileId: string; previewPixels?: Uint8ClampedArray; className?: string; renderRevision?: number }) {

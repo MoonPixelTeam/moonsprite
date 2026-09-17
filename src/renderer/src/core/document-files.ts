@@ -1,14 +1,14 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { decodeAseprite } from './aseprite'
 import { decodePng, exportDocumentImage, type SaveImageKind } from './png'
-import { decodeProject, encodeProjectAsync, readProjectExpandedRasterBytes, registerProjectSaveBaseline } from './project-format'
+import { decodeProject, encodeProjectAsync, readProjectExpandedRasterBytes, registerProjectSaveBaseline, type ProjectDecodeReport } from './project-format'
 import { browserRasterImageExtensions, decodeBrowserRasterImage } from './raster-image'
 import { currentAppLocale } from './localization'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from './initial-document-composite'
 import { rehydrateRuntimeRasterDocument } from './runtime-raster'
 import { exportAnimationGif } from './gif'
 import { decodeGifAnimation } from './gif-import'
-import { compositeDocument } from './document'
+import { compositeDocument } from './document-composite'
 import { encodeBmp } from './bmp'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 import { decodePsd } from './psd'
@@ -134,12 +134,12 @@ export function normalizeSaveDialogPath(filePath: string, format: SaveImageKind)
     : `${filePath}.${extension}`
 }
 
-const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void): SpriteDocument => {
+const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): SpriteDocument => {
   const suffix = fileExtension(filePath)
   const fileName = fileNameFromPath(filePath)
   const backup = isMoonSpriteBackupPath(filePath)
   const document = isMoonSpriteProjectPath(filePath)
-    ? decodeProject(data, onProgress)
+    ? decodeProject(data, { onProgress, onDroppedTimelapseFrames })
     : suffix === 'ase' || suffix === 'aseprite'
       ? decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), onProgress)
       : suffix === 'psd'
@@ -152,8 +152,8 @@ const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProg
   return document
 }
 
-export function decodeDocumentFile(data: Uint8Array, filePath: string): SpriteDocument {
-  return decodeStructuredDocumentFile(data, filePath)
+export function decodeDocumentFile(data: Uint8Array, filePath: string, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): SpriteDocument {
+  return decodeStructuredDocumentFile(data, filePath, undefined, onDroppedTimelapseFrames)
 }
 
 interface DecodeWorkerResponse {
@@ -164,6 +164,7 @@ interface DecodeWorkerResponse {
   completed?: boolean
   error?: string
   progress?: number
+  droppedTimelapseFrames?: ProjectDecodeReport[]
 }
 
 let decodeRequestSequence = 0
@@ -232,6 +233,7 @@ interface PendingDecodeRequest {
   resolve: (result: WorkerDecodeResult) => void
   reject: (error: Error) => void
   onProgress?: (value: number) => void
+  onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void
   document?: SpriteDocument
   initialCompositeFrameId?: string
   initialComposite: Promise<void>
@@ -272,6 +274,7 @@ const ensureDecodeWorker = (): Worker => {
       return
     }
     if (event.data.document) {
+      if (event.data.droppedTimelapseFrames) for (const report of event.data.droppedTimelapseFrames) request.onDroppedTimelapseFrames?.(report)
       rehydrateRuntimeRasterDocument(event.data.document)
       request.document = event.data.document
       request.initialCompositeFrameId = event.data.document.animation?.activeFrameId
@@ -314,7 +317,7 @@ export const warmDocumentDecodeWorker = (): void => {
   if (typeof Worker !== 'undefined') ensureDecodeWorker()
 }
 
-const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void, prepareInitialComposite = true): Promise<WorkerDecodeResult> => new Promise((resolve, reject) => {
+const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void, prepareInitialComposite = true, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): Promise<WorkerDecodeResult> => new Promise((resolve, reject) => {
   let resolveInitialComposite!: () => void
   const initialComposite = new Promise<void>((complete) => { resolveInitialComposite = complete })
   const id = ++decodeRequestSequence
@@ -334,7 +337,7 @@ const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgre
     reject(failure)
     return
   }
-  pendingDecodeRequests.set(id, { resolve, reject, onProgress, initialComposite, resolveInitialComposite, diagnostic })
+  pendingDecodeRequests.set(id, { resolve, reject, onProgress, initialComposite, resolveInitialComposite, diagnostic, onDroppedTimelapseFrames })
   const transfer = data.buffer instanceof ArrayBuffer ? [data.buffer] : []
   try {
     const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -349,26 +352,26 @@ const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgre
   }
 })
 
-export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string, onProgress?: (value: number) => void): Promise<SpriteDocument> {
+export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string, onProgress?: (value: number) => void, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): Promise<SpriteDocument> {
   const suffix = fileExtension(filePath)
   const project = isMoonSpriteProjectPath(filePath)
   const backup = isMoonSpriteBackupPath(filePath)
   if ((project || suffix === 'ase' || suffix === 'aseprite' || suffix === 'psd') && typeof Worker !== 'undefined' && shouldDecodeDocumentInWorker(data, filePath)) {
     const source = data.slice()
     try {
-      const result = await decodeDocumentFileInWorker(data, filePath, onProgress, project)
+      const result = await decodeDocumentFileInWorker(data, filePath, onProgress, project, onDroppedTimelapseFrames)
       if (project && !backup) registerProjectSaveBaseline(result.document, filePath, source)
       if (result.initialComposite) registerPendingInitialDocumentComposite(result.document, result.initialComposite, result.document.animation?.activeFrameId)
       return result.document
     } catch (error) {
       if (!(error instanceof DocumentDecodeWorkerTransportError)) throw error
-      const document = decodeStructuredDocumentFile(source, filePath, onProgress)
+      const document = decodeStructuredDocumentFile(source, filePath, onProgress, onDroppedTimelapseFrames)
       if (project && !backup) registerProjectSaveBaseline(document, filePath, source)
       return document
     }
   }
   if (!browserRasterImageExtensions.includes(suffix as (typeof browserRasterImageExtensions)[number])) {
-    const document = decodeStructuredDocumentFile(data, filePath, onProgress)
+    const document = decodeStructuredDocumentFile(data, filePath, onProgress, onDroppedTimelapseFrames)
     if (project && !backup) registerProjectSaveBaseline(document, filePath, data)
     return document
   }

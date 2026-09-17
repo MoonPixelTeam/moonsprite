@@ -1,5 +1,5 @@
-import type { SpriteDocument } from '@shared/types'
-import { createDocument } from './document'
+import type { SpriteDocument } from '@shared/types-document'
+import { createDocument } from './document-model'
 import { applyImportedRgbaPalette } from './imported-palette'
 import { translateCurrent as tr } from './localization'
 

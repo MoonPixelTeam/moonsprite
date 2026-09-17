@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { PaletteEntry, RgbaColor, ToolId } from '@shared/types'
+import type { PaletteEntry, RgbaColor } from '@shared/types-color'
+import type { ToolId } from '@shared/types-brush'
 import { clampByte } from '@/core/raster'
 import { colorFromValues, colorToValues, colorValueFields, colorValueModeLabel, displayRgbaHex, parseRgbaHex, type ColorValueMode } from '@/core/color-values'
 import { NumberInput } from './NumberInput'

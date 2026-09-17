@@ -24,11 +24,13 @@ MoonSprite 是面向 Windows 的原创源码可见像素画工作台，使用 Ta
 
 普通 Lua 脚本放入程序运行目录的 `scripts/` 文件夹后，会显示在“文件 > 脚本”中。脚本运行在受限 Lua 5.4 沙箱内，可以读取当前文档状态，并通过事务执行可撤销的画布操作；不能直接访问文件、网络、进程或任意本地模块。
 
-`.msext` 是 MoonSprite 的扩展包格式。扩展可声明 Lua 命令、把命令插入现有菜单、新增顶层菜单，并提供由 MoonSprite 渲染的浮动栏目。扩展不能注入任意 React、DOM、CSS、JavaScript 或原生代码。扩展可在“首选项 > 扩展”中安装、启用、禁用和卸载，也支持双击或拖入 `.msext` 文件安装。
+`.msext` 是 MoonSprite 的扩展包格式，支持两套执行模型：`schemaVersion: 1` 使用受限 Lua/MSE 快照事务与宿主渲染的声明式 UI；`schemaVersion: 2` 使用 Extension Runtime v1，可运行常驻的 sandbox HTML/JavaScript，并按清单权限贡献菜单、宿主组件设置或 sandbox 自定义设置页和 owner-bound 附属窗口。Runtime 不能访问 React、Zustand Store、Tauri、安装目录或内部文档对象；复杂文档写入仍通过受限 Lua 命令和 Store 事务完成。扩展可在“首选项 > 扩展”中安装、启用、禁用和卸载，也支持双击或拖入 `.msext` 文件安装。
 
 - [Lua 脚本与扩展入门](docs/scripting/README.md)
 - [MSE API 参考](docs/scripting/mse-api.md)
 - [LuaLS 类型定义](docs/scripting/mse-api.lua)
+- [.msext 扩展开发总览](docs/extensions/README.md)
+- [Extension Runtime v1 API](docs/extensions/runtime-api.md)
 - [扩展包格式与安全边界](docs/adr/0020-extension-package-format.md)
 
 `app.*` 用于兼容已实现的 Aseprite API 子集，`mse.*` 是 MoonSprite 专属 API。脚本应使用能力探测确认端点是否已实现，不能把文档中列出的规划接口视为当前可用能力。

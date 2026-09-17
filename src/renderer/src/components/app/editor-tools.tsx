@@ -1,4 +1,5 @@
-import type { FillKind, GradientType, LineKind, LiquifyMode, MoveKind, SelectionKind, SelectionMode, ShapeKind, ToolId } from '@shared/types'
+import type { FillKind, GradientType, LineKind, LiquifyMode, MoveKind, ShapeKind, ToolId } from '@shared/types-brush'
+import type { SelectionKind, SelectionMode } from '@shared/types-selection'
 import type { CSSProperties } from 'react'
 import type { ShortcutId } from '@/core/shortcuts'
 import { DEFAULT_APP_LOCALE, type AppLocale } from '@/core/localization'
@@ -101,14 +102,6 @@ const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
   [toolGradientIcon, toolGradientNormalIcon]
 ])
 export const normalEditorToolIconFor = (source: string): string | undefined => NORMAL_EDITOR_TOOL_ICON_BY_SOURCE.get(source)
-
-/** Icons that an extension tool may reference without exposing file paths. */
-const HOST_TOOL_ICONS: Record<string, string> = {
-  'tool-smooth': toolSmoothIcon,
-  'tool-pencil': toolPencilIcon,
-  'tool-liquify': toolLiquifyIcon
-}
-export const hostToolIconFor = (id: string): string | undefined => HOST_TOOL_ICONS[id]
 
 const TOOL_BASE: Array<{ id: ToolId; icon: string; shortcutId: ShortcutId }> = [
   { id: 'smooth', icon: toolSmoothIcon, shortcutId: 'tool.smooth' },

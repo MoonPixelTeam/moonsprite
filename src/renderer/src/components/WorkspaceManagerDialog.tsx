@@ -1,4 +1,4 @@
-import type { StoredWorkspace } from '@shared/types'
+import type { StoredWorkspace } from '@shared/types-workspace'
 import { DeleteIconButton } from './DeleteIconButton'
 import { DialogHeader } from './DialogHeader'
 import { ModalShell } from './ModalShell'

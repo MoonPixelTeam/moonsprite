@@ -1,4 +1,4 @@
-import type { ExtensionBuiltInMenuId } from '@shared/types'
+import type { ExtensionBuiltInMenuId } from '@shared/types-extensions'
 
 export const TOP_MENU_IDS = ['file', 'edit', 'select', 'canvas', 'layer', 'window', 'help'] as const satisfies readonly ExtensionBuiltInMenuId[]
 

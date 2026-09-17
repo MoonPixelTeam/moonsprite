@@ -54,7 +54,7 @@ export const documentPaneContains = (node: DocumentPaneNode, documentId: string)
   node.kind === 'leaf' ? node.documentId === documentId : documentPaneContains(node.first, documentId) || documentPaneContains(node.second, documentId)
 
 export const documentPaneLeafIds = (node: DocumentPaneNode): string[] =>
-  node.kind === 'leaf' ? [node.id] : [...documentPaneLeafIds(node.first), ...documentPaneLeafIds(node.second)]
+  node.kind === 'leaf' ? [node.documentId] : [...documentPaneLeafIds(node.first), ...documentPaneLeafIds(node.second)]
 
 export const documentPaneDropDirection = (rect: DocumentPaneRect, clientX: number, clientY: number): DocumentPaneDirection => {
   const relativeX = (clientX - rect.left) / Math.max(1, rect.width)
@@ -128,8 +128,8 @@ export const documentPaneDropRect = (rect: DocumentPaneRect, direction: Document
 export const insertDocumentPane = (node: DocumentPaneNode, targetPaneId: string, documentId: string, direction: DocumentPaneDirection): DocumentPaneNode => {
   if (documentPaneContains(node, documentId)) return node
   if (node.kind === 'leaf') {
-    if (node.id !== targetPaneId) return node
-    const newPane = createDocumentPaneLayout(documentId)
+    if (node.documentId !== targetPaneId) return node
+    const newPane = { ...createDocumentPaneLayout(documentId), id: `pane:${crypto.randomUUID()}` }
     const horizontal = direction === 'left' || direction === 'right'
     const newFirst = direction === 'left' || direction === 'top'
     return {
@@ -215,7 +215,7 @@ export const moveDocumentPane = (node: DocumentPaneNode, documentId: string, tar
 }
 
 const replaceDocumentPane = (node: DocumentPaneNode, paneId: string, documentId: string): DocumentPaneNode => {
-  if (node.kind === 'leaf') return node.id === paneId ? createDocumentPaneLayout(documentId) : node
+  if (node.kind === 'leaf') return node.documentId === paneId ? { ...node, documentId } : node
   const first = replaceDocumentPane(node.first, paneId, documentId)
   const second = replaceDocumentPane(node.second, paneId, documentId)
   if (first === node.first && second === node.second) return node
@@ -223,7 +223,7 @@ const replaceDocumentPane = (node: DocumentPaneNode, paneId: string, documentId:
 }
 
 export const replaceDocumentPaneDocument = (node: DocumentPaneNode, documentId: string, replacementDocumentId: string): DocumentPaneNode => {
-  if (node.kind === 'leaf') return node.documentId === documentId ? createDocumentPaneLayout(replacementDocumentId) : node
+  if (node.kind === 'leaf') return node.documentId === documentId ? { ...node, documentId: replacementDocumentId } : node
   const first = replaceDocumentPaneDocument(node.first, documentId, replacementDocumentId)
   const second = replaceDocumentPaneDocument(node.second, documentId, replacementDocumentId)
   if (first === node.first && second === node.second) return node
@@ -248,4 +248,15 @@ export const resolveDocumentPanePreviewLayout = (node: DocumentPaneNode | null, 
   const committed = node?.kind === 'split' && documentPaneContains(node, activeDocumentId) ? node : null
   if (!placement) return committed
   return splitDocumentPaneFromTab(node, activeDocumentId, placement)
+}
+
+/** Tabs select a view in the main panel; splitters and other panels own their layout. */
+export const selectDocumentPaneMainView = (
+  layout: DocumentPaneNode | null,
+  documentId: string | null,
+  paneOnlyDocumentIds: readonly string[]
+): DocumentPaneNode | null => {
+  if (!layout || !documentId || documentPaneContains(layout, documentId)) return layout
+  const mainDocumentId = documentPaneLeafIds(layout).find(id => !paneOnlyDocumentIds.includes(id))
+  return mainDocumentId ? replaceDocumentPaneDocument(layout, mainDocumentId, documentId) : layout
 }

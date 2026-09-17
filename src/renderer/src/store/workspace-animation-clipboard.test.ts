@@ -1,11 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { createDocument, getActiveLayer, writeLayerColor } from '@/core/document'
 import { clipboardService } from './clipboard-service'
 import { useWorkspace } from './workspace'
+import { refreshActiveAnimationFrame } from '@/core/animation'
 
 describe('animation clipboard shortcuts', () => {
+  it('copies the canvas selection across multiple cels into another document', async () => {
+    const source = createDocument('selected source', 4, 1, 'rgba')
+    const layer = getActiveLayer(source)
+    const timeline = ensureAnimationDocument(source)
+    const first = timeline.activeFrameId
+    const second = addBlankAnimationFrame(source)
+    for (const frame of [first, second]) {
+      animationCelAt(timeline, layer.id, frame)!.surface = { format: 'rgba', width: 4, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255, 255, 255, 0, 255]) }
+    }
+    refreshActiveAnimationFrame(source)
+    useWorkspace.getState().addSession(source)
+    useWorkspace.getState().setSelection({ x: 1, y: 0, width: 2, height: 1 })
+    useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, first))
+    useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, second), 'toggle')
+    useWorkspace.getState().copySelectedAnimationCels()
+    const target = createDocument('selected target', 4, 1, 'rgba')
+    useWorkspace.getState().addSession(target)
+    useWorkspace.getState().pasteAnimationCels()
+    const pasted = ensureAnimationDocument(target)
+    expect(pasted.frames).toHaveLength(2)
+    for (const frame of pasted.frames) {
+      const surface = animationCelAt(pasted, target.activeLayerId, frame.id)!.surface!
+      expect(surface).toMatchObject({ width: 2, height: 1, offsetX: 1, offsetY: 0 })
+      expect(Array.from(surface.pixels)).toEqual([0, 255, 0, 128, 0, 0, 255, 255])
+    }
+    expect(animationCelAt(timeline, layer.id, first)!.surface!.width).toBe(4)
+  })
   beforeEach(() => {
     localStorage.clear()
     clipboardService.clearLayer()

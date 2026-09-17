@@ -1,4 +1,6 @@
-import type { RgbaColor, SelectionMask, ToolId } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMask } from '@shared/types-selection'
+import type { ToolId } from '@shared/types-brush'
 import type { SelectionHandle, SelectionRotationHandle, SelectionShearHandle } from './canvas-input'
 import { DEFAULT_CHECKERBOARD_PREFERENCES, type CheckerboardPreferences } from './file-preferences'
 
@@ -147,8 +149,8 @@ export const transparencyColorAt = (pixelX: number, pixelY: number, checkerboard
     ? checkerboard.lightColor
     : checkerboard.darkColor
 
-const colorCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection', 'liquify', 'smooth', 'extension', 'text'])
-export const previewCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'shape', 'line', 'liquify', 'smooth', 'extension'])
+const colorCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection', 'liquify', 'smooth', 'text'])
+export const previewCursorTools = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'shape', 'line', 'liquify', 'smooth'])
 
 export const canvasToolCursor = (tool: ToolId, color: RgbaColor, available = true): string => {
   if (tool === 'rotate') return canvasCursors.rotate

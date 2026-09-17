@@ -13,6 +13,17 @@ export interface ViewportPoint { x: number; y: number }
 export interface ViewportBounds { left: number; top: number; right: number; bottom: number }
 export interface CanvasViewContentBounds { x: number; y: number; width: number; height: number }
 
+export interface CanvasViewScrollbarAxis {
+  visible: boolean
+  position: number
+  thumbRatio: number
+}
+
+export interface CanvasViewScrollbarMetrics {
+  horizontal: CanvasViewScrollbarAxis
+  vertical: CanvasViewScrollbarAxis
+}
+
 /** Snap a view rotation to one of the sixteen Shift-constrained directions. */
 export const VIEW_ROTATION_SNAP_DEGREES = 22.5
 
@@ -174,6 +185,64 @@ const displayRelative = (point: ViewportPoint, view: Pick<ViewGeometryState, 'ro
   return rotateRelative(mirrored, view.rotation)
 }
 
+const clampUnit = (value: number): number => Math.min(1, Math.max(0, value))
+
+/** Screen-axis scrollbar state for the displayed document bounds. */
+export function canvasViewScrollbarMetrics(viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): CanvasViewScrollbarMetrics {
+  if (![viewportWidth, viewportHeight, documentWidth, documentHeight, view.zoom, view.panX, view.panY, view.rotation].every(Number.isFinite)
+    || viewportWidth <= 0 || viewportHeight <= 0 || documentWidth <= 0 || documentHeight <= 0 || view.zoom <= 0) {
+    const hidden = { visible: false, position: 0.5, thumbRatio: 1 }
+    return { horizontal: hidden, vertical: { ...hidden } }
+  }
+  const radians = view.rotation * Math.PI / 180
+  const cosine = Math.abs(Math.cos(radians))
+  const sine = Math.abs(Math.sin(radians))
+  const scaledWidth = documentWidth * view.zoom
+  const scaledHeight = documentHeight * view.zoom
+  const displayedWidth = scaledWidth * cosine + scaledHeight * sine
+  const displayedHeight = scaledWidth * sine + scaledHeight * cosine
+  const center = displayedCanvasCenter(viewportWidth, viewportHeight, view, position)
+  const axis = (viewportSize: number, contentSize: number, centerOffset: number): CanvasViewScrollbarAxis => {
+    const overflow = Math.max(0, contentSize - viewportSize)
+    return {
+      visible: overflow > 0.5,
+      position: overflow > 0 ? clampUnit((overflow / 2 - centerOffset) / overflow) : 0.5,
+      thumbRatio: clampUnit(viewportSize / contentSize)
+    }
+  }
+  return {
+    horizontal: axis(viewportWidth, displayedWidth, center.x - viewportWidth / 2),
+    vertical: axis(viewportHeight, displayedHeight, center.y - viewportHeight / 2)
+  }
+}
+
+/** Move the displayed document along one screen axis to a scrollbar position. */
+export function panCanvasViewFromScrollbar<T extends ViewGeometryState>(viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: T, position: RotationIndicatorPosition, axis: 'horizontal' | 'vertical', scrollbarPosition: number): T {
+  const metrics = canvasViewScrollbarMetrics(viewportWidth, viewportHeight, documentWidth, documentHeight, view, position)
+  const axisMetrics = axis === 'horizontal' ? metrics.horizontal : metrics.vertical
+  if (!axisMetrics.visible) return view
+  const radians = view.rotation * Math.PI / 180
+  const cosine = Math.abs(Math.cos(radians))
+  const sine = Math.abs(Math.sin(radians))
+  const displayedSize = axis === 'horizontal'
+    ? documentWidth * view.zoom * cosine + documentHeight * view.zoom * sine
+    : documentWidth * view.zoom * sine + documentHeight * view.zoom * cosine
+  const viewportSize = axis === 'horizontal' ? viewportWidth : viewportHeight
+  const overflow = displayedSize - viewportSize
+  const targetCenterOffset = overflow / 2 - clampUnit(scrollbarPosition) * overflow
+  const center = displayedCanvasCenter(viewportWidth, viewportHeight, view, position)
+  const currentCenterOffset = axis === 'horizontal' ? center.x - viewportWidth / 2 : center.y - viewportHeight / 2
+  const delta = viewPanDeltaFromScreen(
+    axis === 'horizontal' ? targetCenterOffset - currentCenterOffset : 0,
+    axis === 'vertical' ? targetCenterOffset - currentCenterOffset : 0,
+    view.rotation,
+    position,
+    Boolean(view.mirrored),
+    Boolean(view.mirroredVertical)
+  )
+  return { ...view, panX: view.panX + delta.x, panY: view.panY + delta.y }
+}
+
 export function clampCanvasViewPan<T extends ViewGeometryState>(viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: T, position: RotationIndicatorPosition, additionalBounds?: CanvasViewContentBounds | null): T {
   if (![viewportWidth, viewportHeight, documentWidth, documentHeight, view.zoom, view.panX, view.panY, view.rotation].every(Number.isFinite)) return view
   if (viewportWidth <= 0 || viewportHeight <= 0 || documentWidth <= 0 || documentHeight <= 0 || view.zoom <= 0) return view
@@ -222,6 +291,35 @@ export function documentPointFromViewportPointContinuous(point: ViewportPoint, v
   const unrotated = unrotatedViewportPoint(point, viewportWidth, viewportHeight, view, position)
   const origin = viewCanvasOrigin(viewportWidth, viewportHeight, documentWidth, documentHeight, view)
   return { x: (unrotated.x - origin.x) / view.zoom, y: (unrotated.y - origin.y) / view.zoom }
+}
+
+/** Convert a document coordinate to its displayed viewport coordinate. */
+export function viewportPointFromDocumentPointContinuous(point: ViewportPoint, viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): ViewportPoint {
+  const origin = viewCanvasOrigin(viewportWidth, viewportHeight, documentWidth, documentHeight, view)
+  const untransformed = { x: origin.x + point.x * view.zoom, y: origin.y + point.y * view.zoom }
+  const pivot = viewRotationPivot(viewportWidth, viewportHeight, view.panX, view.panY, position)
+  const mirrored = mirrorViewportPoint(untransformed, pivot, Boolean(view.mirrored), Boolean(view.mirroredVertical))
+  return rotateViewportPoint(mirrored, pivot, view.rotation)
+}
+
+/** Whether a displayed line segment intersects the viewport rectangle. */
+export function viewportSegmentVisible(start: ViewportPoint, end: ViewportPoint, width: number, height: number): boolean {
+  if (![start.x, start.y, end.x, end.y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return false
+  let from = 0
+  let to = 1
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  for (const [distance, delta] of [[start.x, dx], [width - start.x, -dx], [start.y, dy], [height - start.y, -dy]] as const) {
+    if (delta === 0) {
+      if (distance < 0) return false
+      continue
+    }
+    const ratio = -distance / delta
+    if (delta > 0) from = Math.max(from, ratio)
+    else to = Math.min(to, ratio)
+    if (from > to) return false
+  }
+  return true
 }
 
 export function documentPointFromViewportPoint(point: ViewportPoint, viewportWidth: number, viewportHeight: number, documentWidth: number, documentHeight: number, view: ViewGeometryState, position: RotationIndicatorPosition): ViewportPoint {

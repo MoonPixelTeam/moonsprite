@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LayerGroup } from '@shared/types'
+import type { LayerGroup } from '@shared/types-layer'
 import { createDocument, createLayer, getActiveLayer } from './document'
 import { HistoryStack } from './history'
 import { assignLayersToGroup, assignLayersToRoot, canMoveGroupInto, createLayerGroup, moveGroupToRootEdge, moveLayerPanelRows, moveLayersToRootEdge, positionGroupNextToLayer, reorderGroup, reorderLayers, ungroupSelected, type LayerOperationState } from './layer-operations'

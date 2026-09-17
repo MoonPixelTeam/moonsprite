@@ -1,4 +1,4 @@
-import type { AnimationFrame, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types'
+import type { AnimationFrame, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
 
 export const MAX_ANIMATION_LOOP_REPEAT_COUNT = 9_999
 export const MAX_ANIMATION_LOOP_SECTION_NAME_LENGTH = 64
@@ -98,6 +98,91 @@ export const animationLoopSectionStartFrameId = (
   const frames = timeline.frames.slice(range.startIndex, range.endIndex + 1)
   if (section.direction === 'reverse') frames.reverse()
   return frames.find((frame) => frame.disabled !== true)?.id ?? null
+}
+
+const loopSectionRepeatCountForExport = (section: AnimationLoopSection | null): number => {
+  if (!section || section.repeatCount === null) return 1
+  return Math.max(1, Math.min(MAX_ANIMATION_LOOP_REPEAT_COUNT, Math.trunc(section.repeatCount)))
+}
+
+const directNestedAnimationLoopSections = (
+  timeline: Pick<AnimationTimeline, 'frames' | 'loopSections'>,
+  parentRange: AnimationLoopSectionRange,
+  parentId: string | null
+): Array<{ section: AnimationLoopSection; range: AnimationLoopSectionRange }> => {
+  const candidates = (timeline.loopSections ?? [])
+    .filter((section) => section.id !== parentId)
+    .map((section) => ({ section, range: resolveAnimationLoopSectionRange(timeline, section) }))
+    .filter((candidate): candidate is { section: AnimationLoopSection; range: AnimationLoopSectionRange } => {
+      const { range } = candidate
+      return Boolean(
+        range &&
+          range.startIndex >= parentRange.startIndex &&
+          range.endIndex <= parentRange.endIndex &&
+          (range.startIndex !== parentRange.startIndex || range.endIndex !== parentRange.endIndex)
+      )
+    })
+
+  return candidates.filter((candidate) => !candidates.some((other) => {
+    if (other.section.id === candidate.section.id) return false
+    return other.range.startIndex <= candidate.range.startIndex &&
+      other.range.endIndex >= candidate.range.endIndex &&
+      (other.range.startIndex !== candidate.range.startIndex || other.range.endIndex !== candidate.range.endIndex)
+  }))
+}
+
+/**
+ * Expands a timeline range while honoring loop-section nesting and repeat counts.
+ * An indefinite child is emitted once because a finite GIF cannot contain an
+ * infinite nested sequence; the GIF loop extension remains responsible for
+ * repeating the completed export when the selected root is indefinite.
+ */
+export const animationLoopFrameIdsForExport = (
+  timeline: Pick<AnimationTimeline, 'frames' | 'loopSections'>,
+  startIndex: number,
+  endIndex: number,
+  rootSectionId?: string
+): string[] => {
+  if (timeline.frames.length === 0 || startIndex > endIndex) return []
+  const rootSection = rootSectionId ? (timeline.loopSections ?? []).find((section) => section.id === rootSectionId) ?? null : null
+  const rootRange = rootSection ? resolveAnimationLoopSectionRange(timeline, rootSection) : null
+  const range: AnimationLoopSectionRange = rootRange ?? {
+    startIndex: Math.max(0, Math.min(timeline.frames.length - 1, startIndex)),
+    endIndex: Math.max(0, Math.min(timeline.frames.length - 1, endIndex)),
+    startFrameId: timeline.frames[Math.max(0, Math.min(timeline.frames.length - 1, startIndex))].id,
+    endFrameId: timeline.frames[Math.max(0, Math.min(timeline.frames.length - 1, endIndex))].id
+  }
+
+  const expand = (section: AnimationLoopSection | null, sectionRange: AnimationLoopSectionRange): string[] => {
+    const nested = directNestedAnimationLoopSections(timeline, sectionRange, section?.id ?? null)
+    const nestedByBoundary = new Map(
+      nested.map((candidate) => [section?.direction === 'reverse' ? candidate.range.endIndex : candidate.range.startIndex, candidate])
+    )
+    const indexes: number[] = []
+    if (section?.direction === 'reverse') {
+      for (let index = sectionRange.endIndex; index >= sectionRange.startIndex; index -= 1) indexes.push(index)
+    } else {
+      for (let index = sectionRange.startIndex; index <= sectionRange.endIndex; index += 1) indexes.push(index)
+    }
+    const sequence: string[] = []
+    for (const index of indexes) {
+      const nestedSection = nestedByBoundary.get(index)
+      if (nestedSection) {
+        sequence.push(...expand(nestedSection.section, nestedSection.range))
+        const skippedIndexes = new Set(
+          indexes.filter((candidate) => candidate >= nestedSection.range.startIndex && candidate <= nestedSection.range.endIndex)
+        )
+        for (let position = indexes.indexOf(index) + 1; position < indexes.length && skippedIndexes.has(indexes[position]); position += 1) indexes[position] = Number.NaN
+        continue
+      }
+      if (Number.isNaN(index)) continue
+      sequence.push(timeline.frames[index].id)
+    }
+    const repeatCount = loopSectionRepeatCountForExport(section)
+    return Array.from({ length: repeatCount }, () => sequence).flat()
+  }
+
+  return expand(rootSection, range)
 }
 
 export const stepAnimationLoopSectionFrameId = (

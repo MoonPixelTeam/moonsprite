@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { createDocument, createLayer, getLayerStorageOrigin, setLayerStorageOrigin } from './document'
-import { cloneHistoryDocument, createLocalHistoryDelta, historyDocumentBytes, historyDocumentTransferView } from './local-history-delta'
+import { cloneHistoryDocument, createLocalHistoryDelta, historyDocumentBytes, historyDocumentTransferView, hydrateLocalHistoryDelta } from './local-history-delta'
 import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, readSurfacePackedLocal, rehydrateRuntimeRasterDocument, surfacePixelsMaterialized } from './runtime-raster'
 import { HistoryStack } from './history'
 
@@ -25,6 +25,17 @@ it.each(['rgba', 'indexed'] as const)('restores %s pixels in place without repla
   expect(target.animation!.cels[0].surface!.pixels).toBe(pixels)
   expect(before.layers[0].pixels[4001]).toBe(0)
   expect(after.layers[0].pixels[4001]).toBe(123)
+})
+
+it('does not apply local-history patches through prototype keys', () => {
+  const target = createDocument('safe-path', 2, 2, 'rgba')
+  const entry = hydrateLocalHistoryDelta(target, {
+    patches: [{ path: ['__proto__', 'polluted'], before: false, after: true }],
+    origins: { before: [{ x: 0, y: 0 }], after: [{ x: 0, y: 0 }] }, label: 'unsafe', bytes: 0,
+    invalidation: { kind: 'full' }, affectedLayerIds: [], requiresAnimationSelectionNormalization: false
+  })
+  entry.redo()
+  expect(({} as Record<string, unknown>).polluted).toBeUndefined()
 })
 
 it('keeps storage origins and computes canvas invalidation without counting the origin twice', () => {

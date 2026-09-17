@@ -1,4 +1,4 @@
-import type { SelectionMask, SelectionRect } from '@shared/types'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { contiguousMatchingRegion, contiguousMatchingRegionInBounds } from './contiguous-region'
 
 export interface MagicWandSelectionRequest {

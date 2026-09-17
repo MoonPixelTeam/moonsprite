@@ -7,7 +7,7 @@ import { resizeDocument } from './document'
 import { createProceduralBrush, createProceduralBrushes, createSelectionBrush, proceduralBrushCoverageAt } from './brushes'
 import { blendOver, packColor, unpackColor } from './raster'
 import { installRuntimeRaster, runtimeRasterForSurface } from './runtime-raster'
-import type { RuntimeRasterTiles } from '@shared/types'
+import type { RuntimeRasterTiles } from '@shared/types-raster'
 import { balancedStairLinePoints } from './pixel-line'
 import { symmetrySelection, type SymmetryAxes } from './symmetry'
 

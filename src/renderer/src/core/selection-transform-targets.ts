@@ -1,9 +1,11 @@
-import type { SelectionMask, SelectionQuad, SelectionRect, SpriteDocument } from '@shared/types'
+import { findLayerMask, isLayerMask } from './document-model'
+import type { SelectionMask, SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, createAnimationCelLookup, ensureAnimationDocument, parseAnimationCelKey, syncAnimationLayerAtFrame } from './animation'
 import type { PixelEdit } from './history'
 import type { SelectionShearTransform } from './selection'
 import type { SymmetryAxes, SymmetryCenter, SymmetryPoint } from './symmetry'
-import { applySelectionTransform, captureSelectionTransform, type SelectionTransformLayerState } from './tools'
+import { applySelectionTransform, captureSelectionTransform, type SelectionTransformLayerState } from './tools-selection-transform'
 
 export interface AnimationSelectionTargetPair {
   layerId: string
@@ -90,6 +92,8 @@ export const selectionTransformLayerForState = (
   document: SpriteDocument,
   state: Pick<SelectionTransformLayerState, 'layerId' | 'frameId'>
 ) => {
+  const mask = findLayerMask(document, state.layerId)
+  if (mask) return mask
   if (!state.frameId || document.animation?.activeFrameId === state.frameId) {
     return document.layers.find((candidate) => candidate.id === state.layerId) ?? null
   }
@@ -112,7 +116,7 @@ export const applySelectionTransformLayerState = (
   const layer = selectionTransformLayerForState(document, state)
   if (!layer || layer.kind) return null
   const edit = applySelectionTransform(document, state.source, target, angle, copy, shear, symmetryAxes, symmetryCenter, layer, symmetryStartPoint, quad, false, optimizedRotation)
-  if (state.frameId) {
+  if (state.frameId && !isLayerMask(layer)) {
     if (edit) edit.frameId = state.frameId
     syncAnimationLayerAtFrame(document, layer, state.frameId)
   }

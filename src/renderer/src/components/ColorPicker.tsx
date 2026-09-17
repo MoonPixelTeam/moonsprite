@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { clampByte, hsvToRgb, rgbToHsv } from '@/core/raster'
 import { hslToRgb, rgbToHsl } from '@/core/color-values'
 import { rangeValueWithShiftStep } from '@/core/range-step'

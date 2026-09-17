@@ -1,5 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { decodeProject } from './project-format'
 import { cloneHistoryDocument, hydrateLocalHistoryDelta, compileLocalHistoryDelta, prepareHistoryDocument, type LocalHistoryDelta } from './local-history-delta'
 

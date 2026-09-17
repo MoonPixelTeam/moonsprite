@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises'
+import { access, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const root = process.cwd()
@@ -41,6 +41,10 @@ const requiredFiles = [
   'scripts/architecture-contract.mjs',
   'scripts/architecture-contract.test.mjs',
   'scripts/architecture-debt-budget.json',
+  'scripts/rust-risk-budget.json',
+  'scripts/check-rust-contract.mjs',
+  'scripts/doc-pair-budget.json',
+  'scripts/check-doc-pairs.mjs',
   'scripts/fixtures/architecture-contract/cases.json',
   'scripts/version-contract.test.mjs',
   'scripts/validation-scope.mjs',
@@ -71,6 +75,23 @@ for (const relativePath of requiredFiles) {
 if (missing.length > 0) {
   console.error('维护契约缺少必要文件：')
   for (const file of missing) console.error(`- ${file}`)
+  process.exit(1)
+}
+
+// 硬盘上存在的测试文件必须全部登记进 check:maintenance，否则它会静默地永远不执行，
+// 而所有门禁依然全绿——这与“命中面为 0 的规则等于永久绿灯”是同一类问题。
+const maintenanceCommand = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).scripts['check:maintenance']
+const registeredTestFiles = new Set(maintenanceCommand.match(/scripts\/[\w.-]+\.test\.mjs/g) ?? [])
+const discoveredTestFiles = (await readdir(join(root, 'scripts')))
+  .filter((name) => name.endsWith('.test.mjs'))
+  .map((name) => `scripts/${name}`)
+const unregisteredTests = discoveredTestFiles.filter((file) => !registeredTestFiles.has(file)).sort()
+const missingTests = [...registeredTestFiles].filter((file) => !discoveredTestFiles.includes(file)).sort()
+
+if (unregisteredTests.length > 0 || missingTests.length > 0) {
+  console.error('测试文件与 check:maintenance 登记不一致：')
+  for (const file of unregisteredTests) console.error(`- ${file} 存在但没有登记，永远不会被执行。`)
+  for (const file of missingTests) console.error(`- ${file} 已登记但硬盘上不存在。`)
   process.exit(1)
 }
 

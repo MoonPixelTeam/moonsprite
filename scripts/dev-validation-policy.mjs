@@ -9,6 +9,10 @@ const javascriptSourcePattern = new RegExp(`\\.${sourceExtension}$`)
 const nonApplicationPattern = /^(?:docs\/|CHANGELOG(?:\.[^/]+)?$|.*\.(?:css|md|scss|txt)$)/
 const quickRendererPattern = /^src\/renderer\/src\/(?:components\/|styles\.css$|locales\/|assets\/)/
 const highRiskPathPatterns = [
+  /^src\/renderer\/src\/(?:core\/canvas-input-[\w-]+|components\/canvas-composite-cache-[\w-]+)\.[cm]?[jt]sx?$/,
+  /^src\/renderer\/src\/components\/(?:canvas-(?:render-frame|keyboard-router)|app\/document-canvas(?:-state)?)\.[cm]?[jt]sx?$/,
+  /^src\/renderer\/src\/core\/(?:tools-[\w-]+|layer-move-state)\.[cm]?[jt]sx?$/,
+  /^src\/renderer\/src\/store\/workspace-(?:commands-[\w-]+|mutation|recording|close-coordinator)\.[cm]?[jt]sx?$/,
   new RegExp(`^src\\/shared\\/.*\\.${sourceExtension}$`),
   new RegExp(`^src\\/renderer\\/src\\/components\\/(?:CanvasStage|canvas-(?:selection-renderer|move-selection|composite-cache)|selection-size-preview-events)\\.${sourceExtension}$`),
   /^src\/renderer\/src\/core\/(?:selection(?:-[\w-]+)?|(?:view|preview)-geometry(?:-[\w-]+)?|project-format(?:-[\w-]+)?|document(?:-[\w-]+)?|(?:history|storage|png|gif|psd|aseprite|bmp)|canvas-(?:input|render-plan|resize-preview))\.[cm]?[jt]sx?$/,

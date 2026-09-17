@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createDocument, createLayer } from './document'
 import { addBlankAnimationFrame, animationCelAt, ensureAnimationDocument } from './animation'
-import { compositeAnimationFrame, onionSkinFrameRefs, tintOnionSkinPixels } from './onion-skin'
-import type { AnimationLoopSection } from '@shared/types'
+import { compositeAnimationFrame, createOnionSkinPointSampler, onionSkinFrameRefs, tintOnionSkinPixels } from './onion-skin'
+import type { AnimationLoopSection } from '@shared/types-animation'
 
 describe('onion skin helpers', () => {
   it('collects adjacent frames without wrapping at timeline edges', () => {
@@ -100,5 +100,25 @@ describe('onion skin helpers', () => {
     }
     expect([output[3], output[7], output[11], output[15], output[19], output[23]]).toEqual([51, 40, 26, 13, 51, 0])
     expect(new Set([output[0], output[4], output[8], output[12], output[16]]).size).toBeGreaterThan(3)
+  })
+
+  it('samples onion skin beneath a transparent eraser preview', () => {
+    const document = createDocument('eraser preview onion', 1, 1, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const previousFrameId = timeline.activeFrameId
+    animationCelAt(timeline, document.layers[0].id, previousFrameId)!.surface!.pixels.set([255, 255, 255, 255])
+    addBlankAnimationFrame(document)
+    const currentFrameId = timeline.activeFrameId
+    const style = {
+      previousColor: { r: 255, g: 64, b: 64, a: 255 },
+      nextColor: { r: 64, g: 64, b: 255, a: 255 },
+      previousOpacity: 50,
+      nextOpacity: 50
+    }
+    const sample = createOnionSkinPointSampler(document, [{ frameId: previousFrameId, side: 'previous', distance: 1 }], style)
+
+    const onionColor = sample(0, 0)
+    expect(timeline.activeFrameId).toBe(currentFrameId)
+    expect(onionColor).toEqual({ r: 255, g: 64, b: 64, a: 128 })
   })
 })

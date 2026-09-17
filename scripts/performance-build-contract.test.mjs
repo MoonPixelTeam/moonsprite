@@ -4,7 +4,7 @@ import test from 'node:test'
 import { PERFORMANCE_HARNESS_FILES, performanceSourceFingerprint } from './performance-runtime.mjs'
 
 test('性能 Canvas 使用独立生产预览构建和应用内 Harness', async () => {
-  const [canvas, vite, main, profiler, timelapseWorker, timelapse, projectFormat, brushes, packageSource] = await Promise.all([
+  const [canvas, vite, main, profiler, timelapseWorker, timelapse, projectFormat, projectFormatManifest, brushes, packageSource] = await Promise.all([
     readFile('scripts/canvas-performance.mjs', 'utf8'),
     readFile('vite.config.ts', 'utf8'),
     readFile('src/renderer/src/main.tsx', 'utf8'),
@@ -12,6 +12,7 @@ test('性能 Canvas 使用独立生产预览构建和应用内 Harness', async (
     readFile('src/renderer/src/workers/timelapse-encode.worker.ts', 'utf8'),
     readFile('src/renderer/src/core/timelapse.ts', 'utf8'),
     readFile('src/renderer/src/core/project-format.ts', 'utf8'),
+    readFile('src/renderer/src/core/project-format-manifest.ts', 'utf8'),
     readFile('src/renderer/src/core/brushes.ts', 'utf8'),
     readFile('package.json', 'utf8'),
   ])
@@ -30,7 +31,9 @@ test('性能 Canvas 使用独立生产预览构建和应用内 Harness', async (
   assert.doesNotMatch(timelapseWorker, /core\/png['"]/)
   assert.match(timelapse, /from '\.\/png-encode'/)
   assert.doesNotMatch(timelapse, /from '\.\/png'/)
-  assert.match(projectFormat, /from '\.\/png-encode'/)
+  assert.match(projectFormat, /from '\.\/project-format-manifest'/)
+  assert.match(projectFormatManifest, /from '\.\/png-encode'/)
+  assert.doesNotMatch(projectFormatManifest, /from '\.\/png'/)
   assert.doesNotMatch(projectFormat, /from '\.\/png'/)
   assert.match(brushes, /from '\.\/png-encode'/)
   assert.doesNotMatch(brushes, /from '\.\/png'/)

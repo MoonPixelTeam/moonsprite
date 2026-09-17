@@ -1,5 +1,8 @@
-import type { BlendMode, LayerGroup, RasterLayer, SpriteDocument } from '@shared/types'
-import { compositeDocument, createLayer, getDescendantGroupIds, isLayerEffectivelyLocked, paletteColorIdForCanvas } from './document'
+import type { BlendMode } from '@shared/types-color'
+import type { LayerGroup, RasterLayer } from '@shared/types-layer'
+import type { SpriteDocument } from '@shared/types-document'
+import { compositeDocument } from './document-composite'
+import { createLayer, getDescendantGroupIds, isLayerEffectivelyLocked, paletteColorIdForCanvas } from './document-model'
 import { applyRelativeLuminance } from './raster'
 import { translateCurrent as tr } from './localization'
 

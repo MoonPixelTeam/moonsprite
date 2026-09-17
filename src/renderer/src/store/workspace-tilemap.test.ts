@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelKey, animationCelOffsetsForKeys, ensureAnimationDocument, setAnimationCelOffsetsForKeys } from '@/core/animation'
 import { createDocument, getActiveLayer, readLayerColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel } from '@/core/history'

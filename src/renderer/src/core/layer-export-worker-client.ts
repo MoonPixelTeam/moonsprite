@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import type { GifDirection } from './gif'
 import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
 

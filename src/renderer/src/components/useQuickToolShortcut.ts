@@ -1,22 +1,61 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { deriveShortcutConflicts, shortcutKeyPart, type ShortcutBindings, type ShortcutConflictState } from '@/core/shortcuts'
 import { resolveHeldQuickTool, type QuickToolMatch } from '@/core/quick-tools'
 
 const heldParts = new Set<string>()
-const listeners = new Set<() => void>()
+interface MatchStore {
+  read: () => QuickToolMatch | null
+  listeners: Set<() => void>
+}
+const activeStores = new Set<MatchStore>()
+const conflictCache = new WeakMap<ShortcutBindings, ShortcutConflictState>()
+const matchStores = new WeakMap<ShortcutBindings, WeakMap<ShortcutConflictState, MatchStore>>()
 let revision = 0
 let listening = false
-let cachedMatch: {
-  shortcuts: ShortcutBindings
-  conflicts: ShortcutConflictState
-  revision: number
-  match: QuickToolMatch | null
-} | null = null
+let keyboardUsers = 0
+
+export const quickToolConflictsFor = (shortcuts: ShortcutBindings): ShortcutConflictState => {
+  let conflicts = conflictCache.get(shortcuts)
+  if (!conflicts) {
+    conflicts = deriveShortcutConflicts(shortcuts)
+    conflictCache.set(shortcuts, conflicts)
+  }
+  return conflicts
+}
+
+const matchStoreFor = (shortcuts: ShortcutBindings, conflicts: ShortcutConflictState): MatchStore => {
+  let stores = matchStores.get(shortcuts)
+  if (!stores) {
+    stores = new WeakMap()
+    matchStores.set(shortcuts, stores)
+  }
+  let store = stores.get(conflicts)
+  if (!store) {
+    let seenRevision = -1
+    let match: QuickToolMatch | null = null
+    store = {
+      listeners: new Set(),
+      read: () => {
+        if (seenRevision !== revision) {
+          const next = resolveHeldQuickTool(shortcuts, heldParts, conflicts)
+          // Preserve snapshot identity when unrelated keys leave the match unchanged.
+          if (next?.id !== match?.id || next?.binding !== match?.binding || next?.target !== match?.target) match = next
+          seenRevision = revision
+        }
+        return match
+      }
+    }
+    stores.set(conflicts, store)
+  }
+  return store
+}
 
 const notify = (): void => {
+  const previous = [...activeStores].map((store) => [store, store.read()] as const)
   revision += 1
-  cachedMatch = null
-  for (const listener of listeners) listener()
+  for (const [store, match] of previous) {
+    if (store.read() !== match) for (const listener of store.listeners) listener()
+  }
 }
 
 const clearHeldParts = (): void => {
@@ -68,16 +107,15 @@ const stopListening = (): void => {
   clearHeldParts()
 }
 
-const subscribe = (listener: () => void): (() => void) => {
-  listeners.add(listener)
-  startListening()
+const subscribe = (store: MatchStore, listener: () => void): (() => void) => {
+  store.read()
+  store.listeners.add(listener)
+  activeStores.add(store)
   return () => {
-    listeners.delete(listener)
-    if (listeners.size === 0) stopListening()
+    store.listeners.delete(listener)
+    if (store.listeners.size === 0) activeStores.delete(store)
   }
 }
-
-const getSnapshot = (): number => revision
 
 export const currentHeldShortcutKeyParts = (): ReadonlySet<string> => heldParts
 
@@ -101,16 +139,22 @@ export function syncHeldShortcutModifiers(event: Pick<KeyboardEvent, 'ctrlKey' |
 
 export function currentQuickToolMatch(
   shortcuts: ShortcutBindings,
-  conflicts: ShortcutConflictState = deriveShortcutConflicts(shortcuts)
+  conflicts: ShortcutConflictState = quickToolConflictsFor(shortcuts)
 ): QuickToolMatch | null {
-  if (cachedMatch?.shortcuts === shortcuts && cachedMatch.conflicts === conflicts && cachedMatch.revision === revision) return cachedMatch.match
-  const match = resolveHeldQuickTool(shortcuts, heldParts, conflicts)
-  cachedMatch = { shortcuts, conflicts, revision, match }
-  return match
+  return matchStoreFor(shortcuts, conflicts).read()
 }
 
 export function useQuickToolShortcut(shortcuts: ShortcutBindings): QuickToolMatch | null {
-  const heldRevision = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-  const conflicts = useMemo(() => deriveShortcutConflicts(shortcuts), [shortcuts])
-  return useMemo(() => currentQuickToolMatch(shortcuts, conflicts), [conflicts, heldRevision, shortcuts])
+  // Configuration changes resubscribe snapshots without releasing keys still held.
+  useEffect(() => {
+    keyboardUsers += 1
+    startListening()
+    return () => {
+      keyboardUsers -= 1
+      if (keyboardUsers === 0) stopListening()
+    }
+  }, [])
+  const store = matchStoreFor(shortcuts, quickToolConflictsFor(shortcuts))
+  const subscribeMatch = useMemo(() => (listener: () => void) => subscribe(store, listener), [store])
+  return useSyncExternalStore(subscribeMatch, store.read, store.read)
 }

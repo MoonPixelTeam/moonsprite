@@ -7,6 +7,26 @@ const event = (sequence: number, kind: RuntimeDiagnosticEvent['kind'] = 'operati
 })
 
 describe('diagnostic persistence batching', () => {
+  it('discards queued writes and suppresses fallback for an in-flight failure after disabling', async () => {
+    vi.useFakeTimers()
+    let rejectWrite!: (reason: Error) => void
+    const persist = vi.fn(() => new Promise<void>((_, reject) => { rejectWrite = reject }))
+    const fallback = vi.fn()
+    const writer = createDiagnosticWriter(persist, fallback)
+    writer.enqueue([event(1)])
+    writer.discardPending()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(persist).not.toHaveBeenCalled()
+    writer.enqueue([event(2, 'error')])
+    writer.enqueue([event(3)])
+    writer.discardPending()
+    writer.checkpoint()
+    rejectWrite(new Error('write failed'))
+    await writer.flush()
+    expect(fallback).not.toHaveBeenCalled()
+    expect(persist).toHaveBeenCalledTimes(1)
+  })
+
   afterEach(() => { vi.useRealTimers() })
 
   it('defers a burst of 80 events to one write and preserves their order', async () => {
@@ -28,6 +48,35 @@ describe('diagnostic persistence batching', () => {
     await vi.runAllTimersAsync()
     expect(batches.map((batch) => batch.length)).toEqual([100, 100, 40])
     expect(batches.flat()).toEqual(Array.from({ length: 240 }, (_, i) => i))
+  })
+
+  it('bounds a stalled persistence queue and reports dropped routine events', async () => {
+    vi.useFakeTimers()
+    const batches: RuntimeDiagnosticEvent[][] = []
+    const writer = createDiagnosticWriter(async (events) => { batches.push([...events]) }, vi.fn())
+    writer.enqueue(Array.from({ length: 700 }, (_, i) => event(i)))
+    await vi.runAllTimersAsync()
+    const written = batches.flat()
+    expect(written).toHaveLength(500)
+    expect(written.map((item) => item.sequence)).toEqual(Array.from({ length: 500 }, (_, i) => i))
+    expect(written[0].detail).toMatchObject({
+      diagnosticWriterDroppedEvents: 200,
+      diagnosticWriterPendingLimit: 500
+    })
+  })
+
+  it('retains an error when a full queue contains only routine events', async () => {
+    vi.useFakeTimers()
+    const written: RuntimeDiagnosticEvent[] = []
+    const writer = createDiagnosticWriter(async (events) => { written.push(...events) }, vi.fn())
+    writer.enqueue(Array.from({ length: 500 }, (_, i) => event(i)))
+    writer.enqueue([event(999, 'error')])
+    await vi.runAllTimersAsync()
+    await writer.flush()
+    expect(written).toHaveLength(500)
+    expect(written.some((item) => item.sequence === 0)).toBe(false)
+    expect(written.some((item) => item.sequence === 999 && item.kind === 'error')).toBe(true)
+    expect(written[0].detail.diagnosticWriterDroppedEvents).toBe(1)
   })
 
   it('flushes errors immediately, serializes writes, and checkpoints outstanding events', async () => {

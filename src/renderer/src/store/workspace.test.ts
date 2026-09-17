@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MoonSpriteApi, StoredPalette } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { StoredPalette } from '@shared/types-files'
 import { animationMaskAt, compositeDocument, createDocument, createLayer, ensureLayerCoversCanvas, getActiveLayer, isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, readLayerColor, readLayerColorAt, readLayerVisibleColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit, recordPixel, revertPixelEdit } from '@/core/history'
 import { packColor, relativeLuminanceColor } from '@/core/raster'
@@ -15,6 +16,7 @@ import { beginCanvasToolGesture, endCanvasToolGesture, clearCanvasToolGestures }
 import { registerPendingCanvasGestureHistory } from '@/core/canvas-input'
 import { RECENT_EXPORT_PATHS_STORAGE_KEY } from '@/core/export-settings'
 import { decodeProject, encodeProject, registerProjectSaveBaseline } from '@/core/project-format'
+import { saveDocumentViewState } from '@/core/document-view-state'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { defaultOutlineSettings } from '@/core/outline-settings'
 import { LAYER_PANEL_STATE_STORAGE_KEY } from '@/core/layer-panel-state'
@@ -387,13 +389,30 @@ describe('automatic animation cel links', () => {
 })
 
 describe('symmetry axis placement', () => {
-  it('uses the canvas center only when each axis is enabled for the first time', () => {
+  it('restores the project symmetry center before the legacy local cache', () => {
+    const document = createDocument('project symmetry center', 16, 12, 'rgba')
+    document.filePath = 'D:/projects/project-symmetry-center.moonsprite'
+    document.displaySettings = { ...document.displaySettings!, symmetryCenter: { x: 4.5, y: 8.5 } }
+    saveDocumentViewState(document, { zoom: 16, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false }, { x: 11, y: 2 })
+
+    useWorkspace.getState().addSession(document)
+
+    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 4.5, y: 8.5 })
+  })
+
+  it('uses the current viewport center when symmetry is enabled for the first time', () => {
     const document = createDocument('symmetry pointer', 16, 12, 'rgba')
     useWorkspace.getState().addSession(document)
 
+    useWorkspace.getState().setViewportSize({ width: 160, height: 120 })
+    useWorkspace.getState().setView({ zoom: 10, panX: 30, panY: -20 })
+
     useWorkspace.getState().setSymmetryCenter({ x: 3.5, y: 4.5 })
+    expect(useWorkspace.getState().sessions[0].document.displaySettings?.symmetryCenter).toEqual({ x: 3.5, y: 4.5 })
+    expect(useWorkspace.getState().sessions[0].document.dirty).toBe(true)
     useWorkspace.getState().setSymmetryAxis('horizontal', true)
-    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 8, y: 6 })
+    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 5, y: 8 })
+    expect(useWorkspace.getState().sessions[0].document.displaySettings?.symmetryCenter).toEqual({ x: 5, y: 8 })
 
     useWorkspace.getState().setSymmetryCenter({ x: 9.5, y: 8.5 })
     useWorkspace.getState().setSymmetryAxis('horizontal', false)
@@ -402,6 +421,25 @@ describe('symmetry axis placement', () => {
 
     useWorkspace.getState().setSymmetryAxis('vertical', true)
     expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 9.5, y: 8.5 })
+  })
+
+  it('keeps a visible symmetry axis and recenters an offscreen axis when it is reopened', () => {
+    const document = createDocument('reopen symmetry axis', 100, 80, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().setViewportSize({ width: 200, height: 120 })
+    useWorkspace.getState().setView({ zoom: 2, panX: 0, panY: 0 })
+
+    useWorkspace.getState().setSymmetryAxis('horizontal', true)
+    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 50, y: 40 })
+    useWorkspace.getState().setSymmetryAxis('horizontal', false)
+    useWorkspace.getState().setSymmetryCenter({ x: 70.5, y: 50 })
+    useWorkspace.getState().setSymmetryAxis('horizontal', true)
+    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 70.5, y: 50 })
+
+    useWorkspace.getState().setSymmetryAxis('horizontal', false)
+    useWorkspace.getState().setView({ panY: 50 })
+    useWorkspace.getState().setSymmetryAxis('horizontal', true)
+    expect(useWorkspace.getState().sessions[0].symmetryCenter).toEqual({ x: 50, y: 15 })
   })
 
   it('tracks first-use placement independently for each open project', () => {
@@ -1688,6 +1726,35 @@ describe('animation workspace', () => {
 })
 
 describe('selection clipboard', () => {
+  it('pastes an image as a new layer directly above the active layer', async () => {
+    const document = createDocument('paste above active layer', 1, 1, 'rgba')
+    const bottom = getActiveLayer(document)
+    const active = createLayer('Active', 1, 1, 'rgba')
+    const top = createLayer('Top', 1, 1, 'rgba')
+    const group = { id: 'paste-group', name: 'Group', visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups.push(group)
+    active.groupId = group.id
+    document.layers.push(active, top)
+    document.activeLayerId = active.id
+    useWorkspace.getState().addSession(document)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+
+    expect(await useWorkspace.getState().pasteAsNewLayer()).toBe(true)
+
+    const pasted = getActiveLayer(document)
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
+    expect(pasted.groupId).toBe(group.id)
+    expect(readLayerColorAt(document, pasted, 0, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+
+    useWorkspace.getState().undo()
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, top.id])
+    expect(document.activeLayerId).toBe(active.id)
+    useWorkspace.getState().redo()
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
+    expect(getActiveLayer(document).id).toBe(pasted.id)
+  })
+
   it('prefers a newer external image after an internal layer copy', async () => {
     const document = createDocument('layer then external clipboard', 1, 1, 'rgba')
     const layer = getActiveLayer(document)

@@ -139,6 +139,58 @@ describe('GIF animation export', () => {
     expect(new TextDecoder().decode(result.bytes)).not.toContain('NETSCAPE2.0')
   })
 
+  it('expands nested loop sections when exporting their parent section', () => {
+    const document = createDocument('gif nested loop section', 1, 1, 'rgba')
+    const layer = document.layers[0]
+    const colors = [
+      { r: 255, g: 0, b: 0, a: 255 },
+      { r: 0, g: 255, b: 0, a: 255 },
+      { r: 0, g: 0, b: 255, a: 255 },
+      { r: 255, g: 255, b: 255, a: 255 },
+      { r: 255, g: 255, b: 0, a: 255 }
+    ]
+    writeLayerColor(document, layer, 0, colors[0])
+    for (const color of colors.slice(1)) {
+      addBlankAnimationFrame(document)
+      writeLayerColor(document, layer, 0, color)
+    }
+    const timeline = document.animation!
+    timeline.loopSections = [
+      { id: 'outer', name: 'Outer', startFrameId: timeline.frames[0].id, endFrameId: timeline.frames[4].id, direction: 'forward', repeatCount: 1 },
+      { id: 'middle', name: 'Middle', startFrameId: timeline.frames[1].id, endFrameId: timeline.frames[2].id, direction: 'forward', repeatCount: 2 },
+      { id: 'tail', name: 'Tail', startFrameId: timeline.frames[3].id, endFrameId: timeline.frames[4].id, direction: 'forward', repeatCount: 1 }
+    ]
+
+    const result = exportAnimationGif(document, { scalePercent: 100, loopSectionId: 'outer', direction: 'forward' })
+    const frames = decompressFrames(parseGIF(result.bytes.slice().buffer), true)
+
+    expect(result.frameCount).toBe(7)
+    expect(frames.map((frame) => Array.from(frame.patch))).toEqual([
+      colors[0], colors[1], colors[2], colors[1], colors[2], colors[3], colors[4]
+    ].map((color) => [color.r, color.g, color.b, color.a]))
+  })
+
+  it('expands nested loop sections when exporting the full timeline', () => {
+    const document = createDocument('gif nested full timeline', 1, 1, 'rgba')
+    const layer = document.layers[0]
+    const frameColors = [
+      { r: 255, g: 0, b: 0, a: 255 },
+      { r: 0, g: 255, b: 0, a: 255 },
+      { r: 0, g: 0, b: 255, a: 255 }
+    ]
+    writeLayerColor(document, layer, 0, frameColors[0])
+    for (const color of frameColors.slice(1)) {
+      addBlankAnimationFrame(document)
+      writeLayerColor(document, layer, 0, color)
+    }
+    const timeline = document.animation!
+    timeline.loopSections = [{ id: 'middle', name: 'Middle', startFrameId: timeline.frames[1].id, endFrameId: timeline.frames[2].id, direction: 'forward', repeatCount: 2 }]
+
+    const result = exportAnimationGif(document, { scalePercent: 100, direction: 'forward' })
+
+    expect(result.frameCount).toBe(5)
+  })
+
   it('clears transparent pixels between full-canvas animation frames', () => {
     const document = createDocument('gif disposal', 2, 1, 'rgba')
     const layer = document.layers[0]

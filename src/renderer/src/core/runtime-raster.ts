@@ -1,4 +1,7 @@
-import type { AnimationCelSurface, RasterFormat, RasterLayer, RuntimeRasterTiles, SpriteDocument } from '@shared/types'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { RasterFormat, RuntimeRasterTiles } from '@shared/types-raster'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SpriteDocument } from '@shared/types-document'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive } from './runtime-diagnostics'
 
 type RasterSurface = RasterLayer | AnimationCelSurface

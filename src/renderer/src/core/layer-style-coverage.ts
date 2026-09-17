@@ -1,4 +1,5 @@
-import type { LayerStyles, SelectionRect } from '@shared/types'
+import type { LayerStyles } from '@shared/types-layer-style'
+import type { SelectionRect } from '@shared/types-selection'
 import { layerStyleBinaryStrokeMetric, type LayerStyleCoverageOverrides } from './layer-styles'
 
 export interface LayerStyleCoverageTile {

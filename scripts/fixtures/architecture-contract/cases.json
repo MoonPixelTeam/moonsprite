@@ -73,13 +73,6 @@
       "expected": { "permanent-boundary-allowlist": 3 }
     },
     {
-      "name": "workspace root commands",
-      "files": {
-        "src/renderer/src/store/workspace-contract.ts": "interface WorkspaceState {\n  addLayer(): void\n  saveActive(): Promise<void>\n}\n"
-      },
-      "expected": { "workspace-root-command": 2 }
-    },
-    {
       "name": "render key pixel serialization",
       "files": {
         "src/renderer/src/core/example-render-keys.ts": "export const key = (layer) => layer.pixels.join(',')\n"

@@ -17,7 +17,7 @@ import { readStoredString, writeStoredString } from '@/core/panel-preferences'
 import type { BrushLibraryController, LoadedBrush } from '@/components/app/useBrushLibrary'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
-import type { StoredBrushFolder } from '@shared/types'
+import type { StoredBrushFolder } from '@shared/types-library'
 import type { ShortcutId } from '@/core/shortcuts'
 
 const BRUSH_SWATCH_SIZE_STORAGE_KEY = 'moonsprite.brush-swatch-size'

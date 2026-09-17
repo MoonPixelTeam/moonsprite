@@ -1,4 +1,5 @@
-import type { GridSettings, SelectionRect } from '@shared/types'
+import type { GridSettings } from '@shared/types-view'
+import type { SelectionRect } from '@shared/types-selection'
 
 export type AlignmentAxis = 'x' | 'y'
 export type AlignmentGuideSource = 'grid' | 'smart'

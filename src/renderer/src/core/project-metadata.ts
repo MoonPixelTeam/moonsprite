@@ -1,4 +1,5 @@
-import type { ProjectDisplaySettings, ProjectStatistics, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types'
+import type { ProjectDisplaySettings, ProjectStatistics } from '@shared/types-document'
+import type { TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot } from '@shared/types-timelapse'
 import { DEFAULT_GRID_SETTINGS, normalizeGridSettings } from './grid'
 
 export const DEFAULT_PROJECT_DISPLAY_SETTINGS: ProjectDisplaySettings = {
@@ -28,10 +29,15 @@ const safeCounter = (value: unknown): number =>
 
 export const normalizeProjectDisplaySettings = (value: unknown): ProjectDisplaySettings => {
   const candidate = value && typeof value === 'object' ? value as Partial<ProjectDisplaySettings> : {}
+  const symmetryCenter = candidate.symmetryCenter
+  const validSymmetryCenter = symmetryCenter
+    && Number.isFinite(symmetryCenter.x)
+    && Number.isFinite(symmetryCenter.y)
   return {
     showPixelGrid: candidate.showPixelGrid === true,
     showGrid: candidate.showGrid === true,
-    grid: normalizeGridSettings(candidate.grid)
+    grid: normalizeGridSettings(candidate.grid),
+    ...(validSymmetryCenter ? { symmetryCenter: { x: symmetryCenter.x, y: symmetryCenter.y } } : {})
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ViewState } from '@shared/types'
+import type { ViewState } from '@shared/types-view'
 import type { CanvasPoint as Point } from '@/core/canvas-input'
 import { useWorkspace } from '@/store/workspace'
 import { notifyViewPreview, registerViewPreviewFlusher } from '@/core/view-preview-lifecycle'
@@ -10,11 +10,10 @@ interface CanvasViewPreviewOptions {
   activeViewDrag: boolean
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   selectionCanvasRef: React.RefObject<HTMLCanvasElement | null>
-  drawRef: React.RefObject<() => void>
   requestDrawRef: React.RefObject<() => void>
 }
 
-export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, drawRef, requestDrawRef }: CanvasViewPreviewOptions) {
+export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, canvasRef, selectionCanvasRef, requestDrawRef }: CanvasViewPreviewOptions) {
   const pendingViewRef = useRef<Partial<ViewState> | null>(null)
   const liveViewRef = useRef(sessionView)
   const viewFrameRef = useRef<number | null>(null)
@@ -42,7 +41,6 @@ export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, 
   const finishZoomPreview = (): ViewState => {
     const view = { ...liveViewRef.current }
     if (!zoomPreviewStartRef.current) return view
-    const needsFinalDraw = viewFrameRef.current !== null
     if (viewFrameRef.current !== null) window.cancelAnimationFrame(viewFrameRef.current)
     if (zoomCommitTimerRef.current !== null) window.clearTimeout(zoomCommitTimerRef.current)
     viewFrameRef.current = null
@@ -52,7 +50,9 @@ export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, 
     applyRotationStyle(view)
     useWorkspace.getState().setViewForDocument(documentId, { zoom: view.zoom, panX: view.panX, panY: view.panY })
     pendingViewRef.current = null
-    if (needsFinalDraw) drawRef.current()
+    // Even if the last preview was painted, replace its fast sampling with
+    // the final aligned frame. Share pending content/animation draw requests.
+    requestDrawRef.current()
     return view
   }
 
@@ -60,12 +60,14 @@ export function useCanvasViewPreview({ documentId, sessionView, activeViewDrag, 
     if (!zoomPreviewStartRef.current) zoomPreviewStartRef.current = { ...liveViewRef.current }
     liveViewRef.current = next
     pendingViewRef.current = next
+    // Navigation and content updates must use the same canvas RAF. This RAF
+    // below only publishes the view to auxiliary consumers, never paints.
+    requestDrawRef.current()
     if (viewFrameRef.current === null) {
       viewFrameRef.current = window.requestAnimationFrame(() => {
         viewFrameRef.current = null
         if (!zoomPreviewStartRef.current) return
         applyRotationStyle(liveViewRef.current)
-        drawRef.current()
         notifyViewPreview(documentId, liveViewRef.current)
       })
     }

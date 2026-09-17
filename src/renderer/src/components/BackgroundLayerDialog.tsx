@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BackgroundPatternId, StoredBackgroundPreset } from '@shared/types'
-import { renderBackgroundPatternRgba, renderBackgroundTileRgba, type BackgroundPatternTile } from '@/core/background-patterns'
+import type { BackgroundPatternId } from '@shared/types-layer'
+import type { StoredBackgroundPreset } from '@shared/types-library'
+import type { BackgroundPatternTile } from '@/core/background-patterns'
+import { BackgroundPatternPreview } from './BackgroundPatternPreview'
 import { decodeBackgroundPresetTile } from '@/core/background-preset-images'
 import type { TranslationKey } from '@/core/localization'
 import { DialogHeader } from './DialogHeader'
@@ -21,26 +23,6 @@ const backgroundPatternLabelKeys: Record<Exclude<BackgroundPatternId, 'solid'>, 
 interface LoadedBackgroundPreset {
   preset: StoredBackgroundPreset
   tile: BackgroundPatternTile
-}
-
-function BackgroundPatternPreview({ source }: { source: BackgroundPatternId | BackgroundPatternTile }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const canvas = ref.current
-    if (!canvas) return
-    try {
-      const context = canvas.getContext('2d')
-      if (!context) return
-      const image = context.createImageData(canvas.width, canvas.height)
-      image.data.set(typeof source === 'string'
-        ? renderBackgroundPatternRgba(canvas.width, canvas.height, source)
-        : renderBackgroundTileRgba(canvas.width, canvas.height, source))
-      context.putImageData(image, 0, 0)
-    } catch {
-      // Canvas previews are unavailable in a few test environments.
-    }
-  }, [source])
-  return <canvas ref={ref} width={64} height={64} aria-hidden="true" />
 }
 
 export function BackgroundLayerDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (pattern: BackgroundPatternId | BackgroundPatternTile) => Promise<void> }) {

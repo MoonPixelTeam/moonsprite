@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { classifyPerformanceAudit, classifyPerformanceImpact } from './performance-scope-rules.mjs'
 
+test('拆分后的渲染和命令模块仍进入定向性能检查', () => {
+  for (const file of ['components/canvas-render-frame.ts', 'core/document-composite.ts', 'core/tools-brush.ts', 'store/workspace-commands-layer.ts']) {
+    assert.equal(classifyPerformanceImpact([`src/renderer/src/${file}`]).level, 'P3', file)
+  }
+  assert.ok(classifyPerformanceImpact(['src/renderer/src/components/canvas-render-frame.ts']).suites.some((suite) => suite.id === 'canvas-targeted'))
+})
+
 test('文档和测试属于 P0', () => {
   assert.equal(classifyPerformanceImpact(['docs/testing/performance-baseline.md', 'src/core/example.test.ts']).level, 'P0')
   assert.equal(classifyPerformanceImpact(['src/renderer/src/core/example.spec.ts']).level, 'P0')
@@ -158,4 +165,13 @@ test('定向 P3 对复杂工程保留一个代表场景，完整复杂矩阵只�
   const release = classifyPerformanceAudit(['src/renderer/src/core/animation.ts'], { releaseAudit: true, minimumLevel: 'P3' })
   assert.equal(release.suites.some((suite) => suite.id === 'canvas-complex'), true)
   assert.equal(release.suites.some((suite) => suite.id === 'canvas-complex-targeted'), false)
+})
+
+
+test('职责子模块保留原性能分级和画布定向范围', () => {
+  for (const file of ['components/canvas-composite-cache-selection.ts', 'core/document-composite-raster.ts', 'core/project-format-decode.ts', 'core/tools-selection-transform-translation.ts', 'store/workspace-commands-animation-frame.ts']) {
+    assert.equal(classifyPerformanceImpact(['src/renderer/src/' + file]).level, 'P3', file)
+  }
+  assert.equal(classifyPerformanceImpact(['src/renderer/src/core/canvas-input-pointer.ts']).level, 'P2')
+  assert.ok(classifyPerformanceImpact(['src/renderer/src/components/canvas-composite-cache-gpu.ts']).suites.some(suite => suite.id === 'canvas-targeted'))
 })

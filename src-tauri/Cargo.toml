@@ -1,6 +1,6 @@
 [package]
 name = "moonsprite"
-version = "1.0.0-beta3"
+version = "1.0.0-beta4"
 description = "An original, source-available pixel art workstation for Windows."
 authors = ["MoonSprite contributors"]
 edition = "2021"
@@ -29,4 +29,4 @@ mlua = { version = "0.10", features = ["lua54", "vendored"] }
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

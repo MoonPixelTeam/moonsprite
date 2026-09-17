@@ -1,4 +1,4 @@
-import type { LayerGroup } from '@shared/types'
+import type { LayerGroup } from '@shared/types-layer'
 import { bench, describe } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache } from './document'
 

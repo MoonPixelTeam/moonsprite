@@ -3,7 +3,13 @@ import { readdir, readFile } from 'node:fs/promises'
 import { dirname, extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createScanner, SyntaxKind } from 'typescript/unstable/ast'
-import { architectureBudgetErrors, ARCHITECTURE_BUDGET_FILE, parseArchitectureBudget, readArchitectureBudget } from './architecture-budget.mjs'
+import {
+  architectureAnchorErrors,
+  architectureBudgetErrors,
+  ARCHITECTURE_BUDGET_FILE,
+  parseArchitectureBudget,
+  readArchitectureBudget,
+} from './architecture-budget.mjs'
 import { moduleBoundaryFindings } from './check-module-boundaries.mjs'
 
 const RENDERER_ROOT = 'src/renderer/src'
@@ -17,10 +23,9 @@ export const ARCHITECTURE_RULES = {
   'project-open-secondary-decode': '一次工程打开执行第二次完整解码',
   'async-project-main-thread-preparation': '异步工程任务在 Worker 前完整同步准备',
   'recovery-error-swallow': '恢复路径静默吞掉错误',
-  'core-runtime-cycle': 'core 生产运行时循环依赖文件',
+  'core-runtime-cycle': '前端生产运行时循环依赖文件（含跨目录依赖）',
   'module-boundary-debt': '既有模块边界迁移债务',
   'permanent-boundary-allowlist': '按文件永久边界白名单或忽略指令',
-  'workspace-root-command': 'WorkspaceState 根接口领域命令',
   'render-key-pixel-serialization': '渲染键序列化像素或整份文档',
 }
 
@@ -129,7 +134,9 @@ const secondaryDecodeFindings = (file, source) => {
   for (const match of source.matchAll(/\bdecodeDocumentFileInWorker\s*\(/g)) {
     const openParen = source.indexOf('(', match.index)
     const args = splitTopLevelArguments(source, openParen)
-    if (args.length < 5) continue
+    // The fifth argument is the dropped-timelapse-frame observer. A duplicate
+    // decode still has the old six-argument shape (document plus frame id).
+    if (args.length < 6) continue
     results.push(finding('project-open-secondary-decode', file, source, match.index, '已解码工程不得再次把原始归档送入完整解码 Worker。'))
   }
   return results
@@ -196,23 +203,25 @@ const runtimeImports = (source) => {
     }
     if (previous?.kind !== SyntaxKind.FromKeyword && previous?.kind !== SyntaxKind.ImportKeyword) continue
     let statementStart = index - 1
-    while (statementStart >= 0 && ![SyntaxKind.ImportKeyword, SyntaxKind.ExportKeyword, SyntaxKind.SemicolonToken, SyntaxKind.CloseBraceToken].includes(tokens[statementStart].kind)) statementStart -= 1
-    if (tokens[statementStart]?.kind === SyntaxKind.SemicolonToken || tokens[statementStart]?.kind === SyntaxKind.CloseBraceToken) statementStart += 1
-    const statement = source.slice(tokens[statementStart]?.pos ?? 0, token.end)
+    // A named import's closing brace is part of the statement, not a boundary.
+    while (statementStart >= 0 && ![SyntaxKind.ImportKeyword, SyntaxKind.ExportKeyword, SyntaxKind.SemicolonToken].includes(tokens[statementStart].kind)) statementStart -= 1
+    if (tokens[statementStart]?.kind === SyntaxKind.SemicolonToken) continue
+    const statement = tokens.slice(statementStart, index + 1).map((part) => source.slice(part.pos, part.end)).join(' ')
     if (/^\s*(?:import|export)\s+type\b/.test(statement)) continue
-    const namedOnly = /^\s*import\s*\{([\s\S]*?)\}\s*from/.exec(statement)
-    if (namedOnly && namedOnly[1].split(',').filter(Boolean).every((part) => /^\s*type\b/.test(part))) continue
+    const namedOnly = /^\s*(?:import|export)\s*\{([\s\S]*?)\}\s*from/.exec(statement)
+    const members = namedOnly?.[1].split(',').map((part) => part.trim()).filter(Boolean)
+    if (members?.length && members.every((part) => /^type\s+(?!as\b)/.test(part))) continue
     modules.push(token.value)
   }
   return modules
 }
 
-const resolveCoreImport = (file, specifier, files) => {
+const resolveFrontendImport = (file, specifier, files) => {
   let base = null
-  if (specifier.startsWith('@/core/')) base = `${CORE_ROOT}${specifier.slice('@/core/'.length)}`
-  else if (specifier === '@/core') base = `${CORE_ROOT}index`
+  if (specifier.startsWith('@/')) base = `${RENDERER_ROOT}/${specifier.slice(2)}`
+  else if (specifier.startsWith('@shared/')) base = `src/shared/${specifier.slice('@shared/'.length)}`
   else if (specifier.startsWith('.')) base = normalize(join(dirname(file), specifier))
-  if (!base || !base.startsWith(CORE_ROOT)) return null
+  if (!base) return null
   const candidates = extname(base)
     ? [base]
     : [`${base}.ts`, `${base}.tsx`, `${base}.mts`, `${base}.cts`, `${base}/index.ts`, `${base}/index.tsx`]
@@ -220,12 +229,13 @@ const resolveCoreImport = (file, specifier, files) => {
 }
 
 const coreCycleFindings = (files) => {
-  const coreFiles = [...files.keys()].filter((file) => file.startsWith(CORE_ROOT) && isProductionSource(file))
+  // Keep the historical rule id so its zero-debt budget remains effective.
+  const coreFiles = [...files.keys()].filter((file) => (file.startsWith(`${RENDERER_ROOT}/`) || file.startsWith('src/shared/')) && isProductionSource(file))
   const graph = new Map(coreFiles.map((file) => [file, new Set()]))
   for (const file of coreFiles) {
     for (const specifier of runtimeImports(files.get(file))) {
-      const target = resolveCoreImport(file, specifier, files)
-      if (target) graph.get(file).add(target)
+      const target = resolveFrontendImport(file, specifier, files)
+      if (target && graph.has(target)) graph.get(file).add(target)
     }
   }
 
@@ -289,18 +299,8 @@ const permanentAllowlistFindings = (file, source) => {
   return results
 }
 
-const workspaceRootFindings = (file, source) => {
-  if (!file.startsWith(STORE_ROOT) || !isProductionSource(file)) return []
-  const match = /\binterface\s+WorkspaceState\s*\{([\s\S]*?)\n\}/.exec(source)
-  if (!match) return []
-  const bodyStart = match.index + match[0].indexOf(match[1])
-  const results = []
-  for (const method of match[1].matchAll(/^\s{2}([A-Za-z_$][\w$]*)\s*\(/gm)) {
-    results.push(finding('workspace-root-command', file, source, bodyStart + method.index, `WorkspaceState 根命令：${method[1]}。`))
-  }
-  return results
-}
-
+// 原 workspace-root-command 规则已退役（见 scripts/architecture-debt-budget.json 的 retiredRules）：
+// 它守护的 `interface WorkspaceState` 形态已不存在于 store/，命中面为 0 的规则等于永久绿灯。
 const renderKeyFindings = (file, source) => {
   if (!/render-keys?\.[cm]?[jt]sx?$/.test(file) || !isProductionSource(file)) return []
   const results = []
@@ -335,7 +335,6 @@ export const analyzeArchitectureFiles = (inputFiles) => {
     findings.push(...asyncPreparationFindings(file, source))
     findings.push(...recoverySwallowFindings(file, source))
     findings.push(...permanentAllowlistFindings(file, source))
-    findings.push(...workspaceRootFindings(file, source))
     findings.push(...renderKeyFindings(file, source))
     if (file.startsWith(RENDERER_ROOT) && isProductionSource(file)) {
       for (const boundary of moduleBoundaryFindings(file, source)) {
@@ -364,6 +363,7 @@ const collectFiles = async (root, directory, extensions) => {
 export const readArchitectureSourceFiles = async (root = process.cwd()) => {
   const paths = [
     ...await collectFiles(root, RENDERER_ROOT, ['.ts', '.tsx', '.mts', '.cts']),
+    ...await collectFiles(root, 'src/shared', ['.ts', '.tsx', '.mts', '.cts']),
     ...await collectFiles(root, 'scripts', ['.mjs', '.js']),
   ]
   const files = new Map()
@@ -380,18 +380,34 @@ const previousBudgetAtHead = (root) => {
   }
 }
 
+/** 规则必须仍能在真实源码里命中：命中面为 0 的护栏等于永久绿灯。 */
+const anchorMatches = (files, rules) => {
+  const production = [...files].filter(([file]) => file.startsWith(RENDERER_ROOT) && isProductionSource(file))
+  const matches = {}
+  for (const [ruleId, entry] of Object.entries(rules)) {
+    if (typeof entry?.anchor !== 'string' || !entry.anchor.trim()) continue
+    const pattern = new RegExp(entry.anchor)
+    matches[ruleId] = production.some(([file, source]) => pattern.test(file) || pattern.test(source))
+  }
+  return matches
+}
+
 export const runArchitectureContract = async (root = process.cwd(), { report = false } = {}) => {
   const files = await readArchitectureSourceFiles(root)
   const analysis = analyzeArchitectureFiles(files)
   const budget = await readArchitectureBudget(root)
   const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const errors = architectureBudgetErrors({
-    budget,
-    counts: analysis.counts,
-    currentVersion: packageJson.version,
-    knownRuleIds: Object.keys(ARCHITECTURE_RULES),
-    previousBudget: previousBudgetAtHead(root),
-  })
+  const ruleCount = Object.keys(ARCHITECTURE_RULES).length
+  const errors = [
+    ...architectureBudgetErrors({
+      budget,
+      counts: analysis.counts,
+      currentVersion: packageJson.version,
+      knownRuleIds: Object.keys(ARCHITECTURE_RULES),
+      previousBudget: previousBudgetAtHead(root),
+    }),
+    ...architectureAnchorErrors({ budget, anchorMatches: anchorMatches(files, budget.rules) }),
+  ]
 
   if (report || errors.length > 0) {
     console.log('架构契约扫描：')
@@ -413,7 +429,7 @@ export const runArchitectureContract = async (root = process.cwd(), { report = f
   }
 
   const debt = Object.values(analysis.counts).reduce((sum, count) => sum + count, 0)
-  console.log(`架构契约检查通过：10 类规则，当前登记迁移债务 ${debt} 项；预算只能递减，不能延期。`)
+  console.log(`架构契约检查通过：${ruleCount} 类规则，当前登记迁移债务 ${debt} 项；预算只能递减、不能延期，规则失效会被自检拦下。`)
   return { ...analysis, errors: [] }
 }
 

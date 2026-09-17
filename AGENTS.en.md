@@ -2,96 +2,51 @@
 
 [中文](AGENTS.md) | English
 
-> Human-facing English mirror. AI agents use `AGENTS.md` and the Chinese documentation as their sole routine context. Do not load this file during ordinary development; it is read only for explicit translation, English-document maintenance, bilingual audits, or targeted release synchronization.
+> Human-facing English mirror. AI agents use `AGENTS.md` and the Chinese contracts as their sole routine context. This file is read only for explicit translation, English-document maintenance, bilingual audits, or targeted release synchronization.
 
-The Chinese `AGENTS.md` is the machine-readable source of truth for all project-level rules. This mirror is maintained for English-speaking human readers and must not cause AI agents to load a second copy of the same rules.
+The single entry point for daily rules. Detailed release, performance, and recovery procedures live in `docs/agent-workflow.md`; the documentation index is `docs/README.md`. Ordinary tasks read only the Chinese rules and directly related contracts — not English mirrors, historical archives, or unrelated modules.
 
-## Default Working State
+## Working Boundaries
 
-- The project remains in continuous development for the current `dev.X` by default, until the user explicitly requests “release dev.X,” “prepare a release,” or “generate a development build.” The workflow has only development and release stages, with no intermediate stable batch.
-- The commit SHA at the start of the current development cycle is the audit baseline. Release audits cover the cumulative changes after that baseline; ordinary development validates only the files changed by the current task.
-- Unless the user explicitly invokes `$moonsprite-code-architect`, the current main Agent must directly handle all ordinary requests, UI changes, debugging, reviews, tests, and release work. Creating, assigning, or retaining sub-agents is prohibited.
-- `$moonsprite-code-architect` is used only when the user explicitly requests a whole-project architecture audit, a major milestone architecture review, or planning for a large cross-module refactor. It is read-only by default. Only one architect instance may be created at a time, and that instance may not create or assign descendants. Ordinary requests, UI changes, and continuous debugging must not invoke it automatically or restore per-request agent delegation.
-- Ordinary tasks use the configured `gpt-5.6-terra` model at `low` reasoning. Do not raise ordinary UI, debugging, or review work to `gpt-5.6-sol`/`ultra`; reserve that for an explicit request or complex architecture work. Do not run timed “continue” loops or blind retries after a 403/429.
+- Check `git status` once at the start of every new request and preserve the user's existing diffs. The current Agent owns writes by default, and only one writing task is allowed per workspace. Parallel read-only searching, testing, and analysis are fine, as are separate worktrees; no task may overwrite another task's changes.
+- Ordinary requests do not create, spawn, or retain sub-agents, and do not write concurrently in the same checkout. Only when the user explicitly requests a whole-project architecture audit or a large cross-module refactor may a single read-only architecture agent be used, and it may not spawn descendants. When the user says "continue", continue only the current task — do not rescan or re-derive.
+- Ordinary tasks start on the global `gpt-5.6-terra` + `low`. Do not raise ordinary UI, debug, or review work to `gpt-5.6-sol`/`ultra`; only an explicit user request or a complex architecture task justifies an upgrade. Task-level settings can override the global ones, so start or restart the task after switching.
+- Do not set timed "continue" loops, background polling, or blind retries. On 403/429, record it once, then wait for the service to recover or switch to a new lightweight task. If Codex runs low on disk or accumulates too many old rollouts, report it and ask the user to archive — never delete automatically.
+- Ordinary requests get one implementation round plus one targeted check by default, and end as soon as the result is acceptable; the default ceiling is 20 tool calls or 30 minutes. If the ceiling is exceeded, report first; do not keep polling because a subtask has not finished. Complex tasks require the user to relax the ceiling explicitly.
+- The project is in Beta iteration; the actual version is the consistent value across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Enter the release process, changelog updates, or packaging only when the user explicitly requests a release, release preparation, or an installer.
+- Context compaction, a model switch, or resuming after a pause is still the same request. Use the existing summary and read only the missing next-step facts; do not rerun checks because of compaction.
 
-## Change Process
+## Risk and Checks
 
-1. First classify the change as visual-only, ordinary interaction, shared state, coordinates and selection, undo, file format, Rust, or platform integration, then choose validation according to risk.
-2. Keep changes within the relevant modules. Do not use a local issue as a reason to refactor unrelated code. Record architecture debt for the release audit instead of expanding debugging scope.
-3. Automated regression tests and regression-matrix entries are required only for recurring bugs, bugs that are hard to detect manually, shared core algorithms, or changes that may break coordinates, undo, file data, or platform security. Users directly validate ordinary visual, spacing, wording, and simple visibility issues.
-4. Development does not require updating `CHANGELOG.md` for every change. When releasing `dev.X`, consolidate the full diff after the cycle baseline while keeping one independent entry for every separately describable effective change, following the [complete changelog policy](docs/release/changelog-policy.en.md).
-5. UI state such as view pan, zoom, rotation, and panel layout must not enter document undo history.
-6. Coordinate conversion must reuse shared geometry functions. Components must not reimplement rotation, zoom, or offset calculations.
-7. Do not force-push or commit generated directories, installers, user projects, recovery files, or secrets.
-8. Build installers only when the user explicitly asks for a release or installer.
+- D0: documentation, copy, CSS — hand it to the user for acceptance.
+- D1: ordinary UI, menus, dialogs, and low-frequency interactions — deliver directly by default.
+- D2: general Core, Store, Shared, and shortcuts — once stable, run `pnpm check:dev -- <files...>`.
+- D3: coordinates, selection, undo, file formats, persistence, platform security, shared core algorithms, and the canvas, project IO, recovery, and decode paths — run `pnpm check:dev -- --risk=high <source-files...> <focused-tests...>`.
+- The validation script detects D3 paths automatically. JavaScript/TypeScript D3 must include one real focused test (`.test`, `.spec`, or `.bench`); Rust D3 runs the matching `cargo check` by default, and switches to `cargo test --test` when files under `src-tauri/**/tests/*.rs` are passed explicitly. Do not attach unrelated JavaScript tests.
+- `pnpm check:dev` cross-checks its validation scope against the actual git changes: if a changed high-risk file is missing from the passed list, the check fails outright. Do not shrink the scope by under-reporting files.
+- The Rust side is bounded by the risk allowances in `scripts/rust-risk-budget.json`. Per-file counts of panic (`.unwrap()` / `.expect(`), silent swallowing (`let _ =`), and `unsafe` may not rise; unregistered files may not introduce counts; and `src-tauri/src` has zero tolerance for `panic!`/`todo!`/`unimplemented!`/`unreachable!`. New Rust platform code must return presentable errors instead of panicking.
+- Chinese/English doc pairing is enforced by `scripts/check-doc-pairs.mjs`: every English mirror must match its Chinese source heading-for-heading at each level and link in both directions. Pairs that are not yet synchronized are registered in `scripts/doc-pair-budget.json`, and that registry may only shrink. When an English mirror is dropped, remove the English switch link at the top of the Chinese source as well.
+- Performance audits are an expensive entry point: `check:performance` and `check:performance:release` must be given explicit files. Pass `--all` only for an explicit whole-repository audit, and never treat an omitted file list as a full run.
+- Ordinary development does not run maintenance gates, the full test suite, the performance matrix, full builds, automated browser acceptance, or desktop regression. When a definite error appears, rerun only the affected checks.
+- For very large source files, locate symbols with `rg` first and then read by line range. Do not load all of `CanvasStage.tsx`, `workspace.ts`, or a complete historical log at once.
+- Stop the tool loop when there is no new diff, test result, or root-cause evidence. If two consecutive rounds make no progress, report the symptom, your assessment, and the single next step.
 
-## During dev.X Development
+## Inviolable Contracts
 
-- Prioritize a user-testable implementation for each request. Run at most one round of the minimum necessary checks, then return it for user testing immediately.
-- Run `pnpm check:dev -- <task-files...>` by default. Development mode must receive an explicit file list and may not fall back to scanning the whole worktree. Documentation, wording, CSS, and visual-only layout changes may skip application tests.
-- Ordinary TypeScript, including general Core, Store, and Shared debugging, runs only the checks selected by the Chinese policy. Coordinates, selections, undo, file formats, persistence, platform security, shared core algorithms, and recurring or hard-to-detect bugs use `pnpm check:dev -- --risk=high <source-files...> <focused-test-files...>` and run only the explicitly listed tests. Rust and thumbnail code run the corresponding `cargo check`; explicitly listed files under `src-tauri/**/tests/` run the matching `cargo test --test` target.
-- The user owns subjective validation of layout, feel, animation, visuals, and requirement fit. Do not run automated browser interaction, screenshot comparison, desktop acceptance, or full builds unless explicitly requested.
-- During development, do not run `check:maintenance`, the full test suite, full CI, or performance benchmarks. Do not update release notes, performance history, or the general regression matrix, and do not commit, push, or package every issue.
-- Add one `pnpm check:architecture` to the minimum checks only when the task touches component authoring documentation, the undo model, project encoding or decoding, recovery, Core dependencies, or root Store responsibilities. Ordinary UI, wording, and continuous debugging do not run this repository-wide static gate.
-- For ordinary D0/D1 work, read only this file, the documentation index, and directly related contracts. Read release, performance, historical audit, and ADR material only when the task requires it.
-- A confirmed compile or test error may be fixed and rechecked. Without evidence, do not continue speculative changes. If two consecutive rounds do not solve the issue, report the observed behavior, root-cause assessment, and next step instead of widening the investigation or refactoring.
+- Coordinate conversion reuses the shared geometry functions; view pan, zoom, rotation, and panel layout must not enter the document undo history.
+- Components may write documents only through Store domain commands or document transactions. They must not directly change `SpriteDocument`, dirty, revision, invalidation, or `HistoryStack`.
+- `encodeProject`/`decodeProject` belong only to the file and recovery boundaries and must not be used for undo snapshots. A single open performs one full decode, and async project tasks must not copy the whole document on the UI thread first.
+- Save and recovery errors must enter an observable channel; `catch` blocks that silently swallow errors are forbidden.
+- `core/` does not depend on React, components, platform, or store; `store/` does not depend back on components; Tauri APIs are reached only from `platform/`; render keys must not serialize pixels or whole documents.
+- Architecture rules must still match real source: `guard` uses `expiresAt: permanent`, and `migration` must carry a deadline. When the shape a rule guards disappears, the rule must be retired or replaced — never leave a permanently green rule with zero matches.
+- UI reuses the component library and pixel icons first; containers stay square-cornered and the primary action color is `#2979FF`.
+- No force-pushing, and no committing generated artifacts, installers, user projects, recovery files, or secrets.
 
-## Releasing dev.X
-
-- Enter this stage only when the user explicitly requests a release. Run `pnpm check:performance:release` first. Process one candidate at a time for at most two rounds. Low-risk candidates may be attempted automatically; high-risk candidates require confirmation. Restore candidates with no benefit and record them as not adopted.
-- Then consolidate the changelog, behavior contracts, architecture status, and required regression matrix updates before running `pnpm check:release`. Run desktop gates and installers only when explicitly needed. Record the completed release SHA as the baseline for the next cycle.
-- See `docs/agent-workflow.en.md` and `docs/release/release-checklist.en.md` for the complete release steps. Ordinary development must not load those details.
-
-## Performance Audits
-
-- Ordinary requests and continuous debugging do not run performance benchmarks. Performance work occurs only for releases, dedicated performance work, confirmed regressions, or explicit user requests.
-- Each audit handles one stable candidate for at most two rounds, must exceed the noise threshold, and must pass correctness tests. High-risk pixel, coordinate, undo, and format optimizations require confirmation first.
-- Read detailed suites, baselines, environment fingerprints, and CI rules only from `docs/agent-workflow.en.md` and `docs/testing/performance-baseline.en.md`. `check:release` must not secretly run benchmarks.
-
-## Reusable UI
-
-- Before creating Renderer UI, inspect `src/renderer/src/components/ComponentLibrary.tsx` and the component-library section of `src/renderer/src/styles.css`.
-- Prefer reusing `NumberInput`, `ThemedSelect`, `ColorPicker`, and existing buttons, dialogs, panels, and segmented controls.
-- Add every new reusable component to `COMPONENT_LIBRARY_ENTRIES` and provide an interactive preview in `previewRenderers`.
-- Previews should cover default, selected, disabled, and interactive states.
-- Keep UI containers square-cornered and use `#2979FF` consistently for primary selection and action color.
-- The user performs final visual checks at 1024 x 640 and major desktop sizes. Run automated screenshot acceptance only when explicitly requested.
-
-## Module Boundaries
-
-- `core/` contains independently testable pixel, selection, format, and geometry algorithms and does not depend on React.
-- `store/` manages document sessions and operations and does not implement view rendering.
-- `components/` manages presentation and input and does not duplicate core algorithms.
-- `platform/` is the Renderer’s only boundary for accessing Tauri.
-- `src-tauri/` owns system files, windows, recovery, clipboard, thumbnails, and packaging integration.
-- Do not add unrelated responsibilities to oversized files. Prefer extracting new logic into a clearly owned module with risk-appropriate tests.
-- Components must not directly modify `SpriteDocument`, `DocumentSession`, pixels, dirty state, revisions, invalidation, or cache versions. They must not call raw `mutateActive`, `pushHistory`, or directly control `HistoryStack`. All document writes and history commits must go through Store domain commands or `begin/update/commit/cancel` document transactions.
-- Live-preview transactions must handle confirmation, cancellation, document switching, and component unmounting. Cancellation restores the baseline; confirmation produces exactly one dirty, history, and invalidation commit.
-- `encodeProject` and `decodeProject` belong only to file and recovery boundaries and must not be used as undo snapshots. History stores the minimum before-and-after state for affected domains and does not depend on the project format.
-- A project open may perform only one full decode. Initial compositing, thumbnails, and caches must reuse the decoded document. Async save, recovery, and project encoding must not synchronously prepare an entire document before dispatching a Worker.
-- Save and recovery failures must enter an observable error channel. Empty `catch` blocks and comment-only `catch` blocks must not silently swallow failures.
-- The `core/` production dependency graph must remain acyclic. Render keys may contain only domain revisions and lightweight scalars, never serialized pixels, cel surfaces, or whole documents.
-- `WorkspaceState` is composed only from the session, slice, tool, color, view-selection, history, animation, Tilemap, layer, clipboard, project IO, recovery, and UI contracts in `store/workspace-state.ts`. Do not rebuild a giant root interface in `workspace.ts` or add commands that bypass domain contracts.
-- `check:dev` performs targeted dependency checks only for changed Renderer files. `pnpm check:boundaries` scans the full Renderer only when called without file arguments. Releases and architecture audits use full scanning and do not use per-file allowlists. `pnpm check:architecture` validates the complete architecture contract. Existing historical debt may be recorded only as numeric budgets in `scripts/architecture-debt-budget.json`; actual counts must equal the budgets, budgets may only decrease, and every budget must reach zero by its deadline.
-
-## Command Entry Points
+## Commands
 
 ```powershell
-# Continuous development: validate only the current files
 pnpm check:dev -- <task-files...>
-
-# High-risk development: run only explicitly listed targeted tests
-pnpm check:dev -- --risk=high <source-files...> <focused-test-files...>
-
-# Add only when protected architecture boundaries are touched
-pnpm check:architecture
-
-# Check dependency direction only for changed Renderer files (check:dev calls this automatically)
-pnpm check:boundaries -- --files <changed-renderer-files...>
-
-# dev.X release: complete correctness and maintenance gate, excluding benchmarks
+pnpm check:dev -- --risk=high <source-files...> <focused-tests...>
+pnpm check:performance:release -- <cycle-files...>
 pnpm check:release
-
-# Version release, milestone, or performance work
-pnpm check:performance:release
 ```

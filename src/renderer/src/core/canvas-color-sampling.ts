@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 
 export interface CanvasColorSamplingSurface {
   canvas: HTMLCanvasElement

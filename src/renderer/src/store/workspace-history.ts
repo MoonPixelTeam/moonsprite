@@ -1,13 +1,15 @@
-import { cacheRasterContentBounds, cachedRasterContentBounds, getActiveLayer, getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from '@/core/document'
+import { cacheRasterContentBounds, cachedRasterContentBounds, getActiveLayer, findLayerMask, isLayerMask, getLayerStorageOrigin, markLayerContentChanged, setLayerStorageOrigin } from '@/core/document-model'
 import { animationCelAt, ensureAnimationDocument } from '@/core/animation'
 import type { LayerMergeSuccess } from '@/core/layer-merge'
 import type { AdjustmentSnapshot, DocumentSession } from './workspace-types'
-import { touch } from './workspace-session'
+import { activeLayerMask, touch } from './workspace-session'
 import { translateCurrent as tr } from '@/core/localization'
 import { captureDocumentStructureSnapshot, documentStructureDeltaBytes, restoreDocumentStructureSnapshot, type DocumentStructureSnapshot } from './workspace-document-history'
-import type { SelectionRect } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
 
 const adjustmentTargetLayerIds = (session: DocumentSession): string[] => {
+  const mask = activeLayerMask(session)
+  if (mask) return [mask.id]
   if (session.selection) return [getActiveLayer(session.document).id]
   const selected = session.selectedLayerIds.filter((id) => session.document.layers.some((layer) => layer.id === id))
   return [...new Set(selected.length > 0 ? selected : [getActiveLayer(session.document).id])]
@@ -17,7 +19,7 @@ export function captureAdjustmentSnapshot(session: DocumentSession, targetLayerI
   const timeline = ensureAnimationDocument(session.document)
   return {
     layers: targetLayerIds.flatMap((layerId) => {
-      const layer = session.document.layers.find((candidate) => candidate.id === layerId)
+      const layer = (session.document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(session.document, layerId))
       if (!layer) return []
       const storageOrigin = getLayerStorageOrigin(layer)
       return [{
@@ -43,7 +45,7 @@ const bindAdjustmentSnapshotPixels = (
   pixels: Uint8ClampedArray | Uint32Array
 ): void => {
   const timeline = ensureAnimationDocument(session.document)
-  const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+  const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
   if (!layer) return
   if ((layer.format === 'rgba') !== (pixels instanceof Uint8ClampedArray)) throw new Error(tr('core.history.adjustmentFormatChanged'))
   const frameId = layerSnapshot.frameId ?? timeline.activeFrameId
@@ -53,7 +55,7 @@ const bindAdjustmentSnapshotPixels = (
     : layer.format === 'indexed' && pixels instanceof Uint32Array
       ? { format: 'indexed', width: layerSnapshot.width, height: layerSnapshot.height, offsetX: layerSnapshot.offsetX, offsetY: layerSnapshot.offsetY, storageOriginX: layerSnapshot.storageOriginX, storageOriginY: layerSnapshot.storageOriginY, pixels }
       : undefined
-  if (timeline.activeFrameId === frameId) {
+  if (isLayerMask(layer) || timeline.activeFrameId === frameId) {
     layer.width = layerSnapshot.width
     layer.height = layerSnapshot.height
     layer.offsetX = layerSnapshot.offsetX
@@ -73,12 +75,12 @@ const restoreAdjustmentPalette = (session: DocumentSession, snapshot: Adjustment
 export function prepareAdjustmentSnapshotTargets(session: DocumentSession, snapshot: AdjustmentSnapshot, initializeDetachedPixels = false): void {
   const timeline = ensureAnimationDocument(session.document)
   for (const layerSnapshot of snapshot.layers) {
-    const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+    const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     if (!layer) continue
     const frameId = layerSnapshot.frameId ?? timeline.activeFrameId
     const cel = animationCelAt(timeline, layerSnapshot.layerId, frameId)
     const celPixels = cel?.surface?.pixels
-    const current = timeline.activeFrameId === frameId ? layer.pixels : celPixels
+    const current = isLayerMask(layer) || timeline.activeFrameId === frameId ? layer.pixels : celPixels
     const expectedLength = layerSnapshot.pixels.length
     const currentIsShared = current !== undefined && (
       session.document.layers.some((candidate) => candidate.id !== layer.id && candidate.pixels === current)
@@ -133,7 +135,7 @@ export function restoreAdjustmentSnapshotRegions(
 ): Array<{ layerId: string; rect: SelectionRect }> | null {
   const timeline = ensureAnimationDocument(session.document)
   const targets = snapshot.layers.flatMap((layerSnapshot) => {
-    const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+    const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     const frameId = layerSnapshot.frameId ?? timeline.activeFrameId
     if (!layer) return []
     const origin = getLayerStorageOrigin(layer)

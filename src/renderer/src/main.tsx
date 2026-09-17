@@ -10,7 +10,7 @@ import { applyThemeToDocument } from './core/theme'
 import { translate } from './core/localization'
 import { installTauriApi } from './platform/tauri-api'
 import { applyCursorPreferences } from './platform/cursor-theme'
-import { applyToolIconScale, applyUiScale } from './platform/ui-scale'
+import { applyBodyFontScale, applyToolIconScale, applyUiScale } from './platform/ui-scale'
 import { loadTextFontCatalog } from './platform/font-service'
 import { showAppWindow } from './platform/app-window'
 import { installRuntimeDiagnostics } from './platform/runtime-diagnostics'
@@ -20,19 +20,32 @@ import { documentDiagnosticDetail } from './core/document-diagnostics'
 import { runtimeRasterResidentBytes } from './core/runtime-raster'
 import { useWorkspace } from './store/workspace'
 import { NativeTooltipBridge } from './components/Tooltip'
+import { ExtensionWindow } from './components/extensions/ExtensionWindow'
 
 const rootElement = document.getElementById('root')
 
 if (!rootElement) throw new Error('MoonSprite root element is missing.')
 
+const extensionWindow = new URLSearchParams(window.location.search).has('extensionWindow')
+if (extensionWindow) {
+  for (const element of [document.documentElement, document.body, rootElement]) {
+    element.style.setProperty('background', 'transparent', 'important')
+  }
+}
 const startupPreferences = loadEditorPreferences()
 applyThemeToDocument(startupPreferences.theme)
 document.documentElement.dataset.uiMotion = startupPreferences.uiMotionLevel
+if (extensionWindow) document.documentElement.dataset.extensionWindow = 'true'
 applyToolIconScale(startupPreferences.toolIconScale)
+applyBodyFontScale(startupPreferences.bodyFontScale)
 void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferences.cursorScale).catch(() => undefined)
 
 void installTauriApi()
   .then(async () => {
+    if (extensionWindow) {
+      createRoot(rootElement).render(<ExtensionWindow />)
+      return
+    }
     await applyUiScale(startupPreferences.uiScale).catch(() => undefined)
     installExportSuccessSound()
     installRuntimeDiagnostics((): RuntimeDiagnosticDetail => {

@@ -1,8 +1,14 @@
-import type { SelectionRect, SpriteDocument, TimelapseExportFormat, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot, TimelapseVideoFormat } from '@shared/types'
-import { compositeRegion, createCompositePointSampler, createId, createNormalCompositePointSampler, DocumentCompositeCache } from './document'
+import type { SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import type { TimelapseExportFormat, TimelapseQuality, TimelapseRecordingMode, TimelapseSettings, TimelapseSnapshot, TimelapseVideoFormat } from '@shared/types-timelapse'
+import { compositeRegion, createCompositePointSampler, createNormalCompositePointSampler, DocumentCompositeCache } from './document-composite'
+import { createId } from './document-model'
 import { encodePng } from './png-encode'
 import { normalizeTimelapseSettings } from './project-metadata'
 import { translateCurrent as tr } from './localization'
+import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from './runtime-diagnostics'
+import { compileCompositePointSampler } from './document-composite-sampling'
+import { freezeTimelapsePixels, materializeTimelapsePixels, type TimelapsePixels } from './timelapse-pixels'
 
 export type TimelapseExportMode = 'duration' | 'speed'
 
@@ -10,6 +16,10 @@ export interface TimelapseExportOptions {
   mode: TimelapseExportMode
   durationSeconds: number
   scalePercent?: number
+  quality?: TimelapseQuality
+  speed?: number
+  name?: string
+  directory?: string
 }
 
 export interface TimelapseVideoFrame {
@@ -48,10 +58,14 @@ export interface TimelapseCaptureOptions {
 }
 
 export interface PreparedTimelapseSnapshot {
+  /** Recording policy at the edit boundary, before a later settings change. */
+  mode?: TimelapseRecordingMode
   capturedAt: number
   width: number
   height: number
+  changeScore: number
   pixels: Uint8ClampedArray
+  tiledPixels?: TimelapsePixels
   cache?: TimelapseCaptureCache
 }
 
@@ -119,7 +133,9 @@ export const createTimelapseCaptureCache = (): TimelapseCaptureCache => ({
 })
 
 /** Target number of retained frames before the next adaptive compaction. */
-export const TIMELAPSE_SMART_TARGET_FRAMES = 120
+export const TIMELAPSE_SMART_TARGET_FRAMES = 180
+const TIMELAPSE_SMART_COMPACT_TARGET_FRAMES = 120
+const TIMELAPSE_SMART_RECENT_FRAMES = 60
 /** Prevent integer overflow after extremely long recordings. */
 export const TIMELAPSE_SMART_MAX_STRIDE = 2 ** 30
 
@@ -168,6 +184,21 @@ const renderScaledRows = (
   revision: number
 ): void => {
   if (toX <= fromX || toY <= fromY) return
+  // Downscaled recordings need only these sample points, not a full-size
+  // intermediate composite (which can be hundreds of MB on large canvases).
+  if (outputWidth < document.width || outputHeight < document.height) {
+    const sample = createNormalCompositePointSampler(document)
+      ?? compileCompositePointSampler(document, undefined, composite, revision)
+    for (let y = fromY; y < toY; y += 1) for (let x = fromX; x < toX; x += 1) {
+      const color = sample(Math.floor(x * document.width / outputWidth), Math.floor(y * document.height / outputHeight), undefined)
+      const offset = (y * outputWidth + x) * 4
+      output[offset] = color.r
+      output[offset + 1] = color.g
+      output[offset + 2] = color.b
+      output[offset + 3] = color.a
+    }
+    return
+  }
   const sourceLeft = Math.floor(fromX * document.width / outputWidth)
   const sourceRight = Math.min(document.width, Math.floor((toX - 1) * document.width / outputWidth) + 1)
   const sourceTop = Math.floor(fromY * document.height / outputHeight)
@@ -333,14 +364,15 @@ const compositeTimelapsePixelsAsync = async (document: SpriteDocument, maximumDi
   return { pixels: cachedPixels, width, height }
 }
 
-const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, data: Uint8Array): void => {
+const appendTimelapseSnapshot = (settings: TimelapseSettings, now: number, width: number, height: number, changeScore: number, data: Uint8Array): void => {
   const previous = settings.snapshots.at(-1)
   const snapshot: TimelapseSnapshot = {
     id: createId('timelapse'),
     capturedAt: now,
-    elapsedMs: previous ? 1 : 0,
+    elapsedMs: previous ? Math.max(0, now - previous.capturedAt) : 0,
     width,
     height,
+    changeScore: Math.max(0, Math.min(1, changeScore)),
     data
   }
   settings.snapshots = [...settings.snapshots, snapshot]
@@ -354,8 +386,29 @@ interface SmartTimelapsePlan {
   nextSamplingPhase: number
 }
 
-const decimateTimelapseSnapshots = (snapshots: TimelapseSnapshot[]): TimelapseSnapshot[] =>
-  snapshots.length < 2 ? snapshots : snapshots.filter((_snapshot, index) => index % 2 === 0)
+const compactTimelapseSnapshots = (snapshots: TimelapseSnapshot[]): TimelapseSnapshot[] => {
+  if (snapshots.length <= TIMELAPSE_SMART_COMPACT_TARGET_FRAMES) return snapshots
+  const recent = snapshots.slice(-TIMELAPSE_SMART_RECENT_FRAMES)
+  const older = snapshots.slice(0, -TIMELAPSE_SMART_RECENT_FRAMES)
+  const targetOlder = TIMELAPSE_SMART_COMPACT_TARGET_FRAMES - recent.length
+  const selected: TimelapseSnapshot[] = []
+  for (let slot = 0; slot < targetOlder; slot += 1) {
+    const start = Math.floor(slot * older.length / targetOlder)
+    const end = Math.max(start + 1, Math.floor((slot + 1) * older.length / targetOlder))
+    let best = older[start]
+    for (let index = start + 1; index < end; index += 1) {
+      if ((older[index].changeScore ?? 0) > (best.changeScore ?? 0)) best = older[index]
+    }
+    selected.push(best)
+  }
+  return [...selected, ...recent]
+}
+
+const timelapseChangeScore = (document: SpriteDocument, invalidation?: TimelapseCaptureInvalidation | null): number => {
+  if (!invalidation || invalidation.kind === 'full' || !invalidation.rect) return 1
+  const area = Math.max(0, invalidation.rect.width) * Math.max(0, invalidation.rect.height)
+  return Math.max(0.01, Math.min(1, area / Math.max(1, document.width * document.height)))
+}
 
 /**
  * Plans one source operation without mutating the document or cache. The
@@ -373,7 +426,9 @@ const planSmartTimelapseCapture = (settings: TimelapseSettings, cache?: Timelaps
     && settings.snapshots.length >= TIMELAPSE_SMART_TARGET_FRAMES
     && stride < TIMELAPSE_SMART_MAX_STRIDE
   if (transition) {
-    stride = Math.min(TIMELAPSE_SMART_MAX_STRIDE, stride * 2)
+    // Compaction itself reduces the retained history. Keep sampling every
+    // subsequent operation so the recent window remains complete.
+    stride = 1
     samplingPhase = 0
   }
   const keep = transition || samplingPhase === 0
@@ -386,12 +441,19 @@ const planSmartTimelapseCapture = (settings: TimelapseSettings, cache?: Timelaps
   }
 }
 
-const applySmartTimelapsePlan = (settings: TimelapseSettings, cache: TimelapseCaptureCache | undefined, plan: SmartTimelapsePlan): void => {
+const applySmartTimelapsePlan = (settings: TimelapseSettings, cache: TimelapseCaptureCache | undefined, plan: SmartTimelapsePlan, documentId: string): void => {
   if (!cache || plan.mode !== 'smart') {
     if (cache) resetTimelapseSmartCapture(cache)
     return
   }
-  if (plan.transition) settings.snapshots = decimateTimelapseSnapshots(settings.snapshots)
+  if (plan.transition) {
+    const before = settings.snapshots.length
+    settings.snapshots = compactTimelapseSnapshots(settings.snapshots)
+    if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'timelapse.compact', {
+      documentId, reason: 'smart-sampling', beforeFrames: before, retainedFrames: settings.snapshots.length,
+      samplingStride: plan.nextStride, recentFrames: TIMELAPSE_SMART_RECENT_FRAMES
+    })
+  }
   cache.smartMode = plan.mode
   cache.smartStride = plan.nextStride
   cache.smartSamplingPhase = plan.nextSamplingPhase
@@ -404,25 +466,84 @@ const markSmartTimelapseSnapshotAdded = (settings: TimelapseSettings, cache: Tim
 
 interface TimelapseEncodeWorkerResponse { id: number; data?: Uint8Array; error?: string }
 let timelapseEncodeSequence = 0
+let timelapseEncodeWorker: Worker | null = null
 
-const encodeTimelapsePngAsync = (pixels: Uint8ClampedArray, width: number, height: number): Promise<Uint8Array> => {
-  if (typeof Worker === 'undefined') return Promise.resolve(encodePng(pixels, width, height, true).bytes)
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../workers/timelapse-encode.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-timelapse-encode' })
+interface PendingTimelapseEncode {
+  resolve: (data: Uint8Array) => void
+  reject: (error: Error) => void
+}
+
+const pendingTimelapseEncodes = new Map<number, PendingTimelapseEncode>()
+
+const resetTimelapseEncodeWorker = (error?: Error): void => {
+  timelapseEncodeWorker?.terminate()
+  timelapseEncodeWorker = null
+  if (!error) return
+  for (const pending of pendingTimelapseEncodes.values()) pending.reject(error)
+  pendingTimelapseEncodes.clear()
+}
+
+// A recording session encodes hundreds of frames. Creating and terminating a worker
+// per frame costs more than the encode itself, so one worker is kept per session and
+// requests are matched by id.
+const ensureTimelapseEncodeWorker = (): Worker => {
+  if (timelapseEncodeWorker) return timelapseEncodeWorker
+  const worker = new Worker(new URL('../workers/timelapse-encode.worker.ts', import.meta.url), { type: 'module', name: 'moonsprite-timelapse-encode' })
+  worker.onmessage = (event: MessageEvent<TimelapseEncodeWorkerResponse>) => {
+    const pending = pendingTimelapseEncodes.get(event.data.id)
+    if (!pending) return
+    pendingTimelapseEncodes.delete(event.data.id)
+    if (event.data.data) pending.resolve(event.data.data)
+    else pending.reject(new Error(event.data.error || 'Timelapse encode failed'))
+  }
+  worker.onerror = (event) => {
+    resetTimelapseEncodeWorker(new Error(event.message || 'Timelapse encode worker failed'))
+  }
+  worker.onmessageerror = () => resetTimelapseEncodeWorker(new Error('Timelapse encode worker message failed'))
+  timelapseEncodeWorker = worker
+  return worker
+}
+
+const encodeTimelapsePngAsync = (source: Uint8ClampedArray | TimelapsePixels, width: number, height: number): Promise<Uint8Array> => {
+  const fallback = (): Uint8Array => encodePng(source instanceof Uint8ClampedArray ? source : materializeTimelapsePixels(source), width, height, true).bytes
+  if (typeof Worker === 'undefined') return Promise.resolve(fallback())
+  return new Promise<Uint8Array>((resolve, reject) => {
     const id = ++timelapseEncodeSequence
-    const transferredPixels = pixels.slice()
-    const finish = (): void => worker.terminate()
-    worker.onmessage = (event: MessageEvent<TimelapseEncodeWorkerResponse>) => {
-      if (event.data.id !== id) return
-      finish()
-      if (event.data.data) resolve(event.data.data)
-      else reject(new Error(event.data.error || 'Timelapse encode failed'))
+    // The worker takes ownership of the buffer, so it never receives the shared
+    // capture cache.
+    let worker: Worker
+    try {
+      worker = ensureTimelapseEncodeWorker()
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)))
+      return
     }
-    worker.onerror = (event) => {
-      finish()
-      reject(new Error(event.message || 'Timelapse encode worker failed'))
+    const timeout = setTimeout(() => {
+      if (pendingTimelapseEncodes.has(id)) resetTimelapseEncodeWorker(new Error('Timelapse encode worker timed out'))
+    }, 30_000)
+    pendingTimelapseEncodes.set(id, {
+      resolve: (data) => { clearTimeout(timeout); resolve(data) },
+      reject: (error) => { clearTimeout(timeout); reject(error) }
+    })
+    try {
+      if (source instanceof Uint8ClampedArray) {
+        const transferredPixels = source.slice()
+        worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+      } else {
+        // Structured clone preserves the immutable tiles for retry. Full-frame
+        // assembly happens in the worker, not at the end of the stroke.
+        worker.postMessage({ id, tiledPixels: source, width, height })
+      }
+    } catch (error) {
+      clearTimeout(timeout)
+      pendingTimelapseEncodes.delete(id)
+      reject(error instanceof Error ? error : new Error(String(error)))
     }
-    worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+  }).catch((error) => {
+    recordRuntimeDiagnostic('error', 'timelapse.encode.fallback', { message: error instanceof Error ? error.message : String(error) })
+    // The transferred buffer is a copy. Retain the original so a failed worker
+    // does not erase this operation; the exceptional fallback runs only once.
+    return fallback()
   })
 }
 
@@ -434,29 +555,52 @@ const prepareTimelapseCapture = (document: SpriteDocument, options: TimelapseCap
   return { settings, cache, ...compositeTimelapsePixels(document, qualityMaxDimension[settings.quality], { ...options, cache }) }
 }
 
+const frozenCaptureFrames = new WeakMap<TimelapseCaptureCache, { revision: number; frameId: string | null; sourceWidth: number; sourceHeight: number; frame: TimelapsePixels }>()
+
 export function prepareTimelapseSnapshot(document: SpriteDocument, now = Date.now(), options: TimelapseCaptureOptions = {}): PreparedTimelapseSnapshot | null {
   const capture = prepareTimelapseCapture(document, options)
-  return capture ? { capturedAt: now, width: capture.width, height: capture.height, pixels: capture.pixels.slice(), cache: capture.cache } : null
+  if (!capture) return null
+  const previous = frozenCaptureFrames.get(capture.cache)
+  const revision = options.contentRevision ?? Number.NaN
+  const frameId = document.animation?.activeFrameId ?? null
+  const invalidation = options.contentInvalidation
+  let dirty: SelectionRect | undefined
+  if (previous && previous.frameId === frameId && previous.sourceWidth === document.width && previous.sourceHeight === document.height) {
+    if (previous.revision === revision) dirty = { x: 0, y: 0, width: 0, height: 0 }
+    else if (invalidation?.kind === 'region' && invalidation.fromRevision === previous.revision && invalidation.revision === revision && invalidation.rect) {
+      const rect = invalidation.rect
+      const x = targetRangeForSourceRange(Math.max(0, Math.floor(rect.x)), Math.min(document.width, Math.ceil(rect.x + rect.width)), document.width, capture.width)
+      const y = targetRangeForSourceRange(Math.max(0, Math.floor(rect.y)), Math.min(document.height, Math.ceil(rect.y + rect.height)), document.height, capture.height)
+      dirty = { x: x.start, y: y.start, width: x.end - x.start, height: y.end - y.start }
+    }
+  }
+  const tiledPixels = freezeTimelapsePixels(capture.pixels, capture.width, capture.height, previous?.frame, dirty)
+  frozenCaptureFrames.set(capture.cache, { revision, frameId, sourceWidth: document.width, sourceHeight: document.height, frame: tiledPixels })
+  let materialized: Uint8ClampedArray | undefined
+  return { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height,
+    changeScore: timelapseChangeScore(document, options.contentInvalidation), tiledPixels,
+    get pixels() { return materialized ??= materializeTimelapsePixels(tiledPixels) }, cache: capture.cache }
 }
 
 export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<void> {
   if (!shouldCommit()) return
   const settings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = settings
-  if (!settings.enabled) return
-  const plan = planSmartTimelapseCapture(settings, snapshot.cache)
+  if (!settings.enabled && snapshot.mode === undefined) return
+  const plan = planSmartTimelapseCapture({ ...settings, mode: snapshot.mode ?? settings.mode }, snapshot.cache)
   if (!plan.keep) {
-    if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan)
+    if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan, document.id)
     return
   }
-  const data = await encodeTimelapsePngAsync(snapshot.pixels, snapshot.width, snapshot.height)
+  const data = await encodeTimelapsePngAsync(snapshot.tiledPixels ?? snapshot.pixels, snapshot.width, snapshot.height)
   if (!shouldCommit()) return
   const latestSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = latestSettings
-  if (!latestSettings.enabled) return
-  if ((latestSettings.mode ?? 'full') !== plan.mode) return
-  applySmartTimelapsePlan(latestSettings, snapshot.cache, plan)
-  appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, data)
+  if (!latestSettings.enabled && snapshot.mode === undefined) return
+  // Switching policy affects future edits. Preserve this already captured frame
+  // without applying an old policy's compaction to the new recording settings.
+  if ((latestSettings.mode ?? 'full') === plan.mode) applySmartTimelapsePlan(latestSettings, snapshot.cache, plan, document.id)
+  appendTimelapseSnapshot(latestSettings, snapshot.capturedAt, snapshot.width, snapshot.height, snapshot.changeScore, data)
   markSmartTimelapseSnapshotAdded(latestSettings, snapshot.cache)
 }
 
@@ -465,12 +609,12 @@ export function captureTimelapseSnapshot(document: SpriteDocument, now = Date.no
   if (!capture) return
   const plan = planSmartTimelapseCapture(capture.settings, capture.cache)
   if (!plan.keep) {
-    applySmartTimelapsePlan(capture.settings, capture.cache, plan)
+    applySmartTimelapsePlan(capture.settings, capture.cache, plan, document.id)
     return
   }
   const data = encodePng(capture.pixels, capture.width, capture.height, true).bytes
-  applySmartTimelapsePlan(capture.settings, capture.cache, plan)
-  appendTimelapseSnapshot(capture.settings, now, capture.width, capture.height, data)
+  applySmartTimelapsePlan(capture.settings, capture.cache, plan, document.id)
+  appendTimelapseSnapshot(capture.settings, now, capture.width, capture.height, timelapseChangeScore(document, options.contentInvalidation), data)
   markSmartTimelapseSnapshotAdded(capture.settings, capture.cache)
 }
 
@@ -483,7 +627,7 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   if (!capture || options.shouldCommit?.() === false) return
   const plan = planSmartTimelapseCapture(settings, cache)
   if (!plan.keep) {
-    if (options.shouldCommit?.() !== false) applySmartTimelapsePlan(settings, cache, plan)
+    if (options.shouldCommit?.() !== false) applySmartTimelapsePlan(settings, cache, plan, document.id)
     return
   }
   const data = await encodeTimelapsePngAsync(capture.pixels, capture.width, capture.height)
@@ -492,8 +636,8 @@ export async function captureTimelapseSnapshotAsync(document: SpriteDocument, no
   document.timelapse = latestSettings
   if (!latestSettings.enabled) return
   if ((latestSettings.mode ?? 'full') !== plan.mode) return
-  applySmartTimelapsePlan(latestSettings, cache, plan)
-  appendTimelapseSnapshot(latestSettings, now, capture.width, capture.height, data)
+  applySmartTimelapsePlan(latestSettings, cache, plan, document.id)
+  appendTimelapseSnapshot(latestSettings, now, capture.width, capture.height, timelapseChangeScore(document, options.contentInvalidation), data)
   markSmartTimelapseSnapshotAdded(latestSettings, cache)
 }
 
@@ -537,6 +681,14 @@ export const timelapseVideoFramePlan = (
   }))
 }
 
+/** Preview every retained recording snapshot before export settings are chosen. */
+export const timelapsePreviewFramePlan = (
+  settings: Pick<TimelapseSettings, 'fps' | 'speed' | 'snapshots'>
+): TimelapseVideoFrame[] => settings.snapshots.map((_snapshot, snapshotIndex) => ({
+  snapshotIndex,
+  durationMs: timelapseFrameHoldMs(_snapshot, settings)
+}))
+
 export const isTimelapseVideoFormat = (format: TimelapseExportFormat): format is TimelapseVideoFormat => format === 'mp4' || format === 'webm'
 
 const VIDEO_MIME_TYPES: Record<TimelapseVideoFormat, readonly string[]> = {
@@ -549,13 +701,15 @@ export const resolveTimelapseMimeType = (
   isSupported: (mimeType: string) => boolean
 ): string | null => VIDEO_MIME_TYPES[format].find(isSupported) ?? null
 
-const decodeSnapshot = async (snapshot: TimelapseSnapshot): Promise<ImageBitmap> => {
-  const buffer = snapshot.data.buffer.slice(snapshot.data.byteOffset, snapshot.data.byteOffset + snapshot.data.byteLength) as ArrayBuffer
+const decodeSnapshot = async (snapshot: TimelapseSnapshot, readFrame?: (snapshot: TimelapseSnapshot) => Promise<Uint8Array>): Promise<ImageBitmap> => {
+  const data = readFrame ? await readFrame(snapshot) : snapshot.data
+  if (!data.byteLength) throw new Error('Local recording data is unavailable')
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
   const blob = new Blob([buffer], { type: 'image/png' })
   return createImageBitmap(blob)
 }
 
-export async function encodeTimelapseVideo(settings: TimelapseSettings, format: TimelapseVideoFormat, options: TimelapseExportOptions = { mode: 'duration', durationSeconds: 1 }, onProgress?: (value: number) => void): Promise<Uint8Array> {
+export async function encodeTimelapseVideo(settings: TimelapseSettings, format: TimelapseVideoFormat, options: TimelapseExportOptions = { mode: 'duration', durationSeconds: 1 }, onProgress?: (value: number) => void, readFrame?: (snapshot: TimelapseSnapshot) => Promise<Uint8Array>): Promise<Uint8Array> {
   if (settings.snapshots.length === 0) throw new Error(tr('timelapse.noFrames'))
   if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement.prototype.captureStream !== 'function' || typeof createImageBitmap !== 'function') {
     throw new Error(tr('timelapse.unsupported'))
@@ -575,7 +729,7 @@ export async function encodeTimelapseVideo(settings: TimelapseSettings, format: 
   const drawFrame = async (snapshotIndex: number): Promise<void> => {
     if (activeSnapshotIndex !== snapshotIndex) {
       activeBitmap?.close()
-      activeBitmap = await decodeSnapshot(settings.snapshots[snapshotIndex])
+      activeBitmap = await decodeSnapshot(settings.snapshots[snapshotIndex], readFrame)
       activeSnapshotIndex = snapshotIndex
     }
     const snapshot = settings.snapshots[snapshotIndex]

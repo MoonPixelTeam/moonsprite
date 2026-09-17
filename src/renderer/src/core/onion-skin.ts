@@ -1,7 +1,10 @@
-import type { AnimationLoopSection, AnimationTimeline, RgbaColor, SpriteDocument } from '@shared/types'
+import type { AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
 import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
-import { compositeDocument, compositeRegion } from './document'
+import { compositeDocument, compositeRegion, createCompositePointSampler, createNormalCompositePointSampler } from './document-composite'
+import { blendOver, TRANSPARENT } from './raster'
 
 const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], frameId: string, layerId?: string): SpriteDocument => {
   const animation = document.animation ? { ...document.animation, activeFrameId: frameId } : document.animation
@@ -22,6 +25,13 @@ const documentForAnimationLayerComposite = (document: SpriteDocument, layers: Sp
 }
 
 export interface OnionSkinFrameRef { frameId: string; distance: number; side: 'previous' | 'next' }
+
+export interface OnionSkinStyle {
+  previousColor: RgbaColor
+  nextColor: RgbaColor
+  previousOpacity: number
+  nextOpacity: number
+}
 
 export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: number, nextFrames: number, loopSection?: AnimationLoopSection | null): OnionSkinFrameRef[] => {
   const activeIndex = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
@@ -59,6 +69,43 @@ export const compositeAnimationFrameRegion = (document: SpriteDocument, frameId:
   ensureAnimationDocument(document)
   const layers = animationLayersAtFrame(document, frameId)
   return compositeRegion(documentForAnimationLayerComposite(document, layers, frameId), x, y, width, height)
+}
+
+const tintOnionSkinColor = (source: RgbaColor, tint: RgbaColor, opacityPercent: number, distance: number): RgbaColor => {
+  if (source.a === 0) return TRANSPARENT
+  const opacity = Math.max(0, Math.min(1, opacityPercent / 100)) / Math.max(1, distance)
+  const sourceLuminance = source.r * 0.2126 + source.g * 0.7152 + source.b * 0.0722
+  const brightness = 0.25 + sourceLuminance / 255 * 0.75
+  return {
+    r: Math.round(tint.r * brightness),
+    g: Math.round(tint.g * brightness),
+    b: Math.round(tint.b * brightness),
+    a: Math.round(source.a * opacity * tint.a / 255)
+  }
+}
+
+export const createOnionSkinPointSampler = (
+  document: SpriteDocument,
+  refs: readonly OnionSkinFrameRef[],
+  style: OnionSkinStyle
+): ((x: number, y: number) => RgbaColor) => {
+  const frames = refs.map((ref) => {
+    const layers = animationLayersAtFrame(document, ref.frameId)
+    const frameDocument = documentForAnimationLayerComposite(document, layers, ref.frameId)
+    return {
+      ref,
+      sample: createNormalCompositePointSampler(frameDocument) ?? createCompositePointSampler(frameDocument)
+    }
+  })
+  return (x, y) => {
+    let result = TRANSPARENT
+    for (const { ref, sample } of frames) {
+      const tint = ref.side === 'previous' ? style.previousColor : style.nextColor
+      const opacity = ref.side === 'previous' ? style.previousOpacity : style.nextOpacity
+      result = blendOver(result, tintOnionSkinColor(sample(x, y), tint, opacity, ref.distance))
+    }
+    return result
+  }
 }
 
 export const tintOnionSkinPixels = (source: Uint8ClampedArray, tint: RgbaColor, opacityPercent: number, distance: number): Uint8ClampedArray => {

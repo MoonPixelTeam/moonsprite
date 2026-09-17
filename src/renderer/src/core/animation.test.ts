@@ -4,6 +4,31 @@ import { animationMaskAt, animationMaskSlotAt, compositeDocument, createDocument
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from './history'
 
 describe('animation timeline boundary', () => {
+  it.each(['normal', 'multiply'] as const)('does not reload unrelated %s layer surfaces when moving one cel', blendMode => {
+    const document = createDocument('move preserves other live layers', 64, 64, 'rgba')
+    const moving = getActiveLayer(document)
+    const stationary = createLayer('stationary', 64, 64, 'rgba')
+    stationary.blendMode = blendMode
+    document.layers.push(stationary)
+    const timeline = ensureAnimationDocument(document)
+    // A live raster replacement can be newer than its persisted cel surface.
+    // A placement command must not reload that unrelated cel into the layer.
+    stationary.pixels = stationary.pixels.slice()
+    stationary.offsetX = 3; stationary.offsetY = 5
+    stationary.opacity = 0.55
+    writeLayerColor(document, stationary, 21 * 64 + 17, { r: 210, g: 50, b: 180, a: 200 })
+    const pixels = stationary.pixels
+    const before = compositeDocument(document)
+    const key = animationCelKey(moving.id, timeline.activeFrameId)
+    for (const offset of [{ x: 1, y: 0 }, { x: 5, y: -3 }, { x: 0, y: 0 }]) {
+      setAnimationCelOffsetsForKeys(document, { [key]: offset })
+      expect(stationary).toMatchObject({ offsetX: 3, offsetY: 5, opacity: 0.55, blendMode })
+      expect(stationary.pixels).toBe(pixels)
+      expect(compositeDocument(document)).toEqual(before)
+      expect(moving).toMatchObject({ offsetX: offset.x, offsetY: offset.y })
+    }
+  })
+
   it('creates the first layer cel together with a new document', () => {
     const document = createDocument('initial cel', 2, 2, 'rgba')
     const timeline = document.animation!
@@ -399,9 +424,12 @@ describe('animation timeline boundary', () => {
     const resized = resizeDocumentAt(document, 5, 1, 1, 0)
     resizeAnimationCelsAt(document, resized.offsetX, resized.offsetY, false, 2, 1)
 
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 0))).toEqual([0, 255, 0, 255, 0])
+    // Background storage retains complete repeat units beyond the viewport.
+    // Check displayed pixels rather than assuming storage matches canvas width.
+    expect(Array.from(compositeDocument(document).filter((_, index) => index % 4 === 0))).toEqual([0, 255, 0, 255, 0])
     activateAnimationFrame(document, secondFrame)
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 0))).toEqual([255, 0, 255, 0, 255])
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 1))).toEqual([255, 255, 255, 255, 255])
+    const displayed = compositeDocument(document)
+    expect(Array.from(displayed.filter((_, index) => index % 4 === 0))).toEqual([255, 0, 255, 0, 255])
+    expect(Array.from(displayed.filter((_, index) => index % 4 === 1))).toEqual([255, 255, 255, 255, 255])
   })
 })

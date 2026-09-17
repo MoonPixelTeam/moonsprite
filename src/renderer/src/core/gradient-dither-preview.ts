@@ -1,4 +1,5 @@
-import type { GradientDither, GradientStop, RgbaColor } from '@shared/types'
+import type { GradientDither, GradientStop } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 import { ditherStageAt, ditherStageCount, gradientColorForAmount, normalizeGradientStops } from './gradient-color'
 import { packColor } from './raster'
 

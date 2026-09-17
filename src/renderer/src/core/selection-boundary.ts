@@ -1,4 +1,4 @@
-import type { SelectionMask } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
 
 const preparedBoundaries = new WeakMap<Uint8Array, { width: number; height: number; segments: Int32Array }>()
 

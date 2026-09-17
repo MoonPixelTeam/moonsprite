@@ -11,6 +11,14 @@ import {
 
 const validationScript = fileURLToPath(new URL('./run-validation.mjs', import.meta.url))
 
+test('拆出的输入、渲染、算法和持久化模块保留 D3 检查', () => {
+  for (const file of [
+    'components/canvas-render-frame.ts', 'components/app/document-canvas.tsx',
+    'core/tools-selection-transform.ts', 'store/workspace-recording.ts',
+    'store/workspace-commands-document-io.ts',
+  ]) assert.equal(classifyDevTier([`src/renderer/src/${file}`]), 'D3', file)
+})
+
 test('dev validation requires an explicit file list', () => {
   const policy = evaluateDevValidationRequest([])
   assert.equal(policy.errors.length, 1)
@@ -197,4 +205,13 @@ test('dev command rejects protected paths without an explicit test', () => {
   ], { encoding: 'utf8' })
   assert.equal(result.status, 1)
   assert.match(result.stderr, /D3 高风险开发检查必须显式传入至少一个定向测试文件/)
+})
+
+
+test('拆出的输入、缓存、文件和命令模块仍要求 D3 定向测试', () => {
+  for (const file of ['core/canvas-input-resize.ts', 'components/canvas-composite-cache-gpu.ts', 'core/project-format-decode.ts', 'core/document-composite-raster.ts', 'core/tools-selection-transform-translation.ts', 'store/workspace-commands-selection-floating.ts']) {
+    const path = 'src/renderer/src/' + file
+    assert.equal(classifyDevTier([path]), 'D3', file)
+    assert.ok(evaluateDevValidationRequest([path]).errors.length > 0, file)
+  }
 })

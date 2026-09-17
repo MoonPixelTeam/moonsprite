@@ -1,4 +1,8 @@
-import type { ImageBrush, LayerMask, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RasterLayer, RgbaColor, SelectionMask, SpriteDocument, ToolId } from '@shared/types'
+import type { ImageBrush, ProceduralBrushId, ProceduralBrushSettings, ToolId } from '@shared/types-brush'
+import type { LayerMask, RasterLayer } from '@shared/types-layer'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { HistoryStack, type ContentInvalidationHint } from '@/core/history'
 import { PROCEDURAL_BRUSH_IDS } from '@/core/brushes'
 import { packColor, unpackColor } from '@/core/raster'
@@ -17,12 +21,12 @@ import type { BrushProfile, DocumentSession } from './workspace-types'
 import { defaultSymmetryCenter } from '@/core/symmetry'
 import { ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { normalizeProjectDisplaySettings, normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
-import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document'
+import { findLayerMask, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { cloneBrushDynamicsSettings, normalizeBrushDynamicsSettings } from '@/core/pressure'
 import { applyProjectLayerPanelState, loadLocalLayerPanelState, normalizeProjectLayerPanelState } from '@/core/layer-panel-state'
 import { ensureTilemapTilesetOwnership } from '@/core/tilemap-document'
 import { ensureFreeTileTilesetOwnership } from '@/core/free-tile-document'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { historyEntryLimit, loadEditorPreferences } from '@/core/file-preferences'
 import { loadDocumentViewState } from '@/core/document-view-state'
 
 const defaultColor: RgbaColor = { r: 41, g: 121, b: 255, a: 255 }
@@ -36,9 +40,9 @@ const FREE_TILE_PAINT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'eraser', 'move
 const FREE_TILE_EDIT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection', 'shape', 'line', 'move', 'eyedropper', 'hand', 'zoom', 'rotate'])
 
 export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId): boolean => {
+  if (session.activeLayerMaskId) return true
   const groupSelected = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
   if (groupSelected) return tool === 'move' || tool === 'hand' || tool === 'zoom' || tool === 'rotate'
-  if (session.activeLayerMaskId) return true
   const textLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'text'))
   if (textLayerSelected) return TEXT_LAYER_ALLOWED_TOOLS.has(tool)
   const tilemapLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'tilemap'))
@@ -51,8 +55,6 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
 export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
   Object.assign(target, {
     tool: source.tool,
-    extensionToolId: source.extensionToolId,
-    extensionToolMode: source.extensionToolMode,
     moveKind: source.moveKind,
     primaryColor: { ...source.primaryColor },
     secondaryColor: { ...source.secondaryColor },
@@ -359,6 +361,12 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const settings = loadToolSettings()
   const editorPreferences = loadEditorPreferences()
   const storedView = loadDocumentViewState(document)
+  const symmetryCenter = document.displaySettings.symmetryCenter
+    ?? storedView?.symmetryCenter
+    ?? defaultSymmetryCenter(document.width, document.height)
+  // Keep the resolved center on the document so the next project save embeds
+  // it even when it originated from the legacy local view-state cache.
+  document.displaySettings.symmetryCenter = { ...symmetryCenter }
   const fallbackProfile = normalizePersistedBrushProfile(settings, defaultToolSettings)
   const persistedProfiles = settings.brushProfiles ?? Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, fallbackProfile])) as Record<BrushTool, PersistedBrushProfile>
   const brushProfiles = Object.fromEntries(BRUSH_TOOLS.map((tool) => [
@@ -372,11 +380,9 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
   const initialTileset = document.tilesets?.find((tileset) => tileset.id === initialTilesetId) ?? document.tilesets?.[0]
   const session = {
     document,
-    history: new HistoryStack(),
+    history: new HistoryStack(undefined, historyEntryLimit(editorPreferences)),
     localHistory: null,
     tool: 'pencil',
-    extensionToolId: null,
-    extensionToolMode: '',
     moveKind: 'move',
     selectedSliceId: null,
     selectedSliceIds: [],
@@ -468,7 +474,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
       diagonalDown: settings.symmetryAxes.diagonalDown,
       rotational: Boolean(settings.symmetryAxes.rotational)
     },
-    symmetryCenter: storedView?.symmetryCenter ?? defaultSymmetryCenter(document.width, document.height),
+    symmetryCenter: { ...symmetryCenter },
     lastPencilPoint: null,
     lastEraserPoint: null,
     canvasResizePreview: null,
@@ -535,6 +541,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     animationMaskClipboard: [],
     animationMaskClipboardAnchorKey: null,
     animationFrameClipboard: [],
+    uiRevision: 0,
     revision: 0,
     contentRevision: 0,
     selectionGuidesPreservedAtContentRevision: undefined,

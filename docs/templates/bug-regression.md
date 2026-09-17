@@ -1,7 +1,6 @@
 # Bug 回归记录：<问题名称>
 
-中文 | [English](bug-regression.en.md)
-
+中文
 ## 环境
 
 - MoonSprite 提交或安装包：

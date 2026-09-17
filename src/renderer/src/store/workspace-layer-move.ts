@@ -1,7 +1,10 @@
-import type { AnimationCel, RasterLayer, SelectionMask, SelectionRect } from '@shared/types'
+import type { AnimationCel } from '@shared/types-animation'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionRect } from '@shared/types-selection'
 import { animationCelKey, cloneAnimationCel, cloneAnimationCelsForLayer, ensureAnimationDocument, parseAnimationCelKey, removeAnimationCelsForLayers, restoreAnimationCels, setAnimationCelOffsets, setAnimationCelOffsetsForKeys, animationCelOffsetsForKeys } from '@/core/animation'
-import { animationMaskAt } from '@/core/document'
-import type { CanvasDragState } from '@/core/canvas-input'
+import { animationMaskAt } from '@/core/document-model'
+import type { LayerMoveState } from '@/core/layer-move-state'
+export type { LayerMoveState } from '@/core/layer-move-state'
 import type { ContentInvalidationHint, HistoryEntry } from '@/core/history'
 import { cloneLayerStyles, layerStylesHistoryBytes } from '@/core/layer-styles'
 import { cloneSelection, shiftSelection } from '@/core/selection'
@@ -10,24 +13,6 @@ import type { DocumentSession } from './workspace-types'
 
 type Point = { x: number; y: number }
 
-export type LayerMoveState = Pick<CanvasDragState,
-  | 'layerId'
-  | 'layerOffset'
-  | 'layerIds'
-  | 'layerOffsets'
-  | 'layerContentBounds'
-  | 'layerPreviewOffset'
-  | 'animationMaskOffsets'
-  | 'layerFrameId'
-  | 'animationCellKeys'
-  | 'animationCellOffsets'
-  | 'duplicatedLayerId'
-  | 'duplicatedLayer'
-  | 'duplicatedAnimationCels'
-  | 'duplicatedLayerIndex'
-  | 'originalSelectedLayerIds'
-  | 'selectionStart'
->
 
 export interface LayerMoveDuplicateResult {
   layerId: string

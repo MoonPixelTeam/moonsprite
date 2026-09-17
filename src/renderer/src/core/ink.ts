@@ -1,4 +1,5 @@
-import type { InkMode, RgbaColor } from '@shared/types'
+import type { InkMode } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 import { blendOver } from './raster'
 
 const clampChannel = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))

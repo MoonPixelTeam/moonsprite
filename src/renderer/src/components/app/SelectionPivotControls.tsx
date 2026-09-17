@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { CanvasAnchor, SelectionRect } from '@shared/types'
+import type { CanvasAnchor, SelectionRect } from '@shared/types-selection'
 import selectionPivotPresetsSprite from '@/assets/pixel-icons/selection-pivot-presets.png'
 import { CheckboxField } from '@/components/CheckboxField'
 import { useI18n } from '@/components/I18nProvider'

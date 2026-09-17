@@ -1,5 +1,11 @@
-import type { AnimationCel, AnimationCelSurface, AnimationFrame, AnimationGroupMask, AnimationLayerMask, AnimationTimeline, FreeTileCelData, LayerMask, PaletteEntry, RasterLayer, SelectionMask, SpriteDocument, TextCelData, TilemapCelData } from '@shared/types'
-import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document'
+import type { AnimationCel, AnimationCelSurface, AnimationFrame, AnimationTimeline } from '@shared/types-animation'
+import type { AnimationGroupMask, AnimationLayerMask, LayerMask, RasterLayer } from '@shared/types-layer'
+import type { FreeTileCelData, TilemapCelData } from '@shared/types-tiles'
+import type { PaletteEntry } from '@shared/types-color'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import type { TextCelData } from '@shared/types-text'
+import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document-model'
 import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
 import { cloneLayerStyles } from './layer-styles'
@@ -522,8 +528,8 @@ export const resizeAnimationCelsAt = (
   const timeline = ensureAnimationDocument(document)
   const horizontal = Math.trunc(offsetX)
   const vertical = Math.trunc(offsetY)
-  const expanding = document.width > sourceCanvasWidth || document.height > sourceCanvasHeight
   const backgroundLayerIds = new Set(document.layers.filter((layer) => layer.background).map((layer) => layer.id))
+  const expanding = document.width > sourceCanvasWidth || document.height > sourceCanvasHeight
   syncFrameSurfaces(document, timeline)
   const lookup = createAnimationCelLookup(timeline)
   const activeSourceIds = new Set(timeline.cels
@@ -601,9 +607,9 @@ export const resizeAnimationCelsAt = (
       continue
     }
     if (activeSource || !source.surface) continue
-    if (expanding && backgroundLayerIds.has(cel.layerId)) {
+    if (backgroundLayerIds.has(cel.layerId)) {
       const background = document.layers.find((layer) => layer.id === cel.layerId)?.background
-      const repeatSize = background?.mode === 'preset' && background.pattern ? backgroundPatternSize(background.pattern) : undefined
+      const repeatSize = background?.mode === 'preset' && background.pattern ? backgroundPatternSize(background.pattern) : { width: background?.repeatWidth ?? sourceCanvasWidth, height: background?.repeatHeight ?? sourceCanvasHeight }
       const presetPattern = background?.mode === 'preset' ? background.pattern : undefined
       tileBackgroundSurfaceToCanvas(source.surface, sourceCanvasWidth, sourceCanvasHeight, document.width, document.height, horizontal, vertical, repeatSize, presetPattern, (color) => paletteColorIdForCanvas(document, color))
       continue
@@ -1228,6 +1234,7 @@ export const animationCelOffsetsForKeys = (document: SpriteDocument, keys: reado
 export const setAnimationCelOffsetsForKeys = (document: SpriteDocument, offsets: Readonly<Record<string, { x: number; y: number }>>): void => {
   const timeline = ensureAnimationDocument(document)
   const lookup = createAnimationCelLookup(timeline)
+  const movedSources = new Set<string>()
   for (const [key, offset] of Object.entries(offsets)) {
     const target = parseAnimationCelKey(key)
     if (!target) continue
@@ -1236,8 +1243,18 @@ export const setAnimationCelOffsetsForKeys = (document: SpriteDocument, offsets:
     if (cel.text) translateTextCelData(cel.text, offset.x - cel.surface.offsetX, offset.y - cel.surface.offsetY)
     cel.surface.offsetX = offset.x
     cel.surface.offsetY = offset.y
+    movedSources.add(cel.id)
   }
-  applyFrameSurfaces(document, timeline)
+  // A placement preview is not a frame switch. Reloading every cel here
+  // replaces unrelated live rasters, opacity and geometry with older cel
+  // snapshots. Only project the changed offsets onto their active owners,
+  // including an active linked cel that resolves to a moved source.
+  for (const layer of document.layers) {
+    const cel = lookup.resolve(lookup.at(layer.id, timeline.activeFrameId))
+    if (!cel?.surface || !movedSources.has(cel.id)) continue
+    layer.offsetX = cel.surface.offsetX
+    layer.offsetY = cel.surface.offsetY
+  }
 }
 
 export const setAnimationCelOffsets = (document: SpriteDocument, frameId: string, offsets: Readonly<Record<string, { x: number; y: number }>>): void => {
