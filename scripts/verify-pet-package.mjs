@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { unzipSync, strFromU8 } from 'fflate'
 import vm from 'node:vm'
+import { extractInlineScripts } from './inline-scripts.mjs'
 
 /**
  * Structural verification for a generated `.msext` pet package.
@@ -34,7 +35,7 @@ for (const name of ['manifest.json', 'runtime/index.html', 'ui/pet.html', 'ui/ma
 // 2. Every inline script must parse.
 const inlineScripts = (name) => {
   const html = text(name)
-  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((match) => match[1])
+  const scripts = extractInlineScripts(html)
   if (scripts.length === 0) failures.push(`${name} 没有内联脚本`)
   return scripts
 }

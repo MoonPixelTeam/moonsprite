@@ -2,13 +2,10 @@ import { useEffect, useRef } from 'react'
 import { loadEditorPreferences, type CursorScale } from '@/core/file-preferences'
 import { PointerPressureAdapter } from '@/core/canvas-input'
 import { isPressurePointerType } from '@/core/pressure'
-import { cursorOverlayDescriptor, setNativeCursorVisible } from '@/platform/cursor-theme'
-import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
-interface Ports {
-  readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+import { setNativeCursorVisible } from '@/platform/cursor-theme'
+import { hidePenCursor, refreshPenCursor, type CanvasPenCursorPorts, type CanvasPenCursorRefs } from './canvas-pen-cursor-state'
+interface Ports extends CanvasPenCursorPorts {
   readonly pressureAdapterRef: import('react').RefObject<PointerPressureAdapter>
-  readonly stageBounds: () => DOMRect
 }
 
 export function useCanvasPenCursor(ports: Ports) {
@@ -23,52 +20,9 @@ export function useCanvasPenCursor(ports: Ports) {
     cursorPreferencesRef.current = { useLocalCursors: preferences.useLocalCursors, cursorScale: preferences.cursorScale }
   }
 
-  const hidePenCursor = (): void => {
-    const wasActive = penCursorStateRef.current.active
-    penCursorStateRef.current.active = false
-    if (penCursorRef.current) penCursorRef.current.hidden = true
-    if (adaptiveCursorRef.current) adaptiveCursorRef.current.hidden = true
-    if (ports.canvasRef.current) delete ports.canvasRef.current.dataset.adaptiveCursor
-    if (!wasActive) return
-    delete document.documentElement.dataset.penInput
-    void setNativeCursorVisible(true).catch(() => undefined)
-  }
-
-  const refreshPenCursor = (): void => {
-    const canvas = ports.canvasRef.current
-    const image = penCursorRef.current
-    const pointer = penCursorStateRef.current
-    if (!canvas || !image || !pointer.active) return
-    const adaptive = /^var\(--cursor-(?:pencil-(?:black|white)|selection-(?:black|white)|crosshair)\)$/.test(canvas.style.cursor)
-    const preferences = cursorPreferencesRef.current
-    const descriptor = cursorOverlayDescriptor(canvas.style.cursor, preferences?.useLocalCursors ?? false, preferences?.cursorScale ?? 1, ports.interfaceScale)
-    const overlay = adaptiveCursorRef.current
-    if (overlay) overlay.hidden = !adaptive || !descriptor
-    if (adaptive && descriptor && overlay) {
-      canvas.dataset.adaptiveCursor = 'true'
-      overlay.style.maskImage = `url("${descriptor.source}")`
-      overlay.style.backdropFilter = AUTO_CONTRAST_FILTER
-      overlay.style.width = `${descriptor.size}px`
-      overlay.style.height = `${descriptor.size}px`
-      overlay.style.transform = `translate3d(${pointer.x - descriptor.hotspotX}px, ${pointer.y - descriptor.hotspotY}px, 0)`
-      image.hidden = true
-      return
-    }
-    delete canvas.dataset.adaptiveCursor
-    if (!pointer.pressure) { image.hidden = true; return }
-    if (!descriptor) {
-      image.hidden = true
-      return
-    }
-    if (image.dataset.source !== descriptor.source) {
-      image.dataset.source = descriptor.source
-      image.src = descriptor.source
-    }
-    image.style.width = `${descriptor.size}px`
-    image.style.height = `${descriptor.size}px`
-    image.style.transform = `translate3d(${pointer.x - descriptor.hotspotX}px, ${pointer.y - descriptor.hotspotY}px, 0)`
-    image.hidden = false
-  }
+  const refs: CanvasPenCursorRefs = { penCursorRef, adaptiveCursorRef, penCursorStateRef, cursorPreferencesRef }
+  const hideCursor = (): void => hidePenCursor(ports, refs)
+  const refreshCursor = (): void => refreshPenCursor(ports, refs)
 
   const syncPenCursor = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const pressurePointer = isPressurePointerType(event.pointerType) || ports.pressureAdapterRef.current.isPressureCapable(event.pointerId)
@@ -83,17 +37,17 @@ export function useCanvasPenCursor(ports: Ports) {
     if (pressurePointer) document.documentElement.dataset.penInput = 'true'
     else delete document.documentElement.dataset.penInput
     if (wasPressure !== pressurePointer) void setNativeCursorVisible(!pressurePointer).catch(() => undefined)
-    refreshPenCursor()
+    refreshCursor()
   }
 
   useEffect(() => {
-    const leave = (event: PointerEvent) => { if (!event.relatedTarget) hidePenCursor() }
-    window.addEventListener('blur', hidePenCursor)
-    window.addEventListener('moonsprite:extension-pointer-enter', hidePenCursor)
+    const leave = (event: PointerEvent) => { if (!event.relatedTarget) hideCursor() }
+    window.addEventListener('blur', hideCursor)
+    window.addEventListener('moonsprite:extension-pointer-enter', hideCursor)
     document.documentElement.addEventListener('pointerleave', leave)
     return () => {
-      window.removeEventListener('blur', hidePenCursor)
-      window.removeEventListener('moonsprite:extension-pointer-enter', hidePenCursor)
+      window.removeEventListener('blur', hideCursor)
+      window.removeEventListener('moonsprite:extension-pointer-enter', hideCursor)
       document.documentElement.removeEventListener('pointerleave', leave)
     }
   }, [])
@@ -101,12 +55,12 @@ export function useCanvasPenCursor(ports: Ports) {
   useEffect(() => {
     const canvas = ports.canvasRef.current
     if (!canvas || typeof MutationObserver === 'undefined') return
-    const observer = new MutationObserver(refreshPenCursor)
+    const observer = new MutationObserver(refreshCursor)
     observer.observe(canvas, { attributes: true, attributeFilter: ['style'] })
     return () => {
       observer.disconnect()
-      hidePenCursor()
+      hideCursor()
     }
   }, [])
-  return { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor }
+  return { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor: hideCursor, refreshPenCursor: refreshCursor, syncPenCursor }
 }

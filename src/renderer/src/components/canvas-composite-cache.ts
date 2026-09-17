@@ -45,11 +45,11 @@ import {
   latestSharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
   releaseSharedAnimationResources,
-  imageData,
-  gpuBlendModeFor,
   shouldCacheFullCompositeSurface,
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
+import { imageData, gpuBlendModeFor } from './canvas-composite-cache-pixel-utils'
+import { rememberCompositeSurface } from './canvas-composite-cache-utils'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
@@ -647,7 +647,7 @@ export class CanvasCompositeCache {
         revision: contentRevision,
         transient: transientFallback
       }
-      if (!transientFallback) this.remember(this.surfaces, key, surface)
+      if (!transientFallback) rememberCompositeSurface(this.surfaces, key, surface, this.maxCacheBytes, MAX_CACHED_FRAMES)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else {
@@ -770,7 +770,7 @@ export class CanvasCompositeCache {
         canvas.getContext('2d')?.putImageData(imageData(pixels, width, height), 0, 0)
       }
       region = { canvas, revision: contentRevision, x, y, width, height }
-      this.remember(this.regions, key, region)
+      rememberCompositeSurface(this.regions, key, region, this.maxCacheBytes, MAX_CACHED_FRAMES)
       this.dirtyRects.delete(frameId)
       this.clearLivePreview(document, frameId)
     } else if (region) {
@@ -839,18 +839,4 @@ export class CanvasCompositeCache {
     return region
   }
 
-  private remember<T extends CompositeSurface>(cache: Map<string, T>, key: string, value: T): void {
-    cache.delete(key)
-    cache.set(key, value)
-    const cacheBytes = (): number => {
-      let total = 0
-      for (const entry of cache.values()) total += entry.canvas.width * entry.canvas.height * 4
-      return total
-    }
-    while (cache.size > 1 && (cache.size > MAX_CACHED_FRAMES || cacheBytes() > this.maxCacheBytes)) {
-      const oldestKey = cache.keys().next().value!
-      cache.get(oldestKey)?.bitmap?.close()
-      cache.delete(oldestKey)
-    }
-  }
 }

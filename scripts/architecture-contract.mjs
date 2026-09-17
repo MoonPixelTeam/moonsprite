@@ -134,7 +134,9 @@ const secondaryDecodeFindings = (file, source) => {
   for (const match of source.matchAll(/\bdecodeDocumentFileInWorker\s*\(/g)) {
     const openParen = source.indexOf('(', match.index)
     const args = splitTopLevelArguments(source, openParen)
-    if (args.length < 5) continue
+    // The fifth argument is the dropped-timelapse-frame observer. A duplicate
+    // decode still has the old six-argument shape (document plus frame id).
+    if (args.length < 6) continue
     results.push(finding('project-open-secondary-decode', file, source, match.index, '已解码工程不得再次把原始归档送入完整解码 Worker。'))
   }
   return results

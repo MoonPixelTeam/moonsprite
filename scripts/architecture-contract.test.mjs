@@ -8,6 +8,18 @@ import { architectureAnchorErrors, architectureBudgetErrors, compareProjectVersi
 const fixturePath = fileURLToPath(new URL('./fixtures/architecture-contract/cases.json', import.meta.url))
 const fixtures = JSON.parse(await readFile(fixturePath, 'utf8'))
 
+test('worker decode accepts the frame observer but rejects a predecoded document and frame', () => {
+  for (const [argumentsSource, expected] of [
+    ['data, path, onProgress, true, onDroppedTimelapseFrames', 0],
+    ['data, path, onProgress, true, document, frameId', 1],
+  ]) {
+    const result = analyzeArchitectureFiles({
+      'src/renderer/src/core/document-files.ts': `decodeDocumentFileInWorker(${argumentsSource})`,
+    })
+    assert.equal(result.counts['project-open-secondary-decode'], expected)
+  }
+})
+
 test('production runtime graph includes shared contracts and has no cross-directory cycles', async () => {
   const files = await readArchitectureSourceFiles()
   assert.ok([...files.keys()].some(file => file.startsWith('src/shared/')))
