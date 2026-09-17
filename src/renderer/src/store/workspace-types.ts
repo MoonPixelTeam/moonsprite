@@ -342,10 +342,15 @@ export interface DialogChoice {
   tone?: 'primary' | 'danger' | 'quiet'
 }
 
+export interface AppDialogDetailSection {
+  lines: string[]
+}
+
 export interface AppDialog {
   title: string
   message: string
   detail?: string
+  detailSections?: AppDialogDetailSection[]
   choices: DialogChoice[]
   resolve: (choice: string) => void
 }

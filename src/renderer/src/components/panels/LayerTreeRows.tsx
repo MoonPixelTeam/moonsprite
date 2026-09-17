@@ -17,7 +17,8 @@ interface Props {
   readonly timelineVisualState: ReturnType<typeof deriveLayerPanelVisuals>['timelineVisualState']
   readonly renderAnimationMaskRow: (
     displayRow: Extract<LayerDisplayRow, { kind: 'mask' }>,
-    visualRow: ReturnType<typeof deriveLayerPanelVisuals>['timelineVisualState']['rows'][number] | undefined
+    visualRow: ReturnType<typeof deriveLayerPanelVisuals>['timelineVisualState']['rows'][number] | undefined,
+    colorSegments: ReturnType<ReturnType<typeof deriveLayerPanelVisuals>['displayColorStripeSegments']>
   ) => ReactNode
   readonly session: DocumentSession
   readonly dropTarget: ReturnType<typeof useLayerRowDrag>['dropTarget']
@@ -95,7 +96,7 @@ export function LayerTreeRows({
       {' '}
       {displayRows.map((displayRow, rowIndex) => {
         const visualRow = timelineVisualState.rows[rowIndex]
-        if (displayRow.kind === 'mask') return renderAnimationMaskRow(displayRow, visualRow)
+        if (displayRow.kind === 'mask') return renderAnimationMaskRow(displayRow, visualRow, displayColorStripeSegments(displayRow.owner, displayRow.ownerKind, displayRow.depth))
         const node = displayRow.node
         if (node.kind === 'group') {
           const collapsed = session.collapsedGroupIds.includes(node.group.id)
@@ -153,6 +154,7 @@ export function LayerTreeRows({
                 role="button"
                 tabIndex={-1}
                 aria-label={t(node.group.visible ? 'layers.hideGroup' : 'layers.showGroup')}
+                aria-pressed={node.group.visible}
                 onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id }, node.group.visible)}
                 onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'group', id: node.group.id })}
                 onPointerUp={endLayerPanelToggle}
@@ -258,6 +260,7 @@ export function LayerTreeRows({
               role="button"
               tabIndex={-1}
               aria-label={t(node.layer.visible ? 'layers.hideLayer' : 'layers.showLayer')}
+              aria-pressed={node.layer.visible}
               onPointerDown={(event) => beginLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id }, node.layer.visible)}
               onPointerEnter={(event) => continueLayerPanelToggle(event, { control: 'visibility', ownerKind: 'layer', id: node.layer.id })}
               onPointerUp={endLayerPanelToggle}

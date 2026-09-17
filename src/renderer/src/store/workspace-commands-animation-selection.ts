@@ -1,3 +1,4 @@
+import { animationSlotRange } from '@/core/animation-slot-selection'
 import { animationMaskAt } from '@/core/document-model'
 import {
   activateAnimationFrame,
@@ -239,20 +240,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
             else current.add(key)
           } else if (mode === 'range') {
             const anchor = session.animationCellSelectionAnchorKey ?? session.selectedAnimationCellKeys.at(-1) ?? implicitAnchorKey
-            const parsedAnchor = anchor ? parseAnimationCelKey(anchor) : null
-            if (parsedAnchor) {
-              const frames = timeline.frames
-              const layers = session.document.layers
-              const startFrame = frames.findIndex((frame) => frame.id === parsedAnchor.frameId)
-              const endFrame = frames.findIndex((frame) => frame.id === target.frameId)
-              const startLayer = layers.findIndex((layer) => layer.id === parsedAnchor.layerId)
-              const endLayer = layers.findIndex((layer) => layer.id === target.layerId)
-              if (startFrame >= 0 && endFrame >= 0 && startLayer >= 0 && endLayer >= 0) {
-                const [fromFrame, toFrame] = startFrame <= endFrame ? [startFrame, endFrame] : [endFrame, startFrame]
-                const [fromLayer, toLayer] = startLayer <= endLayer ? [startLayer, endLayer] : [endLayer, startLayer]
-                for (const layer of layers.slice(fromLayer, toLayer + 1)) for (const frame of frames.slice(fromFrame, toFrame + 1)) current.add(animationCelKey(layer.id, frame.id))
-              } else current.add(key)
-            } else current.add(key)
+            for (const slot of animationSlotRange(session.document.layers.map((layer) => layer.id), timeline.frames.map((frame) => frame.id), anchor ?? key, key)) current.add(slot)
           } else {
             current.clear()
             current.add(key)
@@ -314,25 +302,9 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
             else current.add(key)
           } else if (mode === 'range') {
             const anchor = session.animationMaskCellSelectionAnchorKey ?? session.selectedAnimationMaskCellKeys.at(-1)
-            const parsedAnchor = anchor ? parseAnimationCelKey(anchor) : null
-            if (parsedAnchor) {
-              const frames = timeline.frames
-              const owners = ownerKind === 'layer' ? session.document.layers : session.document.groups
-              const startFrame = frames.findIndex((frame) => frame.id === parsedAnchor.frameId)
-              const endFrame = frames.findIndex((frame) => frame.id === target.frameId)
-              const startLayer = owners.findIndex((owner) => owner.id === parsedAnchor.layerId)
-              const endLayer = owners.findIndex((owner) => owner.id === target.layerId)
-              if (startFrame >= 0 && endFrame >= 0 && startLayer >= 0 && endLayer >= 0) {
-                const [fromFrame, toFrame] = startFrame <= endFrame ? [startFrame, endFrame] : [endFrame, startFrame]
-                const [fromLayer, toLayer] = startLayer <= endLayer ? [startLayer, endLayer] : [endLayer, startLayer]
-                const selectableOwnerIds = new Set(ownerKind === 'layer' ? (timeline.layerMasks ?? []).map((entry) => entry.layerId) : (timeline.groupMasks ?? []).map((entry) => entry.groupId))
-                for (const owner of owners.slice(fromLayer, toLayer + 1))
-                  for (const frame of frames.slice(fromFrame, toFrame + 1)) {
-                    const candidateKey = animationCelKey(owner.id, frame.id)
-                    if (selectableOwnerIds.has(owner.id)) current.add(candidateKey)
-                  }
-              } else current.add(key)
-            } else current.add(key)
+            const selectableOwners = new Set([...(timeline.layerMasks ?? []).map((entry) => entry.layerId), ...(timeline.groupMasks ?? []).map((entry) => entry.groupId)])
+            const owners = buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).map((node) => node.id).filter((id) => selectableOwners.has(id))
+            for (const slot of animationSlotRange(owners, timeline.frames.map((frame) => frame.id), anchor ?? key, key)) current.add(slot)
           } else {
             current.clear()
             current.add(key)

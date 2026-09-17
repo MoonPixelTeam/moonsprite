@@ -91,7 +91,7 @@ export default function App() {
   } = useAppPreferences({ relativeLuminance: session?.view.relativeLuminance ?? false })
   const { shortcuts, saveShortcuts, shortcutConflictState, shortcutFor } = useAppShortcutSettings()
   const { commandScopeRef, commandSurfaceRef, pointerPositionRef, selectionCommandOverrideRef } = useAppCommandScope()
-  const { advancedMode, advancedModeNotice, advancedModeNoticeShortcut, cycleAdvancedMode, toggleMirrorView, editorOnly } = useAppViewMode({
+  const { advancedMode, advancedModeNotice, advancedModeNoticeShortcut, advancedModeNoticeTop, cycleAdvancedMode, toggleMirrorView, editorOnly } = useAppViewMode({
     homeOpen,
     session,
     shortcutFor
@@ -152,7 +152,8 @@ export default function App() {
     setExtensionPanelVisible,
     toggleExtensionPanel,
     openLuaScriptFolder,
-    installExtensionPackage
+    installExtensionPackage,
+    chooseAndInstallExtension
   } = useAppExtensions({ openMenu, setOpenMenu, refreshLuaScripts })
   const {
     recentFiles,
@@ -238,7 +239,8 @@ export default function App() {
     openQuickCommandPreferences,
     openQuickCommandSettings,
     appSettingsDialogsSurface
-  } = useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts, extensions })
+  } = useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts, extensions, chooseAndInstallExtension })
+  const dialogDetailLength = workspace.dialog?.detailSections?.flatMap((section) => section.lines).join('\n').length ?? workspace.dialog?.detail?.length ?? 0
 
   void coordinatorRenderKey
 
@@ -509,7 +511,16 @@ export default function App() {
       />
 
       {documentTabsVisible && (
-        <section className="tab-strip" aria-label={t('app.documentTabs.aria')}>
+        <section className="tab-strip" aria-label={t('app.documentTabs.aria')} onWheel={(event) => {
+          if (event.ctrlKey || event.metaKey || event.altKey) return
+          const strip = event.currentTarget
+          if (strip.scrollWidth <= strip.clientWidth) return
+          const delta = event.deltaX !== 0 ? event.deltaX : event.deltaY
+          if (delta === 0) return
+          const previousScrollLeft = strip.scrollLeft
+          strip.scrollLeft += delta
+          if (strip.scrollLeft !== previousScrollLeft) event.preventDefault()
+        }}>
           <DocumentTabs
             homeOpen={homeOpen}
             hiddenDocumentIds={hiddenDocumentIds}
@@ -709,7 +720,7 @@ export default function App() {
       <ProjectRollbackProgressOverlay />
       <SaveProgressOverlay />
       {advancedModeNotice && (
-        <div className="advanced-mode-notice" role="status" aria-live="polite">
+        <div className="advanced-mode-notice" style={advancedModeNoticeTop === null ? undefined : { top: `${advancedModeNoticeTop}px` }} role="status" aria-live="polite">
           <strong>{advancedModeNotice}</strong>
           <small>
             {advancedModeNotice === t('app.advanced.enabled') ? `${advancedModeNoticeShortcut} ${t('app.advanced.restore')}` : advancedModeNoticeShortcut}
@@ -784,7 +795,7 @@ export default function App() {
         <div className="modal-backdrop dialog-backdrop" role="presentation">
           <ModalShell
             storageKey="confirm-content-v2"
-            fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}:${workspace.dialog.detail?.length ?? 0}`}
+            fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}:${dialogDetailLength}`}
             defaultWidth={420}
             defaultHeight={220}
             minHeight={0}
@@ -797,7 +808,15 @@ export default function App() {
             <DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title" />
             <div className="confirm-content">
               <strong>{workspace.dialog.message}</strong>
-              {workspace.dialog.detail && <p>{workspace.dialog.detail}</p>}
+              {workspace.dialog.detailSections?.length ? (
+                <div className="confirm-detail-sections">
+                  {workspace.dialog.detailSections.map((section, sectionIndex) => (
+                    <div className="confirm-detail-section" key={`${sectionIndex}:${section.lines.join('\n')}`}>
+                      {section.lines.map((line, lineIndex) => <p key={`${lineIndex}:${line}`}>{line}</p>)}
+                    </div>
+                  ))}
+                </div>
+              ) : workspace.dialog.detail && <p>{workspace.dialog.detail}</p>}
             </div>
             <footer>
               {workspace.dialog.choices.map((choice) => (

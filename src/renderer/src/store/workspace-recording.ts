@@ -44,8 +44,11 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
     contentInvalidation: captureInvalidation
   }), () => ({ ...documentDiagnosticDetail(document), tool: session.tool, contentRevision: captureRevision }))
   if (!prepared) return Promise.resolve()
+  // Conservative full-frame budget; do not materialize the lazy tiled snapshot
+  // on the drawing thread just to measure its size.
+  const preparedBytes = prepared.width * prepared.height * 4
   const queuedBytes = pendingBytes.get(document) ?? 0
-  if (queuedBytes + prepared.pixels.byteLength > 64 * 1024 * 1024) {
+  if (queuedBytes + preparedBytes > 64 * 1024 * 1024) {
     if (document.timelapse) document.timelapse.enabled = false
     const error = new Error('缩时录像写入积压，已暂停新帧录制。已有帧已保留，请检查磁盘后重新开启录制。')
     onCaptureError?.(error.message)
@@ -53,12 +56,12 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
     onCaptureCommitted(document)
     return Promise.reject(error)
   }
-  pendingBytes.set(document, queuedBytes + prepared.pixels.byteLength)
+  pendingBytes.set(document, queuedBytes + preparedBytes)
   let released = false
   const releaseBytes = () => {
     if (released) return
     released = true
-    pendingBytes.set(document, Math.max(0, (pendingBytes.get(document) ?? 0) - prepared.pixels.byteLength))
+    pendingBytes.set(document, Math.max(0, (pendingBytes.get(document) ?? 0) - preparedBytes))
   }
   const queuedAt = runtimeDiagnosticsActive() ? performance.now() : null
   let diagnostics = timelapseDiagnosticQueues.get(document)

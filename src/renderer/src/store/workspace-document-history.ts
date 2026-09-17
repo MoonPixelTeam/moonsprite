@@ -314,11 +314,13 @@ export const documentColorModeSnapshotBytes = (snapshot: DocumentColorModeSnapsh
   documentImageResizeSnapshotBytes(snapshot.surfaces) + snapshot.palette.length * 32
 
 export interface DocumentCanvasResizeSnapshot {
+  backgrounds: Array<{ layer: RasterLayer; settings: RasterLayer['background'] }>
   surfaces: DocumentImageResizeSnapshot
   cels: Array<{ celId: string; surface?: AnimationCel['surface']; tilemap?: AnimationCel['tilemap']; freeTiles?: AnimationCel['freeTiles'] }>
 }
 
 export const captureDocumentCanvasResizeSnapshot = (document: SpriteDocument): DocumentCanvasResizeSnapshot => ({
+  backgrounds: document.layers.filter(layer => layer.background).map(layer => ({ layer, settings: { ...layer.background! } })),
   surfaces: captureDocumentImageResizeSnapshot(document),
   cels: (document.animation?.cels ?? []).map((cel) => ({
     celId: cel.id,
@@ -329,6 +331,7 @@ export const captureDocumentCanvasResizeSnapshot = (document: SpriteDocument): D
 })
 
 export const restoreDocumentCanvasResizeSnapshot = (document: SpriteDocument, snapshot: DocumentCanvasResizeSnapshot): void => {
+  for (const { layer, settings } of snapshot.backgrounds) layer.background = settings ? { ...settings } : undefined
   const cels = new Map(snapshot.cels.map((entry) => [entry.celId, entry]))
   for (const cel of document.animation?.cels ?? []) {
     const state = cels.get(cel.id)

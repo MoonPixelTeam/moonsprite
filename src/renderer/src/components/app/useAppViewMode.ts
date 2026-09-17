@@ -5,6 +5,8 @@ import { useI18n } from '@/components/I18nProvider'
 import type { DocumentSession } from '@/store/workspace'
 type AdvancedMode = 'tool-options' | 'canvas-only'
 
+const QUICK_COMMAND_NOTICE_GAP = 8
+
 export function useAppViewMode({
   homeOpen,
   session,
@@ -21,6 +23,7 @@ export function useAppViewMode({
   const [advancedModeNotice, setAdvancedModeNotice] = useState<string | null>(null)
 
   const [advancedModeNoticeShortcut, setAdvancedModeNoticeShortcut] = useState('')
+  const [advancedModeNoticeTop, setAdvancedModeNoticeTop] = useState<number | null>(null)
 
   useEffect(() => {
     if (!advancedModeNotice) return
@@ -35,17 +38,19 @@ export function useAppViewMode({
   const cycleAdvancedMode = useCallback((): void => {
     const next: AdvancedMode | null = advancedMode === null ? 'tool-options' : advancedMode === 'tool-options' ? 'canvas-only' : null
     setAdvancedMode(next)
+    setAdvancedModeNoticeTop(null)
     setAdvancedModeNotice(t('app.advanced.enabled'))
     setAdvancedModeNoticeShortcut(shortcutFor('advancedMode'))
   }, [advancedMode, shortcutFor])
 
   const toggleMirrorView = useCallback(
-    (axis: 'horizontal' | 'vertical'): void => {
+    (axis: 'horizontal' | 'vertical', quickCommandBarBottom?: number): void => {
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === useWorkspace.getState().activeId)
       if (!active) return
       const vertical = axis === 'vertical'
       const next = vertical ? !active.view.mirroredVertical : !active.view.mirrored
       workspace.setView(vertical ? { mirroredVertical: next } : { mirrored: next })
+      setAdvancedModeNoticeTop(typeof quickCommandBarBottom === 'number' && Number.isFinite(quickCommandBarBottom) ? quickCommandBarBottom + QUICK_COMMAND_NOTICE_GAP : null)
       setAdvancedModeNotice(
         t(
           `app.mirror.${vertical ? 'vertical' : 'horizontal'}${next ? 'On' : 'Off'}` as
@@ -61,5 +66,5 @@ export function useAppViewMode({
   )
 
   const editorOnly = advancedMode !== null && Boolean(session) && !homeOpen
-  return { advancedMode, advancedModeNotice, advancedModeNoticeShortcut, cycleAdvancedMode, toggleMirrorView, editorOnly }
+  return { advancedMode, advancedModeNotice, advancedModeNoticeShortcut, advancedModeNoticeTop, cycleAdvancedMode, toggleMirrorView, editorOnly }
 }

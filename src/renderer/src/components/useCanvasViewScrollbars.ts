@@ -5,6 +5,9 @@ import { canvasViewScrollbarMetrics, panCanvasViewFromScrollbar } from '@/core/v
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
 import { useWorkspace } from '@/store/workspace'
 
+/** Must stay aligned with --stage-view-scrollbar-thickness in styles.css. */
+export const CANVAS_VIEW_SCROLLBAR_THICKNESS = 10
+
 interface CanvasViewScrollbarOptions {
   documentId: string
   documentWidth: number

@@ -103,7 +103,7 @@ export interface MoonSpriteApi {
   listExtensions(): Promise<ExtensionListing>
   inspectExtensionPackage(filePath: string): Promise<ExtensionPackagePreview>
   installExtension(filePath: string): Promise<StoredExtension>
-  chooseAndInstallExtension(): Promise<StoredExtension | null>
+  chooseExtensionPackage(): Promise<string | null>
   setExtensionEnabled(id: string, enabled: boolean): Promise<StoredExtension>
   uninstallExtension(id: string): Promise<void>
   openExtensionFolder(): Promise<void>

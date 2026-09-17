@@ -73,6 +73,7 @@ interface PreferencesDialogProps {
   initialSection?: PreferenceSection
   onClose: () => void
   onPresetChange: (documentSizes: DocumentSizePreset[], exportScales: number[]) => void
+  onChooseAndInstallExtension: () => Promise<boolean>
 }
 
 export type PreferenceSection = 'general' | 'quickCommands' | 'appearance' | 'theme' | 'input' | 'tablet' | 'tools' | 'undo' | 'files' | 'colorLayers' | 'presets' | 'extensions' | 'reset'
@@ -139,7 +140,7 @@ function PreferenceGroup({ actions, children, className = '', title }: { actions
   </section>
 }
 
-export function PreferencesDialog({ initialSection = 'general', onClose, onPresetChange }: PreferencesDialogProps) {
+export function PreferencesDialog({ initialSection = 'general', onClose, onPresetChange, onChooseAndInstallExtension }: PreferencesDialogProps) {
   const { locale, t } = useI18n()
   const [section, setSection] = useState<PreferenceSection>(initialSection)
   const [query, setQuery] = useState('')
@@ -365,15 +366,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     }
   }
   const chooseExtension = async (): Promise<void> => {
-    try {
-      const extension = await window.moonSprite.chooseAndInstallExtension()
-      if (!extension) return
-      await refreshExtensions()
-      window.dispatchEvent(new Event('moonsprite:extensions-changed'))
-      useWorkspace.getState().setMessage(t('preferences.extensions.installSuccess', { name: extension.name }))
-    } catch (error) {
-      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('preferences.extensions.installFailed'))
-    }
+    if (await onChooseAndInstallExtension()) await refreshExtensions()
   }
   const openExtensionFolder = async (): Promise<void> => {
     try {

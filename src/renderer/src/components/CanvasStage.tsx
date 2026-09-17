@@ -66,7 +66,7 @@ import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { LineAnchorHistory } from './canvas-stage-helpers'
-import { useCanvasViewScrollbars } from './useCanvasViewScrollbars'
+import { CANVAS_VIEW_SCROLLBAR_THICKNESS, useCanvasViewScrollbars } from './useCanvasViewScrollbars'
 import { Scrollbar } from './Scrollbar'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
@@ -195,6 +195,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     view: session.view,
     rotationIndicatorPosition
   })
+  const canvasStatusBottomInset = canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible
+    ? CANVAS_VIEW_SCROLLBAR_THICKNESS
+    : 0
   const {
     lineAnchor,
     isoGridSnapActive,
@@ -895,6 +898,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         fillKind,
         brushPreviewMode,
         drawingBrushPreviewEnabled,
+        canvasStatusBottomInset,
         gridSnapActive,
         moveLayerContentPreviewEnabled,
         sliceOutlinesVisible,

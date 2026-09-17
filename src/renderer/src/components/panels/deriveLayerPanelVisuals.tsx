@@ -360,7 +360,7 @@ export function deriveLayerPanelVisuals({
       selectedFrameIds: visualSelectedFrameIds,
       selectedCellKeys: visualSelectedCellKeys,
       selectedMaskCellKeys: visualSelectedMaskCellKeys,
-      animationCellSelectionExplicit: session.animationCellSelectionExplicit
+      animationCellSelectionExplicit: animationGestureSelection?.kind === 'cel' || session.animationCellSelectionExplicit
     },
     // Focus is resolved once from the session contract above.  Passing the
     // resolved row lets the pure derivation keep mask rows/cells current even

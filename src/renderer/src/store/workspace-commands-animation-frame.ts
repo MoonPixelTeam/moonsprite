@@ -1,5 +1,6 @@
 import type { AnimationCelSurface } from '@shared/types-animation'
 import { createId, createLayer, paletteColorIdForCanvas } from '@/core/document-model'
+import { applyRelativeLuminance } from '@/core/raster'
 import {
   activateAnimationFrame,
   addBlankAnimationFrame,
@@ -36,7 +37,7 @@ import { updateSelectedAnimationFramesDisabled } from './workspace-animation-com
 
 
 
-export function createAnimationFrameCommands({ get, set }: WorkspaceCommandContext<'advanceAnimationFrame' | 'deleteAnimationFrame' | 'mutateActive' | 'setAnimationLoop'>): Pick<WorkspaceAnimationCommands, 'addAnimationFrame' | 'addLinkedAnimationFrame' | 'duplicateAnimationFrame' | 'importGifAnimationLayer' | 'deleteAnimationFrame' | 'setActiveAnimationFrameDuration' | 'setSelectedAnimationFramesDisabled' | 'toggleSelectedAnimationFramesDisabled' | 'setAnimationLoop'> {
+export function createAnimationFrameCommands({ get, set }: WorkspaceCommandContext<'advanceAnimationFrame' | 'commitFloatingPaste' | 'deleteAnimationFrame' | 'mutateActive' | 'setAnimationLoop'>): Pick<WorkspaceAnimationCommands, 'addAnimationFrame' | 'addLinkedAnimationFrame' | 'duplicateAnimationFrame' | 'importGifAnimationLayer' | 'deleteAnimationFrame' | 'setActiveAnimationFrameDuration' | 'setSelectedAnimationFramesDisabled' | 'toggleSelectedAnimationFramesDisabled' | 'setAnimationLoop'> {
   return {
     addAnimationFrame() {
       get().mutateActive(
@@ -202,6 +203,8 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
       const sourceTimeline = source.animation
       const sourceLayer = source.layers[0]
       if (!current || !sourceTimeline || !sourceLayer || sourceTimeline.frames.length === 0) return false
+      // Import activates another frame, just like an explicit timeline switch.
+      get().commitFloatingPaste()
 
       let imported = false
       get().mutateActive(
@@ -229,7 +232,6 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           ensureAnimationDocument(document)
           const sourceCels = new Map(sourceTimeline.cels.filter((cel) => cel.layerId === sourceLayer.id).map((cel) => [cel.frameId, cel]))
           const importedKeys: string[] = []
-          let firstSurface: AnimationCelSurface | null = null
 
           for (let index = 0; index < sourceTimeline.frames.length; index += 1) {
             const sourceFrame = sourceTimeline.frames[index]
@@ -272,7 +274,7 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
                     height: sourceSurface.height,
                     offsetX: sourceSurface.offsetX,
                     offsetY: sourceSurface.offsetY,
-                    pixels: rgbaPixels
+                    pixels: document.colorMode === 'grayscale' ? applyRelativeLuminance(rgbaPixels) : rgbaPixels
                   }
             const targetCel = timeline.cels.find((cel) => cel.layerId === layer.id && cel.frameId === targetFrame.id)
             if (!targetCel) continue
@@ -284,11 +286,11 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
             delete targetCel.tilemap
             delete targetCel.freeTiles
             importedKeys.push(animationCelKey(layer.id, targetFrame.id))
-            if (!firstSurface) firstSurface = surface
           }
 
           if (importedKeys.length === 0) return
-          if (firstSurface) layer.pixels = firstSurface.pixels instanceof Uint8ClampedArray ? new Uint8ClampedArray(firstSurface.pixels) : new Uint32Array(firstSurface.pixels)
+          // Keep the new layer blank until frame activation. Activation saves
+          // the displayed layer into the old active cel before switching frames.
           const firstFrameId = timeline.frames[start]?.id
           if (!firstFrameId) return
           applyLayerRowSelection(session, [layer.id], [], {

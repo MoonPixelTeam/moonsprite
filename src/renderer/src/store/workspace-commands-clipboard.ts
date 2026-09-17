@@ -1,4 +1,5 @@
 import { captureFreeTileInstances, pasteFreeTileInstances } from './workspace-free-tile-instance-clipboard'
+import { floatingSelectionClipboard } from './workspace-floating-clipboard'
 import { completeDocumentChange } from './workspace-document-change'
 import { type WorkspaceRecording } from './workspace-recording'
 import type { AnimationCelSurface } from '@shared/types-animation'
@@ -402,7 +403,7 @@ function applyLayerClipboardAnimationCel(
   setAnimationMaskSlot(document, layer.id, frame.id, layerMaskFromClipboard(source.mask, layer.id) ?? null)
 }
 
-export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copyFreeTileInstances' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
+export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'cancelFloatingPaste' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copyFreeTileInstances' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
   const { recordDocumentOperation } = recording
   return {
     copyFreeTileInstances() {
@@ -714,21 +715,23 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     },
 
     copySelection() {
-      get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return
       if (!session.selection && get().copyFreeTileInstances()) return
       if (!session.selection) { set({ message: tr('workspace.selectionRequired') }); return }
       const layer = getActiveLayer(session.document)
       const document = session.document
-      const selection = clampSelection(document, session.selection)
+      const floating = floatingSelectionClipboard(session)
+      if (session.pendingPaste && !floating) return
+      const selection = floating ? { x: floating.originX!, y: floating.originY!, width: floating.width, height: floating.height } : clampSelection(document, session.selection)
       if (!selection) { set({ message: tr('workspace.clipboard.outside') }); return }
       const pixels = new Uint32Array(selection.width * selection.height)
       const mask = new Uint8Array(selection.width * selection.height)
       let copied = 0
       for (let y = 0; y < selection.height; y += 1) for (let x = 0; x < selection.width; x += 1) {
-        if (!selectionContains(session.selection, selection.x + x, selection.y + y)) continue
-          const color = readLayerColorAt(document, layer, selection.x + x, selection.y + y)
+        const index = y * selection.width + x
+        if (floating ? !floating.mask?.[index] : !selectionContains(session.selection, selection.x + x, selection.y + y)) continue
+        const color = floating ? unpackColor(floating.pixels[index]) : readLayerColorAt(document, layer, selection.x + x, selection.y + y)
         if (color.a === 0) continue
         const clipboardIndex = y * selection.width + x
         pixels[clipboardIndex] = packColor(color)
@@ -749,9 +752,17 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     },
 
     cutSelection() {
-      get().commitFloatingPaste()
+      const pending = activeSession(get())?.pendingPaste
       get().copySelection()
-      get().deleteSelection()
+      if (pending) {
+        // Restore the destination before removing the original lifted pixels.
+        // Clipboard/duplicate payloads have no original pixels to remove.
+        get().cancelFloatingPaste()
+      }
+      if (!pending || (!pending.copy && pending.source.origin !== 'clipboard')) get().deleteSelection()
+      // Cutting completes the selection interaction, including floating copies
+      // whose cancellation temporarily restores the original selection box.
+      get().setSelection(null)
     },
 
     async pasteClipboard() {
@@ -962,10 +973,15 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
           if (clipboard.mask && clipboard.mask[index] !== 1) continue
           writeLayerColor(document, layer, index, unpackColor(clipboard.pixels[index]))
         }
-        const insertionIndex = document.layers.length
+        const activeLayer = document.layers.find((candidate) => candidate.id === document.activeLayerId)
+        const activeLayerIndex = activeLayer ? document.layers.indexOf(activeLayer) : -1
+        const insertionIndex = activeLayerIndex >= 0 ? activeLayerIndex + 1 : document.layers.length
+        layer.groupId = activeLayer?.groupId
         const previousActiveId = document.activeLayerId
         const previousSelection = [...session.selectedLayerIds]
-        document.layers.push(layer)
+        const previousGroupId = session.selectedGroupId
+        const previousGroupIds = [...session.selectedGroupIds]
+        document.layers.splice(insertionIndex, 0, layer)
         document.activeLayerId = layer.id
         session.selectedGroupId = null
         session.selectedGroupIds = []
@@ -978,10 +994,14 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
             document.layers = document.layers.filter((candidate) => candidate.id !== layer.id)
             document.activeLayerId = previousActiveId
             session.selectedLayerIds = previousSelection
+            session.selectedGroupId = previousGroupId
+            session.selectedGroupIds = previousGroupIds
           },
           redo: () => {
             if (!document.layers.some((candidate) => candidate.id === layer.id)) document.layers.splice(Math.min(insertionIndex, document.layers.length), 0, layer)
             document.activeLayerId = layer.id
+            session.selectedGroupId = null
+            session.selectedGroupIds = []
             session.selectedLayerIds = [layer.id]
           }
         })

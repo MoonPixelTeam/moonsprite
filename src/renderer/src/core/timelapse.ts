@@ -7,6 +7,8 @@ import { encodePng } from './png-encode'
 import { normalizeTimelapseSettings } from './project-metadata'
 import { translateCurrent as tr } from './localization'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from './runtime-diagnostics'
+import { compileCompositePointSampler } from './document-composite-sampling'
+import { freezeTimelapsePixels, materializeTimelapsePixels, type TimelapsePixels } from './timelapse-pixels'
 
 export type TimelapseExportMode = 'duration' | 'speed'
 
@@ -63,6 +65,7 @@ export interface PreparedTimelapseSnapshot {
   height: number
   changeScore: number
   pixels: Uint8ClampedArray
+  tiledPixels?: TimelapsePixels
   cache?: TimelapseCaptureCache
 }
 
@@ -181,6 +184,21 @@ const renderScaledRows = (
   revision: number
 ): void => {
   if (toX <= fromX || toY <= fromY) return
+  // Downscaled recordings need only these sample points, not a full-size
+  // intermediate composite (which can be hundreds of MB on large canvases).
+  if (outputWidth < document.width || outputHeight < document.height) {
+    const sample = createNormalCompositePointSampler(document)
+      ?? compileCompositePointSampler(document, undefined, composite, revision)
+    for (let y = fromY; y < toY; y += 1) for (let x = fromX; x < toX; x += 1) {
+      const color = sample(Math.floor(x * document.width / outputWidth), Math.floor(y * document.height / outputHeight), undefined)
+      const offset = (y * outputWidth + x) * 4
+      output[offset] = color.r
+      output[offset + 1] = color.g
+      output[offset + 2] = color.b
+      output[offset + 3] = color.a
+    }
+    return
+  }
   const sourceLeft = Math.floor(fromX * document.width / outputWidth)
   const sourceRight = Math.min(document.width, Math.floor((toX - 1) * document.width / outputWidth) + 1)
   const sourceTop = Math.floor(fromY * document.height / outputHeight)
@@ -486,13 +504,13 @@ const ensureTimelapseEncodeWorker = (): Worker => {
   return worker
 }
 
-const encodeTimelapsePngAsync = (pixels: Uint8ClampedArray, width: number, height: number): Promise<Uint8Array> => {
-  if (typeof Worker === 'undefined') return Promise.resolve(encodePng(pixels, width, height, true).bytes)
+const encodeTimelapsePngAsync = (source: Uint8ClampedArray | TimelapsePixels, width: number, height: number): Promise<Uint8Array> => {
+  const fallback = (): Uint8Array => encodePng(source instanceof Uint8ClampedArray ? source : materializeTimelapsePixels(source), width, height, true).bytes
+  if (typeof Worker === 'undefined') return Promise.resolve(fallback())
   return new Promise<Uint8Array>((resolve, reject) => {
     const id = ++timelapseEncodeSequence
     // The worker takes ownership of the buffer, so it never receives the shared
     // capture cache.
-    const transferredPixels = pixels.slice()
     let worker: Worker
     try {
       worker = ensureTimelapseEncodeWorker()
@@ -508,7 +526,14 @@ const encodeTimelapsePngAsync = (pixels: Uint8ClampedArray, width: number, heigh
       reject: (error) => { clearTimeout(timeout); reject(error) }
     })
     try {
-      worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+      if (source instanceof Uint8ClampedArray) {
+        const transferredPixels = source.slice()
+        worker.postMessage({ id, pixels: transferredPixels, width, height }, [transferredPixels.buffer])
+      } else {
+        // Structured clone preserves the immutable tiles for retry. Full-frame
+        // assembly happens in the worker, not at the end of the stroke.
+        worker.postMessage({ id, tiledPixels: source, width, height })
+      }
     } catch (error) {
       clearTimeout(timeout)
       pendingTimelapseEncodes.delete(id)
@@ -518,7 +543,7 @@ const encodeTimelapsePngAsync = (pixels: Uint8ClampedArray, width: number, heigh
     recordRuntimeDiagnostic('error', 'timelapse.encode.fallback', { message: error instanceof Error ? error.message : String(error) })
     // The transferred buffer is a copy. Retain the original so a failed worker
     // does not erase this operation; the exceptional fallback runs only once.
-    return encodePng(pixels, width, height, true).bytes
+    return fallback()
   })
 }
 
@@ -530,9 +555,31 @@ const prepareTimelapseCapture = (document: SpriteDocument, options: TimelapseCap
   return { settings, cache, ...compositeTimelapsePixels(document, qualityMaxDimension[settings.quality], { ...options, cache }) }
 }
 
+const frozenCaptureFrames = new WeakMap<TimelapseCaptureCache, { revision: number; frameId: string | null; sourceWidth: number; sourceHeight: number; frame: TimelapsePixels }>()
+
 export function prepareTimelapseSnapshot(document: SpriteDocument, now = Date.now(), options: TimelapseCaptureOptions = {}): PreparedTimelapseSnapshot | null {
   const capture = prepareTimelapseCapture(document, options)
-  return capture ? { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height, changeScore: timelapseChangeScore(document, options.contentInvalidation), pixels: capture.pixels.slice(), cache: capture.cache } : null
+  if (!capture) return null
+  const previous = frozenCaptureFrames.get(capture.cache)
+  const revision = options.contentRevision ?? Number.NaN
+  const frameId = document.animation?.activeFrameId ?? null
+  const invalidation = options.contentInvalidation
+  let dirty: SelectionRect | undefined
+  if (previous && previous.frameId === frameId && previous.sourceWidth === document.width && previous.sourceHeight === document.height) {
+    if (previous.revision === revision) dirty = { x: 0, y: 0, width: 0, height: 0 }
+    else if (invalidation?.kind === 'region' && invalidation.fromRevision === previous.revision && invalidation.revision === revision && invalidation.rect) {
+      const rect = invalidation.rect
+      const x = targetRangeForSourceRange(Math.max(0, Math.floor(rect.x)), Math.min(document.width, Math.ceil(rect.x + rect.width)), document.width, capture.width)
+      const y = targetRangeForSourceRange(Math.max(0, Math.floor(rect.y)), Math.min(document.height, Math.ceil(rect.y + rect.height)), document.height, capture.height)
+      dirty = { x: x.start, y: y.start, width: x.end - x.start, height: y.end - y.start }
+    }
+  }
+  const tiledPixels = freezeTimelapsePixels(capture.pixels, capture.width, capture.height, previous?.frame, dirty)
+  frozenCaptureFrames.set(capture.cache, { revision, frameId, sourceWidth: document.width, sourceHeight: document.height, frame: tiledPixels })
+  let materialized: Uint8ClampedArray | undefined
+  return { mode: capture.settings.mode, capturedAt: now, width: capture.width, height: capture.height,
+    changeScore: timelapseChangeScore(document, options.contentInvalidation), tiledPixels,
+    get pixels() { return materialized ??= materializeTimelapsePixels(tiledPixels) }, cache: capture.cache }
 }
 
 export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, snapshot: PreparedTimelapseSnapshot, shouldCommit: () => boolean = () => true): Promise<void> {
@@ -545,7 +592,7 @@ export async function commitPreparedTimelapseSnapshot(document: SpriteDocument, 
     if (shouldCommit()) applySmartTimelapsePlan(settings, snapshot.cache, plan, document.id)
     return
   }
-  const data = await encodeTimelapsePngAsync(snapshot.pixels, snapshot.width, snapshot.height)
+  const data = await encodeTimelapsePngAsync(snapshot.tiledPixels ?? snapshot.pixels, snapshot.width, snapshot.height)
   if (!shouldCommit()) return
   const latestSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
   document.timelapse = latestSettings

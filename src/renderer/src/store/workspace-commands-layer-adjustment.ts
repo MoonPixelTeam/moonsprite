@@ -6,7 +6,7 @@ import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { commitPixelEdit } from '@/core/history'
-import { cacheRasterContentBounds, cachedLayerContentBounds, createId, createLayer, getActiveLayer, isLayerEffectivelyLocked, layerContentBounds, markLayerContentChanged, paletteColorIdForCanvas, readLayerColor } from '@/core/document-model'
+import { cacheRasterContentBounds, cachedLayerContentBounds, createId, createLayer, getActiveLayer, findLayerMask, isLayerEffectivelyLocked, layerContentBounds, markLayerContentChanged, paletteColorIdForCanvas, readLayerColor } from '@/core/document-model'
 import { cloneAnimationCelSurface, connectAnimationCels, ensureAnimationDocument, refreshActiveAnimationFrame, syncActiveAnimationFrame, syncActiveAnimationLayer } from '@/core/animation'
 import { applyColorAdjustment, applyColorAdjustmentDirect, isColorAdjustmentIdentity, type ColorAdjustment } from '@/core/adjustments'
 import type { AdjustmentPreviewResult } from '@/core/adjustment-preview-protocol'
@@ -19,6 +19,7 @@ import type { WorkspaceLayerCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
 import { intersectSelectionRects, mergeSelectionRects } from './workspace-selection-geometry'
 import { defaultFreeTileSourceDisplayColor } from './workspace-layer-resources'
+import { activeLayerMask } from './workspace-session'
 import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
 import { nextAvailableLayerDisplayColor } from './workspace-layer-creation-context'
@@ -26,7 +27,7 @@ import { nextAvailableLayerDisplayColor } from './workspace-layer-creation-conte
 const distinctLinkedLayerTargets = (document: SpriteDocument, layerIds: readonly string[]): string[] => {
   const seenLinks = new Set<string>()
   return [...new Set(layerIds)].filter((layerId) => {
-    const layer = document.layers.find((candidate) => candidate.id === layerId)
+    const layer = (document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(document, layerId))
     if (!layer?.linkedContentId) return Boolean(layer)
     if (seenLinks.has(layer.linkedContentId)) return false
     seenLinks.add(layer.linkedContentId)
@@ -36,7 +37,7 @@ const distinctLinkedLayerTargets = (document: SpriteDocument, layerIds: readonly
 
 const shareLinkedLayerPreviewContents = (document: SpriteDocument, layerIds: readonly string[]): void => {
   for (const layerId of distinctLinkedLayerTargets(document, layerIds)) {
-    const source = document.layers.find((candidate) => candidate.id === layerId)
+    const source = (document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(document, layerId))
     if (!source?.linkedContentId) continue
     for (const member of linkedLayerMembers(document, source.linkedContentId)) shareLinkedRasterContent(member, source)
   }
@@ -44,7 +45,7 @@ const shareLinkedLayerPreviewContents = (document: SpriteDocument, layerIds: rea
 
 const commitLinkedLayerAdjustmentContents = (document: SpriteDocument, layerIds: readonly string[]): void => {
   for (const layerId of distinctLinkedLayerTargets(document, layerIds)) {
-    if (document.layers.find((candidate) => candidate.id === layerId)?.linkedContentId) syncActiveAnimationLayer(document, layerId)
+    if ((document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(document, layerId))?.linkedContentId) syncActiveAnimationLayer(document, layerId)
   }
 }
 
@@ -91,7 +92,7 @@ const applyAdjustmentPreviewResultLayer = (layer: RasterLayer, result: Adjustmen
 const adjustmentPreviewResultCoversTargets = (session: DocumentSession, baseline: AdjustmentSnapshot, result: AdjustmentPreviewResult): boolean => {
   let targetCount = 0
   for (const layerSnapshot of baseline.layers) {
-    const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+    const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     if (!layer || layer.kind || isLayerEffectivelyLocked(session.document, layer)) continue
     targetCount += 1
     const contentBounds = cachedLayerContentBounds(session.document, layer) ?? layerContentBounds(session.document, layer)
@@ -126,7 +127,7 @@ const adjustmentLinkedInvalidationRects = (document: SpriteDocument, source: Ras
 const adjustmentSnapshotInvalidationRect = (session: DocumentSession, baseline: AdjustmentSnapshot): SelectionRect | null => {
   let invalidation: SelectionRect | null = null
   for (const layerSnapshot of baseline.layers) {
-    const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+    const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
     if (!layer || layer.kind || isLayerEffectivelyLocked(session.document, layer)) continue
     const contentBounds = cachedLayerContentBounds(session.document, layer) ?? layerContentBounds(session.document, layer)
     const sourceRect = contentBounds && session.selection ? intersectSelectionRects(contentBounds, session.selection) : contentBounds
@@ -338,12 +339,12 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         const labels: Record<ColorAdjustment['kind'], string> = {
           'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr('adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
         }
-        const targetIds = distinctLinkedLayerTargets(session.document, session.selection
+        const targetIds = distinctLinkedLayerTargets(session.document, activeLayerMask(session) ? [activeLayerMask(session)!.id] : session.selection
           ? [getActiveLayer(session.document).id]
           : session.selectedLayerIds.length > 0 ? session.selectedLayerIds : [session.document.activeLayerId])
         session.history.beginCompound()
         for (const layerId of targetIds) {
-          const layer = session.document.layers.find((candidate) => candidate.id === layerId)
+          const layer = (session.document.layers.find((candidate) => candidate.id === layerId) ?? findLayerMask(session.document, layerId))
           if (!layer || layer.kind || isLayerEffectivelyLocked(session.document, layer)) continue
           const edit = applyColorAdjustment(session.document, layer, adjustment, session.selection)
           const entry = commitPixelEdit(session.document, edit, labels[adjustment.kind])
@@ -361,7 +362,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         prepareAdjustmentSnapshotTargets(session, baseline, Boolean(region))
         const targetSelection = selection === undefined ? session.selection : selection
         for (const layerSnapshot of baseline.layers) {
-          const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+          const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
           if (!layer) continue
           if (!layer.kind && !isLayerEffectivelyLocked(session.document, layer)) applyColorAdjustmentDirect(session.document, layer, adjustment, targetSelection, layerSnapshot.pixels, region)
           else if (!region) restorePreparedAdjustmentSnapshotLayer(session, layerSnapshot)
@@ -384,7 +385,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         let invalidation: SelectionRect | null = null
         const appliedLayerIds: string[] = []
         for (const layerResult of result.layers) {
-          const layer = session.document.layers.find((candidate) => candidate.id === layerResult.layerId)
+          const layer = (session.document.layers.find((candidate) => candidate.id === layerResult.layerId) ?? findLayerMask(session.document, layerResult.layerId))
           if (!layer || layer.kind || isLayerEffectivelyLocked(session.document, layer)) continue
           if (!applyAdjustmentPreviewResultLayer(layer, layerResult, session.document.palette)) continue
           appliedLayerIds.push(layer.id)
@@ -392,7 +393,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         if (appliedLayerIds.length === 0) return
         shareLinkedLayerPreviewContents(session.document, appliedLayerIds)
         for (const layerResult of result.layers) {
-          const layer = session.document.layers.find((candidate) => candidate.id === layerResult.layerId)
+          const layer = (session.document.layers.find((candidate) => candidate.id === layerResult.layerId) ?? findLayerMask(session.document, layerResult.layerId))
           if (!layer || !appliedLayerIds.includes(layer.id)) continue
           const sourceRect = { x: layerResult.x, y: layerResult.y, width: layerResult.width, height: layerResult.height }
           for (const rect of adjustmentLinkedInvalidationRects(session.document, layer, sourceRect)) {
@@ -417,7 +418,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
           }
           let invalidation: SelectionRect | null = null
           for (const restoredLayer of restored) {
-            const layer = session.document.layers.find((candidate) => candidate.id === restoredLayer.layerId)
+            const layer = (session.document.layers.find((candidate) => candidate.id === restoredLayer.layerId) ?? findLayerMask(session.document, restoredLayer.layerId))
             if (!layer) continue
             for (const rect of adjustmentLinkedInvalidationRects(session.document, layer, restoredLayer.rect)) {
               invalidation = invalidation ? mergeSelectionRects(invalidation, rect) : rect
@@ -442,7 +443,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         if (!reusePreview) {
           prepareAdjustmentSnapshotTargets(session, before)
           for (const layerSnapshot of before.layers) {
-            const layer = session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId)
+            const layer = (session.document.layers.find((candidate) => candidate.id === layerSnapshot.layerId) ?? findLayerMask(session.document, layerSnapshot.layerId))
             if (!layer) continue
             if (!layer.kind && !isLayerEffectivelyLocked(session.document, layer)) applyColorAdjustmentDirect(session.document, layer, adjustment, session.selection, layerSnapshot.pixels)
             else restorePreparedAdjustmentSnapshotLayer(session, layerSnapshot)

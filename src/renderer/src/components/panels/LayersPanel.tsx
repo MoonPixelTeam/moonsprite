@@ -1,3 +1,4 @@
+import { animationSlotRange } from '@/core/animation-slot-selection'
 import { createLayerMaskRowRenderer } from './LayerMaskRow'
 import { LayerTreeRows } from './LayerTreeRows'
 import { LayerTimelineCells } from './LayerTimelineCells'
@@ -111,7 +112,6 @@ export function LayersPanel({
   const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const loopSectionLayout = layoutAnimationLoopSections(timelineWithLoopSectionPreview(timeline, loopSectionResizePreview))
   const celLookup = createAnimationCelLookup(timeline)
-  const animationMaskLookup = createAnimationMaskLookup(timeline)
   const activeFrameIndex = Math.max(
     0,
     timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
@@ -357,42 +357,11 @@ export function LayersPanel({
   })
   const { gifDropTargetIndex } = useTimelineFileDrop({ session, timeline })
 
-  const cellRange = (anchorKey: string, targetKey: string): string[] => {
-    const anchor = parseAnimationCelKey(anchorKey)
-    const target = parseAnimationCelKey(targetKey)
-    if (!anchor || !target) return [anchorKey]
-    const anchorFrame = timeline.frames.findIndex((frame) => frame.id === anchor.frameId)
-    const targetFrame = timeline.frames.findIndex((frame) => frame.id === target.frameId)
-    const anchorLayer = session.document.layers.findIndex((layer) => layer.id === anchor.layerId)
-    const targetLayer = session.document.layers.findIndex((layer) => layer.id === target.layerId)
-    if (anchorFrame < 0 || targetFrame < 0 || anchorLayer < 0 || targetLayer < 0) return [anchorKey]
-    const [fromFrame, toFrame] = anchorFrame <= targetFrame ? [anchorFrame, targetFrame] : [targetFrame, anchorFrame]
-    const [fromLayer, toLayer] = anchorLayer <= targetLayer ? [anchorLayer, targetLayer] : [targetLayer, anchorLayer]
-    const keys: string[] = []
-    for (const layer of session.document.layers.slice(fromLayer, toLayer + 1))
-      for (const frame of timeline.frames.slice(fromFrame, toFrame + 1)) keys.push(animationCelKey(layer.id, frame.id))
-    return keys
-  }
-  const maskCellRange = (anchorKey: string, targetKey: string): string[] => {
-    const anchor = parseAnimationCelKey(anchorKey)
-    const target = parseAnimationCelKey(targetKey)
-    if (!anchor || !target) return [anchorKey]
-    const ownerIds = buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).map((node) => node.id)
-    const anchorFrame = timeline.frames.findIndex((frame) => frame.id === anchor.frameId)
-    const targetFrame = timeline.frames.findIndex((frame) => frame.id === target.frameId)
-    const anchorOwner = ownerIds.indexOf(anchor.layerId)
-    const targetOwner = ownerIds.indexOf(target.layerId)
-    if (anchorFrame < 0 || targetFrame < 0 || anchorOwner < 0 || targetOwner < 0) return [anchorKey]
-    const [fromFrame, toFrame] = anchorFrame <= targetFrame ? [anchorFrame, targetFrame] : [targetFrame, anchorFrame]
-    const [fromOwner, toOwner] = anchorOwner <= targetOwner ? [anchorOwner, targetOwner] : [targetOwner, anchorOwner]
-    const keys: string[] = []
-    for (const ownerId of ownerIds.slice(fromOwner, toOwner + 1))
-      for (const frame of timeline.frames.slice(fromFrame, toFrame + 1)) {
-        const key = animationCelKey(ownerId, frame.id)
-        if (animationMaskLookup.get(key)) keys.push(key)
-      }
-    return keys
-  }
+  const cellRange = (anchorKey: string, targetKey: string): string[] =>
+    animationSlotRange(session.document.layers.map((layer) => layer.id), timeline.frames.map((frame) => frame.id), anchorKey, targetKey)
+  const maskOwnerIds = new Set([...(timeline.layerMasks ?? []).map((entry) => entry.layerId), ...(timeline.groupMasks ?? []).map((entry) => entry.groupId)])
+  const maskCellRange = (anchorKey: string, targetKey: string): string[] =>
+    animationSlotRange(buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).map((node) => node.id).filter((id) => maskOwnerIds.has(id)), timeline.frames.map((frame) => frame.id), anchorKey, targetKey)
   useEffect(() => {
     document.body.classList.toggle('animation-item-dragging', animationItemDragging)
     return () => {

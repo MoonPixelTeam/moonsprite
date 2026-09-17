@@ -70,7 +70,8 @@ export const isBackgroundPatternId = (value: unknown): value is BackgroundPatter
 export const normalizeBackgroundLayerSettings = (value: unknown): BackgroundLayerSettings | undefined => {
   if (!value || typeof value !== 'object') return undefined
   const candidate = value as Partial<BackgroundLayerSettings>
-  if (candidate.mode === 'canvas') return { mode: 'canvas' }
+  if (candidate.mode === 'canvas') return { mode: 'canvas', ...(Number.isSafeInteger(candidate.repeatWidth) && candidate.repeatWidth! > 0 && candidate.repeatWidth! <= 65536 && Number.isSafeInteger(candidate.repeatHeight) && candidate.repeatHeight! > 0 && candidate.repeatHeight! <= 65536 && candidate.repeatWidth! * candidate.repeatHeight! <= 268435456
+    ? { repeatWidth: candidate.repeatWidth, repeatHeight: candidate.repeatHeight } : {}) }
   if (candidate.mode === 'preset' && isBackgroundPatternId(candidate.pattern)) return { mode: 'preset', pattern: candidate.pattern }
   return undefined
 }
@@ -87,20 +88,20 @@ export const backgroundPatternColorAt = (pattern: BackgroundPatternId, x: number
   const localX = positiveModulo(Math.trunc(x), size.width)
   const localY = positiveModulo(Math.trunc(y), size.height)
   if (pattern === 'solid') return gray(228)
-  if (pattern === 'grid') return gray(((localX < 16) === (localY < 16)) ? 180 : 191)
+  if (pattern === 'grid') return gray(((localX < 16) === (localY < 16)) ? 214 : 228)
   if (pattern === 'stripes') {
     const quadrant = (localX >= 16 ? 1 : 0) + (localY >= 16 ? 1 : 0)
-    return gray(quadrant === 0 ? 106 : quadrant === 1 ? 113 : 119)
+    return gray(quadrant === 0 ? 202 : quadrant === 1 ? 214 : 228)
   }
   if (pattern === 'diamond') {
     const quadrantX = Math.floor(localX / 16)
     const quadrantY = Math.floor(localY / 16)
     const distance = Math.abs(localX % 16 - 7.5) + Math.abs(localY % 16 - 7.5)
-    if (distance > 8) return gray(119)
-    return gray((quadrantX + quadrantY) % 2 === 0 ? 143 : 98)
+    if (distance > 8) return gray(214)
+    return gray((quadrantX + quadrantY) % 2 === 0 ? 228 : 202)
   }
-  if (pattern === 'diamond-nested') return gray(diamondNestedRows[localY][localX] === 'A' ? 143 : 171)
-  return gray(circleRows[localY][localX] === 'A' ? 152 : 171)
+  if (pattern === 'diamond-nested') return gray(diamondNestedRows[localY][localX] === 'A' ? 214 : 228)
+  return gray(circleRows[localY][localX] === 'A' ? 214 : 228)
 }
 
 export const renderBackgroundPatternRgba = (width: number, height: number, pattern: BackgroundPatternId): Uint8ClampedArray => {
@@ -165,7 +166,7 @@ export const renderBackgroundTileIndexed = (width: number, height: number, tile:
   return pixels
 }
 
-/** Preserves the old canvas contents and fills only the newly exposed area. */
+/** Preserve visible edits and retain a complete, phase-aligned unit after cropping. */
 export const tileBackgroundSurfaceToCanvas = (
   surface: BackgroundSurface,
   sourceCanvasWidth: number,
@@ -186,11 +187,15 @@ export const tileBackgroundSurfaceToCanvas = (
   const vertical = Math.trunc(offsetY)
   const repeatWidth = repeatSize?.width ?? sourceCanvasWidth
   const repeatHeight = repeatSize?.height ?? sourceCanvasHeight
+  const left = -positiveModulo(-sourceOffsetX - horizontal, repeatWidth)
+  const top = -positiveModulo(-sourceOffsetY - vertical, repeatHeight)
+  targetCanvasWidth = Math.max(repeatWidth, targetCanvasWidth - left)
+  targetCanvasHeight = Math.max(repeatHeight, targetCanvasHeight - top)
   if (surface.format === 'rgba') {
     const pixels = new Uint8ClampedArray(targetCanvasWidth * targetCanvasHeight * 4)
     for (let y = 0; y < targetCanvasHeight; y += 1) for (let x = 0; x < targetCanvasWidth; x += 1) {
-      const sourceCanvasX = x - horizontal
-      const sourceCanvasY = y - vertical
+      const sourceCanvasX = x + left - horizontal
+      const sourceCanvasY = y + top - vertical
       const insideSourceCanvas = sourceCanvasX >= 0 && sourceCanvasX < sourceCanvasWidth && sourceCanvasY >= 0 && sourceCanvasY < sourceCanvasHeight
       const localX = insideSourceCanvas
         ? sourceCanvasX - sourceOffsetX
@@ -200,7 +205,7 @@ export const tileBackgroundSurfaceToCanvas = (
         : positiveModulo(sourceCanvasY - sourceOffsetY, repeatHeight)
       const target = (y * targetCanvasWidth + x) * 4
       if (!insideSourceCanvas && presetPattern) {
-        const color = backgroundPatternColorAt(presetPattern, sourceCanvasX, sourceCanvasY)
+        const color = backgroundPatternColorAt(presetPattern, sourceCanvasX - sourceOffsetX, sourceCanvasY - sourceOffsetY)
         pixels[target] = color.r
         pixels[target + 1] = color.g
         pixels[target + 2] = color.b
@@ -218,8 +223,8 @@ export const tileBackgroundSurfaceToCanvas = (
   } else {
     const pixels = new Uint32Array(targetCanvasWidth * targetCanvasHeight)
     for (let y = 0; y < targetCanvasHeight; y += 1) for (let x = 0; x < targetCanvasWidth; x += 1) {
-      const sourceCanvasX = x - horizontal
-      const sourceCanvasY = y - vertical
+      const sourceCanvasX = x + left - horizontal
+      const sourceCanvasY = y + top - vertical
       const insideSourceCanvas = sourceCanvasX >= 0 && sourceCanvasX < sourceCanvasWidth && sourceCanvasY >= 0 && sourceCanvasY < sourceCanvasHeight
       const localX = insideSourceCanvas
         ? sourceCanvasX - sourceOffsetX
@@ -228,7 +233,7 @@ export const tileBackgroundSurfaceToCanvas = (
         ? sourceCanvasY - sourceOffsetY
         : positiveModulo(sourceCanvasY - sourceOffsetY, repeatHeight)
       if (!insideSourceCanvas && presetPattern && resolveColor) {
-        pixels[y * targetCanvasWidth + x] = resolveColor(backgroundPatternColorAt(presetPattern, sourceCanvasX, sourceCanvasY))
+        pixels[y * targetCanvasWidth + x] = resolveColor(backgroundPatternColorAt(presetPattern, sourceCanvasX - sourceOffsetX, sourceCanvasY - sourceOffsetY))
         continue
       }
       if (localX < 0 || localY < 0 || localX >= sourceWidth || localY >= sourceHeight) continue
@@ -239,8 +244,8 @@ export const tileBackgroundSurfaceToCanvas = (
   delete surface.runtimeRaster
   surface.width = targetCanvasWidth
   surface.height = targetCanvasHeight
-  surface.offsetX = 0
-  surface.offsetY = 0
+  surface.offsetX = left
+  surface.offsetY = top
   if (!('id' in surface)) {
     surface.storageOriginX = 0
     surface.storageOriginY = 0

@@ -663,7 +663,7 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
   }
   const regionPatchBytes = regionPatches.reduce((sum, patch) => sum + patch.before.byteLength + patch.after.byteLength, 0)
   const applyLayerOffset = (x: number, y: number): void => {
-    if (frameId) setAnimationLayerOffsetsAtFrame(document, edit.layerId, frameId, x, y)
+    if (frameId && !maskTarget) setAnimationLayerOffsetsAtFrame(document, edit.layerId, frameId, x, y)
     else {
       const layer = getLayer(document, edit.layerId)
       layer.offsetX = x
@@ -688,7 +688,7 @@ export function revertPixelEdit(document: SpriteDocument, edit: PixelEdit | null
   if (!edit) return
   if (edit.layerOffset) {
     const frameId = edit.frameId ?? document.animation?.activeFrameId
-    if (frameId) setAnimationLayerOffsetsAtFrame(document, edit.layerId, frameId, edit.layerOffset.beforeX, edit.layerOffset.beforeY)
+    if (frameId && !isLayerMask(getLayer(document, edit.layerId))) setAnimationLayerOffsetsAtFrame(document, edit.layerId, frameId, edit.layerOffset.beforeX, edit.layerOffset.beforeY)
     else {
       const target = getLayer(document, edit.layerId)
       target.offsetX = edit.layerOffset.beforeX

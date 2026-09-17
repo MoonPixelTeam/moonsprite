@@ -1,3 +1,4 @@
+import { animationLinkSlotKeys } from '@/core/animation-slot-selection'
 import type { LayerMask } from '@shared/types-layer'
 import { animationMaskAt, createAnimationMaskLookup, createId, resolveAnimationMask } from '@/core/document-model'
 import { activateAnimationFrame, animationCelKey, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
@@ -235,15 +236,18 @@ export function createAnimationMaskCommands({ get, set }: WorkspaceCommandContex
           const directByKey = new Map<string, LayerMask>()
           for (const entry of timeline.layerMasks ?? []) directByKey.set(animationCelKey(entry.layerId, entry.frameId), entry.mask)
           for (const entry of timeline.groupMasks ?? []) directByKey.set(animationCelKey(entry.groupId, entry.frameId), entry.mask)
-          const selected = session.selectedAnimationMaskCellKeys.flatMap((key) => {
+          const keys = animationLinkSlotKeys(session.selectedAnimationMaskCellKeys,
+            [...session.document.layers, ...session.document.groups].map((owner) => owner.id), timeline.frames.map((frame) => frame.id),
+            (key) => resolvedByKey.has(key))
+          const selected = keys.flatMap((key) => {
             const target = parseAnimationCelKey(key)
             const mask = target ? (directByKey.get(key) ?? null) : null
             const resolved = resolvedByKey.get(key) ?? mask
-            return target && mask ? [{ key, target, mask, resolved }] : []
+            return target ? [{ key, target, mask, resolved }] : []
           })
           const byOwner = new Map<string, typeof selected>()
           for (const item of selected) byOwner.set(item.target.layerId, [...(byOwner.get(item.target.layerId) ?? []), item])
-          const linkable = [...byOwner.values()].filter((items) => items.length > 1)
+          const linkable = [...byOwner.values()].filter((items) => items.length > 1 && items.some((item) => item.resolved))
           if (!linkable.length || linkable.some((items) => animationMaskOwnerLocked(session.document, items[0].target.layerId))) return
           const affectedKeys = linkable.flatMap((items) => items.map((item) => item.key))
           const before = affectedKeys.flatMap((key) => {
@@ -254,11 +258,18 @@ export function createAnimationMaskCommands({ get, set }: WorkspaceCommandContex
           let changed = false
           for (const items of linkable) {
             items.sort((left, right) => (frameIndexes.get(left.target.frameId) ?? 0) - (frameIndexes.get(right.target.frameId) ?? 0))
-            const source = items[0].resolved ?? items[0].mask
+            const source = items.find((item) => item.resolved)!.resolved!
             for (const item of items) {
-              if (item.mask.id === source.id) continue
-              if (item.mask.linkedMaskId !== source.id) changed = true
-              item.mask.linkedMaskId = source.id
+              if (!item.mask) {
+                const ownerKind = animationMaskOwnerKind(session.document, item.target.layerId)!
+                const mask = cloneAnimationMaskForOwner(source, ownerKind, item.target.layerId, { id: createId('mask') })
+                mask.linkedMaskId = source.id
+                setAnimationMaskSlot(session.document, item.target.layerId, item.target.frameId, mask)
+                changed = true
+              } else if (item.mask.id !== source.id && item.mask.linkedMaskId !== source.id) {
+                item.mask.linkedMaskId = source.id
+                changed = true
+              }
             }
           }
           if (!changed) return

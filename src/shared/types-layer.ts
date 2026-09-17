@@ -8,6 +8,9 @@ export type BackgroundPatternId = 'solid' | 'grid' | 'stripes' | 'diamond' | 'di
 export interface BackgroundLayerSettings {
   mode: 'preset' | 'canvas'
   pattern?: BackgroundPatternId
+  /** Original repeating unit, independent of subsequent canvas sizes. */
+  repeatWidth?: number
+  repeatHeight?: number
 }
 
 export interface RgbaLayer {

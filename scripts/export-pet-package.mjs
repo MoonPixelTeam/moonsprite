@@ -147,9 +147,9 @@ const manifest = {
   schemaVersion: 2,
   apiVersion: '1.0.0',
   id: extensionId,
-  name: `${petName} 宠物`,
-  version: '2.0.3',
-  description: `由 ${basename(sourcePath)} 导出的宠物扩展，支持导入 GIF 自定义宠物。`,
+  name: '宠物伴侣',
+  version: '1.0.0',
+  description: '支持多宠物陪伴、自定义动画及宠物包导入导出，提供报时、保存与休息提醒。',
   settingsUi: {
     storageKey: 'preferences',
     controls: [
@@ -209,6 +209,18 @@ const write=(key,value)=>moonsprite.storage.set({key,value});
 const report=error=>moonsprite.diagnostics.log({message:String(error),level:'error'});
 const send=(windowId,message)=>moonsprite.windows.postMessage({windowId,message}).catch(report);
 const broadcast=message=>Promise.all([...visible].map(id=>send(id,message)));
+let noticeSequence=0,noticeQueue=Promise.resolve();const noticeRequests=new Map();
+const acceptNoticeDistance=(windowId,message)=>{const request=noticeRequests.get(message.requestId);if(!request||!request.pending.delete(windowId))return;if(Number.isFinite(message.distance)&&message.distance>=0)request.distances.set(windowId,message.distance);if(!request.pending.size)request.finish()};
+const notifyNearest=message=>{const task=noticeQueue.then(async()=>{
+ if(!preferences.enabled||!preferences.remindersEnabled)return;
+ const ids=[...visible].filter(id=>ready.has(id));if(!ids.length)return;
+ const requestId=++noticeSequence;
+ const distances=await new Promise(resolve=>{const request={pending:new Set(ids),distances:new Map(),finish:()=>{clearTimeout(timer);noticeRequests.delete(requestId);resolve(request.pending.size?null:request.distances)}};const timer=setTimeout(request.finish,1500);noticeRequests.set(requestId,request);for(const id of ids)send(id,{type:'notice-distance',requestId})});
+ if(!distances||!preferences.enabled||!preferences.remindersEnabled)return;
+ let winner=null,best=Infinity;for(const id of ids){const distance=distances.get(id);if(visible.has(id)&&ready.has(id)&&distance<best){best=distance;winner=id}}
+ if(!winner)return;await Promise.all([...visible].filter(id=>id!==winner).map(id=>send(id,{type:'dismiss-notice'})));if(visible.has(winner))await send(winner,message);
+ });noticeQueue=task.catch(report);return noticeQueue};
+
 const catalog=async()=>{const meta=await read('pet-sprites')||[];return[meta.find(pet=>pet.id===builtInPet.id)||builtInPet,...meta.filter(pet=>pet.id!==builtInPet.id)]};
 const configure=(pet,playShow)=>({type:'configure',windowId:'pet-'+pet.id,pet,project,preferences:{...preferences,scale:pet.scale||preferences.scale||2},activePetId:pet.id,playShow,positionKey:'position:'+pet.id});
 const syncMenu=pets=>moonsprite.menus.setItems({menuId:'pet-menu',items:pets.filter(pet=>pet.frameCount>0).map(pet=>({id:pet.id,name:pet.name,event:'toggle-pet',checked:preferences.enabled&&shownIds.includes(pet.id)}))});
@@ -220,7 +232,7 @@ const reconcileNow=async()=>{
  for(const [id,pet] of live)if(!pets.some(next=>next.id===pet.id)){await moonsprite.windows.close({windowId:id});live.delete(id);ready.delete(id)}
  for(const pet of wanted){const id='pet-'+pet.id;try{
  if(live.has(id)){const wasVisible=visible.has(id);live.set(id,pet);if(!wasVisible){await moonsprite.windows.setVisible({windowId:id,visible:true});visible.add(id)}if(ready.has(id))await send(id,configure(pet,!wasVisible));continue}
- const scale=pet.scale||preferences.scale||2,width=Math.max(360,pet.frameWidth*scale+36),height=Math.max(360,pet.frameHeight*scale+178),position=await read('position:'+pet.id)||{x:100+live.size*100,y:100};
+ const scale=pet.scale||preferences.scale||2,width=Math.max(360,pet.frameWidth*scale+600),height=Math.max(360,pet.frameHeight*scale+400),position=await read('position:'+pet.id)||{x:100+live.size*100,y:100};
  live.set(id,pet);visible.add(id);try{await moonsprite.windows.open({windowId:id,resourceId:'pet-window',options:{x:position.x,y:position.y,width,height,transparent:true,focusable:true}})}catch(error){live.delete(id);visible.delete(id);ready.delete(id);throw error}
  }catch(error){await report(error)}}
  await syncMenu(pets);
@@ -237,19 +249,20 @@ moonsprite.on('window-message',async event=>{const message=event.message;if(!mes
   return
  }
  const pet=live.get(event.windowId);if(!pet)return;
+ if(message.type==='notice-distance'){acceptNoticeDistance(event.windowId,message);return}
  if(message.type==='ready'){ready.add(event.windowId);if(visible.has(event.windowId))await send(event.windowId,configure(pet,true));else await send(event.windowId,{type:'visibility',visible:false})}
  if(message.type==='manager')await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}})
 });
 moonsprite.on('project',event=>{const next=event.project,now=Date.now();if(next?.id!==lastProjectId){dirtySince=0;drawingSince=0;lastDrawingAt=0;lastRevision=null;lastUnsavedNotice=0;lastBreakNotice=0}lastProjectId=next?.id;project=next;
  if(next){if(next.dirty&&!dirtySince)dirtySince=now;if(!next.dirty){dirtySince=0;lastUnsavedNotice=0}if(lastRevision!==null&&next.contentRevision!==lastRevision){if(!lastDrawingAt||now-lastDrawingAt>300000)drawingSince=now;lastDrawingAt=now}lastRevision=next.contentRevision}return broadcast({type:'project',project})});
-moonsprite.on('document-saved',()=>broadcast({type:'notice',text:'保存好啦，这份进度安心收下了。'}));
+moonsprite.on('document-saved',()=>notifyNearest({type:'notice',text:'保存好啦，这份进度安心收下了。'}));
 moonsprite.on('clock',event=>{
  if(!preferences.enabled||!preferences.remindersEnabled)return;const now=event.timestamp,date=new Date(now);
- if(preferences.clockEnabled&&(date.getMinutes()===0||date.getMinutes()===30)){const key=date.toDateString()+date.getHours()+':'+date.getMinutes();if(key!==lastClockKey){lastClockKey=key;broadcast({type:'notice',text:'现在是 '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 啦，愿你的灵感正好在身边。'})}}
+ if(preferences.clockEnabled&&(date.getMinutes()===0||date.getMinutes()===30)){const key=date.toDateString()+date.getHours()+':'+date.getMinutes();if(key!==lastClockKey){lastClockKey=key;notifyNearest({type:'notice',text:'现在是 '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 啦，愿你的灵感正好在身边。'})}}
  const breakMs=Math.max(1,Number(preferences.breakMinutes)||60)*60000;
- if(project&&preferences.breakEnabled!==false&&drawingSince&&now-lastDrawingAt<300000&&now-drawingSince>=breakMs&&now-lastBreakNotice>=breakMs){lastBreakNotice=now;broadcast({type:'notice',text:'你已经连续绘制了 '+Math.floor((now-drawingSince)/60000)+' 分钟，休息一下眼睛和手腕吧，我在这里等你。'})}
+ if(project&&preferences.breakEnabled!==false&&drawingSince&&now-lastDrawingAt<300000&&now-drawingSince>=breakMs&&now-lastBreakNotice>=breakMs){lastBreakNotice=now;notifyNearest({type:'notice',text:'你已经连续绘制了 '+Math.floor((now-drawingSince)/60000)+' 分钟，休息一下眼睛和手腕吧，我在这里等你。'})}
  const unsavedMs=Math.max(1,Number(preferences.unsavedMinutes)||15)*60000;
- if(project&&preferences.unsavedEnabled!==false&&dirtySince&&now-dirtySince>=unsavedMs&&now-lastUnsavedNotice>=unsavedMs){lastUnsavedNotice=now;broadcast({type:'notice',text:'已经 '+Math.floor((now-dirtySince)/60000)+' 分钟没有保存文件啦，记得保存，别让灵感溜走哦。'})}
+ if(project&&preferences.unsavedEnabled!==false&&dirtySince&&now-dirtySince>=unsavedMs&&now-lastUnsavedNotice>=unsavedMs){lastUnsavedNotice=now;notifyNearest({type:'notice',text:'已经 '+Math.floor((now-dirtySince)/60000)+' 分钟没有保存文件啦，记得保存，别让灵感溜走哦。'})}
 });
 </script></body></html>`
 
@@ -258,33 +271,36 @@ const expandedSize=360;
 let pet=null,image=null,hitAlpha=null,hitRegionDirty=false,project=null,preferences=${JSON.stringify(defaults)},animationToken=0,pointer=null,noticeTimer=0,expanded=false,desiredExpanded=false,boundsQueue=Promise.resolve(),sheetUrl=null,sheetRevoke=false,catalog=[],slotPets=[],activePets=null,activePetId=${JSON.stringify(BUILT_IN_PET_ID)},resizeTimer=0,positionKey='position';
 const petElement=document.querySelector('#pet'),canvas=document.querySelector('canvas'),context=canvas.getContext('2d',{willReadFrequently:true}),info=document.querySelector('#info'),notice=document.querySelector('#notice');
 const scaleOf=()=>Math.max(1,Math.min(4,Math.round(preferences.scale||2)));
-const compactSize=()=>pet?{width:Math.max(360,pet.frameWidth*scaleOf()+36),height:Math.max(360,pet.frameHeight*scaleOf()+178)}:{width:120,height:120};
+const compactSize=()=>pet?{width:Math.max(360,pet.frameWidth*scaleOf()+600),height:Math.max(360,pet.frameHeight*scaleOf()+400)}:{width:120,height:120};
 let positionRatio=null,positionLoaded=false,hostEpoch=0;
 const persistPosition=bounds=>moonsprite.storage.set(positionKey,{x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height,layout:'relative',ratio:positionRatio});
 const savePosition=async(bounds,epoch=hostEpoch)=>{const host=await moonsprite.window.getHostBounds();if(epoch!==hostEpoch)return;positionRatio=relativePetPosition(bounds,host,contentBounds());positionLoaded=true;await persistPosition(bounds)};
 // Native regions clip drawing as well as input. Use the union of all animation
 // silhouettes so asynchronous region updates cannot cut off a newer frame.
-const updateHitRegion=()=>{if(!hitAlpha)return;const viewportWidth=Math.max(1,window.innerWidth),viewportHeight=Math.max(1,window.innerHeight),spans=[],rect=petElement.getBoundingClientRect(),scale=rect.width/pet.frameWidth;for(let y=0;y<pet.frameHeight;y++){let start=-1;for(let x=0;x<=pet.frameWidth;x++){const opaque=x<pet.frameWidth&&hitAlpha[y*pet.frameWidth+(pet.mirrored?pet.frameWidth-1-x:x)]>0;if(opaque&&start<0)start=x;if(!opaque&&start>=0){const left=Math.max(0,Math.floor(rect.left+start*scale)),right=Math.min(viewportWidth,Math.ceil(rect.left+x*scale)),top=Math.max(0,Math.floor(rect.top+y*scale)),bottom=Math.min(viewportHeight,Math.ceil(rect.top+(y+1)*scale));for(let hitY=top;hitY<bottom;hitY++)spans.push({x:left,y:hitY,width:Math.max(1,right-left)});start=-1}}}for(const bubble of [info,notice])if(!bubble.hidden){const box=bubble.getBoundingClientRect();for(let y=Math.max(0,Math.floor(box.top));y<Math.min(viewportHeight,Math.ceil(box.bottom));y++){const left=Math.max(0,Math.floor(box.left)),right=Math.min(viewportWidth,Math.ceil(box.right));spans.push({x:left,y,width:Math.max(1,right-left)})}}moonsprite.window.setHitRegion(viewportWidth,viewportHeight,spans).catch(error=>moonsprite.diagnostics.log('无法更新宠物命中区域：'+String(error),'error'))};
+const updateHitRegion=async()=>{try{await positionBubbles()}catch(error){moonsprite.diagnostics.log(String(error),'error')}if(!hitAlpha)return;const viewportWidth=Math.max(1,window.innerWidth),viewportHeight=Math.max(1,window.innerHeight),spans=[],rect=petElement.getBoundingClientRect(),scale=rect.width/pet.frameWidth;for(let y=0;y<pet.frameHeight;y++){let start=-1;for(let x=0;x<=pet.frameWidth;x++){const opaque=x<pet.frameWidth&&hitAlpha[y*pet.frameWidth+(pet.mirrored?pet.frameWidth-1-x:x)]>0;if(opaque&&start<0)start=x;if(!opaque&&start>=0){const left=Math.max(0,Math.floor(rect.left+start*scale)),right=Math.min(viewportWidth,Math.ceil(rect.left+x*scale)),top=Math.max(0,Math.floor(rect.top+y*scale)),bottom=Math.min(viewportHeight,Math.ceil(rect.top+(y+1)*scale));for(let hitY=top;hitY<bottom;hitY++)spans.push({x:left,y:hitY,width:Math.max(1,right-left)});start=-1}}}for(const bubble of [info,notice])if(!bubble.hidden){const box=bubble.getBoundingClientRect();for(let y=Math.max(0,Math.floor(box.top));y<Math.min(viewportHeight,Math.ceil(box.bottom));y++){const left=Math.max(0,Math.floor(box.left)),right=Math.min(viewportWidth,Math.ceil(box.right));spans.push({x:left,y,width:Math.max(1,right-left)})}}return moonsprite.window.setHitRegion(viewportWidth,viewportHeight,spans).catch(error=>moonsprite.diagnostics.log('无法更新宠物命中区域：'+String(error),'error'))};
 const scheduleHitRegion=()=>{if(hitRegionDirty)return;hitRegionDirty=true;requestAnimationFrame(()=>{hitRegionDirty=false;updateHitRegion()})};
 const setExpanded=(next,force=false)=>{desiredExpanded=next;boundsQueue=boundsQueue.then(async()=>{const targetExpanded=desiredExpanded,target=compactSize(),current=await moonsprite.window.getBounds();if(current.width===target.width&&current.height===target.height){expanded=targetExpanded;updateHitRegion();return}const bounds={x:current.x+current.width-target.width,y:current.y+current.height-target.height,...target};await moonsprite.window.setBounds(bounds);expanded=targetExpanded;clearTimeout(resizeTimer);resizeTimer=setTimeout(updateHitRegion,50)}).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return boundsQueue};
 const syncBubbleLayout=()=>setExpanded(!info.hidden||!notice.hidden);
-const updateScale=()=>{const scale=scaleOf();canvas.style.width=pet.frameWidth*scale+'px';canvas.style.height=pet.frameHeight*scale+'px';info.style.left='50%';notice.style.left='50%';info.style.bottom=(14+pet.frameHeight*scale+8)+'px';notice.style.bottom=(14+pet.frameHeight*scale+8)+'px';return setExpanded(desiredExpanded,true).then(constrainPet)};
+const updateScale=()=>{const scale=scaleOf();canvas.style.width=pet.frameWidth*scale+'px';canvas.style.height=pet.frameHeight*scale+'px';return setExpanded(desiredExpanded,true).then(constrainPet)};
 const play=(frames,repeat)=>{const token=++animationToken;if(!image||!frames||!frames.length)return;let index=0;const tick=()=>{if(token!==animationToken)return;if(pointer?.dragged){setTimeout(tick,125);return}context.clearRect(0,0,pet.frameWidth,pet.frameHeight);const delay=pet.durations?.[frames[index]]||125;context.save();if(pet.mirrored){context.translate(pet.frameWidth,0);context.scale(-1,1)}context.drawImage(image,0,-frames[index]*pet.frameHeight);context.restore();index++;if(index>=frames.length){if(!repeat){setTimeout(()=>{if(token===animationToken)play(pet.idleFrames,true)},delay);return}index=0}setTimeout(tick,delay)};tick()};
-const showInfo=async()=>{if(!project){await showNotice((pet?.name||'宠物')+'在这里陪你。打开工程后，点击可查看工程信息。');return}if(!info.hidden){info.hidden=true;await syncBubbleLayout();return}notice.hidden=true;info.innerHTML='<strong></strong><small>'+project.width+' × '+project.height+' · '+project.colorMode+'</small><small>图层 '+project.layerCount+' · 帧 '+project.frameCount+'</small><small>'+(project.dirty?'有未保存修改':'已保存')+'</small>';info.querySelector('strong').textContent=project.name;await setExpanded(true);info.hidden=false;updateHitRegion()};
-const showNotice=async text=>{if(!pet)return;info.hidden=true;notice.textContent=text;await setExpanded(true);notice.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.hidden=true;syncBubbleLayout()},7000);updateHitRegion()};
+const revealBubble=async bubble=>{bubble.style.visibility='hidden';bubble.hidden=false;try{await positionBubbles();if(bubble.hidden)return;await updateHitRegion();if(!bubble.hidden)bubble.style.visibility='visible'}catch(error){bubble.hidden=true;throw error}};
+const showInfo=async()=>{if(!project){await showNotice((pet?.name||'宠物')+'在这里陪你。打开工程后，点击可查看工程信息。');return}if(!info.hidden){info.hidden=true;await syncBubbleLayout();return}notice.hidden=true;info.innerHTML='<strong></strong><small>'+project.width+' × '+project.height+' · '+project.colorMode+'</small><small>图层 '+project.layerCount+' · 帧 '+project.frameCount+'</small><small>'+(project.dirty?'有未保存修改':'已保存')+'</small>';info.querySelector('strong').textContent=project.name;await setExpanded(true);await revealBubble(info)};
+const showNotice=async text=>{if(!pet)return;info.hidden=true;notice.textContent=text;await setExpanded(true);await revealBubble(notice);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.hidden=true;syncBubbleLayout()},7000);updateHitRegion()};
 const clampPetBounds=(bounds,host,content)=>({...bounds,x:Math.max(host.x-content.x,Math.min(host.x+host.width-content.x-content.width,bounds.x)),y:Math.max(host.y-content.y,Math.min(host.y+host.height-content.y-content.height,bounds.y))});
 const relativePetPosition=(bounds,host,content)=>({x:Math.max(0,Math.min(1,(bounds.x+content.x-host.x)/Math.max(1,host.width-content.width))),y:Math.max(0,Math.min(1,(bounds.y+content.y-host.y)/Math.max(1,host.height-content.height)))});
 const boundsAtRelativePosition=(bounds,host,content,ratio)=>clampPetBounds({...bounds,x:host.x+ratio.x*Math.max(0,host.width-content.width)-content.x,y:host.y+ratio.y*Math.max(0,host.height-content.height)-content.y},host,content);
 let dragQueue=null,pendingDrag=null;
-let spriteBounds=null;
+let spriteBounds=null,frameBounds=[],displayedFrame=0;
+// Anchor to the union silhouette so animation frames never move the bubble.
+const positionBubbles=async()=>{if(!pet)return;const [outer,host]=await Promise.all([moonsprite.window.getBounds(),moonsprite.window.getHostBounds()]);const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;const bounds=spriteBounds||{x:0,y:0,width:pet.frameWidth,height:pet.frameHeight};const sx=rect.width/pet.frameWidth,sy=rect.height/pet.frameHeight;const x=pet.mirrored?pet.frameWidth-bounds.x-bounds.width:bounds.x;const center=rect.left+(x+bounds.width/2)*sx,top=rect.top+bounds.y*sy,bottom=top+bounds.height*sy;const left=Math.max(0,host.x-outer.x)+4,right=Math.min(window.innerWidth,host.x+host.width-outer.x)-4,upper=Math.max(0,host.y-outer.y)+4,lower=Math.min(window.innerHeight,host.y+host.height-outer.y)-4;if(right<=left||lower<=upper)return;for(const bubble of [info,notice]){bubble.style.transform='none';bubble.style.bottom='auto';bubble.style.maxWidth=Math.min(280,right-left)+'px';bubble.style.maxHeight=Math.min(180,lower-upper)+'px';bubble.style.overflow='auto';const box=bubble.getBoundingClientRect();const preferred=top-8-box.height>=upper?top-8-box.height:bottom+8;bubble.style.left=Math.max(left,Math.min(right-box.width,center-box.width/2))+'px';bubble.style.top=Math.max(upper,Math.min(lower-box.height,preferred))+'px'}};
 const contentBounds=()=>{const rect=petElement.getBoundingClientRect(),bounds=spriteBounds||{x:0,y:0,width:pet.frameWidth,height:pet.frameHeight},scale=scaleOf();return{x:rect.left+(pet.mirrored?pet.frameWidth-bounds.x-bounds.width:bounds.x)*scale,y:rect.top+bounds.y*scale,width:bounds.width*scale,height:bounds.height*scale}};
-const findSpriteBounds=(decoded,next)=>{hitAlpha=new Uint8Array(next.frameWidth*next.frameHeight);const surface=document.createElement('canvas');surface.width=next.frameWidth;surface.height=next.frameHeight;const ctx=surface.getContext('2d',{willReadFrequently:true});let left=next.frameWidth,top=next.frameHeight,right=-1,bottom=-1;for(let frame=0;frame<next.frameCount;frame++){ctx.clearRect(0,0,surface.width,surface.height);ctx.drawImage(decoded,0,-frame*next.frameHeight);const pixels=ctx.getImageData(0,0,surface.width,surface.height).data;for(let y=0;y<surface.height;y++)for(let x=0;x<surface.width;x++)if(pixels[(y*surface.width+x)*4+3]>0){hitAlpha[y*surface.width+x]=255;left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,x);bottom=Math.max(bottom,y)}}return right<0?{x:0,y:0,width:next.frameWidth,height:next.frameHeight}:{x:left,y:top,width:right-left+1,height:bottom-top+1}};
+const findSpriteBounds=(decoded,next)=>{frameBounds=[];displayedFrame=0;hitAlpha=new Uint8Array(next.frameWidth*next.frameHeight);const surface=document.createElement('canvas');surface.width=next.frameWidth;surface.height=next.frameHeight;const ctx=surface.getContext('2d',{willReadFrequently:true});let left=next.frameWidth,top=next.frameHeight,right=-1,bottom=-1;for(let frame=0;frame<next.frameCount;frame++){let fl=next.frameWidth,ft=next.frameHeight,fr=-1,fb=-1;ctx.clearRect(0,0,surface.width,surface.height);ctx.drawImage(decoded,0,-frame*next.frameHeight);const pixels=ctx.getImageData(0,0,surface.width,surface.height).data;for(let y=0;y<surface.height;y++)for(let x=0;x<surface.width;x++)if(pixels[(y*surface.width+x)*4+3]>0){hitAlpha[y*surface.width+x]=255;fl=Math.min(fl,x);ft=Math.min(ft,y);fr=Math.max(fr,x);fb=Math.max(fb,y);left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,x);bottom=Math.max(bottom,y)}frameBounds.push(fr<0?null:{x:fl,y:ft,width:fr-fl+1,height:fb-ft+1})}return right<0?{x:0,y:0,width:next.frameWidth,height:next.frameHeight}:{x:left,y:top,width:right-left+1,height:bottom-top+1}};
 const movePet=(gesture,x,y)=>{pendingDrag={gesture,x,y};if(!dragQueue)dragQueue=(async()=>{try{while(pendingDrag){const current=pendingDrag;pendingDrag=null;const [bounds,host]=await current.gesture.origin;const latest=pendingDrag?.gesture===current.gesture?pendingDrag:current;if(latest!==current)pendingDrag=null;if(current.gesture.cancelled||current.gesture.epoch!==hostEpoch)continue;const next=clampPetBounds({...bounds,x:bounds.x+latest.x-current.gesture.x,y:bounds.y+latest.y-current.gesture.y},host,current.gesture.content);await moonsprite.window.setBounds(next)}}catch(error){await moonsprite.diagnostics.log(String(error),'error')}finally{dragQueue=null}})();return dragQueue};
 // Coalesce host changes, then correct any move that was already in flight.
 let constraintQueued=false;
 const constrainPet=()=>{if(!pet)return Promise.resolve();if(constraintQueued)return boundsQueue;constraintQueued=true;boundsQueue=boundsQueue.then(async()=>{constraintQueued=false;if(dragQueue)await dragQueue;const [bounds,host]=await Promise.all([moonsprite.window.getBounds(),moonsprite.window.getHostBounds()]);if(host.width<=0||host.height<=0)return;const initialize=!positionLoaded;if(initialize){const stored=await moonsprite.storage.get(positionKey);if(stored?.ratio&&Number.isFinite(stored.ratio.x)&&Number.isFinite(stored.ratio.y))positionRatio={x:Math.max(0,Math.min(1,stored.ratio.x)),y:Math.max(0,Math.min(1,stored.ratio.y))};positionLoaded=true}const content=contentBounds();positionRatio??=relativePetPosition(bounds,host,content);const next=boundsAtRelativePosition(bounds,host,content,positionRatio);if(next.x!==bounds.x||next.y!==bounds.y)await moonsprite.window.setBounds(next);if(initialize)await persistPosition(next);scheduleHitRegion()}).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return boundsQueue};
 const hostGeometryChanged=()=>{hostEpoch++;if(pointer){pointer.cancelled=true;pointer=null}pendingDrag=null;return constrainPet()};
-const loadPet=async next=>{const loaded=await loadSheetUrl(next);const decoded=await decodeImage(loaded.url);if(sheetRevoke&&sheetUrl)URL.revokeObjectURL(sheetUrl);sheetUrl=loaded.url;sheetRevoke=loaded.revoke;image=decoded;spriteBounds=findSpriteBounds(decoded,next);pet={...next,idleFrames:next.idleFrames?.length?next.idleFrames:Array.from({length:next.frameCount},(_,index)=>index)};canvas.width=pet.frameWidth;canvas.height=pet.frameHeight;canvas.style.visibility='visible';canvas.style.width=pet.frameWidth*scaleOf()+'px';canvas.style.height=pet.frameHeight*scaleOf()+'px';petElement.setAttribute('aria-label',pet.name);await updateScale();play(pet.showFrames&&pet.showFrames.length?pet.showFrames:pet.idleFrames,false)};
+const loadPet=async next=>{const loaded=await loadSheetUrl(next);const decoded=await decodeImage(loaded.url);if(sheetRevoke&&sheetUrl)URL.revokeObjectURL(sheetUrl);sheetUrl=loaded.url;sheetRevoke=loaded.revoke;image=decoded;spriteBounds=findSpriteBounds(decoded,next);pet={...next,idleFrames:next.animations?(next.animations.IDLE?.length?next.animations.IDLE:next.animations.SHOW||[]):next.idleFrames?.length?next.idleFrames:Array.from({length:next.frameCount},(_,index)=>index)};canvas.width=pet.frameWidth;canvas.height=pet.frameHeight;canvas.style.visibility='visible';canvas.style.width=pet.frameWidth*scaleOf()+'px';canvas.style.height=pet.frameHeight*scaleOf()+'px';petElement.setAttribute('aria-label',pet.name);await updateScale();play(pet.showFrames&&pet.showFrames.length?pet.showFrames:pet.idleFrames,false)};
 // The pet lives in its own platform window, so the host software-cursor mode of the main window never reaches it; the live policy is reported on every sync point.
 const applyCursorPolicy=useLocalCursors=>moonsprite.window.setCursorPolicy({useLocalCursors}).catch(()=>undefined);
 const reportCatalog=()=>{};
@@ -301,6 +317,9 @@ addEventListener('resize',()=>{scheduleHitRegion();constrainPet()});
 addEventListener('moonsprite:window-host-geometry',hostGeometryChanged);
 addEventListener('blur',()=>{if(!info.hidden){info.hidden=true;syncBubbleLayout()}});
 moonsprite.window.onMessage(message=>{if(!message)return;
+if(message.type==='notice-distance'){(async()=>{let distance=null;try{if(pet&&typeof moonsprite.window.getPointerPosition==='function'){const [point,bounds]=await Promise.all([moonsprite.window.getPointerPosition(),moonsprite.window.getBounds()]);if(point){const content=contentBounds(),left=bounds.x+content.x,top=bounds.y+content.y;const dx=Math.max(left-point.x,0,point.x-left-content.width),dy=Math.max(top-point.y,0,point.y-top-content.height);distance=dx*dx+dy*dy}}}catch(error){await moonsprite.diagnostics.log(String(error),'error')}await moonsprite.window.postMessage({type:'notice-distance',requestId:message.requestId,distance})})().catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
+if(message.type==='dismiss-notice'){clearTimeout(noticeTimer);notice.hidden=true;syncBubbleLayout();return}
+
 
 if(message.type==='configure'){if(moonsprite.window.id&&message.windowId!==moonsprite.window.id)return;activePets=message.pet?[message.pet]:null;positionKey=message.positionKey||positionKey;project=message.project;preferences={...preferences,...message.preferences};activePetId=message.activePetId||activePetId;(async()=>{await refreshCatalog(message.playShow===true)})().catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
 if(message.type==='visibility'&&message.visible===false){animationToken++;return}
@@ -352,7 +371,7 @@ const combineAnimations=parts=>{
  for(const part of parts){const h=part.sheet.height/part.durations.length;animations[part.name]=[];for(let index=0;index<part.durations.length;index++){ctx.drawImage(part.sheet,0,index*h,part.sheet.width,h,Math.floor((width-part.sheet.width)/2),(offset+index)*height+height-h,part.sheet.width,h);animations[part.name].push(offset+index)}offset+=part.durations.length;durations.push(...part.durations)}
  return{sheet,animations,durations};
 };
-const animationMap=entry=>entry.animations||{...(entry.showFrames?.length?{SHOW:entry.showFrames}:{}),IDLE:entry.idleFrames?.length?entry.idleFrames:Array.from({length:entry.frameCount},(_,index)=>index)};
+const animationMap=entry=>entry.animations?Object.fromEntries(Object.entries(entry.animations).filter(([name])=>animationSlots().includes(name))):{...(entry.showFrames?.length?{SHOW:entry.showFrames}:{}),IDLE:entry.idleFrames?.length?entry.idleFrames:Array.from({length:entry.frameCount},(_,index)=>index)};
 const mergeAnimationParts=(existing,uploaded)=>{const names=new Set(uploaded.map(part=>part.name));return [...existing.filter(part=>!names.has(part.name)),...uploaded]};
 const importAnimations=async(files,petId,clearName=null)=>{
  const meta=await readMeta(),target=(await listPets()).find(entry=>entry.id===petId);if(!target)throw new Error('请先创建或选择宠物。');
@@ -399,7 +418,7 @@ const importPetPackage=async files=>{
  let data;try{data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(files[0].bytes)))}catch{throw new Error('宠物包无法读取，文件可能已损坏。')}
  const parsed=validatePetPackage(data),meta=await readMeta();if(meta.filter(p=>p.id!==BUILT_IN.id).length>=SLOT_COUNT-1)throw new Error('宠物数量已达上限。');
  if(parsed.sprite){const image=await decodeImage(parsed.sprite);if(image.naturalWidth!==parsed.pet.frameWidth||image.naturalHeight!==parsed.pet.frameHeight*parsed.pet.frameCount)throw new Error('宠物素材解码尺寸不一致。')}
- const id='custom-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),spriteKey=id+'-sheet',animations=parsed.pet.animations;
+ const id='custom-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),spriteKey=id+'-sheet',animations=animationMap(parsed.pet);
  const entry={...parsed.pet,id,source:'custom',spriteKey:parsed.sprite?spriteKey:undefined,idleFrames:animations.IDLE?.length?animations.IDLE:animations.SHOW?.length?animations.SHOW:Object.values(animations).find(frames=>frames.length)||[],showFrames:animations.SHOW||[]};
  if(parsed.sprite)await spriteWrite(spriteKey,parsed.sprite);
  try{await writeMeta([...meta,entry])}catch(error){if(parsed.sprite)await spriteDelete(spriteKey);throw error}
@@ -442,7 +461,7 @@ moonsprite.window.postMessage({type:'ready'}).catch(error=>moonsprite.diagnostic
 
 const petWindowPage = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent;user-select:none}
-#pet{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;padding:0;border:0;background:transparent;image-rendering:pixelated}
+#pet{position:absolute;left:50%;transform:translateX(-50%);bottom:200px;padding:0;border:0;background:transparent;image-rendering:pixelated}
 #pet,#pet *{cursor:var(--cursor-default)!important}
 #pet.dragging,#pet.dragging *{cursor:var(--cursor-default)!important}
 canvas{display:block;visibility:hidden;image-rendering:pixelated}

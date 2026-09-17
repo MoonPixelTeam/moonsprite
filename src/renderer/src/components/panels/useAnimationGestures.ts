@@ -1,4 +1,5 @@
 import type { AnimationPointerDrag, AnimationGestureSelection, AnimationGestureActiveTarget, AnimationLoopSectionResizeEdge } from './animation-gesture-types'
+import { animationSlotRange } from '@/core/animation-slot-selection'
 import { createAnimationCelLookup } from '@/core/animation'
 import { useEffect, useRef, useState } from 'react'
 import { animationMaskAt } from '@/core/document-model'
@@ -471,7 +472,10 @@ export function useAnimationGestures(options: Options) {
           drag.lastSelectionTarget = key
           animationCelDropTargetKeyRef.current = key
           setAnimationCelDropTargetKey(key)
-          setSelectedAnimationGroupCellKeys([key])
+          const groups = buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).filter((node) => node.kind === 'group')
+          const keys = animationSlotRange(groups.map((node) => node.id), timeline.frames.map((frame) => frame.id), drag.sourceAnchorKey, key)
+          setSelectedAnimationGroupCellKeys(keys)
+          setAnimationGestureSelection({ kind: 'cel', keys })
           const parsedTarget = parseAnimationCelKey(key)
           if (parsedTarget) setAnimationGestureActiveTarget({ kind: 'frame', frameId: parsedTarget.frameId })
         }
@@ -589,7 +593,7 @@ export function useAnimationGestures(options: Options) {
         }
       } else if (drag.kind === 'group-cel' && animationCelDropTargetKeyRef.current) {
         const targetKey = animationCelDropTargetKeyRef.current
-        setSelectedAnimationGroupCellKeys([targetKey])
+        if (drag.canMove) setSelectedAnimationGroupCellKeys([targetKey])
         const parsed = parseAnimationCelKey(targetKey)
         if (parsed) {
           store.selectGroup(parsed.layerId)

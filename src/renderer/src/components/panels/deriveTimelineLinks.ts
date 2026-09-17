@@ -113,7 +113,11 @@ export function deriveTimelineLinks({
       if (!highlightedLinkedCelGroups.has(linkedGroupKey(group))) return []
       return group.frameIndexes.flatMap((frameIndex, index) => {
         const nextFrameIndex = group.frameIndexes[index + 1]
-        return nextFrameIndex > frameIndex + 1 ? [`${group.kind}|${animationCelKey(group.layerId, timeline.frames[frameIndex].id)}`] : []
+        // Suppress every interior divider crossed by a visible bridge,
+        // including unrelated or empty cells between its linked endpoints.
+        return nextFrameIndex > frameIndex + 1
+          ? timeline.frames.slice(frameIndex, nextFrameIndex).map((frame) => `${group.kind}|${animationCelKey(group.layerId, frame.id)}`)
+          : []
       })
     })
   )

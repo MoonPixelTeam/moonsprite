@@ -42,7 +42,7 @@ export function deriveCanvasEditTargets(ports: Ports) {
 
   const animationCellSelectionActive = ports.session.selectedAnimationCellKeys.length > 0
 
-  const multipleAnimationSelection = animationFrameSelectionActive || animationCellSelectionActive
+  const multipleAnimationSelection = !selectedLayerMask && (animationFrameSelectionActive || animationCellSelectionActive)
 
   const selectionLayersEditable = multipleAnimationSelection
     ? !selectedLayerMask &&

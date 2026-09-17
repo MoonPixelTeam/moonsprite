@@ -94,6 +94,11 @@ const selectedEffectTargets = (session: DocumentSession): SelectionEffectTarget[
     }
     return targets
   }
+  const mask = activeLayerMask(session)
+  if (mask) {
+    collect(mask, timeline?.activeFrameId, true)
+    return targets
+  }
   if (timeline && session.selectedAnimationCellKeys.length > 0) {
     for (const key of session.selectedAnimationCellKeys) {
       const target = parseAnimationCelKey(key)

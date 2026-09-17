@@ -40,9 +40,9 @@ const FREE_TILE_PAINT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'eraser', 'move
 const FREE_TILE_EDIT_ALLOWED_TOOLS = new Set<ToolId>(['pencil', 'airbrush', 'eraser', 'fill', 'selection', 'shape', 'line', 'move', 'eyedropper', 'hand', 'zoom', 'rotate'])
 
 export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId): boolean => {
+  if (session.activeLayerMaskId) return true
   const groupSelected = session.selectedGroupIds.length > 0 || Boolean(session.selectedGroupId)
   if (groupSelected) return tool === 'move' || tool === 'hand' || tool === 'zoom' || tool === 'rotate'
-  if (session.activeLayerMaskId) return true
   const textLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'text'))
   if (textLayerSelected) return TEXT_LAYER_ALLOWED_TOOLS.has(tool)
   const tilemapLayerSelected = session.selectedLayerIds.some((id) => session.document.layers.some((layer) => layer.id === id && layer.kind === 'tilemap'))

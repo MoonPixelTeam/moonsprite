@@ -14,9 +14,10 @@ interface Options {
   shortcuts: ShortcutBindings
   saveShortcuts: (shortcuts: ShortcutBindings) => void
   extensions: StoredExtension[]
+  chooseAndInstallExtension: () => Promise<boolean>
 }
 
-export function useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts, extensions }: Options) {
+export function useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePresets, setExportScalePresets, shortcuts, saveShortcuts, extensions, chooseAndInstallExtension }: Options) {
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [preferencesInitialSection, setPreferencesInitialSection] = useState<PreferenceSection>('general')
   const [shortcutOpen, setShortcutOpen] = useState(false)
@@ -43,6 +44,7 @@ export function useAppSettingsDialogs({ setGridSettingsOpen, setDocumentSizePres
             setDocumentSizePresets(documentSizes)
             setExportScalePresets(exportScales)
           }}
+          onChooseAndInstallExtension={chooseAndInstallExtension}
         />
       )}
       {shortcutOpen && <ShortcutDialog shortcuts={shortcuts} onSave={saveShortcuts} onClose={() => setShortcutOpen(false)} />}

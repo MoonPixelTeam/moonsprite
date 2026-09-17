@@ -1726,6 +1726,35 @@ describe('animation workspace', () => {
 })
 
 describe('selection clipboard', () => {
+  it('pastes an image as a new layer directly above the active layer', async () => {
+    const document = createDocument('paste above active layer', 1, 1, 'rgba')
+    const bottom = getActiveLayer(document)
+    const active = createLayer('Active', 1, 1, 'rgba')
+    const top = createLayer('Top', 1, 1, 'rgba')
+    const group = { id: 'paste-group', name: 'Group', visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups.push(group)
+    active.groupId = group.id
+    document.layers.push(active, top)
+    document.activeLayerId = active.id
+    useWorkspace.getState().addSession(document)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([0, 255, 0, 255]) }))
+
+    expect(await useWorkspace.getState().pasteAsNewLayer()).toBe(true)
+
+    const pasted = getActiveLayer(document)
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
+    expect(pasted.groupId).toBe(group.id)
+    expect(readLayerColorAt(document, pasted, 0, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+
+    useWorkspace.getState().undo()
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, top.id])
+    expect(document.activeLayerId).toBe(active.id)
+    useWorkspace.getState().redo()
+    expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
+    expect(getActiveLayer(document).id).toBe(pasted.id)
+  })
+
   it('prefers a newer external image after an internal layer copy', async () => {
     const document = createDocument('layer then external clipboard', 1, 1, 'rgba')
     const layer = getActiveLayer(document)

@@ -1,4 +1,5 @@
 import type { AppShortcutContext } from './app-shortcut-context'
+import { COMMAND_SCOPE_EVENT } from '@/core/command-context'
 import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
 import { zoomViewAroundViewportPoint } from '@/core/view-geometry'
 import { useWorkspace } from '@/store/workspace'
@@ -67,6 +68,7 @@ export function handleSelectionShortcuts(context: Pick<AppShortcutContext, 'poin
     state.commitFloatingPaste()
     state.setTool('selection')
     state.setSelection({ x: 0, y: 0, width: active.document.width, height: active.document.height })
+    window.dispatchEvent(new CustomEvent(COMMAND_SCOPE_EVENT, { detail: { scope: 'canvas', preferSelection: true } }))
   }))
     return true
   if (runCommand('invertSelection', () => workspace.invertSelection()))

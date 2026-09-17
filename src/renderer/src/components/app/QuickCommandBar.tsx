@@ -12,7 +12,7 @@ import { PixelAssetIcon } from './editor-tools'
 interface QuickCommandBarProps {
   documentId: string
   shortcutFor: (id: ShortcutId) => string
-  onToggleMirror: (axis: 'horizontal' | 'vertical') => void
+  onToggleMirror: (axis: 'horizontal' | 'vertical', quickCommandBarBottom?: number) => void
   onOpenAntiAlias: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
@@ -200,8 +200,8 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
     switch (id) {
       case 'selectionFlipHorizontal': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.flipActiveSelection('horizontal')) }
       case 'selectionFlipVertical': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.flipActiveSelection('vertical')) }
-      case 'canvasMirrorHorizontal': return { pressed: session.view.mirrored, run: () => runForDocument(() => onToggleMirror('horizontal')) }
-      case 'canvasMirrorVertical': return { pressed: session.view.mirroredVertical, run: () => runForDocument(() => onToggleMirror('vertical')) }
+      case 'canvasMirrorHorizontal': return { pressed: session.view.mirrored, run: () => runForDocument(() => onToggleMirror('horizontal', edge === 'top' ? barRef.current?.getBoundingClientRect().bottom : undefined)) }
+      case 'canvasMirrorVertical': return { pressed: session.view.mirroredVertical, run: () => runForDocument(() => onToggleMirror('vertical', edge === 'top' ? barRef.current?.getBoundingClientRect().bottom : undefined)) }
       case 'invertSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.invertSelection()) }
       case 'customGrid': return { pressed: session.view.showGrid, run: () => runForDocument((state) => state.toggleGrid()) }
       case 'tileRepeatX': return { pressed: session.view.tileRepeatMode === 'x', run: () => toggleTileRepeatMode('x') }

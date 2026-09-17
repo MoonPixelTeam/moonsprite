@@ -7,6 +7,14 @@ import { canvasStatusTextColor, transparencyColorAt } from '@/core/canvas-visual
 import { publishSelectionSizePreview } from '@/components/selection-size-preview-events'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
+
+const CANVAS_STATUS_TEXT_BOTTOM_INSET = 12
+
+/** Keeps the canvas status text clear of visible in-stage controls. */
+export function canvasStatusTextBaselineY(viewportHeight: number, bottomSafeArea: number): number {
+  return viewportHeight - CANVAS_STATUS_TEXT_BOTTOM_INSET - Math.max(0, bottomSafeArea)
+}
+
 export function renderCanvasStatus({
   rect,
   document,
@@ -23,7 +31,8 @@ export function renderCanvasStatus({
   session,
   t,
   drawSelectionOverlay,
-  brushPreviewDrawRef
+  brushPreviewDrawRef,
+  canvasStatusBottomInset
 }: {
   rect: {
     width: number
@@ -47,7 +56,9 @@ export function renderCanvasStatus({
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   drawSelectionOverlay: () => void
   brushPreviewDrawRef: React.RefObject<() => void>
+  canvasStatusBottomInset: number
 }) {
+  const statusBaselineY = canvasStatusTextBaselineY(rect.height, canvasStatusBottomInset)
   const statusBackgroundAt = (viewportX: number, viewportY: number): RgbaColor => {
     const point = documentPointFromViewportPoint(
       { x: viewportX, y: viewportY },
@@ -63,8 +74,8 @@ export function renderCanvasStatus({
     const background = sampled.a < 255 ? blendOver(transparencyColorAt(point.x, point.y, checkerboard), sampled) : sampled
     return view.relativeLuminance ? relativeLuminanceColor(background) : background
   }
-  const statusBackgrounds = [statusBackgroundAt(72, rect.height - 16)]
-  if (view.mirrored || view.mirroredVertical) statusBackgrounds.push(statusBackgroundAt(92, rect.height - 34))
+  const statusBackgrounds = [statusBackgroundAt(72, statusBaselineY - 4)]
+  if (view.mirrored || view.mirroredVertical) statusBackgrounds.push(statusBackgroundAt(92, statusBaselineY - 22))
   displayContext.fillStyle = canvasStatusTextColor(
     statusBackgrounds,
     activeTheme.variables['--theme-selection-outline-dark'],
@@ -80,11 +91,11 @@ export function renderCanvasStatus({
     publishedSelectionSizePreviewRef.current = selectionSizePreview
     publishSelectionSizePreview({ documentId: session.document.id, size: selectionSizePreview })
   }
-  displayContext.fillText(`${document.width} x ${document.height}`, 12, rect.height - 12)
+  displayContext.fillText(`${document.width} x ${document.height}`, 12, statusBaselineY)
   if (view.mirrored || view.mirroredVertical) {
     const mirrorLabel =
       view.mirrored && view.mirroredVertical ? t('canvas.mirror.both') : view.mirrored ? t('canvas.mirror.horizontal') : t('canvas.mirror.vertical')
-    displayContext.fillText(t('canvas.mirror.current', { label: mirrorLabel }), 12, rect.height - 30)
+    displayContext.fillText(t('canvas.mirror.current', { label: mirrorLabel }), 12, statusBaselineY - 18)
   }
   drawSelectionOverlay()
   // Keep the brush cursor on its own surface. This call is cheap and also

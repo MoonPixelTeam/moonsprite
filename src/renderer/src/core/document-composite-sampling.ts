@@ -76,8 +76,9 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     : item.group.visible && item.group.opacity > 0
 
   const root = compileContainer(buildCompositeStack(document))
-  const activeMasks = activeCelMasksByLayer(document)
-  const activeGroupMasks = activeGroupMasksByGroup(document)
+  // A neutral mask can become non-neutral at the point being previewed.
+  const activeMasks = activeCelMasksByLayer(document, layerId)
+  const activeGroupMasks = activeGroupMasksByGroup(document, layerId)
   const itemMask = (item: CompiledItem): LayerMask | undefined => item.kind === 'layer' ? activeMasks.get(item.layer.id) : activeGroupMasks.get(item.group.id)
   const readMaskCoverage = (mask: LayerMask, x: number, y: number, replacement: RgbaColor | undefined): number => {
     if (mask.id === layerId && replacement !== undefined) return maskCoverageFromColor(replacement)

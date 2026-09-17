@@ -174,7 +174,9 @@ pub fn run() {
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
             let _ = platform_paths::export_directory();
             let _ = platform_background_presets::ensure_background_preset_folder();
-            let _ = platform_extensions::ensure_extension_folder();
+            if let Err(error) = platform_extensions::ensure_builtin_extensions() {
+                eprintln!("无法安装内置扩展：{error}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -195,7 +197,7 @@ pub fn run() {
             platform_extensions::list_extensions,
             platform_extensions::inspect_extension_package,
             platform_extensions::install_extension,
-            platform_extensions::choose_and_install_extension,
+            platform_extensions::choose_extension_package,
             platform_extensions::set_extension_enabled,
             platform_extensions::uninstall_extension,
             platform_extensions::open_extension_folder,

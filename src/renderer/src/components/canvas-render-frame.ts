@@ -139,6 +139,8 @@ export interface CanvasRenderContext {
     fillKind: import('@shared/types-brush').FillKind
     brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
     drawingBrushPreviewEnabled: boolean
+    /** Bottom space occupied by visible in-stage controls, in CSS pixels. */
+    canvasStatusBottomInset: number
     gridSnapActive: boolean
     moveLayerContentPreviewEnabled: boolean
     sliceOutlinesVisible: boolean
@@ -609,6 +611,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     fillKind,
     brushPreviewMode,
     drawingBrushPreviewEnabled,
+    canvasStatusBottomInset,
     gridSnapActive,
     moveLayerContentPreviewEnabled,
     sliceOutlinesVisible,
@@ -1241,7 +1244,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     session,
     t,
     drawSelectionOverlay,
-    brushPreviewDrawRef
+    brushPreviewDrawRef,
+    canvasStatusBottomInset
   })
   checkpoint('overlays')
   publishCanvasFramePreview({

@@ -528,8 +528,8 @@ export const resizeAnimationCelsAt = (
   const timeline = ensureAnimationDocument(document)
   const horizontal = Math.trunc(offsetX)
   const vertical = Math.trunc(offsetY)
-  const expanding = document.width > sourceCanvasWidth || document.height > sourceCanvasHeight
   const backgroundLayerIds = new Set(document.layers.filter((layer) => layer.background).map((layer) => layer.id))
+  const expanding = document.width > sourceCanvasWidth || document.height > sourceCanvasHeight
   syncFrameSurfaces(document, timeline)
   const lookup = createAnimationCelLookup(timeline)
   const activeSourceIds = new Set(timeline.cels
@@ -607,9 +607,9 @@ export const resizeAnimationCelsAt = (
       continue
     }
     if (activeSource || !source.surface) continue
-    if (expanding && backgroundLayerIds.has(cel.layerId)) {
+    if (backgroundLayerIds.has(cel.layerId)) {
       const background = document.layers.find((layer) => layer.id === cel.layerId)?.background
-      const repeatSize = background?.mode === 'preset' && background.pattern ? backgroundPatternSize(background.pattern) : undefined
+      const repeatSize = background?.mode === 'preset' && background.pattern ? backgroundPatternSize(background.pattern) : { width: background?.repeatWidth ?? sourceCanvasWidth, height: background?.repeatHeight ?? sourceCanvasHeight }
       const presetPattern = background?.mode === 'preset' ? background.pattern : undefined
       tileBackgroundSurfaceToCanvas(source.surface, sourceCanvasWidth, sourceCanvasHeight, document.width, document.height, horizontal, vertical, repeatSize, presetPattern, (color) => paletteColorIdForCanvas(document, color))
       continue

@@ -387,14 +387,20 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
           const previousActiveLayerId = document.activeLayerId
           const previousActiveContext = { ...session.timelineActiveContext }
           const layer = createLayer(tr('workspace.layer.backgroundName'), document.width, document.height, document.colorMode)
-          const presetPattern = typeof pattern === 'string' ? pattern : pattern.pattern
-          layer.background = presetPattern ? { mode: 'preset', pattern: presetPattern } : { mode: 'canvas' }
+          // Image presets retain their pattern id for their localized UI label, but
+          // their pixels are the authoritative tile used for creation and extension.
+          const presetPattern = typeof pattern === 'string' ? pattern : undefined
+          layer.background = presetPattern ? { mode: 'preset', pattern: presetPattern } : { mode: 'canvas', repeatWidth: typeof pattern === 'string' ? document.width : pattern.width, repeatHeight: typeof pattern === 'string' ? document.height : pattern.height }
+          if (typeof pattern !== 'string' && !presetPattern) {
+            layer.width = Math.max(document.width, pattern.width)
+            layer.height = Math.max(document.height, pattern.height)
+          }
           if (layer.format === 'rgba') layer.pixels = typeof pattern === 'string'
             ? renderBackgroundPatternRgba(document.width, document.height, pattern)
-            : renderBackgroundTileRgba(document.width, document.height, pattern)
+            : renderBackgroundTileRgba(layer.width, layer.height, pattern)
           else layer.pixels = typeof pattern === 'string'
             ? renderBackgroundPatternIndexed(document.width, document.height, pattern, (color) => findOrAddPaletteColor(document, color, true))
-            : renderBackgroundTileIndexed(document.width, document.height, pattern, (color) => findOrAddPaletteColor(document, color, true))
+            : renderBackgroundTileIndexed(layer.width, layer.height, pattern, (color) => findOrAddPaletteColor(document, color, true))
           document.layers.unshift(layer)
           const timeline = ensureAnimationDocument(document)
           connectAnimationCels(document, timeline.cels.filter((cel) => cel.layerId === layer.id).map((cel) => cel.id))

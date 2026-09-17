@@ -14,6 +14,9 @@ use crate::{platform_paths::ensure_executable_subdirectory, platform_storage::at
 pub(crate) const EXTENSION_PACKAGE_EXTENSION: &str = "msext";
 const EXTENSION_DIRECTORY_NAME: &str = "extensions";
 const EXTENSION_STATE_FILE: &str = ".state.json";
+const BUILTIN_PET_COMPANION_ID: &str = "moonsprite.pet.nailong";
+const BUILTIN_PET_COMPANION_PACKAGE: &[u8] =
+    include_bytes!("../resources/bundled-extensions/pet-companion.msext");
 const MAX_PACKAGE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_PACKAGE_FILES: usize = 256;
 const MAX_UNPACKED_BYTES: u64 = 256 * 1024 * 1024;
@@ -330,6 +333,8 @@ struct ExtensionManifest {
 struct ExtensionState {
     #[serde(default)]
     enabled: BTreeMap<String, bool>,
+    #[serde(default)]
+    seeded_builtin: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -355,8 +360,54 @@ fn extension_directory() -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-pub(crate) fn ensure_extension_folder() -> Result<PathBuf, String> {
-    extension_directory()
+/// Installs the bundled pet once through the ordinary package installer.
+///
+/// The seed state is distinct from the enabled state so the companion behaves
+/// exactly like a user-installed extension after its first installation: users
+/// can disable or uninstall it without it being restored on every launch.
+pub(crate) fn ensure_builtin_extensions() -> Result<(), String> {
+    let directory = extension_directory()?;
+    ensure_builtin_extension_at(
+        &directory,
+        BUILTIN_PET_COMPANION_ID,
+        BUILTIN_PET_COMPANION_PACKAGE,
+    )
+}
+
+fn ensure_builtin_extension_at(
+    directory: &Path,
+    extension_id: &str,
+    package: &[u8],
+) -> Result<(), String> {
+    let mut state = read_state(directory)?;
+    if state.seeded_builtin.contains(extension_id) {
+        return Ok(());
+    }
+
+    let inspection = inspect_archive(io::Cursor::new(package))?;
+    if inspection.manifest.id != extension_id {
+        return Err("内置扩展包 ID 与预期不一致。".to_string());
+    }
+
+    let installed_path = installed_extension_path(directory, extension_id)?;
+    if installed_path.exists() {
+        let manifest = manifest_from_directory(&installed_path)?;
+        if manifest.id != extension_id {
+            return Err("已安装扩展的 ID 与内置扩展不一致。".to_string());
+        }
+    } else {
+        let package_path =
+            directory.join(format!(".bundled-{extension_id}-{}.msext", unique_suffix()));
+        atomic_write(&package_path, package)?;
+        let install_result = install_extension_at(&package_path, directory);
+        fs::remove_file(&package_path)
+            .map_err(|error| format!("无法清理内置扩展安装包：{error}"))?;
+        install_result?;
+    }
+
+    state = read_state(directory)?;
+    state.seeded_builtin.insert(extension_id.to_string());
+    write_state(directory, &state)
 }
 
 fn extension_state_path(directory: &Path) -> PathBuf {
@@ -1760,9 +1811,9 @@ fn install_extension_at(package_path: &Path, directory: &Path) -> Result<StoredE
 }
 
 #[tauri::command]
-pub(crate) fn choose_and_install_extension(
+pub(crate) fn choose_extension_package(
     language: Option<String>,
-) -> Result<Option<StoredExtension>, String> {
+) -> Result<Option<String>, String> {
     let english = language.as_deref() == Some("en-US");
     let Some(path) = FileDialog::new()
         .add_filter(
@@ -1777,7 +1828,7 @@ pub(crate) fn choose_and_install_extension(
     else {
         return Ok(None);
     };
-    install_extension(path.to_string_lossy().to_string()).map(Some)
+    Ok(Some(path.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
@@ -1921,6 +1972,30 @@ mod tests {
             ("image.png", b"opaque runtime resource"),
         ]);
         assert!(inspect_archive(Cursor::new(bytes)).is_ok());
+    }
+
+    #[test]
+    fn seeds_the_bundled_pet_once_without_restoring_an_uninstalled_extension() {
+        let directory = temporary_directory();
+        assert!(super::ensure_builtin_extension_at(
+            &directory,
+            super::BUILTIN_PET_COMPANION_ID,
+            super::BUILTIN_PET_COMPANION_PACKAGE,
+        )
+        .is_ok());
+        let installed = directory.join(super::BUILTIN_PET_COMPANION_ID);
+        assert!(installed.is_dir());
+
+        assert!(super::uninstall_extension_at(&directory, super::BUILTIN_PET_COMPANION_ID).is_ok());
+        assert!(!installed.exists());
+        assert!(super::ensure_builtin_extension_at(
+            &directory,
+            super::BUILTIN_PET_COMPANION_ID,
+            super::BUILTIN_PET_COMPANION_PACKAGE,
+        )
+        .is_ok());
+        assert!(!installed.exists());
+        assert!(fs::remove_dir_all(directory).is_ok());
     }
 
     #[test]

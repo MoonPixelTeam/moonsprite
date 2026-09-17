@@ -42,11 +42,8 @@ fn safe_id(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
-pub fn root(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map(|p| p.join("timelapse-v1"))
-        .map_err(|e| e.to_string())
+pub fn root() -> Result<PathBuf, String> {
+    crate::platform_paths::executable_directory().map(|p| p.join("timelapse-v1"))
 }
 
 fn checksum(data: &[u8]) -> u32 {
@@ -161,11 +158,26 @@ pub fn read_frame(root: &Path, reference: &FrameReference) -> Result<Vec<u8>, St
     Ok(data)
 }
 
+/** Only missing chunks fall back; corruption or access errors must remain visible. */
+pub fn read_frame_with_legacy(
+    directory: &Path,
+    legacy: &Path,
+    reference: &FrameReference,
+) -> Result<Vec<u8>, String> {
+    safe_id(&reference.store)?;
+    safe_id(&reference.chunk)?;
+    let path = directory
+        .join(&reference.store)
+        .join(format!("{}.bin", reference.chunk));
+    match fs::symlink_metadata(&path) {
+        Ok(_) => read_frame(directory, reference),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => read_frame(legacy, reference),
+        Err(error) => Err(format!("Local recording unavailable: {error}")),
+    }
+}
+
 #[tauri::command]
-pub async fn append_timelapse_frame(
-    app: AppHandle,
-    request: Request<'_>,
-) -> Result<FrameReference, String> {
+pub async fn append_timelapse_frame(request: Request<'_>) -> Result<FrameReference, String> {
     let store = request
         .headers()
         .get("x-moonsprite-recording")
@@ -177,10 +189,13 @@ pub async fn append_timelapse_frame(
         InvokeBody::Raw(data) if data.len() <= MAX_FRAME => data.clone(),
         _ => return Err("Invalid recording payload".into()),
     };
-    let directory = root(&app)?;
-    tauri::async_runtime::spawn_blocking(move || append_frame(&directory, &store, &data))
-        .await
-        .map_err(|e| e.to_string())?
+    let directory = root()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        append_frame(&directory, &store, &data)
+            .map_err(|error| format!("无法写入缩时录像库 {}：{error}", directory.display()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -188,9 +203,14 @@ pub async fn read_timelapse_frame(
     app: AppHandle,
     reference: FrameReference,
 ) -> Result<Response, String> {
-    let directory = root(&app)?;
+    let directory = root()?;
+    let legacy = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("timelapse-v1");
     tauri::async_runtime::spawn_blocking(move || {
-        read_frame(&directory, &reference).map(Response::new)
+        read_frame_with_legacy(&directory, &legacy, &reference).map(Response::new)
     })
     .await
     .map_err(|e| e.to_string())?

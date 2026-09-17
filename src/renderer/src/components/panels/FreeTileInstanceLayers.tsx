@@ -8,6 +8,8 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { Tooltip } from '@/components/Tooltip'
 import { publishFreeTileInstanceFlash } from '@/components/free-tile-instance-events'
 import { ensureAnimationDocument } from '@/core/animation'
+import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
+import { getLayerPanelAncestorGroupIds } from '@/core/layer-panel-layout'
 import { freeTileInstanceBounds, freeTileSourceForInstance } from '@/core/free-tile'
 import { freeTileCelTargetAt } from '@/core/free-tile-document'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
@@ -33,6 +35,8 @@ interface FreeTileInstanceEntry {
   displayColor?: RgbaColor
   ordinal: number
   bounds: { x: number; y: number; width: number; height: number }
+  inheritedHidden: boolean
+  inheritedLocked: boolean
   opacity: number
   blendMode: NonNullable<FreeTileInstance['blendMode']>
 }
@@ -59,6 +63,10 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
   const timeline = ensureAnimationDocument(session.document)
   const activeFrameId = timeline.activeFrameId
   const target = freeTileCelTargetAt(session.document, layer.id, activeFrameId)
+  const parentHidden = !isLayerEffectivelyVisible(session.document, layer)
+  const parentLocked = isLayerEffectivelyLocked(session.document, layer)
+  const inheritedColor = layer.displayColor ?? getLayerPanelAncestorGroupIds(session.document.groups, layer.groupId)
+    .map(id => session.document.groups.find(group => group.id === id)?.displayColor).find(Boolean)
   const sourceOrdinals = new Map<string, number>()
   const entries: FreeTileInstanceEntry[] = target ? target.freeTiles.instances.flatMap((instance) => {
     const source = freeTileSourceForInstance(target.sources, instance)
@@ -69,7 +77,9 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
     return [{
       instance,
       sourceName: sourceLayer?.name ?? source.tileset.name,
-      displayColor: sourceLayer?.displayColor ? { ...sourceLayer.displayColor } : undefined,
+      displayColor: sourceLayer?.displayColor ?? inheritedColor,
+      inheritedHidden: parentHidden || source.visible === false,
+      inheritedLocked: parentLocked || sourceLayer?.locked === true,
       ordinal,
       bounds: freeTileInstanceBounds(instance, target.sources, target.surface.offsetX, target.surface.offsetY),
       opacity: instance.opacity ?? source.opacity,
@@ -323,8 +333,8 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
         return <button key={instanceId} type="button" data-free-tile-instance-id={instanceId} data-free-tile-instance-active="true" className={`layer-row free-tile-instance-row ${selected ? 'selected' : ''} ${selected && !selectedBefore ? 'selection-first' : ''} ${selected && !selectedAfter ? 'selection-last' : ''} ${dragging ? 'dragging' : ''}`} role="option" aria-label={name} aria-selected={selected} aria-grabbed={dragging} onPointerDown={(event) => beginDrag(event, instance)} onPointerMove={moveDrag} onPointerUp={(event) => finishDrag(event.pointerId)} onPointerCancel={(event) => finishDrag(event.pointerId, true)} onClick={() => selectRowFromClick(instance)} onDoubleClick={() => { if (instance.locked !== true) selectSingleInstance(instance, true, false) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!selectedInstanceIdSet.has(instanceId)) selectInstanceRow(instance); setContextMenu({ instanceId, x: event.clientX, y: event.clientY }) }} onKeyDown={(event) => { if (event.key !== 'Delete' && event.key !== 'Backspace') return; event.preventDefault(); event.stopPropagation(); deleteInstances(instance) }}>
           {dropTarget && <span className={`layer-drop-indicator ${drop.position === 'before' ? 'above' : 'below'}`} aria-hidden="true"><i /><b /><i /></span>}
           {displayColor && <span className="layer-color-stripe" style={{ backgroundColor: `rgba(${displayColor.r}, ${displayColor.g}, ${displayColor.b}, ${displayColor.a / 255})` }} aria-hidden="true" />}
-          <span className="layer-visibility" role="button" tabIndex={-1} aria-label={t(instance.visible === false ? 'layers.showLayer' : 'layers.hideLayer')} onPointerDown={(event) => toggleGesture.begin(event, { control: 'visibility', id: instance.id }, instance.visible !== false)} onPointerEnter={(event) => toggleGesture.enter(event, { control: 'visibility', id: instance.id })} onPointerUp={toggleGesture.end} onPointerCancel={toggleGesture.end} onDoubleClick={(event) => event.stopPropagation()} onClick={toggleGesture.click}>{instance.visible === false ? <PixelUtilityIcon kind="eyeOff" /> : <PixelUtilityIcon kind="eye" />}</span>
-          <span className={`layer-lock-toggle ${instance.locked === true ? 'locked' : ''}`} role="button" tabIndex={-1} aria-label={t(instance.locked === true ? 'layers.unlockLayer' : 'layers.lockLayer')} aria-pressed={instance.locked === true} onPointerDown={(event) => toggleGesture.begin(event, { control: 'lock', id: instance.id }, instance.locked === true)} onPointerEnter={(event) => toggleGesture.enter(event, { control: 'lock', id: instance.id })} onPointerUp={toggleGesture.end} onPointerCancel={toggleGesture.end} onDoubleClick={(event) => event.stopPropagation()} onClick={toggleGesture.click}>{instance.locked === true ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span>
+          <span className={`layer-visibility ${entry.inheritedHidden ? 'group-visibility-inherited-hidden' : ''}`} role="button" tabIndex={-1} aria-label={t(instance.visible === false ? 'layers.showLayer' : 'layers.hideLayer')} aria-pressed={instance.visible !== false} onPointerDown={(event) => toggleGesture.begin(event, { control: 'visibility', id: instance.id }, instance.visible !== false)} onPointerEnter={(event) => toggleGesture.enter(event, { control: 'visibility', id: instance.id })} onPointerUp={toggleGesture.end} onPointerCancel={toggleGesture.end} onDoubleClick={(event) => event.stopPropagation()} onClick={toggleGesture.click}>{instance.visible === false ? <PixelUtilityIcon kind="eyeOff" /> : <PixelUtilityIcon kind="eye" />}</span>
+          <span className={`layer-lock-toggle ${instance.locked === true ? 'locked' : ''} ${entry.inheritedLocked ? 'group-lock-inherited' : ''}`} role="button" tabIndex={-1} aria-label={t(instance.locked === true ? 'layers.unlockLayer' : 'layers.lockLayer')} aria-pressed={instance.locked === true} onPointerDown={(event) => toggleGesture.begin(event, { control: 'lock', id: instance.id }, instance.locked === true)} onPointerEnter={(event) => toggleGesture.enter(event, { control: 'lock', id: instance.id })} onPointerUp={toggleGesture.end} onPointerCancel={toggleGesture.end} onDoubleClick={(event) => event.stopPropagation()} onClick={toggleGesture.click}>{instance.locked === true ? <PixelUtilityIcon kind="lock" /> : <PixelUtilityIcon kind="unlock" />}</span>
           <span className="layer-name"><span>{name}</span><small>{t('freeTiles.instancePosition', { x: bounds.x, y: bounds.y })}</small></span>
           <Tooltip className="layer-status-icon-tooltip" content={t('freeTiles.instanceProperties')}><span className="layer-instance-properties" role="button" tabIndex={0} aria-label={t('freeTiles.instanceProperties')} onPointerDown={stopRowPointer} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); openProperties(instanceId) }} onKeyDown={(event) => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); event.stopPropagation(); openProperties(instanceId) }}><PixelUtilityIcon kind="properties" /></span></Tooltip>
         </button>

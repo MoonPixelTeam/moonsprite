@@ -6,6 +6,7 @@ import {
   reconcileExtensionPanelVisibility,
   saveExtensionPanelVisibility
 } from '@/core/extension-contributions'
+import { extensionInstallDialogContent } from '@/core/extension-install-dialog'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 
@@ -83,21 +84,15 @@ export function useAppExtensions({
   }
 
   const confirmExtensionInstall = async (preview: ExtensionPackagePreview): Promise<boolean> => {
-    const detail = [
-      `作者：${preview.author || '未提供'}　版本：${preview.version || '未提供'}`,
-      `标识：${preview.id}`,
-      preview.description || '此扩展未提供描述。',
-      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount}`
-    ]
-      .filter(Boolean)
-      .join('\n')
+    const installed = extensions.find((extension) => extension.id === preview.id)
+    const content = extensionInstallDialogContent(preview, installed)
     const choice = await workspace.requestDialog({
-      title: '安装扩展',
-      message: `是否安装“${preview.name}”？`,
-      detail,
+      title: content.title,
+      message: content.message,
+      detailSections: content.detailSections,
       choices: [
         { id: 'cancel', label: t('common.cancel'), tone: 'quiet' },
-        { id: 'install', label: '安装', tone: 'primary' }
+        { id: 'install', label: content.confirmLabel, tone: 'primary' }
       ]
     })
     return choice === 'install'
@@ -116,6 +111,17 @@ export function useAppExtensions({
       return false
     }
   }
+
+  const chooseAndInstallExtension = async (): Promise<boolean> => {
+    try {
+      const filePath = await window.moonSprite.chooseExtensionPackage()
+      return filePath ? await installExtensionPackage(filePath) : false
+    } catch (error) {
+      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('preferences.extensions.installFailed'))
+      return false
+    }
+  }
+
   return {
     extensions,
     extensionPanelVisibility,
@@ -123,6 +129,7 @@ export function useAppExtensions({
     setExtensionPanelVisible,
     toggleExtensionPanel,
     openLuaScriptFolder,
-    installExtensionPackage
+    installExtensionPackage,
+    chooseAndInstallExtension
   }
 }

@@ -1,6 +1,6 @@
-# nailong-pet 宠物包
+# 宠物伴侣（pet-companion）宠物包
 
-本文属于 nailong-pet 扩展。包结构、动画含义、校验、存储及导入行为由 `scripts/export-pet-package.mjs` 生成的扩展代码负责；软件提供与具体业务无关的表单文件选择和保存能力。
+本文属于 pet-companion 扩展。包结构、动画含义、校验、存储及导入行为由 `scripts/export-pet-package.mjs` 生成的扩展代码负责；软件提供与具体业务无关的表单文件选择和保存能力。
 
 ## 使用
 

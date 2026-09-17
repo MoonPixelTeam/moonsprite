@@ -1,3 +1,4 @@
+import { animationSlotsCanLink } from '@/core/animation-slot-selection'
 import type { ShortcutId } from '@/core/shortcuts'
 import { createPortal } from 'react-dom'
 import { AnimationLoopSectionDialog } from '@/components/AnimationLoopSectionDialog'
@@ -324,20 +325,10 @@ export function useTimelineContextActions({
 
   const selectedAnimationCelsCanLink =
     animationMenu?.kind === 'cel' &&
-    (() => {
-      const selected = new Set(session.selectedAnimationCellKeys)
-      const targets = timeline.cels.filter((cel) => selected.has(animationCelKey(cel.layerId, cel.frameId)))
-      if (
-        targets.length < 2 ||
-        !targets.some((cel) =>
-          cachedCelHasContent(celLookup.resolve(cel), session.document.palette, cel.frameId === timeline.activeFrameId ? session.contentRevision : 0)
-        )
-      )
-        return false
-      const counts = new Map<string, number>()
-      for (const cel of targets) counts.set(cel.layerId, (counts.get(cel.layerId) ?? 0) + 1)
-      return [...counts.values()].some((count) => count > 1)
-    })()
+    animationSlotsCanLink(session.selectedAnimationCellKeys, (key) => {
+      const slot = parseAnimationCelKey(key)
+      return Boolean(slot && cachedCelHasContent(celLookup.resolve(celLookup.at(slot.layerId, slot.frameId)), session.document.palette, slot.frameId === timeline.activeFrameId ? session.contentRevision : 0))
+    })
 
   const selectedAnimationCelsCanUnlink =
     animationMenu?.kind === 'cel' &&
@@ -355,15 +346,10 @@ export function useTimelineContextActions({
 
   const selectedAnimationMasksCanLink =
     animationMenu?.kind === 'mask' &&
-    (() => {
-      const counts = new Map<string, number>()
-      for (const key of session.selectedAnimationMaskCellKeys) {
-        const target = parseAnimationCelKey(key)
-        if (!target || !animationMaskSlotAt(timeline, target.layerId, target.frameId)) continue
-        counts.set(target.layerId, (counts.get(target.layerId) ?? 0) + 1)
-      }
-      return [...counts.values()].some((count) => count > 1)
-    })()
+    animationSlotsCanLink(session.selectedAnimationMaskCellKeys, (key) => {
+      const slot = parseAnimationCelKey(key)
+      return Boolean(slot && animationMaskSlotAt(timeline, slot.layerId, slot.frameId))
+    })
 
   const selectedAnimationMasksCanUnlink =
     animationMenu?.kind === 'mask' &&

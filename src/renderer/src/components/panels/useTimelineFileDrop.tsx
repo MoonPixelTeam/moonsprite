@@ -7,6 +7,19 @@ interface Options {
   timeline: import('@shared/types-animation').AnimationTimeline
 }
 
+export function timelineGifDropIndex(target: Element | null, x: number, frameCount: number): number | null {
+  const grid = target?.closest<HTMLElement>('.layer-animation-grid')
+  if (!grid) return null
+  const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
+  let index = frameTarget ? Number(frameTarget.dataset.frameIndex) + 1 : NaN
+  if (!Number.isInteger(index)) {
+    const firstFrame = grid.querySelector<HTMLElement>('[data-frame-index]')
+    const width = firstFrame?.getBoundingClientRect().width ?? grid.getBoundingClientRect().width / Math.max(1, frameCount)
+    index = Math.ceil((x - grid.getBoundingClientRect().left) / Math.max(1, width))
+  }
+  return Math.max(0, Math.min(frameCount, index))
+}
+
 export function useTimelineFileDrop({ session, timeline }: Options) {
   useEffect(() => {
     const handleGifDrop = (event: Event): void => {
@@ -19,9 +32,8 @@ export function useTimelineFileDrop({ session, timeline }: Options) {
       const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       const liveTimeline = liveSession?.document.animation
       if (!liveSession || !liveTimeline) return
-      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
-      const frameIndex = Number(frameTarget?.dataset.frameIndex)
-      const startFrameIndex = Number.isInteger(frameIndex) ? frameIndex + 1 : liveTimeline.frames.length
+      const startFrameIndex = timelineGifDropIndex(target, detail.x!, liveTimeline.frames.length)
+      if (startFrameIndex === null) return
       void (async () => {
         try {
           const bytes = await window.moonSprite.readBinary(detail.path!)
@@ -64,15 +76,7 @@ export function useTimelineFileDrop({ session, timeline }: Options) {
         clearGifDropPreview()
         return
       }
-      const frameTarget = target?.closest<HTMLElement>('[data-frame-index]')
-      let insertionIndex = Number(frameTarget?.dataset.frameIndex) + 1
-      if (!frameTarget || !Number.isInteger(insertionIndex)) {
-        const firstFrame = grid.querySelector<HTMLElement>('[data-frame-index]')
-        const frameWidth = firstFrame?.getBoundingClientRect().width ?? grid.getBoundingClientRect().width / Math.max(1, timeline.frames.length)
-        const relativeX = x - grid.getBoundingClientRect().left
-        insertionIndex = Math.ceil(relativeX / Math.max(1, frameWidth))
-      }
-      setGifDropTargetIndex(Math.max(0, Math.min(timeline.frames.length, insertionIndex)))
+      setGifDropTargetIndex(timelineGifDropIndex(target, x, timeline.frames.length))
     }
     const updateGifDropPreview = (event: DragEvent): void => {
       if (!isGifFileDrag(event)) {

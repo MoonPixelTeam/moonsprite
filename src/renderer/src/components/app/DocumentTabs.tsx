@@ -6,6 +6,7 @@ import { documentTabsRenderKey } from '@/components/app/app-render-keys'
 import type { DocumentPaneDirection, DocumentPanePlacement } from '@/core/document-pane-layout'
 import { captureDocumentPaneDockTargets, paneDockTargetAtPoint, type DocumentPaneDockTarget } from './document-pane-hit-test'
 import { clearDocumentPaneDockPreview, documentPaneDockPreviewBar, subscribeDocumentPaneDockPreviewBar, updateDocumentPaneDockPreview } from './document-pane-dock-preview'
+import { documentTabCloseRange, type DocumentTabCloseScope } from './document-tab-close-range'
 import { useWorkspace } from '@/store/workspace'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 
@@ -362,9 +363,21 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
     const opened = await workspace.openPath(sourcePath, { duplicate: true })
     if (!opened) workspace.setMessage(t('tabs.duplicateFailed'))
   }
+  const closeTabRange = async (documentId: string, scope: DocumentTabCloseScope): Promise<void> => {
+    const visibleDocumentIds = useWorkspace.getState().sessions
+      .filter((item) => !hiddenDocumentIds.includes(item.document.id))
+      .map((item) => item.document.id)
+    const documentIds = documentTabCloseRange(visibleDocumentIds, documentId, scope)
+    setContextMenu(null)
+    for (const targetId of documentIds) {
+      await useWorkspace.getState().closeDocument(targetId)
+      if (useWorkspace.getState().sessions.some((item) => item.document.id === targetId)) break
+    }
+  }
+  const visibleSessions = state.sessions.filter((item) => !hiddenDocumentIds.includes(item.document.id))
 
   return <PerformanceProfiler id="DocumentTabs"><>
-    {state.sessions.filter((item) => !hiddenDocumentIds.includes(item.document.id)).map((item) => <button
+    {visibleSessions.map((item) => <button
       key={item.document.id}
       className={`document-tab ${item.document.id === state.activeId && !homeOpen ? 'active' : ''} ${dragVisual?.id === item.document.id ? 'dragging' : ''} ${dragVisual?.id === item.document.id && dragVisual.detached ? 'detached' : ''}`}
       data-document-id={item.document.id}
@@ -379,8 +392,13 @@ export const DocumentTabs = memo(function DocumentTabs({ homeOpen, hiddenDocumen
       <span className="tab-close" role="button" tabIndex={0} aria-label={t('tabs.closeAria', { name: item.document.name })} onClick={(event) => { event.stopPropagation(); void useWorkspace.getState().closeDocument(item.document.id) }}><PixelUtilityIcon kind="close" /></span>
     </button>)}
       <button className="new-tab-button" aria-label={t('tabs.newProject')} title={t('tabs.newProject')} onClick={onNew}><PixelUtilityIcon kind="plus" /></button>
-    {contextMenu && createPortal(<div className="context-menu document-tab-context-menu" role="menu" aria-label={t('tabs.contextAria')} style={{ left: Math.min(contextMenu.x, Math.max(8, window.innerWidth - 232)), top: Math.min(contextMenu.y, Math.max(8, window.innerHeight - 184)) }}>
+    {contextMenu && createPortal(<div className="context-menu document-tab-context-menu" role="menu" aria-label={t('tabs.contextAria')} style={{ left: Math.min(contextMenu.x, Math.max(8, window.innerWidth - 232)), top: Math.min(contextMenu.y, Math.max(8, window.innerHeight - 300)) }}>
       <button className="context-menu-item" role="menuitem" onClick={() => { void useWorkspace.getState().closeDocument(contextMenu.documentId); setContextMenu(null) }}><PixelUtilityIcon kind="close" /><span>{t('common.close')}</span></button>
+      <span className="context-menu-divider" role="separator" />
+      <button className="context-menu-item" role="menuitem" onClick={() => { void closeTabRange(contextMenu.documentId, 'left') }}><PixelUtilityIcon kind="close" /><span>{t('tabs.closeLeft')}</span></button>
+      <button className="context-menu-item" role="menuitem" onClick={() => { void closeTabRange(contextMenu.documentId, 'right') }}><PixelUtilityIcon kind="close" /><span>{t('tabs.closeRight')}</span></button>
+      <button className="context-menu-item" role="menuitem" onClick={() => { void closeTabRange(contextMenu.documentId, 'others') }}><PixelUtilityIcon kind="close" /><span>{t('tabs.closeOthers')}</span></button>
+      <span className="context-menu-divider" role="separator" />
       <button className="context-menu-item" role="menuitem" onClick={() => { void duplicateDocumentView(contextMenu.documentId) }}><PixelUtilityIcon kind="copy" /><span>{t('tabs.duplicateView')}</span></button>
       {onFloat && <button className="context-menu-item" role="menuitem" onClick={() => { onFloat(contextMenu.documentId, { x: contextMenu.x, y: contextMenu.y }); setContextMenu(null) }}><PixelUtilityIcon kind="move" /><span>{t('tabs.floatDocument')}</span></button>}
       <button className="context-menu-item" role="menuitem" onClick={() => openProjectFolder(contextMenu.documentId)}><PixelUtilityIcon kind="folderOpen" /><span>{t('app.menu.file.openFolder')}</span></button>

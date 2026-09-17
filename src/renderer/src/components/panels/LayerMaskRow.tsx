@@ -5,7 +5,8 @@ import type { deriveLayerPanelVisuals } from './deriveLayerPanelVisuals'
 import type { LayerPanelToggleTarget, LayerDisplayRow } from './layer-panel-contracts'
 import { type ReactNode } from 'react'
 import { Tooltip } from '@/components/Tooltip'
-import { resolveAnimationMask } from '@/core/document-model'
+import { isGroupEffectivelyLocked, isGroupEffectivelyVisible, isLayerEffectivelyLocked, isLayerEffectivelyVisible, resolveAnimationMask } from '@/core/document-model'
+import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import { type DocumentSession } from '@/store/workspace'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { PixelAutoLinkIcon } from '@/components/PixelAutoLinkIcon'
@@ -60,7 +61,13 @@ export function createLayerMaskRowRenderer({
   handleLayerMaskControlKeyDown,
   toggleLayerMaskAutoLink
 }: Props) {
-  return (displayRow: Extract<LayerDisplayRow, { kind: 'mask' }>, visualRow: (typeof timelineVisualState.rows)[number] | undefined): ReactNode => {
+  return (displayRow: Extract<LayerDisplayRow, { kind: 'mask' }>, visualRow: (typeof timelineVisualState.rows)[number] | undefined, colorSegments: ReturnType<ReturnType<typeof deriveLayerPanelVisuals>['displayColorStripeSegments']>): ReactNode => {
+    const inheritedHidden = displayRow.ownerKind === 'group'
+      ? !isGroupEffectivelyVisible(session.document, displayRow.owner as LayerGroup)
+      : !isLayerEffectivelyVisible(session.document, displayRow.owner as RasterLayer)
+    const inheritedLocked = displayRow.ownerKind === 'group'
+      ? isGroupEffectivelyLocked(session.document, displayRow.owner as LayerGroup)
+      : isLayerEffectivelyLocked(session.document, displayRow.owner as RasterLayer)
     const maskRowActiveRef =
       activeMaskOwnerKey === `${displayRow.ownerKind}:${displayRow.owner.id}`
         ? { kind: 'mask' as const, ownerKind: displayRow.ownerKind, ownerId: displayRow.owner.id }
@@ -134,11 +141,19 @@ export function createLayerMaskRowRenderer({
           openCelMenu(event, displayRow.owner.id, visualActiveFrameId, 'mask')
         }}
       >
+        {colorSegments.map((segment, index) => (
+          <span key={index} className="layer-color-stripe" aria-hidden="true" style={{
+            left: `${segment.left}px`, width: `${segment.width}px`,
+            backgroundColor: `rgba(${segment.color.r}, ${segment.color.g}, ${segment.color.b}, ${segment.color.a / 255})`
+          }} />
+        ))}
         <span
-          className="layer-visibility layer-mask-row-visibility"
+          className={`layer-visibility layer-mask-row-visibility ${inheritedHidden ? 'group-visibility-inherited-hidden' : ''}`}
           role="button"
           tabIndex={-1}
           aria-label={t(activeMask?.visible === false ? 'layers.showLayer' : 'layers.hideLayer')}
+          aria-pressed={activeMask?.visible !== false}
+          aria-disabled={!activeMask || !maskVisibilityTarget}
           onPointerDown={(event) => {
             if (activeMask && maskVisibilityTarget) beginLayerPanelToggle(event, maskVisibilityTarget, activeMask.visible)
             else event.stopPropagation()
@@ -153,7 +168,7 @@ export function createLayerMaskRowRenderer({
           {activeMask?.visible === false ? <PixelUtilityIcon kind="eyeOff" /> : <PixelUtilityIcon kind="eye" />}
         </span>
         <span
-          className={`layer-lock-toggle layer-mask-row-lock-slot ${maskLocked ? 'locked' : ''}`}
+          className={`layer-lock-toggle layer-mask-row-lock-slot ${maskLocked ? 'locked' : ''} ${inheritedLocked ? 'group-lock-inherited' : ''}`}
           role="button"
           tabIndex={maskControlsDisabled ? -1 : 0}
           aria-label={t(maskLocked ? 'layers.unlockLayer' : 'layers.lockLayer')}

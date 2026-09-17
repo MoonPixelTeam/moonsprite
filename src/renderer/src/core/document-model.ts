@@ -217,10 +217,10 @@ export function resizeDocumentAt(document: SpriteDocument, width: number, height
   const vertical = Math.trunc(offsetY)
   const sourceWidth = document.width
   const sourceHeight = document.height
-  const expanding = width > sourceWidth || height > sourceHeight
   for (const layer of document.layers) {
-    if (layer.background && expanding) {
-      const repeatSize = layer.background.mode === 'preset' && layer.background.pattern ? backgroundPatternSize(layer.background.pattern) : undefined
+    if (layer.background) {
+      if (layer.background.mode === 'canvas' && !layer.background.repeatWidth) layer.background = { ...layer.background, repeatWidth: sourceWidth, repeatHeight: sourceHeight }
+      const repeatSize = layer.background.mode === 'preset' && layer.background.pattern ? backgroundPatternSize(layer.background.pattern) : { width: layer.background.repeatWidth!, height: layer.background.repeatHeight! }
       const presetPattern = layer.background.mode === 'preset' ? layer.background.pattern : undefined
       tileBackgroundSurfaceToCanvas(layer, sourceWidth, sourceHeight, width, height, horizontal, vertical, repeatSize, presetPattern, (color) => paletteColorIdForCanvas(document, color))
       setLayerStorageOrigin(layer, { x: 0, y: 0 })
@@ -244,6 +244,8 @@ export function resizeDocumentAt(document: SpriteDocument, width: number, height
 /** Permanently discards every stored layer pixel outside the current canvas. */
 export function cropLayersToCanvas(document: SpriteDocument): void {
   for (const layer of [...document.layers, ...layerMasks(document)]) {
+    // A repeating background retains a complete unit even when its viewport is cropped.
+    if (!isLayerMask(layer) && layer.background) continue
     if (!isLayerMask(layer) && (layer.kind === 'tilemap' || layer.kind === 'free-tile')) continue
     const left = Math.max(0, layer.offsetX)
     const top = Math.max(0, layer.offsetY)

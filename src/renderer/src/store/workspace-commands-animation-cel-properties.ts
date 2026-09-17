@@ -1,6 +1,8 @@
+import { animationLinkSlotKeys } from '@/core/animation-slot-selection'
 import type { AnimationCel } from '@shared/types-animation'
 import {
   animationCelKey,
+  animationCelHasContent,
   cloneAnimationCel,
   connectAnimationCels,
   createAnimationCelLookup,
@@ -8,6 +10,7 @@ import {
   disconnectAnimationCels,
   ensureAnimationDocument,
   normalizeAnimationCelZIndex,
+  parseAnimationCelKey,
   refreshActiveAnimationFrame,
   resolveAnimationCel,
   restoreAnimationCels,
@@ -17,8 +20,6 @@ import type { WorkspaceAnimationCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
-
-
 
 export function createAnimationCelPropertiesCommands({ get, set }: WorkspaceCommandContext<'deleteAnimationFrame' | 'deleteSelectedLayerMasks' | 'mutateActive' | 'setActiveAnimationFrame'>): Pick<WorkspaceAnimationCommands, 'setAnimationCelOpacity' | 'setAnimationCelProperties' | 'connectSelectedAnimationCels' | 'disconnectSelectedAnimationCels' | 'deleteSelectedAnimationItems'> {
   return {
@@ -113,12 +114,15 @@ export function createAnimationCelPropertiesCommands({ get, set }: WorkspaceComm
       get().mutateActive(
         (session) => {
           const timeline = ensureAnimationDocument(session.document)
-          const selected = new Set(session.selectedAnimationCellKeys)
+          syncActiveAnimationFrame(session.document)
+          const lookup = createAnimationCelLookup(timeline)
+          const selected = new Set(animationLinkSlotKeys(session.selectedAnimationCellKeys,
+            session.document.layers.map((layer) => layer.id), timeline.frames.map((frame) => frame.id),
+            (key) => { const slot = parseAnimationCelKey(key); return Boolean(slot && animationCelHasContent(lookup.resolve(lookup.at(slot.layerId, slot.frameId)), session.document.palette)) }))
           const targets = timeline.cels.filter((cel) => selected.has(animationCelKey(cel.layerId, cel.frameId)))
           const layerCounts = new Map<string, number>()
           for (const cel of targets) layerCounts.set(cel.layerId, (layerCounts.get(cel.layerId) ?? 0) + 1)
           if (![...layerCounts.values()].some((count) => count > 1)) return
-          syncActiveAnimationFrame(session.document)
           const before = timeline.cels.map(cloneAnimationCel)
           if (
             !connectAnimationCels(
