@@ -18,6 +18,18 @@ function Harness() {
   return <><canvas ref={canvasRef} style={{ cursor: canvasCursors.pencilBlack }} onPointerMove={cursor.syncPenCursor} onPointerLeave={cursor.hidePenCursor} /><img ref={cursor.penCursorRef} hidden /><span data-testid="adaptive" ref={cursor.adaptiveCursorRef} hidden /></>
 }
 
+it.each(['blur', 'moonsprite:extension-pointer-enter'])('clears the canvas overlay on %s without a canvas leave event', (type) => {
+  const view = render(<Harness />)
+  const canvas = view.container.querySelector('canvas')!
+  const move = new Event('pointermove', { bubbles: true })
+  Object.assign(move, { clientX: 40, clientY: 70, pointerType: 'mouse', pointerId: 1 })
+  fireEvent(canvas, move)
+  expect(view.getByTestId('adaptive').hidden).toBe(false)
+  fireEvent(window, new Event(type))
+  expect(view.getByTestId('adaptive').hidden).toBe(true)
+  expect(canvas.dataset.adaptiveCursor).toBeUndefined()
+})
+
 it('uses one backdrop mask for a pointer crossing dark and light regions, then clears it on tool change and leave', async () => {
   const view = render(<Harness />)
   const canvas = view.container.querySelector('canvas')!

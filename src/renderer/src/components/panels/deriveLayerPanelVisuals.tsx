@@ -334,7 +334,9 @@ export function deriveLayerPanelVisuals({
   // retained as the user's selection context. This is a playback indicator,
   // not a change to the editing focus.
   const playbackActiveLayerId =
-    session.animationPlaying && session.document.layers.some((layer) => layer.id === session.document.activeLayerId)
+    groupVisualSelectionActive || timelineActiveRow?.kind === 'group'
+      ? null
+      : session.animationPlaying && session.document.layers.some((layer) => layer.id === session.document.activeLayerId)
       ? session.document.activeLayerId
       : visualActiveLayerId
 

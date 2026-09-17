@@ -132,13 +132,6 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setMoveKind(kind) { get().mutateActive((session) => { session.moveKind = kind }, false) },
 
-    setExtensionTool(id, mode) {
-      get().setTool('extension')
-      get().mutateActive((session) => { session.extensionToolId = id; session.extensionToolMode = mode }, false)
-    },
-
-    setExtensionToolMode(mode) { get().mutateActive((session) => { session.extensionToolMode = mode }, false) },
-
     setBrushSize(size) { get().mutateActive((session) => { if (session.tool !== 'smooth' && session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
 
     setBrushAngle(angle) { get().mutateActive((session) => { session.brushAngle = Math.max(-180, Math.min(180, Math.round(angle))); rememberBrushProfile(session); persistToolSettings(session) }, false) },

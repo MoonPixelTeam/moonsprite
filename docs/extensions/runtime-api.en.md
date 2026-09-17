@@ -59,7 +59,8 @@ Call `runtime.getCapabilities()` after startup. It returns `{ apiVersion, permis
 | `notifications` | `notifications.show`; v1 displays an in-app MoonSprite message, not a system notification. |
 | `network` | `network.fetch`. |
 | `diagnostics` | `diagnostics.log`. |
-| `menus`, `io` | Reserved names with no callable v1 methods; capability discovery will not return methods for them. |
+| `menus` | `menus.setItems`; menu actions also require `commands`. |
+| `io` | Reserved with no callable v1 methods. |
 
 Declaring a permission does not create a capability by itself. Call only methods listed by `runtime.getCapabilities().methods`.
 
@@ -69,6 +70,7 @@ Declaring a permission does not create a capability by itself. Call only methods
 
 - `runtime.getCapabilities()` -> `{ apiVersion, permissions, methods }`.
 - `commands.execute({ commandId })` -> `boolean`. Executes a Lua, Runtime, or settings command from this extension. Avoid recursively triggering the same Runtime command.
+- `menus.setItems({ menuId, items })` replaces the dynamic items of a top-level menu declared by this extension (up to 64 items). Each item is `{ id, name, event, checked }`. Clicking emits a `command` event with the item ID as `commandId`. Dynamic items precede manifest commands with a separator; empty lists render no placeholders. Disabling the extension clears them.
 - `ui.openSettings()` opens this extension's `settingsUi` or `settingsEntry`.
 - `ui.notify({ message })` and `notifications.show({ message })` display an in-app message of at most 500 characters.
 
@@ -158,6 +160,8 @@ Storage writes emit `settings-changed` to a running Runtime. The settings page h
 ### Runtime Side
 
 - `windows.open({ windowId, resourceId, options? })`. The resource must be in `runtime.resources`, and `windowId` follows extension ID character rules. Defaults are `x: 32`, `y: 72`, `width: 256`, `height: 256`, `transparent: true`, and `focusable: false`.
+- Window messages target only the specified window. `moonsprite.window.id` identifies the receiving window for configuration checks.
+- `windows.setVisible({ windowId, visible })` hides or shows an existing window while retaining its scripts and resources. Destroy windows when disabling the extension or deleting resources.
 - `windows.close({ windowId? })`; omitting `windowId` closes every auxiliary window owned by this extension.
 - `windows.postMessage({ windowId, message })` sends structured-clone-compatible data to one window.
 
@@ -172,6 +176,7 @@ await moonsprite.storage.get(key)
 await moonsprite.resources.read(resourceId)
 await moonsprite.window.startDrag()
 const bounds = await moonsprite.window.getBounds()
+const pointer = await moonsprite.window.getPointerPosition()
 await moonsprite.window.setBounds({ x, y, width, height })
 await moonsprite.window.setHitRegion(sourceWidth, sourceHeight, spans)
 await moonsprite.window.postMessage(message)
@@ -191,3 +196,27 @@ Windows also dispatch `moonsprite:window-moved` and `moonsprite:window-focus` DO
 3. Handle Promise rejection, a `null` project, missing resources, and closed windows as normal states.
 4. Use opaque IDs and extension storage; do not cache installation paths or internal objects.
 5. Package bulk document edits as Lua commands and invoke them with `commands.execute()`.
+
+The host injects current `--theme-*` tokens and preference-controlled `--cursor-*` cursors, including scaling, into extension windows. Extensions do not need to load cursor images. `window.setCursorPolicy` reapplies user preferences rather than overriding them. Styles update when preferences change.
+
+Use `<body data-ms-dialog>` for standard dialog styling, with an `h1` title, `section` groups, and `button.primary` actions. Add `data-ms-drag` to a title to enable dragging; close buttons call `moonsprite.window.close()`. Omit `data-ms-dialog` for transparent companions. This styling contract and the existing window API do not expose React or the main document DOM.
+
+Use `options.presentation: "dialog"` with `windows.open` to open the main window’s `ModalShell` and `DialogHeader`, titled with `options.title`. Content remains sandboxed and retains storage, resources, messaging, and close operations. The host manages dialog movement and size; native bounds and hit-region operations are unavailable. Each extension can show one host dialog at a time. Transparent companions continue to use the default separate window.
+
+
+`window.getHostBounds()` returns the main client area bounds `{ x, y, width, height }` in logical pixels relative to the main outer frame, matching `getBounds/setBounds`. Content dragging may place transparent margins outside this area; clamp the union of opaque content across animation frames to keep the pet inside.
+
+
+
+Host dialogs support `options.component: "form"`. Resource HTML sends `{ type: "ui-state", nodes, status, result? }`; the host renders generic component-library controls without knowledge of extension business rules. Node types are `row`, `separator`, `text`, `image`, `input`, `number`, `toggle`, `button`, and `file`. Each node has a stable `id`; controls use `label`, `value`, `disabled`, `min/max`, and `primary` where applicable. `row.children` nests controls, and image sources must be PNG data URLs. Actions are extension-defined objects. The host returns the action with `values` keyed by input id and a `requestId`; toggles add `value`, file selection adds `files: [{ name, mime, bytes }]`. Return a matching `result.requestId` to finish an operation. Business data, imports, multi-window state, and reminder wording belong to the extension.
+
+Form layout nodes also support `split`, `sidebar`, `column`, `heading`, and `choice`. Containers use `children`; choices accept `selected` and `description`.
+
+Extension form `choice` nodes display the name and `description` on the same row; `row.align: "end"` aligns actions with the bottom of their fields. A `slot` is an upload slot with `label`, `description`, and `children`; `file.multiple: false` restricts selection to one file, while the default still allows multiple files.
+
+Standalone windows receive the `moonsprite:window-host-geometry` DOM event when the main window moves, resizes, or changes DPI; extensions should read `window.getHostBounds()` again. Store normalized positions within the available movement range to preserve relative content positions across window sizes.
+
+Form file nodes may specify an `accept` filter (images by default). A user action response in `ui-state.result` may include `file: { name, bytes }`; only a result matching a pending `requestId` opens the native save dialog. The host limits exports to 1 MiB, rejects directory paths, and writes atomically to the user-selected destination. Cancellation and write errors appear in the form status.
+
+
+Settings controls may declare `visibleWhen: { checkboxId: true/false }`; all conditions must match for display. Hidden controls retain their values, and conditions reference other checkbox controls. Buttons may use `fullWidth: true` to fill a row; omitting description removes helper text. Business dependencies belong to the extension manifest.

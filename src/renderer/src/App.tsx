@@ -149,12 +149,11 @@ export default function App() {
     extensions,
     extensionPanelVisibility,
     extensionPanelContributions,
-    extensionToolContributions,
     setExtensionPanelVisible,
     toggleExtensionPanel,
     openLuaScriptFolder,
     installExtensionPackage
-  } = useAppExtensions({ session, openMenu, setOpenMenu, refreshLuaScripts })
+  } = useAppExtensions({ openMenu, setOpenMenu, refreshLuaScripts })
   const {
     recentFiles,
     runSaveActive,
@@ -651,7 +650,6 @@ export default function App() {
           onOpenCommandSettings={openQuickCommandSettings}
           shortcutFor={shortcutFor}
           onToggleMirror={toggleMirrorView}
-          extensionTools={extensionToolContributions}
         />
       ) : (
         <Suspense fallback={<div aria-hidden="true" />}>

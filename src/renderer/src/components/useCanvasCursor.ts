@@ -469,8 +469,7 @@ export function useCanvasCursor(ports: Ports) {
       ports.session.tool === 'airbrush' ||
       ports.session.tool === 'eraser' ||
       ports.session.tool === 'smooth' ||
-      ports.session.tool === 'liquify' ||
-      ports.session.tool === 'extension'
+      ports.session.tool === 'liquify'
     const modifierSizing =
       brushSizeAdjustmentPreviewActive ||
       ((ports.activeLayer.kind !== 'tilemap' || ports.session.tilemapMode !== 'paint') &&

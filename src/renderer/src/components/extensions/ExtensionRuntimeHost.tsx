@@ -1,3 +1,8 @@
+import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
+import { ModalShell } from '@/components/ModalShell'
+import { DialogHeader } from '@/components/DialogHeader'
+import { ExtensionDialogForm } from './ExtensionDialogForm'
+import { ExtensionWindow } from './ExtensionWindow'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ToolId } from '@shared/types-brush'
 import type { RgbaColor } from '@shared/types-color'
@@ -7,10 +12,12 @@ import type { StoredExtension } from '@shared/types-extensions'
 import type { DocumentSession } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
 import { EXTENSION_RUNTIME_METHOD_PERMISSIONS, executeExtensionCommand, extensionRuntimeAllows, extensionStorage, registerExtensionRuntime } from '@/core/extension-runtime'
+import { setExtensionCommandState, clearExtensionCommandState, setExtensionMenuItems } from '@/core/extension-command-state'
 import { listenForExtensionRuntimeWindowMessage } from '@/platform/extension-window'
 
-const TOOL_IDS: readonly ToolId[] = ['pencil', 'airbrush', 'eraser', 'fill', 'eyedropper', 'selection', 'shape', 'line', 'text', 'move', 'hand', 'zoom', 'rotate', 'liquify', 'smooth', 'extension']
+const TOOL_IDS: readonly ToolId[] = ['pencil', 'airbrush', 'eraser', 'fill', 'eyedropper', 'selection', 'shape', 'line', 'text', 'move', 'hand', 'zoom', 'rotate', 'liquify', 'smooth']
 const MAX_NETWORK_RESPONSE_BYTES = 2 * 1024 * 1024
+const pendingWindowClosures = new Map<string, Promise<void>>()
 
 const runtimeBootstrap = `(() => {
   const pending = new Map();
@@ -29,8 +36,8 @@ const runtimeBootstrap = `(() => {
   const domain = (name, methods) => Object.freeze(Object.fromEntries(methods.map(method => [method, (params) => call(name + '.' + method, params)])));
   const api = Object.freeze({
     apiVersion: '1.0.0', call, on,
-    runtime: domain('runtime', ['getCapabilities']), commands: domain('commands', ['execute']),
-    ui: domain('ui', ['notify', 'openSettings']), windows: domain('windows', ['open', 'close', 'postMessage']), workspace: domain('workspace', ['listProjects', 'getActiveProject', 'activateProject']),
+    runtime: domain('runtime', ['getCapabilities']), commands: domain('commands', ['execute']), menus: domain('menus', ['setItems']),
+    ui: domain('ui', ['notify', 'openSettings']), windows: domain('windows', ['open', 'close', 'postMessage', 'setVisible']), workspace: domain('workspace', ['listProjects', 'getActiveProject', 'activateProject']),
     document: domain('document', ['getSummary', 'getLayers', 'getFrames', 'undo', 'redo']),
     tools: domain('tools', ['getActive', 'setActive']), colors: domain('colors', ['get', 'setPrimary', 'setSecondary']),
     storage: domain('storage', ['get', 'set', 'remove', 'list']), resources: domain('resources', ['read']),
@@ -47,7 +54,10 @@ const runtimeBootstrap = `(() => {
     }
     if (message?.type !== 'moonsprite-extension-event') return;
     for (const listener of listeners.get(message.event?.type) || []) {
-      try { listener(message.event); } catch (error) { console.error(error); }
+      Promise.resolve().then(() => listener(message.event)).catch(error => {
+        console.error(error);
+        call('ui.notify', { message: String(error), level: 'error' }).catch(console.error);
+      });
     }
     dispatchEvent(new CustomEvent('moonsprite:' + message.event?.type, { detail: message.event }));
   });
@@ -105,11 +115,21 @@ interface FrameProps {
 function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, onOpenSettings }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null)
   const [document, setDocument] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<{ windowId: string; resourceId: string; title: string; component?: string } | null>(null)
   const runtime = extension.runtime
   const permissions = useMemo(() => runtime?.permissions ?? [], [runtime?.permissions])
   const previousDirty = useRef(session?.document.dirty ?? false)
+  const [messagesReady, setMessagesReady] = useState(false)
+  const loaded = useRef(false)
+  const pendingEvents = useRef<ExtensionRuntimeEvent[]>([])
 
-  const send = (event: ExtensionRuntimeEvent): void => frame.current?.contentWindow?.postMessage({ type: 'moonsprite-extension-event', event }, '*')
+  const send = (event: ExtensionRuntimeEvent): void => {
+    if (!loaded.current) {
+      if (event.type === 'command' || event.type === 'settings-changed') pendingEvents.current.push(event)
+      return
+    }
+    frame.current?.contentWindow?.postMessage({ type: 'moonsprite-extension-event', event }, '*')
+  }
   const sendAuthorized = (event: ExtensionRuntimeEvent): void => {
     const allowed = event.type === 'activate' || event.type === 'deactivate'
       || (event.type === 'project' && permissions.includes('workspace.read'))
@@ -122,24 +142,45 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
 
   useEffect(() => {
     let active = true
-    void window.moonSprite.readExtensionRuntimeEntry(extension.id).then((html) => {
-      if (active) setDocument(secureRuntimeDocument(html))
+    loaded.current = false
+    setDocument(null)
+    setDialog(null)
+    void Promise.resolve(pendingWindowClosures.get(extension.id)).then(() => active ? window.moonSprite.readExtensionRuntimeEntry(extension.id) : null).then((html) => {
+      if (active && html !== null) setDocument(secureRuntimeDocument(html))
     }).catch((error) => {
       console.error(`[Extension ${extension.id}] failed to load runtime`, error)
     })
     return () => { active = false }
-  }, [extension.id])
+  }, [extension])
 
   useEffect(() => registerExtensionRuntime(extension.id, sendAuthorized), [extension.id, permissions])
 
   useEffect(() => {
-    if (!permissions.includes('windows')) return
+    if (!permissions.includes('windows')) { setMessagesReady(true); return }
+    let active = true
+    setMessagesReady(false)
     let remove: (() => void) | undefined
     void listenForExtensionRuntimeWindowMessage((message) => {
-      if (message.extensionId !== extension.id) return
+      if (!active || message.extensionId !== extension.id) return
+      const payload = objectParams(message.message)
+      if (payload.type === 'diagnostic') recordRuntimeDiagnostic(payload.level === 'error' ? 'error' : 'operation-stage', 'extension.window', { extensionId: extension.id, windowId: message.windowId, message: String(payload.message || '') })
+      if (payload.type === 'diagnostic') { if (payload.level === 'error') useWorkspace.getState().setMessage(String(payload.message)); return }
+      if (payload.type === 'pointer-enter') { window.dispatchEvent(new Event('moonsprite:extension-pointer-enter')); return }
+      if (payload.type === 'command-state' && typeof payload.commandId === 'string' && extension.commands.some(command => command.id === payload.commandId)) {
+        const state = objectParams(payload.state)
+        setExtensionCommandState(extension.id, payload.commandId, {
+          visible: typeof state.visible === 'boolean' ? state.visible : undefined,
+          checked: typeof state.checked === 'boolean' ? state.checked : undefined
+        })
+        return
+      }
       sendAuthorized({ type: 'window-message', windowId: message.windowId, message: message.message })
-    }).then((unlisten) => { remove = unlisten })
-    return () => remove?.()
+    }).then((unlisten) => {
+      if (!active) { unlisten(); return }
+      remove = unlisten
+      setMessagesReady(true)
+    }).catch(error => console.error('无法连接扩展消息通道', error))
+    return () => { active = false; remove?.() }
   }, [extension.id, permissions])
 
   useEffect(() => {
@@ -167,9 +208,18 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   }, [homeOpen, permissions, session?.contentRevision, session?.document.dirty, session?.document.id, session?.document.name])
 
   useEffect(() => () => {
+    clearExtensionCommandState(extension.id)
     send({ type: 'deactivate' })
-    if (permissions.includes('windows')) void window.moonSprite.closeExtensionWindows(extension.id).catch(() => undefined)
-  }, [extension.id, permissions])
+    loaded.current = false
+    pendingEvents.current = []
+    if (permissions.includes('windows')) {
+      const close = (pendingWindowClosures.get(extension.id) ?? Promise.resolve())
+        .then(() => window.moonSprite.closeExtensionWindows(extension.id))
+        .catch(error => console.error('无法关闭扩展窗口', error))
+      pendingWindowClosures.set(extension.id, close)
+      void close.then(() => { if (pendingWindowClosures.get(extension.id) === close) pendingWindowClosures.delete(extension.id) })
+    }
+  }, [extension])
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<ExtensionRuntimeRequest>): void => {
@@ -179,26 +229,60 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
       const respond = (response: Omit<ExtensionRuntimeResponse, 'type' | 'requestId'>): void => {
         frame.current?.contentWindow?.postMessage({ type: 'moonsprite-extension-response', requestId: request.requestId, ...response }, '*')
       }
-      void handleRequest(extension, permissions, request.method, request.params, onRunLuaScript, onOpenSettings)
+      const handle = async () => {
+        if (!extensionRuntimeAllows(permissions, request.method)) throw new Error(`扩展未获准调用 ${request.method}。`)
+        const params = objectParams(request.params)
+        if (request.method === 'menus.setItems') {
+          const menuId = stringParam(params, 'menuId')
+          if (!extension.topMenus.some(menu => menu.id === menuId)) throw new Error('扩展菜单不存在。')
+          if (!permissions.includes('commands')) throw new Error('菜单操作需要 commands 权限。')
+          setExtensionMenuItems(extension.id, menuId, params.items)
+          return null
+        }
+        if (request.method === 'windows.open' && objectParams(params.options).presentation === 'dialog') {
+          const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
+          if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展窗口资源不存在。')
+          setDialog({ windowId, resourceId, title: String(objectParams(params.options).title || extension.name), component: objectParams(params.options).component === 'form' ? 'form' : undefined }); return null
+        }
+        if (dialog && request.method === 'windows.postMessage' && params.windowId === dialog.windowId) {
+          window.dispatchEvent(new CustomEvent('moonsprite:dialog-message', { detail: { extensionId: extension.id, windowId: dialog.windowId, message: params.message } })); return null
+        }
+        if (request.method === 'windows.close' && dialog && (!params.windowId || params.windowId === dialog.windowId)) {
+          setDialog(null); if (params.windowId) return null
+        }
+        return handleRequest(extension, permissions, request.method, request.params, onRunLuaScript, onOpenSettings)
+      }
+      void handle()
         .then((result) => respond({ ok: true, result }))
         .catch((error) => respond({ ok: false, error: error instanceof Error ? error.message : String(error) }))
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [extension, onOpenSettings, onRunLuaScript, permissions])
+  }, [extension, onOpenSettings, onRunLuaScript, permissions, dialog])
 
-  if (!runtime || !document) return null
-  return <iframe
+  if (!runtime || !document || !messagesReady) return null
+  return <><iframe
     ref={frame}
     title={`${extension.name} Runtime`}
     sandbox="allow-scripts"
     srcDoc={document}
     hidden
     onLoad={() => {
+      loaded.current = true
       send({ type: 'activate', apiVersion: EXTENSION_RUNTIME_API_VERSION, extensionId: extension.id })
       sendAuthorized({ type: 'project', project: projectSnapshot(session), homeOpen })
+      for (const event of pendingEvents.current.splice(0)) sendAuthorized(event)
     }}
   />
+    {dialog && <div className="modal-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) setDialog(null) }}>
+      <ModalShell storageKey={`extension-dialog:${extension.id}:${dialog.windowId}`} defaultWidth={560} defaultHeight={600} minWidth={360} minHeight={300} role="dialog" aria-modal="true" aria-label={dialog.title} style={{ display: 'flex', flexDirection: 'column' }}>
+        <DialogHeader title={dialog.title} closeLabel="关闭" onClose={() => setDialog(null)} />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {dialog.component === 'form' ? <ExtensionDialogForm extensionId={extension.id} windowId={dialog.windowId} resourceId={dialog.resourceId} onClose={() => setDialog(null)} /> : <ExtensionWindow key={dialog.windowId + dialog.resourceId} identity={{ extensionId: extension.id, windowId: dialog.windowId, resourceId: dialog.resourceId }} onClose={() => setDialog(null)} />}
+        </div>
+      </ModalShell>
+    </div>}
+  </>
 }
 
 async function handleRequest(
@@ -260,6 +344,11 @@ async function handleRequest(
     await window.moonSprite.closeExtensionWindows(extension.id, typeof params.windowId === 'string' ? params.windowId : undefined)
     return null
   }
+  if (method === 'windows.setVisible') {
+    if (typeof params.visible !== 'boolean') throw new Error('窗口显示状态无效。')
+    await window.moonSprite.setExtensionWindowVisible(extension.id, stringParam(params, 'windowId'), params.visible)
+    return null
+  }
   if (method === 'windows.postMessage') {
     await window.moonSprite.emitExtensionWindowMessage(extension.id, stringParam(params, 'windowId'), params.message)
     return null
@@ -290,6 +379,8 @@ async function handleRequest(
   if (method === 'clipboard.readText') return navigator.clipboard.readText()
   if (method === 'clipboard.writeText') { await navigator.clipboard.writeText(stringParam(params, 'text')); return null }
   if (method === 'diagnostics.log') {
+    recordRuntimeDiagnostic(params.level === 'error' ? 'error' : 'operation-stage', 'extension.runtime', { extensionId: extension.id, message: String(params.message) })
+    if (params.level === 'error') workspace.setMessage(String(params.message))
     const level = ['debug', 'info', 'warn', 'error'].includes(String(params.level)) ? String(params.level) : 'info'
     const message = stringParam(params, 'message').slice(0, 2_000)
     console[level as 'debug'](`[Extension ${extension.id}] ${message}`)

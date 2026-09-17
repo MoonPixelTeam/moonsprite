@@ -76,6 +76,8 @@ export interface MoonSpriteApi {
   listRecoveries(retentionDays: number): Promise<RecoveryRecord[]>
   readRecovery(id: string): Promise<Uint8Array>
   writeRecovery(id: string, name: string, data: Uint8Array): Promise<void>
+  appendTimelapseFrame?(store: string, data: Uint8Array): Promise<import('./types-timelapse').TimelapseFrameReference>
+  readTimelapseFrame?(reference: import('./types-timelapse').TimelapseFrameReference): Promise<Uint8Array>
   deleteRecovery(id: string): Promise<void>
   readLocalHistory(id: string): Promise<Uint8Array>
   writeLocalHistory(id: string, data: Uint8Array): Promise<void>
@@ -109,6 +111,7 @@ export interface MoonSpriteApi {
   readExtensionRuntimeEntry(extensionId: string): Promise<string>
   readExtensionRuntimeResource(extensionId: string, resourceId: string): Promise<Uint8Array>
   showExtensionWindow(extensionId: string, windowId: string, resourceId: string, options: ExtensionWindowOptions): Promise<void>
+  setExtensionWindowVisible(extensionId: string, windowId: string, visible: boolean): Promise<void>
   closeExtensionWindows(extensionId: string, windowId?: string): Promise<void>
   emitExtensionWindowMessage(extensionId: string, windowId: string, message: unknown): Promise<void>
   getResourceInfo(): Promise<ResourceInfo>

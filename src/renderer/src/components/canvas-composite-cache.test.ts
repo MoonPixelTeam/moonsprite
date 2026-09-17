@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, readLayerColor, writeLayerColor } from '@/core/document'
-import { ensureAnimationDocument } from '@/core/animation'
+import { animationCelKey, ensureAnimationDocument, setAnimationCelOffsetsForKeys } from '@/core/animation'
 import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
 import { beginPixelEdit, commitPixelEdit } from '@/core/history'
 import { createDefaultLayerStyles } from '@/core/layer-styles'
@@ -9,6 +9,8 @@ import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { useWorkspace } from '@/store/workspace'
 import { CanvasCompositeCache, canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-cache'
 import { installRuntimeRaster } from '@/core/runtime-raster'
+import { BLEND_MODES } from '@shared/types-color'
+import { gpuBlendModeFor } from './canvas-composite-cache-surfaces'
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = []
@@ -116,6 +118,135 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each(['normal', 'multiply', 'screen'] as const)('preserves cropped %s layers when a high-zoom drag starts', mode => {
+    const document = createDocument('cropped drag', 64, 64, 'rgba')
+    document.layers.push(createLayer('moving', 64, 64, 'rgba'), createLayer('upper', 64, 64, 'rgba'))
+    const timeline = ensureAnimationDocument(document)
+    document.layers.forEach((layer, index) => {
+      layer.pixels = layer.pixels.slice()
+      layer.blendMode = mode
+      layer.opacity = 0.6 + index * 0.1
+      layer.offsetX = index * 3; layer.offsetY = index * 5
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+        writeLayerColor(document, layer, y * 64 + x, { r: x * 3, g: y * 3, b: index * 70, a: (x + y) % 3 ? 170 : 0 })
+      }
+    })
+    const moving = document.layers[1]
+    for (const zoom of [16, 24, 32]) {
+      const cache = new CanvasCompositeCache(), context = makeContext()
+      const options = { fromX: 17, fromY: 21, toX: 48, toY: 52, view: view({ zoom }), originX: -275, originY: -337 }
+      draw(cache, document, context, options)
+      const full = (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+      setAnimationCelOffsetsForKeys(document, { [animationCelKey(moving.id, timeline.activeFrameId)]: { x: moving.offsetX, y: moving.offsetY } })
+      draw(cache, document, context, { ...options, movingLayerIds: [moving.id] })
+      const preview = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+      for (let y = 0; y < 31; y++) {
+        expect(preview.pixels.slice(y * 31 * 4, (y + 1) * 31 * 4)).toEqual(full.slice(((y + 21) * 64 + 17) * 4, ((y + 21) * 64 + 48) * 4))
+      }
+    }
+  })
+
+  it('isolates blended move previews from the screen backdrop and places a cropped viewport in document coordinates', () => {
+    const document = createDocument('blended move with panned viewport', 12, 12, 'rgba')
+    const bottom = document.layers[0]
+    const moving = createLayer('Moving', 3, 3, 'rgba')
+    const upper = createLayer('Stationary', 2, 2, 'rgba')
+    bottom.blendMode = 'multiply'
+    moving.blendMode = 'screen'
+    moving.opacity = 0.6
+    moving.offsetX = 4; moving.offsetY = 5
+    upper.blendMode = 'multiply'
+    upper.offsetX = 6; upper.offsetY = 7
+    writeLayerColor(document, bottom, 0, { r: 200, g: 40, b: 80, a: 128 })
+    writeLayerColor(document, moving, 0, { r: 30, g: 220, b: 50, a: 180 })
+    writeLayerColor(document, upper, 0, { r: 60, g: 80, b: 230, a: 160 })
+    document.layers.push(moving, upper)
+    const cache = new CanvasCompositeCache()
+    const screenOperations: string[] = []
+    const context = makeContext()
+    let operation = 'source-over'
+    Object.defineProperty(context, 'globalCompositeOperation', { get: () => operation, set: value => { operation = value; screenOperations.push(value) } })
+    const options = { movingLayerIds: [moving.id], view: view({ zoom: 2 }), originX: -5, originY: -7, fromX: 3, fromY: 4, toX: 10, toY: 11 }
+    draw(cache, document, context, options)
+    // The editor target already contains a checkerboard. Layer blend modes
+    // must never see that backdrop or leave partial output on fallback.
+    expect(screenOperations.every(mode => mode === 'source-over')).toBe(true)
+    expect(context.drawImage).toHaveBeenCalledTimes(1)
+    expect(context.drawImage.mock.calls[0].slice(1)).toEqual([0, 0, 7, 7, 1, 1, 14, 14])
+    const pixels = () => (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels
+    expect(pixels()).toEqual(compositeRegion(document, 3, 4, 7, 7, new DocumentCompositeCache(), 1))
+    context.drawImage.mockClear()
+    moving.offsetY += 2
+    draw(cache, document, context, options)
+    expect(pixels()).toEqual(compositeRegion(document, 3, 4, 7, 7, new DocumentCompositeCache(), 1))
+    expect(context.drawImage.mock.lastCall!.slice(1)).toEqual([0, 0, 7, 7, 1, 1, 14, 14])
+    expect(upper.offsetY).toBe(7)
+  })
+
+  it('keeps browser blend operations out of document previews with different alpha semantics', () => {
+    expect(gpuBlendModeFor('normal')).toBe('source-over')
+    for (const mode of BLEND_MODES.filter(mode => mode !== 'normal')) expect(gpuBlendModeFor(mode)).toBeNull()
+  })
+
+  it.each([7.5, 16])('keeps stationary pixel edges identical during dragging at zoom %s with fractional display scaling', zoom => {
+    const document = createDocument('move pixel alignment', 12, 12, 'rgba')
+    const layer = document.layers[0]
+    layer.blendMode = 'multiply'
+    writeLayerColor(document, layer, 6 * 12 + 5, { r: 180, g: 40, b: 160, a: 180 })
+    const options = { view: view({ zoom }), originX: -45.3, originY: -65.7,
+      fromX: 3, fromY: 4, toX: 10, toY: 11, devicePixelRatio: { x: 1.23, y: 1.27 } }
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    draw(cache, document, context, options)
+    const committed = context.drawImage.mock.calls.map(call => call.slice(1))
+    context.drawImage.mockClear()
+    draw(cache, document, context, { ...options, movingLayerIds: [layer.id] })
+    // Preview textures start at the viewport; committed textures at document 0.
+    const preview = context.drawImage.mock.calls.map(call => {
+      const [sx, sy, ...rest] = call.slice(1) as number[]
+      return [sx + 3, sy + 4, ...rest]
+    })
+    expect(preview).toEqual(committed)
+  })
+
+  it.each(BLEND_MODES.filter(mode => mode !== 'normal'))('matches committed %s pixels throughout a move in flat and grouped stacks', mode => {
+    for (const grouping of ['flat', 'opacity-group', 'blend-group']) {
+      const document = createDocument('translucent duplicate layers', 12, 12, 'rgba')
+      const bottom = document.layers[0]
+      const moving = createLayer('Duplicate', 6, 6, 'rgba')
+      const upper = createLayer('Duplicate', 6, 6, 'rgba')
+      document.layers.push(moving, upper)
+      bottom.blendMode = mode
+      moving.blendMode = grouping === 'blend-group' ? 'normal' : mode
+      upper.blendMode = mode
+      bottom.opacity = 0.6; moving.opacity = 0.7; upper.opacity = 0.8
+      moving.offsetX = 3; moving.offsetY = 3
+      upper.offsetX = 4; upper.offsetY = 5
+      for (const layer of document.layers) {
+        for (let i = 0; i < layer.width * layer.height; i += 1) {
+          writeLayerColor(document, layer, i, { r: 190, g: 30 + i % 100, b: 170, a: i % 3 === 0 ? 0 : 160 })
+        }
+      }
+      if (grouping !== 'flat') {
+        moving.groupId = 'group'
+        document.groups.push({ id: 'group', name: 'Group', parentGroupId: null, visible: true, locked: false,
+          opacity: 0.65, blendMode: grouping === 'blend-group' ? mode : 'normal' })
+      }
+      const cache = new CanvasCompositeCache(), context = makeContext()
+      draw(cache, document, context)
+      for (const [offsetX, offsetY] of [[3, 3], [5, 1], [-1, 4], [3, 3]]) {
+        moving.offsetX = offsetX; moving.offsetY = offsetY
+        cache.invalidateDocumentPlacementRect({ x: 0, y: 0, width: 12, height: 12 }, document, undefined, [moving.id])
+        draw(cache, document, context, { movingLayerIds: [moving.id], view: view({ zoom: 7.5 }) })
+        const expected = compositeRegion(document, 0, 0, 12, 12, new DocumentCompositeCache(), 1)
+        expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels, grouping).toEqual(expected)
+        expect([upper.offsetX, upper.offsetY]).toEqual([4, 5])
+      }
+      const duringDrag = (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+      draw(cache, document, context, { contentRevision: 2, revision: 2 })
+      expect((context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual(duringDrag)
+    }
+  })
+
   it('applies an accumulated preview region after rendering an intermediate revision', () => {
     const document = createDocument('accumulated source preview', 64, 64, 'rgba')
     const cache = new CanvasCompositeCache(), context = makeContext()

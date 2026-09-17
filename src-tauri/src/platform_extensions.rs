@@ -33,7 +33,6 @@ const MAX_EXTENSION_COMMANDS: usize = 64;
 const MAX_EXTENSION_PANELS: usize = 16;
 const MAX_EXTENSION_MENU_ITEMS: usize = 32;
 const MAX_EXTENSION_TOP_MENUS: usize = 16;
-const MAX_EXTENSION_TOOLS: usize = 16;
 const MAX_EXTENSION_SETTINGS_CONTROLS: usize = 64;
 const MAX_EXTENSION_SETTINGS_OPTIONS: usize = 64;
 const MAX_PANEL_COMMANDS: usize = 32;
@@ -84,8 +83,6 @@ pub(crate) struct StoredExtension {
     panels: Vec<StoredExtensionPanel>,
     menu_items: Vec<StoredExtensionMenuItem>,
     top_menus: Vec<StoredExtensionTopMenu>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<StoredExtensionTool>,
     enabled: bool,
 }
 
@@ -142,28 +139,6 @@ pub(crate) struct StoredExtensionTopMenu {
     commands: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StoredExtensionTool {
-    id: String,
-    name: String,
-    description: String,
-    kind: String,
-    placement: String,
-    icon: String,
-    modes: Vec<StoredExtensionToolMode>,
-    default_mode: String,
-    preview_color: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StoredExtensionToolMode {
-    id: String,
-    name: String,
-    description: String,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExtensionListing {
@@ -181,7 +156,6 @@ pub(crate) struct ExtensionPackagePreview {
     command_count: usize,
     panel_count: usize,
     menu_count: usize,
-    tool_count: usize,
 }
 
 /// A validated Lua entry point belonging to an enabled extension.
@@ -265,6 +239,10 @@ struct ExtensionSettingsUiManifest {
 #[serde(rename_all = "camelCase")]
 struct ExtensionSettingsControlManifest {
     id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    visible_when: Option<std::collections::BTreeMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    full_width: Option<bool>,
     #[serde(rename = "type")]
     kind: String,
     label: String,
@@ -317,36 +295,7 @@ struct ExtensionTopMenuManifest {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ExtensionToolManifest {
-    id: String,
-    name: String,
-    #[serde(default)]
-    description: String,
-    kind: String,
-    #[serde(default = "default_tool_placement")]
-    placement: String,
-    #[serde(default = "default_tool_icon")]
-    icon: String,
-    #[serde(default)]
-    modes: Vec<ExtensionToolModeManifest>,
-    #[serde(default)]
-    default_mode: String,
-    #[serde(default = "default_tool_preview_color")]
-    preview_color: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ExtensionToolModeManifest {
-    id: String,
-    name: String,
-    #[serde(default)]
-    description: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ExtensionManifest {
     schema_version: u32,
     id: String,
@@ -374,8 +323,6 @@ struct ExtensionManifest {
     menu_items: Vec<ExtensionMenuItemManifest>,
     #[serde(default)]
     top_menus: Vec<ExtensionTopMenuManifest>,
-    #[serde(default)]
-    tools: Vec<ExtensionToolManifest>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -455,18 +402,6 @@ fn default_top_menu_position() -> String {
     "end".to_string()
 }
 
-fn default_tool_placement() -> String {
-    "pencil".to_string()
-}
-
-fn default_tool_icon() -> String {
-    "tool-smooth".to_string()
-}
-
-fn default_tool_preview_color() -> String {
-    "#2979ff66".to_string()
-}
-
 fn default_settings_button_variant() -> String {
     "secondary".to_string()
 }
@@ -541,6 +476,16 @@ fn validate_settings_ui(settings: &ExtensionSettingsUiManifest) -> Result<(), St
     }
     let mut ids = HashSet::new();
     for control in &settings.controls {
+        if let Some(conditions) = &control.visible_when {
+            if conditions.len() > MAX_EXTENSION_SETTINGS_CONTROLS
+                || conditions.keys().any(|id| id == &control.id || !settings.controls.iter().any(|candidate| &candidate.id == id && candidate.kind == "checkbox"))
+            {
+                return Err("扩展设置显示条件必须引用其他复选框。".to_string());
+            }
+        }
+        if control.full_width.is_some() && control.kind != "button" {
+            return Err("整行布局仅用于扩展设置按钮。".to_string());
+        }
         if !valid_extension_id(&control.id) || !ids.insert(control.id.to_ascii_lowercase()) {
             return Err("扩展设置控件 ID 无效或重复。".to_string());
         }
@@ -944,58 +889,6 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
             if !referenced_commands.insert(command_id.to_ascii_lowercase()) {
                 return Err(format!("顶层菜单“{}”不能重复引用同一命令。", top_menu.name));
             }
-        }
-    }
-    if manifest.tools.len() > MAX_EXTENSION_TOOLS {
-        return Err(format!("扩展工具数量不能超过 {MAX_EXTENSION_TOOLS} 个。"));
-    }
-    let mut tool_ids = HashSet::new();
-    for tool in &manifest.tools {
-        if !valid_extension_id(&tool.id) {
-            return Err("扩展工具 ID 无效，只能使用字母、数字、点、短横线和下划线。".to_string());
-        }
-        if !tool_ids.insert(tool.id.to_ascii_lowercase()) {
-            return Err("扩展工具 ID 不能重复。".to_string());
-        }
-        if !valid_text(&tool.name, MAX_NAME_BYTES, true) {
-            return Err("扩展工具名称无效或过长。".to_string());
-        }
-        if !valid_text(&tool.description, MAX_DESCRIPTION_BYTES, false) {
-            return Err("扩展工具描述过长或包含控制字符。".to_string());
-        }
-        if tool.kind != "remote-pixel-brush" {
-            return Err(format!("扩展工具“{}”声明了不受支持的宿主能力。", tool.id));
-        }
-        if tool.placement != "pencil" {
-            return Err(format!("扩展工具“{}”只能放置在 pencil 工具组。", tool.id));
-        }
-        if !valid_text(&tool.icon, MAX_ID_BYTES, true) {
-            return Err(format!("扩展工具“{}”图标标识无效。", tool.id));
-        }
-        if tool.modes.is_empty() || tool.modes.len() > 16 {
-            return Err(format!("扩展工具“{}”必须声明 1 至 16 个模式。", tool.id));
-        }
-        let mut mode_ids = HashSet::new();
-        for mode in &tool.modes {
-            if !valid_extension_id(&mode.id) || !mode_ids.insert(mode.id.to_ascii_lowercase()) {
-                return Err(format!("扩展工具“{}”包含无效或重复的模式 ID。", tool.id));
-            }
-            if !valid_text(&mode.name, MAX_NAME_BYTES, true)
-                || !valid_text(&mode.description, MAX_DESCRIPTION_BYTES, false)
-            {
-                return Err(format!("扩展工具“{}”包含无效的模式文案。", tool.id));
-            }
-        }
-        if !mode_ids.contains(&tool.default_mode.to_ascii_lowercase()) {
-            return Err(format!("扩展工具“{}”的默认模式不存在。", tool.id));
-        }
-        if tool.preview_color.len() != 9
-            || !tool.preview_color.starts_with('#')
-            || !tool.preview_color[1..]
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit())
-        {
-            return Err(format!("扩展工具“{}”的预览色必须是 #RRGGBBAA。", tool.id));
         }
     }
     Ok(())
@@ -1496,29 +1389,6 @@ fn stored_extension(_path: &Path, manifest: ExtensionManifest, enabled: bool) ->
             commands: top_menu.commands.clone(),
         })
         .collect();
-    let tools = manifest
-        .tools
-        .iter()
-        .map(|tool| StoredExtensionTool {
-            id: tool.id.clone(),
-            name: tool.name.clone(),
-            description: tool.description.clone(),
-            kind: tool.kind.clone(),
-            placement: tool.placement.clone(),
-            icon: tool.icon.clone(),
-            modes: tool
-                .modes
-                .iter()
-                .map(|mode| StoredExtensionToolMode {
-                    id: mode.id.clone(),
-                    name: mode.name.clone(),
-                    description: mode.description.clone(),
-                })
-                .collect(),
-            default_mode: tool.default_mode.clone(),
-            preview_color: tool.preview_color.clone(),
-        })
-        .collect();
     StoredExtension {
         id: manifest.id,
         name: manifest.name,
@@ -1537,7 +1407,6 @@ fn stored_extension(_path: &Path, manifest: ExtensionManifest, enabled: bool) ->
         panels,
         menu_items,
         top_menus,
-        tools,
         enabled,
     }
 }
@@ -1785,7 +1654,6 @@ pub(crate) fn inspect_extension_package(
         command_count: manifest.commands.len(),
         panel_count: manifest.panels.len(),
         menu_count: manifest.menu_items.len() + manifest.top_menus.len(),
-        tool_count: manifest.tools.len(),
     })
 }
 
@@ -2111,21 +1979,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_host_owned_tool_contribution() {
+    fn rejects_unknown_manifest_fields() {
         let bytes = archive(&[(
             "manifest.json",
-            br#"{"schemaVersion":1,"id":"com.example.remote","name":"Remote","version":"1.0.0","tools":[{"id":"remote","name":"Remote","kind":"remote-pixel-brush","placement":"pencil","icon":"tool-smooth","modes":[{"id":"default","name":"Default"}],"defaultMode":"default"}]}"#,
-        )]);
-        let inspection = inspect_archive(Cursor::new(bytes)).unwrap();
-        assert_eq!(inspection.manifest.tools.len(), 1);
-        assert_eq!(inspection.manifest.tools[0].kind, "remote-pixel-brush");
-    }
-
-    #[test]
-    fn rejects_unknown_host_tool_capability() {
-        let bytes = archive(&[(
-            "manifest.json",
-            br#"{"schemaVersion":1,"id":"com.example.bad","name":"Bad","version":"1.0.0","tools":[{"id":"bad","name":"Bad","kind":"arbitrary-code","placement":"pencil","icon":"tool-smooth","modes":[{"id":"default","name":"Default"}],"defaultMode":"default"}]}"#,
+            br#"{"schemaVersion":1,"id":"com.example.strict","name":"Strict","version":"1.0.0","unsupportedContribution":[]}"#,
         )]);
         assert!(inspect_archive(Cursor::new(bytes)).is_err());
     }

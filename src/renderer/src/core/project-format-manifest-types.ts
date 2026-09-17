@@ -137,7 +137,8 @@ interface ManifestTimelapseSnapshot {
   width: number
   height: number
   changeScore?: number
-  dataFile: string
+  dataFile?: string
+  local?: import('@shared/types-timelapse').TimelapseFrameReference
 }
 
 export interface ManifestTimelapse extends Omit<TimelapseSettings, 'snapshots'> {
@@ -146,7 +147,7 @@ export interface ManifestTimelapse extends Omit<TimelapseSettings, 'snapshots'> 
 
 export type RasterDataEncoding = 'raw' | 'sparse-tiles-v1'
 
-export const PROJECT_SCHEMA_VERSION = 19
+export const PROJECT_SCHEMA_VERSION = 20
 
 export const FREE_TILE_SET_PROJECT_SCHEMA_VERSION = 18
 

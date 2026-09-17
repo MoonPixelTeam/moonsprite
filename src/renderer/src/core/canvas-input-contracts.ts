@@ -59,7 +59,6 @@ export interface CanvasDragState extends LayerMoveState {
     | 'airbrush'
     | 'liquify'
     | 'smooth'
-    | 'extension-tool'
     | 'shape'
     | 'freeform-shape'
     | 'polygon-shape'
@@ -95,9 +94,6 @@ export interface CanvasDragState extends LayerMoveState {
   perfectPixelCommittedEdit?: PixelEdit
   perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }
-  extensionToolMask?: Set<number>
-  extensionToolBounds?: SelectionRect | null
-  extensionToolContentRevision?: number
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint

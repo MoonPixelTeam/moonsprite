@@ -2,6 +2,8 @@
 
 [中文](0005-project-metadata-and-timelapse.zh-CN.md) | English
 
+> Storage is superseded by [ADR 0023](0023-local-timelapse-library.en.md): desktop recordings use a local library and ordinary saves store references. Embedded storage and earlier sampling descriptions below are historical; see [Product Behavior](../product/behavior.en.md) for current recording behavior.
+
 ## Status
 
 Accepted

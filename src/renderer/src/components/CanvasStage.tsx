@@ -19,7 +19,6 @@ import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
 import { createBoundsCanvasInput } from './canvas-input-bounds'
 import { createFreeTileCanvasInput } from './canvas-input-free-tile'
-import { createExtensionCanvasInput } from './canvas-input-extension'
 import { createSliceCanvasInput } from './canvas-input-slice'
 import { createLayerMoveCanvasInput } from './canvas-input-layer-move'
 import { createLineConnectionCanvasInput } from './canvas-input-line-connection'
@@ -42,14 +41,12 @@ import { useCanvasBoundsPreview } from './useCanvasBoundsPreview'
 import { useCanvasTextPreview } from './useCanvasTextPreview'
 import { useCanvasTileTarget } from './useCanvasTileTarget'
 import { useCanvasShapeCommit } from './useCanvasShapeCommit'
-import { useCanvasExtensionGesture } from './useCanvasExtensionGesture'
 import { useCanvasCursor } from './useCanvasCursor'
 import { useCanvasKeyboardInput } from './useCanvasKeyboardInput'
 import { useCanvasColorSampling } from './useCanvasColorSampling'
 import { useCanvasMagicLifecycle } from './useCanvasMagicLifecycle'
 import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 import { useCanvasPreferences } from './useCanvasPreferences'
-import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -69,6 +66,8 @@ import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { LineAnchorHistory } from './canvas-stage-helpers'
+import { useCanvasViewScrollbars } from './useCanvasViewScrollbars'
+import { Scrollbar } from './Scrollbar'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
   const { t } = useI18n()
@@ -186,6 +185,15 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     canvasRef,
     selectionCanvasRef,
     requestDrawRef
+  })
+  const viewScrollbars = useCanvasViewScrollbars({
+    documentId: session.document.id,
+    documentWidth: session.document.width,
+    documentHeight: session.document.height,
+    viewportWidth: session.viewportSize.width,
+    viewportHeight: session.viewportSize.height,
+    view: session.view,
+    rotationIndicatorPosition
   })
   const {
     lineAnchor,
@@ -399,7 +407,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get snapBrushPointToGrid() { return snapBrushPointToGrid },
     get cursorCompositePointSamplerFor() { return cursorCompositePointSamplerFor },
     get activeTheme() { return activeTheme },
-    get addExtensionToolFootprint() { return addExtensionToolFootprint },
     get scheduleDraw() { return scheduleDraw },
     get activeToolBrushSize() { return activeToolBrushSize }
   })
@@ -565,12 +572,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get activeBrushDither() { return activeBrushDither },
     get optimizedRotationEnabled() { return optimizedRotationEnabled },
     get balancedStraightLines() { return balancedStraightLines }
-  })
-
-  const { extensionToolRequestRef, extensionToolBusy, addExtensionToolFootprint, runExtensionTool, cancelExtensionToolRequest } = useCanvasExtensionGesture({
-    get optimizedRotationEnabled() { return optimizedRotationEnabled },
-    get invalidateCompositeRect() { return invalidateCompositeRect },
-    get requestDrawRef() { return requestDrawRef }
   })
 
   const {
@@ -1102,15 +1103,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get lineAnchorHistoryRef() { return lineAnchorHistoryRef }
   })
 
-  const extensionInput = createExtensionCanvasInput({
-    get extensionToolRequestRef() { return extensionToolRequestRef },
-    get addExtensionToolFootprint() { return addExtensionToolFootprint },
-    get inputRef() { return inputRef },
-    get scheduleBrushPreviewOverlay() { return scheduleBrushPreviewOverlay },
-    get updateCursor() { return updateCursor },
-    get runExtensionTool() { return runExtensionTool }
-  })
-
   const sliceInput = createSliceCanvasInput({
     get sliceTool() { return sliceTool },
     get sliceHandleAt() { return sliceHandleAt },
@@ -1354,7 +1346,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get tilemapSelectionCreationAllowed() { return tilemapSelectionCreationAllowed },
     get tilemapEditSelectionAtPoint() { return tilemapEditSelectionAtPoint },
     get freeTileInput() { return freeTileInput },
-    get extensionInput() { return extensionInput },
     get sliceTool() { return sliceTool },
     get sliceInput() { return sliceInput },
     get layerMoveInput() { return layerMoveInput },
@@ -1397,7 +1388,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get selectionInput() { return selectionInput },
     get fillInput() { return fillInput },
     get strokeInput() { return strokeInput },
-    get extensionInput() { return extensionInput },
     get samplingInput() { return samplingInput },
     get boundsInput() { return boundsInput },
     get freeTileInput() { return freeTileInput },
@@ -1429,7 +1419,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get navigationInput() { return navigationInput },
     get selectionInput() { return selectionInput },
     get samplingInput() { return samplingInput },
-    get extensionInput() { return extensionInput },
     get fillInput() { return fillInput },
     get tileInput() { return tileInput },
     get freeTileInput() { return freeTileInput },
@@ -1465,6 +1454,22 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <img ref={penCursorRef} className="stage-pen-cursor" alt="" hidden aria-hidden="true" draggable={false} />
         <span ref={adaptiveCursorRef} className="stage-pen-cursor stage-adaptive-cursor" hidden aria-hidden="true" />
         {eyedropperLens.overlay}
+        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible && <Scrollbar
+          className={`stage-view-scrollbar stage-view-scrollbar-horizontal${viewScrollbars.vertical.visible ? ' stage-view-scrollbar-with-corner' : ''}`}
+          orientation="horizontal"
+          value={viewScrollbars.horizontal.position}
+          thumbRatio={viewScrollbars.horizontal.thumbRatio}
+          ariaLabel={`${t('canvas.aria')} X`}
+          onChange={viewScrollbars.horizontal.onChange}
+        />}
+        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.vertical.visible && <Scrollbar
+          className={`stage-view-scrollbar stage-view-scrollbar-vertical${viewScrollbars.horizontal.visible ? ' stage-view-scrollbar-with-corner' : ''}`}
+          orientation="vertical"
+          value={viewScrollbars.vertical.position}
+          thumbRatio={viewScrollbars.vertical.thumbRatio}
+          ariaLabel={`${t('canvas.aria')} Y`}
+          onChange={viewScrollbars.vertical.onChange}
+        />}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div
             className="canvas-key-display"
@@ -1490,40 +1495,6 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           </span>
         </div>
       </div>
-      {extensionToolBusy &&
-        createPortal(
-          <div className="modal-backdrop extension-tool-progress-backdrop" role="presentation">
-            <div
-              className="modal extension-tool-progress-modal"
-              role="alertdialog"
-              aria-modal="true"
-              aria-live="polite"
-              aria-labelledby="extension-tool-progress-title"
-            >
-              <header>
-                <div className="save-progress-heading">
-                  <span className="save-progress-icon" aria-hidden="true">
-                    <span className="save-progress-animation" />
-                  </span>
-                  <div>
-                    <span className="eyebrow">EXTENSION TOOL</span>
-                    <h2 id="extension-tool-progress-title">AI 修线处理中</h2>
-                  </div>
-                </div>
-              </header>
-              <div className="save-progress-body">
-                <strong>正在等待 AI 返回修线结果…</strong>
-                <p>处理期间画布和其他工具已暂时锁定，超过 45 秒会自动取消。</p>
-              </div>
-              <footer>
-                <button type="button" className="quiet-button" onClick={cancelExtensionToolRequest}>
-                  取消
-                </button>
-              </footer>
-            </div>
-          </div>,
-          document.body
-        )}
     </PerformanceProfiler>
   )
 }

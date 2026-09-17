@@ -654,13 +654,15 @@ export const resolveTimelapseMimeType = (
   isSupported: (mimeType: string) => boolean
 ): string | null => VIDEO_MIME_TYPES[format].find(isSupported) ?? null
 
-const decodeSnapshot = async (snapshot: TimelapseSnapshot): Promise<ImageBitmap> => {
-  const buffer = snapshot.data.buffer.slice(snapshot.data.byteOffset, snapshot.data.byteOffset + snapshot.data.byteLength) as ArrayBuffer
+const decodeSnapshot = async (snapshot: TimelapseSnapshot, readFrame?: (snapshot: TimelapseSnapshot) => Promise<Uint8Array>): Promise<ImageBitmap> => {
+  const data = readFrame ? await readFrame(snapshot) : snapshot.data
+  if (!data.byteLength) throw new Error('Local recording data is unavailable')
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
   const blob = new Blob([buffer], { type: 'image/png' })
   return createImageBitmap(blob)
 }
 
-export async function encodeTimelapseVideo(settings: TimelapseSettings, format: TimelapseVideoFormat, options: TimelapseExportOptions = { mode: 'duration', durationSeconds: 1 }, onProgress?: (value: number) => void): Promise<Uint8Array> {
+export async function encodeTimelapseVideo(settings: TimelapseSettings, format: TimelapseVideoFormat, options: TimelapseExportOptions = { mode: 'duration', durationSeconds: 1 }, onProgress?: (value: number) => void, readFrame?: (snapshot: TimelapseSnapshot) => Promise<Uint8Array>): Promise<Uint8Array> {
   if (settings.snapshots.length === 0) throw new Error(tr('timelapse.noFrames'))
   if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement.prototype.captureStream !== 'function' || typeof createImageBitmap !== 'function') {
     throw new Error(tr('timelapse.unsupported'))
@@ -680,7 +682,7 @@ export async function encodeTimelapseVideo(settings: TimelapseSettings, format: 
   const drawFrame = async (snapshotIndex: number): Promise<void> => {
     if (activeSnapshotIndex !== snapshotIndex) {
       activeBitmap?.close()
-      activeBitmap = await decodeSnapshot(settings.snapshots[snapshotIndex])
+      activeBitmap = await decodeSnapshot(settings.snapshots[snapshotIndex], readFrame)
       activeSnapshotIndex = snapshotIndex
     }
     const snapshot = settings.snapshots[snapshotIndex]

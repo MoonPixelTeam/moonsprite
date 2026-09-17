@@ -365,6 +365,7 @@ export function LayerTimelineCells({
           // active frame background remains visible.
           const frameFocusVisualSuppressed = focusState.frameFocus && selectionOutlineVisible
           const currentCell = Boolean(
+            !groupVisualSelectionActive &&
             !animationCelDragActive &&
               !frameFocusVisualSuppressed &&
               !maskVisualSelectionActive &&

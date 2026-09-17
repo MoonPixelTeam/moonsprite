@@ -43,7 +43,7 @@ export function ProjectInfoDialog({ document, onClose }: ProjectInfoDialogProps)
   const statistics = document.statistics ?? { strokeCount: 0, operationCount: 0, drawingTimeMs: 0 }
   const timeline = document.animation
   const timelapseFrames = document.timelapse?.snapshots.length ?? 0
-  const timelapseBytes = document.timelapse?.snapshots.reduce((total, snapshot) => total + snapshot.data.byteLength, 0) ?? 0
+  const timelapseBytes = document.timelapse?.snapshots.reduce((total, snapshot) => total + (snapshot.data.byteLength || snapshot.local?.length || 0), 0) ?? 0
   const highlights: Array<{ label: string; value: string; suffix?: string; icon: PixelUtilityIconKind | 'pencil' | 'drawingTime' | 'layerCount' }> = [
     { label: t('projectInfo.strokes'), value: statistics.strokeCount.toLocaleString(), icon: 'pencil' },
     { label: t('projectInfo.drawingTime'), value: formatDuration(statistics.drawingTimeMs), icon: 'drawingTime' },

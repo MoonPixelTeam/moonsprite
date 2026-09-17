@@ -1,7 +1,7 @@
 import { PhysicalSize } from '@tauri-apps/api/dpi'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import type { ToolIconScale, UiScale } from '@/core/file-preferences'
+import type { BodyFontScale, ToolIconScale, UiScale } from '@/core/file-preferences'
 import { isTauriRuntime, observeDisplayScaleFactor } from './display-scale'
 
 const ZOOM_EPSILON = 0.000001
@@ -126,4 +126,10 @@ export function applyToolIconScale(scale: ToolIconScale): void {
   }
   document.documentElement.dataset.toolIconScale = compact ? 'normal' : 'large'
   for (const [name, value] of Object.entries(sizes)) document.documentElement.style.setProperty(name, value)
+}
+
+/** Applies only the shared body-text tokens, leaving canvas coordinates and icon geometry untouched. */
+export function applyBodyFontScale(scale: BodyFontScale): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--ui-body-font-scale', String(scale))
 }

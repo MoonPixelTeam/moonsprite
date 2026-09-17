@@ -4,30 +4,6 @@
 
 MoonSprite 的普通脚本运行在受限的 Lua 5.4 沙箱中，文件放在程序根目录的 `scripts` 文件夹内，并从“文件 > 脚本”打开。`.msext` 同时支持 `schemaVersion: 1` 的 Lua 兼容层和 `schemaVersion: 2` 的 Extension Runtime v1；本页重点说明 Lua/MSE API。普通 Lua 脚本不能直接读写文件、启动进程、访问网络或加载任意 Lua 包。扩展包结构与清单见 [MoonSprite 扩展开发](../extensions/README.md)，Runtime 的常驻 sandbox HTML/JavaScript、权限和窗口 API 见 [Extension Runtime v1](../extensions/runtime-api.md)。
 
-需要复用宿主绘制事务和原生工具栏交互的功能，可以声明宿主工具。当前提供通用的 `remote-pixel-brush` 能力：
-
-```json
-{
-  "tools": [
-    {
-      "id": "remote-cleanup",
-      "name": "Remote Cleanup",
-      "description": "Process the brushed pixel region after release.",
-      "kind": "remote-pixel-brush",
-      "placement": "pencil",
-      "icon": "tool-smooth",
-      "modes": [{ "id": "default", "name": "Default" }],
-      "defaultMode": "default",
-      "previewColor": "#2979ff66"
-    }
-  ]
-}
-```
-
-启用扩展后，该工具由宿主渲染到铅笔工具组；名称、模式和预览色来自扩展清单，配置弹窗、网络请求和像素事务由通用宿主能力执行。扩展清单不会获得任意网络、DOM 或文档内部对象访问权。
-
-配置时填写 OpenAI 兼容的 Chat Completions API 地址（例如 `https://api.deepseek.com`）、API 密钥和模型。填写中转站根地址时，宿主会依次尝试 `/chat/completions` 和 `/v1/chat/completions`，将涂抹区域作为 JSON 像素数据发送，并要求模型优先以 JSON 返回稀疏 `edits`（本地像素索引和 RGBA），也兼容同尺寸的完整 RGBA 像素补丁。
-
 ## Lua 扩展兼容层
 
 扩展包是 ZIP 容器。`schemaVersion: 1` 清单可以声明多个 Lua 命令和由 MoonSprite 渲染的栏目：

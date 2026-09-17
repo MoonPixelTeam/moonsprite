@@ -2,23 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { StoredExtension, ExtensionPackagePreview } from '@shared/types-extensions'
 import {
   listExtensionPanelContributions,
-  listExtensionToolContributions,
   listExtensionTopMenuContributions,
-  publishExtensionToolContributions,
   reconcileExtensionPanelVisibility,
   saveExtensionPanelVisibility
 } from '@/core/extension-contributions'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
-import type { DocumentSession } from '@/store/workspace'
 
 export function useAppExtensions({
-  session,
   openMenu,
   setOpenMenu,
   refreshLuaScripts
 }: {
-  session: DocumentSession | null
   openMenu: string | null
   setOpenMenu: (menu: string | null) => void
   refreshLuaScripts: () => Promise<void>
@@ -66,15 +61,6 @@ export function useAppExtensions({
 
   const extensionPanelContributions = useMemo(() => listExtensionPanelContributions(extensions), [extensions])
 
-  const extensionToolContributions = useMemo(() => listExtensionToolContributions(extensions), [extensions])
-
-  useEffect(() => {
-    publishExtensionToolContributions(extensionToolContributions)
-    if (session?.tool !== 'extension') return
-    if (extensionToolContributions.some(({ key }) => key === session.extensionToolId)) return
-    useWorkspace.getState().setTool('pencil')
-  }, [extensionToolContributions, session?.extensionToolId, session?.tool])
-
   const setExtensionPanelVisible = useCallback((key: string, visible: boolean): void => {
     setExtensionPanelVisibility((current) => ({ ...current, [key]: visible }))
     saveExtensionPanelVisibility(key, visible)
@@ -101,7 +87,7 @@ export function useAppExtensions({
       `作者：${preview.author || '未提供'}　版本：${preview.version || '未提供'}`,
       `标识：${preview.id}`,
       preview.description || '此扩展未提供描述。',
-      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount} · 工具 ${preview.toolCount}`
+      `包含：命令 ${preview.commandCount} · 面板 ${preview.panelCount} · 菜单 ${preview.menuCount}`
     ]
       .filter(Boolean)
       .join('\n')
@@ -134,7 +120,6 @@ export function useAppExtensions({
     extensions,
     extensionPanelVisibility,
     extensionPanelContributions,
-    extensionToolContributions,
     setExtensionPanelVisible,
     toggleExtensionPanel,
     openLuaScriptFolder,

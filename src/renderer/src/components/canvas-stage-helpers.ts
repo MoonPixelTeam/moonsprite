@@ -232,8 +232,6 @@ export const shareCanvasToolSettings = (target: DocumentSession, source: Documen
   airbrushScatterRadius: source.airbrushScatterRadius,
   airbrushDensity: source.airbrushDensity,
   airbrushIntervalMs: source.airbrushIntervalMs,
-  extensionToolId: source.extensionToolId,
-  extensionToolMode: source.extensionToolMode
 })
 
 export const timelineSelectionPrecedesCanvasMarquee = (session: DocumentSession, selection = session.selection): boolean => timelineSelectionPrecedesMarquee({

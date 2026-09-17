@@ -15,6 +15,7 @@ export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-dir
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
+export const CANVAS_VIEW_SCROLLBARS_ENABLED_KEY = 'moonsprite.preference.canvas-view-scrollbars-enabled'
 export const DRAWING_BRUSH_PREVIEW_ENABLED_KEY = 'moonsprite.preference.drawing-brush-preview-enabled'
 export const RELATIVE_LUMINANCE_SCOPE_KEY = 'moonsprite.preference.relative-luminance-scope'
 export const LANGUAGE_PREFERENCE_KEY = APP_LANGUAGE_PREFERENCE_KEY
@@ -89,6 +90,7 @@ export const QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY = 'moonsprite.preferen
 export const QUICK_COMMAND_PREFERENCES_KEY = 'moonsprite.preference.quick-command-items'
 export const QUICK_COMMAND_BARS_PREFERENCE_KEY = 'moonsprite.preference.quick-command-bars'
 export const UI_SCALE_PREFERENCE_KEY = 'moonsprite.preference.ui-scale'
+export const BODY_FONT_SCALE_PREFERENCE_KEY = 'moonsprite.preference.body-font-scale'
 export const TOOL_ICON_SCALE_PREFERENCE_KEY = 'moonsprite.preference.tool-icon-scale'
 export const ANIMATIONS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.animations-enabled'
 export const UI_MOTION_LEVEL_PREFERENCE_KEY = 'moonsprite.preference.ui-motion-level'
@@ -114,6 +116,9 @@ export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
 export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
 export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
+/** Display-only scale for interface body text; it intentionally does not scale canvas or icons. */
+export const BODY_FONT_SCALE_VALUES = [0.85, 1, 1.15, 1.3] as const
+export type BodyFontScale = typeof BODY_FONT_SCALE_VALUES[number]
 export type ToolIconScale = 1 | 2
 export type UiMotionLevel = 'off' | 'subtle' | 'normal' | 'full'
 export type TimelinePlaybackModePreference = 'once' | 'all' | 'tag'
@@ -416,6 +421,11 @@ export function parseUiScale(value: string | null): UiScale {
   return UI_SCALE_VALUES.includes(parsed as UiScale) ? parsed as UiScale : 1
 }
 
+export function parseBodyFontScale(value: string | null): BodyFontScale {
+  const parsed = Number(value)
+  return BODY_FONT_SCALE_VALUES.includes(parsed as BodyFontScale) ? parsed as BodyFontScale : 1
+}
+
 export function parseToolIconScale(value: string | null): ToolIconScale {
   return value === '2' ? 2 : 1
 }
@@ -595,6 +605,7 @@ export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | '
 export interface EditorPreferences {
   language: AppLocale
   uiScale: UiScale
+  bodyFontScale: BodyFontScale
   toolIconScale: ToolIconScale
   uiMotionLevel: UiMotionLevel
   animationsEnabled: boolean
@@ -622,6 +633,7 @@ export interface EditorPreferences {
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
+  canvasViewScrollbarsEnabled: boolean
   drawingBrushPreviewEnabled: boolean
   relativeLuminanceScope: RelativeLuminanceScope
   zoomToolDragMode: ZoomToolDragMode
@@ -688,6 +700,7 @@ export interface EditorPreferences {
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
+  bodyFontScale: 1,
   toolIconScale: 1,
   uiMotionLevel: 'off',
   animationsEnabled: false,
@@ -713,6 +726,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
+  canvasViewScrollbarsEnabled: true,
   drawingBrushPreviewEnabled: true,
   relativeLuminanceScope: 'canvas',
   zoomToolDragMode: 'stepped',
@@ -1177,6 +1191,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
   return {
     language: parseAppLocale(get(LANGUAGE_PREFERENCE_KEY)),
     uiScale: parseUiScale(get(UI_SCALE_PREFERENCE_KEY)),
+    bodyFontScale: parseBodyFontScale(get(BODY_FONT_SCALE_PREFERENCE_KEY)),
     toolIconScale: parseToolIconScale(get(TOOL_ICON_SCALE_PREFERENCE_KEY)),
     uiMotionLevel,
     animationsEnabled: uiMotionLevel !== 'off',
@@ -1202,6 +1217,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
+    canvasViewScrollbarsEnabled: get(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY) !== 'false',
     drawingBrushPreviewEnabled: parseDrawingBrushPreviewEnabled(get(DRAWING_BRUSH_PREVIEW_ENABLED_KEY)),
     relativeLuminanceScope: parseRelativeLuminanceScope(get(RELATIVE_LUMINANCE_SCOPE_KEY)),
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
@@ -1274,6 +1290,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
   const values: Record<string, string> = {
     [LANGUAGE_PREFERENCE_KEY]: preferences.language,
     [UI_SCALE_PREFERENCE_KEY]: String(parseUiScale(String(preferences.uiScale))),
+    [BODY_FONT_SCALE_PREFERENCE_KEY]: String(parseBodyFontScale(String(preferences.bodyFontScale))),
     [TOOL_ICON_SCALE_PREFERENCE_KEY]: String(parseToolIconScale(String(preferences.toolIconScale))),
     [ANIMATIONS_ENABLED_PREFERENCE_KEY]: String(uiMotionLevel !== 'off'),
     [UI_MOTION_LEVEL_PREFERENCE_KEY]: uiMotionLevel,
@@ -1299,6 +1316,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
+    [CANVAS_VIEW_SCROLLBARS_ENABLED_KEY]: String(preferences.canvasViewScrollbarsEnabled),
     [DRAWING_BRUSH_PREVIEW_ENABLED_KEY]: String(preferences.drawingBrushPreviewEnabled),
     [RELATIVE_LUMINANCE_SCOPE_KEY]: preferences.relativeLuminanceScope,
     [ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY]: preferences.zoomToolDragMode,

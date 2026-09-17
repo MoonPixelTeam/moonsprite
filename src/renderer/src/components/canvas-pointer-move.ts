@@ -7,7 +7,6 @@ import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
 import { createBoundsCanvasInput } from './canvas-input-bounds'
 import { createFreeTileCanvasInput } from './canvas-input-free-tile'
-import { createExtensionCanvasInput } from './canvas-input-extension'
 import { createSliceCanvasInput } from './canvas-input-slice'
 import { createLayerMoveCanvasInput } from './canvas-input-layer-move'
 import { createStrokeCanvasInput } from './canvas-input-stroke'
@@ -65,7 +64,6 @@ interface Ports {
   selectionInput: ReturnType<typeof createSelectionCanvasInput>
   fillInput: ReturnType<typeof createFillCanvasInput>
   strokeInput: ReturnType<typeof createStrokeCanvasInput>
-  extensionInput: ReturnType<typeof createExtensionCanvasInput>
   samplingInput: ReturnType<typeof createSamplingCanvasInput>
   boundsInput: ReturnType<typeof createBoundsCanvasInput>
   freeTileInput: ReturnType<typeof createFreeTileCanvasInput>
@@ -108,7 +106,6 @@ export function createCanvasPointerMove(ports: Ports) {
       selectionInput,
       fillInput,
       strokeInput,
-      extensionInput,
       samplingInput,
       boundsInput,
       freeTileInput,
@@ -248,8 +245,7 @@ export function createCanvasPointerMove(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
-        session.tool === 'liquify' ||
-        session.tool === 'extension')
+        session.tool === 'liquify')
     if (modifierSizing && !inputRef.current.drag) {
       if (!inputRef.current.modifierBrushSize)
         inputRef.current.modifierBrushSize = {
@@ -302,7 +298,6 @@ export function createCanvasPointerMove(ports: Ports) {
     // Do not overwrite its previous point with the integer-snapped `point`.
     if (drag.kind !== 'liquify' && drag.kind !== 'smooth') drag.last = point
     if (drag.kind === 'smooth' && drag.edit && drag.smoothStroke && strokeInput.moveSmooth({ drag, session, point })) return
-    if (drag.kind === 'extension-tool' && extensionInput.moveExtension({ drag, point, session })) return
     if (drag.kind === 'sample-color' && samplingInput.moveSample({ drag, point, session, state, event })) return
     if (drag.kind === 'zoom-drag' && drag.startClient && navigationInput.moveZoom({ drag, session, event })) return
     if (

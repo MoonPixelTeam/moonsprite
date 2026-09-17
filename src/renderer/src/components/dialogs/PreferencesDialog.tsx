@@ -4,6 +4,7 @@ import {
   EYEDROPPER_MAGNIFIER_SIZE_VALUES,
   DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
   DEFAULT_QUICK_COMMAND_BARS,
+  BODY_FONT_SCALE_VALUES,
   UI_SCALE_VALUES,
   VIEW_DRAG_SENSITIVITY_VALUES,
   KEY_DISPLAY_DURATIONS,
@@ -15,6 +16,7 @@ import {
   saveEditorPreferences,
   setEditorPreferencesPreview,
   type BrushPreviewMode,
+  type BodyFontScale,
   type CursorScale,
   type DocumentSizePreset,
   type EyedropperMagnifierSize,
@@ -94,9 +96,9 @@ const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
 const QUICK_COMMAND_SEARCH_KEYS = Object.values(QUICK_COMMAND_METADATA).flatMap(({ description, label }) => [label, description])
 
 const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
-  general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording', 'preferences.diagnostics.mode', 'preferences.diagnostics.off', 'preferences.diagnostics.memory', 'preferences.diagnostics.full'],
+  general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.bodyFontSize', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording', 'preferences.diagnostics.mode', 'preferences.diagnostics.off', 'preferences.diagnostics.memory', 'preferences.diagnostics.full'],
   quickCommands: ['preferences.sections.quickCommands', 'preferences.groups.quickCommandLayout', 'preferences.quickCommandBar', 'preferences.quickCommandBarTranslucent', 'preferences.quickCommandBarTranslucentHint', 'preferences.quickCommandOrderHint', 'preferences.quickCommandBarName', 'preferences.quickCommandBarEdge', ...QUICK_COMMAND_SEARCH_KEYS],
-  appearance: ['preferences.groups.canvas', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
+  appearance: ['preferences.groups.canvas', 'preferences.canvasViewScrollbars', 'preferences.canvasViewScrollbarsHint', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
   theme: ['preferences.groups.theme', 'preferences.theme.available', 'preferences.theme.current'],
   input: ['preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position'],
   tablet: ['preferences.groups.tablet', 'preferences.tablet.api', 'preferences.tablet.touchMode', 'preferences.tablet.pressure', 'preferences.tablet.eraserTip', 'preferences.tablet.barrelButton', 'preferences.tablet.rightClick', 'preferences.tablet.twoFingerZoom', 'preferences.tablet.twoFingerRotate', 'preferences.tablet.tilt', 'preferences.tablet.twist'],
@@ -497,6 +499,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title={t('preferences.groups.interface')}>
           <FormField className="preference-field" label={t('preferences.language')}><ThemedSelect value={preferences.language} groups={[{ label: t('preferences.languageGroup'), options: AVAILABLE_APP_LOCALES.map((value) => ({ value, label: localeDisplayName(value, locale) })) }]} label={t('preferences.language')} onChange={(value) => update('language', value as AppLocale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.uiScale')}><ThemedSelect value={String(preferences.uiScale)} groups={[{ label: t('preferences.uiScaleGroup'), options: UI_SCALE_VALUES.map((value) => ({ value: String(value), label: `${Math.round(value * 100)}%`, description: value === 0.75 ? t('preferences.uiScaleFractionalHint') : undefined })) }]} label={t('preferences.uiScale')} onChange={(value) => update('uiScale', Number(value) as UiScale)} /></FormField>
+          <FormField className="preference-field" label={t('preferences.bodyFontSize')}><ThemedSelect value={String(preferences.bodyFontScale)} groups={[{ label: t('preferences.bodyFontSizeGroup'), options: BODY_FONT_SCALE_VALUES.map((value) => ({ value: String(value), label: `${Math.round(value * 100)}% · ${Math.round(12 * value)}px` })) }]} label={t('preferences.bodyFontSize')} onChange={(value) => update('bodyFontScale', Number(value) as BodyFontScale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.toolIconScale')}><ThemedSelect value={String(preferences.toolIconScale)} groups={[{ label: t('preferences.toolIconScaleGroup'), options: [{ value: '1', label: t('preferences.toolIconScale.normal') }, { value: '2', label: t('preferences.toolIconScale.large') }] }]} label={t('preferences.toolIconScale')} onChange={(value) => update('toolIconScale', Number(value) as ToolIconScale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.animations')} hint={t('preferences.animationsHint')}><ThemedSelect value={preferences.uiMotionLevel} groups={[{ label: t('preferences.animationsGroup'), options: [
             { value: 'off', label: t('preferences.animationsLevel.off'), description: t('preferences.animationsLevel.offHint') },
@@ -535,6 +538,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       </PreferenceGroup>}
       {section === 'appearance' && <>
         <PreferenceGroup title={t('preferences.groups.canvas')}>
+          {toggle(t('preferences.canvasViewScrollbars'), preferences.canvasViewScrollbarsEnabled, (value) => update('canvasViewScrollbarsEnabled', value), t('preferences.canvasViewScrollbarsHint'))}
           <FormField className="preference-field" label={t('preferences.checkerSize')}><NumberInput aria-label={t('preferences.checkerSize')} min={1} max={256} suffix="px" value={preferences.checkerboard.size} onValueChange={(size) => update('checkerboard', { ...preferences.checkerboard, size: Math.round(size) })} /></FormField>
           <FormField className="preference-field" label={t('preferences.luminanceScope')}><ThemedSelect value={preferences.relativeLuminanceScope} groups={[{ label: t('preferences.luminanceScopeGroup'), options: [{ value: 'canvas', label: t('preferences.luminanceScope.canvas') }, { value: 'app', label: t('preferences.luminanceScope.app') }] }]} label={t('preferences.luminanceScope')} onChange={(value) => update('relativeLuminanceScope', value as RelativeLuminanceScope)} /></FormField>
           <div className="preference-checker-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.checkerColors')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['checkerLight', 'checkerDark'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-color-value-list"><ColorValueControl color={preferences.checkerboard.lightColor} density="regular" onChange={(lightColor) => setVisualOverride('checkerLight', { ...lightColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.lightColor')} fillWithColor /><ColorValueControl color={preferences.checkerboard.darkColor} density="regular" onChange={(darkColor) => setVisualOverride('checkerDark', { ...darkColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.darkColor')} fillWithColor /></div></div>

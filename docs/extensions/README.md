@@ -9,7 +9,7 @@ MoonSprite 扩展使用 `.msext` 后缀，文件内容是 ZIP 容器。包根必
 - `schemaVersion: 1`：声明式 Lua 扩展。适合可撤销的文档命令、菜单和命令栏目；Lua API 见 [Lua 脚本与 MSE API](../scripting/README.md)。
 - `schemaVersion: 2`：在兼容 Lua 命令的基础上，可增加 Extension Runtime v1、宿主组件设置和自有附属窗口。声明 `runtime` 时必须同时声明 `apiVersion: "1.0.0"`。
 
-`commands[]`、`panels[]`、`menuItems[]`、`topMenus[]` 和 `tools[]` 两个版本均可使用；`settingsUi` 和 `runtime` 仅支持 schema 2。`settingsEntry` 是两者都可使用的受限 HTML 设置页。
+`commands[]`、`panels[]`、`menuItems[]` 和 `topMenus[]` 两个版本均可使用；`settingsUi` 和 `runtime` 仅支持 schema 2。`settingsEntry` 是两者都可使用的受限 HTML 设置页。
 
 ## 包结构
 
@@ -48,7 +48,6 @@ example.msext
 - `panels[]`：宿主渲染的命令栏目，通过“窗口 > 栏目”切换；`defaultVisible` 默认为 `false`。
 - `menuItems[]`：插入 `file`、`edit`、`select`、`canvas`、`layer`、`window` 或 `help`；`position` 为 `start` 或 `end`。提供 `name` 时创建子菜单，否则直接插入命令。
 - `topMenus[]`：新增宿主渲染的顶层菜单；`position` 可为 `start`、`end`、`before:<内置菜单>` 或 `after:<内置菜单>`。
-- `tools[]`：宿主拥有实现的工具贡献。当前只支持 `kind: "remote-pixel-brush"` 和 `placement: "pencil"`，不是任意前端代码入口。
 
 贡献 ID 在各自命名空间内不允许仅靠大小写区分。`commands` 引用必须使用清单中命令 ID 的准确大小写。
 
@@ -60,13 +59,13 @@ example.msext
 
 - 压缩包不超过 50 MiB、文件数不超过 256、解压总量不超过 256 MiB、`manifest.json` 不超过 256 KiB。
 - Runtime 入口不超过 1 MiB，设置入口不超过 512 KiB；最多 64 个 Runtime 资源，单项不超过 16 MiB。
-- 最多 64 个命令、16 个栏目、32 个内置菜单贡献、16 个顶层菜单、16 个工具和 64 个设置控件；单个栏目或菜单最多引用 32 个命令。
+- 最多 64 个命令、16 个栏目、32 个内置菜单贡献、16 个顶层菜单和 64 个设置控件；单个栏目或菜单最多引用 32 个命令。
 - schema 2 Runtime 不能在尚未实现 Runtime v1 的旧版 MoonSprite 中运行。扩展应在启动后调用 `runtime.getCapabilities()`，不要仅根据清单假定方法存在。
 - 任意文档像素或结构写入仍应通过包内 Lua 命令完成，以获得事务、撤销、目标校验和失败回滚。
 
 ## 安装与生命周期
 
-MoonSprite 会先校验并解压到 staging 目录，再原子替换同 ID 版本。更新扩展时保留启用状态。只有已启用扩展会贡献 Runtime、菜单、栏目与工具；停用、替换或卸载会销毁 Runtime，并关闭该扩展创建的附属窗口。扩展存储按扩展 ID 隔离，不写入工程文件、dirty 状态或撤销历史。
+MoonSprite 会先校验并解压到 staging 目录，再原子替换同 ID 版本。更新扩展时保留启用状态。只有已启用扩展会贡献 Runtime、菜单与栏目；停用、替换或卸载会销毁 Runtime，并关闭该扩展创建的附属窗口。扩展存储按扩展 ID 隔离，不写入工程文件、dirty 状态或撤销历史。
 
 ## 继续阅读
 

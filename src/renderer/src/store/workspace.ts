@@ -38,7 +38,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     touchMetadata(session)
     session.revision += 1
     set({ sessions: [...sessions] })
-  })
+  }, message => set({ message }))
   const context = { get, set, recording, services: createWorkspaceServices() }
   return {
     sessions: [],

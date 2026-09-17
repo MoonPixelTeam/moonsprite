@@ -15,7 +15,7 @@ import {
 import { applyThemeToDocument } from '@/core/theme'
 import { readStoredString } from '@/core/storage'
 import { applyCursorPreferences } from '@/platform/cursor-theme'
-import { applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
+import { applyBodyFontScale, applyToolIconScale, applyUiScale } from '@/platform/ui-scale'
 type AlignmentPreferenceKey = 'gridAlignmentEnabled' | 'smartAlignmentEnabled' | 'alignmentGuidesVisible'
 
 export function useAppPreferences({ relativeLuminance }: { relativeLuminance: boolean }) {
@@ -108,6 +108,10 @@ export function useAppPreferences({ relativeLuminance }: { relativeLuminance: bo
       // Native WebView zoom can be unavailable in browser previews.
     })
   }, [runtimePreferences.uiScale])
+
+  useEffect(() => {
+    applyBodyFontScale(runtimePreferences.bodyFontScale)
+  }, [runtimePreferences.bodyFontScale])
 
   useEffect(() => {
     applyToolIconScale(runtimePreferences.toolIconScale)

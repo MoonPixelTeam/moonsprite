@@ -1,4 +1,6 @@
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
+import { prepareLocalTimelapseSave, portableTimelapseDocument } from './timelapse-library-service'
+import { readTimelapseFrame } from '@/platform/timelapse-library'
 import type { MoonSpriteApi } from '@shared/types-platform'
 import type { TimelapseExportFormat } from '@shared/types-timelapse'
 import type { RasterLayer } from '@shared/types-layer'
@@ -194,6 +196,7 @@ function rememberLastDocumentExport(document: SpriteDocument, options: ExportOpt
 }
 
 export interface SaveAsOptions {
+  includeTimelapse?: boolean
   name: string
   format: 'moonsprite' | SaveImageKind
   scalePercent: number
@@ -339,11 +342,22 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
       if (result.canceled || !result.filePath || !request.getDocument()) return null
       filePath = result.filePath.endsWith('.moonsprite') ? result.filePath : `${result.filePath}.moonsprite`
     }
+    const beforePersistence = request.getDocument()
+    if (!beforePersistence || !filePath) return null
+    if (!imageFormat) await prepareLocalTimelapseSave(beforePersistence.document, request.api)
     const source = request.getDocument()
-    if (!source || !filePath) return null
+    if (!source) return null
     const generation = { document: source.document, revision: source.revision, snapshots: source.document.timelapse?.snapshots, metadata: saveMetadata(source.document) }
     request.lifecycle?.onEncodeStart?.()
     if (!imageFormat) {
+      if (request.options?.includeTimelapse) {
+        // Deliberate portable export: keep it outside the incremental baseline.
+        const portable = await portableTimelapseDocument(source.document, request.api)
+        const data = await encodeProjectAsync(portable, { onProgress: request.lifecycle?.onEncodeProgress })
+        request.lifecycle?.onWriteStart?.()
+        await request.api.writeBinaryAtomic(filePath, data)
+        return { filePath, revision: source.revision, setDocumentFilePath: true }
+      }
       const encoded = await encodeProjectSaveAsync(source.document, { onProgress: request.lifecycle?.onEncodeProgress })
       request.lifecycle?.onWriteStart?.()
       let acceptBaseline = true
@@ -889,7 +903,7 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
       destinations.push(resolvedPath)
     }
     throwIfExportCanceled(lifecycle)
-    if (typeof Worker !== 'undefined') {
+    if (typeof Worker !== 'undefined' && !settings.snapshots.some(frame => frame.local)) {
       lifecycle?.onEncodeStart?.()
       let lastPath = directory
       await exportDocumentInWorker(document, {
@@ -917,7 +931,7 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
     for (const [index, snapshot] of settings.snapshots.entries()) {
       throwIfExportCanceled(lifecycle)
       lifecycle?.onExportTaskStart?.(index + 1, settings.snapshots.length)
-      const frameDocument = decodePng(snapshot.data, `${document.name}-${index + 1}`)
+      const frameDocument = decodePng(await readTimelapseFrame(snapshot, api), `${document.name}-${index + 1}`)
       lastPath = destinations[index]
       if (format === 'png' && api.writeScaledPngAtomic) {
         await writeDocumentPngAtomic(api, lastPath, frameDocument, scalePercent, 'png-rgba', undefined, (value) => {
@@ -951,7 +965,7 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
   const bytes = await encodeTimelapseVideo(settings, format, options, (value) => {
     throwIfExportCanceled(lifecycle)
     lifecycle?.onEncodeProgress?.(value)
-  })
+  }, snapshot => readTimelapseFrame(snapshot, api))
   throwIfExportCanceled(lifecycle)
   lifecycle?.onWriteStart?.()
   await api.writeBinaryAtomic(resolvedFilePath, bytes)

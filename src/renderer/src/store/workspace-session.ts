@@ -55,8 +55,6 @@ export const isToolAvailableForSession = (session: DocumentSession, tool: ToolId
 export const copyCanvasToolSettings = (source: DocumentSession, target: DocumentSession): void => {
   Object.assign(target, {
     tool: source.tool,
-    extensionToolId: source.extensionToolId,
-    extensionToolMode: source.extensionToolMode,
     moveKind: source.moveKind,
     primaryColor: { ...source.primaryColor },
     secondaryColor: { ...source.secondaryColor },
@@ -385,8 +383,6 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     history: new HistoryStack(undefined, historyEntryLimit(editorPreferences)),
     localHistory: null,
     tool: 'pencil',
-    extensionToolId: null,
-    extensionToolMode: '',
     moveKind: 'move',
     selectedSliceId: null,
     selectedSliceIds: [],

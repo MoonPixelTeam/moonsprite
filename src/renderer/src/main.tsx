@@ -10,7 +10,7 @@ import { applyThemeToDocument } from './core/theme'
 import { translate } from './core/localization'
 import { installTauriApi } from './platform/tauri-api'
 import { applyCursorPreferences } from './platform/cursor-theme'
-import { applyToolIconScale, applyUiScale } from './platform/ui-scale'
+import { applyBodyFontScale, applyToolIconScale, applyUiScale } from './platform/ui-scale'
 import { loadTextFontCatalog } from './platform/font-service'
 import { showAppWindow } from './platform/app-window'
 import { installRuntimeDiagnostics } from './platform/runtime-diagnostics'
@@ -37,6 +37,7 @@ applyThemeToDocument(startupPreferences.theme)
 document.documentElement.dataset.uiMotion = startupPreferences.uiMotionLevel
 if (extensionWindow) document.documentElement.dataset.extensionWindow = 'true'
 applyToolIconScale(startupPreferences.toolIconScale)
+applyBodyFontScale(startupPreferences.bodyFontScale)
 void applyCursorPreferences(startupPreferences.useLocalCursors, startupPreferences.cursorScale).catch(() => undefined)
 
 void installTauriApi()

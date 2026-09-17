@@ -8,6 +8,7 @@ import { useCanvasSelectionTransform } from './useCanvasSelectionTransform'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
 import { canvasCompositeCacheFor } from './canvas-composite-cache'
+import { CANVAS_VIEW_SCROLLBARS_ENABLED_KEY } from '@/core/file-preferences'
 
 // Keep real controllers, geometry, pointer routing and Store commands. Rendering
 // pixels belongs to the renderer tests and requires a browser canvas backend.
@@ -157,6 +158,26 @@ describe('CanvasStage controller composition', () => {
     expect(committed.view.zoom).toBe(zoom)
     expect(committed.revision).toBe(revision)
     expect(committed.contentRevision).toBe(contentRevision)
+  })
+
+  it('uses the component-library scrollbars for an overflowing zoomed view', () => {
+    const session = addSession('view scrollbars')
+    useWorkspace.getState().setViewportSizeForDocument(session.document.id, { width: 320, height: 240 })
+    useWorkspace.getState().setViewForDocument(session.document.id, { zoom: 50 })
+    const current = useWorkspace.getState().sessions[0]
+    const { container } = render(<CanvasStage session={current} />)
+    expect(container.querySelector('.stage-view-scrollbar-horizontal.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
+    expect(container.querySelector('.stage-view-scrollbar-vertical.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
+    expect(container.querySelector('.stage-view-scrollbar.component-scrollbar')).toBeNull()
+  })
+
+  it('hides overflowing view scrollbars when the preference is disabled', () => {
+    localStorage.setItem(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY, 'false')
+    const session = addSession('hidden view scrollbars')
+    useWorkspace.getState().setViewportSizeForDocument(session.document.id, { width: 320, height: 240 })
+    useWorkspace.getState().setViewForDocument(session.document.id, { zoom: 50 })
+    const { container } = render(<CanvasStage session={useWorkspace.getState().sessions[0]} />)
+    expect(container.querySelector('.stage-view-scrollbar')).toBeNull()
   })
 
   it('routes a real hand drag through down/move/up without changing document revision', () => {

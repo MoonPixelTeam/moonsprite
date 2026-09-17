@@ -59,7 +59,8 @@ await moonsprite.storage.set({ key: 'preferences', value: { enabled: true } })
 | `notifications` | `notifications.show`；v1 仅显示 MoonSprite 应用内消息，不发送系统通知。 |
 | `network` | `network.fetch`。 |
 | `diagnostics` | `diagnostics.log`。 |
-| `menus`、`io` | 已保留名称，v1 暂无可调用方法；能力探测不会返回对应方法。 |
+| `menus` | `menus.setItems`；菜单点击还需要 `commands` 权限。 |
+| `io` | 已保留名称，v1 暂无可调用方法。 |
 
 只声明权限不会自动产生能力；扩展仍只能调用 `runtime.getCapabilities().methods` 中列出的方法。
 
@@ -69,6 +70,7 @@ await moonsprite.storage.set({ key: 'preferences', value: { enabled: true } })
 
 - `runtime.getCapabilities()` -> `{ apiVersion, permissions, methods }`。
 - `commands.execute({ commandId })` -> `boolean`。执行本扩展清单中的 Lua、Runtime 或设置命令。调用 Runtime 命令时应避免递归触发自身。
+- `menus.setItems({ menuId, items })` 替换本扩展已声明顶层菜单的动态选项（最多 64 项）。每项为 `{ id, name, event, checked }`，点击发送 `command` 事件，其中 `commandId` 为该项 ID。动态项位于清单命令之前，以横线分隔；空列表不显示占位项。停用扩展时清除。
 - `ui.openSettings()` 打开本扩展的 `settingsUi` 或 `settingsEntry`。
 - `ui.notify({ message })` 与 `notifications.show({ message })` 显示最多 500 字符的应用内消息。
 
@@ -158,6 +160,8 @@ await moonsprite.settings.close()
 ### Runtime 侧
 
 - `windows.open({ windowId, resourceId, options? })`。资源必须列在 `runtime.resources`；`windowId` 遵循扩展 ID 字符规则。默认 `x: 32`、`y: 72`、`width: 256`、`height: 256`、`transparent: true`、`focusable: false`。
+- 窗口消息只发送给指定窗口；窗口内 `moonsprite.window.id` 为当前窗口 ID，可用于核对配置。
+- `windows.setVisible({ windowId, visible })` 隐藏或重新显示已创建的窗口，保留窗口脚本和资源；仅停用扩展或删除资源时需要销毁窗口。
 - `windows.close({ windowId? })`；省略 `windowId` 时关闭本扩展全部附属窗口。
 - `windows.postMessage({ windowId, message })` 向指定窗口发送任意可结构化克隆的数据。
 
@@ -172,6 +176,7 @@ await moonsprite.storage.get(key)
 await moonsprite.resources.read(resourceId)
 await moonsprite.window.startDrag()
 const bounds = await moonsprite.window.getBounds()
+const pointer = await moonsprite.window.getPointerPosition()
 await moonsprite.window.setBounds({ x, y, width, height })
 await moonsprite.window.setHitRegion(sourceWidth, sourceHeight, spans)
 await moonsprite.window.postMessage(message)
@@ -182,6 +187,8 @@ await moonsprite.diagnostics.log(message, level)
 
 `getBounds/setBounds` 使用相对主窗口左上角的逻辑像素；宽高必须在 `32..2048`。`setHitRegion` 的每个 span 为 `{ x, y, width }`，用于声明每一行可命中的不透明区域；最多 131072 段，区域外输入穿透到底层 MoonSprite。尺寸变化后应按当前 viewport 重新提交命中区域。
 
+`getPointerPosition()` 按需读取当前指针，返回与 `getBounds()` 一致坐标系的 `{ x, y }`；指针在主窗口客户区外时返回 `null`，不暴露应用外的位置。仅独立扩展窗口可调用，不支持宿主表单弹窗。旧版宿主没有此方法，扩展应检测后调用。
+
 窗口还会产生 `moonsprite:window-moved` 和 `moonsprite:window-focus` DOM 事件。持久化位置应使用 `getBounds()`，不要直接保存 `window-moved` 中的平台原始坐标。宿主提供 `--cursor-grab` 和 `--cursor-grabbing` CSS 变量供拖动界面复用 MoonSprite 指针。
 
 ## 兼容性检查
@@ -191,3 +198,25 @@ await moonsprite.diagnostics.log(message, level)
 3. 对 Promise 拒绝、工程为 `null`、资源缺失和窗口关闭做正常降级。
 4. 使用不透明 ID 和扩展存储，不缓存安装路径或内部对象。
 5. 把文档批量修改封装为 Lua 命令，通过 `commands.execute()` 调用。
+
+扩展窗口由宿主自动注入当前主题的 `--theme-*` 变量和符合首选项的 `--cursor-*` 指针（含缩放）；不需要自行加载指针图片。`window.setCursorPolicy` 仅重新应用用户首选项，不能覆盖它。窗口会随首选项变化更新样式。
+
+普通管理窗口可在 `<body data-ms-dialog>` 上启用统一弹窗样式，使用 `h1` 标题、`section` 分区、`button.primary` 主按钮；标题添加 `data-ms-drag` 即可拖动窗口，关闭按钮调用 `moonsprite.window.close()`。透明宠物窗口不加 `data-ms-dialog`，保留透明背景。宿主提供样式契约和现有窗口 API，不向扩展开放 React 或主界面 DOM。
+
+`windows.open` 的 `options.presentation: "dialog"` 会使用主窗口的 `ModalShell` 和 `DialogHeader`，标题使用 `options.title`。内容仍隔离执行，保留存储、资源、消息和关闭接口；位置、拖动和尺寸由宿主弹窗管理，不支持原生窗口坐标与命中区域调用。同一扩展同时展示一个宿主弹窗。透明宠物继续使用默认独立窗口。
+
+
+`window.getHostBounds()` 返回主窗口客户区相对主窗口外框的逻辑像素边界 `{ x, y, width, height }`，与 `getBounds/setBounds` 坐标系一致。内容拖动可允许透明留白超出客户区，但应按动画所有帧的不透明内容包围盒限制位置，避免宠物图像越界。
+
+
+
+宿主弹窗支持 `options.component: "form"`。资源 HTML 发送 `{ type: "ui-state", nodes, status, result? }`，宿主只用组件库渲染通用控件，不内置宠物等业务。支持 `split`（双栏）、`sidebar`（导航栏）、`column`（内容栏）、`heading`（标题）和 `choice`（带 `selected` / `description` 的选择项）；容器使用 `children`。其余节点类型为 `row`、`separator`、`text`、`image`、`input`、`number`、`toggle`、`button`、`file`；每个节点使用稳定 `id`，按类型提供 `label`、`value`、`disabled`、`min/max`、`primary`。`row.children` 用于行布局；图像仅接受 PNG data URL。操作使用扩展定义的 `action` 对象，宿主回传该对象、以输入 id 为键的 `values` 和 `requestId`；开关附加 `value`，文件选择附加 `files: [{ name, mime, bytes }]`。返回匹配的 `result.requestId` 结束等待。业务数据、动画导入、多窗口状态与提醒文案均由扩展负责。
+
+扩展表单的 `choice` 将名称与 `description` 同行显示；`row.align: "end"` 将操作按钮与字段底部对齐。`slot` 是带 `label`、`description` 和 `children` 的独立上传槽位；`file.multiple: false` 限制单文件选择，默认仍允许多选。
+
+主窗口移动、缩放或 DPI 变化时，独立窗口会收到 `moonsprite:window-host-geometry` DOM 事件；扩展应重新读取 `window.getHostBounds()`。按可移动范围保存归一化位置，可在窗口尺寸变化时保持内容相对位置。
+
+表单文件节点可用 `accept` 指定文件筛选（默认图片）。用户操作的 `ui-state.result` 可携带 `file: { name, bytes }`；只有与待处理 `requestId` 匹配的结果才会打开系统保存对话框。宿主限制导出为 1 MiB，不接受目录路径，并以原子写入保存到用户选择的位置；取消和写入失败会显示在表单状态中。
+
+
+设置控件可声明 `visibleWhen: { checkboxId: true/false }`，全部条件满足时显示；隐藏不清空设置值，条件引用其他 checkbox 控件。按钮可声明 `fullWidth: true` 占满整行；省略 description 不显示辅助说明。具体业务依赖关系由扩展清单定义。

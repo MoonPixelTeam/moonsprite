@@ -9,6 +9,14 @@ export type TimelapseImageFormat = 'png' | 'jpeg'
 
 export type TimelapseExportFormat = TimelapseVideoFormat | TimelapseImageFormat
 
+export interface TimelapseFrameReference {
+  store: string
+  chunk: string
+  offset: number
+  length: number
+  checksum: number
+}
+
 export interface TimelapseSnapshot {
   id: string
   capturedAt: number
@@ -18,6 +26,8 @@ export interface TimelapseSnapshot {
   /** Approximate visual change ratio used only for smart history compaction. */
   changeScore?: number
   data: Uint8Array
+  /** Durable immutable range in the local recording library; data is then empty. */
+  local?: TimelapseFrameReference
 }
 
 export interface TimelapseSettings {

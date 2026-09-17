@@ -5,6 +5,7 @@ import type { GradientDither, ImageBrush, InkMode } from '@shared/types-brush'
 import type { OutlineDirections, OutlineKernel, OutlinePosition } from '@shared/types-selection'
 import type { RgbaColor } from '@shared/types-color'
 import type { Tileset } from '@shared/types-tiles'
+import { Button, FileButton } from './Button'
 import { BrushThumbnail } from './BrushThumbnail'
 import { ColorPicker, type ColorPickerConfig } from './ColorPicker'
 import { ColorValueControl } from './ColorValueControl'
@@ -23,6 +24,7 @@ import { PixelCloseIcon as X, PixelDownIcon as ChevronDown, PixelRightIcon as Ch
 import { CheckboxField } from './CheckboxField'
 import { PreferenceToggle } from './PreferenceToggle'
 import { RangeField } from './RangeField'
+import { Scrollbar } from './Scrollbar'
 import { SegmentedControl } from './SegmentedControl'
 import { SettingsSection } from './SettingsSection'
 import { SettingsSectionHeader } from './SettingsSectionHeader'
@@ -196,7 +198,7 @@ const localizeEntry = (entry: ComponentLibraryEntry, locale: AppLocale): Compone
 })
 
 export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
-  { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: '.primary-button / .quiet-button / .danger-button', tags: ['操作', '状态'] },
+  { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: 'Button / FileButton', tags: ['操作', '状态'] },
   { id: 'icon-button', name: '图标按钮', category: 'controls', description: '工具栏和面板标题中的方形图标操作。', source: '.icon-button', tags: ['图标', '工具栏'] },
   { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '统一收录界面状态、动画自动链接、压感操作和墨水模式使用的像素图标，以整数比例显示并保留原稿半透明边缘。', source: 'PixelUtilityIcon / PixelAutoLinkIcon / PixelPressureIcon / PixelInkIcon / assets/pixel-icons/*.svg', tags: ['图标', '状态', '操作'] },
   { id: 'tool-icons', name: '工具图标', category: 'editor', description: '工具、选区、形状、填充、渐变和不同尺寸的像素工具图标。', source: 'editor-tools.tsx / PixelAssetIcon', tags: ['图标', '工具', '工具栏'] },
@@ -218,7 +220,7 @@ export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
   { id: 'checkbox', name: '复选框', category: 'forms', description: '用于可以同时启用的独立选项。', source: 'CheckboxField / PixelCheckbox', tags: ['设置', '复选'] },
   { id: 'switch', name: '开关', category: 'forms', description: '用于明确的开启与关闭状态。', source: 'PreferenceToggle', tags: ['设置', '开关'] },
   { id: 'live-preview-toggle', name: '实时预览开关', category: 'forms', description: '调整类弹窗用于开启或关闭实时预览的统一开关。', source: 'LivePreviewToggle', tags: ['实时', '开关', '弹窗'] },
-  { id: 'scrollbar', name: '滚动区域', category: 'forms', description: '所有滚动区域共享的像素滚动条，并由全局样式阻止回退到系统原生样式。', source: '.component-scrollbar / global fallback', tags: ['滚动', '列表'] },
+  { id: 'scrollbar', name: '滚动条', category: 'forms', description: '可控制方向、位置和滑块长度的直角滚动条组件。', source: 'Scrollbar', tags: ['滚动', '列表'] },
   { id: 'panel-header', name: '栏目标题', category: 'panels', description: '停靠栏目标题、拖动入口和右侧操作。', source: '.panel > header', tags: ['栏目', '停靠'] },
   { id: 'layer-row', name: '图层行', category: 'panels', description: '可见性、锁定、组图标、名称、混合模式和拖动状态。', source: 'LayersPanel', tags: ['图层', '拖动'] },
   { id: 'swatches', name: '颜色格', category: 'panels', description: '调色板中的居中描边、选中外框和多选状态。', source: '.swatch-grid / .swatch', tags: ['颜色', '多选'] },
@@ -254,7 +256,7 @@ const colorPickerVariants: Array<{ id: string; labelKey: TranslationKey; config:
 ]
 
 function ButtonsPreview({ locale }: { locale: AppLocale }) {
-  return <div className="component-preview-row"><button className="primary-button" type="button"><PixelUtilityIcon kind="plus" />{componentText(locale, 'componentLibrary.preview.new')}</button><button className="quiet-button" type="button">{componentText(locale, 'componentLibrary.preview.cancel')}</button><button className="danger-button" type="button"><PixelUtilityIcon kind="delete" />{componentText(locale, 'componentLibrary.preview.delete')}</button><button className="quiet-button" type="button" disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</button></div>
+  return <div className="component-preview-row"><Button variant="primary" type="button"><PixelUtilityIcon kind="plus" />{componentText(locale, 'componentLibrary.preview.new')}</Button><Button variant="quiet" type="button">{componentText(locale, 'componentLibrary.preview.cancel')}</Button><Button variant="danger" type="button"><PixelUtilityIcon kind="delete" />{componentText(locale, 'componentLibrary.preview.delete')}</Button><Button variant="quiet" type="button" disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button><FileButton label="选择文件" accept="image/*" onFiles={() => {}}>选择文件</FileButton></div>
 }
 
 function IconButtonPreview({ locale }: { locale: AppLocale }) {
@@ -367,7 +369,11 @@ function LivePreviewTogglePreview() {
 }
 
 function ScrollbarPreview({ locale }: { locale: AppLocale }) {
-  return <div className="component-scroll-preview component-scrollbar" tabIndex={0} aria-label={componentText(locale, 'componentLibrary.preview.scrollArea')}>{Array.from({ length: 12 }, (_, index) => <div key={index}><span>{String(index + 1).padStart(2, '0')}</span><strong>{componentText(locale, 'componentLibrary.preview.listItem', { index: index + 1 })}</strong></div>)}</div>
+  const [position, setPosition] = useState(0.2)
+  return <div className="component-scroll-preview">
+    <div className="component-scroll-preview-viewport"><div style={{ transform: `translateY(-${position * 204}px)` }}>{Array.from({ length: 12 }, (_, index) => <div key={index}><span>{String(index + 1).padStart(2, '0')}</span><strong>{componentText(locale, 'componentLibrary.preview.listItem', { index: index + 1 })}</strong></div>)}</div></div>
+    <Scrollbar className="component-scroll-preview-bar" orientation="vertical" value={position} thumbRatio={0.46} ariaLabel={componentText(locale, 'componentLibrary.preview.scrollArea')} onChange={setPosition} />
+  </div>
 }
 
 function PanelHeaderPreview({ locale }: { locale: AppLocale }) {

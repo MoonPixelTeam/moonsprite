@@ -5,19 +5,17 @@ import {
   type CompositeStackItem
 } from '@/core/document-composite-plan'
 import { readSurfacePackedRegion, readSurfaceRgbaRegion } from '@/core/runtime-raster'
-import type { RasterContext2D } from './canvas-selection-renderer'
-import { type GpuMovePreviewSurface, imageData, gpuBlendModeFor, repeatedLayers } from './canvas-composite-cache-surfaces'
-import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
+import { type GpuMovePreviewSurface, imageData, gpuBlendModeFor } from './canvas-composite-cache-surfaces'
 
 /** Browser-composited movement surfaces; failures leave the CPU fallback available. */
 export class CanvasGpuMovePreview {
   /**
-   * A browser-composited move preview for the flat stack path.  It is kept
+   * A browser-composited move preview for normal-blend opacity groups.  It is kept
    * separate from the pixel-accurate preview so a failed GPU operation can
    * never expose a partially rendered surface.
    */
   private gpuMovePreview: GpuMovePreviewSurface | null = null
-  constructor(private readonly maxCacheBytes: number, private readonly blitter: CanvasCompositeBlitter) {}
+  constructor(private readonly maxCacheBytes: number) {}
   clear(): void { this.gpuMovePreview = null }
 /** Upload a layer once so subsequent move frames can use browser compositing. */
   private gpuLayerSourceFor(surface: GpuMovePreviewSurface, document: SpriteDocument, layer: RasterLayer): OffscreenCanvas | null {
@@ -81,183 +79,6 @@ export class CanvasGpuMovePreview {
     }
   }
 
-  drawGpuMovePreview(
-    document: SpriteDocument,
-    view: ViewState,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    key: string,
-    basePixels: Uint8ClampedArray,
-    movingLayers: readonly RasterLayer[],
-    upperLayers: readonly RasterLayer[]
-  ): OffscreenCanvas | null {
-    if (view.relativeLuminance) return null
-    let surface = this.gpuMovePreview
-    if (!surface || surface.key !== key) {
-      try {
-        const baseCanvas = new OffscreenCanvas(width, height)
-        const baseContext = baseCanvas.getContext('2d')
-        const canvas = new OffscreenCanvas(width, height)
-        if (!baseContext || !canvas.getContext('2d')) return null
-        baseContext.putImageData(imageData(basePixels, width, height), 0, 0)
-        surface = {
-          key,
-          x,
-          y,
-          width,
-          height,
-          canvas,
-          baseCanvas,
-          movingLayers: [...movingLayers],
-          upperLayers: [...upperLayers],
-          groupCanvases: new Map(),
-          layerRunCanvases: new Map(),
-          sources: new Map()
-        }
-        this.gpuMovePreview = surface
-      } catch {
-        return null
-      }
-    }
-    const target = surface.canvas.getContext('2d')
-    if (!target) return null
-    try {
-      target.globalCompositeOperation = 'source-over'
-      if (target.globalCompositeOperation !== 'source-over') return null
-      target.globalAlpha = 1
-      target.imageSmoothingEnabled = false
-      target.clearRect(0, 0, width, height)
-      target.drawImage(surface.baseCanvas, 0, 0, width, height, 0, 0, width, height)
-      if (!this.drawGpuLayerList(target, surface, document, repeatedLayers(movingLayers, document, view), x, y)) return null
-      if (upperLayers.length > 0) {
-        if (upperLayers.every((layer) => layer.blendMode === 'normal')) {
-          const upperCanvas = this.gpuStaticLayerRunCanvas(surface, document, upperLayers, x, y)
-          if (!upperCanvas) return null
-          target.globalCompositeOperation = 'source-over'
-          target.globalAlpha = 1
-          target.drawImage(upperCanvas, 0, 0, width, height, 0, 0, width, height)
-        } else if (!this.drawGpuLayerList(target, surface, document, upperLayers, x, y)) return null
-      }
-      target.globalAlpha = 1
-      target.globalCompositeOperation = 'source-over'
-      return target.globalCompositeOperation === 'source-over' ? surface.canvas : null
-    } catch {
-      target.globalAlpha = 1
-      target.globalCompositeOperation = 'source-over'
-      return null
-    }
-  }
-
-/**
-   * A flat move preview does not need an intermediate output canvas. Draw the
-   * cached backdrop and the moved layers directly into the already clipped
-   * editor target, matching Aseprite's extra-cel render flow.
-   */
-  drawGpuMovePreviewDirect(
-    context: RasterContext2D,
-    document: SpriteDocument,
-    view: ViewState,
-    originX: number,
-    originY: number,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    key: string,
-    basePixels: Uint8ClampedArray,
-    movingLayers: readonly RasterLayer[],
-    upperLayers: readonly RasterLayer[]
-  ): boolean {
-    if (view.relativeLuminance) return false
-    let surface = this.gpuMovePreview
-    if (!surface || surface.key !== key) {
-      try {
-        const baseCanvas = new OffscreenCanvas(width, height)
-        const baseContext = baseCanvas.getContext('2d')
-        const canvas = new OffscreenCanvas(width, height)
-        if (!baseContext || !canvas.getContext('2d')) return false
-        baseContext.imageSmoothingEnabled = false
-        baseContext.putImageData(imageData(basePixels, width, height), 0, 0)
-        surface = {
-          key,
-          x,
-          y,
-          width,
-          height,
-          canvas,
-          baseCanvas,
-          movingLayers: [...movingLayers],
-          upperLayers: [...upperLayers],
-          groupCanvases: new Map(),
-          layerRunCanvases: new Map(),
-          sources: new Map()
-        }
-        this.gpuMovePreview = surface
-      } catch {
-        return false
-      }
-    }
-    try {
-      context.save()
-      context.imageSmoothingEnabled = false
-      context.globalCompositeOperation = 'source-over'
-      if (context.globalCompositeOperation !== 'source-over') {
-        context.restore()
-        return false
-      }
-      context.globalAlpha = 1
-      const destination = this.blitter.alignedDestination(originX, originY, width * view.zoom, height * view.zoom)
-      context.drawImage(surface.baseCanvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
-      if (!this.drawGpuLayerListOnScreen(context, surface, document, repeatedLayers(movingLayers, document, view), originX, originY, view.zoom)) {
-        context.restore()
-        return false
-      }
-      if (upperLayers.length > 0) {
-        const upperIsSourceOver = upperLayers.every((layer) => layer.blendMode === 'normal')
-        const upperDrawn = upperIsSourceOver
-          ? this.drawGpuStaticLayerRunOnScreen(context, surface, document, upperLayers, originX, originY, view.zoom)
-          : this.drawGpuLayerListOnScreen(context, surface, document, upperLayers, originX, originY, view.zoom)
-        if (!upperDrawn) {
-          context.restore()
-          return false
-        }
-      }
-      context.globalAlpha = 1
-      context.globalCompositeOperation = 'source-over'
-      const valid = context.globalCompositeOperation === 'source-over'
-      context.restore()
-      return valid
-    } catch {
-      context.restore()
-      return false
-    }
-  }
-
-  private drawGpuLayerListOnScreen(target: RasterContext2D, surface: GpuMovePreviewSurface, document: SpriteDocument, layers: readonly RasterLayer[], originX: number, originY: number, zoom: number): boolean {
-    try {
-      for (const layer of layers) {
-        const operation = gpuBlendModeFor(layer.blendMode)
-        if (!operation || !layer.visible || layer.opacity <= 0) return false
-        const source = this.gpuLayerSourceFor(surface, document, layer)
-        if (!source) return false
-        target.globalCompositeOperation = operation
-        if (target.globalCompositeOperation !== operation) return false
-        target.globalAlpha = layer.opacity
-        const destination = this.blitter.alignedDestination(originX + layer.offsetX * zoom, originY + layer.offsetY * zoom, layer.width * zoom, layer.height * zoom)
-        target.drawImage(source, 0, 0, layer.width, layer.height, destination.left, destination.top, destination.width, destination.height)
-      }
-      target.globalAlpha = 1
-      target.globalCompositeOperation = 'source-over'
-      return target.globalCompositeOperation === 'source-over'
-    } catch {
-      target.globalAlpha = 1
-      target.globalCompositeOperation = 'source-over'
-      return false
-    }
-  }
-
 /**
    * Cache a contiguous source-over run for the duration of one move gesture.
    * A moved layer never enters this cache, so changing its offset cannot leave
@@ -283,16 +104,6 @@ export class CanvasGpuMovePreview {
     } catch {
       return null
     }
-  }
-
-  private drawGpuStaticLayerRunOnScreen(target: RasterContext2D, surface: GpuMovePreviewSurface, document: SpriteDocument, layers: readonly RasterLayer[], originX: number, originY: number, zoom: number): boolean {
-    const canvas = this.gpuStaticLayerRunCanvas(surface, document, layers, originX, originY)
-    if (!canvas) return false
-    const destination = this.blitter.alignedDestination(originX, originY, surface.width * zoom, surface.height * zoom)
-    target.globalCompositeOperation = 'source-over'
-    target.globalAlpha = 1
-    target.drawImage(canvas, 0, 0, surface.width, surface.height, destination.left, destination.top, destination.width, destination.height)
-    return true
   }
 
   private gpuStackContainsLayers(items: readonly CompositeStackItem[], movingLayerIds: readonly string[]): boolean {

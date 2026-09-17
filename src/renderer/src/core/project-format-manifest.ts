@@ -1,4 +1,5 @@
 import { strFromU8 } from 'fflate'
+import { migrateTimelapseReferences } from './timelapse-migration'
 import { BLEND_MODES, type BlendMode, type RgbaColor } from '@shared/types-color'
 import { type LayerGroup } from '@shared/types-layer'
 import { type RasterFormat } from '@shared/types-raster'
@@ -276,6 +277,7 @@ export function migrateProjectManifest(input: unknown): ProjectManifest {
       LOOP_SECTIONS_PROJECT_SCHEMA_VERSION,
       LINKED_LAYERS_PROJECT_SCHEMA_VERSION,
       FREE_TILE_SET_PROJECT_SCHEMA_VERSION,
+      19,
       PROJECT_SCHEMA_VERSION
     ].includes(version) ||
     candidate.document.schemaVersion !== candidate.schemaVersion
@@ -348,6 +350,7 @@ export function migrateProjectManifest(input: unknown): ProjectManifest {
     document: {
       ...(candidate.document as ProjectManifest['document']),
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      timelapse: migrateTimelapseReferences(candidate.document.timelapse, version),
       ...(layers ? { layers: layers as ManifestLayer[] } : {}),
       ...(groups ? { groups: groups as LayerGroup[] } : {}),
       tilesets,
@@ -415,6 +418,6 @@ export const requiredProjectDataFiles = (manifest: ProjectManifest, activeCelFil
   }
   for (const entry of source.animation.layerMasks ?? []) required.add(entry.mask.dataFile)
   for (const entry of source.animation.groupMasks ?? []) required.add(entry.mask.dataFile)
-  for (const snapshot of source.timelapse?.snapshots ?? []) if (!storedTimelapseFiles.has(snapshot.dataFile)) required.add(snapshot.dataFile)
+  for (const snapshot of source.timelapse?.snapshots ?? []) if (snapshot.dataFile && !storedTimelapseFiles.has(snapshot.dataFile)) required.add(snapshot.dataFile)
   return required
 }

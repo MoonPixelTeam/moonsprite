@@ -174,8 +174,6 @@ export interface DocumentSession {
     position: number
   } | null
   tool: ToolId
-  extensionToolId: string | null
-  extensionToolMode: string
   moveKind: MoveKind
   selectedSliceId: string | null
   selectedSliceIds: string[]

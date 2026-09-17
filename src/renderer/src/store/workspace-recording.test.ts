@@ -24,6 +24,25 @@ const setup = () => {
 }
 
 describe('recording failure durability', () => {
+  it('retries a failed local write without appending or encoding the frame twice', async () => {
+    const { session, recording, paint, committed } = setup()
+    const append = vi.fn().mockRejectedValueOnce(new Error('Disk full')).mockImplementation(async (store, data) =>
+      ({ store, chunk: 'chunk-1', offset: 0, length: data.length, checksum: 123 }))
+    const previous = window.moonSprite
+    Object.defineProperty(window, 'moonSprite', { configurable: true, writable: true, value: { ...previous, appendTimelapseFrame: append } })
+    try {
+      const encode = vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot')
+      paint(40)
+      await recording.flushTimelapseCapture(session)
+      expect(append).toHaveBeenCalledTimes(2)
+      expect(encode).toHaveBeenCalledTimes(1)
+      expect(session.document.timelapse!.snapshots).toHaveLength(1)
+      expect(session.document.timelapse!.snapshots[0].data.byteLength).toBe(0)
+      expect(session.document.timelapse!.snapshots[0].local).toBeDefined()
+      expect(committed).toHaveBeenCalledTimes(1)
+    } finally { window.moonSprite = previous }
+  })
+
   it('retains failed pixels and subsequent frames in chronological order until an explicit flush', async () => {
     const { session, recording, paint, colors } = setup()
     const encode = vi.spyOn(timelapse, 'commitPreparedTimelapseSnapshot').mockRejectedValueOnce(new Error('encode unavailable'))

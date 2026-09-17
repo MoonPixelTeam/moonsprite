@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_EDITOR_PREFERENCES,
   DEFAULT_ISO_VIEW_PREFERENCES,
+  CANVAS_VIEW_SCROLLBARS_ENABLED_KEY,
   HISTORY_LIMIT_PREFERENCE_KEY,
   HISTORY_LIMIT_ENABLED_PREFERENCE_KEY,
   historyEntryLimit,
   ANIMATION_PLAYBACK_MODE_PREFERENCE_KEY,
+  BODY_FONT_SCALE_PREFERENCE_KEY,
   ANIMATION_PLAYBACK_RATE_PREFERENCE_KEY,
   ANIMATION_RETURN_TO_START_PREFERENCE_KEY,
   SKIP_DISABLED_FRAMES_PREFERENCE_KEY,
@@ -27,6 +29,7 @@ import {
   parseKeyDisplayDuration,
   parseMoveLayerClickFlashDuration,
   parseOutlineSettingsPreference,
+  parseBodyFontScale,
   parseUiScale,
   parseViewDragSensitivity,
   saveEditorPreferences,
@@ -47,6 +50,14 @@ const memoryStorage = (): Storage => {
 }
 
 describe('editor preferences boundary', () => {
+  it('shows canvas view scrollbars by default and persists an opt-out', () => {
+    const storage = memoryStorage()
+    expect(loadEditorPreferences(storage).canvasViewScrollbarsEnabled).toBe(true)
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, canvasViewScrollbarsEnabled: false }, storage)
+    expect(storage.getItem(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY)).toBe('false')
+    expect(loadEditorPreferences(storage).canvasViewScrollbarsEnabled).toBe(false)
+  })
+
   it('defaults to unlimited steps and remembers the count while the limit is off', () => {
     const storage = memoryStorage()
     // Older settings only stored a count; the new opt-in switch defaults off.
@@ -87,6 +98,7 @@ describe('editor preferences boundary', () => {
       saveFormat: DEFAULT_EDITOR_PREFERENCES.saveFormat,
       exportFormat: DEFAULT_EDITOR_PREFERENCES.exportFormat,
       uiScale: 1,
+      bodyFontScale: 1,
       viewDragSensitivity: 1,
       moveLayerClickFlashDuration: 120,
       keyDisplayDuration: 1400,
@@ -105,6 +117,8 @@ describe('editor preferences boundary', () => {
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
     expect(parseUiScale('1.25')).toBe(1)
+    expect(parseBodyFontScale('1.3')).toBe(1.3)
+    expect(parseBodyFontScale('1.5')).toBe(1)
     expect(parseViewDragSensitivity('1.25')).toBe(1)
     expect(parseEyedropperMagnifierSize('2')).toBe(1)
     expect(parseMoveLayerClickFlashDuration('240')).toBe(120)
@@ -160,6 +174,7 @@ describe('editor preferences boundary', () => {
       saveFormat: 'psd',
       exportFormat: 'psd',
       uiScale: 1.5,
+      bodyFontScale: 1.15,
       viewDragSensitivity: 1.5,
       moveLayerClickFlashDuration: 80,
       keyDisplayDuration: 3000,
@@ -186,6 +201,7 @@ describe('editor preferences boundary', () => {
     expect(loaded.saveFormat).toBe('psd')
     expect(loaded.exportFormat).toBe('psd')
     expect(loaded.uiScale).toBe(1.5)
+    expect(loaded.bodyFontScale).toBe(1.15)
     expect(loaded.viewDragSensitivity).toBe(1.5)
     expect(loaded.moveLayerClickFlashDuration).toBe(80)
     expect(loaded.keyDisplayDuration).toBe(3000)
@@ -209,6 +225,7 @@ describe('editor preferences boundary', () => {
     expect(loaded.isoView.snapToGrid).toBe(true)
     expect(storage.getItem(SAVE_FORMAT_PREFERENCE_KEY)).toBe('psd')
     expect(storage.getItem(EXPORT_FORMAT_PREFERENCE_KEY)).toBe('psd')
+    expect(storage.getItem(BODY_FONT_SCALE_PREFERENCE_KEY)).toBe('1.15')
     expect(storage.getItem(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)).toBe('80')
     expect(storage.getItem(KEY_DISPLAY_DURATION_PREFERENCE_KEY)).toBe('3000')
     expect(storage.getItem(TOOLTIPS_ENABLED_PREFERENCE_KEY)).toBe('false')

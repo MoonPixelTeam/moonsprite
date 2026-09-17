@@ -34,5 +34,6 @@ ADR 用于记录会长期影响实现的决定，避免后续只看到代码而�
 - [0020：扩展包使用受限 ZIP、原子安装与 Runtime 安全边界](0020-extension-package-format.md)
 - [0021：关联图层使用稳定身份与共享栅格存储](0021-linked-layers.md)
 - [0022：自由瓦片图层共享稳定源集合](0022-shared-free-tile-sets.md)
+- [0023：缩时录像使用本地不可变分块库](0023-local-timelapse-library.md)
 
 新增 ADR 时按编号递增；废弃旧决定时保留原文件并指向替代 ADR。

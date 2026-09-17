@@ -1,6 +1,7 @@
 import type { ManifestTimelapse } from './project-format-manifest-types'
 import { normalizeTimelapseSettings } from './project-metadata'
 import { recordRuntimeDiagnostic } from './runtime-diagnostics'
+import { validTimelapseReference } from './timelapse-reference'
 
 /** Why a recorded timelapse frame in the manifest could not be restored. */
 export type TimelapseFrameDropReason = 'invalid-metadata' | 'missing-data' | 'invalid-dimensions'
@@ -24,18 +25,19 @@ export function restoreProjectTimelapse(
   const declaredSnapshots = Array.isArray(manifestTimelapse?.snapshots) ? manifestTimelapse.snapshots : []
   const dropReasons: TimelapseFrameDropReason[] = []
   const timelapseSnapshots = declaredSnapshots.flatMap((snapshot) => {
-    if (!snapshot || typeof snapshot.id !== 'string' || typeof snapshot.dataFile !== 'string') {
+    if (!snapshot || typeof snapshot.id !== 'string' || (typeof snapshot.dataFile !== 'string' && !validTimelapseReference(snapshot.local))) {
       dropReasons.push('invalid-metadata')
       return []
     }
     const width = Number(snapshot.width)
     const height = Number(snapshot.height)
-    const data = storedTimelapseFiles.get(snapshot.dataFile) ?? files[snapshot.dataFile]
+    const local = typeof snapshot.dataFile !== 'string' && validTimelapseReference(snapshot.local) ? snapshot.local : undefined
+    const data = snapshot.dataFile ? storedTimelapseFiles.get(snapshot.dataFile) ?? files[snapshot.dataFile] : new Uint8Array()
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
       dropReasons.push('invalid-dimensions')
       return []
     }
-    if (!data?.byteLength) {
+    if (!local && !data?.byteLength) {
       dropReasons.push('missing-data')
       return []
     }
@@ -48,7 +50,8 @@ export function restoreProjectTimelapse(
         width,
         height,
         changeScore: Number.isFinite(snapshot.changeScore) ? Math.max(0, Math.min(1, Number(snapshot.changeScore))) : undefined,
-        data
+        data: data ?? new Uint8Array(),
+        ...(local ? { local } : {})
       }
     ]
   })

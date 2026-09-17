@@ -16,10 +16,21 @@ export class CanvasMovePreviewRenderer {
   private movePreview: MovePreviewSurface | null = null
   private readonly gpu: CanvasGpuMovePreview
   constructor(private readonly compositeCache: DocumentCompositeCache, private readonly maxCacheBytes: number, private readonly blitter: CanvasCompositeBlitter) {
-    this.gpu = new CanvasGpuMovePreview(maxCacheBytes, blitter)
+    this.gpu = new CanvasGpuMovePreview(maxCacheBytes)
   }
   clearRaster(): void { this.movePreview = null }
   clear(): void { this.clearRaster(); this.gpu.clear() }
+  private drawSurface(context: RasterContext2D, canvas: OffscreenCanvas, view: ViewState, originX: number, originY: number, x: number, y: number, width: number, height: number): void {
+    // Match the committed compositor's per-pixel device edges. Scaling the
+    // viewport as one image redistributes rows at fractional backing scales.
+    const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
+    if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !context.imageSmoothingEnabled) {
+      this.blitter.drawAlignedPixelRegion(context, canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
+    } else {
+      const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
+      context.drawImage(canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
+    }
+  }
   drawMovePreview(
     context: RasterContext2D,
     document: SpriteDocument,
@@ -52,8 +63,7 @@ export class CanvasMovePreviewRenderer {
       const stackKey = `group:${document.id}:${frameId}:${contentRevision}:${x}:${y}:${width}:${height}:${view.tileRepeatMode ?? 'off'}:${movingLayerIds.join(',')}:${this.gpu.gpuStackSignature(stack)}`
       const gpuCanvas = this.gpu.drawGpuStackMovePreview(document, view, x, y, width, height, stackKey, stack, movingLayerIds)
       if (gpuCanvas) {
-        const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
-        context.drawImage(gpuCanvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
+        this.drawSurface(context, gpuCanvas, view, originX, originY, x, y, width, height)
         return true
       }
       this.gpu.clear()
@@ -101,20 +111,9 @@ export class CanvasMovePreviewRenderer {
       }
       this.movePreview = preview
     }
-    const hasBlendMode = layers.some((layer) => layer.blendMode !== 'normal')
-    const gpuKey = `${key}:${layers.map((layer) => `${layer.id}:${layer.blendMode}:${layer.opacity}`).join(',')}`
-    if (hasBlendMode && !view.relativeLuminance) {
-      if (this.gpu.drawGpuMovePreviewDirect(context, document, view, originX, originY, x, y, width, height, gpuKey, preview.basePixels, preview.movingLayers, preview.upperLayers)) return true
-      const gpuCanvas = this.gpu.drawGpuMovePreview(document, view, x, y, width, height, gpuKey, preview.basePixels, preview.movingLayers, preview.upperLayers)
-      if (gpuCanvas) {
-        const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
-        context.drawImage(gpuCanvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
-        return true
-      }
-      this.gpu.clear()
-    } else {
-      this.gpu.clear()
-    }
+    // Preserve committed blend/alpha semantics at every zoom. Reuse the
+    // stationary backdrop and only recompose the moving and upper layers.
+    this.gpu.clear()
     preview.outputPixels.set(preview.basePixels)
     this.compositeCache.compositeMovePreviewLayersInto(document, repeatedLayers(preview.movingLayers, document, view), x, y, width, height, contentRevision, preview.outputPixels)
     if (preview.upperLayers.length > 0) this.compositeCache.compositeMovePreviewLayersInto(document, preview.upperLayers, x, y, width, height, contentRevision, preview.outputPixels)
@@ -124,8 +123,7 @@ export class CanvasMovePreviewRenderer {
       applyRelativeLuminance(displayPixels)
     }
     preview.canvas.getContext('2d')?.putImageData(imageData(displayPixels, width, height), 0, 0)
-    const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
-    context.drawImage(preview.canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
+    this.drawSurface(context, preview.canvas, view, originX, originY, x, y, width, height)
     return true
   }
 }

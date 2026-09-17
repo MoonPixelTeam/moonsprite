@@ -87,6 +87,18 @@ export function useCanvasPenCursor(ports: Ports) {
   }
 
   useEffect(() => {
+    const leave = (event: PointerEvent) => { if (!event.relatedTarget) hidePenCursor() }
+    window.addEventListener('blur', hidePenCursor)
+    window.addEventListener('moonsprite:extension-pointer-enter', hidePenCursor)
+    document.documentElement.addEventListener('pointerleave', leave)
+    return () => {
+      window.removeEventListener('blur', hidePenCursor)
+      window.removeEventListener('moonsprite:extension-pointer-enter', hidePenCursor)
+      document.documentElement.removeEventListener('pointerleave', leave)
+    }
+  }, [])
+
+  useEffect(() => {
     const canvas = ports.canvasRef.current
     if (!canvas || typeof MutationObserver === 'undefined') return
     const observer = new MutationObserver(refreshPenCursor)

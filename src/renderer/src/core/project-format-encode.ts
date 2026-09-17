@@ -5,7 +5,6 @@ import { type Tileset } from '@shared/types-tiles'
 import { type SpriteDocument } from '@shared/types-document'
 import { getRasterContentRevision } from './document-model'
 import { ensureAnimationDocument, syncActiveAnimationLayers } from './animation'
-import { normalizeTimelapseSettings } from './project-metadata'
 import { translateCurrent as tr } from './localization'
 import { normalizePaletteColumns, normalizePaletteSlots } from './palette-layout'
 import { rasterStorageIdentity, runtimeRasterForSurface } from './runtime-raster'
@@ -26,12 +25,12 @@ import {
   type ManifestProjectBrush,
   type ManifestTileset,
   type ManifestAnimation,
-  type ManifestTimelapse,
   type ProjectManifest
 } from './project-format-manifest-types'
 import { encodeRuntimeRasterData, encodeSparseRasterData, toU8 } from './project-format-raster'
 import { manifestTilemapFromData, manifestFreeTilesFromData } from './project-format-manifest'
 import { createSavedProjectPreview } from './project-save-preview'
+import { buildTimelapseManifest } from './project-format-timelapse-encode'
 
 const rasterGeometryMatchesSurface = (raster: ProjectArchiveResource['raster'], surface: RasterLayer | AnimationCelSurface): boolean =>
   Boolean(raster && raster.width === surface.width && raster.height === surface.height && raster.offsetX === surface.offsetX && raster.offsetY === surface.offsetY)
@@ -333,33 +332,7 @@ export const createProjectArchiveFiles = (document: SpriteDocument, options: Pro
       ]
     })
   }
-  const timelapseSettings = normalizeTimelapseSettings(document.timelapse, document.timelapse?.snapshots ?? [])
-  const timelapse: ManifestTimelapse = {
-    enabled: timelapseSettings.enabled,
-    recordUndoSteps: timelapseSettings.recordUndoSteps,
-    quality: timelapseSettings.quality,
-    fps: timelapseSettings.fps,
-    speed: timelapseSettings.speed,
-    mode: timelapseSettings.mode,
-    snapshots: timelapseSettings.snapshots.map((snapshot) => {
-      const dataFile = `timelapse/${snapshot.id}.png`
-      files[dataFile] = snapshot.data
-      resources.push({
-        key: `timelapse:${snapshot.id}`,
-        path: dataFile,
-        revision: null
-      })
-      return {
-        id: snapshot.id,
-        capturedAt: snapshot.capturedAt,
-        elapsedMs: snapshot.elapsedMs,
-        width: snapshot.width,
-        height: snapshot.height,
-        changeScore: snapshot.changeScore,
-        dataFile
-      }
-    })
-  }
+  const timelapse = buildTimelapseManifest(document, files, resources)
   const {
     schemaVersion: _schemaVersion,
     layers: _layers,

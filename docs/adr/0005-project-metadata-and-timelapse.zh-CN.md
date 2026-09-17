@@ -2,6 +2,8 @@
 
 中文 | [English](0005-project-metadata-and-timelapse.md)
 
+> 存储方案已由 [ADR 0023](0023-local-timelapse-library.md) 更新：安装版采用本地录像库，普通保存仅携带引用。本文的内嵌存储及旧采样描述为历史决定；当前录制行为见[产品行为说明](../product/behavior.md)。
+
 ## 状态
 
 已接受

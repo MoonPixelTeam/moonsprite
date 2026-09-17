@@ -9,10 +9,12 @@ const MAX_STORAGE_TOTAL_BYTES = 1024 * 1024
 export const EXTENSION_RUNTIME_METHOD_PERMISSIONS: Readonly<Record<string, ExtensionPermission>> = {
   'runtime.getCapabilities': 'runtime',
   'commands.execute': 'commands',
+  'menus.setItems': 'menus',
   'ui.notify': 'ui',
   'ui.openSettings': 'ui',
   'windows.open': 'windows',
   'windows.close': 'windows',
+  'windows.setVisible': 'windows',
   'windows.postMessage': 'windows',
   'workspace.listProjects': 'workspace.read',
   'workspace.getActiveProject': 'workspace.read',

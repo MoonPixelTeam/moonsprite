@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { createDocument, createLayer, getActiveLayer } from '@/core/document'
@@ -68,6 +68,33 @@ it('keeps a selected layer batch visibly selected while applying right-click pro
     expect(container.querySelector(`[data-layer-id="${top.id}"]`)).toHaveClass('selected')
   })
 
+})
+
+it('keeps a selected layer batch visibly selected after a selection fill', async () => {
+  const document = createDocument('layer fill selection retention', 2, 1, 'rgba')
+  const bottom = getActiveLayer(document)
+  const top = createLayer('Top', 2, 1, 'rgba')
+  document.layers.push(top)
+  useWorkspace.getState().addSession(document)
+  const { container } = render(<ConnectedPanel />)
+  act(() => {
+    useWorkspace.getState().selectLayerRows([bottom.id, top.id], [])
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+  })
+  await waitFor(() => {
+    expect(container.querySelector(`[data-layer-id="${bottom.id}"]`)).toHaveClass('selected')
+    expect(container.querySelector(`[data-layer-id="${top.id}"]`)).toHaveClass('selected')
+  })
+
+  act(() => { useWorkspace.getState().fillForeground() })
+
+  const session = useWorkspace.getState().sessions[0]
+  expect(session.selectedLayerIds).toEqual([bottom.id, top.id])
+  expect(session.selectionGuidesPreservedAtContentRevision).toBe(session.contentRevision)
+  await waitFor(() => {
+    expect(container.querySelector(`[data-layer-id="${bottom.id}"]`)).toHaveClass('selected')
+    expect(container.querySelector(`[data-layer-id="${top.id}"]`)).toHaveClass('selected')
+  })
 })
 
 it('uses the Shift/Ctrl row selection made immediately before opening the context menu', () => {

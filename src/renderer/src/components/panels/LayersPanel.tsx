@@ -769,6 +769,7 @@ export function LayersPanel({
         <button
           type="button"
           className="layer-structure-edit-button"
+          data-preserve-animation-selection
           key={action.id}
           title={label}
           aria-label={label}

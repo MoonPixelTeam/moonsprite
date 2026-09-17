@@ -15,7 +15,6 @@ import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
 import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { activeBrushInputsForTool } from '@/core/brushes'
-import { extensionToolContributionFor } from '@/core/extension-contributions'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
 interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
@@ -58,7 +57,6 @@ interface Ports {
   ) => Point
   readonly cursorCompositePointSamplerFor: (currentSession: DocumentSession) => (x: number, y: number) => RgbaColor
   readonly activeTheme: import('@/core/theme').ResolvedTheme
-  readonly addExtensionToolFootprint: (drag: DragState, center: Point, currentSession: DocumentSession) => void
   readonly scheduleDraw: () => void
   readonly activeToolBrushSize: number | null
 }
@@ -79,10 +77,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
     if (currentSession.animationPlaying) return false
     if (currentSession.tool === 'smooth') {
-      const drag = ports.inputRef.current.drag
-      return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
-    }
-    if (currentSession.tool === 'extension') {
       const drag = ports.inputRef.current.drag
       return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
     }
@@ -227,32 +221,6 @@ export function useCanvasBrushOverlay(ports: Ports) {
         height: previewSize * view.zoom + context.lineWidth * 2
       }, ports.canvasRef.current ?? undefined)
       context.stroke()
-      context.restore()
-      return
-    }
-    if (currentSession.tool === 'extension') {
-      const contribution = extensionToolContributionFor(currentSession.extensionToolId)
-      if (!contribution || contribution.tool.kind !== 'remote-pixel-brush') return
-      context.save()
-      ports.applyViewRotation(context, rect.width, rect.height, view)
-      context.fillStyle = contribution.tool.previewColor
-      const covered = new Set(ports.inputRef.current.drag?.kind === 'extension-tool' ? (ports.inputRef.current.drag.extensionToolMask ?? []) : [])
-      if (covered.size === 0 && point) {
-        const previewDrag: DragState = { kind: 'extension-tool', start: point, last: point }
-        ports.addExtensionToolFootprint(previewDrag, point, currentSession)
-        for (const key of previewDrag.extensionToolMask ?? []) covered.add(key)
-      }
-      for (const key of covered) {
-        const pixel = deviceAlignedPixelRect(
-          renderPlan.originX,
-          renderPlan.originY,
-          view.zoom,
-          key % currentSession.document.width,
-          Math.floor(key / currentSession.document.width),
-          deviceScale
-        )
-        context.fillRect(pixel.x, pixel.y, pixel.width, pixel.height)
-      }
       context.restore()
       return
     }

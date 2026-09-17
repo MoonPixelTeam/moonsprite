@@ -3,7 +3,6 @@ import { createSelectionCanvasInput } from './canvas-input-selection'
 import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
 import { createFreeTileCanvasInput } from './canvas-input-free-tile'
-import { createExtensionCanvasInput } from './canvas-input-extension'
 import { createSliceCanvasInput } from './canvas-input-slice'
 import { createLayerMoveCanvasInput } from './canvas-input-layer-move'
 import { createStrokeCanvasInput } from './canvas-input-stroke'
@@ -37,7 +36,6 @@ interface Ports {
   navigationInput: ReturnType<typeof createNavigationCanvasInput>
   selectionInput: ReturnType<typeof createSelectionCanvasInput>
   samplingInput: ReturnType<typeof createSamplingCanvasInput>
-  extensionInput: ReturnType<typeof createExtensionCanvasInput>
   fillInput: ReturnType<typeof createFillCanvasInput>
   tileInput: ReturnType<typeof createTileCanvasInput>
   freeTileInput: ReturnType<typeof createFreeTileCanvasInput>
@@ -71,7 +69,6 @@ export function createCanvasPointerUp(ports: Ports) {
       navigationInput,
       selectionInput,
       samplingInput,
-      extensionInput,
       fillInput,
       tileInput,
       freeTileInput,
@@ -142,7 +139,6 @@ export function createCanvasPointerUp(ports: Ports) {
     if (drag.kind === 'rotate-view' && navigationInput.endRotation({ drag })) return
     if (drag.kind === 'move-selection-pivot' && selectionInput.endPivot({ drag, state, event })) return
     if (drag.kind === 'sample-color' && samplingInput.endSample({ drag, event, state, session })) return
-    if (drag.kind === 'extension-tool' && extensionInput.endExtension({ drag, event, currentInteractionSession })) return
     if (drag.kind === 'gradient' && fillInput.endGradient({ drag, session, state })) return
     updateCursor(event)
     if (drag.kind === 'move-content' && drag.selectionStart && drag.tilemapSelectionMoveSource && tileInput.endTileSelection({ drag, state })) return

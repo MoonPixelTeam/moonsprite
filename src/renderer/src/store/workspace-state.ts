@@ -46,7 +46,7 @@ export interface ColorReplacementPreview {
 
 export interface AntiAliasPreview {
   documentId: string
-  edit: PixelEdit
+  edits: PixelEdit[]
 }
 
 export interface TextCelPreview {
@@ -114,8 +114,6 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
-  setExtensionTool(id: string, mode: string): void
-  setExtensionToolMode(mode: string): void
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void

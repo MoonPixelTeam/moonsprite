@@ -109,12 +109,16 @@ export function createSelectionTransformCommands({ get, set }: WorkspaceCommandC
         return
       }
       if (activePaintLayer(session).kind === 'free-tile' && session.freeTileMode === 'paint') return
-      const layer = activePaintLayer(session)
-      if (!isLayerEffectivelyVisible(session.document, layer)) {
+      const layers = selectedTransformLayersForSession(session)
+      if (layers.length === 0 || (layers.length > 1 && layers.some((layer) => layer.kind))) {
+        set({ message: tr('workspace.transform.multipleUnsupported') })
+        return
+      }
+      if (layers.some((layer) => !isLayerEffectivelyVisible(session.document, layer))) {
         set({ message: tr('workspace.transform.hidden') })
         return
       }
-      if (isLayerEffectivelyLocked(session.document, layer)) {
+      if (layers.some((layer) => isLayerEffectivelyLocked(session.document, layer))) {
         set({ message: tr('workspace.transform.locked') })
         return
       }

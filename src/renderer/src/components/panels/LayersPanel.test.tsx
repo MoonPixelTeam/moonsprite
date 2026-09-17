@@ -38,6 +38,20 @@ function ConnectedLayersPanel() {
 }
 
 describe('LayersPanel Free Tile instances', () => {
+  it('does not highlight a child cel during playback when its folder is active', () => {
+    const document = createDocument('folder playback focus', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    const group = { id: 'playback-folder', name: 'Folder', visible: true, locked: false, opacity: 1, blendMode: 'normal' as const }
+    document.groups.push(group)
+    layer.groupId = group.id
+    layer.pixels.set([255, 0, 0, 255])
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectGroup(group.id)
+    useWorkspace.getState().setAnimationPlaying(true)
+    const { container } = render(<ConnectedLayersPanel />)
+    expect(container.querySelector('.cel-content-marker.selection-marker')).toBeNull()
+    expect(useWorkspace.getState().sessions[0].selectedGroupId).toBe(group.id)
+  })
   it('keeps the instance layout control out of the general layer settings', () => {
     const document = createDocument('layer settings without instance layout', 8, 8, 'rgba')
     useWorkspace.getState().addSession(document)

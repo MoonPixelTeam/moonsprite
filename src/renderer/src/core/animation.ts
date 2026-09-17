@@ -1234,6 +1234,7 @@ export const animationCelOffsetsForKeys = (document: SpriteDocument, keys: reado
 export const setAnimationCelOffsetsForKeys = (document: SpriteDocument, offsets: Readonly<Record<string, { x: number; y: number }>>): void => {
   const timeline = ensureAnimationDocument(document)
   const lookup = createAnimationCelLookup(timeline)
+  const movedSources = new Set<string>()
   for (const [key, offset] of Object.entries(offsets)) {
     const target = parseAnimationCelKey(key)
     if (!target) continue
@@ -1242,8 +1243,18 @@ export const setAnimationCelOffsetsForKeys = (document: SpriteDocument, offsets:
     if (cel.text) translateTextCelData(cel.text, offset.x - cel.surface.offsetX, offset.y - cel.surface.offsetY)
     cel.surface.offsetX = offset.x
     cel.surface.offsetY = offset.y
+    movedSources.add(cel.id)
   }
-  applyFrameSurfaces(document, timeline)
+  // A placement preview is not a frame switch. Reloading every cel here
+  // replaces unrelated live rasters, opacity and geometry with older cel
+  // snapshots. Only project the changed offsets onto their active owners,
+  // including an active linked cel that resolves to a moved source.
+  for (const layer of document.layers) {
+    const cel = lookup.resolve(lookup.at(layer.id, timeline.activeFrameId))
+    if (!cel?.surface || !movedSources.has(cel.id)) continue
+    layer.offsetX = cel.surface.offsetX
+    layer.offsetY = cel.surface.offsetY
+  }
 }
 
 export const setAnimationCelOffsets = (document: SpriteDocument, frameId: string, offsets: Readonly<Record<string, { x: number; y: number }>>): void => {

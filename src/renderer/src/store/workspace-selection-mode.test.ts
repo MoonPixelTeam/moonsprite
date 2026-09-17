@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createDocument, createLayer, createLayerMask, getActiveLayer } from '@/core/document'
-import { addBlankAnimationFrame, ensureAnimationDocument, animationCelKey } from '@/core/animation'
+import { createDocument, createLayer, createLayerMask, getActiveLayer, readLayerColorAt, writeLayerColor } from '@/core/document'
+import { addBlankAnimationFrame, animationLayerAtFrame, duplicateAnimationFrame, ensureAnimationDocument, animationCelKey } from '@/core/animation'
 import { beginPixelEdit, recordPixel } from '@/core/history'
 import { packColor } from '@/core/raster'
 import { normalizeAnimationSelection, useWorkspace } from './workspace'
 import { isToolAvailableForSession } from './workspace-session'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
+const transparent = { r: 0, g: 0, b: 0, a: 0 }
 
 beforeEach(() => {
   localStorage.clear()
@@ -14,6 +15,166 @@ beforeEach(() => {
 })
 
 describe('layer, frame, and cel selection modes', () => {
+  it('deletes the selected area from every selected layer as one history step', () => {
+    const document = createDocument('delete selected layers', 2, 1, 'rgba')
+    const first = getActiveLayer(document)
+    const second = createLayer('Second', 2, 1, 'rgba')
+    document.layers.push(second)
+    for (const layer of [first, second]) {
+      writeLayerColor(document, layer, 0, red)
+      writeLayerColor(document, layer, 1, red)
+    }
+    ensureAnimationDocument(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectLayer(first.id)
+    useWorkspace.getState().selectLayer(second.id, 'toggle')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().deleteSelection()
+
+    expect(readLayerColorAt(document, first, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, second, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, first, 1, 0)).toEqual(red)
+    expect(readLayerColorAt(document, second, 1, 0)).toEqual(red)
+    expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, first, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, second, 0, 0)).toEqual(red)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, first, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, second, 0, 0)).toEqual(transparent)
+  })
+
+  it('deletes the selected area from every selected animation cell only', () => {
+    const document = createDocument('delete selected cells', 2, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 0, red)
+    writeLayerColor(document, layer, 1, red)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = duplicateAnimationFrame(document)
+    const thirdFrameId = duplicateAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, firstFrameId))
+    useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, secondFrameId), 'toggle')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().deleteSelection()
+
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, thirdFrameId)!, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 1, 0)).toEqual(red)
+    expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(red)
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(transparent)
+  })
+
+  it('deletes the selected area from every layer in the selected frames only', () => {
+    const document = createDocument('delete selected frames', 2, 1, 'rgba')
+    const first = getActiveLayer(document)
+    const second = createLayer('Second', 2, 1, 'rgba')
+    document.layers.push(second)
+    for (const layer of [first, second]) {
+      writeLayerColor(document, layer, 0, red)
+      writeLayerColor(document, layer, 1, red)
+    }
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = duplicateAnimationFrame(document)
+    const thirdFrameId = duplicateAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().selectAnimationFrame(firstFrameId)
+    useWorkspace.getState().selectAnimationFrame(secondFrameId, 'toggle')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+
+    useWorkspace.getState().deleteSelection()
+
+    for (const frameId of [firstFrameId, secondFrameId]) for (const layer of [first, second]) {
+      expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, frameId)!, 0, 0)).toEqual(transparent)
+      expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, frameId)!, 1, 0)).toEqual(red)
+    }
+    for (const layer of [first, second]) {
+      expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, thirdFrameId)!, 0, 0)).toEqual(red)
+    }
+    expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
+    useWorkspace.getState().undo()
+    for (const frameId of [firstFrameId, secondFrameId]) for (const layer of [first, second]) {
+      expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, frameId)!, 0, 0)).toEqual(red)
+    }
+  })
+
+  it('fills every selected animation cell and keeps the cell selection active', () => {
+    const document = createDocument('fill selected cells', 2, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = duplicateAnimationFrame(document)
+    const thirdFrameId = duplicateAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    const firstKey = animationCelKey(layer.id, firstFrameId)
+    const secondKey = animationCelKey(layer.id, secondFrameId)
+    useWorkspace.getState().selectAnimationCell(firstKey)
+    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
+    useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
+    useWorkspace.getState().setPrimaryColor(red)
+
+    useWorkspace.getState().fillForeground()
+
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(red)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, thirdFrameId)!, 0, 0)).toEqual(transparent)
+    let session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
+    expect(session.selection).toMatchObject({ x: 0, y: 0, width: 1, height: 1 })
+    expect(session.selectionGuidesPreservedAtContentRevision).toBe(session.contentRevision)
+    expect(session.history.position).toBe(1)
+
+    useWorkspace.getState().undo()
+    session = useWorkspace.getState().sessions[0]
+    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
+    expect(session.selection).toMatchObject({ x: 0, y: 0, width: 1, height: 1 })
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, firstFrameId)!, 0, 0)).toEqual(transparent)
+    expect(readLayerColorAt(document, animationLayerAtFrame(document, layer.id, secondFrameId)!, 0, 0)).toEqual(transparent)
+  })
+
+  it('scales and rotates every selected cell without clearing either selection', () => {
+    const document = createDocument('transform selected cells', 6, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    writeLayerColor(document, layer, 1 * document.width + 1, red)
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.activeFrameId
+    const secondFrameId = duplicateAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+    const firstKey = animationCelKey(layer.id, firstFrameId)
+    const secondKey = animationCelKey(layer.id, secondFrameId)
+    useWorkspace.getState().selectAnimationCell(firstKey)
+    useWorkspace.getState().selectAnimationCell(secondKey, 'toggle')
+    useWorkspace.getState().setSelection({ x: 1, y: 1, width: 1, height: 1 })
+    useWorkspace.getState().setSelectionPropertiesActive(true)
+
+    useWorkspace.getState().updateSelectionProperties({ x: 2, y: 1, width: 2, height: 2, angle: 90 })
+
+    let session = useWorkspace.getState().sessions[0]
+    expect(session.pendingPaste?.layers?.map(({ layerId, frameId }) => animationCelKey(layerId, frameId!))).toEqual([secondKey, firstKey])
+    expect(session.pendingPaste?.transformTarget).toMatchObject({ width: 2, height: 2 })
+    expect(session.pendingPaste?.transformAngle).toBe(90)
+    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
+    expect(session.selection).not.toBeNull()
+
+    useWorkspace.getState().commitFloatingPaste()
+
+    session = useWorkspace.getState().sessions[0]
+    expect(session.pendingPaste).toBeNull()
+    expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
+    expect(session.selection).not.toBeNull()
+    expect(session.history.position).toBe(1)
+  })
+
   it('switches a canvas hit target without creating an explicit layer selection', () => {
     const document = createDocument('canvas active layer', 2, 2, 'rgba')
     const second = createLayer('Second', 2, 2, 'rgba')

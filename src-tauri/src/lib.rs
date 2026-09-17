@@ -28,6 +28,7 @@ mod platform_resources;
 mod platform_screen_color;
 mod platform_scripts;
 mod platform_storage;
+mod platform_timelapse;
 mod platform_usage_statistics;
 mod platform_workspaces;
 use close_coordinator::CloseCoordinator;
@@ -186,6 +187,7 @@ pub fn run() {
             platform_dialogs::save_shortcut_file,
             platform_dialogs::save_theme_file,
             platform_dialogs::save_usage_statistics_file,
+            platform_dialogs::save_extension_data_file,
             platform_dialogs::default_file_directories,
             platform_dialogs::choose_directory,
             platform_diagnostics::append_diagnostic_events,
@@ -202,11 +204,13 @@ pub fn run() {
             platform_extensions::read_extension_runtime_resource,
             platform_extension_windows::show_extension_window,
             platform_extension_windows::close_extension_windows,
+            platform_extension_windows::set_extension_window_visible,
             platform_extension_windows::emit_extension_window_message,
             platform_extension_windows::start_extension_window_drag,
             platform_extension_windows::get_extension_window_bounds,
             platform_extension_windows::set_extension_window_bounds,
             platform_extension_windows::set_extension_window_hit_region,
+            platform_cursor::set_extension_window_cursor_policy,
             platform_files::file_exists,
             platform_files::read_binary,
             platform_files::read_project_preview,
@@ -217,6 +221,8 @@ pub fn run() {
             platform_files::cancel_scaled_png_export,
             platform_files::write_scaled_png_atomic,
             platform_files::write_project_incremental,
+            platform_timelapse::append_timelapse_frame,
+            platform_timelapse::read_timelapse_frame,
             platform_clipboard::write_clipboard_image,
             platform_clipboard::read_clipboard_text,
             platform_clipboard::read_clipboard_image,

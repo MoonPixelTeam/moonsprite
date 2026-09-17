@@ -31,8 +31,6 @@ export interface StoredExtension {
   panels: StoredExtensionPanel[]
   menuItems: StoredExtensionMenuItem[]
   topMenus: StoredExtensionTopMenu[]
-  /** Declarative tools exposed by the extension host. */
-  tools?: StoredExtensionTool[]
   enabled: boolean
 }
 
@@ -45,6 +43,7 @@ interface StoredExtensionSettingsControlBase {
   id: string
   label: string
   description: string
+  visibleWhen?: Record<string, boolean>
 }
 
 export interface StoredExtensionSettingsCheckbox extends StoredExtensionSettingsControlBase {
@@ -82,6 +81,7 @@ export interface StoredExtensionSettingsSelect extends StoredExtensionSettingsCo
 
 export interface StoredExtensionSettingsButton extends StoredExtensionSettingsControlBase {
   type: 'button'
+  fullWidth?: boolean
   commandId: string
   variant: 'primary' | 'secondary' | 'danger'
   closeOnRun: boolean
@@ -93,32 +93,6 @@ export type StoredExtensionSettingsControl =
   | StoredExtensionSettingsText
   | StoredExtensionSettingsSelect
   | StoredExtensionSettingsButton
-
-export type ExtensionToolKind = 'remote-pixel-brush'
-
-export type ExtensionToolPlacement = 'pencil'
-
-export interface StoredExtensionToolMode {
-  id: string
-  name: string
-  description: string
-}
-
-/**
- * A host-owned interactive tool. Extensions describe the contribution; the
- * renderer owns the interaction and document mutation implementation.
- */
-export interface StoredExtensionTool {
-  id: string
-  name: string
-  description: string
-  kind: ExtensionToolKind
-  placement: ExtensionToolPlacement
-  icon: string
-  modes: StoredExtensionToolMode[]
-  defaultMode: string
-  previewColor: string
-}
 
 export interface StoredExtensionCommand {
   id: string
@@ -173,5 +147,4 @@ export interface ExtensionPackagePreview {
   commandCount: number
   panelCount: number
   menuCount: number
-  toolCount: number
 }

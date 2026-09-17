@@ -1,8 +1,9 @@
 import { type WorkspaceRecording } from './workspace-recording'
+import type { RasterLayer } from '@shared/types-layer'
 import type { OutlineSettings } from '@shared/types-selection'
-import { commitPixelEdit, revertPixelEdit, type HistoryEntry } from '@/core/history'
-import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
-import { syncActiveAnimationFrame } from '@/core/animation'
+import { commitPixelEdit, revertPixelEdit, type HistoryEntry, type PixelEdit } from '@/core/history'
+import { animationMaskAt, isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
+import { animationLayerAtFrame, parseAnimationCelKey, syncActiveAnimationFrame } from '@/core/animation'
 import { antiAliasSelection, outlineSelection, outlineSelectionBoundary } from '@/core/tools-outline'
 import { clearSelection, fillSelectionOrCanvas } from '@/core/tools-fill'
 import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
@@ -10,7 +11,7 @@ import { cloneOutlineSettings, defaultOutlineSettings, normalizeOutlineSettings 
 import { freeTileInstanceBounds, freeTileSourceForInstance } from '@/core/free-tile'
 import { activeFreeTileCelTarget } from '@/core/free-tile-document'
 import { createFreeTileSourceEditRaster, freeTileSelectionToEditRaster, freeTileSourceSnapshotFromEditRaster } from '@/core/free-tile-edit'
-import { activeLayerMask, activePaintLayer } from './workspace-session'
+import { activeLayerMask, activePaintLayer, selectedTransformLayersForSession } from './workspace-session'
 import type { AntiAliasPreview } from './workspace-state'
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceViewSelectionCommands } from './workspace-state'
@@ -18,10 +19,10 @@ import type { WorkspaceCommandContext } from './workspace-command-context'
 import { commitFreeTileSourceEditInSession } from './workspace-free-tile-transaction'
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
-import { selectedGroupRows } from './workspace-animation-selection'
+import { completeDocumentChange } from './workspace-document-change'
 
 const restoreAntiAliasPreviewState = (session: DocumentSession, preview: AntiAliasPreview): void => {
-  revertPixelEdit(session.document, preview.edit)
+  for (let index = preview.edits.length - 1; index >= 0; index -= 1) revertPixelEdit(session.document, preview.edits[index])
   syncActiveAnimationFrame(session.document)
 }
 
@@ -34,6 +35,7 @@ const invalidateAntiAliasPreview = (session: DocumentSession): void => {
     fromRevision,
     revision: session.contentRevision
   }
+  session.selectionGuidesPreservedAtContentRevision = session.contentRevision
 }
 
 const persistOutlineSettings = (settings: OutlineSettings): void => {
@@ -68,6 +70,110 @@ const deleteFreeTileSourceSelectionInSession = (recordDocumentOperation: Workspa
   return commitFreeTileSourceEditInSession(recordDocumentOperation, session, source.id, sourceEdit.before, freeTileSourceSnapshotFromEditRaster(sourceEdit), tr('workspace.history.deleteSelection'))
 }
 
+interface SelectionEffectTarget {
+  layer: RasterLayer
+  frameId?: string
+  mask: boolean
+}
+
+const selectedEffectTargets = (session: DocumentSession): SelectionEffectTarget[] => {
+  const timeline = session.document.animation
+  const targets: SelectionEffectTarget[] = []
+  const seenPixels = new Set<object>()
+  const collect = (layer: RasterLayer | null, frameId?: string, mask = false): void => {
+    if (!layer || layer.kind || seenPixels.has(layer.pixels)) return
+    seenPixels.add(layer.pixels)
+    targets.push({ layer, frameId, mask })
+  }
+
+  syncActiveAnimationFrame(session.document)
+  if (timeline && session.selectedAnimationMaskCellKeys.length > 0) {
+    for (const key of session.selectedAnimationMaskCellKeys) {
+      const target = parseAnimationCelKey(key)
+      if (target) collect(animationMaskAt(timeline, target.layerId, target.frameId), target.frameId, true)
+    }
+    return targets
+  }
+  if (timeline && session.selectedAnimationCellKeys.length > 0) {
+    for (const key of session.selectedAnimationCellKeys) {
+      const target = parseAnimationCelKey(key)
+      if (target) collect(animationLayerAtFrame(session.document, target.layerId, target.frameId), target.frameId)
+    }
+    return targets
+  }
+
+  const layers = selectedTransformLayersForSession(session)
+  if (timeline && session.selectedAnimationFrameIds.length > 0) {
+    for (const frameId of session.selectedAnimationFrameIds) {
+      for (const layer of layers) collect(animationLayerAtFrame(session.document, layer.id, frameId), frameId)
+    }
+    return targets
+  }
+
+  const frameId = timeline?.activeFrameId
+  for (const layer of layers) collect(frameId ? animationLayerAtFrame(session.document, layer.id, frameId) : layer, frameId)
+  return targets
+}
+
+const selectionEffectUsesMultipleTargets = (session: DocumentSession): boolean =>
+  selectedTransformLayersForSession(session).length > 1
+  || session.selectedAnimationFrameIds.length > 1
+  || session.selectedAnimationCellKeys.length > 1
+  || session.selectedAnimationMaskCellKeys.length > 1
+
+const commitSelectedEffectInSession = (
+  recordDocumentOperation: WorkspaceRecording['recordDocumentOperation'],
+  session: DocumentSession,
+  label: string,
+  createEdit: (target: SelectionEffectTarget) => PixelEdit | null
+): HistoryEntry | null => {
+  const edits: PixelEdit[] = []
+  for (const target of selectedEffectTargets(session)) {
+    const edit = createEdit(target)
+    if (!edit) continue
+    if (target.frameId) edit.frameId = target.frameId
+    edits.push(edit)
+  }
+  if (edits.length === 0) return null
+
+  const capturePersistentChanges = Boolean(session.localHistory) && loadEditorPreferences().localHistoryEnabled
+  let committedCount = 0
+  session.history.beginCompound()
+  try {
+    for (const edit of edits) {
+      const entry = commitPixelEdit(session.document, edit, label, capturePersistentChanges)
+      if (entry) {
+        session.history.push(entry)
+        committedCount += 1
+      }
+    }
+    session.history.endCompound(label)
+  } catch (error) {
+    session.history.abortCompound()
+    for (let index = edits.length - 1; index >= 0; index -= 1) revertPixelEdit(session.document, edits[index])
+    syncActiveAnimationFrame(session.document)
+    throw error
+  }
+
+  const entry = committedCount > 0 ? session.history.latestUndoEntry : null
+  syncActiveAnimationFrame(session.document)
+  if (entry) {
+    session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
+    completeDocumentChange(session, 'content', recordDocumentOperation, { kind: 'full' })
+  }
+  return entry
+}
+
+const deleteSelectedTargetsInSession = (
+  recordDocumentOperation: WorkspaceRecording['recordDocumentOperation'],
+  session: DocumentSession
+): HistoryEntry | null => {
+  if (!session.selection) return null
+  return commitSelectedEffectInSession(recordDocumentOperation, session, tr('workspace.history.deleteSelection'), (target) => target.mask
+    ? fillSelectionOrCanvas(session.document, target.layer, session.secondaryColor, session.selection)
+    : clearSelection(session.document, session.selection!, target.layer))
+}
+
 export function createSelectionEffectsCommands({ get, set, recording }: WorkspaceCommandContext<'cancelFloatingPaste' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'outlineActiveSelection'>): Pick<WorkspaceViewSelectionCommands, 'deleteSelection' | 'fillForeground' | 'outlineActiveSelection' | 'quickOutlineActiveSelection' | 'outlineSelectionInside' | 'antiAliasSelection' | 'previewAntiAliasSelection' | 'restoreAntiAliasPreview'> {
   const { recordDocumentOperation } = recording
   return {
@@ -81,6 +187,12 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       if (activePaintLayer(current).kind === 'free-tile' && current.freeTileMode === 'edit' && current.selectedFreeTileInstanceId) {
         get().mutateActive((session) => {
           deleteFreeTileSourceSelectionInSession(recordDocumentOperation, session)
+        }, false)
+        return
+      }
+      if (selectionEffectUsesMultipleTargets(current)) {
+        get().mutateActive((session) => {
+          deleteSelectedTargetsInSession(recordDocumentOperation, session)
         }, false)
         return
       }
@@ -107,7 +219,6 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
     fillForeground() {
       const current = activeSession(get())
       if (!current) return
-      if (selectedGroupRows(current).length > 0) return
       if (current.pendingPaste) get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return
@@ -142,6 +253,29 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         )
         return
       }
+      if (selectionEffectUsesMultipleTargets(session)) {
+        let result: 'done' | 'empty' | 'locked' | 'invisible' = 'empty'
+        get().mutateActive((active) => {
+          const targets = selectedEffectTargets(active)
+          if (selectedTransformLayersForSession(active).some((candidate) => candidate.kind)) return
+          if (targets.some((target) => !isLayerEffectivelyVisible(active.document, target.layer))) {
+            result = 'invisible'
+            return
+          }
+          if (targets.some((target) => isLayerEffectivelyLocked(active.document, target.layer))) {
+            result = 'locked'
+            return
+          }
+          const label = active.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground')
+          const entry = commitSelectedEffectInSession(recordDocumentOperation, active, label, (target) =>
+            fillSelectionOrCanvas(active.document, target.layer, active.primaryColor, active.selection))
+          if (entry) result = 'done'
+        }, false)
+        if (result === 'empty') set({ message: tr('workspace.fill.empty') })
+        else if (result === 'locked') set({ message: tr('workspace.fill.locked') })
+        else if (result === 'invisible') set({ message: tr('workspace.fill.invisible') })
+        return
+      }
       if (!isLayerEffectivelyVisible(session.document, layer)) {
         set({ message: tr('workspace.fill.invisible') })
         return
@@ -170,13 +304,51 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
     outlineActiveSelection(settings) {
       const session = activeSession(get())
       if (!session) return false
+      const normalized = normalizeOutlineSettings(settings, session.primaryColor)!
+      const historyLabel = normalized.position === 'inside' ? tr('workspace.history.outlineInside') : normalized.position === 'both' ? tr('workspace.history.outlineBoth') : tr('workspace.history.outlineOutside')
+      const positionLabel = normalized.position === 'inside' ? tr('outline.inside') : normalized.position === 'both' ? tr('outline.both') : tr('outline.outside')
+      if (selectionEffectUsesMultipleTargets(session)) {
+        let applied = false
+        try {
+          get().mutateActive((active) => {
+            const targets = selectedEffectTargets(active)
+            if (targets.some((target) => isLayerEffectivelyLocked(active.document, target.layer))) return
+            const entry = commitSelectedEffectInSession(recordDocumentOperation, active, historyLabel, (target) => outlineSelection(
+              active.document,
+              target.layer,
+              active.selection,
+              normalized.color,
+              normalized.thickness,
+              normalized.position,
+              normalized.directions,
+              normalized.kernel,
+              normalized.smartHue,
+              normalized.smartHueDarkness,
+              normalized.backgroundColor,
+              normalized.followOpacity
+            ))
+            if (!entry) return
+            active.document.outlineSettings = cloneOutlineSettings(normalized)
+            applied = true
+          }, false)
+          if (!applied) {
+            set({ message: tr('workspace.outline.noContent') })
+            return false
+          }
+          persistOutlineSettings(normalized)
+          set({ message: tr('workspace.outline.applied', { thickness: normalized.thickness, position: positionLabel }) })
+          return true
+        } catch (error) {
+          set({ message: error instanceof Error ? error.message : tr('workspace.outline.applyError') })
+          return false
+        }
+      }
       const layer = activePaintLayer(session)
       if (isLayerEffectivelyLocked(session.document, layer)) {
         set({ message: tr('workspace.clipboard.layerLocked') })
         return false
       }
       try {
-        const normalized = normalizeOutlineSettings(settings, session.primaryColor)!
         const edit = outlineSelection(
           session.document,
           layer,
@@ -197,8 +369,6 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         }
         session.document.outlineSettings = cloneOutlineSettings(normalized)
         persistOutlineSettings(normalized)
-        const historyLabel = normalized.position === 'inside' ? tr('workspace.history.outlineInside') : normalized.position === 'both' ? tr('workspace.history.outlineBoth') : tr('workspace.history.outlineOutside')
-        const positionLabel = normalized.position === 'inside' ? tr('outline.inside') : normalized.position === 'both' ? tr('outline.both') : tr('outline.outside')
         get().commitPixelEdit(edit, historyLabel)
         set({
           message: tr('workspace.outline.applied', {
@@ -242,6 +412,36 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         color: { ...session.primaryColor },
         smartHue: false
       }
+      if (selectionEffectUsesMultipleTargets(session)) {
+        let applied = false
+        try {
+          get().mutateActive((active) => {
+            const targets = selectedEffectTargets(active)
+            if (targets.some((target) => isLayerEffectivelyLocked(active.document, target.layer))) return
+            applied = Boolean(commitSelectedEffectInSession(recordDocumentOperation, active, tr('workspace.history.outlineInside'), (target) => outlineSelectionBoundary(
+              active.document,
+              target.layer,
+              active.selection!,
+              insideSettings.color,
+              insideSettings.thickness,
+              insideSettings.directions,
+              insideSettings.kernel,
+              insideSettings.smartHue,
+              insideSettings.smartHueDarkness,
+              insideSettings.followOpacity
+            )))
+          }, false)
+          if (!applied) {
+            set({ message: tr('workspace.outline.noContent') })
+            return false
+          }
+          set({ message: tr('workspace.outline.applied', { thickness: insideSettings.thickness, position: tr('outline.inside') }) })
+          return true
+        } catch (error) {
+          set({ message: error instanceof Error ? error.message : tr('workspace.outline.applyError') })
+          return false
+        }
+      }
       const layer = activePaintLayer(session)
       if (isLayerEffectivelyLocked(session.document, layer)) {
         set({ message: tr('workspace.clipboard.layerLocked') })
@@ -282,6 +482,17 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
     antiAliasSelection(color, autoColorOpacity, includeInteriorColors, colorSource) {
       const session = activeSession(get())
       if (!session) return false
+      if (selectionEffectUsesMultipleTargets(session)) {
+        let applied = false
+        get().mutateActive((active) => {
+          const targets = selectedEffectTargets(active)
+          if (targets.some((target) => isLayerEffectivelyLocked(active.document, target.layer))) return
+          applied = Boolean(commitSelectedEffectInSession(recordDocumentOperation, active, tr('workspace.history.antiAlias'), (target) =>
+            antiAliasSelection(active.document, target.layer, active.selection, color, autoColorOpacity, includeInteriorColors, colorSource)))
+        }, false)
+        if (!applied) set({ message: tr('workspace.outline.noContent') })
+        return applied
+      }
       const layer = activePaintLayer(session)
       if (isLayerEffectivelyLocked(session.document, layer)) {
         set({ message: tr('workspace.clipboard.layerLocked') })
@@ -311,13 +522,18 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
         return null
       }
-      const layer = activePaintLayer(session)
-      if (isLayerEffectivelyLocked(session.document, layer)) {
+      const targets = selectedEffectTargets(session)
+      if (targets.length === 0 || targets.some((target) => isLayerEffectivelyLocked(session.document, target.layer))) {
         if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
         return null
       }
-      const edit = antiAliasSelection(session.document, layer, session.selection, color, autoColorOpacity, includeInteriorColors, colorSource)
-      if (!edit) {
+      const edits = targets.flatMap((target) => {
+        const edit = antiAliasSelection(session.document, target.layer, session.selection, color, autoColorOpacity, includeInteriorColors, colorSource)
+        if (!edit) return []
+        if (target.frameId) edit.frameId = target.frameId
+        return [edit]
+      })
+      if (edits.length === 0) {
         if (changedSessions.size > 0) set({ sessions: [...state.sessions] })
         return null
       }
@@ -325,7 +541,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       invalidateAntiAliasPreview(session)
       changedSessions.add(session)
       set({ sessions: [...state.sessions] })
-      return { documentId: session.document.id, edit }
+      return { documentId: session.document.id, edits }
     },
     restoreAntiAliasPreview(preview) {
       if (!preview) return

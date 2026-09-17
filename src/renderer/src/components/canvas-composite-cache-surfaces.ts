@@ -247,25 +247,10 @@ export const rememberSharedAnimationComposite = (document: SpriteDocument, frame
 export const imageData = (pixels: Uint8ClampedArray, width: number, height: number): ImageData => new ImageData(pixels as Uint8ClampedArray<ArrayBuffer>, width, height)
 
 export const gpuBlendModeFor = (mode: BlendMode): GlobalCompositeOperation | null => {
-  if (mode === 'normal') return 'source-over'
-  const supported: Partial<Record<BlendMode, GlobalCompositeOperation>> = {
-    darken: 'darken',
-    multiply: 'multiply',
-    'color-burn': 'color-burn',
-    lighten: 'lighten',
-    screen: 'screen',
-    'color-dodge': 'color-dodge',
-    overlay: 'overlay',
-    'hard-light': 'hard-light',
-    'soft-light': 'soft-light',
-    difference: 'difference',
-    exclusion: 'exclusion',
-    hue: 'hue',
-    saturation: 'saturation',
-    color: 'color',
-    luminosity: 'luminosity'
-  }
-  return supported[mode] ?? null
+  // Canvas blends interpolate the source color by backdrop alpha before
+  // source-over. MoonSprite's canonical blendWithMode does not. Even matching
+  // operation names therefore change translucent pixels during a preview.
+  return mode === 'normal' ? 'source-over' : null
 }
 
 export const compositePreviewPixel = (output: Uint8ClampedArray, outputOffset: number, packed: number, layerFormat: RasterLayer['format'], layerOpacity: number, palette: Map<number, SpriteDocument['palette'][number]['color']> | null): void => {

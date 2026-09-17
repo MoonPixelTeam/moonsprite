@@ -181,8 +181,6 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.airbrushDensity,
     session.airbrushIntervalMs,
     session.liquifyMode,
-    session.extensionToolId ?? '',
-    session.extensionToolMode,
     session.liquifyRadius,
     session.liquifyStrength,
     session.liquifySmoothing,

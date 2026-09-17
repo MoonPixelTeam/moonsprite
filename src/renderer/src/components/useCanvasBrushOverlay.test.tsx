@@ -35,7 +35,7 @@ it.each([['liquify', false], ['liquify', true], ['pencil', false]] as const)('bo
     optimizedRotationEnabled: false, snapBrushPointToGrid: point => point,
     cursorCompositePointSamplerFor: sampleHotspot,
     activeTheme: {} as Parameters<typeof useCanvasBrushOverlay>[0]['activeTheme'],
-    addExtensionToolFootprint: vi.fn(), scheduleDraw: vi.fn(), activeToolBrushSize: 4
+    scheduleDraw: vi.fn(), activeToolBrushSize: 4
   }))
   result.current.brushPreviewCanvasRef.current = overlay
   act(() => result.current.brushPreviewDrawRef.current())

@@ -28,6 +28,15 @@ import {
 } from '@/core/canvas-input'
 import { canvasCursors, canvasToolCursor, selectionCreationCursor } from '@/core/canvas-visuals'
 import { isPressurePointerType } from '@/core/pressure'
+
+export const retainsCanvasCursorOverlayOnLeave = (
+  drag: CanvasInputState['drag'],
+  tileRepeatMode: import('@shared/types-raster').TileRepeatMode
+): boolean => {
+  if (drag?.kind === 'marquee' || drag?.kind === 'lasso' || drag?.kind === 'polygon-lasso') return true
+  return (drag?.kind === 'draw' || drag?.kind === 'tile-draw' || drag?.kind === 'move-content' || drag?.kind === 'move-selection') && tileRepeatMode !== 'off'
+}
+
 interface Ports {
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly session: DocumentSession
@@ -175,12 +184,10 @@ export function useCanvasDeviceRouter(ports: Ports) {
         ports.session.tool === 'airbrush' ||
         ports.session.tool === 'eraser' ||
         ports.session.tool === 'smooth' ||
-        ports.session.tool === 'liquify' ||
-        ports.session.tool === 'extension') &&
+        ports.session.tool === 'liquify') &&
       (ports.session.tool === 'smooth' ||
         ports.session.tool === 'airbrush' ||
         ports.session.tool === 'liquify' ||
-        ports.session.tool === 'extension' ||
         ports.activeLayer.kind === 'tilemap' ||
         !ports.activeBrushImage?.intrinsicSize)
     ) {
@@ -415,14 +422,18 @@ export function useCanvasDeviceRouter(ports: Ports) {
 
   const pointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
-    const pressurePointer = isPressurePointerType(event.pointerType) || pressureAdapterRef.current.isPressureCapable(event.pointerId)
-    const selectionCreationDrag =
-      ports.inputRef.current.drag?.kind === 'marquee' || ports.inputRef.current.drag?.kind === 'lasso' || ports.inputRef.current.drag?.kind === 'polygon-lasso'
+    const retainsOverlay = retainsCanvasCursorOverlayOnLeave(
+      ports.inputRef.current.drag,
+      ports.liveViewRef.current.tileRepeatMode ?? 'off'
+    )
     handlePointerLeave(event)
-    if (selectionCreationDrag) return
+    if (retainsOverlay) return
     ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
     pressureAdapterRef.current.release(event.pointerId)
-    if (pressurePointer) ports.hidePenCursor()
+    // Both pen cursors and the mouse auto-contrast cursor are stage overlays.
+    // Once a normal hover leaves the canvas, keeping either overlay visible
+    // leaves a stale cursor inside the surrounding view.
+    ports.hidePenCursor()
   }
 
   const pointerEnter = (event: React.PointerEvent<HTMLCanvasElement>): void => {

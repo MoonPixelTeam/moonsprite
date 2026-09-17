@@ -5,15 +5,18 @@ import { normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/p
 import { commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resetTimelapseSmartCapture, type TimelapseCaptureCache } from '@/core/timelapse'
 import { recordUsageEvent } from '@/platform/usage-statistics'
 import type { DocumentSession } from './workspace-types'
+import { persistTimelapseFrames } from './timelapse-library-service'
 
 /** A capture is either triggered by an edit or by an undo/redo history step. */
 export type TimelapseCaptureKind = 'edit' | 'undo-step'
 
-export function createWorkspaceRecording(onCaptureCommitted: (document: SpriteDocument) => void) {
+export function createWorkspaceRecording(onCaptureCommitted: (document: SpriteDocument) => void, onCaptureError?: (message: string) => void) {
 const timelapseCaptureCaches = new WeakMap<SpriteDocument, TimelapseCaptureCache>()
 const timelapseCaptureTasks = new WeakMap<SpriteDocument, Promise<void>>()
 const timelapseCaptureGenerations = new WeakMap<SpriteDocument, number>()
 const pendingCounts = new WeakMap<SpriteDocument, number>()
+const pendingBytes = new WeakMap<SpriteDocument, number>()
+const releaseCaptureBytes = new WeakMap<() => Promise<void>, () => void>()
 // A failed encode retains its original pixels and blocks later frames from
 // overtaking it. An explicit flush retries once, never a background retry loop.
 const failedCaptures = new WeakMap<SpriteDocument, Array<() => Promise<void>>>()
@@ -41,6 +44,22 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
     contentInvalidation: captureInvalidation
   }), () => ({ ...documentDiagnosticDetail(document), tool: session.tool, contentRevision: captureRevision }))
   if (!prepared) return Promise.resolve()
+  const queuedBytes = pendingBytes.get(document) ?? 0
+  if (queuedBytes + prepared.pixels.byteLength > 64 * 1024 * 1024) {
+    if (document.timelapse) document.timelapse.enabled = false
+    const error = new Error('缩时录像写入积压，已暂停新帧录制。已有帧已保留，请检查磁盘后重新开启录制。')
+    onCaptureError?.(error.message)
+    recordRuntimeDiagnostic('error', 'timelapse.backpressure', { documentId: document.id, pendingBytes: queuedBytes })
+    onCaptureCommitted(document)
+    return Promise.reject(error)
+  }
+  pendingBytes.set(document, queuedBytes + prepared.pixels.byteLength)
+  let released = false
+  const releaseBytes = () => {
+    if (released) return
+    released = true
+    pendingBytes.set(document, Math.max(0, (pendingBytes.get(document) ?? 0) - prepared.pixels.byteLength))
+  }
   const queuedAt = runtimeDiagnosticsActive() ? performance.now() : null
   let diagnostics = timelapseDiagnosticQueues.get(document)
   if (queuedAt !== null) {
@@ -56,13 +75,14 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
   const previous = timelapseCaptureTasks.get(document) ?? Promise.resolve()
   let appended = false
   const commit = async (): Promise<void> => {
-    if (appended) { onCaptureCommitted(document); return }
+    if (appended) { await persistTimelapseFrames(document, window.moonSprite); onCaptureCommitted(document); return }
     const snapshots = document.timelapse?.snapshots
     await commitPreparedTimelapseSnapshot(document, prepared, () => (timelapseCaptureGenerations.get(document) ?? 0) === generation
       && (kind !== 'undo-step' || (timelapseUndoStepGenerations.get(document) ?? 0) === undoStepGeneration))
     appended = document.timelapse?.snapshots !== snapshots
-    if (appended) onCaptureCommitted(document)
+    if (appended) { await persistTimelapseFrames(document, window.moonSprite); onCaptureCommitted(document) }
   }
+  releaseCaptureBytes.set(commit, releaseBytes)
   pendingCounts.set(document, (pendingCounts.get(document) ?? 0) + 1)
   let tracked = Promise.resolve()
   tracked = previous.catch(() => undefined).then(async () => {
@@ -78,6 +98,7 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
       else diagnostics.completed += 1
     }
   }).catch((error) => {
+    onCaptureError?.(`缩时录像未能保存：${error instanceof Error ? error.message : String(error)}`)
     const failures = failedCaptures.get(document) ?? []
     failures.push(commit)
     failedCaptures.set(document, failures)
@@ -89,6 +110,7 @@ const queueTimelapseCapture = (session: DocumentSession, kind: TimelapseCaptureK
     })
     throw error
   }).finally(() => {
+    if (!failedCaptures.get(document)?.includes(commit)) releaseBytes()
     pendingCounts.set(document, Math.max(0, (pendingCounts.get(document) ?? 1) - 1))
     if (diagnostics && queuedAt !== null) {
       diagnostics.pending -= 1
@@ -138,13 +160,16 @@ const flushTimelapseCapture = async (session: DocumentSession): Promise<void> =>
       retry = (async () => {
         const failures = failedCaptures.get(document)
         while (failures?.length) {
-          await failures[0]()
+          const failed = failures[0]
+          await failed()
+          releaseCaptureBytes.get(failed)?.()
           failures.shift()
         }
       })().finally(() => { retryTasks.delete(document) })
       retryTasks.set(document, retry)
     }
     await retry
+    if (!failedCaptures.get(document)?.length && (pendingCounts.get(document) ?? 0) === 0) pendingBytes.set(document, 0)
     diagnostic?.finish('ok', { frames: document.timelapse?.snapshots.length ?? 0, pending: timelapseDiagnosticQueues.get(document)?.pending ?? 0 })
   } catch (error) {
     diagnostic?.finish('error', { message: error instanceof Error ? error.message : String(error) })
@@ -186,6 +211,7 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
       if (cache) resetTimelapseSmartCapture(cache)
     },
     cancelPending(document: SpriteDocument) {
+      for (const failed of failedCaptures.get(document) ?? []) releaseCaptureBytes.get(failed)?.()
       failedCaptures.delete(document)
       timelapseCaptureGenerations.set(document, (timelapseCaptureGenerations.get(document) ?? 0) + 1)
       timelapseUndoStepGenerations.set(document, (timelapseUndoStepGenerations.get(document) ?? 0) + 1)

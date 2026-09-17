@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ExtensionRuntimeRequest, ExtensionRuntimeResponse } from '@shared/types-extension-runtime'
 import type { StoredExtension, StoredExtensionSettingsControl, StoredExtensionSettingsUi } from '@shared/types-extensions'
 import { FormField } from '@/components/FormField'
+import { Button } from '@/components/Button'
 import { DialogHeader } from '@/components/DialogHeader'
 import { ModalShell } from '@/components/ModalShell'
 import { NumberInput } from '@/components/NumberInput'
@@ -81,11 +82,12 @@ function HostExtensionSettings({ extension, settings, onClose }: { extension: St
   return <>
     <div className="modal-body extension-settings-modal-body extension-settings-component-body component-scrollbar">
       {settings.controls.map((control) => {
+        if (control.visibleWhen && !Object.entries(control.visibleWhen).every(([id, expected]) => values[id] === expected)) return null
         if (control.type === 'checkbox') return <PreferenceToggle key={control.id} label={control.label} tooltip={control.description} checked={Boolean(values[control.id])} onChange={(checked) => update(control.id, checked)} />
         if (control.type === 'number') return <FormField key={control.id} layout="inline" label={control.label} hint={control.description || undefined}><NumberInput aria-label={control.label} value={typeof values[control.id] === 'number' ? values[control.id] as number : control.defaultValue} live min={control.min} max={control.max} step={control.step} suffix={control.suffix} onValueChange={(value) => update(control.id, value)} /></FormField>
         if (control.type === 'text') return <FormField key={control.id} layout="inline" label={control.label} hint={control.description || undefined}><TextInput aria-label={control.label} value={String(values[control.id] ?? '')} placeholder={control.placeholder} maxLength={control.maxLength} onChange={(event) => update(control.id, event.target.value)} /></FormField>
         if (control.type === 'select') return <FormField key={control.id} layout="inline" label={control.label} hint={control.description || undefined}><ThemedSelect label={control.label} value={String(values[control.id] ?? control.defaultValue)} groups={[{ label: control.label, options: control.options }]} onChange={(value) => update(control.id, value)} /></FormField>
-        return <div className="extension-settings-command" key={control.id}><button type="button" className={control.variant === 'primary' ? 'primary-button' : control.variant === 'danger' ? 'danger-button' : 'quiet-button'} title={control.description || control.label} onClick={() => runButton(control)}>{control.label}</button>{control.description && <small>{control.description}</small>}</div>
+        return <div className={'extension-settings-command'+(control.fullWidth?' extension-settings-command-full':'')} key={control.id}><Button variant={control.variant === 'primary' ? 'primary' : control.variant === 'danger' ? 'danger' : 'quiet'} title={control.description || control.label} onClick={() => runButton(control)}>{control.label}</Button>{control.description && <small>{control.description}</small>}</div>
       })}
       {error && <p className="preference-search-empty">{error}</p>}
     </div>

@@ -8,7 +8,6 @@ import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
 import { createBoundsCanvasInput } from './canvas-input-bounds'
 import { createFreeTileCanvasInput } from './canvas-input-free-tile'
-import { createExtensionCanvasInput } from './canvas-input-extension'
 import { createSliceCanvasInput } from './canvas-input-slice'
 import { createLayerMoveCanvasInput } from './canvas-input-layer-move'
 import { createLineConnectionCanvasInput } from './canvas-input-line-connection'
@@ -93,7 +92,6 @@ interface Ports {
   tilemapSelectionCreationAllowed: boolean
   tilemapEditSelectionAtPoint: (point: Point, current?: DocumentSession, armOutsideTiles?: boolean) => SelectionMask | null | undefined
   freeTileInput: ReturnType<typeof createFreeTileCanvasInput>
-  extensionInput: ReturnType<typeof createExtensionCanvasInput>
   sliceTool: boolean
   sliceInput: ReturnType<typeof createSliceCanvasInput>
   layerMoveInput: ReturnType<typeof createLayerMoveCanvasInput>
@@ -149,7 +147,6 @@ export function createCanvasPointerDown(ports: Ports) {
       tilemapSelectionCreationAllowed,
       tilemapEditSelectionAtPoint,
       freeTileInput,
-      extensionInput,
       sliceTool,
       sliceInput,
       layerMoveInput,
@@ -299,8 +296,7 @@ export function createCanvasPointerDown(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
-        session.tool === 'liquify' ||
-        session.tool === 'extension')
+        session.tool === 'liquify')
     // Modifier sizing has no cursor hit-test or composited color sample to
     // resolve. Avoid updateCursor's layer-tree sampling on every mouse move.
     if (!modifierSizingActive) updateCursor(event)
@@ -402,12 +398,10 @@ export function createCanvasPointerDown(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
-        session.tool === 'liquify' ||
-        session.tool === 'extension') &&
+        session.tool === 'liquify') &&
       (session.tool === 'smooth' ||
         session.tool === 'airbrush' ||
         session.tool === 'liquify' ||
-        session.tool === 'extension' ||
         activeLayer.kind === 'tilemap' ||
         !activeBrushImage?.intrinsicSize) &&
       event.button === 0
@@ -548,12 +542,6 @@ export function createCanvasPointerDown(ports: Ports) {
       return
     if (editableLayer.kind && !isToolAvailableForSession(session, temporaryMove ? 'move' : session.tool) && !canEditSelectionLayers && !eyedropperHeld) return
     if (!temporaryMove && selectionTool && (event.button === 0 || event.button === 2) && !canEditSelectionLayers && !eyedropperHeld) return
-    if (
-      session.tool === 'extension' &&
-      event.button === 0 &&
-      extensionInput.beginExtension({ session, event, hasRasterFocus, canEditLayer, editableLayer, point })
-    )
-      return
     if (
       !freeTransformActive &&
       !temporaryMove &&

@@ -13,6 +13,7 @@ import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { FormField } from './FormField'
 import { PreferenceToggle } from './PreferenceToggle'
 import { RangeField } from './RangeField'
+import { readTimelapseFrame } from '@/platform/timelapse-library'
 
 interface TimelapseDialogProps {
   settings: TimelapseSettings
@@ -30,6 +31,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
   const previewStartFrameRef = useRef(0)
   const previewBitmapCacheRef = useRef(new Map<string, ImageBitmap>())
   const [previewPlaying, setPreviewPlaying] = useState(false)
+  const [previewError, setPreviewError] = useState('')
   const [previewFrame, setPreviewFrame] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
   const [previewVisuals, setPreviewVisuals] = useState(() => {
@@ -127,8 +129,11 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
       const previewHeight = 270
       let bitmap = previewBitmapCacheRef.current.get(frame.id)
       if (!bitmap) {
-        const buffer = frame.data.buffer.slice(frame.data.byteOffset, frame.data.byteOffset + frame.data.byteLength) as ArrayBuffer
+        const data = await readTimelapseFrame(frame)
+        if (canceled) return
+        const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
         bitmap = await createImageBitmap(new Blob([buffer], { type: 'image/png' }))
+        if (canceled) { bitmap.close(); return }
         previewBitmapCacheRef.current.set(frame.id, bitmap)
         while (previewBitmapCacheRef.current.size > 8) {
           const oldest = previewBitmapCacheRef.current.keys().next().value
@@ -148,7 +153,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
       canvas.width = previewWidth
       canvas.height = previewHeight
       const context = canvas.getContext('2d')
-      if (!context) { bitmap.close(); return }
+      if (!context) return
       const checkerSize = 8
       for (let y = 0; y < previewHeight; y += checkerSize) for (let x = 0; x < previewWidth; x += checkerSize) {
         const color = ((x / checkerSize + y / checkerSize) & 1) === 0 ? previewVisuals.checkerboard.lightColor : previewVisuals.checkerboard.darkColor
@@ -160,9 +165,9 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
       const width = Math.max(1, Math.round(frame.width * scale))
       const height = Math.max(1, Math.round(frame.height * scale))
       context.drawImage(bitmap, Math.floor((previewWidth - width) / 2), Math.floor((previewHeight - height) / 2), width, height)
-      bitmap.close()
     }
-    void render(snapshot)
+    setPreviewError('')
+    void render(snapshot).catch(error => { if (!canceled) { setPreviewError(String(error)); setPreviewPlaying(false) } })
     return () => { canceled = true }
   }, [exportOpen, previewVisuals, snapshot])
 
@@ -173,6 +178,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
       <DialogHeader title={t('timelapse.title')} titleId="timelapse-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body timelapse-body component-scrollbar">
         <section className="timelapse-preview" aria-label={t('timelapse.preview')}>
+          {previewError && <div role="alert"><p>{t('timelapse.previewUnavailable')}</p><p className="modal-note">{previewError}</p></div>}
           <div className="timelapse-preview-frame"><canvas ref={canvasRef} /></div>
           <div className="timelapse-preview-controls">
             <button type="button" className="icon-button" disabled={previewPlan.length < 2} title={previewPlaying ? t('timelapse.pausePreview') : t('timelapse.playPreview')} aria-label={previewPlaying ? t('timelapse.pausePreview') : t('timelapse.playPreview')} onClick={togglePreviewPlayback}>{previewPlaying ? <PlaybackPixelIcon kind="pause" /> : <PlaybackPixelIcon kind="play" />}</button>
@@ -180,7 +186,8 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
           </div>
         </section>
         <PreferenceToggle className="timelapse-toggle" checked={settings.enabled} label={t('timelapse.recording')} onChange={(enabled) => onChange({ enabled })} />
-        <FormField label={t('timelapse.recordingMode')} hint={settings.mode === 'smart' ? t('timelapse.recordingModeSmartHint') : t('timelapse.recordingModeFullHint')}>
+        <p className="modal-note">{t('timelapse.storageHint')}</p>
+        <FormField label={t('timelapse.recordingMode')}>
           <ThemedSelect<TimelapseRecordingMode>
             value={settings.mode ?? 'smart'}
             groups={[{ label: t('timelapse.recordingMode'), options: [
@@ -188,6 +195,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
               { value: 'smart', label: t('timelapse.recordingModeSmart'), description: t('timelapse.recordingModeSmartHint') }
             ] }]}
             label={t('timelapse.recordingMode')}
+            showOptionTooltips
             onChange={(mode) => onChange({ mode })}
           />
         </FormField>

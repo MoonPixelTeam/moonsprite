@@ -9,7 +9,7 @@ MoonSprite extensions use the `.msext` suffix and are ZIP containers. The packag
 - `schemaVersion: 1`: declarative Lua extensions for undoable document commands, menus, and command panels. See [Lua Scripts and the MSE API](../scripting/README.en.md).
 - `schemaVersion: 2`: retains Lua command compatibility and adds Extension Runtime v1, host-rendered settings, and extension-owned auxiliary windows. A manifest with `runtime` must also declare `apiVersion: "1.0.0"`.
 
-Both versions may use `commands[]`, `panels[]`, `menuItems[]`, `topMenus[]`, and `tools[]`. Only schema 2 supports `settingsUi` and `runtime`. Both versions may use a restricted HTML `settingsEntry`.
+Both versions may use `commands[]`, `panels[]`, `menuItems[]`, and `topMenus[]`. Only schema 2 supports `settingsUi` and `runtime`. Both versions may use a restricted HTML `settingsEntry`.
 
 ## Package Layout
 
@@ -48,7 +48,6 @@ HTML entries must be self-contained. The default CSP blocks direct package-relat
 - `panels[]`: host-rendered command panels toggled under Window > Panels; `defaultVisible` defaults to `false`.
 - `menuItems[]`: inserts into `file`, `edit`, `select`, `canvas`, `layer`, `window`, or `help`; `position` is `start` or `end`. Supplying `name` creates a submenu; omitting it inserts commands directly.
 - `topMenus[]`: adds a host-rendered top-level menu; `position` accepts `start`, `end`, `before:<builtInMenu>`, or `after:<builtInMenu>`.
-- `tools[]`: host-owned tool contributions. The only current combination is `kind: "remote-pixel-brush"` with `placement: "pencil"`; this is not an arbitrary frontend code entry point.
 
 Contribution IDs are case-insensitively unique within their own namespaces. Command references must match the manifest command ID casing exactly.
 
@@ -60,13 +59,13 @@ Menus, panels, and `settingsUi` are rendered by the MoonSprite component library
 
 - Archives are limited to 50 MiB, 256 files, 256 MiB unpacked, and a 256 KiB `manifest.json`.
 - Runtime entries are limited to 1 MiB and settings entries to 512 KiB. A Runtime may expose at most 64 resources, each at most 16 MiB.
-- A package may contain at most 64 commands, 16 panels, 32 built-in-menu contributions, 16 top-level menus, 16 tools, and 64 settings controls. A panel or menu may reference at most 32 commands.
+- A package may contain at most 64 commands, 16 panels, 32 built-in-menu contributions, 16 top-level menus, and 64 settings controls. A panel or menu may reference at most 32 commands.
 - A schema 2 Runtime cannot run in older MoonSprite builds without Runtime v1. Call `runtime.getCapabilities()` after startup instead of assuming every declared API is present.
 - Arbitrary document pixel or structure writes should still use packaged Lua commands to retain transactions, undo, target validation, and rollback.
 
 ## Installation And Lifecycle
 
-MoonSprite validates and extracts into a staging directory before atomically replacing an installed extension with the same ID. Updates preserve enabled state. Only enabled extensions contribute runtimes, menus, panels, and tools. Disabling, replacing, or uninstalling destroys the Runtime and closes its auxiliary windows. Extension storage is isolated by extension ID and does not modify project files, dirty state, or undo history.
+MoonSprite validates and extracts into a staging directory before atomically replacing an installed extension with the same ID. Updates preserve enabled state. Only enabled extensions contribute runtimes, menus, and panels. Disabling, replacing, or uninstalling destroys the Runtime and closes its auxiliary windows. Extension storage is isolated by extension ID and does not modify project files, dirty state, or undo history.
 
 ## Further Reading
 
