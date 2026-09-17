@@ -4,6 +4,29 @@ import { prepareSelectionBoundary, selectionBoundarySegments, selectionPreviewRe
 import { prepareMagicWandOperation } from './magic-wand-operation'
 import { drawMagicWandPreview } from '../components/canvas-magic-preview'
 import type { RasterContext2D } from '../components/canvas-selection-renderer'
+import { AUTO_CONTRAST_FILTER } from '../components/canvas-adaptive-contrast'
+
+const adaptiveContext = () => {
+  const bufferContexts: Array<ReturnType<typeof createBufferContext>> = []
+  const createBufferContext = () => ({
+    clearRect: vi.fn(), drawImage: vi.fn(), setTransform: vi.fn(), fillRect: vi.fn(),
+    filter: '', fillStyle: '' as unknown, globalCompositeOperation: '', imageSmoothingEnabled: true
+  })
+  vi.stubGlobal('OffscreenCanvas', class {
+    readonly context = createBufferContext()
+    constructor(public width: number, public height: number) { bufferContexts.push(this.context) }
+    getContext() { return this.context }
+  })
+  const pattern = { setTransform: vi.fn() }
+  const context = {
+    canvas: { width: 100, height: 100 },
+    getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse: () => ({ translate: (x: number, y: number) => ({ x, y }) }) }),
+    createPattern: vi.fn(() => pattern), setTransform: vi.fn(),
+    save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), fill: vi.fn(), drawImage: vi.fn(),
+    globalCompositeOperation: '', fillStyle: '' as unknown, filter: ''
+  }
+  return { context, pattern, bufferContexts }
+}
 
 describe('magic wand display pipeline', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -25,12 +48,16 @@ describe('magic wand display pipeline', () => {
     expect(context.rect).toHaveBeenCalledTimes(4)
     expect(context.fill).toHaveBeenCalledTimes(1)
   })
-  it('uses the same black-or-white contrast color as selection previews', () => {
+  it('fills preview rectangles with contrast sampled from the covered backdrop', () => {
     const selection = { x: 0, y: 0, width: 1, height: 1 }
-    const context = { save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), fill: vi.fn(), drawImage: vi.fn(), globalCompositeOperation: '', fillStyle: '', filter: '' }
+    const { context, pattern, bufferContexts } = adaptiveContext()
     drawMagicWandPreview(context as unknown as RasterContext2D, selection, new Int32Array([0, 0, 1, 1]), null, 0, 0, 1, '#000000', true)
     expect(context.globalCompositeOperation).toBe('source-over')
-    expect(context.fillStyle).toBe('#000000')
+    expect(context.fillStyle).toBe(pattern)
+    expect(bufferContexts[0].filter).toBe(AUTO_CONTRAST_FILTER)
+    expect(bufferContexts[0].drawImage).toHaveBeenCalledWith(context.canvas, 0, 0, 1, 1, 0, 0, 1, 1)
+    expect(context.rect).toHaveBeenCalledWith(0, 0, 1, 1)
+    expect(context.fill).toHaveBeenCalledOnce()
   })
   it('bounds path complexity for noisy selections and displays their bitmap in one call', () => {
     const mask = Uint8Array.from({ length: 256 * 256 }, (_, i) => (i + Math.floor(i / 256)) % 2)
@@ -42,13 +69,19 @@ describe('magic wand display pipeline', () => {
     expect(context.drawImage).toHaveBeenCalledWith(bitmap, 16, 28, 512, 512)
     expect(context.rect).not.toHaveBeenCalled()
   })
-  it('keeps noisy automatic black previews to one filtered bitmap draw', () => {
+  it('masks adaptive contrast and composites noisy previews in one canvas draw', () => {
     const selection = { x: 3, y: 4, width: 2, height: 2 }
-    const context = { save: vi.fn(), restore: vi.fn(), drawImage: vi.fn(), globalCompositeOperation: '', fillStyle: '', filter: '' }
+    const { context, pattern, bufferContexts } = adaptiveContext()
     const bitmap = {} as ImageBitmap
     drawMagicWandPreview(context as unknown as RasterContext2D, selection, null, bitmap, 10, 20, 2, '#000000', true)
-    expect(context.filter).toBe('brightness(0)')
+    expect(bufferContexts[0].filter).toBe(AUTO_CONTRAST_FILTER)
+    expect(bufferContexts[0].drawImage).toHaveBeenCalledWith(context.canvas, 16, 28, 4, 4, 0, 0, 4, 4)
+    expect(bufferContexts[1].drawImage).toHaveBeenCalledWith(bitmap, 16, 28, 4, 4)
+    expect(bufferContexts[1].globalCompositeOperation).toBe('source-in')
+    expect(bufferContexts[1].fillStyle).toBe(pattern)
+    expect(bufferContexts[1].fillRect).toHaveBeenCalledWith(16, 28, 4, 4)
     expect(context.drawImage).toHaveBeenCalledTimes(1)
+    expect(context.drawImage).toHaveBeenCalledWith(expect.objectContaining({ width: 4, height: 4 }), 16, 28)
   })
   it('combines selection in worker coordinates and preserves the original selection', () => {
     const before: SelectionMask = { x: 1, y: 0, width: 2, height: 1, mask: new Uint8Array([1, 1]) }

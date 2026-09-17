@@ -424,9 +424,12 @@ describe('animation timeline boundary', () => {
     const resized = resizeDocumentAt(document, 5, 1, 1, 0)
     resizeAnimationCelsAt(document, resized.offsetX, resized.offsetY, false, 2, 1)
 
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 0))).toEqual([0, 255, 0, 255, 0])
+    // Background storage retains complete repeat units beyond the viewport.
+    // Check displayed pixels rather than assuming storage matches canvas width.
+    expect(Array.from(compositeDocument(document).filter((_, index) => index % 4 === 0))).toEqual([0, 255, 0, 255, 0])
     activateAnimationFrame(document, secondFrame)
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 0))).toEqual([255, 0, 255, 0, 255])
-    expect(Array.from(getActiveLayer(document).pixels.filter((_, index) => index % 4 === 1))).toEqual([255, 255, 255, 255, 255])
+    const displayed = compositeDocument(document)
+    expect(Array.from(displayed.filter((_, index) => index % 4 === 0))).toEqual([255, 0, 255, 0, 255])
+    expect(Array.from(displayed.filter((_, index) => index % 4 === 1))).toEqual([255, 255, 255, 255, 255])
   })
 })
