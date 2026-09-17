@@ -41,7 +41,7 @@ test('clicking a pet without a project still shows a bubble', async () => {
 
 test('multiple pets have independent windows, positions and scales', async () => {
  const handlers={},opened=[],closed=[],visibility=[],sent=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]])
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async payload=>visibility.push(payload),open:async payload=>opened.push(payload),close:async payload=>closed.push(payload),postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async payload=>visibility.push(payload),open:async payload=>opened.push(payload),close:async payload=>closed.push(payload),postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
  await handlers.activate()
  closed.length=0
  assert.deepEqual(opened.map(value=>value.windowId),['pet-builtin','pet-custom'])
@@ -164,7 +164,7 @@ test('multiple named animations share one aligned sheet and keep separate frame 
   assert.equal(draws[2][6],10)
 })
 
-test('supplementing SHOW preserves IDLE and WAVE on the same pet, and rollback preserves the old sheet', async () => {
+test('supplementing SHOW preserves IDLE, drops unsupported slots, and rollback preserves the old sheet', async () => {
   let meta=[{id:'custom-1',name:'Test',source:'custom',frameWidth:2,frameHeight:2,frameCount:3,animations:{IDLE:[0],SHOW:[1],WAVE:[2]},durations:[100,200,300],mirrored:true}]
   const sprites=new Map([['custom-1','old-sheet']]);let rejectMeta=false
   const sandbox=vm.createContext({
@@ -184,14 +184,14 @@ test('supplementing SHOW preserves IDLE and WAVE on the same pet, and rollback p
   await vm.runInContext("importAnimations([{animation:'SHOW',bytes:[1],mime:'image/png'}],'custom-1')",sandbox)
   assert.equal(meta.length,1);assert.equal(meta[0].id,'custom-1');assert.equal(meta[0].mirrored,true)
   assert.deepEqual(Array.from(meta[0].animations.IDLE),[0])
-  assert.deepEqual(Array.from(meta[0].animations.WAVE),[1])
-  assert.deepEqual(Array.from(meta[0].animations.SHOW),[2,3])
-  assert.deepEqual(Array.from(meta[0].durations),[100,300,40,50])
+  assert.equal(meta[0].animations.WAVE,undefined)
+  assert.deepEqual(Array.from(meta[0].animations.SHOW),[1,2])
+  assert.deepEqual(Array.from(meta[0].durations),[100,40,50])
   assert.equal(sprites.has('custom-1'),false)
   const saved=meta[0],key=saved.spriteKey
   rejectMeta=true
   await new Promise(resolve=>setTimeout(resolve,2))
-  await assert.rejects(vm.runInContext("importAnimations([{animation:'JUMP',bytes:[1],mime:'image/png'}],'custom-1')",sandbox),/quota/)
+  await assert.rejects(vm.runInContext("importAnimations([{animation:'SHOW',bytes:[1],mime:'image/png'}],'custom-1')",sandbox),/quota/)
   assert.equal(meta[0],saved);assert.equal(sprites.has(key),true);assert.equal(sprites.size,1)
 })
 
@@ -218,13 +218,14 @@ test('mirrored playback flips the actual drawn pixels, not only the element', ()
 
 test('reminders use actual elapsed minutes and ignore old custom wording', async () => {
  const handlers={},sent=[],base=Date.now()
- const sandbox=vm.createContext({moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{set:async()=>{},get:async({key})=>key==='preferences'?{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'OLD',breakText:'OLD'}:null},windows:{setVisible:async()=>{},open:async()=>{},close:async()=>{},postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
- vm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox)
+ const sandbox=vm.createContext({setTimeout,clearTimeout,moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{set:async()=>{},get:async({key})=>key==='preferences'?{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'OLD',breakText:'OLD'}:null},windows:{setVisible:async()=>{},open:async()=>{},close:async()=>{},postMessage:async payload=>{sent.push(payload);if(payload.message.type==='notice-distance')await handlers['window-message']({windowId:payload.windowId,message:{...payload.message,distance:10}})}},diagnostics:{log:async()=>{}}}})
+ vm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],sandbox)
  await handlers.activate()
+ await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}})
  await handlers.project({project:{id:'doc',dirty:true,contentRevision:0},homeOpen:false})
  await handlers.project({project:{id:'doc',dirty:true,contentRevision:1},homeOpen:false})
  handlers.clock({timestamp:base+121000})
- await new Promise(resolve=>setImmediate(resolve))
+ await vm.runInContext('noticeQueue',sandbox)
  const texts=sent.filter(item=>item.message.type==='notice').map(item=>item.message.text)
  assert.ok(texts.some(text=>text.includes('2 分钟没有保存文件')))
  assert.ok(texts.some(text=>text.includes('连续绘制了 2 分钟')))
@@ -253,7 +254,7 @@ test('extension manager stages animation names and toggles visibility without re
 
 test('manager opens even while pet initialization is pending or fails', async () => {
  const handlers={},opened=[];let rejectRead;
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:()=>new Promise((_,reject)=>{rejectRead=reject})},windows:{setVisible:async()=>{},open:async payload=>opened.push(payload)},diagnostics:{log:async()=>{}}}})
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:()=>new Promise((_,reject)=>{rejectRead=reject})},windows:{setVisible:async()=>{},open:async payload=>opened.push(payload)},diagnostics:{log:async()=>{}}}})
  const activation=handlers.activate();const failed=assert.rejects(activation,/storage failed/);
  await handlers.command({event:'manager'});
  assert.equal(opened.length,1);
@@ -264,7 +265,7 @@ test('manager opens even while pet initialization is pending or fails', async ()
 
 test('a failed pet does not block the other pets and can be opened on the next change', async () => {
  const handlers={},opened=[],sent=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]]);let fail=true;
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async payload=>{if(fail&&payload.windowId==='pet-builtin')throw Error('open failed');opened.push(payload)},close:async()=>{},postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async payload=>{if(fail&&payload.windowId==='pet-builtin')throw Error('open failed');opened.push(payload)},close:async()=>{},postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
  await handlers.activate();assert.deepEqual(opened.map(p=>p.windowId),['pet-custom']);
  await handlers['window-message']({windowId:'pet-custom',message:{type:'ready'}});sent.length=0;
  fail=false;stored.set('pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:4}]);
@@ -276,7 +277,7 @@ test('a failed pet does not block the other pets and can be opened on the next c
 
 test('activation shows the built-in pet even after all pets were hidden and publishes only usable menu items', async () => {
  const handlers={},opened=[],menus=[],stored=new Map([['preferences',{enabled:false}],['shownPets',[]],['pet-sprites',[{id:'empty',name:'Empty',frameCount:0}]]]);
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async value=>menus.push(value)},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async value=>opened.push(value),close:async()=>{},postMessage:async()=>{}},diagnostics:{log:async()=>{}}}});
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async value=>menus.push(value)},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async value=>opened.push(value),close:async()=>{},postMessage:async()=>{}},diagnostics:{log:async()=>{}}}});
  await handlers.activate();
  assert.deepEqual(opened.map(p=>p.windowId),['pet-builtin']);
  assert.equal(stored.get('preferences').enabled,true);
@@ -310,7 +311,7 @@ test('two pet windows keep their own configuration and sheet even if a foreign m
 
 test('menu toggles restore all selected pets and reopening does not depend on a second ready event', async () => {
  const handlers={},opened=[],shown=new Map(),messages=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',name:'Second',frameWidth:2,frameHeight:2,frameCount:1,source:'custom',spriteKey:'custom-sheet'}]]]);
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p.windowId);shown.set(p.windowId,true)},close:async p=>{if(p.windowId!=='companion')throw Error('Visibility must not destroy the pet window')},setVisible:async p=>shown.set(p.windowId,p.visible),postMessage:async p=>messages.push(p)},diagnostics:{log:async error=>{throw Error(error.message)}}}});
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p.windowId);shown.set(p.windowId,true)},close:async p=>{if(p.windowId!=='companion')throw Error('Visibility must not destroy the pet window')},setVisible:async p=>shown.set(p.windowId,p.visible),postMessage:async p=>messages.push(p)},diagnostics:{log:async error=>{throw Error(error.message)}}}});
  await handlers.activate();
  for(const id of opened)await handlers['window-message']({windowId:id,message:{type:'ready'}});
  stored.set('preferences',{enabled:false});await handlers['settings-changed']({key:'preferences'});
@@ -334,7 +335,7 @@ test('home and different projects preserve selected pets and their shared positi
   ['shownPets',['builtin','custom']],['position:builtin',{x:42,y:67}],['position:custom',{x:123,y:89}],
   ['pet-sprites',[{id:'custom',frameWidth:2,frameHeight:2,frameCount:1}]]
  ]);
- vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p);shown.set(p.windowId,true)},setVisible:async p=>shown.set(p.windowId,p.visible),close:async()=>{},postMessage:async p=>sent.push(p)},diagnostics:{log:async e=>{throw Error(e.message)}}}});
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p);shown.set(p.windowId,true)},setVisible:async p=>shown.set(p.windowId,p.visible),close:async()=>{},postMessage:async p=>sent.push(p)},diagnostics:{log:async e=>{throw Error(e.message)}}}});
  await handlers.activate();assert.equal(opened.length,2);
  await handlers.project({project:{id:'first'},homeOpen:true});assert.equal(opened.length,2);
  await handlers.project({project:{id:'first'},homeOpen:false});assert.equal(opened.length,2);
@@ -450,7 +451,7 @@ test('SHOW can be uploaded before IDLE and adding IDLE preserves the SHOW frames
  let meta=[{id:'custom',name:'Cat',source:'custom',frameWidth:1,frameHeight:1,frameCount:0,animations:{},animationSlots:['SHOW','IDLE','WAVE']}];
  const sprites=new Map();
  const sandbox=vm.createContext({document:{createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){}}),toDataURL:()=> 'sheet'})},readMeta:async()=>meta,listPets:async()=>meta,loadSheetUrl:async()=>({url:'sheet',revoke:false}),decodeImage:async()=>({}),decodeStill:async()=>({sheet:{width:2,height:2},durations:[100]}),spriteWrite:async(key,value)=>sprites.set(key,value),spriteDelete:async key=>sprites.delete(key),writeMeta:async value=>meta=value,publish:async()=>{},status:''});
- let start=generated.managerSource.indexOf('const sliceSheet='),end=generated.managerSource.indexOf('const animationSlots=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ let start=generated.managerSource.indexOf('const sliceSheet='),end=generated.managerSource.indexOf('let activeId=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  start=generated.managerSource.indexOf('const combineAnimations=');end=generated.managerSource.indexOf('let operations=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  await vm.runInContext("importAnimations([{animation:'SHOW',bytes:[1],mime:'image/png'}],'custom')",sandbox);
  assert.deepEqual(Array.from(meta[0].animations.SHOW),[0]);assert.deepEqual(Array.from(meta[0].idleFrames),[0]);
@@ -464,7 +465,7 @@ test('clearing slots preserves the other animation, rolls back failures and allo
  let meta=[{id:'custom',name:'Cat',source:'custom',spriteKey:'original',frameWidth:2,frameHeight:2,frameCount:3,animations:{SHOW:[0,1],IDLE:[2]},durations:[80,90,120],mirrored:true,scale:3}];
  const sprites=new Map([['original','old']]);let fail=false,published=0;
  const sandbox=vm.createContext({document:{createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){}}),toDataURL:()=> 'new-sheet'})},readMeta:async()=>meta,listPets:async()=>meta,loadSheetUrl:async()=>({url:'sheet',revoke:false}),decodeImage:async()=>({}),decodeStill:async()=>({sheet:{width:2,height:2},durations:[100]}),spriteWrite:async(key,value)=>sprites.set(key,value),spriteDelete:async key=>sprites.delete(key),writeMeta:async value=>{if(fail)throw Error('quota');meta=value},publish:async()=>{published++},status:''});
- let start=generated.managerSource.indexOf('const sliceSheet='),end=generated.managerSource.indexOf('const animationSlots=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ let start=generated.managerSource.indexOf('const sliceSheet='),end=generated.managerSource.indexOf('let activeId=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  start=generated.managerSource.indexOf('const combineAnimations=');end=generated.managerSource.indexOf('let operations=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  fail=true;await assert.rejects(vm.runInContext("importAnimations([],'custom','SHOW')",sandbox),/quota/);
  assert.equal(meta[0].spriteKey,'original');assert.deepEqual([...sprites.keys()],['original']);assert.equal(published,0);

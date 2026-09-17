@@ -107,7 +107,7 @@ export function ExtensionWindow({ identity: suppliedIdentity, onClose, onUiState
       const css = await extensionWindowTheme(CURSOR_VARIABLES, preferences.useLocalCursors, preferences.cursorScale)
       if (!embedded) await setExtensionWindowCursorPolicy(preferences.useLocalCursors)
       if (active) setDocument(secureDocument(html, css + (embedded ? 'body[data-ms-dialog]{height:100%;border:0}body[data-ms-dialog]>h1{display:none}' : ''), identity.windowId))
-    }).catch((error) => console.error(`[Extension ${identity.extensionId}] failed to load window`, error))
+    }).catch((error) => console.error('扩展窗口加载失败', { extensionId: identity.extensionId, error }))
     return () => { active = false }
   }, [identity.extensionId, identity.resourceId])
 
@@ -220,7 +220,7 @@ async function handleWindowRequest(identity: Identity, method: string, rawParams
   if (method === 'window.close') { await closeCurrentExtensionWindow(); return null }
   if (method === 'diagnostics.log') {
     const message = typeof params.message === 'string' ? params.message.slice(0, 2_000) : ''
-    console.info(`[Extension ${identity.extensionId}/${identity.windowId}] ${message}`)
+    console.info('[Extension %s/%s] %s', identity.extensionId, identity.windowId, message)
     await emitExtensionRuntimeWindowMessage({ ...identity, message: { type: 'diagnostic', message, level: params.level } })
     return null
   }

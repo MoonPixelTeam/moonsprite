@@ -100,12 +100,16 @@ export const extensionStorage = (extensionId: string, storage: Storage = localSt
 })
 
 type RuntimeDispatch = (event: ExtensionRuntimeEvent) => void
-const runtimeDispatchers = new Map<string, RuntimeDispatch>()
+interface RuntimeDispatcher {
+  dispatch: RuntimeDispatch
+}
+const runtimeDispatchers = new Map<string, RuntimeDispatcher>()
 
 export const registerExtensionRuntime = (extensionId: string, dispatch: RuntimeDispatch): (() => void) => {
-  runtimeDispatchers.set(extensionId, dispatch)
+  const registered = { dispatch }
+  runtimeDispatchers.set(extensionId, registered)
   return () => {
-    if (runtimeDispatchers.get(extensionId) === dispatch) runtimeDispatchers.delete(extensionId)
+    if (runtimeDispatchers.get(extensionId) === registered) runtimeDispatchers.delete(extensionId)
   }
 }
 
@@ -114,21 +118,21 @@ export const dispatchExtensionRuntimeCommand = (
   commandId: string,
   event: string
 ): boolean => {
-  const dispatch = runtimeDispatchers.get(extensionId)
-  if (!dispatch) return false
-  dispatch({ type: 'command', commandId, event })
+  const registered = runtimeDispatchers.get(extensionId)
+  if (!registered) return false
+  registered.dispatch({ type: 'command', commandId, event })
   return true
 }
 
 export const dispatchExtensionRuntimeEvent = (extensionId: string, event: ExtensionRuntimeEvent): boolean => {
-  const dispatch = runtimeDispatchers.get(extensionId)
-  if (!dispatch) return false
-  dispatch(event)
+  const registered = runtimeDispatchers.get(extensionId)
+  if (!registered) return false
+  registered.dispatch(event)
   return true
 }
 
 export const broadcastExtensionRuntimeEvent = (event: ExtensionRuntimeEvent): void => {
-  for (const dispatch of runtimeDispatchers.values()) dispatch(event)
+  for (const registered of runtimeDispatchers.values()) registered.dispatch(event)
 }
 
 export interface ExtensionCommandHandlers {

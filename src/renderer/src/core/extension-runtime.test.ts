@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { StoredExtension } from '@shared/types-extensions'
-import { executeExtensionCommand, extensionRuntimeAllows, extensionStorage, registerExtensionRuntime } from './extension-runtime'
+import { broadcastExtensionRuntimeEvent, dispatchExtensionRuntimeEvent, executeExtensionCommand, extensionRuntimeAllows, extensionStorage, registerExtensionRuntime } from './extension-runtime'
 
 const memoryStorage = (): Storage => {
   const values = new Map<string, string>()
@@ -22,6 +22,33 @@ const extension = (): StoredExtension => ({
 })
 
 describe('extension runtime boundary', () => {
+  it('dispatches only registered runtimes and preserves replacements during cleanup', () => {
+    const previous = vi.fn()
+    const current = vi.fn()
+    const other = vi.fn()
+    const event = { type: 'window-message' as const, windowId: 'manager', message: 'hello' }
+    const removePrevious = registerExtensionRuntime('one', previous)
+    const removeCurrent = registerExtensionRuntime('one', current)
+    const removeOther = registerExtensionRuntime('two', other)
+    try {
+      removePrevious()
+      expect(dispatchExtensionRuntimeEvent('constructor', event)).toBe(false)
+      expect(dispatchExtensionRuntimeEvent('__proto__', event)).toBe(false)
+      expect(dispatchExtensionRuntimeEvent('missing', event)).toBe(false)
+      expect(dispatchExtensionRuntimeEvent('one', event)).toBe(true)
+      expect(current).toHaveBeenCalledWith(event)
+      expect(other).not.toHaveBeenCalled()
+      broadcastExtensionRuntimeEvent(event)
+      expect(current).toHaveBeenCalledTimes(2)
+      expect(other).toHaveBeenCalledWith(event)
+      expect(previous).not.toHaveBeenCalled()
+    } finally {
+      removeCurrent()
+      removeOther()
+    }
+    expect(dispatchExtensionRuntimeEvent('one', event)).toBe(false)
+  })
+
   it('checks every method against its declared permission', () => {
     expect(extensionRuntimeAllows(['runtime'], 'runtime.getCapabilities')).toBe(true)
     expect(extensionRuntimeAllows(['runtime'], 'storage.get')).toBe(false)
