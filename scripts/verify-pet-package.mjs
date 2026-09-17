@@ -34,7 +34,7 @@ for (const name of ['manifest.json', 'runtime/index.html', 'ui/pet.html', 'ui/ma
 // 2. Every inline script must parse.
 const inlineScripts = (name) => {
   const html = text(name)
-  const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((match) => match[1])
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((match) => match[1])
   if (scripts.length === 0) failures.push(`${name} 没有内联脚本`)
   return scripts
 }
