@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { RgbaColor, ToolId } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { ToolId } from '@shared/types-brush'
 import { ColorValueControl } from './ColorValueControl'
 import { DialogHeader } from './DialogHeader'
 import { FormField } from './FormField'

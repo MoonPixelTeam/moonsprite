@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ImageBrush, ProjectBrush, StoredBrush, StoredBrushFolder } from '@shared/types'
+import type { ImageBrush, ProjectBrush } from '@shared/types-brush'
+import type { StoredBrush, StoredBrushFolder } from '@shared/types-library'
 import { decodeImageBrush } from '@/core/brushes'
 import { BRUSH_LIBRARY_CHANGED_EVENT, BRUSH_LIBRARY_IMPORT_PATHS_EVENT, type BrushLibraryImportPathsDetail } from '@/core/brush-library-events'
 import { brushFolderContains } from '@/core/brush-folder-tree'

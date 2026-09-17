@@ -1,6 +1,6 @@
 import type { ColorAdjustment } from './adjustments'
 import type { AdjustmentPreviewBaseline, AdjustmentPreviewResult, AdjustmentPreviewWorkerRequest, AdjustmentPreviewWorkerResponse } from './adjustment-preview-protocol'
-import type { SelectionRect } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
 
 const MAX_WORKER_BASELINE_BYTES = 256 * 1024 * 1024
 const BASELINE_COPY_CHUNK_BYTES = 4 * 1024 * 1024

@@ -2,6 +2,13 @@ import type { RuntimeDiagnosticEvent } from '@/core/runtime-diagnostics'
 
 const BATCH_DELAY_MS = 250
 const MAX_BATCH_EVENTS = 100 // Matches append_diagnostic_events on the native side.
+const MAX_PENDING_EVENTS = 500
+
+const importantEvent = (event: RuntimeDiagnosticEvent): boolean => event.kind === 'error'
+  || event.kind === 'operation-slow'
+  || event.kind === 'main-thread-stall'
+  || event.kind === 'long-task'
+  || (event.kind === 'operation-end' && event.detail.outcome === 'error')
 
 export const createDiagnosticWriter = (
   persist: (events: readonly RuntimeDiagnosticEvent[]) => Promise<void>,
@@ -11,6 +18,8 @@ export const createDiagnosticWriter = (
   let timer: ReturnType<typeof setTimeout> | undefined
   let running: Promise<void> | undefined
   let inFlight: RuntimeDiagnosticEvent[] = []
+  let droppedEvents = 0
+  let generation = 0
   const cancelTimer = (): void => {
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
@@ -22,10 +31,22 @@ export const createDiagnosticWriter = (
     const drain = async (): Promise<void> => {
       while (pending.length) {
         inFlight = pending.splice(0, MAX_BATCH_EVENTS)
+        if (droppedEvents > 0) {
+          inFlight[0] = {
+            ...inFlight[0],
+            detail: {
+              ...inFlight[0].detail,
+              diagnosticWriterDroppedEvents: droppedEvents,
+              diagnosticWriterPendingLimit: MAX_PENDING_EVENTS
+            }
+          }
+          droppedEvents = 0
+        }
+        const batchGeneration = generation
         try {
           await persist(inFlight)
         } catch {
-          fallback(inFlight)
+          if (batchGeneration === generation) fallback(inFlight)
         } finally {
           inFlight = []
         }
@@ -41,10 +62,24 @@ export const createDiagnosticWriter = (
     return running
   }
   const enqueue = (events: readonly RuntimeDiagnosticEvent[]): void => {
-    pending.push(...events)
-    const urgent = events.some((event) => event.kind === 'error'
-      || event.kind === 'operation-slow'
-      || (event.kind === 'operation-end' && event.detail.outcome === 'error'))
+    let urgent = false
+    for (const event of events) {
+      const important = importantEvent(event)
+      urgent ||= important
+      if (pending.length < MAX_PENDING_EVENTS) {
+        pending.push(event)
+        continue
+      }
+      if (!important) {
+        droppedEvents += 1
+        continue
+      }
+      const replaceIndex = pending.findIndex((item) => !importantEvent(item))
+      if (replaceIndex >= 0) pending.splice(replaceIndex, 1)
+      else pending.shift()
+      pending.push(event)
+      droppedEvents += 1
+    }
     if (urgent) {
       void flush()
     } else if (!running && timer === undefined) {
@@ -57,5 +92,12 @@ export const createDiagnosticWriter = (
     const events = [...inFlight, ...pending]
     if (events.length) fallback(events)
   }
-  return { enqueue, flush, checkpoint }
+  const discardPending = (): void => {
+    generation++
+    cancelTimer()
+    pending.length = 0
+    inFlight = []
+    droppedEvents = 0
+  }
+  return { enqueue, flush, checkpoint, discardPending }
 }

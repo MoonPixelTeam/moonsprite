@@ -1,4 +1,4 @@
-import type { InkMode } from '@shared/types'
+import type { InkMode } from '@shared/types-brush'
 import inkCopyAlphaColorIcon from '@/assets/pixel-icons/ink-copy-alpha-color.svg?raw'
 import inkLockAlphaIcon from '@/assets/pixel-icons/ink-lock-alpha.svg?raw'
 import inkSimpleIcon from '@/assets/pixel-icons/ink-simple.svg?raw'

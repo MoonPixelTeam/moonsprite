@@ -10,6 +10,49 @@ const entry = (state: { value: number }, next: number, label = 'edit') => ({
 })
 
 describe('HistoryStack', () => {
+  it('keeps more than 1000 steps by default and can return to unlimited steps', () => {
+    const history = new HistoryStack()
+    const state = { value: 1002 }
+    for (let index = 0; index < 1002; index++) history.push(entry(state, index + 1))
+    expect(history.length).toBe(1002)
+    while (history.canUndo) history.undo()
+    expect(state.value).toBe(0)
+    while (history.canRedo) history.redo()
+    expect(state.value).toBe(1002)
+    history.setMaxEntries(2)
+    expect(history.length).toBe(2)
+    history.setMaxEntries(Infinity)
+    history.push(entry(state, 1003))
+    expect(history.length).toBe(3)
+  })
+
+  it('limits an undone timeline without skipping the next redo', () => {
+    const state = { value: 3 }
+    const history = new HistoryStack()
+    for (let index = 1; index <= 3; index++) history.push(entry(state, index, String(index)))
+    while (history.canUndo) history.undo()
+    history.setMaxEntries(2)
+    expect(history.timeline.entries.map(item => item.label)).toEqual(['1', '2'])
+    history.redo()
+    expect(state.value).toBe(1)
+    history.redo()
+    expect(state.value).toBe(2)
+    expect(history.canRedo).toBe(false)
+  })
+
+  it.each([0, 1, 3])('restores a limited timeline at position %s without changing the current state', position => {
+    const state = { value: position }
+    const entries = [1, 2, 3].map(value => entry(state, value, String(value)))
+    const history = new HistoryStack(undefined, 2)
+    history.restoreTimeline(entries, position)
+    expect(state.value).toBe(position)
+    expect(history.length).toBe(2)
+    if (history.canRedo) {
+      history.redo()
+      expect(state.value).toBe(position + 1)
+    }
+  })
+
   it('merges a sealed brush prefix and reversible tail with the original baseline', () => {
     const prefix = beginPixelEdit('layer')
     prefix.before.set(1, 10)
@@ -99,6 +142,32 @@ describe('HistoryStack', () => {
     expect(history.memoryBytes).toBe(0)
     history.redo()
     expect(history.memoryBytes).toBe(10)
+  })
+
+  it('keeps only the configured number of newest undo entries', () => {
+    const history = new HistoryStack(Number.MAX_SAFE_INTEGER, 2)
+    const changes: Array<{ kind: string; discarded?: number }> = []
+    history.setChangeListener((change) => changes.push({ kind: change.kind, discarded: change.discardedUndoEntries }))
+    history.push(entry({ value: 0 }, 1, 'first'))
+    history.push(entry({ value: 0 }, 2, 'second'))
+    history.push(entry({ value: 0 }, 3, 'third'))
+
+    expect(history.timeline.entries.map((item) => item.label)).toEqual(['second', 'third'])
+    expect(history.position).toBe(2)
+    expect(changes.at(-1)).toEqual({ kind: 'push', discarded: 1 })
+  })
+
+  it('applies a lower history limit to an existing stack and reports discarded entries', () => {
+    const history = new HistoryStack(Number.MAX_SAFE_INTEGER, 3)
+    const changes: string[] = []
+    history.setChangeListener((change) => changes.push(`${change.kind}:${change.discardedUndoEntries ?? 0}`))
+    history.push(entry({ value: 0 }, 1, 'first'))
+    history.push(entry({ value: 0 }, 2, 'second'))
+    history.push(entry({ value: 0 }, 3, 'third'))
+    history.setMaxEntries(1)
+
+    expect(history.timeline.entries.map((item) => item.label)).toEqual(['third'])
+    expect(changes.at(-1)).toBe('trim:2')
   })
 
   it('notifies local-history observers only after committed stack transitions', () => {

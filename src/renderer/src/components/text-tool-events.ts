@@ -17,8 +17,8 @@ export const openTextToolDialog = (detail: TextToolDialogDetail): void => {
 
 export interface TextToolPreviewDetail {
   documentId: string
-  surface: import('@shared/types').AnimationCelSurface | null
-  box?: import('@shared/types').SelectionRect | null
+  surface: import('@shared/types-animation').AnimationCelSurface | null
+  box?: import('@shared/types-selection').SelectionRect | null
 }
 
 export const publishTextToolPreview = (detail: TextToolPreviewDetail): void => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SelectionMask } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
 import { computeMagicWandSelection } from './magic-wand-selection-engine'
 import { selectionBoundarySegments, selectionBoundarySegmentsForExterior, selectionPreviewRectangles } from './selection-boundary'
 

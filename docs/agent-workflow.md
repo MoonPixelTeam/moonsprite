@@ -1,7 +1,6 @@
 # AI 与开发工作流
 
-中文 | [English](agent-workflow.en.md)
-
+中文
 本文件是发布、性能和上下文恢复的唯一详细流程。日常硬规则见 [AGENTS.md](../AGENTS.md)，文档导航见 [README.md](README.md)。当前处于 Beta 迭代，实际版本号以项目清单的一致值为准；只有用户明确要求发布或打包时才进入发布阶段。
 
 日常开发、风险分级和 `check:dev` 入口只以 [AGENTS.md](../AGENTS.md) 为准；本文件不重复这些规则。

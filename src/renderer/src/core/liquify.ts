@@ -1,5 +1,8 @@
-import type { LayerMask, LiquifyMode, RasterLayer, SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
-import { ensureLayerCoversCanvas, layerIndexAt, readLayerPacked, writeLayerPacked } from './document'
+import type { LayerMask, RasterLayer } from '@shared/types-layer'
+import type { LiquifyMode } from '@shared/types-brush'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import { ensureLayerCoversCanvas, layerIndexAt, readLayerPacked, writeLayerPacked } from './document-model'
 import { recordPixelKnownCurrent, type PixelEdit } from './history'
 import { selectionContains } from './selection'
 

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "scope": "src-tauri/src 与 src-tauri/thumbnail-provider/src 下的全部 .rs 文件。",
+  "note": "Rust 侧风险登记额度。panic 统计 .unwrap() 与 .expect(，silent 统计 let _ =（可能吞掉 Result），unsafe 统计 unsafe 关键字。这是“登记额度”而不是“违规数”：额度只为阻止继续增加，不表示每一处都是缺陷。额度不得上调；下降后建议同步下调，但不强制。零容忍的 panic!/todo!/unimplemented!/unreachable! 只作用于 src-tauri/src（应用平台层）；thumbnail-provider 的手工检查程序应当在读到位图异常时大声失败。",
+  "zeroTolerance": [
+    "panic!",
+    "todo!",
+    "unimplemented!",
+    "unreachable!"
+  ],
+  "files": {
+    "src-tauri/src/close_coordinator.rs": {
+      "panic": 3,
+      "silent": 0,
+      "unsafe": 0
+    },
+    "src-tauri/src/lib.rs": {
+      "panic": 1,
+      "silent": 11,
+      "unsafe": 1
+    },
+    "src-tauri/src/platform_background_presets.rs": {
+      "panic": 10,
+      "silent": 2,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_brushes.rs": {
+      "panic": 8,
+      "silent": 8,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_clipboard.rs": {
+      "panic": 1,
+      "silent": 0,
+      "unsafe": 8
+    },
+    "src-tauri/src/platform_cursor.rs": {
+      "panic": 0,
+      "silent": 1,
+      "unsafe": 16
+    },
+    "src-tauri/src/platform_diagnostics.rs": {
+      "panic": 6,
+      "silent": 1,
+      "unsafe": 1
+    },
+    "src-tauri/src/platform_extensions.rs": {
+      "panic": 29,
+      "silent": 16,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_files.rs": {
+      "panic": 48,
+      "silent": 5,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_fonts.rs": {
+      "panic": 9,
+      "silent": 2,
+      "unsafe": 3
+    },
+    "src-tauri/src/platform_gallery.rs": {
+      "panic": 10,
+      "silent": 1,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_palette.rs": {
+      "panic": 4,
+      "silent": 2,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_paths.rs": {
+      "panic": 2,
+      "silent": 1,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_recovery.rs": {
+      "panic": 8,
+      "silent": 2,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_screen_color.rs": {
+      "panic": 0,
+      "silent": 2,
+      "unsafe": 13
+    },
+    "src-tauri/src/platform_scripts.rs": {
+      "panic": 21,
+      "silent": 7,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_scripts/lua_api.rs": {
+      "panic": 39,
+      "silent": 1,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_scripts/mse_api.rs": {
+      "panic": 1,
+      "silent": 0,
+      "unsafe": 0
+    },
+    "src-tauri/src/platform_storage.rs": {
+      "panic": 37,
+      "silent": 9,
+      "unsafe": 1
+    },
+    "src-tauri/src/platform_workspaces.rs": {
+      "panic": 8,
+      "silent": 2,
+      "unsafe": 0
+    },
+    "src-tauri/thumbnail-provider/src/bin/shell-thumbnail-check.rs": {
+      "panic": 1,
+      "silent": 1,
+      "unsafe": 6
+    },
+    "src-tauri/thumbnail-provider/src/lib.rs": {
+      "panic": 7,
+      "silent": 2,
+      "unsafe": 17
+    }
+  }
+}

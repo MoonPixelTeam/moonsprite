@@ -1,4 +1,5 @@
-import type { FreeTileCelData, FreeTileSourceLayer, RgbaColor } from '@shared/types'
+import type { FreeTileCelData, FreeTileSourceLayer } from '@shared/types-tiles'
+import type { RgbaColor } from '@shared/types-color'
 import { cloneFreeTileCelData, freeTileCelDataEqual, freeTileInstanceBounds, freeTileSourceForInstance } from '@/core/free-tile'
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, applyFreeTileSourceLayerSnapshot, freeTileCelTargetAt, freeTileLayerIdsForSource, freeTileSourceOwnerForId, type FreeTileCelTarget, type FreeTilePlacementEdit } from '@/core/free-tile-document'
 import type { HistoryEntry } from '@/core/history'

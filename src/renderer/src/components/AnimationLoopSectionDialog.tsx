@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useState } from 'react'
-import type { AnimationLoopDirection } from '@shared/types'
+import type { AnimationLoopDirection } from '@shared/types-animation'
 import { CheckboxField } from '@/components/CheckboxField'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'

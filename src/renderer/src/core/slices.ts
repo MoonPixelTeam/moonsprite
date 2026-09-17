@@ -1,4 +1,5 @@
-import type { DocumentSlice, SelectionRect } from '@shared/types'
+import type { DocumentSlice } from '@shared/types-document'
+import type { SelectionRect } from '@shared/types-selection'
 
 export interface AutoSliceSettings {
   width: number

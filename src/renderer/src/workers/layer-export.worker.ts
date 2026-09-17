@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { exportAnimationGif } from '@/core/gif'
 import { exportDocumentImage } from '@/core/png'
 import { documentForLayerExport } from '@/core/layer-export'

@@ -1,8 +1,8 @@
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
-import type { RgbaColor } from '@shared/types'
-import type { OutlineSettings } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { OutlineSettings } from '@shared/types-selection'
 import type { ColorValueMode } from './color-values'
 import { normalizeOutlineSettings, cloneOutlineSettings } from './outline-settings'
 import { DEFAULT_THEME_PREFERENCES, THEME_PREFERENCE_KEY, loadThemePreferences, normalizeThemePreferences, resolveTheme, rgbaHex, saveThemePreferences, withThemePaletteColors, type ThemePalette, type ThemePreferences } from './theme'
@@ -15,6 +15,7 @@ export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-dir
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
+export const CANVAS_VIEW_SCROLLBARS_ENABLED_KEY = 'moonsprite.preference.canvas-view-scrollbars-enabled'
 export const DRAWING_BRUSH_PREVIEW_ENABLED_KEY = 'moonsprite.preference.drawing-brush-preview-enabled'
 export const RELATIVE_LUMINANCE_SCOPE_KEY = 'moonsprite.preference.relative-luminance-scope'
 export const LANGUAGE_PREFERENCE_KEY = APP_LANGUAGE_PREFERENCE_KEY
@@ -27,6 +28,8 @@ export const PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY = 'moonsprite.preferen
 export const PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.project-backup-directory'
 export const LOCAL_HISTORY_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.local-history-enabled'
 export const LOCAL_HISTORY_LIMIT_PREFERENCE_KEY = 'moonsprite.preference.local-history-limit'
+export const HISTORY_LIMIT_PREFERENCE_KEY = 'moonsprite.preference.history-limit'
+export const HISTORY_LIMIT_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.history-limit-enabled'
 export const ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY = 'moonsprite.preference.zoom-tool-drag-mode'
 export const VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY = 'moonsprite.preference.view-drag-sensitivity'
 export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-mode'
@@ -87,6 +90,7 @@ export const QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY = 'moonsprite.preferen
 export const QUICK_COMMAND_PREFERENCES_KEY = 'moonsprite.preference.quick-command-items'
 export const QUICK_COMMAND_BARS_PREFERENCE_KEY = 'moonsprite.preference.quick-command-bars'
 export const UI_SCALE_PREFERENCE_KEY = 'moonsprite.preference.ui-scale'
+export const BODY_FONT_SCALE_PREFERENCE_KEY = 'moonsprite.preference.body-font-scale'
 export const TOOL_ICON_SCALE_PREFERENCE_KEY = 'moonsprite.preference.tool-icon-scale'
 export const ANIMATIONS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.animations-enabled'
 export const UI_MOTION_LEVEL_PREFERENCE_KEY = 'moonsprite.preference.ui-motion-level'
@@ -112,6 +116,9 @@ export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
 export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
 export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
+/** Display-only scale for interface body text; it intentionally does not scale canvas or icons. */
+export const BODY_FONT_SCALE_VALUES = [0.85, 1, 1.15, 1.3] as const
+export type BodyFontScale = typeof BODY_FONT_SCALE_VALUES[number]
 export type ToolIconScale = 1 | 2
 export type UiMotionLevel = 'off' | 'subtle' | 'normal' | 'full'
 export type TimelinePlaybackModePreference = 'once' | 'all' | 'tag'
@@ -127,6 +134,7 @@ export interface TabletPreferences {
   twistEnabled: boolean
   eraserTipEnabled: boolean
   barrelButtonAction: TabletBarrelButtonAction
+  rightClickAction: 'background' | 'foreground-eyedropper'
   touchMode: TabletTouchMode
   twoFingerZoomEnabled: boolean
   twoFingerRotateEnabled: boolean
@@ -138,6 +146,7 @@ export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   twistEnabled: false,
   eraserTipEnabled: true,
   barrelButtonAction: 'eraser',
+  rightClickAction: 'background',
   touchMode: 'navigate',
   twoFingerZoomEnabled: true,
   twoFingerRotateEnabled: false
@@ -412,6 +421,11 @@ export function parseUiScale(value: string | null): UiScale {
   return UI_SCALE_VALUES.includes(parsed as UiScale) ? parsed as UiScale : 1
 }
 
+export function parseBodyFontScale(value: string | null): BodyFontScale {
+  const parsed = Number(value)
+  return BODY_FONT_SCALE_VALUES.includes(parsed as BodyFontScale) ? parsed as BodyFontScale : 1
+}
+
 export function parseToolIconScale(value: string | null): ToolIconScale {
   return value === '2' ? 2 : 1
 }
@@ -513,6 +527,7 @@ export const DEFAULT_COLOR_EDITOR_MODES: ColorEditorModePreference[] = [
 const LEGACY_DEFAULT_COLOR_EDITOR_MODES: ColorValueMode[] = ['rgb', 'hsv', 'hsl', 'gray', 'lab', 'cmyk']
 export interface OnionSkinPreferences {
   enabled: boolean
+  showDuringPlayback: boolean
   previousFrames: number
   nextFrames: number
   previousOpacity: number
@@ -522,6 +537,7 @@ export interface OnionSkinPreferences {
 }
 export const DEFAULT_ONION_SKIN_PREFERENCES: OnionSkinPreferences = {
   enabled: false,
+  showDuringPlayback: true,
   previousFrames: 1,
   nextFrames: 1,
   previousOpacity: 35,
@@ -589,6 +605,7 @@ export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | '
 export interface EditorPreferences {
   language: AppLocale
   uiScale: UiScale
+  bodyFontScale: BodyFontScale
   toolIconScale: ToolIconScale
   uiMotionLevel: UiMotionLevel
   animationsEnabled: boolean
@@ -610,9 +627,13 @@ export interface EditorPreferences {
   /** Keeps undo snapshots in the app data directory instead of project files. */
   localHistoryEnabled: boolean
   localHistoryLimit: number
+  /** Maximum number of undoable history steps kept per open project. */
+  historyLimit: number
+  historyLimitEnabled: boolean
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
+  canvasViewScrollbarsEnabled: boolean
   drawingBrushPreviewEnabled: boolean
   relativeLuminanceScope: RelativeLuminanceScope
   zoomToolDragMode: ZoomToolDragMode
@@ -679,6 +700,7 @@ export interface EditorPreferences {
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
+  bodyFontScale: 1,
   toolIconScale: 1,
   uiMotionLevel: 'off',
   animationsEnabled: false,
@@ -699,9 +721,12 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   projectBackupDirectory: '',
   localHistoryEnabled: false,
   localHistoryLimit: 50,
+  historyLimit: 1000,
+  historyLimitEnabled: false,
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
+  canvasViewScrollbarsEnabled: true,
   drawingBrushPreviewEnabled: true,
   relativeLuminanceScope: 'canvas',
   zoomToolDragMode: 'stepped',
@@ -918,6 +943,9 @@ export function parseOnionSkinPreferences(value: string | null): OnionSkinPrefer
     const opacity = (candidate: unknown, fallback: number): number => typeof candidate === 'number' && Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : fallback
     return {
       enabled: parsed.enabled === true,
+      // Existing preferences predate this option. Preserve the new default
+      // rather than treating their missing field as an explicit opt-out.
+      showDuringPlayback: parsed.showDuringPlayback !== false,
       previousFrames: count(parsed.previousFrames, DEFAULT_ONION_SKIN_PREFERENCES.previousFrames),
       nextFrames: count(parsed.nextFrames, DEFAULT_ONION_SKIN_PREFERENCES.nextFrames),
       previousOpacity: opacity(parsed.previousOpacity, DEFAULT_ONION_SKIN_PREFERENCES.previousOpacity),
@@ -1083,6 +1111,15 @@ export function parseLocalHistoryLimit(value: string | null): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(200, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.localHistoryLimit
 }
 
+export function parseHistoryLimit(value: string | null): number {
+  if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.historyLimit
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(10000, Math.round(parsed))) : DEFAULT_EDITOR_PREFERENCES.historyLimit
+}
+
+export const historyEntryLimit = (preferences: Pick<EditorPreferences, 'historyLimitEnabled' | 'historyLimit'>): number =>
+  preferences.historyLimitEnabled ? parseHistoryLimit(String(preferences.historyLimit)) : Infinity
+
 export function parseProjectBackupRetentionDays(value: string | null): number {
   if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.projectBackupRetentionDays
   const parsed = Number(value)
@@ -1122,6 +1159,7 @@ export function parseTabletPreferences(value: string | null): TabletPreferences 
       twistEnabled: parsed.twistEnabled === true,
       eraserTipEnabled: parsed.eraserTipEnabled !== false,
       barrelButtonAction,
+      rightClickAction: parsed.rightClickAction === 'foreground-eyedropper' ? 'foreground-eyedropper' : 'background',
       touchMode,
       twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
       twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true
@@ -1153,6 +1191,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
   return {
     language: parseAppLocale(get(LANGUAGE_PREFERENCE_KEY)),
     uiScale: parseUiScale(get(UI_SCALE_PREFERENCE_KEY)),
+    bodyFontScale: parseBodyFontScale(get(BODY_FONT_SCALE_PREFERENCE_KEY)),
     toolIconScale: parseToolIconScale(get(TOOL_ICON_SCALE_PREFERENCE_KEY)),
     uiMotionLevel,
     animationsEnabled: uiMotionLevel !== 'off',
@@ -1173,9 +1212,12 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     projectBackupDirectory: parseDirectoryPreference(get(PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY)),
     localHistoryEnabled: get(LOCAL_HISTORY_ENABLED_PREFERENCE_KEY) === 'true',
     localHistoryLimit: parseLocalHistoryLimit(get(LOCAL_HISTORY_LIMIT_PREFERENCE_KEY)),
+    historyLimit: parseHistoryLimit(get(HISTORY_LIMIT_PREFERENCE_KEY)),
+    historyLimitEnabled: get(HISTORY_LIMIT_ENABLED_PREFERENCE_KEY) === 'true',
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
+    canvasViewScrollbarsEnabled: get(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY) !== 'false',
     drawingBrushPreviewEnabled: parseDrawingBrushPreviewEnabled(get(DRAWING_BRUSH_PREVIEW_ENABLED_KEY)),
     relativeLuminanceScope: parseRelativeLuminanceScope(get(RELATIVE_LUMINANCE_SCOPE_KEY)),
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
@@ -1248,6 +1290,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
   const values: Record<string, string> = {
     [LANGUAGE_PREFERENCE_KEY]: preferences.language,
     [UI_SCALE_PREFERENCE_KEY]: String(parseUiScale(String(preferences.uiScale))),
+    [BODY_FONT_SCALE_PREFERENCE_KEY]: String(parseBodyFontScale(String(preferences.bodyFontScale))),
     [TOOL_ICON_SCALE_PREFERENCE_KEY]: String(parseToolIconScale(String(preferences.toolIconScale))),
     [ANIMATIONS_ENABLED_PREFERENCE_KEY]: String(uiMotionLevel !== 'off'),
     [UI_MOTION_LEVEL_PREFERENCE_KEY]: uiMotionLevel,
@@ -1268,9 +1311,12 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.projectBackupDirectory),
     [LOCAL_HISTORY_ENABLED_PREFERENCE_KEY]: String(preferences.localHistoryEnabled),
     [LOCAL_HISTORY_LIMIT_PREFERENCE_KEY]: String(parseLocalHistoryLimit(String(preferences.localHistoryLimit))),
+    [HISTORY_LIMIT_PREFERENCE_KEY]: String(parseHistoryLimit(String(preferences.historyLimit))),
+    [HISTORY_LIMIT_ENABLED_PREFERENCE_KEY]: String(preferences.historyLimitEnabled === true),
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
+    [CANVAS_VIEW_SCROLLBARS_ENABLED_KEY]: String(preferences.canvasViewScrollbarsEnabled),
     [DRAWING_BRUSH_PREVIEW_ENABLED_KEY]: String(preferences.drawingBrushPreviewEnabled),
     [RELATIVE_LUMINANCE_SCOPE_KEY]: preferences.relativeLuminanceScope,
     [ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY]: preferences.zoomToolDragMode,

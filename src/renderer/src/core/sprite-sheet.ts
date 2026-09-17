@@ -1,7 +1,9 @@
-import type { SelectionMask, SelectionRect, SpriteDocument } from '@shared/types'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import { animationLayersAtFrame, cloneDocumentForAnimationFrame } from './animation'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
-import { compositeRegion, createDocument, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyVisible } from './document'
+import { compositeRegion } from './document-composite'
+import { createDocument, getActiveLayer, getLayerIdsInGroup, isLayerEffectivelyVisible } from './document-model'
 import { translateCurrent as tr } from './localization'
 import { selectionContains } from './selection'
 

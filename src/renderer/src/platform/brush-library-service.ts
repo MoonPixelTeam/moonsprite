@@ -1,6 +1,7 @@
-import type { MoonSpriteApi, StoredBrush } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { StoredBrush } from '@shared/types-library'
 import { createImageBrushFromRgba, encodeBrushPng } from '@/core/brushes'
-import { compositeDocument } from '@/core/document'
+import { compositeDocument } from '@/core/document-composite'
 import { decodeDocumentFileAsync, fileExtension, fileNameFromPath } from '@/core/document-files'
 import { translateCurrent as tr } from '@/core/localization'
 

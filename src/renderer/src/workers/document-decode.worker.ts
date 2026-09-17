@@ -1,9 +1,9 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { decodeAseprite } from '@/core/aseprite'
 import { decodePsd } from '@/core/psd'
 import { setRuntimeAppLocale, type AppLocale } from '@/core/localization'
-import { decodeProject } from '@/core/project-format'
-import { compositeDocument } from '@/core/document'
+import { decodeProject, type ProjectDecodeReport } from '@/core/project-format'
+import { compositeDocument } from '@/core/document-composite'
 import { canPrepareInitialDocumentComposite } from '@/core/initial-document-composite'
 import { prepareRuntimeRasterDocumentForTransfer, prepareRuntimeRasterMetadata, rehydrateRuntimeRasterDocument } from '@/core/runtime-raster'
 
@@ -24,6 +24,7 @@ export interface DecodeWorkerResponse {
   completed?: boolean
   error?: string
   progress?: number
+  droppedTimelapseFrames?: ProjectDecodeReport[]
 }
 
 const fileNameFromPath = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath
@@ -95,8 +96,9 @@ export const processDocumentDecodeRequest = (
     const reportDecodeProgress = (progress: number): void => {
       if (reportProgress) postMessage({ id, progress: prepareInitialComposite ? progress * 0.9 : progress }, [])
     }
+    const droppedTimelapseFrames: ProjectDecodeReport[] = []
     const document = project
-      ? decodeProject(data, reportDecodeProgress)
+      ? decodeProject(data, { onProgress: reportDecodeProgress, onDroppedTimelapseFrames: (report) => droppedTimelapseFrames.push(report) })
       : suffix === 'psd'
         ? decodePsd(data, fileName.replace(/\.psd$/i, ''), reportDecodeProgress)
       : decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), reportDecodeProgress)
@@ -119,7 +121,7 @@ export const processDocumentDecodeRequest = (
     }
 
     if (reportProgress) postMessage({ id, progress: 1 }, [])
-    const response = { id, document, ...(compositeSnapshot ? { initialCompositePending: true } : {}) }
+    const response = { id, document, ...(droppedTimelapseFrames.length > 0 ? { droppedTimelapseFrames } : {}), ...(compositeSnapshot ? { initialCompositePending: true } : {}) }
     postMessage(response, collectTransferables(response))
     if (!compositeSnapshot) return
     const snapshot = compositeSnapshot

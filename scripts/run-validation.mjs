@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { evaluateDevValidationRequest, isRendererOnlyTypecheckScope } from './dev-validation-policy.mjs'
+import { classifyDevTier, evaluateDevValidationRequest, isRendererOnlyTypecheckScope } from './dev-validation-policy.mjs'
 import {
   classifyValidationScope,
   getRendererCodeFiles,
@@ -53,6 +53,26 @@ if (devPolicy?.errors.length) {
   console.error('严格类型检查：pnpm check:dev -- --strict src/renderer/src/components/Toolbar.tsx')
   console.error('高风险示例：pnpm check:dev -- --risk=high src/renderer/src/core/selection.ts src/renderer/src/core/selection.test.ts')
   process.exit(1)
+}
+
+// 开发检查的范围由调用者申报；这里用 git 实际改动做交叉校验。
+// 漏报高风险文件会让检查范围悄悄变小，而风险分级正是由这份清单推出来的。
+const omittedHighRiskFiles = (requested) => {
+  const requestedSet = new Set(requested.map(normalize))
+  return workingTreeFiles()
+    .map(normalize)
+    .filter((file) => !requestedSet.has(file))
+    .filter((file) => classifyDevTier([file]) === 'D3')
+}
+
+if (mode === 'dev') {
+  const omitted = omittedHighRiskFiles(devPolicy.files)
+  if (omitted.length > 0) {
+    console.error('以下高风险文件已被改动，但没有出现在本次验证范围中：')
+    for (const file of omitted) console.error(`- ${file}`)
+    console.error('请把它们一并传入；如果它们不属于本次需求，请先提交或暂存，再重跑本次检查。')
+    process.exit(1)
+  }
 }
 
 const files = (mode === 'dev'

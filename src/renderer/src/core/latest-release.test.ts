@@ -22,7 +22,7 @@ describe('home announcements', () => {
   it('keeps historical release details independent from the current release', () => {
     const announcements = homeAnnouncementsForDisplay(latestReleases)
 
-    expect(announcements.map((item) => item.version)).toEqual(['1.0.0-beta3', '1.0.0-beta2', '1.0.0-beta1'])
+    expect(announcements.map((item) => item.version)).toEqual(['1.0.0-beta4', '1.0.0-beta3', '1.0.0-beta2'])
     expect(announcements[1].sections).not.toBe(announcements[0].sections)
     expect(announcements[2].sections).not.toBe(announcements[0].sections)
     expect(announcements[1].sections.flatMap((section) => section.items)).not.toEqual(announcements[0].sections.flatMap((section) => section.items))

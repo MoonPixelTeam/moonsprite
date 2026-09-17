@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ImageBrush } from '@shared/types'
+import type { ImageBrush } from '@shared/types-brush'
 import { unpackColor } from '@/core/raster'
 import type { PixelSource } from './pixel-source'
 

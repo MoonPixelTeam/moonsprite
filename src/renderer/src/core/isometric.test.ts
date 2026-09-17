@@ -14,6 +14,23 @@ const runLengths = (points: Array<{ x: number; y: number }>, major: 'x' | 'y'): 
 }
 
 describe('ISO view geometry', () => {
+  it('places every snapped diagonal pixel on the preview grid in all directions', () => {
+    for (const step of [1, 2, 3, 4]) for (const spacing of [5, 8, 16]) {
+      const pattern = isoGuidePixelPattern(step, spacing)
+      const pixels = new Set(pattern.pixels.map(p => `${p.x}:${p.y}`))
+      const mod = (n: number, size: number) => ((n % size) + size) % size
+      const origin = { x: 5, y: -3 }
+      const start = snapIsoPointToGridVertex({ x: -12, y: 9 }, step, spacing, origin)
+      for (const dx of [-1, 1]) for (const dy of [-1, 1]) {
+        const target = { x: start.x + dx * step * spacing, y: start.y + dy * spacing }
+        const segment = isoGridLineSegment(start, target, step)
+        const edges = traceIsoGridPointerEdges(start, target, { stairStep: step, spacing, origin }).edges
+        for (const line of [segment, ...edges]) for (const p of balancedStairLinePoints(line.from, line.to)) {
+          expect(pixels.has(`${mod(p.x - origin.x, pattern.width)}:${mod(p.y - origin.y, pattern.height)}`), JSON.stringify({ step, spacing, dx, dy, p })).toBe(true)
+        }
+      }
+    }
+  })
   it('constrains lines to the configured isometric stair or a cardinal direction', () => {
     const diagonalEnd = isoLineEndpoint({ x: 2, y: 3 }, { x: 13, y: 8 })
     const diagonal = balancedStairLinePoints({ x: 2, y: 3 }, diagonalEnd)
@@ -117,12 +134,12 @@ describe('ISO view geometry', () => {
       grid: { spacing: 8 }
     })
 
-    expect(turned.lockedEndpoints).toEqual([{ x: 7, y: 3 }, { x: 8, y: 3 }])
-    expect(turned.anchor).toEqual({ x: 8, y: 3 })
+    expect(turned.lockedEndpoints).toEqual([{ x: 7, y: 3 }, { x: 8, y: 4 }])
+    expect(turned.anchor).toEqual({ x: 8, y: 4 })
     expect(turned.direction).toBe('up-right')
-    expect(turned.endpoint).toEqual({ x: 15, y: 0 })
+    expect(turned.endpoint).toEqual({ x: 15, y: 1 })
     expect(balancedStairLinePoints({ x: 0, y: 0 }, { x: 7, y: 3 })).toHaveLength(8)
-    expect(runLengths(balancedStairLinePoints({ x: 8, y: 3 }, turned.endpoint), 'x')).toEqual(new Array(4).fill(2))
+    expect(runLengths(balancedStairLinePoints({ x: 8, y: 4 }, turned.endpoint), 'x')).toEqual(new Array(4).fill(2))
   })
 
 

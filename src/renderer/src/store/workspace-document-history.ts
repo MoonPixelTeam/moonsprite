@@ -1,7 +1,12 @@
-import type { AnimationCel, AnimationFrame, AnimationGroupMask, AnimationLayerMask, AnimationLoopSection, ColorMode, FreeTileSourceLayer, LayerGroup, PaletteEntry, RasterLayer, SpriteDocument, Tileset } from '@shared/types'
+import type { AnimationCel, AnimationFrame, AnimationLoopSection } from '@shared/types-animation'
+import type { AnimationGroupMask, AnimationLayerMask, LayerGroup, RasterLayer } from '@shared/types-layer'
+import type { ColorMode } from '@shared/types-raster'
+import type { FreeTileSourceLayer, Tileset } from '@shared/types-tiles'
+import type { PaletteEntry } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
 import { cloneAnimationCel, ensureAnimationDocument, refreshActiveAnimationFrame, restoreAnimationCels, syncActiveAnimationFrame } from '@/core/animation'
 import { cloneAnimationLoopSections } from '@/core/animation-loop-sections'
-import { captureDocumentImageResizeSnapshot, documentImageResizeSnapshotBytes, restoreDocumentImageResizeSnapshot, type DocumentImageResizeSnapshot } from '@/core/document'
+import { captureDocumentImageResizeSnapshot, documentImageResizeSnapshotBytes, restoreDocumentImageResizeSnapshot, type DocumentImageResizeSnapshot } from '@/core/document-model'
 import { cloneLayerStyles } from '@/core/layer-styles'
 import { rasterStorageIdentity, runtimeRasterForSurface } from '@/core/runtime-raster'
 import { cloneTilemapCelData } from '@/core/tilemap'
@@ -309,11 +314,13 @@ export const documentColorModeSnapshotBytes = (snapshot: DocumentColorModeSnapsh
   documentImageResizeSnapshotBytes(snapshot.surfaces) + snapshot.palette.length * 32
 
 export interface DocumentCanvasResizeSnapshot {
+  backgrounds: Array<{ layer: RasterLayer; settings: RasterLayer['background'] }>
   surfaces: DocumentImageResizeSnapshot
   cels: Array<{ celId: string; surface?: AnimationCel['surface']; tilemap?: AnimationCel['tilemap']; freeTiles?: AnimationCel['freeTiles'] }>
 }
 
 export const captureDocumentCanvasResizeSnapshot = (document: SpriteDocument): DocumentCanvasResizeSnapshot => ({
+  backgrounds: document.layers.filter(layer => layer.background).map(layer => ({ layer, settings: { ...layer.background! } })),
   surfaces: captureDocumentImageResizeSnapshot(document),
   cels: (document.animation?.cels ?? []).map((cel) => ({
     celId: cel.id,
@@ -324,6 +331,7 @@ export const captureDocumentCanvasResizeSnapshot = (document: SpriteDocument): D
 })
 
 export const restoreDocumentCanvasResizeSnapshot = (document: SpriteDocument, snapshot: DocumentCanvasResizeSnapshot): void => {
+  for (const { layer, settings } of snapshot.backgrounds) layer.background = settings ? { ...settings } : undefined
   const cels = new Map(snapshot.cels.map((entry) => [entry.celId, entry]))
   for (const cel of document.animation?.cels ?? []) {
     const state = cels.get(cel.id)

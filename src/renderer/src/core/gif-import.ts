@@ -1,7 +1,7 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { decompressFrames, parseGIF, type ParsedFrame, type ParsedGif } from 'gifuct-js'
 import { DEFAULT_FRAME_DURATION, MAX_ANIMATION_FRAME_DURATION } from './animation'
-import { createDocument, createId } from './document'
+import { createDocument, createId } from './document-model'
 import { applyImportedRgbaPalette } from './imported-palette'
 import { translateCurrent as tr } from './localization'
 

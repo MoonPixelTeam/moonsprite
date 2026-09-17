@@ -1,4 +1,5 @@
-import type { PaletteEntry, RgbaColor, SpriteDocument } from '@shared/types'
+import type { PaletteEntry, RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
 import { translateCurrent as tr } from './localization'
 import { normalizePaletteSlots, PALETTE_GRID_COLUMNS } from './palette-layout'
 import { extractPaletteColorsFromRgbaSurfaces, sortPaletteColors } from './palette'

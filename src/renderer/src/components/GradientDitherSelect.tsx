@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { GradientDither, RgbaColor } from '@shared/types'
+import type { GradientDither } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 import { loadEditorPreferences, type CheckerboardPreferences } from '@/core/file-preferences'
 import { gradientColorAt } from '@/core/gradient-color'
 import type { TranslationKey } from '@/core/localization'

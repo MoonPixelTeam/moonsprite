@@ -3,13 +3,15 @@ setlocal
 
 cd /d "%~dp0"
 title MoonSprite Development
+set "MOONSPRITE_PROJECT_DIRECTORY=%~dp0"
 
 echo [MoonSprite] Starting the Tauri development app...
 echo [MoonSprite] Keep this window open while using MoonSprite.
 echo.
 
 set "MOONSPRITE_APP_PID="
-for /f "delims=" %%P in ('powershell -NoProfile -Command "(Get-Process -Name moonsprite -ErrorAction SilentlyContinue).Id"') do if not defined MOONSPRITE_APP_PID set "MOONSPRITE_APP_PID=%%P"
+set "MOONSPRITE_DEV_EXE=%~dp0src-tauri\target\debug\moonsprite.exe"
+for /f "delims=" %%P in ('powershell -NoProfile -Command "$target = [IO.Path]::GetFullPath($env:MOONSPRITE_DEV_EXE); foreach ($process in @(Get-Process -Name moonsprite -ErrorAction SilentlyContinue)) { if ($process.Path -and [String]::Equals($process.Path, $target, [StringComparison]::OrdinalIgnoreCase)) { $process.Id; break } }"') do if not defined MOONSPRITE_APP_PID set "MOONSPRITE_APP_PID=%%P"
 if defined MOONSPRITE_APP_PID (
   echo [MoonSprite] The development app is already running.
   echo Close the existing app before starting it again.
@@ -19,10 +21,15 @@ if defined MOONSPRITE_APP_PID (
 set "MOONSPRITE_PORT_PID="
 for /f "delims=" %%P in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue).OwningProcess"') do if not defined MOONSPRITE_PORT_PID set "MOONSPRITE_PORT_PID=%%P"
 if defined MOONSPRITE_PORT_PID (
-  echo [MoonSprite] Port 5173 is already in use by process %MOONSPRITE_PORT_PID%.
-  echo Close that process or free port 5173, then try again.
-  pause
-  exit /b 2
+  powershell -NoProfile -Command "$processId = [int]$env:MOONSPRITE_PORT_PID; $root = [IO.Path]::GetFullPath($env:MOONSPRITE_PROJECT_DIRECTORY).TrimEnd('\').ToLowerInvariant(); $process = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $processId) -ErrorAction SilentlyContinue; $commandLine = if ($process) { $process.CommandLine.ToLowerInvariant() } else { '' }; if ($commandLine.Contains($root) -and $commandLine.Contains('vite')) { Stop-Process -Id $processId -Force; exit 0 }; exit 1"
+  if errorlevel 1 (
+    echo [MoonSprite] Port 5173 is already in use by process %MOONSPRITE_PORT_PID%.
+    echo Close that process or free port 5173, then try again.
+    pause
+    exit /b 2
+  )
+  echo [MoonSprite] Cleaning up a stale MoonSprite development server...
+  powershell -NoProfile -Command "Start-Sleep -Seconds 1"
 )
 
 set "PNPM_COMMAND="

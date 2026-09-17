@@ -65,6 +65,25 @@ let operationSequence = 0
 let sink: RuntimeDiagnosticSink | null = null
 let contextProvider: RuntimeDiagnosticContextProvider | null = null
 let watchdogInstalled = false
+let collectionEnabled = true
+let collectionGeneration = 0
+const collectionCleanups = new Set<() => void>()
+export const onRuntimeDiagnosticsDisabled = (cleanup: () => void): (() => void) => {
+  collectionCleanups.add(cleanup)
+  return () => { collectionCleanups.delete(cleanup) }
+}
+export const setRuntimeDiagnosticCollection = (enabled: boolean): void => {
+  if (collectionEnabled === enabled) return
+  collectionEnabled = enabled
+  collectionGeneration++
+  if (enabled) return
+  for (const cleanup of [...collectionCleanups]) cleanup()
+  recentEvents.length = 0
+  queuedEvents.length = 0
+  recentSpans.length = 0
+  spanReports.clear()
+  lastAction = null
+}
 let lastAction: { name: string; detail: RuntimeDiagnosticDetail } | null = null
 const recentSpans: Array<{ id: number; name: string; start: number; end: number; documentId: RuntimeDiagnosticValue; layerId: RuntimeDiagnosticValue }> = []
 const spanReports = new Map<string, { at: number; suppressed: number; maxMs: number }>()
@@ -149,6 +168,7 @@ export const recordRuntimeDiagnostic = (
   detail?: RuntimeDiagnosticDetail,
   includeContext = false
 ): void => {
+  if (!collectionEnabled) return
   const now = monotonicNow()
   publish({
     version: 1,
@@ -166,25 +186,27 @@ export const recordRuntimeDiagnostic = (
 }
 
 export const configureRuntimeDiagnostics = (
-  nextSink: RuntimeDiagnosticSink,
+  nextSink: RuntimeDiagnosticSink | null,
   nextContextProvider?: RuntimeDiagnosticContextProvider
 ): void => {
   sink = nextSink
   contextProvider = nextContextProvider ?? null
+  if (!nextSink) return
   if (queuedEvents.length === 0) return
   const queued = queuedEvents.splice(0)
   try {
-    void Promise.resolve(sink(queued)).catch(() => undefined)
+    void Promise.resolve(nextSink(queued)).catch(() => undefined)
   } catch {
     // The in-memory ring remains available even when persistence is unavailable.
   }
 }
 
-export const runtimeDiagnosticsActive = (): boolean => sink !== null || watchdogInstalled
+export const runtimeDiagnosticsActive = (): boolean => collectionEnabled && (sink !== null || watchdogInstalled)
 
 /** Synchronous, inclusive wall time only; never use this to time an awaited job. */
 export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detail?: () => RuntimeDiagnosticDetail): T => {
   if (!runtimeDiagnosticsActive()) return action()
+  const generation = collectionGeneration
   const start = monotonicNow()
   const parentSpanId = activeSpanId
   const spanId = ++spanSequence
@@ -195,7 +217,7 @@ export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detai
     const end = monotonicNow()
     const durationMs = end - start
     // No context collection, timers or persistence on the normal fast path.
-    if (durationMs >= 16 || failed) {
+    if (collectionEnabled && generation === collectionGeneration && (durationMs >= 16 || failed)) {
       try {
         name = name.slice(0, 128)
         const spanDetail = normalizeDetail(detail?.())
@@ -240,6 +262,7 @@ export const beginRuntimeDiagnosticOperation = (
   detail?: RuntimeDiagnosticDetail,
   warningMs = DEFAULT_OPERATION_WARNING_MS
 ): RuntimeDiagnosticOperation => {
+  if (!collectionEnabled) return { id: '', mark: () => {}, finish: () => {} }
   const id = `${sessionId}-${++operationSequence}`
   detail = normalizeDetail(detail)
   const startedAt = monotonicNow()
@@ -256,6 +279,12 @@ export const beginRuntimeDiagnosticOperation = (
       ...detail
     }, true)
   }, Math.max(1, warningMs))
+  const unregister = onRuntimeDiagnosticsDisabled(() => {
+    finished = true
+    globalThis.clearTimeout(warningTimer)
+    activeOperations.delete(id)
+    unregister()
+  })
 
   return {
     id,
@@ -271,6 +300,7 @@ export const beginRuntimeDiagnosticOperation = (
     finish(outcome = 'ok', finishDetail) {
       if (finished) return
       finished = true
+      unregister()
       globalThis.clearTimeout(warningTimer)
       activeOperations.delete(id)
       const durationMs = Math.max(0, monotonicNow() - startedAt)
@@ -319,7 +349,7 @@ export interface RuntimeDiagnosticWatchdogOptions {
 }
 
 export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatchdogOptions = {}): (() => void) => {
-  if (watchdogInstalled || typeof window === 'undefined') return () => undefined
+  if (!collectionEnabled || watchdogInstalled || typeof window === 'undefined') return () => undefined
   watchdogInstalled = true
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 500
   const stallThresholdMs = options.stallThresholdMs ?? 750
@@ -343,6 +373,9 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   const onPointerDown = (event: PointerEvent): void => {
     lastAction = { name: 'pointer-down', detail: { control: controlIdentity(event.target), button: event.button } }
   }
+  const onWheel = (event: WheelEvent): void => {
+    lastAction = { name: 'wheel', detail: { control: controlIdentity(event.target), ctrl: event.ctrlKey } }
+  }
   const onKeyDown = (event: KeyboardEvent): void => {
     const editable = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)
     lastAction = {
@@ -362,6 +395,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   const onVisibilityChange = (): void => { lastHeartbeat = monotonicNow() }
 
   window.addEventListener('pointerdown', onPointerDown, true)
+  window.addEventListener('wheel', onWheel, true)
   window.addEventListener('keydown', onKeyDown, true)
   window.addEventListener('error', onError)
   window.addEventListener('unhandledrejection', onUnhandledRejection)
@@ -384,7 +418,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   }
 
   recordRuntimeDiagnostic('session', 'renderer.started', {
-    diagnosticRevision: 2,
+    diagnosticRevision: 3,
     hardwareConcurrency: navigator.hardwareConcurrency || 0,
     language: navigator.language,
     userAgent: navigator.userAgent
@@ -394,6 +428,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
     window.clearInterval(heartbeat)
     observer?.disconnect()
     window.removeEventListener('pointerdown', onPointerDown, true)
+    window.removeEventListener('wheel', onWheel, true)
     window.removeEventListener('keydown', onKeyDown, true)
     window.removeEventListener('error', onError)
     window.removeEventListener('unhandledrejection', onUnhandledRejection)
@@ -405,6 +440,8 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
 export const runtimeDiagnosticSnapshot = (): readonly RuntimeDiagnosticEvent[] => recentEvents.map((event) => ({ ...event, detail: { ...event.detail } }))
 
 export const resetRuntimeDiagnosticsForTests = (): void => {
+  setRuntimeDiagnosticCollection(false)
+  collectionEnabled = true
   sink = null
   contextProvider = null
   recentEvents.length = 0

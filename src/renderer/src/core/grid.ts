@@ -1,4 +1,5 @@
-import type { GridSettings, SelectionRect } from '@shared/types'
+import type { GridSettings } from '@shared/types-view'
+import type { SelectionRect } from '@shared/types-selection'
 
 export const DEFAULT_GRID_SETTINGS: GridSettings = { x: 0, y: 0, width: 16, height: 16 }
 export const PIXEL_GRID_MIN_ZOOM = 8

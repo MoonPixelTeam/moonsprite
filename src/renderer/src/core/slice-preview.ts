@@ -1,4 +1,4 @@
-import type { SelectionRect } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
 
 export const SLICE_PREVIEW_EVENT = 'moonsprite:slice-preview'
 

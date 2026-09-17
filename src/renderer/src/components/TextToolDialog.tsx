@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { RgbaColor, SelectionRect, TextAntialiasMode, TextCelData, TextSpacingMode, TextStyleRun } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionRect } from '@shared/types-selection'
+import type { TextAntialiasMode, TextCelData, TextSpacingMode, TextStyleRun } from '@shared/types-text'
 import { ColorValueControl } from './ColorValueControl'
 import { DeleteIconButton } from './DeleteIconButton'
 import { DialogHeader } from './DialogHeader'

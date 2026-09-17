@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type { ExtensionPanelContribution } from '@/core/extension-contributions'
-import { extensionCommandScriptId } from '@/core/extension-contributions'
+import type { StoredExtensionCommand } from '@shared/types-extensions'
 import { PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useI18n } from '@/components/I18nProvider'
@@ -12,7 +12,7 @@ interface ExtensionPanelHostProps {
   documentAvailable: boolean
   commandRunning: boolean
   onVisibilityChange: (key: string, visible: boolean) => void
-  onRunCommand: (scriptId: string) => void
+  onRunCommand: (extensionId: string, command: StoredExtensionCommand) => void
 }
 
 function ExtensionPanelWindow({ contribution, index, documentAvailable, commandRunning, onClose, onRunCommand }: {
@@ -21,7 +21,7 @@ function ExtensionPanelWindow({ contribution, index, documentAvailable, commandR
   documentAvailable: boolean
   commandRunning: boolean
   onClose: () => void
-  onRunCommand: (scriptId: string) => void
+  onRunCommand: (extensionId: string, command: StoredExtensionCommand) => void
 }) {
   const { t } = useI18n()
   const initialPosition = useMemo(() => {
@@ -68,8 +68,8 @@ function ExtensionPanelWindow({ contribution, index, documentAvailable, commandR
           type="button"
           className="extension-panel-command"
           title={command.description || command.name}
-          disabled={!documentAvailable || commandRunning}
-          onClick={() => onRunCommand(extensionCommandScriptId(contribution.extensionId, command.id))}
+          disabled={command.handler === 'lua' && (!documentAvailable || commandRunning)}
+          onClick={() => onRunCommand(contribution.extensionId, command)}
         >
           <PixelUtilityIcon kind="properties" />
           <span>

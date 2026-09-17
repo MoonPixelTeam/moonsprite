@@ -1,55 +1,69 @@
 {
   "schemaVersion": 1,
+  "note": "kind=guard 表示常驻回归护栏，expiresAt 必须为 permanent；kind=migration 表示迁移债务，必须给出到期版本并在到期前清零。anchor 为可选正则：若它在生产源码中不再命中，说明规则守护的形态已消失，规则必须退役或替换，否则就是永久绿灯。",
   "rules": {
     "component-domain-write": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
       "target": "组件只调用领域命令或文档事务，不直接写文档、dirty、revision、invalidation 或缓存状态。"
     },
     "history-project-snapshot": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
+      "anchor": "encodeProject",
       "target": "撤销历史只保存领域差量，不通过 encodeProject/decodeProject 保存完整工程快照。"
     },
     "project-open-secondary-decode": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
+      "anchor": "decodeDocumentFileInWorker",
       "target": "一次工程打开只执行一次完整解码，初始合成复用已解码文档。"
     },
     "async-project-main-thread-preparation": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
       "target": "异步工程保存与编码在 Worker 内准备归档资源，UI 线程不先完整遍历和复制工程。"
     },
     "recovery-error-swallow": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
       "target": "恢复写入、读取和清理失败必须进入可观测错误通道，不能静默吞掉。"
     },
     "core-runtime-cycle": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
-      "target": "core 生产运行时依赖图无循环。"
+      "expiresAt": "permanent",
+      "target": "前端生产运行时依赖图无循环，包含 renderer 与 shared 的跨目录边。"
     },
     "module-boundary-debt": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
       "target": "Tauri 访问全部进入 platform，core 不再依赖 store。"
     },
     "permanent-boundary-allowlist": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
       "target": "边界检查不使用按文件永久白名单或忽略注释。"
     },
-    "workspace-root-command": {
-      "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
-      "target": "WorkspaceState 按会话、文档命令、历史、工具、视图、动画、Tilemap、工程 IO 与恢复拆分。"
-    },
     "render-key-pixel-serialization": {
+      "kind": "guard",
       "remaining": 0,
-      "expiresAt": "0.1.0-dev.6",
+      "expiresAt": "permanent",
+      "anchor": "render-keys",
       "target": "渲染键只使用领域 revision 和轻量标量，不序列化像素或整份文档。"
+    }
+  },
+  "retiredRules": {
+    "workspace-root-command": {
+      "retiredAt": "1.0.0-beta3",
+      "reason": "守护形态 `interface WorkspaceState` 已不存在于 store/，命中面为 0 即为永久绿灯。根 Store 不得重新膨胀的意图改由 scripts/module-size-budget.json 中 store/workspace.ts 的规模棘轮接管。"
     }
   }
 }

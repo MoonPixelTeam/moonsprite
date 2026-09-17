@@ -1,5 +1,5 @@
 import { translateSourceText, type AppLocale } from '@/core/localization'
-import type { ShortcutGroupId, ShortcutId } from '@/core/shortcuts'
+import type { ShortcutGroupId, ShortcutId } from '@/core/shortcut-contracts'
 import { CYCLING_TOOL_SHORTCUT_IDS, quickToolShortcutId, type QuickToolShortcutId } from '@/core/tool-shortcut-ids'
 
 type ViewZoomShortcutId = 'viewZoom100' | 'viewZoom200' | 'viewZoom400' | 'viewZoom800' | 'viewZoom3200'

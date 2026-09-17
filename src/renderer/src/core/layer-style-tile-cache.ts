@@ -1,4 +1,6 @@
-import type { LayerStyles, RgbaColor, SelectionRect } from '@shared/types'
+import type { LayerStyles } from '@shared/types-layer-style'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionRect } from '@shared/types-selection'
 import { applyLayerStylesAt, layerStyleAffectedRect, type LayerStyleGeometry, type LayerStyleSourceReader, type LayerStyleColorResolver } from './layer-styles'
 import { layerStyleCoverageAt, layerStyleCoverageTile } from './layer-style-coverage'
 import { readRgbaPixel, writeRgbaPixel } from './raster'

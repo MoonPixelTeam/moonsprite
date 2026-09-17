@@ -1,21 +1,15 @@
-import type {
-  AnimationLoopDirection,
-  BlendMode,
-  ColorMode,
-  FreeTileInstance,
-  LuaScriptOperation,
-  LuaScriptSurfaceSnapshot,
-  MoonSpriteApi,
-  RgbaColor,
-  SelectionMask,
-  StoredBrush,
-  TilemapCell,
-  WorkspacePanelDock,
-  WorkspacePanelId
-} from '@shared/types'
+import type { AnimationLoopDirection } from '@shared/types-animation'
+import type { BlendMode, RgbaColor } from '@shared/types-color'
+import type { ColorMode } from '@shared/types-raster'
+import type { FreeTileInstance, TilemapCell } from '@shared/types-tiles'
+import type { LuaScriptOperation, LuaScriptSurfaceSnapshot } from '@shared/types-scripting'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { SelectionMask } from '@shared/types-selection'
+import type { StoredBrush } from '@shared/types-library'
+import type { WorkspacePanelDock, WorkspacePanelId } from '@shared/types-workspace'
 import { animationLayerAtFrame, ensureAnimationDocument, refreshActiveAnimationFrame, syncAnimationLayerAtFrame } from '@/core/animation'
 import { publishBrushLibraryChanged } from '@/core/brush-library-events'
-import { createId, getActiveLayer, markLayerContentChanged, readLayerPacked, setLayerStorageOrigin } from '@/core/document'
+import { createId, getActiveLayer, markLayerContentChanged, readLayerPacked, setLayerStorageOrigin } from '@/core/document-model'
 import {
   captureFreeTileSourceSnapshot,
   freeTileSourceOwnerForId

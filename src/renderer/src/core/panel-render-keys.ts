@@ -1,5 +1,6 @@
-import type { RgbaColor, SpriteDocument } from '@shared/types'
-import { getRasterContentRevision } from './document'
+import type { RgbaColor } from '@shared/types-color'
+import type { SpriteDocument } from '@shared/types-document'
+import { getRasterContentRevision } from './document-model'
 import type { TilemapDrawingMode } from './tilemap'
 import type { FreeTileDrawingMode } from './free-tile'
 

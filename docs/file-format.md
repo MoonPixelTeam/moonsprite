@@ -1,6 +1,8 @@
-# MoonSprite 文件格式 v18
+# MoonSprite 文件格式 v20
 
 中文 | [English](file-format.en.md)
+
+v20 支持缩时快照的本地引用 `local: { store, chunk, offset, length, checksum }`，与内嵌 PNG 的 `dataFile` 二选一。安装版普通保存及恢复快照仅保存已持久写入的引用；旧工程中的 PNG 在首次保存或继续录制时逐帧迁移，写入失败则保留内存字节并报告错误。v1-v19 不采纳未知 `local` 字段。播放、视频和序列帧导出按需读取并校验 CRC32；缺少本地库不阻止画作打开，但录像读取必须明确报错。另存为勾选“携带缩时录像”会内嵌完整 PNG，供分享或换电脑使用；仍使用 v20，需要支持此版本的阅读器。详见 [ADR 0023](adr/0023-local-timelapse-library.md)。
 
 v18 为自由瓦片图层新增稳定 `freeTileSetId`。多个自由瓦片图层可以保存相同的非空 ID，并共同引用一份顺序完全一致的 `freeTileSources`、源 ID 与单瓦片 Tileset；源像素、源属性和源增删会同步作用于该集合的全部图层，而每个图层仍独立保存实例列表、动画 cel、位置和普通图层属性。同一集合内各图层的源元数据必须逐项一致；不同集合之间、自由瓦片与 Tilemap 之间仍禁止共享源 ID 或 Tileset。v1-v17 工程中的每个自由瓦片图层迁移为独立集合，不根据相同名称、像素或尺寸猜测共享关系。
 
@@ -37,7 +39,7 @@ v6 新增项目级 `slices` 数组；每个切片保存稳定 ID、名称和画�
 - `cels/<id>.rgba` / `cels/<id>.idx32`：密集 cel 的原始像素字节。
 - `cels/<id>.rgba.tiles` / `cels/<id>.idx32.tiles`：稀疏 cel 的 64 x 64 分块容器。
 - `tilesets/<id>.rgba`：Tileset 的连续 RGBA 图集；图集尺寸为 `columns * tileWidth` 乘 `rows * tileHeight`，边缘不足一个瓦片的区域以透明像素补齐。
-- `timelapse/<id>.png`：开启缩时录制后，在已提交编辑边界生成的压缩合成快照；`recordUndoSteps` 控制是否记录撤销、重做和历史跳转，旧工程缺少该字段时默认关闭。
+- `timelapse/<id>.png`（仅旧工程和便携打包）：开启缩时录制后，在已提交编辑边界生成的压缩合成快照；`recordUndoSteps` 控制是否记录撤销、重做和历史跳转，旧工程缺少该字段时默认关闭。
 - `preview.png`：可见图层合成后的预览图；恢复快照等低延迟写入可以省略，首页会在后台生成有界缩略图并单独缓存，不改写原工程。
 
 v5 动画元数据至少包含一帧、当前帧、帧持续时间、循环状态、cel 与图层/帧的稳定关联，以及可选的逐帧图层组蒙版；v16 额外保存上述命名循环节，v17 额外允许关联图层的对应 cel 共用同一像素资源，v18 额外允许自由瓦片图层通过 `freeTileSetId` 共用源库。`layers/` 保留活动帧兼容位图和图层属性，动画 cel 像素独立写入 `cels/`；解码后活动帧图层表面引用对应 cel，画布工具不直接解析时间轴。早期 v2 文件没有 `cels/` 时，使用 `layers/` 位图补成活动帧 cel。
@@ -48,7 +50,7 @@ v5 动画元数据至少包含一帧、当前帧、帧持续时间、循环状�
 
 图层和图层组元数据可选保存 `displayColor`、`description`、`clippingMask: true` 与完整 `layerStyles`：顶层 `enabled` 控制整组样式是否参与合成，缺失时默认为 `true`；`stroke` 保存 `enabled`、RGBA `color`、`size`、`position`（`inside`、`outside` 或 `both`）、`kernel`（`round`、`square`、`horizontal` 或 `vertical`）、八方向布尔值 `directions`、`smartHue` 和 `smartHueDarkness`；`shadow` 保存 `enabled`、RGBA `color`、`offsetX`、`offsetY`、`blur`、`smartShadow` 和 `smartShadowDarkness`；`innerGlow` 保存 `enabled`、RGBA `color` 和 `size`；`colorOverlay` 保存 `enabled` 和 RGBA `color`；`gradientOverlay` 保存 `enabled`、RGBA `from`、RGBA `to`、`angle` 和 `dither`。描边尺寸限制为 `1-64 px`，智能色相与智能阴影的深色系数限制为 `0-100%`，内发光尺寸限制为 `1-32 px`，阴影偏移限制为 `-64-64 px`，阴影模糊限制为 `0-32 px`，角度规范化为 `0-359`；渐变抖动值与渐变工具共用 `none`、Bayer 和方向抖动枚举。非法或缺失参数使用默认值，旧数据缺少智能色相或智能阴影字段时保持关闭并使用 `45%` 深色系数，缺少渐变抖动时使用 `none`，缺少描边位置时使用 `outside`，缺少形状或方向时使用圆形四方向描边。`displayColor` 是 RGBA 列表标记，不参与像素合成；`description` 是悬停说明；`clippingMask` 表示显示内容受同级紧邻下方对象的最终透明度限制。每个动画 cel 可选保存独立 `mask`，图层组则在动画元数据中按 `groupId + frameId` 保存独立蒙版；两者都包含蒙版 ID、本地尺寸、偏移和 `.rgba` 数据文件，并可通过 `linkedMaskId` 独立引用另一蒙版。透明像素表示未绘制且不改变显示，非透明像素必须为灰度且完全不透明，`255` 完全显示、`0` 完全隐藏，中间值按比例缩放所有者的最终透明度。蒙版引用缺失、自引用或形成循环时工程无效。图层组还可选保存 `cumulativeBlend: true`，表示先将组内内容与外部背景合成，再应用一次组混合模式。
 
-项目显示设置只保存像素网格、自定义网格开关及自定义网格原点和尺寸；缩放、平移、旋转、镜像等临时视图导航不写入工程。工程可选保存图层栏上下文，包括活动图层、图层与组选择、选择锚点和组展开状态；缺少字段或引用已删除对象时自动回退到有效活动图层。项目统计保存笔画数、已提交编辑数和有效绘画时长。缩时设置保存开关、撤销步骤录制开关、画质、导出帧率、缩时倍速和完整快照清单，不设固定快照数量上限，快照像素独立存放在 `timelapse/`，旧工程缺少这些字段时使用关闭录制、关闭撤销步骤录制、空统计和默认网格。
+项目显示设置只保存像素网格、自定义网格开关及自定义网格原点和尺寸；缩放、平移、旋转、镜像等临时视图导航不写入工程。工程可选保存图层栏上下文，包括活动图层、图层与组选择、选择锚点和组展开状态；缺少字段或引用已删除对象时自动回退到有效活动图层。项目统计保存笔画数、已提交编辑数和有效绘画时长。缩时设置保存开关、撤销步骤录制开关、画质、导出帧率、缩时倍速和完整快照清单，不设固定快照数量上限，快照像素存放在本地录像库；旧工程及便携打包使用 `timelapse/`，旧工程缺少这些字段时使用关闭录制、关闭撤销步骤录制、空统计和默认网格。
 
 工程级 `outlineSettings` 保存选区描边的 RGBA `color`、`thickness`、`position`、`kernel`、八方向 `directions`、`smartHue`、`smartHueDarkness` 和 `previewEnabled`。位置、形状、尺寸和方向使用与图层样式描边相同的枚举与限制；智能色相深色系数限制为 `0-100%`。旧工程缺少智能色相字段时按关闭迁移，并使用 `45%` 的默认深色系数，不改变原有固定颜色描边结果。
 

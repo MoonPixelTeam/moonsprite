@@ -1,6 +1,9 @@
-import type { AnimationCelSurface, ColorMode, PaletteEntry, RgbaColor, TextCelData, TextSpacingMode } from '@shared/types'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { ColorMode } from '@shared/types-raster'
+import type { PaletteEntry, RgbaColor } from '@shared/types-color'
+import type { TextCelData, TextSpacingMode } from '@shared/types-text'
 import { applyRelativeLuminance, packColor } from './raster'
-import { transformRgbaSelectionSurface } from './tools'
+import { transformRgbaSelectionSurface } from './tools-selection-transform'
 import { DEFAULT_TEXT_FONT_SIZE, normalizeTextCelData } from './text-cel-data'
 
 export { applyTextStyleRun, cloneTextCelData, DEFAULT_TEXT_BOX_HEIGHT, DEFAULT_TEXT_BOX_WIDTH, DEFAULT_TEXT_CONTENT, DEFAULT_TEXT_FONT_FAMILY, DEFAULT_TEXT_FONT_SIZE, normalizeTextBoxBounds, normalizeTextCelData, normalizeTextStyleRuns, reconcileTextStyleRuns, TEXT_FONT_FAMILIES, textFontDefaultSize, translateTextCelData } from './text-cel-data'

@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  LuaScriptDialog as LuaDialogModel,
-  LuaScriptDialogAction,
-  LuaScriptDialogControl,
-  LuaScriptDialogValue,
-  RgbaColor
-} from '@shared/types'
+import type { LuaScriptDialog as LuaDialogModel, LuaScriptDialogAction, LuaScriptDialogControl, LuaScriptDialogValue } from '@shared/types-scripting'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from './ColorValueControl'
 import { DialogHeader } from './DialogHeader'
 import { FormField } from './FormField'

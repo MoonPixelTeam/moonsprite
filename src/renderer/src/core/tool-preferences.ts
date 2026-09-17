@@ -1,4 +1,5 @@
-import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillKind, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, SelectionKind, SelectionMode, ShapeKind, ShapeRatio, ToolId } from '@shared/types'
+import type { BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillKind, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrushSettings, InkMode, LineKind, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { SelectionKind, SelectionMode } from '@shared/types-selection'
 import { normalizeProceduralBrushSettings, PROCEDURAL_BRUSH_IDS } from './brushes'
 import { DEFAULT_BRUSH_DITHER_SETTINGS, normalizeBrushDitherSettings, normalizeGradientStops } from './gradient-color'
 import { readStoredJson, writeStoredJson } from './storage'

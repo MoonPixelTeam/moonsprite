@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ProjectBackupRecord } from '@shared/types'
+import type { ProjectBackupRecord } from '@shared/types-files'
 import { formatBytes } from '@/core/resource-policy'
 import { projectRollbackProgress } from '@/core/project-rollback-progress'
 import { DialogHeader } from './DialogHeader'

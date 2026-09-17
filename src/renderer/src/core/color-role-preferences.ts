@@ -1,4 +1,4 @@
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { readStoredJson, writeStoredJson } from './storage'
 
 export const COLOR_ROLE_PREFERENCES_KEY = 'moonsprite.color-roles.v1'

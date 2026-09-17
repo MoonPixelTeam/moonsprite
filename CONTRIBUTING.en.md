@@ -14,7 +14,7 @@ Unless a separate written agreement applies, by submitting a contribution you re
 2. Read `AGENTS.en.md`, `docs/README.en.md`, and the contracts related to the task.
 3. Write a specification before a feature, and reproduction steps plus a regression test before a bug fix.
 4. Keep each commit focused and do not mix in unrelated formatting or refactoring.
-5. Follow `docs/release/changelog-policy.en.md` and append every independently describable change in the batch to the canonical `CHANGELOG.md` without overwriting existing entries.
+5. Follow the Chinese-only `docs/release/changelog-policy.md` and append every independently describable change in the batch to the canonical `CHANGELOG.md` without overwriting existing entries.
 6. Complete the required checks before opening a pull request.
 
 ## Definition of Done

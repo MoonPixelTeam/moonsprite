@@ -4,6 +4,31 @@ import { animationMaskAt, animationMaskSlotAt, compositeDocument, createDocument
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from './history'
 
 describe('animation timeline boundary', () => {
+  it.each(['normal', 'multiply'] as const)('does not reload unrelated %s layer surfaces when moving one cel', blendMode => {
+    const document = createDocument('move preserves other live layers', 64, 64, 'rgba')
+    const moving = getActiveLayer(document)
+    const stationary = createLayer('stationary', 64, 64, 'rgba')
+    stationary.blendMode = blendMode
+    document.layers.push(stationary)
+    const timeline = ensureAnimationDocument(document)
+    // A live raster replacement can be newer than its persisted cel surface.
+    // A placement command must not reload that unrelated cel into the layer.
+    stationary.pixels = stationary.pixels.slice()
+    stationary.offsetX = 3; stationary.offsetY = 5
+    stationary.opacity = 0.55
+    writeLayerColor(document, stationary, 21 * 64 + 17, { r: 210, g: 50, b: 180, a: 200 })
+    const pixels = stationary.pixels
+    const before = compositeDocument(document)
+    const key = animationCelKey(moving.id, timeline.activeFrameId)
+    for (const offset of [{ x: 1, y: 0 }, { x: 5, y: -3 }, { x: 0, y: 0 }]) {
+      setAnimationCelOffsetsForKeys(document, { [key]: offset })
+      expect(stationary).toMatchObject({ offsetX: 3, offsetY: 5, opacity: 0.55, blendMode })
+      expect(stationary.pixels).toBe(pixels)
+      expect(compositeDocument(document)).toEqual(before)
+      expect(moving).toMatchObject({ offsetX: offset.x, offsetY: offset.y })
+    }
+  })
+
   it('creates the first layer cel together with a new document', () => {
     const document = createDocument('initial cel', 2, 2, 'rgba')
     const timeline = document.animation!

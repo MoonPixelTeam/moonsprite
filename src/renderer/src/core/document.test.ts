@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BLEND_MODES } from '@shared/types'
+import { BLEND_MODES } from '@shared/types-color'
 import { blendWithMode, blendWithModeInto, packColor, writeRgbaPixel } from './raster'
 import { createDefaultLayerStyles } from './layer-styles'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument } from './animation'

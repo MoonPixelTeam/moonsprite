@@ -1,4 +1,5 @@
-import type { OutlineDirection, OutlineKernel, OutlinePosition, OutlineSettings, RgbaColor } from '@shared/types'
+import type { OutlineDirection, OutlineKernel, OutlinePosition, OutlineSettings } from '@shared/types-selection'
+import type { RgbaColor } from '@shared/types-color'
 import { colorEquals } from './raster'
 
 export const OUTLINE_DIRECTIONS: readonly OutlineDirection[] = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']

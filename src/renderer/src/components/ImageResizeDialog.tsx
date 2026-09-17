@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { ImageResizeInterpolation } from '@shared/types'
+import type { ImageResizeInterpolation } from '@shared/types-raster'
 import { ModalShell } from './ModalShell'
 import { NumberInput } from './NumberInput'
 import { FormField } from './FormField'

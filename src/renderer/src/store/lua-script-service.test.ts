@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { LuaScriptExecutionContext, LuaScriptRunResult } from '@shared/types'
+import type { LuaScriptExecutionContext, LuaScriptRunResult } from '@shared/types-scripting'
 import { createDocument, getActiveLayer, readLayerPacked } from '@/core/document'
 import { animationLayerAtFrame, ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'

@@ -1,4 +1,5 @@
-import type { DocumentSlice, SelectionMask, SpriteDocument } from '@shared/types'
+import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
+import type { SelectionMask } from '@shared/types-selection'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
 import { exportAnimationGif } from '@/core/gif'
 import { decodePng, exportDocumentImage, exportDocumentSelectionImage, exportDocumentSliceImage } from '@/core/png'

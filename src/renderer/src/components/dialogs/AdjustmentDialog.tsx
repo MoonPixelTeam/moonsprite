@@ -22,11 +22,12 @@ import { beginAdjustmentPreviewEdit, endAdjustmentPreviewEdit, registerAdjustmen
 import { AdjustmentPreviewWorkerClient } from '@/core/adjustment-preview-worker'
 import type { AdjustmentPreviewBaseline, AdjustmentPreviewResult } from '@/core/adjustment-preview-protocol'
 import { createCanvasRenderPlan } from '@/core/canvas-render-plan'
-import { isLayerEffectivelyLocked, isLayerMask, rasterContentBounds } from '@/core/document'
+import { isLayerEffectivelyLocked, isLayerMask, rasterContentBounds } from '@/core/document-model'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { currentAppLocale } from '@/core/localization'
 import { registerViewPreviewListener } from '@/core/view-preview-lifecycle'
-import type { SelectionRect, ViewState } from '@shared/types'
+import type { SelectionRect } from '@shared/types-selection'
+import type { ViewState } from '@shared/types-view'
 
 const ADJUSTMENT_VIEW_PREVIEW_DELAY_MS = 90
 const ADJUSTMENT_PREVIEW_OVERSCAN_RATIO = 0.25

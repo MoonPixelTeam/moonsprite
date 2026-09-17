@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDocument, getActiveLayer, readLayerPacked, DocumentCompositeCache, compositeRegion } from '@/core/document'
 import { DEFAULT_EDITOR_PREFERENCES, saveEditorPreferences } from '@/core/file-preferences'
-import type { MoonSpriteApi } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
 import type { DocumentSession } from './workspace-types'
 import { configureLocalHistory, flushLocalHistoryPersist, persistLocalHistory, recordLocalHistoryChange, restoreLocalHistory } from './local-history-service'
 import * as projectFormat from '@/core/project-format'
@@ -26,6 +26,44 @@ const sessionWithLocalHistory = (): DocumentSession => {
 }
 
 describe('local history snapshots', () => {
+  it('applies the optional step limit to an open session independently of disk history', () => {
+    const source = sessionWithLocalHistory()
+    const api = {} as MoonSpriteApi
+    const push = (label: string) => source.history.push({ label, bytes: 1, undo: () => {}, redo: () => {} })
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, historyLimit: 2 })
+    configureLocalHistory(source, api)
+    push('1'); push('2'); push('3')
+    expect(source.history.length).toBe(3)
+    expect(source.localHistory).toBeNull()
+
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, historyLimitEnabled: true, historyLimit: 2 })
+    configureLocalHistory(source, api)
+    expect(source.history.timeline.entries.map(item => item.label)).toEqual(['2', '3'])
+
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, historyLimitEnabled: false, historyLimit: 2 })
+    configureLocalHistory(source, api)
+    push('4'); push('5')
+    expect(source.history.length).toBe(4)
+  })
+
+  it('keeps disk history aligned when limiting a fully undone session', () => {
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
+    const source = sessionWithLocalHistory()
+    const api = {} as MoonSpriteApi
+    configureLocalHistory(source, api)
+    for (let index = 1; index <= 3; index++) {
+      source.history.push({ label: String(index), bytes: 1, undo: () => {}, redo: () => {} })
+    }
+    while (source.history.canUndo) source.history.undo()
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true, historyLimitEnabled: true, historyLimit: 2 })
+    configureLocalHistory(source, api)
+    expect(source.localHistory?.labels).toEqual(['1', '2'])
+    expect(source.localHistory?.snapshots).toHaveLength(3)
+    expect(source.localHistory?.position).toBe(0)
+    source.history.redo()
+    expect(source.localHistory?.position).toBe(1)
+  })
+
   it('preserves the saved recording when restoring a history with only a baseline snapshot', async () => {
     saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, localHistoryEnabled: true })
     const source = sessionWithLocalHistory()

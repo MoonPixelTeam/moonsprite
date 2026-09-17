@@ -60,6 +60,18 @@ describe('canvas move layer selection', () => {
     })).toEqual(frames.map((frameId) => animationCelKey('layer-a', frameId)))
   })
 
+  it('keeps an implicit active animation target scoped to its current cel', () => {
+    expect(resolveCanvasMoveAnimationCellKeys({
+      selectedAnimationCellKeys: [],
+      selectedAnimationFrameIds: [],
+      selectedLayerIds: [],
+      allFrameIds: ['frame-1', 'frame-2'],
+      currentFrameId: 'frame-2',
+      targetLayerId: 'layer-a',
+      moveAllSelectedLayers: false
+    })).toEqual([animationCelKey('layer-a', 'frame-2')])
+  })
+
   it('keeps the whole layer selection when frame columns are also selected', () => {
     const frames = ['frame-1', 'frame-2', 'frame-3']
     expect(resolveCanvasMoveAnimationCellKeys({

@@ -1,4 +1,4 @@
-import type { SpriteDocument } from '@shared/types'
+import type { SpriteDocument } from '@shared/types-document'
 import { lazyRuntimeRasterForSurface } from './runtime-raster'
 import type { RuntimeDiagnosticDetail } from './runtime-diagnostics'
 

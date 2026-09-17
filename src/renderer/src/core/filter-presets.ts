@@ -1,4 +1,4 @@
-import type { BlendMode, RgbaColor } from '@shared/types'
+import type { BlendMode, RgbaColor } from '@shared/types-color'
 
 /** Built-in non-destructive filter layers available from the Edit menu. */
 export type FilterPresetId =

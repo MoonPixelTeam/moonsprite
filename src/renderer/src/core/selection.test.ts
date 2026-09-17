@@ -46,6 +46,19 @@ describe('selection preview geometry', () => {
     for (const [index, path] of paths.entries()) expect(selectionPixels(lassoSelection(document, path)), `path ${index}`).toEqual(referenceLassoPixels(document.width, document.height, path))
   })
 
+  it('keeps an extreme outside lasso bounded to the finite document mask', () => {
+    const document = createDocument('bounded repeated lasso', 8, 8, 'rgba')
+    const selection = lassoSelection(document, [
+      { x: -1_000_000, y: -1_000_000 },
+      { x: 1_000_000, y: -1_000_000 },
+      { x: 1_000_000, y: 1_000_000 },
+      { x: -1_000_000, y: 1_000_000 }
+    ])
+
+    expect(selection).toMatchObject({ x: 0, y: 0, width: 8, height: 8 })
+    expect(selection?.mask).toHaveLength(64)
+  })
+
   it('keeps a clipped live polygon preview pixel-identical inside the visible region', () => {
     const document = createDocument('clipped polygon preview', 24, 20, 'rgba')
     const vertices = [{ x: 2, y: 3 }, { x: 19, y: 2 }, { x: 21, y: 15 }, { x: 5, y: 18 }]

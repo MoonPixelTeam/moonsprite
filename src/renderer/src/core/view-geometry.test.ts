@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, zoomViewAroundViewportPoint } from './view-geometry'
+import { canvasViewScrollbarMetrics, clampCanvasViewPan, displayedCanvasCenter, documentPointFromViewportPoint, documentPointFromViewportPointContinuous, mirrorViewportPoint, panCanvasViewFromScrollbar, rotateViewAroundViewportPoint, rotationIndicatorFitsCanvas, rotationIndicatorPointBetweenPointerAndCanvasCenter, rotationIndicatorPointLeftOfPointer, snapViewRotation, unrotatedViewportBounds, unrotatedViewportPoint, unrotateViewportPoint, viewCanvasOrigin, viewPanDeltaFromScreen, viewRotationPivot, viewportPointFromDocumentPointContinuous, viewportSegmentVisible, zoomViewAroundViewportPoint } from './view-geometry'
 
 describe('view rotation geometry', () => {
   it('snaps Shift-constrained view rotation to sixteen directions', () => {
@@ -39,6 +39,20 @@ describe('view rotation geometry', () => {
     const after = documentPointFromViewportPointContinuous(indicator, 800, 600, 128, 96, rotated, 'view')
     expect(after.x).toBeCloseTo(before.x)
     expect(after.y).toBeCloseTo(before.y)
+  })
+
+  it('round-trips document points through rotated and mirrored views', () => {
+    const view = { zoom: 3, panX: 48, panY: -27, rotation: 37, mirrored: true, mirroredVertical: true }
+    const documentPoint = { x: 31.5, y: 18.25 }
+    const viewportPoint = viewportPointFromDocumentPointContinuous(documentPoint, 640, 480, 96, 64, view, 'view')
+    const restored = documentPointFromViewportPointContinuous(viewportPoint, 640, 480, 96, 64, view, 'view')
+    expect(restored.x).toBeCloseTo(documentPoint.x)
+    expect(restored.y).toBeCloseTo(documentPoint.y)
+  })
+
+  it('detects line segments that cross the viewport with both endpoints outside', () => {
+    expect(viewportSegmentVisible({ x: -20, y: 40 }, { x: 220, y: 40 }, 200, 100)).toBe(true)
+    expect(viewportSegmentVisible({ x: -20, y: -10 }, { x: 220, y: -10 }, 200, 100)).toBe(false)
   })
 
 
@@ -90,6 +104,30 @@ describe('view rotation geometry', () => {
     const next = clampCanvasViewPan(300, 300, 100, 50, { zoom: 2, panX: 1000, panY: 0, rotation: 90 }, 'view')
     expect(next.panX).toBeCloseTo(150)
     expect(next.panY).toBeCloseTo(0)
+  })
+
+  it('shows and resizes view scrollbars as zoomed content exceeds the viewport', () => {
+    const fitted = canvasViewScrollbarMetrics(300, 300, 100, 100, { zoom: 2, panX: 0, panY: 0, rotation: 0 }, 'view')
+    expect(fitted.horizontal.visible).toBe(false)
+    expect(fitted.vertical.visible).toBe(false)
+    const zoomed = canvasViewScrollbarMetrics(300, 300, 100, 100, { zoom: 4, panX: 0, panY: 0, rotation: 0 }, 'view')
+    expect(zoomed.horizontal).toMatchObject({ visible: true, position: 0.5, thumbRatio: 0.75 })
+    expect(zoomed.vertical).toMatchObject({ visible: true, position: 0.5, thumbRatio: 0.75 })
+    expect(canvasViewScrollbarMetrics(300, 300, 100, 100, { zoom: 8, panX: 0, panY: 0, rotation: 0 }, 'view').horizontal.thumbRatio).toBe(0.375)
+  })
+
+  it('maps horizontal scrollbar endpoints to the zoomed document edges', () => {
+    const view = { zoom: 4, panX: 0, panY: 0, rotation: 0 }
+    expect(panCanvasViewFromScrollbar(300, 300, 100, 100, view, 'view', 'horizontal', 0).panX).toBe(50)
+    expect(panCanvasViewFromScrollbar(300, 300, 100, 100, view, 'view', 'horizontal', 1).panX).toBe(-50)
+  })
+
+  it('moves rotated content along the requested screen scrollbar axis', () => {
+    const view = { zoom: 4, panX: 0, panY: 0, rotation: 90 }
+    const next = panCanvasViewFromScrollbar(100, 100, 100, 50, view, 'view', 'horizontal', 1)
+    const center = displayedCanvasCenter(100, 100, next, 'view')
+    expect(center.x).toBeCloseTo(0)
+    expect(center.y).toBeCloseTo(50)
   })
 
 

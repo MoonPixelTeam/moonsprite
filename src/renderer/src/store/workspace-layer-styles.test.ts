@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { LayerGroup } from '@shared/types'
+import type { LayerGroup } from '@shared/types-layer'
 import { animationMaskAt, compositeRegion, createDocument, createLayer, getActiveLayer, writeLayerColor } from '@/core/document'
 import { ensureAnimationDocument } from '@/core/animation'
 import { createDefaultLayerStyles } from '@/core/layer-styles'

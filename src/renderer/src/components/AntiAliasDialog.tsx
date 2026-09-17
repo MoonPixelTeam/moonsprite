@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AntiAliasColorSource, RgbaColor } from '@shared/types'
+import type { AntiAliasColorSource } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'

@@ -4,7 +4,9 @@ import type { RuntimeDiagnosticEvent } from '@/core/runtime-diagnostics'
 const mocks = vi.hoisted(() => ({ configure: vi.fn(), invoke: vi.fn() }))
 vi.mock('@/core/runtime-diagnostics', () => ({
   configureRuntimeDiagnostics: mocks.configure,
-  installRuntimeDiagnosticWatchdog: vi.fn(),
+  installRuntimeDiagnosticWatchdog: vi.fn(() => () => {}),
+  setRuntimeDiagnosticCollection: vi.fn(),
+  recordRuntimeDiagnostic: vi.fn(),
   runtimeDiagnosticSnapshot: () => []
 }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
@@ -44,7 +46,7 @@ describe('platform diagnostic persistence', () => {
     await vi.advanceTimersByTimeAsync(250)
     enqueue([event(3)])
     await vi.advanceTimersByTimeAsync(250)
-    expect(read).toHaveBeenCalledTimes(1)
+    expect(read.mock.calls.filter(([name]) => name === key)).toHaveLength(1)
     expect(write).toHaveBeenCalledTimes(2)
     expect(JSON.parse(write.mock.calls.at(-1)![1]).map((item: RuntimeDiagnosticEvent) => item.sequence)).toEqual([0, 1, 2, 3])
   })

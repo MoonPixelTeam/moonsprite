@@ -2,35 +2,11 @@
 
 中文 | [English](README.en.md)
 
-MoonSprite 的脚本运行在受限的 Lua 5.4 沙箱中。普通脚本文件放在程序根目录的 `scripts` 文件夹内，用户可以从“文件 > 脚本”打开。`.msext` 扩展可以把命令插入现有菜单、新增顶层菜单，或通过“窗口 > 栏目”提供浮动栏目；这些入口复用完全相同的运行时。脚本不能直接读写文件、启动进程、访问网络或加载任意 Lua 包。
+MoonSprite 的普通脚本运行在受限的 Lua 5.4 沙箱中，文件放在程序根目录的 `scripts` 文件夹内，并从“文件 > 脚本”打开。`.msext` 同时支持 `schemaVersion: 1` 的 Lua 兼容层和 `schemaVersion: 2` 的 Extension Runtime v1；本页重点说明 Lua/MSE API。普通 Lua 脚本不能直接读写文件、启动进程、访问网络或加载任意 Lua 包。扩展包结构与清单见 [MoonSprite 扩展开发](../extensions/README.md)，Runtime 的常驻 sandbox HTML/JavaScript、权限和窗口 API 见 [Extension Runtime v1](../extensions/runtime-api.md)。
 
-需要画布级交互的功能应声明宿主工具，而不是注入代码。当前宿主提供通用的 `remote-pixel-brush` 能力：
+## Lua 扩展兼容层
 
-```json
-{
-  "tools": [
-    {
-      "id": "remote-cleanup",
-      "name": "Remote Cleanup",
-      "description": "Process the brushed pixel region after release.",
-      "kind": "remote-pixel-brush",
-      "placement": "pencil",
-      "icon": "tool-smooth",
-      "modes": [{ "id": "default", "name": "Default" }],
-      "defaultMode": "default",
-      "previewColor": "#2979ff66"
-    }
-  ]
-}
-```
-
-启用扩展后，该工具由宿主渲染到铅笔工具组；名称、模式和预览色来自扩展清单，配置弹窗、网络请求和像素事务由通用宿主能力执行。扩展清单不会获得任意网络、DOM 或文档内部对象访问权。
-
-配置时填写 OpenAI 兼容的 Chat Completions API 地址（例如 `https://api.deepseek.com`）、API 密钥和模型。填写中转站根地址时，宿主会依次尝试 `/chat/completions` 和 `/v1/chat/completions`，将涂抹区域作为 JSON 像素数据发送，并要求模型优先以 JSON 返回稀疏 `edits`（本地像素索引和 RGBA），也兼容同尺寸的完整 RGBA 像素补丁。
-
-## 可运行扩展
-
-扩展包是 ZIP 容器，根目录的 `manifest.json` 可以声明多个 Lua 命令和由 MoonSprite 渲染的栏目：
+扩展包是 ZIP 容器。`schemaVersion: 1` 清单可以声明多个 Lua 命令和由 MoonSprite 渲染的栏目：
 
 ```json
 {
@@ -79,7 +55,9 @@ MoonSprite 的脚本运行在受限的 Lua 5.4 沙箱中。普通脚本文件放
 
 点击菜单项或栏目按钮时，命令会像普通 Lua 脚本一样获得当前文档、图层、帧和选区快照；像素修改、事务、对话框、撤销和失败回滚全部沿用现有脚本规则。停用、卸载或入口文件不再通过安全校验时，命令与栏目都会消失，也不能通过 Renderer 传入路径强行执行。
 
-MoonSprite 不提供固定的顶层“扩展”菜单。为兼容早期扩展，根清单仍可提供单个 `entry`，它使用 `extension:<id>` 标识并显示在“文件 > 脚本”；没有被任何菜单或栏目引用的具名命令也会回退到该列表。新扩展应优先声明具名 `commands[]` 和明确的 UI 贡献。扩展 UI 是声明式的：扩展不能注入 React、DOM、CSS、JavaScript 或原生控件，也不能通过 `require` 加载包内或系统文件。
+MoonSprite 不提供固定的顶层“扩展”菜单。为兼容早期扩展，根清单仍可提供单个 `entry`，它使用 `extension:<id>` 标识并显示在“文件 > 脚本”；没有被任何菜单或栏目引用的具名命令也会回退到该列表。Lua 兼容层的 UI 是声明式的，不能注入 React、DOM、CSS、JavaScript 或原生控件，也不能通过 `require` 加载包内或系统文件。
+
+需要常驻逻辑、宿主组件设置、自定义 HTML 设置页或透明附属窗口时，使用 `schemaVersion: 2` 和 `apiVersion: "1.0.0"`。普通设置应优先声明 `settingsUi`，由 MoonSprite 组件库渲染复选、数值、文本、选择和命令按钮；组件清单无法表达时再使用 `settingsEntry` sandbox HTML。Runtime 在无同源权限的 sandbox iframe 中执行，只能使用清单授权的 `window.moonsprite` 能力；菜单命令可选择 `runtimeEvent`，设置入口可选择 `opensSettings`。Runtime 不获得安装目录、资源路径、React、Store、Tauri 或内部文档对象，复杂文档编辑仍应通过 `commands.execute()` 调用包内 Lua 命令以保留事务和撤销。Runtime 扩展不能在尚未实现 v1 API 的旧版 MoonSprite 中运行。
 
 命令执行画布写入时应显式使用事务，以便一次命令形成一次撤销：
 

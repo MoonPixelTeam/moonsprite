@@ -115,6 +115,15 @@ describe('project manifest migration boundary', () => {
     expect(reopened.layers[1].autoLinkAnimationCels).toBeUndefined()
   })
 
+  it('round-trips the project symmetry center', () => {
+    const document = createDocument('symmetry center', 12, 10, 'rgba')
+    document.displaySettings = { ...document.displaySettings!, symmetryCenter: { x: 3.5, y: 7.25 } }
+
+    const reopened = decodeProject(encodeProject(document))
+
+    expect(reopened.displaySettings?.symmetryCenter).toEqual({ x: 3.5, y: 7.25 })
+  })
+
   it('round-trips animation cel z coordinates', () => {
     const document = createDocument('cel z coordinate', 2, 2, 'rgba')
     const timeline = ensureAnimationDocument(document)

@@ -1,4 +1,6 @@
-import type { ColorMode, PaletteEntry, SelectionMask, SelectionRect } from '@shared/types'
+import type { ColorMode } from '@shared/types-raster'
+import type { PaletteEntry } from '@shared/types-color'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import type { AppLocale } from './localization'
 import type { ColorAdjustment } from './adjustments'
 

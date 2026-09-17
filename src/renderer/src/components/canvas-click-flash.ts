@@ -1,6 +1,8 @@
-import type { PaletteEntry, RasterLayer, SelectionRect } from '@shared/types'
+import type { PaletteEntry } from '@shared/types-color'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionRect } from '@shared/types-selection'
 import { deviceAlignedCanvasRect, deviceAlignedCoordinate, type CanvasDeviceScale } from '@/core/canvas-render-plan'
-import { getLayerContentRevision } from '@/core/document'
+import { getLayerContentRevision } from '@/core/document-model'
 import { rasterStorageIdentity, visitSurfaceRasterRows } from '@/core/runtime-raster'
 import type { RasterContext2D } from './canvas-selection-renderer'
 

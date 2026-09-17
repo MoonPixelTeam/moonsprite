@@ -7,6 +7,7 @@ import { TextInput } from '@/components/TextInput'
 import type { SaveAsOptions } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { CheckboxField } from '@/components/CheckboxField'
 
 interface SaveAsDialogProps {
   initialName: string
@@ -65,6 +66,7 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, onS
         <div className="export-primary-fields">
           <FormField label={t('saveAs.format')}><ThemedSelect value={form.format} groups={[{ label: t('saveAs.formatGroup'), options: saveAsFormatOptions }]} label={t('saveAs.formatGroup')} onChange={(format) => setForm({ ...form, format })} /></FormField>
         </div>
+        {form.format === 'moonsprite' && <CheckboxField className="save-as-timelapse-checkbox" checked={form.includeTimelapse ?? false} label={t('saveAs.includeTimelapse')} onChange={(includeTimelapse) => setForm({ ...form, includeTimelapse })} />}
         {flattened && <p className="modal-note save-as-format-warning">{t('saveAs.flattenedWarning')}</p>}
       </div>
       <footer><button type="button" className="quiet-button" disabled={saving} onClick={onClose}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={saving || !form.name.trim()}><PixelUtilityIcon kind="save" />{t('common.save')}</button></footer>

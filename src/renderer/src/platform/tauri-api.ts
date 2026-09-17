@@ -1,6 +1,11 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ExtensionListing, ExtensionPackagePreview, MoonSpriteApi, ProjectPreview, RgbaColor, SaveDialogFormat, ScaledPngWriteOptions, ScaledPngWriteResult, StoredBackgroundPreset, StoredBrush, StoredBrushFolder, StoredExtension, StoredPalette, StoredWorkspace } from '@shared/types'
+import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ProjectPreview, StoredPalette } from '@shared/types-files'
+import type { ExtensionListing, ExtensionPackagePreview, StoredExtension } from '@shared/types-extensions'
+import type { MoonSpriteApi, ScaledPngWriteOptions, ScaledPngWriteResult } from '@shared/types-platform'
+import type { RgbaColor, SaveDialogFormat } from '@shared/types-color'
+import type { StoredBackgroundPreset, StoredBrush, StoredBrushFolder } from '@shared/types-library'
+import type { StoredWorkspace } from '@shared/types-workspace'
 import { builtInPalettes } from '@/core/built-in-palettes'
 import { brushFolderContains, remapBrushFolderId } from '@/core/brush-folder-tree'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -244,13 +249,20 @@ const createBrowserApi = (): MoonSpriteApi => ({
   runLuaScript: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   dispatchLuaScriptDialog: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   closeLuaScriptSession: async () => {},
-  listExtensions: async (): Promise<ExtensionListing> => ({ directoryPath: 'extensions', extensions: [] }),
+  listExtensions: async (): Promise<ExtensionListing> => ({ extensions: [] }),
   inspectExtensionPackage: async (): Promise<ExtensionPackagePreview> => { throw new Error(tr('platform.browser.readUnsupported')) },
   installExtension: async (): Promise<StoredExtension> => { throw new Error(tr('platform.browser.readUnsupported')) },
-  chooseAndInstallExtension: async (): Promise<StoredExtension | null> => { throw new Error(tr('platform.browser.readUnsupported')) },
+  chooseExtensionPackage: async (): Promise<string | null> => { throw new Error(tr('platform.browser.readUnsupported')) },
   setExtensionEnabled: async (): Promise<StoredExtension> => { throw new Error(tr('platform.browser.readUnsupported')) },
   uninstallExtension: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
   openExtensionFolder: async () => {},
+  readExtensionSettingsEntry: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
+  readExtensionRuntimeEntry: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
+  readExtensionRuntimeResource: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
+  showExtensionWindow: async () => { throw new Error(tr('platform.browser.readUnsupported')) },
+  setExtensionWindowVisible: async () => {},
+  closeExtensionWindows: async () => {},
+  emitExtensionWindowMessage: async () => {},
   getResourceInfo: async () => ({ totalBytes: 8 * 1024 ** 3, freeBytes: 4 * 1024 ** 3 }),
   confirmUnsaved: async () => 'cancel',
   pathForFile: () => '',
@@ -462,6 +474,8 @@ export const createTauriApi = (): MoonSpriteApi => ({
   listRecoveries: (retentionDays) => invoke('list_recoveries', { retentionDays }),
   readRecovery: (id) => invokeBytes('read_recovery', { id }),
   writeRecovery,
+  appendTimelapseFrame: (store, data) => invoke('append_timelapse_frame', data, { headers: { 'x-moonsprite-recording': store } }),
+  readTimelapseFrame: (reference) => invokeBytes('read_timelapse_frame', { reference }),
   deleteRecovery: (id) => invoke('delete_recovery', { id }),
   readLocalHistory: (id) => invokeBytes('read_local_history', { id }),
   writeLocalHistory,
@@ -487,10 +501,17 @@ export const createTauriApi = (): MoonSpriteApi => ({
   listExtensions: () => invoke('list_extensions'),
   inspectExtensionPackage: (filePath) => invoke('inspect_extension_package', { packagePath: filePath }),
   installExtension: (filePath) => invoke('install_extension', { packagePath: filePath }),
-  chooseAndInstallExtension: () => invoke('choose_and_install_extension', { language: dialogLanguage() }),
+  chooseExtensionPackage: () => invoke('choose_extension_package', { language: dialogLanguage() }),
   setExtensionEnabled: (id, enabled) => invoke('set_extension_enabled', { id, enabled }),
   uninstallExtension: (id) => invoke('uninstall_extension', { id }),
   openExtensionFolder: () => invoke('open_extension_folder'),
+  readExtensionSettingsEntry: (extensionId) => invoke('read_extension_settings_entry', { extensionId }),
+  readExtensionRuntimeEntry: (extensionId) => invoke('read_extension_runtime_entry', { extensionId }),
+  readExtensionRuntimeResource: (extensionId, resourceId) => invokeBytes('read_extension_runtime_resource', { extensionId, resourceId }),
+  showExtensionWindow: (extensionId, windowId, resourceId, options) => invoke('show_extension_window', { extensionId, windowId, resourceId, options }),
+  setExtensionWindowVisible: (extensionId, windowId, visible) => invoke('set_extension_window_visible', { extensionId, windowId, visible }),
+  closeExtensionWindows: (extensionId, windowId) => invoke('close_extension_windows', { extensionId, windowId }),
+  emitExtensionWindowMessage: (extensionId, windowId, message) => invoke('emit_extension_window_message', { extensionId, windowId, message }),
   getResourceInfo: readTauriResourceInfo,
   confirmUnsaved: (name) => invoke('confirm_unsaved', { name }),
   pathForFile: (file) => (file as File & { path?: string }).path ?? '',

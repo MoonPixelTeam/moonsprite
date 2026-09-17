@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { LayerStyles, SpriteDocument } from '@shared/types'
+import type { LayerStyles } from '@shared/types-layer-style'
+import type { SpriteDocument } from '@shared/types-document'
 import { cloneDocumentForAnimationFrame, ensureAnimationDocument, syncActiveAnimationFrame } from '@/core/animation'
 import { compositeRegion, createDocument, createLayer, createLayerMask, getActiveLayer, readLayerColorAt, writeLayerColor } from '@/core/document'
 import { createDefaultLayerStyles } from '@/core/layer-styles'

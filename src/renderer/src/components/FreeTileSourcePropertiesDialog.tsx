@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { FreeTileSourceLayer, RgbaColor } from '@shared/types'
+import type { FreeTileSourceLayer } from '@shared/types-tiles'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from './ColorValueControl'
 import { DialogHeader } from './DialogHeader'
 import { FormField } from './FormField'

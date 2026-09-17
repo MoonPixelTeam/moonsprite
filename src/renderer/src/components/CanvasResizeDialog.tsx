@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CanvasAnchor } from '@shared/types'
+import type { CanvasAnchor } from '@shared/types-selection'
 import type { CanvasResizePreview } from '@/store/workspace'
 import { DialogHeader } from './DialogHeader'
 import { ModalShell } from './ModalShell'

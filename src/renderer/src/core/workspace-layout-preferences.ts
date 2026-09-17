@@ -1,4 +1,4 @@
-import type { ToolRailSide, WorkspaceLayout, WorkspacePanelDock, WorkspacePanelId } from '@shared/types'
+import type { ToolRailSide, WorkspaceLayout, WorkspacePanelDock, WorkspacePanelId } from '@shared/types-workspace'
 import { readStoredJson, readStoredString, removeStoredValue, writeStoredJson, writeStoredString } from './storage'
 
 export type MainWindowState = NonNullable<WorkspaceLayout['mainWindow']>

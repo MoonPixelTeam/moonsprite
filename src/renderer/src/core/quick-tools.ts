@@ -1,4 +1,5 @@
-import type { FillKind, LineKind, MoveKind, SelectionKind, ShapeKind, ToolId } from '@shared/types'
+import type { FillKind, LineKind, MoveKind, ShapeKind, ToolId } from '@shared/types-brush'
+import type { SelectionKind } from '@shared/types-selection'
 import {
   deriveShortcutConflicts,
   normalizeShortcut,

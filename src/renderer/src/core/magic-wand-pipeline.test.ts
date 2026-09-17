@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SelectionMask } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
 import { prepareSelectionBoundary, selectionBoundarySegments, selectionPreviewRectangles, selectionPreviewRectanglesForExterior } from './selection-boundary'
 import { prepareMagicWandOperation } from './magic-wand-operation'
 import { drawMagicWandPreview } from '../components/canvas-magic-preview'

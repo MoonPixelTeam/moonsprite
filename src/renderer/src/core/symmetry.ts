@@ -1,4 +1,4 @@
-import type { SelectionMask, SelectionRect } from '@shared/types'
+import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { selectionContains, transformedSelectionBounds, transformedSelectionSourcePoint, type SelectionShearTransform } from './selection'
 
 export interface SymmetryAxes {

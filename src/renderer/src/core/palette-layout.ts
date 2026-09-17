@@ -1,4 +1,4 @@
-import type { PaletteEntry, RgbaColor } from '@shared/types'
+import type { PaletteEntry, RgbaColor } from '@shared/types-color'
 import { colorEquals } from './raster'
 
 export type PaletteSwatchSize = 'tiny' | 'small' | 'medium' | 'large' | 'huge'

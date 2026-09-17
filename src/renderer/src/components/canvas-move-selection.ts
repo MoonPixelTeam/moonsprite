@@ -1,5 +1,7 @@
-import type { RasterLayer, SelectionRect, SpriteDocument } from '@shared/types'
-import { layerContentBounds } from '@/core/document'
+import type { RasterLayer } from '@shared/types-layer'
+import type { SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import { layerContentBounds } from '@/core/document-model'
 import { animationCelKey, parseAnimationCelKey } from '@/core/animation'
 
 interface CanvasMoveAnimationCellSelection {

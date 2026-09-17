@@ -1,4 +1,5 @@
-import type { SelectionMask, SpriteDocument } from '@shared/types'
+import type { SelectionMask } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
 import type { GifDirection } from './gif'
 import type { ImageExportKind } from './png'
 import { readStoredJson, writeStoredJson } from './storage'

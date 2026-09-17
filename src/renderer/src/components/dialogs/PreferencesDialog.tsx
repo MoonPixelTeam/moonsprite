@@ -4,6 +4,7 @@ import {
   EYEDROPPER_MAGNIFIER_SIZE_VALUES,
   DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
   DEFAULT_QUICK_COMMAND_BARS,
+  BODY_FONT_SCALE_VALUES,
   UI_SCALE_VALUES,
   VIEW_DRAG_SENSITIVITY_VALUES,
   KEY_DISPLAY_DURATIONS,
@@ -15,6 +16,7 @@ import {
   saveEditorPreferences,
   setEditorPreferencesPreview,
   type BrushPreviewMode,
+  type BodyFontScale,
   type CursorScale,
   type DocumentSizePreset,
   type EyedropperMagnifierSize,
@@ -60,19 +62,21 @@ import { ThemedSelect } from '@/components/ThemedSelect'
 import { useWorkspace } from '@/store/workspace'
 import { applyThemeToDocument, resolveTheme, type ThemeVisualDefaults } from '@/core/theme'
 import { ThemePreferencesSection } from './ThemePreferencesSection'
+import { DiagnosticPreferencesField } from './DiagnosticPreferencesField'
 import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
 import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
-import type { LuaScriptEntry, StoredExtension } from '@shared/types'
+import type { LuaScriptEntry, StoredExtension } from '@shared/types-extensions'
 import { initializeUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
 
 interface PreferencesDialogProps {
   initialSection?: PreferenceSection
   onClose: () => void
   onPresetChange: (documentSizes: DocumentSizePreset[], exportScales: number[]) => void
+  onChooseAndInstallExtension: () => Promise<boolean>
 }
 
-export type PreferenceSection = 'general' | 'quickCommands' | 'appearance' | 'theme' | 'input' | 'tablet' | 'tools' | 'files' | 'colorLayers' | 'presets' | 'extensions' | 'reset'
+export type PreferenceSection = 'general' | 'quickCommands' | 'appearance' | 'theme' | 'input' | 'tablet' | 'tools' | 'undo' | 'files' | 'colorLayers' | 'presets' | 'extensions' | 'reset'
 
 const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
   ['general', 'preferences.sections.general'],
@@ -81,6 +85,7 @@ const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
   ['theme', 'preferences.sections.theme'],
   ['input', 'preferences.sections.input'],
   ['tools', 'preferences.sections.tools'],
+  ['undo', 'preferences.sections.undo'],
   ['files', 'preferences.sections.files'],
   ['colorLayers', 'preferences.sections.colors'],
   ['presets', 'preferences.sections.presets'],
@@ -92,13 +97,14 @@ const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
 const QUICK_COMMAND_SEARCH_KEYS = Object.values(QUICK_COMMAND_METADATA).flatMap(({ description, label }) => [label, description])
 
 const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
-  general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording'],
+  general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.bodyFontSize', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording', 'preferences.diagnostics.mode', 'preferences.diagnostics.off', 'preferences.diagnostics.memory', 'preferences.diagnostics.full'],
   quickCommands: ['preferences.sections.quickCommands', 'preferences.groups.quickCommandLayout', 'preferences.quickCommandBar', 'preferences.quickCommandBarTranslucent', 'preferences.quickCommandBarTranslucentHint', 'preferences.quickCommandOrderHint', 'preferences.quickCommandBarName', 'preferences.quickCommandBarEdge', ...QUICK_COMMAND_SEARCH_KEYS],
-  appearance: ['preferences.groups.canvas', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
+  appearance: ['preferences.groups.canvas', 'preferences.canvasViewScrollbars', 'preferences.canvasViewScrollbarsHint', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
   theme: ['preferences.groups.theme', 'preferences.theme.available', 'preferences.theme.current'],
   input: ['preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position'],
-  tablet: ['preferences.groups.tablet', 'preferences.tablet.api', 'preferences.tablet.touchMode', 'preferences.tablet.pressure', 'preferences.tablet.eraserTip', 'preferences.tablet.barrelButton', 'preferences.tablet.twoFingerZoom', 'preferences.tablet.twoFingerRotate', 'preferences.tablet.tilt', 'preferences.tablet.twist'],
+  tablet: ['preferences.groups.tablet', 'preferences.tablet.api', 'preferences.tablet.touchMode', 'preferences.tablet.pressure', 'preferences.tablet.eraserTip', 'preferences.tablet.barrelButton', 'preferences.tablet.rightClick', 'preferences.tablet.twoFingerZoom', 'preferences.tablet.twoFingerRotate', 'preferences.tablet.tilt', 'preferences.tablet.twist'],
   tools: ['preferences.groups.previews', 'preferences.brushPreview', 'preferences.drawingBrushPreview', 'preferences.selectionCrosshair', 'preferences.selectionPreviewColor', 'preferences.selectionPreviewColor.auto', 'preferences.selectionPreviewColor.custom', 'preferences.selectionPreviewCustomColor', 'preferences.selectionSizeVisible', 'preferences.moveLayerContentPreview', 'preferences.moveLayerClickFlash', 'preferences.moveLayerClickFlashDuration', 'preferences.groups.alignment', 'preferences.gridAlignment', 'preferences.gridAlignmentHint', 'preferences.smartAlignment', 'preferences.smartAlignmentHint', 'preferences.alignmentGuides', 'preferences.alignmentGuidesHint', 'preferences.alignmentThreshold', 'preferences.alignmentThresholdHint', 'preferences.groups.drawing', 'preferences.gradientLineVisible', 'preferences.gradientLineColor', 'preferences.shiftLinePreview', 'preferences.balancedLine', 'preferences.balancedLineHint', 'preferences.optimizedRotation', 'preferences.optimizedRotationHint', 'preferences.lineDirectionStep', 'preferences.lassoClosed', 'preferences.eyedropperPencil', 'preferences.groups.eyedropper', 'preferences.eyedropperQuickSelect', 'preferences.eyedropperMagnifier', 'preferences.eyedropperMagnifierSize', 'preferences.eyedropperMagnifierStyle', 'preferences.eyedropperMagnifierDistortion'],
+  undo: ['preferences.groups.undo', 'preferences.historyLimitEnabled', 'preferences.historyLimitEnabledHint', 'preferences.historyLimit', 'preferences.historyLimitHint', 'preferences.groups.localHistory'],
   files: ['preferences.groups.locations', 'preferences.saveDirectory', 'preferences.exportDirectory', 'preferences.groups.formats', 'preferences.saveFormat', 'preferences.exportFormat', 'preferences.groups.recovery', 'preferences.recovery', 'preferences.recoveryRetentionDays', 'preferences.recoveryRetentionDaysHint'],
   colorLayers: ['preferences.colorModes', 'preferences.restoreDefaults'],
   presets: ['preferences.newDocumentPresets', 'preferences.addSize', 'preferences.exportScalePresets', 'preferences.addScale', 'preferences.layerColors', 'preferences.addColor', 'preferences.restoreDefaults'],
@@ -134,7 +140,7 @@ function PreferenceGroup({ actions, children, className = '', title }: { actions
   </section>
 }
 
-export function PreferencesDialog({ initialSection = 'general', onClose, onPresetChange }: PreferencesDialogProps) {
+export function PreferencesDialog({ initialSection = 'general', onClose, onPresetChange, onChooseAndInstallExtension }: PreferencesDialogProps) {
   const { locale, t } = useI18n()
   const [section, setSection] = useState<PreferenceSection>(initialSection)
   const [query, setQuery] = useState('')
@@ -360,15 +366,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     }
   }
   const chooseExtension = async (): Promise<void> => {
-    try {
-      const extension = await window.moonSprite.chooseAndInstallExtension()
-      if (!extension) return
-      await refreshExtensions()
-      window.dispatchEvent(new Event('moonsprite:extensions-changed'))
-      useWorkspace.getState().setMessage(t('preferences.extensions.installSuccess', { name: extension.name }))
-    } catch (error) {
-      useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('preferences.extensions.installFailed'))
-    }
+    if (await onChooseAndInstallExtension()) await refreshExtensions()
   }
   const openExtensionFolder = async (): Promise<void> => {
     try {
@@ -419,7 +417,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     const choice = await useWorkspace.getState().requestDialog({
       title: t('preferences.extensions.uninstallTitle'),
       message: t('preferences.extensions.uninstallMessage', { name: extension.name }),
-      detail: t('preferences.extensions.path', { path: extension.filePath }),
+      detail: extension.id,
       choices: [
         { id: 'cancel', label: t('preferences.cancel'), tone: 'quiet' },
         { id: 'uninstall', label: t('preferences.extensions.uninstall'), tone: 'danger' }
@@ -494,6 +492,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title={t('preferences.groups.interface')}>
           <FormField className="preference-field" label={t('preferences.language')}><ThemedSelect value={preferences.language} groups={[{ label: t('preferences.languageGroup'), options: AVAILABLE_APP_LOCALES.map((value) => ({ value, label: localeDisplayName(value, locale) })) }]} label={t('preferences.language')} onChange={(value) => update('language', value as AppLocale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.uiScale')}><ThemedSelect value={String(preferences.uiScale)} groups={[{ label: t('preferences.uiScaleGroup'), options: UI_SCALE_VALUES.map((value) => ({ value: String(value), label: `${Math.round(value * 100)}%`, description: value === 0.75 ? t('preferences.uiScaleFractionalHint') : undefined })) }]} label={t('preferences.uiScale')} onChange={(value) => update('uiScale', Number(value) as UiScale)} /></FormField>
+          <FormField className="preference-field" label={t('preferences.bodyFontSize')}><ThemedSelect value={String(preferences.bodyFontScale)} groups={[{ label: t('preferences.bodyFontSizeGroup'), options: BODY_FONT_SCALE_VALUES.map((value) => ({ value: String(value), label: `${Math.round(value * 100)}% · ${Math.round(12 * value)}px` })) }]} label={t('preferences.bodyFontSize')} onChange={(value) => update('bodyFontScale', Number(value) as BodyFontScale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.toolIconScale')}><ThemedSelect value={String(preferences.toolIconScale)} groups={[{ label: t('preferences.toolIconScaleGroup'), options: [{ value: '1', label: t('preferences.toolIconScale.normal') }, { value: '2', label: t('preferences.toolIconScale.large') }] }]} label={t('preferences.toolIconScale')} onChange={(value) => update('toolIconScale', Number(value) as ToolIconScale)} /></FormField>
           <FormField className="preference-field" label={t('preferences.animations')} hint={t('preferences.animationsHint')}><ThemedSelect value={preferences.uiMotionLevel} groups={[{ label: t('preferences.animationsGroup'), options: [
             { value: 'off', label: t('preferences.animationsLevel.off'), description: t('preferences.animationsLevel.offHint') },
@@ -511,6 +510,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title="使用统计">
           <PreferenceToggle label="开启使用统计" checked={usageStatisticsEnabled} disabled={usageStatisticsBusy} onChange={(enabled) => void runUsageStatistics(async () => { await setUsageStatisticsEnabled(enabled); setUsageStatisticsEnabledState(enabled) })} />
         </PreferenceGroup>
+        <PreferenceGroup title={t('preferences.diagnostics.mode')}><DiagnosticPreferencesField /></PreferenceGroup>
       </>}
       {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bar, name: t('preferences.quickCommandDefaultName', { index: index + 1 }), commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
         {toggle(t('preferences.quickCommandBar'), preferences.quickCommandBarEnabled, (value) => update('quickCommandBarEnabled', value), t('preferences.quickCommandBarHint'))}
@@ -531,6 +531,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       </PreferenceGroup>}
       {section === 'appearance' && <>
         <PreferenceGroup title={t('preferences.groups.canvas')}>
+          {toggle(t('preferences.canvasViewScrollbars'), preferences.canvasViewScrollbarsEnabled, (value) => update('canvasViewScrollbarsEnabled', value), t('preferences.canvasViewScrollbarsHint'))}
           <FormField className="preference-field" label={t('preferences.checkerSize')}><NumberInput aria-label={t('preferences.checkerSize')} min={1} max={256} suffix="px" value={preferences.checkerboard.size} onValueChange={(size) => update('checkerboard', { ...preferences.checkerboard, size: Math.round(size) })} /></FormField>
           <FormField className="preference-field" label={t('preferences.luminanceScope')}><ThemedSelect value={preferences.relativeLuminanceScope} groups={[{ label: t('preferences.luminanceScopeGroup'), options: [{ value: 'canvas', label: t('preferences.luminanceScope.canvas') }, { value: 'app', label: t('preferences.luminanceScope.app') }] }]} label={t('preferences.luminanceScope')} onChange={(value) => update('relativeLuminanceScope', value as RelativeLuminanceScope)} /></FormField>
           <div className="preference-checker-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.checkerColors')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['checkerLight', 'checkerDark'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-color-value-list"><ColorValueControl color={preferences.checkerboard.lightColor} density="regular" onChange={(lightColor) => setVisualOverride('checkerLight', { ...lightColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.lightColor')} fillWithColor /><ColorValueControl color={preferences.checkerboard.darkColor} density="regular" onChange={(darkColor) => setVisualOverride('checkerDark', { ...darkColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.darkColor')} fillWithColor /></div></div>
@@ -564,6 +565,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.tablet.pressure'), preferences.tablet.pressureEnabled, (value) => update('tablet', { ...preferences.tablet, pressureEnabled: value }), t('preferences.tablet.pressureHint'))}
           {toggle(t('preferences.tablet.eraserTip'), preferences.tablet.eraserTipEnabled, (value) => update('tablet', { ...preferences.tablet, eraserTipEnabled: value }))}
           <FormField className="preference-field" label={t('preferences.tablet.barrelButton')}><ThemedSelect value={preferences.tablet.barrelButtonAction} groups={[{ label: t('preferences.tablet.barrelButtonGroup'), options: [{ value: 'eraser', label: t('preferences.tablet.barrelButton.eraser') }, { value: 'eyedropper', label: t('preferences.tablet.barrelButton.eyedropper') }, { value: 'hand', label: t('preferences.tablet.barrelButton.hand') }, { value: 'disabled', label: t('preferences.tablet.barrelButton.disabled') }] }]} label={t('preferences.tablet.barrelButton')} onChange={(value) => update('tablet', { ...preferences.tablet, barrelButtonAction: value as TabletBarrelButtonAction })} /></FormField>
+          <FormField className="preference-field" label={t('preferences.tablet.rightClick')} tooltip={t('preferences.tablet.rightClickHint')}><ThemedSelect value={preferences.tablet.rightClickAction} groups={[{ label: t('preferences.tablet.rightClick'), options: [{ value: 'background', label: t('preferences.tablet.rightClick.background') }, { value: 'foreground-eyedropper', label: t('preferences.tablet.rightClick.foreground') }] }]} label={t('preferences.tablet.rightClick')} onChange={(value) => update('tablet', { ...preferences.tablet, rightClickAction: value === 'foreground-eyedropper' ? value : 'background' })} /></FormField>
           {toggle(t('preferences.tablet.twoFingerZoom'), preferences.tablet.twoFingerZoomEnabled, (value) => update('tablet', { ...preferences.tablet, twoFingerZoomEnabled: value }))}
           {toggle(t('preferences.tablet.twoFingerRotate'), preferences.tablet.twoFingerRotateEnabled, (value) => update('tablet', { ...preferences.tablet, twoFingerRotateEnabled: value }))}
           {toggle(t('preferences.tablet.tilt'), preferences.tablet.tiltEnabled, (value) => update('tablet', { ...preferences.tablet, tiltEnabled: value }))}
@@ -605,6 +607,16 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.eyedropperMagnifierDistortion'), preferences.eyedropperMagnifierDistortionEnabled, (value) => update('eyedropperMagnifierDistortionEnabled', value), t('preferences.eyedropperMagnifierDistortionHint'))}
         </PreferenceGroup>
       </>}
+      {section === 'undo' && <>
+        <PreferenceGroup title={t('preferences.groups.undo')}>
+        {toggle(t('preferences.historyLimitEnabled'), preferences.historyLimitEnabled, (value) => update('historyLimitEnabled', value), t('preferences.historyLimitEnabledHint'))}
+        <FormField className="preference-field" label={t('preferences.historyLimit')} hint={t('preferences.historyLimitHint')}><NumberInput min={1} max={10000} suffix="条" disabled={!preferences.historyLimitEnabled} value={preferences.historyLimit} onValueChange={(value) => update('historyLimit', Math.round(value))} /></FormField>
+        </PreferenceGroup>
+        <PreferenceGroup title={t('preferences.groups.localHistory')}>
+        {toggle('关闭后保留历史记录', preferences.localHistoryEnabled, (value) => update('localHistoryEnabled', value), '将最近的历史记录保存在本机软件数据目录。不会写入 .moonsprite 工程文件，但会增加本机磁盘占用和保存时的后台处理量。')}
+        <FormField className="preference-field" label="保留历史记录数量" hint="每个工程最多保存这么多条历史记录。"><NumberInput min={1} max={200} suffix="条" disabled={!preferences.localHistoryEnabled} value={preferences.localHistoryLimit} onValueChange={(value) => update('localHistoryLimit', Math.round(value))} /></FormField>
+        </PreferenceGroup>
+      </>}
       {section === 'files' && <>
         <PreferenceGroup title={t('preferences.groups.locations')}>
         <FormField className="preference-field preference-path-field" label={t('preferences.saveDirectory')} hint={preferences.saveDirectory ? t('preferences.directory.custom') : t('preferences.directory.default')}><div className="preference-path-control"><TextInput readOnly value={preferences.saveDirectory || defaultDirectories.saveDirectory} title={preferences.saveDirectory || defaultDirectories.saveDirectory} /><button type="button" className="icon-button" title={t('preferences.chooseDirectory')} aria-label={t('preferences.chooseSaveDirectory')} onClick={() => void choosePreferenceDirectory('saveDirectory')}><PixelUtilityIcon kind="folderOpen" /></button><button type="button" className="icon-button" title={t('preferences.restoreDefaultDirectory')} aria-label={t('preferences.restoreDefaultSaveDirectory')} disabled={!preferences.saveDirectory} onClick={() => update('saveDirectory', '')}><PixelUtilityIcon kind="restore" /></button></div></FormField>
@@ -617,10 +629,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title={t('preferences.groups.recovery')}>
         <FormField className="preference-field" label={t('preferences.recovery')}><ThemedSelect value={recoveryValue} groups={[{ label: t('preferences.recoveryGroup'), options: [{ value: 'off', label: t('preferences.recovery.off') }, { value: '0.5', label: t('preferences.recovery.seconds30') }, { value: '1', label: t('preferences.recovery.minutes1') }, { value: '2', label: t('preferences.recovery.minutes2') }, { value: '5', label: t('preferences.recovery.minutes5') }, { value: '10', label: t('preferences.recovery.minutes10') }] }]} label={t('preferences.recovery')} onChange={(value) => setPreferences((current) => value === 'off' ? { ...current, recovery: false } : { ...current, recovery: true, recoveryMinutes: Number(value) })} /></FormField>
         <FormField className="preference-field" label={t('preferences.recoveryRetentionDays')} hint={t('preferences.recoveryRetentionDaysHint')}><NumberInput min={1} max={365} suffix={t('preferences.daysSuffix')} value={preferences.recoveryRetentionDays} onValueChange={(value) => update('recoveryRetentionDays', Math.round(value))} /></FormField>
-        </PreferenceGroup>
-        <PreferenceGroup title="本地历史记录">
-        {toggle('关闭后保留历史记录', preferences.localHistoryEnabled, (value) => update('localHistoryEnabled', value), '将最近的历史记录保存在本机软件数据目录。不会写入 .moonsprite 工程文件，但会增加本机磁盘占用和保存时的后台处理量。')}
-        <FormField className="preference-field" label="保留历史记录数量" hint="每个工程最多保存这么多条历史记录。"><NumberInput min={1} max={200} suffix="条" disabled={!preferences.localHistoryEnabled} value={preferences.localHistoryLimit} onValueChange={(value) => update('localHistoryLimit', Math.round(value))} /></FormField>
         </PreferenceGroup>
         <PreferenceGroup title="工程备份">
         {toggle('启用工程备份', preferences.projectBackupEnabled, (value) => update('projectBackupEnabled', value), '保存工程前保留当前版本。关闭后不会创建新备份，也无法使用文件 - 回档。')}

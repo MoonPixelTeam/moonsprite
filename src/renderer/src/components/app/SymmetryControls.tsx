@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { FormField } from '@/components/FormField'
 import { NumberInput } from '@/components/NumberInput'

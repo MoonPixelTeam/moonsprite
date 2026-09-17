@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
 import { createDiagnosticWriter } from './runtime-diagnostic-writer'
 import { playExportSuccessSound } from './export-success-sound'
+import { DIAGNOSTIC_MODE_CHANGED, loadDiagnosticMode, type DiagnosticMode } from '@/core/diagnostic-preferences'
 import {
   configureRuntimeDiagnostics,
   installRuntimeDiagnosticWatchdog,
   runtimeDiagnosticSnapshot,
+  recordRuntimeDiagnostic,
+  setRuntimeDiagnosticCollection,
   type RuntimeDiagnosticDetail,
   type RuntimeDiagnosticEvent
 } from '@/core/runtime-diagnostics'
@@ -12,6 +15,7 @@ import {
 const BROWSER_DIAGNOSTIC_STORAGE_KEY = 'moonsprite.runtime-diagnostics.v1'
 const MAX_BROWSER_EVENTS = 100
 let installed = false
+let mode: DiagnosticMode | null = null
 let browserEvents: RuntimeDiagnosticEvent[] | undefined
 
 const persistBrowserFallback = (events: readonly RuntimeDiagnosticEvent[]): void => {
@@ -45,20 +49,47 @@ const persistEvents = async (events: readonly RuntimeDiagnosticEvent[]): Promise
 
 const writer = createDiagnosticWriter(persistEvents, persistBrowserFallback)
 
-export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnosticDetail): void => {
-  if (installed) return
+export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnosticDetail): (() => void) => {
+  if (installed) return () => {}
   installed = true
-  configureRuntimeDiagnostics(writer.enqueue, contextProvider)
-  window.addEventListener('pagehide', () => { writer.checkpoint(); void writer.flush() })
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { writer.checkpoint(); void writer.flush() }
-  })
-  installRuntimeDiagnosticWatchdog()
+  let stopWatchdog: (() => void) | null = null
+  const refresh = (): void => {
+    const next = loadDiagnosticMode()
+    if (next === mode) return
+    writer.discardPending()
+    mode = next
+    if (next === 'off') { stopWatchdog?.(); stopWatchdog = null }
+    setRuntimeDiagnosticCollection(next !== 'off')
+    configureRuntimeDiagnostics(next === 'full' ? writer.enqueue : next === 'memory' ? () => {} : null, contextProvider)
+    if (next !== 'off') {
+      stopWatchdog ??= installRuntimeDiagnosticWatchdog()
+      recordRuntimeDiagnostic('session', 'diagnostic.mode', { mode: next })
+    }
+  }
+  const checkpoint = (): void => { if (mode === 'full') { writer.checkpoint(); void writer.flush() } }
+  const visibilityChange = (): void => { if (document.visibilityState === 'hidden') checkpoint() }
+  window.addEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
+  window.addEventListener('moonsprite:preferences-changed', refresh)
+  window.addEventListener('pagehide', checkpoint)
+  document.addEventListener('visibilitychange', visibilityChange)
+  refresh()
+  return () => {
+    window.removeEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
+    window.removeEventListener('moonsprite:preferences-changed', refresh)
+    window.removeEventListener('pagehide', checkpoint)
+    document.removeEventListener('visibilitychange', visibilityChange)
+    stopWatchdog?.()
+    writer.discardPending()
+    setRuntimeDiagnosticCollection(false)
+    configureRuntimeDiagnostics(null)
+    installed = false
+    mode = null
+  }
 }
 
 export const openRuntimeDiagnosticLogs = async (): Promise<void> => {
-  await writer.flush()
-  if ('__TAURI_INTERNALS__' in window) {
+  if (mode === 'full') await writer.flush()
+  if ('__TAURI_INTERNALS__' in window && mode !== 'memory') {
     await invoke('open_diagnostic_logs')
     return
   }

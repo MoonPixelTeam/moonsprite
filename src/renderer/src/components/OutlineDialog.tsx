@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { OutlineDirections, OutlineKernel, OutlinePosition, RgbaColor } from '@shared/types'
+import type { OutlineDirections, OutlineKernel, OutlinePosition } from '@shared/types-selection'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorValueControl } from '@/components/ColorValueControl'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'

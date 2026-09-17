@@ -1,5 +1,7 @@
-import type { AnimationCelSurface, LayerMask, PaletteEntry } from '@shared/types'
-import { rasterContentBounds } from './document'
+import type { AnimationCelSurface } from '@shared/types-animation'
+import type { LayerMask } from '@shared/types-layer'
+import type { PaletteEntry } from '@shared/types-color'
+import { rasterContentBounds } from './document-model'
 import { readSurfacePackedLocal } from './runtime-raster'
 
 export interface AnimationThumbnailRect { x: number; y: number; width: number; height: number }

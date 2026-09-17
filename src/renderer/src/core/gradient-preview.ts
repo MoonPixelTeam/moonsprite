@@ -1,5 +1,7 @@
-import type { RgbaColor, SelectionRect, SpriteDocument } from '@shared/types'
-import { compositeRegion } from './document'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionRect } from '@shared/types-selection'
+import type { SpriteDocument } from '@shared/types-document'
+import { compositeRegion } from './document-composite'
 import { blendOver, packColor } from './raster'
 
 export interface GradientCompositePreview extends SelectionRect {

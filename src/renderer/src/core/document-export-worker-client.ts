@@ -1,4 +1,5 @@
-import type { DocumentSlice, SelectionMask, SpriteDocument } from '@shared/types'
+import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
+import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteSheetExportOptions, SpriteSheetExportSelection, SpriteSheetBuildNames } from './sprite-sheet'
 import type { GifDirection } from './gif'
 import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'

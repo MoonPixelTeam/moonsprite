@@ -269,11 +269,11 @@ const isoGridEdgeGeometry = (
   return {
     start: {
       x: anchor.x + (signX < 0 ? -1 : 0),
-      y: anchor.y + (signY < 0 ? -1 : 0)
+      y: anchor.y + (signX < 0 ? signY : 0)
     },
     pixelEnd: {
       x: vertex.x + (signX > 0 ? -1 : 0),
-      y: vertex.y + (signY > 0 ? -1 : 0)
+      y: vertex.y + (signX > 0 ? -signY : 0)
     },
     vertex,
     vector
@@ -602,7 +602,9 @@ export function isoGridLineSegment(
   const vector = isoLineDirectionVector(direction, step)
   const start = {
     x: from.x + (vector.x < 0 ? -1 : 0),
-    y: from.y + (vector.y < 0 ? -1 : 0)
+    // Preview stairs are indexed by floor(x / step), in both slope families.
+    // Crossing left of a vertex enters the previous stair; moving right does not.
+    y: from.y + (vector.x < 0 ? Math.sign(vector.y) : 0)
   }
   const delta = { x: to.x - from.x, y: to.y - from.y }
   const stairCount = Math.max(1, Math.round(

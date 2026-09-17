@@ -1,28 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { createPortal } from 'react-dom'
-import {
-  DEFAULT_SHORTCUT_BINDINGS,
-  SHORTCUT_GROUPS,
-  assignShortcutBinding,
-  cloneShortcutBindings,
-  createShortcutSettingsFile,
-  deriveShortcutConflicts,
-  findShortcutBindingOwners,
-  formatShortcutBindingsForLocale,
-  importShortcutBindings,
-  removeShortcutBinding,
-  resetShortcutBindings,
-  shortcutBindingBlocked,
-  shortcutDisplayText,
-  shortcutGroupLabels,
-  shortcutIdsMayShareBinding,
-  shortcutLabels,
-  shortcutText,
-  type ShortcutBindings,
-  type ShortcutGroupId,
-  type ShortcutId
-} from '@/core/shortcuts'
+import { DEFAULT_SHORTCUT_BINDINGS, SHORTCUT_GROUPS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, findShortcutBindingOwners, formatShortcutBindingsForLocale, importShortcutBindings, removeShortcutBinding, resetShortcutBindings, shortcutBindingBlocked, shortcutDisplayText, shortcutIdsMayShareBinding, shortcutText, type ShortcutBindings, type ShortcutGroupId, type ShortcutId } from '@/core/shortcuts'
+import { shortcutGroupLabels, shortcutLabels } from '@/locales/shortcut-labels'
 import { ModalShell } from '@/components/ModalShell'
 import { DialogHeader } from '@/components/DialogHeader'
 import { SettingsNavigation } from '@/components/SettingsNavigation'

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { unzipSync } from 'fflate'
-import type { MoonSpriteApi, RecoveryRecord } from '@shared/types'
+import type { MoonSpriteApi } from '@shared/types-platform'
+import type { RecoveryRecord } from '@shared/types-files'
 import { createDocument } from '@/core/document'
 import { decodeProject, encodeProject } from '@/core/project-format'
 import { RecoveryService } from './recovery-service'

@@ -1,5 +1,5 @@
-import type { SpriteDocument } from '@shared/types'
-import { compositeRegion, DocumentCompositeCache } from './document'
+import type { SpriteDocument } from '@shared/types-document'
+import { compositeRegion, DocumentCompositeCache } from './document-composite'
 
 const DETECTION_CHUNK_ROWS = 64
 const MAX_DETECTED_SCALE = 512

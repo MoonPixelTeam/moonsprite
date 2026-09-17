@@ -1,4 +1,4 @@
-import type { ProjectLayerPanelState, SpriteDocument } from '@shared/types'
+import type { ProjectLayerPanelState, SpriteDocument } from '@shared/types-document'
 import { readStoredJson, writeStoredJson } from './storage'
 
 export const LAYER_PANEL_STATE_STORAGE_KEY = 'moonsprite.layer-panel-state.v1'

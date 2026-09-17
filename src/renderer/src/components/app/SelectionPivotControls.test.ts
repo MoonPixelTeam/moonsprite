@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { CanvasAnchor, SelectionMask } from '@shared/types'
+import type { CanvasAnchor, SelectionMask } from '@shared/types-selection'
 import { transformedSelectionPivotPreset } from '@/core/selection'
 import { selectionPivotControlTarget } from './SelectionPivotControls'
 

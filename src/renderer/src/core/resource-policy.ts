@@ -1,4 +1,5 @@
-import type { ColorMode, ResourceInfo } from '@shared/types'
+import type { ColorMode } from '@shared/types-raster'
+import type { ResourceInfo } from '@shared/types-files'
 import { translateCurrent as tr } from './localization'
 
 export interface ResourceEstimate {

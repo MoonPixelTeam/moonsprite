@@ -1,54 +1,16 @@
-import type {
-  AnimationLoopDirection,
-  AnimationCelSurface,
-  AntiAliasColorSource,
-  BackgroundPatternId,
-  BlendMode,
-  BrushDitherSettings,
-  BrushPaintMode,
-  BrushShape,
-  BrushTexture,
-  CanvasAnchor,
-  ColorMode,
-  DocumentSlice,
-  FillKind,
-  FillConnectivity,
-  FillMode,
-  FillReference,
-  FreeTileInstance,
-  FreeTileSourceLayer,
-  GradientDither,
-  GradientStop,
-  GradientType,
-  ImageBrush,
-  InkMode,
-  ImageBrushSettings,
-  ImageResizeInterpolation,
-  LayerStyles,
-  LineKind,
-  LiquifyMode,
-  MoveKind,
-  OutlineSettings,
-  PaletteEntry,
-  PaletteSlotLayout,
-  ProceduralBrushSettings,
-  RecoveryRecord,
-  RgbaColor,
-  SelectionKind,
-  SelectionMask,
-  SelectionMode,
-  SelectionQuad,
-  SelectionRect,
-  ShapeKind,
-  ShapeRatio,
-  SpriteDocument,
-  TextCelData,
-  TileRepeatMode,
-  TimelapseSettings,
-  TimelapseExportFormat,
-  ToolId,
-  ViewState
-} from '@shared/types'
+import type { AnimationLoopDirection, AnimationCelSurface } from '@shared/types-animation'
+import type { AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushShape, BrushTexture, FillKind, FillConnectivity, FillMode, FillReference, GradientDither, GradientStop, GradientType, ImageBrush, InkMode, ImageBrushSettings, LineKind, LiquifyMode, MoveKind, ProceduralBrushSettings, ShapeKind, ShapeRatio, ToolId } from '@shared/types-brush'
+import type { BackgroundPatternId } from '@shared/types-layer'
+import type { BlendMode, PaletteEntry, RgbaColor } from '@shared/types-color'
+import type { CanvasAnchor, OutlineSettings, SelectionKind, SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
+import type { ColorMode, ImageResizeInterpolation, TileRepeatMode } from '@shared/types-raster'
+import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
+import type { FreeTileInstance, FreeTileSourceLayer } from '@shared/types-tiles'
+import type { LayerStyles } from '@shared/types-layer-style'
+import type { PaletteSlotLayout, RecoveryRecord } from '@shared/types-files'
+import type { TextCelData } from '@shared/types-text'
+import type { TimelapseSettings, TimelapseExportFormat } from '@shared/types-timelapse'
+import type { ViewState } from '@shared/types-view'
 import type { ColorAdjustment } from '@/core/adjustments'
 import type { AdjustmentPreviewResult } from '@/core/adjustment-preview-protocol'
 import type { BackgroundPatternTile } from '@/core/background-patterns'
@@ -58,7 +20,7 @@ import type { PaletteSortDirection, PaletteSortMode } from '@/core/palette'
 import type { BrushDynamicsEffect, BrushDynamicsMapping, BrushPressureSettings } from '@/core/pressure'
 import type { SelectionShearTransform } from '@/core/selection'
 import type { SymmetryAxes, SymmetryCenter } from '@/core/symmetry'
-import type { SelectionTransformLayerState, SelectionTransformSource, SelectionTranslationPreview } from '@/core/tools'
+import type { SelectionTransformLayerState, SelectionTransformSource, SelectionTranslationPreview } from '@/core/tools-selection-transform'
 import type { TilemapDrawingMode, TilemapEdit, TilemapTilesetEdit } from '@/core/tilemap'
 import type { FreeTileDrawingMode } from '@/core/free-tile'
 import type { FreeTilePlacementEdit, FreeTileSourceEditSnapshot } from '@/core/free-tile-document'
@@ -84,7 +46,7 @@ export interface ColorReplacementPreview {
 
 export interface AntiAliasPreview {
   documentId: string
-  edit: PixelEdit
+  edits: PixelEdit[]
 }
 
 export interface TextCelPreview {
@@ -152,8 +114,6 @@ export interface WorkspaceSliceCommands {
 
 export interface WorkspaceToolCommands {
   setTool(tool: ToolId): void
-  setExtensionTool(id: string, mode: string): void
-  setExtensionToolMode(mode: string): void
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
@@ -574,6 +534,7 @@ export interface WorkspaceLayerCommands {
 }
 
 export interface WorkspaceClipboardCommands {
+  copyFreeTileInstances(): boolean
   copySelection(): void
   copyActiveLayerToClipboard(): void
   copySelectedLayersToClipboard(): void
@@ -597,6 +558,8 @@ export interface WorkspaceDocumentIoCommands {
   openFiles(): Promise<void>
   openPath(filePath: string, options?: { duplicate?: boolean; onBeforeSession?: () => void }): Promise<boolean>
   closeDocument(id: string): Promise<void>
+  /** Awaits the recording encodes still in flight so closing cannot drop frames. */
+  flushRecordings(sessions: readonly DocumentSession[]): Promise<void>
   restoreProjectBackup(documentId: string, document: SpriteDocument): boolean
 }
 

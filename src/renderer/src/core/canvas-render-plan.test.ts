@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ViewState } from '@shared/types'
+import type { ViewState } from '@shared/types-view'
 import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, deviceAlignedDocumentPointAtViewport, deviceAlignedDocumentRect, deviceAlignedPixelRect, deviceAlignedPixelRuns, repeatedDeviceAlignedCanvasRect } from './canvas-render-plan'
 
 const view = (overrides: Partial<ViewState> = {}): ViewState => ({

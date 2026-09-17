@@ -1,4 +1,4 @@
-import type { GradientDither } from '@shared/types'
+import type { GradientDither } from '@shared/types-brush'
 
 export type BrushDynamicsEffect = 'size' | 'strength' | 'gradient' | 'angle'
 export type BrushDynamicsSensor = 'pressure' | 'speed'

@@ -1,8 +1,10 @@
 import { encodePng } from '@/core/png-encode'
+import { materializeTimelapsePixels, type TimelapsePixels } from '@/core/timelapse-pixels'
 
 interface TimelapseEncodeWorkerRequest {
   id: number
-  pixels: Uint8ClampedArray
+  pixels?: Uint8ClampedArray
+  tiledPixels?: TimelapsePixels
   width: number
   height: number
 }
@@ -19,8 +21,10 @@ const scope = globalThis as unknown as {
 }
 
 scope.onmessage = (event): void => {
-  const { id, pixels, width, height } = event.data
+  const { id, width, height } = event.data
   try {
+    const pixels = event.data.tiledPixels ? materializeTimelapsePixels(event.data.tiledPixels) : event.data.pixels
+    if (!pixels) throw new Error('Missing timelapse pixels')
     const data = encodePng(pixels, width, height, true).bytes
     scope.postMessage({ id, data }, data.buffer instanceof ArrayBuffer ? [data.buffer] : [])
   } catch (error) {

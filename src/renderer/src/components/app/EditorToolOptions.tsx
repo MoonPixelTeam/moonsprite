@@ -1,7 +1,9 @@
 import { pixelSource } from '@/components/pixel-source'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillReference, GradientDither, GradientStop, GradientType, InkMode, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings, RgbaColor, SelectionMode, SelectionRect } from '@shared/types'
+import type { BrushDitherTemplate, BrushPaintMode, BrushShape, BrushTexture, FillConnectivity, FillReference, GradientDither, GradientStop, InkMode, LiquifyMode, ProceduralBrushId, ProceduralBrushSettings } from '@shared/types-brush'
+import type { RgbaColor } from '@shared/types-color'
+import type { SelectionMode, SelectionRect } from '@shared/types-selection'
 import { BrushThumbnail } from '@/components/BrushThumbnail'
 import { NumberInput } from '@/components/NumberInput'
 import { ColorValueControl } from '@/components/ColorValueControl'
@@ -22,7 +24,7 @@ import { useI18n } from '@/components/I18nProvider'
 import { toolOptionsRenderKey } from '@/components/app/app-render-keys'
 import { createProceduralBrushes, isProceduralBrushId } from '@/core/brushes'
 import type { TranslationKey } from '@/core/localization'
-import { brushTextureContains } from '@/core/tools'
+import { brushTextureContains } from '@/core/tools-pixel-edit'
 import { loadEditorPreferences, parseLineDirectionStep, saveEditorPreferences } from '@/core/file-preferences'
 import { loadShortcutBindings } from '@/core/shortcuts'
 import { applyQuickToolTarget } from '@/core/quick-tools'
@@ -35,8 +37,6 @@ import { MAX_GAP_CLOSING_THRESHOLD, MIN_GAP_CLOSING_THRESHOLD } from '@/core/con
 import { BRUSH_DITHER_TEMPLATES, DEFAULT_BRUSH_DITHER_SETTINGS, brushDitherContains, brushDitherSettingsForTemplate, ditherStageCount } from '@/core/gradient-color'
 import { interpolateRgbaColor } from '@/core/gradient-color'
 import { temporaryLiquifyModeForShift } from '@/core/liquify'
-import { defaultRemotePixelToolConfig, loadRemotePixelToolConfig, saveRemotePixelToolConfig, testRemotePixelToolConnection, type RemotePixelToolConfig } from '@/core/remote-pixel-tool'
-import type { ExtensionToolContribution } from '@/core/extension-contributions'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, LIQUIFY_RESET_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import { useWorkspace } from '@/store/workspace'
 import { useQuickToolShortcut } from '@/components/useQuickToolShortcut'
@@ -636,7 +636,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
   </div>
 }
 
-export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorReplacement, extensionTools }: { onOpenColorReplacement: () => void; extensionTools: ExtensionToolContribution[] }) {
+export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorReplacement }: { onOpenColorReplacement: () => void }) {
   const { locale, t } = useI18n()
   const renderKey = useWorkspace((state) => toolOptionsRenderKey(
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
@@ -658,11 +658,6 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const [temporaryLiquifyMode, setTemporaryLiquifyMode] = useState<LiquifyMode | null>(null)
   const [inkFlyoutOpen, setInkFlyoutOpen] = useState(false)
   const [pressureFlyoutOpen, setPressureFlyoutOpen] = useState(false)
-  const [extensionToolConfigOpen, setExtensionToolConfigOpen] = useState(false)
-  const [extensionToolConfigDraft, setExtensionToolConfigDraft] = useState<RemotePixelToolConfig>(() => defaultRemotePixelToolConfig())
-  const [extensionToolConnectionState, setExtensionToolConnectionState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
-  const [extensionToolConnectionMessage, setExtensionToolConnectionMessage] = useState('')
-  const extensionToolConnectionAbortRef = useRef<AbortController | null>(null)
   const [sliceProperties, setSliceProperties] = useState<(SelectionRect & { id: string }) | null>(null)
   const [autoSliceSettings, setAutoSliceSettings] = useState<AutoSliceSettings | null>(null)
   const [autoSlicePreviewEnabled, setAutoSlicePreviewEnabled] = useState(true)
@@ -690,9 +685,6 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   // a quick-tool shortcut is held (e.g. Ctrl → Move). This is only a display
   // projection: the stored session stays unchanged and is restored on key-up.
   const session = storedSession ? applyQuickToolTarget(storedSession, quickToolMatch?.target ?? null) : null
-  const extensionTool = session?.tool === 'extension'
-    ? extensionTools.find(({ key }) => key === session.extensionToolId) ?? null
-    : null
   const proceduralBrushes = useMemo(() => session ? createProceduralBrushes(session.proceduralBrushSettings) : [], [renderKey, session?.document.id])
   const autoSlicePlan = useMemo(() => {
     if (!session || !autoSliceSettings) return { count: 0, rects: [] as SelectionRect[] }
@@ -1010,56 +1002,6 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const isSmoothBrushTool = session.tool === 'smooth'
   const isBucketBrushTool = session.tool === 'fill' && fillKind === 'bucket'
   const isBrushTool = isStrokeBrushTool || isBucketBrushTool
-  const extensionToolModeGroups = [{
-    label: extensionTool?.tool.name ?? '扩展工具',
-    options: extensionTool?.tool.modes.map((mode) => ({ value: mode.id, label: mode.name, description: mode.description })) ?? []
-  }]
-  const openExtensionToolConfig = (): void => {
-    if (!extensionTool) return
-    extensionToolConnectionAbortRef.current?.abort()
-    setExtensionToolConfigDraft(loadRemotePixelToolConfig(extensionTool.key))
-    setExtensionToolConnectionState('idle')
-    setExtensionToolConnectionMessage('')
-    setExtensionToolConfigOpen(true)
-  }
-  const updateExtensionToolConfigDraft = (patch: Partial<RemotePixelToolConfig>): void => {
-    extensionToolConnectionAbortRef.current?.abort()
-    setExtensionToolConfigDraft((current) => ({ ...current, ...patch }))
-    setExtensionToolConnectionState('idle')
-    setExtensionToolConnectionMessage('')
-  }
-  const testExtensionToolConnection = async (): Promise<void> => {
-    if (!extensionTool) return
-    extensionToolConnectionAbortRef.current?.abort()
-    const controller = new AbortController()
-    extensionToolConnectionAbortRef.current = controller
-    setExtensionToolConnectionState('testing')
-    setExtensionToolConnectionMessage('正在检测接口…')
-    try {
-      const config = {
-        endpoint: extensionToolConfigDraft.endpoint.trim(),
-        apiKey: extensionToolConfigDraft.apiKey.trim(),
-        model: extensionToolConfigDraft.model.trim()
-      }
-      const result = await testRemotePixelToolConnection(config, controller.signal)
-      if (controller.signal.aborted) return
-      setExtensionToolConnectionState('success')
-      setExtensionToolConnectionMessage(`连接成功（HTTP ${result.status}）`)
-    } catch (error) {
-      if (controller.signal.aborted) return
-      setExtensionToolConnectionState('error')
-      setExtensionToolConnectionMessage(error instanceof Error ? error.message : '连接失败，请检查接口地址和密钥。')
-    } finally {
-      if (extensionToolConnectionAbortRef.current === controller) extensionToolConnectionAbortRef.current = null
-    }
-  }
-  const saveExtensionToolConfigDraft = (): void => {
-    if (!extensionTool) return
-    extensionToolConnectionAbortRef.current?.abort()
-    const next = { endpoint: extensionToolConfigDraft.endpoint.trim(), apiKey: extensionToolConfigDraft.apiKey.trim(), model: extensionToolConfigDraft.model.trim() }
-    saveRemotePixelToolConfig(extensionTool.key, next)
-    setExtensionToolConfigOpen(false)
-  }
   const activeProceduralBrush = session.brushImage && isProceduralBrushId(session.brushImage.id) ? session.brushImage : null
   const activeLibraryBrush = !isSmoothBrushTool && session.brushImage && !activeProceduralBrush ? session.brushImage : null
   const showBrushAngle = isStrokeBrushTool && session.brushSize > 1 && !activeLibraryBrush?.intrinsicSize && (session.brushShape === 'square' || session.brushShape === 'line')
@@ -1137,11 +1079,6 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     workspace.setBrushImage(brush)
   }
   return <PerformanceProfiler id="EditorToolOptions"><div className="tool-options">
-    {session.tool === 'extension' && extensionTool?.tool.kind === 'remote-pixel-brush' && <div className="extension-tool-options">
-      <FormField className="tool-inline-field" layout="inline" label="模式"><ThemedSelect<string> density="compact" value={session.extensionToolMode} groups={extensionToolModeGroups} label={extensionTool.tool.name} popoverWidth={180} onChange={workspace.setExtensionToolMode} /></FormField>
-      <button type="button" className="tool-text-button" onClick={openExtensionToolConfig}>配置</button>
-      <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><NumberInput aria-label="修线范围" density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label="调整修线范围"><RangeField ariaLabel="调整修线范围" density="compact" min={1} max={128} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>
-    </div>}
     {session.tool === 'eyedropper' && <>
       <div className="eyedropper-current-colors" aria-label={t('toolOptions.eyedropperColors')}>
         <ColorValueControl color={session.primaryColor} density="compact" onChange={workspace.setPrimaryColor} label={t('toolOptions.eyedropperForeground')} roleLabel={t('toolOptions.eyedropperForeground')} className="eyedropper-color-control" storageKey="eyedropper-foreground" fillWithColor />
@@ -1345,32 +1282,5 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     <span className="tool-history-actions"><button className="tool-text-button" onClick={() => workspace.undo()} disabled={!session.history.canUndo}><PixelUtilityIcon kind="undo" /><span className="tool-history-label">{t('common.undo')}</span></button><button className="tool-text-button" onClick={() => workspace.redo()} disabled={!session.history.canRedo}><PixelUtilityIcon kind="redo" /><span className="tool-history-label">{t('common.redo')}</span></button></span>
     {sliceProperties && createPortal(<div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setSliceProperties(null) }}><ModalShell as="form" storageKey="slice-properties" defaultWidth={360} defaultHeight={270} minWidth={320} minHeight={250} maxWidth={440} maxHeight={340} resizable={false} className="slice-properties-modal" onSubmit={(event) => { event.preventDefault(); saveSliceProperties() }}><DialogHeader eyebrow="SLICE PROPERTIES" title={t('toolOptions.sliceProperties')} closeLabel={t('common.close')} onClose={() => setSliceProperties(null)} /><div className="modal-body slice-properties-grid"><FormField label="X"><NumberInput autoFocus min={0} max={Math.max(0, session.document.width - 1)} value={sliceProperties.x} onValueChange={(x) => setSliceProperties({ ...sliceProperties, x })} /></FormField><FormField label="Y"><NumberInput min={0} max={Math.max(0, session.document.height - 1)} value={sliceProperties.y} onValueChange={(y) => setSliceProperties({ ...sliceProperties, y })} /></FormField><FormField label={t('common.width')}><NumberInput min={1} max={session.document.width} suffix="px" value={sliceProperties.width} onValueChange={(width) => setSliceProperties({ ...sliceProperties, width })} /></FormField><FormField label={t('common.height')}><NumberInput min={1} max={session.document.height} suffix="px" value={sliceProperties.height} onValueChange={(height) => setSliceProperties({ ...sliceProperties, height })} /></FormField></div><footer><button type="button" className="quiet-button" onClick={() => setSliceProperties(null)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.apply')}</button></footer></ModalShell></div>, document.body)}
     {autoSliceSettings && createPortal(<div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) closeAutoSlice() }}><ModalShell as="form" storageKey="auto-slice-v2" defaultWidth={420} defaultHeight={300} minWidth={380} minHeight={280} maxWidth={500} maxHeight={380} resizable={false} className="auto-slice-modal" onSubmit={(event) => { event.preventDefault(); createAutomaticSlices() }}><DialogHeader eyebrow="AUTO SLICE" title={t('toolOptions.autoSlice')} closeLabel={t('common.close')} onClose={closeAutoSlice} /><div className="modal-body auto-slice-body"><div className="auto-slice-grid"><FormField label={t('common.width')}><NumberInput autoFocus min={1} max={session.document.width} suffix="px" value={autoSliceSettings.width} onValueChange={(width) => setAutoSliceSettings({ ...autoSliceSettings, width })} /></FormField><FormField label={t('common.height')}><NumberInput min={1} max={session.document.height} suffix="px" value={autoSliceSettings.height} onValueChange={(height) => setAutoSliceSettings({ ...autoSliceSettings, height })} /></FormField><FormField label={t('toolOptions.autoSliceGapX')}><NumberInput min={0} max={session.document.width} suffix="px" value={autoSliceSettings.gapX} onValueChange={(gapX) => setAutoSliceSettings({ ...autoSliceSettings, gapX })} /></FormField><FormField label={t('toolOptions.autoSliceGapY')}><NumberInput min={0} max={session.document.height} suffix="px" value={autoSliceSettings.gapY} onValueChange={(gapY) => setAutoSliceSettings({ ...autoSliceSettings, gapY })} /></FormField><FormField label={t('toolOptions.autoSliceStartX')}><NumberInput min={0} max={Math.max(0, session.document.width - 1)} suffix="px" value={autoSliceSettings.startX} onValueChange={(startX) => setAutoSliceSettings({ ...autoSliceSettings, startX })} /></FormField><FormField label={t('toolOptions.autoSliceStartY')}><NumberInput min={0} max={Math.max(0, session.document.height - 1)} suffix="px" value={autoSliceSettings.startY} onValueChange={(startY) => setAutoSliceSettings({ ...autoSliceSettings, startY })} /></FormField></div><div className="auto-slice-status"><p className={`auto-slice-count ${autoSliceTotal > MAX_AUTO_SLICES ? 'is-error' : ''}`}>{autoSliceTotal > MAX_AUTO_SLICES ? t('toolOptions.autoSliceTooMany', { count: autoSliceTotal, limit: MAX_AUTO_SLICES }) : t('toolOptions.autoSliceCount', { count: autoSliceTotal })}</p><LivePreviewToggle className="auto-slice-preview-toggle" checked={autoSlicePreviewEnabled} onChange={setAutoSlicePreviewEnabled} /></div></div><footer><button type="button" className="quiet-button" onClick={closeAutoSlice}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={autoSlicePreview.length === 0 || autoSliceTotal > MAX_AUTO_SLICES}>{t('toolOptions.autoSliceCreate')}</button></footer></ModalShell></div>, document.body)}
-    {extensionToolConfigOpen && extensionTool && createPortal(
-      <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExtensionToolConfigOpen(false) }}>
-        <ModalShell as="form" storageKey="extension-tool-config" defaultWidth={430} defaultHeight={360} minWidth={360} minHeight={300} maxWidth={560} maxHeight={440} resizable={false} className="extension-tool-config-modal" onSubmit={(event) => { event.preventDefault(); saveExtensionToolConfigDraft() }}>
-          <DialogHeader eyebrow="EXTENSION TOOL" title={`配置 ${extensionTool.tool.name}`} closeLabel={t('common.close')} onClose={() => setExtensionToolConfigOpen(false)} />
-          <div className="modal-body">
-            <FormField label="AI API 地址" tooltip="支持 OpenAI 兼容的 Chat Completions 地址；填写 API 根地址时会自动尝试 /chat/completions 和 /v1/chat/completions。">
-              <TextInput autoFocus placeholder="https://api.deepseek.com" value={extensionToolConfigDraft.endpoint} onChange={(event) => updateExtensionToolConfigDraft({ endpoint: event.target.value })} />
-            </FormField>
-            <FormField label="API 密钥">
-              <TextInput type="password" value={extensionToolConfigDraft.apiKey} onChange={(event) => updateExtensionToolConfigDraft({ apiKey: event.target.value })} />
-            </FormField>
-            <FormField label="模型">
-              <TextInput placeholder="deepseek-chat" value={extensionToolConfigDraft.model} onChange={(event) => updateExtensionToolConfigDraft({ model: event.target.value })} />
-            </FormField>
-            <p className="modal-help-text">宿主会把涂抹区域和像素数据发送给 AI，并要求模型以 JSON 返回修整后的像素。推荐使用支持 JSON 输出的模型；测试连接会实际验证地址、密钥和模型。</p>
-            {extensionToolConnectionMessage && <p className={`extension-tool-connection-status ${extensionToolConnectionState}`}>{extensionToolConnectionMessage}</p>}
-          </div>
-          <footer>
-            <button type="button" className="quiet-button" onClick={testExtensionToolConnection} disabled={extensionToolConnectionState === 'testing'}>{extensionToolConnectionState === 'testing' ? '检测中…' : '测试连接'}</button>
-            <span className="tool-options-spacer" />
-            <button type="button" className="quiet-button" onClick={() => setExtensionToolConfigOpen(false)}>{t('common.cancel')}</button>
-            <button type="submit" className="primary-button">保存配置</button>
-          </footer>
-        </ModalShell>
-      </div>,
-      document.body
-    )}
   </div></PerformanceProfiler>
 })

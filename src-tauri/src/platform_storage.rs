@@ -69,16 +69,74 @@ pub fn atomic_write_with_validation_and_backup(
             backup_timestamp(),
             PROJECT_BACKUP_EXTENSION
         ));
-        fs::hard_link(path, &backup)
-            .or_else(|_| fs::copy(path, &backup).map(|_| ()))
-            .map_err(|error| error.to_string())?;
-        if let Err(error) =
-            prune_project_backups(backup_directory, max_versions_per_project, retention)
+        // A concurrent retention scan must never see a half-copied backup.
+        let pending_backup = backup.with_extension("pending");
+        if let Err(error) = fs::hard_link(path, &pending_backup)
+            .or_else(|_| fs::copy(path, &pending_backup).map(|_| ()))
+            .and_then(|_| fs::rename(&pending_backup, &backup))
         {
-            eprintln!("无法清理工程备份：{error}");
+            if let Err(cleanup_error) = fs::remove_file(&pending_backup) {
+                if cleanup_error.kind() != io::ErrorKind::NotFound {
+                    eprintln!("无法清理未完成的工程备份：{cleanup_error}");
+                }
+            }
+            return Err(error.to_string());
         }
         Ok(())
-    })
+    })?;
+    schedule_backup_cleanup(backup_directory, max_versions_per_project, retention);
+    Ok(())
+}
+
+// Keep version creation synchronous, but perform directory-wide retention work
+// after the new project has been committed. Coalesce requests by directory and
+// use one worker so concurrent saves cannot start competing cleanup scans.
+type BackupCleanupJobs = std::collections::BTreeMap<std::path::PathBuf, (usize, Duration)>;
+static BACKUP_CLEANUP_JOBS: std::sync::Mutex<BackupCleanupJobs> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+static BACKUP_CLEANUP_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn schedule_backup_cleanup(directory: &Path, versions: usize, retention: Duration) {
+    use std::sync::atomic::Ordering;
+    match BACKUP_CLEANUP_JOBS.lock() {
+        Ok(mut jobs) => {
+            jobs.insert(directory.to_path_buf(), (versions, retention));
+        }
+        Err(error) => {
+            eprintln!("无法安排工程备份清理：{error}");
+            return;
+        }
+    }
+    if BACKUP_CLEANUP_RUNNING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    if let Err(error) = std::thread::Builder::new()
+        .name("project-backup-cleanup".into())
+        .spawn(|| loop {
+            let job = match BACKUP_CLEANUP_JOBS.lock() {
+                Ok(mut jobs) => match jobs.pop_first() {
+                    Some(job) => job,
+                    None => {
+                        BACKUP_CLEANUP_RUNNING.store(false, Ordering::Release);
+                        return;
+                    }
+                },
+                Err(error) => {
+                    eprintln!("无法读取工程备份清理队列：{error}");
+                    BACKUP_CLEANUP_RUNNING.store(false, Ordering::Release);
+                    return;
+                }
+            };
+            let (directory, (versions, retention)) = job;
+            if let Err(error) = prune_project_backups(&directory, versions, retention) {
+                eprintln!("无法清理工程备份：{error}");
+            }
+        })
+    {
+        BACKUP_CLEANUP_RUNNING.store(false, Ordering::Release);
+        eprintln!("无法启动工程备份清理：{error}");
+    }
 }
 
 struct ProjectBackupEntry {

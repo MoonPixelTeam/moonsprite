@@ -12,6 +12,7 @@ interface AppCoordinatorState {
     title: string
     message: string
     detail?: string
+    detailSections?: Array<{ lines: string[] }>
     choices: Array<{ id: string; label: string; tone?: string }>
   } | null
   saveProgress: { title: string; value: number; label: string } | null
@@ -56,7 +57,7 @@ export const appCoordinatorRenderKey = (state: AppCoordinatorState): string => {
     session?.view.showSelectionPivot === false ? 0 : 1,
     preview ? `${preview.width}:${preview.height}:${preview.offsetX}:${preview.offsetY}` : '',
     state.saveProgress ? `${state.saveProgress.title}:${state.saveProgress.value}:${state.saveProgress.label}` : '',
-    state.dialog ? `${state.dialog.title}:${state.dialog.message}:${state.dialog.detail ?? ''}:${state.dialog.choices.map((choice) => `${choice.id}:${choice.label}:${choice.tone ?? ''}`).join('|')}` : ''
+    state.dialog ? `${state.dialog.title}:${state.dialog.message}:${state.dialog.detail ?? ''}:${state.dialog.detailSections?.flatMap((section) => section.lines).join('\n') ?? ''}:${state.dialog.choices.map((choice) => `${choice.id}:${choice.label}:${choice.tone ?? ''}`).join('|')}` : ''
   ].join(';')
 }
 
@@ -181,8 +182,6 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.airbrushDensity,
     session.airbrushIntervalMs,
     session.liquifyMode,
-    session.extensionToolId ?? '',
-    session.extensionToolMode,
     session.liquifyRadius,
     session.liquifyStrength,
     session.liquifySmoothing,

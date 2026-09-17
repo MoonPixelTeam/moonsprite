@@ -15,6 +15,7 @@ mod platform_clipboard;
 mod platform_cursor;
 mod platform_diagnostics;
 mod platform_dialogs;
+mod platform_extension_windows;
 mod platform_extensions;
 mod platform_files;
 mod platform_fonts;
@@ -27,6 +28,7 @@ mod platform_resources;
 mod platform_screen_color;
 mod platform_scripts;
 mod platform_storage;
+mod platform_timelapse;
 mod platform_usage_statistics;
 mod platform_workspaces;
 use close_coordinator::CloseCoordinator;
@@ -172,7 +174,9 @@ pub fn run() {
             let _ = platform_gallery::ensure_builtin_example(app.handle().clone());
             let _ = platform_paths::export_directory();
             let _ = platform_background_presets::ensure_background_preset_folder();
-            let _ = platform_extensions::ensure_extension_folder();
+            if let Err(error) = platform_extensions::ensure_builtin_extensions() {
+                eprintln!("无法安装内置扩展：{error}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -185,6 +189,7 @@ pub fn run() {
             platform_dialogs::save_shortcut_file,
             platform_dialogs::save_theme_file,
             platform_dialogs::save_usage_statistics_file,
+            platform_dialogs::save_extension_data_file,
             platform_dialogs::default_file_directories,
             platform_dialogs::choose_directory,
             platform_diagnostics::append_diagnostic_events,
@@ -192,10 +197,22 @@ pub fn run() {
             platform_extensions::list_extensions,
             platform_extensions::inspect_extension_package,
             platform_extensions::install_extension,
-            platform_extensions::choose_and_install_extension,
+            platform_extensions::choose_extension_package,
             platform_extensions::set_extension_enabled,
             platform_extensions::uninstall_extension,
             platform_extensions::open_extension_folder,
+            platform_extensions::read_extension_settings_entry,
+            platform_extensions::read_extension_runtime_entry,
+            platform_extensions::read_extension_runtime_resource,
+            platform_extension_windows::show_extension_window,
+            platform_extension_windows::close_extension_windows,
+            platform_extension_windows::set_extension_window_visible,
+            platform_extension_windows::emit_extension_window_message,
+            platform_extension_windows::start_extension_window_drag,
+            platform_extension_windows::get_extension_window_bounds,
+            platform_extension_windows::set_extension_window_bounds,
+            platform_extension_windows::set_extension_window_hit_region,
+            platform_cursor::set_extension_window_cursor_policy,
             platform_files::file_exists,
             platform_files::read_binary,
             platform_files::read_project_preview,
@@ -206,6 +223,8 @@ pub fn run() {
             platform_files::cancel_scaled_png_export,
             platform_files::write_scaled_png_atomic,
             platform_files::write_project_incremental,
+            platform_timelapse::append_timelapse_frame,
+            platform_timelapse::read_timelapse_frame,
             platform_clipboard::write_clipboard_image,
             platform_clipboard::read_clipboard_text,
             platform_clipboard::read_clipboard_image,
@@ -280,6 +299,9 @@ pub fn run() {
                 return;
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
                 api.prevent_close();
                 let pending = window.state::<AppState>().close_requests.clone();
                 let Some(generation) = pending.begin() else {

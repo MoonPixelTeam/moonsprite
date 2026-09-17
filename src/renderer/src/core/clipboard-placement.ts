@@ -1,4 +1,4 @@
-import type { ViewState } from '@shared/types'
+import type { ViewState } from '@shared/types-view'
 import type { RotationIndicatorPosition } from './file-preferences'
 import { unrotatedViewportBounds, viewCanvasOrigin } from './view-geometry'
 

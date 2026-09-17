@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RgbaColor } from '@shared/types'
+import type { RgbaColor } from '@shared/types-color'
 import { ColorPicker, type ColorPickerConfig } from './ColorPicker'
 import { finishColorPickerSampling, sampleColorPickerAtClientPoint } from './color-picker-sampling'
 

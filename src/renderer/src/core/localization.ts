@@ -9,24 +9,9 @@ import { ptBRMessages } from '@/locales/pt-BR'
 import { ruRUMessages } from '@/locales/ru-RU'
 import { readStoredString } from './storage'
 
-export const DEFAULT_APP_LOCALE = 'zh-CN' as const
-export const AVAILABLE_APP_LOCALES = [
-  DEFAULT_APP_LOCALE,
-  'en-US',
-  'ja-JP',
-  'ko-KR',
-  'es-ES',
-  'fr-FR',
-  'de-DE',
-  'pt-BR',
-  'ru-RU'
-] as const
-export const LANGUAGE_PREFERENCE_KEY = 'moonsprite.preference.language'
-
-export type AppLocale = (typeof AVAILABLE_APP_LOCALES)[number]
-export type TranslationParams = Record<string, string | number>
-export type TranslationKey = keyof typeof zhCNMessages
-export type TranslationCatalog = Record<TranslationKey, string>
+export { DEFAULT_APP_LOCALE, AVAILABLE_APP_LOCALES, LANGUAGE_PREFERENCE_KEY } from '@/locales/contracts'
+export type { AppLocale, TranslationParams, TranslationKey, TranslationCatalog } from '@/locales/contracts'
+import { DEFAULT_APP_LOCALE, AVAILABLE_APP_LOCALES, LANGUAGE_PREFERENCE_KEY, type AppLocale, type TranslationParams, type TranslationKey, type TranslationCatalog } from '@/locales/contracts'
 
 const catalogs: Record<AppLocale, TranslationCatalog> = {
   'zh-CN': zhCNMessages,
