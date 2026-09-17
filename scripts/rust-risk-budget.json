@@ -20,8 +20,8 @@
       "unsafe": 1
     },
     "src-tauri/src/platform_background_presets.rs": {
-      "panic": 10,
-      "silent": 2,
+      "panic": 0,
+      "silent": 0,
       "unsafe": 0
     },
     "src-tauri/src/platform_brushes.rs": {

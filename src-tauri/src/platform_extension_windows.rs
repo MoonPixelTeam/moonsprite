@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use tauri::{
-    webview::Color, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{webview::Color, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(not(windows))]
 use tauri::{LogicalSize, PhysicalPosition};
@@ -167,15 +165,15 @@ pub(crate) async fn show_extension_window(
             builder
         };
         let created = builder
-        .owner(&main)
-        .map_err(|error| format!("无法绑定扩展窗口：{error}"))?
-        .skip_taskbar(true)
-        .focusable(options.focusable)
-        .resizable(false)
-        .shadow(false)
-        .visible(false)
-        .build()
-        .map_err(|error| format!("无法创建扩展窗口：{error}"))?;
+            .owner(&main)
+            .map_err(|error| format!("无法绑定扩展窗口：{error}"))?
+            .skip_taskbar(true)
+            .focusable(options.focusable)
+            .resizable(false)
+            .shadow(false)
+            .visible(false)
+            .build()
+            .map_err(|error| format!("无法创建扩展窗口：{error}"))?;
 
         created
     };
@@ -197,11 +195,21 @@ pub(crate) async fn show_extension_window(
     app.run_on_main_thread(move || {
         let result = if initialize_region {
             platform_cursor::set_window_hit_region(&ui_window, &[])
-        } else { Ok(()) };
-        if result.is_ok() { platform_cursor::reapply_cursor_policy(&ui_window); }
-        if complete.try_send(result).is_err() { eprintln!("扩展窗口初始化结果接收端已关闭。"); }
-    }).map_err(|error| format!("无法调度扩展窗口初始化：{error}"))?;
-    completion.recv().await.ok_or_else(|| "扩展窗口初始化中断。".to_string())??;
+        } else {
+            Ok(())
+        };
+        if result.is_ok() {
+            platform_cursor::reapply_cursor_policy(&ui_window);
+        }
+        if complete.try_send(result).is_err() {
+            eprintln!("扩展窗口初始化结果接收端已关闭。");
+        }
+    })
+    .map_err(|error| format!("无法调度扩展窗口初始化：{error}"))?;
+    completion
+        .recv()
+        .await
+        .ok_or_else(|| "扩展窗口初始化中断。".to_string())??;
     apply_extension_window_bounds(
         &main,
         &window,
@@ -216,11 +224,22 @@ pub(crate) async fn show_extension_window(
 }
 
 #[tauri::command]
-pub(crate) fn set_extension_window_visible(app: AppHandle, extension_id: String, window_id: String, visible: bool) -> Result<(), String> {
+pub(crate) fn set_extension_window_visible(
+    app: AppHandle,
+    extension_id: String,
+    window_id: String,
+    visible: bool,
+) -> Result<(), String> {
     platform_extensions::ensure_extension_runtime_permission(&extension_id, "windows")?;
-    let window = app.get_webview_window(&extension_window_label(&extension_id, &window_id))
+    let window = app
+        .get_webview_window(&extension_window_label(&extension_id, &window_id))
         .ok_or_else(|| "扩展窗口不存在。".to_string())?;
-    if visible { window.show() } else { window.hide() }.map_err(|error| error.to_string())
+    if visible {
+        window.show()
+    } else {
+        window.hide()
+    }
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -260,8 +279,7 @@ pub(crate) fn emit_extension_window_message(
     let window = app
         .get_webview_window(&extension_window_label(&extension_id, &window_id))
         .ok_or_else(|| "扩展窗口不存在。".to_string())?;
-    app
-        .emit_to(window.label(), "extension:message", message)
+    app.emit_to(window.label(), "extension:message", message)
         .map_err(|error| error.to_string())
 }
 

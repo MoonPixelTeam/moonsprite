@@ -19,16 +19,17 @@ mod windows_cursor {
     use windows_sys::Win32::{
         Foundation::{BOOL, HWND, LPARAM, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            CombineRgn, CreateRectRgn, SetWindowRgn, RGN_OR,
-            CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, ScreenToClient,
-            BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, RGBQUAD,
+            CombineRgn, CreateBitmap, CreateDIBSection, CreateRectRgn, DeleteObject, GetDC,
+            ReleaseDC, ScreenToClient, SetWindowRgn, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+            DIB_RGB_COLORS, HBITMAP, RGBQUAD, RGN_OR,
         },
         UI::{
             Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
             WindowsAndMessaging::{
-                CreateIconIndirect, EnumChildWindows, GetClassLongPtrW, SetClassLongPtrW, GetCursorPos, WindowFromPoint, IsChild,
-                GetWindowRect, SetCursor, SetWindowPos, GCLP_HCURSOR, HCURSOR, HTTRANSPARENT, ICONINFO,
-                SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
+                CreateIconIndirect, EnumChildWindows, GetClassLongPtrW, GetCursorPos,
+                GetWindowRect, IsChild, SetClassLongPtrW, SetCursor, SetWindowPos, WindowFromPoint,
+                GCLP_HCURSOR, HCURSOR, HTTRANSPARENT, ICONINFO, SWP_NOACTIVATE, SWP_NOSIZE,
+                SWP_NOZORDER, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
             },
         },
     };
@@ -235,15 +236,13 @@ mod windows_cursor {
     /// stored policy. A window with no policy yet keeps the platform default so
     /// callers that never opt in are untouched.
 
-    fn install_window_subclass(root_handle: usize, rectangles: Option<&[(i32, i32, i32, i32)]>) -> Result<(), String> {
+    fn install_window_subclass(
+        root_handle: usize,
+        rectangles: Option<&[(i32, i32, i32, i32)]>,
+    ) -> Result<(), String> {
         let hwnd = root_handle as HWND;
         unsafe {
-            if SetWindowSubclass(
-                hwnd,
-                Some(window_subclass),
-                WINDOW_SUBCLASS_ID,
-                root_handle,
-            ) == 0
+            if SetWindowSubclass(hwnd, Some(window_subclass), WINDOW_SUBCLASS_ID, root_handle) == 0
             {
                 return Err("无法安装窗口命中测试。".to_string());
             }
@@ -336,7 +335,9 @@ mod windows_cursor {
             let target = WindowFromPoint(pointer);
             target == root_handle as HWND || IsChild(root_handle as HWND, target) != 0
         };
-        if message == WM_SETCURSOR && !owns_pointer { return 0; }
+        if message == WM_SETCURSOR && !owns_pointer {
+            return 0;
+        }
         let result = DefSubclassProc(hwnd, message, wparam, lparam);
         if owns_pointer {
             let policy = cursor_policies()
@@ -356,7 +357,12 @@ mod windows_cursor {
     }
 
     unsafe extern "system" fn install_subclass_on_child(hwnd: HWND, root: LPARAM) -> BOOL {
-        SetWindowSubclass(hwnd, Some(window_subclass), WINDOW_SUBCLASS_ID, root as usize);
+        SetWindowSubclass(
+            hwnd,
+            Some(window_subclass),
+            WINDOW_SUBCLASS_ID,
+            root as usize,
+        );
         1
     }
 
@@ -427,9 +433,13 @@ mod windows_cursor {
     ) -> Result<(), String> {
         let root_handle = root_handle_of(window)?;
         {
-            let mut regions = hit_regions().lock()
+            let mut regions = hit_regions()
+                .lock()
                 .map_err(|_| "扩展窗口命中区域状态不可用。".to_string())?;
-            if regions.get(&root_handle).is_some_and(|current| current.as_slice() == rectangles) {
+            if regions
+                .get(&root_handle)
+                .is_some_and(|current| current.as_slice() == rectangles)
+            {
                 return Ok(());
             }
             regions.insert(root_handle, rectangles.to_vec());

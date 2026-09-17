@@ -396,13 +396,20 @@ pub(crate) fn save_extension_data_file(
 ) -> Result<SaveDialogResult, String> {
     if file_name.is_empty()
         || file_name.len() > 240
-        || file_name.chars().any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+        || file_name
+            .chars()
+            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
     {
         return Err("导出文件名无效。".into());
     }
-    let extension = file_name.rsplit('.').next().filter(|value| {
-        !value.is_empty() && value.len() <= 16 && value.chars().all(|c| c.is_ascii_alphanumeric())
-    })
+    let extension = file_name
+        .rsplit('.')
+        .next()
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 16
+                && value.chars().all(|c| c.is_ascii_alphanumeric())
+        })
         .ok_or_else(|| "导出文件扩展名无效。".to_string())?;
     let path = file_dialog(Some(&file_name), &window)
         .add_filter("Extension data", &[extension])

@@ -246,68 +246,67 @@ mod tests {
     };
 
     #[test]
-    fn seeds_once_and_respects_user_deletions() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+    fn seeds_once_and_respects_user_deletions() -> Result<(), Box<dyn std::error::Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let directory = std::env::temp_dir().join(format!("moonsprite-background-presets-{stamp}"));
-        fs::create_dir_all(&directory).unwrap();
+        fs::create_dir_all(&directory)?;
 
-        seed_builtin_presets(&directory).unwrap();
+        seed_builtin_presets(&directory)?;
         assert!(BUILTIN_PRESETS
             .iter()
             .all(|(name, _)| directory.join(name).is_file()));
         assert!(directory.join(BUILTIN_SEED_MARKER).is_file());
 
         let deleted = directory.join(BUILTIN_PRESETS[0].0);
-        fs::remove_file(&deleted).unwrap();
-        seed_builtin_presets(&directory).unwrap();
+        fs::remove_file(&deleted)?;
+        seed_builtin_presets(&directory)?;
         assert!(!deleted.exists());
 
-        let _ = fs::remove_dir_all(directory);
+        fs::remove_dir_all(directory)?;
+        Ok(())
     }
 
     #[test]
-    fn upgrades_versioned_builtin_presets() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!("moonsprite-background-preset-upgrade-{stamp}"));
-        fs::create_dir_all(&directory).unwrap();
+    fn upgrades_versioned_builtin_presets() -> Result<(), Box<dyn std::error::Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("moonsprite-background-preset-upgrade-{stamp}"));
+        fs::create_dir_all(&directory)?;
         let (name, bytes) = BUILTIN_PRESETS[0];
-        fs::write(directory.join(name), b"old preset").unwrap();
-        fs::write(directory.join(BUILTIN_SEED_MARKER), b"1").unwrap();
+        fs::write(directory.join(name), b"old preset")?;
+        fs::write(directory.join(BUILTIN_SEED_MARKER), b"1")?;
 
-        seed_builtin_presets(&directory).unwrap();
+        seed_builtin_presets(&directory)?;
 
-        assert_eq!(fs::read(directory.join(name)).unwrap(), bytes);
-        assert_eq!(fs::read(directory.join(BUILTIN_SEED_MARKER)).unwrap(), BUILTIN_PRESET_VERSION);
-        let _ = fs::remove_dir_all(directory);
+        assert_eq!(fs::read(directory.join(name))?, bytes);
+        assert_eq!(
+            fs::read(directory.join(BUILTIN_SEED_MARKER))?,
+            BUILTIN_PRESET_VERSION
+        );
+        fs::remove_dir_all(directory)?;
+        Ok(())
     }
 
     #[test]
-    fn saves_valid_png_presets_without_overwriting_existing_files() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+    fn saves_valid_png_presets_without_overwriting_existing_files(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let directory =
             std::env::temp_dir().join(format!("moonsprite-save-background-presets-{stamp}"));
-        fs::create_dir_all(&directory).unwrap();
+        fs::create_dir_all(&directory)?;
         let bytes = BUILTIN_PRESETS[0].1;
 
-        let first = save_background_preset_to(&directory, "选区:/背景预设.", bytes).unwrap();
-        let second = save_background_preset_to(&directory, "选区:/背景预设.", bytes).unwrap();
+        let first = save_background_preset_to(&directory, "选区:/背景预设.", bytes)?;
+        let second = save_background_preset_to(&directory, "选区:/背景预设.", bytes)?;
 
         assert_eq!(first.id, "选区背景预设.png");
         assert_eq!(first.name, "选区背景预设");
         assert!(!first.built_in);
         assert_eq!(second.id, "选区背景预设 2.png");
-        assert_eq!(fs::read(first.file_path).unwrap(), bytes);
+        assert_eq!(fs::read(first.file_path)?, bytes);
         assert!(save_background_preset_to(&directory, "invalid", b"not a png").is_err());
 
-        let _ = fs::remove_dir_all(directory);
+        fs::remove_dir_all(directory)?;
+        Ok(())
     }
 }

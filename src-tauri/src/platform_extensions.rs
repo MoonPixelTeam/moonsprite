@@ -529,7 +529,13 @@ fn validate_settings_ui(settings: &ExtensionSettingsUiManifest) -> Result<(), St
     for control in &settings.controls {
         if let Some(conditions) = &control.visible_when {
             if conditions.len() > MAX_EXTENSION_SETTINGS_CONTROLS
-                || conditions.keys().any(|id| id == &control.id || !settings.controls.iter().any(|candidate| &candidate.id == id && candidate.kind == "checkbox"))
+                || conditions.keys().any(|id| {
+                    id == &control.id
+                        || !settings
+                            .controls
+                            .iter()
+                            .any(|candidate| &candidate.id == id && candidate.kind == "checkbox")
+                })
             {
                 return Err("扩展设置显示条件必须引用其他复选框。".to_string());
             }
@@ -1811,9 +1817,7 @@ fn install_extension_at(package_path: &Path, directory: &Path) -> Result<StoredE
 }
 
 #[tauri::command]
-pub(crate) fn choose_extension_package(
-    language: Option<String>,
-) -> Result<Option<String>, String> {
+pub(crate) fn choose_extension_package(language: Option<String>) -> Result<Option<String>, String> {
     let english = language.as_deref() == Some("en-US");
     let Some(path) = FileDialog::new()
         .add_filter(
@@ -1904,9 +1908,9 @@ pub(crate) fn open_extension_folder() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_MANIFEST_BYTES, inspect_archive, is_extension_package_path,
-        list_enabled_lua_entries_at, resolve_enabled_lua_command_at, resolve_enabled_lua_entry_at,
-        set_extension_enabled_at, valid_extension_id,
+        inspect_archive, is_extension_package_path, list_enabled_lua_entries_at,
+        resolve_enabled_lua_command_at, resolve_enabled_lua_entry_at, set_extension_enabled_at,
+        valid_extension_id, MAX_MANIFEST_BYTES,
     };
     use std::{
         fs,
@@ -1914,7 +1918,7 @@ mod tests {
         path::Path,
         time::{SystemTime, UNIX_EPOCH},
     };
-    use zip::{ZipWriter, write::SimpleFileOptions};
+    use zip::{write::SimpleFileOptions, ZipWriter};
 
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
