@@ -242,6 +242,7 @@ export function createCanvasPointerMove(ports: Ports) {
       (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') &&
       modifierActive(event.nativeEvent, 'brushSizeAdjust') &&
       (session.tool === 'pencil' ||
+        session.tool === 'line' ||
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||

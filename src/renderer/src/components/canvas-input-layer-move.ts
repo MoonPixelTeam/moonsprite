@@ -82,6 +82,7 @@ export function createLayerMoveCanvasInput(ports: Ports) {
     if (!freeTransformActive && (session.tool === 'move' || temporaryMove || textCopyTarget) && event.button === 0) {
       const additiveSelection = event.shiftKey
       const hitTarget = textCopyTarget ?? (session.moveAutoSelect || additiveSelection ? topEditableLayerAt(point) : null)
+      if (inputRef.current.temporaryRightClickAction === 'select-layer-move' && !hitTarget) return true
       let selectedLayerIds = resolveCanvasMoveLayerIds({
         selectedLayerIds: session.selectedLayerIds,
         selectedGroupIds: session.selectedGroupIds,

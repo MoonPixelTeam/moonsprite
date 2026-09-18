@@ -222,6 +222,7 @@ export function createCanvasPointerDown(ports: Ports) {
     const preflightGroupSelected = preflightSession.selectedGroupIds.length > 0 || Boolean(preflightSession.selectedGroupId)
     const preflightToolAllowed =
       Boolean(playbackNavigationTool) ||
+      Boolean(inputRef.current.temporaryRightClickAction && (session.tool === 'move' || session.tool === 'hand' || session.tool === 'eyedropper')) ||
       preflightSession.tool === 'move' ||
       preflightSession.tool === 'hand' ||
       preflightSession.tool === 'zoom' ||
@@ -245,6 +246,7 @@ export function createCanvasPointerDown(ports: Ports) {
     const currentInteractionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
     const liveGroupSelectionActive = currentInteractionSession.selectedGroupIds.length > 0 || Boolean(currentInteractionSession.selectedGroupId)
     const liveGroupToolAllowed =
+      Boolean(inputRef.current.temporaryRightClickAction && (session.tool === 'move' || session.tool === 'hand' || session.tool === 'eyedropper')) ||
       currentInteractionSession.tool === 'move' ||
       currentInteractionSession.tool === 'hand' ||
       currentInteractionSession.tool === 'zoom' ||
@@ -264,6 +266,7 @@ export function createCanvasPointerDown(ports: Ports) {
     if (
       event.button === 0 &&
       !viewNavigationToolActive &&
+      !inputRef.current.temporaryRightClickAction &&
       !event.shiftKey &&
       !event.ctrlKey &&
       !event.metaKey &&
@@ -274,7 +277,7 @@ export function createCanvasPointerDown(ports: Ports) {
       selectionInput.beginPivot({ event, viewNavigationToolActive, pivotSamplingHeld, freeTransformActive, session })
     )
       return
-    const symmetryHit = event.button === 0 && !viewNavigationToolActive ? symmetryAxisHitAt(event.clientX, event.clientY, event.ctrlKey) : null
+    const symmetryHit = event.button === 0 && !viewNavigationToolActive && !inputRef.current.temporaryRightClickAction ? symmetryAxisHitAt(event.clientX, event.clientY, event.ctrlKey) : null
     if (symmetryHit) {
       symmetryDragRef.current = { axis: symmetryHit, pointerId: event.pointerId }
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -293,6 +296,7 @@ export function createCanvasPointerDown(ports: Ports) {
       (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') &&
       modifierActive(event.nativeEvent, 'brushSizeAdjust') &&
       (session.tool === 'pencil' ||
+        session.tool === 'line' ||
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
@@ -326,7 +330,7 @@ export function createCanvasPointerDown(ports: Ports) {
         ? session.document.layers.find((layer) => layer.kind === 'tilemap' && layer.tilemapTilesetId === session.selectedTilesetId)?.id
         : undefined
       state.activateTilemapLayerForDrawing(selectedTilesetOwnerId)
-      session = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+      session = liveInputSession()
     }
     const selectedTextBox = selectedTextBoxForSession(session)
     const textBoxHit = event.button === 0 && selectedTextBox ? selectionHit(event) : 'outside'
@@ -395,6 +399,7 @@ export function createCanvasPointerDown(ports: Ports) {
       (activeLayer.kind !== 'free-tile' || session.freeTileMode !== 'paint') &&
       modifierActive(event.nativeEvent, 'brushSizeAdjust') &&
       (session.tool === 'pencil' ||
+        session.tool === 'line' ||
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
@@ -545,7 +550,7 @@ export function createCanvasPointerDown(ports: Ports) {
     if (
       !freeTransformActive &&
       !temporaryMove &&
-      sliceTool &&
+      sliceTool && !inputRef.current.temporaryRightClickAction &&
       event.button === 0 &&
       sliceInput.beginSlice({ freeTransformActive, temporaryMove, event, session, point, state })
     )

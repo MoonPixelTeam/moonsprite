@@ -22,6 +22,8 @@ export interface ExportPreset {
   name: string
   format: ImageExportKind
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
   layerId?: string
   sliceId?: string
@@ -42,6 +44,8 @@ export interface DocumentExportSettings {
   name: string
   format: ImageExportKind
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
   /** Runtime-only mask used when target is selection; never persisted. */
   selection?: SelectionMask | null
@@ -98,6 +102,8 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
   const legacyScalePercent = typeof value.scale === 'number' ? value.scale * 100 : 100
   const scalePercent = finiteInteger(value.scalePercent, finiteInteger(legacyScalePercent, 100, 1, 6400), 1, 6400)
+  const trim = value.trim === true
+  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
@@ -118,6 +124,8 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     name: withExportFileExtension(name, format),
     format,
     scalePercent,
+    ...(trim ? { trim: true } : {}),
+    ...(trimMode ? { trimMode } : {}),
     ...(target !== 'document' ? { target } : {}),
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),
@@ -138,6 +146,8 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   if (!name) return null
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
   const scalePercent = finiteInteger(value.scalePercent, 100, 1, 6400)
+  const trim = value.trim === true
+  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
@@ -158,6 +168,8 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     name: withExportFileExtension(name, format),
     format,
     scalePercent,
+    ...(trim ? { trim: true } : {}),
+    ...(trimMode ? { trimMode } : {}),
     target,
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),

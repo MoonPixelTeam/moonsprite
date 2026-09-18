@@ -1,0 +1,65 @@
+<!doctype html><html><body><script>
+const defaults={"enabled":true,"scale":2,"remindersEnabled":true,"clockEnabled":true,"unsavedMinutes":15,"breakMinutes":60,"unsavedEnabled":true,"breakEnabled":true},builtInPet={"id":"builtin","name":"奶龙","frameWidth":41,"frameHeight":31,"frameCount":45,"showFrames":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40],"idleFrames":[41,42,43,44],"durations":null,"source":"builtin"};
+let preferences={...defaults},project=null,dirtySince=0,drawingSince=0,lastDrawingAt=0,lastRevision=null,lastProjectId=null,lastBreakNotice=0,lastUnsavedNotice=0,lastClockKey='';
+const live=new Map(),visible=new Set(),ready=new Set();let shownIds=[],queue=Promise.resolve();
+const read=key=>moonsprite.storage.get({key});
+const write=(key,value)=>moonsprite.storage.set({key,value});
+const report=error=>moonsprite.diagnostics.log({message:String(error),level:'error'});
+const send=(windowId,message)=>moonsprite.windows.postMessage({windowId,message}).catch(report);
+const broadcast=message=>Promise.all([...visible].map(id=>send(id,message)));
+let noticeSequence=0,noticeQueue=Promise.resolve();const noticeRequests=new Map();
+const acceptNoticeDistance=(windowId,message)=>{const request=noticeRequests.get(message.requestId);if(!request||!request.pending.delete(windowId))return;if(Number.isFinite(message.distance)&&message.distance>=0)request.distances.set(windowId,message.distance);if(!request.pending.size)request.finish()};
+const notifyNearest=message=>{const task=noticeQueue.then(async()=>{
+ if(!preferences.enabled||!preferences.remindersEnabled)return;
+ const ids=[...visible].filter(id=>ready.has(id));if(!ids.length)return;
+ const requestId=++noticeSequence;
+ const distances=await new Promise(resolve=>{const request={pending:new Set(ids),distances:new Map(),finish:()=>{clearTimeout(timer);noticeRequests.delete(requestId);resolve(request.pending.size?null:request.distances)}};const timer=setTimeout(request.finish,1500);noticeRequests.set(requestId,request);for(const id of ids)send(id,{type:'notice-distance',requestId})});
+ if(!distances||!preferences.enabled||!preferences.remindersEnabled)return;
+ let winner=null,best=Infinity;for(const id of ids){const distance=distances.get(id);if(visible.has(id)&&ready.has(id)&&distance<best){best=distance;winner=id}}
+ if(!winner)return;await Promise.all([...visible].filter(id=>id!==winner).map(id=>send(id,{type:'dismiss-notice'})));if(visible.has(winner))await send(winner,message);
+ });noticeQueue=task.catch(report);return noticeQueue};
+
+const catalog=async()=>{const meta=await read('pet-sprites')||[];return[meta.find(pet=>pet.id===builtInPet.id)||builtInPet,...meta.filter(pet=>pet.id!==builtInPet.id)]};
+const configure=(pet,playShow)=>({type:'configure',windowId:'pet-'+pet.id,pet,project,preferences:{...preferences,scale:pet.scale||preferences.scale||2},activePetId:pet.id,playShow,positionKey:'position:'+pet.id});
+const syncMenu=pets=>moonsprite.menus.setItems({menuId:'pet-menu',items:pets.filter(pet=>pet.frameCount>0).map(pet=>({id:pet.id,name:pet.name,event:'toggle-pet',checked:preferences.enabled&&shownIds.includes(pet.id)}))});
+const enqueue=operation=>{const task=queue.then(operation);queue=task.catch(report);return task};
+const reload=async()=>{preferences={...defaults,...await read('preferences')};const stored=await read('shownPets');shownIds=Array.isArray(stored)?stored:[builtInPet.id]};
+const reconcileNow=async()=>{
+ const pets=await catalog(),wanted=preferences.enabled?pets.filter(pet=>pet.frameCount>0&&shownIds.includes(pet.id)):[];
+ for(const [id,pet] of live)if(!wanted.some(next=>next.id===pet.id)&&visible.has(id)){await moonsprite.windows.setVisible({windowId:id,visible:false});visible.delete(id);await send(id,{type:'visibility',visible:false})}
+ for(const [id,pet] of live)if(!pets.some(next=>next.id===pet.id)){await moonsprite.windows.close({windowId:id});live.delete(id);ready.delete(id)}
+ for(const pet of wanted){const id='pet-'+pet.id;try{
+ if(live.has(id)){const wasVisible=visible.has(id);live.set(id,pet);if(!wasVisible){await moonsprite.windows.setVisible({windowId:id,visible:true});visible.add(id)}if(ready.has(id))await send(id,configure(pet,!wasVisible));continue}
+ const scale=pet.scale||preferences.scale||2,width=Math.max(360,pet.frameWidth*scale+600),height=Math.max(360,pet.frameHeight*scale+400),position=await read('position:'+pet.id)||{x:100+live.size*100,y:100};
+ live.set(id,pet);visible.add(id);try{await moonsprite.windows.open({windowId:id,resourceId:'pet-window',options:{x:position.x,y:position.y,width,height,transparent:true,focusable:true}})}catch(error){live.delete(id);visible.delete(id);ready.delete(id);throw error}
+ }catch(error){await report(error)}}
+ await syncMenu(pets);
+};
+const reconcile=()=>enqueue(async()=>{await reload();await reconcileNow()});
+let initialization=Promise.resolve();
+moonsprite.on('activate',()=>{initialization=enqueue(async()=>{await reload();preferences.enabled=true;shownIds=[...new Set([builtInPet.id,...shownIds])];await write('preferences',preferences);await write('shownPets',shownIds);await moonsprite.windows.close({windowId:'companion'}).catch(report);await reconcileNow()});return initialization});
+moonsprite.on('command',async event=>{if(event.event==='toggle-pet')return enqueue(async()=>{await reload();const pet=(await catalog()).find(pet=>pet.id===event.commandId&&pet.frameCount>0);if(!pet)return;const showing=preferences.enabled&&shownIds.includes(pet.id);shownIds=shownIds.filter(id=>id!==pet.id);if(!showing){shownIds.push(pet.id);preferences.enabled=true;await write('preferences',preferences)}await write('shownPets',shownIds);await reconcileNow()});if(event.event==='manager')await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}})});
+moonsprite.on('settings-changed',async event=>{if(event.key==='preferences')await reconcile()});
+moonsprite.on('window-message',async event=>{const message=event.message;if(!message)return;
+ if(event.windowId==='manager'){
+  if(message.type==='catalog')await reconcile()
+  if(message.type==='ready')await send('manager',{type:'catalog'});
+  return
+ }
+ const pet=live.get(event.windowId);if(!pet)return;
+ if(message.type==='notice-distance'){acceptNoticeDistance(event.windowId,message);return}
+ if(message.type==='ready'){ready.add(event.windowId);if(visible.has(event.windowId))await send(event.windowId,configure(pet,true));else await send(event.windowId,{type:'visibility',visible:false})}
+ if(message.type==='manager')await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}})
+});
+moonsprite.on('project',event=>{const next=event.project,now=Date.now();if(next?.id!==lastProjectId){dirtySince=0;drawingSince=0;lastDrawingAt=0;lastRevision=null;lastUnsavedNotice=0;lastBreakNotice=0}lastProjectId=next?.id;project=next;
+ if(next){if(next.dirty&&!dirtySince)dirtySince=now;if(!next.dirty){dirtySince=0;lastUnsavedNotice=0}if(lastRevision!==null&&next.contentRevision!==lastRevision){if(!lastDrawingAt||now-lastDrawingAt>300000)drawingSince=now;lastDrawingAt=now}lastRevision=next.contentRevision}return broadcast({type:'project',project})});
+moonsprite.on('document-saved',()=>notifyNearest({type:'notice',text:'保存好啦，这份进度安心收下了。'}));
+moonsprite.on('clock',event=>{
+ if(!preferences.enabled||!preferences.remindersEnabled)return;const now=event.timestamp,date=new Date(now);
+ if(preferences.clockEnabled&&(date.getMinutes()===0||date.getMinutes()===30)){const key=date.toDateString()+date.getHours()+':'+date.getMinutes();if(key!==lastClockKey){lastClockKey=key;notifyNearest({type:'notice',text:'现在是 '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 啦，愿你的灵感正好在身边。'})}}
+ const breakMs=Math.max(1,Number(preferences.breakMinutes)||60)*60000;
+ if(project&&preferences.breakEnabled!==false&&drawingSince&&now-lastDrawingAt<300000&&now-drawingSince>=breakMs&&now-lastBreakNotice>=breakMs){lastBreakNotice=now;notifyNearest({type:'notice',text:'你已经连续绘制了 '+Math.floor((now-drawingSince)/60000)+' 分钟，休息一下眼睛和手腕吧，我在这里等你。'})}
+ const unsavedMs=Math.max(1,Number(preferences.unsavedMinutes)||15)*60000;
+ if(project&&preferences.unsavedEnabled!==false&&dirtySince&&now-dirtySince>=unsavedMs&&now-lastUnsavedNotice>=unsavedMs){lastUnsavedNotice=now;notifyNearest({type:'notice',text:'已经 '+Math.floor((now-dirtySince)/60000)+' 分钟没有保存文件啦，记得保存，别让灵感溜走哦。'})}
+});
+</script></body></html>

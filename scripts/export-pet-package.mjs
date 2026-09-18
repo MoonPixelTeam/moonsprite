@@ -233,25 +233,27 @@ const reconcileNow=async()=>{
  for(const pet of wanted){const id='pet-'+pet.id;try{
  if(live.has(id)){const wasVisible=visible.has(id);live.set(id,pet);if(!wasVisible){await moonsprite.windows.setVisible({windowId:id,visible:true});visible.add(id)}if(ready.has(id))await send(id,configure(pet,!wasVisible));continue}
  const scale=pet.scale||preferences.scale||2,width=Math.max(360,pet.frameWidth*scale+600),height=Math.max(360,pet.frameHeight*scale+400),position=await read('position:'+pet.id)||{x:100+live.size*100,y:100};
- live.set(id,pet);visible.add(id);try{await moonsprite.windows.open({windowId:id,resourceId:'pet-window',options:{x:position.x,y:position.y,width,height,transparent:true,focusable:true}})}catch(error){live.delete(id);visible.delete(id);ready.delete(id);throw error}
+ live.set(id,pet);visible.add(id);try{await moonsprite.windows.open({windowId:id,resourceId:'pet-window',options:{presentation:'overlay',x:position.x,y:position.y,width,height}})}catch(error){live.delete(id);visible.delete(id);ready.delete(id);throw error}
  }catch(error){await report(error)}}
  await syncMenu(pets);
+ if(managerReady)await send('manager',{type:'catalog'});
 };
 const reconcile=()=>enqueue(async()=>{await reload();await reconcileNow()});
-let initialization=Promise.resolve();
+let initialization=Promise.resolve(),managerPetId=null,managerReady=false;
+const openManager=async(petId=null)=>{managerPetId=petId;await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}});if(managerReady)await send('manager',{type:'catalog',petId:managerPetId})};
 moonsprite.on('activate',()=>{initialization=enqueue(async()=>{await reload();preferences.enabled=true;shownIds=[...new Set([builtInPet.id,...shownIds])];await write('preferences',preferences);await write('shownPets',shownIds);await moonsprite.windows.close({windowId:'companion'}).catch(report);await reconcileNow()});return initialization});
-moonsprite.on('command',async event=>{if(event.event==='toggle-pet')return enqueue(async()=>{await reload();const pet=(await catalog()).find(pet=>pet.id===event.commandId&&pet.frameCount>0);if(!pet)return;const showing=preferences.enabled&&shownIds.includes(pet.id);shownIds=shownIds.filter(id=>id!==pet.id);if(!showing){shownIds.push(pet.id);preferences.enabled=true;await write('preferences',preferences)}await write('shownPets',shownIds);await reconcileNow()});if(event.event==='manager')await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}})});
+moonsprite.on('command',async event=>{if(event.event==='toggle-pet')return enqueue(async()=>{await reload();const pet=(await catalog()).find(pet=>pet.id===event.commandId&&pet.frameCount>0);if(!pet)return;const showing=preferences.enabled&&shownIds.includes(pet.id);shownIds=shownIds.filter(id=>id!==pet.id);if(!showing){shownIds.push(pet.id);preferences.enabled=true;await write('preferences',preferences)}await write('shownPets',shownIds);await reconcileNow()});if(event.event==='manager')await openManager()});
 moonsprite.on('settings-changed',async event=>{if(event.key==='preferences')await reconcile()});
 moonsprite.on('window-message',async event=>{const message=event.message;if(!message)return;
  if(event.windowId==='manager'){
   if(message.type==='catalog')await reconcile()
-  if(message.type==='ready')await send('manager',{type:'catalog'});
+  if(message.type==='ready'){managerReady=true;await send('manager',{type:'catalog',petId:managerPetId})}
   return
  }
  const pet=live.get(event.windowId);if(!pet)return;
  if(message.type==='notice-distance'){acceptNoticeDistance(event.windowId,message);return}
  if(message.type==='ready'){ready.add(event.windowId);if(visible.has(event.windowId))await send(event.windowId,configure(pet,true));else await send(event.windowId,{type:'visibility',visible:false})}
- if(message.type==='manager')await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:'宠物管理'}})
+ if(message.type==='manager')await openManager(pet.id)
 });
 moonsprite.on('project',event=>{const next=event.project,now=Date.now();if(next?.id!==lastProjectId){dirtySince=0;drawingSince=0;lastDrawingAt=0;lastRevision=null;lastUnsavedNotice=0;lastBreakNotice=0}lastProjectId=next?.id;project=next;
  if(next){if(next.dirty&&!dirtySince)dirtySince=now;if(!next.dirty){dirtySince=0;lastUnsavedNotice=0}if(lastRevision!==null&&next.contentRevision!==lastRevision){if(!lastDrawingAt||now-lastDrawingAt>300000)drawingSince=now;lastDrawingAt=now}lastRevision=next.contentRevision}return broadcast({type:'project',project})});
@@ -275,7 +277,7 @@ const compactSize=()=>pet?{width:Math.max(360,pet.frameWidth*scaleOf()+600),heig
 let positionRatio=null,positionLoaded=false,hostEpoch=0;
 const persistPosition=bounds=>moonsprite.storage.set(positionKey,{x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height,layout:'relative',ratio:positionRatio});
 const savePosition=async(bounds,epoch=hostEpoch)=>{const host=await moonsprite.window.getHostBounds();if(epoch!==hostEpoch)return;positionRatio=relativePetPosition(bounds,host,contentBounds());positionLoaded=true;await persistPosition(bounds)};
-// Native regions clip drawing as well as input. Use the union of all animation
+// Overlay regions clip drawing as well as input. Use the union of all animation
 // silhouettes so asynchronous region updates cannot cut off a newer frame.
 const updateHitRegion=async()=>{try{await positionBubbles()}catch(error){moonsprite.diagnostics.log(String(error),'error')}if(!hitAlpha)return;const viewportWidth=Math.max(1,window.innerWidth),viewportHeight=Math.max(1,window.innerHeight),spans=[],rect=petElement.getBoundingClientRect(),scale=rect.width/pet.frameWidth;for(let y=0;y<pet.frameHeight;y++){let start=-1;for(let x=0;x<=pet.frameWidth;x++){const opaque=x<pet.frameWidth&&hitAlpha[y*pet.frameWidth+(pet.mirrored?pet.frameWidth-1-x:x)]>0;if(opaque&&start<0)start=x;if(!opaque&&start>=0){const left=Math.max(0,Math.floor(rect.left+start*scale)),right=Math.min(viewportWidth,Math.ceil(rect.left+x*scale)),top=Math.max(0,Math.floor(rect.top+y*scale)),bottom=Math.min(viewportHeight,Math.ceil(rect.top+(y+1)*scale));for(let hitY=top;hitY<bottom;hitY++)spans.push({x:left,y:hitY,width:Math.max(1,right-left)});start=-1}}}for(const bubble of [info,notice])if(!bubble.hidden){const box=bubble.getBoundingClientRect();for(let y=Math.max(0,Math.floor(box.top));y<Math.min(viewportHeight,Math.ceil(box.bottom));y++){const left=Math.max(0,Math.floor(box.left)),right=Math.min(viewportWidth,Math.ceil(box.right));spans.push({x:left,y,width:Math.max(1,right-left)})}}return moonsprite.window.setHitRegion(viewportWidth,viewportHeight,spans).catch(error=>moonsprite.diagnostics.log('无法更新宠物命中区域：'+String(error),'error'))};
 const scheduleHitRegion=()=>{if(hitRegionDirty)return;hitRegionDirty=true;requestAnimationFrame(()=>{hitRegionDirty=false;updateHitRegion()})};
@@ -301,7 +303,7 @@ let constraintQueued=false;
 const constrainPet=()=>{if(!pet)return Promise.resolve();if(constraintQueued)return boundsQueue;constraintQueued=true;boundsQueue=boundsQueue.then(async()=>{constraintQueued=false;if(dragQueue)await dragQueue;const [bounds,host]=await Promise.all([moonsprite.window.getBounds(),moonsprite.window.getHostBounds()]);if(host.width<=0||host.height<=0)return;const initialize=!positionLoaded;if(initialize){const stored=await moonsprite.storage.get(positionKey);if(stored?.ratio&&Number.isFinite(stored.ratio.x)&&Number.isFinite(stored.ratio.y))positionRatio={x:Math.max(0,Math.min(1,stored.ratio.x)),y:Math.max(0,Math.min(1,stored.ratio.y))};positionLoaded=true}const content=contentBounds();positionRatio??=relativePetPosition(bounds,host,content);const next=boundsAtRelativePosition(bounds,host,content,positionRatio);if(next.x!==bounds.x||next.y!==bounds.y)await moonsprite.window.setBounds(next);if(initialize)await persistPosition(next);scheduleHitRegion()}).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return boundsQueue};
 const hostGeometryChanged=()=>{hostEpoch++;if(pointer){pointer.cancelled=true;pointer=null}pendingDrag=null;return constrainPet()};
 const loadPet=async next=>{const loaded=await loadSheetUrl(next);const decoded=await decodeImage(loaded.url);if(sheetRevoke&&sheetUrl)URL.revokeObjectURL(sheetUrl);sheetUrl=loaded.url;sheetRevoke=loaded.revoke;image=decoded;spriteBounds=findSpriteBounds(decoded,next);pet={...next,idleFrames:next.animations?(next.animations.IDLE?.length?next.animations.IDLE:next.animations.SHOW||[]):next.idleFrames?.length?next.idleFrames:Array.from({length:next.frameCount},(_,index)=>index)};canvas.width=pet.frameWidth;canvas.height=pet.frameHeight;canvas.style.visibility='visible';canvas.style.width=pet.frameWidth*scaleOf()+'px';canvas.style.height=pet.frameHeight*scaleOf()+'px';petElement.setAttribute('aria-label',pet.name);await updateScale();play(pet.showFrames&&pet.showFrames.length?pet.showFrames:pet.idleFrames,false)};
-// The pet lives in its own platform window, so the host software-cursor mode of the main window never reaches it; the live policy is reported on every sync point.
+// Embedded surfaces receive the host cursor theme; native compatibility uses the same policy API.
 const applyCursorPolicy=useLocalCursors=>moonsprite.window.setCursorPolicy({useLocalCursors}).catch(()=>undefined);
 const reportCatalog=()=>{};
 // Each window resolves only the pet assigned to it by the runtime.
@@ -353,7 +355,7 @@ const renderList=async()=>{
  if(target){
  const header=[{id:'name',type:'heading',label:target.name}];
  if(target.frameCount){try{const loaded=await loadSheetUrl(target);try{const image=await decodeImage(loaded.url),canvas=document.createElement('canvas');canvas.width=target.frameWidth;canvas.height=target.frameHeight;const ctx=canvas.getContext('2d');if(target.mirrored){ctx.translate(canvas.width,0);ctx.scale(-1,1)}ctx.drawImage(image,0,0);header.unshift({id:'preview',type:'image',src:canvas.toDataURL('image/png'),label:target.name})}finally{if(loaded.revoke)URL.revokeObjectURL(loaded.url)}}catch(error){status=String(error)}}
- detail.push({id:'header',type:'row',children:header},{id:'display-row',type:'row',children:[{id:'mirror',type:'toggle',label:'水平镜像',value:target.mirrored===true,action:{type:'ui-mirror',petId:target.id}}]},
+ detail.push({id:'header',type:'row',children:header},{id:'display-row',type:'row',children:[{id:'pet-visible',type:'toggle',label:'宠物显示',value:target.frameCount>0&&prefs.enabled!==false&&shown.includes(target.id),disabled:!target.frameCount,action:{type:'ui-visible',petId:target.id}},{id:'mirror',type:'toggle',label:'水平镜像',value:target.mirrored===true,action:{type:'ui-mirror',petId:target.id}}]},
  {id:'scale-row',type:'row',align:'end',children:[{id:'scale',type:'number',label:'缩放倍率',value:target.scale||2,min:1,max:4},{id:'save-scale',type:'button',label:'应用',action:{type:'ui-scale',petId:target.id}}]},
  {id:'animations-line',type:'separator'},{id:'animation-title',type:'heading',label:'动画槽位'});
  const animations=animationMap(target);
@@ -430,7 +432,7 @@ moonsprite.window.onMessage(message=>{
   result=null;
   try{
    const values=message.values||{};if(typeof values.newName==='string')nameInput.value=values.newName;staged=staged.map((file,index)=>({...file,animation:String(values['animation-'+index]??file.animation)}));
-   if(message.type==='catalog'){}
+   if(message.type==='catalog'){if(message.petId&&(await listPets()).some(pet=>pet.id===message.petId)){activeId=message.petId;staged=[]}}
    else if(message.type==='ui-export-pet'){const file=await exportPetPackage(message.petId);result={requestId:message.requestId,ok:true,file};status='宠物包已准备好'}
    else if(message.type==='ui-import-pet'){await importPetPackage(message.files)}
    else if(message.type==='ui-edit'){activeId=message.petId;staged=[]}
@@ -461,7 +463,7 @@ moonsprite.window.postMessage({type:'ready'}).catch(error=>moonsprite.diagnostic
 
 const petWindowPage = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent;user-select:none}
-#pet{position:absolute;left:50%;transform:translateX(-50%);bottom:200px;padding:0;border:0;background:transparent;image-rendering:pixelated}
+#pet{position:absolute;left:50%;transform:translateX(-50%);bottom:200px;padding:0;border:0;outline:none;box-shadow:none;background:transparent;image-rendering:pixelated}
 #pet,#pet *{cursor:var(--cursor-default)!important}
 #pet.dragging,#pet.dragging *{cursor:var(--cursor-default)!important}
 canvas{display:block;visibility:hidden;image-rendering:pixelated}

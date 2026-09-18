@@ -203,7 +203,7 @@ await moonsprite.diagnostics.log(message, level)
 
 普通管理窗口可在 `<body data-ms-dialog>` 上启用统一弹窗样式，使用 `h1` 标题、`section` 分区、`button.primary` 主按钮；标题添加 `data-ms-drag` 即可拖动窗口，关闭按钮调用 `moonsprite.window.close()`。透明宠物窗口不加 `data-ms-dialog`，保留透明背景。宿主提供样式契约和现有窗口 API，不向扩展开放 React 或主界面 DOM。
 
-`windows.open` 的 `options.presentation: "dialog"` 会使用主窗口的 `ModalShell` 和 `DialogHeader`，标题使用 `options.title`。内容仍隔离执行，保留存储、资源、消息和关闭接口；位置、拖动和尺寸由宿主弹窗管理，不支持原生窗口坐标与命中区域调用。同一扩展同时展示一个宿主弹窗。透明宠物继续使用默认独立窗口。
+`windows.open` 的 `options.presentation: "dialog"` 会使用主窗口的 `ModalShell` 和 `DialogHeader`，标题使用 `options.title`。内容仍隔离执行，保留存储、资源、消息和关闭接口；位置、拖动和尺寸由宿主弹窗管理，不支持原生窗口坐标与命中区域调用。同一扩展同时展示一个宿主弹窗。软件内的透明挂件可使用下述覆盖层。
 
 
 `window.getHostBounds()` 返回主窗口客户区相对主窗口外框的逻辑像素边界 `{ x, y, width, height }`，与 `getBounds/setBounds` 坐标系一致。内容拖动可允许透明留白超出客户区，但应按动画所有帧的不透明内容包围盒限制位置，避免宠物图像越界。
@@ -220,3 +220,27 @@ await moonsprite.diagnostics.log(message, level)
 
 
 设置控件可声明 `visibleWhen: { checkboxId: true/false }`，全部条件满足时显示；隐藏不清空设置值，条件引用其他 checkbox 控件。按钮可声明 `fullWidth: true` 占满整行；省略 description 不显示辅助说明。具体业务依赖关系由扩展清单定义。
+
+### 主窗口覆盖层
+
+`runtime.getCapabilities().windowPresentations` 列出当前授权支持的展示方式：`native`、`dialog`、`overlay`。没有 `windows` 权限时为空数组。旧宿主可能不返回此字段。
+
+```js
+await moonsprite.windows.open({
+  windowId: 'helper', resourceId: 'helper-ui',
+  options: { presentation: 'overlay', x: 40, y: 80, width: 240, height: 160 }
+})
+await moonsprite.windows.setVisible({ windowId: 'helper', visible: false })
+await moonsprite.windows.postMessage({ windowId: 'helper', message: { type: 'update' } })
+await moonsprite.windows.close({ windowId: 'helper' })
+```
+
+覆盖层是主窗口内的受限 iframe，不创建原生窗口，也不获得宿主 DOM、React、Store 或 Tauri 的访问权。沿用 `windows` 权限和清单资源校验，每个扩展最多 16 个覆盖层。重复打开同一 ID 更新位置并显示；资源变化则重新加载。关闭、禁用或卸载扩展会销毁相应覆盖层。显示隐藏保留页面状态；隐藏后的定时器由扩展自行暂停。
+
+页面可使用 `window.getBounds/setBounds/getHostBounds/getPointerPosition/setHitRegion/startDrag/postMessage/close`，以及现有存储、资源、主题和命令状态接口。覆盖层坐标统一为主窗口客户区 CSS 像素，宿主左上角为 `(0,0)`，不要混用原生窗口坐标。`getPointerPosition` 返回同坐标系的位置，指针在软件外时返回 null。跨展示方式保存位置建议保存相对比例。
+
+`setBounds({x,y,width,height})` 更新位置和尺寸，尺寸范围为 1–8192，位置绝对值不超过 32768。宿主裁剪超出客户区的部分；扩展负责将实际内容约束在边界内。`startDrag()` 必须在指针按下后调用，也可使用指针捕获和 `setBounds` 实现自定义拖动。宿主尺寸变化触发 `moonsprite:window-host-geometry`，位置更新触发 `moonsprite:window-moved`。
+
+初始命中区域为空。页面调用 `setHitRegion(sourceWidth, sourceHeight, spans)` 声明可见及可交互区域，`spans` 是 `{x,y,width}` 的单像素高扫描行，最多 65536 条，源尺寸最多 8192。区域按当前覆盖层尺寸缩放，同时裁剪绘制和鼠标命中；区域外事件直接到下方软件，不进行合成事件转发。气泡、按钮等也需包含在区域内。覆盖层位于编辑内容之上、宿主菜单和弹窗之下，不能自行提升层级或修改全局指针策略。
+
+这是面向悬浮工具、信息卡、辅助提示等扩展的通用接口；宠物动画、提醒、位置比例等业务由扩展实现。

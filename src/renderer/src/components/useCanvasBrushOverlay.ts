@@ -12,7 +12,7 @@ import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-sca
 import { selectionContains } from '@/core/selection'
 import { CanvasInputState, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
-import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
+import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
@@ -20,6 +20,8 @@ interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
+  readonly brushEdgeColor?: RgbaColor
+  readonly brushEdgeThickness?: number
   readonly drawingBrushPreviewEnabled: boolean
   readonly liveViewRef: import('react').RefObject<import('@shared/types-view').ViewState>
   readonly session: DocumentSession
@@ -90,7 +92,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
         !ports.inputRef.current.spaceHeld
       )
     }
-    if (ports.brushPreviewMode !== 'full-edge' || currentSession.tool !== 'pencil' || currentSession.inkMode !== 'simple') return false
+    if (ports.brushPreviewMode !== 'full-edge' || (currentSession.tool !== 'pencil' && currentSession.tool !== 'line') || currentSession.inkMode !== 'simple') return false
     if (ports.inputRef.current.drag || !ports.inputRef.current.pointer.visible || ports.inputRef.current.sampling || ports.inputRef.current.spaceHeld)
       return false
     const inputs = activeBrushInputsForTool(currentSession.tool, currentSession.fillKind ?? 'bucket', currentSession.brushImage, currentSession.brushTexture)
@@ -171,7 +173,8 @@ export function useCanvasBrushOverlay(ports: Ports) {
         left: brushPoint.x - anchor.x + span.left,
         right: brushPoint.x - anchor.x + span.right
       }))
-      context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+      context.lineWidth = ports.brushEdgeThickness ?? 1
+      alignCanvasStrokePath(context)
       context.beginPath()
       const horizontalSegment = (left: number, right: number, y: number, bottom: boolean): void => {
         if (right < left || y < 0 || y >= currentSession.document.height) return
@@ -214,7 +217,9 @@ export function useCanvasBrushOverlay(ports: Ports) {
           if (next.right < row.right) horizontalSegment(Math.max(row.left, next.right + 1), row.right, row.y, true)
         }
       }
-      context.strokeStyle = canvasAdaptiveContrast(context, {
+      context.strokeStyle = ports.brushEdgeColor
+        ? `rgb(${ports.brushEdgeColor.r} ${ports.brushEdgeColor.g} ${ports.brushEdgeColor.b} / ${ports.brushEdgeColor.a / 255})`
+        : canvasAdaptiveContrast(context, {
         x: renderPlan.originX + (brushPoint.x - anchor.x) * view.zoom - context.lineWidth,
         y: renderPlan.originY + (brushPoint.y - anchor.y) * view.zoom - context.lineWidth,
         width: previewSize * view.zoom + context.lineWidth * 2,
@@ -245,7 +250,8 @@ export function useCanvasBrushOverlay(ports: Ports) {
       context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
     }
     context.fill()
-    context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+    context.lineWidth = ports.brushEdgeThickness ?? 1
+    alignCanvasStrokePath(context)
     context.beginPath()
     const horizontalSegment = (left: number, right: number, row: (typeof rows)[number], bottom: boolean): void => {
       if (right < left) return
@@ -274,7 +280,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       exposedHorizontal(row, index > 0 ? rows[index - 1] : null, false)
       exposedHorizontal(row, index + 1 < rows.length ? rows[index + 1] : null, true)
     }
-    outline.stroke(context, ports.canvasRef.current ?? undefined)
+    outline.stroke(context, ports.canvasRef.current ?? undefined, ports.brushEdgeColor)
   }
 
   const scheduleBrushPreviewOverlay = (): void => {

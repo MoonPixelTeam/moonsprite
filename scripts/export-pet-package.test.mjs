@@ -415,7 +415,7 @@ test('legacy coordinates migrate to ratios and a drag saves a new ratio for only
  const writes=[],host={x:8,y:30,width:1000,height:600},content={x:200,y:260,width:100,height:80};
  const sandbox=vm.createContext({positionKey:'position:cat',contentBounds:()=>content,moonsprite:{window:{getHostBounds:async()=>host},storage:{set:async(...args)=>writes.push(args)}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
- start=generated.petWindowSource.indexOf('let positionRatio=');end=generated.petWindowSource.indexOf('// Native regions',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ start=generated.petWindowSource.indexOf('let positionRatio=');end=generated.petWindowSource.indexOf('// Overlay regions',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  await vm.runInContext('savePosition({x:258,y:30,width:360,height:360})',sandbox);
  assert.equal(writes[0][0],'position:cat');assert.equal(writes[0][1].layout,'relative');
  assert.equal(writes[0][1].ratio.x,0.5);assert.equal(writes[0][1].ratio.y,0.5);
@@ -527,4 +527,35 @@ test('reminder controls declare master and individual visibility while manager f
  assert.equal(byId('unsavedMinutes').visibleWhen.unsavedEnabled,true);assert.equal(byId('breakMinutes').visibleWhen.breakEnabled,true);
  for(const id of ['unsavedMinutes','breakMinutes','manager'])assert.equal(byId(id).description,undefined);
  assert.equal(byId('manager').fullWidth,true);assert.equal(byId('manager').visibleWhen,undefined);
+});
+
+
+test('companions request generic host overlays instead of native transparent windows', () => {
+ assert.ok(generated.runtimePage.includes("presentation:'overlay'"));
+ assert.ok(!generated.runtimePage.includes('transparent:true,focusable:true'));
+});
+
+
+test('right-click manager selection survives loading and menu changes refresh the open manager', async () => {
+ const handlers={},sent=[],opened=[],stored=new Map([['shownPets',['builtin','cat']],['pet-sprites',[{id:'cat',frameWidth:2,frameHeight:2,frameCount:1}]]]);
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async value=>opened.push(value),close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:async()=>{}}}});
+ await handlers.activate();
+ await handlers['window-message']({windowId:'pet-cat',message:{type:'manager'}});
+ assert.equal(opened.at(-1).windowId,'manager');
+ await handlers['window-message']({windowId:'manager',message:{type:'ready'}});
+ assert.equal(sent.at(-1).message.petId,'cat');
+ await handlers.command({event:'toggle-pet',commandId:'cat'});
+ assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);
+ assert.equal(sent.at(-1).windowId,'manager');assert.equal(sent.at(-1).message.type,'catalog');
+ await handlers['window-message']({windowId:'pet-builtin',message:{type:'manager'}});
+ assert.equal(sent.at(-1).message.petId,'builtin');
+});
+
+test('manager selects the requested pet and visibility updates the shared menu data', async () => {
+ let listener;const stored=new Map([['shownPets',['builtin']]]),published=[];
+ const sandbox=vm.createContext({activeId:'builtin',staged:[],nameInput:{value:''},result:null,status:'',BUILT_IN:{id:'builtin'},listPets:async()=>[{id:'builtin',frameCount:1},{id:'cat',frameCount:1}],renderList:async()=>{},publish:async()=>published.push(true),moonsprite:{storage:{get:async key=>stored.get(key),set:async(key,value)=>stored.set(key,value)},window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
+ const start=generated.managerSource.indexOf('let operations='),end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ listener({type:'catalog',petId:'cat'});await vm.runInContext('operations',sandbox);assert.equal(sandbox.activeId,'cat');
+ listener({type:'ui-visible',petId:'cat',value:true});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin','cat']);
+ listener({type:'ui-visible',petId:'cat',value:false});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);assert.equal(published.length,2);
 });

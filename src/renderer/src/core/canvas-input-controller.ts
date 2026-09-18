@@ -1,3 +1,4 @@
+import type { RightClickAction } from './file-preferences'
 import type { ToolId } from '@shared/types-brush'
 import { hasReliableBrushPressure, isPressurePointerType } from './pressure'
 import { type CanvasPoint, type CanvasDragState } from './canvas-input-contracts'
@@ -36,6 +37,7 @@ export class CanvasInputState {
   shiftLinePreview = false
   temporaryEraserPointerId: number | null = null
   temporaryToolPointerId: number | null = null
+  temporaryRightClickAction: RightClickAction | null = null
   temporaryTool: ToolId | null = null
   modifierBrushSize: { x: number; y: number; size: number } | null = null
   private penPointerId: number | null = null
@@ -81,6 +83,8 @@ export class CanvasInputState {
    * those cases, so a later pointerId reuse must start a fresh session.
    */
   resetPointerDeviceState(): void {
+    this.clearTemporaryTool()
+    this.clearTemporaryEraser()
     this.pressurePointerIds.clear()
     this.penPointerId = null
     this.lastPenPointerTime = Number.NEGATIVE_INFINITY
@@ -130,6 +134,7 @@ export class CanvasInputState {
     if (pointerId === undefined || this.temporaryToolPointerId === pointerId) {
       this.temporaryToolPointerId = null
       this.temporaryTool = null
+      this.temporaryRightClickAction = null
     }
   }
 
@@ -144,8 +149,7 @@ export class CanvasInputState {
     this.shiftLinePreview = false
     this.modifierBrushSize = null
     this.temporaryEraserPointerId = null
-    this.temporaryToolPointerId = null
-    this.temporaryTool = null
+    this.clearTemporaryTool()
     return drag
   }
 

@@ -1,9 +1,9 @@
 import { expect, it, vi } from 'vitest'
-import { DEFAULT_TABLET_PREFERENCES, parseTabletPreferences } from '@/core/file-preferences'
+import { DEFAULT_TABLET_PREFERENCES, parseTabletPreferences, RIGHT_CLICK_ACTIONS } from '@/core/file-preferences'
 import type { DocumentSession } from '@/store/workspace'
 import { CanvasInputState } from '@/core/canvas-input'
 import { createDocument } from '@/core/document'
-import { deviceSampleUsesSecondary, deviceTemporaryTool, withDeviceTemporaryTool } from './canvas-device-tools'
+import { deviceSampleUsesSecondary, deviceTemporaryTool, withDeviceTemporaryTool, rightClickToolEvent } from './canvas-device-tools'
 import { createCanvasSamplingStart } from './canvas-sampling-start'
 
 it('uses the stored eraser size without modifying the pencil session, and keeps a live eraser size', () => {
@@ -57,4 +57,49 @@ it('routes a right-button temporary eyedropper to foreground and preserves tempo
   expect(input.drag).toMatchObject({ kind: 'sample-color', sampleSecondary: false, temporarySampling: true })
   expect(state.setSecondaryColor).not.toHaveBeenCalled()
   expect(state.setPrimaryColor).toHaveBeenCalledWith(sampled)
+})
+
+
+it('persists all seven actions and maps right gestures to primary tool input without changing left clicks', () => {
+  const tools = [null, 'eyedropper', 'eraser', 'hand', 'selection', 'selection', 'move']
+  for (const [index, action] of RIGHT_CLICK_ACTIONS.entries()) {
+    const preferences = parseTabletPreferences(JSON.stringify({ rightClickAction: action }))
+    expect(preferences.rightClickAction).toBe(action)
+    expect(deviceTemporaryTool({ pointerType: 'mouse', button: 2, buttons: 2 }, preferences)).toBe(tools[index])
+    expect(deviceTemporaryTool({ pointerType: 'mouse', button: -1, buttons: 2 }, preferences)).toBe(tools[index])
+    expect(deviceTemporaryTool({ pointerType: 'mouse', button: 0, buttons: 1 }, preferences)).toBeNull()
+    const down = { button: 2, buttons: 2 }
+    expect(rightClickToolEvent(down, action)).toMatchObject(action === 'background' ? down : { button: 0, buttons: 1 })
+    expect(down).toEqual({ button: 2, buttons: 2 })
+    expect(rightClickToolEvent({ button: 2, buttons: 0 }, action).button).toBe(action === 'background' ? 2 : 0)
+  }
+})
+
+it('uses rectangle/lasso and single-layer auto-selection without changing stored settings', () => {
+  const stored = { tool: 'pencil', selectionKind: 'ellipse', selectionMode: 'subtract', moveKind: 'slice', moveAutoSelect: false,
+    selectedLayerIds: ['one', 'two'], selectedGroupIds: ['group'], selectedAnimationFrameIds: ['frame'], selectedAnimationCellKeys: ['cell'] } as unknown as DocumentSession
+  for (const action of ['rectangle', 'lasso'] as const) {
+    expect(withDeviceTemporaryTool(stored, 'selection', action)).toMatchObject({ tool: 'selection', selectionKind: action, selectionMode: 'replace' })
+  }
+  expect(withDeviceTemporaryTool(stored, 'move', 'select-layer-move')).toMatchObject({ tool: 'move', moveKind: 'move', moveAutoSelect: true,
+    selectedLayerIds: [], selectedGroupIds: [], selectedAnimationFrameIds: [], selectedAnimationCellKeys: [] })
+  expect(stored).toMatchObject({ tool: 'pencil', selectionKind: 'ellipse', moveAutoSelect: false, selectedLayerIds: ['one', 'two'] })
+})
+
+it('clears right-click routing on release, cancel, and device reset', () => {
+  const input = new CanvasInputState()
+  for (const clear of [() => input.clearTemporaryTool(7), () => input.resetInteraction(), () => input.resetPointerDeviceState()]) {
+    input.setTemporaryTool(7, 'selection')
+    input.temporaryRightClickAction = 'lasso'
+    clear()
+    expect(input.temporaryTool).toBeNull()
+    expect(input.temporaryRightClickAction).toBeNull()
+  }
+})
+
+it('preserves inherited React event methods when routing a primary tool action', () => {
+  const preventDefault = vi.fn()
+  const event = Object.assign(Object.create({ preventDefault }), { button: 2, buttons: 2 })
+  rightClickToolEvent(event, 'eraser').preventDefault()
+  expect(preventDefault).toHaveBeenCalledOnce()
 })

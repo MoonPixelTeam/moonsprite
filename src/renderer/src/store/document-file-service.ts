@@ -179,12 +179,14 @@ function rememberExportPath(filePath: string): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
 }
 
-function rememberLastDocumentExport(document: SpriteDocument, options: ExportOptions | undefined, actual: Pick<DocumentExportSettings, 'name' | 'format' | 'scalePercent' | 'target' | 'directory' | 'layerId'>): void {
+function rememberLastDocumentExport(document: SpriteDocument, options: ExportOptions | undefined, actual: Pick<DocumentExportSettings, 'name' | 'format' | 'scalePercent' | 'target' | 'directory' | 'layerId' | 'trim' | 'trimMode'>): void {
   saveDocumentExportSettings(document, {
     ...actual,
     ...(actual.target === 'slices' && options?.sliceId ? { sliceId: options.sliceId } : {}),
     ...(actual.target === 'layer' && actual.layerId ? { layerId: actual.layerId } : {}),
     ...(options?.presetName ? { presetName: options.presetName } : {}),
+    ...(options?.trim ? { trim: true } : {}),
+    ...(options?.trimMode ? { trimMode: options.trimMode } : {}),
     ...(actual.format === 'gif' ? {
       gifFrameRange: options?.gifFrameRange ?? 'all',
       ...(options?.gifFrameStart !== undefined ? { gifFrameStart: options.gifFrameStart } : {}),
@@ -442,6 +444,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     if (typeof Worker !== 'undefined') {
       await exportLayersInWorker(document, destinations.map(({ layer }) => layer.id), {
         scalePercent,
+        trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
         format,
         gifFrameRange: options?.gifFrameRange,
         gifFrameStart: options?.gifFrameStart,
@@ -466,6 +469,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
         name: withExportFileExtension(requestedName, format),
         format,
         scalePercent,
+        trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
         target: 'layer',
         ...(selectedLayerId ? { layerId: selectedLayerId } : {}),
         directory: directoryPath
@@ -530,6 +534,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
         job: 'selection',
         format,
         scalePercent,
+        trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
         selection,
         gifFrameRange: options.gifFrameRange,
         gifFrameStart: options.gifFrameStart,
@@ -599,6 +604,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
         job: 'slices',
         format,
         scalePercent,
+        trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
         slices: destinations.map(({ slice }) => slice),
         gifFrameRange: options.gifFrameRange,
         gifFrameStart: options.gifFrameStart,
@@ -689,7 +695,8 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
       await exportDocumentInWorker(document, {
         job: 'frames',
         format,
-        scalePercent
+        scalePercent,
+        trim: options.trim
       }, {
         onProgress: (value) => lifecycle?.onEncodeProgress?.(value),
         isCanceled: lifecycle?.isCanceled,
@@ -742,6 +749,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
       name: withExportFileExtension(requestedName, format),
       format,
       scalePercent,
+      trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
       target: 'frames',
       directory: directoryPath
     })
@@ -765,9 +773,10 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   if (typeof Worker !== 'undefined') {
     lifecycle?.onEncodeStart?.()
     await exportDocumentInWorker(document, {
-      job: 'document',
-      format,
-      scalePercent,
+        job: 'document',
+        format,
+        scalePercent,
+        trimMode: options.trimMode ?? (options.trim ? 'individual' : undefined),
       gifFrameRange: options.gifFrameRange,
       gifFrameStart: options.gifFrameStart,
       gifFrameEnd: options.gifFrameEnd,

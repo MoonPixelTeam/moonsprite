@@ -9,6 +9,8 @@ export interface LayerExportWorkerRequest {
   document: SpriteDocument
   layerIds: string[]
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   format: LayerWorkerFormat
   gifFrameRange?: 'all' | 'range' | 'loop-section'
   gifFrameStart?: number

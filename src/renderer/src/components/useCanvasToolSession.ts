@@ -67,7 +67,7 @@ export function useCanvasToolSession(ports: Ports) {
     if (!current) return session
     const resolved = sessionWithActiveQuickTool(sharedCanvasSession(current))
     const temporaryTool = ports.inputRef.current.temporaryTool
-    return withDeviceTemporaryTool(resolved, temporaryTool)
+    return withDeviceTemporaryTool(resolved, temporaryTool, ports.inputRef.current.temporaryRightClickAction)
   }
 
   const modifierActive = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: keyof typeof shortcuts): boolean =>

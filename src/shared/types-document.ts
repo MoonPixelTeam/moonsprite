@@ -1,5 +1,5 @@
 import type { GridSettings } from './types-view'
-import type { ColorMode } from './types-raster'
+import type { ColorMode, PixelFormat } from './types-raster'
 import type { RasterLayer, LayerGroup } from './types-layer'
 import type { PaletteEntry } from './types-color'
 import type { ProjectBrush } from './types-brush'
@@ -47,6 +47,8 @@ export interface SpriteDocument {
   width: number
   height: number
   colorMode: ColorMode
+  /** Selected RGB pixel layout. Legacy projects omit this and use RGBA32. */
+  pixelFormat?: PixelFormat
   layers: RasterLayer[]
   groups: LayerGroup[]
   activeLayerId: string

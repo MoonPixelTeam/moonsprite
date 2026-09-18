@@ -1,3 +1,5 @@
+import { ExtensionOverlay, type OverlayDefinition } from './ExtensionOverlay'
+import { overlayBounds } from './extension-overlay-geometry'
 import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { ModalShell } from '@/components/ModalShell'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -115,6 +117,9 @@ interface FrameProps {
 function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, onOpenSettings }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null)
   const [document, setDocument] = useState<string | null>(null)
+  const overlays = useRef(new Map<string, OverlayDefinition>())
+  const [overlayRevision, setOverlayRevision] = useState(0)
+  const updateOverlays = () => setOverlayRevision(value => value + 1)
   const [dialog, setDialog] = useState<{ windowId: string; resourceId: string; title: string; component?: string } | null>(null)
   const runtime = extension.runtime
   const permissions = useMemo(() => runtime?.permissions ?? [], [runtime?.permissions])
@@ -239,9 +244,32 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
           setExtensionMenuItems(extension.id, menuId, params.items)
           return null
         }
+        if (request.method === 'windows.open' && objectParams(params.options).presentation === 'overlay') {
+          const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
+          if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展覆盖层资源不存在。')
+          if (dialog?.windowId === windowId) throw new Error('窗口 ID 已用于弹窗。')
+          if (!overlays.current.has(windowId) && overlays.current.size >= 16) throw new Error('覆盖层数量已达上限。')
+          const options = objectParams(params.options)
+          const bounds = overlayBounds({ x: options.x ?? 32, y: options.y ?? 72, width: options.width ?? 256, height: options.height ?? 256 })
+          overlays.current.set(windowId, { windowId, resourceId, bounds, visible: true }); updateOverlays(); return null
+        }
+        if (request.method === 'windows.open' && overlays.current.has(String(params.windowId))) throw new Error('窗口 ID 已用于覆盖层。')
+        const overlay = typeof params.windowId === 'string' ? overlays.current.get(params.windowId) : undefined
+        if (overlay && request.method === 'windows.postMessage') {
+          window.dispatchEvent(new CustomEvent('moonsprite:dialog-message', { detail: { extensionId: extension.id, windowId: overlay.windowId, message: params.message } })); return null
+        }
+        if (overlay && request.method === 'windows.setVisible') {
+          if (typeof params.visible !== 'boolean') throw new Error('覆盖层显示状态无效。')
+          overlays.current.set(overlay.windowId, { ...overlay, visible: params.visible }); updateOverlays(); return null
+        }
+        if (request.method === 'windows.close') {
+          if (overlay) { overlays.current.delete(overlay.windowId); updateOverlays(); return null }
+          if (!params.windowId) { overlays.current.clear(); updateOverlays() }
+        }
         if (request.method === 'windows.open' && objectParams(params.options).presentation === 'dialog') {
           const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
           if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展窗口资源不存在。')
+          if (overlays.current.has(windowId)) throw new Error('窗口 ID 已用于覆盖层。')
           setDialog({ windowId, resourceId, title: String(objectParams(params.options).title || extension.name), component: objectParams(params.options).component === 'form' ? 'form' : undefined }); return null
         }
         if (dialog && request.method === 'windows.postMessage' && params.windowId === dialog.windowId) {
@@ -258,7 +286,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [extension, onOpenSettings, onRunLuaScript, permissions, dialog])
+  }, [extension, onOpenSettings, onRunLuaScript, permissions, dialog, overlayRevision])
 
   if (!runtime || !document || !messagesReady) return null
   return <><iframe
@@ -274,6 +302,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
       for (const event of pendingEvents.current.splice(0)) sendAuthorized(event)
     }}
   />
+    {Array.from(overlays.current.values()).map(definition => <ExtensionOverlay key={definition.windowId + ':' + definition.resourceId} extensionId={extension.id} definition={definition} onClose={() => { overlays.current.delete(definition.windowId); updateOverlays() }} />)}
     {dialog && <div className="modal-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) setDialog(null) }}>
       <ModalShell storageKey={`extension-dialog:${extension.id}:${dialog.windowId}`} defaultWidth={560} defaultHeight={600} minWidth={360} minHeight={300} role="dialog" aria-modal="true" aria-label={dialog.title} style={{ display: 'flex', flexDirection: 'column' }}>
         <DialogHeader title={dialog.title} closeLabel="关闭" onClose={() => setDialog(null)} />
@@ -297,7 +326,7 @@ async function handleRequest(
   const params = objectParams(rawParams)
   const workspace = useWorkspace.getState()
   const active = workspace.sessions.find((candidate) => candidate.document.id === workspace.activeId) ?? null
-  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
+  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, windowPresentations: permissions.includes('windows') ? ['native', 'dialog', 'overlay'] : [], methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
     for (const [candidate, required] of Object.entries(EXTENSION_RUNTIME_METHOD_PERMISSIONS)) if (required === permission) result[candidate] = true
     return result
   }, {}) : {}) }

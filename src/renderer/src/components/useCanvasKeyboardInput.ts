@@ -394,6 +394,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         (ports.activeLayer.kind !== 'tilemap' || ports.session.tilemapMode !== 'paint') &&
         ports.modifierActive(modifierEvent, 'brushSizeAdjust') &&
         (ports.session.tool === 'pencil' ||
+          ports.session.tool === 'line' ||
           ports.session.tool === 'airbrush' ||
           ports.session.tool === 'eraser' ||
           ports.session.tool === 'smooth' ||

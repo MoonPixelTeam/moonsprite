@@ -51,6 +51,7 @@ import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
+import { crosshairCursorForColor } from '@/core/canvas-visuals'
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
@@ -82,6 +83,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const viewDragSensitivity = canvasPreferences.viewDragSensitivity
   const tabletPreferences = canvasPreferences.tablet
   const brushPreviewMode = canvasPreferences.brushPreviewMode
+  const cursorColorMode = canvasPreferences.cursorColorMode
+  const cursorColor = canvasPreferences.cursorColor
+  const brushEdgeColor = cursorColorMode === 'custom' ? cursorColor : undefined
+  const brushEdgeThickness = canvasPreferences.brushEdgeThickness
+  const canvasCursorStyle = cursorColorMode === 'custom'
+    ? { '--cursor-crosshair': crosshairCursorForColor(cursorColor) } as CSSProperties
+    : undefined
   const checkerboard = canvasPreferences.checkerboard
   const gridColors = useMemo(() => {
     const preferences = canvasPreferences
@@ -397,6 +405,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get canvasRef() { return canvasRef },
     get inputRef() { return inputRef },
     get brushPreviewMode() { return brushPreviewMode },
+    get brushEdgeColor() { return brushEdgeColor },
+    get brushEdgeThickness() { return brushEdgeThickness },
     get drawingBrushPreviewEnabled() { return drawingBrushPreviewEnabled },
     get liveViewRef() { return liveViewRef },
     get repeatedDocumentPointsAt() { return repeatedDocumentPointsAt },
@@ -873,6 +883,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         gridColors,
         selectionPreviewColorMode,
         selectionPreviewColor,
+        brushEdgeColor,
+        brushEdgeThickness,
         activeBrushImage,
         activeBrushPreviewMode,
         activeBrushTexture,
@@ -1441,7 +1453,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <canvas
           ref={canvasRef}
           data-document-id={session.document.id}
-          style={rotationStyle}
+          style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
           onPointerDown={pointerDown}

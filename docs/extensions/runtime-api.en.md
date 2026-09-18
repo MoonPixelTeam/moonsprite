@@ -201,7 +201,7 @@ The host injects current `--theme-*` tokens and preference-controlled `--cursor-
 
 Use `<body data-ms-dialog>` for standard dialog styling, with an `h1` title, `section` groups, and `button.primary` actions. Add `data-ms-drag` to a title to enable dragging; close buttons call `moonsprite.window.close()`. Omit `data-ms-dialog` for transparent companions. This styling contract and the existing window API do not expose React or the main document DOM.
 
-Use `options.presentation: "dialog"` with `windows.open` to open the main window’s `ModalShell` and `DialogHeader`, titled with `options.title`. Content remains sandboxed and retains storage, resources, messaging, and close operations. The host manages dialog movement and size; native bounds and hit-region operations are unavailable. Each extension can show one host dialog at a time. Transparent companions continue to use the default separate window.
+Use `options.presentation: "dialog"` with `windows.open` to open the main window’s `ModalShell` and `DialogHeader`, titled with `options.title`. Content remains sandboxed and retains storage, resources, messaging, and close operations. The host manages dialog movement and size; native bounds and hit-region operations are unavailable. Each extension can show one host dialog at a time. Use overlays for companions restricted to the application.
 
 
 `window.getHostBounds()` returns the main client area bounds `{ x, y, width, height }` in logical pixels relative to the main outer frame, matching `getBounds/setBounds`. Content dragging may place transparent margins outside this area; clamp the union of opaque content across animation frames to keep the pet inside.
@@ -220,3 +220,27 @@ Form file nodes may specify an `accept` filter (images by default). A user actio
 
 
 Settings controls may declare `visibleWhen: { checkboxId: true/false }`; all conditions must match for display. Hidden controls retain their values, and conditions reference other checkbox controls. Buttons may use `fullWidth: true` to fill a row; omitting description removes helper text. Business dependencies belong to the extension manifest.
+
+### Main-window overlays
+
+`runtime.getCapabilities().windowPresentations` lists authorized presentations: `native`, `dialog`, and `overlay`; it is empty without the `windows` permission. Older hosts may omit it.
+
+```js
+await moonsprite.windows.open({
+  windowId: 'helper', resourceId: 'helper-ui',
+  options: { presentation: 'overlay', x: 40, y: 80, width: 240, height: 160 }
+})
+await moonsprite.windows.setVisible({ windowId: 'helper', visible: false })
+await moonsprite.windows.postMessage({ windowId: 'helper', message: { type: 'update' } })
+await moonsprite.windows.close({ windowId: 'helper' })
+```
+
+Overlays are sandboxed iframes in the main window, with no native window or access to host DOM, React, Store, or Tauri. They reuse the `windows` permission and manifest resource validation, with up to 16 per extension. Reopening an ID updates bounds and shows it; changing resources reloads it. Closing, disabling, or unloading destroys its overlays. Hiding preserves page state; extensions should pause their own timers.
+
+Pages retain `window.getBounds/setBounds/getHostBounds/getPointerPosition/setHitRegion/startDrag/postMessage/close`, storage, resources, themes, and command state APIs. Coordinates are CSS pixels in the main client viewport, whose origin is `(0,0)`. Do not mix native-window coordinates. Pointer positions use the same coordinates and return null outside the app. Persist relative positions across presentation changes.
+
+`setBounds({x,y,width,height})` accepts dimensions from 1 to 8192 and positions with absolute values up to 32768. The host clips overflow; extensions constrain their visible content. Call `startDrag()` after a pointer press, or implement custom dragging with pointer capture and `setBounds`. Host resizing emits `moonsprite:window-host-geometry`; position updates emit `moonsprite:window-moved`.
+
+The initial hit region is empty. `setHitRegion(sourceWidth, sourceHeight, spans)` declares visible and interactive areas using one-pixel-high `{x,y,width}` scanlines, up to 65536 spans and source dimensions of 8192. Regions scale with bounds and clip both painting and hit testing; outside input reaches the underlying app without synthetic forwarding. Include bubbles and controls in the region. Overlays sit above editor content and below host menus and dialogs; they cannot raise their stacking priority or override global cursor preferences.
+
+These APIs support floating tools, information cards, and contextual helpers. Animation, reminders, and relative position policies remain extension business logic.

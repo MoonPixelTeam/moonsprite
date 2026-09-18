@@ -88,6 +88,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
       name: withExportFileExtension(remembered?.name ?? documentName, format),
       format,
       scalePercent: remembered?.scalePercent ?? defaultScale,
+      trimMode: remembered?.trimMode ?? (remembered?.trim ? 'individual' : undefined),
       directory: remembered?.directory || preferences.exportDirectory || defaultFileDirectories.exportDirectory,
       target,
       ...(sliceId ? { sliceId } : {}),
@@ -180,7 +181,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     }
   }
   useImperativeHandle(ref, () => ({open: openExport, closeIfOpen: () => { if (!exportOpen) return false; setExportOpen(false); return true }}))
-  return <>    {exportOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
+  return <>    {exportOpen && <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
       <ModalShell as="form" storageKey="export-layout-v2" fitContentKey={`${exportForm.format}:${exportTarget}:${exportForm.gifFrameRange ?? 'all'}`} defaultWidth={520} defaultHeight={520} minWidth={420} minHeight={360} maxWidth={640} maxHeight={760} resizable={false} className="export-modal" onSubmit={(event) => {
         event.preventDefault()
         void submitExport(false)
@@ -206,6 +207,13 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
             <FormField label={t('app.export.gifDirection')}><ThemedSelect value={exportForm.gifDirection ?? 'forward'} groups={[{ label: t('app.export.gifDirection'), options: [{ value: 'forward', label: t('app.export.gifForward'), description: t('app.export.gifForwardHint') }, { value: 'reverse', label: t('app.export.gifReverse'), description: t('app.export.gifReverseHint') }, { value: 'forward-ping-pong', label: t('app.export.gifForwardPingPong'), description: t('app.export.gifForwardPingPongHint') }, { value: 'reverse-ping-pong', label: t('app.export.gifReversePingPong'), description: t('app.export.gifReversePingPongHint') }] }]} label={t('app.export.gifDirection')} onChange={(gifDirection) => setExportForm({ ...exportForm, gifDirection: gifDirection as NonNullable<ExportOptions['gifDirection']> })} /></FormField>
           </section>}
           <FormField className="export-scale-field" label={exportForm.format === 'svg' ? t('app.export.scale') : t('app.export.scalePercent')}><div className="scale-control"><NumberInput min={1} max={exportForm.format === 'svg' ? 64 : 6400} value={exportForm.format === 'svg' ? exportForm.scalePercent / 100 : exportForm.scalePercent} suffix={exportForm.format === 'svg' ? 'x' : '%'} onValueChange={(value) => setExportForm({ ...exportForm, scalePercent: exportForm.format === 'svg' ? Math.max(100, Math.round(value * 100)) : value })} /><div className="scale-presets" aria-label={exportForm.format === 'svg' ? t('app.export.scalePresets') : t('app.export.scalePercentPresets')}>{exportScalePresets.map((scale) => <button type="button" key={scale} className={exportForm.scalePercent === scale ? 'selected' : ''} onClick={() => setExportForm({ ...exportForm, scalePercent: scale })}>{exportForm.format === 'svg' ? `${scale / 100}x` : `${scale}%`}</button>)}</div></div></FormField>
+          <FormField label={t('app.export.trim')}>
+            <ThemedSelect value={exportForm.trimMode ?? ''} groups={[{ label: t('app.export.trim'), options: [
+              { value: '', label: t('app.export.trimNone'), description: t('app.export.trimNoneHint') },
+              { value: 'individual', label: t('app.export.trimIndividual'), description: t('app.export.trimIndividualHint') },
+              { value: 'common', label: t('app.export.trimCommon'), description: t('app.export.trimCommonHint') }
+            ] }]} label={t('app.export.trim')} onChange={(trimMode) => setExportForm((current) => ({ ...current, trim: undefined, trimMode: trimMode === 'individual' || trimMode === 'common' ? trimMode : undefined }))} />
+          </FormField>
           <FormField className="export-preset-field" label={t('app.export.preset')}>
             <div className="export-preset-control">
               <ThemedSelect value={presetName} groups={[{ label: t('app.export.savedPresets'), options: [{ value: '', label: t('app.export.choosePreset') }, ...presets.map((preset) => ({ value: preset.presetName, label: `${preset.presetName} · ${preset.scalePercent}%` }))] }]} label={t('app.export.preset')} onChange={(value) => { const preset = presets.find((item) => item.presetName === value); setPresetName(value); if (preset) { const { presetName: _presetName, ...options } = preset; const sliceId = options.target === 'slices' && options.sliceId && exportSlices.some((slice) => slice.id === options.sliceId) ? options.sliceId : undefined; const layerId = options.target === 'layer' && options.layerId && exportLayerOptions.some((layer) => layer.value === options.layerId) ? options.layerId : undefined; setExportForm({ ...options, sliceId, layerId }) } }} />

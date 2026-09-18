@@ -3296,7 +3296,9 @@ body .modal.confirm-modal-bulk-actions > footer > button:last-child { grid-colum
 /* Vary the angular distance per segment so the logo accelerates, cruises,
    and decelerates instead of looking like a constant-speed spinner. The
    first and last segments share the same angular velocity for a clean loop. */
-.logo-spin-playing img { animation: moon-logo-spin 760ms linear infinite; }
+/* The logo easter egg is an explicit user action, so it remains available
+   even when passive interface motion is disabled. */
+.logo-spin-playing img { animation: moon-logo-spin 760ms linear infinite !important; }
 @keyframes moon-logo-spin {
   0% { transform: rotate(0deg); }
   12% { transform: rotate(18deg); }

@@ -10,9 +10,10 @@ vi.mock('./canvas-adaptive-contrast', () => ({ canvasAdaptiveContrast: contrast.
 vi.mock('./canvas-display-size', () => ({ syncCanvasDisplaySize: () => ({ x: 1, y: 1 }), clearCanvasBacking: vi.fn() }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); contrast.create.mockReset() })
 
-it.each([['liquify', false], ['liquify', true], ['pencil', false]] as const)('bounds the %s overlay backdrop while dragging=%s', (tool, dragging) => {
+it.each([['liquify', false, 'line'], ['liquify', true, 'line'], ['pencil', false, 'line'], ['line', false, 'line'], ['line', false, 'curve']] as const)('bounds the %s overlay backdrop while dragging=%s, lineKind=%s', (tool, dragging, lineKind) => {
   const session = sessionFromDocument(createDocument('liquify contrast', 32, 32, 'rgba'))
   session.tool = tool
+  session.lineKind = lineKind
   session.brushSize = 4
   session.view.zoom = 2
   session.liquifyRadius = 4
@@ -45,4 +46,13 @@ it.each([['liquify', false], ['liquify', true], ['pencil', false]] as const)('bo
   expect(context.strokeStyle).toBe(contrast.pattern)
   expect(context.stroke).toHaveBeenCalledOnce()
   expect(sampleHotspot).not.toHaveBeenCalled()
+  if (tool === 'line') {
+    session.brushSize = 8
+    act(() => result.current.brushPreviewDrawRef.current())
+    expect(contrast.create.mock.lastCall?.[1].width).toBeGreaterThan(bounds.width)
+    input.drag = { kind: lineKind === 'curve' ? 'curve-shape' : 'shape', start: input.pointer.point!, last: input.pointer.point! }
+    contrast.create.mockClear()
+    act(() => result.current.brushPreviewDrawRef.current())
+    expect(contrast.create).not.toHaveBeenCalled()
+  }
 })

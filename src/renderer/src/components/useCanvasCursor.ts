@@ -466,6 +466,7 @@ export function useCanvasCursor(ports: Ports) {
     const ctrlActive = ports.inputRef.current.ctrlHeld || ctrlKey
     const brushSizeTool =
       ports.session.tool === 'pencil' ||
+      ports.session.tool === 'line' ||
       ports.session.tool === 'airbrush' ||
       ports.session.tool === 'eraser' ||
       ports.session.tool === 'smooth' ||

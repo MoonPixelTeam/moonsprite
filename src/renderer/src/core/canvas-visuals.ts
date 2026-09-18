@@ -11,6 +11,13 @@ export const canvasCursors = {
   rotateN: 'var(--cursor-selection-rotate-n)', rotateNe: 'var(--cursor-selection-rotate-ne)', rotateSe: 'var(--cursor-selection-rotate-se)', rotateS: 'var(--cursor-selection-rotate-s)', rotateSw: 'var(--cursor-selection-rotate-sw)', rotateNw: 'var(--cursor-selection-rotate-nw)', shearHorizontal: 'var(--cursor-selection-shear-horizontal)', shearVertical: 'var(--cursor-selection-shear-vertical)', shearNesw: 'var(--cursor-selection-shear-nesw)', shearNwse: 'var(--cursor-selection-shear-nwse)'
 } as const
 
+/** Build a recolored crosshair cursor while keeping a dark keyline for contrast. */
+export const crosshairCursorForColor = (color: RgbaColor): string => {
+  const stroke = `rgb(${color.r} ${color.g} ${color.b} / ${color.a / 255})`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 31 31"><path d="M15.5 1.5v8M15.5 21.5v8M1.5 15.5h8M21.5 15.5h8" stroke="#000" stroke-width="3" stroke-linecap="square"/><path d="M15.5 1.5v8M15.5 21.5v8M1.5 15.5h8M21.5 15.5h8" stroke="${stroke}" stroke-width="1" stroke-linecap="square"/></svg>`
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 15 15, crosshair`
+}
+
 export const resizeCursors: Record<SelectionHandle, string> = { nw: canvasCursors.nwseResize, n: canvasCursors.nsResize, ne: canvasCursors.neswResize, w: canvasCursors.ewResize, e: canvasCursors.ewResize, sw: canvasCursors.neswResize, s: canvasCursors.nsResize, se: canvasCursors.nwseResize }
 export type SelectionResizeCursor = 'horizontal' | 'vertical' | 'nesw' | 'nwse'
 export const directionalResizeCursors: Record<SelectionResizeCursor, string> = { horizontal: canvasCursors.ewResize, vertical: canvasCursors.nsResize, nesw: canvasCursors.neswResize, nwse: canvasCursors.nwseResize }

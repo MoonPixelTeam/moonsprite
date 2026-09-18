@@ -3,7 +3,7 @@ import type { AntiAliasColorSource, BrushDitherSettings, BrushPaintMode, BrushSh
 import type { BackgroundPatternId } from '@shared/types-layer'
 import type { BlendMode, PaletteEntry, RgbaColor } from '@shared/types-color'
 import type { CanvasAnchor, OutlineSettings, SelectionKind, SelectionMask, SelectionMode, SelectionQuad, SelectionRect } from '@shared/types-selection'
-import type { ColorMode, ImageResizeInterpolation, TileRepeatMode } from '@shared/types-raster'
+import type { ColorMode, ImageResizeInterpolation, PixelFormat, TileRepeatMode } from '@shared/types-raster'
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { FreeTileInstance, FreeTileSourceLayer } from '@shared/types-tiles'
 import type { LayerStyles } from '@shared/types-layer-style'
@@ -181,6 +181,7 @@ export interface WorkspaceToolCommands {
 }
 
 export interface WorkspaceColorCommands {
+  setPixelFormat(format: PixelFormat): void
   setPrimaryColor(color: RgbaColor): void
   setSecondaryColor(color: RgbaColor): void
   replaceColor(target: ColorReplacementTarget, sourceColor: RgbaColor, replacementColor: RgbaColor): void
@@ -551,6 +552,7 @@ export interface WorkspaceDocumentIoCommands {
   resizeActiveCanvas(width: number, height: number, anchor: CanvasAnchor, offsetX?: number, offsetY?: number, trimOutside?: boolean): Promise<void>
   cropActiveCanvas(): Promise<void>
   trimActiveCanvas(): Promise<void>
+  trimActiveCanvasCurrentFrame(): Promise<void>
   resizeActiveImage(width: number, height: number, interpolation: ImageResizeInterpolation): Promise<void>
   convertColorMode(mode: ColorMode): Promise<void>
   saveActive(saveAs?: boolean, options?: SaveAsOptions): Promise<boolean>

@@ -8,10 +8,13 @@ import { renderCanvasBrush } from './canvas-render-brush'
 vi.mock('./canvas-adaptive-contrast', () => ({ canvasAdaptiveContrast: vi.fn(() => '#fff') }))
 afterEach(() => vi.clearAllMocks())
 
-it.each(['solid', 'grain'] as const)('bounds the %s brush backdrop to its rendered outline', texture => {
+it.each([
+  ['pencil', 'line', 'solid'], ['pencil', 'line', 'grain'],
+  ['line', 'line', 'solid'], ['line', 'curve', 'solid']
+] as const)('bounds the %s/%s %s brush backdrop to its rendered outline', (tool, lineKind, texture) => {
   const document = createDocument('outline', 512, 512, 'rgba', false)
   const session = sessionFromDocument(document)
-  Object.assign(session, { tool: 'pencil', brushSize: 16, brushTexture: texture })
+  Object.assign(session, { tool, lineKind, brushSize: 16, brushTexture: texture })
   session.view.zoom = 2
   const input = new CanvasInputState()
   Object.assign(input.pointer, { visible: true, point: { x: 200, y: 200 } })
@@ -54,7 +57,7 @@ it.each(['solid', 'grain'] as const)('bounds the %s brush backdrop to its render
 
   // View navigation and an independent brush overlay never need this DOM read.
   input.pointer.point = { x: 200, y: 200 }
-  for (const kind of ['pan', 'zoom-drag', 'rotate-view'] as const) {
+  for (const kind of ['pan', 'zoom-drag', 'rotate-view', 'shape', 'curve-shape'] as const) {
     vi.mocked(args.pointerOverCanvas).mockClear()
     args.drag = { kind } as NonNullable<typeof args.drag>
     args.activeDrag = args.drag

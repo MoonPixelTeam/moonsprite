@@ -1,4 +1,4 @@
-import { deviceTemporaryTool, deviceSampleUsesSecondary } from './canvas-device-tools'
+import { deviceTemporaryTool, deviceSampleUsesSecondary, rightClickToolEvent } from './canvas-device-tools'
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
 import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import { createRuntimeLatencyReporter, measureRuntimeStages, runtimeEventStartTime } from '@/core/runtime-diagnostic-stages'
@@ -181,6 +181,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
       !ports.canvasResizePreviewRef.current &&
       ports.modifierActive(wheelModifiers, 'brushSizeWheelAdjust') &&
       (ports.session.tool === 'pencil' ||
+        ports.session.tool === 'line' ||
         ports.session.tool === 'airbrush' ||
         ports.session.tool === 'eraser' ||
         ports.session.tool === 'smooth' ||
@@ -296,8 +297,13 @@ export function useCanvasDeviceRouter(ports: Ports) {
     ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
     pressureAdapterRef.current.release(event.pointerId)
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent, event.pointerType === 'mouse')) return
+    ports.inputRef.current.clearTemporaryTool()
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
+    if (event.button === 2 && ports.tabletPreferences.rightClickAction !== 'background' && !(event.pointerType === 'pen' && (event.buttons & 32))) {
+      ports.inputRef.current.temporaryRightClickAction = ports.tabletPreferences.rightClickAction
+    }
+    event = rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)
     const session = ports.liveInputSession()
     const navigationGesture =
       event.button === 1 ||
@@ -319,14 +325,16 @@ export function useCanvasDeviceRouter(ports: Ports) {
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
-    if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
-    else ports.inputRef.current.clearTemporaryTool(event.pointerId)
+    if (!ports.inputRef.current.temporaryRightClickAction) {
+      if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
+      else ports.inputRef.current.clearTemporaryTool(event.pointerId)
+    }
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
       event.preventDefault()
       return
     }
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
-    measurePointerInput('pointer-move', () => ports.handlePointerMove(event))
+    measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)))
     ports.syncPenCursor(event)
   }
 
@@ -336,7 +344,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-up', pointerType: event.pointerType }))
     try {
-      measurePointerInput('pointer-up', () => ports.handlePointerUp(event))
+      measurePointerInput('pointer-up', () => ports.handlePointerUp(rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)))
       ports.syncPenCursor(event)
     } finally {
       ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)

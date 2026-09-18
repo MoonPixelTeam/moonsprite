@@ -1,5 +1,8 @@
 export type ColorMode = 'rgba' | 'indexed' | 'grayscale'
 
+/** Target channel precision for RGBA projects; runtime rasters remain RGBA8. */
+export type PixelFormat = 'rgba32' | 'rgb24' | 'rgb565' | 'rgb555' | 'rgb332' | 'rgba4444' | 'rgba5551' | 'argb1555'
+
 export type RasterFormat = 'rgba' | 'indexed'
 
 export type ImageResizeInterpolation = 'nearest' | 'smooth'

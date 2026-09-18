@@ -25,6 +25,7 @@ import { createExportConflictHandler } from './workspace-export-conflicts'
 
 import { requestTilesetPanelVisibility, documentUsesTilesetPanel } from './workspace-tileset-panel'
 import { normalizeAnimationSelection } from './workspace-animation-selection'
+import { loadEditorPreferences } from '@/core/file-preferences'
 
 const applyStoredPaletteToNewDocument = (document: SpriteDocument, palette: StoredPalette): void => {
   const paletteSession = sessionFromDocument(document)
@@ -78,7 +79,7 @@ export function createWorkspaceSessionCommands({ get, set, recording, services: 
         const resource = await window.moonSprite.getResourceInfo()
         const check = checkResourceLimit(width, height, 1, colorMode, resource)
         if (!check.allowed) throw new Error(check.reason)
-        const document = createDocument(name || tr('workspace.defaultName'), width, height, colorMode, recordDrawing)
+        const document = createDocument(name || tr('workspace.defaultName'), width, height, colorMode, recordDrawing, loadEditorPreferences().pixelFormat)
         const previousPaletteId = readStoredString(ACTIVE_PALETTE_ID_STORAGE_KEY)
         if (previousPaletteId) {
           try {

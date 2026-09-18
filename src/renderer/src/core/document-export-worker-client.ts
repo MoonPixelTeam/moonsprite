@@ -13,6 +13,8 @@ export interface DocumentExportWorkerRequest {
   job: DocumentExportWorkerJob
   format: DocumentExportWorkerFormat
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   selection?: SelectionMask | null
   slices?: DocumentSlice[]
   layerIds?: string[]

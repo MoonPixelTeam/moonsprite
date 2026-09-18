@@ -1,4 +1,5 @@
 import { unzipSync } from 'fflate'
+import { isPixelFormat } from './pixel-format'
 import { type LayerMask, type RasterLayer } from '@shared/types-layer'
 import { type ColorMode, type RasterFormat } from '@shared/types-raster'
 import { type FreeTileCelData, type FreeTileSourceLayer, type TilemapCelData, type TilemapCell, type Tileset } from '@shared/types-tiles'
@@ -589,6 +590,7 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
     width: source.width,
     height: source.height,
     colorMode: mode,
+    pixelFormat: mode === 'rgba' ? (isPixelFormat(source.pixelFormat) ? source.pixelFormat : 'rgba32') : undefined,
     layers,
     groups,
     activeLayerId,

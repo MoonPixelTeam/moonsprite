@@ -114,6 +114,8 @@ export interface CanvasRenderContext {
     gridColors: import('@/core/file-preferences').GridColorPreferences
     selectionPreviewColorMode: import('@/core/file-preferences').SelectionPreviewColorMode
     selectionPreviewColor: import('@shared/types-color').RgbaColor
+    brushEdgeColor?: import('@shared/types-color').RgbaColor
+    brushEdgeThickness: number
     activeBrushImage: import('@shared/types-brush').ImageBrush | null
     activeBrushPreviewMode: import('@shared/types-brush').BrushPaintMode
     activeBrushTexture: import('@shared/types-brush').BrushTexture
@@ -610,6 +612,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     sliceTool,
     fillKind,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     drawingBrushPreviewEnabled,
     canvasStatusBottomInset,
     gridSnapActive,
@@ -1083,6 +1087,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     drag,
@@ -1108,6 +1114,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     drag,
@@ -1131,6 +1139,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     activeDrag,

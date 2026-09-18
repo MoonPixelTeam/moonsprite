@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   DEFAULT_COLOR_EDITOR_MODES,
+  RIGHT_CLICK_ACTIONS,
+  parseRightClickAction,
   EYEDROPPER_MAGNIFIER_SIZE_VALUES,
   DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
   DEFAULT_QUICK_COMMAND_BARS,
@@ -18,6 +20,7 @@ import {
   type BrushPreviewMode,
   type BodyFontScale,
   type CursorScale,
+  type CursorColorMode,
   type DocumentSizePreset,
   type EyedropperMagnifierSize,
   type EyedropperMagnifierStyle,
@@ -38,8 +41,10 @@ import {
   type UiScale,
   type ViewDragSensitivity,
   type WheelZoomMode,
-  type ZoomToolDragMode
+  type ZoomToolDragMode,
+  type PixelFormat
 } from '@/core/file-preferences'
+import { PIXEL_FORMATS } from '@/core/pixel-format'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { clearStoredValuesExcept } from '@/core/storage'
 import { GALLERY_PINS_STORAGE_KEY, RECENT_PROJECTS_STORAGE_KEY } from '@/core/home-history'
@@ -76,14 +81,15 @@ interface PreferencesDialogProps {
   onChooseAndInstallExtension: () => Promise<boolean>
 }
 
-export type PreferenceSection = 'general' | 'quickCommands' | 'appearance' | 'theme' | 'input' | 'tablet' | 'tools' | 'undo' | 'files' | 'colorLayers' | 'presets' | 'extensions' | 'reset'
+export type PreferenceSection = 'general' | 'quickCommands' | 'appearance' | 'theme' | 'cursor' | 'editing' | 'tablet' | 'tools' | 'undo' | 'files' | 'colorLayers' | 'presets' | 'extensions' | 'reset'
 
 const PREFERENCE_SECTIONS: Array<[PreferenceSection, TranslationKey]> = [
-  ['general', 'preferences.sections.general'],
+  ['general', 'preferences.groups.interface'],
   ['quickCommands', 'preferences.sections.quickCommands'],
   ['appearance', 'preferences.sections.appearance'],
   ['theme', 'preferences.sections.theme'],
-  ['input', 'preferences.sections.input'],
+  ['cursor', 'preferences.sections.cursor'],
+  ['editing', 'preferences.sections.editing'],
   ['tools', 'preferences.sections.tools'],
   ['undo', 'preferences.sections.undo'],
   ['files', 'preferences.sections.files'],
@@ -99,14 +105,15 @@ const QUICK_COMMAND_SEARCH_KEYS = Object.values(QUICK_COMMAND_METADATA).flatMap(
 const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]> = {
   general: ['preferences.groups.interface', 'preferences.groups.project', 'preferences.language', 'preferences.uiScale', 'preferences.bodyFontSize', 'preferences.toolIconScale', 'preferences.animations', 'preferences.timelapseRecording', 'preferences.diagnostics.mode', 'preferences.diagnostics.off', 'preferences.diagnostics.memory', 'preferences.diagnostics.full'],
   quickCommands: ['preferences.sections.quickCommands', 'preferences.groups.quickCommandLayout', 'preferences.quickCommandBar', 'preferences.quickCommandBarTranslucent', 'preferences.quickCommandBarTranslucentHint', 'preferences.quickCommandOrderHint', 'preferences.quickCommandBarName', 'preferences.quickCommandBarEdge', ...QUICK_COMMAND_SEARCH_KEYS],
-  appearance: ['preferences.groups.canvas', 'preferences.canvasViewScrollbars', 'preferences.canvasViewScrollbarsHint', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
+  appearance: ['preferences.groups.canvas', 'preferences.checkerSize', 'preferences.checkerColors', 'preferences.lightColor', 'preferences.darkColor', 'preferences.pixelGridColor', 'preferences.gridColor', 'preferences.sliceColor', 'preferences.freeTileInstanceOutlineColor', 'preferences.textBoxColor', 'preferences.canvasResizeColor', 'preferences.luminanceScope'],
   theme: ['preferences.groups.theme', 'preferences.theme.available', 'preferences.theme.current'],
-  input: ['preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position'],
-  tablet: ['preferences.groups.tablet', 'preferences.tablet.api', 'preferences.tablet.touchMode', 'preferences.tablet.pressure', 'preferences.tablet.eraserTip', 'preferences.tablet.barrelButton', 'preferences.tablet.rightClick', 'preferences.tablet.twoFingerZoom', 'preferences.tablet.twoFingerRotate', 'preferences.tablet.tilt', 'preferences.tablet.twist'],
-  tools: ['preferences.groups.previews', 'preferences.brushPreview', 'preferences.drawingBrushPreview', 'preferences.selectionCrosshair', 'preferences.selectionPreviewColor', 'preferences.selectionPreviewColor.auto', 'preferences.selectionPreviewColor.custom', 'preferences.selectionPreviewCustomColor', 'preferences.selectionSizeVisible', 'preferences.moveLayerContentPreview', 'preferences.moveLayerClickFlash', 'preferences.moveLayerClickFlashDuration', 'preferences.groups.alignment', 'preferences.gridAlignment', 'preferences.gridAlignmentHint', 'preferences.smartAlignment', 'preferences.smartAlignmentHint', 'preferences.alignmentGuides', 'preferences.alignmentGuidesHint', 'preferences.alignmentThreshold', 'preferences.alignmentThresholdHint', 'preferences.groups.drawing', 'preferences.gradientLineVisible', 'preferences.gradientLineColor', 'preferences.shiftLinePreview', 'preferences.balancedLine', 'preferences.balancedLineHint', 'preferences.optimizedRotation', 'preferences.optimizedRotationHint', 'preferences.lineDirectionStep', 'preferences.lassoClosed', 'preferences.eyedropperPencil', 'preferences.groups.eyedropper', 'preferences.eyedropperQuickSelect', 'preferences.eyedropperMagnifier', 'preferences.eyedropperMagnifierSize', 'preferences.eyedropperMagnifierStyle', 'preferences.eyedropperMagnifierDistortion'],
+  cursor: ['preferences.selectionSizeVisible', 'preferences.groups.cursor', 'preferences.localCursor', 'preferences.cursorScale', 'preferences.groups.previews', 'preferences.brushPreview', 'preferences.brushPreview.none', 'preferences.brushPreview.edge', 'preferences.brushPreview.full', 'preferences.brushPreview.fullEdge', 'preferences.drawingBrushPreview', 'preferences.selectionCrosshair', 'preferences.selectionPreviewColor', 'preferences.selectionPreviewColor.auto', 'preferences.selectionPreviewColor.custom', 'preferences.selectionPreviewCustomColor', 'preferences.groups.cursorAppearance', 'preferences.cursorColor', 'preferences.cursorColorGroup', 'preferences.cursorColor.auto', 'preferences.cursorColor.custom', 'preferences.brushEdgeThickness'],
+  editing: ['preferences.groups.zoom', 'preferences.wheelZoom', 'preferences.wheelZoomMode', 'preferences.zoomMode', 'preferences.viewDragSensitivity', 'preferences.position', 'preferences.canvasViewScrollbars', 'preferences.canvasViewScrollbarsHint', 'preferences.sections.editing', 'preferences.tablet.rightClick', 'preferences.tablet.rightClickHint', ...RIGHT_CLICK_ACTIONS.map((value) => value === 'foreground-eyedropper' ? 'preferences.tablet.rightClick.foreground' as const : `preferences.tablet.rightClick.${value}` as const)],
+  tablet: ['preferences.groups.tablet', 'preferences.tablet.api', 'preferences.tablet.touchMode', 'preferences.tablet.pressure', 'preferences.tablet.eraserTip', 'preferences.tablet.barrelButton', 'preferences.tablet.twoFingerZoom', 'preferences.tablet.twoFingerRotate', 'preferences.tablet.tilt', 'preferences.tablet.twist'],
+  tools: ['preferences.groups.previews', 'preferences.moveLayerContentPreview', 'preferences.moveLayerClickFlash', 'preferences.moveLayerClickFlashDuration', 'preferences.groups.alignment', 'preferences.gridAlignment', 'preferences.gridAlignmentHint', 'preferences.smartAlignment', 'preferences.smartAlignmentHint', 'preferences.alignmentGuides', 'preferences.alignmentGuidesHint', 'preferences.alignmentThreshold', 'preferences.alignmentThresholdHint', 'preferences.groups.drawing', 'preferences.gradientLineVisible', 'preferences.gradientLineColor', 'preferences.shiftLinePreview', 'preferences.balancedLine', 'preferences.balancedLineHint', 'preferences.optimizedRotation', 'preferences.optimizedRotationHint', 'preferences.lineDirectionStep', 'preferences.lassoClosed', 'preferences.eyedropperPencil', 'preferences.groups.eyedropper', 'preferences.eyedropperQuickSelect', 'preferences.eyedropperMagnifier', 'preferences.eyedropperMagnifierSize', 'preferences.eyedropperMagnifierStyle', 'preferences.eyedropperMagnifierDistortion'],
   undo: ['preferences.groups.undo', 'preferences.historyLimitEnabled', 'preferences.historyLimitEnabledHint', 'preferences.historyLimit', 'preferences.historyLimitHint', 'preferences.groups.localHistory'],
   files: ['preferences.groups.locations', 'preferences.saveDirectory', 'preferences.exportDirectory', 'preferences.groups.formats', 'preferences.saveFormat', 'preferences.exportFormat', 'preferences.groups.recovery', 'preferences.recovery', 'preferences.recoveryRetentionDays', 'preferences.recoveryRetentionDaysHint'],
-  colorLayers: ['preferences.colorModes', 'preferences.restoreDefaults'],
+  colorLayers: ['preferences.colorModes', 'preferences.restoreDefaults', 'preferences.pixelFormat', 'preferences.pixelFormatHint', ...PIXEL_FORMATS.map((format) => `preferences.pixelFormat.${format}` as const)],
   presets: ['preferences.newDocumentPresets', 'preferences.addSize', 'preferences.exportScalePresets', 'preferences.addScale', 'preferences.layerColors', 'preferences.addColor', 'preferences.restoreDefaults'],
   extensions: ['preferences.groups.extensions', 'app.menu.file.scripts', 'preferences.extensions.add', 'preferences.extensions.openFolder', 'preferences.extensions.empty', 'preferences.extensions.entry', 'preferences.extensions.commands', 'preferences.extensions.panels', 'preferences.extensions.menus', 'preferences.extensions.enabled', 'preferences.extensions.disabled', 'preferences.extensions.enable', 'preferences.extensions.disable', 'preferences.extensions.uninstall'],
   reset: ['preferences.resetDescription', 'preferences.resetAll']
@@ -145,6 +152,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const [section, setSection] = useState<PreferenceSection>(initialSection)
   const [query, setQuery] = useState('')
   const [preferences, setPreferences] = useState(loadEditorPreferences)
+  const appliedPixelFormat = useRef(preferences.pixelFormat)
   const [defaultDirectories, setDefaultDirectories] = useState({ saveDirectory: 'gallery', exportDirectory: 'exports' })
   const [extensions, setExtensions] = useState<StoredExtension[]>([])
   const [extensionsLoading, setExtensionsLoading] = useState(false)
@@ -441,6 +449,10 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     const layerDisplayColorPresets = parseLayerDisplayColorPresets(JSON.stringify(preferences.layerDisplayColorPresets))
     setPreferences((current) => ({ ...current, documentSizePresets, exportScalePresets, layerDisplayColorPresets }))
     saveEditorPreferences({ ...preferences, documentSizePresets, exportScalePresets, layerDisplayColorPresets })
+    if (appliedPixelFormat.current !== preferences.pixelFormat) {
+      useWorkspace.getState().setPixelFormat(preferences.pixelFormat)
+      appliedPixelFormat.current = preferences.pixelFormat
+    }
     window.dispatchEvent(new Event('moonsprite:preferences-changed'))
     onPresetChange(documentSizePresets, exportScalePresets)
   }
@@ -469,25 +481,16 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     try { await operation() } catch (error) { useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error)) } finally { setUsageStatisticsBusy(false) }
   }
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
-  const preferenceSectionMatches = useMemo(() => new Map(PREFERENCE_SECTIONS.map(([value, labelKey]) => [value, !normalizedQuery || [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key))].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))])), [locale, normalizedQuery, t])
+  const preferenceSectionMatches = useMemo(() => new Map(PREFERENCE_SECTIONS.map(([value, labelKey]) => [value, !normalizedQuery || [t(labelKey), ...PREFERENCE_SEARCH_KEYS[value].map((key) => t(key)), ...(value === 'general' ? ['交互提示', '悬浮描述', '按键显示', '按键显示尺寸', '停留时长'] : [])].some((label) => label.toLocaleLowerCase(locale).includes(normalizedQuery))])), [locale, normalizedQuery, t])
   const visiblePreferenceSections = PREFERENCE_SECTIONS
-  const hasPreferenceMatches = !normalizedQuery || Array.from(preferenceSectionMatches.values()).some(Boolean)
   const preferenceSearch = useMemo(() => ({ query: normalizedQuery, matches: (value: ReactNode) => !normalizedQuery || (() => {
     const text = searchText(value)
     return text.toLocaleLowerCase(locale).includes(normalizedQuery)
   })() }), [locale, normalizedQuery])
-  /* Keep every category visible while searching; unmatched categories are
-     muted so the user can still open and inspect them. */
-  useEffect(() => {
-    if (!normalizedQuery || preferenceSectionMatches.get(section)) return
-    const first = PREFERENCE_SECTIONS.find(([value]) => preferenceSectionMatches.get(value))?.[0]
-    if (first) setSection(first)
-  }, [normalizedQuery, preferenceSectionMatches, section])
 
   return <div className="modal-backdrop" role="presentation"><ModalShell storageKey="preferences" defaultWidth={720} defaultHeight={560} minWidth={620} minHeight={460} fitContent={false} className="settings-modal" role="dialog" aria-label={t('preferences.title')}>
     <DialogHeader eyebrow={t('preferences.eyebrow')} title={t('preferences.title')} closeLabel={t('common.close')} onClose={onClose} />
     <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey), muted: Boolean(normalizedQuery && !preferenceSectionMatches.get(value)) }))} onChange={setSection} /></aside><PreferenceSearchContext.Provider value={preferenceSearch}><main className="component-scrollbar preference-settings-scroll">
-      {!hasPreferenceMatches ? <p className="preference-search-empty">{t('preferences.searchNoResults')}</p> : <>
       {section === 'general' && <>
         <PreferenceGroup title={t('preferences.groups.interface')}>
           <FormField className="preference-field" label={t('preferences.language')}><ThemedSelect value={preferences.language} groups={[{ label: t('preferences.languageGroup'), options: AVAILABLE_APP_LOCALES.map((value) => ({ value, label: localeDisplayName(value, locale) })) }]} label={t('preferences.language')} onChange={(value) => update('language', value as AppLocale)} /></FormField>
@@ -503,6 +506,12 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
             const uiMotionLevel = value as UiMotionLevel
             setPreferences((current) => ({ ...current, uiMotionLevel, animationsEnabled: uiMotionLevel !== 'off' }))
           }} /></FormField>
+        </PreferenceGroup>
+        <PreferenceGroup title="交互提示">
+          <PreferenceToggle label="悬浮描述" checked={preferences.tooltipsEnabled} onChange={(enabled) => update('tooltipsEnabled', enabled)} tooltip="控制界面中的悬浮描述提示，默认开启。" />
+          {toggle('按键显示', preferences.keyDisplayEnabled, (value) => update('keyDisplayEnabled', value), '在画布右下角显示最近按下的键位，提示会自动淡出。')}
+          <FormField className="preference-field" label="按键显示尺寸"><ThemedSelect value={String(preferences.keyDisplaySize)} groups={[{ label: '按键显示尺寸', options: [{ value: '0.75', label: '小' }, { value: '1', label: '标准' }, { value: '1.25', label: '大' }, { value: '1.5', label: '特大' }] }]} label="按键显示尺寸" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplaySize', Number(value))} /></FormField>
+          <FormField className="preference-field" label="停留时长"><ThemedSelect value={String(preferences.keyDisplayDuration)} groups={[{ label: '停留时长', options: KEY_DISPLAY_DURATIONS.map((duration) => ({ value: String(duration), label: `${duration / 1000} 秒` })) }]} label="停留时长" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplayDuration', Number(value) as KeyDisplayDuration)} /></FormField>
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.project')}>
           {toggle(t('preferences.timelapseRecording'), preferences.timelapseRecordingEnabled, (value) => update('timelapseRecordingEnabled', value), t('preferences.timelapseRecordingHint'))}
@@ -531,7 +540,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       </PreferenceGroup>}
       {section === 'appearance' && <>
         <PreferenceGroup title={t('preferences.groups.canvas')}>
-          {toggle(t('preferences.canvasViewScrollbars'), preferences.canvasViewScrollbarsEnabled, (value) => update('canvasViewScrollbarsEnabled', value), t('preferences.canvasViewScrollbarsHint'))}
           <FormField className="preference-field" label={t('preferences.checkerSize')}><NumberInput aria-label={t('preferences.checkerSize')} min={1} max={256} suffix="px" value={preferences.checkerboard.size} onValueChange={(size) => update('checkerboard', { ...preferences.checkerboard, size: Math.round(size) })} /></FormField>
           <FormField className="preference-field" label={t('preferences.luminanceScope')}><ThemedSelect value={preferences.relativeLuminanceScope} groups={[{ label: t('preferences.luminanceScopeGroup'), options: [{ value: 'canvas', label: t('preferences.luminanceScope.canvas') }, { value: 'app', label: t('preferences.luminanceScope.app') }] }]} label={t('preferences.luminanceScope')} onChange={(value) => update('relativeLuminanceScope', value as RelativeLuminanceScope)} /></FormField>
           <div className="preference-checker-colors"><SettingsSectionHeader className="preference-checker-color-heading" title={t('preferences.checkerColors')} actions={<button type="button" className="quiet-button" onClick={() => clearVisualOverrides(['checkerLight', 'checkerDark'])}><PixelUtilityIcon kind="restore" />{t('preferences.theme.restore')}</button>} /><div className="preference-color-value-list"><ColorValueControl color={preferences.checkerboard.lightColor} density="regular" onChange={(lightColor) => setVisualOverride('checkerLight', { ...lightColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.lightColor')} fillWithColor /><ColorValueControl color={preferences.checkerboard.darkColor} density="regular" onChange={(darkColor) => setVisualOverride('checkerDark', { ...darkColor, a: 255 })} label={t('preferences.checkerColors')} roleLabel={t('preferences.darkColor')} fillWithColor /></div></div>
@@ -540,23 +548,36 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         </PreferenceGroup>
       </>}
       {section === 'theme' && <ThemePreferencesSection preferences={preferences} onChange={setPreferences} />}
-      {section === 'input' && <>
+      {section === 'cursor' && <>
         <PreferenceGroup title={t('preferences.groups.cursor')}>
           {toggle(t('preferences.localCursor'), !preferences.useLocalCursors, (value) => update('useLocalCursors', !value), t('preferences.localCursorHint'))}
           <FormField className="preference-field" label={t('preferences.cursorScale')}><ThemedSelect value={String(preferences.cursorScale)} groups={[{ label: t('preferences.cursorScaleGroup'), options: [{ value: '1', label: '100%' }, { value: '1.25', label: '125%' }, { value: '1.5', label: '150%' }, { value: '2', label: '200%' }] }]} label={t('preferences.cursorScale')} disabled={preferences.useLocalCursors} onChange={(value) => update('cursorScale', Number(value) as CursorScale)} /></FormField>
         </PreferenceGroup>
+        <PreferenceGroup title={t('preferences.groups.previews')}>
+          <FormField className="preference-field" label={t('preferences.brushPreview')}><ThemedSelect value={preferences.brushPreviewMode} groups={[{ label: t('preferences.brushPreviewGroup'), options: [{ value: 'none', label: t('preferences.brushPreview.none') }, { value: 'edge', label: t('preferences.brushPreview.edge') }, { value: 'full', label: t('preferences.brushPreview.full') }, { value: 'full-edge', label: t('preferences.brushPreview.fullEdge') }] }]} label={t('preferences.brushPreview')} onChange={(value) => update('brushPreviewMode', value as BrushPreviewMode)} /></FormField>
+          {preferences.brushPreviewMode === 'full-edge' && toggle(t('preferences.drawingBrushPreview'), preferences.drawingBrushPreviewEnabled, (value) => update('drawingBrushPreviewEnabled', value))}
+          {toggle(t('preferences.selectionSizeVisible'), preferences.selectionSizeVisible, (value) => update('selectionSizeVisible', value))}
+          {toggle(t('preferences.selectionCrosshair'), preferences.selectionCrosshair, (value) => update('selectionCrosshair', value))}
+          <FormField className="preference-field" label={t('preferences.selectionPreviewColor')}><ThemedSelect value={preferences.selectionPreviewColorMode} groups={[{ label: t('preferences.selectionPreviewColorGroup'), options: [{ value: 'auto', label: t('preferences.selectionPreviewColor.auto') }, { value: 'custom', label: t('preferences.selectionPreviewColor.custom') }] }]} label={t('preferences.selectionPreviewColor')} onChange={(value) => update('selectionPreviewColorMode', value as SelectionPreviewColorMode)} /></FormField>
+          {preferences.selectionPreviewColorMode === 'custom' && <FormField className="preference-field" label={t('preferences.selectionPreviewCustomColor')}><ColorValueControl color={preferences.selectionPreviewColor} density="regular" onChange={(selectionPreviewColor) => update('selectionPreviewColor', selectionPreviewColor)} label={t('preferences.selectionPreviewCustomColor')} roleLabel={t('preferences.selectionPreviewCustomColor')} fillWithColor inPalette={false} /></FormField>}
+        </PreferenceGroup>
+        <PreferenceGroup title={t('preferences.groups.cursorAppearance')}>
+          <FormField className="preference-field" label={t('preferences.cursorColor')}><ThemedSelect value={preferences.cursorColorMode} groups={[{ label: t('preferences.cursorColorGroup'), options: [{ value: 'auto', label: t('preferences.cursorColor.auto') }, { value: 'custom', label: t('preferences.cursorColor.custom') }] }]} label={t('preferences.cursorColor')} onChange={(value) => update('cursorColorMode', value as CursorColorMode)} /></FormField>
+          {preferences.cursorColorMode === 'custom' && <FormField className="preference-field" label={t('preferences.cursorColor')}><ColorValueControl color={preferences.cursorColor} density="regular" onChange={(cursorColor) => update('cursorColor', cursorColor)} label={t('preferences.cursorColor')} roleLabel={t('preferences.cursorColor')} fillWithColor inPalette={false} /></FormField>}
+          <FormField className="preference-field" label={t('preferences.brushEdgeThickness')}><NumberInput aria-label={t('preferences.brushEdgeThickness')} min={1} max={8} suffix="px" value={preferences.brushEdgeThickness} onValueChange={(brushEdgeThickness) => update('brushEdgeThickness', Math.round(brushEdgeThickness))} /></FormField>
+        </PreferenceGroup>
+      </>}
+      {section === 'editing' && <>
+        <PreferenceGroup title={t('preferences.sections.editing')}>
+          <FormField className="preference-field" label={t('preferences.tablet.rightClick')} tooltip={t('preferences.tablet.rightClickHint')}><ThemedSelect value={preferences.tablet.rightClickAction} groups={[{ label: t('preferences.tablet.rightClick'), options: RIGHT_CLICK_ACTIONS.map((value) => ({ value, label: t(value === 'foreground-eyedropper' ? 'preferences.tablet.rightClick.foreground' : `preferences.tablet.rightClick.${value}`) })) }]} label={t('preferences.tablet.rightClick')} onChange={(value) => update('tablet', { ...preferences.tablet, rightClickAction: parseRightClickAction(value) })} /></FormField>
+        </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.zoom')}>
+          {toggle(t('preferences.canvasViewScrollbars'), preferences.canvasViewScrollbarsEnabled, (value) => update('canvasViewScrollbarsEnabled', value), t('preferences.canvasViewScrollbarsHint'))}
           {toggle(t('preferences.wheelZoom'), preferences.wheelZoomEnabled, (value) => update('wheelZoomEnabled', value))}
           <FormField className="preference-field" label={t('preferences.wheelZoomMode')}><ThemedSelect value={preferences.wheelZoomMode} groups={[{ label: t('preferences.wheelZoomModeGroup'), options: [{ value: 'smooth', label: t('preferences.wheelZoomMode.smooth') }, { value: 'stepped', label: t('preferences.wheelZoomMode.stepped') }] }]} label={t('preferences.wheelZoomMode')} disabled={!preferences.wheelZoomEnabled} onChange={(value) => update('wheelZoomMode', value as WheelZoomMode)} /></FormField>
           <FormField className="preference-field" label={t('preferences.zoomMode')}><ThemedSelect value={preferences.zoomToolDragMode} groups={[{ label: t('preferences.zoomModeGroup'), options: [{ value: 'smooth', label: t('preferences.zoomMode.smooth') }, { value: 'stepped', label: t('preferences.zoomMode.stepped') }] }]} label={t('preferences.zoomMode')} onChange={(value) => update('zoomToolDragMode', value as ZoomToolDragMode)} /></FormField>
           <FormField className="preference-field" label={t('preferences.viewDragSensitivity')}><ThemedSelect value={String(preferences.viewDragSensitivity)} groups={[{ label: t('preferences.viewDragSensitivityGroup'), options: VIEW_DRAG_SENSITIVITY_VALUES.map((value) => ({ value: String(value), label: `${value}x` })) }]} label={t('preferences.viewDragSensitivity')} onChange={(value) => update('viewDragSensitivity', Number(value) as ViewDragSensitivity)} /></FormField>
           <FormField className="preference-field" label={t('preferences.position')}><ThemedSelect value={preferences.rotationIndicatorPosition} groups={[{ label: t('preferences.positionGroup'), options: [{ value: 'view', label: t('preferences.position.view') }, { value: 'canvas', label: t('preferences.position.canvas') }, { value: 'pointer-left', label: t('preferences.position.pointerLeft') }] }]} label={t('preferences.position')} onChange={(value) => update('rotationIndicatorPosition', value as RotationIndicatorPosition)} /></FormField>
-        </PreferenceGroup>
-        <PreferenceGroup title="交互提示">
-          <PreferenceToggle label="悬浮描述" checked={preferences.tooltipsEnabled} onChange={(enabled) => update('tooltipsEnabled', enabled)} tooltip="控制界面中的悬浮描述提示，默认开启。" />
-          {toggle('按键显示', preferences.keyDisplayEnabled, (value) => update('keyDisplayEnabled', value), '在画布右下角显示最近按下的键位，提示会自动淡出。')}
-          <FormField className="preference-field" label="按键显示尺寸"><ThemedSelect value={String(preferences.keyDisplaySize)} groups={[{ label: '按键显示尺寸', options: [{ value: '0.75', label: '小' }, { value: '1', label: '标准' }, { value: '1.25', label: '大' }, { value: '1.5', label: '特大' }] }]} label="按键显示尺寸" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplaySize', Number(value))} /></FormField>
-          <FormField className="preference-field" label="停留时长"><ThemedSelect value={String(preferences.keyDisplayDuration)} groups={[{ label: '停留时长', options: KEY_DISPLAY_DURATIONS.map((duration) => ({ value: String(duration), label: `${duration / 1000} 秒` })) }]} label="停留时长" disabled={!preferences.keyDisplayEnabled} onChange={(value) => update('keyDisplayDuration', Number(value) as KeyDisplayDuration)} /></FormField>
         </PreferenceGroup>
       </>}
       {section === 'tablet' && <PreferenceGroup title={t('preferences.groups.tablet')}>
@@ -565,7 +586,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.tablet.pressure'), preferences.tablet.pressureEnabled, (value) => update('tablet', { ...preferences.tablet, pressureEnabled: value }), t('preferences.tablet.pressureHint'))}
           {toggle(t('preferences.tablet.eraserTip'), preferences.tablet.eraserTipEnabled, (value) => update('tablet', { ...preferences.tablet, eraserTipEnabled: value }))}
           <FormField className="preference-field" label={t('preferences.tablet.barrelButton')}><ThemedSelect value={preferences.tablet.barrelButtonAction} groups={[{ label: t('preferences.tablet.barrelButtonGroup'), options: [{ value: 'eraser', label: t('preferences.tablet.barrelButton.eraser') }, { value: 'eyedropper', label: t('preferences.tablet.barrelButton.eyedropper') }, { value: 'hand', label: t('preferences.tablet.barrelButton.hand') }, { value: 'disabled', label: t('preferences.tablet.barrelButton.disabled') }] }]} label={t('preferences.tablet.barrelButton')} onChange={(value) => update('tablet', { ...preferences.tablet, barrelButtonAction: value as TabletBarrelButtonAction })} /></FormField>
-          <FormField className="preference-field" label={t('preferences.tablet.rightClick')} tooltip={t('preferences.tablet.rightClickHint')}><ThemedSelect value={preferences.tablet.rightClickAction} groups={[{ label: t('preferences.tablet.rightClick'), options: [{ value: 'background', label: t('preferences.tablet.rightClick.background') }, { value: 'foreground-eyedropper', label: t('preferences.tablet.rightClick.foreground') }] }]} label={t('preferences.tablet.rightClick')} onChange={(value) => update('tablet', { ...preferences.tablet, rightClickAction: value === 'foreground-eyedropper' ? value : 'background' })} /></FormField>
           {toggle(t('preferences.tablet.twoFingerZoom'), preferences.tablet.twoFingerZoomEnabled, (value) => update('tablet', { ...preferences.tablet, twoFingerZoomEnabled: value }))}
           {toggle(t('preferences.tablet.twoFingerRotate'), preferences.tablet.twoFingerRotateEnabled, (value) => update('tablet', { ...preferences.tablet, twoFingerRotateEnabled: value }))}
           {toggle(t('preferences.tablet.tilt'), preferences.tablet.tiltEnabled, (value) => update('tablet', { ...preferences.tablet, tiltEnabled: value }))}
@@ -573,12 +593,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         </PreferenceGroup>}
       {section === 'tools' && <>
         <PreferenceGroup title={t('preferences.groups.previews')}>
-          <FormField className="preference-field" label={t('preferences.brushPreview')}><ThemedSelect value={preferences.brushPreviewMode} groups={[{ label: t('preferences.brushPreviewGroup'), options: [{ value: 'none', label: t('preferences.brushPreview.none') }, { value: 'edge', label: t('preferences.brushPreview.edge') }, { value: 'full', label: t('preferences.brushPreview.full') }, { value: 'full-edge', label: t('preferences.brushPreview.fullEdge') }] }]} label={t('preferences.brushPreview')} onChange={(value) => update('brushPreviewMode', value as BrushPreviewMode)} /></FormField>
-          {preferences.brushPreviewMode === 'full-edge' && toggle(t('preferences.drawingBrushPreview'), preferences.drawingBrushPreviewEnabled, (value) => update('drawingBrushPreviewEnabled', value))}
-          {toggle(t('preferences.selectionCrosshair'), preferences.selectionCrosshair, (value) => update('selectionCrosshair', value))}
-          <FormField className="preference-field" label={t('preferences.selectionPreviewColor')}><ThemedSelect value={preferences.selectionPreviewColorMode} groups={[{ label: t('preferences.selectionPreviewColorGroup'), options: [{ value: 'auto', label: t('preferences.selectionPreviewColor.auto') }, { value: 'custom', label: t('preferences.selectionPreviewColor.custom') }] }]} label={t('preferences.selectionPreviewColor')} onChange={(value) => update('selectionPreviewColorMode', value as SelectionPreviewColorMode)} /></FormField>
-          {preferences.selectionPreviewColorMode === 'custom' && <FormField className="preference-field" label={t('preferences.selectionPreviewCustomColor')}><ColorValueControl color={preferences.selectionPreviewColor} density="regular" onChange={(selectionPreviewColor) => update('selectionPreviewColor', selectionPreviewColor)} label={t('preferences.selectionPreviewCustomColor')} roleLabel={t('preferences.selectionPreviewCustomColor')} fillWithColor inPalette={false} /></FormField>}
-          {toggle(t('preferences.selectionSizeVisible'), preferences.selectionSizeVisible, (value) => update('selectionSizeVisible', value))}
           {toggle(t('preferences.moveLayerContentPreview'), preferences.moveLayerContentPreviewEnabled, (value) => update('moveLayerContentPreviewEnabled', value), t('preferences.moveLayerContentPreviewHint'))}
           {toggle(t('preferences.moveLayerClickFlash'), preferences.moveLayerClickFlashEnabled, (value) => update('moveLayerClickFlashEnabled', value), t('preferences.moveLayerClickFlashHint'))}
           <FormField className="preference-field" label={t('preferences.moveLayerClickFlashDuration')} tooltip={t('preferences.moveLayerClickFlashDurationHint')}><ThemedSelect value={String(preferences.moveLayerClickFlashDuration)} groups={[{ label: t('preferences.moveLayerClickFlashDurationGroup'), options: MOVE_LAYER_CLICK_FLASH_DURATIONS.map((duration) => ({ value: String(duration), label: t(duration === 80 ? 'preferences.moveLayerClickFlashDuration.fast' : duration === 180 ? 'preferences.moveLayerClickFlashDuration.long' : 'preferences.moveLayerClickFlashDuration.standard') })) }]} label={t('preferences.moveLayerClickFlashDuration')} disabled={!preferences.moveLayerClickFlashEnabled} onChange={(value) => update('moveLayerClickFlashDuration', Number(value) as MoveLayerClickFlashDuration)} /></FormField>
@@ -597,9 +611,9 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.optimizedRotation'), preferences.optimizedRotationEnabled, (value) => update('optimizedRotationEnabled', value), t('preferences.optimizedRotationHint'))}
           <FormField className="preference-field" label={t('preferences.lineDirectionStep')} tooltip={t('preferences.lineDirectionStepHint')}><NumberInput aria-label={t('preferences.lineDirectionStep')} min={1} max={16} value={preferences.lineDirectionStep} onValueChange={(value) => update('lineDirectionStep', Math.round(value))} /></FormField>
           {toggle(t('preferences.lassoClosed'), preferences.lassoPreviewClosed, (value) => update('lassoPreviewClosed', value))}
-          {toggle(t('preferences.eyedropperPencil'), preferences.eyedropperSwitchToPencil, (value) => update('eyedropperSwitchToPencil', value))}
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.eyedropper')}>
+          {toggle(t('preferences.eyedropperPencil'), preferences.eyedropperSwitchToPencil, (value) => update('eyedropperSwitchToPencil', value))}
           {toggle(t('preferences.eyedropperQuickSelect'), preferences.eyedropperQuickSelect, (value) => update('eyedropperQuickSelect', value), t('preferences.eyedropperQuickSelectHint'))}
           {toggle(t('preferences.eyedropperMagnifier'), preferences.eyedropperMagnifierEnabled, (value) => update('eyedropperMagnifierEnabled', value), t('preferences.eyedropperMagnifierHint'))}
           {preferences.eyedropperMagnifierEnabled && <FormField className="preference-field" label={t('preferences.eyedropperMagnifierSize')}><ThemedSelect value={String(preferences.eyedropperMagnifierSize)} groups={[{ label: t('preferences.eyedropperMagnifierSizeGroup'), options: EYEDROPPER_MAGNIFIER_SIZE_VALUES.map((value) => ({ value: String(value), label: t(value === 0.5 ? 'preferences.eyedropperMagnifierSize.minimum' : value === 0.75 ? 'preferences.eyedropperMagnifierSize.small' : value === 1.25 ? 'preferences.eyedropperMagnifierSize.large' : 'preferences.eyedropperMagnifierSize.medium') })) }]} label={t('preferences.eyedropperMagnifierSize')} onChange={(value) => update('eyedropperMagnifierSize', Number(value) as EyedropperMagnifierSize)} /></FormField>}
@@ -625,6 +639,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <PreferenceGroup title={t('preferences.groups.formats')}>
         <FormField className="preference-field" label={t('preferences.saveFormat')}><ThemedSelect value={preferences.saveFormat} groups={[{ label: t('preferences.saveFormatGroup'), options: [{ value: 'moonsprite', label: '.moonsprite' }, { value: 'png', label: '.png' }, { value: 'jpeg', label: '.jpg / .jpeg' }, { value: 'webp', label: '.webp' }, { value: 'psd', label: '.psd' }, { value: 'ase', label: '.ase' }, { value: 'aseprite', label: '.aseprite' }] }]} label={t('preferences.saveFormat')} onChange={(value) => update('saveFormat', value)} /></FormField>
         <FormField className="preference-field" label={t('preferences.exportFormat')}><ThemedSelect value={preferences.exportFormat} groups={[{ label: t('preferences.exportFormatGroup'), options: [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }, { value: 'svg', label: 'SVG' }, { value: 'gif', label: 'GIF' }, { value: 'psd', label: 'PSD' }] }]} label={t('preferences.exportFormat')} onChange={(value) => update('exportFormat', value)} /></FormField>
+
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.recovery')}>
         <FormField className="preference-field" label={t('preferences.recovery')}><ThemedSelect value={recoveryValue} groups={[{ label: t('preferences.recoveryGroup'), options: [{ value: 'off', label: t('preferences.recovery.off') }, { value: '0.5', label: t('preferences.recovery.seconds30') }, { value: '1', label: t('preferences.recovery.minutes1') }, { value: '2', label: t('preferences.recovery.minutes2') }, { value: '5', label: t('preferences.recovery.minutes5') }, { value: '10', label: t('preferences.recovery.minutes10') }] }]} label={t('preferences.recovery')} onChange={(value) => setPreferences((current) => value === 'off' ? { ...current, recovery: false } : { ...current, recovery: true, recoveryMinutes: Number(value) })} /></FormField>
@@ -637,7 +652,9 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         <FormField className="preference-field preference-path-field" label="工程备份目录" hint={preferences.projectBackupDirectory ? '使用自定义目录。' : '默认保存到软件数据目录。'}><div className="preference-path-control"><TextInput readOnly value={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} title={preferences.projectBackupDirectory || '软件数据目录 / project-backups'} /><button type="button" className="icon-button" title={t('preferences.chooseDirectory')} aria-label="选择工程备份目录" disabled={!preferences.projectBackupEnabled} onClick={() => void choosePreferenceDirectory('projectBackupDirectory')}><PixelUtilityIcon kind="folderOpen" /></button><button type="button" className="icon-button" title={t('preferences.restoreDefaultDirectory')} aria-label="恢复默认工程备份目录" disabled={!preferences.projectBackupEnabled || !preferences.projectBackupDirectory} onClick={() => update('projectBackupDirectory', '')}><PixelUtilityIcon kind="restore" /></button></div></FormField>
         </PreferenceGroup>
       </>}
-      {section === 'colorLayers' && <div className="preference-presets preference-color-layer-settings"><section className="preference-color-settings"><SettingsSectionHeader title={t('preferences.colorModes')} actions={<button type="button" className="quiet-button" onClick={() => update('colorEditorModes', DEFAULT_COLOR_EDITOR_MODES.map((item) => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>} /><div className="preference-color-mode-list">{preferences.colorEditorModes.map((item, index) => {
+      {section === 'colorLayers' && <div className="preference-presets preference-color-layer-settings"><PreferenceGroup title={t('preferences.pixelFormat')}>
+        <FormField className="preference-field" label={t('preferences.pixelFormat')} tooltip={t('preferences.pixelFormatHint')}><ThemedSelect<PixelFormat> value={preferences.pixelFormat} groups={[{ label: t('preferences.pixelFormat'), options: PIXEL_FORMATS.map((format) => ({ value: format, label: format.toUpperCase(), description: t(`preferences.pixelFormat.${format}`) })) }]} label={t('preferences.pixelFormat')} onChange={(value) => update('pixelFormat', value)} /></FormField>
+      </PreferenceGroup><section className="preference-color-settings"><SettingsSectionHeader title={t('preferences.colorModes')} actions={<button type="button" className="quiet-button" onClick={() => update('colorEditorModes', DEFAULT_COLOR_EDITOR_MODES.map((item) => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>} /><div className="preference-color-mode-list">{preferences.colorEditorModes.map((item, index) => {
         const enabledCount = preferences.colorEditorModes.filter((candidate) => candidate.enabled).length
         const modeName = colorValueModeLabel(item.mode)
         return <div className={`preference-color-mode-row reorderable-list-row ${draggedPreferenceItem?.kind === 'color-mode' && draggedPreferenceItem.id === item.mode ? 'dragging' : ''}`} data-preference-order-kind="color-mode" data-preference-order-id={item.mode} data-color-mode={item.mode} key={item.mode}><button type="button" className="color-mode-drag-handle reorderable-list-handle" aria-label={`${modeName} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'color-mode', item.mode)}><PixelUtilityIcon kind="move" /></button><span className="color-mode-name">{modeName}</span><PixelCheckbox className="color-mode-visibility" aria-label={item.enabled ? `${item.mode} enabled` : `${item.mode} disabled`} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => update('colorEditorModes', preferences.colorEditorModes.map((candidate) => candidate.mode === item.mode ? { ...candidate, enabled: !candidate.enabled } : candidate))} /></div>
@@ -657,7 +674,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         {luaScriptsLoading && luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.loadingScripts')}</p> : luaScripts.length === 0 ? <p className="preference-search-empty">{t('app.menu.file.noScripts')}</p> : <div className="preference-script-list">{luaScripts.map((script) => <article className="preference-script-row" key={script.id}><div className="preference-script-name">{script.name}</div>{script.extensionName && <div className="preference-script-meta">{script.extensionName}</div>}<button type="button" className="icon-button preference-script-delete" aria-label={t('preferences.scripts.deleteAria', { name: script.name })} title={script.extensionId ? t('preferences.scripts.extensionManaged') : t('common.delete')} disabled={Boolean(script.extensionId) || luaScriptBusyId !== null} onClick={() => void deleteLuaScript(script)}><PixelUtilityIcon kind="delete" /></button></article>)}</div>}
       </PreferenceGroup>}
       {section === 'reset' && <><p>{t('preferences.resetDescription')}</p><button className="danger-button" onClick={() => void resetAllSettings()}>{t('preferences.resetAll')}</button></>}
-      </>}
     </main></PreferenceSearchContext.Provider></div>
     <footer><button className="quiet-button" onClick={onClose}>{t('preferences.cancel')}</button><button className="quiet-button" onClick={persist}>{t('preferences.apply')}</button><button className="primary-button" onClick={() => { persist(); onClose() }}>{t('preferences.confirm')}</button></footer>
   </ModalShell></div>

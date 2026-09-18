@@ -17,4 +17,4 @@ export const LANGUAGE_PREFERENCE_KEY = 'moonsprite.preference.language'
 export type AppLocale = (typeof AVAILABLE_APP_LOCALES)[number]
 export type TranslationParams = Record<string, string | number>
 export type TranslationKey = keyof typeof zhCNMessages
-export type TranslationCatalog = Record<TranslationKey, string>
+export type TranslationCatalog = Partial<Record<TranslationKey, string>>

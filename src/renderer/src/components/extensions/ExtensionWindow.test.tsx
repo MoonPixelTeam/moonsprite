@@ -1,4 +1,4 @@
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, fireEvent, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ExtensionWindow } from './ExtensionWindow'
 
@@ -42,4 +42,22 @@ it('unsubscribes even when the channel connects after the window is gone', async
  const remove=vi.fn()
  await act(async () => ready(remove))
  expect(remove).toHaveBeenCalledOnce()
+})
+
+
+it('routes overlay geometry to its surface and rejects foreign iframe requests', async () => {
+ window.moonSprite = {readExtensionRuntimeResource:async()=>new TextEncoder().encode('<html></html>')} as unknown as typeof window.moonSprite
+ const surface = { request: vi.fn(async () => ({x:1,y:2,width:100,height:80})), subscribe: vi.fn(() => () => {}) }
+ const view = render(<ExtensionWindow identity={{extensionId:'test',windowId:'overlay',resourceId:'page'}} surface={surface} />)
+ await waitFor(() => expect(view.container.querySelector('iframe')).not.toBeNull())
+ const frame = view.container.querySelector('iframe')!
+ const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+ expect(frame.hasAttribute('title')).toBe(false)
+ expect(frame.getAttribute('aria-label')).toBe('overlay')
+ const data = {type:'moonsprite-extension-request',requestId:'geometry',method:'window.getBounds'}
+ await act(async () => fireEvent(window,new MessageEvent('message',{source:window,data})))
+ expect(surface.request).not.toHaveBeenCalled()
+ await act(async () => fireEvent(window,new MessageEvent('message',{source:frame.contentWindow,data})))
+ expect(surface.request).toHaveBeenCalledWith('window.getBounds',undefined)
+ expect(post).toHaveBeenCalledWith({type:'moonsprite-extension-response',requestId:'geometry',ok:true,result:{x:1,y:2,width:100,height:80}},'*')
 })
