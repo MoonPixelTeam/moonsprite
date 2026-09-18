@@ -13,7 +13,7 @@ import { encodeBmp } from './bmp'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 import { decodePsd } from './psd'
 
-export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
+export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite' | 'bmp' | 'gif'
 
 export function fileNameFromPath(filePath: string): string {
   return filePath.split(/[\\/]/).pop() ?? filePath
@@ -46,7 +46,8 @@ export function sanitizeFileStem(name: string, fallback: string): string {
   return stem || fallback
 }
 
-export function saveImageExtension(format: SaveImageKind): 'png' | 'jpg' | 'webp' | 'svg' | 'psd' | 'ase' | 'aseprite' {
+export function saveImageExtension(format: SaveImageKind | 'gif' | 'bmp'): 'png' | 'jpg' | 'webp' | 'svg' | 'psd' | 'ase' | 'aseprite' | 'gif' | 'bmp' {
+  if (format === 'gif' || format === 'bmp') return format
   if (format === 'jpeg') return 'jpg'
   if (format === 'psd') return 'psd'
   if (format === 'ase') return 'ase'
@@ -56,7 +57,8 @@ export function saveImageExtension(format: SaveImageKind): 'png' | 'jpg' | 'webp
   return 'png'
 }
 
-export function saveImageDialogFormat(format: SaveImageKind): SaveImageDialogFormat {
+export function saveImageDialogFormat(format: SaveImageKind | 'gif' | 'bmp'): SaveImageDialogFormat {
+  if (format === 'gif' || format === 'bmp') return format
   if (format === 'jpeg') return 'jpeg'
   if (format === 'webp') return 'webp'
   if (format === 'psd') return 'psd'
@@ -115,13 +117,13 @@ export function directSourceImageSaveTarget(document: SpriteDocument): DirectSou
 export async function encodeDocumentForSourceImage(document: SpriteDocument, format: SourceRasterImageKind, onProgress?: (value: number) => void): Promise<Uint8Array> {
   let bytes: Uint8Array
   if (format === 'bmp') bytes = encodeBmp(compositeDocument(document), document.width, document.height)
-  else if (format === 'gif') bytes = exportAnimationGif(document, { scalePercent: 100, frameStart: 1, frameEnd: 1, direction: 'forward' }).bytes
+  else if (format === 'gif') bytes = exportAnimationGif(document, { scalePercent: 100, frameStart: 1, frameEnd: document.animation?.frames.length ?? 1, direction: 'forward' }).bytes
   else bytes = (await exportDocumentImage(document, 100, format)).bytes
   onProgress?.(1)
   return bytes
 }
 
-export function normalizeSaveDialogPath(filePath: string, format: SaveImageKind): string {
+export function normalizeSaveDialogPath(filePath: string, format: SaveImageKind | 'gif' | 'bmp'): string {
   const extension = saveImageExtension(format)
   const accepted = format === 'jpeg'
     ? /\.(jpg|jpeg)$/i.test(filePath)

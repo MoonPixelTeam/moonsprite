@@ -26,6 +26,7 @@ export interface ExtensionRuntimeProjectSnapshot {
 }
 
 export type ExtensionRuntimeEvent =
+  | { type: 'editor-event'; name: string; timestamp: number; projectId?: string; detail: Record<string, string | number | boolean | null> }
   | { type: 'activate'; apiVersion: string; extensionId: string }
   | { type: 'project'; project: ExtensionRuntimeProjectSnapshot | null; homeOpen: boolean }
   | { type: 'command'; commandId: string; event: string }

@@ -14,8 +14,8 @@ import { selectionContains } from './selection'
 
 export { encodePng, type PngExport } from './png-encode'
 
-export type ImageExportKind = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd'
-export type SaveImageKind = Exclude<ImageExportKind, 'gif'> | 'ase' | 'aseprite'
+export type ImageExportKind = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd' | 'ase' | 'aseprite'
+export type SaveImageKind = Exclude<ImageExportKind, 'gif'>
 export interface ImageExport {
   bytes: Uint8Array
   extension: 'png' | 'jpg' | 'webp' | 'svg' | 'psd' | 'ase' | 'aseprite'

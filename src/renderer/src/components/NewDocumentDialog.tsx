@@ -101,7 +101,7 @@ export function NewDocumentDialog({ open, presets = DEFAULT_DOCUMENT_SIZE_PRESET
     onCreate(nextName, width, height, mode, recordDrawing)
     onClose()
   }
-  return <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell as="form" storageKey="new-document" defaultWidth={480} defaultHeight={560} minWidth={440} onSubmit={submit} aria-label={t('newDocument.title')}>
       <DialogHeader eyebrow={t('newDocument.eyebrow')} title={t('newDocument.title')} closeLabel={t('common.close')} onClose={onClose} />
       <div className="modal-body"><FormField label={t('newDocument.name')}><TextInput autoFocus value={name} aria-invalid={Boolean(nameError)} onChange={(event) => { setName(event.target.value); setNameError(getWindowsFileNameError(event.target.value, locale)) }} /></FormField>{nameError && <p className="field-error" role="alert">{nameError}</p>}

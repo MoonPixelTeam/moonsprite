@@ -90,6 +90,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewRate, setPreviewRate] = useState(1)
   const [previewPlaybackMode, setPreviewPlaybackMode] = useState<AnimationPlaybackMode>(timeline.loop ? 'all' : 'once')
   const [previewLoopSectionId, setPreviewLoopSectionId] = useState<string | null>(null)
+  const [previewLoopPosition, setPreviewLoopPosition] = useState<number | undefined>(undefined)
   const [previewLoopIteration, setPreviewLoopIteration] = useState(0)
   const [previewTagCycleSectionId, setPreviewTagCycleSectionId] = useState<string | null>(null)
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
@@ -276,11 +277,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     if (previewLoopSectionId && !loopSection) {
       setPreviewPlaying(false)
       setPreviewLoopSectionId(null)
-      setPreviewLoopIteration(0)
+      setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
       return
     }
     const loopStep = loopSection
-      ? advanceAnimationLoopSectionPlayback(timeline, loopSection, previewFrameId, previewLoopIteration)
+      ? advanceAnimationLoopSectionPlayback(timeline, loopSection, previewFrameId, previewLoopIteration, previewLoopPosition)
       : null
     const loopAllFrames = previewPlaybackMode !== 'once'
     const nextFrameId = loopSection
@@ -295,33 +296,33 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
             : null
           if (cycleSection && continuationFrameId && previewLoopSectionContainsFrame(timeline, cycleSection, continuationFrameId)) {
             setPreviewLoopSectionId(cycleSection.id)
-            setPreviewLoopIteration(0)
+            setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
             setPreviewFrameId(animationLoopSectionStartFrameId(timeline, cycleSection) ?? continuationFrameId)
           } else if (cycleSection) {
             const continuationSection = continuationFrameId ? animationLoopSectionAtFrame(timeline, continuationFrameId) : null
             if (continuationSection && continuationSection.repeatCount !== null && continuationFrameId) {
               setPreviewLoopSectionId(continuationSection.id)
-              setPreviewLoopIteration(0)
+              setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
               setPreviewFrameId(animationLoopSectionStartFrameId(timeline, continuationSection) ?? continuationFrameId)
             } else {
               setPreviewLoopSectionId(null)
-              setPreviewLoopIteration(0)
+              setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
               if (continuationFrameId) setPreviewFrameId(continuationFrameId)
             }
           } else if (continuationFrameId) {
             const continuationSection = animationLoopSectionAtFrame(timeline, continuationFrameId)
             if (continuationSection) {
               setPreviewLoopSectionId(continuationSection.id)
-              setPreviewLoopIteration(0)
+              setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
               setPreviewFrameId(animationLoopSectionStartFrameId(timeline, continuationSection) ?? continuationFrameId)
             } else {
               setPreviewLoopSectionId(null)
-              setPreviewLoopIteration(0)
+              setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
               setPreviewFrameId(continuationFrameId)
             }
           } else {
             setPreviewLoopSectionId(null)
-            setPreviewLoopIteration(0)
+            setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
           }
           return
         }
@@ -329,7 +330,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         setPreviewPlaying(false)
         setPreviewStartFrameId(null)
         setPreviewLoopSectionId(null)
-        setPreviewLoopIteration(0)
+        setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
         if (returnFrameId) setPreviewFrameId(returnFrameId)
         return
       }
@@ -340,30 +341,30 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         if (returnFrameId) setPreviewFrameId(returnFrameId)
         return
       }
-      if (loopStep) setPreviewLoopIteration(loopStep.completedIterations)
+      if (loopStep) { setPreviewLoopIteration(loopStep.completedIterations); setPreviewLoopPosition(loopStep.position) }
       if (previewPlaybackMode === 'tag' && nextFrameId && !loopSection) {
         if (previewTagCycleSectionId) {
           const cycleSection = (timeline.loopSections ?? []).find((section) => section.id === previewTagCycleSectionId) ?? null
           if (cycleSection && previewLoopSectionContainsFrame(timeline, cycleSection, nextFrameId)) {
             setPreviewLoopSectionId(cycleSection.id)
-            setPreviewLoopIteration(0)
+            setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
             setPreviewFrameId(animationLoopSectionStartFrameId(timeline, cycleSection) ?? nextFrameId)
             return
           }
           const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
           if (nextSection && nextSection.repeatCount !== null) {
             setPreviewLoopSectionId(nextSection.id)
-            setPreviewLoopIteration(0)
+            setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
             setPreviewFrameId(animationLoopSectionStartFrameId(timeline, nextSection) ?? nextFrameId)
             return
           }
           setPreviewLoopSectionId(null)
-          setPreviewLoopIteration(0)
+          setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
         }
         const nextSection = animationLoopSectionAtFrame(timeline, nextFrameId)
         if (nextSection && !previewTagCycleSectionId) {
           setPreviewLoopSectionId(nextSection.id)
-          setPreviewLoopIteration(0)
+          setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
           setPreviewFrameId(animationLoopSectionStartFrameId(timeline, nextSection) ?? nextFrameId)
           return
         }
@@ -371,7 +372,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       setPreviewFrameId(nextFrameId)
     }, frame.duration / Math.max(0.01, previewRate))
     return () => window.clearTimeout(timer)
-  }, [previewFrameId, previewPlaying, previewRate, previewPlaybackMode, previewLoopIteration, previewLoopSectionId, previewReturnToStart, previewStartFrameId, previewTagCycleSectionId, timeline])
+  }, [previewFrameId, previewPlaying, previewRate, previewPlaybackMode, previewLoopIteration, previewLoopPosition, previewLoopSectionId, previewReturnToStart, previewStartFrameId, previewTagCycleSectionId, timeline])
 
   const setPreviewPlayingState = (playing: boolean): void => {
     if (playing) {
@@ -383,7 +384,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       }
       setPreviewStartFrameId(startFrameId)
       setPreviewLoopSectionId(null)
-      setPreviewLoopIteration(0)
+      setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
       setPreviewTagCycleSectionId(null)
       const loopSection = previewPlaybackMode === 'tag' ? animationLoopSectionAtFrame(timeline, startFrameId) : null
       const targetFrameId = loopSection
@@ -406,7 +407,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       if (previewReturnToStart && previewStartFrameId) setPreviewFrameId(previewStartFrameId)
       setPreviewStartFrameId(null)
       setPreviewLoopSectionId(null)
-      setPreviewLoopIteration(0)
+      setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
       setPreviewTagCycleSectionId(null)
     }
     setPreviewPlaying(playing)
@@ -415,7 +416,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const setPreviewPlaybackModeState = (mode: AnimationPlaybackMode): void => {
     setPreviewPlaybackMode(mode)
     setPreviewLoopSectionId(null)
-    setPreviewLoopIteration(0)
+    setPreviewLoopIteration(0); setPreviewLoopPosition(undefined)
     setPreviewTagCycleSectionId(null)
     if (!previewPlaying || mode !== 'tag') return
     const loopSection = animationLoopSectionAtFrame(timeline, previewFrameId)

@@ -8,11 +8,10 @@ import { ModalShell } from './ModalShell'
 import { TimelapseExportDialog } from './dialogs/TimelapseExportDialog'
 import { ThemedSelect } from './ThemedSelect'
 import { useI18n } from './I18nProvider'
-import { PlaybackPixelIcon } from './PlaybackPixelIcon'
+import { PreviewPlaybackControls } from './PreviewPlaybackControls'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { FormField } from './FormField'
 import { PreferenceToggle } from './PreferenceToggle'
-import { RangeField } from './RangeField'
 import { readTimelapseFrame } from '@/platform/timelapse-library'
 
 interface TimelapseDialogProps {
@@ -180,10 +179,7 @@ export function TimelapseDialog({ documentName, defaultDirectory, settings, onCh
         <section className="timelapse-preview" aria-label={t('timelapse.preview')}>
           {previewError && <div role="alert"><p>{t('timelapse.previewUnavailable')}</p><p className="modal-note">{previewError}</p></div>}
           <div className="timelapse-preview-frame"><canvas ref={canvasRef} /></div>
-          <div className="timelapse-preview-controls">
-            <button type="button" className="icon-button" disabled={previewPlan.length < 2} title={previewPlaying ? t('timelapse.pausePreview') : t('timelapse.playPreview')} aria-label={previewPlaying ? t('timelapse.pausePreview') : t('timelapse.playPreview')} onClick={togglePreviewPlayback}>{previewPlaying ? <PlaybackPixelIcon kind="pause" /> : <PlaybackPixelIcon kind="play" />}</button>
-            <RangeField ariaLabel={t('timelapse.previewPosition')} density="compact" min={0} max={Math.max(0, previewPlan.length - 1)} value={Math.min(previewFrame, Math.max(0, previewPlan.length - 1))} valueLabel={previewPlan.length === 0 ? '0 / 0' : `${previewFrame + 1} / ${previewPlan.length}`} disabled={previewPlan.length === 0} onChange={(value) => { setPreviewPlaying(false); setPreviewFrame(value) }} />
-          </div>
+          <PreviewPlaybackControls playing={previewPlaying} frame={previewFrame} frameCount={previewPlan.length} onToggle={togglePreviewPlayback} onSeek={(value) => { setPreviewPlaying(false); setPreviewFrame(value) }} />
         </section>
         <PreferenceToggle className="timelapse-toggle" checked={settings.enabled} label={t('timelapse.recording')} onChange={(enabled) => onChange({ enabled })} />
         <p className="modal-note">{t('timelapse.storageHint')}</p>

@@ -18,6 +18,7 @@ import { activeFreeTileCelTarget } from '@/core/free-tile-document'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { MoveLayerClickFlash, FreeTileInstanceFlash } from './canvas-stage-helpers'
+import { drawAnimationTweenPreview } from './animation-tween-preview'
 export function renderCanvasContent({
   repeatCopies,
   isolatedLayerMask,
@@ -223,6 +224,10 @@ export function renderCanvasContent({
       () => ({ ...documentDiagnosticDetail(document), tool: currentSession.tool, gesture: activeDrag?.kind ?? 'none' })
     )
     if (compositeStarted) recordWorkspaceResizeStage('composite', performance.now() - compositeStarted)
+    context.save()
+    clipCanvasCopy(context, copy)
+    drawAnimationTweenPreview(context, document.id, copy.originX, copy.originY, view.zoom, deviceScale)
+    context.restore()
     const textPreview = textToolPreviewRef.current
     if (textPreview?.format === 'rgba') {
       const previewCanvas = new OffscreenCanvas(textPreview.width, textPreview.height)

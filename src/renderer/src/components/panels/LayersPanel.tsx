@@ -589,7 +589,7 @@ export function LayersPanel({
           name: section.name,
           start: startIndex + 1,
           end: endIndex + 1,
-          direction: t(section.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
+          direction: t(section.direction === 'ping-pong' ? 'timeline.loopSectionPingPong' : section.direction === 'ping-pong-reverse' ? 'timeline.loopSectionPingPongReverse' : section.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
           repeats: section.repeatCount ?? t('timeline.loopSectionInfiniteShort')
         })}
         onClick={(event) => {

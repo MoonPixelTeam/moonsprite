@@ -244,3 +244,16 @@ Pages retain `window.getBounds/setBounds/getHostBounds/getPointerPosition/setHit
 The initial hit region is empty. `setHitRegion(sourceWidth, sourceHeight, spans)` declares visible and interactive areas using one-pixel-high `{x,y,width}` scanlines, up to 65536 spans and source dimensions of 8192. Regions scale with bounds and clip both painting and hit testing; outside input reaches the underlying app without synthetic forwarding. Include bubbles and controls in the region. Overlays sit above editor content and below host menus and dialogs; they cannot raise their stacking priority or override global cursor preferences.
 
 These APIs support floating tools, information cards, and contextual helpers. Animation, reminders, and relative position policies remain extension business logic.
+
+
+### Generic editor events and condition forms
+
+Extensions with `events` permission discover supported names in `runtime.getCapabilities().editorEvents` and subscribe with `moonsprite.on('editor-event', handler)`. Payloads contain `{type, name, timestamp, projectId?, detail}`.
+
+Names include `history.undo`, `history.redo`, `color.sampled`, `drawing.completed`, `fill.completed`, `document.saved`, `document.changed`, `project.created/opened/closed/activated`, `tool.changed`, `color.primary-changed/secondary-changed`, `selection.created/cleared`, `layer.created/deleted/activated`, `frame.changed`, `animation.started/stopped`, and `view.changed`. Operation events report successful operations; cancellation and no-ops do not report success. New sessions with file sources produce opened events, otherwise created; existing sessions are not replayed at subscription. State events describe changes: undo restoring a layer also produces `layer.created`. Selection changes are included in `selection.created`.
+
+Details expose scalar metadata such as `tool`, `previous`, `layerId`, `frameId`, `revision`, and `fullySaved`, never paths, pixels, or internal objects. Observation does not write history. Existing export, saved, project, and interaction events remain compatible. Use `editor-event/document.saved` for precise save completion. Pointer movement and wheel activity now count as interactions, throttled to once per 500ms. Extensions implement their own filtering, cooldowns, and behavior; the host contains no pet or animation rules.
+
+Declarative forms support `select` and `dialog` nodes. Select options are `{value,label,description?}[]`; descriptions use component-library tooltips and selected values are returned with the next action. Dialogs use the host ModalShell, with `label` as title, `children` as controls, and `action` as cancellation. Slots, text, and form fields accept `tooltip` strings, respecting the editor tooltip preference. These controls are available to any extension.
+
+Form nodes accept `visibleWhen: {fieldId: value}`. All conditions must match current values, falling back to field defaults. Visibility updates immediately on selection changes. Numeric controls preserve valid zero values.

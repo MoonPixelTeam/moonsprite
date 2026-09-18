@@ -33,7 +33,7 @@ export function useAppInformationDialogs() {
     <>
       {aboutOpen && (
         <div
-          className="modal-backdrop latest-release-backdrop"
+          className="modal-backdrop modal-overlay-backdrop"
           role="presentation"
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) setAboutOpen(false)

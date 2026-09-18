@@ -35,3 +35,9 @@ describe('usage statistics', () => {
     expect(parsed.dailyUsageMs).toEqual({})
   })
 })
+
+it('defaults legacy drawing time to zero and rejects invalid persisted durations', () => {
+  expect(parseUsageStatistics('{"drawingStrokeCount":42}')).toMatchObject({ drawingStrokeCount: 42, drawingTimeMs: 0 })
+  expect(parseUsageStatistics('{"drawingTimeMs":1234.4}').drawingTimeMs).toBe(1234)
+  for (const drawingTimeMs of [-10, '100', null]) expect(parseUsageStatistics(JSON.stringify({ drawingTimeMs })).drawingTimeMs).toBe(0)
+})

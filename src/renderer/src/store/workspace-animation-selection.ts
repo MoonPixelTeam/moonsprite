@@ -212,6 +212,7 @@ export const normalizeAnimationSelection = (
 export const clearAnimationLoopPlayback = (session: DocumentSession): void => {
   session.animationPlaybackLoopSectionId = null
   session.animationPlaybackLoopIteration = 0
+  session.animationPlaybackLoopPosition = undefined
   session.animationPlaybackLoopSectionRepeatIndefinitely = false
   session.animationPlaybackLoopStack = []
   session.animationPlaybackTagCycleSectionId = null

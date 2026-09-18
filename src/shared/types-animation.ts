@@ -56,7 +56,7 @@ export interface AnimationCel {
   mask?: LayerMask
 }
 
-export type AnimationLoopDirection = 'forward' | 'reverse'
+export type AnimationLoopDirection = 'forward' | 'reverse' | 'ping-pong' | 'ping-pong-reverse'
 
 export interface AnimationLoopSection {
   id: string

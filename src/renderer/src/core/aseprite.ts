@@ -7,6 +7,9 @@ import { createDocument, createId, createLayer, getPaletteEntry, readLayerPacked
 import { TRANSPARENT, unpackColor } from './raster'
 import { translateCurrent as tr } from './localization'
 import { animationLayerAtFrame, ensureAnimationDocument, refreshActiveAnimationFrame, syncActiveAnimationFrame } from './animation'
+import { hasEnabledLayerStyles } from './layer-styles'
+import { compositeDocument } from './document-composite'
+import { cloneDocumentForAnimationFrame } from './animation'
 import { applyImportedRgbaPalette } from './imported-palette'
 
 const ASE_MAGIC = 0xa5e0
@@ -33,6 +36,7 @@ type LayerSpec = {
   blendMode: BlendMode
   childLevel: number
   tilemap: boolean
+  tilesetIndex?: number
 }
 
 type Cel = {
@@ -41,13 +45,15 @@ type Cel = {
   y: number
   opacity: number
   type: number
+  zIndex: number
   width?: number
   height?: number
   data?: Uint8Array
   linkedFrame?: number
+  tileMasks?: number[]
 }
 
-type DecodedCel = { x: number; y: number; opacity: number; width: number; height: number; pixels: Uint8ClampedArray; sourceFrame: number }
+type DecodedCel = { zIndex: number; x: number; y: number; opacity: number; width: number; height: number; pixels: Uint8ClampedArray; sourceFrame: number }
 
 const blendMode = (value: number): BlendMode => {
   const modes: Record<number, BlendMode> = {
@@ -151,8 +157,11 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
   if (![8, 16, 32].includes(colorDepth)) throw new Error(tr('core.aseprite.unsupportedColorDepth', { depth: colorDepth }))
 
   const layers: LayerSpec[] = []
+  const tilesets: Array<{ flags: number; count: number; width: number; height: number; data?: Uint8Array }> = []
   const cels = new Map<number, Cel[]>()
   const frameDurations: number[] = []
+  const framePalettes: Array<Array<PaletteEntry | undefined>> = []
+  const tags: Array<{ name: string; from: number; to: number; direction: number; repeat: number }> = []
   let palette: Array<PaletteEntry | undefined> = []
   const groupStack: string[] = []
   let offset = 128
@@ -187,18 +196,53 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
         const opacityValid = group ? (headerFlags & GROUP_BLEND_OPACITY_VALID) !== 0 : (headerFlags & LAYER_OPACITY_VALID) !== 0
         const groupPropertiesValid = !group || (headerFlags & GROUP_BLEND_OPACITY_VALID) !== 0
         const spec: LayerSpec = { index: layers.length, id, name: name.value || tr(group ? 'core.document.group' : 'core.document.layer'), group, tilemap: layerType === TILEMAP_LAYER, parentGroupId: parent, visible: (flags & 1) !== 0, locked: (flags & 2) === 0, opacity: opacityValid ? view.getUint8(payload + 12) / 255 : 1, blendMode: groupPropertiesValid ? blendMode(view.getUint16(payload + 10, true)) : 'normal', childLevel }
+        if (spec.tilemap && name.next + 4 <= chunkEnd) spec.tilesetIndex = view.getUint32(name.next, true)
         layers.push(spec)
         if (spec.group) groupStack[childLevel] = spec.id
       } else if (type === CEL_CHUNK && payload + 16 <= chunkEnd) {
-        const cel: Cel = { layerIndex: view.getUint16(payload, true), x: view.getInt16(payload + 2, true), y: view.getInt16(payload + 4, true), opacity: view.getUint8(payload + 6) / 255, type: view.getUint16(payload + 7, true) }
+        const cel: Cel = { layerIndex: view.getUint16(payload, true), x: view.getInt16(payload + 2, true), y: view.getInt16(payload + 4, true), opacity: view.getUint8(payload + 6) / 255, type: view.getUint16(payload + 7, true), zIndex: view.getInt16(payload + 9, true) }
         if (cel.type === 0 || cel.type === 2) {
           if (payload + 20 > chunkEnd) throw new Error(tr('core.aseprite.celIncomplete'))
           cel.width = view.getUint16(payload + 16, true)
           cel.height = view.getUint16(payload + 18, true)
           const data = new Uint8Array(input.buffer, input.byteOffset + payload + 20, chunkEnd - payload - 20)
           cel.data = cel.type === 2 ? (awaitUnzip(data)) : data.slice()
+        } else if (cel.type === 3) {
+          if (payload + 52 > chunkEnd || view.getUint16(payload + 20, true) !== 32) throw new Error(tr('core.aseprite.celIncomplete'))
+          cel.width = view.getUint16(payload + 16, true)
+          cel.height = view.getUint16(payload + 18, true)
+          cel.tileMasks = [22, 26, 30, 34].map((position) => view.getUint32(payload + position, true))
+          cel.data = awaitUnzip(input.subarray(payload + 52, chunkEnd))
         } else if (cel.type === 1 && payload + 18 <= chunkEnd) cel.linkedFrame = view.getUint16(payload + 16, true)
         frameCels.push(cel)
+      } else if (type === 0x2023) {
+        if (payload + 34 > chunkEnd) throw new Error(tr('core.aseprite.invalidChunk'))
+        const flags = view.getUint32(payload + 4, true)
+        const count = view.getUint32(payload + 8, true)
+        const tileWidth = view.getUint16(payload + 12, true)
+        const tileHeight = view.getUint16(payload + 14, true)
+        if (!tileWidth || !tileHeight || !count || tileWidth * tileHeight * count > MAX_DIMENSION * MAX_DIMENSION) throw new Error(tr('core.aseprite.invalidChunk'))
+        let cursor = readString(view, payload + 32, chunkEnd).next
+        if (flags & 1) cursor += 8
+        let data: Uint8Array | undefined
+        if (flags & 2) {
+          if (cursor + 4 > chunkEnd) throw new Error(tr('core.aseprite.invalidChunk'))
+          const length = view.getUint32(cursor, true)
+          cursor += 4
+          if (cursor + length > chunkEnd) throw new Error(tr('core.aseprite.invalidChunk'))
+          data = awaitUnzip(input.subarray(cursor, cursor + length))
+        }
+        tilesets.push({ flags, count, width: tileWidth, height: tileHeight, data })
+      } else if (type === 0x2018) {
+        if (payload + 10 > chunkEnd) throw new Error(tr('core.aseprite.invalidChunk'))
+        const count = view.getUint16(payload, true)
+        let tagOffset = payload + 10
+        for (let index = 0; index < count; index += 1) {
+          if (tagOffset + 19 > chunkEnd) throw new Error(tr('core.aseprite.invalidChunk'))
+          const name = readString(view, tagOffset + 17, chunkEnd)
+          tags.push({ name: name.value, from: view.getUint16(tagOffset, true), to: view.getUint16(tagOffset + 2, true), direction: view.getUint8(tagOffset + 4), repeat: view.getUint16(tagOffset + 5, true) })
+          tagOffset = name.next
+        }
       } else if (type === PALETTE_CHUNK) {
         palette = readPalette(view, payload, chunkEnd, palette)
       } else if (type === 0x0004 || type === 0x0011) {
@@ -217,6 +261,7 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
       }
       offset = chunkEnd
     }
+    framePalettes.push(palette.slice())
     cels.set(frame, frameCels)
     offset = frameEnd
     reportProgress(0.72 * ((frame + 1) / frameCount))
@@ -240,18 +285,48 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
     if (cel.type === 1) {
       const linked = resolveCel(cel.linkedFrame ?? 0, layerIndex, new Set(stack).add(key))
       if (!linked) return null
-      const result = { ...linked, x: cel.x, y: cel.y, opacity: cel.opacity }
+      const result = { ...linked, x: cel.x, y: cel.y, opacity: cel.opacity, zIndex: cel.zIndex }
       resolved.set(key, result)
       return result
     }
     if (!cel.width || !cel.height || !cel.data) return null
-    const result = { x: cel.x, y: cel.y, opacity: cel.opacity, width: cel.width, height: cel.height, pixels: decodePixelData(cel.data, cel.width, cel.height, colorDepth, palette, transparentIndex), sourceFrame: frame }
+    if (cel.type === 3) {
+      const spec = layers[layerIndex]
+      const tileset = spec?.tilesetIndex === undefined ? undefined : tilesets[spec.tilesetIndex]
+      if (!tileset?.data || !cel.tileMasks) throw new Error(tr('core.aseprite.externalTilesetUnsupported'))
+      const width = cel.width * tileset.width
+      const height = cel.height * tileset.height
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION || cel.data.length !== cel.width * cel.height * 4) throw new Error(tr('core.aseprite.celIncomplete'))
+      const tilePixels = decodePixelData(tileset.data, tileset.width, tileset.height * tileset.count, colorDepth, framePalettes[frame], transparentIndex)
+      const pixels = new Uint8ClampedArray(width * height * 4)
+      const tileView = new DataView(cel.data.buffer, cel.data.byteOffset, cel.data.byteLength)
+      const [idMask, xMask, yMask, diagonalMask] = cel.tileMasks
+      for (let cell = 0; cell < cel.width * cel.height; cell += 1) {
+        const value = tileView.getUint32(cell * 4, true)
+        const id = (value & idMask) >>> 0
+        if ((tileset.flags & 4) ? id === 0 : value === 0xffffffff) continue
+        if (id >= tileset.count) throw new Error(tr('core.aseprite.celIncomplete'))
+        for (let y = 0; y < tileset.height; y += 1) for (let x = 0; x < tileset.width; x += 1) {
+          let sourceX = (value & xMask) ? tileset.width - 1 - x : x
+          let sourceY = (value & yMask) ? tileset.height - 1 - y : y
+          if (value & diagonalMask) [sourceX, sourceY] = [sourceY, sourceX]
+          if (sourceX >= tileset.width || sourceY >= tileset.height) continue
+          const sourceOffset = (id * tileset.width * tileset.height + sourceY * tileset.width + sourceX) * 4
+          const targetOffset = ((Math.floor(cell / cel.width) * tileset.height + y) * width + (cell % cel.width) * tileset.width + x) * 4
+          pixels.set(tilePixels.subarray(sourceOffset, sourceOffset + 4), targetOffset)
+        }
+      }
+      const result = { x: cel.x, y: cel.y, opacity: cel.opacity, zIndex: cel.zIndex, width, height, pixels, sourceFrame: frame }
+      resolved.set(key, result)
+      return result
+    }
+    const result = { x: cel.x, y: cel.y, opacity: cel.opacity, zIndex: cel.zIndex, width: cel.width, height: cel.height, pixels: decodePixelData(cel.data, cel.width, cel.height, colorDepth, framePalettes[frame], transparentIndex), sourceFrame: frame }
     resolved.set(key, result)
     return result
   }
   const documentLayerBySpecIndex = new Map<number, RasterLayer>()
   for (const spec of layers) {
-    if (groupIds.has(spec.id) || spec.tilemap) continue
+    if (groupIds.has(spec.id) || (spec.tilemap && spec.tilesetIndex === undefined)) continue
     const layer = createLayer(spec.name, 1, 1, 'rgba')
     if (layer.format !== 'rgba') continue
     layer.id = spec.id
@@ -277,8 +352,7 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
   }
   const sourceSurfaces = new Map<string, AnimationCelSurface>()
   const createCelSurface = (cel: DecodedCel, copyPixels = false): AnimationCelSurface => {
-    const pixels = copyPixels || cel.opacity !== 1 ? cel.pixels.slice() : cel.pixels
-    if (cel.opacity !== 1) for (let index = 3; index < pixels.length; index += 4) pixels[index] = Math.round(pixels[index] * cel.opacity)
+    const pixels = copyPixels ? cel.pixels.slice() : cel.pixels
     return { format: 'rgba', width: cel.width, height: cel.height, offsetX: cel.x, offsetY: cel.y, pixels }
   }
   for (const spec of layers) {
@@ -289,7 +363,7 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
       const sourceCel = cel ? resolveCel(cel.sourceFrame, spec.index) : null
       const sharesSource = Boolean(cel && sourceCel && cel.sourceFrame !== frameIndex
         && cel.x === sourceCel.x && cel.y === sourceCel.y && cel.opacity === sourceCel.opacity
-        && cel.width === sourceCel.width && cel.height === sourceCel.height)
+        && cel.zIndex === sourceCel.zIndex && cel.width === sourceCel.width && cel.height === sourceCel.height)
       const sourceKey = cel ? `${cel.sourceFrame}:${spec.index}` : ''
       let surface: AnimationCelSurface
       let linkedCelId: string | undefined
@@ -301,11 +375,16 @@ export function decodeAseprite(input: Uint8Array, fallbackName = tr('core.docume
         surface = createCelSurface(cel, cel.sourceFrame !== frameIndex)
         if (cel.sourceFrame === frameIndex) sourceSurfaces.set(sourceKey, surface)
       } else surface = { format: 'rgba', width: 1, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(4) }
-      animationCels.push({ id: celIdBySlot.get(`${frameIndex}:${spec.index}`)!, layerId: layer.id, frameId: frames[frameIndex].id, surface, ...(linkedCelId ? { linkedCelId } : {}) })
+      animationCels.push({ id: celIdBySlot.get(`${frameIndex}:${spec.index}`)!, layerId: layer.id, frameId: frames[frameIndex].id, opacity: spec.opacity * (cel?.opacity ?? 1), zIndex: cel?.zIndex ?? 0, surface, ...(linkedCelId ? { linkedCelId } : {}) })
       reportProgress(0.72 + 0.22 * (animationCels.length / Math.max(1, celIdBySlot.size)))
     }
   }
-  document.animation = { frames, cels: animationCels, activeFrameId: frames[0].id, loop: true }
+  document.animation = { frames, cels: animationCels, activeFrameId: frames[0].id, loop: true,
+    loopSections: tags.filter((tag) => tag.from <= tag.to && tag.to < frames.length).map((tag) => ({
+      id: createId('loop'), name: tag.name, startFrameId: frames[tag.from].id, endFrameId: frames[tag.to].id,
+      direction: tag.direction === 3 ? 'ping-pong-reverse' : tag.direction === 2 ? 'ping-pong' : tag.direction === 1 ? 'reverse' : 'forward', repeatCount: tag.repeat || null
+    }))
+  }
   refreshActiveAnimationFrame(document)
   applyImportedRgbaPalette(document)
   reportProgress(1)
@@ -388,17 +467,22 @@ const aseLayerChunk = (layer: RasterLayer | LayerGroup, level: number, group: bo
   return aseChunk(LAYER_CHUNK, payload)
 }
 
-const aseCelChunk = (layerIndex: number, raster: ReturnType<typeof scaledLayerPixels>): Uint8Array => {
+const aseCelChunk = (layerIndex: number, raster: ReturnType<typeof scaledLayerPixels>, opacity: number, zIndex: number, linkedFrame?: number): Uint8Array => {
   if (raster.offsetX < -32768 || raster.offsetX > 32767 || raster.offsetY < -32768 || raster.offsetY > 32767) throw new Error(tr('core.aseprite.layerOffsetRange'))
   if (raster.width > MAX_ASE_DIMENSION || raster.height > MAX_ASE_DIMENSION) throw new Error(tr('core.aseprite.layerSizeRange'))
-  const compressed = zlibSync(raster.pixels)
-  const payload = new Uint8Array(20 + compressed.length)
+  const compressed = linkedFrame === undefined ? zlibSync(raster.pixels) : new Uint8Array(0)
+  const payload = new Uint8Array(linkedFrame === undefined ? 20 + compressed.length : 18)
   const view = new DataView(payload.buffer)
   view.setUint16(0, layerIndex, true)
   view.setInt16(2, raster.offsetX, true)
   view.setInt16(4, raster.offsetY, true)
-  view.setUint8(6, 255)
-  view.setUint16(7, 2, true)
+  view.setUint8(6, Math.round(Math.max(0, Math.min(1, opacity)) * 255))
+  view.setUint16(7, linkedFrame === undefined ? 2 : 1, true)
+  view.setInt16(9, Math.max(-32768, Math.min(32767, zIndex)), true)
+  if (linkedFrame !== undefined) {
+    view.setUint16(16, linkedFrame, true)
+    return aseChunk(CEL_CHUNK, payload)
+  }
   view.setUint16(16, raster.width, true)
   view.setUint16(18, raster.height, true)
   payload.set(compressed, 20)
@@ -450,21 +534,55 @@ export function encodeAseprite(document: SpriteDocument, scalePercent = 100): Ui
   const width = Math.max(1, Math.round(document.width * scale))
   const height = Math.max(1, Math.round(document.height * scale))
   if (width > MAX_ASE_DIMENSION || height > MAX_ASE_DIMENSION) throw new Error(tr('core.aseprite.canvasSizeRange'))
+  if (timeline.frames.length > 65535 || (timeline.loopSections?.length ?? 0) > 65535) throw new Error(tr('core.aseprite.invalidFrame'))
   const layerChunks: Uint8Array[] = []
   const rasterLayerIndices: Array<{ index: number; layer: RasterLayer }> = []
   let layerIndex = 0
-  for (const item of orderedAseItems(document)) {
-    layerChunks.push(aseLayerChunk(item.kind === 'group' ? item.group : item.layer, item.level, item.kind === 'group'))
+  // These features depend on other layers; bake their composed appearance rather
+  // than silently dropping the masks, clipping or group effects in ASE.
+  const needsComposite = [...document.layers, ...document.groups].some((item) => item.clippingMask || hasEnabledLayerStyles(item.layerStyles))
+    || Boolean(timeline.layerMasks?.length || timeline.groupMasks?.length)
+    || document.groups.some((group) => group.cumulativeBlend)
+  const exportItems: AseExportItem[] = needsComposite
+    ? [{ kind: 'layer', layer: { ...createLayer(document.name, 1, 1, 'rgba'), id: 'ase-composite' }, level: 0 }]
+    : orderedAseItems(document)
+  for (const item of exportItems) {
+    layerChunks.push(aseLayerChunk(item.kind === 'group' ? item.group : { ...item.layer, opacity: 1 }, item.level, item.kind === 'group'))
     if (item.kind === 'layer') rasterLayerIndices.push({ index: layerIndex, layer: item.layer })
     layerIndex += 1
   }
   if (layerIndex === 0) throw new Error(tr('core.aseprite.noExportableLayers'))
+  const tagEntries = (timeline.loopSections ?? []).flatMap((section) => {
+    const from = timeline.frames.findIndex((frame) => frame.id === section.startFrameId)
+    const to = timeline.frames.findIndex((frame) => frame.id === section.endFrameId)
+    if (from < 0 || to < from) return []
+    const name = aseString(section.name)
+    const entry = new Uint8Array(17 + name.length)
+    const view = new DataView(entry.buffer)
+    view.setUint16(0, from, true)
+    view.setUint16(2, to, true)
+    view.setUint8(4, section.direction === 'ping-pong-reverse' ? 3 : section.direction === 'ping-pong' ? 2 : section.direction === 'reverse' ? 1 : 0)
+    view.setUint16(5, section.repeatCount === null ? 0 : Math.min(65535, Math.max(1, section.repeatCount)), true)
+    entry.set(name, 17)
+    return [entry]
+  })
+  const tagHeader = new Uint8Array(10)
+  new DataView(tagHeader.buffer).setUint16(0, tagEntries.length, true)
+  const tagChunks = tagEntries.length ? [aseChunk(0x2018, concatBytes([tagHeader, ...tagEntries]))] : []
   const framePayloads = timeline.frames.map((frame, frameIndex) => {
     const celChunks = rasterLayerIndices.map(({ index, layer }) => {
-      const frameLayer = animationLayerAtFrame(document, layer.id, frame.id) ?? layer
-      return aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale))
+      let frameLayer = animationLayerAtFrame(document, layer.id, frame.id) ?? layer
+      if (needsComposite) {
+        const snapshot = cloneDocumentForAnimationFrame(document, frame.id)
+        frameLayer = { ...layer, format: 'rgba', width: document.width, height: document.height, offsetX: 0, offsetY: 0, pixels: compositeDocument(snapshot) }
+      }
+      const cel = timeline.cels.find((item) => item.layerId === layer.id && item.frameId === frame.id)
+      const source = cel?.linkedCelId ? timeline.cels.find((item) => item.id === cel.linkedCelId) : undefined
+      const sourceIndex = source ? timeline.frames.findIndex((item) => item.id === source.frameId) : -1
+      return aseCelChunk(index, scaledLayerPixels(document, frameLayer, scale), frameLayer.opacity, cel?.zIndex ?? 0,
+        sourceIndex >= 0 && sourceIndex < frameIndex ? sourceIndex : undefined)
     })
-    const chunks = frameIndex === 0 ? [...layerChunks, ...celChunks] : celChunks
+    const chunks = frameIndex === 0 ? [...layerChunks, ...tagChunks, ...celChunks] : celChunks
     return { duration: frame.duration, chunks, data: concatBytes(chunks) }
   })
   const totalFrameBytes = framePayloads.reduce((total, frame) => total + 16 + frame.data.length, 0)

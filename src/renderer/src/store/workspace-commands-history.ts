@@ -1,3 +1,4 @@
+import { publishEditorEvent } from '@/core/extension-editor-events'
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { AnimationCel } from '@shared/types-animation'
 import { beginPixelEdit, commitPixelEdit, pixelEditHasChanges, revertPixelEdit, type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
@@ -519,6 +520,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         const entry = session.history.undo()
         Object.assign(session.view, view)
         if (!entry) return
+        publishEditorEvent('history.undo', session.document.id)
         // Recordings are a chronology, not a one-frame-per-history-entry stack.
         // Smart sampling and asynchronous encoding break that correspondence;
         // popping here would erase unrelated earlier drawing stages.
@@ -575,6 +577,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         const entry = session.history.redo()
         Object.assign(session.view, view)
         if (!entry) return
+        publishEditorEvent('history.redo', session.document.id)
         session.liquifyResetHistoryPosition = null
         session.liquifyResetHistoryRevision = null
         if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null

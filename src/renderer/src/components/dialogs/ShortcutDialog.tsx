@@ -79,7 +79,7 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
       ? t('shortcuts.sharedWith', { commands: sharedOwners.map((id) => labels[id]).join(t('shortcuts.labelSeparator')) })
       : t('shortcuts.available')
 
-  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => {
+  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => {
     if (event.target === event.currentTarget) onClose()
   }}>
     <section ref={recorderRef} className="modal shortcut-recorder-modal" role="dialog" aria-modal="true" aria-label={editor.index === undefined ? t('shortcuts.addTitle') : t('shortcuts.changeTitle')} style={{ zIndex: recorderWindowStack.zIndex }} onPointerDownCapture={recorderWindowStack.bringToFront} onFocusCapture={recorderWindowStack.bringToFront}>
@@ -218,7 +218,7 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
     blocked: item.conflicting.map((id) => labels[id]).join(t('shortcuts.labelSeparator'))
   })).join(t('shortcuts.conflictSeparator'))
 
-  return <div className="modal-backdrop" role="presentation">
+  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="shortcuts" defaultWidth={800} defaultHeight={620} className="settings-modal shortcut-settings-modal" role="dialog" aria-label={t('shortcuts.title')}>
       <DialogHeader eyebrow={t('shortcuts.eyebrow')} title={t('shortcuts.title')} closeLabel={t('common.close')} onClose={onClose} />
       <div className="settings-layout">

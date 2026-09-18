@@ -15,7 +15,7 @@ const RECENT_EXPORT_PATHS_SCHEMA_VERSION = 1
 const DOCUMENT_EXPORT_SETTINGS_SCHEMA_VERSION = 1
 const MAX_RECENT_EXPORT_PATHS = 10
 const MAX_DOCUMENT_EXPORT_SETTINGS = 100
-const exportFormats: readonly ImageExportKind[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'psd']
+const exportFormats: readonly ImageExportKind[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'psd', 'ase', 'aseprite']
 
 export interface ExportPreset {
   presetName: string
@@ -270,12 +270,14 @@ export function saveDocumentExportSettings(document: DocumentExportSettingsOwner
   } satisfies StoredDocumentExportSettings, storage)
 }
 
-export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'psd' {
+export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'psd' | 'ase' | 'aseprite' {
   if (format === 'jpeg') return 'jpg'
   if (format === 'webp') return 'webp'
   if (format === 'svg') return 'svg'
   if (format === 'gif') return 'gif'
   if (format === 'psd') return 'psd'
+  if (format === 'ase') return 'ase'
+  if (format === 'aseprite') return 'aseprite'
   return 'png'
 }
 

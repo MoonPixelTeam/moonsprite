@@ -55,7 +55,7 @@ const animationVisibleBounds = (document: SpriteDocument): SelectionRect | null 
 }
 
 const encode = async (document: SpriteDocument, request: DocumentExportWorkerRequest, index: number, slice?: DocumentSlice, layerId?: string): Promise<DocumentExportWorkerResult> => {
-  if (request.format === 'psd' && (slice || request.job === 'selection')) throw new Error('PSD export does not support cropped output.')
+  if ((request.format === 'psd' || request.format === 'ase' || request.format === 'aseprite') && (slice || request.job === 'selection')) throw new Error('Project export does not support cropped output.')
   const sourceDocument = layerId ? documentForLayerExport(document, layerId) : document
   const baseCrop = request.job === 'selection' && request.selection
     ? { x: request.selection.x, y: request.selection.y, width: request.selection.width, height: request.selection.height }
@@ -76,7 +76,7 @@ const encode = async (document: SpriteDocument, request: DocumentExportWorkerReq
   const encoded = request.format === 'gif'
     ? { ...exportAnimationGif(document, { ...gifOptions(request), ...(effectiveCrop ? { crop: effectiveCrop } : {}), ...(layerId ? { layerId } : {}) }), extension: 'gif' as const, indexed: false }
       : selection
-      ? await exportDocumentSelectionImage(document, selection, request.scalePercent, request.format as Exclude<typeof request.format, 'gif' | 'psd'>)
+      ? await exportDocumentSelectionImage(document, selection, request.scalePercent, request.format as Exclude<typeof request.format, 'gif' | 'psd' | 'ase' | 'aseprite'>)
       : trimActive || slice || layerId
       ? await exportDocumentSliceImage(sourceDocument, effectiveCrop, request.scalePercent, request.format as Exclude<typeof request.format, 'ase' | 'aseprite' | 'psd' | 'gif'>)
       : await exportDocumentImage(sourceDocument, request.scalePercent, request.format)

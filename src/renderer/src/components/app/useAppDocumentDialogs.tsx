@@ -22,6 +22,7 @@ import { ProjectRollbackDialog } from '@/components/ProjectRollbackDialog'
 import { TimelapseDialog } from '@/components/TimelapseDialog'
 import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
+import { documentSaveTarget } from '@/core/document-save-policy'
 import { type ExportOptions, type SaveAsOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import type { DocumentSession } from '@/store/workspace'
@@ -102,7 +103,7 @@ export function useAppDocumentDialogs({
       {saveAsOpen && session && (
         <SaveAsDialog
           initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|psd)$/i, '') || 'MoonSprite-project'}
-          initialFormat={saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY))}
+          initialFormat={runtimePreferences.saveOriginalFormat ? documentSaveTarget(session.document)?.format ?? saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)) : 'moonsprite'}
           initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory}
           onClose={() => setSaveAsOpen(false)}
           onSave={(options) => runSaveActive(true, options)}

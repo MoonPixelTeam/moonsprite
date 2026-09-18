@@ -10,6 +10,7 @@ import { DEFAULT_THEME_PREFERENCES, THEME_PREFERENCE_KEY, loadThemePreferences, 
 import { ISO_GUIDE_BASE_SPACING, ISO_LINE_STAIR_STEP } from './isometric'
 
 export const SAVE_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-format'
+export const SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-original-format'
 export const EXPORT_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.export-format'
 export const SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.save-directory'
 export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-directory'
@@ -641,6 +642,7 @@ export interface EditorPreferences {
   animationReturnToStart: boolean
   skipDisabledFrames: boolean
   saveFormat: SaveFormatPreference
+  saveOriginalFormat: boolean
   exportFormat: ExportFormatPreference
   saveDirectory: string
   exportDirectory: string
@@ -740,6 +742,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   animationReturnToStart: false,
   skipDisabledFrames: true,
   saveFormat: 'moonsprite',
+  saveOriginalFormat: true,
   exportFormat: 'png',
   saveDirectory: '',
   exportDirectory: '',
@@ -1235,6 +1238,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     animationReturnToStart: get(ANIMATION_RETURN_TO_START_PREFERENCE_KEY) === 'true',
     skipDisabledFrames: get(SKIP_DISABLED_FRAMES_PREFERENCE_KEY) !== 'false',
     saveFormat: parseSaveFormat(get(SAVE_FORMAT_PREFERENCE_KEY)),
+    saveOriginalFormat: get(SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY) !== 'false',
     exportFormat: parseExportFormat(get(EXPORT_FORMAT_PREFERENCE_KEY)),
     saveDirectory: parseDirectoryPreference(get(SAVE_DIRECTORY_PREFERENCE_KEY)),
     exportDirectory: parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
@@ -1338,6 +1342,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [ANIMATION_RETURN_TO_START_PREFERENCE_KEY]: String(preferences.animationReturnToStart),
     [SKIP_DISABLED_FRAMES_PREFERENCE_KEY]: String(preferences.skipDisabledFrames),
     [SAVE_FORMAT_PREFERENCE_KEY]: preferences.saveFormat,
+    [SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY]: String(preferences.saveOriginalFormat),
     [PIXEL_FORMAT_PREFERENCE_KEY]: preferences.pixelFormat,
     [EXPORT_FORMAT_PREFERENCE_KEY]: preferences.exportFormat,
     [SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.saveDirectory),

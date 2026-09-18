@@ -244,3 +244,23 @@ await moonsprite.windows.close({ windowId: 'helper' })
 初始命中区域为空。页面调用 `setHitRegion(sourceWidth, sourceHeight, spans)` 声明可见及可交互区域，`spans` 是 `{x,y,width}` 的单像素高扫描行，最多 65536 条，源尺寸最多 8192。区域按当前覆盖层尺寸缩放，同时裁剪绘制和鼠标命中；区域外事件直接到下方软件，不进行合成事件转发。气泡、按钮等也需包含在区域内。覆盖层位于编辑内容之上、宿主菜单和弹窗之下，不能自行提升层级或修改全局指针策略。
 
 这是面向悬浮工具、信息卡、辅助提示等扩展的通用接口；宠物动画、提醒、位置比例等业务由扩展实现。
+
+
+### 通用编辑器事件与条件表单
+
+具有 `events` 权限的扩展可通过 `runtime.getCapabilities().editorEvents` 查询当前宿主支持的编辑事件名，并订阅：
+
+```js
+moonsprite.on('editor-event', event => {
+  // { type, name, timestamp, projectId?, detail }
+  if (event.name === 'tool.changed') console.log(event.detail.tool)
+})
+```
+
+事件目录：`history.undo`、`history.redo`、`color.sampled`、`drawing.completed`、`fill.completed`、`document.saved`、`document.changed`、`project.created/opened/closed/activated`、`tool.changed`、`color.primary-changed/secondary-changed`、`selection.created/cleared`、`layer.created/deleted/activated`、`frame.changed`、`animation.started/stopped`、`view.changed`。保存、撤销、重做、吸色和绘制完成由实际操作路径发出；取消、无效操作不产生对应成功事件。工程打开/新建以新加入会话的文件来源区分，订阅前已存在的工程不补发打开事件。结构与状态事件描述实际变化，因此撤销恢复图层也会产生 `layer.created`。`selection.created` 包含选区变更。
+
+`detail` 只提供标量元数据，例如 `tool`、`previous`、`layerId`、`frameId`、`revision`、`fullySaved`，不提供文件路径、像素或内部对象。状态观察不写撤销历史。原有 `export-complete`、`document-saved`、`project`、`interaction` 等事件保持兼容；精确的保存动画应订阅 `editor-event/document.saved`。`interaction` 现包含鼠标移动与滚轮，指针活动最多每 500ms 一次。扩展自行选择事件、限频和消费方式，宿主不包含动画或宠物规则。
+
+通用组件表单新增 `select` 和 `dialog` 节点。`select.options` 为 `{value,label,description?}[]`，选项说明使用组件库悬浮提示；值随后续操作的 `values` 返回。`dialog` 使用宿主 `ModalShell`，`label` 是标题、`children` 是表单内容、`action` 是取消操作。槽位、文本及表单字段支持 `tooltip` 字符串；提示遵循软件的悬浮提示首选项。这些组件同样适用于其他扩展的配置和确认表单。
+
+表单节点支持 `visibleWhen: {字段ID: 值}`：全部条件与当前输入（未修改时使用字段默认值）匹配才显示，选择改变时立即更新。数字字段保留有效的 0 值。

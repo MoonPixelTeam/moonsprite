@@ -421,6 +421,7 @@ export interface WorkspaceAnimationCommands {
   addAnimationFrame(): void
   addLinkedAnimationFrame(): void
   duplicateAnimationFrame(): void
+  generateAnimationTween(documentId: string, frameId: string, layerId: string, options: import('@/core/animation-tween').AnimationTweenOptions): boolean
   importGifAnimationLayer(source: SpriteDocument, startFrameIndex: number): boolean
   deleteAnimationFrame(normalizeSelection?: boolean, markSelectionNormalizationHistory?: boolean): void
   setActiveAnimationFrameDuration(duration: number): void

@@ -47,7 +47,7 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
       const trigger = triggerRef.current?.getBoundingClientRect()
       const menu = menuRef.current?.getBoundingClientRect()
       if (!trigger || !menu) return
-      const requestedWidth = popoverWidth ?? Math.min(280, menu.width)
+      const requestedWidth = popoverWidth ?? Math.max(trigger.width, menuRef.current?.scrollWidth ?? menu.width)
       const width = Math.min(Math.max(trigger.width, requestedWidth), Math.max(1, window.innerWidth - 16))
       const left = Math.max(8, Math.min(window.innerWidth - width - 8, trigger.left))
       const top = window.innerHeight - trigger.bottom >= Math.min(menu.height, 320) + 5

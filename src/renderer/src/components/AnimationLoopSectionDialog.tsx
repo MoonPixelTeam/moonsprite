@@ -33,7 +33,9 @@ export function AnimationLoopSectionDialog({ mode, frameCount, initialValue, onC
     label: t('timeline.loopSectionDirection'),
     options: [
       { value: 'forward', label: t('timeline.loopSectionForward') },
-      { value: 'reverse', label: t('timeline.loopSectionReverse') }
+      { value: 'reverse', label: t('timeline.loopSectionReverse') },
+      { value: 'ping-pong', label: t('timeline.loopSectionPingPong') },
+      { value: 'ping-pong-reverse', label: t('timeline.loopSectionPingPongReverse') }
     ]
   }]
   const normalizedStart = Math.max(1, Math.min(frameCount, Math.trunc(draft.startFrame) || 1))
@@ -92,7 +94,7 @@ export function AnimationLoopSectionDialog({ mode, frameCount, initialValue, onC
             name: sectionName,
             start: rangeStart,
             end: rangeEnd,
-            direction: t(draft.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
+            direction: t(draft.direction === 'ping-pong' ? 'timeline.loopSectionPingPong' : draft.direction === 'ping-pong-reverse' ? 'timeline.loopSectionPingPongReverse' : draft.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
             repeats: normalizedRepeatCount ?? t('timeline.loopSectionInfiniteShort')
           })}
         </div>

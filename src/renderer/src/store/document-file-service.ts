@@ -5,11 +5,12 @@ import type { MoonSpriteApi } from '@shared/types-platform'
 import type { TimelapseExportFormat } from '@shared/types-timelapse'
 import type { RasterLayer } from '@shared/types-layer'
 import { checkTypedArrayLimit } from '@/core/resource-policy'
-import { decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageExtension, saveImageKindForPath, sourceRasterImageKindForPath } from '@/core/document-files'
+import { decodeDocumentFileAsync, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageExtension, saveImageKindForPath } from '@/core/document-files'
+import { documentSaveTarget, documentSaveCompatibility, type DocumentSaveFormat, type SaveCompatibilityIssue } from '@/core/document-save-policy'
 import { decodePng, exportDocumentImage, exportDocumentSliceImage, type SaveImageKind } from '@/core/png'
 import { sliceExportFileName } from '@/core/slices'
 import { loadEditorPreferences } from '@/core/file-preferences'
-import { translate } from '@/core/localization'
+import { translate, translateCurrent as tr } from '@/core/localization'
 import { exportAnimationGif } from '@/core/gif'
 import { encodeTimelapseVideo, isTimelapseVideoFormat, type TimelapseExportOptions } from '@/core/timelapse'
 import { normalizeTimelapseSettings } from '@/core/project-metadata'
@@ -37,6 +38,7 @@ type PngSourceRegion = Pick<DocumentSlice, 'x' | 'y' | 'width' | 'height'>
  * free-tile cels, styles, masks, opacity and blend modes remain WYSIWYG.
  */
 const isPngFileFormat = (format: string): format is PngFileFormat => format === 'png-auto' || format === 'png-rgba'
+const isProjectExportFormat = (format: string): format is Extract<SaveImageKind, 'psd' | 'ase' | 'aseprite'> => format === 'psd' || format === 'ase' || format === 'aseprite'
 
 /** Let the renderer paint progress state before synchronous pixel encoding starts. */
 const yieldToHost = (): Promise<void> => new Promise((resolve) => {
@@ -200,7 +202,7 @@ function rememberLastDocumentExport(document: SpriteDocument, options: ExportOpt
 export interface SaveAsOptions {
   includeTimelapse?: boolean
   name: string
-  format: 'moonsprite' | SaveImageKind
+  format: DocumentSaveFormat
   scalePercent: number
   directory?: string
 }
@@ -222,6 +224,8 @@ export interface SaveDocumentResult {
 }
 
 export interface FileOperationLifecycle {
+  onProjectSaveRequested?: () => Promise<boolean>
+  onSaveCompatibility?: (format: DocumentSaveFormat, issues: SaveCompatibilityIssue[]) => Promise<'format' | 'project' | 'cancel'>
   onEncodeStart?: () => void
   onEncodeProgress?: (value: number) => void
   onExportTaskStart?: (current: number, total: number) => void
@@ -304,37 +308,67 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
     }
     const initial = request.getDocument()
     if (!initial) return null
-    const directSourceTarget = !request.saveAs && !request.options ? directSourceImageSaveTarget(initial.document) : null
-    if (directSourceTarget) {
+    let approvedIssues: SaveCompatibilityIssue[] = []
+    const confirmFormat = async (format: DocumentSaveFormat): Promise<'format' | 'project' | 'cancel'> => {
+      const current = request.getDocument()
+      if (!current) return 'cancel'
+      approvedIssues = documentSaveCompatibility(current.document, format)
+      if (!approvedIssues.length) return 'format'
+      return await request.lifecycle?.onSaveCompatibility?.(format, approvedIssues) ?? 'cancel'
+    }
+    const validateApproval = (document: SpriteDocument, format: DocumentSaveFormat): void => {
+      if (documentSaveCompatibility(document, format).some((issue) => !approvedIssues.includes(issue))) throw new Error(tr('file.save.changedDuringConfirmation'))
+    }
+    const saveOriginalFormat = loadEditorPreferences().saveOriginalFormat
+    const originalTarget = documentSaveTarget(initial.document)
+    let forceProject = !request.options && !saveOriginalFormat && originalTarget?.format !== 'moonsprite'
+    if (forceProject && originalTarget && !request.saveAs) {
+      if (!await request.lifecycle?.onProjectSaveRequested?.()) return null
+      if (!request.getDocument()) return null
+    }
+    const directSourceTarget = !request.saveAs && !request.options && !forceProject ? originalTarget : null
+    if (directSourceTarget && directSourceTarget.format !== 'moonsprite') {
+      const decision = await confirmFormat(directSourceTarget.format)
+      if (decision === 'cancel') return null
+      forceProject = decision === 'project'
       const source = request.getDocument()
-      const currentTarget = source ? directSourceImageSaveTarget(source.document) : null
-      if (source && currentTarget?.filePath === directSourceTarget.filePath && currentTarget.format === directSourceTarget.format) {
+      const currentTarget = source ? documentSaveTarget(source.document) : null
+      if (!forceProject && source && currentTarget?.filePath === directSourceTarget.filePath && currentTarget.format === directSourceTarget.format) {
+        validateApproval(source.document, currentTarget.format)
         request.lifecycle?.onEncodeStart?.()
         const nativePng = isPngFileFormat(currentTarget.format)
           ? await writeDocumentPngAtomic(request.api, currentTarget.filePath, source.document, 100, currentTarget.format, undefined, request.lifecycle?.onEncodeProgress)
           : null
         if (!nativePng) {
-          const data = await encodeDocumentForSourceImage(source.document, currentTarget.format, request.lifecycle?.onEncodeProgress)
+          const data = currentTarget.format === 'gif' || currentTarget.format === 'bmp'
+            ? await encodeDocumentForSourceImage(source.document, currentTarget.format, request.lifecycle?.onEncodeProgress)
+            : await encodeDocumentForPath(source.document, currentTarget.filePath, currentTarget.format, 100, request.lifecycle?.onEncodeProgress)
           request.lifecycle?.onWriteStart?.()
           await request.api.writeBinaryAtomic(currentTarget.filePath, data)
         }
-        return { filePath: currentTarget.filePath, revision: source.revision, setDocumentFilePath: false }
+        return { filePath: currentTarget.filePath, revision: source.revision, setDocumentFilePath: Boolean(source.document.filePath) }
       }
+      if (!forceProject) return null
     }
-    const importedImageRequiresProject = !request.saveAs
-      && !request.options
-      && !initial.document.filePath
-      && Boolean(sourceRasterImageKindForPath(initial.document.sourceFilePath ?? ''))
     const existingFormat = initial.document.filePath
       ? (/\.moonsprite$/i.test(initial.document.filePath) ? 'moonsprite' as const : saveImageKindForPath(initial.document.filePath))
       : null
-    const selectedFormat: 'moonsprite' | SaveImageKind = request.options?.format ?? existingFormat ?? (importedImageRequiresProject ? 'moonsprite' : request.preferredImageFormat) ?? 'moonsprite'
+    let selectedFormat: DocumentSaveFormat = forceProject ? 'moonsprite' : request.options?.format ?? documentSaveTarget(initial.document)?.format ?? existingFormat ?? request.preferredImageFormat ?? 'moonsprite'
+    if (!forceProject) {
+      const decision = await confirmFormat(selectedFormat)
+      if (decision === 'cancel') return null
+      if (decision === 'project') { selectedFormat = 'moonsprite'; forceProject = true }
+    }
     const imageFormat = selectedFormat === 'moonsprite' ? null : selectedFormat
     const fallbackName = sanitizeFileStem(initial.document.name, 'MoonSprite-export')
     const requestedName = sanitizeFileStem(request.options?.name ?? fallbackName, fallbackName)
     const saveDirectory = request.options?.directory?.trim() || loadEditorPreferences().saveDirectory
-    let filePath = initial.document.filePath
-    if ((!filePath || request.saveAs) && imageFormat) {
+    const requestedDirectory = request.options?.directory?.trim()
+    let filePath = forceProject ? null : initial.document.filePath
+    if ((!filePath || request.saveAs) && requestedDirectory) {
+      const extension = imageFormat ? saveImageExtension(imageFormat) : 'moonsprite'
+      filePath = joinDirectoryPath(requestedDirectory, `${requestedName}.${extension}`)
+    } else if ((!filePath || request.saveAs) && imageFormat) {
       const extension = saveImageExtension(imageFormat)
       const result = await request.api.saveProject(joinDirectoryPath(saveDirectory, `${requestedName}.${extension}`), saveImageDialogFormat(imageFormat))
       if (result.canceled || !result.filePath || !request.getDocument()) return null
@@ -349,6 +383,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
     if (!imageFormat) await prepareLocalTimelapseSave(beforePersistence.document, request.api)
     const source = request.getDocument()
     if (!source) return null
+    validateApproval(source.document, selectedFormat)
     const generation = { document: source.document, revision: source.revision, snapshots: source.document.timelapse?.snapshots, metadata: saveMetadata(source.document) }
     request.lifecycle?.onEncodeStart?.()
     if (!imageFormat) {
@@ -381,7 +416,9 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
         ? await writeDocumentPngAtomic(request.api, filePath, source.document, request.options?.scalePercent ?? 100, imageFormat, undefined, request.lifecycle?.onEncodeProgress)
         : null
       if (!nativePng) {
-        const data = await encodeDocumentForPath(source.document, filePath, imageFormat, request.options?.scalePercent ?? 100, request.lifecycle?.onEncodeProgress)
+        const data = imageFormat === 'gif' || imageFormat === 'bmp'
+          ? await encodeDocumentForSourceImage(source.document, imageFormat, request.lifecycle?.onEncodeProgress)
+          : await encodeDocumentForPath(source.document, filePath, imageFormat, request.options?.scalePercent ?? 100, request.lifecycle?.onEncodeProgress)
         request.lifecycle?.onWriteStart?.()
         await request.api.writeBinaryAtomic(filePath, data)
       }
@@ -416,7 +453,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     : []
   const effectiveTarget = requestedTarget === 'layer' ? 'document' : requestedTarget
   if (requestedTarget === 'layer') {
-    if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
+    if (isProjectExportFormat(format)) throw new Error(translate(loadEditorPreferences().language, 'file.export.projectDocumentOnly'))
     const exportWidth = Math.max(1, Math.round(document.width * scalePercent / 100))
     const exportHeight = Math.max(1, Math.round(document.height * scalePercent / 100))
     if (!Number.isSafeInteger(exportWidth) || !Number.isSafeInteger(exportHeight)) throw new Error(translate(loadEditorPreferences().language, 'file.export.safeRange'))
@@ -509,7 +546,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     return translate(loadEditorPreferences().language, 'file.export.layers', { count: exportLayers.length })
   }
   if (effectiveTarget === 'selection') {
-    if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
+    if (isProjectExportFormat(format)) throw new Error(translate(loadEditorPreferences().language, 'file.export.projectDocumentOnly'))
     const selection = options.selection
     if (!selection || selection.width < 1 || selection.height < 1) throw new Error(translate(loadEditorPreferences().language, 'file.export.selectionMissing'))
     const region = { id: 'selection', name: 'Selection', x: selection.x, y: selection.y, width: selection.width, height: selection.height }
@@ -576,7 +613,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     return output.indexed ? translate(loadEditorPreferences().language, 'file.export.indexed') : translate(loadEditorPreferences().language, 'file.export.image', { extension: output.extension.toUpperCase() })
   }
   if (effectiveTarget === 'slices') {
-    if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
+    if (isProjectExportFormat(format)) throw new Error(translate(loadEditorPreferences().language, 'file.export.projectDocumentOnly'))
     const documentSlices = document.slices ?? []
     if (documentSlices.length === 0) throw new Error(translate(loadEditorPreferences().language, 'file.export.noSlices'))
     const slices = options.sliceId ? documentSlices.filter((slice) => slice.id === options.sliceId) : documentSlices
@@ -671,7 +708,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   }
   if (effectiveTarget === 'frames') {
     if (format === 'gif') throw new Error(translate(loadEditorPreferences().language, 'file.export.framesGifUnsupported'))
-    if (format === 'psd') throw new Error(translate(loadEditorPreferences().language, 'file.export.psdDocumentOnly'))
+    if (isProjectExportFormat(format)) throw new Error(translate(loadEditorPreferences().language, 'file.export.projectDocumentOnly'))
     const exportWidth = Math.max(1, Math.round(document.width * scalePercent / 100))
     const exportHeight = Math.max(1, Math.round(document.height * scalePercent / 100))
     if (!Number.isSafeInteger(exportWidth) || !Number.isSafeInteger(exportHeight)) throw new Error(translate(loadEditorPreferences().language, 'file.export.safeRange'))
@@ -759,7 +796,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   const exportHeight = Math.max(1, Math.round(document.height * scalePercent / 100))
   if (!Number.isSafeInteger(exportWidth) || !Number.isSafeInteger(exportHeight)) throw new Error(translate(loadEditorPreferences().language, 'file.export.safeRange'))
   const extension = exportFileExtension(format)
-  const dialogFormat = format === 'png-auto' || format === 'png-rgba' ? 'png' : format
+  const dialogFormat = format === 'png-auto' || format === 'png-rgba' ? 'png' : format === 'ase' || format === 'aseprite' ? 'aseprite' : format
   const selectedDirectory = options?.directory?.trim()
   let path = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
   if (!path) {

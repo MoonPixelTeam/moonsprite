@@ -650,7 +650,7 @@ export function ComponentLibrary({ onClose }: { onClose: () => void }) {
   const selectedEntry = localizedEntries.find((entry) => entry.id === selectedId) ?? localizedEntries.find((entry) => filteredEntries.some((candidate) => candidate.id === entry.id)) ?? localizedEntries[0]
   const Preview = previewRenderers[selectedEntry.id]
 
-  return <div className="modal-backdrop component-library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <ModalShell storageKey="component-library" defaultWidth={920} defaultHeight={680} minWidth={700} minHeight={500} maxWidth={1200} maxHeight={900} fitContent={false} resizePortalClassName="component-library-resize-portal" className="component-library" role="dialog" aria-modal="true" aria-labelledby="component-library-title">
       <DialogHeader className="component-library-header" eyebrow="MOONSPRITE UI" title={componentText(locale, 'componentLibrary.title')} titleId="component-library-title" description={componentText(locale, 'componentLibrary.subtitle')} closeLabel={componentText(locale, 'componentLibrary.close')} onClose={onClose} />
       <div className="component-library-layout">

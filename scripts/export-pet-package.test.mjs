@@ -10,7 +10,7 @@ const context = vm.createContext({
   basename: value => value, sourcePath: 'test.moonsprite'
 })
 vm.runInContext(source.slice(source.indexOf('const defaults ='), source.indexOf('const sprite =')), context)
-const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource})', context)
+const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource,triggerConditions})', context)
 
 test('transparent pet margins never become an input region', async () => {
   const calls=[]
@@ -423,15 +423,15 @@ test('legacy coordinates migrate to ratios and a drag saves a new ratio for only
 
 test('manager presents independent named upload slots and an aligned scale action', async () => {
  let view;const target={id:'builtin',name:'奶龙',frameCount:0,animations:{},animationSlots:['WAVE']};
- const sandbox=vm.createContext({BUILT_IN:target,animationMap:entry=>entry.animations,listPets:async()=>[target],moonsprite:{storage:{get:async()=>null},window:{postMessage:async value=>view=value}}});
+ const sandbox=vm.createContext({TRIGGER_CONDITIONS:generated.triggerConditions,BUILT_IN:target,animationMap:entry=>entry.animations,listPets:async()=>[target],moonsprite:{storage:{get:async()=>null},window:{postMessage:async value=>view=value}}});
  const start=generated.managerSource.indexOf('const animationSlots='),end=generated.managerSource.indexOf('const combineAnimations=',start);
  vm.runInContext(generated.managerSource.slice(start,end),sandbox);await vm.runInContext('renderList()',sandbox);
  const [nav,detail]=view.nodes[0].children;assert.equal(nav.children[1].label,'奶龙');assert.equal(nav.children[1].description,'待上传动画');
  const slots=detail.children.filter(node=>node.type==='slot');assert.deepEqual(Array.from(slots,node=>node.id),['slot-SHOW','slot-IDLE']);
- for(const slot of slots){const upload=slot.children[0];assert.equal(upload.multiple,false);assert.equal(upload.action.animation,slot.id.slice(5));assert.equal(upload.action.petId,'builtin')}
+ for(const slot of slots){const upload=slot.children.at(-1);assert.equal(upload.multiple,false);assert.equal(upload.action.animation,slot.id.slice(5));assert.equal(upload.action.petId,'builtin')}
  assert.equal(detail.children.find(node=>node.id==='scale-row').align,'end');
  assert.ok(!detail.children.some(node=>node.id==='add-slot-row'));
- for(const slot of slots){assert.equal(slot.children[1].action.type,'ui-clear-slot');assert.equal(slot.children[1].disabled,true)}
+ for(const slot of slots){assert.equal(slot.children[0].action.type,'ui-clear-slot');assert.equal(slot.children[0].disabled,true)}
 });
 
 test('slot uploads bind the selected slot instead of the filename and preserve other slots', async () => {
@@ -481,7 +481,7 @@ test('clearing slots preserves the other animation, rolls back failures and allo
 
 test('clear-slot messages clear only their selected pet and named animation', async () => {
  let listener;const calls=[];
- const sandbox=vm.createContext({activeId:'cat',staged:[],nameInput:{value:''},result:null,status:'',animationSlots:()=>['SHOW','IDLE'],importAnimations:async(...args)=>calls.push(args),renderList:async()=>{},moonsprite:{window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
+ const sandbox=vm.createContext({activeId:'cat',staged:[],nameInput:{value:''},result:null,status:'',listPets:async()=>[{id:'cat'}],animationSlots:()=>['SHOW','IDLE'],importAnimations:async(...args)=>calls.push(args),renderList:async()=>{},moonsprite:{window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
  const start=generated.managerSource.indexOf('let operations='),end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  const send=async message=>{listener(message);await vm.runInContext('operations',sandbox)};
  await send({type:'ui-clear-slot',petId:'cat',animation:'SHOW',requestId:'1'});assert.equal(calls.length,1);assert.equal(calls[0][1],'cat');assert.equal(calls[0][2],'SHOW');assert.equal(sandbox.result.ok,true);
@@ -558,4 +558,61 @@ test('manager selects the requested pet and visibility updates the shared menu d
  listener({type:'catalog',petId:'cat'});await vm.runInContext('operations',sandbox);assert.equal(sandbox.activeId,'cat');
  listener({type:'ui-visible',petId:'cat',value:true});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin','cat']);
  listener({type:'ui-visible',petId:'cat',value:false});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);assert.equal(published.length,2);
+});
+
+
+test('condition slots are configurable, stay attached to the chosen pet and render a host dialog', async () => {
+ let listener,view;let meta=[{id:'cat',name:'小猫',frameCount:0,animations:{}}];
+ const sandbox=vm.createContext({TRIGGER_CONDITIONS:generated.triggerConditions,BUILT_IN:{id:'cat'},listPets:async()=>meta,readMeta:async()=>meta,writeMeta:async value=>{meta=value},publish:async()=>{},animationMap:entry=>entry.animations,moonsprite:{storage:{get:async()=>null},window:{onMessage:fn=>listener=fn,postMessage:async value=>{view=value}},diagnostics:{log:error=>{throw Error(error)}}}});
+ let start=generated.managerSource.indexOf('const animationSlots='),end=generated.managerSource.indexOf('const combineAnimations=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ start=generated.managerSource.indexOf('let operations=');end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ listener({type:'ui-add-trigger',petId:'cat'});await vm.runInContext('operations',sandbox);
+ assert.equal(view.nodes.at(-1).type,'dialog');assert.equal(view.nodes.at(-1).children[0].options.length,21);assert.ok(view.nodes.at(-1).children[0].options.every(option=>option.description));
+ listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-event':'tool.changed','trigger-tool':'eraser','trigger-cooldown':4}});await vm.runInContext('operations',sandbox);
+ assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].tool,'eraser');assert.equal(meta[0].triggerSlots[0].cooldownMs,4000);
+ assert.equal(view.nodes.some(node=>node.type==='dialog'),false);
+ const slot=view.nodes[0].children[1].children.find(node=>node.id.startsWith('slot-TRIGGER_'));assert.ok(slot.tooltip);assert.match(slot.label,/切换工具/);
+});
+
+test('condition animations honor filters, cooldown, busy playback and idle reset', () => {
+ let now=10000,timer;const played=[];
+ const sandbox=vm.createContext({Date:{now:()=>now},pet:{triggerSlots:[{id:'TRIGGER_A',event:'tool.changed',tool:'eraser',cooldownMs:3000},{id:'TRIGGER_B',event:'idle',idleSeconds:5,cooldownMs:1000}],animations:{TRIGGER_A:[1],TRIGGER_B:[2]},durations:[125,500,500]},play:(frames,repeat)=>played.push([Array.from(frames),repeat]),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
+ const start=generated.petWindowSource.indexOf('let petVisible='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('tool.changed',{tool:'pencil'})",sandbox);assert.equal(played.length,0);
+ vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.deepEqual(played,[[[1],false]]);
+ now+=1000;vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.equal(played.length,1);
+ now+=5000;timer();assert.equal(played.length,2);now+=5000;timer();assert.equal(played.length,2);
+ vm.runInContext('markActivity()',sandbox);now+=6000;timer();assert.equal(played.length,3);
+});
+
+
+test('pet package keeps condition bindings and rejects malformed condition configuration', async () => {
+ const h=petPackageHarness(),file=await h.export();
+ const payload=JSON.parse(new TextDecoder().decode(new Uint8Array(file.bytes)));
+ payload.pet.triggerSlots=[{id:'TRIGGER_TEST',event:'history.undo',tool:'',idleSeconds:60,cooldownMs:3000}];payload.pet.animations.TRIGGER_TEST=[0];
+ h.sandbox.TRIGGER_CONDITIONS=generated.triggerConditions;
+ const imported=await h.import(new TextEncoder().encode(JSON.stringify(payload)));
+ assert.equal(imported.triggerSlots[0].event,'history.undo');assert.deepEqual(Array.from(imported.animations.TRIGGER_TEST),[0]);
+ payload.pet.triggerSlots[0].event='run-arbitrary-code';await assert.rejects(()=>h.import(new TextEncoder().encode(JSON.stringify(payload))),/条件槽位配置无效/);
+});
+
+
+test('preview fits opaque content in a fixed frame instead of shrinking transparent margins', async () => {
+ const draws=[];let created=0;
+ const pixels=new Uint8ClampedArray(20*20*4);pixels[(10*20+9)*4+3]=255;pixels[(11*20+10)*4+3]=255;
+ const sandbox=vm.createContext({document:{createElement:()=>{const index=created++;return {width:0,height:0,getContext:()=>index===0?{clearRect(){},drawImage(){},getImageData:()=>({data:pixels})}:{drawImage:(...args)=>draws.push(args),translate(){},scale(){}},toDataURL:()=> 'preview'}}}});
+ const start=generated.managerSource.indexOf('const previewSprite='),end=generated.managerSource.indexOf('const animationSlots=',start);
+ vm.runInContext(generated.managerSource.slice(start,end),sandbox);sandbox.image={};sandbox.target={frameWidth:20,frameHeight:20,frameCount:2,animations:{IDLE:[1]}};
+ assert.equal(await vm.runInContext('previewSprite(image,target)',sandbox),'preview');
+ assert.deepEqual(draws[0].slice(1),[9,30,2,2,4,4,88,88]);
+});
+
+
+test('zero cooldown restarts immediately and overlapping idle slots choose one random candidate per idle period', () => {
+ let now=10000,timer;const played=[];
+ const sandbox=vm.createContext({Date:{now:()=>now},Math:{...Math,random:()=>0.99,floor:Math.floor},pet:{triggerSlots:[{id:'A',event:'history.undo',cooldownMs:0},{id:'B',event:'idle',idleSeconds:5,cooldownMs:0},{id:'C',event:'idle',idleSeconds:5,cooldownMs:0}],animations:{A:[0],B:[1],C:[2]},durations:[500,500,500]},play:frames=>played.push(Array.from(frames)),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
+ const start=generated.petWindowSource.indexOf('let petVisible='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('history.undo');triggerAnimation('history.undo')",sandbox);assert.deepEqual(played,[[0],[0]]);
+ now+=6000;timer();assert.deepEqual(played,[[0],[0],[2]]);now+=2000;timer();assert.equal(played.length,3);
+ vm.runInContext('markActivity()',sandbox);now+=6000;timer();assert.equal(played.length,4);
 });

@@ -1,3 +1,4 @@
+import { publishEditorEvent } from '@/core/extension-editor-events'
 import { resolveDocumentClose } from './workspace-close-coordinator'
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { SpriteDocument } from '@shared/types-document'
@@ -5,7 +6,8 @@ import { checkResourceLimit } from '@/core/resource-policy'
 import { captureDocumentImageResizeSnapshot, convertDocumentColorMode, createId, documentImageResizeSnapshotBytes, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot } from '@/core/document-model'
 import { documentAnimationVisibleContentBounds, documentVisibleContentBounds } from '@/core/document-composite'
 import { resizeAnimationCelsAt, syncActiveAnimationFrame, synchronizeLinkedLayerContents } from '@/core/animation'
-import { directSourceImageSaveTarget, fileNameFromPath } from '@/core/document-files'
+import { fileNameFromPath } from '@/core/document-files'
+import { documentSaveTarget, saveFormatLabel } from '@/core/document-save-policy'
 import { openProgress } from '@/core/open-progress'
 import { recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import { broadcastExtensionRuntimeEvent } from '@/core/extension-runtime'
@@ -14,7 +16,7 @@ import { saveProgress } from '@/core/save-progress'
 import { clampSelection } from '@/core/tools-pixel-edit'
 import { shiftSelection } from '@/core/selection'
 import { recordRecentProject } from '@/core/home-history'
-import { SAVE_FORMAT_PREFERENCE_KEY, saveImageKindForPreference } from '@/core/file-preferences'
+import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences, saveImageKindForPreference } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
 import { captureFreeTileImageResizeState, resizeFreeTileDocumentImage, validateFreeTileImageResize } from '@/core/free-tile-document'
@@ -310,7 +312,8 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
       session = get().sessions.find((item) => item.document.id === documentId) ?? null
       if (!session) return false
       persistProjectLayerPanelState(session)
-      if (!saveAs && !session.document.dirty && (session.document.filePath || directSourceImageSaveTarget(session.document))) {
+      const savedTarget = documentSaveTarget(session.document)
+      if (!saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
         if (session.recoveryOriginId) removeSavedRecovery(session.recoveryOriginId)
         set({ message: tr('workspace.save.done') })
         return true
@@ -337,7 +340,28 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
           options,
           preferredImageFormat: saveImageKindForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)),
           lifecycle: {
-            onEncodeStart: beginSaveProgress
+            onEncodeStart: beginSaveProgress,
+            onProjectSaveRequested: async () => (await get().requestDialog({
+              title: tr('file.save.projectPreferredTitle'),
+              message: tr('file.save.projectPreferredMessage'),
+              choices: [
+                { id: 'project', label: tr('file.save.keepProject'), tone: 'primary' },
+                { id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }
+              ]
+            })) === 'project',
+            onSaveCompatibility: async (format, issues) => {
+              const choice = await get().requestDialog({
+                title: tr('file.save.compatibilityTitle'),
+                message: tr('file.save.compatibilityMessage', { format: saveFormatLabel(format) }),
+                detail: issues.map((issue) => tr(`file.save.loss.${issue}`)).join('\n'),
+                choices: [
+                  { id: 'project', label: tr('file.save.keepProject'), tone: 'primary' },
+                  { id: 'format', label: tr('file.save.keepFormat', { format: saveFormatLabel(format) }), tone: 'danger' },
+                  { id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }
+                ]
+              })
+              return choice === 'project' || choice === 'format' ? choice : 'cancel'
+            }
           }
         })
         if (!result) { endSaveProgress(false); return false }
@@ -370,6 +394,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         }
         set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
         endSaveProgress()
+        publishEditorEvent('document.saved', documentId, { fullySaved })
         recordUsageEvent('save')
         return true
       } catch (error) {

@@ -1,4 +1,4 @@
-import type { AnimationFrame, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
+import type { AnimationFrame, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
 
 export const MAX_ANIMATION_LOOP_REPEAT_COUNT = 9_999
 export const MAX_ANIMATION_LOOP_SECTION_NAME_LENGTH = 64
@@ -14,6 +14,7 @@ export interface AnimationLoopPlaybackStep {
   frameId: string
   completedIterations: number
   completed: boolean
+  position?: number
 }
 
 const normalizedRepeatCount = (value: unknown): number | null => {
@@ -49,7 +50,7 @@ export const normalizeAnimationLoopSections = (value: unknown, frames: readonly 
       name: name || `Loop ${result.length + 1}`,
       startFrameId: frames[startIndex].id,
       endFrameId: frames[endIndex].id,
-      direction: candidate.direction === 'reverse' ? 'reverse' : 'forward',
+      direction: candidate.direction === 'reverse' || candidate.direction === 'ping-pong' || candidate.direction === 'ping-pong-reverse' ? candidate.direction : 'forward',
       repeatCount: normalizedRepeatCount(candidate.repeatCount)
     })
   }
@@ -96,7 +97,7 @@ export const animationLoopSectionStartFrameId = (
   const range = resolveAnimationLoopSectionRange(timeline, section)
   if (!range) return null
   const frames = timeline.frames.slice(range.startIndex, range.endIndex + 1)
-  if (section.direction === 'reverse') frames.reverse()
+  if (section.direction === 'reverse' || section.direction === 'ping-pong-reverse') frames.reverse()
   return frames.find((frame) => frame.disabled !== true)?.id ?? null
 }
 
@@ -156,10 +157,10 @@ export const animationLoopFrameIdsForExport = (
   const expand = (section: AnimationLoopSection | null, sectionRange: AnimationLoopSectionRange): string[] => {
     const nested = directNestedAnimationLoopSections(timeline, sectionRange, section?.id ?? null)
     const nestedByBoundary = new Map(
-      nested.map((candidate) => [section?.direction === 'reverse' ? candidate.range.endIndex : candidate.range.startIndex, candidate])
+      nested.map((candidate) => [(section?.direction === 'reverse' || section?.direction === 'ping-pong-reverse') ? candidate.range.endIndex : candidate.range.startIndex, candidate])
     )
     const indexes: number[] = []
-    if (section?.direction === 'reverse') {
+    if (section?.direction === 'reverse' || section?.direction === 'ping-pong-reverse') {
       for (let index = sectionRange.endIndex; index >= sectionRange.startIndex; index -= 1) indexes.push(index)
     } else {
       for (let index = sectionRange.startIndex; index <= sectionRange.endIndex; index += 1) indexes.push(index)
@@ -178,6 +179,7 @@ export const animationLoopFrameIdsForExport = (
       if (Number.isNaN(index)) continue
       sequence.push(timeline.frames[index].id)
     }
+    if (section?.direction === 'ping-pong' || section?.direction === 'ping-pong-reverse') sequence.push(...sequence.slice(1, -1).reverse())
     const repeatCount = loopSectionRepeatCountForExport(section)
     return Array.from({ length: repeatCount }, () => sequence).flat()
   }
@@ -206,26 +208,30 @@ export const advanceAnimationLoopSectionPlayback = (
   timeline: Pick<AnimationTimeline, 'frames'>,
   section: AnimationLoopSection,
   frameId: string,
-  completedIterations: number
+  completedIterations: number,
+  position?: number
 ): AnimationLoopPlaybackStep | null => {
   const range = resolveAnimationLoopSectionRange(timeline, section)
   if (!range) return null
-  const direction: AnimationLoopDirection = section.direction === 'reverse' ? 'reverse' : 'forward'
+  const reverse = section.direction === 'reverse' || section.direction === 'ping-pong-reverse'
+  const pingPong = section.direction === 'ping-pong' || section.direction === 'ping-pong-reverse'
   const playableFrames = timeline.frames
     .slice(range.startIndex, range.endIndex + 1)
     .filter((frame) => frame.disabled !== true)
-  if (direction === 'reverse') playableFrames.reverse()
+  if (reverse) playableFrames.reverse()
+  if (pingPong) playableFrames.push(...playableFrames.slice(1, -1).reverse())
   if (playableFrames.length === 0) return null
-  const currentIndex = playableFrames.findIndex((frame) => frame.id === frameId)
-  if (currentIndex < 0) return { frameId: playableFrames[0].id, completedIterations, completed: false }
+  const resumedIndex = position === undefined ? -1 : playableFrames.findIndex((frame, index) => index >= position && frame.id === frameId)
+  const currentIndex = resumedIndex >= 0 ? resumedIndex : playableFrames.findIndex((frame) => frame.id === frameId)
+  if (currentIndex < 0) return { frameId: playableFrames[0].id, completedIterations, completed: false, ...(pingPong ? { position: 0 } : {}) }
   if (currentIndex + 1 < playableFrames.length) {
-    return { frameId: playableFrames[currentIndex + 1].id, completedIterations, completed: false }
+    return { frameId: playableFrames[currentIndex + 1].id, completedIterations, completed: false, ...(pingPong ? { position: currentIndex + 1 } : {}) }
   }
   const nextCompletedIterations = completedIterations + 1
   if (section.repeatCount !== null && nextCompletedIterations >= section.repeatCount) {
     return { frameId: playableFrames[playableFrames.length - 1].id, completedIterations: nextCompletedIterations, completed: true }
   }
-  return { frameId: playableFrames[0].id, completedIterations: nextCompletedIterations, completed: false }
+  return { frameId: playableFrames[0].id, completedIterations: nextCompletedIterations, completed: false, ...(pingPong ? { position: 0 } : {}) }
 }
 
 export const reconcileAnimationLoopSectionsAfterFrameInsertion = (

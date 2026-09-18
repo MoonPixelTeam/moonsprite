@@ -32,6 +32,26 @@ const exportApi = () => {
 }
 
 describe('document PSD export service', () => {
+  it('writes Save As directly to its selected directory without reopening the native save dialog', async () => {
+    const saveProject = vi.fn(async () => ({ canceled: true }))
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const document = createDocument('Chosen location', 2, 2, 'rgba')
+    const current = { document, revision: 1 }
+    const api = { saveProject, writeBinaryAtomic } as unknown as MoonSpriteApi
+
+    await expect(saveDocumentFile({
+      api,
+      documentId: document.id,
+      getDocument: () => current,
+      saveAs: true,
+      options: { name: 'chosen-location', format: 'moonsprite', scalePercent: 100, directory: 'D:/selected-folder' },
+      preferredImageFormat: null
+    })).resolves.toMatchObject({ filePath: 'D:/selected-folder/chosen-location.moonsprite' })
+
+    expect(saveProject).not.toHaveBeenCalled()
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/selected-folder/chosen-location.moonsprite', expect.any(Uint8Array))
+  })
+
   it('writes a layered PSD file directly to an explicit export directory', async () => {
     const { api, exportImage, writeBinaryAtomic, getResourceInfo } = exportApi()
     const document = createDocument('Layered project', 2, 2, 'rgba')
@@ -53,6 +73,18 @@ describe('document PSD export service', () => {
 
     expect(exportImage).toHaveBeenCalledWith('layers.psd', 'psd')
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/layers.psd', expect.any(Uint8Array))
+  })
+
+  it('exports an editable Aseprite project with the requested .ase extension', async () => {
+    const { api, writeBinaryAtomic } = exportApi()
+    const document = createDocument('Aseprite project', 2, 2, 'rgba')
+
+    await expect(exportDocumentFile(api, document, { name: 'sprite', format: 'ase', scalePercent: 100, target: 'document', directory: 'D:/exports' })).resolves.toBe('已导出 ASE 图像。')
+
+    expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/sprite.ase', expect.any(Uint8Array))
+    const bytes = writeBinaryAtomic.mock.calls[0][1]
+    expect(bytes[4]).toBe(0xe0)
+    expect(bytes[5]).toBe(0xa5)
   })
 
   it('waits for an explicit decision before writing over an existing export', async () => {

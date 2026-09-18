@@ -1,3 +1,6 @@
+import { EXTENSION_EDITOR_EVENTS } from '@/core/extension-editor-events'
+import { editorEventSnapshot, changedEditorEvents } from '@/store/workspace-extension-events'
+import { CANVAS_COLOR_SAMPLING_COMPLETED_EVENT } from '@/components/color-sampling-events'
 import { ExtensionOverlay, type OverlayDefinition } from './ExtensionOverlay'
 import { overlayBounds } from './extension-overlay-geometry'
 import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
@@ -141,7 +144,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
       || (event.type === 'command' && permissions.includes('commands'))
       || (event.type === 'settings-changed' && permissions.includes('storage'))
       || (event.type === 'window-message' && permissions.includes('windows'))
-      || (['interaction', 'clock', 'document-saved', 'export-complete'].includes(event.type) && permissions.includes('events'))
+      || (['editor-event', 'interaction', 'clock', 'document-saved', 'export-complete'].includes(event.type) && permissions.includes('events'))
     if (allowed) send(event)
   }
 
@@ -157,6 +160,16 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     })
     return () => { active = false }
   }, [extension])
+
+  useEffect(() => {
+    if (!permissions.includes('events')) return
+    const snapshot = () => { const state = useWorkspace.getState(); return editorEventSnapshot(state.sessions ?? [], state.activeId ?? null) }
+    let previous = snapshot()
+    const unsubscribe = useWorkspace.subscribe?.(() => { const next = snapshot(); const events = changedEditorEvents(previous, next); previous = next; events.forEach(sendAuthorized) })
+    const sampled = () => sendAuthorized({ type: 'editor-event', name: 'color.sampled', projectId: useWorkspace.getState().activeId ?? undefined, timestamp: Date.now(), detail: {} })
+    window.addEventListener(CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, sampled)
+    return () => { unsubscribe?.(); window.removeEventListener(CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, sampled) }
+  }, [extension.id, permissions])
 
   useEffect(() => registerExtensionRuntime(extension.id, sendAuthorized), [extension.id, permissions])
 
@@ -191,13 +204,18 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   useEffect(() => {
     if (!permissions.includes('events')) return
     const interaction = (kind: 'pointer' | 'keyboard') => send({ type: 'interaction', kind })
-    const pointer = () => interaction('pointer')
+    let lastPointer = 0
+    const pointer = () => { const now = Date.now(); if (now - lastPointer < 500) return; lastPointer = now; interaction('pointer') }
     const keyboard = () => interaction('keyboard')
     window.addEventListener('pointerdown', pointer, true)
+    window.addEventListener('pointermove', pointer, true)
+    window.addEventListener('wheel', pointer, true)
     window.addEventListener('keydown', keyboard, true)
     const timer = window.setInterval(() => send({ type: 'clock', timestamp: Date.now() }), 30_000)
     return () => {
       window.removeEventListener('pointerdown', pointer, true)
+      window.removeEventListener('pointermove', pointer, true)
+      window.removeEventListener('wheel', pointer, true)
       window.removeEventListener('keydown', keyboard, true)
       window.clearInterval(timer)
     }
@@ -326,7 +344,7 @@ async function handleRequest(
   const params = objectParams(rawParams)
   const workspace = useWorkspace.getState()
   const active = workspace.sessions.find((candidate) => candidate.document.id === workspace.activeId) ?? null
-  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, windowPresentations: permissions.includes('windows') ? ['native', 'dialog', 'overlay'] : [], methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
+  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, editorEvents: permissions.includes('events') ? EXTENSION_EDITOR_EVENTS : [], windowPresentations: permissions.includes('windows') ? ['native', 'dialog', 'overlay'] : [], methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
     for (const [candidate, required] of Object.entries(EXTENSION_RUNTIME_METHOD_PERMISSIONS)) if (required === permission) result[candidate] = true
     return result
   }, {}) : {}) }

@@ -66,6 +66,8 @@ import rotationBackground6 from '@/assets/rotation-indicator/background-6.png'
 import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
+import { subscribeAnimationTweenPreview } from './animation-tween-preview'
+import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 import { CANVAS_VIEW_SCROLLBAR_THICKNESS, useCanvasViewScrollbars } from './useCanvasViewScrollbars'
 import { Scrollbar } from './Scrollbar'
@@ -831,6 +833,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     },
     [session.document.id]
   )
+  useEffect(() => subscribeAnimationTweenPreview(session.document.id, () => scheduleDraw()), [session.document.id])
+
   const draw = (): void => {
     if (!canvasStageIsVisible(canvasRef.current, useWorkspace.getState().activeId)) return
     renderCanvasFrame({
@@ -1446,6 +1450,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get transformInput() { return transformInput }
   })
 
+  const tweenPreviewDrag = useAnimationTweenPreviewDrag({
+    documentId: () => session.document.id,
+    moveToolActive: () => liveInputSession().tool === 'move' && !inputRef.current.spaceHeld && !inputRef.current.drag && !liveInputSession().animationPlaying,
+    pointAt: (x, y) => repeatedDocumentPointsAt(x, y, true, true)
+  })
   const rotationStyle = { transform: 'none', transformOrigin: '50% 50%' }
   return (
     <PerformanceProfiler id="CanvasStage">
@@ -1456,10 +1465,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
-          onPointerDown={pointerDown}
-          onPointerMove={pointerMove}
-          onPointerUp={pointerUp}
-          onPointerCancel={pointerCancel}
+          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event) }}
+          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event) }}
+          onPointerUp={(event) => { if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
+          onPointerCancel={(event) => { if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
+          onLostPointerCapture={(event) => tweenPreviewDrag.pointerCancel(event)}
           onDoubleClick={quickSelectCell}
           onPointerLeave={pointerLeave}
           onPointerEnter={pointerEnter}

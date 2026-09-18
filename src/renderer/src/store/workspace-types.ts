@@ -299,9 +299,10 @@ export interface DocumentSession {
   animationPlaybackMode: AnimationPlaybackMode
   animationPlaybackStartFrameId: string | null
   animationPlaybackLoopSectionId: string | null
+  animationPlaybackLoopPosition?: number
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
-  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number }>
+  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number; position?: number }>
   /** Finite tag section that anchors the current play-through cycle. */
   animationPlaybackTagCycleSectionId: string | null
   animationReturnToStart: boolean

@@ -17,6 +17,7 @@ const ASEPRITE: &[&str] = &["aseprite"];
 const ASE_EXPORT: &[&str] = &["ase", "aseprite"];
 const SVG: &[&str] = &["svg"];
 const GIF: &[&str] = &["gif"];
+const BMP: &[&str] = &["bmp"];
 const PSD: &[&str] = &["psd"];
 const MP4: &[&str] = &["mp4"];
 const WEBM: &[&str] = &["webm"];
@@ -31,6 +32,8 @@ pub fn project_save_filter(format: Option<&str>, language: Option<&str>) -> Dial
         (Some("png"), true) => ("PNG image", PNG),
         (Some("jpeg"), true) => ("JPEG image", JPEG),
         (Some("webp"), true) => ("WebP image", WEBP),
+        (Some("gif"), true) => ("GIF animation", GIF),
+        (Some("bmp"), true) => ("BMP image", BMP),
         (Some("psd"), true) => ("Photoshop project", PSD),
         (Some("ase"), true) => ("Aseprite project (.ase)", ASE),
         (Some("aseprite"), true) => ("Aseprite project (.aseprite)", ASEPRITE),
@@ -38,6 +41,8 @@ pub fn project_save_filter(format: Option<&str>, language: Option<&str>) -> Dial
         (Some("png"), false) => ("PNG 图片", PNG),
         (Some("jpeg"), false) => ("JPEG 图片", JPEG),
         (Some("webp"), false) => ("WebP 图片", WEBP),
+        (Some("gif"), false) => ("GIF 动画", GIF),
+        (Some("bmp"), false) => ("BMP 图片", BMP),
         (Some("psd"), false) => ("Photoshop 工程", PSD),
         (Some("ase"), false) => ("Aseprite 工程 (.ase)", ASE),
         (Some("aseprite"), false) => ("Aseprite 工程 (.aseprite)", ASEPRITE),
