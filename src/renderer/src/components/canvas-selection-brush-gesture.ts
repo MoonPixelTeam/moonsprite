@@ -1,3 +1,4 @@
+import type { SelectionHit } from '@/core/canvas-input-state'
 import type { TileRepeatMode } from '@shared/types-raster'
 import type { SelectionMask, SelectionMode } from '@shared/types-selection'
 import type { DocumentSession } from '@/store/workspace'
@@ -22,4 +23,8 @@ export function beginSelectionBrush(session: DocumentSession, point: CanvasPoint
   }
   moveSelectionBrush(drag, session, point, optimizedRotation, repeatMode)
   return drag
+}
+
+export function selectionBrushOwnsPointer(freeTransformActive: boolean, hit: SelectionHit): boolean {
+  return !freeTransformActive && hit === 'outside'
 }

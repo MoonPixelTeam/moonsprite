@@ -85,7 +85,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
     if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
     if (currentSession.tool === 'selection' && currentSession.selectionKind === 'brush') {
       const drag = ports.inputRef.current.drag
-      return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
+      return !currentSession.freeTransformActive && (!drag || drag.kind === 'selection-brush') && ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling
     }
     if (currentSession.tool === 'smooth') {
       const drag = ports.inputRef.current.drag

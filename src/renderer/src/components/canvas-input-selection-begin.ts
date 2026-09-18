@@ -196,14 +196,6 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
     if (selectionTool && (event.button === 0 || event.button === 2)) {
       const mode = selectionMode()
       const currentSelectionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-      if (session.selectionKind === 'brush') {
-        startCanvasSelection(session.document.id)
-        const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
-        const brushStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
-        inputRef.current.drag = beginSelectionBrush(session, brushStart, currentSelectionSession.selection, mode, optimizedRotationEnabled, repeatMode)
-        scheduleDraw()
-        return true
-      }
       const freeTileSelectionTarget = selectedFreeTileSelectionTarget(currentSelectionSession)
       const freeTileSelectionBounds = freeTileSelectionTarget?.bounds
       // Keep the visible selection in document space. Source edits are scoped to
@@ -656,6 +648,13 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         return true
       }
       if (session.pendingPaste) state.commitFloatingPaste()
+      if (session.selectionKind === 'brush') {
+        startCanvasSelection(session.document.id)
+        const brushStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
+        inputRef.current.drag = beginSelectionBrush(session, brushStart, currentSelectionSession.selection, mode, optimizedRotationEnabled, repeatMode)
+        scheduleDraw()
+        return true
+      }
       if (session.selectionKind === 'magic') {
         if (
           freeTileSelectionBounds &&

@@ -1,3 +1,4 @@
+import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
 import { useEffect } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -541,7 +542,7 @@ export function useCanvasCursor(ports: Ports) {
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit in resizeCursors)
       canvas.style.cursor = displayedResizeCursorForHandle(rawSelectionHit as SelectionHandle)
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit === 'inside') canvas.style.cursor = canvasCursors.move
-    else if (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush')
+    else if (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' && selectionBrushOwnsPointer(freeTransformActive, selectionHit))
       canvas.style.cursor = canvasToolCursor('pencil', contrastColor, available)
     else if (ports.session.tool === 'selection') {
       const hit = selectionHit
