@@ -260,7 +260,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       gradientFreeform: typeof stored.gradientFreeform === 'boolean' ? stored.gradientFreeform : defaultToolSettings.gradientFreeform,
       gradientStops: normalizeGradientStops(stored.gradientStops, defaultToolSettings.gradientStops[0].color, defaultToolSettings.gradientStops.at(-1)!.color),
       moveAutoSelect: typeof stored.moveAutoSelect === 'boolean' ? stored.moveAutoSelect : defaultToolSettings.moveAutoSelect,
-      selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' ? stored.selectionKind : defaultToolSettings.selectionKind,
+      selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' || stored.selectionKind === 'brush' ? stored.selectionKind : defaultToolSettings.selectionKind,
       selectionMode: stored.selectionMode === 'add' || stored.selectionMode === 'subtract' || stored.selectionMode === 'intersect' || stored.selectionMode === 'replace' ? stored.selectionMode : defaultToolSettings.selectionMode,
       selectionRotationAlgorithm: stored.selectionRotationAlgorithm === 'rotsprite' ? 'rotsprite' : 'fast',
       selectionRounded: typeof stored.selectionRounded === 'boolean' ? stored.selectionRounded : defaultToolSettings.selectionRounded,

@@ -42,6 +42,7 @@ import {
 import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, resizeCursors, rotationCursors, shearCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { MagicWandWorkerClient } from '@/core/magic-wand-worker'
+import { beginSelectionBrush } from './canvas-selection-brush-gesture'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget, captureTilemapSelectionMove } from '@/core/tilemap-document'
 import { freeTileInstanceBounds } from '@/core/free-tile'
@@ -129,6 +130,7 @@ interface Ports {
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   drawSelectionOverlay: () => void
   magicWandWorkerRef: import('react').RefObject<MagicWandWorkerClient | null>
+  optimizedRotationEnabled: boolean
 }
 
 export function createSelectionBeginCanvasInput(ports: Ports) {
@@ -188,11 +190,20 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
       magicGestureRef,
       t,
       drawSelectionOverlay,
-      magicWandWorkerRef
+      magicWandWorkerRef,
+      optimizedRotationEnabled
     } = ports
     if (selectionTool && (event.button === 0 || event.button === 2)) {
       const mode = selectionMode()
       const currentSelectionSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+      if (session.selectionKind === 'brush') {
+        startCanvasSelection(session.document.id)
+        const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
+        const brushStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
+        inputRef.current.drag = beginSelectionBrush(session, brushStart, currentSelectionSession.selection, mode, optimizedRotationEnabled, repeatMode)
+        scheduleDraw()
+        return true
+      }
       const freeTileSelectionTarget = selectedFreeTileSelectionTarget(currentSelectionSession)
       const freeTileSelectionBounds = freeTileSelectionTarget?.bounds
       // Keep the visible selection in document space. Source edits are scoped to

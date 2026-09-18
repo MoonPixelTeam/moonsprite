@@ -2,7 +2,8 @@ import type { SelectionMask, SelectionMode } from '@shared/types-selection'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
-import { cloneSelection, combineSelection, lassoSelection } from '@/core/selection'
+import { cloneSelection, combineSelection, selectionMaskFromVisitedPixels } from '@/core/selection'
+import { moveSelectionBrush } from './canvas-selection-brush-gesture'
 import { CanvasInputState } from '@/core/canvas-input-controller'
 import { appendCanvasPathStep, marqueeSelectionCommit, shouldClosePolygonLasso } from '@/core/canvas-input-path'
 import { constrainedTranslation, selectionMovePointerDelta } from '@/core/canvas-input-resize'
@@ -14,7 +15,7 @@ import { canvasCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { symmetrySelection, symmetrySelectionDragDelta } from '@/core/symmetry'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
-import { tileRepeatIncludesX, tileRepeatIncludesY } from '@/core/tilemap'
+import { repeatedLassoSelection } from '@/core/repeated-selection'
 import { timelineSelectionPrecedesCanvasMarquee } from './canvas-stage-helpers'
 
 interface Ports {
@@ -65,6 +66,7 @@ interface Ports {
   draw: () => void
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   tilemapPaintSelectionForIncoming: (incoming: SelectionMask | null, current?: DocumentSession) => SelectionMask | null
+  optimizedRotationEnabled: boolean
 }
 
 export function createSelectionCanvasInput(ports: Ports) {
@@ -255,6 +257,15 @@ export function createSelectionCanvasInput(ports: Ports) {
     return false
   }
 
+  function moveBrush({ drag, session, point, event }: { drag: DragState; session: DocumentSession; point: Point; event: React.PointerEvent<HTMLCanvasElement> }): boolean {
+    const { optimizedRotationEnabled, scheduleDraw, liveViewRef, repeatedDocumentPointsAt } = ports
+    const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
+    const brushPoint = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? drag.last)
+    if (!moveSelectionBrush(drag, session, brushPoint, optimizedRotationEnabled, repeatMode)) return false
+    scheduleDraw()
+    return true
+  }
+
   function movePolygonLasso({ drag }: { drag: DragState }): boolean {
     const { scheduleDraw } = ports
     if (drag.kind === 'polygon-lasso') {
@@ -367,23 +378,7 @@ export function createSelectionCanvasInput(ports: Ports) {
       const before = drag.selectionStart ?? null
       const path = drag.path ?? []
       const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
-      const repeatX = tileRepeatIncludesX(repeatMode)
-      const repeatY = tileRepeatIncludesY(repeatMode)
-      // Match the marquee's repeated-space behavior without ever rasterizing
-      // one unbounded lasso mask. Normalize around the starting copy, then
-      // clip the lasso independently against its finite neighboring copies.
-      const originX = drag.tileRepeatStart && repeatX ? Math.floor(drag.tileRepeatStart.x / session.document.width) * session.document.width : 0
-      const originY = drag.tileRepeatStart && repeatY ? Math.floor(drag.tileRepeatStart.y / session.document.height) * session.document.height : 0
-      const normalizedPath = (originX === 0 && originY === 0) ? path : path.map((point) => ({ x: point.x - originX, y: point.y - originY }))
-      const xOffsets = repeatX ? [-session.document.width, 0, session.document.width] : [0]
-      const yOffsets = repeatY ? [-session.document.height, 0, session.document.height] : [0]
-      let incomingSelection = null
-      for (const offsetY of yOffsets) for (const offsetX of xOffsets) {
-        const copyPath = (offsetX === 0 && offsetY === 0)
-          ? normalizedPath
-          : normalizedPath.map((point) => ({ x: point.x - offsetX, y: point.y - offsetY }))
-        incomingSelection = combineSelection(incomingSelection, lassoSelection(session.document, copyPath), 'add')
-      }
+      const incomingSelection = repeatedLassoSelection(session.document, path, repeatMode)
       const incoming = tilemapPaintSelectionForIncoming(
         symmetrySelection(
           incomingSelection,
@@ -395,6 +390,20 @@ export function createSelectionCanvasInput(ports: Ports) {
       )
       const after = combineSelection(before, incoming, mode)
       state.commitSelectionChange(before, after, t('canvas.history.lassoSelection'))
+    }
+    return false
+  }
+
+  function endBrush({ drag, session, state }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState> }): boolean {
+    const { tilemapPaintSelectionForIncoming, symmetryCenter, t } = ports
+    if (drag.kind === 'selection-brush') {
+      const incoming = tilemapPaintSelectionForIncoming(
+        symmetrySelection(selectionMaskFromVisitedPixels(drag.selectionBrushStroke?.visited ?? new Set(), session.document.width), session.document.width, session.document.height, session.symmetryAxes, symmetryCenter)
+      )
+      const before = drag.selectionStart ?? null
+      const after = combineSelection(before, incoming, drag.selectionMode ?? session.selectionMode)
+      state.commitSelectionChange(before, after, t('canvas.history.createSelection'))
+      return true
     }
     return false
   }
@@ -426,11 +435,13 @@ export function createSelectionCanvasInput(ports: Ports) {
     moveMarquee,
     moveMagic,
     moveLasso,
+    moveBrush,
     movePolygonLasso,
     moveSelection,
     endPivot,
     endMarquee,
     endLasso,
+    endBrush,
     endMagic,
     endSelectionMove
   }

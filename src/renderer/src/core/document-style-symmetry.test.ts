@@ -11,6 +11,41 @@ import type { SelectionRect } from '@shared/types-selection'
 
 afterEach(() => vi.restoreAllMocks())
 
+it.each(['stroke', 'combined', 'dynamic'] as const)('updates only touched pixels within warm %s style blocks near the symmetry center', mode => {
+  const document = createDocument('dense symmetric drawing', 256, 256, 'rgba')
+  const layer = document.layers[0]
+  const styles = layer.layerStyles = createDefaultLayerStyles()
+  styles.stroke.enabled = true
+  if (mode !== 'stroke') {
+    styles.shadow.enabled = true
+    styles.shadow.blur = 2
+    styles.innerGlow.enabled = true
+    styles.gradientOverlay.enabled = true
+  }
+  if (mode === 'dynamic') {
+    styles.stroke.smartHue = true
+    styles.stroke.followOpacity = true
+  }
+  for (let y = 8; y < 256; y += 8) for (let x = 8; x < 256; x += 8) {
+    writeLayerColor(document, layer, y * 256 + x, { r: 180, g: 20, b: 20, a: 255 })
+  }
+  const cache = new DocumentCompositeCache()
+  compositeRegion(document, 0, 0, 256, 256, cache, 0)
+  const render = vi.spyOn(geometry, 'localBinaryStyleFields')
+  const axes = { horizontal: true, vertical: true, diagonalUp: false, diagonalDown: false }
+  const edit = beginPixelEdit(layer.id)
+  for (const x of [120, 122, 125]) {
+    paintBrush(document, layer, edit, x, 120, 5, { r: 255, g: 40, b: 40, a: 180 }, 'round', null, 'solid', 1, null, undefined, 0, 'paint', undefined, axes)
+    for (const rect of brushStrokeInvalidationRects({ x, y: 120 }, { x, y: 120 }, 5, null, 256, 256, axes)) cache.invalidateStyleSources(document, rect, [layer.id])
+    render.mockClear()
+    const actual = compositeRegion(document, 0, 0, 256, 256, cache, 0)
+    const renderedPixels = render.mock.calls.reduce((sum, call) => sum + call[2].width * call[2].height, 0)
+    expect(renderedPixels).toBeGreaterThan(0)
+    expect(renderedPixels).toBeLessThan(4096)
+    expect(actual).toEqual(compositeRegion(document, 0, 0, 256, 256, new DocumentCompositeCache(), 0))
+  }
+})
+
 it('scans only mirrored brush regions and retains untouched style blocks between them', () => {
   const document = createDocument('symmetric styles', 256, 256, 'rgba')
   const layer = document.layers[0]

@@ -124,13 +124,18 @@ export function useCanvasRenderEngine(ports: Ports) {
 
   const drawRequestRef = useRef<number | null>(null)
 
-  const compositeCacheRef = useRef(canvasCompositeCacheFor(ports.storedSession.document))
+  const currentCompositeCache = canvasCompositeCacheFor(ports.storedSession.document)
+  const compositeCacheRef = useRef(currentCompositeCache)
 
   const compositeCacheDocumentRef = useRef(ports.storedSession.document)
 
-  if (compositeCacheDocumentRef.current !== ports.storedSession.document) {
+  if (compositeCacheRef.current !== currentCompositeCache) {
+    // Fast Refresh preserves refs, but a replaced renderer module owns a new
+    // cache. Do not keep calling the old class implementation for the same
+    // document after an update. Normal document switches retain shared caches.
+    if (compositeCacheDocumentRef.current === ports.storedSession.document) compositeCacheRef.current.dispose()
     compositeCacheDocumentRef.current = ports.storedSession.document
-    compositeCacheRef.current = canvasCompositeCacheFor(ports.storedSession.document)
+    compositeCacheRef.current = currentCompositeCache
   }
 
   const compositePointSamplerRef = useRef<{ document: DocumentSession['document']; revision: number; sampler: (x: number, y: number) => RgbaColor } | null>(

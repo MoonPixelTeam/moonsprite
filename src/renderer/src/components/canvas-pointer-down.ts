@@ -300,6 +300,7 @@ export function createCanvasPointerDown(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
+        (session.tool === 'selection' && session.selectionKind === 'brush') ||
         session.tool === 'liquify')
     // Modifier sizing has no cursor hit-test or composited color sample to
     // resolve. Avoid updateCursor's layer-tree sampling on every mouse move.
@@ -403,8 +404,10 @@ export function createCanvasPointerDown(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
+        (session.tool === 'selection' && session.selectionKind === 'brush') ||
         session.tool === 'liquify') &&
       (session.tool === 'smooth' ||
+        (session.tool === 'selection' && session.selectionKind === 'brush') ||
         session.tool === 'airbrush' ||
         session.tool === 'liquify' ||
         activeLayer.kind === 'tilemap' ||

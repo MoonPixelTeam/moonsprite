@@ -192,6 +192,7 @@ export function createCanvasPointerUp(ports: Ports) {
     if (drag.kind === 'line-shape' && shapeInput.endLine({ drag })) return
     if (drag.kind === 'curve-shape' && shapeInput.endCurve({ drag, session })) return
     if (drag.kind === 'marquee' && selectionInput.endMarquee({ drag, event, session, state })) return
+    if (drag.kind === 'selection-brush' && selectionInput.endBrush({ drag, session, state })) return
     if (drag.kind === 'create-text-box' && textInput.endTextCreation({ drag, event, session })) return
     if (drag.kind === 'transform-text-box' && drag.previewTarget && textInput.endTextTransform({ drag, state, session })) return
     if (

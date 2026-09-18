@@ -226,7 +226,7 @@ export function createCanvasPointerMove(ports: Ports) {
     const repeatedLasso = inputRef.current.drag?.kind === 'lasso' && repeatMode !== 'off'
     const repeatedSelectionMove = (inputRef.current.drag?.kind === 'move-content' || inputRef.current.drag?.kind === 'move-selection') && repeatMode !== 'off'
     const allowOutsideCopies = Boolean(
-      (inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || repeatedMarquee || repeatedLasso || repeatedSelectionMove) &&
+      (inputRef.current.drag?.kind === 'draw' || inputRef.current.drag?.kind === 'tile-draw' || inputRef.current.drag?.kind === 'selection-brush' || repeatedMarquee || repeatedLasso || repeatedSelectionMove) &&
         repeatMode !== 'off'
     )
     const textBoxInteraction = inputRef.current.drag?.kind === 'create-text-box' || inputRef.current.drag?.kind === 'transform-text-box'
@@ -246,6 +246,7 @@ export function createCanvasPointerMove(ports: Ports) {
         session.tool === 'airbrush' ||
         session.tool === 'eraser' ||
         session.tool === 'smooth' ||
+        (session.tool === 'selection' && session.selectionKind === 'brush') ||
         session.tool === 'liquify')
     if (modifierSizing && !inputRef.current.drag) {
       if (!inputRef.current.modifierBrushSize)
@@ -297,8 +298,9 @@ export function createCanvasPointerMove(ports: Ports) {
     if (drag.kind === 'gradient' && fillInput.moveGradient({ drag, event, session, point })) return
     // Liquify uses continuous document coordinates in its own branch below.
     // Do not overwrite its previous point with the integer-snapped `point`.
-    if (drag.kind !== 'liquify' && drag.kind !== 'smooth') drag.last = point
+    if (drag.kind !== 'liquify' && drag.kind !== 'smooth' && drag.kind !== 'selection-brush') drag.last = point
     if (drag.kind === 'smooth' && drag.edit && drag.smoothStroke && strokeInput.moveSmooth({ drag, session, point })) return
+    if (drag.kind === 'selection-brush' && selectionInput.moveBrush({ drag, session, point, event })) return
     if (drag.kind === 'sample-color' && samplingInput.moveSample({ drag, point, session, state, event })) return
     if (drag.kind === 'zoom-drag' && drag.startClient && navigationInput.moveZoom({ drag, session, event })) return
     if (

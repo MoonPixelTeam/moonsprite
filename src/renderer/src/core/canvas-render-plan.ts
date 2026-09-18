@@ -66,7 +66,14 @@ export const normalizeCanvasDeviceScale = (devicePixelRatio: CanvasDeviceScaleIn
 }
 
 /** Align a logical coordinate to the same physical-pixel tie rule as bitmap previews. */
-export const deviceAlignedCoordinate = (value: number, devicePixelRatio: number): number => Math.ceil(value * devicePixelRatio - 0.5) / devicePixelRatio
+export const deviceAlignedCoordinate = (value: number, devicePixelRatio: number): number => {
+  const shifted = value * devicePixelRatio - 0.5
+  const nearest = Math.round(shifted)
+  // Translating an aligned tile can introduce tiny errors around a half-pixel
+  // tie. Preserve the same tie rule on both sides of every repeated boundary.
+  const tolerance = Math.max(1e-9, Math.abs(shifted) * Number.EPSILON * 4)
+  return Math.ceil(Math.abs(shifted - nearest) <= tolerance ? nearest : shifted) / devicePixelRatio
+}
 
 /**
  * Calculate the screen rectangle for an integer document-pixel range.
@@ -211,12 +218,16 @@ export function createCanvasRenderPlan(
   viewportHeight: number,
   document: Pick<SpriteDocument, 'width' | 'height'>,
   view: ViewState,
-  rotationIndicatorPosition: RotationIndicatorPosition
+  rotationIndicatorPosition: RotationIndicatorPosition,
+  devicePixelRatio: CanvasDeviceScaleInput = 1
 ): CanvasRenderPlan {
   const rotated = Math.abs(view.rotation) > 0.000001 || view.mirrored || view.mirroredVertical
   const viewport = unrotatedViewportBounds(viewportWidth, viewportHeight, view, rotationIndicatorPosition)
-  const sceneLeft = Math.floor(viewport.left) - 2
-  const sceneTop = Math.floor(viewport.top) - 2
+  const deviceScale = normalizeCanvasDeviceScale(devicePixelRatio)
+  // The offscreen scene must share the display's physical grid. A fractional
+  // device translation antialiases touching tile clips into visible seams.
+  const sceneLeft = Math.floor((Math.floor(viewport.left) - 2) * deviceScale.x) / deviceScale.x
+  const sceneTop = Math.floor((Math.floor(viewport.top) - 2) * deviceScale.y) / deviceScale.y
   const sceneWidth = Math.ceil(viewport.right) - sceneLeft + 2
   const sceneHeight = Math.ceil(viewport.bottom) - sceneTop + 2
   const origin = viewCanvasOrigin(viewportWidth, viewportHeight, document.width, document.height, view)

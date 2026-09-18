@@ -15,6 +15,35 @@ const view = (overrides: Partial<ViewState> = {}): ViewState => ({
 })
 
 describe('createCanvasRenderPlan', () => {
+  it.each([{ rotation: 37 }, { mirrored: true }, { mirroredVertical: true }])('keeps repeated edges on the intermediate scene grid: %j', transform => {
+    for (const scale of [{ x: 1.25, y: 1.5 }, { x: 1.248, y: 1.252 }]) {
+      const plan = createCanvasRenderPlan(321, 243, { width: 31, height: 27 }, view(transform), 'view', scale)
+      const boundary = deviceAlignedCanvasRect(plan.originX, plan.originY, plan.canvasWidth, plan.canvasHeight, scale)
+      for (let offset = -2; offset <= 2; offset++) {
+        const copy = repeatedDeviceAlignedCanvasRect(boundary, offset, offset)
+        for (const edge of [(copy.left - plan.sceneLeft) * scale.x, (copy.right - plan.sceneLeft) * scale.x,
+          (copy.top - plan.sceneTop) * scale.y, (copy.bottom - plan.sceneTop) * scale.y]) {
+          expect(edge).toBeCloseTo(Math.round(edge), 8)
+        }
+      }
+    }
+  })
+  it.each([0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4.125, 6, 8, 16, 24, 32, 64.013])('fills every repeated boundary at zoom %s', zoom => {
+    for (const scale of [{ x: 1, y: 1 }, { x: 1.25, y: 1.5 }, { x: 2, y: 2 }, { x: 1.248, y: 1.252 }]) {
+      for (const width of [8, 31, 180, 333]) for (const pan of [-9.24, -120.37, 0.2]) {
+        const height = width + 3
+        const base = deviceAlignedCanvasRect(deviceAlignedCoordinate(pan, scale.x), deviceAlignedCoordinate(pan, scale.y), width * zoom, height * zoom, scale)
+        for (let offset = -2; offset <= 2; offset++) {
+          const copy = repeatedDeviceAlignedCanvasRect(base, offset, offset)
+          const content = deviceAlignedDocumentRect(copy.left, copy.top, zoom, 0, 0, width, height, scale)
+          expect(content.left).toBeCloseTo(copy.left, 8)
+          expect(content.top).toBeCloseTo(copy.top, 8)
+          expect(content.right).toBeCloseTo(copy.right, 8)
+          expect(content.bottom).toBeCloseTo(copy.bottom, 8)
+        }
+      }
+    }
+  })
 
 
 

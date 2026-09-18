@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDocument } from './document'
-import { ellipseSelection, inverseSelectionQuadPoint, invertSelectionMask, lassoSelection, polygonSelection, polygonSelectionPreview, rasterLinePoints, remapTransformedSelectionPoint, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionQuadBounds, selectionQuadPoint, selectionQuadTransform, shearTransformedSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad } from './selection'
+import { combineSelection, ellipseSelection, inverseSelectionQuadPoint, invertSelectionMask, lassoSelection, polygonSelection, polygonSelectionPreview, rasterLinePoints, remapTransformedSelectionPoint, rotateSelectionTargetAroundPivot, rotatedEllipseSelection, rotatedRectSelection, selectionContains, selectionMaskFromVisitedPixels, selectionQuadBounds, selectionQuadPoint, selectionQuadTransform, shearTransformedSelection, transformedSelectionBounds, transformedSelectionCenter, transformedSelectionControlPoints, transformedSelectionPivotPreset, transformedSelectionShearDirection, transformSelectionMask, transformSelectionMaskQuad } from './selection'
 
 const referenceLassoPixels = (width: number, height: number, path: readonly { x: number; y: number }[]): Set<string> => {
   if (path.length < 3) return new Set()
@@ -35,6 +35,15 @@ const selectionPixels = (selection: { x: number; y: number; width: number; heigh
 }
 
 describe('selection preview geometry', () => {
+  it('turns a brush stroke coverage set into a compact mask and combines it by selection mode', () => {
+    const incoming = selectionMaskFromVisitedPixels(new Set([1, 2, 6, 10]), 4)
+    expect(selectionPixels(incoming)).toEqual(new Set(['1:0', '2:0', '2:1', '2:2']))
+    const existing = selectionMaskFromVisitedPixels(new Set([0, 1, 5, 9]), 4)
+    expect(selectionPixels(combineSelection(existing, incoming, 'add'))).toEqual(new Set(['0:0', '1:0', '2:0', '1:1', '2:1', '1:2', '2:2']))
+    expect(selectionPixels(combineSelection(existing, incoming, 'subtract'))).toEqual(new Set(['0:0', '1:1', '1:2']))
+    expect(selectionPixels(combineSelection(existing, incoming, 'intersect'))).toEqual(new Set(['1:0']))
+  })
+
   it('matches the previous lasso pixel semantics across concave and clipped paths', () => {
     const document = createDocument('lasso scanline', 18, 14, 'rgba')
     const paths = [

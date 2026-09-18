@@ -163,6 +163,7 @@ export function renderCanvasSelectionPreview({
   if ((selectionDrag?.kind === 'lasso' || selectionDrag?.kind === 'polygon-lasso') && (selectionDrag.path?.length ?? 0) > 0) {
     const path = selectionDrag.path ?? []
     const symmetric = hasSymmetry(session.symmetryAxes)
+    const repeatedLasso = selectionDrag.kind === 'lasso' && (view.tileRepeatMode ?? 'off') !== 'off'
     if (selectionDrag.kind === 'polygon-lasso' && !symmetric) {
       const polygonCache = (selectionDrag.polygonPathRasterCache ??= createPolygonPathRasterCache())
       const previewPoints = polygonLassoPreviewPoints(path, selectionDrag.last, lassoPreviewClosed, balancedShiftLineEnabled, polygonCache)
@@ -176,7 +177,7 @@ export function renderCanvasSelectionPreview({
       const previewPixels = new Map<string, Point>()
       const addLine = (from: Point, to: Point): void => {
         for (const sourcePoint of rasterLinePoints(from, to))
-          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter))
+          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, !repeatedLasso))
             previewPixels.set(`${point.x}:${point.y}`, point)
       }
       if (selectionDrag.kind === 'polygon-lasso') {
@@ -188,7 +189,7 @@ export function renderCanvasSelectionPreview({
         for (let index = 1; index < path.length; index += 1) addLine(path[index - 1], path[index])
         if (lassoPreviewClosed && path.length > 1) addLine(path.at(-1)!, path[0])
       }
-      drawSelectionPathPreviewPoints(previewPixels.values())
+      drawSelectionPathPreviewPoints(previewPixels.values(), repeatCopies, repeatedLasso, customSelectionPreviewColor)
     }
     const mode = selectionDrag.selectionMode ?? session.selectionMode
     const point = inputRef.current.pointer.point
@@ -228,13 +229,16 @@ export function renderCanvasSelectionPreview({
   }
   const activeSelectionCreation = selectionDrag?.kind === 'marquee' || selectionDrag?.kind === 'lasso' || selectionDrag?.kind === 'polygon-lasso'
   const selectionCreationPointerVisible = inputRef.current.pointer.visible || activeSelectionCreation
+  // Brush hover only refreshes its separate overlay; corner marks painted on
+  // the main canvas would remain at the last full redraw position.
   if (
     (canRenderToolPreview || activeSelectionCreation) &&
     (!inputRef.current.drag || activeSelectionCreation) &&
     (!inputRef.current.spaceHeld || selectionDrag?.kind === 'marquee') &&
     !inputRef.current.sampling &&
     selectionCreationPointerVisible &&
-    session.tool === 'selection'
+    session.tool === 'selection' &&
+    session.selectionKind !== 'brush'
   ) {
     const pointerLocation = inputRef.current.pointer.visible
       ? repeatedDocumentPointsAt(inputRef.current.pointer.clientX, inputRef.current.pointer.clientY, false, true)

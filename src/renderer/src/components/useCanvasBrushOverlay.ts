@@ -3,7 +3,8 @@ import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
 import { isLayerEffectivelyLocked, resolveLayerCanvasColor } from '@/core/document-model'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
-import { SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
+import { drawBrushCoverageOverlay } from './canvas-brush-coverage-overlay'
+import { collectSmoothBrushArea, SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
 import { brushStampAnchor, solidBrushPreviewRowSpans } from '@/core/tools-brush'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activePaintLayer, isToolAvailableForSession } from '@/store/workspace-session'
@@ -82,6 +83,10 @@ export function useCanvasBrushOverlay(ports: Ports) {
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
     if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
+    if (currentSession.tool === 'selection' && currentSession.selectionKind === 'brush') {
+      const drag = ports.inputRef.current.drag
+      return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
+    }
     if (currentSession.tool === 'smooth') {
       const drag = ports.inputRef.current.drag
       return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
@@ -128,38 +133,20 @@ export function useCanvasBrushOverlay(ports: Ports) {
     if (!point) return
     const view = ports.liveViewRef.current
     const renderPlan = createCanvasRenderPlan(rect.width, rect.height, currentSession.document, view, ports.rotationIndicatorPosition)
-    if (currentSession.tool === 'smooth') {
+    const selectionBrush = currentSession.tool === 'selection' && currentSession.selectionKind === 'brush'
+    if (currentSession.tool === 'smooth' || selectionBrush) {
       const layer = activePaintLayer(currentSession)
-      if (layer.kind || currentSession.activeLayerMaskId || isLayerEffectivelyLocked(currentSession.document, layer)) return
+      if (!selectionBrush && (layer.kind || currentSession.activeLayerMaskId || isLayerEffectivelyLocked(currentSession.document, layer))) return
       context.save()
       ports.applyViewRotation(context, rect.width, rect.height, view)
-      context.fillStyle = SMOOTH_BRUSH_OVERLAY
-      const covered = new Set(ports.inputRef.current.drag?.smoothStroke?.visited ?? [])
-      const stampSize = Math.max(1, Math.min(128, Math.round(currentSession.brushSize)))
-      const angle = brushAngleWithDynamics(currentSession)
-      const anchor = brushStampAnchor(stampSize, null, angle, currentSession.brushShape)
-      for (const span of solidBrushPreviewRowSpans(stampSize, currentSession.brushShape, angle, ports.optimizedRotationEnabled)) {
-        const y = Math.round(point.y) - anchor.y + span.y
-        if (y < 0 || y >= currentSession.document.height) continue
-        for (
-          let x = Math.max(0, Math.round(point.x) - anchor.x + span.left);
-          x <= Math.min(currentSession.document.width - 1, Math.round(point.x) - anchor.x + span.right);
-          x++
-        ) {
-          if (!currentSession.selection || selectionContains(currentSession.selection, x, y)) covered.add(y * currentSession.document.width + x)
-        }
-      }
-      for (const key of covered) {
-        const pixel = deviceAlignedPixelRect(
-          renderPlan.originX,
-          renderPlan.originY,
-          view.zoom,
-          key % currentSession.document.width,
-          Math.floor(key / currentSession.document.width),
-          deviceScale
-        )
-        context.fillRect(pixel.x, pixel.y, pixel.width, pixel.height)
-      }
+      context.fillStyle = selectionBrush ? 'rgba(41, 121, 255, 0.35)' : SMOOTH_BRUSH_OVERLAY
+      const covered = new Set(selectionBrush ? ports.inputRef.current.drag?.selectionBrushStroke?.visited : ports.inputRef.current.drag?.smoothStroke?.visited)
+      collectSmoothBrushArea(currentSession.document, { visited: covered }, point, point,
+        currentSession.brushSize, selectionBrush ? null : currentSession.selection,
+        currentSession.brushShape, brushAngleWithDynamics(currentSession), ports.optimizedRotationEnabled,
+        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off')
+      drawBrushCoverageOverlay(context, covered, currentSession.document.width, currentSession.document.height,
+        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off', renderPlan.originX, renderPlan.originY, view.zoom, deviceScale)
       context.restore()
       return
     }

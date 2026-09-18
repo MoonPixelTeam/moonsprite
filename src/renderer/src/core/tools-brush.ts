@@ -10,7 +10,7 @@ import { isInBounds, packColor, unpackColor } from './raster'
 import { continuousLinePoints, continuousLinePointsWithFixForLineBrush, rasterLinePoints } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
 import { balancedStairLinePoints } from './pixel-line'
-import { hasSymmetry, symmetryPoints, type SymmetryAxes, type SymmetryCenter } from './symmetry'
+import { hasSymmetry, symmetryPoints, symmetricSpanPainter, type SymmetryAxes, type SymmetryCenter } from './symmetry'
 import { brushDitherContains, gradientColorForAmount, interpolateRgbaColor } from './gradient-color'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
 import { applyInkColor, resolveInkStampColor } from './ink'
@@ -213,8 +213,10 @@ export function paintBrush(
   const footprint = symmetricRect(document, { x: stampX, y: stampY, width: stamp.width, height: stamp.height }, symmetryAxes, symmetryCenter, tileRepeatMode)
   if (!ensureLayerCoversEditRect(document, layer, edit, footprint)) return
   const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
-  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && !hasSymmetry(symmetryAxes) && (color.a === 0 || color.a === 255)
-    ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}`
+  const symmetricSpans = hasSymmetry(symmetryAxes)
+  const pivotX = symmetryCenter?.x ?? document.width / 2, pivotY = symmetryCenter?.y ?? document.height / 2
+  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255)
+    ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
     : null
   const solidPackedValue = solidStampKey
     ? color.a === 0
@@ -307,28 +309,29 @@ export function paintBrush(
       dirtyRight = Math.max(dirtyRight, rowDirtyRight)
       dirtyBottom = Math.max(dirtyBottom, py + 1)
     }
+    const paintSymmetricSpan = symmetricSpanPainter(document.width, document.height, symmetryAxes, symmetryCenter, paintSpan)
     for (const span of rowSpans) {
       const py = stampY + span.y
       const left = stampX + span.left
       const right = stampX + span.right
       if (previousStamp?.key !== solidStampKey) {
-        paintSpan(py, left, right)
+        paintSymmetricSpan(py, left, right)
         continue
       }
       const previousLocalY = py - previousStamp.stampY
       const previousSpan = previousLocalY >= 0 && previousLocalY < previousStamp.height ? rowSpanAt(previousLocalY) : undefined
       if (!previousSpan) {
-        paintSpan(py, left, right)
+        paintSymmetricSpan(py, left, right)
         continue
       }
       const previousLeft = previousStamp.stampX + previousSpan.left
       const previousRight = previousStamp.stampX + previousSpan.right
       if (previousRight < left || previousLeft > right) {
-        paintSpan(py, left, right)
+        paintSymmetricSpan(py, left, right)
         continue
       }
-      paintSpan(py, left, Math.min(right, previousLeft - 1))
-      paintSpan(py, Math.max(left, previousRight + 1), right)
+      paintSymmetricSpan(py, left, Math.min(right, previousLeft - 1))
+      paintSymmetricSpan(py, Math.max(left, previousRight + 1), right)
     }
     if (changed) {
       const currentDirty = edit.dirtyRect
@@ -889,19 +892,19 @@ export function paintLine(
   const maximumGeometryAngle = !imageBrush && (maximumSize <= 1 || shape === 'round') ? 0 : maximumAngle
   const lineBrushStartAngle = Number.isFinite(dynamics?.fromAngle) ? dynamics!.fromAngle! : 0
   const lineBrushEndAngle = Number.isFinite(dynamics?.toAngle) ? dynamics!.toAngle! : lineBrushStartAngle
-  const lineBrushAngleChanges = Math.abs(lineBrushStartAngle - lineBrushEndAngle) >= 0.0001
-  const lineBrushAngleRadians = lineBrushStartAngle * Math.PI / 180
-  const movementX = Math.sign(toX - fromX)
-  const movementY = Math.sign(fromY - toY)
-  const lineBrushNeedsFix = shape === 'line' && maximumSize > 1 && (
-    lineBrushAngleChanges ||
-    ((movementX === movementY && Math.sign(Math.cos(lineBrushAngleRadians)) !== Math.sign(Math.sin(lineBrushAngleRadians))) ||
-      (movementX !== movementY && Math.sign(Math.cos(lineBrushAngleRadians)) === Math.sign(Math.sin(lineBrushAngleRadians))))
+  // A rotated line stamp is only one pixel wide. Sampling a conventional
+  // raster line can skip the cardinal bridge between diagonal centers, which
+  // leaves pinholes in the painted stroke. Match the smooth brush's
+  // continuous one-pixel sampling for every rotated line brush instead of
+  // trying to predict the risky travel direction.
+  const lineBrushNeedsContinuousCoverage = shape === 'line' && maximumSize > 1 && (
+    Math.abs(lineBrushStartAngle % 180) >= 0.0001 ||
+    Math.abs(lineBrushEndAngle % 180) >= 0.0001
   )
-  const points = lineAlgorithm === 'balanced'
-    ? balancedStairLinePoints({ x: fromX, y: fromY }, { x: toX, y: toY })
-    : lineBrushNeedsFix
-      ? continuousLinePointsWithFixForLineBrush({ x: fromX, y: fromY }, { x: toX, y: toY })
+  const points = lineBrushNeedsContinuousCoverage
+    ? continuousLinePointsWithFixForLineBrush({ x: fromX, y: fromY }, { x: toX, y: toY })
+    : lineAlgorithm === 'balanced'
+      ? balancedStairLinePoints({ x: fromX, y: fromY }, { x: toX, y: toY })
       : rasterLinePoints({ x: fromX, y: fromY }, { x: toX, y: toY })
   if (points.length === 0) return
   const maximumStamp = brushStampDimensions(maximumSize, imageBrush, maximumGeometryAngle, shape)

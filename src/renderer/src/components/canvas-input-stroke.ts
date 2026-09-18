@@ -316,23 +316,19 @@ export function createStrokeCanvasInput(ports: Ports) {
   function endRaster({ drag, state, session }: { drag: DragState; state: ReturnType<typeof useWorkspace.getState>; session: DocumentSession }): boolean {
     const { t, compositeCacheRef, lineAnchorHistoryRef } = ports
     if (drag.kind === 'draw' && drag.edit) {
-      // Do not promote the live preview to the committed surface here. Fast
-      // pointer sampling can leave intermediate stroke strips unpainted in
-      // the cache even though the document edit is complete; treating that
-      // preview as authoritative is what produces visible gaps until an eye
-      // toggle forces a redraw. The committed dirty rect below is the source
-      // of truth and will repaint every affected strip.
       if (drag.perfectPixelCommittedEdit) drag.edit = mergePixelEdits(drag.perfectPixelCommittedEdit, drag.edit)
       const entry = state.commitPixelEdit(drag.edit, session.tool === 'eraser' ? t('canvas.history.eraser') : t('canvas.history.draw'), {
         stroke: true,
         durationMs: Math.max(1, Date.now() - (drag.startedAt ?? Date.now()))
       })
       if (!entry) compositeCacheRef.current.clearLivePreview(session.document)
-      // `commitPixelEdit` already publishes the edit's dirty rectangle through
-      // `contentInvalidation`.  Keep the existing composite surface alive so
-      // the next frame only recomposes the stroke bounds.  Invalidating the
-      // whole 4K surface here turns every short stroke into a full-canvas
-      // rebuild (the dominant source of the DEV.5 regression).
+      else if (entry.invalidation?.kind === 'region' && !session.perfectPixels) {
+        const committedSession = useWorkspace.getState().sessions.find(item => item.document.id === session.document.id)
+        // Every raster segment queued its dirty strips. Retain that queue,
+        // including the last sample that has not reached RAF yet, instead of
+        // expanding all symmetric strokes into one large commit rectangle.
+        if (committedSession) compositeCacheRef.current.retainLivePreview(session.document, entry.invalidation.frameId, committedSession.contentRevision)
+      }
       const firstPathPoint = drag.path?.[0]
       const singlePoint = Boolean(firstPathPoint && drag.path?.every((point) => point.x === firstPathPoint.x && point.y === firstPathPoint.y))
       if (!shouldPreserveLineAnchorAfterNoopDrag(drag, Boolean(entry)))

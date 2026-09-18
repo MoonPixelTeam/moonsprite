@@ -113,14 +113,28 @@ const transformSymmetryDelta = (matrix: SymmetryMatrix, delta: SymmetryPoint): S
   y: matrix.yx * delta.x + matrix.yy * delta.y
 })
 
-function enabledSymmetryMatrices(axes: SymmetryAxes): SymmetryMatrix[] {
+const symmetryMatrixGroups = new Map<number, readonly SymmetryMatrix[]>()
+
+function enabledSymmetryMatrices(axes: SymmetryAxes): readonly SymmetryMatrix[] {
+  const key = Number(axes.horizontal) | Number(axes.vertical) << 1 | Number(axes.diagonalDown) << 2
+    | Number(axes.diagonalUp) << 3 | Number(Boolean(axes.rotational)) << 4
+  const cached = symmetryMatrixGroups.get(key)
+  if (cached) return cached
   const matrices: SymmetryMatrix[] = []
   if (axes.horizontal) matrices.push({ xx: 1, xy: 0, yx: 0, yy: -1 })
   if (axes.vertical) matrices.push({ xx: -1, xy: 0, yx: 0, yy: 1 })
   if (axes.diagonalDown) matrices.push({ xx: 0, xy: 1, yx: 1, yy: 0 })
   if (axes.diagonalUp) matrices.push({ xx: 0, xy: -1, yx: -1, yy: 0 })
   if (axes.rotational) matrices.push({ xx: 0, xy: -1, yx: 1, yy: 0 })
-  return matrices
+  // The finite transform group depends only on the five axis switches, not
+  // the pixel or pivot. Preserve breadth-first order for overlapping stamps.
+  const group = [IDENTITY_SYMMETRY_MATRIX]
+  for (let index = 0; index < group.length; index++) for (const transform of matrices) {
+    const next = multiplySymmetryMatrices(transform, group[index])
+    if (!group.some(value => value.xx === next.xx && value.xy === next.xy && value.yx === next.yx && value.yy === next.yy)) group.push(next)
+  }
+  symmetryMatrixGroups.set(key, group)
+  return group
 }
 
 function symmetryOrbit(point: SymmetryPoint, width: number, height: number, axes: SymmetryAxes | null | undefined, center?: SymmetryCenter | null, clipToCanvas = true): SymmetryOrbitPoint[] {
@@ -133,16 +147,11 @@ function symmetryOrbit(point: SymmetryPoint, width: number, height: number, axes
   const pivot = resolvedCenter(width, height, center)
   const delta = { x: point.x + 0.5 - pivot.x, y: point.y + 0.5 - pivot.y }
   const result: SymmetryOrbitPoint[] = []
-  const queue: SymmetryMatrix[] = [IDENTITY_SYMMETRY_MATRIX]
-  const seenMatrices = new Set<string>()
   const seenPoints = new Set<string>()
   // Compose the finite square-symmetry group (at most eight matrices), not
   // rounded pixels: half-pixel pivots can otherwise create unbounded drift.
-  for (let index = 0; index < queue.length; index += 1) {
-    const matrix = queue[index]
-    const matrixKey = `${matrix.xx}:${matrix.xy}:${matrix.yx}:${matrix.yy}`
-    if (seenMatrices.has(matrixKey)) continue
-    seenMatrices.add(matrixKey)
+  for (let index = 0; index < transforms.length; index += 1) {
+    const matrix = transforms[index]
     const transformed = transformSymmetryDelta(matrix, delta)
     const candidate = index === 0 ? { ...point } : {
       x: Math.round(pivot.x + transformed.x - 0.5),
@@ -155,15 +164,50 @@ function symmetryOrbit(point: SymmetryPoint, width: number, height: number, axes
         result.push({ point: candidate, matrix })
       }
     }
-    // Even coincident or clipped pixels may have distinct transforms.
-    for (const transform of transforms) queue.push(multiplySymmetryMatrices(transform, matrix))
   }
   return result
 }
 
+/** Transforms opaque horizontal runs with the same pixel-center rounding as symmetryPoints. */
+export function symmetricSpanPainter(width: number, height: number, axes: SymmetryAxes | null | undefined, center: SymmetryCenter | null | undefined, paintSpan: (y: number, left: number, right: number) => void): (y: number, left: number, right: number) => void {
+  if (!hasSymmetry(axes)) return paintSpan
+  const matrices = enabledSymmetryMatrices(axes!)
+  const pivot = resolvedCenter(width, height, center)
+  return (y, left, right) => {
+    if (right < left) return
+    paintSpan(y, left, right)
+    const dx = left + 0.5 - pivot.x, dy = y + 0.5 - pivot.y
+    const endDx = right + 0.5 - pivot.x
+    for (let index = 1; index < matrices.length; index++) {
+      const matrix = matrices[index]
+      const x = Math.round(pivot.x + (matrix.xx * dx + matrix.xy * dy) - 0.5)
+      const py = Math.round(pivot.y + (matrix.yx * dx + matrix.yy * dy) - 0.5)
+      if (matrix.xx !== 0) {
+        const endX = Math.round(pivot.x + (matrix.xx * endDx + matrix.xy * dy) - 0.5)
+        paintSpan(py, Math.min(x, endX), Math.max(x, endX))
+      } else if (x >= 0 && x < width) {
+        const endY = Math.round(pivot.y + (matrix.yx * endDx + matrix.yy * dy) - 0.5)
+        for (let row = Math.max(0, Math.min(py, endY)); row <= Math.min(height - 1, Math.max(py, endY)); row++) paintSpan(row, x, x)
+      }
+    }
+  }
+}
+
 /** Returns the complete, de-duplicated orbit of a pixel under the enabled canvas-centered symmetries. */
 export function symmetryPoints(point: SymmetryPoint, width: number, height: number, axes: SymmetryAxes | null | undefined, center?: SymmetryCenter | null, clipToCanvas = true): SymmetryPoint[] {
-  return symmetryOrbit(point, width, height, axes, center, clipToCanvas).map((candidate) => candidate.point)
+  if (width <= 0 || height <= 0 || !hasSymmetry(axes)) return !clipToCanvas || (point.x >= 0 && point.y >= 0 && point.x < width && point.y < height) ? [{ ...point }] : []
+  const matrices = enabledSymmetryMatrices(axes!)
+  const pivot = resolvedCenter(width, height, center)
+  const dx = point.x + 0.5 - pivot.x, dy = point.y + 0.5 - pivot.y
+  const points: SymmetryPoint[] = []
+  for (let index = 0; index < matrices.length; index++) {
+    const matrix = matrices[index]
+    const x = index === 0 ? point.x : Math.round(pivot.x + (matrix.xx * dx + matrix.xy * dy) - 0.5)
+    const y = index === 0 ? point.y : Math.round(pivot.y + (matrix.yx * dx + matrix.yy * dy) - 0.5)
+    if (clipToCanvas && (x < 0 || y < 0 || x >= width || y >= height)) continue
+    if (!points.some(value => value.x === x && value.y === y)) points.push({ x, y })
+  }
+  return points
 }
 
 const isRotationalOnly = (axes: SymmetryAxes | null | undefined): boolean => Boolean(

@@ -185,8 +185,10 @@ export function useCanvasDeviceRouter(ports: Ports) {
         ports.session.tool === 'airbrush' ||
         ports.session.tool === 'eraser' ||
         ports.session.tool === 'smooth' ||
+        (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
         ports.session.tool === 'liquify') &&
       (ports.session.tool === 'smooth' ||
+        (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
         ports.session.tool === 'airbrush' ||
         ports.session.tool === 'liquify' ||
         ports.activeLayer.kind === 'tilemap' ||
@@ -330,6 +332,10 @@ export function useCanvasDeviceRouter(ports: Ports) {
       else ports.inputRef.current.clearTemporaryTool(event.pointerId)
     }
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
+      // A compatibility mouse event can follow a pen stream and is ignored
+      // for drawing. It must still clear the previous pen/adaptive cursor;
+      // otherwise that overlay remains at the pen's last canvas position.
+      if (event.pointerType === 'mouse') ports.hidePenCursor()
       event.preventDefault()
       return
     }
@@ -423,7 +429,12 @@ export function useCanvasDeviceRouter(ports: Ports) {
         ? canvasCursors.unavailable
         : ports.inputRef.current.spaceHeld
           ? canvasCursors.grab
-          : canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+          : canvasToolCursor(
+              ports.session.tool === 'selection' && ports.session.selectionKind === 'brush'
+                ? 'pencil'
+                : ports.session.tool,
+              ports.session.primaryColor
+            )
     if (ports.brushPreviewOverlaySupported(ports.session)) ports.scheduleBrushPreviewOverlay()
     else ports.draw()
   }

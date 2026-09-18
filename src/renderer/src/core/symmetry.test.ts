@@ -12,6 +12,15 @@ const axes = (values: Partial<SymmetryAxes>): SymmetryAxes => ({
 })
 
 describe('symmetry', () => {
+  it('updates cached transforms when axis switches mutate and keeps the pivot live', () => {
+    const enabled = axes({ horizontal: true })
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled)).toEqual([{ x: 1, y: 0 }, { x: 1, y: 3 }])
+    enabled.horizontal = false
+    enabled.vertical = true
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled)).toEqual([{ x: 1, y: 0 }, { x: 4, y: 0 }])
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled, { x: 2.5, y: 2 })).toEqual([{ x: 1, y: 0 }, { x: 3, y: 0 }])
+  })
+
   it('allows Ctrl to temporarily move a locked symmetry axis', () => {
     expect(symmetryAxisDragAllowed(false, false)).toBe(true)
     expect(symmetryAxisDragAllowed(true, false)).toBe(false)

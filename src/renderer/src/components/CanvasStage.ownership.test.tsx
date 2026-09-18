@@ -7,7 +7,7 @@ import { CanvasStage } from './CanvasStage'
 import { useCanvasSelectionTransform } from './useCanvasSelectionTransform'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
-import { canvasCompositeCacheFor } from './canvas-composite-cache'
+import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-cache'
 import { CANVAS_VIEW_SCROLLBARS_ENABLED_KEY } from '@/core/file-preferences'
 
 // Keep real controllers, geometry, pointer routing and Store commands. Rendering
@@ -58,6 +58,21 @@ function addSession(name = 'controller ownership') {
 }
 
 describe('CanvasStage controller composition', () => {
+  it('adopts a replaced render cache without switching or modifying the document', () => {
+    const session = addSession('renderer replacement')
+    const previous = canvasCompositeCacheFor(session.document)
+    const { rerender } = render(<CanvasStage session={session} />)
+    act(() => vi.advanceTimersToNextFrame())
+    expect(vi.mocked(renderCanvasFrame).mock.calls.at(-1)![0].resources.compositeCacheRef.current).toBe(previous)
+    // A reloaded module creates a new registry while React retains hook refs.
+    releaseCanvasCompositeCache(session.document)
+    const replacement = canvasCompositeCacheFor(session.document)
+    rerender(<CanvasStage session={{ ...session }} />)
+    act(() => vi.advanceTimersToNextFrame())
+    expect(vi.mocked(renderCanvasFrame).mock.calls.at(-1)![0].resources.compositeCacheRef.current).toBe(replacement)
+    expect(useWorkspace.getState().sessions[0]).toBe(session)
+  })
+
   it('skips queued and newly requested draws while a split surface is frozen, then redraws on release', () => {
     const session = addSession('frozen split')
     const { container } = render(<CanvasStage session={session} />)

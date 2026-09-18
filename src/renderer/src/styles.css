@@ -578,7 +578,7 @@ button[aria-label]:has(> .pixel-utility-icon:only-child) { display: inline-grid;
 .shape-flyout { grid-template-columns: repeat(6, var(--tool-rail-button-size)); }
 .line-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
 .move-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
-.selection-flyout { grid-template-columns: repeat(5, var(--tool-rail-button-size)); }
+.selection-flyout { grid-template-columns: repeat(6, var(--tool-rail-button-size)); }
 .fill-flyout { grid-template-columns: repeat(2, var(--tool-rail-button-size)); }
 .brush-flyout { grid-template-columns: repeat(3, var(--tool-rail-button-size)); }
 .tool-flyout-tooltip { display: block; width: var(--tool-rail-button-size); height: var(--tool-rail-button-size); }

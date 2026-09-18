@@ -37,3 +37,23 @@ it('keeps each right-click action active through down/move/up and restores the o
     unmount()
   }
 })
+
+it('clears a previous pen cursor when an ignored compatibility mouse move follows it', () => {
+  const input = new CanvasInputState()
+  const hidePenCursor = vi.fn()
+  vi.spyOn(input, 'acceptPointerDeviceEvent').mockReturnValue(false)
+  const session = { document: { id: 'cursor-test' }, tool: 'selection', selectionKind: 'brush' } as DocumentSession
+  const ports = {
+    inputRef: { current: input }, session, canvasRef: { current: document.createElement('canvas') },
+    tabletPreferences: DEFAULT_TABLET_PREFERENCES, liveInputSession: () => session,
+    hidePenCursor, handlePointerMove: vi.fn(), syncPenCursor: vi.fn()
+  } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]
+  const { result, unmount } = renderHook(() => useCanvasDeviceRouter(ports))
+  const nativeEvent = { pointerId: 9, pointerType: 'mouse', button: -1, buttons: 0, timeStamp: performance.now() }
+  const event = { ...nativeEvent, nativeEvent, preventDefault: vi.fn() } as unknown as ReactPointerEvent<HTMLCanvasElement>
+
+  act(() => result.current.pointerMove(event))
+
+  expect(hidePenCursor).toHaveBeenCalledOnce()
+  unmount()
+})

@@ -1,4 +1,4 @@
-import { appendStyleDirtyRect, invalidateStyledLayerBlocks } from './layer-style-dirty-regions'
+import { appendStyleDirtyRect, invalidateStyledLayerBlocks, refreshStyledLayerBlock } from './layer-style-dirty-regions'
 import { layerStyleCoverageTile } from './layer-style-coverage'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
 import type { PaletteEntry, RgbaColor } from '@shared/types-color'
@@ -371,7 +371,7 @@ export class DocumentCompositeCache {
     return cached.layer
   }
 
-  private renderStyledLayerBlock(document: SpriteDocument, cache: StyledLayerBlockCache, block: StyledLayerBlock): Uint8ClampedArray {
+  private renderStyledLayerBlock(document: SpriteDocument, cache: StyledLayerBlockCache, block: SelectionRect): Uint8ClampedArray {
     const pixels = new Uint8ClampedArray(block.width * block.height * 4)
     const sourceLayer = cache.sourceLayer
     const styles = cache.resolvedStyles
@@ -472,7 +472,7 @@ export class DocumentCompositeCache {
   private styledLayerBlockFor(document: SpriteDocument, cache: StyledLayerBlockCache, blockX: number, blockY: number): StyledLayerBlock {
     const key = `${blockX}:${blockY}`
     const cached = cache.blocks.get(key)
-    if (cached) return cached
+    if (cached) return refreshStyledLayerBlock(cached, rect => this.renderStyledLayerBlock(document, cache, rect))
     const x = blockX * STYLED_LAYER_BLOCK_SIZE
     const y = blockY * STYLED_LAYER_BLOCK_SIZE
     const block: StyledLayerBlock = {

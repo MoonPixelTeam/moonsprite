@@ -14,6 +14,7 @@ import { applyGradient } from '@/core/gradient'
 import { filledShapePathPixelPoints, paintShapePixelPoints } from '@/core/tools-shapes'
 import { invalidateRasterContentBounds } from '@/core/document-model'
 import { gpuBlendModeFor } from './canvas-composite-cache-surfaces'
+import { createStrokeCanvasInput } from './canvas-input-stroke'
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = []
@@ -121,6 +122,67 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each([false, true])('commits a styled stroke then pans without redrawing its full bounds (pending tail=%s)', pendingTail => {
+    const document = createDocument('release then pan', 192, 192, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    layer.layerStyles.shadow.enabled = true
+    useWorkspace.setState({ sessions: [], activeId: null })
+    useWorkspace.getState().addSession(document)
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const render = () => {
+      const s = useWorkspace.getState().sessions[0]
+      draw(cache, document, context, { revision: s.revision, contentRevision: s.contentRevision, contentInvalidation: s.contentInvalidation, fastViewPreview: true, originX: 3 })
+      return context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    }
+    const surface = render(), edit = beginPixelEdit(layer.id)
+    const paint = (x: number, y: number) => {
+      paintBrush(document, layer, edit, x, y, 5, { r: 255, g: 0, b: 0, a: 255 }, 'round')
+      cache.invalidateDocumentRect({ x: x - 3, y: y - 3, width: 7, height: 7 }, document, document.animation?.activeFrameId, [layer.id])
+    }
+    paint(20, 20); paint(160, 160); render()
+    if (pendingTail) paint(162, 160)
+    surface.context.putImageData.mockClear()
+    const input = createStrokeCanvasInput({ compositeCacheRef: { current: cache }, lineAnchorHistoryRef: { current: null }, t: (key: string) => key } as unknown as Parameters<typeof createStrokeCanvasInput>[0])
+    input.endRaster({ state: useWorkspace.getState(), session: useWorkspace.getState().sessions[0],
+      drag: { kind: 'draw', edit, start: { x: 20, y: 20 }, last: { x: 162, y: 160 }, path: [{ x: 20, y: 20 }, { x: 162, y: 160 }], startedAt: Date.now() } as Parameters<typeof input.endRaster>[0]['drag'] })
+    expect(render()).toBe(surface)
+    const uploaded = surface.context.putImageData.mock.calls.reduce((sum, [image]) => sum + image.width * image.height, 0)
+    expect(uploaded).toBeLessThanOrEqual(pendingTail ? 256 : 0)
+    expect(surface.pixels).toEqual(compositeRegion(document, 0, 0, 192, 192, new DocumentCompositeCache(), 1))
+    useWorkspace.getState().undo()
+    expect(render().pixels.some(value => value !== 0)).toBe(false)
+    useWorkspace.getState().redo()
+    expect(render().pixels).toEqual(compositeRegion(document, 0, 0, 192, 192, new DocumentCompositeCache(), 2))
+  })
+
+  it.each([1, 12])('keeps symmetric styled uploads local with %s queued pointer samples', samples => {
+    const document = createDocument('styled upload locality', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    draw(cache, document, context)
+    const surface = context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    const axes = { horizontal: true, vertical: true, diagonalUp: false, diagonalDown: false }
+    const frameId = document.animation?.activeFrameId ?? 'static'
+    const edit = beginPixelEdit(layer.id)
+    for (let sample = 0; sample < samples; sample++) {
+      const point = { x: 80 + sample % 3, y: 80 }
+      paintBrush(document, layer, edit, point.x, point.y, 5, { r: 255, g: 0, b: 0, a: 255 }, 'round', null, 'solid', 1, null, undefined, 0, 'paint', undefined, axes)
+      for (const rect of brushStrokeInvalidationRects(point, point, 5, null, 256, 256, axes)) cache.invalidateDocumentRect(rect, document, frameId, [layer.id])
+    }
+    surface.context.putImageData.mockClear()
+    draw(cache, document, context)
+    const uploads = surface.context.putImageData.mock.calls
+    expect(uploads.length).toBeGreaterThan(0)
+    expect(uploads.length).toBeLessThanOrEqual(4)
+    expect(uploads.reduce((sum, [image]) => sum + image.width * image.height, 0)).toBeLessThanOrEqual(1024)
+    expect(surface.pixels).toEqual(compositeRegion(document, 0, 0, 256, 256, new DocumentCompositeCache(), 1))
+  })
+
   it.each(['gradient', 'freeform', 'brush'] as const)('keeps styled %s results through commit and history without dropping the canvas surface', tool => {
     const document = createDocument('styled commit', 96, 96, 'rgba')
     const layer = document.layers[0]

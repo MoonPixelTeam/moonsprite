@@ -296,6 +296,10 @@ export const maskFromPoints = (points: Array<{ x: number; y: number }>): Selecti
   return { x: minX, y: minY, width, height, mask }
 }
 
+/** Converts document-space pixel indexes collected by a brush stroke into a compact selection mask. */
+export const selectionMaskFromVisitedPixels = (visited: ReadonlySet<number>, documentWidth: number): SelectionMask | null =>
+  maskFromPoints([...visited].map((key) => ({ x: key % documentWidth, y: Math.floor(key / documentWidth) })))
+
 const snapRotationValue = (value: number): number => {
   const rounded = Math.round(value)
   return Math.abs(value - rounded) < 1e-9 ? rounded : value

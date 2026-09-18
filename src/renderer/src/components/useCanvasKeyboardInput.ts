@@ -370,7 +370,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
               drag?.kind === 'marquee'
                 ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
                 : drag?.kind === 'shape'
-                  ? canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+                  ? canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
                   : drag?.kind === 'pan'
                     ? canvasCursors.grabbing
                     : canvasCursors.grab
@@ -400,6 +400,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           ports.session.tool === 'airbrush' ||
           ports.session.tool === 'eraser' ||
           ports.session.tool === 'smooth' ||
+          (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
           ports.session.tool === 'liquify')
       if (modifierSizing) {
         ports.inputRef.current.sampling = false
@@ -594,7 +595,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         else if (ports.canvasRef.current)
           ports.canvasRef.current.style.cursor = ports.inputRef.current.sampling
             ? canvasCursors.eyedropper
-            : canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+            : canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
         const drag = ports.inputRef.current.drag
         if (drag?.kind === 'marquee' && drag.moved && ports.inputRef.current.pointer.visible)
           ports.updateMarqueePreview(drag, ports.inputRef.current.pointer.point, ports.currentSelectionMarqueeModifierState())
@@ -623,7 +624,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           ports.canvasRef.current.style.cursor =
             drag?.kind === 'marquee'
               ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
-              : canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+              : canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
         // Restore the smooth preview as soon as temporary hand navigation is
         // released (the overlay draw will re-check the live input state).
         ports.scheduleBrushPreviewOverlay()
@@ -648,14 +649,14 @@ export function useCanvasKeyboardInput(ports: Ports) {
       ports.cancelActiveCanvasInteraction()
       cancelSampling()
       ports.hidePenCursor()
-      if (ports.canvasRef.current) ports.canvasRef.current.style.cursor = canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+      if (ports.canvasRef.current) ports.canvasRef.current.style.cursor = canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
     }
     const visibilityChange = (): void => {
       if (document.hidden) blur()
     }
     const focus = (): void => {
       cancelSampling()
-      if (ports.canvasRef.current) ports.canvasRef.current.style.cursor = canvasToolCursor(ports.session.tool, ports.session.primaryColor)
+      if (ports.canvasRef.current) ports.canvasRef.current.style.cursor = canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
     }
     const unregisterKeyboard = registerCanvasKeyboard({
       isActive: () => useWorkspace.getState().activeId === ports.session.document.id,

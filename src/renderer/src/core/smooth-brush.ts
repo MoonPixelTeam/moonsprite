@@ -1,10 +1,12 @@
+import type { TileRepeatMode } from '@shared/types-raster'
+import { wrapDocumentPointForTileRepeat, tileRepeatIncludesX, tileRepeatIncludesY } from './tilemap'
 import type { BrushShape } from '@shared/types-brush'
 import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { layerIndexAt, readLayerPacked } from './document-model'
 import { recordPixelKnownCurrent, type PixelEdit } from './history'
-import { selectionContains } from './selection'
+import { continuousLinePointsWithFixForLineBrush, selectionContains } from './selection'
 import { brushStampAnchor, solidBrushPreviewRowSpans } from './tools-brush'
 
 export const SMOOTH_BRUSH_OVERLAY = 'rgba(230, 0, 255, 0.35)'
@@ -241,7 +243,7 @@ export function smoothChangedLiquifyPixels(document: SpriteDocument, layer: Rast
 
 export function collectSmoothBrushArea(
   document: SpriteDocument, stroke: SmoothBrushStroke, from: Point, to: Point, size: number, selection: SelectionMask | null,
-  shape: BrushShape = 'round', angle = 0, optimizedRotation = true
+  shape: BrushShape = 'round', angle = 0, optimizedRotation = true, repeatMode: TileRepeatMode = 'off'
 ): void {
   const radius = Math.max(0.5, Math.min(64, size / 2))
   // A line stamp may only be one pixel wide. Its old radius-based sampling
@@ -252,13 +254,20 @@ export function collectSmoothBrushArea(
   const stampSize = Math.max(1, Math.min(128, Math.round(size)))
   const anchor = brushStampAnchor(stampSize, null, angle, shape)
   const spans = solidBrushPreviewRowSpans(stampSize, shape, angle, optimizedRotation)
-  for (let step = 0; step <= steps; step++) {
-    const cx = Math.round(from.x + (to.x - from.x) * step / steps)
-    const cy = Math.round(from.y + (to.y - from.y) * step / steps)
+  const centers = shape === 'line' && stampSize > 1 && Math.abs(angle % 180) >= 0.0001
+    ? continuousLinePointsWithFixForLineBrush({ x: Math.round(from.x), y: Math.round(from.y) }, { x: Math.round(to.x), y: Math.round(to.y) })
+    : Array.from({ length: steps + 1 }, (_, step) => ({
+        x: Math.round(from.x + (to.x - from.x) * step / steps),
+        y: Math.round(from.y + (to.y - from.y) * step / steps)
+      }))
+  for (const { x: cx, y: cy } of centers) {
     for (const span of spans) {
-      const y = cy - anchor.y + span.y
-      if (y < 0 || y >= document.height) continue
-      for (let x = Math.max(0, cx - anchor.x + span.left); x <= Math.min(document.width - 1, cx - anchor.x + span.right); x++) {
+      const sourceY = cy - anchor.y + span.y
+      if (!tileRepeatIncludesY(repeatMode) && (sourceY < 0 || sourceY >= document.height)) continue
+      const left = cx - anchor.x + span.left
+      const right = cx - anchor.x + span.right
+      for (let sourceX = tileRepeatIncludesX(repeatMode) ? left : Math.max(0, left); sourceX <= (tileRepeatIncludesX(repeatMode) ? right : Math.min(document.width - 1, right)); sourceX++) {
+        const { x, y } = wrapDocumentPointForTileRepeat({ x: sourceX, y: sourceY }, document.width, document.height, repeatMode)
         const key = y * document.width + x
         if (stroke.visited.has(key) || (selection && !selectionContains(selection, x, y))) continue
         stroke.visited.add(key)

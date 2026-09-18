@@ -1,3 +1,4 @@
+import { collectSmoothBrushArea } from './smooth-brush'
 import { describe, expect, it } from 'vitest'
 import { compositeRegion, createCompositePointSampler, createDocument, createLayer, createSparseLayer, DocumentCompositeCache, findOrAddPaletteColor, getActiveLayer, readLayerColor, readLayerColorAt, resizeDocumentAt, writeLayerColor } from './document'
 import { beginPixelEdit, commitPixelEdit, HistoryStack } from './history'
@@ -438,22 +439,26 @@ describe('pixel tools', () => {
     expect(brushMaskOffsets(1, 'line', 'solid', 1, 0, 0, null, undefined, 0, 'paint', 0, 0, undefined, 37)).toEqual([{ x: 0, y: 0, coverage: 255 }])
   })
 
-  it('does not leave enclosed holes when a rotated line brush is moved quickly', () => {
+  it.each([[false, 'raster'], [true, 'raster'], [false, 'balanced'], [true, 'balanced']] as const)('does not leave holes in rotated line strokes (%s, %s)', (optimizedRotation, algorithm) => {
     for (const [angle, from, to] of [
       [15, { x: 12, y: 48 }, { x: 116, y: 48 }],
       [30, { x: 12, y: 20 }, { x: 116, y: 72 }],
       [45, { x: 12, y: 48 }, { x: 116, y: 48 }],
       [60, { x: 12, y: 72 }, { x: 116, y: 20 }],
       [90, { x: 64, y: 12 }, { x: 64, y: 84 }],
-      [135, { x: 12, y: 48 }, { x: 116, y: 48 }]
+      [135, { x: 12, y: 48 }, { x: 116, y: 48 }],
+      [150, { x: 12, y: 18 }, { x: 116, y: 74 }]
     ] as const) {
       const document = createDocument(`fast rotated line brush ${angle}`, 128, 96, 'rgba')
       const layer = getActiveLayer(document)
-      paintLine(document, layer, beginPixelEdit(layer.id), from.x, from.y, to.x, to.y, 32, blue, null, 'line', 'solid', 1, null, undefined, 0, 'paint', undefined, 'raster', undefined, undefined, undefined, { fromAngle: angle, toAngle: angle }, 'off', undefined, true)
+      paintLine(document, layer, beginPixelEdit(layer.id), from.x, from.y, to.x, to.y, 32, blue, null, 'line', 'solid', 1, null, undefined, 0, 'paint', undefined, algorithm, undefined, undefined, undefined, { fromAngle: angle, toAngle: angle }, 'off', undefined, optimizedRotation)
       const painted = new Set<string>()
       for (let y = 0; y < document.height; y += 1) for (let x = 0; x < document.width; x += 1) {
         if (readLayerColorAt(document, layer, x, y).a > 0) painted.add(`${x}:${y}`)
       }
+      const stroke = { visited: new Set<number>() }
+      collectSmoothBrushArea(document, stroke, from, to, 32, null, 'line', angle, optimizedRotation)
+      expect(painted).toEqual(new Set([...stroke.visited].map((index) => `${index % document.width}:${Math.floor(index / document.width)}`)))
       let enclosedHoles = 0
       for (let y = 1; y < document.height - 1; y += 1) for (let x = 1; x < document.width - 1; x += 1) {
         if (painted.has(`${x}:${y}`)) continue

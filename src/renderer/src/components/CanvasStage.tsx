@@ -1020,7 +1020,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get scheduleSelectionPreview() { return scheduleSelectionPreview },
     get draw() { return draw },
     get t() { return t },
-    get tilemapPaintSelectionForIncoming() { return tilemapPaintSelectionForIncoming }
+    get tilemapPaintSelectionForIncoming() { return tilemapPaintSelectionForIncoming },
+    get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
 
   const selectionBeginInput = createSelectionBeginCanvasInput({
@@ -1058,7 +1059,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get magicGestureRef() { return magicGestureRef },
     get t() { return t },
     get drawSelectionOverlay() { return drawSelectionOverlay },
-    get magicWandWorkerRef() { return magicWandWorkerRef }
+    get magicWandWorkerRef() { return magicWandWorkerRef },
+    get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
 
   const textInput = createTextCanvasInput({

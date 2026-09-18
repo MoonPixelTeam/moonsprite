@@ -19,7 +19,7 @@ import { isWorkspaceResizing, recordWorkspaceResizeStage, recordWorkspaceResizeC
 import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { activeLayerMask, activePaintLayer, selectedTransformLayersAreEditable } from '@/store/workspace-session'
-import { createCanvasRenderPlan, deviceAlignedCanvasRect, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { deferredSelectionPreviewOwner, temporaryMoveSuppressesToolPreview } from '@/core/canvas-input'
 import { presentCanvasClickFlash } from './canvas-click-flash'
@@ -726,7 +726,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentSession.selectedAnimationFrameIds.length > 1 && currentSession.contentInvalidation
       ? { ...currentSession.contentInvalidation, frameId: undefined }
       : currentSession.contentInvalidation
-  const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition)
+  const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition, deviceScale)
   const { rotated, viewport, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY } = renderPlan
   let context: RasterContext2D = displayContext
   if (rotated) {
@@ -758,7 +758,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   // Rounding each floating-point copy origin independently can make the
   // right edge of one copy differ from the left edge of its neighbour by a
   // physical pixel, which shows up as a transient seam during previews.
-  const baseCanvasBoundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, deviceScale)
+  const baseCanvasBoundary = deviceAlignedCanvasRect(deviceAlignedCoordinate(originX, deviceScale.x), deviceAlignedCoordinate(originY, deviceScale.y), canvasWidth, canvasHeight, deviceScale)
   const renderCanvasWidth = baseCanvasBoundary.width
   const renderCanvasHeight = baseCanvasBoundary.height
   const repeatOffsets = tileRepeatOffsetsForViewport(viewport, originX, originY, canvasWidth, canvasHeight, view.tileRepeatMode ?? 'off')
