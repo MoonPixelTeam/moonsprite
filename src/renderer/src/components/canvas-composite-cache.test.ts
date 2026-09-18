@@ -508,52 +508,36 @@ describe('CanvasCompositeCache', () => {
     const boundary = deviceAlignedCanvasRect(geometry.originX, geometry.originY, geometry.canvasWidth, geometry.canvasHeight, geometry.devicePixelRatio)
     expect(context.rect).toHaveBeenCalledWith(boundary.left, boundary.top, boundary.width, boundary.height)
 
-    // The cache clips to the complete canvas, but only draws the visible
-    // document region. Assert that this destination is aligned independently
-    // from the outer canvas boundary.
-    const visibleBoundary = deviceAlignedCanvasRect(
-      geometry.originX,
-      geometry.originY,
-      document.width * 3.075,
-      document.height * 3.075,
-      geometry.devicePixelRatio
-    )
-    const drawCalls = context.drawImage.mock.calls
-    expect(drawCalls.length).toBeGreaterThan(1)
-    expect(drawCalls.reduce((area, call) => area + (call[3] as number) * (call[4] as number), 0)).toBe(document.width * document.height)
-    expect(drawCalls.every((call) => call.slice(3, 5).every((size) => Number.isInteger(size) && size > 0))).toBe(true)
-    const destinationRects = drawCalls.map((call) => ({
-      left: call[5] as number,
-      top: call[6] as number,
-      right: (call[5] as number) + (call[7] as number),
-      bottom: (call[6] as number) + (call[8] as number)
-    }))
-    expect(Math.min(...destinationRects.map((rect) => rect.left))).toBe(visibleBoundary.left)
-    expect(Math.min(...destinationRects.map((rect) => rect.top))).toBe(visibleBoundary.top)
-    expect(Math.max(...destinationRects.map((rect) => rect.right))).toBe(visibleBoundary.right)
-    expect(Math.max(...destinationRects.map((rect) => rect.bottom))).toBe(visibleBoundary.bottom)
-  })
-
-  it('uses one bitmap blit during a fractional zoom preview', () => {
-    const document = createDocument('fractional zoom preview', 32, 32, 'rgba')
-    const context = makeContext()
-
-    draw(new CanvasCompositeCache(), document, context, {
-      view: view({ zoom: 4.125 }),
-      canvasWidth: document.width * 4.125,
-      canvasHeight: document.height * 4.125,
-      imageSmoothingEnabled: false,
-      fastViewPreview: true,
-      devicePixelRatio: 1.5
-    })
-
-    // The committed pixel-aligned path intentionally splits the image into
-    // many runs. Interactive zoom/pan must stay a single drawImage call so
-    // the browser can keep the UI responsive at high magnifications.
+    // Clip edges are snapped, but bitmap scaling must retain the exact zoom.
+    // Stretching a rounded crop changes the location of its interior pixels.
     expect(context.drawImage).toHaveBeenCalledOnce()
+    expect(context.drawImage.mock.lastCall!.slice(1)).toEqual([
+      0, 0, 4, 4, geometry.originX, geometry.originY, 4 * 3.075, 4 * 3.075
+    ])
   })
 
-  it('reuses the 4K composite across dock resizes and settles to the precise sampling path', () => {
+  it.each([undefined, 1])('keeps pixel boundaries stable during pan/zoom and release (cache budget %s)', (budget) => {
+    const document = createDocument('fractional navigation', 32, 32, 'rgba')
+    const cache = new CanvasCompositeCache(budget)
+    const context = makeContext()
+    for (const zoom of [4.125, 64.013]) for (const step of [0, 1, 2]) {
+      const geometry = {
+        view: view({ zoom }), originX: 10.2 + step / 3, originY: 5.1 - step / 3,
+        canvasWidth: document.width * zoom, canvasHeight: document.height * zoom,
+        fromX: step, fromY: step, toX: 30, toY: 30,
+        imageSmoothingEnabled: false, devicePixelRatio: { x: 1.5, y: 1.501 }
+      }
+      context.drawImage.mockClear()
+      draw(cache, document, context, { ...geometry, fastViewPreview: true })
+      const movingRects = context.drawImage.mock.calls.map((call) => call.slice(1))
+      expect(movingRects).toHaveLength(1)
+      context.drawImage.mockClear()
+      draw(cache, document, context, { ...geometry, fastViewPreview: false })
+      expect(context.drawImage.mock.calls.map((call) => call.slice(1))).toEqual(movingRects)
+    }
+  })
+
+  it('reuses the 4K composite and bounds fractional blits across dock resizes', () => {
     const document = createDocument('4K dock resize', 4000, 4000, 'rgba', false)
     writeLayerColor(document, document.layers[0], 4000 * 2000 + 2000, { r: 24, g: 96, b: 220, a: 255 })
     const cache = new CanvasCompositeCache()
@@ -572,10 +556,9 @@ describe('CanvasCompositeCache', () => {
     expect(MockOffscreenCanvas.instances).toHaveLength(surfaceCount)
     expect(MockOffscreenCanvas.instances.reduce((count, surface) => count + surface.context.putImageData.mock.calls.length, 0)).toBe(uploads)
     context.drawImage.mockClear()
-    // A small final region uses the precise run path; large ones intentionally
-    // collapse runs above the existing 4096-blit threshold.
+    // The settled frame also retains the original affine scale in one blit.
     draw(cache, document, context, { view: view({ zoom: 3.075 }), fromX: 1990, fromY: 1990, toX: 2010, toY: 2010, devicePixelRatio: 1.5 })
-    expect(context.drawImage.mock.calls.length).toBeGreaterThan(1)
+    expect(context.drawImage).toHaveBeenCalledOnce()
   })
 
   it('composites supported animation frames through Canvas2D layer sources', () => {
@@ -615,8 +598,8 @@ describe('CanvasCompositeCache', () => {
       devicePixelRatio: 1.5
     })
 
-    // The exact run path is retained for small regions, but a large viewport
-    // must never create a rows×columns storm of drawImage calls.
+    // A large viewport must preserve its scale without a rows×columns storm
+    // of drawImage calls.
     expect(context.drawImage).toHaveBeenCalledOnce()
   })
 

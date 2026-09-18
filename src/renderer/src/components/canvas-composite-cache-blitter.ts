@@ -1,7 +1,6 @@
 import {
   deviceAlignedCanvasRect,
   deviceAlignedDocumentRect,
-  deviceAlignedPixelRuns,
   type CanvasDeviceScaleInput
 } from '@/core/canvas-render-plan'
 import type { RasterContext2D } from './canvas-selection-renderer'
@@ -19,38 +18,24 @@ export class CanvasCompositeBlitter {
     return deviceAlignedDocumentRect(originX, originY, zoom, x, y, width, height, this.currentDevicePixelRatio)
   }
 
-/**
-   * Blit a cached raster using the same per-pixel device edges as the live
-   * brush preview. A single large drawImage lets the browser distribute a
-   * fractional physical scale across source rows/columns, which can move a
-   * pixel by one device row when the effective backing ratio is non-integer.
+  /**
+   * Preserve the document-to-device affine transform even when the visible
+   * source rectangle changes. Rounding both destination endpoints first
+   * stretches each crop by a different scale and redistributes interior pixels.
+   * Nearest-neighbour sampling of these continuous edges already implements
+   * ceil(edge - 0.5), the tie rule shared by brush previews and hit testing.
    */
   drawAlignedPixelRegion(context: RasterContext2D, source: CanvasImageSource, originX: number, originY: number, zoom: number, sourceX: number, sourceY: number, targetX: number, targetY: number, width: number, height: number): void {
-    const dpr = typeof this.currentDevicePixelRatio === 'number' ? { x: this.currentDevicePixelRatio, y: this.currentDevicePixelRatio } : this.currentDevicePixelRatio
-    const columns = deviceAlignedPixelRuns(originX, zoom, targetX, width, dpr.x)
-    const rows = deviceAlignedPixelRuns(originY, zoom, targetY, height, dpr.y)
-    // Cartesian pixel splitting scales as O(rows × columns). At 400%–800%
-    // on a large document this can become tens of thousands of drawImage
-    // calls for one frame. The browser's nearest-neighbour sampler already
-    // honours the aligned outer edges, so collapse large regions to one blit
-    // and reserve the exact run path for small previews where it is cheap.
-    if (columns.length * rows.length > 4096) {
-      const destination = this.alignedDocumentDestination(originX, originY, zoom, targetX, targetY, width, height)
-      context.drawImage(source, sourceX, sourceY, width, height, destination.left, destination.top, destination.width, destination.height)
-      return
-    }
-    for (const row of rows)
-      for (const column of columns) {
-        context.drawImage(source, sourceX + column.start - targetX, sourceY + row.start - targetY, column.count, row.count, column.left, row.left, column.right - column.left, row.right - row.left)
-      }
+    context.drawImage(source, sourceX, sourceY, width, height,
+      originX + targetX * zoom, originY + targetY * zoom, width * zoom, height * zoom)
   }
 
   requiresAlignedPixelBlit(zoom: number): boolean {
     if (!Number.isFinite(zoom) || zoom <= 0) return false
     const dpr = typeof this.currentDevicePixelRatio === 'number' ? { x: this.currentDevicePixelRatio, y: this.currentDevicePixelRatio } : this.currentDevicePixelRatio
-    // Keep the common small-pixel path cheap. Once a document pixel spans at
-    // least four physical pixels, a one-pixel redistribution is visible and
-    // the segmented blit preserves the exact preview boundary.
+    // At high fractional magnification, preserve the continuous scale rather
+    // than stretching rounded crop endpoints: one redistributed device pixel
+    // is visible beside the brush preview.
     if (Math.min(zoom * dpr.x, zoom * dpr.y) < 4) return false
     const fractional = (value: number): boolean => Math.abs(value - Math.round(value)) > 0.0000001
     return fractional(zoom * dpr.x) || fractional(zoom * dpr.y)

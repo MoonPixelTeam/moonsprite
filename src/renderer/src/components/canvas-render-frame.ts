@@ -711,11 +711,9 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const activeDrag = inputRef.current.drag
   const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
   const smoothPixelSampling = pixelSamplingMode(view.zoom) === 'smooth'
-  // View gestures (zoom, pan, and rotate) redraw the cached bitmap every
-  // frame. Keep the interactive path cheap and atomic: the cache skips its
-  // per-pixel alignment blit while this flag is set, and rotated scenes use
-  // a low-cost sampling kernel. The exact aligned frame is rendered once
-  // after the gesture commits.
+  // View gestures reuse cached pixels and use a low-cost rotation filter.
+  // Axis-aligned pixel edges stay identical during navigation and after
+  // release; switching alignment paths here makes the artwork drift.
   const viewPreviewActive =
     isWorkspaceResizing() ||
     activeDrag?.kind === 'pan' ||

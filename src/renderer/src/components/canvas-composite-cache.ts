@@ -589,7 +589,7 @@ export class CanvasCompositeCache {
     sourceDirtyRect: SelectionRect | undefined,
     imageSmoothingEnabled: boolean,
     isolatedLayerMask?: LayerMask,
-    fastViewPreview = false,
+    _fastViewPreview = false,
     animationPlayback = false,
     animationConsumerOnly = false,
     render = true
@@ -712,14 +712,10 @@ export class CanvasCompositeCache {
     const visibleHeight = Math.max(0, toY - fromY)
     if (render && visibleWidth > 0 && visibleHeight > 0) {
       const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, fromX, fromY, visibleWidth, visibleHeight)
-      // The segmented pixel blit is only valid in an axis-aligned scene. Once
-      // the cached bitmap is rotated or mirrored, every segment becomes an
-      // independent filtered edge in the outer scene and produces diagonal
-      // seams (while also multiplying drawImage calls). Use one contiguous
-      // bitmap draw for transformed views; it is both artifact-free and much
-      // cheaper during 400%–800% navigation.
+      // Axis-aligned nearest-neighbour sampling keeps the original affine
+      // scale. Rotated scenes retain their contiguous filtered scene path.
       const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
-      if (!fastViewPreview && axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
         this.blitter.drawAlignedPixelRegion(context, surface.bitmap ?? surface.canvas, originX, originY, view.zoom, fromX, fromY, fromX, fromY, visibleWidth, visibleHeight)
       } else {
         context.drawImage(surface.bitmap ?? surface.canvas, fromX, fromY, visibleWidth, visibleHeight, destination.left, destination.top, destination.width, destination.height)
@@ -745,7 +741,7 @@ export class CanvasCompositeCache {
     sourceDirtyRect: SelectionRect | undefined,
     imageSmoothingEnabled = false,
     isolatedLayerMask?: LayerMask,
-    fastViewPreview = false,
+    _fastViewPreview = false,
     animationPlayback = false,
     render = true
   ): CompositeRegionSurface | null {
@@ -830,7 +826,7 @@ export class CanvasCompositeCache {
     if (render) {
       const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
       const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
-      if (!fastViewPreview && axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
         this.blitter.drawAlignedPixelRegion(context, region.bitmap ?? region.canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
       } else {
         context.drawImage(region.bitmap ?? region.canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
