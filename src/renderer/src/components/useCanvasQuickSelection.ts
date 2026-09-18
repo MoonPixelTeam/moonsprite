@@ -63,7 +63,7 @@ export function useCanvasQuickSelection(ports: Ports) {
     const cell = quickSelectionCellAt(active, point)
     if (!cell) return
     const before = cloneSelection(active.selection)
-    const mode: SelectionMode = event.shiftKey || ports.modifierActive(event.nativeEvent, 'addToSelection') ? 'add' : active.selectionMode
+    const mode: SelectionMode = ports.modifierActive(event.nativeEvent, 'addToSelection') ? 'add' : active.selectionMode
     const incoming = ports.tilemapPaintSelectionForIncoming(rectSelection(cell.x, cell.y, cell.width, cell.height), active)
     const after = combineSelection(before, incoming, mode)
     state.commitSelectionChange(before, after, ports.t('canvas.history.createSelection'))

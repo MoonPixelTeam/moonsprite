@@ -10,6 +10,9 @@ import { useWorkspace } from '@/store/workspace'
 import { CanvasCompositeCache, canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-cache'
 import { installRuntimeRaster } from '@/core/runtime-raster'
 import { BLEND_MODES } from '@shared/types-color'
+import { applyGradient } from '@/core/gradient'
+import { filledShapePathPixelPoints, paintShapePixelPoints } from '@/core/tools-shapes'
+import { invalidateRasterContentBounds } from '@/core/document-model'
 import { gpuBlendModeFor } from './canvas-composite-cache-surfaces'
 
 class MockOffscreenCanvas {
@@ -118,6 +121,52 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each(['gradient', 'freeform', 'brush'] as const)('keeps styled %s results through commit and history without dropping the canvas surface', tool => {
+    const document = createDocument('styled commit', 96, 96, 'rgba')
+    const layer = document.layers[0]
+    layer.layerStyles = createDefaultLayerStyles()
+    layer.layerStyles.stroke.enabled = true
+    layer.layerStyles.stroke.size = 2
+    layer.layerStyles.shadow.enabled = true
+    layer.layerStyles.innerGlow.enabled = true
+    useWorkspace.setState({ sessions: [], activeId: null })
+    useWorkspace.getState().addSession(document)
+    const cache = new CanvasCompositeCache()
+    const context = makeContext()
+    const render = () => {
+      const session = useWorkspace.getState().sessions[0]
+      draw(cache, document, context, {
+        revision: session.revision,
+        contentRevision: session.contentRevision,
+        contentInvalidation: session.contentInvalidation
+      })
+      return context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    }
+    const surface = render()
+    const color = { r: 41, g: 121, b: 255, a: 180 }
+    const rect = { x: 32, y: 32, width: 16, height: 16 }
+    const edit = tool === 'gradient'
+      ? applyGradient(document, layer, { x: 32, y: 32 }, { x: 48, y: 48 }, color, { ...color, r: 255 }, rect)!
+      : beginPixelEdit(layer.id)
+    if (tool === 'freeform') paintShapePixelPoints(document, layer, edit,
+      filledShapePathPixelPoints(document, [{ x: 32, y: 32 }, { x: 48, y: 32 }, { x: 40, y: 48 }]), color)
+    if (tool === 'brush') paintLine(document, layer, edit, 32, 40, 48, 40, 5, color)
+    // A fresh compositor must see new pixels even when an empty source was cached.
+    const beforeCommit = compositeRegion(document, 0, 0, 96, 96, new DocumentCompositeCache(), 1)
+    invalidateRasterContentBounds(layer)
+    const expected = compositeRegion(document, 0, 0, 96, 96, new DocumentCompositeCache(), 2)
+    expect(expected.some(value => value !== 0)).toBe(true)
+    expect(beforeCommit).toEqual(expected)
+    useWorkspace.getState().commitPixelEdit(edit, 'styled drawing')
+    expect(useWorkspace.getState().sessions[0].contentInvalidation?.kind).toBe('region')
+    expect(render()).toBe(surface)
+    expect(surface.pixels).toEqual(expected)
+    useWorkspace.getState().undo()
+    expect(render().pixels.some(value => value !== 0)).toBe(false)
+    useWorkspace.getState().redo()
+    expect(render().pixels).toEqual(expected)
+  })
+
   it.each(['normal', 'multiply', 'screen'] as const)('preserves cropped %s layers when a high-zoom drag starts', mode => {
     const document = createDocument('cropped drag', 64, 64, 'rgba')
     document.layers.push(createLayer('moving', 64, 64, 'rgba'), createLayer('upper', 64, 64, 'rgba'))

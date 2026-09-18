@@ -35,6 +35,18 @@ it('uses the latest UI command, suppresses repeats and removes listeners on unmo
   expect(next).toHaveBeenCalledTimes(1)
 })
 
+it('routes F11 to the fullscreen command', () => {
+  const fullscreen = vi.fn()
+  const initial = options()
+  initial.shortcuts.toggleFullscreen = ['F11']
+  initial.commands.toggleFullscreen = fullscreen
+  renderHook(() => useAppShortcutRouter(initial), {wrapper: I18nProvider})
+
+  act(() => window.dispatchEvent(new KeyboardEvent('keydown', {key: 'F11', code: 'F11', cancelable: true})))
+
+  expect(fullscreen).toHaveBeenCalledTimes(1)
+})
+
 it('cycles shared tool bindings using the current Store state between events', () => {
   useWorkspace.setState({sessions: [], activeId: null})
   useWorkspace.getState().addSession(createDocument('tool cycle', 4, 4, 'rgba'))

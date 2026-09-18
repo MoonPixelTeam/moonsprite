@@ -39,5 +39,13 @@ describe('PNG format', () => {
     expect(decoded.height).toBe(3)
   })
 
+  it('exports scaled BMP images through the shared image export path', async () => {
+    const document = createDocument('bitmap', 2, 1, 'rgba')
+    const result = await exportDocumentImage(document, 200, 'bmp')
+
+    expect(result).toMatchObject({ extension: 'bmp', width: 4, height: 2 })
+    expect(new TextDecoder().decode(result.bytes.subarray(0, 2))).toBe('BM')
+  })
+
 
 })

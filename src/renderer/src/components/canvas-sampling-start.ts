@@ -1,3 +1,4 @@
+import { TRANSPARENT } from '@/core/raster'
 import { deviceSampleUsesSecondary } from './canvas-device-tools'
 import type { FreeTileInstance, TilemapCell } from '@shared/types-tiles'
 import type { RgbaColor } from '@shared/types-color'
@@ -80,9 +81,9 @@ export function createCanvasSamplingStart(ports: {
       // Sampling owns the pointer overlay. Prevent a stale rotate indicator
       // from rendering underneath the eyedropper magnifier/cursor.
       updateRotationIndicator(liveViewRef.current.rotation, false)
-      if (point.x < 0 || point.y < 0 || point.x >= session.document.width || point.y >= session.document.height) return
+      const outsideCanvas = point.x < 0 || point.y < 0 || point.x >= session.document.width || point.y >= session.document.height
       const secondary = deviceSampleUsesSecondary(event.button, inputRef.current.temporaryTool)
-      const sampledFreeTile = freeTileAtPoint(point)
+      const sampledFreeTile = outsideCanvas ? undefined : freeTileAtPoint(point)
       if (sampledFreeTile !== undefined) {
         if (sampledFreeTile) {
           state.setSelectedTile(sampledFreeTile.tilesetId, sampledFreeTile.tileId, secondary ? 'secondary' : 'primary')
@@ -95,7 +96,7 @@ export function createCanvasSamplingStart(ports: {
         draw()
         return
       }
-      const sampledTile = tilemapCellAtPoint(point)
+      const sampledTile = outsideCanvas ? undefined : tilemapCellAtPoint(point)
       if (sampledTile !== undefined) {
         if (sampledTile) state.setSelectedTile(sampledTile.tilesetId, sampledTile.tileId, secondary ? 'secondary' : 'primary')
         inputRef.current.sampling = true
@@ -107,7 +108,7 @@ export function createCanvasSamplingStart(ports: {
       }
       const setSampledColor = secondary ? state.setSecondaryColor : state.setPrimaryColor
       const mask = activeLayerMask(session)
-      const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
+      const sampled = outsideCanvas ? { ...TRANSPARENT } : mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
       const previous = secondary ? session.secondaryColor : session.primaryColor
       setSampledColor(sampled)
       publishCanvasColorSample(sampled, secondary)

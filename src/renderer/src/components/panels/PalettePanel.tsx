@@ -63,7 +63,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const floating = useFloatingPanel(null, false, true, 'moonsprite.palette-panel.v1', true, onFloatingDock, docked)
   const [paletteActionsOpen, setPaletteActionsOpen] = useState(false)
   const [paletteSortDirection, setPaletteSortDirection] = useState<PaletteSortDirection>(() => readStoredString(PALETTE_SORT_DIRECTION_STORAGE_KEY) === 'descending' ? 'descending' : 'ascending')
-  const [paletteLayoutMode, setPaletteLayoutMode] = useState<'auto' | 'manual'>(() => readStoredString(PALETTE_LAYOUT_MODE_STORAGE_KEY) === 'auto' ? 'auto' : 'manual')
+  const [paletteLayoutMode, setPaletteLayoutMode] = useState<'auto' | 'manual'>(() => readStoredString(PALETTE_LAYOUT_MODE_STORAGE_KEY) === 'manual' ? 'manual' : 'auto')
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [extractOpen, setExtractOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)

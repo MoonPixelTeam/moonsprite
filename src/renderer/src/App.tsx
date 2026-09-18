@@ -39,6 +39,7 @@ import { useAppPlaybackShortcut } from '@/components/app/useAppPlaybackShortcut'
 import { executeExtensionCommand } from '@/core/extension-runtime'
 import { formatBytes } from '@/core/resource-policy'
 import { saveProgress } from '@/core/save-progress'
+import { toggleAppWindowFullscreen } from '@/platform/app-window'
 import { openRuntimeDiagnosticLogs } from '@/platform/runtime-diagnostics'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -55,7 +56,11 @@ export default function App() {
   const [resourceLabel, setResourceLabel] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [homeOpen, setHomeOpen] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
   const session = workspace.sessions.find((item) => item.document.id === workspace.activeId) ?? null
+  const toggleFullscreen = () => {
+    void toggleAppWindowFullscreen().then(setFullscreen).catch((error) => workspace.setMessage(error instanceof Error ? error.message : String(error)))
+  }
   const {
     paneOnlyDocumentIds,
     workspaceDocumentId,
@@ -375,6 +380,7 @@ export default function App() {
       mirrorViewVertical: () => {
         if (session) toggleMirrorView('vertical')
       },
+      toggleFullscreen,
       toggleSliceOutlines: toggleSliceOutlinesVisibility,
       openGridSettings: () => {
         if (session) setGridSettingsOpen(true)
@@ -421,7 +427,7 @@ export default function App() {
   })
   return (
     <main
-      className={`app-shell ${session?.view.showPixelGrid ? 'pixel-grid-on' : ''} ${editorOnly ? 'advanced-mode' : ''} ${advancedMode === 'tool-options' ? 'advanced-tool-options' : ''} ${advancedMode === 'canvas-only' ? 'advanced-canvas-only' : ''} ${documentTabsVisible ? '' : 'no-document-tabs'}`}
+      className={`app-shell ${fullscreen ? 'is-fullscreen' : ''} ${session?.view.showPixelGrid ? 'pixel-grid-on' : ''} ${editorOnly ? 'advanced-mode' : ''} ${advancedMode === 'tool-options' ? 'advanced-tool-options' : ''} ${advancedMode === 'canvas-only' ? 'advanced-canvas-only' : ''} ${documentTabsVisible ? '' : 'no-document-tabs'}`}
     >
       <AppWindowTitleBar />
       <BrushDynamicsTelemetryCapture documentId={session?.document.id ?? null} />
@@ -495,6 +501,8 @@ export default function App() {
         onOpenGridSettings={() => setGridSettingsOpen(true)}
         onOpenIsoViewSettings={() => setIsoViewSettingsOpen(true)}
         onToggleMirror={toggleMirrorView}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         onTogglePanel={(id) => updatePanelVisibility(id, !panelVisibility[id])}
         onToggleTimeline={toggleTimelineVisibility}
         onToggleSliceOutlines={toggleSliceOutlinesVisibility}

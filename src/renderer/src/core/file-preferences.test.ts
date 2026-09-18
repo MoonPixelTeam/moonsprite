@@ -27,6 +27,7 @@ import {
   parseEyedropperMagnifierSize,
   parseIsoViewPreferences,
   parseKeyDisplayDuration,
+  parseKeyDisplaySize,
   parseMoveLayerClickFlashDuration,
   parseOutlineSettingsPreference,
   parseBodyFontScale,
@@ -121,12 +122,20 @@ describe('editor preferences boundary', () => {
       brushEdgeThickness: 1,
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
-    expect(parseUiScale('1.25')).toBe(1)
+    expect(parseUiScale('1.25')).toBe(1.25)
     expect(parseBodyFontScale('1.3')).toBe(1.3)
     expect(parseBodyFontScale('1.5')).toBe(1)
     expect(parseViewDragSensitivity('1.25')).toBe(1)
     expect(parseEyedropperMagnifierSize('2')).toBe(1)
     expect(parseMoveLayerClickFlashDuration('240')).toBe(120)
+    expect(parseKeyDisplaySize(null)).toBe(1.3)
+    expect(parseKeyDisplaySize('invalid')).toBe(1.3)
+    expect(parseKeyDisplaySize('2.5')).toBe(2.5)
+    expect(parseKeyDisplaySize('1.3')).toBe(1.3)
+    expect(parseKeyDisplaySize('0.75')).toBe(0.75)
+    expect(parseKeyDisplaySize('1')).toBe(1.3)
+    expect(parseKeyDisplaySize('1.4')).toBe(1.9)
+    expect(parseKeyDisplaySize('1.9')).toBe(1.9)
     expect(parseKeyDisplayDuration('2000')).toBe(2000)
     expect(parseKeyDisplayDuration('9999')).toBe(1400)
     expect(parseCursorColorMode('custom')).toBe('custom')

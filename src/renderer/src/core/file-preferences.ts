@@ -121,7 +121,7 @@ export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
 export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
 export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
-export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
+export const UI_SCALE_VALUES = [0.75, 1, 1.25, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
 /** Display-only scale for interface body text; it intentionally does not scale canvas or icons. */
 export const BODY_FONT_SCALE_VALUES = [0.85, 1, 1.15, 1.3] as const
@@ -432,7 +432,11 @@ export function parseBrushEdgeThickness(value: string | null): number {
 
 export function parseKeyDisplaySize(value: string | null): number {
   const parsed = Number(value)
-  return parsed === 0.75 || parsed === 1.25 || parsed === 1.5 ? parsed : 1
+  if (parsed === 0.75 || parsed === 1.3 || parsed === 1.9 || parsed === 2.5) return parsed
+  // Preserve older saved sizes; the former compact standard is now Small.
+  if (parsed === 1 || parsed === 1.25) return 1.3
+  if (parsed === 1.4 || parsed === 1.5 || parsed === 1.8) return 1.9
+  return 1.3
 }
 
 export function parseKeyDisplayDuration(value: string | null): KeyDisplayDuration {
@@ -627,8 +631,8 @@ export const DEFAULT_ISO_VIEW_PREFERENCES: IsoViewPreferences = {
   snapToGrid: false
 }
 
-export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
-export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd'
+export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite'
+export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd'
 
 export interface EditorPreferences {
   language: AppLocale
@@ -793,7 +797,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   eyedropperQuickSelect: false,
   tooltipsEnabled: true,
   keyDisplayEnabled: false,
-  keyDisplaySize: 1,
+  keyDisplaySize: 1.3,
   keyDisplayDuration: 1400,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
@@ -1098,7 +1102,9 @@ export function imageExportKindForPreference(value: string | null): ImageExportK
   if (value === 'jpeg') return 'jpeg'
   if (value === 'webp') return 'webp'
   if (value === 'svg') return 'svg'
+  if (value === 'bmp') return 'bmp'
   if (value === 'psd') return 'psd'
+  if (value === 'ico') return 'ico'
   if (value === 'png-rgba') return 'png-rgba'
   return 'png-auto'
 }
@@ -1108,17 +1114,19 @@ export function saveImageKindForPreference(value: string | null): SaveImageKind 
   if (value === 'ase' || value === 'aseprite') return value
   if (value === 'jpeg') return 'jpeg'
   if (value === 'webp') return 'webp'
+  if (value === 'svg') return 'svg'
   if (value === 'psd') return 'psd'
+  if (value === 'ico') return 'ico'
   if (value === 'png') return 'png-auto'
   return null
 }
 
 function parseSaveFormat(value: string | null): SaveFormatPreference {
-  return value === 'png' || value === 'jpeg' || value === 'webp' || value === 'psd' || value === 'ase' || value === 'aseprite' ? value : 'moonsprite'
+  return value === 'png' || value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'ico' || value === 'psd' || value === 'ase' || value === 'aseprite' ? value : 'moonsprite'
 }
 
 function parseExportFormat(value: string | null): ExportFormatPreference {
-  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'psd' ? value : 'png'
+  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'bmp' || value === 'ico' || value === 'psd' ? value : 'png'
 }
 
 function parseDirectoryPreference(value: string | null): string {

@@ -845,6 +845,10 @@ const paletteIdForCanvas = (document: SpriteDocument, id: number): number => {
 export const normalizeLayerPackedValue = (document: SpriteDocument, layer: RasterLayer, value: number): number => {
   if (isLayerMask(layer)) return maskPacked(unpackColor(value))
   if (layer.format === 'indexed') return paletteIdForCanvas(document, value)
+  // Empty layer coverage remains transparent even with an opaque paint format.
+  // Packed writes also move/clear existing pixels and restore undo snapshots;
+  // quantizing empty RGBA as a new RGB color would turn that space black.
+  if ((value >>> 24) === 0) return value
   if (document.colorMode === 'rgba' && document.pixelFormat && document.pixelFormat !== 'rgba32') {
     return packColor(quantizePixelColor(unpackColor(value), document.pixelFormat))
   }

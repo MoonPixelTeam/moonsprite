@@ -6,8 +6,9 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { Tooltip } from '@/components/Tooltip'
 import { useI18n } from '@/components/I18nProvider'
 import { toolRailRenderKey } from '@/components/app/app-render-keys'
-import { brushLineConnectionOverridesTemporaryMove, temporaryMoveToolAllowed } from '@/core/canvas-input'
-import { formatShortcutBindingsForLocale, loadShortcutBindings, matchingModifierShortcut, shortcutBindingsFor, shortcutDisplayText, type ShortcutId } from '@/core/shortcuts'
+import { readStoredString, writeStoredString } from '@/core/storage'
+import { temporaryMoveToolAllowed } from '@/core/canvas-input'
+import { formatShortcutBindingsForLocale, loadShortcutBindings, modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutDisplayText, type ShortcutId } from '@/core/shortcuts'
 import { applyQuickToolTarget } from '@/core/quick-tools'
 import { currentHeldShortcutKeyParts, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
 import { useWorkspace } from '@/store/workspace'
@@ -30,6 +31,10 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const [fillFlyoutOpen, setFillFlyoutOpen] = useState(false)
   const [moveFlyoutOpen, setMoveFlyoutOpen] = useState(false)
   const [brushFlyoutOpen, setBrushFlyoutOpen] = useState(false)
+  const [rememberedBrushTool, setRememberedBrushTool] = useState<ToolId>(() => {
+    const saved = readStoredString('moonsprite.tool-rail.brush-tool')
+    return saved === 'airbrush' || saved === 'smooth' ? saved : 'pencil'
+  })
   const [shortcuts, setShortcuts] = useState(() => loadShortcutBindings())
   const state = useWorkspace.getState()
   const session = state.sessions.find((item) => item.document.id === state.activeId) ?? null
@@ -81,23 +86,28 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     if (focused instanceof HTMLElement && focused.closest('.tool-rail')) focused.blur()
   }, [renderKey, session?.tool])
 
+  useEffect(() => {
+    const tool = session?.tool
+    if (tool !== 'pencil' && tool !== 'airbrush' && tool !== 'smooth') return
+    setRememberedBrushTool(tool)
+    writeStoredString('moonsprite.tool-rail.brush-tool', tool)
+  }, [session?.tool])
+
   if (!session) return null
   const workspace = useWorkspace.getState()
   const heldParts = currentHeldShortcutKeyParts()
   const heldModifiers = {
     ctrlKey: heldParts.has('Ctrl'),
-    metaKey: false,
+    metaKey: heldParts.has('Win'),
     altKey: heldParts.has('Alt'),
     shiftKey: heldParts.has('Shift')
   }
-  const lineConnectionHasPriority = brushLineConnectionOverridesTemporaryMove(
-    session.tool,
-    heldModifiers,
-    matchingModifierShortcut(heldModifiers, shortcutBindingsFor(shortcuts, 'lineConnectionMode')),
-    Boolean(session.tool === 'eraser' ? session.lastEraserPoint : session.tool === 'pencil' ? session.lastPencilPoint : null)
-  )
-  const quickTarget = quickToolMatch?.id === 'tool.move.quick'
-    && (!temporaryMoveToolAllowed(session.tool, session.moveKind) || lineConnectionHasPriority)
+  const lineConnectionHasPriority = Boolean(session.tool === 'eraser' ? session.lastEraserPoint : session.tool === 'pencil' ? session.lastPencilPoint : null)
+    && modifierShortcutHeldByBindings(heldModifiers, shortcutBindingsFor(shortcuts, 'lineConnectionMode'), heldParts)
+  const sizing = ['pencil', 'line', 'airbrush', 'eraser', 'smooth', 'liquify'].includes(session.tool)
+    && modifierShortcutHeldByBindings(heldModifiers, shortcutBindingsFor(shortcuts, 'brushSizeAdjust'), heldParts)
+  const quickTarget = sizing || (quickToolMatch?.id === 'tool.move.quick'
+    && (!temporaryMoveToolAllowed(session.tool, session.moveKind) || lineConnectionHasPriority))
     ? null
     : quickToolMatch?.target ?? null
   const displaySession = applyQuickToolTarget(session, quickTarget)
@@ -123,15 +133,14 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     </span>
     <button className="tool-rail-grip" type="button" aria-label={t('tools.moveToolbar')} title={t('tools.moveToolbarHint')} onPointerDown={onGripPointerDown}><PixelUtilityIcon kind="move" /></button>
     {tools.map((tool) => {
-      const presentationToolId = tool.id === 'pencil' && (displaySession.tool === 'airbrush' || displaySession.tool === 'smooth') ? displaySession.tool : tool.id
+      const presentationToolId = tool.id === 'pencil' ? (['pencil', 'airbrush', 'smooth'].includes(displaySession.tool) ? displaySession.tool : rememberedBrushTool) : tool.id
       const presentation = activeToolPresentation(presentationToolId, displaySession.selectionKind, displaySession.shapeKind, locale, fillKind, displaySession.lineKind, displaySession.moveKind)
       const shortcut = primaryShortcutFor(presentation.shortcutId)
       const toolAvailable = isToolAvailableForSession(session, tool.id)
       const openToolFlyout = (): void => {
         if (!toolAvailable) return
-        // Keep the active brush when opening the shared pencil/airbrush slot.
-        // Switching to pencil is only needed when entering the slot from another tool.
-        if (tool.id !== 'pencil' || (displaySession.tool !== 'pencil' && displaySession.tool !== 'airbrush' && displaySession.tool !== 'smooth')) workspace.setTool(tool.id)
+        const target = isToolAvailableForSession(session, presentationToolId) ? presentationToolId : tool.id
+        workspace.setTool(target)
         setBrushFlyoutOpen(tool.id === 'pencil' ? !brushFlyoutOpen : false)
         setShapeFlyoutOpen(tool.id === 'shape' ? !shapeFlyoutOpen : false)
         setLineFlyoutOpen(tool.id === 'line' ? !lineFlyoutOpen : false)

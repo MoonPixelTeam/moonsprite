@@ -1,3 +1,4 @@
+import { appendStyleDirtyRect, invalidateStyledLayerBlocks } from './layer-style-dirty-regions'
 import { layerStyleCoverageTile } from './layer-style-coverage'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
 import type { PaletteEntry, RgbaColor } from '@shared/types-color'
@@ -39,7 +40,6 @@ import {
   type CompositeStackItem,
   activeCelMasksByLayer,
   activeGroupMasksByGroup,
-  unionSelectionRects,
   normalCompositeLayers,
   opacityGroupCompositeStack
 } from './document-composite-plan'
@@ -72,22 +72,25 @@ export class DocumentCompositeCache {
   private styledLayerBlocks = new WeakMap<RasterLayer, StyledLayerBlockCache>()
   private isolatedStyleTiles = new LayerStyleTileCache()
   private trackedStyleDocuments = new WeakSet<SpriteDocument>()
-  private pendingStyleSources = new WeakMap<object, SelectionRect>()
+  private pendingStyleSources = new WeakMap<object, SelectionRect[]>()
   private styleSourceBounds = new WeakMap<RasterLayer, { storage: object; key: string; revision: number; bounds: SelectionRect | null }>()
 
   private compiledStyleSourceBounds(document: SpriteDocument, layer: RasterLayer, fallback?: SelectionRect): SelectionRect | null {
-    const dirty = this.trackedStyleDocuments.has(document) ? this.pendingStyleSources.get(layer) : fallback
+    const dirty = this.trackedStyleDocuments.has(document) ? this.pendingStyleSources.get(layer) : fallback ? [fallback] : undefined
     const storage = rasterStorageIdentity(layer), revision = getLayerContentRevision(layer)
     const key = `${layer.width}:${layer.height}:${rasterContentPaletteKey(layer, document.palette)}`
     const cached = this.styleSourceBounds.get(layer)
     let bounds: SelectionRect | null
     if (!cached || cached.storage !== storage || cached.key !== key) bounds = rasterContentBounds(layer, document.palette)
     else if (dirty) {
-      const local = localRectForLayer(dirty, layer), previous = cached.bounds
+      const previous = cached.bounds
       // An interior edit cannot change the exact outer bounds. At an edge,
       // recompute exactly: group gradient geometry must also shrink on erase.
-      bounds = previous && local.x > previous.x && local.y > previous.y
-        && local.x + local.width < previous.x + previous.width && local.y + local.height < previous.y + previous.height
+      bounds = previous && dirty.every(rect => {
+        const local = localRectForLayer(rect, layer)
+        return local.x > previous.x && local.y > previous.y
+          && local.x + local.width < previous.x + previous.width && local.y + local.height < previous.y + previous.height
+      })
         ? previous : visibleBoundsWithinLocalRect(document, layer, { x: 0, y: 0, width: layer.width, height: layer.height })
     } else bounds = cached.revision === revision ? cached.bounds : rasterContentBounds(layer, document.palette)
     this.styleSourceBounds.set(layer, { storage, key, revision, bounds })
@@ -113,8 +116,9 @@ export class DocumentCompositeCache {
       const visited = new Set<string>()
       while (current && !visited.has(current.id)) {
         visited.add(current.id)
-        const previous = this.pendingStyleSources.get(current)
-        this.pendingStyleSources.set(current, previous ? unionSelectionRects(previous, affected) : { ...affected })
+        const pending = this.pendingStyleSources.get(current) ?? []
+        appendStyleDirtyRect(pending, affected)
+        this.pendingStyleSources.set(current, pending)
         affected = layerStyleAffectedRect(affected, current.layerStyles)
         const parentId: string | null | undefined = 'parentGroupId' in current ? current.parentGroupId : (current as RasterLayer).groupId
         current = document.groups.find(group => group.id === parentId)
@@ -122,8 +126,8 @@ export class DocumentCompositeCache {
     }
   }
 
-  private takeStyleSourceDirty(document: SpriteDocument, owner: object, fallback?: SelectionRect): SelectionRect | undefined {
-    if (!this.trackedStyleDocuments.has(document)) return fallback
+  private takeStyleSourceDirty(document: SpriteDocument, owner: object, fallback?: SelectionRect): SelectionRect[] | undefined {
+    if (!this.trackedStyleDocuments.has(document)) return fallback ? [fallback] : undefined
     const rect = this.pendingStyleSources.get(owner)
     this.pendingStyleSources.delete(owner)
     return rect
@@ -250,19 +254,8 @@ export class DocumentCompositeCache {
     return items
   }
 
-  private invalidateStyledLayerBlocks(cache: StyledLayerBlockCache, rect: SelectionRect): void {
-    const affected = rect
-    const fromX = Math.floor(affected.x / STYLED_LAYER_BLOCK_SIZE)
-    const fromY = Math.floor(affected.y / STYLED_LAYER_BLOCK_SIZE)
-    const toX = Math.floor((affected.x + affected.width - 1) / STYLED_LAYER_BLOCK_SIZE)
-    const toY = Math.floor((affected.y + affected.height - 1) / STYLED_LAYER_BLOCK_SIZE)
-    for (let blockY = fromY; blockY <= toY; blockY += 1) for (let blockX = fromX; blockX <= toX; blockX += 1) {
-      cache.blocks.delete(`${blockX}:${blockY}`)
-    }
-  }
-
   private styledLayerBlockProxy(document: SpriteDocument, sourceLayer: RasterLayer, sourceDirtyRect?: SelectionRect): RasterLayer {
-    sourceDirtyRect = this.takeStyleSourceDirty(document, sourceLayer, sourceDirtyRect)
+    const sourceDirtyRects = this.takeStyleSourceDirty(document, sourceLayer, sourceDirtyRect)
     const styleKey = layerStylesSignature(sourceLayer.layerStyles)
     const paletteKey = sourceLayer.format === 'indexed'
       ? document.palette.map((entry) => `${entry.id}:${entry.color.r}:${entry.color.g}:${entry.color.b}:${entry.color.a}`).join(',')
@@ -322,18 +315,21 @@ export class DocumentCompositeCache {
       this.styledLayerBlocks.set(sourceLayer, cached)
     }
     if (!cached) throw new Error('styled layer cache was not created')
-    if (cached.contentRevision !== contentRevision || sourceDirtyRect) {
+    if (cached.contentRevision !== contentRevision || sourceDirtyRects) {
       let localBounds: SelectionRect | null
-      if (sourceDirtyRect) {
-        const dirtyLocal = localRectForLayer(sourceDirtyRect, sourceLayer)
-        localBounds = incrementalContentBounds(document, sourceLayer, cached.sourceContentBounds, dirtyLocal)
+      if (sourceDirtyRects) {
+        localBounds = cached.sourceContentBounds
+        for (const rect of sourceDirtyRects) {
+          const dirtyLocal = localRectForLayer(rect, sourceLayer)
+          localBounds = incrementalContentBounds(document, sourceLayer, localBounds, dirtyLocal)
+          invalidateStyledLayerBlocks(cached, layerStyleAffectedRect(dirtyLocal, cached.resolvedStyles))
+        }
         const outputBounds = layerStyleOutputBounds(localBounds, cached.resolvedStyles)
         const localX = outputBounds?.x ?? 0
         const localY = outputBounds?.y ?? 0
         const width = Math.max(1, outputBounds?.width ?? 1)
         const height = Math.max(1, outputBounds?.height ?? 1)
         // Unchanged fixed tiles remain valid when the visible output grows.
-        this.invalidateStyledLayerBlocks(cached, layerStyleAffectedRect(dirtyLocal, cached.resolvedStyles))
         cached.localX = localX
         cached.localY = localY
         cached.width = width

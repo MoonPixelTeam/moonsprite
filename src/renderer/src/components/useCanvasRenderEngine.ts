@@ -45,7 +45,7 @@ interface Ports {
   readonly selectionBoundaryCacheRef: import('react').RefObject<SelectionBoundaryCache | null>
   readonly localPointAt: (clientX: number, clientY: number, allowOutsideCopies?: boolean) => Point | null
   readonly updateCursorAt: (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey?: boolean) => void
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly activeBrushDither: import('@shared/types-brush').BrushDitherSettings | undefined
   readonly fillKind: import('@shared/types-brush').FillKind
   readonly gradientDither: import('@shared/types-brush').GradientDither

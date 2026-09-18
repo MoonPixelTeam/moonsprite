@@ -37,7 +37,7 @@ interface Ports {
   rotationIndicatorAnchorRef: import('react').RefObject<Point | null>
   updateRotationIndicator: (rotation: number, visible: boolean) => void
   viewDragSensitivity: 0.5 | 0.75 | 1 | 1.5 | 2
-  interfaceScale: 0.75 | 1 | 1.5 | 2
+  interfaceScale: import('@/core/file-preferences').UiScale
   constrainCanvasView: (
     view: DocumentSession['view'],
     size?: {

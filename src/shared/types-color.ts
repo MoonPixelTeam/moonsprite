@@ -30,9 +30,9 @@ export const BLEND_MODES: readonly BlendMode[] = [
   'exclusion', 'subtract', 'divide', 'hue', 'saturation', 'color', 'luminosity'
 ]
 
-export type ImageExportFormat = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd' | 'mp4' | 'webm' | 'aseprite'
+export type ImageExportFormat = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'mp4' | 'webm' | 'aseprite'
 
-export type SaveDialogFormat = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite' | 'gif' | 'bmp'
+export type SaveDialogFormat = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite' | 'gif' | 'bmp'
 
 export interface RgbaColor {
   r: number

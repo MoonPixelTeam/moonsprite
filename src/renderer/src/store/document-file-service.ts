@@ -416,8 +416,8 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
         ? await writeDocumentPngAtomic(request.api, filePath, source.document, request.options?.scalePercent ?? 100, imageFormat, undefined, request.lifecycle?.onEncodeProgress)
         : null
       if (!nativePng) {
-        const data = imageFormat === 'gif' || imageFormat === 'bmp'
-          ? await encodeDocumentForSourceImage(source.document, imageFormat, request.lifecycle?.onEncodeProgress)
+        const data = imageFormat === 'gif'
+          ? await encodeDocumentForSourceImage(source.document, imageFormat, request.lifecycle?.onEncodeProgress, request.options?.scalePercent ?? 100)
           : await encodeDocumentForPath(source.document, filePath, imageFormat, request.options?.scalePercent ?? 100, request.lifecycle?.onEncodeProgress)
         request.lifecycle?.onWriteStart?.()
         await request.api.writeBinaryAtomic(filePath, data)

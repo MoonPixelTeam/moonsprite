@@ -12,6 +12,7 @@ const MOONSPRITE: &[&str] = &["moonsprite"];
 const PNG: &[&str] = &["png"];
 const JPEG: &[&str] = &["jpg", "jpeg"];
 const WEBP: &[&str] = &["webp"];
+const ICO: &[&str] = &["ico"];
 const ASE: &[&str] = &["ase"];
 const ASEPRITE: &[&str] = &["aseprite"];
 const ASE_EXPORT: &[&str] = &["ase", "aseprite"];
@@ -32,6 +33,8 @@ pub fn project_save_filter(format: Option<&str>, language: Option<&str>) -> Dial
         (Some("png"), true) => ("PNG image", PNG),
         (Some("jpeg"), true) => ("JPEG image", JPEG),
         (Some("webp"), true) => ("WebP image", WEBP),
+        (Some("svg"), true) => ("SVG image", SVG),
+        (Some("ico"), true) => ("ICO icon", ICO),
         (Some("gif"), true) => ("GIF animation", GIF),
         (Some("bmp"), true) => ("BMP image", BMP),
         (Some("psd"), true) => ("Photoshop project", PSD),
@@ -41,6 +44,8 @@ pub fn project_save_filter(format: Option<&str>, language: Option<&str>) -> Dial
         (Some("png"), false) => ("PNG 图片", PNG),
         (Some("jpeg"), false) => ("JPEG 图片", JPEG),
         (Some("webp"), false) => ("WebP 图片", WEBP),
+        (Some("svg"), false) => ("SVG 图片", SVG),
+        (Some("ico"), false) => ("ICO 图标", ICO),
         (Some("gif"), false) => ("GIF 动画", GIF),
         (Some("bmp"), false) => ("BMP 图片", BMP),
         (Some("psd"), false) => ("Photoshop 工程", PSD),
@@ -84,6 +89,8 @@ pub fn image_export_filter(format: &str, language: Option<&str>) -> DialogFilter
     match (format, is_english(language)) {
         ("jpeg", true) => ("JPEG image", JPEG),
         ("webp", true) => ("WebP image", WEBP),
+        ("bmp", true) => ("BMP image", BMP),
+        ("ico", true) => ("ICO icon", ICO),
         ("svg", true) => ("SVG image", SVG),
         ("psd", true) => ("Photoshop project", PSD),
         ("gif", true) => ("GIF animation", GIF),
@@ -91,6 +98,8 @@ pub fn image_export_filter(format: &str, language: Option<&str>) -> DialogFilter
         (_, true) => ("PNG image", PNG),
         ("jpeg", false) => ("JPEG 图片", JPEG),
         ("webp", false) => ("WebP 图片", WEBP),
+        ("bmp", false) => ("BMP 图片", BMP),
+        ("ico", false) => ("ICO 图标", ICO),
         ("svg", false) => ("SVG 图片", SVG),
         ("psd", false) => ("Photoshop 工程", PSD),
         ("aseprite", false) => ("Aseprite 工程", ASE_EXPORT),
@@ -454,12 +463,22 @@ mod tests {
             project_save_filter(Some("psd"), None),
             ("Photoshop 工程", &["psd"][..])
         );
+        assert_eq!(
+            project_save_filter(Some("ico"), None),
+            ("ICO 图标", &["ico"][..])
+        );
+        assert_eq!(
+            project_save_filter(Some("svg"), None),
+            ("SVG 图片", &["svg"][..])
+        );
     }
 
     #[test]
     fn image_export_filter_supports_project_and_image_exports() {
         assert_eq!(image_export_filter("svg", None), ("SVG 图片", &["svg"][..]));
         assert_eq!(image_export_filter("gif", None), ("GIF 动画", &["gif"][..]));
+        assert_eq!(image_export_filter("ico", None), ("ICO 图标", &["ico"][..]));
+        assert_eq!(image_export_filter("bmp", None), ("BMP 图片", &["bmp"][..]));
         assert_eq!(
             image_export_filter("psd", None),
             ("Photoshop 工程", &["psd"][..])
@@ -491,6 +510,10 @@ mod tests {
         assert_eq!(
             image_export_filter("psd", Some("en-US")),
             ("Photoshop project", &["psd"][..])
+        );
+        assert_eq!(
+            image_export_filter("ico", Some("en-US")),
+            ("ICO icon", &["ico"][..])
         );
     }
 }

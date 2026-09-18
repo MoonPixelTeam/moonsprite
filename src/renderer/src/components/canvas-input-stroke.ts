@@ -4,7 +4,7 @@ import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { animationMaskAt } from '@/core/document-model'
 import { beginPixelEdit, mergePixelEdits } from '@/core/history'
-import { applyLiquifyPushPath, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
+import { applyLiquifyHoldPath, applyLiquifyPushPath, createLiquifyPushStroke, temporaryLiquifyModeForShift } from '@/core/liquify'
 import { collectSmoothBrushArea } from '@/core/smooth-brush'
 import { applyAccumulatedLiquifyPush } from '@/components/canvas-liquify-interaction'
 import { DEFAULT_GRID_SETTINGS, snapPointToGrid } from '@/core/grid'
@@ -294,8 +294,17 @@ export function createStrokeCanvasInput(ports: Ports) {
         drag.last = result.pointerPoint
       } else {
         const next = points.at(-1)!
-        // The hold engine owns anchor changes and buildup. Subpixel jitter
-        // must not erase strength or restore pixels from the original gesture.
+        const timeline = session.document.animation
+        const layer = activePaintLayer(session)
+        const mask = timeline ? animationMaskAt(timeline, layer.id, timeline.activeFrameId) : null
+        const result = applyLiquifyHoldPath(session.document, layer, drag.edit, drag.last, next, {
+          mode: drag.liquifyMode ?? session.liquifyMode,
+          radius: session.liquifyRadius,
+          strength: session.liquifyStrength,
+          selection: session.selection,
+          mask
+        })
+        if (result.changed) invalidateCompositeRect(result.dirtyRect, [layer.id])
         drag.last = next
       }
       scheduleDraw()

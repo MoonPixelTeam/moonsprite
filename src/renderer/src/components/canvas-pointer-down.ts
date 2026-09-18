@@ -313,7 +313,7 @@ export function createCanvasPointerDown(ports: Ports) {
       return
     }
     const selectionPriorityHit = event.button === 0 && session.selection ? selectionHit(event) : 'outside'
-    const addingToSelection = Boolean(session.selection && (event.shiftKey || modifierActive(event.nativeEvent, 'addToSelection')))
+    const addingToSelection = Boolean(session.selection && modifierActive(event.nativeEvent, 'addToSelection'))
     const temporaryMove =
       !freeTransformActive &&
       event.button === 0 &&
@@ -427,7 +427,7 @@ export function createCanvasPointerDown(ports: Ports) {
     // of that projection so a corner click cannot fall through to layer move.
     const selectionTool = freeTransformActive || session.tool === 'selection'
     const selectionMode = (): SelectionMode =>
-      event.button === 2 ? 'subtract' : event.shiftKey || modifierActive(event.nativeEvent, 'addToSelection') ? 'add' : session.selectionMode
+      event.button === 2 ? 'subtract' : modifierActive(event.nativeEvent, 'addToSelection') ? 'add' : session.selectionMode
     const editableLayer = activePaintLayer(session)
     const canEditLayer =
       hasRasterFocus && isLayerEffectivelyVisible(session.document, editableLayer) && !isLayerEffectivelyLocked(session.document, editableLayer)

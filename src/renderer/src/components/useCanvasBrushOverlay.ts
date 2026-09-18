@@ -6,7 +6,7 @@ import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
 import { SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
 import { brushStampAnchor, solidBrushPreviewRowSpans } from '@/core/tools-brush'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { activePaintLayer } from '@/store/workspace-session'
+import { activePaintLayer, isToolAvailableForSession } from '@/store/workspace-session'
 import { createCanvasRenderPlan, deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { selectionContains } from '@/core/selection'
@@ -33,7 +33,7 @@ interface Ports {
     width: number
     height: number
   }
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly repeatedDocumentPointsAt: (
     clientX: number,
     clientY: number,
@@ -64,6 +64,10 @@ interface Ports {
 }
 
 export function useCanvasBrushOverlay(ports: Ports) {
+  const previewToolAvailable = useWorkspace((state) => {
+    const session = state.sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
+    return isToolAvailableForSession(session, session.tool)
+  })
   // The brush cursor is a transient overlay. Keeping it off the document
   // canvas means pointer movement does not force a full layer composite.
   const brushPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -77,7 +81,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
   const brushPreviewStackCacheRef = useRef<BrushPreviewStackCache | null>(null)
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
-    if (currentSession.animationPlaying) return false
+    if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
     if (currentSession.tool === 'smooth') {
       const drag = ports.inputRef.current.drag
       return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
@@ -296,6 +300,12 @@ export function useCanvasBrushOverlay(ports: Ports) {
   // A non-active pane does not receive a React prop change when the active
   // session mutates its brush size in place. Redraw it while the pointer is
   // over that pane so the shared brush preview stays live without a click.
+  useEffect(() => {
+    // Selection can invalidate the tool without changing activeLayerId or tool.
+    // Clear the dedicated overlay even when the main canvas does not redraw it.
+    scheduleBrushPreviewOverlay()
+  }, [previewToolAvailable])
+
   useEffect(() => {
     if (ports.inputRef.current.modifierBrushSize && brushPreviewOverlaySupported(ports.session)) scheduleBrushPreviewOverlay()
     else ports.scheduleDraw()

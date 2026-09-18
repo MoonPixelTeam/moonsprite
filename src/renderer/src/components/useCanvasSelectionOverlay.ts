@@ -43,7 +43,7 @@ interface Ports {
     width: number
     height: number
   }
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly alignmentPreferences: {
     gridAlignmentEnabled: boolean
     smartAlignmentEnabled: boolean

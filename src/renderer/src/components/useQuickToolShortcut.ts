@@ -121,7 +121,7 @@ export const currentHeldShortcutKeyParts = (): ReadonlySet<string> => heldParts
 
 export function syncHeldShortcutModifiers(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>): void {
   let changed = false
-  const sync = (part: 'Ctrl' | 'Alt' | 'Shift', active: boolean): void => {
+  const sync = (part: 'Ctrl' | 'Win' | 'Alt' | 'Shift', active: boolean): void => {
     if (active) {
       if (!heldParts.has(part)) {
         heldParts.add(part)
@@ -131,7 +131,8 @@ export function syncHeldShortcutModifiers(event: Pick<KeyboardEvent, 'ctrlKey' |
     }
     if (heldParts.delete(part)) changed = true
   }
-  sync('Ctrl', Boolean(event.ctrlKey || event.metaKey))
+  sync('Ctrl', Boolean(event.ctrlKey))
+  sync('Win', Boolean(event.metaKey))
   sync('Alt', Boolean(event.altKey))
   sync('Shift', Boolean(event.shiftKey))
   if (changed) notify()

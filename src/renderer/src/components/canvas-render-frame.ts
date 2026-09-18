@@ -103,7 +103,7 @@ export interface CanvasRenderContext {
   }
   settings: {
     session: import('@/store/workspace-types').DocumentSession
-    interfaceScale: 0.75 | 1 | 1.5 | 2
+    interfaceScale: import('@/core/file-preferences').UiScale
     rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
     activeTheme: import('@/core/theme').ResolvedTheme
     checkerboard: import('@/core/file-preferences').CheckerboardPreferences
@@ -395,6 +395,7 @@ export interface CanvasRenderContext {
         | 'toggleContiguous'
         | 'toggleCustomGrid'
         | 'toggleFixedRatio'
+        | 'toggleFullscreen'
         | 'toggleGrid'
         | 'toggleGroupMask'
         | 'toggleIsoView'

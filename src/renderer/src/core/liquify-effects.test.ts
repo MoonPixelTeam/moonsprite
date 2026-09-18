@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { PIXEL_FORMATS } from './pixel-format'
 import { createDocument, createLayerMask, readLayerColorAt, readLayerPacked, writeLayerColor } from './document'
 import { beginPixelEdit, revertPixelEdit } from './history'
-import { applyLiquifyHoldStep, applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, resetLiquifyStroke, sampleLiquifyPixel } from './liquify'
+import { applyLiquifyHoldStep, applyLiquifyHoldPath, applyLiquifyPushPath, applyLiquifyStep, createLiquifyPushStroke, resetLiquifyStroke, sampleLiquifyPixel } from './liquify'
 
 const fixture = (size = 64) => {
   const document = createDocument('liquify effects', size, size, 'rgba', false)
@@ -22,8 +23,8 @@ describe('liquify effect continuity', () => {
     }
     expect(b.layer.pixels).toEqual(a.layer.pixels)
     const held = b.layer.pixels.slice()
-    expect(applyLiquifyHoldStep(b.document, b.layer, b.edit, { x: 32.01, y: 32 }, { mode, radius: 16, strength: 5 })).toBe(false)
-    expect(b.layer.pixels).toEqual(held)
+    for (let i = 0; i < 20; i++) applyLiquifyHoldStep(b.document, b.layer, b.edit, { x: 32.01, y: 32 }, { mode, radius: 16, strength: 5 })
+    expect(b.layer.pixels).not.toEqual(held)
   })
 
   it.each(modes)('continues %s from the current shape at a new center and undoes once', mode => {
@@ -207,6 +208,75 @@ describe('thin source structure through the complete warp', () => {
       expect(i % 32).toBeLessThan(16)
       expect(Math.floor(i / 32)).toBeGreaterThanOrEqual(8)
       expect(Math.floor(i / 32)).toBeLessThan(24)
+    }
+  })
+})
+
+
+describe('sustained and moving liquify', () => {
+  it.each(modes)('continues %s beyond several seconds and restores the entire gesture', mode => {
+    const f = fixture(), original = f.layer.pixels.slice()
+    const options = { mode, radius: 16, strength: 5 }
+    let previous = original
+    // 20 impulses per second: verify every second, including after the old cap.
+    for (let second = 0; second < 4; second++) {
+      for (let tick = 0; tick < 20; tick++) applyLiquifyHoldStep(f.document, f.layer, f.edit, { x: 32, y: 32 }, options)
+      expect(f.layer.pixels).not.toEqual(previous)
+      previous = f.layer.pixels.slice()
+    }
+    revertPixelEdit(f.document, f.edit)
+    expect(f.layer.pixels).toEqual(original)
+  })
+
+  it.each(['inflate', 'deflate'] as const)('applies weak moving %s without waiting for a stationary tick', mode => {
+    const f = fixture(), original = f.layer.pixels.slice()
+    const result = applyLiquifyHoldPath(f.document, f.layer, f.edit, { x: 8, y: 32 }, { x: 56, y: 32 }, { mode, radius: 16, strength: 5 })
+    expect(result.changed).toBe(true)
+    expect(result.dabCount).toBe(24)
+    expect(result.dirtyRect).not.toBeNull()
+    expect(f.layer.pixels).not.toEqual(original)
+    revertPixelEdit(f.document, f.edit)
+    expect(f.layer.pixels).toEqual(original)
+  })
+
+  it.each(modes)('keeps the moving %s result independent of event frequency', mode => {
+    const a = fixture(), b = fixture(), options = { mode, radius: 12, strength: 45 }
+    const start = { x: 8, y: 28 }, end = { x: 56, y: 36 }
+    applyLiquifyHoldPath(a.document, a.layer, a.edit, start, end, options)
+    let from = start
+    for (let i = 1; i <= 100; i++) {
+      const to = { x: 8 + 48 * i / 100, y: 28 + 8 * i / 100 }
+      applyLiquifyHoldPath(b.document, b.layer, b.edit, from, to, options)
+      from = to
+    }
+    expect(b.layer.pixels).toEqual(a.layer.pixels)
+  })
+})
+
+
+describe('liquify on transparent layers', () => {
+  it.each(PIXEL_FORMATS)('preserves empty pixels and source colors in %s during deformation and undo', format => {
+    for (const mode of ['push', ...modes] as const) {
+      const document = createDocument('transparent cyan ring', 32, 32, 'rgba', false, format)
+      const layer = document.layers[0]
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+        const distance = Math.hypot(x - 16, y - 16)
+        if (distance > 5 && distance < 9) writeLayerColor(document, layer, y * 32 + x, { r: 164, g: 228, b: 252, a: 255 })
+      }
+      const original = layer.pixels.slice()
+      const colors = new Set(Array.from({ length: 1024 }, (_, i) => readLayerPacked(document, layer, i)))
+      const edit = beginPixelEdit(layer.id)
+      if (mode === 'push') {
+        applyLiquifyPushPath(document, layer, edit, createLiquifyPushStroke(), { x: 12, y: 16 }, [{ x: 18, y: 17 }], { radius: 12, strength: 75 })
+      } else {
+        for (let tick = 0; tick < 30; tick++) applyLiquifyHoldStep(document, layer, edit, { x: 16, y: 16 }, { mode, radius: 12, strength: 10 })
+        applyLiquifyHoldPath(document, layer, edit, { x: 16, y: 16 }, { x: 21, y: 18 }, { mode, radius: 12, strength: 50 })
+      }
+      const output = new Set(Array.from({ length: 1024 }, (_, i) => readLayerPacked(document, layer, i)))
+      expect([...output].filter(color => !colors.has(color)), mode).toEqual([])
+      expect(output.has(0), mode).toBe(true)
+      revertPixelEdit(document, edit)
+      expect(layer.pixels, mode).toEqual(original)
     }
   })
 })

@@ -9,6 +9,9 @@ const currentDesktopWindow = () => typeof window !== 'undefined' && '__TAURI_INT
   ? getCurrentWindow()
   : null
 
+let restoreMaximizedAfterFullscreen = false
+let fullscreenTransition: Promise<boolean> | null = null
+
 let maximizeCursorResetPending = false
 let maximizeCursorResetInFlight = false
 let maximizeCursorResetGeneration = 0
@@ -112,6 +115,36 @@ export async function toggleAppWindowMaximized(): Promise<boolean> {
   maximizeCursorResetPending = true
   await resetAppWindowNativeCursor(appWindow)
   return maximized
+}
+
+export async function toggleAppWindowFullscreen(): Promise<boolean> {
+  // Ignore repeated F11 presses while the native transition is in flight.
+  if (fullscreenTransition) return fullscreenTransition
+  const appWindow = currentDesktopWindow()
+  if (!appWindow) return false
+  const transition = (async () => {
+    const fullscreen = await appWindow.isFullscreen()
+    if (fullscreen) {
+      await appWindow.setFullscreen(false)
+      if (restoreMaximizedAfterFullscreen) await appWindow.maximize()
+      restoreMaximizedAfterFullscreen = false
+      return false
+    }
+    const maximized = await appWindow.isMaximized()
+    // Tao's Windows borderless WM_NCCALCSIZE path uses rcWork while the
+    // window is maximized, reserving the taskbar strip even in fullscreen.
+    if (maximized) await appWindow.unmaximize()
+    try {
+      await appWindow.setFullscreen(true)
+    } catch (error) {
+      if (maximized) await appWindow.maximize()
+      throw error
+    }
+    restoreMaximizedAfterFullscreen = maximized
+    return true
+  })()
+  fullscreenTransition = transition
+  try { return await transition } finally { fullscreenTransition = null }
 }
 
 export async function settleAppWindowCursorAfterMaximize(): Promise<boolean> {

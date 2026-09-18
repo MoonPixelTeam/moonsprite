@@ -87,6 +87,8 @@ interface AppMenuBarProps {
   onOpenGridSettings: () => void
   onOpenIsoViewSettings: () => void
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
+  fullscreen: boolean
+  onToggleFullscreen: () => void
   onTogglePanel: (id: WorkspacePanelId) => void
   onToggleTimeline: () => void
   onToggleSliceOutlines: () => void
@@ -148,6 +150,8 @@ export function AppMenuBar({
   onOpenGridSettings,
   onOpenIsoViewSettings,
   onToggleMirror,
+  fullscreen,
+  onToggleFullscreen,
   onTogglePanel,
   onToggleTimeline,
   onToggleSliceOutlines,
@@ -278,6 +282,8 @@ export function AppMenuBar({
       {renderExtensionTopMenusAt('after:layer')}
       {renderExtensionTopMenusAt('before:window')}
       <div className="menu-item"><button aria-expanded={openMenu === 'window'} onClick={() => toggleMenu('window')}>{t('app.menu.window')}</button>{openMenu === 'window' && <div className="menu-popover">{renderExistingMenuContributions('window', 'start')}
+        <button role="menuitemcheckbox" aria-checked={fullscreen} onClick={() => { onToggleFullscreen(); closeMenu() }}>{t('app.menu.window.fullscreen')}{shortcutHint('toggleFullscreen')}<span className="menu-check">{fullscreen && <Check size={14} />}</span></button>
+        <span className="menu-divider" />
         <div className="menu-submenu"><SubmenuTrigger disabled={!session}>{t('app.menu.window.display')}</SubmenuTrigger><div className="menu-popover menu-submenu-popover"><button disabled={!session} onClick={() => { workspace.togglePixelGrid(); closeMenu() }}>{t('app.menu.window.pixelGrid')}{shortcutHint('toggleGrid')}<span className="menu-check">{session?.view.showPixelGrid && <Check size={14} />}</span></button><button disabled={!session} onClick={() => { workspace.toggleGrid(); closeMenu() }}>{t('app.menu.window.customGrid')}{shortcutHint('toggleCustomGrid')}<span className="menu-check">{session?.view.showGrid && <Check size={14} />}</span></button><button disabled={!session} onClick={() => { onToggleSliceOutlines(); closeMenu() }}>{t('app.menu.window.sliceOutlines')}{shortcutHint('toggleSliceOutlines')}<span className="menu-check">{sliceOutlinesVisible && <Check size={14} />}</span></button><button disabled={!session} onClick={() => { if (session) workspace.setView({ relativeLuminance: !session.view.relativeLuminance }); closeMenu() }}>{t('app.menu.window.relativeLuminance')} <kbd>{shortcutFor('relativeLuminance')}</kbd><span className="menu-check">{session?.view.relativeLuminance && <Check size={14} />}</span></button></div></div>
         <div className="menu-submenu"><SubmenuTrigger disabled={!session}>{t('app.menu.window.alignment')}</SubmenuTrigger><div className="menu-popover menu-submenu-popover"><button disabled={!session} onClick={() => { onToggleAlignmentPreference('gridAlignmentEnabled'); closeMenu() }}>{t('app.menu.window.gridAlignment')}<span className="menu-check">{alignmentPreferences.gridAlignmentEnabled && <Check size={14} />}</span></button><button disabled={!session} onClick={() => { onToggleAlignmentPreference('smartAlignmentEnabled'); closeMenu() }}>{t('app.menu.window.smartAlignment')}<span className="menu-check">{alignmentPreferences.smartAlignmentEnabled && <Check size={14} />}</span></button><button disabled={!session} onClick={() => { onToggleAlignmentPreference('alignmentGuidesVisible'); closeMenu() }}>{t('app.menu.window.alignmentGuides')}<span className="menu-check">{alignmentPreferences.alignmentGuidesVisible && <Check size={14} />}</span></button></div></div>
         <div className="menu-submenu"><SubmenuTrigger disabled={!session}>{t('app.menu.window.tileRepeat')}</SubmenuTrigger><div className="menu-popover menu-submenu-popover">{tileRepeatModes.map((mode) => { const shortcutId: ShortcutId = mode === 'off' ? 'tileRepeatOff' : mode === 'both' ? 'tileRepeatBoth' : mode === 'x' ? 'tileRepeatX' : 'tileRepeatY'; return <button key={mode} disabled={!session} onClick={() => { workspace.setTileRepeatMode(mode); closeMenu() }}>{t(`app.menu.window.tileRepeat.${mode}`)}{shortcutHint(shortcutId)}<span className="menu-check">{(session?.view.tileRepeatMode ?? 'off') === mode && <Check size={14} />}</span></button> })}</div></div>

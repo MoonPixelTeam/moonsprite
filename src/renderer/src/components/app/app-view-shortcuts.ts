@@ -40,6 +40,8 @@ export function handleViewShortcuts(context: Pick<AppShortcutContext, 'event' | 
     return true
   if (runCommand('resetView', () => { if (session) workspace.setView({ zoom: 16, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false }) }))
     return true
+  if (runCommand('toggleFullscreen', () => uiCommands['toggleFullscreen']?.()))
+    return true
   if (runCommand('toggleColorPanel', () => uiCommands['toggleColorPanel']?.()))
     return true
   if (runCommand('togglePalettePanel', () => uiCommands['togglePalettePanel']?.()))

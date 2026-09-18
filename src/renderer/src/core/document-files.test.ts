@@ -1,12 +1,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDocument, createLayer } from './document'
+import { createDocument, createLayer, writeLayerColor } from './document'
 import { decodeDocumentFile, decodeDocumentFileAsync, directSourceImageSaveTarget, encodeDocumentForPath, encodeDocumentForSourceImage, fileExtension, fileNameFromPath, isMoonSpriteBackupPath, isMoonSpriteProjectPath, joinDirectoryPath, normalizeSaveDialogPath, sanitizeFileStem, saveImageDialogFormat, saveImageKindForPath, shouldDecodeDocumentInWorker, sourceRasterImageKindForPath } from './document-files'
 import { decodeProject, encodeProject } from './project-format'
 import { initialDocumentComposite, initialDocumentCompositePending } from './initial-document-composite'
 import { addBlankAnimationFrame } from './animation'
+import { exportAnimationGif } from './gif'
 import { encodePsd } from './psd'
 
 describe('document file rules', () => {
+  it.each(['jpg', 'jpeg', 'webp', 'bmp', 'png', 'gif'])('preserves GIF animation in a chat cache named .%s', async (extension) => {
+    const source = createDocument('chat animation', 1, 1, 'rgba')
+    writeLayerColor(source, source.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+    addBlankAnimationFrame(source)
+    writeLayerColor(source, source.layers[0], 0, { r: 0, g: 0, b: 255, a: 255 })
+    source.animation!.frames[0].duration = 120
+    source.animation!.frames[1].duration = 240
+    const bytes = exportAnimationGif(source, { scalePercent: 100, direction: 'forward' }).bytes
+    const path = `C:/chat/cache/image.${extension}`
+    const progress = vi.fn()
+    const imported = await decodeDocumentFileAsync(bytes, path, progress)
+    expect(imported.animation!.frames.map((frame) => frame.duration)).toEqual([120, 240])
+    expect(imported.animation!.cels[0].surface?.pixels).toEqual(new Uint8ClampedArray([255, 0, 0, 255]))
+    expect(imported.animation!.cels[1].surface?.pixels).toEqual(new Uint8ClampedArray([0, 0, 255, 255]))
+    expect(imported.sourceFilePath).toBe(path)
+    expect(imported.filePath).toBeNull()
+    expect(progress).toHaveBeenLastCalledWith(1)
+    expect(decodeDocumentFile(bytes, path).animation!.frames).toHaveLength(2)
+  })
+
   afterEach(() => vi.unstubAllGlobals())
 
   it('normalizes platform paths and user-entered file names', () => {
@@ -33,12 +54,16 @@ describe('document file rules', () => {
   it('keeps save dialog formats and suffixes consistent', () => {
     expect(saveImageDialogFormat('aseprite')).toBe('aseprite')
     expect(saveImageDialogFormat('psd')).toBe('psd')
+    expect(saveImageDialogFormat('svg')).toBe('svg')
     expect(saveImageKindForPath('sprite.jpeg')).toBe('jpeg')
+    expect(saveImageKindForPath('sprite.ico')).toBe('ico')
     expect(saveImageKindForPath('sprite.psd')).toBe('psd')
     expect(normalizeSaveDialogPath('sprite.png', 'aseprite')).toBe('sprite.aseprite')
     expect(normalizeSaveDialogPath('sprite.ase', 'aseprite')).toBe('sprite.ase')
     expect(normalizeSaveDialogPath('sprite.png', 'psd')).toBe('sprite.psd')
     expect(normalizeSaveDialogPath('sprite.psd', 'psd')).toBe('sprite.psd')
+    expect(normalizeSaveDialogPath('sprite.png', 'svg')).toBe('sprite.svg')
+    expect(normalizeSaveDialogPath('sprite.png', 'ico')).toBe('sprite.ico')
   })
 
   it('recognizes every imported raster format and only permits flat source-image saves', () => {

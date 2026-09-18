@@ -6,7 +6,7 @@ import { brushStampAnchor } from '@/core/tools-brush'
 import { type DocumentSession } from '@/store/workspace'
 import { constrainLineEndpoint } from '@/core/pixel-line'
 import { isoGridLineSegment, isoLineEndpoint, snapIsoPointToGridVertex } from '@/core/isometric'
-import { selectionRotationAngle, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
+import { createMarqueeResizeStart, resizeRotatedMarqueeBounds, temporaryTransformOffset, selectionRotationAngle, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import { defaultSymmetryCenter } from '@/core/symmetry'
 import { activeBrushInputsForTool } from '@/core/brushes'
 interface Ports {
@@ -111,32 +111,49 @@ export function createCanvasBrushConfig(ports: Ports) {
       drag.last = modifiers.shiftKey ? constrainGradientEndpoint(drag.start, snappedPoint) : snappedPoint
       return
     }
+    if (drag.transformMoveStart) drag.transformOffset = temporaryTransformOffset(drag.transformMoveStart, snappedPoint)
+    const offset = drag.transformOffset ?? { x: 0, y: 0 }
+    const adjusted = { x: snappedPoint.x - offset.x, y: snappedPoint.y - offset.y }
+    const toBounds = (geometry: { center: Point; radiusX: number; radiusY: number }) => ({
+      x: geometry.center.x - geometry.radiusX, y: geometry.center.y - geometry.radiusY,
+      width: geometry.radiusX * 2, height: geometry.radiusY * 2
+    })
     if (modifiers.altKey) {
       if (!drag.gradientRotationStart) {
-        const geometry = resolveRadialGradientGeometry(drag.start, snappedPoint, {
-          fromCenter: Boolean(drag.gradientFromCenter),
-          proportional: Boolean(drag.constrain)
-        })
-        const frozenGeometry = { center: { ...geometry.center }, radiusX: geometry.radiusX, radiusY: geometry.radiusY }
-        drag.gradientRotationStart = { pointer: { ...snappedPoint }, angle: drag.gradientAngle ?? 0, geometry: frozenGeometry }
-        drag.gradientRadialGeometry = frozenGeometry
+        const geometry = drag.marqueeBounds
+          ? { center: { x: drag.marqueeBounds.x + drag.marqueeBounds.width / 2, y: drag.marqueeBounds.y + drag.marqueeBounds.height / 2 }, radiusX: drag.marqueeBounds.width / 2, radiusY: drag.marqueeBounds.height / 2 }
+          : resolveRadialGradientGeometry(drag.start, adjusted, { fromCenter: drag.gradientFromCenter, proportional: drag.constrain })
+        drag.gradientRotationStart = { pointer: { ...adjusted }, angle: drag.gradientAngle ?? 0, geometry }
       }
-      const rotationStart = drag.gradientRotationStart
-      const bounds = {
-        x: rotationStart.geometry.center.x - rotationStart.geometry.radiusX,
-        y: rotationStart.geometry.center.y - rotationStart.geometry.radiusY,
-        width: rotationStart.geometry.radiusX * 2,
-        height: rotationStart.geometry.radiusY * 2
-      }
-      drag.gradientAngle = rotationStart.angle + selectionRotationAngle(bounds, rotationStart.pointer, snappedPoint, false, rotationStart.geometry.center)
-      drag.gradientRadialGeometry = rotationStart.geometry
-    } else if (drag.gradientRotationStart) {
-      // Keep the angle for the rest of the drag, while allowing the next
-      // pointer move to resize the radial gradient again.
-      drag.gradientRotationStart = undefined
-      drag.gradientRadialGeometry = undefined
+      const rotation = drag.gradientRotationStart
+      drag.gradientAngle = rotation.angle + selectionRotationAngle(toBounds(rotation.geometry), rotation.pointer, adjusted)
+      drag.marqueeBounds = toBounds(rotation.geometry)
+      drag.marqueeResizeStart = createMarqueeResizeStart(drag.marqueeBounds, adjusted)
     } else {
-      drag.gradientRadialGeometry = undefined
+      if (drag.gradientRotationStart && drag.marqueeBounds) {
+        // Releasing Alt is a mode transition, not another resize sample.
+        // Anchor at the release pointer and preserve the last rendered ellipse.
+        drag.marqueeResizeStart = createMarqueeResizeStart(drag.marqueeBounds, adjusted)
+        drag.gradientRotationStart = undefined
+        drag.last = snappedPoint
+        return
+      }
+      if (drag.marqueeResizeStart) {
+        const anchor = drag.marqueeResizeStart
+        drag.marqueeBounds = resizeRotatedMarqueeBounds(anchor.bounds,
+          { x: adjusted.x - anchor.pointer.x, y: adjusted.y - anchor.pointer.y },
+          drag.gradientAngle ?? 0, drag.marqueeDirection ?? { x: 1, y: 1 },
+          Boolean(drag.gradientFromCenter), Boolean(drag.constrain), null)
+      } else {
+        const geometry = resolveRadialGradientGeometry(drag.start, adjusted, { fromCenter: drag.gradientFromCenter, proportional: drag.constrain })
+        drag.marqueeBounds = toBounds(geometry)
+        drag.marqueeDirection = { x: adjusted.x < drag.start.x ? -1 : 1, y: adjusted.y < drag.start.y ? -1 : 1 }
+      }
+    }
+    const bounds = drag.marqueeBounds!
+    drag.gradientRadialGeometry = {
+      center: { x: bounds.x + bounds.width / 2 + offset.x, y: bounds.y + bounds.height / 2 + offset.y },
+      radiusX: bounds.width / 2, radiusY: bounds.height / 2
     }
     drag.last = snappedPoint
   }

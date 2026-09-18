@@ -1496,6 +1496,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           ariaLabel={`${t('canvas.aria')} Y`}
           onChange={viewScrollbars.vertical.onChange}
         />}
+        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible && viewScrollbars.vertical.visible && <span className="stage-view-scrollbar-corner" aria-hidden="true" />}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div
             className="canvas-key-display"

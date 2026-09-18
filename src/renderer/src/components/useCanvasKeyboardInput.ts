@@ -4,7 +4,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
 import { temporaryLiquifyModeForShift } from '@/core/liquify'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
+import { SHORTCUT_GROUPS, shortcutBindingBlocked, shortcutBindingsFor, shortcutMatchesEvent, shortcutReleasedByBindings } from '@/core/shortcuts'
 import {
   CanvasInputState,
   beginTemporaryCenteredMarqueeResize,
@@ -199,8 +199,8 @@ export function useCanvasKeyboardInput(ports: Ports) {
     const updateGradientModifiers = (): void => {
       const drag = ports.inputRef.current.drag
       if (drag?.kind !== 'gradient') return
-      const rawLast = drag.rawLast ?? drag.last
-      ports.updateGradientDragGeometry(drag, rawLast, {
+      // The geometry owns the last processed pointer; rawLast may precede it.
+      ports.updateGradientDragGeometry(drag, drag.last, {
         altKey: ports.inputRef.current.altHeld,
         ctrlKey: ports.inputRef.current.ctrlHeld,
         metaKey: false,
@@ -243,6 +243,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
     const keyDown = (event: KeyboardEvent): void => {
       const eventTarget = event.target instanceof Element ? event.target : null
       const keyDisplayBlocked = Boolean(eventTarget?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop'))
+      if (keyDisplayBlocked || document.querySelector('.modal-backdrop')) return
       // Plain wheel shortcuts are represented as synthetic keyboard events and
       // stay hidden; a modifier + wheel is an intentional shortcut and remains
       // visible (for example Ctrl + ↑).
@@ -350,7 +351,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           ports.scheduleDraw()
         }
       }
-      if (shortcutMatchesAnyEvent(event, shortcutBindingsFor(ports.shortcuts, 'tool.hand.quick'))) {
+      if (ports.quickToolActive('hand')) {
         const target = event.target as HTMLElement | null
         if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable) return
         event.preventDefault()
@@ -358,7 +359,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           ports.inputRef.current.spaceHeld = true
           ports.inputRef.current.sampling = false
           const drag = ports.inputRef.current.drag
-          if ((drag?.kind === 'marquee' || drag?.kind === 'shape') && ports.inputRef.current.pointer.visible) {
+          if ((drag?.kind === 'marquee' || drag?.kind === 'shape' || (drag?.kind === 'gradient' && ports.session.gradientType === 'radial')) && ports.inputRef.current.pointer.visible) {
             drag.transformMoveStart = {
               pointer: { ...ports.inputRef.current.pointer.point },
               offset: { ...(drag.transformOffset ?? { x: 0, y: 0 }) }
@@ -382,7 +383,8 @@ export function useCanvasKeyboardInput(ports: Ports) {
         }
         return
       }
-      if (ports.inputRef.current.spaceHeld) return
+      if (ports.inputRef.current.spaceHeld && ports.quickToolActive('hand')) return
+      ports.inputRef.current.spaceHeld = false
       if (ports.lineConnectionConfigured && ports.inputRef.current.pointer.visible) updateShiftPreview(ports.lineConnectionPreviewActive(event))
       const modifierEvent = {
         ctrlKey: event.ctrlKey || ports.inputRef.current.ctrlHeld,
@@ -569,7 +571,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           }
         }
         ports.inputRef.current.sampling = ports.session.tool === 'eyedropper' || ports.quickToolActive('eyedropper')
-        ports.inputRef.current.modifierBrushSize = null
+        if (!ports.modifierActive(event, 'brushSizeAdjust')) ports.inputRef.current.modifierBrushSize = null
         if (event.key === 'Alt' && (ports.inputRef.current.drag?.kind === 'marquee' || ports.inputRef.current.drag?.kind === 'shape')) {
           const drag = ports.inputRef.current.drag
           const bounds = drag.marqueeBounds ?? drag.marqueeRotationStart?.bounds
@@ -603,6 +605,14 @@ export function useCanvasKeyboardInput(ports: Ports) {
           else ports.updateSelectionTransformPreview(drag, ports.inputRef.current.pointer.point, ports.currentSelectionTransformModifierState())
         }
         ports.scheduleDraw()
+      }
+      if (shortcutReleasedByBindings(event, SHORTCUT_GROUPS.modifiers.flatMap((id) => shortcutBindingsFor(ports.shortcuts, id)))) {
+        if (!ports.modifierActive(event, 'brushSizeAdjust')) ports.inputRef.current.modifierBrushSize = null
+        if (ports.inputRef.current.pointer.visible) ports.updateCursorAt(
+          ports.inputRef.current.pointer.clientX, ports.inputRef.current.pointer.clientY,
+          event.ctrlKey, event.altKey, event.shiftKey
+        )
+        ports.scheduleBrushPreviewOverlay()
       }
       if (temporaryPanReleased) {
         event.preventDefault()

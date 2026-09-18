@@ -6,6 +6,8 @@ import { CanvasInputState, PointerPressureAdapter } from '@/core/canvas-input'
 import { useWorkspace } from '@/store/workspace'
 import { sessionFromDocument } from '@/store/workspace-session'
 import { createCanvasPointerMove } from './canvas-pointer-move'
+import { useCanvasToolSession } from './useCanvasToolSession'
+import { DEFAULT_SHORTCUT_BINDINGS, saveShortcutBindings } from '@/core/shortcuts'
 import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -74,4 +76,52 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with Ctrl+wheel witho
     unmount()
     canvas.remove()
   }
+})
+
+
+it.each(['K', 'Ctrl+Alt', 'Space', 'Ctrl+K', 'Win', 'MouseBack'])('uses configured %s for brush sizing before quick tools', binding => {
+  localStorage.clear()
+  const bindings = structuredClone(DEFAULT_SHORTCUT_BINDINGS)
+  bindings.brushSizeAdjust = [binding]
+  bindings['tool.eraser.quick'] = [binding]
+  saveShortcutBindings(bindings)
+  useWorkspace.getState().addSession(createDocument('configured size', 32, 32, 'rgba'))
+  const session = useWorkspace.getState().sessions.find(item => item.document.id === useWorkspace.getState().activeId)!
+  Object.assign(session, { tool: 'line', lineKind: 'curve', brushSize: 4 })
+  const input = new CanvasInputState()
+  const inputRef = { current: input }
+  const hook = renderHook(() => useCanvasToolSession({
+    storedSession: session, inputRef, radialGradientCenterModifierActive: () => false,
+    canvasResizePreviewRef: { current: null }, lineAnchor: null
+  }))
+  const modifiers = { ctrlKey: binding.includes('Ctrl'), altKey: binding.includes('Alt'), shiftKey: false, metaKey: binding.includes('Win') }
+  const parts = binding.split('+')
+  const keyName = (part: string) => part === 'Ctrl' ? 'Control' : part === 'Win' ? 'Meta' : part === 'Space' ? ' ' : part
+  act(() => { for (const part of parts) window.dispatchEvent(new KeyboardEvent('keydown', { ...modifiers, key: keyName(part), code: part === 'Space' ? 'Space' : part })) })
+  expect(hook.result.current.liveInputSession().tool).toBe('line')
+  expect(hook.result.current.quickToolActive('eraser')).toBe(false)
+  const canvas = document.createElement('canvas')
+  const setSize = vi.spyOn(useWorkspace.getState(), 'setBrushSize').mockImplementation(size => { session.brushSize = size })
+  const move = createCanvasPointerMove({
+    inputRef, liveInputSession: () => hook.result.current.liveInputSession(),
+    canvasRef: { current: canvas }, liveViewRef: { current: session.view },
+    pressureAdapterRef: { current: new PointerPressureAdapter() },
+    moveSymmetry: () => false, autoPanSelection: vi.fn(), updateCursor: vi.fn(),
+    lineConnectionPreviewActive: () => false, localPoint: () => ({ x: 16, y: 16 }),
+    activeLayer: session.document.layers[0], interfaceScale: 1,
+    modifierActive: hook.result.current.modifierActive,
+    brushPreviewOverlaySupported: () => true,
+    scheduleBrushPreviewOverlay: vi.fn(), scheduleDraw: vi.fn(), moveQuickSampling: () => false
+  } as unknown as Parameters<typeof createCanvasPointerMove>[0])
+  for (const clientX of [16, 32]) {
+    const event = { ...modifiers, clientX, clientY: 16, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+    move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as ReactPointerEvent<HTMLCanvasElement>)
+  }
+  expect(setSize).toHaveBeenLastCalledWith(8)
+  expect(input.drag).toBeNull()
+  act(() => { for (const part of parts) window.dispatchEvent(new KeyboardEvent('keyup', { key: keyName(part), code: part === 'Space' ? 'Space' : part })) })
+  expect(hook.result.current.modifierActive({ ctrlKey: false, altKey: false, shiftKey: false, metaKey: false }, 'brushSizeAdjust')).toBe(false)
+  hook.unmount()
+  localStorage.clear()
+  useWorkspace.setState({ sessions: [], activeId: null })
 })

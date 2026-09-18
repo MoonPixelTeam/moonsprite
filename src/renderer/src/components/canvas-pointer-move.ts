@@ -56,7 +56,7 @@ interface Ports {
   selectionCrosshair: boolean
   activeLayer: RasterLayer
   modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
-  interfaceScale: 0.75 | 1 | 1.5 | 2
+  interfaceScale: import('@/core/file-preferences').UiScale
   brushPreviewOverlaySupported: (currentSession: DocumentSession) => boolean
   scheduleBrushPreviewOverlay: () => void
   scheduleDraw: () => void

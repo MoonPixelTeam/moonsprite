@@ -49,7 +49,7 @@ export function useAppShortcutRouter(options: Options) {
     const shortcutConflictState = deriveShortcutConflicts(shortcuts)
     const heldShortcutParts = new Set<string>()
     const keydown = (event: KeyboardEvent): void => {
-      const {pointerPosition, commandSurface, rotationIndicatorPosition, homeOpen, outlineOpen, openMenu, shortcutOpen, timelineHidden, commandScope, selectionOverride, commands: uiCommands, openAdjustment, publishShortcutCommand} = optionsRef.current
+      const {pointerPosition, commandSurface, rotationIndicatorPosition, homeOpen, outlineOpen, openMenu, timelineHidden, commandScope, selectionOverride, commands: uiCommands, openAdjustment, publishShortcutCommand} = optionsRef.current
       const workspace = useWorkspace.getState()
       const session = workspace.sessions.find(item => item.document.id === workspace.activeId) ?? null
       const t = translationRef.current
@@ -61,7 +61,7 @@ export function useAppShortcutRouter(options: Options) {
       // Deferred shortcuts can replay on window after their original target disappears.
       const target = event.target instanceof HTMLElement ? event.target : null
 
-      if (shortcutOpen && target?.closest('[data-shortcut-recorder="true"]')) return
+      if (target?.closest('[data-shortcut-recorder="true"]')) return
 
       const matches = (action: ShortcutId): boolean => {
         return shortcutBindingsFor(shortcuts, action).some((shortcut) => (

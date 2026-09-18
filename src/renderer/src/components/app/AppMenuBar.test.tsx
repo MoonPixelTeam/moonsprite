@@ -35,7 +35,7 @@ const defaults: Omit<Props, 'openMenu' | 'setOpenMenu'> = {
   onRunLuaScript: noop, onOpenLuaScriptFolder: noop, onToggleExtensionPanel: noop, onOpenProjectFolder: noop, onOpenOutline: noop,
   onOpenAntiAlias: noop, onOpenColorReplacement: noop, onOpenAdjustment: noop, onOpenLcdScreenFilter: noop,
   onOpenShortcuts: noop, onOpenPreferences: noop, onOpenExtensionSettings: noop, onOpenCanvasResize: noop, onOpenImageResize: noop,
-  onOpenGridSettings: noop, onOpenIsoViewSettings: noop, onToggleMirror: noop, onTogglePanel: noop, onToggleTimeline: noop,
+  onOpenGridSettings: noop, onOpenIsoViewSettings: noop, onToggleMirror: noop, fullscreen: false, onToggleFullscreen: noop, onTogglePanel: noop, onToggleTimeline: noop,
   onToggleSliceOutlines: noop, onToggleAlignmentPreference: noop, onToolRailSideChange: noop, onCycleAdvancedMode: noop,
   onOpenComponentLibrary: noop, onOpenLatestRelease: noop, onOpenUsageStatistics: noop, onOpenDiagnostics: noop, onOpenAbout: noop
 }

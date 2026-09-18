@@ -17,7 +17,6 @@ import { loadEditorPreferences } from '@/core/file-preferences'
 import { normalizeTimelapseSettings } from '@/core/project-metadata'
 import { isTimelapseVideoFormat } from '@/core/timelapse'
 import { persistProjectLayerPanelState } from '@/core/layer-panel-state'
-import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { activeTilemapCelTarget, applyTilemapDocumentEdit, applyTilemapTilesetDocumentEdit, convertTilemapPixelEdit } from '@/core/tilemap-document'
 import { tilemapEditBytes, tilemapTilesetEditBytes, tilemapTilesetEditHasChanges } from '@/core/tilemap'
 import { exportTimelapseFile } from './document-file-service'
@@ -288,11 +287,9 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
           syncActiveAnimationLayer(session.document, edit.layerId)
           operationProbe?.recordOperationStage?.('commit.animation-sync', performance.now() - animationSyncStartedAt)
           const invalidationStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-          // Style proxies add pixels outside the edited source rect. A flipped
-          // pasted selection can therefore leave the style-expanded cache
-          // partially stale if we invalidate only the raw pixel region.
-          const styledLayerEdit = hasEnabledLayerStyles(editedLayer?.layerStyles)
-          touch(session, true, styledLayerEdit ? { kind: 'full' } : entry.invalidation)
+          // Canvas invalidation expands this source region for strokes/shadows
+          // and invalidates style blocks, retaining unaffected canvas tiles.
+          touch(session, true, entry.invalidation)
           operationProbe?.recordOperationStage?.('commit.cache-invalidation', performance.now() - invalidationStartedAt, {
             dirtyPixels: edit.dirtyRect ? edit.dirtyRect.width * edit.dirtyRect.height : 0,
             dirtyWidth: edit.dirtyRect?.width ?? 0,

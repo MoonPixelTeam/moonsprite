@@ -4,6 +4,8 @@
 
 The pointer communicates what will happen if the user presses now; it must not be derived only from the active tool name. Tool switches and modifier press or release update the pointer immediately without requiring another mouse move.
 
+Standard CSS cursor types (such as `pointer`, `text`, `move`, and directional `resize`) are mapped globally to cursor variables from the component library. New components do not bind cursor images individually; stylesheets, dynamically inserted styles, inline styles, and portals use the same mapping. Mapping preserves selector priority, `!important`, `none`, and specialized canvas cursors, without scanning the page or reading layout on pointer movement. The shared theme still controls cursor scale and system-cursor preferences. Native interfaces such as system file dialogs are outside this DOM mapping boundary.
+
 ## General Priority
 
 1. Dialog, input, and menu interaction.

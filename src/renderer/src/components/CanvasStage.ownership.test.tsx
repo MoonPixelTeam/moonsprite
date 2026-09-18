@@ -168,6 +168,7 @@ describe('CanvasStage controller composition', () => {
     const { container } = render(<CanvasStage session={current} />)
     expect(container.querySelector('.stage-view-scrollbar-horizontal.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
     expect(container.querySelector('.stage-view-scrollbar-vertical.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
+    expect(container.querySelector('.stage-view-scrollbar-corner')).not.toBeNull()
     expect(container.querySelector('.stage-view-scrollbar.component-scrollbar')).toBeNull()
   })
 

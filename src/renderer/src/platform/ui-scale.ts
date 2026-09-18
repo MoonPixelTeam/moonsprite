@@ -108,6 +108,7 @@ function handleDisplayScaleChange(scaleFactor: number): void {
 }
 
 export async function applyUiScale(scale: UiScale): Promise<void> {
+  if (typeof document !== 'undefined') document.documentElement.dataset.uiScale = String(scale)
   if (!isTauriRuntime()) return
   requestedScale = scale
   const displayScaleFactor = await observeDisplayScaleFactor(handleDisplayScaleChange)
@@ -128,7 +129,7 @@ export function applyToolIconScale(scale: ToolIconScale): void {
   for (const [name, value] of Object.entries(sizes)) document.documentElement.style.setProperty(name, value)
 }
 
-/** Applies only the shared body-text tokens, leaving canvas coordinates and icon geometry untouched. */
+/** Applies shared interface-text tokens without changing canvas coordinates or icon geometry. */
 export function applyBodyFontScale(scale: BodyFontScale): void {
   if (typeof document === 'undefined') return
   document.documentElement.style.setProperty('--ui-body-font-scale', String(scale))

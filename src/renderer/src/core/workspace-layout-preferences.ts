@@ -130,7 +130,7 @@ export function constrainInspectorWidth(width: unknown, viewportWidth: number): 
 }
 
 export function constrainLeftDockWidth(width: unknown, viewportWidth: number): number {
-  return clamp(width, DEFAULT_LEFT_DOCK_WIDTH, MINIMUM_SIDE_DOCK_WIDTH, Math.min(520, Math.max(MINIMUM_SIDE_DOCK_WIDTH, viewportWidth - 520)))
+  return clamp(width, DEFAULT_LEFT_DOCK_WIDTH, 0, Math.max(0, viewportWidth))
 }
 
 export function constrainBottomDockHeight(height: unknown, availableHeight: number): number {
@@ -191,7 +191,7 @@ export function loadBottomDockHeight(storage?: Storage): number {
 }
 
 export function loadLeftDockWidth(storage?: Storage): number {
-  return clamp(readStoredString(LEFT_DOCK_WIDTH_STORAGE_KEY, storage), DEFAULT_LEFT_DOCK_WIDTH, MINIMUM_SIDE_DOCK_WIDTH, 520)
+  return clamp(readStoredString(LEFT_DOCK_WIDTH_STORAGE_KEY, storage), DEFAULT_LEFT_DOCK_WIDTH, 0, Number.MAX_SAFE_INTEGER)
 }
 
 export function loadMainWindowState(storage?: Storage): MainWindowState | null {

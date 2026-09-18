@@ -1,3 +1,4 @@
+import { TRANSPARENT } from '@/core/raster'
 import { useCanvasEyedropperMagnifier } from './useCanvasEyedropperMagnifier'
 import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
@@ -53,8 +54,11 @@ export function useCanvasColorSampling(ports: Ports) {
 
   canvasColorSampleAtClientPointRef.current = (clientX, clientY) => {
     const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
-    const point = ports.localPointAt(clientX, clientY)
-    if (!point || point.x < 0 || point.y < 0 || point.x >= currentSession.document.width || point.y >= currentSession.document.height) return null
+    const bounds = ports.stageBounds()
+    if (clientX < bounds.left || clientY < bounds.top || clientX >= bounds.right || clientY >= bounds.bottom) return null
+    const point = ports.localPointAt(clientX, clientY) ?? ports.localContinuousPointAt(clientX, clientY)
+    if (!point) return null
+    if (point.x < 0 || point.y < 0 || point.x >= currentSession.document.width || point.y >= currentSession.document.height) return { ...TRANSPARENT }
     const mask = activeLayerMask(currentSession)
     return mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : ports.cursorCompositePointSamplerFor(currentSession)(point.x, point.y)
   }

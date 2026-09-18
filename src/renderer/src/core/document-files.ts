@@ -13,7 +13,7 @@ import { encodeBmp } from './bmp'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 import { decodePsd } from './psd'
 
-export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite' | 'bmp' | 'gif'
+export type SaveImageDialogFormat = 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite' | 'bmp' | 'gif'
 
 export function fileNameFromPath(filePath: string): string {
   return filePath.split(/[\\/]/).pop() ?? filePath
@@ -40,27 +40,28 @@ export function joinDirectoryPath(directory: string, fileName: string): string {
 
 export function sanitizeFileStem(name: string, fallback: string): string {
   const stem = name
-    .replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|bmp|svg|gif|psd)$/i, '')
+    .replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|bmp|svg|gif|ico|psd)$/i, '')
     .replace(/[\\/:*?"<>|]/g, '_')
     .trim()
   return stem || fallback
 }
 
-export function saveImageExtension(format: SaveImageKind | 'gif' | 'bmp'): 'png' | 'jpg' | 'webp' | 'svg' | 'psd' | 'ase' | 'aseprite' | 'gif' | 'bmp' {
-  if (format === 'gif' || format === 'bmp') return format
+export function saveImageExtension(format: SaveImageKind | 'gif' | 'bmp'): 'png' | 'jpg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite' | 'gif' | 'bmp' {
+  if (format === 'gif' || format === 'bmp' || format === 'svg') return format
   if (format === 'jpeg') return 'jpg'
   if (format === 'psd') return 'psd'
   if (format === 'ase') return 'ase'
   if (format === 'aseprite') return 'aseprite'
-  if (format === 'svg') return 'svg'
   if (format === 'webp') return 'webp'
+  if (format === 'ico') return 'ico'
   return 'png'
 }
 
 export function saveImageDialogFormat(format: SaveImageKind | 'gif' | 'bmp'): SaveImageDialogFormat {
-  if (format === 'gif' || format === 'bmp') return format
+  if (format === 'gif' || format === 'bmp' || format === 'svg') return format
   if (format === 'jpeg') return 'jpeg'
   if (format === 'webp') return 'webp'
+  if (format === 'ico') return 'ico'
   if (format === 'psd') return 'psd'
   if (format === 'ase') return 'ase'
   if (format === 'aseprite') return 'aseprite'
@@ -72,6 +73,9 @@ export function saveImageKindForPath(filePath: string): SaveImageKind | null {
   if (suffix === 'png') return 'png-auto'
   if (suffix === 'jpg' || suffix === 'jpeg') return 'jpeg'
   if (suffix === 'webp') return 'webp'
+  if (suffix === 'bmp') return 'bmp'
+  if (suffix === 'svg') return 'svg'
+  if (suffix === 'ico') return 'ico'
   if (suffix === 'psd') return 'psd'
   if (suffix === 'ase') return 'ase'
   if (suffix === 'aseprite') return 'aseprite'
@@ -114,11 +118,11 @@ export function directSourceImageSaveTarget(document: SpriteDocument): DirectSou
   return format ? { filePath: document.sourceFilePath, format } : null
 }
 
-export async function encodeDocumentForSourceImage(document: SpriteDocument, format: SourceRasterImageKind, onProgress?: (value: number) => void): Promise<Uint8Array> {
+export async function encodeDocumentForSourceImage(document: SpriteDocument, format: SourceRasterImageKind, onProgress?: (value: number) => void, scalePercent = 100): Promise<Uint8Array> {
   let bytes: Uint8Array
   if (format === 'bmp') bytes = encodeBmp(compositeDocument(document), document.width, document.height)
-  else if (format === 'gif') bytes = exportAnimationGif(document, { scalePercent: 100, frameStart: 1, frameEnd: document.animation?.frames.length ?? 1, direction: 'forward' }).bytes
-  else bytes = (await exportDocumentImage(document, 100, format)).bytes
+  else if (format === 'gif') bytes = exportAnimationGif(document, { scalePercent, frameStart: 1, frameEnd: document.animation?.frames.length ?? 1, direction: 'forward' }).bytes
+  else bytes = (await exportDocumentImage(document, scalePercent, format)).bytes
   onProgress?.(1)
   return bytes
 }
@@ -131,16 +135,24 @@ export function normalizeSaveDialogPath(filePath: string, format: SaveImageKind 
       ? /\.(ase|aseprite)$/i.test(filePath)
       : filePath.toLowerCase().endsWith(`.${extension}`)
   if (accepted) return filePath
-  return /\.(moonsprite|png|jpg|jpeg|webp|bmp|svg|gif|psd|ase|aseprite)$/i.test(filePath)
-    ? filePath.replace(/\.(moonsprite|png|jpg|jpeg|webp|bmp|svg|gif|psd|ase|aseprite)$/i, `.${extension}`)
+  return /\.(moonsprite|png|jpg|jpeg|webp|bmp|svg|gif|ico|psd|ase|aseprite)$/i.test(filePath)
+    ? filePath.replace(/\.(moonsprite|png|jpg|jpeg|webp|bmp|svg|gif|ico|psd|ase|aseprite)$/i, `.${extension}`)
     : `${filePath}.${extension}`
 }
+
+// Chat clients can expose GIF cache files with a static-image extension.
+// Inspect the signature before choosing a decoder that flattens animation.
+const hasGifSignature = (data: Uint8Array): boolean => data.length >= 6
+  && data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46
+  && data[3] === 0x38 && (data[4] === 0x37 || data[4] === 0x39) && data[5] === 0x61
 
 const decodeStructuredDocumentFile = (data: Uint8Array, filePath: string, onProgress?: (value: number) => void, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): SpriteDocument => {
   const suffix = fileExtension(filePath)
   const fileName = fileNameFromPath(filePath)
   const backup = isMoonSpriteBackupPath(filePath)
-  const document = isMoonSpriteProjectPath(filePath)
+  const document = hasGifSignature(data)
+    ? decodeGifAnimation(data, fileName)
+    : isMoonSpriteProjectPath(filePath)
     ? decodeProject(data, { onProgress, onDroppedTimelapseFrames })
     : suffix === 'ase' || suffix === 'aseprite'
       ? decodeAseprite(data, fileName.replace(/\.(aseprite|ase)$/i, ''), onProgress)
@@ -355,6 +367,7 @@ const decodeDocumentFileInWorker = (data: Uint8Array, filePath: string, onProgre
 })
 
 export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string, onProgress?: (value: number) => void, onDroppedTimelapseFrames?: (report: ProjectDecodeReport) => void): Promise<SpriteDocument> {
+  if (hasGifSignature(data)) return decodeStructuredDocumentFile(data, filePath, onProgress, onDroppedTimelapseFrames)
   const suffix = fileExtension(filePath)
   const project = isMoonSpriteProjectPath(filePath)
   const backup = isMoonSpriteBackupPath(filePath)

@@ -120,6 +120,7 @@ interface FrameProps {
 function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, onOpenSettings }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null)
   const [document, setDocument] = useState<string | null>(null)
+  const embeddedWindowIds = useRef(new Set<string>())
   const overlays = useRef(new Map<string, OverlayDefinition>())
   const [overlayRevision, setOverlayRevision] = useState(0)
   const updateOverlays = () => setOverlayRevision(value => value + 1)
@@ -269,6 +270,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
           if (!overlays.current.has(windowId) && overlays.current.size >= 16) throw new Error('覆盖层数量已达上限。')
           const options = objectParams(params.options)
           const bounds = overlayBounds({ x: options.x ?? 32, y: options.y ?? 72, width: options.width ?? 256, height: options.height ?? 256 })
+          embeddedWindowIds.current.add(windowId)
           overlays.current.set(windowId, { windowId, resourceId, bounds, visible: true }); updateOverlays(); return null
         }
         if (request.method === 'windows.open' && overlays.current.has(String(params.windowId))) throw new Error('窗口 ID 已用于覆盖层。')
@@ -288,6 +290,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
           const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
           if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展窗口资源不存在。')
           if (overlays.current.has(windowId)) throw new Error('窗口 ID 已用于覆盖层。')
+          embeddedWindowIds.current.add(windowId)
           setDialog({ windowId, resourceId, title: String(objectParams(params.options).title || extension.name), component: objectParams(params.options).component === 'form' ? 'form' : undefined }); return null
         }
         if (dialog && request.method === 'windows.postMessage' && params.windowId === dialog.windowId) {
@@ -296,6 +299,8 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
         if (request.method === 'windows.close' && dialog && (!params.windowId || params.windowId === dialog.windowId)) {
           setDialog(null); if (params.windowId) return null
         }
+        // Late messages to a closed embedded surface must not fall through to native windows.
+        if (request.method === 'windows.postMessage' && embeddedWindowIds.current.has(String(params.windowId))) return null
         return handleRequest(extension, permissions, request.method, request.params, onRunLuaScript, onOpenSettings)
       }
       void handle()

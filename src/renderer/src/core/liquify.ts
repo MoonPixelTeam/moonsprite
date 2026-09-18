@@ -33,9 +33,11 @@ interface HoldStroke {
   mode: LiquifyMode
   radius: number
   strength: number
+  changed: boolean
   source: { rect: SelectionRect; pixels: Uint32Array }
 }
 const holdStrokes = new WeakMap<PixelEdit, HoldStroke>()
+const holdPaths = new WeakMap<PixelEdit, { mode: LiquifyMode; radius: number; remaining: number }>()
 
 export interface LiquifyStepOptions {
   mode: LiquifyMode
@@ -80,6 +82,7 @@ export const resetLiquifyStroke = (document: SpriteDocument, edit: PixelEdit, pu
     }
   }
   holdStrokes.delete(edit)
+  holdPaths.delete(edit)
   edit.before.clear()
   edit.after.clear()
   edit.points = undefined
@@ -498,11 +501,15 @@ export function applyLiquifyPushPath(
  * while repeated ticks at one anchor sample one stable source to avoid erosion.
  */
 export function applyLiquifyHoldStep(document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, to: Point, options: LiquifyStepOptions): boolean {
-  if (options.mode === 'push') return false
+  if (options.mode === 'push' || options.strength <= 0) return false
   if (!ensureLayerCoversCanvas(document, layer)) return false
   let stroke = holdStrokes.get(edit)
   const radius = Math.max(1, Math.round(options.radius))
-  if (!stroke || stroke.mode !== options.mode || stroke.radius !== radius || Math.hypot(to.x - stroke.center.x, to.y - stroke.center.y) >= 0.5) {
+  if (!stroke || stroke.mode !== options.mode || stroke.radius !== radius || stroke.strength >= 100 || Math.hypot(to.x - stroke.center.x, to.y - stroke.center.y) >= 0.5) {
+    // Rebase completed deformation cycles so holding never stops at 100%.
+    // Carry unapplied subpixel input across moving anchors until it can change
+    // a pixel; otherwise weak inflate/deflate strokes disappear while moving.
+    const pending = stroke && !stroke.changed && stroke.strength < 100 && stroke.mode === options.mode && stroke.radius === radius ? stroke.strength : 0
     const extent = (options.mode === 'deflate' ? radius * 2 : radius) + 1
     const x = Math.max(layer.offsetX, Math.floor(to.x - extent))
     const y = Math.max(layer.offsetY, Math.floor(to.y - extent))
@@ -513,13 +520,46 @@ export function applyLiquifyHoldStep(document: SpriteDocument, layer: RasterLaye
     for (let row = 0; row < rect.height; row++) for (let col = 0; col < rect.width; col++) {
       pixels[row * rect.width + col] = readLayerPacked(document, layer, layerIndexAt(layer, x + col, y + row)!)
     }
-    stroke = { center: { ...to }, mode: options.mode, radius, strength: 0, source: { rect, pixels } }
+    stroke = { center: { ...to }, mode: options.mode, radius, strength: pending, changed: false, source: { rect, pixels } }
     holdStrokes.set(edit, stroke)
   }
   const nextStrength = Math.min(100, stroke.strength + Math.max(0, options.strength))
   if (nextStrength === stroke.strength) return false
   stroke.strength = nextStrength
-  return applyLiquifyStep(document, layer, edit, stroke.center, stroke.center, { ...options, strength: stroke.strength }, stroke.source)
+  const changed = applyLiquifyStep(document, layer, edit, stroke.center, stroke.center, { ...options, strength: stroke.strength }, stroke.source)
+  stroke.changed ||= changed
+  return changed
+}
+
+/** Distance-spaced impulses cover moving radial/twist tools independently of
+ * pointer event frequency. The stationary clock supplies time-based impulses.
+ */
+export function applyLiquifyHoldPath(document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, from: Point, to: Point, options: LiquifyStepOptions): LiquifyPushPathResult {
+  const radius = Math.max(1, Math.round(options.radius))
+  const spacing = Math.max(1, radius * PUSH_DAB_SPACING_RATIO)
+  let path = holdPaths.get(edit)
+  if (!path || path.mode !== options.mode || path.radius !== radius) {
+    path = { mode: options.mode, radius, remaining: spacing }
+    holdPaths.set(edit, path)
+  }
+  const dx = to.x - from.x, dy = to.y - from.y
+  const length = Math.hypot(dx, dy)
+  let consumed = 0, dabCount = 0
+  let dirtyRect: SelectionRect | null = null
+  while (length > 1e-9 && consumed + path.remaining <= length + 1e-9) {
+    consumed = Math.min(length, consumed + path.remaining)
+    const ratio = consumed / length
+    const point = { x: Math.round((from.x + dx * ratio) * 1e9) / 1e9, y: Math.round((from.y + dy * ratio) * 1e9) / 1e9 }
+    if (applyLiquifyHoldStep(document, layer, edit, point, { ...options, strength: options.strength * spacing * 2 / radius })) {
+      const left = Math.max(0, Math.floor(point.x - radius)), top = Math.max(0, Math.floor(point.y - radius))
+      const right = Math.min(document.width - 1, Math.ceil(point.x + radius)), bottom = Math.min(document.height - 1, Math.ceil(point.y + radius))
+      if (right >= left && bottom >= top) dirtyRect = unionRect(dirtyRect, { x: left, y: top, width: right - left + 1, height: bottom - top + 1 })
+    }
+    dabCount++
+    path.remaining = spacing
+  }
+  path.remaining -= Math.max(0, length - consumed)
+  return { changed: dirtyRect !== null, dabCount, dirtyRect }
 }
 
 /** Applies a nearest-neighbor local warp while retaining one PixelEdit for the full gesture. */

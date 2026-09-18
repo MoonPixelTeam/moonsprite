@@ -32,7 +32,7 @@ import { canvasDisplayDeviceScale } from '@/components/canvas-display-size'
 import { pixelSamplingMode } from '@/core/pixel-display'
 import { tileRepeatMappedPointForCopies } from '@/core/tilemap'
 interface Ports {
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly stageRef: import('react').RefObject<HTMLDivElement | null>
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly storedSession: DocumentSession

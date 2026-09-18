@@ -21,7 +21,7 @@ import {
 } from './pressure'
 
 export const TOOL_SETTINGS_KEY = 'moonsprite.tool-settings.v1'
-export const BRUSH_TOOLS = ['pencil', 'eraser', 'fill', 'line'] as const
+export const BRUSH_TOOLS = ['pencil', 'airbrush', 'smooth', 'eraser', 'fill', 'line', 'shape', 'liquify'] as const
 export type BrushTool = typeof BRUSH_TOOLS[number]
 
 export interface PersistedBrushProfile {

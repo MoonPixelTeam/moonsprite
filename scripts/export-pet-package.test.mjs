@@ -131,7 +131,7 @@ test('dragging drops stale requests and applies the latest pointer position', as
   const start=generated.petWindowSource.indexOf('const movePet=')
   const end=generated.petWindowSource.indexOf('// Coalesce host changes',start)
   const requests=[],releases=[]
-  const sandbox=vm.createContext({hostEpoch:0,clampPetBounds:bounds=>bounds,moonsprite:{window:{setBounds:bounds=>{requests.push(bounds);return new Promise(resolve=>releases.push(resolve))}},diagnostics:{log:()=>{}}}})
+  const sandbox=vm.createContext({stopDraggingAnimation:()=>{},hostEpoch:0,clampPetBounds:bounds=>bounds,moonsprite:{window:{setBounds:bounds=>{requests.push(bounds);return new Promise(resolve=>releases.push(resolve))}},diagnostics:{log:()=>{}}}})
   vm.runInContext('let dragQueue=null,pendingDrag=null;'+generated.petWindowSource.slice(start,end),sandbox)
   sandbox.gesture={epoch:0,x:0,y:0,origin:Promise.resolve([{x:0,y:0,width:360,height:360},{}]),content:{}}
   vm.runInContext('movePet(gesture,1,1)',sandbox)
@@ -207,7 +207,7 @@ test('menu omits show action and reminders expose independent controls without c
 
 test('mirrored playback flips the actual drawn pixels, not only the element', () => {
   const calls=[]
-  const sandbox=vm.createContext({animationToken:0,pointer:null,image:{},pet:{mirrored:true,frameWidth:2,frameHeight:2,durations:[125],idleFrames:[0]},hitAlpha:null,
+  const sandbox=vm.createContext({boundsForAnimation:()=>null,info:{hidden:true},notice:{hidden:true},animationToken:0,pointer:null,image:{},pet:{mirrored:true,frameWidth:2,frameHeight:2,durations:[125],idleFrames:[0]},hitAlpha:null,
     context:{clearRect(){},save(){},translate:(...args)=>calls.push(['translate',...args]),scale:(...args)=>calls.push(['scale',...args]),drawImage(){},restore(){},getImageData:()=>({data:new Uint8Array(16)})},scheduleHitRegion(){},setTimeout(){}})
   const start=generated.petWindowSource.indexOf('const play=')
   const end=generated.petWindowSource.indexOf('const showInfo=',start)
@@ -372,7 +372,7 @@ test('animation silhouette union remains complete while dragging and mirrors wit
 test('host shrink corrects an in-flight drag and preserves visible content within new bounds', async () => {
  const content={x:200,y:260,width:100,height:80};let bounds={x:1300,y:700,width:360,height:360},host={x:0,y:0,width:800,height:600};const saved=[],moves=[];
  let finishDrag;const gesture={cancelled:false};
- const sandbox=vm.createContext({pet:{},hostEpoch:0,positionRatio:{x:1,y:1},positionLoaded:true,pointer:gesture,pendingDrag:{gesture},boundsQueue:Promise.resolve(),dragQueue:new Promise(resolve=>finishDrag=resolve),contentBounds:()=>content,persistPosition:async p=>saved.push(p),scheduleHitRegion:()=>{},
+ const sandbox=vm.createContext({pet:{},stopDraggingAnimation:()=>{},hostEpoch:0,positionRatio:{x:1,y:1},positionLoaded:true,pointer:gesture,pendingDrag:{gesture},boundsQueue:Promise.resolve(),dragQueue:new Promise(resolve=>finishDrag=resolve),contentBounds:()=>content,persistPosition:async p=>saved.push(p),scheduleHitRegion:()=>{},
   moonsprite:{window:{getBounds:async()=>({...bounds}),getHostBounds:async()=>({...host}),setBounds:async p=>{moves.push(p);bounds=p}},diagnostics:{log:error=>{throw Error(error)}}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);
  vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
@@ -394,7 +394,7 @@ test('host shrink corrects an in-flight drag and preserves visible content withi
 test('relative pet positions survive maximize, restore, host movement and scale changes without drift', async () => {
  let host={x:8,y:30,width:1800,height:1000},content={x:200,y:260,width:100,height:80};
  let bounds={x:233,y:199,width:360,height:360};const saved=[];
- const sandbox=vm.createContext({pet:{},hostEpoch:0,positionRatio:null,positionLoaded:false,positionKey:'position:custom',pointer:null,pendingDrag:null,dragQueue:null,boundsQueue:Promise.resolve(),contentBounds:()=>content,persistPosition:async b=>saved.push({...b}),scheduleHitRegion:()=>{},
+ const sandbox=vm.createContext({pet:{},stopDraggingAnimation:()=>{},hostEpoch:0,positionRatio:null,positionLoaded:false,positionKey:'position:custom',pointer:null,pendingDrag:null,dragQueue:null,boundsQueue:Promise.resolve(),contentBounds:()=>content,persistPosition:async b=>saved.push({...b}),scheduleHitRegion:()=>{},
   moonsprite:{storage:{get:async()=>({ratio:{x:0.2,y:0.8}})},window:{getBounds:async()=>({...bounds}),getHostBounds:async()=>({...host}),setBounds:async b=>{bounds=b}},diagnostics:{log:error=>{throw Error(error)}}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  start=generated.petWindowSource.indexOf('// Coalesce host changes');end=generated.petWindowSource.indexOf('const loadPet=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
@@ -567,17 +567,19 @@ test('condition slots are configurable, stay attached to the chosen pet and rend
  let start=generated.managerSource.indexOf('const animationSlots='),end=generated.managerSource.indexOf('const combineAnimations=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  start=generated.managerSource.indexOf('let operations=');end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  listener({type:'ui-add-trigger',petId:'cat'});await vm.runInContext('operations',sandbox);
- assert.equal(view.nodes.at(-1).type,'dialog');assert.equal(view.nodes.at(-1).children[0].options.length,21);assert.ok(view.nodes.at(-1).children[0].options.every(option=>option.description));
+ assert.equal(view.nodes.at(-1).type,'dialog');assert.equal(view.nodes.at(-1).children[0].options.length,22);assert.ok(view.nodes.at(-1).children[0].options.every(option=>option.description));
  listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-event':'tool.changed','trigger-tool':'eraser','trigger-cooldown':4}});await vm.runInContext('operations',sandbox);
  assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].tool,'eraser');assert.equal(meta[0].triggerSlots[0].cooldownMs,4000);
  assert.equal(view.nodes.some(node=>node.type==='dialog'),false);
  const slot=view.nodes[0].children[1].children.find(node=>node.id.startsWith('slot-TRIGGER_'));assert.ok(slot.tooltip);assert.match(slot.label,/切换工具/);
+ const id=meta[0].triggerSlots[0].id;listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);assert.equal(view.nodes.at(-1).children[0].value,'tool.changed');
+ listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-cooldown':0}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots.length,1);assert.equal(meta[0].triggerSlots[0].id,id);assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].cooldownMs,0);
 });
 
 test('condition animations honor filters, cooldown, busy playback and idle reset', () => {
  let now=10000,timer;const played=[];
  const sandbox=vm.createContext({Date:{now:()=>now},pet:{triggerSlots:[{id:'TRIGGER_A',event:'tool.changed',tool:'eraser',cooldownMs:3000},{id:'TRIGGER_B',event:'idle',idleSeconds:5,cooldownMs:1000}],animations:{TRIGGER_A:[1],TRIGGER_B:[2]},durations:[125,500,500]},play:(frames,repeat)=>played.push([Array.from(frames),repeat]),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
- const start=generated.petWindowSource.indexOf('let petVisible='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  vm.runInContext("triggerAnimation('tool.changed',{tool:'pencil'})",sandbox);assert.equal(played.length,0);
  vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.deepEqual(played,[[[1],false]]);
  now+=1000;vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.equal(played.length,1);
@@ -611,8 +613,36 @@ test('preview fits opaque content in a fixed frame instead of shrinking transpar
 test('zero cooldown restarts immediately and overlapping idle slots choose one random candidate per idle period', () => {
  let now=10000,timer;const played=[];
  const sandbox=vm.createContext({Date:{now:()=>now},Math:{...Math,random:()=>0.99,floor:Math.floor},pet:{triggerSlots:[{id:'A',event:'history.undo',cooldownMs:0},{id:'B',event:'idle',idleSeconds:5,cooldownMs:0},{id:'C',event:'idle',idleSeconds:5,cooldownMs:0}],animations:{A:[0],B:[1],C:[2]},durations:[500,500,500]},play:frames=>played.push(Array.from(frames)),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
- const start=generated.petWindowSource.indexOf('let petVisible='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  vm.runInContext("triggerAnimation('history.undo');triggerAnimation('history.undo')",sandbox);assert.deepEqual(played,[[0],[0]]);
  now+=6000;timer();assert.deepEqual(played,[[0],[0],[2]]);now+=2000;timer();assert.equal(played.length,3);
  vm.runInContext('markActivity()',sandbox);now+=6000;timer();assert.equal(played.length,4);
+});
+
+
+test('pointer entry tests rendered alpha, not transparent button margins',()=>{
+ const source=generated.petWindowSource;const start=source.indexOf('const hitCurrentPixel='),end=source.indexOf(";petElement.addEventListener('pointermove'",start);
+ const sandbox=vm.createContext({pet:{},canvas:{width:4,height:4,getBoundingClientRect:()=>({left:10,top:20,width:8,height:8})},context:{getImageData:(x,y)=>({data:[0,0,0,x===2&&y===2?255:0]})}});
+ vm.runInContext(source.slice(start,end),sandbox);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:10,clientY:20})',sandbox),false);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:14,clientY:24})',sandbox),true);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:30,clientY:24})',sandbox),false);
+});
+test('continuous drag loops its slot and releases back to idle',()=>{
+ const played=[];const sandbox=vm.createContext({pet:{triggerSlots:[{id:'DRAG',event:'pet.dragging'}],animations:{DRAG:[2,3]},idleFrames:[0]},draggingAnimation:false,triggerBusyUntil:99,play:(frames,repeat)=>played.push([frames,repeat])});
+ const source=generated.petWindowSource,start=source.indexOf('const startDraggingAnimation='),end=source.indexOf("petElement.addEventListener('pointerdown'",start);vm.runInContext(source.slice(start,end),sandbox);
+ vm.runInContext('startDraggingAnimation();stopDraggingAnimation()',sandbox);assert.deepEqual(played,[[[2,3],true],[[0],true]]);assert.equal(sandbox.draggingAnimation,false);
+});
+
+test('bubble stays fixed within an animation and moves only when its animation bounds change',async()=>{
+ const bubble={style:{},getBoundingClientRect:()=>({width:40,height:20})};const sandbox=vm.createContext({pet:{frameWidth:100,frameHeight:100},animationBounds:{x:10,y:40,width:20,height:30},displayedFrame:0,frameBounds:[{x:10,y:40,width:20,height:30},{x:50,y:70,width:30,height:20}],spriteBounds:{x:0,y:0,width:100,height:100},canvas:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})},window:{innerWidth:300,innerHeight:300},info:bubble,notice:{...bubble,style:{}},moonsprite:{window:{getBounds:async()=>({x:0,y:0}),getHostBounds:async()=>({x:0,y:0,width:300,height:300})}}});
+ const src=generated.petWindowSource,start=src.indexOf('const positionBubbles='),end=src.indexOf('const contentBounds=',start);vm.runInContext(src.slice(start,end),sandbox);
+ await vm.runInContext('positionBubbles()',sandbox);const first={...bubble.style};sandbox.displayedFrame=1;await vm.runInContext('positionBubbles()',sandbox);assert.equal(bubble.style.top,first.top);sandbox.animationBounds={x:50,y:70,width:30,height:20};await vm.runInContext('positionBubbles()',sandbox);assert.notEqual(bubble.style.top,first.top);sandbox.animationBounds={x:10,y:40,width:20,height:30};await vm.runInContext('positionBubbles()',sandbox);assert.equal(bubble.style.top,first.top);
+});
+
+test('animation anchor uses only the union of that animation frames',()=>{
+ const sandbox=vm.createContext({frameBounds:[{x:10,y:10,width:10,height:10},{x:12,y:8,width:10,height:10},{x:0,y:0,width:40,height:40}],spriteBounds:{x:0,y:0,width:40,height:40}});
+ const source=generated.petWindowSource,start=source.indexOf('const boundsForAnimation='),end=source.indexOf('const play=',start);vm.runInContext(source.slice(start,end),sandbox);
+ assert.deepEqual({...vm.runInContext('boundsForAnimation([0,1])',sandbox)},{x:10,y:8,width:12,height:12});
+ assert.deepEqual({...vm.runInContext('boundsForAnimation([2])',sandbox)},{x:0,y:0,width:40,height:40});
 });
