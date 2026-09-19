@@ -83,7 +83,7 @@ export class CanvasCompositeCache {
   private readonly moveRenderer: CanvasMovePreviewRenderer
   private readonly selectionRenderer: CanvasSelectionPreviewRenderer
   constructor(private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES) {
-    this.moveRenderer = new CanvasMovePreviewRenderer(this.compositeCache, maxCacheBytes, this.blitter)
+    this.moveRenderer = new CanvasMovePreviewRenderer(this.compositeCache, maxCacheBytes)
     this.selectionRenderer = new CanvasSelectionPreviewRenderer(this.compositeCache, maxCacheBytes, this.blitter,
       (...args) => this.drawSurface(...args), (...args) => this.drawRegion(...args))
   }
@@ -712,15 +712,10 @@ export class CanvasCompositeCache {
     const visibleWidth = Math.max(0, toX - fromX)
     const visibleHeight = Math.max(0, toY - fromY)
     if (render && visibleWidth > 0 && visibleHeight > 0) {
-      const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, fromX, fromY, visibleWidth, visibleHeight)
-      // Axis-aligned nearest-neighbour sampling keeps the original affine
-      // scale. Rotated scenes retain their contiguous filtered scene path.
-      const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
-      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
-        this.blitter.drawAlignedPixelRegion(context, surface.bitmap ?? surface.canvas, originX, originY, view.zoom, fromX, fromY, fromX, fromY, visibleWidth, visibleHeight)
-      } else {
-        context.drawImage(surface.bitmap ?? surface.canvas, fromX, fromY, visibleWidth, visibleHeight, destination.left, destination.top, destination.width, destination.height)
-      }
+      // Cached composites must stay one affine blit. Splitting a large view
+      // into pixel runs turns pan and zoom into thousands of draw calls.
+      context.drawImage(surface.bitmap ?? surface.canvas, fromX, fromY, visibleWidth, visibleHeight,
+        originX + fromX * view.zoom, originY + fromY * view.zoom, visibleWidth * view.zoom, visibleHeight * view.zoom)
     }
     return surface
   }
@@ -826,13 +821,8 @@ export class CanvasCompositeCache {
     if (!region) return null
     if (!livePreviewAlreadyPainted) this.scheduleSurfaceBitmap(region)
     if (render) {
-      const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
-      const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
-      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
-        this.blitter.drawAlignedPixelRegion(context, region.bitmap ?? region.canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
-      } else {
-        context.drawImage(region.bitmap ?? region.canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
-      }
+      context.drawImage(region.bitmap ?? region.canvas, 0, 0, width, height,
+        originX + x * view.zoom, originY + y * view.zoom, width * view.zoom, height * view.zoom)
     }
     return region
   }

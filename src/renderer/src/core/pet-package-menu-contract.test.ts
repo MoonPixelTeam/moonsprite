@@ -5,7 +5,7 @@ import { unzipSync, strFromU8 } from 'fflate'
 import { extensionMenuItems, extensionMenuName, setExtensionMenuItems, clearExtensionCommandState } from './extension-command-state'
 
 it('ships installable static menu references and runtime items accepted by the host', async () => {
-  const files = unzipSync(readFileSync('output/pet-companion.msext'))
+  const files = unzipSync(readFileSync('src-tauri/resources/bundled-extensions/pet-companion.msext'))
   const manifest = JSON.parse(strFromU8(files['manifest.json']))
   for (const menu of manifest.topMenus) {
     expect(menu.commands.length).toBeGreaterThan(0)
