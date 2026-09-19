@@ -19,7 +19,7 @@ const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,s
 
 test('restarting restores explicit visibility and leaves persisted pet settings untouched', async () => {
  const stored=new Map([['preferences',{enabled:true,language:'ja-JP',breakMinutes:37}],['shownPets',['builtin']],['position:builtin',{ratioX:0.3,ratioY:0.7}],['pet-sprites',[{id:'builtin',frameCount:1,scale:3,mirrored:true}]]]);
- const boot=async()=>{const handlers={},opened=[];vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async()=>{}},windows:{open:async value=>opened.push(value),close:async()=>{},setVisible:async()=>{},postMessage:async()=>{}},diagnostics:{log:error=>{throw Error(error.message)}}}});await handlers.activate();return{handlers,opened}};
+ const boot=async()=>{const handlers={},opened=[];vm.runInNewContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async()=>{}},windows:{open:async value=>opened.push(value),close:async()=>{},setVisible:async()=>{},postMessage:async()=>{}},diagnostics:{log:error=>{throw Error(error.message)}}}});await handlers.activate();return{handlers,opened}};
  const before=JSON.stringify([...stored]);
  const first=await boot();assert.equal(first.opened.length,1);assert.equal(JSON.stringify([...stored]),before);
  const second=await boot();assert.equal(second.opened.length,1);assert.equal(JSON.stringify([...stored]),before);
@@ -91,7 +91,7 @@ test('manager switches all nine languages, preserves names and persists reminder
 test('runtime broadcasts the selected language and translates menus after preference changes', async () => {
   const stored=new Map([['preferences',{language:'ja-JP'}]]),handlers={},menus=[],sent=[];
   const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async()=>{},close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
-  nodeVm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
+  nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)[1],sandbox);
   await activatePets(handlers,['builtin']);
   await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}});
   assert.equal(sent.at(-1).message.preferences.language,'ja-JP');
@@ -106,7 +106,7 @@ test('host locale changes follow by default, localize the built-in name, and nev
   const stored=new Map([['preferences',{language:'auto',enabled:false}],['shownPets',['builtin']],['pet-sprites',[{id:'builtin',localizedName:'奶龙',name:'奶龙',frameCount:1}]]]);
   const handlers={},opened=[],sent=[],menus=[];
   const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async value=>opened.push(value),close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
-  nodeVm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
+  nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)[1],sandbox);
   await handlers['locale-changed']({locale:'de-DE'});
   assert.deepEqual(opened,[]);
   await handlers.activate();

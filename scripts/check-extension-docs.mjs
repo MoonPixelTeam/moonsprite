@@ -61,7 +61,7 @@ export function checkExtensionDocs() {
     for (const name of inventory.permissions) if (!runtime.includes('| `' + name + '` |')) errors.push(`Permissions${suffix}: missing ${name}`)
     const manifest = read(`docs/extensions/manifest${suffix}.md`)
     for (const field of inventory.manifestFields) if (!new RegExp(`\\b${field}\\b`).test(manifest)) errors.push(`Manifest${suffix}: missing ${field}`)
-    for (const [, js] of matches(form, /<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    for (const [, js] of matches(form, /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
       try { new Script(js, { filename: `ui-form${suffix}.md` }) } catch (error) { errors.push(String(error)) }
     }
     const compat = read(`docs/scripting/compatibility-api${suffix}.md`)
@@ -80,7 +80,7 @@ export function checkExtensionDocs() {
   const entries = [manifest.runtime.entry, ...Object.values(manifest.runtime.resources)]
   for (const entry of entries) {
     const html = read(sampleRoot + entry)
-    for (const [, js] of matches(html, /<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    for (const [, js] of matches(html, /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
       try { new Script(js, { filename: entry }) } catch (error) { errors.push(String(error)) }
     }
   }
