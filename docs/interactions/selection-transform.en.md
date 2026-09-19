@@ -28,6 +28,8 @@
 
 ## Hit Testing and Movement
 
+- Without a canvas selection or floating transform, `Shift+H` / `Shift+V` mirror explicitly selected timeline content horizontally or vertically in one batch. Selected cells affect only those cells; selecting only layers or groups affects all their frames. An ordinary frame-header click replaces the previous layer selection, including automatic selection after pasting, and affects all editable layers in the selected frames. Adding frames with Ctrl/Shift after selecting layers affects their intersection. An implicit active layer affects only its current frame. Raster pixels mirror within each cel surface without moving it; Tilemap mirrors cells and tile orientation, while free tiles mirror instances without changing shared sources. Shared linked content is processed once; hidden, locked, and text layers are skipped. Selection and the active frame are preserved, and the whole batch uses one undo/redo step. Existing canvas selections, floating transforms, and explicitly selected free-tile instances retain their existing priority.
+
 - Inside the selection moves selected content by default. Only an expanded hit region around the real selection border moves the outline itself. Empty edges of a non-rectangular selection's bounding rectangle must not trigger outline movement.
 - Inner and outer hit widths around a selection edge are visually symmetric and all four sides trigger reliably. Hit distance uses continuous document coordinates and must not shift right or down because of pixel flooring.
 - While creating, moving, or transforming a selection, reaching or crossing a canvas viewport edge continuously pans the view so the operation can continue. This pan is view state and does not enter document history.

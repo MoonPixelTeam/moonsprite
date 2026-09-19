@@ -1,3 +1,4 @@
+import { canvasCenteredDragFields, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionMask } from '@shared/types-selection'
 import { isLayerEffectivelyLocked } from '@/core/document-model'
@@ -144,6 +145,7 @@ export function createShapeCanvasInput(ports: Ports) {
           last: shapePoint,
           startClient: { x: event.clientX, y: event.clientY },
           constrain: inputRef.current.shiftHeld,
+          ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, shapePoint, inputRef.current.shiftHeld, session.shapeRatio, drawingAnchorPoint(session)),
           ...tilemapEditDragState
         }
       draw()

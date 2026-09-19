@@ -371,6 +371,15 @@ input[type="range"]:focus, input[type="range"]:focus-visible { outline: 0; box-s
 .menu-check { display: grid; grid-column: 1; grid-row: 1; place-items: center; width: var(--ui-menu-icon-column); height: var(--ui-menu-icon-column); margin: 0; }
 .menu-popover kbd { grid-column: 3; grid-row: 1; justify-self: end; color: var(--theme-text-muted); font: var(--ui-font-small) ui-monospace, Consolas, monospace; }
 .menu-popover button:hover kbd { color: var(--theme-on-accent); }
+/* Labels grow with translated copy; shortcuts and indicators keep their own columns. */
+.menu-strip > .menu-item > button { white-space: nowrap; }
+.menu-strip .menu-popover { width: max-content; min-width: var(--ui-menu-popover-width); max-width: min(40rem, calc(100vw - 16px)); }
+.menu-strip .menu-popover > .menu-action, .menu-strip .menu-submenu { min-width: 0; }
+.menu-popover .menu-action { min-width: 0; white-space: nowrap; }
+.menu-action > .menu-action-label { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-action > kbd { white-space: nowrap; }
+.menu-strip .recent-files-submenu, .menu-strip .script-files-submenu { max-height: min(420px, calc(100vh - 16px)); overflow-x: hidden; }
+
 .document-tab-context-menu { position: fixed; top: auto; left: auto; z-index: 640; width: 180px; }
 .context-menu { display: grid; width: 224px; padding: var(--ui-space-2); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
 .context-menu-item { display: grid; grid-template-columns: var(--ui-menu-icon-column) minmax(0, 1fr) auto; align-items: center; column-gap: var(--ui-space-4); min-height: var(--ui-menu-row-height); padding: 0 var(--ui-space-4); color: var(--theme-text-soft); background: transparent; text-align: left; font-size: var(--ui-font-regular); }
@@ -2877,7 +2886,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .themed-select-trigger svg { justify-self: end; color: var(--theme-text-muted); }
 .themed-select-selected-copy, .themed-select-option-copy { min-width: 0; }
 .themed-select-selected-copy { display: block; min-height: var(--ui-line-regular); padding-block: 1px; overflow: hidden; line-height: var(--ui-line-regular); text-overflow: ellipsis; white-space: nowrap; }
-.themed-select-popover { position: fixed; z-index: 620; max-height: min(320px, calc(100vh - 16px)); overflow-x: hidden; overflow-y: auto; padding: var(--ui-space-2); color: var(--theme-text-soft); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
+.themed-select-popover { width: max-content; max-width: calc(100vw - 16px); position: fixed; z-index: 620; max-height: min(320px, calc(100vh - 16px)); overflow-x: hidden; overflow-y: auto; padding: var(--ui-space-2); color: var(--theme-text-soft); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
 .themed-select-popover:has(.themed-select-search) { padding: 0; }
 .themed-select-search { position: sticky; top: 0; z-index: 1; display: block; margin: 0; padding: var(--ui-space-3); background: var(--theme-deep-surface); border-bottom: 1px solid var(--theme-border-strong); }
 .themed-select-search .text-input { width: 100%; min-width: 0; }
@@ -2894,7 +2903,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .themed-select-group { display: grid; padding: var(--ui-space-1) 0; border-bottom: 1px solid var(--theme-border); }
 .themed-select-group:last-child { border-bottom: 0; }
 .themed-select-group > span { padding: var(--ui-space-2) var(--ui-space-3) var(--ui-space-1); color: var(--theme-icon-muted); font: var(--ui-font-small)/1 ui-monospace, Consolas, monospace; }
-.themed-select-group > button { display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; min-height: var(--ui-menu-row-height); padding: 0 var(--ui-space-4); color: var(--theme-text-secondary-strong); background: transparent; text-align: left; font-size: var(--ui-font-regular); line-height: 1.2; }
+.themed-select-group > button { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; min-height: var(--ui-menu-row-height); padding: 0 var(--ui-space-4); color: var(--theme-text-secondary-strong); background: transparent; text-align: left; font-size: var(--ui-font-regular); line-height: 1.2; }
+.themed-select-group > button > .moon-tooltip-anchor { display: block; min-width: 0; }
 .themed-select-option-copy { display: block; width: 100%; }
 .themed-select-option-copy > strong { display: block; white-space: nowrap; }
 .themed-select-popover[data-hide-check="true"] .themed-select-group > button { grid-template-columns: minmax(0, 1fr); }

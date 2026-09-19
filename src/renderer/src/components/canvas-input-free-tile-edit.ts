@@ -1,3 +1,4 @@
+import { canvasCenteredDragFields, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { growFreeTileStrokeRaster } from '@/core/free-tile-stroke-raster'
 import type { FreeTileInstance } from '@shared/types-tiles'
 import type { RasterLayer } from '@shared/types-layer'
@@ -307,6 +308,7 @@ export function createFreeTileEditCanvasInput(ports: Ports) {
                     startClient: { x: event.clientX, y: event.clientY },
                     color,
                     constrain: inputRef.current.shiftHeld,
+                    ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, shapePoint, inputRef.current.shiftHeld, session.shapeRatio, drawingAnchorPoint(session)),
                     ...freeTileDragFields
                   }
           inputRef.current.drag = drag

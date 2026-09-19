@@ -52,6 +52,9 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   lineKind: LineKind
   curveAnchorCount: number
   shapeRatio: ShapeRatio | number | null
+  drawingAnchor: { x: number; y: number }
+  drawingAnchorVisible: boolean
+  drawFromCanvasCenter: boolean
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
@@ -121,6 +124,9 @@ export const defaultToolSettings: PersistedToolSettings = {
   lineKind: 'line',
   curveAnchorCount: 2,
   shapeRatio: null,
+  drawingAnchor: { x: 0.5, y: 0.5 },
+  drawingAnchorVisible: true,
+  drawFromCanvasCenter: false,
   shapeRounded: false,
   shapeCornerRadius: 4,
   fillMode: 'contiguous',
@@ -244,6 +250,9 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       lineKind: stored.lineKind === 'curve' ? 'curve' : 'line',
       curveAnchorCount: Number.isFinite(stored.curveAnchorCount) ? Math.max(1, Math.min(8, Math.round(stored.curveAnchorCount!))) : defaultToolSettings.curveAnchorCount,
       shapeRatio: normalizeShapeRatio(stored.shapeRatio),
+      drawingAnchor: stored.drawingAnchor && Number.isFinite(stored.drawingAnchor.x) && Number.isFinite(stored.drawingAnchor.y) ? { x: stored.drawingAnchor.x, y: stored.drawingAnchor.y } : { x: 0.5, y: 0.5 },
+      drawingAnchorVisible: stored.drawingAnchorVisible !== false,
+      drawFromCanvasCenter: stored.drawFromCanvasCenter === true,
       shapeRounded: typeof stored.shapeRounded === 'boolean' ? stored.shapeRounded : defaultToolSettings.shapeRounded,
       shapeCornerRadius: Number.isFinite(stored.shapeCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.shapeCornerRadius!))) : defaultToolSettings.shapeCornerRadius,
       fillMode: stored.fillMode === 'global' || stored.fillMode === 'contiguous' ? stored.fillMode : defaultToolSettings.fillMode,

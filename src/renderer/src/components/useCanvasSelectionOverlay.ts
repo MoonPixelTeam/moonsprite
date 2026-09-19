@@ -1,3 +1,4 @@
+import { drawingAnchorActive, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { isWorkspaceResizing } from './workspace-resize'
 import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
@@ -155,7 +156,9 @@ export function useCanvasSelectionOverlay(ports: Ports) {
     const alignmentGuides = ports.alignmentPreferences.alignmentGuidesVisible ? (selectionDrag?.alignmentGuides ?? []) : []
     const freeTileInstancesSelectionBounds =
       !visibleSelection && !visibleTextBox && !currentSession.animationPlaying ? ports.selectedFreeTileInstancesBounds(currentSession) : null
+    const anchorVisible = drawingAnchorActive(currentSession) && currentSession.drawingAnchorVisible
     const shouldDrawSelection = Boolean(
+      anchorVisible ||
       visibleSelection || visibleTextBox || freeTileInstancesSelectionBounds || (ports.selectionSizeVisible && selectionSizeTarget) || alignmentGuides.length
     )
     selectionOverlayVisibleRef.current = shouldDrawSelection
@@ -239,8 +242,9 @@ export function useCanvasSelectionOverlay(ports: Ports) {
         )
       : undefined
     const pivotTarget = transformedTarget ?? visibleSelection ?? undefined
-    const visiblePivot =
-      visibleSelection &&
+    const visiblePivot = anchorVisible
+      ? (selectionDrag?.drawingAnchorMove ? selectionDrag.previewPivot ?? drawingAnchorPoint(currentSession) : drawingAnchorPoint(currentSession))
+      : visibleSelection &&
       !visibleTextBox &&
       currentSession.freeTransformActive !== true &&
       currentSession.view.showSelectionPivot !== false &&

@@ -25,6 +25,7 @@ export const selectionPivotControlTarget = (target: SelectionRect | null): Selec
 } : null
 
 interface SelectionPivotControlsProps {
+  drawingAnchor?: boolean
   target: SelectionPivotTarget | null
   angle: number
   shear?: SelectionShearTransform
@@ -71,7 +72,7 @@ function SelectionPivotPresetIcon({ column, row }: Pick<PivotPresetItem, 'column
   />
 }
 
-export function SelectionPivotControls({ target, angle, shear, pivot, visible, onPivotChange, onVisibleChange }: SelectionPivotControlsProps) {
+export function SelectionPivotControls({ target, angle, shear, pivot, visible, onPivotChange, onVisibleChange, drawingAnchor = false }: SelectionPivotControlsProps) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 8, top: 8 })
@@ -131,7 +132,7 @@ export function SelectionPivotControls({ target, angle, shear, pivot, visible, o
     aria-label={t('toolOptions.selectionPivotPresets')}
     style={position}
   >
-    <CheckboxField className="selection-pivot-visibility" checked={visible} label={t('toolOptions.showSelectionPivot')} onChange={onVisibleChange} />
+    <CheckboxField className="selection-pivot-visibility" checked={visible} label={t(drawingAnchor ? 'toolOptions.showDrawingAnchor' : 'toolOptions.showSelectionPivot')} onChange={onVisibleChange} />
     <div className="selection-pivot-grid" role="group" aria-label={t('toolOptions.selectionPivotPresets')}>
       {PIVOT_PRESETS.map((preset) => {
         const label = t(preset.labelKey)
@@ -154,8 +155,8 @@ export function SelectionPivotControls({ target, angle, shear, pivot, visible, o
       ref={triggerRef}
       type="button"
       className={`icon-button selection-pivot-trigger ${open ? 'active' : ''}`}
-      title={t('toolOptions.adjustSelectionPivot')}
-      aria-label={t('toolOptions.adjustSelectionPivot')}
+      title={t(drawingAnchor ? 'toolOptions.adjustDrawingAnchor' : 'toolOptions.adjustSelectionPivot')}
+      aria-label={t(drawingAnchor ? 'toolOptions.adjustDrawingAnchor' : 'toolOptions.adjustSelectionPivot')}
       aria-expanded={open}
       onClick={() => setOpen((current) => !current)}
     ><SelectionPivotPresetIcon column={1} row={1} /></button>

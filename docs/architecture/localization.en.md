@@ -9,7 +9,7 @@ MoonSprite's interface language is managed by plain TypeScript language catalogs
 - `locales/<locale>.ts` stores one independent catalog per language. The Simplified Chinese catalog defines the complete translation-key set.
 - `core/localization.ts` is the only entry for locale codes, available languages, catalog registration, default fallback, and interpolation. It does not depend on React or Tauri. Non-React core algorithms and state modules read the persisted current language through `translateCurrent()` and must not independently parse locale codes.
 - `components/I18nProvider.tsx` reads the global language preference, provides `locale` and `t()` to React components, and updates `document.documentElement.lang` after preferences are applied.
-- `platform/tauri-api.ts` passes the current language when opening save and export dialogs. `src-tauri/src/platform_dialogs.rs` selects native file-dialog filter text from that language and does not read Renderer storage itself.
+- `platform/tauri-api.ts` passes the current language when opening save and export dialogs. `src-tauri/src/platform_dialogs.rs` selects native file-dialog filter text from the nine-language table in `platform_dialogs_localization.rs` and does not read Renderer storage itself.
 - `core/file-preferences.ts` persists only languages registered as available. Unknown, damaged, or incomplete language codes fall back to `zh-CN`.
 - User input, project names, layer names, file paths, and document pixel data must never be translated.
 

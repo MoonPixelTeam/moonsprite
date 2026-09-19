@@ -1289,6 +1289,10 @@ export const zhCNMessages = {
   'toolOptions.contiguousFill': '连续填充',
   'toolOptions.contiguous': '连续',
   'toolOptions.fixedRatio': '固定比例',
+  "toolOptions.canvasCenter": "以锚点绘制",
+  "toolOptions.canvasCenterHint": "固定选区或形状的绘制锚点，拖动调整大小。",
+  "toolOptions.adjustDrawingAnchor": "调整绘制锚点",
+  "toolOptions.showDrawingAnchor": "显示绘制锚点",
   'toolOptions.roundedCorners': '圆角',
   'toolOptions.cornerRadius': '圆角半径',
   'toolOptions.shapeWidthRatio': '形状宽度比例',
@@ -2876,4 +2880,5 @@ export const zhCNMessages = {
   "filter.preset.vignette.description": "压低边缘亮度，让视觉集中在画布中心。",
   "filter.preset.phosphor-glow.name": "荧光绿辉光",
   "filter.preset.phosphor-glow.description": "叠加柔和的绿色荧光显示器色调。",
+  'extension.invalidExportFile': "导出文件无效或超过 1 MiB。",
 } as const

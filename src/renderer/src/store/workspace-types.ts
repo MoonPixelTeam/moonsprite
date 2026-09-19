@@ -215,6 +215,9 @@ export interface DocumentSession {
   lineKind: LineKind
   curveAnchorCount: number
   shapeRatio: ShapeRatio | null
+  drawingAnchor: { x: number; y: number }
+  drawingAnchorVisible: boolean
+  drawFromCanvasCenter: boolean
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode

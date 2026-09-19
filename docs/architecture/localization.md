@@ -9,7 +9,7 @@ MoonSprite 的界面语言由纯 TypeScript 语言目录和 React 语言上下�
 - `locales/<locale>.ts` 分别保存每种语言的独立资源；简体中文目录定义完整翻译键集合。
 - `core/localization.ts` 是语言代码、可用语言列表、目录注册、默认回退和变量插值的唯一入口，不依赖 React 或 Tauri。非 React 的核心算法和状态模块通过 `translateCurrent()` 读取当前持久化语言，不得各自读取或解析语言代码。
 - `components/I18nProvider.tsx` 读取全局语言偏好，为 React 组件提供 `locale` 与 `t()`，并在首选项应用后同步更新 `document.documentElement.lang`。
-- `platform/tauri-api.ts` 在调用打开、保存和导出命令时传递当前语言；`src-tauri/src/platform_dialogs.rs` 只根据该语言选择原生文件对话框筛选器文案，不自行读取渲染器存储。
+- `platform/tauri-api.ts` 在调用打开、保存和导出命令时传递当前语言；`src-tauri/src/platform_dialogs.rs` 通过 `platform_dialogs_localization.rs` 的九语言文案表选择原生文件对话框筛选器文案，不自行读取渲染器存储。
 - `core/file-preferences.ts` 只持久化已经注册为可用的语言。未知、损坏或尚未完整发布的语言代码统一回退到 `zh-CN`。
 - 用户输入、工程名称、图层名称、文件路径和文档像素数据不得被翻译。
 

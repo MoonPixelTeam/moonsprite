@@ -1287,6 +1287,10 @@ export const enUSMessages = {
   'toolOptions.contiguousFill': 'Contiguous fill',
   'toolOptions.contiguous': 'Contiguous',
   'toolOptions.fixedRatio': 'Fixed Ratio',
+  "toolOptions.canvasCenter": "Draw with anchor point",
+  "toolOptions.canvasCenterHint": "Keep the drawing anchor fixed while dragging to resize the selection or shape.",
+  "toolOptions.adjustDrawingAnchor": "Adjust drawing anchor",
+  "toolOptions.showDrawingAnchor": "Show drawing anchor",
   'toolOptions.roundedCorners': 'Rounded Corners',
   'toolOptions.cornerRadius': 'Corner Radius',
   'toolOptions.shapeWidthRatio': 'Shape width ratio',
@@ -2825,4 +2829,5 @@ export const enUSMessages = {
   "filter.preset.vignette.description": "Darken the edges to draw attention to the center of the canvas.",
   "filter.preset.phosphor-glow.name": "Green phosphor glow",
   "filter.preset.phosphor-glow.description": "Add a soft green phosphor-monitor tint.",
+  'extension.invalidExportFile': "The export file is invalid or exceeds 1 MiB.",
 } satisfies TranslationCatalog

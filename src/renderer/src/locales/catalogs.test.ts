@@ -45,4 +45,9 @@ describe('registered language catalogs', () => {
     expect(translate(locale, 'history.display.shown', { shown: 3, total: 8 })).not.toMatch(/\{(?:shown|total)\}/)
     expect(translate(locale, 'usageStats.hoursMinutes', { hours: 2, minutes: 17 })).toContain('17')
   })
+  it.each(AVAILABLE_APP_LOCALES.filter((locale) => locale !== 'en-US' && locale !== 'zh-CN'))('%s does not leave common controls in English', (locale) => {
+    for (const key of ['preferences.extensions.disable', 'adjustment.hue', 'home.unpin', 'shortcuts.add', 'toolOptions.preset.coarse']) {
+      expect(catalogs[locale][key], key).not.toBe(english[key])
+    }
+  })
 })

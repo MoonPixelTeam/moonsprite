@@ -34,7 +34,7 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [position, setPosition] = useState({ left: 8, top: 8, width: 220 })
+  const [position, setPosition] = useState({ left: 8, top: 8, minWidth: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const options = groups.flatMap((group) => group.options)
@@ -47,13 +47,15 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
       const trigger = triggerRef.current?.getBoundingClientRect()
       const menu = menuRef.current?.getBoundingClientRect()
       if (!trigger || !menu) return
-      const requestedWidth = popoverWidth ?? Math.max(trigger.width, menuRef.current?.scrollWidth ?? menu.width)
+      const requestedWidth = popoverWidth ?? menu.width
       const width = Math.min(Math.max(trigger.width, requestedWidth), Math.max(1, window.innerWidth - 16))
       const left = Math.max(8, Math.min(window.innerWidth - width - 8, trigger.left))
       const top = window.innerHeight - trigger.bottom >= Math.min(menu.height, 320) + 5
         ? trigger.bottom + 4
         : Math.max(8, trigger.top - Math.min(menu.height, 320) - 4)
-      setPosition({ left, top, width })
+      const minWidth = Math.min(trigger.width, Math.max(1, window.innerWidth - 16))
+      setPosition((current) => current.left === left && current.top === top && current.minWidth === minWidth
+        ? current : { left, top, minWidth })
     }
     place()
     window.addEventListener('resize', place)
@@ -83,13 +85,13 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
   }
 
   return <span className={`themed-select themed-select-${density}`}>
-    <button ref={triggerRef} type="button" className="themed-select-trigger" aria-label={label} aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
+    <button ref={triggerRef} type="button" className="themed-select-trigger" title={selected?.label ?? value} aria-label={label} aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
         moveSelection(event.key === 'ArrowDown' ? 1 : -1)
       }
       if (event.key === 'Escape') setOpen(false)
     }}><span className="themed-select-selected-copy">{selected ? renderSelected?.(selected) ?? selected.label : value}</span><ChevronDown size={14} /></button>
-    {open && createPortal(<div ref={menuRef} className={`themed-select-popover component-scrollbar ${popoverClassName}`.trim()} data-hide-check={!showCheck ? 'true' : undefined} data-preserve-animation-selection={preserveAnimationSelection ? '' : undefined} role="listbox" aria-label={label} style={position}>{searchable && <div className="themed-select-search"><TextInput autoFocus value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder || label} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setOpen(false); setQuery('') } }} /></div>}{filteredGroups.map((group) => <section key={group.label} className="themed-select-group">{group.options.map((option) => { const optionCopy = <span className="themed-select-option-copy">{renderOption?.(option) ?? <strong>{option.label}</strong>}</span>; return <button key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => select(option.value)}>{showOptionTooltips ? <Tooltip content={option.description}>{optionCopy}</Tooltip> : optionCopy}{showCheck && option.value === value && <PixelUtilityIcon kind="check" />}</button> })}</section>)}</div>, document.body)}
+    {open && createPortal(<div ref={menuRef} className={`themed-select-popover component-scrollbar ${popoverClassName}`.trim()} data-hide-check={!showCheck ? 'true' : undefined} data-preserve-animation-selection={preserveAnimationSelection ? '' : undefined} role="listbox" aria-label={label} style={{ ...position, width: popoverWidth === undefined ? 'max-content' : Math.max(position.minWidth, popoverWidth) }}>{searchable && <div className="themed-select-search"><TextInput autoFocus value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder || label} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setOpen(false); setQuery('') } }} /></div>}{filteredGroups.map((group) => <section key={group.label} className="themed-select-group">{group.options.map((option) => { const optionCopy = <span className="themed-select-option-copy">{renderOption?.(option) ?? <strong>{option.label}</strong>}</span>; return <button key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => select(option.value)}>{showOptionTooltips ? <Tooltip content={option.description ? `${option.label} — ${option.description}` : option.label}>{optionCopy}</Tooltip> : optionCopy}{showCheck && option.value === value && <PixelUtilityIcon kind="check" />}</button> })}</section>)}</div>, document.body)}
   </span>
 }

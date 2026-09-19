@@ -206,6 +206,9 @@ export interface CanvasDragState extends LayerMoveState {
   transformStartShear?: SelectionShearTransform
   transformOffset?: CanvasPoint
   transformMoveStart?: { pointer: CanvasPoint; offset: CanvasPoint }
+  drawingAnchor?: CanvasPoint
+  drawingAnchorMove?: boolean
+  canvasCenterSize?: { width: number; height: number }
   marqueeBounds?: SelectionRect
   marqueeAngle?: number
   marqueeModifierMode?: MarqueeModifierMode

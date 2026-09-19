@@ -156,6 +156,9 @@ export interface WorkspaceToolCommands {
   setLineKind(kind: LineKind): void
   setCurveAnchorCount(count: number): void
   setShapeRatio(ratio: ShapeRatio | null): void
+  setDrawingAnchor(point: { x: number; y: number }): void
+  setDrawingAnchorVisible(visible: boolean): void
+  setDrawFromCanvasCenter(enabled: boolean): void
   setShapeRounded(enabled: boolean): void
   setShapeCornerRadius(radius: number): void
   setFillMode(mode: FillMode): void
