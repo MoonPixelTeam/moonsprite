@@ -4,6 +4,8 @@
 
 ## Creating Selections
 
+- Rectangle/ellipse selections and matching shapes can use a fixed drawing anchor. The default is the canvas center; nine-position presets, X/Y controls, and canvas dragging adjust it, with a separate visibility toggle. The anchor is stored relative to canvas size and resolved on the half-pixel grid. With fixed-center drawing enabled, preview and committed geometry use the same anchor; these tool preferences do not enter document undo history.
+
 - Rectangle, ellipse, free lasso, polygon lasso, and magic wand share Replace, Add, Subtract, and Intersect modes.
 - All five selection tools share horizontal, vertical, upper-right-to-lower-left, and upper-left-to-lower-right symmetry axes. Every new original mask first computes and deduplicates its closure through all enabled axes and the movable pivot, then combines with the previous selection according to Replace, Add, Subtract, or Intersect. Path preview, magic-wand preview, and committed result must match. Diagonal mirrored pixels outside a rectangular canvas do not enter the mask.
 - With symmetry enabled, moving, scaling, rotating, or skewing transforms only one representative region from each symmetry orbit and regenerates the mirrored closure around the current pivot. A move may begin from any mirrored region; the pressed region follows the pointer while all other regions move with the corresponding reflection in real time. Outline, pixel preview, actual write, and the single undo entry must agree. Already symmetric source content must not be copied again into extra duplicates.
@@ -27,6 +29,8 @@
 - `Ctrl+H` only hides or shows selection borders. Eight transform controls remain visible and interactive. The real selection continues constraining drawing, adjustments, and movement. This view state does not enter document history.
 
 ## Hit Testing and Movement
+
+- Without a canvas selection or floating transform, `Shift+H` / `Shift+V` mirror explicitly selected timeline content horizontally or vertically in one batch. Selected cells affect only those cells; selecting only layers or groups affects all their frames. An ordinary frame-header click replaces the previous layer selection, including automatic selection after pasting, and affects all editable layers in the selected frames. Adding frames with Ctrl/Shift after selecting layers affects their intersection. An implicit active layer affects only its current frame. Raster pixels mirror within each cel surface without moving it; Tilemap mirrors cells and tile orientation, while free tiles mirror instances without changing shared sources. Shared linked content is processed once; hidden, locked, and text layers are skipped. Selection and the active frame are preserved, and the whole batch uses one undo/redo step. Existing canvas selections, floating transforms, and explicitly selected free-tile instances retain their existing priority.
 
 - Inside the selection moves selected content by default. Only an expanded hit region around the real selection border moves the outline itself. Empty edges of a non-rectangular selection's bounding rectangle must not trigger outline movement.
 - Inner and outer hit widths around a selection edge are visually symmetric and all four sides trigger reliably. Hit distance uses continuous document coordinates and must not shift right or down because of pixel flooring.

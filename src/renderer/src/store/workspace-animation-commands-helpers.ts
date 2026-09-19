@@ -1,4 +1,4 @@
-import type { AnimationCel, AnimationLoopDirection, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
+import type { AnimationCel, AnimationLoopSection, AnimationTimeline } from '@shared/types-animation'
 import type { LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SpriteDocument } from '@shared/types-document'
 import { createId, isGroupEffectivelyLocked, isLayerEffectivelyLocked } from '@/core/document-model'
@@ -26,6 +26,7 @@ export const setTimelineActiveFrame = (session: DocumentSession, frameId: string
 export const setAnimationLoopPlaybackSection = (session: DocumentSession, section: AnimationLoopSection): void => {
   session.animationPlaybackLoopSectionId = section.id
   session.animationPlaybackLoopIteration = 0
+  session.animationPlaybackLoopPosition = undefined
   session.animationPlaybackLoopSectionRepeatIndefinitely = section.repeatCount === null
 }
 
@@ -94,10 +95,15 @@ export const nestedAnimationLoopSectionAtFrame = (timeline: AnimationTimeline, p
   )
 }
 
-export const animationLoopSectionBoundaryFrameId = (timeline: AnimationTimeline, section: AnimationLoopSection, direction: AnimationLoopDirection): string | null => {
+export const animationLoopSectionBoundaryFrameId = (timeline: AnimationTimeline, section: AnimationLoopSection, parent: AnimationLoopSection, position = 0): string | null => {
+  const parentRange = resolveAnimationLoopSectionRange(timeline, parent)
+  const parentLength = parentRange ? timeline.frames.slice(parentRange.startIndex, parentRange.endIndex + 1).filter((frame) => !frame.disabled).length : 0
+  const returning = position >= parentLength
+  const initiallyReverse = parent.direction === 'reverse' || parent.direction === 'ping-pong-reverse'
+  const reverse = initiallyReverse !== returning
   const range = resolveAnimationLoopSectionRange(timeline, section)
   if (!range) return null
-  return timeline.frames[direction === 'forward' ? range.endIndex : range.startIndex]?.id ?? null
+  return timeline.frames[reverse ? range.startIndex : range.endIndex]?.id ?? null
 }
 
 export const updateSelectedAnimationFramesDisabled = (session: DocumentSession, update: boolean | 'toggle'): void => {

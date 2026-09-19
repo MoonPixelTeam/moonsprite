@@ -1,6 +1,7 @@
 import { completeDocumentChange } from './workspace-document-change'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
+import type { PixelFormat } from '@shared/types-raster'
 import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { commitPixelEdit, revertPixelEdit, type HistoryEntry, type PixelEdit } from '@/core/history'
@@ -19,6 +20,7 @@ import type { WorkspaceColorCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
+import { quantizePixelColor } from '@/core/pixel-format'
 
 const cloneColorReplacementPalette = (palette: SpriteDocument['palette']): SpriteDocument['palette'] =>
   palette.map((entry) => ({ ...entry, color: { ...entry.color } }))
@@ -146,6 +148,32 @@ const updatePaletteColorWithSynchronization = (session: DocumentSession, id: num
 export function createWorkspaceColorCommands({ get, set, recording }: WorkspaceCommandContext<'deletePaletteColors' | 'mutateActive' | 'redo' | 'setPrimaryColor' | 'undo'>): WorkspaceColorCommands {
   const { recordDocumentOperation } = recording
   return {
+    setPixelFormat(format: PixelFormat) {
+      const state = get()
+      let changed = false
+      for (const session of state.sessions) {
+        const document = session.document
+        if (document.colorMode !== 'rgba' || (document.pixelFormat ?? 'rgba32') === format) continue
+        document.pixelFormat = format
+        const seen = new Set<Uint8ClampedArray>()
+        const quantizePixels = (pixels: Uint8ClampedArray): void => {
+          if (seen.has(pixels)) return
+          seen.add(pixels)
+          for (let offset = 0; offset + 3 < pixels.length; offset += 4) {
+            const color = quantizePixelColor({ r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2], a: pixels[offset + 3] }, format)
+            pixels[offset] = color.r
+            pixels[offset + 1] = color.g
+            pixels[offset + 2] = color.b
+            pixels[offset + 3] = color.a
+          }
+        }
+        for (const layer of document.layers) if (layer.format === 'rgba') quantizePixels(layer.pixels)
+        for (const cel of document.animation?.cels ?? []) if (cel.surface?.format === 'rgba') quantizePixels(cel.surface.pixels)
+        completeDocumentChange(session, 'content', recordDocumentOperation, { kind: 'full' })
+        changed = true
+      }
+      if (changed) set({ sessions: [...state.sessions] })
+    },
     setPrimaryColor(color) {
       const state = get()
       for (const session of state.sessions) {

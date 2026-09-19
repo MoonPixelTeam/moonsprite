@@ -1,4 +1,4 @@
-import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
+import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import type { TilemapCell } from '@shared/types-tiles'
 import { layerMaskDisplayColor, resolveLayerCanvasColor } from '@/core/document-model'
@@ -15,6 +15,8 @@ export function renderCanvasTileBrush({
   currentActiveLayer,
   currentSession,
   brushPreviewMode,
+  brushEdgeColor,
+  brushEdgeThickness = 1,
   canRenderToolPreview,
   inputRef,
   drag,
@@ -39,6 +41,8 @@ export function renderCanvasTileBrush({
   currentActiveLayer: import('@shared/types-layer').RasterLayer
   currentSession: DocumentSession
   brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
+  brushEdgeColor?: RgbaColor
+  brushEdgeThickness: number
   canRenderToolPreview: boolean
   inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
   drag: DragState | null
@@ -168,13 +172,14 @@ export function renderCanvasTileBrush({
               }
           }
           if (drawPreviewOutline) {
-            context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+            context.lineWidth = brushEdgeThickness
+            alignCanvasStrokePath(context)
             const outline = new CanvasAdaptiveOutline()
             const rect = { x: copy.originX + bounds.x * view.zoom, y: copy.originY + bounds.y * view.zoom, width: bounds.width * view.zoom, height: bounds.height * view.zoom }
             outline.include(rect)
             context.beginPath()
             context.rect(rect.x, rect.y, rect.width, rect.height)
-            outline.stroke(context)
+            outline.stroke(context, undefined, brushEdgeColor)
           }
           context.restore()
         }

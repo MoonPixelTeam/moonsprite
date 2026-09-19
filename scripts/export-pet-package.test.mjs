@@ -1,5 +1,9 @@
+import { animationLoopFrameIdsForExport } from '../src/renderer/src/core/animation-loop-sections.ts'
 import { readFileSync } from 'node:fs'
-import vm from 'node:vm'
+import nodeVm from 'node:vm'
+import { createLocalizationSource, catalogs, languages } from './pet-companion-localization.mjs'
+const localeContext={navigator:{languages:['zh-CN']},t:(key,params={})=>key.replace(/\{([a-zA-Z]+)\}/g,(all,name)=>params[name]??all),setPetLanguage:()=>{},petLocale:'zh-CN',PET_LANGUAGES:[],createLocalizationSource};
+const vm={...nodeVm,createContext:(value={})=>nodeVm.createContext({...localeContext,...value}),runInNewContext:(source,value={})=>nodeVm.runInNewContext(source,{...localeContext,...value})};
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -9,8 +13,133 @@ const context = vm.createContext({
   PET_SLOT_COUNT: 8, BUILT_IN_PET_ID: 'builtin', petName: 'Test', extensionId: 'test.pet',
   basename: value => value, sourcePath: 'test.moonsprite'
 })
-vm.runInContext(source.slice(source.indexOf('const defaults ='), source.indexOf('const sprite =')), context)
-const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource})', context)
+vm.runInContext(source.slice(source.indexOf('const localizationSource ='), source.indexOf('const sprite =')), context)
+const activatePets=async(handlers,ids=['builtin'])=>{await handlers.activate();for(const commandId of ids)await handlers.command({event:'toggle-pet',commandId})};
+const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource,triggerConditions})', context)
+
+test('restarting restores explicit visibility and leaves persisted pet settings untouched', async () => {
+ const stored=new Map([['preferences',{enabled:true,language:'ja-JP',breakMinutes:37}],['shownPets',['builtin']],['position:builtin',{ratioX:0.3,ratioY:0.7}],['pet-sprites',[{id:'builtin',frameCount:1,scale:3,mirrored:true}]]]);
+ const boot=async()=>{const handlers={},opened=[];vm.runInNewContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async()=>{}},windows:{open:async value=>opened.push(value),close:async()=>{},setVisible:async()=>{},postMessage:async()=>{}},diagnostics:{log:error=>{throw Error(error.message)}}}});await handlers.activate();return{handlers,opened}};
+ const before=JSON.stringify([...stored]);
+ const first=await boot();assert.equal(first.opened.length,1);assert.equal(JSON.stringify([...stored]),before);
+ const second=await boot();assert.equal(second.opened.length,1);assert.equal(JSON.stringify([...stored]),before);
+ await second.handlers.command({event:'toggle-pet',commandId:'builtin'});
+ assert.equal((await boot()).opened.length,0);
+ assert.equal(stored.get('preferences').breakMinutes,37);
+ assert.deepEqual(stored.get('position:builtin'),{ratioX:0.3,ratioY:0.7});
+ assert.equal(stored.get('pet-sprites')[0].scale,3);assert.equal(stored.get('pet-sprites')[0].mirrored,true);
+});
+
+test('all extension messages have nine translations with identical placeholders', () => {
+  const keys=new Set([...source.matchAll(/\bt\('([^']+)'/g)].map(match=>match[1]));
+  for(const condition of generated.triggerConditions){keys.add(condition[1]);keys.add(condition[2])}
+  const placeholders=value=>[...value.matchAll(/\{([a-zA-Z]+)\}/g)].map(match=>match[1]).sort();
+  assert.equal(languages.length,9);
+  for(const [locale] of languages)for(const key of keys){
+    assert.ok(catalogs[locale][key],locale+': '+key);
+    assert.deepEqual(placeholders(catalogs[locale][key]),placeholders(key),locale+': '+key);
+  }
+});
+
+test('locale resolution supports regional variants, explicit override and English fallback', () => {
+  const sandbox=nodeVm.createContext({navigator:{languages:['fr-CA','en-US']}});
+  nodeVm.runInContext(createLocalizationSource(),sandbox);
+  assert.equal(nodeVm.runInContext('petLocale',sandbox),'fr-FR');
+  for(const [input,expected] of [['pt-PT','pt-BR'],['zh-Hant-TW','zh-CN'],['JA_jp','ja-JP'],['xx','en-US']])
+    assert.equal(nodeVm.runInContext(`resolvePetLanguage('auto',${JSON.stringify([input])})`,sandbox),expected);
+  assert.equal(nodeVm.runInContext("setPetLanguage('ko-KR');t('上传动画')",sandbox),'애니메이션 업로드');
+  assert.equal(nodeVm.runInContext("t('已显示 {name}',{name:'{time} My 宠物'})",sandbox),'{time} My 宠物 표시 중');
+});
+
+test('manager switches all nine languages, preserves names and persists reminder preferences', async () => {
+  const pet={id:'builtin',name:'上传动画',frameCount:0,animations:{},triggerSlots:[{id:'TRIGGER_X',event:'tool.changed',tool:'pencil',cooldownMs:0,idleSeconds:60}]};
+  const stored=new Map([['pet-sprites',[pet]],['preferences',{language:'zh-CN',scale:3,enabled:false,unsavedMinutes:17,breakMinutes:33}]]);
+  const views=[],messages=[],errors=[];let listener;
+  const sandbox=nodeVm.createContext({navigator:{languages:['en-US']},moonsprite:{storage:{get:async key=>stored.get(key),set:async(key,value)=>stored.set(key,value)},window:{onMessage:fn=>listener=fn,postMessage:async value=>{messages.push(value);if(value.type==='ui-state')views.push(value)}},diagnostics:{log:error=>errors.push(error)}}});
+  nodeVm.runInContext(generated.storeSource+generated.managerSource,sandbox);
+  await new Promise(resolve=>setImmediate(resolve));
+  const send=async message=>{listener(message);await nodeVm.runInContext('operations',sandbox)};
+  const flatten=nodes=>nodes.flatMap(node=>[node,...flatten(node.children||[])]);
+  for(const [locale] of languages){
+    await send({type:'ui-language',values:{language:locale}});
+    const nodes=flatten(views.at(-1).nodes),byId=id=>nodes.find(node=>node.id===id);
+    assert.equal(byId('edit-builtin').label,'上传动画'); // User text must never be translated.
+    assert.equal(byId('upload-IDLE').label,catalogs[locale]['上传动画']);
+    assert.equal(byId('slot-TRIGGER_X').label,catalogs[locale]['切换工具']+' · '+catalogs[locale]['画笔']);
+    assert.equal(stored.get('preferences').language,locale);
+    assert.equal(stored.get('preferences').scale,3);
+    await send({type:'ui-add-trigger',petId:'builtin'});
+    const dialog=flatten(views.at(-1).nodes).find(node=>node.id==='trigger-event');
+    assert.equal(dialog.options[0].label,catalogs[locale]['撤销']);
+    assert.equal(dialog.options[0].description,catalogs[locale]['实际完成一次撤销后播放。']);
+    await send({type:'ui-cancel-trigger'});
+  }
+  await send({type:'ui-preference',key:'remindersEnabled',value:false});
+  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='clockEnabled'));
+  await send({type:'ui-preference',key:'remindersEnabled',value:true});
+  await send({type:'ui-preference',key:'unsavedEnabled',value:false});
+  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='unsavedMinutes'));
+  assert.ok(flatten(views.at(-1).nodes).some(node=>node.id==='breakMinutes'));
+  await send({type:'ui-preference',key:'breakMinutes',values:{breakMinutes:42}});
+  assert.equal(stored.get('preferences').breakMinutes,42);
+  assert.equal(stored.get('preferences').unsavedMinutes,17);
+  assert.equal(stored.get('preferences').enabled,false);
+  assert.deepEqual(errors,[]);
+  assert.ok(messages.some(message=>message.type==='catalog'));
+});
+
+test('runtime broadcasts the selected language and translates menus after preference changes', async () => {
+  const stored=new Map([['preferences',{language:'ja-JP'}]]),handlers={},menus=[],sent=[];
+  const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async()=>{},close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
+  nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)[1],sandbox);
+  await activatePets(handlers,['builtin']);
+  await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}});
+  assert.equal(sent.at(-1).message.preferences.language,'ja-JP');
+  assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['ja-JP']['宠物管理…']);
+  stored.set('preferences',{...stored.get('preferences'),language:'de-DE'});
+  await handlers['window-message']({windowId:'manager',message:{type:'catalog'}});
+  assert.equal(sent.at(-1).message.preferences.language,'de-DE');
+  assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['de-DE']['宠物管理…']);
+});
+
+test('host locale changes follow by default, localize the built-in name, and never enable pets', async () => {
+  const stored=new Map([['preferences',{language:'auto',enabled:false}],['shownPets',['builtin']],['pet-sprites',[{id:'builtin',localizedName:'奶龙',name:'奶龙',frameCount:1}]]]);
+  const handlers={},opened=[],sent=[],menus=[];
+  const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async value=>opened.push(value),close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
+  nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)[1],sandbox);
+  await handlers['locale-changed']({locale:'de-DE'});
+  assert.deepEqual(opened,[]);
+  await handlers.activate();
+  assert.deepEqual(opened,[]);
+  assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['de-DE']['宠物管理…']);
+  await handlers.command({event:'toggle-pet',commandId:'builtin'});
+  await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}});
+  assert.equal(sent.at(-1).message.pet.name,'Nailong');
+  await handlers['locale-changed']({locale:'ja-JP'});
+  assert.equal(sent.at(-1).message.pet.name,'ナイロン');
+  assert.equal(sent.at(-1).message.preferences.hostLocale,'ja-JP');
+  stored.set('preferences',{...stored.get('preferences'),language:'zh-CN'});
+  await handlers['locale-changed']({locale:'fr-FR'});
+  assert.equal(sent.at(-1).message.pet.name,'奶龙');
+  assert.equal(opened.length,1);
+});
+
+test('new built-in assets replace old animation overrides while preserving scale and mirror', () => {
+  const sandbox=nodeVm.createContext({});
+  nodeVm.runInContext(createLocalizationSource()+vm.runInContext('builtinSource',context),sandbox);
+  const builtin={id:'builtin',name:'奶龙',localizedName:'奶龙',assetVersion:'new',source:'builtin',animations:{SHOW:[0],IDLE:[1],TRIGGER_TOUCH:[2],TRIGGER_UNDO:[3]},triggerSlots:[{id:'TRIGGER_TOUCH',event:'pet.enter',cooldownMs:0},{id:'TRIGGER_UNDO',event:'history.undo',cooldownMs:0}]};
+  sandbox.builtin=builtin;
+  sandbox.saved={id:'builtin',name:'Old',source:'custom',spriteKey:'old',scale:4,mirrored:true,animations:{IDLE:[77]}};
+  const migrated=nodeVm.runInContext('resolveBuiltin(saved,builtin)',sandbox);
+  assert.equal(migrated.name,'Nailong');
+  assert.equal(migrated.source,'builtin');
+  assert.equal(migrated.spriteKey,undefined);
+  assert.equal(migrated.scale,4);assert.equal(migrated.mirrored,true);
+  assert.deepEqual(migrated.animations,builtin.animations);
+  assert.deepEqual(migrated.triggerSlots,builtin.triggerSlots);
+  sandbox.saved={...migrated,animations:{...migrated.animations,IDLE:[8]}};
+  assert.deepEqual(nodeVm.runInContext('resolveBuiltin(saved,builtin).animations.IDLE',sandbox),[8]);
+});
 
 test('transparent pet margins never become an input region', async () => {
   const calls=[]
@@ -40,9 +169,9 @@ test('clicking a pet without a project still shows a bubble', async () => {
 })
 
 test('multiple pets have independent windows, positions and scales', async () => {
- const handlers={},opened=[],closed=[],visibility=[],sent=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]])
+ const handlers={},opened=[],closed=[],visibility=[],sent=[],stored=new Map([['shownPets',[]],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]])
  vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async payload=>visibility.push(payload),open:async payload=>opened.push(payload),close:async payload=>closed.push(payload),postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
- await handlers.activate()
+ await activatePets(handlers,['builtin','custom'])
  closed.length=0
  assert.deepEqual(opened.map(value=>value.windowId),['pet-builtin','pet-custom'])
  await handlers['window-message']({windowId:'pet-custom',message:{type:'ready'}})
@@ -131,7 +260,7 @@ test('dragging drops stale requests and applies the latest pointer position', as
   const start=generated.petWindowSource.indexOf('const movePet=')
   const end=generated.petWindowSource.indexOf('// Coalesce host changes',start)
   const requests=[],releases=[]
-  const sandbox=vm.createContext({hostEpoch:0,clampPetBounds:bounds=>bounds,moonsprite:{window:{setBounds:bounds=>{requests.push(bounds);return new Promise(resolve=>releases.push(resolve))}},diagnostics:{log:()=>{}}}})
+  const sandbox=vm.createContext({stopDraggingAnimation:()=>{},hostEpoch:0,clampPetBounds:bounds=>bounds,moonsprite:{window:{setBounds:bounds=>{requests.push(bounds);return new Promise(resolve=>releases.push(resolve))}},diagnostics:{log:()=>{}}}})
   vm.runInContext('let dragQueue=null,pendingDrag=null;'+generated.petWindowSource.slice(start,end),sandbox)
   sandbox.gesture={epoch:0,x:0,y:0,origin:Promise.resolve([{x:0,y:0,width:360,height:360},{}]),content:{}}
   vm.runInContext('movePet(gesture,1,1)',sandbox)
@@ -195,19 +324,18 @@ test('supplementing SHOW preserves IDLE, drops unsupported slots, and rollback p
   assert.equal(meta[0],saved);assert.equal(sprites.has(key),true);assert.equal(sprites.size,1)
 })
 
-test('menu omits show action and reminders expose independent controls without custom text', () => {
-  const manifest=vm.runInContext('manifest',context)
-  assert.equal(manifest.topMenus[0].commands.includes('toggle'),false)
-  assert.deepEqual(Array.from(manifest.topMenus[0].commands),['manager','settings'])
-  const controls=manifest.settingsUi.controls
-  for(const key of ['scale','unsavedText','breakText'])assert.equal(controls.some(control=>control.id===key),false)
-  for(const key of ['unsavedEnabled','breakEnabled'])assert.ok(controls.some(control=>control.id===key))
-  for(const key of ['unsavedMinutes','breakMinutes'])assert.equal(controls.find(control=>control.id===key).step,1)
-})
+test('manifest keeps a neutral settings launcher and runtime owns localized menus', () => {
+ const manifest=vm.runInContext('manifest',context);
+ assert.deepEqual(Array.from(manifest.topMenus[0].commands),['settings']);
+ assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['manager']);
+ assert.equal(manifest.settingsUi.controls[0].fullWidth,true);
+ assert.equal(manifest.settingsUi.controls[0].closeOnRun,true);
+ assert.ok(generated.runtimePage.includes("name:t('宠物管理…')"));
+});
 
 test('mirrored playback flips the actual drawn pixels, not only the element', () => {
   const calls=[]
-  const sandbox=vm.createContext({animationToken:0,pointer:null,image:{},pet:{mirrored:true,frameWidth:2,frameHeight:2,durations:[125],idleFrames:[0]},hitAlpha:null,
+  const sandbox=vm.createContext({boundsForAnimation:()=>null,info:{hidden:true},notice:{hidden:true},animationToken:0,pointer:null,image:{},pet:{mirrored:true,frameWidth:2,frameHeight:2,durations:[125],idleFrames:[0]},hitAlpha:null,
     context:{clearRect(){},save(){},translate:(...args)=>calls.push(['translate',...args]),scale:(...args)=>calls.push(['scale',...args]),drawImage(){},restore(){},getImageData:()=>({data:new Uint8Array(16)})},scheduleHitRegion(){},setTimeout(){}})
   const start=generated.petWindowSource.indexOf('const play=')
   const end=generated.petWindowSource.indexOf('const showInfo=',start)
@@ -217,10 +345,10 @@ test('mirrored playback flips the actual drawn pixels, not only the element', ()
 })
 
 test('reminders use actual elapsed minutes and ignore old custom wording', async () => {
- const handlers={},sent=[],base=Date.now()
- const sandbox=vm.createContext({setTimeout,clearTimeout,moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{set:async()=>{},get:async({key})=>key==='preferences'?{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'OLD',breakText:'OLD'}:null},windows:{setVisible:async()=>{},open:async()=>{},close:async()=>{},postMessage:async payload=>{sent.push(payload);if(payload.message.type==='notice-distance')await handlers['window-message']({windowId:payload.windowId,message:{...payload.message,distance:10}})}},diagnostics:{log:async()=>{}}}})
+ const handlers={},sent=[],base=Date.now(),storage=new Map([['preferences',{breakMinutes:1,unsavedMinutes:1,clockEnabled:false,unsavedText:'OLD',breakText:'OLD'}]])
+ const sandbox=vm.createContext({setTimeout,clearTimeout,moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{set:async({key,value})=>storage.set(key,value),get:async({key})=>storage.get(key)},windows:{setVisible:async()=>{},open:async()=>{},close:async()=>{},postMessage:async payload=>{sent.push(payload);if(payload.message.type==='notice-distance')await handlers['window-message']({windowId:payload.windowId,message:{...payload.message,distance:10}})}},diagnostics:{log:async()=>{}}}})
  vm.runInContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],sandbox)
- await handlers.activate()
+ await activatePets(handlers)
  await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}})
  await handlers.project({project:{id:'doc',dirty:true,contentRevision:0},homeOpen:false})
  await handlers.project({project:{id:'doc',dirty:true,contentRevision:1},homeOpen:false})
@@ -264,9 +392,9 @@ test('manager opens even while pet initialization is pending or fails', async ()
 })
 
 test('a failed pet does not block the other pets and can be opened on the next change', async () => {
- const handlers={},opened=[],sent=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]]);let fail=true;
+ const handlers={},opened=[],sent=[],stored=new Map([['shownPets',[]],['pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:3}]]]);let fail=true;
  vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async payload=>{if(fail&&payload.windowId==='pet-builtin')throw Error('open failed');opened.push(payload)},close:async()=>{},postMessage:async payload=>sent.push(payload)},diagnostics:{log:async()=>{}}}})
- await handlers.activate();assert.deepEqual(opened.map(p=>p.windowId),['pet-custom']);
+ await activatePets(handlers,['builtin','custom']);assert.deepEqual(opened.map(p=>p.windowId),['pet-custom']);
  await handlers['window-message']({windowId:'pet-custom',message:{type:'ready'}});sent.length=0;
  fail=false;stored.set('pet-sprites',[{id:'custom',frameWidth:20,frameHeight:20,frameCount:1,scale:4}]);
  await handlers['window-message']({windowId:'manager',message:{type:'catalog'}});
@@ -275,19 +403,20 @@ test('a failed pet does not block the other pets and can be opened on the next c
 })
 
 
-test('activation shows the built-in pet even after all pets were hidden and publishes only usable menu items', async () => {
- const handlers={},opened=[],menus=[],stored=new Map([['preferences',{enabled:false}],['shownPets',[]],['pet-sprites',[{id:'empty',name:'Empty',frameCount:0}]]]);
+test('activation restores pets when the previous session had them enabled and publishes only usable menu items', async () => {
+ const handlers={},opened=[],menus=[],stored=new Map([['preferences',{enabled:true}],['shownPets',['builtin']],['pet-sprites',[{id:'empty',name:'Empty',frameCount:0}]]]);
  vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async value=>menus.push(value)},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async value=>opened.push(value),close:async()=>{},postMessage:async()=>{}},diagnostics:{log:async()=>{}}}});
  await handlers.activate();
  assert.deepEqual(opened.map(p=>p.windowId),['pet-builtin']);
  assert.equal(stored.get('preferences').enabled,true);
  assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);
- assert.deepEqual(Array.from(menus.at(-1).items,item=>item.id),['builtin']);
- assert.equal(menus.at(-1).items[0].checked,true);
+ assert.deepEqual(Array.from(menus.at(-1).items.filter(item=>item.event==='toggle-pet'),item=>item.id),['builtin']);
+ assert.equal(menus.at(-1).items.find(item=>item.id==='builtin').checked,true);
+
  await handlers.command({event:'toggle-pet',commandId:'builtin'});
- assert.equal(menus.at(-1).items[0].checked,false);
+ assert.equal(menus.at(-1).items.find(item=>item.id==='builtin').checked,false);
  await handlers.command({event:'toggle-pet',commandId:'builtin'});
- assert.equal(menus.at(-1).items[0].checked,true);
+ assert.equal(menus.at(-1).items.find(item=>item.id==='builtin').checked,true);
  assert.equal(opened.length,1);
 })
 
@@ -310,9 +439,9 @@ test('two pet windows keep their own configuration and sheet even if a foreign m
 
 
 test('menu toggles restore all selected pets and reopening does not depend on a second ready event', async () => {
- const handlers={},opened=[],shown=new Map(),messages=[],stored=new Map([['shownPets',['builtin','custom']],['pet-sprites',[{id:'custom',name:'Second',frameWidth:2,frameHeight:2,frameCount:1,source:'custom',spriteKey:'custom-sheet'}]]]);
+ const handlers={},opened=[],shown=new Map(),messages=[],stored=new Map([['shownPets',[]],['pet-sprites',[{id:'custom',name:'Second',frameWidth:2,frameHeight:2,frameCount:1,source:'custom',spriteKey:'custom-sheet'}]]]);
  vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p.windowId);shown.set(p.windowId,true)},close:async p=>{if(p.windowId!=='companion')throw Error('Visibility must not destroy the pet window')},setVisible:async p=>shown.set(p.windowId,p.visible),postMessage:async p=>messages.push(p)},diagnostics:{log:async error=>{throw Error(error.message)}}}});
- await handlers.activate();
+ await activatePets(handlers,['builtin','custom']);
  for(const id of opened)await handlers['window-message']({windowId:id,message:{type:'ready'}});
  stored.set('preferences',{enabled:false});await handlers['settings-changed']({key:'preferences'});
  assert.equal(shown.get('pet-custom'),false);
@@ -332,11 +461,11 @@ test('menu toggles restore all selected pets and reopening does not depend on a 
 
 test('home and different projects preserve selected pets and their shared positions', async () => {
  const handlers={},opened=[],shown=new Map(),sent=[],stored=new Map([
-  ['shownPets',['builtin','custom']],['position:builtin',{x:42,y:67}],['position:custom',{x:123,y:89}],
+  ['shownPets',[]],['position:builtin',{x:42,y:67}],['position:custom',{x:123,y:89}],
   ['pet-sprites',[{id:'custom',frameWidth:2,frameHeight:2,frameCount:1}]]
  ]);
  vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{on:(name,fn)=>handlers[name]=fn,menus:{setItems:async()=>{}},storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{open:async p=>{opened.push(p);shown.set(p.windowId,true)},setVisible:async p=>shown.set(p.windowId,p.visible),close:async()=>{},postMessage:async p=>sent.push(p)},diagnostics:{log:async e=>{throw Error(e.message)}}}});
- await handlers.activate();assert.equal(opened.length,2);
+ await activatePets(handlers,['builtin','custom']);assert.equal(opened.length,2);
  await handlers.project({project:{id:'first'},homeOpen:true});assert.equal(opened.length,2);
  await handlers.project({project:{id:'first'},homeOpen:false});assert.equal(opened.length,2);
  assert.deepEqual(opened.map(p=>[p.options.x,p.options.y]),[[42,67],[123,89]]);
@@ -372,7 +501,7 @@ test('animation silhouette union remains complete while dragging and mirrors wit
 test('host shrink corrects an in-flight drag and preserves visible content within new bounds', async () => {
  const content={x:200,y:260,width:100,height:80};let bounds={x:1300,y:700,width:360,height:360},host={x:0,y:0,width:800,height:600};const saved=[],moves=[];
  let finishDrag;const gesture={cancelled:false};
- const sandbox=vm.createContext({pet:{},hostEpoch:0,positionRatio:{x:1,y:1},positionLoaded:true,pointer:gesture,pendingDrag:{gesture},boundsQueue:Promise.resolve(),dragQueue:new Promise(resolve=>finishDrag=resolve),contentBounds:()=>content,persistPosition:async p=>saved.push(p),scheduleHitRegion:()=>{},
+ const sandbox=vm.createContext({pet:{},stopDraggingAnimation:()=>{},hostEpoch:0,positionRatio:{x:1,y:1},positionLoaded:true,pointer:gesture,pendingDrag:{gesture},boundsQueue:Promise.resolve(),dragQueue:new Promise(resolve=>finishDrag=resolve),contentBounds:()=>content,persistPosition:async p=>saved.push(p),scheduleHitRegion:()=>{},
   moonsprite:{window:{getBounds:async()=>({...bounds}),getHostBounds:async()=>({...host}),setBounds:async p=>{moves.push(p);bounds=p}},diagnostics:{log:error=>{throw Error(error)}}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);
  vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
@@ -394,7 +523,7 @@ test('host shrink corrects an in-flight drag and preserves visible content withi
 test('relative pet positions survive maximize, restore, host movement and scale changes without drift', async () => {
  let host={x:8,y:30,width:1800,height:1000},content={x:200,y:260,width:100,height:80};
  let bounds={x:233,y:199,width:360,height:360};const saved=[];
- const sandbox=vm.createContext({pet:{},hostEpoch:0,positionRatio:null,positionLoaded:false,positionKey:'position:custom',pointer:null,pendingDrag:null,dragQueue:null,boundsQueue:Promise.resolve(),contentBounds:()=>content,persistPosition:async b=>saved.push({...b}),scheduleHitRegion:()=>{},
+ const sandbox=vm.createContext({pet:{},stopDraggingAnimation:()=>{},hostEpoch:0,positionRatio:null,positionLoaded:false,positionKey:'position:custom',pointer:null,pendingDrag:null,dragQueue:null,boundsQueue:Promise.resolve(),contentBounds:()=>content,persistPosition:async b=>saved.push({...b}),scheduleHitRegion:()=>{},
   moonsprite:{storage:{get:async()=>({ratio:{x:0.2,y:0.8}})},window:{getBounds:async()=>({...bounds}),getHostBounds:async()=>({...host}),setBounds:async b=>{bounds=b}},diagnostics:{log:error=>{throw Error(error)}}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  start=generated.petWindowSource.indexOf('// Coalesce host changes');end=generated.petWindowSource.indexOf('const loadPet=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
@@ -415,7 +544,7 @@ test('legacy coordinates migrate to ratios and a drag saves a new ratio for only
  const writes=[],host={x:8,y:30,width:1000,height:600},content={x:200,y:260,width:100,height:80};
  const sandbox=vm.createContext({positionKey:'position:cat',contentBounds:()=>content,moonsprite:{window:{getHostBounds:async()=>host},storage:{set:async(...args)=>writes.push(args)}}});
  let start=generated.petWindowSource.indexOf('const clampPetBounds='),end=generated.petWindowSource.indexOf('let dragQueue=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
- start=generated.petWindowSource.indexOf('let positionRatio=');end=generated.petWindowSource.indexOf('// Native regions',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ start=generated.petWindowSource.indexOf('let positionRatio=');end=generated.petWindowSource.indexOf('// Overlay regions',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
  await vm.runInContext('savePosition({x:258,y:30,width:360,height:360})',sandbox);
  assert.equal(writes[0][0],'position:cat');assert.equal(writes[0][1].layout,'relative');
  assert.equal(writes[0][1].ratio.x,0.5);assert.equal(writes[0][1].ratio.y,0.5);
@@ -423,15 +552,15 @@ test('legacy coordinates migrate to ratios and a drag saves a new ratio for only
 
 test('manager presents independent named upload slots and an aligned scale action', async () => {
  let view;const target={id:'builtin',name:'奶龙',frameCount:0,animations:{},animationSlots:['WAVE']};
- const sandbox=vm.createContext({BUILT_IN:target,animationMap:entry=>entry.animations,listPets:async()=>[target],moonsprite:{storage:{get:async()=>null},window:{postMessage:async value=>view=value}}});
+ const sandbox=vm.createContext({TRIGGER_CONDITIONS:generated.triggerConditions,BUILT_IN:target,animationMap:entry=>entry.animations,listPets:async()=>[target],moonsprite:{storage:{get:async()=>null},window:{postMessage:async value=>view=value}}});
  const start=generated.managerSource.indexOf('const animationSlots='),end=generated.managerSource.indexOf('const combineAnimations=',start);
  vm.runInContext(generated.managerSource.slice(start,end),sandbox);await vm.runInContext('renderList()',sandbox);
- const [nav,detail]=view.nodes[0].children;assert.equal(nav.children[1].label,'奶龙');assert.equal(nav.children[1].description,'待上传动画');
+ const [nav,detail]=view.nodes[0].children;assert.equal(nav.children.find(node=>node.id==='edit-builtin').label,'奶龙');assert.equal(nav.children.find(node=>node.id==='edit-builtin').description,'待上传动画');
  const slots=detail.children.filter(node=>node.type==='slot');assert.deepEqual(Array.from(slots,node=>node.id),['slot-SHOW','slot-IDLE']);
- for(const slot of slots){const upload=slot.children[0];assert.equal(upload.multiple,false);assert.equal(upload.action.animation,slot.id.slice(5));assert.equal(upload.action.petId,'builtin')}
+ for(const slot of slots){const upload=slot.children.at(-1);assert.equal(upload.multiple,false);assert.equal(upload.action.animation,slot.id.slice(5));assert.equal(upload.action.petId,'builtin')}
  assert.equal(detail.children.find(node=>node.id==='scale-row').align,'end');
  assert.ok(!detail.children.some(node=>node.id==='add-slot-row'));
- for(const slot of slots){assert.equal(slot.children[1].action.type,'ui-clear-slot');assert.equal(slot.children[1].disabled,true)}
+ for(const slot of slots){assert.equal(slot.children[0].action.type,'ui-clear-slot');assert.equal(slot.children[0].disabled,true)}
 });
 
 test('slot uploads bind the selected slot instead of the filename and preserve other slots', async () => {
@@ -481,7 +610,7 @@ test('clearing slots preserves the other animation, rolls back failures and allo
 
 test('clear-slot messages clear only their selected pet and named animation', async () => {
  let listener;const calls=[];
- const sandbox=vm.createContext({activeId:'cat',staged:[],nameInput:{value:''},result:null,status:'',animationSlots:()=>['SHOW','IDLE'],importAnimations:async(...args)=>calls.push(args),renderList:async()=>{},moonsprite:{window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
+ const sandbox=vm.createContext({activeId:'cat',staged:[],nameInput:{value:''},result:null,status:'',listPets:async()=>[{id:'cat'}],animationSlots:()=>['SHOW','IDLE'],importAnimations:async(...args)=>calls.push(args),renderList:async()=>{},moonsprite:{window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
  const start=generated.managerSource.indexOf('let operations='),end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
  const send=async message=>{listener(message);await vm.runInContext('operations',sandbox)};
  await send({type:'ui-clear-slot',petId:'cat',animation:'SHOW',requestId:'1'});assert.equal(calls.length,1);assert.equal(calls[0][1],'cat');assert.equal(calls[0][2],'SHOW');assert.equal(sandbox.result.ok,true);
@@ -520,11 +649,136 @@ test('an empty pet can be exported and imported without an image',async()=>{
 });
 
 
-test('reminder controls declare master and individual visibility while manager fills a row',()=>{
- const controls=vm.runInContext('manifest.settingsUi.controls',context),byId=id=>controls.find(c=>c.id===id);
- assert.equal(byId('remindersEnabled').label,'提醒总开关');
- for(const id of ['clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes'])assert.equal(byId(id).visibleWhen.remindersEnabled,true);
- assert.equal(byId('unsavedMinutes').visibleWhen.unsavedEnabled,true);assert.equal(byId('breakMinutes').visibleWhen.breakEnabled,true);
- for(const id of ['unsavedMinutes','breakMinutes','manager'])assert.equal(byId(id).description,undefined);
- assert.equal(byId('manager').fullWidth,true);assert.equal(byId('manager').visibleWhen,undefined);
+test('companions request generic host overlays instead of native transparent windows', () => {
+ assert.ok(generated.runtimePage.includes("presentation:'overlay'"));
+ assert.ok(!generated.runtimePage.includes('transparent:true,focusable:true'));
+});
+
+
+test('right-click manager selection survives loading and menu changes refresh the open manager', async () => {
+ const handlers={},sent=[],opened=[],stored=new Map([['shownPets',[]],['pet-sprites',[{id:'cat',frameWidth:2,frameHeight:2,frameCount:1}]]]);
+ vm.runInNewContext(generated.runtimePage.match(/<script>([\s\S]*?)<\/script>/i)[1],{moonsprite:{menus:{setItems:async()=>{}},on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},windows:{setVisible:async()=>{},open:async value=>opened.push(value),close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:async()=>{}}}});
+ await activatePets(handlers,['builtin','cat']);
+ await handlers['window-message']({windowId:'pet-cat',message:{type:'manager'}});
+ assert.equal(opened.at(-1).windowId,'manager');
+ await handlers['window-message']({windowId:'manager',message:{type:'ready'}});
+ assert.equal(sent.at(-1).message.petId,'cat');
+ await handlers.command({event:'toggle-pet',commandId:'cat'});
+ assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);
+ assert.equal(sent.at(-1).windowId,'manager');assert.equal(sent.at(-1).message.type,'catalog');
+ await handlers['window-message']({windowId:'pet-builtin',message:{type:'manager'}});
+ assert.equal(sent.at(-1).message.petId,'builtin');
+});
+
+test('manager selects the requested pet and visibility updates the shared menu data', async () => {
+ let listener;const stored=new Map([['shownPets',['builtin']]]),published=[];
+ const sandbox=vm.createContext({activeId:'builtin',staged:[],nameInput:{value:''},result:null,status:'',BUILT_IN:{id:'builtin'},listPets:async()=>[{id:'builtin',frameCount:1},{id:'cat',frameCount:1}],renderList:async()=>{},publish:async()=>published.push(true),moonsprite:{storage:{get:async key=>stored.get(key),set:async(key,value)=>stored.set(key,value)},window:{onMessage:fn=>listener=fn},diagnostics:{log:error=>{throw Error(error)}}}});
+ const start=generated.managerSource.indexOf('let operations='),end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ listener({type:'catalog',petId:'cat'});await vm.runInContext('operations',sandbox);assert.equal(sandbox.activeId,'cat');
+ listener({type:'ui-visible',petId:'cat',value:true});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin','cat']);
+ listener({type:'ui-visible',petId:'cat',value:false});await vm.runInContext('operations',sandbox);assert.deepEqual(Array.from(stored.get('shownPets')),['builtin']);assert.equal(published.length,2);
+});
+
+
+test('condition slots are configurable, stay attached to the chosen pet and render a host dialog', async () => {
+ let listener,view;let meta=[{id:'cat',name:'小猫',frameCount:0,animations:{}}];
+ const sandbox=vm.createContext({TRIGGER_CONDITIONS:generated.triggerConditions,BUILT_IN:{id:'cat'},listPets:async()=>meta,readMeta:async()=>meta,writeMeta:async value=>{meta=value},publish:async()=>{},animationMap:entry=>entry.animations,moonsprite:{storage:{get:async()=>null},window:{onMessage:fn=>listener=fn,postMessage:async value=>{view=value}},diagnostics:{log:error=>{throw Error(error)}}}});
+ let start=generated.managerSource.indexOf('const animationSlots='),end=generated.managerSource.indexOf('const combineAnimations=',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ start=generated.managerSource.indexOf('let operations=');end=generated.managerSource.indexOf('renderList().catch',start);vm.runInContext(generated.managerSource.slice(start,end),sandbox);
+ listener({type:'ui-add-trigger',petId:'cat'});await vm.runInContext('operations',sandbox);
+ assert.equal(view.nodes.at(-1).type,'dialog');assert.equal(view.nodes.at(-1).children[0].options.length,22);assert.ok(view.nodes.at(-1).children[0].options.every(option=>option.description));
+ listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-event':'tool.changed','trigger-tool':'eraser','trigger-cooldown':4}});await vm.runInContext('operations',sandbox);
+ assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].tool,'eraser');assert.equal(meta[0].triggerSlots[0].cooldownMs,4000);
+ assert.equal(view.nodes.some(node=>node.type==='dialog'),false);
+ const slot=view.nodes[0].children[1].children.find(node=>node.id.startsWith('slot-TRIGGER_'));assert.ok(slot.tooltip);assert.match(slot.label,/切换工具/);
+ const id=meta[0].triggerSlots[0].id;listener({type:'ui-edit-trigger',petId:'cat',slotId:id});await vm.runInContext('operations',sandbox);assert.equal(view.nodes.at(-1).children[0].value,'tool.changed');
+ listener({type:'ui-confirm-trigger',petId:'cat',values:{'trigger-cooldown':0}});await vm.runInContext('operations',sandbox);assert.equal(meta[0].triggerSlots.length,1);assert.equal(meta[0].triggerSlots[0].id,id);assert.equal(meta[0].triggerSlots[0].event,'tool.changed');assert.equal(meta[0].triggerSlots[0].cooldownMs,0);
+});
+
+test('condition animations honor filters, cooldown, busy playback and idle reset', () => {
+ let now=10000,timer;const played=[];
+ const sandbox=vm.createContext({Date:{now:()=>now},pet:{triggerSlots:[{id:'TRIGGER_A',event:'tool.changed',tool:'eraser',cooldownMs:3000},{id:'TRIGGER_B',event:'idle',idleSeconds:5,cooldownMs:1000}],animations:{TRIGGER_A:[1],TRIGGER_B:[2]},durations:[125,500,500]},play:(frames,repeat)=>played.push([Array.from(frames),repeat]),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('tool.changed',{tool:'pencil'})",sandbox);assert.equal(played.length,0);
+ vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.deepEqual(played,[[[1],false]]);
+ now+=1000;vm.runInContext("triggerAnimation('tool.changed',{tool:'eraser'})",sandbox);assert.equal(played.length,1);
+ now+=5000;timer();assert.equal(played.length,2);now+=5000;timer();assert.equal(played.length,2);
+ vm.runInContext('markActivity()',sandbox);now+=6000;timer();assert.equal(played.length,3);
+});
+
+
+test('pet package keeps condition bindings and rejects malformed condition configuration', async () => {
+ const h=petPackageHarness(),file=await h.export();
+ const payload=JSON.parse(new TextDecoder().decode(new Uint8Array(file.bytes)));
+ payload.pet.triggerSlots=[{id:'TRIGGER_TEST',event:'history.undo',tool:'',idleSeconds:60,cooldownMs:3000}];payload.pet.animations.TRIGGER_TEST=[0];
+ h.sandbox.TRIGGER_CONDITIONS=generated.triggerConditions;
+ const imported=await h.import(new TextEncoder().encode(JSON.stringify(payload)));
+ assert.equal(imported.triggerSlots[0].event,'history.undo');assert.deepEqual(Array.from(imported.animations.TRIGGER_TEST),[0]);
+ payload.pet.triggerSlots[0].event='run-arbitrary-code';await assert.rejects(()=>h.import(new TextEncoder().encode(JSON.stringify(payload))),/条件槽位配置无效/);
+});
+
+
+test('preview fits opaque content in a fixed frame instead of shrinking transparent margins', async () => {
+ const draws=[];let created=0;
+ const pixels=new Uint8ClampedArray(20*20*4);pixels[(10*20+9)*4+3]=255;pixels[(11*20+10)*4+3]=255;
+ const sandbox=vm.createContext({document:{createElement:()=>{const index=created++;return {width:0,height:0,getContext:()=>index===0?{clearRect(){},drawImage(){},getImageData:()=>({data:pixels})}:{drawImage:(...args)=>draws.push(args),translate(){},scale(){}},toDataURL:()=> 'preview'}}}});
+ const start=generated.managerSource.indexOf('const previewSprite='),end=generated.managerSource.indexOf('const animationSlots=',start);
+ vm.runInContext(generated.managerSource.slice(start,end),sandbox);sandbox.image={};sandbox.target={frameWidth:20,frameHeight:20,frameCount:2,animations:{IDLE:[1]}};
+ assert.equal(await vm.runInContext('previewSprite(image,target)',sandbox),'preview');
+ assert.deepEqual(draws[0].slice(1),[9,30,2,2,4,4,88,88]);
+});
+
+
+test('zero cooldown restarts immediately and overlapping idle slots choose one random candidate per idle period', () => {
+ let now=10000,timer;const played=[];
+ const sandbox=vm.createContext({Date:{now:()=>now},Math:{...Math,random:()=>0.99,floor:Math.floor},pet:{triggerSlots:[{id:'A',event:'history.undo',cooldownMs:0},{id:'B',event:'idle',idleSeconds:5,cooldownMs:0},{id:'C',event:'idle',idleSeconds:5,cooldownMs:0}],animations:{A:[0],B:[1],C:[2]},durations:[500,500,500]},play:frames=>played.push(Array.from(frames)),document:{hidden:false},petElement:{addEventListener:()=>{}},addEventListener:()=>{},setInterval:fn=>{timer=fn}});
+ const start=generated.petWindowSource.indexOf('let draggingAnimation='),end=generated.petWindowSource.indexOf('const scaleOf=',start);vm.runInContext(generated.petWindowSource.slice(start,end),sandbox);
+ vm.runInContext("triggerAnimation('history.undo');triggerAnimation('history.undo')",sandbox);assert.deepEqual(played,[[0],[0]]);
+ now+=6000;timer();assert.deepEqual(played,[[0],[0],[2]]);now+=2000;timer();assert.equal(played.length,3);
+ vm.runInContext('markActivity()',sandbox);now+=6000;timer();assert.equal(played.length,4);
+});
+
+
+test('pointer entry tests rendered alpha, not transparent button margins',()=>{
+ const source=generated.petWindowSource;const start=source.indexOf('const hitCurrentPixel='),end=source.indexOf(";petElement.addEventListener('pointermove'",start);
+ const sandbox=vm.createContext({pet:{},canvas:{width:4,height:4,getBoundingClientRect:()=>({left:10,top:20,width:8,height:8})},context:{getImageData:(x,y)=>({data:[0,0,0,x===2&&y===2?255:0]})}});
+ vm.runInContext(source.slice(start,end),sandbox);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:10,clientY:20})',sandbox),false);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:14,clientY:24})',sandbox),true);
+ assert.equal(vm.runInContext('hitCurrentPixel({clientX:30,clientY:24})',sandbox),false);
+});
+test('continuous drag loops its slot and releases back to idle',()=>{
+ const played=[];const sandbox=vm.createContext({pet:{triggerSlots:[{id:'DRAG',event:'pet.dragging'}],animations:{DRAG:[2,3]},idleFrames:[0]},draggingAnimation:false,triggerBusyUntil:99,play:(frames,repeat)=>played.push([frames,repeat])});
+ const source=generated.petWindowSource,start=source.indexOf('const startDraggingAnimation='),end=source.indexOf("petElement.addEventListener('pointerdown'",start);vm.runInContext(source.slice(start,end),sandbox);
+ vm.runInContext('startDraggingAnimation();stopDraggingAnimation()',sandbox);assert.deepEqual(played,[[[2,3],true],[[0],true]]);assert.equal(sandbox.draggingAnimation,false);
+});
+
+test('bubble stays fixed within an animation and moves only when its animation bounds change',async()=>{
+ const bubble={style:{},getBoundingClientRect:()=>({width:40,height:20})};const sandbox=vm.createContext({pet:{frameWidth:100,frameHeight:100},animationBounds:{x:10,y:40,width:20,height:30},displayedFrame:0,frameBounds:[{x:10,y:40,width:20,height:30},{x:50,y:70,width:30,height:20}],spriteBounds:{x:0,y:0,width:100,height:100},canvas:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})},window:{innerWidth:300,innerHeight:300},info:bubble,notice:{...bubble,style:{}},moonsprite:{window:{getBounds:async()=>({x:0,y:0}),getHostBounds:async()=>({x:0,y:0,width:300,height:300})}}});
+ const src=generated.petWindowSource,start=src.indexOf('const positionBubbles='),end=src.indexOf('const contentBounds=',start);vm.runInContext(src.slice(start,end),sandbox);
+ await vm.runInContext('positionBubbles()',sandbox);const first={...bubble.style};sandbox.displayedFrame=1;await vm.runInContext('positionBubbles()',sandbox);assert.equal(bubble.style.top,first.top);sandbox.animationBounds={x:50,y:70,width:30,height:20};await vm.runInContext('positionBubbles()',sandbox);assert.notEqual(bubble.style.top,first.top);sandbox.animationBounds={x:10,y:40,width:20,height:30};await vm.runInContext('positionBubbles()',sandbox);assert.equal(bubble.style.top,first.top);
+});
+
+test('animation anchor uses only the union of that animation frames',()=>{
+ const sandbox=vm.createContext({frameBounds:[{x:10,y:10,width:10,height:10},{x:12,y:8,width:10,height:10},{x:0,y:0,width:40,height:40}],spriteBounds:{x:0,y:0,width:40,height:40}});
+ const source=generated.petWindowSource,start=source.indexOf('const boundsForAnimation='),end=source.indexOf('const play=',start);vm.runInContext(source.slice(start,end),sandbox);
+ assert.deepEqual({...vm.runInContext('boundsForAnimation([0,1])',sandbox)},{x:10,y:8,width:12,height:12});
+ assert.deepEqual({...vm.runInContext('boundsForAnimation([2])',sandbox)},{x:0,y:0,width:40,height:40});
+});
+
+
+test('package frame extraction honors parent repeats and nested repeats and directions', () => {
+ const frames=Array.from({length:5},(_,index)=>({id:String(index),duration:40+index*10}));
+ const timeline={frames,loopSections:[{id:'root',name:'UNDO',startFrameId:'0',endFrameId:'4',direction:'forward',repeatCount:4},{id:'child',name:'nested',startFrameId:'1',endFrameId:'2',direction:'reverse',repeatCount:6}]};
+ const sandbox=nodeVm.createContext({frames,timeline,frameIndex:new Map(frames.map((frame,index)=>[frame.id,index])),animationLoopFrameIdsForExport});
+ nodeVm.runInContext(source.slice(source.indexOf('const rangeFor ='),source.indexOf('// A document background')),sandbox);
+ const actual=nodeVm.runInContext("rangeFor('UNDO')",sandbox);
+ const cycle=['0',...Array.from({length:6},()=>['2','1']).flat(),'3','4'];
+ assert.deepEqual(Array.from(actual,frame=>frame.id),Array.from({length:4},()=>cycle).flat());
+ assert.deepEqual(Array.from(actual,frame=>frame.duration),Array.from({length:4},()=>cycle.map(id=>frames[Number(id)].duration)).flat());
+ assert.deepEqual(Array.from(nodeVm.runInContext("rangeFor('UNDO', 1)",sandbox),frame=>frame.id),cycle);
+ assert.equal(timeline.loopSections[0].repeatCount,4);
+ assert.equal(timeline.loopSections[1].repeatCount,6);
+ timeline.loopSections[0].repeatCount=null;
+ assert.equal(nodeVm.runInContext("rangeFor('UNDO').length",sandbox),cycle.length);
 });

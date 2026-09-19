@@ -12,6 +12,7 @@ import { addPaletteIdToSlots, normalizePaletteColumns, normalizePaletteSlots, pa
 import { cachedRuntimeRasterVisibleBounds, detachRuntimeRaster, installRuntimeRaster, lazyRuntimeRasterForSurface, rasterStorageIdentity, readSurfacePackedLocal, runtimeRasterVisibleBounds } from './runtime-raster'
 import { cloneLayerStyles } from './layer-styles'
 import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
+import { quantizePixelColor } from './pixel-format'
 
 let sequence = 0
 
@@ -171,7 +172,7 @@ export function createSparseLayer(name: string, mode: ColorMode): RasterLayer {
   return layer
 }
 
-export function createDocument(name: string, width: number, height: number, colorMode: ColorMode, timelapseEnabled = DEFAULT_TIMELAPSE_SETTINGS.enabled): SpriteDocument {
+export function createDocument(name: string, width: number, height: number, colorMode: ColorMode, timelapseEnabled = DEFAULT_TIMELAPSE_SETTINGS.enabled, pixelFormat: SpriteDocument['pixelFormat'] = colorMode === 'rgba' ? 'rgba32' : undefined): SpriteDocument {
   const layer = createLayer(tr('core.document.defaultLayer', { index: 1 }), width, height, colorMode)
   const palette = colorMode === 'indexed'
     ? [transparentEntry(), { id: 1, name: tr('core.document.inkBlack'), color: { r: 24, g: 27, b: 33, a: 255 } }, { id: 2, name: tr('core.document.moonBlue'), color: { r: 41, g: 121, b: 255, a: 255 } }]
@@ -190,6 +191,7 @@ export function createDocument(name: string, width: number, height: number, colo
     width,
     height,
     colorMode,
+    pixelFormat: colorMode === 'rgba' ? pixelFormat : undefined,
     layers: [layer],
     groups: [],
     activeLayerId: layer.id,
@@ -817,7 +819,11 @@ export function paletteColorIdForCanvas(document: SpriteDocument, color: RgbaCol
 }
 
 export const normalizeDocumentColor = (document: SpriteDocument, color: RgbaColor): RgbaColor =>
-  document.colorMode === 'grayscale' ? relativeLuminanceColor(color) : color
+  document.colorMode === 'grayscale'
+    ? relativeLuminanceColor(color)
+    : document.colorMode === 'rgba'
+      ? quantizePixelColor(color, document.pixelFormat ?? 'rgba32')
+      : color
 
 /** Resolves a compositor-owned color without mutating an indexed palette. */
 export const resolveDocumentCanvasColor = (document: SpriteDocument, color: RgbaColor): RgbaColor =>
@@ -839,6 +845,13 @@ const paletteIdForCanvas = (document: SpriteDocument, id: number): number => {
 export const normalizeLayerPackedValue = (document: SpriteDocument, layer: RasterLayer, value: number): number => {
   if (isLayerMask(layer)) return maskPacked(unpackColor(value))
   if (layer.format === 'indexed') return paletteIdForCanvas(document, value)
+  // Empty layer coverage remains transparent even with an opaque paint format.
+  // Packed writes also move/clear existing pixels and restore undo snapshots;
+  // quantizing empty RGBA as a new RGB color would turn that space black.
+  if ((value >>> 24) === 0) return value
+  if (document.colorMode === 'rgba' && document.pixelFormat && document.pixelFormat !== 'rgba32') {
+    return packColor(quantizePixelColor(unpackColor(value), document.pixelFormat))
+  }
   return document.colorMode === 'grayscale' ? packColor(relativeLuminanceColor(unpackColor(value))) : value
 }
 

@@ -156,16 +156,29 @@ const readZipEntryMetadata = (data: Uint8Array): Map<string, { crc32: number; by
 
 const readZipEntryCrcs = (data: Uint8Array): Map<string, number> => new Map(Array.from(readZipEntryMetadata(data), ([name, metadata]) => [name, metadata.crc32]))
 
+// Local edit counters alone cannot identify pixels: switching frames often
+// replaces a layer's storage with another buffer at the same edit revision.
+const projectRasterVersions = new WeakMap<object, { revision: number; version: number }>()
+let nextProjectRasterVersion = 0
+const projectRasterVersion = (storage: object): number => {
+  const revision = getRasterContentRevision(storage)
+  const previous = projectRasterVersions.get(storage)
+  if (previous?.revision === revision) return previous.version
+  const version = ++nextProjectRasterVersion
+  projectRasterVersions.set(storage, { revision, version })
+  return version
+}
+
 const captureProjectResourceRevisions = (document: SpriteDocument): Array<[string, number | null]> => {
   const revisions: Array<[string, number | null]> = []
-  for (const layer of document.layers) revisions.push([`layer:${layer.id}`, getRasterContentRevision(rasterStorageIdentity(layer))])
-  for (const tileset of document.tilesets ?? []) revisions.push([`tileset:${tileset.id}`, getRasterContentRevision(tileset.pixels)])
+  for (const layer of document.layers) revisions.push([`layer:${layer.id}`, projectRasterVersion(rasterStorageIdentity(layer))])
+  for (const tileset of document.tilesets ?? []) revisions.push([`tileset:${tileset.id}`, projectRasterVersion(tileset.pixels)])
   const timeline = ensureAnimationDocument(document)
   for (const cel of timeline.cels) {
-    if (cel.surface) revisions.push([`cel:${cel.id}`, getRasterContentRevision(rasterStorageIdentity(cel.surface))])
+    if (cel.surface) revisions.push([`cel:${cel.id}`, projectRasterVersion(rasterStorageIdentity(cel.surface))])
   }
-  for (const entry of timeline.layerMasks ?? []) revisions.push([`layer-mask:${entry.layerId}:${entry.frameId}`, getRasterContentRevision(entry.mask.pixels)])
-  for (const entry of timeline.groupMasks ?? []) revisions.push([`group-mask:${entry.groupId}:${entry.frameId}`, getRasterContentRevision(entry.mask.pixels)])
+  for (const entry of timeline.layerMasks ?? []) revisions.push([`layer-mask:${entry.layerId}:${entry.frameId}`, projectRasterVersion(entry.mask.pixels)])
+  for (const entry of timeline.groupMasks ?? []) revisions.push([`group-mask:${entry.groupId}:${entry.frameId}`, projectRasterVersion(entry.mask.pixels)])
   for (const snapshot of document.timelapse?.snapshots ?? []) revisions.push([`timelapse:${snapshot.id}`, null])
   return revisions
 }
@@ -303,13 +316,13 @@ const projectResourcesFromManifest = (document: SpriteDocument, manifest: Projec
     const metadata = layerMetadata.get(layer.id)
     const activeCel = activeCelFiles.get(layer.id)
     const storage = rasterStorageIdentity(layer)
-    add(`layer:${layer.id}`, activeCel?.dataFile ?? metadata?.dataFile, getRasterContentRevision(storage), activeCel ?? rasterFromMetadata(metadata, manifest.document.width, manifest.document.height))
+    add(`layer:${layer.id}`, activeCel?.dataFile ?? metadata?.dataFile, projectRasterVersion(storage), activeCel ?? rasterFromMetadata(metadata, manifest.document.width, manifest.document.height))
   }
   const tilesetMetadata = new Map((manifest.document.tilesets ?? []).map((tileset) => [tileset.id, tileset]))
   for (const tileset of document.tilesets ?? []) {
     const dataFile = tilesetMetadata.get(tileset.id)?.dataFile
     const raster = tilesetRasterMetadata(tileset)
-    add(`tileset:${tileset.id}`, dataFile, getRasterContentRevision(tileset.pixels), {
+    add(`tileset:${tileset.id}`, dataFile, projectRasterVersion(tileset.pixels), {
       ...raster,
       ...(dataFile && entryMetadata?.get(dataFile) ? { byteLength: entryMetadata.get(dataFile)!.byteLength } : {})
     })
@@ -320,13 +333,13 @@ const projectResourcesFromManifest = (document: SpriteDocument, manifest: Projec
     const metadata = celMetadata.get(cel.id)
     if (cel.surface && metadata?.dataFile) {
       const storage = rasterStorageIdentity(cel.surface)
-      add(`cel:${cel.id}`, metadata.dataFile, getRasterContentRevision(storage), rasterFromMetadata(metadata))
+      add(`cel:${cel.id}`, metadata.dataFile, projectRasterVersion(storage), rasterFromMetadata(metadata))
     }
   }
   const layerMaskMetadata = new Map((manifest.document.animation.layerMasks ?? []).map((entry) => [`${entry.layerId}\u0000${entry.frameId}`, entry]))
-  for (const entry of timeline.layerMasks ?? []) add(`layer-mask:${entry.layerId}:${entry.frameId}`, layerMaskMetadata.get(`${entry.layerId}\u0000${entry.frameId}`)?.mask.dataFile, getRasterContentRevision(entry.mask.pixels))
+  for (const entry of timeline.layerMasks ?? []) add(`layer-mask:${entry.layerId}:${entry.frameId}`, layerMaskMetadata.get(`${entry.layerId}\u0000${entry.frameId}`)?.mask.dataFile, projectRasterVersion(entry.mask.pixels))
   const groupMaskMetadata = new Map((manifest.document.animation.groupMasks ?? []).map((entry) => [`${entry.groupId}\u0000${entry.frameId}`, entry]))
-  for (const entry of timeline.groupMasks ?? []) add(`group-mask:${entry.groupId}:${entry.frameId}`, groupMaskMetadata.get(`${entry.groupId}\u0000${entry.frameId}`)?.mask.dataFile, getRasterContentRevision(entry.mask.pixels))
+  for (const entry of timeline.groupMasks ?? []) add(`group-mask:${entry.groupId}:${entry.frameId}`, groupMaskMetadata.get(`${entry.groupId}\u0000${entry.frameId}`)?.mask.dataFile, projectRasterVersion(entry.mask.pixels))
   const snapshotMetadata = new Map((manifest.document.timelapse?.snapshots ?? []).map((snapshot) => [snapshot.id, snapshot]))
   for (const snapshot of document.timelapse?.snapshots ?? []) add(`timelapse:${snapshot.id}`, snapshotMetadata.get(snapshot.id)?.dataFile, null)
   return Array.from(candidates.values())

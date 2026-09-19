@@ -57,7 +57,7 @@ export function formatTranslation(template: string, params: TranslationParams = 
 
 export function translate(locale: AppLocale, key: TranslationKey, params?: TranslationParams): string {
   const catalog = catalogs[parseAppLocale(locale)] ?? catalogs[DEFAULT_APP_LOCALE]
-  return formatTranslation(catalog[key] ?? catalogs[DEFAULT_APP_LOCALE][key], params)
+  return formatTranslation(catalog[key] ?? catalogs[DEFAULT_APP_LOCALE][key] ?? key, params)
 }
 
 /** Resolve a visible source string through the catalog. This is used by

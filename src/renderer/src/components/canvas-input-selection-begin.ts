@@ -42,6 +42,7 @@ import {
 import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, resizeCursors, rotationCursors, shearCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { MagicWandWorkerClient } from '@/core/magic-wand-worker'
+import { beginSelectionBrush } from './canvas-selection-brush-gesture'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget, captureTilemapSelectionMove } from '@/core/tilemap-document'
 import { freeTileInstanceBounds } from '@/core/free-tile'
@@ -129,6 +130,7 @@ interface Ports {
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   drawSelectionOverlay: () => void
   magicWandWorkerRef: import('react').RefObject<MagicWandWorkerClient | null>
+  optimizedRotationEnabled: boolean
 }
 
 export function createSelectionBeginCanvasInput(ports: Ports) {
@@ -188,7 +190,8 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
       magicGestureRef,
       t,
       drawSelectionOverlay,
-      magicWandWorkerRef
+      magicWandWorkerRef,
+      optimizedRotationEnabled
     } = ports
     if (selectionTool && (event.button === 0 || event.button === 2)) {
       const mode = selectionMode()
@@ -392,7 +395,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
               transformStartTarget: { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height },
               previewTarget: { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height },
               previewAngle: 0,
-              ...alignmentDragFields([selectionStart], [editableLayer.id]),
+              ...alignmentDragFields([selectionStart], [editableLayer.id], true),
               freeTilePlacementEdit: placementEdit,
               freeTileInstanceId: freeTileSelectionTarget.instance.id,
               freeTileInstanceStart: { x: freeTileSelectionTarget.instance.x, y: freeTileSelectionTarget.instance.y },
@@ -645,6 +648,13 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         return true
       }
       if (session.pendingPaste) state.commitFloatingPaste()
+      if (session.selectionKind === 'brush') {
+        startCanvasSelection(session.document.id)
+        const brushStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
+        inputRef.current.drag = beginSelectionBrush(session, brushStart, currentSelectionSession.selection, mode, optimizedRotationEnabled, repeatMode)
+        scheduleDraw()
+        return true
+      }
       if (session.selectionKind === 'magic') {
         if (
           freeTileSelectionBounds &&

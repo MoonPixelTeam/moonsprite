@@ -531,3 +531,25 @@ describe('workspace animation loop sections', () => {
     expect(document.animation?.activeFrameId).toBe(firstFrame.id)
   })
 })
+
+
+describe('workspace ping-pong playback', () => {
+  it.each(['ping-pong', 'ping-pong-reverse'] as const)('advances %s and resets its return leg when restarted', (direction) => {
+    const document = createDocument('ping-pong', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const ids = timeline.frames.map((frame) => frame.id)
+    const sectionId = useWorkspace.getState().createAnimationLoopSection({ name: 'Bounce', startFrameId: ids[0], endFrameId: ids[2], direction, repeatCount: null })!
+    useWorkspace.getState().playAnimationLoopSection(sectionId)
+    const pass = direction === 'ping-pong' ? [ids[0], ids[1], ids[2], ids[1], ids[0]] : [ids[2], ids[1], ids[0], ids[1], ids[2]]
+    const visited = [timeline.activeFrameId]
+    for (let i = 0; i < 4; i += 1) { useWorkspace.getState().advanceAnimationFrame(); visited.push(timeline.activeFrameId) }
+    expect(visited).toEqual(pass)
+    useWorkspace.getState().setAnimationPlaying(false)
+    useWorkspace.getState().playAnimationLoopSection(sectionId)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(ids[1])
+  })
+})

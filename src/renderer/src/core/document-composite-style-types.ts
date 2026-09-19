@@ -17,6 +17,7 @@ export interface StyledLayerBlock {
   width: number
   height: number
   pixels: Uint8ClampedArray
+  dirtyRects?: SelectionRect[]
 }
 
 export interface StyledLayerBlockCache {

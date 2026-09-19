@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pelican promenade</title>
+  <style>
+    :root { color-scheme: light; --ink: #233f50; --sea: #74bfb9; --paper: #f8faf5; --orange: #f5a14c; --coral: #e76f61; --sky: #e4eaf5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: var(--sky); color: var(--ink); font-family: "Trebuchet MS", Arial, sans-serif; padding: 32px; }
+    main { width: min(1120px, 100%); }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 0 8px 23px; }
+    .eyebrow { margin: 0 0 9px; text-transform: uppercase; letter-spacing: .2em; font-size: 11px; font-weight: bold; }
+    h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(32px, 5vw, 59px); font-weight: normal; letter-spacing: -.045em; line-height: 1.06; }
+    .caption { max-width: 210px; margin: 0 0 3px; font-size: 14px; line-height: 1.6; }
+    .scene { overflow: hidden; background: var(--paper); border: 1px solid #233f5025; border-radius: 18px; }
+    svg { display: block; width: 100%; height: auto; }
+    footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 19px 8px 0; font-size: 12px; }
+    footer p { margin: 0; }
+    button { display: inline-flex; align-items: center; gap: 9px; border: 1px solid #233f5040; border-radius: 100px; background: transparent; color: var(--ink); font: inherit; padding: 10px 17px; cursor: pointer; }
+    button:hover { background: #f8faf580; }
+    button:focus-visible { outline: 3px solid var(--coral); outline-offset: 4px; }
+    .state-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+    @media (max-width: 600px) { body { padding: 22px 14px; } header { display: block; } .caption { max-width: none; margin: 14px 0 0; } footer { align-items: start; } footer p { max-width: 170px; line-height: 1.6; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">A little seaside loop</p><h1>Pelican promenade.</h1></div>
+      <p class="caption">Two wheels. One sea breeze.<br>Absolutely no hurry.</p>
+    </header>
+    <div class="scene">
+      <svg id="scene" viewBox="0 0 1100 660" role="img" aria-labelledby="scene-title scene-description" xmlns="http://www.w3.org/2000/svg">
+        <title id="scene-title">A pelican riding a bicycle beside the sea</title>
+        <desc id="scene-description">A white pelican with an orange bill and coral scarf pedals a teal bicycle. Its webbed feet turn the pedals, the spokes spin, and the seaside scenery passes by.</desc>
+        <defs>
+          <pattern id="sea-lines" width="180" height="35" patternUnits="userSpaceOnUse"><path d="M12 18h43m41 0h62" fill="none" stroke="#f8faf5" stroke-width="2" opacity=".55" stroke-linecap="round"/></pattern>
+          <pattern id="road-lines" width="210" height="30" patternUnits="userSpaceOnUse"><path d="M25 15h68" stroke="#f8faf5" stroke-width="5" stroke-linecap="round"/></pattern>
+          <g id="cloud" fill="#f8faf5"><path d="M0 30C-6 11 15-2 31 10 39-12 77-8 81 16 100 11 113 21 110 32Z"/></g>
+          <g id="spokes" stroke="#233f50" stroke-width="2" opacity=".65">
+            <path d="M-76 0H76M0-76V76M-53.74-53.74 53.74 53.74M-53.74 53.74 53.74-53.74M-70.2-29.1 70.2 29.1M-29.1-70.2 29.1 70.2M-70.2 29.1 70.2-29.1M-29.1 70.2 29.1-70.2"/>
+          </g>
+        </defs>
+        <path fill="#e4eaf5" d="M0 0H1100V373H0Z"/>
+        <circle cx="886" cy="123" r="49" fill="#f5a14c" opacity=".72"/>
+        <g id="clouds"><use href="#cloud" x="135" y="113"/><use href="#cloud" transform="translate(733 72) scale(.65)"/><use href="#cloud" transform="translate(1010 188) scale(.8)"/></g>
+        <path d="M0 321Q113 286 221 328T450 320T704 325T930 313T1140 316V393H0Z" fill="#74bfb9" opacity=".38"/>
+        <path d="M0 352H1100V463H0Z" fill="#74bfb9"/>
+        <path d="M0 365H1100V453H0Z" fill="url(#sea-lines)"/>
+        <g id="boat" stroke="#233f50" stroke-width="2" stroke-linejoin="round">
+          <path d="M152 338H202L194 350H163Z" fill="#e76f61"/>
+          <path d="M178 296V337H153Z" fill="#f8faf5"/><path d="M183 307V337H198Z" fill="#e4eaf5"/>
+        </g>
+        <g fill="none" stroke="#233f50" stroke-width="2.5" stroke-linecap="round" opacity=".65"><path d="M353 136q10-10 20 0 10-10 20 0"/><path d="M402 111q7-7 14 0 7-7 14 0"/></g>
+        <path d="M0 429Q243 415 502 435T1100 428V660H0Z" fill="#f8faf5"/>
+        <path d="M0 535H1100V620H0Z" fill="#e4eaf5"/>
+        <path d="M0 535H1100" stroke="#233f50" stroke-width="3"/>
+        <path d="M0 571H1100V601H0Z" fill="url(#road-lines)"/>
+        <g id="grass" fill="none" stroke="#74bfb9" stroke-width="3" stroke-linecap="round">
+          <path d="M100 524l-8-18m8 18 4-26m-4 26 13-12M970 524l-8-18m8 18 4-26m-4 26 13-12"/>
+          <path d="M260 639l-8-12m8 12 5-18M1080 639l-8-12m8 12 5-18"/>
+        </g>
+        <ellipse cx="549" cy="535" rx="263" ry="12" fill="#233f50" opacity=".1"/>
+        <g id="rider" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Each wheel is positioned outside its rotating spoke group. -->
+          <g transform="translate(390 450)">
+            <circle r="83" fill="#f8faf5" fill-opacity=".5" stroke="#233f50" stroke-width="10"/>
+            <circle r="76" fill="none" stroke="#f8faf5" stroke-width="3"/>
+            <g id="rear-spokes"><use href="#spokes"/></g><circle r="7" fill="#233f50"/>
+          </g>
+          <g transform="translate(710 450)">
+            <circle r="83" fill="#f8faf5" fill-opacity=".5" stroke="#233f50" stroke-width="10"/>
+            <circle r="76" fill="none" stroke="#f8faf5" stroke-width="3"/>
+            <g id="front-spokes"><use href="#spokes"/></g><circle r="7" fill="#233f50"/>
+          </g>
+          <path d="M310 430A84 84 0 0 1 460 390M641 400A84 84 0 0 1 786 419" fill="none" stroke="#74bfb9" stroke-width="6"/>
+          <path id="far-leg" d="M499 337 511 407 508 450" fill="none" stroke="#bd783d" stroke-width="12"/>
+          <g id="far-foot" transform="translate(508 450)"><path d="M-9-4 15-3 23 4H-12Z" fill="#bd783d" stroke="#233f50" stroke-width="2"/><path d="M-16 7H20" stroke="#233f50" stroke-width="6"/></g>
+          <!-- The bicycle frame, chain, fork and handlebars. -->
+          <path d="M390 450 483 343 537 450 390 450M483 343H665L537 450M665 343 710 450" fill="none" stroke="#233f50" stroke-width="13"/>
+          <path d="M390 450 483 343 537 450 390 450M483 343H665L537 450M665 343 710 450" fill="none" stroke="#74bfb9" stroke-width="8"/>
+          <path d="M391 441 537 428a22 22 0 0 1 0 44L391 459a9 9 0 0 1 0-18Z" fill="#f8faf5" fill-opacity=".65" stroke="#233f50" stroke-width="2"/>
+          <circle cx="537" cy="450" r="21" fill="#74bfb9" stroke="#233f50" stroke-width="3"/>
+          <g id="cranks"><path d="M508 450H566" stroke="#233f50" stroke-width="6"/></g>
+          <circle cx="537" cy="450" r="5" fill="#f8faf5"/>
+          <path d="M483 343 473 321M665 343 651 292H680q17 0 17 13t-17 13" fill="none" stroke="#233f50" stroke-width="7"/>
+          <path d="M675 291h10q15 0 12 17" fill="none" stroke="#e76f61" stroke-width="10"/>
+          <path d="M450 316q20-10 43-2l7 8h-51q-8-2 1-6" fill="#233f50"/>
+          <circle cx="653" cy="284" r="8" fill="#f5a14c" stroke="#233f50" stroke-width="2"/>
+          <!-- Pelican silhouette: tail, round body, long neck and roomy bill pouch. -->
+          <path d="M449 281 386 254 403 285 384 282Q409 317 454 318" fill="#f8faf5" stroke="#233f50" stroke-width="3"/>
+          <path d="M447 263C407 279 411 332 459 347 510 365 560 340 573 300 585 261 567 225 594 202 615 184 622 164 610 146 597 126 563 132 551 155 539 177 547 197 531 219 510 247 477 252 447 263Z" fill="#f8faf5" stroke="#233f50" stroke-width="3.5"/>
+          <path d="M445 319Q483 352 533 326 555 312 561 283" fill="none" stroke="#e4eaf5" stroke-width="16"/>
+          <path d="M555 153 551 132 565 140 568 124 580 138" fill="#f8faf5" stroke="#233f50" stroke-width="3"/>
+          <path d="M600 171 815 186Q761 245 665 225 618 215 600 186Z" fill="#f5a14c" stroke="#233f50" stroke-width="3"/>
+          <path d="M616 190Q696 231 786 196" fill="none" stroke="#e76f61" stroke-width="3" opacity=".7"/>
+          <path d="M599 165Q697 156 823 184L812 191 599 184Z" fill="#f5a14c" stroke="#233f50" stroke-width="3"/>
+          <path d="M620 174 791 182" stroke="#f8faf5" stroke-width="3" opacity=".7"/>
+          <circle cx="586" cy="159" r="10" fill="#e4eaf5"/>
+          <g id="eye" transform="translate(588 158)"><circle r="5" fill="#233f50"/><circle cx="1.5" cy="-1.5" r="1.5" fill="#f8faf5"/></g>
+          <path d="M578 141q8-4 13 0" fill="none" stroke="#233f50" stroke-width="2.5"/>
+          <path id="scarf-tail" d="M551 217C517 202 491 225 455 208L462 224 447 233C495 244 527 225 551 230Z" fill="#e76f61" stroke="#233f50" stroke-width="2.5"/>
+          <path d="M546 209q13 11 26 7l-2 15q-15 4-29-7Z" fill="#e76f61" stroke="#233f50" stroke-width="2.5"/>
+          <path d="M469 270C502 257 518 271 544 284 572 298 601 296 650 291 661 292 668 300 655 306 604 321 560 325 530 315 498 308 476 296 469 270Z" fill="#f8faf5" stroke="#233f50" stroke-width="3"/>
+          <path d="M489 280q28 24 63 27m-62-15q23 19 45 22" fill="none" stroke="#e4eaf5" stroke-width="5"/>
+          <path id="near-leg" d="M508 336 565 375 566 450" fill="none" stroke="#233f50" stroke-width="15"/>
+          <path id="near-leg-color" d="M508 336 565 375 566 450" fill="none" stroke="#f5a14c" stroke-width="10"/>
+          <path d="M489 328q12 17 31 9" fill="none" stroke="#f8faf5" stroke-width="14"/>
+          <g id="near-foot" transform="translate(566 450)"><path d="M-9-5 8-5 24 3 19 7H-13Z" fill="#f5a14c" stroke="#233f50" stroke-width="2.5"/><path d="M5-3 13 3M11-2 19 3" stroke="#bd783d" stroke-width="1.5"/><path d="M-16 10H23" stroke="#233f50" stroke-width="6"/></g>
+        </g>
+        <g fill="none" stroke="#233f50" stroke-width="3" stroke-linecap="round" opacity=".35"><path d="M307 272h42M283 287h51M304 302h31"/></g>
+      </svg>
+    </div>
+    <footer><p>A shore thing. Enjoy the ride.</p><button id="toggle" type="button" aria-label="Pause animation"><span class="state-dot" aria-hidden="true"></span><span id="toggle-label">Pause animation</span></button></footer>
+  </main>
+  <script>
+    (() => {
+      const get = id => document.getElementById(id);
+      const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+      const nodes = Object.fromEntries(['rider', 'rear-spokes', 'front-spokes', 'cranks', 'far-leg', 'near-leg', 'near-leg-color', 'far-foot', 'near-foot', 'sea-lines', 'road-lines', 'clouds', 'boat', 'grass', 'scarf-tail', 'eye'].map(id => [id, get(id)]));
+      const button = get('toggle');
+      let playing = !motionPreference.matches;
+      let elapsed = 0;
+      let previous = null;
+      let request = null;
+      const set = (id, name, value) => nodes[id].setAttribute(name, value);
+      // Two fixed-length leg segments keep the webbed feet attached to the pedals.
+      function leg(hipX, hipY, footX, footY) {
+        const dx = footX - hipX, dy = footY - hipY;
+        const distance = Math.hypot(dx, dy);
+        const upper = 78, lower = 87;
+        const along = (upper * upper - lower * lower + distance * distance) / (2 * distance);
+        const height = Math.sqrt(Math.max(0, upper * upper - along * along));
+        const kneeX = hipX + dx * along / distance + dy * height / distance;
+        const kneeY = hipY + dy * along / distance - dx * height / distance;
+        return `M${hipX} ${hipY} L${kneeX} ${kneeY} L${footX} ${footY}`;
+      }
+      function draw(time) {
+        const phase = time * Math.PI * 2 / 1.6;
+        const angle = phase * 180 / Math.PI;
+        set('rider', 'transform', `translate(0 ${Math.sin(phase * 2) * 1.5})`);
+        set('rear-spokes', 'transform', `rotate(${angle * 1.45})`);
+        set('front-spokes', 'transform', `rotate(${angle * 1.45})`);
+        set('cranks', 'transform', `rotate(${angle} 537 450)`);
+        const nearX = 537 + 29 * Math.cos(phase), nearY = 450 + 29 * Math.sin(phase);
+        const farX = 537 - 29 * Math.cos(phase), farY = 450 - 29 * Math.sin(phase);
+        const nearPath = leg(508, 336, nearX, nearY);
+        set('near-leg', 'd', nearPath);
+        set('near-leg-color', 'd', nearPath);
+        set('far-leg', 'd', leg(499, 337, farX, farY));
+        set('near-foot', 'transform', `translate(${nearX} ${nearY})`);
+        set('far-foot', 'transform', `translate(${farX} ${farY})`);
+        set('sea-lines', 'patternTransform', `translate(${-time * 17 % 180} 0)`);
+        set('road-lines', 'patternTransform', `translate(${-time * 170 % 210} 0)`);
+        set('clouds', 'transform', `translate(${-time * 4 % 1100} 0)`);
+        set('boat', 'transform', `translate(${-time * 9 % 350} ${Math.sin(time * 1.3) * 2})`);
+        set('grass', 'transform', `translate(${-time * 170 % 870} 0)`);
+        const flutter = Math.sin(phase * 2) * 6;
+        set('scarf-tail', 'd', `M551 217C517 ${202 + flutter} 491 ${225 - flutter} 455 ${208 + flutter}L462 ${224 + flutter} 447 ${233 + flutter}C495 ${244 - flutter} 527 ${225 + flutter} 551 230Z`);
+        const blink = time % 5.3;
+        set('eye', 'transform', `translate(588 158) scale(1 ${blink > 5.1 ? .12 : 1})`);
+      }
+      function tick(now) {
+        if (!playing || document.hidden) { request = null; previous = null; return; }
+        if (previous !== null) elapsed += Math.min((now - previous) / 1000, .06);
+        previous = now;
+        draw(elapsed);
+        request = requestAnimationFrame(tick);
+      }
+      function sync() {
+        const label = playing ? 'Pause animation' : 'Play animation';
+        get('toggle-label').textContent = label;
+        button.setAttribute('aria-label', label);
+        if (request !== null) cancelAnimationFrame(request);
+        request = null;
+        previous = null;
+        if (playing && !document.hidden) request = requestAnimationFrame(tick);
+      }
+      button.addEventListener('click', () => { playing = !playing; sync(); });
+      document.addEventListener('visibilitychange', sync);
+      motionPreference.addEventListener('change', event => { playing = !event.matches; sync(); });
+      draw(0);
+      sync();
+    })();
+  </script>
+</body>
+</html>

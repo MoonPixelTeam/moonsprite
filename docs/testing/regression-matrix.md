@@ -25,6 +25,7 @@
 | 图片与 GIF 编码 | PNG 等静态格式保持尺寸与透明度；GIF 帧顺序、时长、缩放和往返方向生成确定字节结果，跨越 LZW 编码位宽边界后仍可逐帧解码为精确像素 | `png.test.ts`、`gif.test.ts`、`raster-image.test.ts` |
 | 缩时导出格式与采样 | MP4/WebM 按目标时长或倍率以固定 FPS 首尾均匀采样；1 秒、2 秒等短时长不会因记录帧很多而只保留近似同一画面；PNG/JPG 按记录顺序一次选择路径后连续写出带序号的图片，缩放尺寸和透明度符合格式语义 | `timelapse.test.ts`、`document-file-service.test.ts` |
 | 精灵表布局、预览与拆分输出 | 水平/垂直条幅；按行的固定列数/宽度与按列的固定行数/高度保持确定尺寸和顺序，无限制分别退化为 1 行/1 列，过小像素尺寸钳制为单项尺寸；透明帧不占矩形，重复帧共享矩形；图层与循环节拆分目标按顺序纵向合并到同一结果且不修改源文档；预览临时打开并随设置替换，替换时保留缩放、平移和视图方向，关闭预览或弹窗后恢复源文档；文件输出只原子写入一个 PNG | `sprite-sheet.test.ts`、`workspace.test.ts`、`document-file-service.test.ts` |
+| 本地录像与便携工程 | v20 普通保存复用已落盘引用，携带录像时内嵌 PNG；旧内嵌工程迁移、CRC 校验、缺库错误、保存等待录制与取消保持一致，清空不误删共享库 | `project-format-timelapse-restore.test.ts`、`timelapse-library-service.test.ts`、`timelapse-export-flow.test.ts` |
 | 输入资源上限 | 零尺寸、溢出、超大图片、异常工程和剪贴板数据在分配大内存或调用系统接口前被拒绝 | `resource-policy.test.ts`、Rust 剪贴板测试 |
 | 恢复写入、打开与删除 | 恢复保存串行执行；从恢复打开、关闭会话或未保存提示中放弃都保留原记录并继续以同一 ID 自动恢复；只有恢复栏目显式删除或对应项目完整保存后才清理，显式删除需等待在途写入结束且晚到写入不得重新创建草稿 | `recovery-service.test.ts`、`workspace.test.ts`、Rust 恢复测试 |
 | 恢复能力降级 | 恢复目录或会话标记不可写时只记录警告，不阻止主窗口和编辑器启动 | Rust `platform_recovery` 测试 |
@@ -51,6 +52,8 @@
 | 单动作单历史 | 图层批处理、选区变换、调整、画布尺寸和动画编辑每个用户动作只产生一个可完整恢复的历史条目 | `workspace.test.ts`、`layer-operations.test.ts` |
 | 视图状态隔离 | 平移、缩放、旋转、镜像、栏目布局、播放位置和工具切换不进入文档历史，不改变 dirty | `view-preview-lifecycle.test.ts`、`workspace.test.ts`、`animation.test.ts` |
 | 临时预览隔离 | 画布尺寸、视图和颜色调整预览可取消或内部撤销，确认前不污染文档历史 | `adjustment-preview-lifecycle.test.ts`、`workspace.test.ts` |
+| 自动抗锯齿预览与撤销 | 偏移/裁剪 cel 扩展后同步表面与稳定存储原点；替换预览及取消恢复原像素，确认、多帧处理和 Undo/Redo 不留下失配表面 | `workspace-anti-alias.test.ts` |
+| 项目回档 | 恢复指定备份后，项目内容、历史跳转与 Undo/Redo 保持一致，错误和加载状态可见 | `workspace-project-rollback.test.ts` |
 | 进行中路径历史 | 自由形状、多边形形状与两种套索在完成前逐点 Undo/Redo；撤销最后一点后退出手势并继续文档历史，完成后仍只提交一次 | `canvas-input.test.ts`、`workspace.test.ts` |
 | 历史失败恢复 | 撤销或重做执行失败时原条目和内存计数保持，可在修复条件后重试 | `history.test.ts` |
 | Lua MSE 类型化事务 | Lua 只读取隔离的像素与结构快照；同一事务中的像素修改和 `mse` 文档写入合并为一个撤销步骤，后续操作失败时已应用内容逆序恢复且不留下历史条目；持久对话框回调使用重新校验后的当前快照 | `lua-script-service.test.ts`、`history.test.ts`、Rust `platform_scripts` 测试 |
@@ -89,8 +92,10 @@
 | cel 连接生命周期 | 连接、断开、清空、删除和粘贴正确维护共享表面；共享编辑同步，整组 Undo/Redo 恢复关系与像素 | `animation.test.ts`、`workspace.test.ts` |
 | cel 批量剪贴板 | 多选 cel 按第一格锚点和相对行列复制粘贴，必要时扩展帧，整个操作只产生一次历史 | `workspace.test.ts` |
 | 动画图层复制 | 复制图层或组时包含全部 frame/cel、空帧状态和属性，不只复制当前帧 | `workspace.test.ts`、`layer-operations.test.ts` |
-| 播放时钟与状态 | 图层栏和预览栏共享单一时钟；帧时长、倍率、循环和停止回退确定，播放不改变 dirty | `animation.test.ts`、`workspace-animation-loop-sections.test.ts` |
-| 命名循环节 | 多选帧可创建、编辑、删除和独立播放正向/反向有限或无限循环；标签播放优先重复当前帧所在的最内层循环节，范围外退化为全部循环；嵌套括号显示在父范围内部；条目范围随稳定帧 ID 排列，端点删除收缩，配置可撤销并随 v16 工程往返 | `workspace-animation-loop-sections.test.ts`、`project-format.test.ts` |
+| 播放时钟与状态 | 图层栏与预览栏复用播放规则；预览未独立播放时跟随当前/主时间轴帧，独立播放时保留自己的进度；帧时长、倍率、循环和停止回退确定，播放不改变 dirty | `animation.test.ts`、`workspace-animation-loop-sections.test.ts` |
+| 自动补间 | 单帧/循环节来源按位移、旋转、缩放、透明度与缓动生成帧，预览不改文档，确认后可完整撤销 | `animation-tween.test.ts`、`AnimationTweenDialog.test.tsx` |
+| 关联图层 | 同帧共享实际栅格存储，独立偏移和显示属性；编辑、跨文档粘贴、序列化和历史恢复保持共享身份 | `linked-layers.test.ts`、`workspace-linked-layers.test.ts`、`project-format.test.ts` |
+| 命名循环节 | 多选帧可创建、编辑、删除和独立播放正向、反向、往返和反向往返的有限或无限循环；标签播放优先重复当前帧所在的最内层循环节，范围外退化为全部循环；嵌套括号显示在父范围内部；条目范围随稳定帧 ID 排列，端点删除收缩，配置可撤销并随 v16 工程往返 | `workspace-animation-loop-sections.test.ts`、`project-format.test.ts` |
 | 嵌套图层结构 | 移动、复制、建组、解组和删除保持树顺序与父子关系，拒绝循环父级，批量操作不重复处理后代 | `layer-operations.test.ts`、`workspace.test.ts` |
 | 锁定传播 | 锁定组及其后代不得修改像素、属性或结构；解锁和历史恢复不丢显式锁定状态 | `layer-operations.test.ts`、`workspace.test.ts` |
 | 图层合并结果 | 不同颜色模式、透明度和混合模式合并后的像素确定，合并及 Undo/Redo 保持图层顺序和选择 | `layer-merge.test.ts`、`workspace.test.ts` |
@@ -109,5 +114,5 @@
 
 - 修改高风险逻辑时先查找对应契约，优先扩展该行引用的测试。
 - 新场景没有自动化保护时，只在确属数据、兼容或平台安全缺口时标为“发布门禁”；普通 UI 不得以“待补”形式进入矩阵。
-- 每次 `DEV.N` 发布审计重复和过时契约；合并语义，不按 Debug 次数膨胀行数。
+- 每次 Beta 或正式版本发布审计重复和过时契约；合并语义，不按 Debug 次数膨胀行数。
 - 性能回归只记录在 `performance-baseline.md` 和 `performance-history.md`，不混入本矩阵。

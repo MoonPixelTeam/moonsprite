@@ -59,6 +59,7 @@ export interface CanvasDragState extends LayerMoveState {
     | 'airbrush'
     | 'liquify'
     | 'smooth'
+    | 'selection-brush'
     | 'shape'
     | 'freeform-shape'
     | 'polygon-shape'
@@ -94,6 +95,8 @@ export interface CanvasDragState extends LayerMoveState {
   perfectPixelCommittedEdit?: PixelEdit
   perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }
+  /** Coverage collected while creating a selection with the selection brush. */
+  selectionBrushStroke?: { visited: Set<number> }
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint
@@ -203,6 +206,9 @@ export interface CanvasDragState extends LayerMoveState {
   transformStartShear?: SelectionShearTransform
   transformOffset?: CanvasPoint
   transformMoveStart?: { pointer: CanvasPoint; offset: CanvasPoint }
+  drawingAnchor?: CanvasPoint
+  drawingAnchorMove?: boolean
+  canvasCenterSize?: { width: number; height: number }
   marqueeBounds?: SelectionRect
   marqueeAngle?: number
   marqueeModifierMode?: MarqueeModifierMode

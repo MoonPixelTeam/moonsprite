@@ -1,9 +1,10 @@
+import { publishEditorEvent } from '@/core/extension-editor-events'
 import type { SpriteDocument } from '@shared/types-document'
 import { beginRuntimeDiagnosticOperation, measureRuntimeDiagnostic, recordRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
 import { documentDiagnosticDetail } from '@/core/document-diagnostics'
 import { normalizeProjectStatistics, normalizeTimelapseSettings } from '@/core/project-metadata'
 import { commitPreparedTimelapseSnapshot, createTimelapseCaptureCache, prepareTimelapseSnapshot, resetTimelapseSmartCapture, type TimelapseCaptureCache } from '@/core/timelapse'
-import { recordUsageEvent } from '@/platform/usage-statistics'
+import { recordUsageDrawingActivity } from '@/platform/usage-statistics'
 import type { DocumentSession } from './workspace-types'
 import { persistTimelapseFrames } from './timelapse-library-service'
 
@@ -203,7 +204,8 @@ const recordDocumentOperation = (session: DocumentSession, activity?: { stroke?:
   if (activity?.stroke) statistics.strokeCount += 1
   if (activity?.durationMs) statistics.drawingTimeMs += Math.max(0, Math.round(activity.durationMs))
   session.document.statistics = statistics
-  if (activity?.stroke) recordUsageEvent('drawingStroke')
+  if (activity?.stroke && kind === 'edit') publishEditorEvent(session.tool === 'fill' ? 'fill.completed' : 'drawing.completed', session.document.id, { tool: session.tool })
+  if (activity) recordUsageDrawingActivity(activity)
   if (captureTimelapse) scheduleTimelapseCapture(session, kind)
 }
 

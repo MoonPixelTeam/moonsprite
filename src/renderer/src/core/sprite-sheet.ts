@@ -30,6 +30,7 @@ export interface SpriteSheetExportOptions extends SpriteSheetLayoutSettings {
   splitLayers: boolean
   frameScope: SpriteSheetFrameScope
   splitLoopSections: boolean
+  openAfterExport?: boolean
   outputFile: boolean
   name: string
   directory: string

@@ -8,28 +8,23 @@ import { getLayerContentRevision } from '@/core/document-model'
 import { applyRelativeLuminance } from '@/core/raster'
 import type { RasterContext2D } from './canvas-selection-renderer'
 import { type MovePreviewSurface, imageData, repeatedLayers } from './canvas-composite-cache-surfaces'
-import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 import { CanvasGpuMovePreview } from './canvas-composite-cache-gpu'
 
 /** Owns both exact and GPU movement previews for one canvas cache. */
 export class CanvasMovePreviewRenderer {
   private movePreview: MovePreviewSurface | null = null
   private readonly gpu: CanvasGpuMovePreview
-  constructor(private readonly compositeCache: DocumentCompositeCache, private readonly maxCacheBytes: number, private readonly blitter: CanvasCompositeBlitter) {
+  constructor(private readonly compositeCache: DocumentCompositeCache, private readonly maxCacheBytes: number) {
     this.gpu = new CanvasGpuMovePreview(maxCacheBytes)
   }
   clearRaster(): void { this.movePreview = null }
   clear(): void { this.clearRaster(); this.gpu.clear() }
   private drawSurface(context: RasterContext2D, canvas: OffscreenCanvas, view: ViewState, originX: number, originY: number, x: number, y: number, width: number, height: number): void {
-    // Match the committed compositor's per-pixel device edges. Scaling the
-    // viewport as one image redistributes rows at fractional backing scales.
-    const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
-    if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !context.imageSmoothingEnabled) {
-      this.blitter.drawAlignedPixelRegion(context, canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
-    } else {
-      const destination = this.blitter.alignedDocumentDestination(originX, originY, view.zoom, x, y, width, height)
-      context.drawImage(canvas, 0, 0, width, height, destination.left, destination.top, destination.width, destination.height)
-    }
+    // Match the committed cache with one continuous affine blit. Pixel-run
+    // splitting is reserved for overlays; applying it to the full preview
+    // makes high-zoom movement scale with visible pixel count.
+    context.drawImage(canvas, 0, 0, width, height,
+      originX + x * view.zoom, originY + y * view.zoom, width * view.zoom, height * view.zoom)
   }
   drawMovePreview(
     context: RasterContext2D,

@@ -1,3 +1,4 @@
+import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
 import { useEffect } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -290,6 +291,11 @@ export function useCanvasCursor(ports: Ports) {
     // Once a selection gesture has started, its crosshair owns the pointer
     // until release. Keep it ahead of transient layer/tool availability checks
     // so a rerender cannot replace it with an invisible or unavailable cursor.
+    if (ports.inputRef.current.drag?.kind === 'selection-brush') {
+      ports.inputRef.current.sampling = false
+      canvas.style.cursor = canvasToolCursor('pencil', ports.session.primaryColor)
+      return
+    }
     const selectionCreationDrag =
       ports.inputRef.current.drag?.kind === 'marquee' || ports.inputRef.current.drag?.kind === 'lasso' || ports.inputRef.current.drag?.kind === 'polygon-lasso'
     if (selectionCreationDrag) {
@@ -466,9 +472,11 @@ export function useCanvasCursor(ports: Ports) {
     const ctrlActive = ports.inputRef.current.ctrlHeld || ctrlKey
     const brushSizeTool =
       ports.session.tool === 'pencil' ||
+      ports.session.tool === 'line' ||
       ports.session.tool === 'airbrush' ||
       ports.session.tool === 'eraser' ||
       ports.session.tool === 'smooth' ||
+      (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
       ports.session.tool === 'liquify'
     const modifierSizing =
       brushSizeAdjustmentPreviewActive ||
@@ -534,6 +542,8 @@ export function useCanvasCursor(ports: Ports) {
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit in resizeCursors)
       canvas.style.cursor = displayedResizeCursorForHandle(rawSelectionHit as SelectionHandle)
     else if (ports.session.tool === 'text' && selectedTextBox && rawSelectionHit === 'inside') canvas.style.cursor = canvasCursors.move
+    else if (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' && selectionBrushOwnsPointer(freeTransformActive, selectionHit))
+      canvas.style.cursor = canvasToolCursor('pencil', contrastColor, available)
     else if (ports.session.tool === 'selection') {
       const hit = selectionHit
       canvas.style.cursor = freeTransformActive

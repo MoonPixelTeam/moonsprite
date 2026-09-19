@@ -19,7 +19,7 @@ import { isWorkspaceResizing, recordWorkspaceResizeStage, recordWorkspaceResizeC
 import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { activeLayerMask, activePaintLayer, selectedTransformLayersAreEditable } from '@/store/workspace-session'
-import { createCanvasRenderPlan, deviceAlignedCanvasRect, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { deferredSelectionPreviewOwner, temporaryMoveSuppressesToolPreview } from '@/core/canvas-input'
 import { presentCanvasClickFlash } from './canvas-click-flash'
@@ -103,7 +103,7 @@ export interface CanvasRenderContext {
   }
   settings: {
     session: import('@/store/workspace-types').DocumentSession
-    interfaceScale: 0.75 | 1 | 1.5 | 2
+    interfaceScale: import('@/core/file-preferences').UiScale
     rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
     activeTheme: import('@/core/theme').ResolvedTheme
     checkerboard: import('@/core/file-preferences').CheckerboardPreferences
@@ -114,6 +114,8 @@ export interface CanvasRenderContext {
     gridColors: import('@/core/file-preferences').GridColorPreferences
     selectionPreviewColorMode: import('@/core/file-preferences').SelectionPreviewColorMode
     selectionPreviewColor: import('@shared/types-color').RgbaColor
+    brushEdgeColor?: import('@shared/types-color').RgbaColor
+    brushEdgeThickness: number
     activeBrushImage: import('@shared/types-brush').ImageBrush | null
     activeBrushPreviewMode: import('@shared/types-brush').BrushPaintMode
     activeBrushTexture: import('@shared/types-brush').BrushTexture
@@ -393,6 +395,7 @@ export interface CanvasRenderContext {
         | 'toggleContiguous'
         | 'toggleCustomGrid'
         | 'toggleFixedRatio'
+        | 'toggleFullscreen'
         | 'toggleGrid'
         | 'toggleGroupMask'
         | 'toggleIsoView'
@@ -610,6 +613,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     sliceTool,
     fillKind,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     drawingBrushPreviewEnabled,
     canvasStatusBottomInset,
     gridSnapActive,
@@ -707,11 +712,9 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const activeDrag = inputRef.current.drag
   const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
   const smoothPixelSampling = pixelSamplingMode(view.zoom) === 'smooth'
-  // View gestures (zoom, pan, and rotate) redraw the cached bitmap every
-  // frame. Keep the interactive path cheap and atomic: the cache skips its
-  // per-pixel alignment blit while this flag is set, and rotated scenes use
-  // a low-cost sampling kernel. The exact aligned frame is rendered once
-  // after the gesture commits.
+  // View gestures reuse cached pixels and use a low-cost rotation filter.
+  // Axis-aligned pixel edges stay identical during navigation and after
+  // release; switching alignment paths here makes the artwork drift.
   const viewPreviewActive =
     isWorkspaceResizing() ||
     activeDrag?.kind === 'pan' ||
@@ -723,7 +726,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentSession.selectedAnimationFrameIds.length > 1 && currentSession.contentInvalidation
       ? { ...currentSession.contentInvalidation, frameId: undefined }
       : currentSession.contentInvalidation
-  const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition)
+  const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition, deviceScale)
   const { rotated, viewport, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY } = renderPlan
   let context: RasterContext2D = displayContext
   if (rotated) {
@@ -755,7 +758,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   // Rounding each floating-point copy origin independently can make the
   // right edge of one copy differ from the left edge of its neighbour by a
   // physical pixel, which shows up as a transient seam during previews.
-  const baseCanvasBoundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, deviceScale)
+  const baseCanvasBoundary = deviceAlignedCanvasRect(deviceAlignedCoordinate(originX, deviceScale.x), deviceAlignedCoordinate(originY, deviceScale.y), canvasWidth, canvasHeight, deviceScale)
   const renderCanvasWidth = baseCanvasBoundary.width
   const renderCanvasHeight = baseCanvasBoundary.height
   const repeatOffsets = tileRepeatOffsetsForViewport(viewport, originX, originY, canvasWidth, canvasHeight, view.tileRepeatMode ?? 'off')
@@ -1083,6 +1086,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     drag,
@@ -1108,6 +1113,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     drag,
@@ -1131,6 +1138,8 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     currentActiveLayer,
     currentSession,
     brushPreviewMode,
+    brushEdgeColor,
+    brushEdgeThickness,
     canRenderToolPreview,
     inputRef,
     activeDrag,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
+import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, assignShortcutBinding, modifierShortcutHeldByBindings, shortcutBindingSupported, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 import { SHORTCUT_LABELS } from '@/locales/shortcut-labels'
 
 describe('shortcut persistence boundary', () => {
@@ -41,6 +41,8 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS.toolRailLeft).toBe('')
     expect(DEFAULT_SHORTCUTS.toolRailTop).toBe('')
     expect(DEFAULT_SHORTCUTS.toolRailBottom).toBe('')
+    expect(DEFAULT_SHORTCUTS.toggleFullscreen).toBe('F11')
+    expect(DEFAULT_SHORTCUTS.toggleLayersPanel).toBe('Tab')
     expect(DEFAULT_SHORTCUTS.swapForegroundBackground).toBe('X')
     expect(DEFAULT_SHORTCUTS.addForegroundToPalette).toBe('Alt+S')
     expect(DEFAULT_SHORTCUTS.quickOutline).toBe('Shift+S')
@@ -175,4 +177,27 @@ describe('shortcut persistence boundary', () => {
     expect(legacy?.undo).toEqual(['Ctrl+Z'])
   })
 
+})
+
+
+it('validates sustained gestures without restricting wheel commands', () => {
+  for (const binding of ['WheelUp', 'Ctrl+WheelDown', 'MouseDoubleLeft', 'MouseLeft', 'MouseRight']) {
+    expect(shortcutBindingSupported('brushSizeAdjust', binding)).toBe(false)
+    expect(shortcutBindingSupported('tool.hand.quick', binding)).toBe(false)
+    expect(importShortcutBindings(JSON.stringify({ brushSizeAdjust: binding }))).toBeNull()
+  }
+  expect(shortcutBindingSupported('brushSizeIncrease', 'WheelUp')).toBe(true)
+  expect(shortcutBindingSupported('brushSizeAdjust', 'Space+K')).toBe(true)
+  expect(shortcutBindingSupported('brushSizeAdjust', 'MouseBack')).toBe(true)
+  const original = structuredClone(DEFAULT_SHORTCUT_BINDINGS)
+  expect(assignShortcutBinding(original, 'brushSizeAdjust', 'WheelUp').shortcuts).toEqual(original)
+})
+
+it('matches held ordinary keys and treats modifier event flags as authoritative', () => {
+  const none = { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false }
+  const held = new Set(['K', 'Space', 'Ctrl'])
+  expect(modifierShortcutHeldByBindings(none, ['Space+K'], held)).toBe(true)
+  expect(modifierShortcutHeldByBindings(none, ['Ctrl+K'], held)).toBe(false)
+  expect(modifierShortcutHeldByBindings({ ...none, metaKey: true }, ['Win+K'], held)).toBe(true)
+  expect(modifierShortcutHeldByBindings({ ...none, metaKey: true }, ['Ctrl+K'], held)).toBe(false)
 })

@@ -22,7 +22,7 @@ export interface SelectionQuad {
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect'
 
-export type SelectionKind = 'rectangle' | 'ellipse' | 'magic' | 'lasso' | 'polygon-lasso'
+export type SelectionKind = 'rectangle' | 'ellipse' | 'magic' | 'lasso' | 'polygon-lasso' | 'brush'
 
 export type OutlinePosition = 'inside' | 'outside' | 'both'
 

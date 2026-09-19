@@ -14,6 +14,17 @@ beforeAll(() => {
 })
 
 describe('PSD export', () => {
+  it('exports wallpaper as an ordinary raster layer with its pixels intact', () => {
+    const document = createDocument('background', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.background = { mode: 'canvas' }
+    writeLayerColor(document, layer, 0, { r: 18, g: 52, b: 86, a: 255 })
+    const psd = readPsd(encodePsd(document), { useImageData: true })
+    expect(psd.children).toHaveLength(1)
+    expect([...psd.children![0].imageData!.data.subarray(0, 4)]).toEqual([18, 52, 86, 255])
+    expect(layer.background).toEqual({ mode: 'canvas' })
+  })
+
   it('writes editable layer hierarchy and Photoshop-compatible properties', () => {
     const document = createDocument('Layered PSD', 2, 2, 'rgba')
     const base = getActiveLayer(document)

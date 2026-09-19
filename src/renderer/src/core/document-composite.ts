@@ -10,6 +10,7 @@ export {
   compositeDocument,
   documentVisibleContentBounds
 } from './document-composite-region'
+export { documentAnimationVisibleContentBounds } from './document-animation-content-bounds'
 export {
   createCompositePointSampler,
   createNormalCompositePointSampler,

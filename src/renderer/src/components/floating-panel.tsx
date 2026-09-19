@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { loadFloatingPosition, resizeFloatingPosition, saveFloatingPosition, type FloatingPosition } from '@/core/panel-preferences'
 
+import { createPanelDockIntent, panelDockZoneAt, PANEL_DRAG_THRESHOLD, type PanelDockPlacement } from './panel-docking'
+export { panelDockZoneAt } from './panel-docking'
+
 let floatingZIndex = 220
 const floatingWindowStackBaseZIndex = 600
 
@@ -68,48 +71,9 @@ export type FixedPanelDock = Exclude<PanelDock, 'floating'>
 export type ResizeDirection = 'n' | 'e' | 's' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 export interface FloatingSizeConstraints { minWidth?: number; minHeight?: number; maxWidth?: number; maxHeight?: number; restoreSizeOnly?: boolean }
 
-interface PanelDockZone {
-  dock: FixedPanelDock
-  bounds: DOMRect
-  preview: CSSProperties
-}
-
 const notifyWorkspaceLayoutChanged = (): void => { window.dispatchEvent(new Event('moonsprite-workspace-layout-change')) }
 
-export function panelDockZoneAt(clientX: number, clientY: number): PanelDockZone | null {
-  const contains = (bounds: DOMRect): boolean => clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom
-  const compactPreview = (dock: FixedPanelDock, bounds: DOMRect): CSSProperties => {
-    if (dock === 'bottom') {
-      const width = Math.min(132, Math.max(44, bounds.width - 8))
-      return { position: 'fixed', left: Math.max(bounds.left + 4, Math.min(bounds.right - width - 4, clientX - width / 2)), top: bounds.top + 4, width, height: Math.min(42, Math.max(24, bounds.height - 8)) }
-    }
-    const height = Math.min(104, Math.max(44, bounds.height - 8))
-    const width = Math.min(46, Math.max(24, bounds.width - 8))
-    return { position: 'fixed', left: dock === 'left' ? bounds.right - width - 4 : bounds.left + 4, top: Math.max(bounds.top + 4, Math.min(bounds.bottom - height - 4, clientY - height / 2)), width, height }
-  }
-  for (const dock of ['left', 'bottom', 'right'] as FixedPanelDock[]) {
-    const element = document.querySelector<HTMLElement>(`[data-panel-dock-zone="${dock}"]`)
-    const bounds = element?.getBoundingClientRect()
-    if (bounds && bounds.width > 0 && bounds.height > 0 && contains(bounds)) return { dock, bounds, preview: compactPreview(dock, bounds) }
-  }
-  const stage = document.querySelector<HTMLElement>('.stage-wrap')?.getBoundingClientRect()
-  if (!stage || !contains(stage)) return null
-  if (!document.querySelector('[data-panel-dock-zone="left"]') && clientX <= stage.left + Math.min(72, stage.width * .12)) {
-    const bounds = new DOMRect(stage.left, stage.top, Math.min(72, stage.width), stage.height)
-    return { dock: 'left', bounds, preview: compactPreview('left', bounds) }
-  }
-  if (!document.querySelector('[data-panel-dock-zone="bottom"]') && clientY >= stage.bottom - Math.min(72, stage.height * .18)) {
-    const bounds = new DOMRect(stage.left, stage.bottom - Math.min(72, stage.height), stage.width, Math.min(72, stage.height))
-    return { dock: 'bottom', bounds, preview: compactPreview('bottom', bounds) }
-  }
-  if (!document.querySelector('[data-panel-dock-zone="right"]') && clientX >= stage.right - Math.min(72, stage.width * .12)) {
-    const bounds = new DOMRect(stage.right - Math.min(72, stage.width), stage.top, Math.min(72, stage.width), stage.height)
-    return { dock: 'right', bounds, preview: compactPreview('right', bounds) }
-  }
-  return null
-}
-
-export function useFloatingPanel(initialPosition: FloatingPosition | null = null, followViewportRight = false, canDock = true, storageKey?: string, responsiveToViewport = false, onDock?: (dock: FixedPanelDock) => void, forceDocked = false, constraints: FloatingSizeConstraints = {}) {
+export function useFloatingPanel(initialPosition: FloatingPosition | null = null, followViewportRight = false, canDock = true, storageKey?: string, responsiveToViewport = false, onDock?: (dock: FixedPanelDock, placement?: PanelDockPlacement) => void, forceDocked = false, constraints: FloatingSizeConstraints = {}) {
   const minimumWidth = constraints.minWidth ?? 180
   const minimumHeight = constraints.minHeight ?? 120
   const minimumWidthForViewport = (): number => Math.min(minimumWidth, Math.max(1, window.innerWidth - 6))
@@ -141,8 +105,8 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
   })
   const [zIndex, setZIndex] = useState(() => ++floatingZIndex)
   const [dockPreview, setDockPreview] = useState<CSSProperties | null>(null)
-  const dockTargetRef = useRef<FixedPanelDock | null>(null)
-  const drag = useRef<{ offsetX: number; offsetY: number; width: number; height: number } | null>(null)
+  const dockIntentRef = useRef<ReturnType<typeof createPanelDockIntent> | null>(null)
+  const drag = useRef<{ offsetX: number; offsetY: number; width: number; height: number; startX: number; startY: number; moved: boolean; original: FloatingPosition | null; wasUserPositioned: boolean } | null>(null)
   const panelResize = useRef<{ direction: ResizeDirection; startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null)
   const pointerCaptureRef = useRef<{ element: HTMLElement; pointerId: number } | null>(null)
   const dragCursorActive = useRef(false)
@@ -170,6 +134,9 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
   }
 
   useEffect(() => {
+    let lastPoint: { x: number; y: number } | null = null
+    const intent = createPanelDockIntent(zone => setDockPreview(zone?.preview ?? null))
+    dockIntentRef.current = intent
     const move = (event: globalThis.PointerEvent): void => {
       if (panelResize.current) {
         const start = panelResize.current
@@ -187,6 +154,14 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
         return
       }
       if (!drag.current || !ref.current) return
+      lastPoint = { x: event.clientX, y: event.clientY }
+      const firstMove = !drag.current.moved
+      if (!drag.current.moved) {
+        if (Math.hypot(event.clientX - drag.current.startX, event.clientY - drag.current.startY) < PANEL_DRAG_THRESHOLD) return
+        drag.current.moved = true
+        userPositioned.current = true
+        setDragCursor(true)
+      }
       const x = Math.max(-drag.current.width + 160, Math.min(window.innerWidth - 120, event.clientX - drag.current.offsetX))
       const headerHeight = Math.max(32, Math.min(64, ref.current.querySelector('header')?.getBoundingClientRect().height || 32))
       const y = Math.max(0, Math.min(window.innerHeight - headerHeight, event.clientY - drag.current.offsetY))
@@ -194,20 +169,30 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
       positionRef.current = { x, y, width: current?.width ?? drag.current.width, height: current?.height ?? drag.current.height }
       ref.current.style.left = `${x}px`
       ref.current.style.top = `${y}px`
+      if (firstMove && !drag.current.original) setPosition(positionRef.current)
       if (canDock) {
-        const target = panelDockZoneAt(event.clientX, event.clientY)
-        dockTargetRef.current = target?.dock ?? null
-        setDockPreview(target?.preview ?? null)
+        intent.update(event.altKey ? null : panelDockZoneAt(event.clientX, event.clientY, undefined, intent.active))
       }
     }
     const up = (event: globalThis.PointerEvent): void => {
-      if (drag.current && canDock && ref.current?.classList.contains('floating-panel')) {
-        const dock = event.type === 'pointerup' ? panelDockZoneAt(event.clientX, event.clientY)?.dock ?? null : null
-        if (dock) {
+      if (!drag.current && !panelResize.current) return
+      const cancelled = event.type !== 'pointerup'
+      if (drag.current && (cancelled || !drag.current.moved)) {
+        positionRef.current = drag.current.original
+        userPositioned.current = drag.current.wasUserPositioned
+        if (ref.current) {
+          ref.current.style.left = drag.current.original ? String(drag.current.original.x) + 'px' : ''
+          ref.current.style.top = drag.current.original ? String(drag.current.original.y) + 'px' : ''
+        }
+      }
+      if (drag.current?.moved && !cancelled && canDock && ref.current?.classList.contains('floating-panel')) {
+        const target = event.altKey ? null : intent.active
+        if (target) {
           userPositioned.current = false
+          positionRef.current = null
           updatePosition(() => null)
           persistPosition(null)
-          onDock?.(dock)
+          onDock?.(target.dock, target)
         }
       }
       setPosition(positionRef.current)
@@ -220,8 +205,7 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
       }
       pointerCaptureRef.current = null
       setDragCursor(false)
-      dockTargetRef.current = null
-      setDockPreview(null)
+      intent.clear()
     }
     const resize = (): void => {
       const previousViewport = viewportRef.current
@@ -241,6 +225,18 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
         return next
       })
     }
+    const keydown = (event: KeyboardEvent): void => {
+      if (!drag.current) return
+      if (event.key === 'Alt') intent.clear()
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); up(new PointerEvent('pointercancel')) }
+    }
+    const blur = (): void => { if (drag.current) up(new PointerEvent('pointercancel')) }
+    const keyup = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt' && drag.current?.moved && lastPoint) move(new PointerEvent('pointermove', { clientX: lastPoint.x, clientY: lastPoint.y }))
+    }
+    window.addEventListener('keyup', keyup, true)
+    window.addEventListener('keydown', keydown, true)
+    window.addEventListener('blur', blur)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
@@ -256,6 +252,11 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
     }
     window.addEventListener('resize', scheduleResize)
     return () => {
+      intent.clear()
+      dockIntentRef.current = null
+      window.removeEventListener('keyup', keyup, true)
+      window.removeEventListener('keydown', keydown, true)
+      window.removeEventListener('blur', blur)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
@@ -288,11 +289,9 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
     const panel = ref.current
     if (!panel) return
     const bounds = panel.getBoundingClientRect()
-    userPositioned.current = true
+    dockIntentRef.current?.clear()
     setZIndex(++floatingZIndex)
-    updatePosition((current) => current ?? { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height })
-    drag.current = { offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top, width: bounds.width, height: bounds.height }
-    setDragCursor(true)
+    drag.current = { offsetX: event.clientX - bounds.left, offsetY: event.clientY - bounds.top, width: bounds.width, height: bounds.height, startX: event.clientX, startY: event.clientY, moved: false, original: positionRef.current, wasUserPositioned: userPositioned.current }
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId)
       pointerCaptureRef.current = { element: event.currentTarget, pointerId: event.pointerId }
@@ -321,10 +320,11 @@ export function useFloatingPanel(initialPosition: FloatingPosition | null = null
     setZIndex(++floatingZIndex)
     const offsetX = Math.min(80, Math.max(24, bounds.width / 2))
     const offsetY = 16
+    const original = positionRef.current
     const next = { x: Math.max(-bounds.width + 160, Math.min(window.innerWidth - 120, clientX - offsetX)), y: Math.max(0, Math.min(window.innerHeight - 32, clientY - offsetY)), width: bounds.width, height: bounds.height }
     updatePosition(() => next)
     persistPosition(next)
-    drag.current = continueDrag ? { offsetX, offsetY, width: bounds.width, height: bounds.height } : null
+    drag.current = continueDrag ? { offsetX, offsetY, width: bounds.width, height: bounds.height, startX: clientX, startY: clientY, moved: true, original, wasUserPositioned: true } : null
     setDragCursor(continueDrag)
   }
   const resizeTo = (width: number, height: number): void => {

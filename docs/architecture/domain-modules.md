@@ -2,20 +2,20 @@
 
 [返回解耦契约](../architecture-decoupling.md)
 
-本轮沿当前未提交版本继续拆分。原公开入口保留，内部模块直接依赖实际所有者，不得回导自己的聚合入口。路径均相对 `src/renderer/src/`。
+本文记录已经落地的职责拆分；源码规模快照更新于 2026-09-19，验证记录保留当次执行范围。原公开入口保留，内部模块直接依赖实际所有者，不得回导自己的聚合入口。路径均相对 `src/renderer/src/`。
 
 ## 文件规模
 
-按本轮开始时的实际源码统计；与需求中较早的行数不同。入口行数下降不代表总代码量或运行成本下降。
+“拆分前”为当次重构基线，“当前入口”和“最大子模块”为 2026-09-19 源码统计（不含测试与基准）。行数变化不等于运行成本变化。
 
-| 原文件 | 拆分前 | 当前入口 | 最大新子模块 |
+| 原文件 | 拆分前 | 当前入口 | 最大子模块 |
 | --- | ---: | ---: | ---: |
-| store/workspace-commands-animation.ts | 2746 | 36 | 481 |
-| store/workspace-commands-view-selection.ts | 2620 | 40 | 584 |
+| store/workspace-commands-animation.ts | 2746 | 38 | 483 |
+| store/workspace-commands-view-selection.ts | 2620 | 40 | 587 |
 | core/canvas-input.ts | 1918 | 147 | 478 |
-| core/project-format.ts | 2441 | 24 | 695 |
-| components/canvas-composite-cache.ts | 1972 | 838 | 448 |
-| core/document-composite.ts | 1988 | 19 | 695 |
+| core/project-format.ts | 2441 | 24 | 685 |
+| components/canvas-composite-cache.ts | 1972 | 840 | 341 |
+| core/document-composite.ts | 1988 | 20 | 691 |
 | core/tools-selection-transform.ts | 1632 | 27 | 481 |
 
 ## Store 命令
@@ -86,6 +86,8 @@
 ## 防回退与验证边界
 
 新增文件均登记规模预算；拆出的输入、缓存、文件和命令路径继续进入 D3，性能分级与定向范围也同步覆盖新文件名。模型/像素内核对合成器的依赖禁令覆盖所有合成子模块，边界检查禁止子模块回导自身聚合入口。
+
+以下为拆分时的历史验证记录，未在本次文档审校中重新运行。
 
 验证采用与 `pnpm check:dev -- --risk=high` 相同的入口，用参数数组避开 Windows 命令行长度限制；清单包含工作区已有的高风险改动。最终通过 Node/Web 类型检查、70 项规则测试（包括真实生产依赖图无运行时循环）、定向模块边界检查，以及 19 个行为测试文件的 408 项测试。
 

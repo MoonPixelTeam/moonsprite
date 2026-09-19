@@ -12,14 +12,14 @@ interface Entry { key: string; revision: number; tiles: Map<string, Uint8Clamped
 export class LayerStyleTileCache {
   private entries = new WeakMap<object, Entry>()
 
-  prepare(owner: object, key: string, revision: number, dirty: SelectionRect | undefined, geometry: LayerStyleGeometry,
+  prepare(owner: object, key: string, revision: number, dirty: readonly SelectionRect[] | undefined, geometry: LayerStyleGeometry,
     styles: LayerStyles, readSource: LayerStyleSourceReader, resolve: LayerStyleColorResolver): LayerStyleSourceReader {
     let entry = this.entries.get(owner)
     if (!entry || entry.key !== key || (entry.revision !== revision && !dirty)) {
       entry = { key, revision, tiles: new Map() }
       this.entries.set(owner, entry)
-    } else if (dirty) {
-      const affected = layerStyleAffectedRect(dirty, styles)
+    } else if (dirty) for (const rect of dirty) {
+      const affected = layerStyleAffectedRect(rect, styles)
       for (let y = Math.floor(affected.y / SIZE); y <= Math.floor((affected.y + affected.height - 1) / SIZE); y++) {
         for (let x = Math.floor(affected.x / SIZE); x <= Math.floor((affected.x + affected.width - 1) / SIZE); x++) entry.tiles.delete(`${x}:${y}`)
       }

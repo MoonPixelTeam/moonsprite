@@ -1,3 +1,4 @@
+import { drawingAnchorActive, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { useEffect, useRef } from 'react'
 import type { FreeTileInstance } from '@shared/types-tiles'
 import type { RasterLayer } from '@shared/types-layer'
@@ -670,6 +671,7 @@ export function useCanvasSelectionTransform(ports: Ports) {
   }
 
   const selectionPivotForSession = (currentSession: DocumentSession): Point | null => {
+    if (drawingAnchorActive(currentSession)) return drawingAnchorPoint(currentSession)
     const selection = currentSession.selection
     if (!selection) return null
     const floating = currentSession.pendingPaste
@@ -681,7 +683,7 @@ export function useCanvasSelectionTransform(ports: Ports) {
 
   const selectionPivotHitAt = (clientX: number, clientY: number): boolean => {
     const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
-    if (currentSession.view.showSelectionPivot === false) return false
+    if (drawingAnchorActive(currentSession) ? !currentSession.drawingAnchorVisible : currentSession.view.showSelectionPivot === false) return false
     const pivot = selectionPivotForSession(currentSession)
     if (!pivot) return false
     return selectionPivotHit(ports.displayedSelectionPoint(pivot), ports.stagePoint(clientX, clientY))

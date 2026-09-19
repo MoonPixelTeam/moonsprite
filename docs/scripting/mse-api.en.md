@@ -7,7 +7,7 @@ MSE (MoonSprite Extension) is MoonSprite's dedicated Lua API. The current API ve
 ## Execution Model
 
 - Query methods return immediately from the structure snapshot taken when the script started. Persistent dialogs take a fresh current snapshot before dispatching each event.
-- Write methods return `true` after parameter validation and join the current script transaction. They never hand Lua the Renderer's mutable Store, the DOM, or native commands.
+- Write methods return `true` after serializing and queueing their arguments. Domain validation and execution happen later when the host applies the transaction. They never hand Lua the Renderer's mutable Store, the DOM, or native commands.
 - Pixel edits inside `app.transaction(label, fn)` and `mse` document writes commit as one undo step. If any operation fails, document changes already committed inside the current transaction are rolled back.
 - Creating or opening a project, saving, exporting, importing local brushes, notifications, and panel layout are out-of-document operations and do not enter the current project's undo history.
 - Queries return copies. Modifying a returned table does not modify the project; the matching write method must be called instead.
@@ -97,7 +97,7 @@ mse.layers.update(layerId, {
 
 ## Animation `mse.animation`
 
-- `frames()`: returns `{ id, number, duration, active }[]`.
+- `frames()`: returns `{ id, number, duration, disabled, active }[]`.
 - `setFrame(frame)`: switches the active frame.
 - `loops()`: returns animation loop sections.
 - `createLoop(spec)`: creates a loop section.
@@ -113,9 +113,11 @@ Loop section parameters:
   start = 1,       -- or startFrameId
   ["end"] = 8,     -- or endFrameId
   direction = "forward", -- forward / reverse
-  repeatCount = nil      -- nil means repeat forever
+  repeatCount = 1        -- omitted/nil currently defaults to one repeat
 }
 ```
+
+The current Lua write adapter handles only `forward` and `reverse` loop directions. The UI also supports `ping-pong` and `ping-pong-reverse`, but those are not Lua write capabilities. Other values fall back to forward; scripts should pass only the supported values listed here.
 
 ## Palette `mse.palette`
 
@@ -255,3 +257,34 @@ dlg:show { wait = false }
 ## Security Boundary
 
 Lua still cannot directly reach the file system, the network, processes, the debug library, the DOM, React, the raw Store, the history stack, or arbitrary Tauri commands. File picking, saving, exporting, and resource import can only go through the controlled entry points explicitly opened in this API; pixel and structural writes remain protected by target identity, revision, size, memory, instruction count, execution time, and undo validation.
+
+## Parameter details and current limitations
+
+The [full method index](../extensions/api-index.en.md) covers all 68 registered methods; [LuaLS declarations](mse-api.lua) specify structured arguments and query results. `get` lookups return nil when missing. Creation methods return queue acknowledgement, not a created ID: query a fresh snapshot in a later invocation before referencing newly created objects. Reading immediately after an MSE write still reads the original snapshot. Serialization rejects unsupported values, non-finite numbers, more than 24 nesting levels or 262144 values; later operation failures are reported by the host, outside the earlier Lua call/pcall.
+
+- Animation frame `number` is one-based, duration is milliseconds, and `disabled` is boolean. Loop queries can return ping-pong directions; loop writes still support only forward/reverse. `updateLoop` supplies the same defaults as create and is not a sparse patch: pass the full desired name/range/direction/repeat count. Omitted or nil `repeatCount` becomes an absent Lua table key and defaults to 1; it does not encode JSON null. For unlimited repeats, the compatibility `Tag.repeats = 0` path explicitly queues null.
+- `tiles.edit { tilesetId, tileId, pixels }` uses the existing tile dimensions. `tiles.place.rotation` is 0–3 quarter turns, not degrees; frame defaults to active. Packed RGBA uses `r | g<<8 | b<<16 | a<<24`, row-major, or supply RGBA tables / four-channel arrays.
+- `freeTiles.createSource { layerId, name? }`, `place { layerId, sourceId, frame?, x, y }`, `edit { sourceId, width?, height?, offsetX?, offsetY?, pixels }`: edit dimensions/offsets default to the old source. Source queries only cover the active free-tile layer.
+- Snapshot tileset pixels share a 1,048,576-pixel budget; oversized entries omit pixels. Project brush coverage/colors have the same per-array length limit.
+- `slices.create` uses rectangle fields; set a custom name with `slices.update` after obtaining its ID. `styles.apply` expects the complete `MseLayerStyles` model in LuaLS, not an arbitrary partial CSS object.
+
+## Save and export options
+
+`document.save` / `io.save` accept `{ saveAs?, options? }`; options contains `name`, `format`, `scalePercent`, optional `directory` and `includeTimelapse`. Project Save As with `includeTimelapse: true` embeds portable timelapse data. Normal project saves use the local timelapse library. Non-project formats follow the usual compatibility confirmation.
+
+| Export field | Values and behavior |
+| --- | --- |
+| `name`, `format`, `scalePercent` | Default document-derived name, png-auto, 100%; scale clamped to 1–6400. |
+| `format` | png-auto, png-rgba, jpeg, webp, svg, gif, bmp, ico, psd, ase, aseprite; save additionally accepts moonsprite. |
+| `target` | document (default), slices, frames, selection, layer. Structured project exports require document target. |
+| `sliceId`, `layerId` | Restrict the corresponding target; layer target with no valid layer ID exports all layers. |
+| `selection` | Managed by the host: selection target uses the active selection at execution, replacing any supplied mask. |
+| `directory` | Destination directory; when absent, normal host pickers apply. |
+| `trim`, `trimMode` | Transparent trimming; mode individual/common, subject to target/format support. |
+| `gifFrameRange` | all, range, loop-section. |
+| `gifFrameStart`, `gifFrameEnd` | Inclusive frame numbers for range mode. |
+| `gifLoopSectionId` | Existing loop ID for loop-section mode. |
+| `gifDirection` | forward, reverse, forward-ping-pong, reverse-ping-pong. These names differ from loop direction names. |
+| `presetName` | Stored export preset label. |
+
+The bridge delegates these options to [document-file-service.ts](../../src/renderer/src/store/document-file-service.ts) and [export-settings.ts](../../src/renderer/src/core/export-settings.ts); it does not return the final saved path. Cancellation/failure is reported through host UI, and prior queue acknowledgement does not prove a file was written.

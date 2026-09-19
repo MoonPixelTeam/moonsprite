@@ -21,7 +21,7 @@ import {
 } from './pressure'
 
 export const TOOL_SETTINGS_KEY = 'moonsprite.tool-settings.v1'
-export const BRUSH_TOOLS = ['pencil', 'eraser', 'fill', 'line'] as const
+export const BRUSH_TOOLS = ['pencil', 'airbrush', 'smooth', 'eraser', 'fill', 'line', 'shape', 'liquify'] as const
 export type BrushTool = typeof BRUSH_TOOLS[number]
 
 export interface PersistedBrushProfile {
@@ -52,6 +52,9 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   lineKind: LineKind
   curveAnchorCount: number
   shapeRatio: ShapeRatio | number | null
+  drawingAnchor: { x: number; y: number }
+  drawingAnchorVisible: boolean
+  drawFromCanvasCenter: boolean
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
@@ -121,6 +124,9 @@ export const defaultToolSettings: PersistedToolSettings = {
   lineKind: 'line',
   curveAnchorCount: 2,
   shapeRatio: null,
+  drawingAnchor: { x: 0.5, y: 0.5 },
+  drawingAnchorVisible: true,
+  drawFromCanvasCenter: false,
   shapeRounded: false,
   shapeCornerRadius: 4,
   fillMode: 'contiguous',
@@ -244,6 +250,9 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       lineKind: stored.lineKind === 'curve' ? 'curve' : 'line',
       curveAnchorCount: Number.isFinite(stored.curveAnchorCount) ? Math.max(1, Math.min(8, Math.round(stored.curveAnchorCount!))) : defaultToolSettings.curveAnchorCount,
       shapeRatio: normalizeShapeRatio(stored.shapeRatio),
+      drawingAnchor: stored.drawingAnchor && Number.isFinite(stored.drawingAnchor.x) && Number.isFinite(stored.drawingAnchor.y) ? { x: stored.drawingAnchor.x, y: stored.drawingAnchor.y } : { x: 0.5, y: 0.5 },
+      drawingAnchorVisible: stored.drawingAnchorVisible !== false,
+      drawFromCanvasCenter: stored.drawFromCanvasCenter === true,
       shapeRounded: typeof stored.shapeRounded === 'boolean' ? stored.shapeRounded : defaultToolSettings.shapeRounded,
       shapeCornerRadius: Number.isFinite(stored.shapeCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.shapeCornerRadius!))) : defaultToolSettings.shapeCornerRadius,
       fillMode: stored.fillMode === 'global' || stored.fillMode === 'contiguous' ? stored.fillMode : defaultToolSettings.fillMode,
@@ -260,7 +269,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       gradientFreeform: typeof stored.gradientFreeform === 'boolean' ? stored.gradientFreeform : defaultToolSettings.gradientFreeform,
       gradientStops: normalizeGradientStops(stored.gradientStops, defaultToolSettings.gradientStops[0].color, defaultToolSettings.gradientStops.at(-1)!.color),
       moveAutoSelect: typeof stored.moveAutoSelect === 'boolean' ? stored.moveAutoSelect : defaultToolSettings.moveAutoSelect,
-      selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' ? stored.selectionKind : defaultToolSettings.selectionKind,
+      selectionKind: stored.selectionKind === 'magic' || stored.selectionKind === 'lasso' || stored.selectionKind === 'polygon-lasso' || stored.selectionKind === 'ellipse' || stored.selectionKind === 'rectangle' || stored.selectionKind === 'brush' ? stored.selectionKind : defaultToolSettings.selectionKind,
       selectionMode: stored.selectionMode === 'add' || stored.selectionMode === 'subtract' || stored.selectionMode === 'intersect' || stored.selectionMode === 'replace' ? stored.selectionMode : defaultToolSettings.selectionMode,
       selectionRotationAlgorithm: stored.selectionRotationAlgorithm === 'rotsprite' ? 'rotsprite' : 'fast',
       selectionRounded: typeof stored.selectionRounded === 'boolean' ? stored.selectionRounded : defaultToolSettings.selectionRounded,

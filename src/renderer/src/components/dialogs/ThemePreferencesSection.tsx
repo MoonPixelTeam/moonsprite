@@ -1,8 +1,9 @@
-import type { CSSProperties } from 'react'
+import { useSyncExternalStore, type CSSProperties } from 'react'
+import { PreferenceToggle } from '@/components/PreferenceToggle'
 import { useI18n } from '@/components/I18nProvider'
 import { SettingsSectionHeader } from '@/components/SettingsSectionHeader'
 import type { EditorPreferences } from '@/core/file-preferences'
-import { BUILT_IN_THEMES, resolveTheme, themeById, type ThemePreferences } from '@/core/theme'
+import { BUILT_IN_THEMES, resolveTheme, themeById, subscribeSystemTheme, systemThemeId, type ThemePreferences } from '@/core/theme'
 
 interface ThemePreferencesSectionProps { preferences: EditorPreferences; onChange: (preferences: EditorPreferences) => void }
 
@@ -13,9 +14,11 @@ const applyThemePreferences = (preferences: EditorPreferences, theme: ThemePrefe
 
 export function ThemePreferencesSection({ preferences, onChange }: ThemePreferencesSectionProps) {
   const { t } = useI18n()
+  useSyncExternalStore(subscribeSystemTheme, systemThemeId, () => 'dark')
   const current = themeById(preferences.theme)
   const setTheme = (activeThemeId: string): void => onChange(applyThemePreferences(preferences, { activeThemeId, customThemes: [] }))
   return <div className="theme-preferences theme-preferences-expanded">
+    <PreferenceToggle checked={preferences.theme.followSystem === true} label={t('preferences.theme.followSystem')} tooltip={t('preferences.theme.followSystemHint')} onChange={(followSystem) => onChange(applyThemePreferences(preferences, { ...preferences.theme, followSystem }))} />
     <section className="theme-picker-section">
       <SettingsSectionHeader title={t('preferences.theme.current')} actions={<span className="theme-current-name">{current.name}</span>} />
       <div className="theme-picker-grid" role="listbox" aria-label={t('preferences.theme.available')}>

@@ -1,3 +1,4 @@
+import { TRANSPARENT } from '@/core/raster'
 import type { FreeTileInstance, TilemapCell } from '@shared/types-tiles'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerMaskDisplayColorAt } from '@/core/document-model'
@@ -100,7 +101,14 @@ export function createSamplingCanvasInput(ports: Ports) {
         inputRef.current.sampling = true
         updateEyedropperMagnifier(event.clientX, event.clientY, sampled)
       } else {
-        hideEyedropperMagnifier()
+        const bounds = event.currentTarget.getBoundingClientRect()
+        if (event.clientX >= bounds.left && event.clientY >= bounds.top && event.clientX < bounds.right && event.clientY < bounds.bottom) {
+          const sampled = { ...TRANSPARENT }
+          queueEyedropperSampleColor(sampled, Boolean(drag.sampleSecondary))
+          drag.sampledColor = sampled
+          inputRef.current.sampling = true
+          updateEyedropperMagnifier(event.clientX, event.clientY, sampled)
+        } else hideEyedropperMagnifier()
       }
       event.currentTarget.style.cursor = canvasCursors.eyedropper
       return true

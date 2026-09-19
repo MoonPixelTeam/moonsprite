@@ -2,13 +2,15 @@ import type { SpriteDocument } from '@shared/types-document'
 import type { GifDirection } from './gif'
 import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
 
-export type LayerWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif'
+export type LayerWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico'
 
 export interface LayerExportWorkerRequest {
   id: number
   document: SpriteDocument
   layerIds: string[]
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   format: LayerWorkerFormat
   gifFrameRange?: 'all' | 'range' | 'loop-section'
   gifFrameStart?: number
@@ -21,7 +23,7 @@ export interface LayerExportWorkerResult {
   index: number
   layerId: string
   bytes: Uint8Array
-  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'gif'
+  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico'
   indexed: boolean
 }
 

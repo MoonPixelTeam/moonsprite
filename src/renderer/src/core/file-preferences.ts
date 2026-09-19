@@ -1,6 +1,7 @@
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
+import { isPixelFormat } from './pixel-format'
 import type { RgbaColor } from '@shared/types-color'
 import type { OutlineSettings } from '@shared/types-selection'
 import type { ColorValueMode } from './color-values'
@@ -9,6 +10,7 @@ import { DEFAULT_THEME_PREFERENCES, THEME_PREFERENCE_KEY, loadThemePreferences, 
 import { ISO_GUIDE_BASE_SPACING, ISO_LINE_STAIR_STEP } from './isometric'
 
 export const SAVE_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-format'
+export const SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-original-format'
 export const EXPORT_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.export-format'
 export const SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.save-directory'
 export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-directory'
@@ -36,6 +38,9 @@ export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-
 export const BRUSH_SHIFT_LINE_ENABLED_KEY = 'moonsprite.preference.brush-shift-line-enabled'
 export const USE_LOCAL_CURSORS_PREFERENCE_KEY = 'moonsprite.preference.use-local-cursors'
 export const CURSOR_SCALE_PREFERENCE_KEY = 'moonsprite.preference.cursor-scale'
+export const CURSOR_COLOR_PREFERENCE_KEY = 'moonsprite.preference.cursor-color'
+export const CURSOR_COLOR_MODE_PREFERENCE_KEY = 'moonsprite.preference.cursor-color-mode'
+export const BRUSH_EDGE_THICKNESS_PREFERENCE_KEY = 'moonsprite.preference.brush-edge-thickness'
 export const BRUSH_PREVIEW_MODE_PREFERENCE_KEY = 'moonsprite.preference.brush-preview-mode'
 export const CHECKER_SIZE_PREFERENCE_KEY = 'moonsprite.preference.checker-size'
 export const CHECKER_LIGHT_COLOR_PREFERENCE_KEY = 'moonsprite.preference.checker-light-color'
@@ -51,6 +56,7 @@ export const FREE_TILE_INSTANCE_OUTLINE_COLOR_PREFERENCE_KEY = 'moonsprite.prefe
 export const TEXT_BOX_COLOR_PREFERENCE_KEY = 'moonsprite.preference.text-box-color'
 export const CANVAS_RESIZE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.canvas-resize-color'
 export const SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.slice-outlines-visible'
+export const BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY = 'moonsprite.preference.brush-size-wheel-reversed'
 export const WHEEL_ZOOM_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-enabled'
 export const SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.shift-line-preview-enabled'
 export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-visible'
@@ -78,6 +84,7 @@ export const OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.
 export const LINE_DIRECTION_STEP_PREFERENCE_KEY = 'moonsprite.preference.line-direction-step'
 export const LAYER_DISPLAY_COLOR_PRESETS_KEY = 'moonsprite.preference.layer-display-color-presets'
 export const COLOR_EDITOR_MODES_PREFERENCE_KEY = 'moonsprite.preference.color-editor-modes'
+export const PIXEL_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.pixel-format'
 export const ONION_SKIN_PREFERENCE_KEY = 'moonsprite.preference.onion-skin'
 export const TIMELINE_HIDDEN_PREFERENCE_KEY = 'moonsprite.preference.timeline-hidden'
 export const SYMMETRY_AXIS_PREFERENCE_KEY = 'moonsprite.preference.symmetry-axis'
@@ -110,11 +117,12 @@ export type WheelZoomMode = 'smooth' | 'stepped'
 export const VIEW_DRAG_SENSITIVITY_VALUES = [0.5, 0.75, 1, 1.5, 2] as const
 export type ViewDragSensitivity = typeof VIEW_DRAG_SENSITIVITY_VALUES[number]
 export type CursorScale = 1 | 1.25 | 1.5 | 2
+export type CursorColorMode = 'auto' | 'custom'
 export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
 export type KeyDisplayDuration = 800 | 1400 | 2000 | 3000
 export const KEY_DISPLAY_DURATIONS: readonly KeyDisplayDuration[] = [800, 1400, 2000, 3000]
-export const UI_SCALE_VALUES = [0.75, 1, 1.5, 2] as const
+export const UI_SCALE_VALUES = [0.75, 1, 1.25, 1.5, 2] as const
 export type UiScale = typeof UI_SCALE_VALUES[number]
 /** Display-only scale for interface body text; it intentionally does not scale canvas or icons. */
 export const BODY_FONT_SCALE_VALUES = [0.85, 1, 1.15, 1.3] as const
@@ -127,6 +135,11 @@ export const ANIMATION_PLAYBACK_RATES = [0.25, 0.5, 1, 1.5, 2, 3] as const
 export type TabletApi = 'auto' | 'windows-ink' | 'disabled'
 export type TabletTouchMode = 'navigate' | 'draw' | 'disabled'
 export type TabletBarrelButtonAction = 'eraser' | 'eyedropper' | 'hand' | 'disabled'
+export const RIGHT_CLICK_ACTIONS = ['background', 'foreground-eyedropper', 'eraser', 'hand', 'rectangle', 'lasso', 'select-layer-move'] as const
+export type RightClickAction = typeof RIGHT_CLICK_ACTIONS[number]
+export const parseRightClickAction = (value: unknown): RightClickAction =>
+  RIGHT_CLICK_ACTIONS.includes(value as RightClickAction) ? value as RightClickAction : 'background'
+
 export interface TabletPreferences {
   api: TabletApi
   pressureEnabled: boolean
@@ -134,7 +147,7 @@ export interface TabletPreferences {
   twistEnabled: boolean
   eraserTipEnabled: boolean
   barrelButtonAction: TabletBarrelButtonAction
-  rightClickAction: 'background' | 'foreground-eyedropper'
+  rightClickAction: RightClickAction
   touchMode: TabletTouchMode
   twoFingerZoomEnabled: boolean
   twoFingerRotateEnabled: boolean
@@ -152,6 +165,8 @@ export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   twoFingerRotateEnabled: false
 }
 export type BrushPreviewMode = 'none' | 'edge' | 'full' | 'full-edge'
+export type { PixelFormat } from '@shared/types-raster'
+import type { PixelFormat } from '@shared/types-raster'
 export type SelectionPreviewColorMode = 'auto' | 'custom'
 export type EyedropperMagnifierStyle = 'pixel' | 'line'
 export const EYEDROPPER_MAGNIFIER_SIZE_VALUES = [0.5, 0.75, 1, 1.25] as const
@@ -370,6 +385,7 @@ export const DEFAULT_FREE_TILE_INSTANCE_OUTLINE_COLOR: RgbaColor = { r: 0, g: 0,
 export const DEFAULT_TEXT_BOX_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_CANVAS_RESIZE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 export const DEFAULT_SELECTION_PREVIEW_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
+export const DEFAULT_CURSOR_COLOR: RgbaColor = { r: 255, g: 255, b: 255, a: 255 }
 export const DEFAULT_GRADIENT_LINE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 
 export function parseRotationIndicatorPosition(value: string | null): RotationIndicatorPosition {
@@ -406,9 +422,22 @@ export function parseCursorScale(value: string | null): CursorScale {
   return parsed === 1.25 || parsed === 1.5 || parsed === 2 ? parsed : 1
 }
 
+export function parseCursorColorMode(value: string | null): CursorColorMode {
+  return value === 'custom' ? 'custom' : 'auto'
+}
+
+export function parseBrushEdgeThickness(value: string | null): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(8, Math.round(parsed))) : 1
+}
+
 export function parseKeyDisplaySize(value: string | null): number {
   const parsed = Number(value)
-  return parsed === 0.75 || parsed === 1.25 || parsed === 1.5 ? parsed : 1
+  if (parsed === 0.75 || parsed === 1.3 || parsed === 1.9 || parsed === 2.5) return parsed
+  // Preserve older saved sizes; the former compact standard is now Small.
+  if (parsed === 1 || parsed === 1.25) return 1.3
+  if (parsed === 1.4 || parsed === 1.5 || parsed === 1.8) return 1.9
+  return 1.3
 }
 
 export function parseKeyDisplayDuration(value: string | null): KeyDisplayDuration {
@@ -432,6 +461,10 @@ export function parseToolIconScale(value: string | null): ToolIconScale {
 
 export function parseBrushPreviewMode(value: string | null): BrushPreviewMode {
   return value === 'none' || value === 'edge' || value === 'full' || value === 'full-edge' ? value : 'full'
+}
+
+export function parsePixelFormat(value: string | null): PixelFormat {
+  return isPixelFormat(value) ? value : 'rgba32'
 }
 
 export function parseSelectionPreviewColorMode(value: string | null): SelectionPreviewColorMode {
@@ -599,8 +632,8 @@ export const DEFAULT_ISO_VIEW_PREFERENCES: IsoViewPreferences = {
   snapToGrid: false
 }
 
-export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'psd' | 'ase' | 'aseprite'
-export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd'
+export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite'
+export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd'
 
 export interface EditorPreferences {
   language: AppLocale
@@ -614,6 +647,7 @@ export interface EditorPreferences {
   animationReturnToStart: boolean
   skipDisabledFrames: boolean
   saveFormat: SaveFormatPreference
+  saveOriginalFormat: boolean
   exportFormat: ExportFormatPreference
   saveDirectory: string
   exportDirectory: string
@@ -641,6 +675,9 @@ export interface EditorPreferences {
   brushShiftLineEnabled: boolean
   useLocalCursors: boolean
   cursorScale: CursorScale
+  cursorColorMode: CursorColorMode
+  cursorColor: RgbaColor
+  brushEdgeThickness: number
   brushPreviewMode: BrushPreviewMode
   checkerboard: CheckerboardPreferences
   pixelGridColor: RgbaColor
@@ -654,6 +691,7 @@ export interface EditorPreferences {
   textBoxColor: RgbaColor
   canvasResizeColor: RgbaColor
   sliceOutlinesVisible: boolean
+  brushSizeWheelReversed: boolean
   wheelZoomEnabled: boolean
   wheelZoomMode: WheelZoomMode
   shiftLinePreviewEnabled: boolean
@@ -682,6 +720,7 @@ export interface EditorPreferences {
   lineDirectionStep: number
   layerDisplayColorPresets: RgbaColor[]
   colorEditorModes: ColorEditorModePreference[]
+  pixelFormat: PixelFormat
   onionSkin: OnionSkinPreferences
   timelineHidden: boolean
   symmetryAxis: SymmetryAxisPreferences
@@ -702,13 +741,14 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   uiScale: 1,
   bodyFontScale: 1,
   toolIconScale: 1,
-  uiMotionLevel: 'off',
-  animationsEnabled: false,
+  uiMotionLevel: 'subtle',
+  animationsEnabled: true,
   animationPlaybackRate: 1,
   animationPlaybackMode: null,
   animationReturnToStart: false,
   skipDisabledFrames: true,
   saveFormat: 'moonsprite',
+  saveOriginalFormat: true,
   exportFormat: 'png',
   saveDirectory: '',
   exportDirectory: '',
@@ -734,6 +774,9 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   brushShiftLineEnabled: true,
   useLocalCursors: false,
   cursorScale: 1,
+  cursorColorMode: 'auto',
+  cursorColor: DEFAULT_CURSOR_COLOR,
+  brushEdgeThickness: 1,
   brushPreviewMode: 'full',
   checkerboard: DEFAULT_CHECKERBOARD_PREFERENCES,
   pixelGridColor: DEFAULT_PIXEL_GRID_COLOR,
@@ -747,6 +790,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   textBoxColor: DEFAULT_TEXT_BOX_COLOR,
   canvasResizeColor: DEFAULT_CANVAS_RESIZE_COLOR,
   sliceOutlinesVisible: true,
+  brushSizeWheelReversed: false,
   wheelZoomEnabled: true,
   wheelZoomMode: 'stepped',
   shiftLinePreviewEnabled: true,
@@ -756,7 +800,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   eyedropperQuickSelect: false,
   tooltipsEnabled: true,
   keyDisplayEnabled: false,
-  keyDisplaySize: 1,
+  keyDisplaySize: 1.3,
   keyDisplayDuration: 1400,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
@@ -775,6 +819,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   lineDirectionStep: 1,
   layerDisplayColorPresets: DEFAULT_LAYER_DISPLAY_COLOR_PRESETS,
   colorEditorModes: DEFAULT_COLOR_EDITOR_MODES,
+  pixelFormat: 'rgba32',
   onionSkin: DEFAULT_ONION_SKIN_PREFERENCES,
   timelineHidden: false,
   symmetryAxis: DEFAULT_SYMMETRY_AXIS_PREFERENCES,
@@ -1060,7 +1105,9 @@ export function imageExportKindForPreference(value: string | null): ImageExportK
   if (value === 'jpeg') return 'jpeg'
   if (value === 'webp') return 'webp'
   if (value === 'svg') return 'svg'
+  if (value === 'bmp') return 'bmp'
   if (value === 'psd') return 'psd'
+  if (value === 'ico') return 'ico'
   if (value === 'png-rgba') return 'png-rgba'
   return 'png-auto'
 }
@@ -1070,17 +1117,19 @@ export function saveImageKindForPreference(value: string | null): SaveImageKind 
   if (value === 'ase' || value === 'aseprite') return value
   if (value === 'jpeg') return 'jpeg'
   if (value === 'webp') return 'webp'
+  if (value === 'svg') return 'svg'
   if (value === 'psd') return 'psd'
+  if (value === 'ico') return 'ico'
   if (value === 'png') return 'png-auto'
   return null
 }
 
 function parseSaveFormat(value: string | null): SaveFormatPreference {
-  return value === 'png' || value === 'jpeg' || value === 'webp' || value === 'psd' || value === 'ase' || value === 'aseprite' ? value : 'moonsprite'
+  return value === 'png' || value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'ico' || value === 'psd' || value === 'ase' || value === 'aseprite' ? value : 'moonsprite'
 }
 
 function parseExportFormat(value: string | null): ExportFormatPreference {
-  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'psd' ? value : 'png'
+  return value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'gif' || value === 'bmp' || value === 'ico' || value === 'psd' ? value : 'png'
 }
 
 function parseDirectoryPreference(value: string | null): string {
@@ -1159,7 +1208,7 @@ export function parseTabletPreferences(value: string | null): TabletPreferences 
       twistEnabled: parsed.twistEnabled === true,
       eraserTipEnabled: parsed.eraserTipEnabled !== false,
       barrelButtonAction,
-      rightClickAction: parsed.rightClickAction === 'foreground-eyedropper' ? 'foreground-eyedropper' : 'background',
+      rightClickAction: parseRightClickAction(parsed.rightClickAction),
       touchMode,
       twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
       twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true
@@ -1200,6 +1249,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     animationReturnToStart: get(ANIMATION_RETURN_TO_START_PREFERENCE_KEY) === 'true',
     skipDisabledFrames: get(SKIP_DISABLED_FRAMES_PREFERENCE_KEY) !== 'false',
     saveFormat: parseSaveFormat(get(SAVE_FORMAT_PREFERENCE_KEY)),
+    saveOriginalFormat: get(SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY) !== 'false',
     exportFormat: parseExportFormat(get(EXPORT_FORMAT_PREFERENCE_KEY)),
     saveDirectory: parseDirectoryPreference(get(SAVE_DIRECTORY_PREFERENCE_KEY)),
     exportDirectory: parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
@@ -1225,6 +1275,9 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     brushShiftLineEnabled: parseBrushShiftLineEnabled(get(BRUSH_SHIFT_LINE_ENABLED_KEY)),
     useLocalCursors: get(USE_LOCAL_CURSORS_PREFERENCE_KEY) === 'true',
     cursorScale: parseCursorScale(get(CURSOR_SCALE_PREFERENCE_KEY)),
+    cursorColorMode: parseCursorColorMode(get(CURSOR_COLOR_MODE_PREFERENCE_KEY)),
+    cursorColor: parseHexColor(get(CURSOR_COLOR_PREFERENCE_KEY), DEFAULT_CURSOR_COLOR),
+    brushEdgeThickness: parseBrushEdgeThickness(get(BRUSH_EDGE_THICKNESS_PREFERENCE_KEY)),
     brushPreviewMode: parseBrushPreviewMode(get(BRUSH_PREVIEW_MODE_PREFERENCE_KEY)),
     checkerboard: theme.checkerboard,
     pixelGridColor: theme.grid.pixelGridColor,
@@ -1238,6 +1291,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     textBoxColor: parseHexColor(get(TEXT_BOX_COLOR_PREFERENCE_KEY), DEFAULT_TEXT_BOX_COLOR),
     canvasResizeColor: parseHexColor(get(CANVAS_RESIZE_COLOR_PREFERENCE_KEY), DEFAULT_CANVAS_RESIZE_COLOR),
     sliceOutlinesVisible: get(SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY) !== 'false',
+    brushSizeWheelReversed: get(BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY) === 'true',
     wheelZoomEnabled: get(WHEEL_ZOOM_ENABLED_PREFERENCE_KEY) !== 'false',
     wheelZoomMode: parseWheelZoomMode(get(WHEEL_ZOOM_MODE_PREFERENCE_KEY)),
     shiftLinePreviewEnabled: get(SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY) !== 'false',
@@ -1266,6 +1320,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     lineDirectionStep: parseLineDirectionStep(get(LINE_DIRECTION_STEP_PREFERENCE_KEY)),
     layerDisplayColorPresets: parseLayerDisplayColorPresets(get(LAYER_DISPLAY_COLOR_PRESETS_KEY)),
     colorEditorModes: parseColorEditorModes(get(COLOR_EDITOR_MODES_PREFERENCE_KEY)),
+    pixelFormat: parsePixelFormat(get(PIXEL_FORMAT_PREFERENCE_KEY)),
     onionSkin: theme.onionSkin,
     timelineHidden: get(TIMELINE_HIDDEN_PREFERENCE_KEY) === 'true',
     symmetryAxis: theme.symmetryAxis,
@@ -1299,6 +1354,8 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [ANIMATION_RETURN_TO_START_PREFERENCE_KEY]: String(preferences.animationReturnToStart),
     [SKIP_DISABLED_FRAMES_PREFERENCE_KEY]: String(preferences.skipDisabledFrames),
     [SAVE_FORMAT_PREFERENCE_KEY]: preferences.saveFormat,
+    [SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY]: String(preferences.saveOriginalFormat),
+    [PIXEL_FORMAT_PREFERENCE_KEY]: preferences.pixelFormat,
     [EXPORT_FORMAT_PREFERENCE_KEY]: preferences.exportFormat,
     [SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.saveDirectory),
     [EXPORT_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.exportDirectory),
@@ -1324,6 +1381,9 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [BRUSH_SHIFT_LINE_ENABLED_KEY]: String(preferences.brushShiftLineEnabled),
     [USE_LOCAL_CURSORS_PREFERENCE_KEY]: String(preferences.useLocalCursors),
     [CURSOR_SCALE_PREFERENCE_KEY]: String(preferences.cursorScale),
+    [CURSOR_COLOR_MODE_PREFERENCE_KEY]: parseCursorColorMode(preferences.cursorColorMode),
+    [CURSOR_COLOR_PREFERENCE_KEY]: colorHex(preferences.cursorColor),
+    [BRUSH_EDGE_THICKNESS_PREFERENCE_KEY]: String(parseBrushEdgeThickness(String(preferences.brushEdgeThickness))),
     [BRUSH_PREVIEW_MODE_PREFERENCE_KEY]: preferences.brushPreviewMode,
     [CHECKER_SIZE_PREFERENCE_KEY]: String(preferences.checkerboard.size),
     [CHECKER_LIGHT_COLOR_PREFERENCE_KEY]: colorHex(preferences.checkerboard.lightColor),
@@ -1339,6 +1399,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [TEXT_BOX_COLOR_PREFERENCE_KEY]: colorHex(preferences.textBoxColor),
     [CANVAS_RESIZE_COLOR_PREFERENCE_KEY]: colorHex(preferences.canvasResizeColor),
     [SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY]: String(preferences.sliceOutlinesVisible),
+    [BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY]: String(preferences.brushSizeWheelReversed),
     [WHEEL_ZOOM_ENABLED_PREFERENCE_KEY]: String(preferences.wheelZoomEnabled),
     [WHEEL_ZOOM_MODE_PREFERENCE_KEY]: preferences.wheelZoomMode,
     [SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY]: String(preferences.shiftLinePreviewEnabled),

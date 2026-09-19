@@ -11,6 +11,30 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+it.each(['horizontal', 'vertical'] as const)('keeps layer highlights after consecutive %s mirrors with or without a marquee', (axis) => {
+  const document = createDocument('mirror selection retention', 2, 2, 'rgba')
+  const bottom = getActiveLayer(document)
+  const top = createLayer('Top', 2, 2, 'rgba')
+  document.layers.push(top)
+  for (const layer of document.layers) layer.pixels.set([255, 0, 0, 255], 0)
+  useWorkspace.getState().addSession(document)
+  const { container } = render(<ConnectedPanel />)
+  act(() => { useWorkspace.getState().selectLayerRows([bottom.id, top.id], []) })
+
+  for (const marquee of [null, { x: 0, y: 0, width: 2, height: 2 }]) {
+    act(() => { useWorkspace.getState().setSelection(marquee) })
+    for (let repeat = 0; repeat < 2; repeat++) {
+      act(() => { useWorkspace.getState().flipActiveSelection(axis) })
+      const session = useWorkspace.getState().sessions[0]
+      expect(session.selection).toEqual(marquee)
+      expect(session.selectedLayerIds).toEqual([bottom.id, top.id])
+      for (const layer of document.layers) {
+        expect(container.querySelector(`[data-layer-id="${layer.id}"]`)).toHaveClass('selected')
+      }
+    }
+  }
+})
+
 function ConnectedPanel() {
   const session = useWorkspace((state) => state.sessions[0] ?? null)
   return session ? <LayersPanel session={session} docked /> : null

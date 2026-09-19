@@ -45,7 +45,7 @@ interface Ports {
   readonly selectionBoundaryCacheRef: import('react').RefObject<SelectionBoundaryCache | null>
   readonly localPointAt: (clientX: number, clientY: number, allowOutsideCopies?: boolean) => Point | null
   readonly updateCursorAt: (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey?: boolean) => void
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly activeBrushDither: import('@shared/types-brush').BrushDitherSettings | undefined
   readonly fillKind: import('@shared/types-brush').FillKind
   readonly gradientDither: import('@shared/types-brush').GradientDither
@@ -124,13 +124,18 @@ export function useCanvasRenderEngine(ports: Ports) {
 
   const drawRequestRef = useRef<number | null>(null)
 
-  const compositeCacheRef = useRef(canvasCompositeCacheFor(ports.storedSession.document))
+  const currentCompositeCache = canvasCompositeCacheFor(ports.storedSession.document)
+  const compositeCacheRef = useRef(currentCompositeCache)
 
   const compositeCacheDocumentRef = useRef(ports.storedSession.document)
 
-  if (compositeCacheDocumentRef.current !== ports.storedSession.document) {
+  if (compositeCacheRef.current !== currentCompositeCache) {
+    // Fast Refresh preserves refs, but a replaced renderer module owns a new
+    // cache. Do not keep calling the old class implementation for the same
+    // document after an update. Normal document switches retain shared caches.
+    if (compositeCacheDocumentRef.current === ports.storedSession.document) compositeCacheRef.current.dispose()
     compositeCacheDocumentRef.current = ports.storedSession.document
-    compositeCacheRef.current = canvasCompositeCacheFor(ports.storedSession.document)
+    compositeCacheRef.current = currentCompositeCache
   }
 
   const compositePointSamplerRef = useRef<{ document: DocumentSession['document']; revision: number; sampler: (x: number, y: number) => RgbaColor } | null>(
@@ -349,6 +354,10 @@ export function useCanvasRenderEngine(ports: Ports) {
     ports.session.view.mirroredVertical,
     ports.session.view.showSelectionOutline,
     ports.session.view.showSelectionPivot,
+    ports.session.drawFromCanvasCenter,
+    ports.session.drawingAnchor?.x,
+    ports.session.drawingAnchor?.y,
+    ports.session.drawingAnchorVisible,
     ports.session.selection,
     ports.session.freeTransformActive,
     ports.session.freeTransformQuad?.nw.x,

@@ -651,7 +651,7 @@ export function deriveLayerPanelVisuals({
       animationCellSelectionOutlineVisible ||
       animationGestureSelection?.kind === 'cel' ||
       animationGestureSelection?.kind === 'mask')
-  const { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys } = deriveTimelineLinks({
+  const { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys } = deriveTimelineLinks({
     displayRows,
     timeline,
     canonicalTimelineIndex,
@@ -660,9 +660,33 @@ export function deriveLayerPanelVisuals({
     renderedMaskCellKeySet,
     renderedCellKeySet,
     renderedFrameIdSet,
-    playbackActiveLayerId,
-    visualActiveFrameIndex
+    selectionVisible: selectionOutlineVisible
   })
+
+  // This expansion is presentation-only. Stored selection and drag targets
+  // continue to contain exactly the cells directly selected by the user.
+  const animationCelSelectionBoxes = (() => {
+    if (animationCelDragPreview) return [animationCelDragPreview]
+    const selectedBlocks = linkedCelBlocks.filter(block => block.selected)
+    if (selectedBlocks.length === 0) return [{ row: selectedCelRow, column: selectedCelColumn, rowSpan: selectedCelRowSpan, columnSpan: selectedCelColumnSpan }]
+    const columnsByRow = new Map<number, Set<number>>()
+    const include = (row: number, column: number): void => {
+      const columns = columnsByRow.get(row) ?? new Set<number>()
+      columns.add(column)
+      columnsByRow.set(row, columns)
+    }
+    for (const position of selectedCelPositions) include(position.row, position.column)
+    for (const block of selectedBlocks) for (let column = block.start; column < block.start + block.span; column++) include(block.row, column)
+    return [...columnsByRow].flatMap(([row, columns]) => {
+      const runs: Array<{ row: number; column: number; rowSpan: number; columnSpan: number }> = []
+      for (const column of [...columns].sort((a, b) => a - b)) {
+        const last = runs.at(-1)
+        if (last && last.column + last.columnSpan === column) last.columnSpan++
+        else runs.push({ row, column, rowSpan: 1, columnSpan: 1 })
+      }
+      return runs
+    })
+  })()
 
   const selectedAnimationMaskOwners = new Set(session.selectedAnimationMaskRowKeys)
 
@@ -761,6 +785,8 @@ export function deriveLayerPanelVisuals({
     linkedCelBlocks,
     linkedCelConnectors,
     linkedCelMemberKeys,
+    selectedLinkedCelMemberKeys,
+    animationCelSelectionBoxes,
     frameSelectionActiveForOutline,
     selectedAnimationOutlineRows,
     activeAnimationLayerRow,

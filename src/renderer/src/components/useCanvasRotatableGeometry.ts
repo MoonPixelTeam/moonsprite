@@ -1,3 +1,4 @@
+import { centerBoundsOnCanvas } from '@/core/canvas-centered-drawing'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { DEFAULT_GRID_SETTINGS, snapSelectionBoundsToGrid } from '@/core/grid'
 import { type DocumentSession } from '@/store/workspace'
@@ -48,13 +49,16 @@ export function useCanvasRotatableGeometry(ports: Ports) {
     modifiers: ReturnType<typeof ports.selectionMarqueeModifierState>
   ): { target: SelectionRect; angle: number } | null => {
     if (drag.kind !== 'marquee' && drag.kind !== 'shape') return null
-    if (ports.inputRef.current.spaceHeld && drag.transformMoveStart) drag.transformOffset = temporaryTransformOffset(drag.transformMoveStart, point)
+    const fixedCenter = drag.canvasCenterSize
+    const fromCenter = Boolean(fixedCenter) || modifiers.fromCenter
+    if (fixedCenter) drag.transformOffset = { x: 0, y: 0 }
+    if (!fixedCenter && ports.inputRef.current.spaceHeld && drag.transformMoveStart) drag.transformOffset = temporaryTransformOffset(drag.transformMoveStart, point)
     const offset = drag.transformOffset ?? { x: 0, y: 0 }
     const adjustedPoint = { x: point.x - offset.x, y: point.y - offset.y }
     const fixedRatio = drag.kind === 'shape' ? ports.session.shapeRatio : null
     let bounds =
       drag.marqueeBounds ??
-      (modifiers.fromCenter
+      (fromCenter
         ? centeredShapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
         : shapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio))
     let angle = drag.marqueeAngle ?? 0
@@ -63,7 +67,7 @@ export function useCanvasRotatableGeometry(ports: Ports) {
 
     if (!rotating && drag.marqueeRotationStart) {
       const rotationBounds = drag.marqueeBounds ?? drag.marqueeRotationStart.bounds
-      const resizeBounds = modifiers.fromCenter ? centerMarqueeBoundsAtCreationPoint(rotationBounds, drag.start) : rotationBounds
+      const resizeBounds = fromCenter ? centerMarqueeBoundsAtCreationPoint(rotationBounds, drag.start) : rotationBounds
       drag.marqueeBounds = resizeBounds
       drag.marqueeResizeStart = createMarqueeResizeStart(resizeBounds, drag.marqueeRotationStart.lastPointer)
       drag.marqueeRotationStart = undefined
@@ -82,13 +86,13 @@ export function useCanvasRotatableGeometry(ports: Ports) {
         { x: adjustedPoint.x - drag.marqueeResizeStart.pointer.x, y: adjustedPoint.y - drag.marqueeResizeStart.pointer.y },
         angle,
         drag.marqueeDirection ?? { x: 1, y: 1 },
-        drag.marqueeResizeStart.fromCenter || modifiers.fromCenter,
+        drag.marqueeResizeStart.fromCenter || fromCenter,
         modifiers.proportional,
         fixedRatio
       )
       drag.marqueeBounds = bounds
     } else if (angle === 0) {
-      bounds = modifiers.fromCenter
+      bounds = fromCenter
         ? centeredShapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
         : shapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
       drag.marqueeBounds = bounds
@@ -99,8 +103,9 @@ export function useCanvasRotatableGeometry(ports: Ports) {
       drag.kind === 'marquee' && angle === 0 && ports.alignmentPreferences.gridAlignmentEnabled && ports.session.view.showGrid
         ? snapSelectionBoundsToGrid(bounds, ports.session.view.grid ?? DEFAULT_GRID_SETTINGS)
         : bounds
-    if (angle === 0) drag.marqueeBounds = snappedBounds
-    const target = translatedSelectionRect(snappedBounds, offset)
+    const centeredBounds = fixedCenter ? centerBoundsOnCanvas(snappedBounds, fixedCenter, drag.drawingAnchor) : snappedBounds
+    if (angle === 0 || fixedCenter) drag.marqueeBounds = centeredBounds
+    const target = translatedSelectionRect(centeredBounds, offset)
     drag.previewTarget = target
     drag.previewAngle = angle
     return { target, angle }

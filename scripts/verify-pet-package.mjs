@@ -87,6 +87,7 @@ for (const item of manifest.menuItems ?? []) {
 }
 const topPositions = (value) => value === 'start' || value === 'end' || /^(before|after):(file|edit|select|canvas|layer|window|help)$/.test(value)
 for (const topMenu of manifest.topMenus ?? []) {
+  if (!Array.isArray(topMenu.commands) || topMenu.commands.length < 1 || topMenu.commands.length > 32) failures.push('单个顶层菜单必须引用 1 至 32 个命令')
   if (!validId(topMenu.id)) failures.push(`顶层菜单 ID 非法：${topMenu.id}`)
   if (!topPositions(topMenu.position)) failures.push(`顶层菜单 position 非法：${topMenu.position}`)
   for (const id of topMenu.commands ?? []) if (!commandIds.has(id)) failures.push(`顶层菜单引用了不存在的命令：${id}`)

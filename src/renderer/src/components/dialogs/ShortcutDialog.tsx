@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { createPortal } from 'react-dom'
-import { DEFAULT_SHORTCUT_BINDINGS, SHORTCUT_GROUPS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, findShortcutBindingOwners, formatShortcutBindingsForLocale, importShortcutBindings, removeShortcutBinding, resetShortcutBindings, shortcutBindingBlocked, shortcutDisplayText, shortcutIdsMayShareBinding, shortcutText, type ShortcutBindings, type ShortcutGroupId, type ShortcutId } from '@/core/shortcuts'
+import { DEFAULT_SHORTCUT_BINDINGS, SHORTCUT_GROUPS, assignShortcutBinding, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, findShortcutBindingOwners, formatShortcutBindingsForLocale, importShortcutBindings, removeShortcutBinding, resetShortcutBindings, shortcutBindingSupported, shortcutRequiresHold, shortcutKeyPart, shortcutBindingBlocked, shortcutDisplayText, shortcutIdsMayShareBinding, shortcutText, type ShortcutBindings, type ShortcutGroupId, type ShortcutId } from '@/core/shortcuts'
 import { shortcutGroupLabels, shortcutLabels } from '@/locales/shortcut-labels'
 import { ModalShell } from '@/components/ModalShell'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -36,7 +36,7 @@ interface ShortcutRecorderProps {
   onClose: () => void
 }
 
-const MOUSE_SHORTCUT_ACTIONS = ['MouseLeft', 'MouseRight', 'MouseMiddle', 'MouseDoubleLeft', 'WheelUp', 'WheelDown'] as const
+const MOUSE_SHORTCUT_ACTIONS = ['MouseLeft', 'MouseRight', 'MouseMiddle', 'MouseBack', 'MouseForward', 'MouseDoubleLeft', 'WheelUp', 'WheelDown'] as const
 const SHORTCUT_MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Space', 'Win'] as const
 type MouseShortcutAction = typeof MOUSE_SHORTCUT_ACTIONS[number]
 type ShortcutModifier = typeof SHORTCUT_MODIFIERS[number]
@@ -52,9 +52,12 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
   const [mouseOptionsExpanded, setMouseOptionsExpanded] = useState(Boolean(originalMouseAction))
   const recorderRef = useRef<HTMLElement>(null)
   const recorderWindowStack = useFloatingWindowStack(recorderRef)
+  const recordedParts = useRef(new Set<string>())
   const candidate = selectedMouseAction ? [...mouseModifiers, selectedMouseAction].join('+') : keyboardCandidate
+  const supported = shortcutBindingSupported(editor.id, candidate)
+  const requiresHold = shortcutRequiresHold(editor.id)
   const mouseShortcutSummary = selectedMouseAction ? shortcutDisplayText(candidate, locale) : null
-  const mouseActionOptions = MOUSE_SHORTCUT_ACTIONS.map((action) => ({
+  const mouseActionOptions = MOUSE_SHORTCUT_ACTIONS.filter((action) => shortcutBindingSupported(editor.id, action)).map((action) => ({
     value: action,
     label: shortcutDisplayText(action, locale)
   }))
@@ -79,7 +82,7 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
       ? t('shortcuts.sharedWith', { commands: sharedOwners.map((id) => labels[id]).join(t('shortcuts.labelSeparator')) })
       : t('shortcuts.available')
 
-  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => {
+  return createPortal(<div className="modal-backdrop shortcut-recorder-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => {
     if (event.target === event.currentTarget) onClose()
   }}>
     <section ref={recorderRef} className="modal shortcut-recorder-modal" role="dialog" aria-modal="true" aria-label={editor.index === undefined ? t('shortcuts.addTitle') : t('shortcuts.changeTitle')} style={{ zIndex: recorderWindowStack.zIndex }} onPointerDownCapture={recorderWindowStack.bringToFront} onFocusCapture={recorderWindowStack.bringToFront}>
@@ -93,6 +96,8 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
             placeholder={t('shortcuts.unset')}
             readOnly
             value={shortcutDisplayText(candidate, locale)}
+            onKeyUp={(event) => { recordedParts.current.delete(shortcutKeyPart(event.nativeEvent)); event.stopPropagation() }}
+            onBlur={() => recordedParts.current.clear()}
             onKeyDown={(event) => {
               event.preventDefault()
               event.stopPropagation()
@@ -101,7 +106,8 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
                 return
               }
               if (event.repeat) return
-              const shortcut = shortcutText(event.nativeEvent)
+              recordedParts.current.add(shortcutKeyPart(event.nativeEvent))
+              const shortcut = shortcutText(event.nativeEvent, recordedParts.current)
               setKeyboardCandidate(shortcut)
               setSelectedMouseAction(null)
               setMouseModifiers(SHORTCUT_MODIFIERS.filter((modifier) => shortcut.split('+').includes(modifier)))
@@ -135,6 +141,12 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
             </div>
           </div>}
         </section>
+        {requiresHold && <p className="shortcut-assignment">{locale === 'zh-CN'
+          ? '按住所设按键后操作。可用键盘、中键或侧键；滚轮、双击不能用于持续按住的手势。'
+          : 'Hold the assigned keys while interacting. Use keyboard keys, middle or side buttons; wheel and double-click cannot be held.'}</p>}
+        {editor.id === 'brushSizeAdjust' && <p className="shortcut-assignment">{locale === 'zh-CN' ? '按住后在画布内左右移动鼠标调整尺寸，无需按下左键。' : 'Hold and move horizontally over the canvas to resize; no left click is needed.'}</p>}
+        {editor.id === 'brushSizeWheelAdjust' && <p className="shortcut-assignment">{locale === 'zh-CN' ? '这里只设置需要按住的键；按住后滚动滚轮调整尺寸。' : 'Assign the held keys here, then hold them and scroll to resize.'}</p>}
+        {!supported && <p role="alert">{locale === 'zh-CN' ? '此操作不支持该组合，请重新录入。' : 'This binding is not supported for this action.'}</p>}
         <p className={displacedOwners.length > 0 ? 'shortcut-assignment transfer' : 'shortcut-assignment'}>
           <span>{t('shortcuts.currentAssignment')}</span>
           <strong>{assignment}</strong>
@@ -143,7 +155,7 @@ function ShortcutRecorder({ editor, labels, shortcuts, onApply, onClose }: Short
       <footer>
         <button type="button" className="quiet-button" onClick={() => { setKeyboardCandidate(''); setSelectedMouseAction(null); setMouseModifiers([]) }}>{t('shortcuts.clear')}</button>
         <button type="button" className="quiet-button" onClick={onClose}>{t('common.cancel')}</button>
-        <button type="button" className="primary-button" disabled={!candidate.trim() && editor.index === undefined} onClick={() => onApply(candidate)}>
+        <button type="button" className="primary-button" disabled={!supported || (!candidate.trim() && editor.index === undefined)} onClick={() => onApply(candidate)}>
           {editor.index === undefined ? t('shortcuts.add') : t('shortcuts.change')}
         </button>
       </footer>
@@ -218,7 +230,7 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
     blocked: item.conflicting.map((id) => labels[id]).join(t('shortcuts.labelSeparator'))
   })).join(t('shortcuts.conflictSeparator'))
 
-  return <div className="modal-backdrop" role="presentation">
+  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="shortcuts" defaultWidth={800} defaultHeight={620} className="settings-modal shortcut-settings-modal" role="dialog" aria-label={t('shortcuts.title')}>
       <DialogHeader eyebrow={t('shortcuts.eyebrow')} title={t('shortcuts.title')} closeLabel={t('common.close')} onClose={onClose} />
       <div className="settings-layout">

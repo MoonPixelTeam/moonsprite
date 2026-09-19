@@ -43,10 +43,13 @@ export function useLayerSelectionGuides({
 
   const selectionStateSignature = `${session.document.id}|${session.selectedLayerIds.join('\u0000')}|${session.selectedGroupIds.join('\u0000')}|${session.selectedGroupId ?? ''}|${session.selectedAnimationFrameIds.join('\u0000')}|${animationCellSelectionSignature}`
 
-  // A newly opened project starts with its active layer selected, matching the
-  // timeline's default interaction context. Subsequent edits may hide the
-  // outline until the user explicitly selects an item again.
-  const [selectionOutlineVisible, setSelectionOutlineVisible] = useState(false)
+  // Restore explicit selection when the panel mounts; an active editing
+  // target alone must not show selection or linked-group guides.
+  const [selectionOutlineVisible, setSelectionOutlineVisible] = useState(() =>
+    session.layerSelectionExplicit || session.selectedAnimationFrameIds.length > 0 ||
+    session.selectedAnimationCellKeys.length > 0 || session.selectedAnimationMaskCellKeys.length > 0 ||
+    session.selectedAnimationMaskRowKeys.length > 0
+  )
 
   const previousSelectionStateSignatureRef = useRef(selectionStateSignature)
 

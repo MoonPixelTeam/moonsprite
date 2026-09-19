@@ -6,10 +6,11 @@ import { loadEditorPreferences, LOCAL_HISTORY_ENABLED_PREFERENCE_KEY, PROJECT_BA
 import { readStoredString } from './core/storage'
 import { warmDocumentDecodeWorker } from './core/document-files'
 import { preloadCanvasStage } from './components/app/EditorCanvasHost'
-import { applyThemeToDocument } from './core/theme'
+import { applyThemeToDocument, installSystemThemeSync } from './core/theme'
 import { translate } from './core/localization'
 import { installTauriApi } from './platform/tauri-api'
 import { applyCursorPreferences } from './platform/cursor-theme'
+import { installCursorSemantics } from './platform/cursor-semantics'
 import { applyBodyFontScale, applyToolIconScale, applyUiScale } from './platform/ui-scale'
 import { loadTextFontCatalog } from './platform/font-service'
 import { showAppWindow } from './platform/app-window'
@@ -33,7 +34,11 @@ if (extensionWindow) {
   }
 }
 const startupPreferences = loadEditorPreferences()
+const disposeCursorSemantics = installCursorSemantics()
+import.meta.hot?.dispose(disposeCursorSemantics)
 applyThemeToDocument(startupPreferences.theme)
+const disposeSystemThemeSync = installSystemThemeSync(() => loadEditorPreferences().theme)
+import.meta.hot?.dispose(disposeSystemThemeSync)
 document.documentElement.dataset.uiMotion = startupPreferences.uiMotionLevel
 if (extensionWindow) document.documentElement.dataset.extensionWindow = 'true'
 applyToolIconScale(startupPreferences.toolIconScale)

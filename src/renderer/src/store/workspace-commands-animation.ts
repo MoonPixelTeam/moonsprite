@@ -8,6 +8,7 @@ import { createAnimationFrameClipboardCommands } from './workspace-commands-anim
 import { createAnimationMaskCommands } from './workspace-commands-animation-mask'
 import { createAnimationPlaybackCommands } from './workspace-commands-animation-playback'
 import { createAnimationFrameCommands } from './workspace-commands-animation-frame'
+import { createAnimationTweenCommands } from './workspace-commands-animation-tween'
 
 /** Composition only; each workflow declares its own command dependencies. */
 export function createWorkspaceAnimationCommands(context: WorkspaceCommandContext<
@@ -32,5 +33,6 @@ export function createWorkspaceAnimationCommands(context: WorkspaceCommandContex
     ...createAnimationMaskCommands(context),
     ...createAnimationPlaybackCommands(context),
     ...createAnimationFrameCommands(context),
+    ...createAnimationTweenCommands(context),
   }
 }

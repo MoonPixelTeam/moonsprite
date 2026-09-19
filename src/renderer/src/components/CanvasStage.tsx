@@ -51,6 +51,7 @@ import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
+import { crosshairCursorForColor } from '@/core/canvas-visuals'
 import { useCanvasViewPreview } from '@/components/useCanvasViewPreview'
 import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { useI18n } from '@/components/I18nProvider'
@@ -65,6 +66,8 @@ import rotationBackground6 from '@/assets/rotation-indicator/background-6.png'
 import rotationPointer from '@/assets/rotation-indicator/pointer.png'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { canvasStageIsVisible } from './canvas-stage-visibility'
+import { subscribeAnimationTweenPreview } from './animation-tween-preview'
+import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 import { CANVAS_VIEW_SCROLLBAR_THICKNESS, useCanvasViewScrollbars } from './useCanvasViewScrollbars'
 import { Scrollbar } from './Scrollbar'
@@ -82,6 +85,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const viewDragSensitivity = canvasPreferences.viewDragSensitivity
   const tabletPreferences = canvasPreferences.tablet
   const brushPreviewMode = canvasPreferences.brushPreviewMode
+  const cursorColorMode = canvasPreferences.cursorColorMode
+  const cursorColor = canvasPreferences.cursorColor
+  const brushEdgeColor = cursorColorMode === 'custom' ? cursorColor : undefined
+  const brushEdgeThickness = canvasPreferences.brushEdgeThickness
+  const canvasCursorStyle = cursorColorMode === 'custom'
+    ? { '--cursor-crosshair': crosshairCursorForColor(cursorColor) } as CSSProperties
+    : undefined
   const checkerboard = canvasPreferences.checkerboard
   const gridColors = useMemo(() => {
     const preferences = canvasPreferences
@@ -397,6 +407,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get canvasRef() { return canvasRef },
     get inputRef() { return inputRef },
     get brushPreviewMode() { return brushPreviewMode },
+    get brushEdgeColor() { return brushEdgeColor },
+    get brushEdgeThickness() { return brushEdgeThickness },
     get drawingBrushPreviewEnabled() { return drawingBrushPreviewEnabled },
     get liveViewRef() { return liveViewRef },
     get repeatedDocumentPointsAt() { return repeatedDocumentPointsAt },
@@ -725,6 +737,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       get activeBrushImage() { return activeBrushImage },
       get updateCursorAt() { return updateCursorAt },
       get scheduleDraw() { return scheduleDraw },
+      get brushSizeWheelReversed() { return canvasPreferences.brushSizeWheelReversed },
       get wheelZoomEnabled() { return wheelZoomEnabled },
       get liveViewRef() { return liveViewRef },
       get wheelZoomMode() { return wheelZoomMode },
@@ -821,6 +834,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     },
     [session.document.id]
   )
+  useEffect(() => subscribeAnimationTweenPreview(session.document.id, () => scheduleDraw()), [session.document.id])
+
   const draw = (): void => {
     if (!canvasStageIsVisible(canvasRef.current, useWorkspace.getState().activeId)) return
     renderCanvasFrame({
@@ -873,6 +888,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         gridColors,
         selectionPreviewColorMode,
         selectionPreviewColor,
+        brushEdgeColor,
+        brushEdgeThickness,
         activeBrushImage,
         activeBrushPreviewMode,
         activeBrushTexture,
@@ -1004,7 +1021,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get scheduleSelectionPreview() { return scheduleSelectionPreview },
     get draw() { return draw },
     get t() { return t },
-    get tilemapPaintSelectionForIncoming() { return tilemapPaintSelectionForIncoming }
+    get tilemapPaintSelectionForIncoming() { return tilemapPaintSelectionForIncoming },
+    get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
 
   const selectionBeginInput = createSelectionBeginCanvasInput({
@@ -1042,7 +1060,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get magicGestureRef() { return magicGestureRef },
     get t() { return t },
     get drawSelectionOverlay() { return drawSelectionOverlay },
-    get magicWandWorkerRef() { return magicWandWorkerRef }
+    get magicWandWorkerRef() { return magicWandWorkerRef },
+    get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
 
   const textInput = createTextCanvasInput({
@@ -1434,6 +1453,11 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get transformInput() { return transformInput }
   })
 
+  const tweenPreviewDrag = useAnimationTweenPreviewDrag({
+    documentId: () => session.document.id,
+    moveToolActive: () => liveInputSession().tool === 'move' && !inputRef.current.spaceHeld && !inputRef.current.drag && !liveInputSession().animationPlaying,
+    pointAt: (x, y) => repeatedDocumentPointsAt(x, y, true, true)
+  })
   const rotationStyle = { transform: 'none', transformOrigin: '50% 50%' }
   return (
     <PerformanceProfiler id="CanvasStage">
@@ -1441,13 +1465,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <canvas
           ref={canvasRef}
           data-document-id={session.document.id}
-          style={rotationStyle}
+          style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
-          onPointerDown={pointerDown}
-          onPointerMove={pointerMove}
-          onPointerUp={pointerUp}
-          onPointerCancel={pointerCancel}
+          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event) }}
+          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event) }}
+          onPointerUp={(event) => { if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
+          onPointerCancel={(event) => { if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
+          onLostPointerCapture={(event) => tweenPreviewDrag.pointerCancel(event)}
           onDoubleClick={quickSelectCell}
           onPointerLeave={pointerLeave}
           onPointerEnter={pointerEnter}
@@ -1474,12 +1499,13 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           ariaLabel={`${t('canvas.aria')} Y`}
           onChange={viewScrollbars.vertical.onChange}
         />}
+        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible && viewScrollbars.vertical.visible && <span className="stage-view-scrollbar-corner" aria-hidden="true" />}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div
             className="canvas-key-display"
             style={{ transform: `scale(${keyDisplaySize})`, '--key-display-duration': `${keyDisplayDuration}ms` } as CSSProperties}
             aria-live="polite"
-            aria-label="按键显示"
+            aria-label={t('canvas.keyDisplay')}
           >
             {keyDisplayEntries.map((entry) => (
               <span className="canvas-key-display-item" key={entry.id}>

@@ -86,7 +86,7 @@ export function OutlineDialog({ open, session, onClose }: { open: boolean; sessi
       <div className="modal-body outline-modal-body">
         <div className="outline-tone-settings">
           <PreferenceToggle label={t('outline.smartHue')} tooltip={t('outline.smartHueDescription')} checked={smartHue} onChange={setSmartHue} />
-          <PreferenceToggle label="跟随不透明度" tooltip="根据相邻源像素的不透明度调整描边透明度。关闭时使用描边颜色自身的透明度。" checked={followOpacity} onChange={setFollowOpacity} />
+          <PreferenceToggle label={t('outline.followOpacity')} tooltip={t('outline.followOpacityHint')} checked={followOpacity} onChange={setFollowOpacity} />
           {!smartHue && <FormField className="outline-color-field" layout="inline" label={t('outline.color')}><ColorValueControl color={color} density="regular" onChange={setColor} label={t('outline.color')} storageKey="selection-outline" fillWithColor inPalette={false} /></FormField>}
           <FormField className="outline-color-field" layout="inline" label={t('outline.backgroundColor')}><ColorValueControl color={backgroundColor} density="regular" onChange={setBackgroundColor} label={t('outline.backgroundColor')} storageKey="selection-outline-background" fillWithColor inPalette={false} /></FormField>
           {smartHue && <RangeField className="outline-smart-darkness" label={t('outline.smartHueDarkness')} min={0} max={100} suffix="%" value={smartHueDarkness} onChange={setSmartHueDarkness} />}

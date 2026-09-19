@@ -164,7 +164,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
       }
       if (loopSection) {
         const playbackSection = session.animationPlaybackLoopSectionRepeatIndefinitely ? (session.animationPlaybackLoopStack.length > 0 ? { ...loopSection, repeatCount: 1 } : { ...loopSection, repeatCount: null }) : loopSection
-        const step = advanceAnimationLoopSectionPlayback(timeline, playbackSection, timeline.activeFrameId, session.animationPlaybackLoopIteration)
+        const step = advanceAnimationLoopSectionPlayback(timeline, playbackSection, timeline.activeFrameId, session.animationPlaybackLoopIteration, session.animationPlaybackLoopPosition)
         const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
         const nestedSection = step && !step.completed ? nestedAnimationLoopSectionAtFrame(timeline, loopSection, step.frameId) : null
         if (step && nestedSection) {
@@ -173,7 +173,8 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           get().mutateActive((current) => {
             current.animationPlaybackLoopStack.push({
               sectionId: loopSection.id,
-              iteration: step.completedIterations
+              iteration: step.completedIterations,
+              position: step.position
             })
             setAnimationLoopPlaybackSection(current, nestedSection)
             activateAnimationPlaybackFrame(current, nestedStartFrameId)
@@ -183,7 +184,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         if (step?.completed && session.animationPlaybackLoopStack.length > 0) {
           const parentContext = session.animationPlaybackLoopStack.at(-1)
           const parentSection = parentContext ? ((timeline.loopSections ?? []).find((section) => section.id === parentContext.sectionId) ?? null) : null
-          const boundaryFrameId = parentSection ? animationLoopSectionBoundaryFrameId(timeline, loopSection, parentSection.direction) : null
+          const boundaryFrameId = parentSection ? animationLoopSectionBoundaryFrameId(timeline, loopSection, parentSection, parentContext?.position) : null
           if (!parentSection || !boundaryFrameId) {
             get().setAnimationPlaying(false)
             return
@@ -193,6 +194,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             setAnimationLoopPlaybackSection(current, parentSection)
             activateAnimationPlaybackFrame(current, boundaryFrameId)
             current.animationPlaybackLoopIteration = parentContext!.iteration
+            current.animationPlaybackLoopPosition = parentContext!.position
           }, false)
           return
         }
@@ -217,6 +219,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
                 } else {
                   current.animationPlaybackLoopSectionId = null
                   current.animationPlaybackLoopIteration = 0
+                  current.animationPlaybackLoopPosition = undefined
                   current.animationPlaybackLoopSectionRepeatIndefinitely = false
                   activateAnimationPlaybackFrame(current, nextFrameId)
                 }
@@ -233,6 +236,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         }
         get().mutateActive((current) => {
           current.animationPlaybackLoopIteration = step.completedIterations
+          current.animationPlaybackLoopPosition = step.position
           if (!activateAnimationPlaybackFrame(current, step.frameId)) return
           const preserveMaskContext = (current.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (current.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || current.activeLayerMaskId !== null
           if (!preserveMaskContext) {
@@ -270,6 +274,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
             } else {
               current.animationPlaybackLoopSectionId = null
               current.animationPlaybackLoopIteration = 0
+              current.animationPlaybackLoopPosition = undefined
               current.animationPlaybackLoopSectionRepeatIndefinitely = false
               activateAnimationPlaybackFrame(current, nextFrameId)
             }
@@ -373,6 +378,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         session.animationPlaybackStartFrameId = timeline.activeFrameId
         session.animationPlaybackLoopSectionId = id
         session.animationPlaybackLoopIteration = 0
+        session.animationPlaybackLoopPosition = undefined
         session.animationPlaybackLoopSectionRepeatIndefinitely = section.repeatCount === null
         session.animationPlaybackLoopStack = []
         session.animationPlaybackTagCycleSectionId = session.animationPlaybackMode === 'tag' && section.repeatCount !== null ? id : null

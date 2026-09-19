@@ -81,6 +81,21 @@ export const recordUsageEvent = (event: UsageEvent): void => {
   })
 }
 
+/** Record committed drawing time independently of currently open projects. */
+export const recordUsageDrawingActivity = (activity: { stroke?: boolean; durationMs?: number }): void => {
+  const durationMs = Number.isFinite(activity.durationMs) ? Math.max(0, Math.round(activity.durationMs!)) : 0
+  const stroke = activity.stroke === true
+  if (!stroke && !durationMs) return
+  void initializeUsageStatistics().then(() => {
+    if (!data.enabled) return
+    if (stroke) data.drawingStrokeCount += 1
+    data.drawingTimeMs += durationMs
+    data.updatedAt = new Date().toISOString()
+    schedulePersist()
+    notify()
+  })
+}
+
 export const recordUsageExport = (format: string): void => {
   void initializeUsageStatistics().then(() => {
     if (!data.enabled) return

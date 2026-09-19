@@ -1,7 +1,38 @@
-import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CanvasAnchor, SelectionMask } from '@shared/types-selection'
 import { transformedSelectionPivotPreset } from '@/core/selection'
-import { selectionPivotControlTarget } from './SelectionPivotControls'
+import { SelectionPivotControls, selectionPivotControlTarget } from './SelectionPivotControls'
+
+afterEach(cleanup)
+
+it('disables drawing-anchor adjustment and closes an open popover when drawing with anchor is turned off', () => {
+  const props = { drawingAnchor: true, target: { x: 0, y: 0, width: 32, height: 32 }, angle: 0, pivot: null, visible: true, onPivotChange: vi.fn(), onVisibleChange: vi.fn() }
+  const view = render(createElement(SelectionPivotControls, { ...props, disabled: true }))
+  const trigger = view.getByRole('button')
+  expect(trigger).toBeDisabled()
+  fireEvent.click(trigger)
+  expect(view.queryByRole('dialog')).toBeNull()
+  view.rerender(createElement(SelectionPivotControls, { ...props, disabled: false }))
+  fireEvent.click(trigger)
+  expect(view.getByRole('dialog')).toBeInTheDocument()
+  view.rerender(createElement(SelectionPivotControls, { ...props, disabled: true }))
+  expect(view.queryByRole('dialog')).toBeNull()
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  view.rerender(createElement(SelectionPivotControls, { ...props, disabled: false }))
+  expect(view.queryByRole('dialog')).toBeNull()
+  expect(props.onPivotChange).not.toHaveBeenCalled()
+  expect(props.onVisibleChange).not.toHaveBeenCalled()
+})
+
+it('keeps ordinary selection-pivot controls available by default', () => {
+  const view = render(createElement(SelectionPivotControls, { target: { x: 0, y: 0, width: 32, height: 32 }, angle: 0, pivot: null, visible: true, onPivotChange: vi.fn(), onVisibleChange: vi.fn() }))
+  const trigger = view.getByRole('button')
+  expect(trigger).toBeEnabled()
+  fireEvent.click(trigger)
+  expect(view.getByRole('dialog')).toBeInTheDocument()
+})
 
 describe('selection pivot control props', () => {
   it('never reads or forwards pixel data when a large irregular selection enters React props', () => {

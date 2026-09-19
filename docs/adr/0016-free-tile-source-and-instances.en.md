@@ -2,6 +2,8 @@
 
 [中文](0016-free-tile-source-and-instances.md) | English
 
+> This records the v15 design. Source ownership was later extended to shared sets in [ADR 0022](0022-shared-free-tile-sets.md). The current instance UI can be a separate panel or an in-layer-panel view; see the [workspace contract](../interactions/workspace-docking.en.md).
+
 ## Status
 
 Accepted

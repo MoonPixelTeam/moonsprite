@@ -1,3 +1,4 @@
+import { useAnimationFramePreview } from './useAnimationFramePreview'
 import type { AnimationPointerDrag, AnimationGestureSelection, AnimationGestureActiveTarget, AnimationLoopSectionResizeEdge } from './animation-gesture-types'
 import { animationSlotRange } from '@/core/animation-slot-selection'
 import { createAnimationCelLookup } from '@/core/animation'
@@ -9,6 +10,7 @@ import { animationCelKey, createDefaultAnimationTimeline, ensureAnimationDocumen
 import { resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { type AnimationLoopSectionResizePreview } from './layer-timeline-layout'
+import { animationFrameTargetFromElement, animationPointerTargetElement, loopSectionFrameIndexAtPointer, timelineAutoScrollDelta, timelineFrameRange, timelineSelectionOutlineHit } from './animation-gesture-helpers'
 
 interface Options {
   session: Readonly<DocumentSession>
@@ -37,8 +39,13 @@ export function useAnimationGestures(options: Options) {
   const selectAnimationFrame = (id: string, mode: 'replace' | 'toggle' | 'range' = 'replace') => store.selectAnimationFrame(id, mode)
   const [loopSectionResizePreview, setLoopSectionResizePreview] = useState<AnimationLoopSectionResizePreview | null>(null)
   const animationPointerDragRef = useRef<AnimationPointerDrag | null>(null)
+  const framePreview = useAnimationFramePreview(session.document.id)
   const [animationGestureSelection, setAnimationGestureSelection] = useState<AnimationGestureSelection | null>(null)
   const [animationGestureActiveTarget, setAnimationGestureActiveTarget] = useState<AnimationGestureActiveTarget | null>(null)
+  const previewGestureTarget = (target: AnimationGestureActiveTarget): void => {
+    setAnimationGestureActiveTarget(target)
+    framePreview.preview(target.frameId)
+  }
   // Group rows do not own AnimationCel records. Keep their empty timeline
   // slots as a presentation selection so they can still be hit, boxed and
   // repositioned without selecting or mutating descendant layers.
@@ -58,23 +65,16 @@ export function useAnimationGestures(options: Options) {
   const [animationCelDragAnchorKey, setAnimationCelDragAnchorKey] = useState<string | null>(null)
   const animationFrameDropTargetRef = useRef<{ frameId: string; insertAfter: boolean } | null>(null)
   const [animationFrameDropTarget, setAnimationFrameDropTarget] = useState<{ frameId: string; insertAfter: boolean } | null>(null)
+  const animationTimelineAutoScrollRef = useRef<{ frame: number | null; event: PointerEvent | null }>({ frame: null, event: null })
   const selectedAnimationGroupCellKeySet = new Set(selectedAnimationGroupCellKeys)
-  const pointerHitsSelectionOutline = (event: React.PointerEvent<HTMLElement>, selector: string): boolean => {
-    const outline = layerListRef.current?.querySelector<HTMLElement>(selector)
-    if (!outline) return false
-    const bounds = outline.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return false
-    const inset = 6
-    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
-    return inside && (event.clientX - bounds.left <= inset || bounds.right - event.clientX <= inset || event.clientY - bounds.top <= inset || bounds.bottom - event.clientY <= inset)
+  const stopAnimationTimelineAutoScroll = (): void => {
+    const autoScroll = animationTimelineAutoScrollRef.current
+    if (autoScroll.frame !== null) window.cancelAnimationFrame(autoScroll.frame)
+    autoScroll.frame = null
+    autoScroll.event = null
   }
-  const frameRange = (anchorId: string, targetId: string): string[] => {
-    const anchorIndex = timeline.frames.findIndex((frame) => frame.id === anchorId)
-    const targetIndex = timeline.frames.findIndex((frame) => frame.id === targetId)
-    if (anchorIndex < 0 || targetIndex < 0) return [anchorId]
-    const [from, to] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex]
-    return timeline.frames.slice(from, to + 1).map((frame) => frame.id)
-  }
+  const pointerHitsSelectionOutline = (event: React.PointerEvent<HTMLElement>, selector: string): boolean => timelineSelectionOutlineHit(layerListRef, event, selector)
+  const frameRange = (anchorId: string, targetId: string): string[] => timelineFrameRange(timeline.frames, anchorId, targetId)
   useEffect(() => {
     // Group-slot visuals are transient timeline selection state; clear them
     // whenever another formal animation mode or a non-group row becomes
@@ -94,6 +94,8 @@ export function useAnimationGestures(options: Options) {
     }
   }, [selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys.length, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
   const cancelAnimationPointerDrag = (): void => {
+    stopAnimationTimelineAutoScroll()
+    framePreview.cancel()
     const drag = animationPointerDragRef.current
     if (drag && 'longPressTimer' in drag && drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
     if (drag?.kind === 'group-cel') setSelectedAnimationGroupCellKeys([drag.sourceAnchorKey])
@@ -110,16 +112,7 @@ export function useAnimationGestures(options: Options) {
     setAnimationGestureSelection(null)
     setAnimationGestureActiveTarget(null)
   }
-  const loopSectionFrameIndexAtPointer = (clientX: number, edge: AnimationLoopSectionResizeEdge): number | null => {
-    const firstHeader = layerListRef.current?.querySelector<HTMLElement>('[data-animation-frame-id][data-frame-index="0"]')
-    if (!firstHeader) return null
-    const bounds = firstHeader.getBoundingClientRect()
-    if (bounds.width <= 0) return null
-    // The start edge sits on a frame boundary; the end edge sits one boundary after its last frame.
-    const boundaryIndex = Math.round((clientX - bounds.left) / bounds.width)
-    const rawIndex = edge === 'start' ? boundaryIndex : boundaryIndex - 1
-    return Math.max(0, Math.min(timeline.frames.length - 1, rawIndex))
-  }
+  const loopSectionFrameIndexAtPointerForTimeline = (clientX: number, edge: AnimationLoopSectionResizeEdge): number | null => loopSectionFrameIndexAtPointer(layerListRef, timeline.frames.length, clientX, edge)
   const beginAnimationLoopSectionResize = (event: React.PointerEvent<HTMLElement>, sectionId: string, edge: AnimationLoopSectionResizeEdge): void => {
     if (event.button !== 0) return
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
@@ -351,21 +344,8 @@ export function useAnimationGestures(options: Options) {
     animationPointerDragRef.current = drag
     event.preventDefault()
   }
-  const pointerTargetElement = (event: PointerEvent): Element | null => {
-    const pointed = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
-    const animationTarget = pointed?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-animation-group-cel-key]')
-    if (animationTarget) return animationTarget
-    return event.target instanceof Element ? event.target : pointed
-  }
-  const animationFrameTarget = (target: Element | null): { frameId: string; element: HTMLElement } | null => {
-    const header = target?.closest<HTMLElement>('[data-animation-frame-id]')
-    if (header?.dataset.animationFrameId) return { frameId: header.dataset.animationFrameId, element: header }
-    const cell = target?.closest<HTMLElement>('[data-animation-cel-key]')
-    const parsed = cell?.dataset.animationCelKey ? parseAnimationCelKey(cell.dataset.animationCelKey) : null
-    const maskCell = target?.closest<HTMLElement>('[data-animation-mask-cel-key]')
-    const maskParsed = maskCell?.dataset.animationMaskCelKey ? parseAnimationCelKey(maskCell.dataset.animationMaskCelKey) : null
-    return maskCell && maskParsed ? { frameId: maskParsed.frameId, element: maskCell } : cell && parsed ? { frameId: parsed.frameId, element: cell } : null
-  }
+  const pointerTargetElement = animationPointerTargetElement
+  const animationFrameTarget = animationFrameTargetFromElement
   const updateAnimationItemCursor = (event: React.PointerEvent<HTMLElement>, frameId: string, cellKey?: string): void => {
     const maskCell = event.currentTarget.matches('[data-animation-mask-cel-key]')
     const frameMove = !maskCell && session.selectedAnimationFrameIds.includes(frameId) && pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`)
@@ -430,6 +410,33 @@ export function useAnimationGestures(options: Options) {
     if (clientX > last.bounds.right) return last.key
     return null
   }
+  const animationTimelineAutoScrollDelta = (clientX: number): number => timelineAutoScrollDelta(layerListRef, clientX)
+  const scrollAnimationTimelineAtPointer = (clientX: number): boolean => {
+    const list = layerListRef.current
+    const delta = animationTimelineAutoScrollDelta(clientX)
+    if (!list || delta === 0) return false
+    list.scrollLeft += delta
+    return true
+  }
+  const scheduleAnimationTimelineAutoScroll = (event: PointerEvent): void => {
+    const drag = animationPointerDragRef.current
+    const autoScroll = animationTimelineAutoScrollRef.current
+    autoScroll.event = event
+    if (!drag || drag.kind === 'loop-section' || !drag.canMove || !drag.moved || animationTimelineAutoScrollDelta(event.clientX) === 0) {
+      stopAnimationTimelineAutoScroll()
+      return
+    }
+    if (autoScroll.frame !== null) return
+    autoScroll.frame = window.requestAnimationFrame(() => {
+      autoScroll.frame = null
+      const latestEvent = autoScroll.event
+      if (!latestEvent || !scrollAnimationTimelineAtPointer(latestEvent.clientX)) {
+        autoScroll.event = null
+        return
+      }
+      moveAnimationPointerDrag(latestEvent)
+    })
+  }
   const moveAnimationPointerDrag = (event: PointerEvent): void => {
     const drag = animationPointerDragRef.current
     if (!drag) return
@@ -440,7 +447,7 @@ export function useAnimationGestures(options: Options) {
         if (event.clientX > bounds.right - 30) list.scrollLeft += 18
         else if (event.clientX < bounds.left + 30) list.scrollLeft -= 18
       }
-      const nextIndex = loopSectionFrameIndexAtPointer(event.clientX, drag.edge)
+      const nextIndex = loopSectionFrameIndexAtPointerForTimeline(event.clientX, drag.edge)
       if (nextIndex === null) return
       const nextStartIndex = drag.edge === 'start' ? Math.min(nextIndex, drag.endIndex) : drag.startIndex
       const nextEndIndex = drag.edge === 'end' ? Math.max(nextIndex, drag.startIndex) : drag.endIndex
@@ -462,7 +469,7 @@ export function useAnimationGestures(options: Options) {
           drag.pendingSelection = false
           drag.lastSelectionTarget = frameId
           showAnimationSelectionOutline()
-          setAnimationGestureActiveTarget({ kind: 'frame', frameId })
+          previewGestureTarget({ kind: 'frame', frameId })
           setAnimationGestureSelection({ kind: 'frame', ids: frameRange(drag.sourceFrameId, frameId) })
         }
       } else if (drag.kind === 'group-cel') {
@@ -477,7 +484,7 @@ export function useAnimationGestures(options: Options) {
           setSelectedAnimationGroupCellKeys(keys)
           setAnimationGestureSelection({ kind: 'cel', keys })
           const parsedTarget = parseAnimationCelKey(key)
-          if (parsedTarget) setAnimationGestureActiveTarget({ kind: 'frame', frameId: parsedTarget.frameId })
+          if (parsedTarget) previewGestureTarget({ kind: 'frame', frameId: parsedTarget.frameId })
         }
       } else {
         const selector = drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : '[data-animation-cel-key]'
@@ -490,7 +497,7 @@ export function useAnimationGestures(options: Options) {
           drag.lastSelectionTarget = key
           showAnimationSelectionOutline()
           const parsedTarget = parseAnimationCelKey(key)
-          if (parsedTarget) setAnimationGestureActiveTarget({ kind: drag.kind, layerId: parsedTarget.layerId, frameId: parsedTarget.frameId })
+          if (parsedTarget) previewGestureTarget({ kind: drag.kind, layerId: parsedTarget.layerId, frameId: parsedTarget.frameId })
           setAnimationGestureSelection({ kind: drag.kind, keys: drag.kind === 'mask' ? maskCellRange(drag.sourceAnchorKey, key) : cellRange(drag.sourceAnchorKey, key) })
         }
       }
@@ -506,12 +513,7 @@ export function useAnimationGestures(options: Options) {
         setDraggingAnimationCellKind(drag.kind)
       }
     }
-    const list = layerListRef.current
-    if (list) {
-      const bounds = list.getBoundingClientRect()
-      if (event.clientX > bounds.right - 30) list.scrollLeft += 18
-      else if (event.clientX < bounds.left + 30) list.scrollLeft -= 18
-    }
+    scheduleAnimationTimelineAutoScroll(event)
     const pointed = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
     const target = pointed?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-animation-group-cel-key]') ? pointed : pointerTargetElement(event)
     if (drag.kind === 'frame') {
@@ -533,6 +535,7 @@ export function useAnimationGestures(options: Options) {
       if (previous?.frameId === next.frameId && previous.insertAfter === next.insertAfter) return
       animationFrameDropTargetRef.current = next
       setAnimationFrameDropTarget(next)
+      framePreview.preview(frameId)
       return
     }
     const cell = target?.closest<HTMLElement>(drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : drag.kind === 'group-cel' ? '[data-animation-group-cel-key]' : '[data-animation-cel-key]')
@@ -543,14 +546,18 @@ export function useAnimationGestures(options: Options) {
     : candidateKey
     animationCelDropTargetKeyRef.current = key
     setAnimationCelDropTargetKey(key)
+    const previewTarget = key ? parseAnimationCelKey(key) : null
+    if (previewTarget) framePreview.preview(previewTarget.frameId)
   }
   const finishAnimationPointerDrag = (cancelled = false): void => {
+    stopAnimationTimelineAutoScroll()
     const drag = animationPointerDragRef.current
     if (!drag) return
     if (cancelled || useWorkspace.getState().activeId !== optionsRef.current.session.document.id) {
       cancelAnimationPointerDrag()
       return
     }
+    framePreview.commit()
     if (drag.kind === 'loop-section') {
       if (drag.moved) {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session

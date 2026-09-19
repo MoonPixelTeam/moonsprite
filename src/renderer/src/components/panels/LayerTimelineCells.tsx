@@ -24,6 +24,7 @@ interface Props {
   readonly visualCellStateBySlot: ReturnType<typeof deriveLayerPanelVisuals>['visualCellStateBySlot']
   readonly showLinkedCelVisuals: boolean
   readonly linkedCelMemberKeys: ReturnType<typeof deriveLayerPanelVisuals>['linkedCelMemberKeys']
+  readonly selectedLinkedCelMemberKeys: ReadonlySet<string>
   readonly linkedCelBridgeEndKeys: ReturnType<typeof deriveLayerPanelVisuals>['linkedCelBridgeEndKeys']
   readonly linkedMaskSlotVisuals: ReturnType<typeof deriveLayerPanelVisuals>['linkedMaskSlotVisuals']
   readonly session: DocumentSession
@@ -85,6 +86,7 @@ export function LayerTimelineCells({
   visualCellStateBySlot,
   showLinkedCelVisuals,
   linkedCelMemberKeys,
+  selectedLinkedCelMemberKeys,
   linkedCelBridgeEndKeys,
   linkedMaskSlotVisuals,
   session,
@@ -182,7 +184,7 @@ export function LayerTimelineCells({
             // frameFocus only suppresses it when there is no mask context.
             const maskActive = frameVisualEnabled && !animationCelDragActive && !focusState.frameFocus && maskCellClasses.current
             const maskSlotSelected = maskRowSelected || maskFrameSelected || maskActive || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
-            const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key)
+            const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key) || selectedLinkedCelMemberKeys.has(`mask|${key}`)
             const maskThumbnail =
               resolvedMask && showCelThumbnails ? (
                 <ActiveLayerMaskThumbnail
@@ -346,7 +348,7 @@ export function LayerTimelineCells({
           const keySelected = ordinaryCelSelectionVisible && renderedCellKeySet.has(key)
           // Selection styling is structural and may target an empty cel slot;
           // content presence only controls whether an interior marker is painted.
-          const cellSelected = keySelected || cellClasses.selected
+          const cellSelected = keySelected || cellClasses.selected || selectedLinkedCelMemberKeys.has(`cel|${key}`)
           // Frame selection is represented by the column background/outline. Do
           // not promote every cel in that column to a solid selected-cel marker.
           // Linked-group emphasis remains owner-aware and independent.
@@ -407,6 +409,7 @@ export function LayerTimelineCells({
                 documentHeight={session.document.height}
                 thumbnailSize={celThumbnailSize}
                 showThumbnail={showCelThumbnails}
+                sharedCheckerboard={linkedCelMember}
                 selectionMarker={selectionMarkerVisible}
               />
             ) : selectionMarkerVisible ? (
@@ -418,7 +421,7 @@ export function LayerTimelineCells({
               data-animation-cel-key={key}
               data-frame-index={index}
               key={`${node.id}-${frame.id}`}
-              className={`layer-animation-cel ${node.layer.kind === 'text' ? 'text-cel' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-cel' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-cel' : ''} ${cel ? 'has-cel' : ''} ${node.layer.id === visualActiveLayerId ? 'active-layer-cel' : ''} ${currentFrameCellHighlighted ? 'active-frame' : ''} ${frameSelectedForCell ? 'selected-animation-frame' : ''} ${layerSelectedAcrossTimeline ? 'selected-layer' : ''} ${currentCell ? 'current-cel' : ''} ${cellVisuallySelected ? 'selected-cel' : ''} ${linkedCelMember ? 'linked-cel-member' : ''} ${showLinkedCelVisuals && (linkedWithPrevious || linkedWithNext) ? 'linked-cel' : ''} ${showLinkedVisuals && linkedWithPrevious ? 'linked-cel-previous' : ''} ${linkedCelEnd ? 'linked-cel-end' : ''} ${linkedCelBridgeEnd ? 'linked-cel-bridge-end' : ''} ${draggingAnimationFrameIds.includes(frame.id) || (draggingAnimationCellKind === 'cel' && draggingAnimationCellKeys.includes(key)) ? 'dragging' : ''} ${animationCelDropTargetKey === key && !animationCelDragActive && !(animationCelDragAnchorKey && draggingAnimationCellKeys.length > 1) ? 'drop-target' : ''}`}
+              className={`layer-animation-cel ${node.layer.kind === 'text' ? 'text-cel' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-cel' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-cel' : ''} ${cel ? 'has-cel' : ''} ${node.layer.id === visualActiveLayerId ? 'active-layer-cel' : ''} ${currentFrameCellHighlighted ? 'active-frame' : ''} ${frameSelectedForCell ? 'selected-animation-frame' : ''} ${layerSelectedAcrossTimeline ? 'selected-layer' : ''} ${currentCell ? 'current-cel' : ''} ${cellVisuallySelected ? 'selected-cel' : ''} ${linkedCelMember ? 'linked-cel-member' : ''} ${showLinkedCelVisuals && (linkedWithPrevious || linkedWithNext) ? 'linked-cel' : ''} ${showLinkedVisuals && linkedWithPrevious ? 'linked-cel-previous' : ''} ${showLinkedVisuals && linkedWithNext ? 'linked-cel-next' : ''} ${linkedCelEnd ? 'linked-cel-end' : ''} ${linkedCelBridgeEnd ? 'linked-cel-bridge-end' : ''} ${draggingAnimationFrameIds.includes(frame.id) || (draggingAnimationCellKind === 'cel' && draggingAnimationCellKeys.includes(key)) ? 'dragging' : ''} ${animationCelDropTargetKey === key && !animationCelDragActive && !(animationCelDragAnchorKey && draggingAnimationCellKeys.length > 1) ? 'drop-target' : ''}`}
               aria-label={t('timeline.celAtFrame', { number: index + 1 })}
               title={`${node.layer.name} · ${t('timeline.frameNumber', { number: index + 1 })}`}
               onPointerDown={(event) => beginAnimationCelDrag(event, node.layer.id, frame.id)}

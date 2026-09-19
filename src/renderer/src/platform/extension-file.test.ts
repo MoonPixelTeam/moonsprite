@@ -1,16 +1,18 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { setRuntimeAppLocale } from '@/core/localization'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { saveExtensionFile } from './extension-file'
 
 const mock = vi.hoisted(() => ({ invoke: vi.fn(), write: vi.fn() }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mock.invoke }))
 beforeEach(() => {
   vi.resetAllMocks()
+  setRuntimeAppLocale('zh-CN')
   window.moonSprite = { writeBinaryAtomic: mock.write } as unknown as typeof window.moonSprite
 })
 it('writes only to the path selected by the user', async () => {
   mock.invoke.mockResolvedValue({ canceled: false, filePath: 'D:/pets/cat.mspet' })
   expect(await saveExtensionFile({ name: 'cat.mspet', bytes: [0, 255, 42] })).toBe(true)
-  expect(mock.invoke).toHaveBeenCalledWith('save_extension_data_file', { fileName: 'cat.mspet' })
+  expect(mock.invoke).toHaveBeenCalledWith('save_extension_data_file', { fileName: 'cat.mspet', language: 'zh-CN' })
   expect(mock.write).toHaveBeenCalledWith('D:/pets/cat.mspet', new Uint8Array([0, 255, 42]))
 })
 it('cancellation does not write and save errors propagate', async () => {
@@ -26,4 +28,13 @@ it('rejects invalid paths and bytes before opening the dialog', async () => {
     await expect(saveExtensionFile(file)).rejects.toThrow('导出文件无效')
   }
   expect(mock.invoke).not.toHaveBeenCalled()
+})
+
+afterEach(() => setRuntimeAppLocale(null))
+it('uses the selected language for native dialogs and validation errors', async () => {
+  setRuntimeAppLocale('de-DE')
+  mock.invoke.mockResolvedValue({ canceled: true })
+  await saveExtensionFile({ name: 'cat.mspet', bytes: [1] })
+  expect(mock.invoke).toHaveBeenCalledWith('save_extension_data_file', { fileName: 'cat.mspet', language: 'de-DE' })
+  await expect(saveExtensionFile({ name: '../cat.mspet', bytes: [1] })).rejects.toThrow('Die Exportdatei ist ungültig')
 })

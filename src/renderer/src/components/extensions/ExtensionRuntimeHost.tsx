@@ -1,3 +1,9 @@
+import { loadEditorPreferences } from '@/core/file-preferences'
+import { EXTENSION_EDITOR_EVENTS } from '@/core/extension-editor-events'
+import { editorEventSnapshot, changedEditorEvents } from '@/store/workspace-extension-events'
+import { CANVAS_COLOR_SAMPLING_COMPLETED_EVENT } from '@/components/color-sampling-events'
+import { ExtensionOverlay, type OverlayDefinition } from './ExtensionOverlay'
+import { overlayBounds } from './extension-overlay-geometry'
 import { recordRuntimeDiagnostic } from '@/core/runtime-diagnostics'
 import { ModalShell } from '@/components/ModalShell'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -36,7 +42,7 @@ const runtimeBootstrap = `(() => {
   const domain = (name, methods) => Object.freeze(Object.fromEntries(methods.map(method => [method, (params) => call(name + '.' + method, params)])));
   const api = Object.freeze({
     apiVersion: '1.0.0', call, on,
-    runtime: domain('runtime', ['getCapabilities']), commands: domain('commands', ['execute']), menus: domain('menus', ['setItems']),
+    runtime: domain('runtime', ['getCapabilities', 'getLocale']), commands: domain('commands', ['execute']), menus: domain('menus', ['setItems']),
     ui: domain('ui', ['notify', 'openSettings']), windows: domain('windows', ['open', 'close', 'postMessage', 'setVisible']), workspace: domain('workspace', ['listProjects', 'getActiveProject', 'activateProject']),
     document: domain('document', ['getSummary', 'getLayers', 'getFrames', 'undo', 'redo']),
     tools: domain('tools', ['getActive', 'setActive']), colors: domain('colors', ['get', 'setPrimary', 'setSecondary']),
@@ -115,6 +121,10 @@ interface FrameProps {
 function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, onOpenSettings }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null)
   const [document, setDocument] = useState<string | null>(null)
+  const embeddedWindowIds = useRef(new Set<string>())
+  const overlays = useRef(new Map<string, OverlayDefinition>())
+  const [overlayRevision, setOverlayRevision] = useState(0)
+  const updateOverlays = () => setOverlayRevision(value => value + 1)
   const [dialog, setDialog] = useState<{ windowId: string; resourceId: string; title: string; component?: string } | null>(null)
   const runtime = extension.runtime
   const permissions = useMemo(() => runtime?.permissions ?? [], [runtime?.permissions])
@@ -131,12 +141,12 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     frame.current?.contentWindow?.postMessage({ type: 'moonsprite-extension-event', event }, '*')
   }
   const sendAuthorized = (event: ExtensionRuntimeEvent): void => {
-    const allowed = event.type === 'activate' || event.type === 'deactivate'
+    const allowed = (event.type === 'locale-changed' && permissions.includes('runtime')) || event.type === 'activate' || event.type === 'deactivate'
       || (event.type === 'project' && permissions.includes('workspace.read'))
       || (event.type === 'command' && permissions.includes('commands'))
       || (event.type === 'settings-changed' && permissions.includes('storage'))
       || (event.type === 'window-message' && permissions.includes('windows'))
-      || (['interaction', 'clock', 'document-saved', 'export-complete'].includes(event.type) && permissions.includes('events'))
+      || (['editor-event', 'interaction', 'clock', 'document-saved', 'export-complete'].includes(event.type) && permissions.includes('events'))
     if (allowed) send(event)
   }
 
@@ -153,7 +163,29 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     return () => { active = false }
   }, [extension])
 
+  useEffect(() => {
+    if (!permissions.includes('events')) return
+    const snapshot = () => { const state = useWorkspace.getState(); return editorEventSnapshot(state.sessions ?? [], state.activeId ?? null) }
+    let previous = snapshot()
+    const unsubscribe = useWorkspace.subscribe?.(() => { const next = snapshot(); const events = changedEditorEvents(previous, next); previous = next; events.forEach(sendAuthorized) })
+    const sampled = () => sendAuthorized({ type: 'editor-event', name: 'color.sampled', projectId: useWorkspace.getState().activeId ?? undefined, timestamp: Date.now(), detail: {} })
+    window.addEventListener(CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, sampled)
+    return () => { unsubscribe?.(); window.removeEventListener(CANVAS_COLOR_SAMPLING_COMPLETED_EVENT, sampled) }
+  }, [extension.id, permissions])
+
   useEffect(() => registerExtensionRuntime(extension.id, sendAuthorized), [extension.id, permissions])
+
+  useEffect(() => {
+    let previous = loadEditorPreferences().language
+    const changed = () => {
+      const locale = loadEditorPreferences().language
+      if (locale === previous) return
+      previous = locale
+      sendAuthorized({ type: 'locale-changed', locale })
+    }
+    window.addEventListener('moonsprite:preferences-changed', changed)
+    return () => window.removeEventListener('moonsprite:preferences-changed', changed)
+  }, [extension.id, permissions])
 
   useEffect(() => {
     if (!permissions.includes('windows')) { setMessagesReady(true); return }
@@ -186,13 +218,18 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
   useEffect(() => {
     if (!permissions.includes('events')) return
     const interaction = (kind: 'pointer' | 'keyboard') => send({ type: 'interaction', kind })
-    const pointer = () => interaction('pointer')
+    let lastPointer = 0
+    const pointer = () => { const now = Date.now(); if (now - lastPointer < 500) return; lastPointer = now; interaction('pointer') }
     const keyboard = () => interaction('keyboard')
     window.addEventListener('pointerdown', pointer, true)
+    window.addEventListener('pointermove', pointer, true)
+    window.addEventListener('wheel', pointer, true)
     window.addEventListener('keydown', keyboard, true)
     const timer = window.setInterval(() => send({ type: 'clock', timestamp: Date.now() }), 30_000)
     return () => {
       window.removeEventListener('pointerdown', pointer, true)
+      window.removeEventListener('pointermove', pointer, true)
+      window.removeEventListener('wheel', pointer, true)
       window.removeEventListener('keydown', keyboard, true)
       window.clearInterval(timer)
     }
@@ -236,12 +273,37 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
           const menuId = stringParam(params, 'menuId')
           if (!extension.topMenus.some(menu => menu.id === menuId)) throw new Error('扩展菜单不存在。')
           if (!permissions.includes('commands')) throw new Error('菜单操作需要 commands 权限。')
-          setExtensionMenuItems(extension.id, menuId, params.items)
+          setExtensionMenuItems(extension.id, menuId, params.items, params.name)
           return null
+        }
+        if (request.method === 'windows.open' && objectParams(params.options).presentation === 'overlay') {
+          const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
+          if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展覆盖层资源不存在。')
+          if (dialog?.windowId === windowId) throw new Error('窗口 ID 已用于弹窗。')
+          if (!overlays.current.has(windowId) && overlays.current.size >= 16) throw new Error('覆盖层数量已达上限。')
+          const options = objectParams(params.options)
+          const bounds = overlayBounds({ x: options.x ?? 32, y: options.y ?? 72, width: options.width ?? 256, height: options.height ?? 256 })
+          embeddedWindowIds.current.add(windowId)
+          overlays.current.set(windowId, { windowId, resourceId, bounds, visible: true }); updateOverlays(); return null
+        }
+        if (request.method === 'windows.open' && overlays.current.has(String(params.windowId))) throw new Error('窗口 ID 已用于覆盖层。')
+        const overlay = typeof params.windowId === 'string' ? overlays.current.get(params.windowId) : undefined
+        if (overlay && request.method === 'windows.postMessage') {
+          window.dispatchEvent(new CustomEvent('moonsprite:dialog-message', { detail: { extensionId: extension.id, windowId: overlay.windowId, message: params.message } })); return null
+        }
+        if (overlay && request.method === 'windows.setVisible') {
+          if (typeof params.visible !== 'boolean') throw new Error('覆盖层显示状态无效。')
+          overlays.current.set(overlay.windowId, { ...overlay, visible: params.visible }); updateOverlays(); return null
+        }
+        if (request.method === 'windows.close') {
+          if (overlay) { overlays.current.delete(overlay.windowId); updateOverlays(); return null }
+          if (!params.windowId) { overlays.current.clear(); updateOverlays() }
         }
         if (request.method === 'windows.open' && objectParams(params.options).presentation === 'dialog') {
           const windowId = stringParam(params, 'windowId'), resourceId = stringParam(params, 'resourceId')
           if (!extension.runtime?.resources.includes(resourceId)) throw new Error('扩展窗口资源不存在。')
+          if (overlays.current.has(windowId)) throw new Error('窗口 ID 已用于覆盖层。')
+          embeddedWindowIds.current.add(windowId)
           setDialog({ windowId, resourceId, title: String(objectParams(params.options).title || extension.name), component: objectParams(params.options).component === 'form' ? 'form' : undefined }); return null
         }
         if (dialog && request.method === 'windows.postMessage' && params.windowId === dialog.windowId) {
@@ -250,6 +312,8 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
         if (request.method === 'windows.close' && dialog && (!params.windowId || params.windowId === dialog.windowId)) {
           setDialog(null); if (params.windowId) return null
         }
+        // Late messages to a closed embedded surface must not fall through to native windows.
+        if (request.method === 'windows.postMessage' && embeddedWindowIds.current.has(String(params.windowId))) return null
         return handleRequest(extension, permissions, request.method, request.params, onRunLuaScript, onOpenSettings)
       }
       void handle()
@@ -258,7 +322,7 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [extension, onOpenSettings, onRunLuaScript, permissions, dialog])
+  }, [extension, onOpenSettings, onRunLuaScript, permissions, dialog, overlayRevision])
 
   if (!runtime || !document || !messagesReady) return null
   return <><iframe
@@ -269,11 +333,13 @@ function ExtensionRuntimeFrame({ extension, session, homeOpen, onRunLuaScript, o
     hidden
     onLoad={() => {
       loaded.current = true
+      sendAuthorized({ type: 'locale-changed', locale: loadEditorPreferences().language })
       send({ type: 'activate', apiVersion: EXTENSION_RUNTIME_API_VERSION, extensionId: extension.id })
       sendAuthorized({ type: 'project', project: projectSnapshot(session), homeOpen })
       for (const event of pendingEvents.current.splice(0)) sendAuthorized(event)
     }}
   />
+    {Array.from(overlays.current.values()).map(definition => <ExtensionOverlay key={definition.windowId + ':' + definition.resourceId} extensionId={extension.id} definition={definition} onClose={() => { overlays.current.delete(definition.windowId); updateOverlays() }} />)}
     {dialog && <div className="modal-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) setDialog(null) }}>
       <ModalShell storageKey={`extension-dialog:${extension.id}:${dialog.windowId}`} defaultWidth={560} defaultHeight={600} minWidth={360} minHeight={300} role="dialog" aria-modal="true" aria-label={dialog.title} style={{ display: 'flex', flexDirection: 'column' }}>
         <DialogHeader title={dialog.title} closeLabel="关闭" onClose={() => setDialog(null)} />
@@ -295,9 +361,10 @@ async function handleRequest(
 ): Promise<unknown> {
   if (!extensionRuntimeAllows(permissions, method)) throw new Error(`扩展未获准调用 ${method}。`)
   const params = objectParams(rawParams)
+  if (method === 'runtime.getLocale') return { locale: loadEditorPreferences().language }
   const workspace = useWorkspace.getState()
   const active = workspace.sessions.find((candidate) => candidate.document.id === workspace.activeId) ?? null
-  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
+  if (method === 'runtime.getCapabilities') return { apiVersion: EXTENSION_RUNTIME_API_VERSION, permissions, editorEvents: permissions.includes('events') ? EXTENSION_EDITOR_EVENTS : [], windowPresentations: permissions.includes('windows') ? ['native', 'dialog', 'overlay'] : [], methods: Object.keys(extension.runtime ? permissions.reduce<Record<string, true>>((result, permission) => {
     for (const [candidate, required] of Object.entries(EXTENSION_RUNTIME_METHOD_PERMISSIONS)) if (required === permission) result[candidate] = true
     return result
   }, {}) : {}) }

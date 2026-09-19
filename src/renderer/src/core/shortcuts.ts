@@ -39,12 +39,15 @@ export function modifierShortcutMatches(event: Pick<KeyboardEvent, 'ctrlKey' | '
   return Boolean(event.ctrlKey || event.metaKey) === wantsCtrl && Boolean(event.altKey) === wantsAlt && Boolean(event.shiftKey) === wantsShift
 }
 
-export function modifierShortcutHeld(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, shortcut: string): boolean {
-  const keys = shortcut.toLowerCase().split('+').map((key) => key.trim()).filter(Boolean)
-  if (keys.length === 0 || keys.some((key) => !['ctrl', 'alt', 'shift'].includes(key))) return false
-  return (!keys.includes('ctrl') || Boolean(event.ctrlKey || event.metaKey))
-    && (!keys.includes('alt') || Boolean(event.altKey))
-    && (!keys.includes('shift') || Boolean(event.shiftKey))
+export function modifierShortcutHeld(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, shortcut: string, heldParts?: ReadonlySet<string>): boolean {
+  const keys = normalizeShortcut(shortcut).split('+').filter(Boolean)
+  return keys.length > 0 && keys.every((key) => {
+    if (key === 'Ctrl') return Boolean(event.ctrlKey)
+    if (key === 'Win') return Boolean(event.metaKey)
+    if (key === 'Alt') return Boolean(event.altKey)
+    if (key === 'Shift') return Boolean(event.shiftKey)
+    return !['WheelUp', 'WheelDown', 'MouseDoubleLeft'].includes(key) && Boolean(heldParts?.has(key))
+  })
 }
 
 const knownShortcutIds = new Set<string>(SHORTCUT_IDS)
@@ -215,6 +218,16 @@ const cyclingToolShortcutIds = new Set<ShortcutId>(CYCLING_TOOL_SHORTCUT_IDS)
 const quickToolShortcutIds = new Set<ShortcutId>(QUICK_TOOL_SHORTCUT_IDS)
 const contextualModifierShortcutIds = new Set<ShortcutId>(SHORTCUT_GROUPS.modifiers)
 
+export function shortcutRequiresHold(id: ShortcutId): boolean {
+  return contextualModifierShortcutIds.has(id) || quickToolShortcutIds.has(id)
+}
+
+export function shortcutBindingSupported(id: ShortcutId, binding: string): boolean {
+  const parts = normalizeShortcut(binding).split('+')
+  if (parts.includes('Escape')) return false
+  return !shortcutRequiresHold(id) || !parts.some((part) => ['WheelUp', 'WheelDown', 'MouseDoubleLeft', 'MouseLeft', 'MouseRight'].includes(part))
+}
+
 export function shortcutIdsMayShareBinding(first: ShortcutId, second: ShortcutId): boolean {
   if (first === second) return true
   if (cyclingToolShortcutIds.has(first) && cyclingToolShortcutIds.has(second)) return true
@@ -244,6 +257,7 @@ export function assignShortcutBinding(
 ): ShortcutAssignmentResult {
   const next = cloneShortcutBindings(shortcuts)
   const normalized = normalizeShortcut(shortcut.trim())
+  if (!shortcutBindingSupported(id, normalized)) return { shortcuts: next, displaced: [] }
   const target = [...shortcutBindingsFor(next, id)]
   const insertionIndex = replaceIndex === undefined ? target.length : Math.max(0, Math.min(replaceIndex, target.length))
   if (replaceIndex !== undefined && replaceIndex < target.length) target.splice(replaceIndex, 1)
@@ -291,7 +305,7 @@ function applyShortcutEntries(entries: ParsedShortcutEntries): ShortcutBindings 
 
 export function importShortcutBindings(value: string): ShortcutBindings | null {
   const entries = parseShortcutEntries(value)
-  return entries ? applyShortcutEntries(entries) : null
+  return entries && entries.every(([id, bindings]) => bindings.every((binding) => shortcutBindingSupported(id, binding))) ? applyShortcutEntries(entries) : null
 }
 
 export function loadShortcutBindings(storage?: Storage): ShortcutBindings {
@@ -475,14 +489,15 @@ export function shortcutKeyPart(event: KeyboardEvent): string {
 
 export function shortcutHeldByKeyParts(heldParts: ReadonlySet<string>, shortcut: string): boolean {
   const parts = normalizeShortcut(shortcut).split('+').filter(Boolean)
-  return parts.length > 0 && parts.every((part) => heldParts.has(part))
+  return parts.length > 0 && parts.every((part) => !['WheelUp', 'WheelDown', 'MouseDoubleLeft'].includes(part) && heldParts.has(part))
 }
 
 export function modifierShortcutHeldByBindings(
   event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
-  shortcuts: readonly string[]
+  shortcuts: readonly string[],
+  heldParts?: ReadonlySet<string>
 ): boolean {
-  return shortcuts.some((shortcut) => modifierShortcutHeld(event, shortcut))
+  return shortcuts.some((shortcut) => modifierShortcutHeld(event, shortcut, heldParts))
 }
 
 export function matchingModifierShortcut(

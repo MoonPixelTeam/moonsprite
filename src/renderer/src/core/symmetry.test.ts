@@ -12,6 +12,15 @@ const axes = (values: Partial<SymmetryAxes>): SymmetryAxes => ({
 })
 
 describe('symmetry', () => {
+  it('updates cached transforms when axis switches mutate and keeps the pivot live', () => {
+    const enabled = axes({ horizontal: true })
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled)).toEqual([{ x: 1, y: 0 }, { x: 1, y: 3 }])
+    enabled.horizontal = false
+    enabled.vertical = true
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled)).toEqual([{ x: 1, y: 0 }, { x: 4, y: 0 }])
+    expect(symmetryPoints({ x: 1, y: 0 }, 6, 4, enabled, { x: 2.5, y: 2 })).toEqual([{ x: 1, y: 0 }, { x: 3, y: 0 }])
+  })
+
   it('allows Ctrl to temporarily move a locked symmetry axis', () => {
     expect(symmetryAxisDragAllowed(false, false)).toBe(true)
     expect(symmetryAxisDragAllowed(true, false)).toBe(false)
@@ -50,6 +59,35 @@ describe('symmetry', () => {
   })
 
 
+
+  it('rounds each composed symmetry only once at a mixed half-pixel center', () => {
+    const points = symmetryPoints({ x: 200, y: 100 }, 480, 270,
+      axes({ horizontal: true, vertical: true, diagonalDown: true }), { x: 240.5, y: 135 })
+    expect(points).toEqual([
+      { x: 200, y: 100 }, { x: 200, y: 169 }, { x: 280, y: 100 }, { x: 206, y: 95 },
+      { x: 280, y: 169 }, { x: 275, y: 95 }, { x: 206, y: 175 }, { x: 275, y: 175 }
+    ])
+    expect(symmetryPoints({ x: 200, y: 100 }, 480, 270,
+      axes({ diagonalDown: true }), { x: 240.5, y: 135 })).toEqual([
+      { x: 200, y: 100 }, { x: 206, y: 95 }
+    ])
+  })
+
+  it('keeps all axis combinations finite after dragging the center, with or without clipping', () => {
+    const modes = ['horizontal', 'vertical', 'diagonalDown', 'diagonalUp', 'rotational'] as const
+    for (const center of [{ x: 240.5, y: 135 }, { x: 240, y: 135.5 }, { x: 240.5, y: 135.5 }]) {
+      for (let bits = 1; bits < 32; bits += 1) {
+        const enabled = axes(Object.fromEntries(modes.map((mode, index) => [mode, Boolean(bits & (1 << index))])))
+        for (const clip of [true, false]) {
+          const points = symmetryPoints({ x: 10, y: 20 }, 480, 270, enabled, center, clip)
+          expect(points.length).toBeGreaterThan(0)
+          expect(points.length).toBeLessThanOrEqual(8)
+          expect(new Set(points.map((point) => `${point.x}:${point.y}`)).size).toBe(points.length)
+          if (clip) expect(points.every(({ x, y }) => x >= 0 && x < 480 && y >= 0 && y < 270)).toBe(true)
+        }
+      }
+    }
+  })
 
   it('creates a four-way 90-degree rotational orbit around the movable center', () => {
     expect(symmetryPoints({ x: 3, y: 2 }, 5, 5, axes({ rotational: true }))).toEqual([

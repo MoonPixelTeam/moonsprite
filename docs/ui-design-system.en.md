@@ -28,10 +28,12 @@ State rules:
 
 | Token | Purpose | Size / line height |
 | --- | --- | --- |
-| `--ui-font-small` | Supporting text, shortcuts, coordinates, badges, compact labels | 10px / 14px |
-| `--ui-font-regular` | Menus, fields, buttons, body text, and every heading | 12px / 18px |
+| `--ui-font-small` | Supporting text, shortcuts, coordinates, badges, compact labels | 11px / 15px |
+| `--ui-font-regular` | Menus, fields, buttons, body text, and every heading | 13px / 21px |
 
 The interface permits only these two font sizes. Do not create extra sizes for headings or local cases. Express hierarchy through weight, color, separators, and compact spacing. Body text uses `Noto Sans SC` or the system sans-serif stack. Numeric values, HEX, shortcuts, and coordinates may use a monospace font. Letter spacing is always `0`.
+
+These are the base values at `--ui-body-font-scale: 1`. Body-font preferences scale both font and line-height tokens; they are independent of UI scaling and canvas zoom. Components consume these tokens rather than hard-coding the base pixel sizes.
 
 ## Spacing
 
@@ -95,8 +97,11 @@ A component's size comes from an explicit density variant or semantic container.
 ### Menus
 
 - Top menus, context menus, and panel menus share 30px row height, a 22px icon column, and 8px content spacing.
-- Shortcuts occupy the final column and use 10px monospace text.
+- Shortcuts occupy the final column and use the `--ui-font-small` monospace token.
 - Separators group commands and do not create density through extra blank space.
+
+- Top-menu items use `MenuItemButton` to separate the label, shortcut, and state indicator. Popovers grow with content up to the viewport and configured maximum width; labels stay on one line and truncate with an ellipsis when needed, while shortcuts retain their own column. Full labels and descriptions use the shared tooltip path. `useMenuViewport` constrains open menus and flips submenus near the right edge.
+- `ThemedSelect` uses content width with the trigger width as its minimum unless an explicit popup width is provided. It is capped by the viewport and repositions when its size changes. Truncated selected values and option labels retain full hover text; preserve existing tooltip visibility preferences.
 
 ### Toggles and Checkboxes
 
@@ -114,7 +119,7 @@ A component's size comes from an explicit density variant or semantic container.
 - Standard card-like settings groups inside dialogs use `SettingsSection`. Body content uses `.settings-section-body`; titles and right-side actions come from its internal `SettingsSectionHeader`.
 - Settings sections use the `--theme-dialog-section` surface, a 1px border, 8px padding, and a heading separator. Business dialogs must not redefine transparent or dark group backgrounds.
 - Page-style settings with side navigation, such as Preferences, may retain a compact page layout, but headings still use `SettingsSectionHeader` instead of near-duplicate custom sizes.
-- Headings use 12px and actions use 30px command buttons. One group must not mix near sizes such as 27px, 28px, and 30px.
+- Headings use `--ui-font-regular` and actions use 30px command buttons. One group must not mix near sizes such as 27px, 28px, and 30px.
 
 ### Dialogs
 
@@ -129,7 +134,7 @@ A component's size comes from an explicit density variant or semantic container.
 ### Settings Navigation
 
 - Preferences, shortcuts, and other sectioned settings windows use `SettingsNavigation`.
-- Navigation rows are 32px high, use 12px body text, and show an accent-colored selected indicator on the left.
+- Navigation rows are 32px high, use `--ui-font-regular` body text, and show an accent-colored selected indicator on the left.
 - Settings windows must not maintain separate hover, selected, and padding rules for navigation rows.
 
 ## Component-Library Gates

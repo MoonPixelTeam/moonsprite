@@ -2,6 +2,7 @@ import { animationSlotsCanLink } from '@/core/animation-slot-selection'
 import type { ShortcutId } from '@/core/shortcuts'
 import { createPortal } from 'react-dom'
 import { AnimationLoopSectionDialog } from '@/components/AnimationLoopSectionDialog'
+import { AnimationTweenDialog } from '@/components/AnimationTweenDialog'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'
 import { ModalShell } from '@/components/ModalShell'
@@ -58,6 +59,7 @@ export function useTimelineContextActions({
   const [frameProperties, setFrameProperties] = useState<{ frameId: string; targetFrameIds: string[]; duration: number } | null>(null)
 
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
+  const [tweenTarget, setTweenTarget] = useState<{ documentId: string; frameId: string; layerId: string } | null>(null)
 
   const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; targetKeys: string[]; opacity: number; zIndex: number } | null>(null)
 
@@ -383,6 +385,10 @@ export function useTimelineContextActions({
             onPointerDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
           >
+            {(animationMenu.kind === 'frame' || animationMenu.kind === 'cel') && <button type="button" className="context-menu-item" role="menuitem" onClick={() => {
+              setTweenTarget({ documentId: session.document.id, frameId: animationMenu.frameId, layerId: animationMenu.kind === 'cel' ? animationMenu.layerId : session.document.activeLayerId })
+              setAnimationMenu(null)
+            }}><PixelUtilityIcon kind="plus" /><span>{t('timeline.tween.title')}</span></button>}
             {animationMenu.kind === 'frame' ? (
               <>
                 <button className="context-menu-item" type="button" role="menuitem" onClick={openLoopSectionCreator}>
@@ -739,6 +745,7 @@ export function useTimelineContextActions({
           </div>,
           document.body
         )}
+      {tweenTarget?.documentId === session.document.id && <AnimationTweenDialog document={session.document} {...tweenTarget} onClose={() => setTweenTarget(null)} />}
       {loopSectionEditor && (
         <AnimationLoopSectionDialog
           mode={loopSectionEditor.mode}

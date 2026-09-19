@@ -22,7 +22,7 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: mocks.getCurrentWindow
 }))
 
-import { applyAppWindowLayout, initializeAppWindow, readAppWindowLayout, settleAppWindowCursorAfterMaximize, startAppWindowDragging, toggleAppWindowMaximized } from './app-window'
+import { applyAppWindowLayout, initializeAppWindow, readAppWindowLayout, settleAppWindowCursorAfterMaximize, startAppWindowDragging, toggleAppWindowFullscreen, toggleAppWindowMaximized } from './app-window'
 
 const createWindow = () => ({
   isMaximized: vi.fn(async () => false),
@@ -38,6 +38,8 @@ const createWindow = () => ({
   onResized: vi.fn(async () => vi.fn()),
   minimize: vi.fn(async () => {}),
   toggleMaximize: vi.fn(async () => {}),
+  isFullscreen: vi.fn(async () => false),
+  setFullscreen: vi.fn(async () => {}),
   setCursorIcon: vi.fn(async () => {}),
   close: vi.fn(async () => {})
 })
@@ -117,5 +119,57 @@ describe('app window platform adapter', () => {
     expect(appWindow.setCursorIcon).toHaveBeenCalledTimes(2)
     await expect(settleAppWindowCursorAfterMaximize()).resolves.toBe(false)
     expect(appWindow.setCursorIcon).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves maximized work-area sizing before fullscreen and restores it on exit', async () => {
+    const appWindow = createWindow()
+    appWindow.isMaximized.mockResolvedValue(true)
+    mocks.getCurrentWindow.mockReturnValue(appWindow)
+    await expect(toggleAppWindowFullscreen()).resolves.toBe(true)
+    expect(appWindow.unmaximize).toHaveBeenCalledTimes(1)
+    expect(appWindow.unmaximize.mock.invocationCallOrder[0]).toBeLessThan(appWindow.setFullscreen.mock.invocationCallOrder[0])
+    expect(appWindow.setFullscreen).toHaveBeenCalledWith(true)
+    appWindow.isFullscreen.mockResolvedValue(true)
+    await expect(toggleAppWindowFullscreen()).resolves.toBe(false)
+    expect(appWindow.maximize).toHaveBeenCalledTimes(1)
+    expect(appWindow.setFullscreen.mock.invocationCallOrder[1]).toBeLessThan(appWindow.maximize.mock.invocationCallOrder[0])
+  })
+
+  it('keeps normal windows unmaximized after a fullscreen cycle', async () => {
+    const appWindow = createWindow()
+    mocks.getCurrentWindow.mockReturnValue(appWindow)
+    await toggleAppWindowFullscreen()
+    appWindow.isFullscreen.mockResolvedValue(true)
+    await toggleAppWindowFullscreen()
+    expect(appWindow.unmaximize).not.toHaveBeenCalled()
+    expect(appWindow.maximize).not.toHaveBeenCalled()
+  })
+
+  it('restores maximization if entering fullscreen fails', async () => {
+    const appWindow = createWindow()
+    appWindow.isMaximized.mockResolvedValue(true)
+    appWindow.setFullscreen.mockRejectedValueOnce(new Error('fullscreen failed'))
+    mocks.getCurrentWindow.mockReturnValue(appWindow)
+    await expect(toggleAppWindowFullscreen()).rejects.toThrow('fullscreen failed')
+    expect(appWindow.maximize).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces repeated F11 presses during the native transition', async () => {
+    const appWindow = createWindow()
+    mocks.getCurrentWindow.mockReturnValue(appWindow)
+    await Promise.all([toggleAppWindowFullscreen(), toggleAppWindowFullscreen()])
+    expect(appWindow.setFullscreen).toHaveBeenCalledTimes(1)
+    appWindow.isFullscreen.mockResolvedValue(true)
+    await toggleAppWindowFullscreen()
+  })
+
+  it('toggles native fullscreen without exposing the Tauri window to App', async () => {
+    const appWindow = createWindow()
+    appWindow.isFullscreen.mockResolvedValue(true)
+    mocks.getCurrentWindow.mockReturnValue(appWindow)
+
+    await expect(toggleAppWindowFullscreen()).resolves.toBe(false)
+
+    expect(appWindow.setFullscreen).toHaveBeenCalledWith(false)
   })
 })

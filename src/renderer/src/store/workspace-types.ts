@@ -215,6 +215,9 @@ export interface DocumentSession {
   lineKind: LineKind
   curveAnchorCount: number
   shapeRatio: ShapeRatio | null
+  drawingAnchor: { x: number; y: number }
+  drawingAnchorVisible: boolean
+  drawFromCanvasCenter: boolean
   shapeRounded: boolean
   shapeCornerRadius: number
   fillMode: FillMode
@@ -299,9 +302,10 @@ export interface DocumentSession {
   animationPlaybackMode: AnimationPlaybackMode
   animationPlaybackStartFrameId: string | null
   animationPlaybackLoopSectionId: string | null
+  animationPlaybackLoopPosition?: number
   animationPlaybackLoopIteration: number
   animationPlaybackLoopSectionRepeatIndefinitely: boolean
-  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number }>
+  animationPlaybackLoopStack: Array<{ sectionId: string; iteration: number; position?: number }>
   /** Finite tag section that anchors the current play-through cycle. */
   animationPlaybackTagCycleSectionId: string | null
   animationReturnToStart: boolean

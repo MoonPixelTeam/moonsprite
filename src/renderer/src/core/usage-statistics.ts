@@ -10,6 +10,7 @@ export interface UsageStatisticsData {
   saveCount: number
   exportCount: number
   exportFormats: Record<string, number>
+  drawingTimeMs: number
   drawingStrokeCount: number
   dailyUsageMs: Record<string, number>
   hourlyUsageMs: number[]
@@ -42,6 +43,7 @@ export const emptyUsageStatistics = (enabled = true, now = new Date()): UsageSta
   saveCount: 0,
   exportCount: 0,
   exportFormats: {},
+  drawingTimeMs: 0,
   drawingStrokeCount: 0,
   dailyUsageMs: {},
   hourlyUsageMs: Array.from({ length: 24 }, () => 0),
@@ -72,6 +74,7 @@ export const parseUsageStatistics = (source: string | null | undefined, now = ne
       saveCount: finiteCount(value.saveCount),
       exportCount: finiteCount(value.exportCount),
       exportFormats: formats,
+      drawingTimeMs: finiteCount(value.drawingTimeMs),
       drawingStrokeCount: finiteCount(value.drawingStrokeCount),
       dailyUsageMs: days,
       hourlyUsageMs: hours,

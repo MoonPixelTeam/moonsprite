@@ -22,13 +22,14 @@ import { ProjectRollbackDialog } from '@/components/ProjectRollbackDialog'
 import { TimelapseDialog } from '@/components/TimelapseDialog'
 import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
+import { documentSaveTarget } from '@/core/document-save-policy'
 import { type ExportOptions, type SaveAsOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import type { DocumentSession } from '@/store/workspace'
 import type { useAppPreferences } from './useAppPreferences'
 import type { useAppDocumentIO } from './useAppDocumentIO'
 const saveAsFormatForPreference = (value: string | null): SaveAsOptions['format'] => {
-  if (value === 'ase' || value === 'aseprite' || value === 'jpeg' || value === 'webp' || value === 'psd') return value
+  if (value === 'ase' || value === 'aseprite' || value === 'jpeg' || value === 'webp' || value === 'svg' || value === 'ico' || value === 'psd') return value
   if (value === 'png') return 'png-auto'
   return 'moonsprite'
 }
@@ -101,9 +102,10 @@ export function useAppDocumentDialogs({
     <>
       {saveAsOpen && session && (
         <SaveAsDialog
-          initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|psd)$/i, '') || 'MoonSprite-project'}
-          initialFormat={saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY))}
+          initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|ico|psd)$/i, '') || 'MoonSprite-project'}
+          initialFormat={runtimePreferences.saveOriginalFormat ? documentSaveTarget(session.document)?.format ?? saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)) : 'moonsprite'}
           initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory}
+          exportScalePresets={exportScalePresets}
           onClose={() => setSaveAsOpen(false)}
           onSave={(options) => runSaveActive(true, options)}
         />

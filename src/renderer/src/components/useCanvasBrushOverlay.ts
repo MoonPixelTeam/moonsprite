@@ -3,16 +3,17 @@ import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
 import { isLayerEffectivelyLocked, resolveLayerCanvasColor } from '@/core/document-model'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
-import { SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
+import { drawBrushCoverageOverlay } from './canvas-brush-coverage-overlay'
+import { collectSmoothBrushArea, SMOOTH_BRUSH_OVERLAY } from '@/core/smooth-brush'
 import { brushStampAnchor, solidBrushPreviewRowSpans } from '@/core/tools-brush'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { activePaintLayer } from '@/store/workspace-session'
+import { activePaintLayer, isToolAvailableForSession } from '@/store/workspace-session'
 import { createCanvasRenderPlan, deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { selectionContains } from '@/core/selection'
 import { CanvasInputState, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
-import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
+import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import { clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
@@ -20,6 +21,8 @@ interface Ports {
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
+  readonly brushEdgeColor?: RgbaColor
+  readonly brushEdgeThickness?: number
   readonly drawingBrushPreviewEnabled: boolean
   readonly liveViewRef: import('react').RefObject<import('@shared/types-view').ViewState>
   readonly session: DocumentSession
@@ -31,7 +34,7 @@ interface Ports {
     width: number
     height: number
   }
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly repeatedDocumentPointsAt: (
     clientX: number,
     clientY: number,
@@ -62,6 +65,10 @@ interface Ports {
 }
 
 export function useCanvasBrushOverlay(ports: Ports) {
+  const previewToolAvailable = useWorkspace((state) => {
+    const session = state.sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
+    return isToolAvailableForSession(session, session.tool)
+  })
   // The brush cursor is a transient overlay. Keeping it off the document
   // canvas means pointer movement does not force a full layer composite.
   const brushPreviewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -75,7 +82,11 @@ export function useCanvasBrushOverlay(ports: Ports) {
   const brushPreviewStackCacheRef = useRef<BrushPreviewStackCache | null>(null)
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
-    if (currentSession.animationPlaying) return false
+    if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
+    if (currentSession.tool === 'selection' && currentSession.selectionKind === 'brush') {
+      const drag = ports.inputRef.current.drag
+      return !currentSession.freeTransformActive && (!drag || drag.kind === 'selection-brush') && ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling
+    }
     if (currentSession.tool === 'smooth') {
       const drag = ports.inputRef.current.drag
       return ports.inputRef.current.pointer.visible && !ports.inputRef.current.spaceHeld && !ports.inputRef.current.sampling && drag?.kind !== 'pan'
@@ -90,7 +101,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
         !ports.inputRef.current.spaceHeld
       )
     }
-    if (ports.brushPreviewMode !== 'full-edge' || currentSession.tool !== 'pencil' || currentSession.inkMode !== 'simple') return false
+    if (ports.brushPreviewMode !== 'full-edge' || (currentSession.tool !== 'pencil' && currentSession.tool !== 'line') || currentSession.inkMode !== 'simple') return false
     if (ports.inputRef.current.drag || !ports.inputRef.current.pointer.visible || ports.inputRef.current.sampling || ports.inputRef.current.spaceHeld)
       return false
     const inputs = activeBrushInputsForTool(currentSession.tool, currentSession.fillKind ?? 'bucket', currentSession.brushImage, currentSession.brushTexture)
@@ -122,38 +133,20 @@ export function useCanvasBrushOverlay(ports: Ports) {
     if (!point) return
     const view = ports.liveViewRef.current
     const renderPlan = createCanvasRenderPlan(rect.width, rect.height, currentSession.document, view, ports.rotationIndicatorPosition)
-    if (currentSession.tool === 'smooth') {
+    const selectionBrush = currentSession.tool === 'selection' && currentSession.selectionKind === 'brush'
+    if (currentSession.tool === 'smooth' || selectionBrush) {
       const layer = activePaintLayer(currentSession)
-      if (layer.kind || currentSession.activeLayerMaskId || isLayerEffectivelyLocked(currentSession.document, layer)) return
+      if (!selectionBrush && (layer.kind || currentSession.activeLayerMaskId || isLayerEffectivelyLocked(currentSession.document, layer))) return
       context.save()
       ports.applyViewRotation(context, rect.width, rect.height, view)
-      context.fillStyle = SMOOTH_BRUSH_OVERLAY
-      const covered = new Set(ports.inputRef.current.drag?.smoothStroke?.visited ?? [])
-      const stampSize = Math.max(1, Math.min(128, Math.round(currentSession.brushSize)))
-      const angle = brushAngleWithDynamics(currentSession)
-      const anchor = brushStampAnchor(stampSize, null, angle, currentSession.brushShape)
-      for (const span of solidBrushPreviewRowSpans(stampSize, currentSession.brushShape, angle, ports.optimizedRotationEnabled)) {
-        const y = Math.round(point.y) - anchor.y + span.y
-        if (y < 0 || y >= currentSession.document.height) continue
-        for (
-          let x = Math.max(0, Math.round(point.x) - anchor.x + span.left);
-          x <= Math.min(currentSession.document.width - 1, Math.round(point.x) - anchor.x + span.right);
-          x++
-        ) {
-          if (!currentSession.selection || selectionContains(currentSession.selection, x, y)) covered.add(y * currentSession.document.width + x)
-        }
-      }
-      for (const key of covered) {
-        const pixel = deviceAlignedPixelRect(
-          renderPlan.originX,
-          renderPlan.originY,
-          view.zoom,
-          key % currentSession.document.width,
-          Math.floor(key / currentSession.document.width),
-          deviceScale
-        )
-        context.fillRect(pixel.x, pixel.y, pixel.width, pixel.height)
-      }
+      context.fillStyle = selectionBrush ? 'rgba(41, 121, 255, 0.35)' : SMOOTH_BRUSH_OVERLAY
+      const covered = new Set(selectionBrush ? ports.inputRef.current.drag?.selectionBrushStroke?.visited : ports.inputRef.current.drag?.smoothStroke?.visited)
+      collectSmoothBrushArea(currentSession.document, { visited: covered }, point, point,
+        currentSession.brushSize, selectionBrush ? null : currentSession.selection,
+        currentSession.brushShape, brushAngleWithDynamics(currentSession), ports.optimizedRotationEnabled,
+        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off')
+      drawBrushCoverageOverlay(context, covered, currentSession.document.width, currentSession.document.height,
+        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off', renderPlan.originX, renderPlan.originY, view.zoom, deviceScale)
       context.restore()
       return
     }
@@ -171,7 +164,8 @@ export function useCanvasBrushOverlay(ports: Ports) {
         left: brushPoint.x - anchor.x + span.left,
         right: brushPoint.x - anchor.x + span.right
       }))
-      context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+      context.lineWidth = ports.brushEdgeThickness ?? 1
+      alignCanvasStrokePath(context)
       context.beginPath()
       const horizontalSegment = (left: number, right: number, y: number, bottom: boolean): void => {
         if (right < left || y < 0 || y >= currentSession.document.height) return
@@ -214,7 +208,9 @@ export function useCanvasBrushOverlay(ports: Ports) {
           if (next.right < row.right) horizontalSegment(Math.max(row.left, next.right + 1), row.right, row.y, true)
         }
       }
-      context.strokeStyle = canvasAdaptiveContrast(context, {
+      context.strokeStyle = ports.brushEdgeColor
+        ? `rgb(${ports.brushEdgeColor.r} ${ports.brushEdgeColor.g} ${ports.brushEdgeColor.b} / ${ports.brushEdgeColor.a / 255})`
+        : canvasAdaptiveContrast(context, {
         x: renderPlan.originX + (brushPoint.x - anchor.x) * view.zoom - context.lineWidth,
         y: renderPlan.originY + (brushPoint.y - anchor.y) * view.zoom - context.lineWidth,
         width: previewSize * view.zoom + context.lineWidth * 2,
@@ -245,7 +241,8 @@ export function useCanvasBrushOverlay(ports: Ports) {
       context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
     }
     context.fill()
-    context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+    context.lineWidth = ports.brushEdgeThickness ?? 1
+    alignCanvasStrokePath(context)
     context.beginPath()
     const horizontalSegment = (left: number, right: number, row: (typeof rows)[number], bottom: boolean): void => {
       if (right < left) return
@@ -274,7 +271,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       exposedHorizontal(row, index > 0 ? rows[index - 1] : null, false)
       exposedHorizontal(row, index + 1 < rows.length ? rows[index + 1] : null, true)
     }
-    outline.stroke(context, ports.canvasRef.current ?? undefined)
+    outline.stroke(context, ports.canvasRef.current ?? undefined, ports.brushEdgeColor)
   }
 
   const scheduleBrushPreviewOverlay = (): void => {
@@ -290,6 +287,12 @@ export function useCanvasBrushOverlay(ports: Ports) {
   // A non-active pane does not receive a React prop change when the active
   // session mutates its brush size in place. Redraw it while the pointer is
   // over that pane so the shared brush preview stays live without a click.
+  useEffect(() => {
+    // Selection can invalidate the tool without changing activeLayerId or tool.
+    // Clear the dedicated overlay even when the main canvas does not redraw it.
+    scheduleBrushPreviewOverlay()
+  }, [previewToolAvailable])
+
   useEffect(() => {
     if (ports.inputRef.current.modifierBrushSize && brushPreviewOverlaySupported(ports.session)) scheduleBrushPreviewOverlay()
     else ports.scheduleDraw()

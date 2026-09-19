@@ -76,7 +76,7 @@ Canvas 基准分成两个互不混用的生产构建。`performance-production` 
 
 Headless Chromium 的 `requestAnimationFrame` 不锁定为 60 Hz，因此帧间隔只用于同机相对比较；主绘制和指针处理耗时可用于定位代码热点。正式体验仍需在 Windows WebView2 中手动复核。
 
-下面的 2026-08-02 数值产生于生产/Profiler 构建拆分和大画布 Harness 启用之前，只保留为历史观察，不进入 `performance-baseline-data.json` 的机器回归判定。首个正式发布审计接受后再建立新结构基线。
+下面的 2026-08-02 数值产生于生产/Profiler 构建拆分和大画布 Harness 启用之前，只保留为历史观察，不进入 `performance-baseline-data.json` 的机器回归判定。当前机器基线以 `docs/testing/performance-baseline-data.json` 中已接受且环境匹配的记录为准；未匹配时需建立新基线，不能沿用下表作为当前测量值。
 
 2026-08-02 三次运行中位数：
 
@@ -91,7 +91,7 @@ Headless Chromium 的 `requestAnimationFrame` 不锁定为 60 Hz，因此帧间�
 | 1024 × 1024 | 旋转后缩放 | 3.70 ms | 0.213% | 0.50 ms | 0.20 ms | 29.0 ms |
 | 1024 × 1024 | 连续绘制 | 3.70 ms | 0.285% | 1.10 ms | 0.40 ms | 121.4 ms |
 
-主绘制和指针函数都明显低于 16.7 ms，但操作提交后曾存在约 96-121 ms 的异步长任务。2026-08-02 增加按区域记录的 React Profiler 后，先收窄停靠栏目的刷新边界，再拆分应用外壳。当前 1024 × 1024 连续绘制的 React 提交 `p95` 中位数为 8.6 ms，最长任务为 59 ms；旋转后缩放的 React 提交 `p95` 为 1.3 ms。剩余长任务主要出现在连续绘制提交后的作品预览和运行环境调度，不在 Canvas 主绘制函数内。
+主绘制和指针函数都明显低于 16.7 ms，但操作提交后曾存在约 96-121 ms 的异步长任务。2026-08-02 增加按区域记录的 React Profiler 后，先收窄停靠栏目的刷新边界，再拆分应用外壳。当时 1024 × 1024 连续绘制的 React 提交 `p95` 中位数为 8.6 ms，最长任务为 59 ms；旋转后缩放的 React 提交 `p95` 为 1.3 ms。剩余长任务主要出现在连续绘制提交后的作品预览和运行环境调度，不在 Canvas 主绘制函数内。
 
 React Profiler 只有 `performance-profile` 构建且基准 URL 带有 `?moonsprite-perf=1` 时才启用；普通软件构建会在编译期移除性能 Harness，不承担测量开销。基准输出中的 `reactCommitP95`、`longestReactCommit` 和 `reactByRegion` 只与同机、同 profiling 构建的历史结果比较。
 
@@ -107,7 +107,7 @@ React Profiler 只有 `performance-profile` 构建且基准 URL 带有 `?moonspr
 
 2026-08-01 完成首轮动态加载后，正式 Web 构建结果如下：
 
-| 项目 | 优化前 | 当前 | 变化 |
+| 项目 | 优化前 | 2026-08-01 优化后 | 变化 |
 | --- | ---: | ---: | ---: |
 | 主入口 JS | 约 722.54 kB | 624.44 kB | 减少约 98.10 kB |
 | 主入口 gzip | 约 216.55 kB | 188.59 kB | 减少约 27.96 kB |

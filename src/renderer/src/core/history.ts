@@ -2,7 +2,7 @@ import type { RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { animationLayerAtFrame, setAnimationLayerOffsetsAtFrame } from './animation'
-import { cacheRasterContentBounds, cachedRasterContentBounds, getLayer, getLayerMaskOwner, getLayerStorageOrigin, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
+import { getLayer, getLayerMaskOwner, getLayerStorageOrigin, invalidateRasterContentBounds, isLayerMask, layerIndexAtStoragePoint, markLayerContentChanged, normalizeLayerPackedValue, readLayerPacked, writeLayerPacked, writeLayerPackedRun } from './document-model'
 
 const normalizeHistoryEntryLimit = (value: number): number =>
   value === Infinity ? Infinity : Number.isFinite(value) ? Math.max(1, Math.min(10000, Math.round(value))) : 1000
@@ -518,11 +518,10 @@ export function recordPixelKnownCurrent(document: SpriteDocument, layer: RasterL
   preparePixelEdit(document, edit)
   next = normalizeLayerPackedValue(document, layer, next)
   if (current === next) return false
-  if (!edit.dirtyRect) {
-    const cachedBounds = cachedRasterContentBounds(layer, document.palette)
-    markLayerContentChanged(layer)
-    if (cachedBounds !== undefined) cacheRasterContentBounds(layer, document.palette, cachedBounds)
-  }
+  if (!edit.dirtyRect) markLayerContentChanged(layer)
+  // Bounds can also have been cached by a preview between writes in one edit.
+  // Never publish the previous bounds under the new pixel content revision.
+  invalidateRasterContentBounds(layer)
   if (!edit.before.has(index)) edit.before.set(index, current)
   edit.after.set(index, next)
   const x = index % layer.width + layer.offsetX

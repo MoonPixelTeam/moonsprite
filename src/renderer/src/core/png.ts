@@ -9,16 +9,18 @@ import { TRANSPARENT } from './raster'
 import { translateCurrent as tr } from './localization'
 import { applyImportedRgbaPalette, normalizeImportedIndexedPalette } from './imported-palette'
 import { encodePng, type PngExport } from './png-encode'
+import { encodeIco } from './ico'
+import { encodeBmp } from './bmp'
 import { encodePsd } from './psd'
 import { selectionContains } from './selection'
 
 export { encodePng, type PngExport } from './png-encode'
 
-export type ImageExportKind = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd'
-export type SaveImageKind = Exclude<ImageExportKind, 'gif'> | 'ase' | 'aseprite'
+export type ImageExportKind = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite'
+export type SaveImageKind = Exclude<ImageExportKind, 'gif'>
 export interface ImageExport {
   bytes: Uint8Array
-  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'psd' | 'ase' | 'aseprite'
+  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite'
   indexed: boolean
   width: number
   height: number
@@ -131,6 +133,11 @@ function scalePixels(source: Uint8ClampedArray, sourceWidth: number, sourceHeigh
 
 async function encodeScaledPixels(scaled: { pixels: Uint8ClampedArray; width: number; height: number }, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd'>): Promise<ImageExport> {
   if (format === 'svg') return { bytes: encodeSvg(scaled.pixels, scaled.width, scaled.height), extension: 'svg', indexed: false, width: scaled.width, height: scaled.height }
+  if (format === 'ico') {
+    const ico = encodeIco(scaled.pixels, scaled.width, scaled.height)
+    return { bytes: ico.bytes, extension: 'ico', indexed: false, width: ico.width, height: ico.height }
+  }
+  if (format === 'bmp') return { bytes: encodeBmp(scaled.pixels, scaled.width, scaled.height), extension: 'bmp', indexed: false, width: scaled.width, height: scaled.height }
   if (format === 'png-auto' || format === 'png-rgba') {
     const png = encodePng(scaled.pixels, scaled.width, scaled.height, format === 'png-rgba')
     return { ...png, extension: 'png', width: scaled.width, height: scaled.height }

@@ -51,7 +51,12 @@ export const unionRect = (left: SelectionRect, right: SelectionRect): SelectionR
 
 const MAX_LOCAL_PATCH_MERGE_PIXELS = 64 * 1024
 
-export const mergeOverlappingRects = (rects: readonly SelectionRect[]): SelectionRect[] => {
+/** Style rendering makes unused pixels more costly than a few extra uploads. */
+export const compositePatchMergeLimit = (document: SpriteDocument | null): number | undefined =>
+  document && (document.layers.some(layer => hasEnabledLayerStyles(layer.layerStyles))
+    || document.groups.some(group => hasEnabledLayerStyles(group.layerStyles))) ? 0 : undefined
+
+export const mergeOverlappingRects = (rects: readonly SelectionRect[], maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
   // A long brush stroke produces a chain of slightly overlapping stamps. A
   // plain transitive merge turns that chain into one huge bounding box, which
   // makes a large multi-layer canvas recompose thousands of times more pixels
@@ -74,8 +79,8 @@ export const mergeOverlappingRects = (rects: readonly SelectionRect[]): Selectio
       // but creates many GPU texture updates per pointer sample. Batch any
       // fragments whose complete local patch remains small; for larger areas,
       // retain the low-waste overlap rule so diagonal strokes stay sparse.
-      if (!overlaps && unionArea > MAX_LOCAL_PATCH_MERGE_PIXELS) continue
-      if (unionArea > MAX_LOCAL_PATCH_MERGE_PIXELS && unionArea > (candidateArea + previousArea) * maxUnionWasteRatio) continue
+      if (!overlaps && unionArea > maxLocalPatchMergePixels) continue
+      if (unionArea > maxLocalPatchMergePixels && unionArea > (candidateArea + previousArea) * maxUnionWasteRatio) continue
       candidate = union
       merged.splice(index, 1)
       index = merged.length
@@ -85,8 +90,8 @@ export const mergeOverlappingRects = (rects: readonly SelectionRect[]): Selectio
   return merged
 }
 
-export const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32): SelectionRect[] => {
-  const merged = mergeOverlappingRects(rects)
+export const boundedDirtyRects = (rects: readonly SelectionRect[], limit = 32, maxLocalPatchMergePixels = MAX_LOCAL_PATCH_MERGE_PIXELS): SelectionRect[] => {
+  const merged = mergeOverlappingRects(rects, maxLocalPatchMergePixels)
   if (merged.length <= limit) return merged
   // Preserve the newest local regions and collapse the oldest backlog into
   // one conservative rectangle. This is mainly for cached surfaces that are

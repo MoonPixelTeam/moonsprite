@@ -15,13 +15,15 @@ const RECENT_EXPORT_PATHS_SCHEMA_VERSION = 1
 const DOCUMENT_EXPORT_SETTINGS_SCHEMA_VERSION = 1
 const MAX_RECENT_EXPORT_PATHS = 10
 const MAX_DOCUMENT_EXPORT_SETTINGS = 100
-const exportFormats: readonly ImageExportKind[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'psd']
+const exportFormats: readonly ImageExportKind[] = ['png-auto', 'png-rgba', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'ico', 'psd', 'ase', 'aseprite']
 
 export interface ExportPreset {
   presetName: string
   name: string
   format: ImageExportKind
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
   layerId?: string
   sliceId?: string
@@ -42,6 +44,8 @@ export interface DocumentExportSettings {
   name: string
   format: ImageExportKind
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   target?: 'document' | 'slices' | 'frames' | 'selection' | 'layer'
   /** Runtime-only mask used when target is selection; never persisted. */
   selection?: SelectionMask | null
@@ -98,6 +102,8 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
   const legacyScalePercent = typeof value.scale === 'number' ? value.scale * 100 : 100
   const scalePercent = finiteInteger(value.scalePercent, finiteInteger(legacyScalePercent, 100, 1, 6400), 1, 6400)
+  const trim = value.trim === true
+  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
@@ -118,6 +124,8 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     name: withExportFileExtension(name, format),
     format,
     scalePercent,
+    ...(trim ? { trim: true } : {}),
+    ...(trimMode ? { trimMode } : {}),
     ...(target !== 'document' ? { target } : {}),
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),
@@ -138,6 +146,8 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
   if (!name) return null
   const format = isExportFormat(value.format) ? value.format : 'png-auto'
   const scalePercent = finiteInteger(value.scalePercent, 100, 1, 6400)
+  const trim = value.trim === true
+  const trimMode = value.trimMode === 'common' || value.trimMode === 'individual' ? value.trimMode : trim ? 'individual' : undefined
   const directory = typeof value.directory === 'string' ? value.directory.trim() : ''
   const target = format === 'psd'
     ? 'document'
@@ -158,6 +168,8 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     name: withExportFileExtension(name, format),
     format,
     scalePercent,
+    ...(trim ? { trim: true } : {}),
+    ...(trimMode ? { trimMode } : {}),
     target,
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),
@@ -258,18 +270,22 @@ export function saveDocumentExportSettings(document: DocumentExportSettingsOwner
   } satisfies StoredDocumentExportSettings, storage)
 }
 
-export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'psd' {
+export function exportFileExtension(format: ImageExportKind): 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite' {
   if (format === 'jpeg') return 'jpg'
   if (format === 'webp') return 'webp'
   if (format === 'svg') return 'svg'
   if (format === 'gif') return 'gif'
+  if (format === 'bmp') return 'bmp'
+  if (format === 'ico') return 'ico'
   if (format === 'psd') return 'psd'
+  if (format === 'ase') return 'ase'
+  if (format === 'aseprite') return 'aseprite'
   return 'png'
 }
 
 export function withExportFileExtension(name: string, format: ImageExportKind): string {
   const fallback = 'MoonSprite-export'
-  const stem = name.trim().replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|svg|gif|psd)$/i, '').trim() || fallback
+  const stem = name.trim().replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|bmp|svg|gif|ico|psd)$/i, '').trim() || fallback
   return `${stem}.${exportFileExtension(format)}`
 }
 

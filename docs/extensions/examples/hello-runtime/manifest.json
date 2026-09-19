@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": "1.0.0",
+  "id": "com.example.hello-runtime",
+  "name": "Runtime 示例 / Hello Runtime",
+  "version": "1.0.0",
+  "description": "演示能力查询、设置、菜单、宿主弹窗和消息握手。",
+  "runtime": {
+    "entry": "runtime.html",
+    "permissions": ["runtime", "commands", "ui", "storage", "resources", "windows"],
+    "resources": { "hello-window": "window.html" }
+  },
+  "settingsUi": {
+    "storageKey": "preferences",
+    "controls": [
+      { "id": "greeting", "type": "text", "label": "问候语 / Greeting", "defaultValue": "你好，MoonSprite！", "maxLength": 64 }
+    ]
+  },
+  "commands": [
+    { "id": "hello", "name": "打开示例 / Open example", "runtimeEvent": "hello" },
+    { "id": "settings", "name": "设置 / Settings", "opensSettings": true }
+  ],
+  "topMenus": [
+    { "id": "example", "name": "示例 / Example", "position": "before:help", "commands": ["hello", "settings"] }
+  ]
+}

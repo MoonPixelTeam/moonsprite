@@ -62,9 +62,9 @@ const workspaceDockParentSize = (workArea: HTMLElement | null): { width: number;
 const defaultPanelDocks: Record<WorkspacePanelId, PanelDock> = { ...DEFAULT_PANEL_DOCKS }
 
 const defaultInspectorLayout = JSON.stringify({
-  order: ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'preview', 'tileset', 'brushes'],
-  verticalWeights: { color: 330, palette: 620, layers: 560, freeTileInstances: 180, history: 220, preview: 220, tileset: 280, brushes: 240 },
-  bottomWeights: { color: 280, palette: 280, layers: 720, freeTileInstances: 300, history: 320, preview: 280, tileset: 360, brushes: 320 }
+  order: ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'preview', 'reference', 'tileset', 'brushes'],
+  verticalWeights: { color: 330, palette: 620, layers: 560, freeTileInstances: 180, history: 220, preview: 220, reference: 220, tileset: 280, brushes: 240 },
+  bottomWeights: { color: 280, palette: 280, layers: 720, freeTileInstances: 300, history: 320, preview: 280, reference: 280, tileset: 360, brushes: 320 }
 })
 
 const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
@@ -75,7 +75,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   builtIn: true,
   layout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: false },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -87,12 +87,12 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     inspectorLayout: defaultInspectorLayout,
     colorSquareDock: 'left',
     colorSquareAnchor: 'end',
-    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, tileset: null, brushes: null },
+    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
     mainWindow: null
   },
   initialLayout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: false },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -104,7 +104,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     inspectorLayout: defaultInspectorLayout,
     colorSquareDock: 'left',
     colorSquareAnchor: 'end',
-    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, tileset: null, brushes: null },
+    floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
     mainWindow: null
   }
 })

@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useCallback, useRef, useState } from 'react'
 import { DialogHeader } from '@/components/DialogHeader'
 import { FormField } from '@/components/FormField'
 import { NumberInput } from '@/components/NumberInput'
@@ -6,11 +6,12 @@ import { ModalShell } from '@/components/ModalShell'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
-import { RECENT_EXPORTS_CHANGED_EVENT, loadDocumentExportSettings, loadExportPresets, loadRecentExportPaths, parentDirectoryFromPath, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
+import { loadDocumentExportSettings, loadExportPresets, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
 import { EXPORT_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { type ExportOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
+import { FileLocationPicker } from '@/components/FileLocationPicker'
 
 export interface ExportDialogHandle {
   open(target?: NonNullable<ExportOptions['target']>): void
@@ -26,17 +27,11 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
   const [presetName, setPresetName] = useState('')
   const [presets, setPresets] = useState<ExportPreset[]>(loadExportPresets)
   const [exportPathMenuOpen, setExportPathMenuOpen] = useState(false)
-  const [recentExportPaths, setRecentExportPaths] = useState(loadRecentExportPaths)
   const exportActiveOperationRef = useRef<Promise<boolean> | null>(null)
   const activeId = useWorkspace(state => state.activeId)
   useWorkspace(state => exportOpen ? state.sessions.find(item => item.document.id === activeId)?.revision : null)
   const workspace = useWorkspace.getState()
   const session = workspace.sessions.find(item => item.document.id === activeId)
-  useEffect(() => {
-    const sync = (): void => setRecentExportPaths(loadRecentExportPaths())
-    window.addEventListener(RECENT_EXPORTS_CHANGED_EVENT, sync)
-    return () => window.removeEventListener(RECENT_EXPORTS_CHANGED_EVENT, sync)
-  }, [])
   const runExportActive = useCallback((options: ExportOptions): Promise<boolean> => {
     if (exportActiveOperationRef.current) return exportActiveOperationRef.current
     const operation = workspace.exportActive(options)
@@ -47,15 +42,6 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     )
     return operation
   }, [workspace])
-
-  useEffect(() => {
-    if (!exportPathMenuOpen) return
-    const closePathMenu = (event: PointerEvent): void => {
-      if (!(event.target as Element).closest('.export-file-control')) setExportPathMenuOpen(false)
-    }
-    window.addEventListener('pointerdown', closePathMenu)
-    return () => window.removeEventListener('pointerdown', closePathMenu)
-  }, [exportPathMenuOpen])
 
   const openExport = (requestedTarget?: NonNullable<ExportOptions['target']>): void => {
     if (!session) return
@@ -88,6 +74,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
       name: withExportFileExtension(remembered?.name ?? documentName, format),
       format,
       scalePercent: remembered?.scalePercent ?? defaultScale,
+      trimMode: remembered?.trimMode ?? (remembered?.trim ? 'individual' : undefined),
       directory: remembered?.directory || preferences.exportDirectory || defaultFileDirectories.exportDirectory,
       target,
       ...(sliceId ? { sliceId } : {}),
@@ -107,12 +94,6 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
   const chooseExportDirectory = async (): Promise<void> => {
     const result = await window.moonSprite.chooseDirectory(exportForm.directory || defaultFileDirectories.exportDirectory)
     if (!result.canceled && result.directoryPath) setExportForm((current) => ({ ...current, directory: result.directoryPath }))
-    setExportPathMenuOpen(false)
-  }
-
-  const useRecentExportDirectory = (filePath: string): void => {
-    const directory = parentDirectoryFromPath(filePath)
-    if (directory) setExportForm((current) => ({ ...current, directory }))
     setExportPathMenuOpen(false)
   }
 
@@ -137,7 +118,9 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
 
   const exportSlices = session?.document.slices ?? []
 
-  const exportTarget: NonNullable<ExportOptions['target']> = exportForm.format === 'psd'
+  const projectFormat = exportForm.format === 'psd' || exportForm.format === 'ase' || exportForm.format === 'aseprite'
+
+  const exportTarget: NonNullable<ExportOptions['target']> = projectFormat
     ? 'document'
     : exportForm.format === 'gif' && exportForm.target === 'frames'
     ? 'document'
@@ -180,7 +163,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
     }
   }
   useImperativeHandle(ref, () => ({open: openExport, closeIfOpen: () => { if (!exportOpen) return false; setExportOpen(false); return true }}))
-  return <>    {exportOpen && <div className="modal-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
+  return <>    {exportOpen && <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false) }}>
       <ModalShell as="form" storageKey="export-layout-v2" fitContentKey={`${exportForm.format}:${exportTarget}:${exportForm.gifFrameRange ?? 'all'}`} defaultWidth={520} defaultHeight={520} minWidth={420} minHeight={360} maxWidth={640} maxHeight={760} resizable={false} className="export-modal" onSubmit={(event) => {
         event.preventDefault()
         void submitExport(false)
@@ -190,13 +173,12 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
           <FormField className="export-file-field" label={t('app.export.fileName')} hint={<span className="export-selected-directory" title={exportForm.directory || defaultFileDirectories.exportDirectory}>{t('app.export.selectedDirectory', { path: exportForm.directory || defaultFileDirectories.exportDirectory })}</span>}>
             <div className="export-file-control">
               <TextInput autoFocus aria-label={t('app.export.fileName')} value={exportForm.name} onChange={(event) => setExportForm({ ...exportForm, name: event.target.value })} />
-              <button type="button" className={exportPathMenuOpen ? 'icon-button selected' : 'icon-button'} title={t('app.export.pathMenu')} aria-label={t('app.export.pathMenu')} aria-expanded={exportPathMenuOpen} onClick={() => setExportPathMenuOpen((open) => !open)}><PixelUtilityIcon kind="folderOpen" /></button>
-              {exportPathMenuOpen && <div className="export-path-menu context-menu" role="menu" aria-label={t('app.export.pathMenu')}><button type="button" className="context-menu-item" role="menuitem" onClick={() => void chooseExportDirectory()}><PixelUtilityIcon kind="folderOpen" /><span>{t('app.export.choosePath')}</span></button><button type="button" className="context-menu-item" role="menuitem" onClick={() => { setExportForm((current) => ({ ...current, directory: defaultFileDirectories.saveDirectory })); setExportPathMenuOpen(false) }}><PixelUtilityIcon kind="image" /><span>{t('app.export.localGallery')}</span></button><span className="context-menu-divider" /><strong className="export-path-menu-heading">{t('app.export.recentPaths')}</strong>{recentExportPaths.length === 0 ? <span className="export-path-menu-empty">{t('app.export.noRecentPaths')}</span> : recentExportPaths.map((item) => <button type="button" className="context-menu-item export-recent-path" role="menuitem" key={item.filePath.toLocaleLowerCase()} title={item.filePath} onClick={() => useRecentExportDirectory(item.filePath)}><PixelUtilityIcon kind="export" /><span>{item.filePath}</span></button>)}</div>}
+              <FileLocationPicker directory={exportForm.directory || defaultFileDirectories.exportDirectory} defaultDirectory={defaultFileDirectories.exportDirectory} localGalleryDirectory={defaultFileDirectories.saveDirectory} open={exportPathMenuOpen} onOpenChange={setExportPathMenuOpen} onChooseDirectory={chooseExportDirectory} onSelectDirectory={(directory) => setExportForm((current) => ({ ...current, directory }))} />
             </div>
           </FormField>
           <div className="export-primary-fields">
-            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm((current) => ({ ...current, name: withExportFileExtension(current.name, format), format, target: format === 'psd' || format === 'gif' && current.target === 'frames' ? 'document' : current.target, scalePercent: format === 'svg' ? 100 : current.scalePercent }))} /></FormField>
-            <FormField label={t('app.export.target')}><ThemedSelect<NonNullable<ExportOptions['target']>> value={exportForm.target ?? 'document'} groups={[{ label: t('app.export.target'), options: [{ value: 'document', label: t('app.export.targetDocument') }, ...(exportForm.format !== 'psd' ? [{ value: 'selection' as const, label: t('app.export.targetSelection') }, { value: 'layer' as const, label: t('app.export.targetLayer') }] : []), ...((session?.document.animation?.frames.length ?? 1) > 1 && exportForm.format !== 'gif' && exportForm.format !== 'psd' ? [{ value: 'frames' as const, label: t('app.export.targetFrames') }] : []), ...(exportSlices.length && exportForm.format !== 'psd' ? [{ value: 'slices' as const, label: t('app.export.targetSlices') }] : [])] }]} label={t('app.export.target')} onChange={(target) => setExportForm((current) => ({ ...current, target, sliceId: target === 'slices' ? selectedExportSliceId || undefined : undefined, layerId: target === 'layer' ? selectedExportLayerId || undefined : undefined }))} /></FormField>
+            <FormField label={t('app.export.format')}><ThemedSelect<ExportOptions['format']> value={exportForm.format} groups={[{ label: t('app.export.formatGroup'), options: [{ value: 'png-auto', label: t('app.export.pngAuto') }, { value: 'png-rgba', label: t('app.export.pngRgba') }, { value: 'jpeg', label: t('app.export.jpegWhite') }, { value: 'webp', label: t('app.export.webp') }, { value: 'svg', label: t('app.export.svg') }, { value: 'gif', label: t('app.export.gif') }, { value: 'bmp', label: 'BMP (.bmp)' }, { value: 'ico', label: 'ICO (.ico)' }, { value: 'psd', label: t('app.export.psd'), description: t('app.export.psdDocumentOnly') }, { value: 'ase', label: t('app.export.ase'), description: t('app.export.projectDocumentOnly') }, { value: 'aseprite', label: t('app.export.aseprite'), description: t('app.export.projectDocumentOnly') }] }]} label={t('app.export.format')} onChange={(format) => setExportForm((current) => ({ ...current, name: withExportFileExtension(current.name, format), format, target: format === 'psd' || format === 'ase' || format === 'aseprite' || format === 'gif' && current.target === 'frames' ? 'document' : current.target, scalePercent: format === 'svg' ? 100 : current.scalePercent }))} /></FormField>
+            <FormField label={t('app.export.target')}><ThemedSelect<NonNullable<ExportOptions['target']>> value={exportForm.target ?? 'document'} groups={[{ label: t('app.export.target'), options: [{ value: 'document', label: t('app.export.targetDocument') }, ...(!projectFormat ? [{ value: 'selection' as const, label: t('app.export.targetSelection') }, { value: 'layer' as const, label: t('app.export.targetLayer') }] : []), ...((session?.document.animation?.frames.length ?? 1) > 1 && exportForm.format !== 'gif' && !projectFormat ? [{ value: 'frames' as const, label: t('app.export.targetFrames') }] : []), ...(exportSlices.length && !projectFormat ? [{ value: 'slices' as const, label: t('app.export.targetSlices') }] : [])] }]} label={t('app.export.target')} onChange={(target) => setExportForm((current) => ({ ...current, target, sliceId: target === 'slices' ? selectedExportSliceId || undefined : undefined, layerId: target === 'layer' ? selectedExportLayerId || undefined : undefined }))} /></FormField>
             {exportTarget === 'slices' && <FormField className="export-slice-field" label={t('app.export.sliceSelection')}><ThemedSelect value={selectedExportSliceId} groups={[{ label: t('app.export.sliceSelection'), options: [{ value: '', label: t('app.export.allSlices') }, ...exportSlices.map((slice) => ({ value: slice.id, label: slice.name, description: `${slice.width} × ${slice.height} · ${slice.x}, ${slice.y}` }))] }]} label={t('app.export.sliceSelection')} onChange={(sliceId) => setExportForm({ ...exportForm, sliceId: sliceId || undefined })} /></FormField>}
             {exportTarget === 'layer' && <FormField className="export-layer-field" label={t('app.export.layerSelection')}><ThemedSelect value={selectedExportLayerId} groups={[{ label: t('app.export.layerSelection'), options: [{ value: '', label: t('app.export.allLayers') }, ...exportLayerOptions] }]} label={t('app.export.layerSelection')} onChange={(layerId) => setExportForm({ ...exportForm, layerId: layerId || undefined })} /></FormField>}
           </div>
@@ -206,6 +188,13 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
             <FormField label={t('app.export.gifDirection')}><ThemedSelect value={exportForm.gifDirection ?? 'forward'} groups={[{ label: t('app.export.gifDirection'), options: [{ value: 'forward', label: t('app.export.gifForward'), description: t('app.export.gifForwardHint') }, { value: 'reverse', label: t('app.export.gifReverse'), description: t('app.export.gifReverseHint') }, { value: 'forward-ping-pong', label: t('app.export.gifForwardPingPong'), description: t('app.export.gifForwardPingPongHint') }, { value: 'reverse-ping-pong', label: t('app.export.gifReversePingPong'), description: t('app.export.gifReversePingPongHint') }] }]} label={t('app.export.gifDirection')} onChange={(gifDirection) => setExportForm({ ...exportForm, gifDirection: gifDirection as NonNullable<ExportOptions['gifDirection']> })} /></FormField>
           </section>}
           <FormField className="export-scale-field" label={exportForm.format === 'svg' ? t('app.export.scale') : t('app.export.scalePercent')}><div className="scale-control"><NumberInput min={1} max={exportForm.format === 'svg' ? 64 : 6400} value={exportForm.format === 'svg' ? exportForm.scalePercent / 100 : exportForm.scalePercent} suffix={exportForm.format === 'svg' ? 'x' : '%'} onValueChange={(value) => setExportForm({ ...exportForm, scalePercent: exportForm.format === 'svg' ? Math.max(100, Math.round(value * 100)) : value })} /><div className="scale-presets" aria-label={exportForm.format === 'svg' ? t('app.export.scalePresets') : t('app.export.scalePercentPresets')}>{exportScalePresets.map((scale) => <button type="button" key={scale} className={exportForm.scalePercent === scale ? 'selected' : ''} onClick={() => setExportForm({ ...exportForm, scalePercent: scale })}>{exportForm.format === 'svg' ? `${scale / 100}x` : `${scale}%`}</button>)}</div></div></FormField>
+          <FormField label={t('app.export.trim')}>
+            <ThemedSelect value={exportForm.trimMode ?? ''} groups={[{ label: t('app.export.trim'), options: [
+              { value: '', label: t('app.export.trimNone'), description: t('app.export.trimNoneHint') },
+              { value: 'individual', label: t('app.export.trimIndividual'), description: t('app.export.trimIndividualHint') },
+              { value: 'common', label: t('app.export.trimCommon'), description: t('app.export.trimCommonHint') }
+            ] }]} label={t('app.export.trim')} onChange={(trimMode) => setExportForm((current) => ({ ...current, trim: undefined, trimMode: trimMode === 'individual' || trimMode === 'common' ? trimMode : undefined }))} />
+          </FormField>
           <FormField className="export-preset-field" label={t('app.export.preset')}>
             <div className="export-preset-control">
               <ThemedSelect value={presetName} groups={[{ label: t('app.export.savedPresets'), options: [{ value: '', label: t('app.export.choosePreset') }, ...presets.map((preset) => ({ value: preset.presetName, label: `${preset.presetName} · ${preset.scalePercent}%` }))] }]} label={t('app.export.preset')} onChange={(value) => { const preset = presets.find((item) => item.presetName === value); setPresetName(value); if (preset) { const { presetName: _presetName, ...options } = preset; const sliceId = options.target === 'slices' && options.sliceId && exportSlices.some((slice) => slice.id === options.sliceId) ? options.sliceId : undefined; const layerId = options.target === 'layer' && options.layerId && exportLayerOptions.some((layer) => layer.value === options.layerId) ? options.layerId : undefined; setExportForm({ ...options, sliceId, layerId }) } }} />

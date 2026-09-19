@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  createColorizeAdjustment,
   buildCurveHistogramChunked,
   buildCurvePath,
   isColorAdjustmentIdentity,
@@ -282,6 +283,22 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
   const [hue, setHue] = useState(0)
   const [saturation, setSaturation] = useState(0)
   const [lightness, setLightness] = useState(0)
+  const [colorize, setColorize] = useState(false)
+  const relativeHslRef = useRef({ hue: 0, saturation: 0, lightness: 0 })
+  const colorizedHslRef = useRef<{ hue: number; saturation: number; lightness: number } | null>(null)
+  const toggleColorize = (enabled: boolean): void => {
+    const current = { hue, saturation, lightness }
+    if (enabled) relativeHslRef.current = current
+    else colorizedHslRef.current = current
+    const state = useWorkspace.getState()
+    const foreground = state.sessions.find(item => item.document.id === activeDocumentId)?.primaryColor ?? { r: 0, g: 0, b: 0, a: 255 }
+    const preset = createColorizeAdjustment(foreground)
+    const next = enabled ? colorizedHslRef.current ?? { hue: Math.round(preset.hue ?? 0), saturation: preset.saturation ?? 25, lightness } : relativeHslRef.current
+    setColorize(enabled)
+    setHue(next.hue)
+    setSaturation(next.saturation)
+    setLightness(next.lightness)
+  }
   const [curveChannel, setCurveChannel] = useState<CurveChannel>('rgb')
   const [curvePoints, setCurvePoints] = useState<Record<CurveChannel, CurvePoint[]>>({
     rgb: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
@@ -319,10 +336,10 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
   const adjustment = useMemo<ColorAdjustment>(() => kind === 'brightness-contrast'
     ? { kind, brightness, contrast }
     : kind === 'hue-saturation'
-      ? { kind, hue, saturation, lightness }
+      ? { kind, hue, saturation, lightness, colorize }
       : kind === 'curves'
         ? { kind, curvePoints: curvePoints.rgb, curveRedPoints: curvePoints.red, curveGreenPoints: curvePoints.green, curveBluePoints: curvePoints.blue }
-        : { kind, ...balance, preserveLuminosity }, [kind, brightness, contrast, hue, saturation, lightness, curvePoints, balance, preserveLuminosity])
+        : { kind, ...balance, preserveLuminosity }, [kind, brightness, contrast, hue, saturation, lightness, colorize, curvePoints, balance, preserveLuminosity])
   const adjustmentKey = useMemo(() => JSON.stringify(adjustment), [adjustment])
   const previewFrameRef = useRef<number | null>(null)
   const viewPreviewTimerRef = useRef<number | null>(null)
@@ -597,7 +614,7 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
 
   return <div className="modal-backdrop" role="presentation"><ModalShell storageKey={`adjustment-${kind}-v4`} placement="right" defaultWidth={kind === 'curves' ? 450 : 400} defaultHeight={kind === 'curves' ? 500 : 380} minWidth={kind === 'curves' ? 420 : 350} minHeight={kind === 'curves' ? 440 : 300} maxWidth={620} maxHeight={720} className="adjustment-modal" role="dialog" aria-label={title}><DialogHeader eyebrow="ADJUST" title={title} closeLabel={t('common.close')} onClose={cancel} /><div className="modal-body adjustment-modal-body">
     {kind === 'brightness-contrast' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.brightness')} min={-100} max={100} value={brightness} onChange={setBrightness} /><RangeField className="adjustment-slider-row" label={t('adjustment.contrast')} min={-100} max={100} value={contrast} onChange={setContrast} /></section>}
-    {kind === 'hue-saturation' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.hue')} min={-180} max={180} value={hue} onChange={setHue} /><RangeField className="adjustment-slider-row" label={t('adjustment.saturation')} min={-100} max={100} value={saturation} onChange={setSaturation} /><RangeField className="adjustment-slider-row" label={t('adjustment.lightness')} min={-100} max={100} value={lightness} onChange={setLightness} /></section>}
+    {kind === 'hue-saturation' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.hue')} min={colorize ? 0 : -180} max={colorize ? 360 : 180} value={hue} onChange={setHue} /><RangeField className="adjustment-slider-row" label={t('adjustment.saturation')} min={colorize ? 0 : -100} max={100} value={saturation} onChange={setSaturation} /><RangeField className="adjustment-slider-row" label={t('adjustment.lightness')} min={-100} max={100} value={lightness} onChange={setLightness} /><CheckboxField className="tool-checkbox" checked={colorize} label={t('adjustment.title.colorize')} onChange={toggleColorize} /></section>}
     {kind === 'curves' && <section className="adjustment-controls curve-controls"><SegmentedControl className="curve-channel-tabs" label={t('adjustment.curve.channels')} options={curveChannelOptions} value={curveChannel} onChange={setCurveChannel} /><CurveEditor channel={curveChannel} histogram={histogram?.[curveChannel]} points={curvePoints[curveChannel]} onChange={(next) => setCurvePoints((current) => ({ ...current, [curveChannel]: next }))} onReset={() => setCurvePoints((current) => ({ ...current, [curveChannel]: [{ x: 0, y: 0 }, { x: 255, y: 255 }] }))} /></section>}
     {kind === 'color-balance' && <section className="balance-panel"><SegmentedControl className="balance-tone-tabs" label={t('adjustment.title.colorBalance')} options={[{ value: 'shadows', label: t('adjustment.balance.shadows') }, { value: 'midtones', label: t('adjustment.balance.midtones') }, { value: 'highlights', label: t('adjustment.balance.highlights') }]} value={balanceTone} onChange={setBalanceTone} /><div className="adjustment-controls balance-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.balance.cyanRed')} min={-100} max={100} value={balanceValue('CyanRed')} onChange={(value) => updateBalance('CyanRed', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.magentaGreen')} min={-100} max={100} value={balanceValue('MagentaGreen')} onChange={(value) => updateBalance('MagentaGreen', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.yellowBlue')} min={-100} max={100} value={balanceValue('YellowBlue')} onChange={(value) => updateBalance('YellowBlue', value)} /></div><CheckboxField className="tool-checkbox preserve-luminosity" checked={preserveLuminosity} label={t('adjustment.balance.preserveLuminosity')} onChange={setPreserveLuminosity} /></section>}
     <LivePreviewToggle className="adjustment-preview-toggle" checked={previewEnabled} onChange={setPreviewEnabled} />

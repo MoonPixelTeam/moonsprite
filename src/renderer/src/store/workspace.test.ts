@@ -8,7 +8,7 @@ import { applySelectionTransform, applySelectionTranslationPreview, captureSelec
 import { builtInPalettes } from '@/core/built-in-palettes'
 import { createProceduralBrush } from '@/core/brushes'
 import { brushLibraryLocation } from '@/core/brush-library-location'
-import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, animationLayerAtFrame, ensureAnimationDocument, linkAnimationFrameCels, resolveAnimationCel, setAnimationCelOffsetsForKeys } from '@/core/animation'
+import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, animationLayerAtFrame, ensureAnimationDocument, linkAnimationFrameCels, refreshActiveAnimationFrame, resolveAnimationCel, setAnimationCelOffsetsForKeys, syncActiveAnimationFrame } from '@/core/animation'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { transformedSelectionBounds, transformedSelectionPivotPreset, transformSelectionMask } from '@/core/selection'
 import { registerViewPreviewFlusher } from '@/core/view-preview-lifecycle'
@@ -1852,7 +1852,7 @@ describe('selection clipboard', () => {
     const timeline = ensureAnimationDocument(document)
     const [first, second] = timeline.frames
     useWorkspace.getState().selectLayerRows([bottom.id, top.id], [])
-    useWorkspace.getState().selectAnimationFrame(first.id)
+    useWorkspace.getState().selectAnimationFrame(first.id, 'toggle')
     useWorkspace.getState().selectAnimationFrame(second.id, 'range')
     useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
     const expectedActiveLayerId = document.activeLayerId
@@ -2188,6 +2188,44 @@ describe('resize history', () => {
     expect(readLayerColorAt(document, visible, 0, 0)).toEqual(red)
     useWorkspace.getState().undo()
     expect(document).toMatchObject({ width: 4, height: 3 })
+  })
+
+  it('trims to the union of visible content across every animation frame', async () => {
+    const document = createDocument('trim animation frames', 6, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    ensureAnimationDocument(document)
+    writeLayerColor(document, layer, 0, red)
+    syncActiveAnimationFrame(document)
+    const secondFrameId = addBlankAnimationFrame(document)
+    const secondCel = animationCelAt(ensureAnimationDocument(document), layer.id, secondFrameId)!
+    secondCel.surface = { format: 'rgba' as const, width: 6, height: 2, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(6 * 2 * 4) }
+    secondCel.surface.pixels[5 * 4 + 3] = 255
+    refreshActiveAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().trimActiveCanvas()
+
+    expect(document).toMatchObject({ width: 6, height: 1 })
+    useWorkspace.getState().undo()
+    expect(document).toMatchObject({ width: 6, height: 2 })
+  })
+
+  it('can trim using only the current animation frame', async () => {
+    const document = createDocument('trim current animation frame', 6, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    ensureAnimationDocument(document)
+    writeLayerColor(document, layer, 0, red)
+    syncActiveAnimationFrame(document)
+    const secondFrameId = addBlankAnimationFrame(document)
+    const secondCel = animationCelAt(ensureAnimationDocument(document), layer.id, secondFrameId)!
+    secondCel.surface = { format: 'rgba' as const, width: 6, height: 2, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(6 * 2 * 4) }
+    secondCel.surface.pixels[5 * 4 + 3] = 255
+    refreshActiveAnimationFrame(document)
+    useWorkspace.getState().addSession(document)
+
+    await useWorkspace.getState().trimActiveCanvasCurrentFrame()
+
+    expect(document).toMatchObject({ width: 1, height: 1 })
   })
 
 })

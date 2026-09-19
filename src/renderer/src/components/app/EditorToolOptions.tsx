@@ -1,3 +1,6 @@
+import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
+import { Button } from '@/components/Button'
+import { drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { pixelSource } from '@/components/pixel-source'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
@@ -998,12 +1001,14 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   // Smooth uses the same basic stamp controls as Pencil. Its smoothing
   // algorithm remains distinct, but size, round/square/line stamp choice,
   // pixel cleanup and symmetry must describe one shared brush state.
-  const isStrokeBrushTool = session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line' || session.tool === 'smooth'
+  const isSelectionBrushTool = session.tool === 'selection' && session.selectionKind === 'brush'
+  const isStrokeBrushTool = session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line' || session.tool === 'smooth' || isSelectionBrushTool
   const isSmoothBrushTool = session.tool === 'smooth'
+  const basicOnlyBrushTool = isSmoothBrushTool || isSelectionBrushTool
   const isBucketBrushTool = session.tool === 'fill' && fillKind === 'bucket'
   const isBrushTool = isStrokeBrushTool || isBucketBrushTool
   const activeProceduralBrush = session.brushImage && isProceduralBrushId(session.brushImage.id) ? session.brushImage : null
-  const activeLibraryBrush = !isSmoothBrushTool && session.brushImage && !activeProceduralBrush ? session.brushImage : null
+  const activeLibraryBrush = !basicOnlyBrushTool && session.brushImage && !activeProceduralBrush ? session.brushImage : null
   const showBrushAngle = isStrokeBrushTool && session.brushSize > 1 && !activeLibraryBrush?.intrinsicSize && (session.brushShape === 'square' || session.brushShape === 'line')
   const brushDither = session.brushDither ?? DEFAULT_BRUSH_DITHER_SETTINGS
   const brushDitherMaximumStage = ditherStageCount(brushDither.template)
@@ -1123,13 +1128,14 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <button type="button" className="quiet-button" disabled={session.liquifyResetHistoryPosition == null || session.history.position <= session.liquifyResetHistoryPosition} onClick={() => window.dispatchEvent(new CustomEvent(LIQUIFY_RESET_COMMAND_EVENT, { detail: { documentId: session.document.id } }))}>{t('common.reset')}</button>
     </div>}
     {isBrushTool && <>
+      <div className="tool-icon-group">
       {isStrokeBrushTool && <div className="brush-shape-selector">
         <button type="button" className={`icon-button brush-preset brush-shape-trigger ${!activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.basicBrushes')} aria-label={t('toolOptions.basicBrushes')} aria-haspopup="menu" aria-expanded={basicBrushFlyoutOpen} onClick={() => setBasicBrushFlyoutOpen((open) => !open)}><span className="brush-shape-preview" style={{ transform: `rotate(${showBrushAngle ? session.brushAngle : 0}deg)` }}><PixelShapeIcon kind={session.brushShape} /></span></button>
         {basicBrushFlyoutOpen && <div className="brush-shape-popover" role="menu" aria-label={t('toolOptions.basicBrushes')}>
           {(['round', 'square', 'line'] as BrushShape[]).map((shape) => <BrushShapePresetButton key={shape} shape={shape} selected={!activeLibraryBrush && session.brushShape === shape} label={t(shape === 'round' ? 'toolOptions.roundBrush' : shape === 'square' ? 'toolOptions.squareBrush' : 'toolOptions.lineBrush')} angle={shape === 'square' || shape === 'line' ? session.brushAngle : 0} menuItem onClick={() => chooseBasicBrush(shape)} />)}
         </div>}
       </div>}
-      {isStrokeBrushTool && !isSmoothBrushTool && <>
+      {isStrokeBrushTool && !basicOnlyBrushTool && <>
         <div className="brush-dither-control">
           <button ref={brushDitherTriggerRef} type="button" className={`icon-button brush-dither-trigger ${brushDither.enabled && !activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.brushDither')} aria-label={t('toolOptions.brushDither')} aria-haspopup="dialog" aria-expanded={brushDitherFlyoutOpen} aria-pressed={brushDither.enabled && !activeLibraryBrush} disabled={Boolean(activeLibraryBrush)} onClick={() => {
             if (brushDitherFlyoutOpen) closeBrushDitherFlyout()
@@ -1188,25 +1194,28 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           {activeProceduralBrush && <div className="fill-procedural-settings"><ProceduralBrushControls brushId={activeProceduralBrush.id as ProceduralBrushId} settings={session.proceduralBrushSettings[activeProceduralBrush.id as ProceduralBrushId]} onChange={workspace.setProceduralBrushSettings} /><div className="procedural-output-controls"><PreferenceToggle className="procedural-dither-toggle" checked={session.brushImageSettings.mode === 'dither'} label={t('toolOptions.textureDither')} tooltip={t('toolOptions.textureDitherHint')} onChange={(enabled) => workspace.setBrushImageSettings({ mode: enabled ? 'dither' : 'threshold' })} /><div className="procedural-antialias-control"><CheckboxField className="tool-checkbox" checked={session.proceduralAntialias} label={t('toolOptions.textureAntialiasing')} onChange={workspace.setProceduralAntialias} />{session.proceduralAntialias && <RangeField className="procedural-antialias-strength" density="compact" label={t('toolOptions.amount')} min={1} max={100} suffix="%" value={session.proceduralAntialiasStrength} onChange={workspace.setProceduralAntialiasStrength} />}</div></div></div>}
         </div>}
       </div>}
-      {!isSmoothBrushTool && <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} /> : <PixelUtilityIcon kind="image" />}</button>}
+      {!basicOnlyBrushTool && <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} /> : <PixelUtilityIcon kind="image" />}</button>}
+      </div>
       {isStrokeBrushTool && !activeLibraryBrush?.intrinsicSize && <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.brushSizeValue')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushSize')}><RangeField ariaLabel={t('toolOptions.brushSizeSlider')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>}
       {isSmoothBrushTool && <FormField className="smooth-strength-field" layout="inline" label={t('toolOptions.pressureEffectStrength')}><div className="brush-size-control smooth-strength-control" onPointerDown={() => setSmoothStrengthFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onValueChange={workspace.setSmoothStrength} onFocus={() => setSmoothStrengthFlyoutOpen(true)} />{smoothStrengthFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.pressureEffectStrength')}><RangeField ariaLabel={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onChange={workspace.setSmoothStrength} /></div>}</div></FormField>}
       {showBrushAngle && <div className="brush-size-control brush-angle-control"><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
       {activeLibraryBrush?.intrinsicSize && <span className="brush-paint-mode-select" title={t('toolOptions.brushModeHint')}><ThemedSelect<BrushPaintMode> density="compact" value={session.brushPaintMode} groups={brushPaintModeGroups} label={t('toolOptions.brushMode')} popoverWidth={148} onChange={workspace.setBrushPaintMode} /></span>}
       {session.tool === 'pencil' && <FormField className="line-direction-step-control" layout="inline" label={t('toolOptions.lineDirectionStep')} tooltip={t('toolOptions.lineDirectionStepHint')}><NumberInput aria-label={t('toolOptions.lineDirectionStep')} density="compact" min={1} max={16} value={lineDirectionStep} onValueChange={updateLineDirectionStep} /></FormField>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser' || session.tool === 'line') && <CheckboxField className="tool-checkbox" checked={session.perfectPixels} label={t('toolOptions.perfectPixels')} onChange={workspace.setPerfectPixels} />}
-      {isStrokeBrushTool && !isSmoothBrushTool && <div className="ink-control">
+      <div className="tool-icon-group">
+      {isStrokeBrushTool && !basicOnlyBrushTool && <div className="ink-control">
         <button type="button" className="ink-trigger icon-button" title={t('toolOptions.ink')} aria-label={t('toolOptions.ink')} aria-expanded={inkFlyoutOpen} onClick={() => setInkFlyoutOpen((open) => !open)}><PixelInkIcon mode={session.inkMode} /></button>
         {inkFlyoutOpen && <div className="menu-popover ink-popover" role="menu" aria-label={t('toolOptions.ink')}>
           {INK_MODE_OPTIONS.map((option) => <InkMenuItem key={option.value} label={t(option.label)} description={t(option.description)} selected={session.inkMode === option.value} role="menuitemradio" onClick={() => { workspace.setInkMode(option.value); setInkFlyoutOpen(false) }} />)}
           <span className="menu-divider" aria-hidden="true" />
-          <InkMenuItem label="同步所有工具" description="开启后，切换墨水会同步到所有支持墨水的工具。" selected={session.syncInkAcrossTools} role="menuitemcheckbox" onClick={() => workspace.setSyncInkAcrossTools(!session.syncInkAcrossTools)} />
+          <InkMenuItem label={t('ink.syncAllTools')} description={t('ink.syncAllToolsHint')} selected={session.syncInkAcrossTools} role="menuitemcheckbox" onClick={() => workspace.setSyncInkAcrossTools(!session.syncInkAcrossTools)} />
         </div>}
       </div>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">
       <Tooltip content={t('toolOptions.brushDynamicsDescription')}><button className={`pressure-trigger icon-button ${session.brushDynamics.effects.size.sensor || session.brushDynamics.effects.strength.sensor || session.brushDynamics.effects.gradient.sensor || session.brushDynamics.effects.angle.sensor ? 'selected' : ''}`} type="button" aria-label={t('toolOptions.brushDynamics')} title={t('toolOptions.brushDynamics')} aria-expanded={pressureFlyoutOpen} onClick={() => setPressureFlyoutOpen((open) => !open)}><PixelPressureIcon /></button></Tooltip>
         {pressureFlyoutOpen && pressurePopoverPosition && createPortal(<div className="pressure-popover" role="dialog" aria-label={t('toolOptions.brushDynamicsSettings')} style={pressurePopoverPosition}><BrushDynamicsSettingsPanel settings={session.brushDynamics} tool={session.tool} intrinsicSize={Boolean(session.brushImage?.intrinsicSize)} brushSize={session.brushSize} documentId={session.document.id} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setBrushDynamicsMapping} onGradientDitherChange={workspace.setBrushDynamicsGradientDither} availableEffects={session.tool === 'smooth' ? ['size', 'angle'] : undefined} /></div>, document.body)}
       </div>}
+      </div>
     </>}
     {session.tool === 'selection' && (session.selectionPropertiesActive || session.freeTransformActive) && session.selection ? (() => {
       const target = session.pendingPaste?.transformTarget ?? session.selection
@@ -1222,6 +1231,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         <FormField className="selection-properties-field" layout="inline" label={t('common.height')}><NumberInput aria-label={t('common.height')} density="compact" min={1} value={target.height} onValueChange={(height) => workspace.updateSelectionProperties(session.selectionAspectRatio == null ? { height } : { width: Math.max(1, Math.round(height * session.selectionAspectRatio)), height })} /></FormField>
         <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionRotation')}><SelectionAngleControl value={angle} inputLabel={t('toolOptions.selectionRotation')} sliderLabel={t('toolOptions.selectionRotation')} min={-180} max={180} onChange={(nextAngle) => workspace.updateSelectionProperties({ angle: nextAngle })} /></FormField>
         <FormField className="selection-properties-field selection-angle-field" layout="inline" label={t('toolOptions.selectionShearAngle')}><SelectionAngleControl value={shearAngle} inputLabel={t('toolOptions.selectionShearAngle')} sliderLabel={t('toolOptions.selectionShearAngle')} min={-89} max={89} onChange={(nextAngle) => workspace.updateSelectionProperties({ shearAngle: nextAngle })} /></FormField>
+        <div className="tool-icon-group">
         <SelectionPivotControls
           target={selectionPivotControlTarget(target)}
           angle={angle}
@@ -1232,9 +1242,11 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           onVisibleChange={(showSelectionPivot) => workspace.setView({ showSelectionPivot })}
         />
         <button type="button" className="icon-button selection-shrink-button" title={t('toolOptions.shrinkSelection')} aria-label={t('toolOptions.shrinkSelection')} onClick={workspace.shrinkSelectionToContent}><PixelAssetIcon src={selectionShrinkIcon} /></button>
+        </div>
         {selectionRotationAlgorithmControl}
       </div>
     })() : session.tool === 'selection' && <>
+      <div className="tool-icon-group">
       <div className="selection-mode-control" aria-label={t('toolOptions.selectionMode')}>{selectionModeItems.map((mode) => <button key={mode.id} title={mode.label} aria-label={mode.label} className={`icon-button ${(temporarySelectionMode ?? session.selectionMode) === mode.id ? 'selected' : ''}`} onClick={() => workspace.setSelectionMode(mode.id)}><PixelAssetIcon src={mode.icon} /></button>)}</div>
       <SelectionPivotControls
         target={selectionPivotControlTarget(session.pendingPaste?.transformTarget ?? session.selection)}
@@ -1253,11 +1265,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         disabled={!session.selection}
         onClick={workspace.shrinkSelectionToContent}
       ><PixelAssetIcon src={selectionShrinkIcon} /></button>
+      </div>
       {session.selectionKind === 'rectangle' && <div className="corner-radius-control"><CheckboxField className="tool-checkbox" checked={session.selectionRounded} label={t('toolOptions.roundedCorners')} onChange={workspace.setSelectionRounded} />{session.selectionRounded && <NumberInput aria-label={t('toolOptions.cornerRadius')} density="compact" min={0} max={256} suffix="px" value={session.selectionCornerRadius} onValueChange={workspace.setSelectionCornerRadius} />}</div>}
       {session.selectionKind === 'magic' && <><ToleranceControl value={session.wandTolerance} open={toleranceFlyoutOpen === 'wand'} label={t('toolOptions.tolerance')} inputLabel={t('toolOptions.magicWandTolerance')} sliderLabel={t('toolOptions.magicWandToleranceSlider')} onOpen={() => setToleranceFlyoutOpen('wand')} onChange={workspace.setWandTolerance} /><CheckboxField className="tool-checkbox" aria-label={t('toolOptions.contiguousSelection')} checked={session.wandContiguous} label={t('toolOptions.contiguous')} onChange={workspace.setWandContiguous} />{session.wandContiguous && <GapClosingControls enabled={session.wandGapClosing} threshold={session.wandGapThreshold} open={toleranceFlyoutOpen === 'wand-gap'} onEnabledChange={workspace.setWandGapClosing} onThresholdChange={workspace.setWandGapThreshold} onOpen={() => setToleranceFlyoutOpen('wand-gap')} />}</>}
       {selectionRotationAlgorithmControl}
       {session.selectionKind === 'magic' && <FillSettingsControl open={fillSettingsOpen} reference={session.fillReference} connectivity={session.fillConnectivity} onToggle={() => setFillSettingsOpen((open) => !open)} onReferenceChange={(value) => { workspace.setFillReference(value); setFillSettingsOpen(false) }} onConnectivityChange={(value) => { workspace.setFillConnectivity(value); setFillSettingsOpen(false) }} t={t} />}
     </>}
+    {((session.tool === 'selection' && (session.selectionKind === 'rectangle' || session.selectionKind === 'ellipse')) || (session.tool === 'shape' && ['rectangle', 'rectangle-outline', 'ellipse', 'ellipse-outline'].includes(session.shapeKind))) && <div className="tool-icon-group"><button type="button" className={`icon-button ${session.drawFromCanvasCenter ? 'selected' : ''}`} aria-pressed={session.drawFromCanvasCenter} aria-label={t('toolOptions.canvasCenter')} title={t('toolOptions.canvasCenterHint')} onClick={() => workspace.setDrawFromCanvasCenter(!session.drawFromCanvasCenter)}><PixelAssetIcon src={drawWithAnchorIcon} className="pixel-utility-asset-icon" /></button><SelectionPivotControls drawingAnchor disabled={!session.drawFromCanvasCenter} target={{ x: 0, y: 0, width: session.document.width, height: session.document.height }} angle={0} pivot={drawingAnchorPoint(session)} visible={session.drawingAnchorVisible} onPivotChange={workspace.setDrawingAnchor} onVisibleChange={workspace.setDrawingAnchorVisible} /></div>}
     {session.tool === 'shape' && (session.shapeKind === 'rectangle' || session.shapeKind === 'rectangle-outline') && <div className="corner-radius-control"><CheckboxField className="tool-checkbox" checked={session.shapeRounded} label={t('toolOptions.roundedCorners')} onChange={workspace.setShapeRounded} />{session.shapeRounded && <NumberInput aria-label={t('toolOptions.cornerRadius')} density="compact" min={0} max={256} suffix="px" value={session.shapeCornerRadius} onValueChange={workspace.setShapeCornerRadius} />}</div>}
     {session.tool === 'shape' && (session.shapeKind === 'rectangle' || session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse' || session.shapeKind === 'ellipse-outline') && <div className="shape-ratio-control"><CheckboxField className="tool-checkbox" checked={session.shapeRatio !== null} label={t('toolOptions.fixedRatio')} onChange={(checked) => workspace.setShapeRatio(checked ? { width: 1, height: 1 } : null)} />{session.shapeRatio !== null && <div className="shape-ratio-inputs"><NumberInput aria-label={t('toolOptions.shapeWidthRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.width} onValueChange={(width) => workspace.setShapeRatio({ ...session.shapeRatio!, width })} /><span>:</span><NumberInput aria-label={t('toolOptions.shapeHeightRatio')} density="compact" min={0.1} max={100} step={0.1} value={session.shapeRatio.height} onValueChange={(height) => workspace.setShapeRatio({ ...session.shapeRatio!, height })} /><button type="button" className="icon-button shape-ratio-swap" title={t('toolOptions.swapRatio')} aria-label={t('toolOptions.swapRatio')} onClick={() => workspace.setShapeRatio({ width: session.shapeRatio!.height, height: session.shapeRatio!.width })}><PixelUtilityIcon kind="swap" /></button></div>}</div>}
     {session.tool === 'line' && session.lineKind === 'curve' && <FormField className="curve-anchor-count-control" layout="inline" label={t('toolOptions.curveAnchorCount')} tooltip={t('toolOptions.curveAnchorCountHint')}><NumberInput aria-label={t('toolOptions.curveAnchorCount')} density="compact" min={1} max={8} value={session.curveAnchorCount} onValueChange={workspace.setCurveAnchorCount} /></FormField>}

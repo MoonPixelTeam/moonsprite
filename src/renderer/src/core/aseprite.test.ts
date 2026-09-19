@@ -1,5 +1,6 @@
 import { zlibSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
+import { decodeProject, encodeProject } from './project-format'
 import { decodeAseprite, encodeAseprite } from './aseprite'
 import { compositeDocument, createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 import { activateAnimationFrame, duplicateAnimationFrame, ensureAnimationDocument, syncActiveAnimationFrame } from './animation'
@@ -98,7 +99,97 @@ const asepriteFrames = (frames: Uint8Array[][], colorDepth = 32, headerFlags = 0
 
 const aseprite = (chunks: Uint8Array[], colorDepth = 32, headerFlags = 0): Uint8Array => asepriteFrames([chunks], colorDepth, headerFlags)
 
+const tilemapFixture = (tile: number, embedded = true): Uint8Array => {
+  const name = putString('Tiles')
+  const layer = new Uint8Array(16 + name.length + 4)
+  const lv = new DataView(layer.buffer)
+  lv.setUint16(0, 3, true); lv.setUint16(2, 2, true); layer[12] = 255
+  layer.set(name, 16)
+  const pixels = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255])
+  const compressed = zlibSync(pixels)
+  const tileset = new Uint8Array(34 + (embedded ? 4 + compressed.length : 0))
+  const tv = new DataView(tileset.buffer)
+  tv.setUint32(4, embedded ? 2 : 0, true); tv.setUint32(8, 1, true)
+  tv.setUint16(12, 2, true); tv.setUint16(14, 2, true)
+  if (embedded) { tv.setUint32(34, compressed.length, true); tileset.set(compressed, 38) }
+  const ids = new Uint8Array(4)
+  new DataView(ids.buffer).setUint32(0, tile, true)
+  const compressedIds = zlibSync(ids)
+  const cel = new Uint8Array(52 + compressedIds.length)
+  const cv = new DataView(cel.buffer)
+  cel[6] = 255; cv.setUint16(7, 3, true)
+  cv.setUint16(16, 1, true); cv.setUint16(18, 1, true); cv.setUint16(20, 32, true)
+  ;[0x1fffffff, 0x80000000, 0x40000000, 0x20000000].forEach((mask, index) => cv.setUint32(22 + index * 4, mask, true))
+  cel.set(compressedIds, 52)
+  return asepriteFrames([[chunk(0x2004, layer), chunk(0x2023, tileset), chunk(0x2005, cel)]], 32, 1, 2, 2)
+}
+
 describe('Aseprite import', () => {
+  it.each([
+    [0, [255, 0, 0, 255]],
+    [0x80000000, [0, 255, 0, 255]],
+    [0x40000000, [0, 0, 255, 255]],
+    [0xe0000000, [255, 255, 255, 255]]
+  ])('rasterizes embedded tilemaps and flip flags %s', (flags, firstPixel) => {
+    const imported = decodeAseprite(tilemapFixture(flags))
+    expect(imported.layers).toHaveLength(1)
+    expect([...compositeDocument(imported).subarray(0, 4)]).toEqual(firstPixel)
+    expect(compositeDocument(decodeAseprite(encodeAseprite(imported)))).toEqual(compositeDocument(imported))
+  })
+  it('keeps legacy empty tiles transparent and rejects unavailable external tilesets', () => {
+    expect(compositeDocument(decodeAseprite(tilemapFixture(0xffffffff))).every((value) => value === 0)).toBe(true)
+    expect(() => decodeAseprite(tilemapFixture(0, false))).toThrow('内嵌瓦片集')
+    expect(() => decodeAseprite(tilemapFixture(7))).toThrow()
+  })
+  it.each(['ping-pong', 'ping-pong-reverse'] as const)('round-trips %s tag direction', (direction) => {
+    const source = createDocument('tags', 2, 1, 'rgba')
+    duplicateAnimationFrame(source)
+    const timeline = ensureAnimationDocument(source)
+    timeline.loopSections = [{ id: 'tag', name: '往返', startFrameId: timeline.frames[0].id, endFrameId: timeline.frames[1].id, direction, repeatCount: 2 }]
+    const imported = decodeAseprite(encodeAseprite(source))
+    expect(imported.animation!.loopSections![0].direction).toBe(direction)
+    expect(decodeProject(encodeProject(imported)).animation!.loopSections![0].direction).toBe(direction)
+  })
+
+  it('round-trips named loop ranges, direction and repeat counts', () => {
+    const source = createDocument('tags', 2, 1, 'rgba')
+    duplicateAnimationFrame(source)
+    const timeline = ensureAnimationDocument(source)
+    timeline.loopSections = [{ id: 'tag', name: '挑衅', startFrameId: timeline.frames[0].id, endFrameId: timeline.frames[1].id, direction: 'reverse', repeatCount: 3 }]
+    const restored = decodeAseprite(encodeAseprite(source))
+    expect(restored.animation?.loopSections).toEqual([{ id: expect.any(String), name: '挑衅', startFrameId: restored.animation!.frames[0].id, endFrameId: restored.animation!.frames[1].id, direction: 'reverse', repeatCount: 3 }])
+  })
+
+  it('retains cel opacity as editable metadata and round-trips linked cels', () => {
+    const source = decodeAseprite(asepriteFrames([
+      [layerChunk(), celChunk(new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]), false, 0, 0, 0, 128)],
+      [linkedCelChunk(0, 0, 0, 0, 128)]
+    ]))
+    expect(readLayerColor(source, getActiveLayer(source), 0).a).toBe(255)
+    expect(source.animation!.cels[0].opacity).toBeCloseTo(128 / 255)
+    const restored = decodeAseprite(encodeAseprite(source))
+    expect(restored.animation!.cels[1].linkedCelId).toBe(restored.animation!.cels[0].id)
+    expect([...compositeDocument(restored).subarray(0, 4)]).toEqual([255, 0, 0, 128])
+  })
+
+  it('preserves cel z-index', () => {
+    const cel = celChunk(new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]))
+    new DataView(cel.buffer).setInt16(6 + 9, -2, true)
+    const source = decodeAseprite(aseprite([layerChunk(), cel]))
+    expect(decodeAseprite(encodeAseprite(source)).animation!.cels[0].zIndex).toBe(-2)
+  })
+
+  it('bakes unsupported clipping into ordinary pixels without changing source layers', () => {
+    const source = createDocument('clipped', 2, 1, 'rgba')
+    const layer = getActiveLayer(source)
+    writeLayerColor(source, layer, 0, { r: 255, g: 32, b: 16, a: 255 })
+    layer.clippingMask = true
+    const expected = compositeDocument(source)
+    const restored = decodeAseprite(encodeAseprite(source))
+    expect(compositeDocument(restored)).toEqual(expected)
+    expect(layer.clippingMask).toBe(true)
+  })
+
   it('exports a project that can be opened again as an Aseprite file', () => {
     const source = createDocument('exported', 3, 2, 'rgba')
     const layer = getActiveLayer(source)

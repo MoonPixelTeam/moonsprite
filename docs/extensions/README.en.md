@@ -72,3 +72,12 @@ MoonSprite validates and extracts into a staging directory before atomically rep
 - [Extension Runtime v1](runtime-api.en.md): permissions, calls, events, settings pages, and the window bridge.
 - [Lua Scripts and the MSE API](../scripting/README.en.md): Lua commands, transactions, and scripting capabilities.
 - [Extension Package Format ADR](../adr/0020-extension-package-format.en.md): installation, security, and architecture decisions.
+
+## Developer reference map
+
+1. [Quickstart](quickstart.en.md): packageable three-file example, readiness and troubleshooting.
+2. [Manifest reference](manifest.en.md): every root/contribution/settings field and default.
+3. [Runtime API](runtime-api.en.md): permissions, results, events and window presentations.
+4. [Host forms](ui-form.en.md): complete node catalog and action/file protocol.
+5. [API coverage index](api-index.en.md): Runtime, bridges, MSE methods and source-based coverage checking.
+6. [Lua compatibility](../scripting/compatibility-api.en.md): implemented app/userdata subset and no-op limits.

@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CanvasAnchor, SelectionRect } from '@shared/types-selection'
 import selectionPivotPresetsSprite from '@/assets/pixel-icons/selection-pivot-presets.png'
+import { PixelAnchorPresetIcon } from '@/components/PixelAnchorPresetIcon'
 import { CheckboxField } from '@/components/CheckboxField'
 import { useI18n } from '@/components/I18nProvider'
 import type { TranslationKey } from '@/core/localization'
@@ -25,6 +26,8 @@ export const selectionPivotControlTarget = (target: SelectionRect | null): Selec
 } : null
 
 interface SelectionPivotControlsProps {
+  drawingAnchor?: boolean
+  disabled?: boolean
   target: SelectionPivotTarget | null
   angle: number
   shear?: SelectionShearTransform
@@ -36,47 +39,44 @@ interface SelectionPivotControlsProps {
 
 interface PivotPresetItem {
   id: CanvasAnchor
-  column: number
-  row: number
   labelKey: TranslationKey
 }
 
 const PIVOT_PRESETS: PivotPresetItem[] = [
-  { id: 'nw', column: 0, row: 0, labelKey: 'canvasResize.anchor.nw' },
-  { id: 'n', column: 1, row: 0, labelKey: 'canvasResize.anchor.n' },
-  { id: 'ne', column: 2, row: 0, labelKey: 'canvasResize.anchor.ne' },
-  { id: 'w', column: 0, row: 1, labelKey: 'canvasResize.anchor.w' },
-  { id: 'center', column: 1, row: 1, labelKey: 'canvasResize.anchor.center' },
-  { id: 'e', column: 2, row: 1, labelKey: 'canvasResize.anchor.e' },
-  { id: 'sw', column: 0, row: 2, labelKey: 'canvasResize.anchor.sw' },
-  { id: 's', column: 1, row: 2, labelKey: 'canvasResize.anchor.s' },
-  { id: 'se', column: 2, row: 2, labelKey: 'canvasResize.anchor.se' }
+  { id: 'nw', labelKey: 'canvasResize.anchor.nw' },
+  { id: 'n', labelKey: 'canvasResize.anchor.n' },
+  { id: 'ne', labelKey: 'canvasResize.anchor.ne' },
+  { id: 'w', labelKey: 'canvasResize.anchor.w' },
+  { id: 'center', labelKey: 'canvasResize.anchor.center' },
+  { id: 'e', labelKey: 'canvasResize.anchor.e' },
+  { id: 'sw', labelKey: 'canvasResize.anchor.sw' },
+  { id: 's', labelKey: 'canvasResize.anchor.s' },
+  { id: 'se', labelKey: 'canvasResize.anchor.se' }
 ]
 
 const pivotPointsEqual = (left: SelectionPivot, right: SelectionPivot): boolean =>
   Math.abs(left.x - right.x) < 1e-6 && Math.abs(left.y - right.y) < 1e-6
 
-function SelectionPivotPresetIcon({ column, row }: Pick<PivotPresetItem, 'column' | 'row'>) {
-  const sourceX = 1 + column * 11
-  const sourceY = 1 + row * 11
-  return <span
-    className="selection-pivot-preset-icon"
-    style={{
-      WebkitMaskImage: `url("${selectionPivotPresetsSprite}")`,
-      maskImage: `url("${selectionPivotPresetsSprite}")`,
-      WebkitMaskPosition: `${-sourceX * 2}px ${-sourceY * 2}px`,
-      maskPosition: `${-sourceX * 2}px ${-sourceY * 2}px`
-    } as CSSProperties}
-    aria-hidden="true"
-  />
+/** Keep the original sprite artwork for selection transform pivots. */
+function SelectionPivotPresetIcon({ anchor }: { anchor: CanvasAnchor }) {
+  const index = PIVOT_PRESETS.findIndex(preset => preset.id === anchor)
+  const sourceX = 1 + (index % 3) * 11
+  const sourceY = 1 + Math.floor(index / 3) * 11
+  return <span className="selection-pivot-preset-icon" style={{
+    WebkitMaskImage: `url("${selectionPivotPresetsSprite}")`,
+    maskImage: `url("${selectionPivotPresetsSprite}")`,
+    WebkitMaskPosition: `${-sourceX * 2}px ${-sourceY * 2}px`,
+    maskPosition: `${-sourceX * 2}px ${-sourceY * 2}px`
+  } as CSSProperties} aria-hidden="true" />
 }
 
-export function SelectionPivotControls({ target, angle, shear, pivot, visible, onPivotChange, onVisibleChange }: SelectionPivotControlsProps) {
+export function SelectionPivotControls({ target, angle, shear, pivot, visible, onPivotChange, onVisibleChange, drawingAnchor = false, disabled = false }: SelectionPivotControlsProps) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 8, top: 8 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (disabled) setOpen(false) }, [disabled])
   const activePreset = useMemo(() => {
     if (!target) return null
     const current = pivot ?? transformedSelectionPivotPreset(target, 'center', angle, shear)
@@ -120,18 +120,18 @@ export function SelectionPivotControls({ target, angle, shear, pivot, visible, o
   }, [open])
 
   const choosePreset = (preset: CanvasAnchor): void => {
-    if (!target) return
+    if (disabled || !target) return
     onPivotChange(transformedSelectionPivotPreset(target, preset, angle, shear))
   }
 
-  const popover = open ? createPortal(<div
+  const popover = open && !disabled ? createPortal(<div
     ref={popoverRef}
     className="selection-pivot-popover"
     role="dialog"
     aria-label={t('toolOptions.selectionPivotPresets')}
     style={position}
   >
-    <CheckboxField className="selection-pivot-visibility" checked={visible} label={t('toolOptions.showSelectionPivot')} onChange={onVisibleChange} />
+    <CheckboxField className="selection-pivot-visibility" checked={visible} label={t(drawingAnchor ? 'toolOptions.showDrawingAnchor' : 'toolOptions.showSelectionPivot')} onChange={onVisibleChange} />
     <div className="selection-pivot-grid" role="group" aria-label={t('toolOptions.selectionPivotPresets')}>
       {PIVOT_PRESETS.map((preset) => {
         const label = t(preset.labelKey)
@@ -144,7 +144,7 @@ export function SelectionPivotControls({ target, angle, shear, pivot, visible, o
           aria-pressed={activePreset === preset.id}
           disabled={!target}
           onClick={() => choosePreset(preset.id)}
-        ><SelectionPivotPresetIcon column={preset.column} row={preset.row} /></button>
+        >{drawingAnchor ? <PixelAnchorPresetIcon anchor={preset.id} /> : <SelectionPivotPresetIcon anchor={preset.id} />}</button>
       })}
     </div>
   </div>, document.body) : null
@@ -153,12 +153,13 @@ export function SelectionPivotControls({ target, angle, shear, pivot, visible, o
     <button
       ref={triggerRef}
       type="button"
-      className={`icon-button selection-pivot-trigger ${open ? 'active' : ''}`}
-      title={t('toolOptions.adjustSelectionPivot')}
-      aria-label={t('toolOptions.adjustSelectionPivot')}
-      aria-expanded={open}
+      className={`icon-button selection-pivot-trigger ${open && !disabled ? 'active' : ''}`}
+      title={t(drawingAnchor ? 'toolOptions.adjustDrawingAnchor' : 'toolOptions.adjustSelectionPivot')}
+      aria-label={t(drawingAnchor ? 'toolOptions.adjustDrawingAnchor' : 'toolOptions.adjustSelectionPivot')}
+      aria-expanded={open && !disabled}
+      disabled={disabled}
       onClick={() => setOpen((current) => !current)}
-    ><SelectionPivotPresetIcon column={1} row={1} /></button>
+    >{drawingAnchor ? <PixelAnchorPresetIcon anchor="center" /> : <SelectionPivotPresetIcon anchor="center" />}</button>
     {popover}
   </div>
 }

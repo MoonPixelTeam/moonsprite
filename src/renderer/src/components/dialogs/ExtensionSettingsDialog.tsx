@@ -147,7 +147,7 @@ export function ExtensionSettingsDialog({ extension, onClose }: { extension: Sto
       {extension.settingsUi
         ? <HostExtensionSettings extension={extension} settings={extension.settingsUi} onClose={onClose} />
         : <div className="modal-body extension-settings-modal-body">
-            {error ? <p className="preference-search-empty">{error}</p> : document ? <iframe ref={frame} title={extension.name} sandbox="allow-scripts" srcDoc={document} /> : <p className="preference-search-empty">正在读取扩展设置……</p>}
+            {error ? <p className="preference-search-empty">{error}</p> : document ? <iframe ref={frame} title={extension.name} sandbox="allow-scripts" srcDoc={document} /> : <p className="preference-search-empty">{t('extension.settingsLoading')}</p>}
           </div>}
     </ModalShell>
   </div>

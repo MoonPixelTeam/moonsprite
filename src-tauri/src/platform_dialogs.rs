@@ -12,85 +12,55 @@ const MOONSPRITE: &[&str] = &["moonsprite"];
 const PNG: &[&str] = &["png"];
 const JPEG: &[&str] = &["jpg", "jpeg"];
 const WEBP: &[&str] = &["webp"];
+const ICO: &[&str] = &["ico"];
 const ASE: &[&str] = &["ase"];
 const ASEPRITE: &[&str] = &["aseprite"];
 const ASE_EXPORT: &[&str] = &["ase", "aseprite"];
 const SVG: &[&str] = &["svg"];
 const GIF: &[&str] = &["gif"];
+const BMP: &[&str] = &["bmp"];
 const PSD: &[&str] = &["psd"];
 const MP4: &[&str] = &["mp4"];
 const WEBM: &[&str] = &["webm"];
 const JSON: &[&str] = &["json"];
 
-fn is_english(language: Option<&str>) -> bool {
-    language == Some("en-US")
-}
+#[path = "platform_dialogs_localization.rs"]
+mod localization;
+use localization::dialog_label;
 
 pub fn project_save_filter(format: Option<&str>, language: Option<&str>) -> DialogFilter {
-    match (format, is_english(language)) {
-        (Some("png"), true) => ("PNG image", PNG),
-        (Some("jpeg"), true) => ("JPEG image", JPEG),
-        (Some("webp"), true) => ("WebP image", WEBP),
-        (Some("psd"), true) => ("Photoshop project", PSD),
-        (Some("ase"), true) => ("Aseprite project (.ase)", ASE),
-        (Some("aseprite"), true) => ("Aseprite project (.aseprite)", ASEPRITE),
-        (_, true) => ("MoonSprite project", MOONSPRITE),
-        (Some("png"), false) => ("PNG 图片", PNG),
-        (Some("jpeg"), false) => ("JPEG 图片", JPEG),
-        (Some("webp"), false) => ("WebP 图片", WEBP),
-        (Some("psd"), false) => ("Photoshop 工程", PSD),
-        (Some("ase"), false) => ("Aseprite 工程 (.ase)", ASE),
-        (Some("aseprite"), false) => ("Aseprite 工程 (.aseprite)", ASEPRITE),
-        _ => ("MoonSprite 工程", MOONSPRITE),
-    }
+    let (key, extensions) = match format {
+        Some("png") => ("PNG image", PNG),
+        Some("jpeg") => ("JPEG image", JPEG),
+        Some("webp") => ("WebP image", WEBP),
+        Some("svg") => ("SVG image", SVG),
+        Some("ico") => ("ICO icon", ICO),
+        Some("gif") => ("GIF animation", GIF),
+        Some("bmp") => ("BMP image", BMP),
+        Some("psd") => ("Photoshop project", PSD),
+        Some("ase") => ("Aseprite project (.ase)", ASE),
+        Some("aseprite") => ("Aseprite project (.aseprite)", ASEPRITE),
+        _ => ("MoonSprite project", MOONSPRITE),
+    };
+    (dialog_label(language, key), extensions)
 }
 
 pub fn image_export_filter(format: &str, language: Option<&str>) -> DialogFilter {
-    if format == "mp4" {
-        return (
-            if is_english(language) {
-                "MP4 video"
-            } else {
-                "MP4 视频"
-            },
-            MP4,
-        );
-    }
-    if format == "webm" {
-        return (
-            if is_english(language) {
-                "WebM video"
-            } else {
-                "WebM 视频"
-            },
-            WEBM,
-        );
-    }
-    if format == "gif" {
-        return (
-            if is_english(language) {
-                "GIF animation"
-            } else {
-                "GIF 动画"
-            },
-            GIF,
-        );
-    }
-    match (format, is_english(language)) {
-        ("jpeg", true) => ("JPEG image", JPEG),
-        ("webp", true) => ("WebP image", WEBP),
-        ("svg", true) => ("SVG image", SVG),
-        ("psd", true) => ("Photoshop project", PSD),
-        ("gif", true) => ("GIF animation", GIF),
-        ("aseprite", true) => ("Aseprite project", ASE_EXPORT),
-        (_, true) => ("PNG image", PNG),
-        ("jpeg", false) => ("JPEG 图片", JPEG),
-        ("webp", false) => ("WebP 图片", WEBP),
-        ("svg", false) => ("SVG 图片", SVG),
-        ("psd", false) => ("Photoshop 工程", PSD),
-        ("aseprite", false) => ("Aseprite 工程", ASE_EXPORT),
-        _ => ("PNG 图片", PNG),
-    }
+    let (key, extensions) = match format {
+        "png" => ("PNG image", PNG),
+        "jpeg" => ("JPEG image", JPEG),
+        "webp" => ("WebP image", WEBP),
+        "svg" => ("SVG image", SVG),
+        "ico" => ("ICO icon", ICO),
+        "gif" => ("GIF animation", GIF),
+        "bmp" => ("BMP image", BMP),
+        "psd" => ("Photoshop project", PSD),
+        "aseprite" => ("Aseprite project", ASE_EXPORT),
+        "mp4" => ("MP4 video", MP4),
+        "webm" => ("WebM video", WEBM),
+        _ => ("PNG image", PNG),
+    };
+    (dialog_label(language, key), extensions)
 }
 
 #[derive(Debug, Serialize)]
@@ -145,15 +115,10 @@ fn file_dialog(default_path: Option<&str>, parent: &Window) -> FileDialog {
 
 #[tauri::command]
 pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialogResult {
-    let english = is_english(language.as_deref());
     let paths = FileDialog::new()
         .set_parent(&window)
         .add_filter(
-            if english {
-                "All supported files"
-            } else {
-                "所有支持的文件"
-            },
+            dialog_label(language.as_deref(), "All supported files"),
             &[
                 "moonsprite",
                 "ase",
@@ -167,18 +132,20 @@ pub(crate) fn open_files(window: Window, language: Option<String>) -> OpenDialog
                 "gif",
             ],
         )
-        .add_filter("Aseprite files", &["ase", "aseprite"])
-        .add_filter("Photoshop files", &["psd"])
         .add_filter(
-            if english {
-                "MoonSprite project"
-            } else {
-                "MoonSprite 工程"
-            },
+            dialog_label(language.as_deref(), "Aseprite files"),
+            &["ase", "aseprite"],
+        )
+        .add_filter(
+            dialog_label(language.as_deref(), "Photoshop files"),
+            &["psd"],
+        )
+        .add_filter(
+            dialog_label(language.as_deref(), "MoonSprite project"),
             &["moonsprite"],
         )
         .add_filter(
-            if english { "Images" } else { "图片" },
+            dialog_label(language.as_deref(), "Images"),
             &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
         )
         .pick_files();
@@ -198,11 +165,7 @@ pub(crate) fn open_brush_images(window: Window, language: Option<String>) -> Ope
     let paths = FileDialog::new()
         .set_parent(&window)
         .add_filter(
-            if is_english(language.as_deref()) {
-                "Brush images"
-            } else {
-                "笔刷图片"
-            },
+            dialog_label(language.as_deref(), "Brush images"),
             &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
         )
         .pick_files();
@@ -276,11 +239,7 @@ pub(crate) fn save_palette_image(
     }
     let path = dialog
         .add_filter(
-            if is_english(language.as_deref()) {
-                "PNG palette image"
-            } else {
-                "PNG 色板图像"
-            },
+            dialog_label(language.as_deref(), "PNG palette image"),
             &["png"],
         )
         .save_file();
@@ -330,11 +289,7 @@ pub(crate) fn save_shortcut_file(
 ) -> SaveDialogResult {
     let path = file_dialog(default_path.as_deref(), &window)
         .add_filter(
-            if is_english(language.as_deref()) {
-                "MoonSprite shortcut settings"
-            } else {
-                "MoonSprite 快捷键设置"
-            },
+            dialog_label(language.as_deref(), "MoonSprite shortcut settings"),
             JSON,
         )
         .save_file();
@@ -351,14 +306,7 @@ pub(crate) fn save_theme_file(
     language: Option<String>,
 ) -> SaveDialogResult {
     let path = file_dialog(default_path.as_deref(), &window)
-        .add_filter(
-            if is_english(language.as_deref()) {
-                "MoonSprite theme"
-            } else {
-                "MoonSprite 主题"
-            },
-            JSON,
-        )
+        .add_filter(dialog_label(language.as_deref(), "MoonSprite theme"), JSON)
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -374,11 +322,7 @@ pub(crate) fn save_usage_statistics_file(
 ) -> SaveDialogResult {
     let path = file_dialog(default_path.as_deref(), &window)
         .add_filter(
-            if is_english(language.as_deref()) {
-                "MoonSprite usage statistics"
-            } else {
-                "MoonSprite 使用统计"
-            },
+            dialog_label(language.as_deref(), "MoonSprite usage statistics"),
             JSON,
         )
         .save_file();
@@ -393,6 +337,7 @@ pub(crate) fn save_usage_statistics_file(
 pub(crate) fn save_extension_data_file(
     window: Window,
     file_name: String,
+    language: Option<String>,
 ) -> Result<SaveDialogResult, String> {
     if file_name.is_empty()
         || file_name.len() > 240
@@ -400,7 +345,7 @@ pub(crate) fn save_extension_data_file(
             .chars()
             .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
     {
-        return Err("导出文件名无效。".into());
+        return Err(dialog_label(language.as_deref(), "Invalid export file name.").into());
     }
     let extension = file_name
         .rsplit('.')
@@ -410,9 +355,14 @@ pub(crate) fn save_extension_data_file(
                 && value.len() <= 16
                 && value.chars().all(|c| c.is_ascii_alphanumeric())
         })
-        .ok_or_else(|| "导出文件扩展名无效。".to_string())?;
+        .ok_or_else(|| {
+            dialog_label(language.as_deref(), "Invalid export file extension.").to_string()
+        })?;
     let path = file_dialog(Some(&file_name), &window)
-        .add_filter("Extension data", &[extension])
+        .add_filter(
+            dialog_label(language.as_deref(), "Extension data"),
+            &[extension],
+        )
         .save_file();
     Ok(SaveDialogResult {
         canceled: path.is_none(),
@@ -449,12 +399,22 @@ mod tests {
             project_save_filter(Some("psd"), None),
             ("Photoshop 工程", &["psd"][..])
         );
+        assert_eq!(
+            project_save_filter(Some("ico"), None),
+            ("ICO 图标", &["ico"][..])
+        );
+        assert_eq!(
+            project_save_filter(Some("svg"), None),
+            ("SVG 图片", &["svg"][..])
+        );
     }
 
     #[test]
     fn image_export_filter_supports_project_and_image_exports() {
         assert_eq!(image_export_filter("svg", None), ("SVG 图片", &["svg"][..]));
         assert_eq!(image_export_filter("gif", None), ("GIF 动画", &["gif"][..]));
+        assert_eq!(image_export_filter("ico", None), ("ICO 图标", &["ico"][..]));
+        assert_eq!(image_export_filter("bmp", None), ("BMP 图片", &["bmp"][..]));
         assert_eq!(
             image_export_filter("psd", None),
             ("Photoshop 工程", &["psd"][..])
@@ -486,6 +446,40 @@ mod tests {
         assert_eq!(
             image_export_filter("psd", Some("en-US")),
             ("Photoshop project", &["psd"][..])
+        );
+        assert_eq!(
+            image_export_filter("ico", Some("en-US")),
+            ("ICO icon", &["ico"][..])
+        );
+    }
+    #[test]
+    fn translated_filters_preserve_extensions_and_fallbacks() {
+        for locale in [
+            "zh-CN", "en-US", "ja-JP", "ko-KR", "es-ES", "fr-FR", "de-DE", "pt-BR", "ru-RU",
+        ] {
+            for format in [
+                "png", "jpeg", "webp", "svg", "ico", "gif", "bmp", "psd", "ase", "aseprite",
+                "unknown",
+            ] {
+                assert_eq!(
+                    project_save_filter(Some(format), Some(locale)).1,
+                    project_save_filter(Some(format), None).1
+                );
+                assert_eq!(
+                    image_export_filter(format, Some(locale)).1,
+                    image_export_filter(format, None).1
+                );
+            }
+            for format in ["mp4", "webm"] {
+                assert_eq!(
+                    image_export_filter(format, Some(locale)).1,
+                    image_export_filter(format, None).1
+                );
+            }
+        }
+        assert_eq!(
+            project_save_filter(None, Some("invalid")),
+            project_save_filter(None, None)
         );
     }
 }

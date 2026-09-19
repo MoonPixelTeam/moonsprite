@@ -15,7 +15,7 @@ import { useLayerRowDrag } from './useLayerRowDrag'
 import { LayerSettingsEditor } from './LayerSettingsEditor'
 import { layerQuickActionMetadata } from './layer-panel-settings'
 import { layerBlendOptions } from './layer-blend-options'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import type { DockDragProps } from '@/components/workspace-panel-types'
@@ -127,6 +127,8 @@ export function LayersPanel({
 
   const layerAnimationToolbarRef = useRef<HTMLDivElement>(null)
   const animationLoopSectionTrackRef = useRef<HTMLDivElement>(null)
+  const layerQuickActionsRef = useRef<HTMLSpanElement>(null)
+  const [hiddenTimelineQuickActionCount, setHiddenTimelineQuickActionCount] = useState(0)
   const [altCopyReady, setAltCopyReady] = useState(false)
   const altCopyReadyRef = useRef(false)
   const selectedAnimationGroupCellKeySet = new Set(selectedAnimationGroupCellKeys)
@@ -226,10 +228,6 @@ export function LayersPanel({
     showActiveFrameColumn,
     selectedFrameRanges,
     selectedCelPositions,
-    selectedCelRow,
-    selectedCelColumn,
-    selectedCelRowSpan,
-    selectedCelColumnSpan,
     animationCelDragPreview,
     animationCelDragActive,
     shouldShowAnimationCellSelectionOutline,
@@ -238,6 +236,8 @@ export function LayersPanel({
     linkedCelBlocks,
     linkedCelConnectors,
     linkedCelMemberKeys,
+    selectedLinkedCelMemberKeys,
+    animationCelSelectionBoxes,
     frameSelectionActiveForOutline,
     selectedAnimationOutlineRows,
     activeAnimationLayerRow,
@@ -589,7 +589,7 @@ export function LayersPanel({
           name: section.name,
           start: startIndex + 1,
           end: endIndex + 1,
-          direction: t(section.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
+          direction: t(section.direction === 'ping-pong' ? 'timeline.loopSectionPingPong' : section.direction === 'ping-pong-reverse' ? 'timeline.loopSectionPingPongReverse' : section.direction === 'reverse' ? 'timeline.loopSectionReverse' : 'timeline.loopSectionForward'),
           repeats: section.repeatCount ?? t('timeline.loopSectionInfiniteShort')
         })}
         onClick={(event) => {
@@ -729,9 +729,25 @@ export function LayersPanel({
   })
   const hideSideDockActions = sideDocked && layerSettings.sideDockAutoHide
   const visibleLayerQuickActions = layerSettings.quickActions.filter((action) => action.enabled).slice(0, LAYER_QUICK_ACTION_LIMIT)
+  const syncTimelineQuickActionVisibility = useCallback((): void => {
+    const track = animationLoopSectionTrackRef.current
+    const actions = layerQuickActionsRef.current
+    const viewport = track?.parentElement
+    if (!track || !actions || !viewport || visibleLoopSectionLaneCount === 0 || hideSideDockActions || layerSettings.timelineHidden) {
+      setHiddenTimelineQuickActionCount((current) => current === 0 ? current : 0)
+      return
+    }
+    const trackRect = track.getBoundingClientRect()
+    const viewportRect = viewport.getBoundingClientRect()
+    if (trackRect.width <= 0 || viewportRect.width <= 0) return
+    const next = Array.from(actions.querySelectorAll<HTMLButtonElement>('[data-timeline-quick-action]'))
+      .filter((button) => trackRect.width >= button.getBoundingClientRect().left - viewportRect.left)
+      .length
+    setHiddenTimelineQuickActionCount((current) => current === next ? current : next)
+  }, [hideSideDockActions, layerSettings.timelineHidden, visibleLoopSectionLaneCount, visibleLayerQuickActions.length, timeline.frames.length])
   const layerQuickActionButtons =
     !hideSideDockActions &&
-    visibleLayerQuickActions.map((action) => {
+    visibleLayerQuickActions.map((action, index) => {
       const metadata = layerQuickActionMetadata[action.id]
       const label = t(metadata.label)
       return (
@@ -739,15 +755,29 @@ export function LayersPanel({
           type="button"
           className="layer-structure-edit-button"
           data-preserve-animation-selection
+          data-timeline-quick-action
           key={action.id}
           title={label}
           aria-label={label}
+          style={index < hiddenTimelineQuickActionCount ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
           onClick={() => runLayerQuickAction(action.id)}
         >
           <PixelUtilityIcon kind={metadata.icon} />
         </button>
       )
     })
+  useLayoutEffect(() => {
+    syncTimelineQuickActionVisibility()
+    const track = animationLoopSectionTrackRef.current
+    const actions = layerQuickActionsRef.current
+    const viewport = track?.parentElement
+    if (!track || !actions || !viewport || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(syncTimelineQuickActionVisibility)
+    observer.observe(track)
+    observer.observe(actions)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [syncTimelineQuickActionVisibility])
   const renderAnimationMaskRow = createLayerMaskRowRenderer({
     timelineVisualState,
     activeMaskOwnerKey,
@@ -888,13 +918,21 @@ export function LayersPanel({
                 </span>
               </div>
               <span
+                ref={layerQuickActionsRef}
                 className="panel-actions layer-quick-actions"
                 role="toolbar"
                 aria-label={t('layers.quickActions')}
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {!layerSettings.timelineHidden && layerQuickActionButtons}
-                <button type="button" title={t('layers.settings')} aria-label={t('layers.settings')} onClick={openLayerSettings}>
+                <button
+                  type="button"
+                  data-timeline-quick-action
+                  title={t('layers.settings')}
+                  aria-label={t('layers.settings')}
+                  style={visibleLayerQuickActions.length < hiddenTimelineQuickActionCount ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+                  onClick={openLayerSettings}
+                >
                   <PixelUtilityIcon kind="properties" />
                 </button>
               </span>
@@ -1034,26 +1072,22 @@ export function LayersPanel({
                   />
                 ))}
               {animationFrameGridDecorations}
-              {shouldShowAnimationCellSelectionOutline && selectedCelPositions.length > 0 && (
+              {shouldShowAnimationCellSelectionOutline && selectedCelPositions.length > 0 && animationCelSelectionBoxes.map(box => (
                 <span
+                  key={`${box.row}:${box.column}`}
                   data-animation-cel-selection
                   className={`animation-cel-selection-box ${animationCelDragPreview ? 'animation-cel-drag-preview' : ''}`}
-                  style={
-                    {
-                      '--animation-frame-index': animationCelDragPreview?.column ?? selectedCelColumn,
-                      '--animation-frame-span': animationCelDragPreview?.columnSpan ?? selectedCelColumnSpan,
-                      '--animation-row-index': animationCelDragPreview?.row ?? selectedCelRow,
-                      '--animation-row-span': animationCelDragPreview?.rowSpan ?? selectedCelRowSpan,
-                      '--animation-row-top': displayRowTop(animationCelDragPreview?.row ?? selectedCelRow),
-                      '--animation-row-height': displayRowSpanHeight(
-                        animationCelDragPreview?.row ?? selectedCelRow,
-                        animationCelDragPreview?.rowSpan ?? selectedCelRowSpan
-                      )
-                    } as CSSProperties
-                  }
+                  style={{
+                    '--animation-frame-index': box.column,
+                    '--animation-frame-span': box.columnSpan,
+                    '--animation-row-index': box.row,
+                    '--animation-row-span': box.rowSpan,
+                    '--animation-row-top': displayRowTop(box.row),
+                    '--animation-row-height': displayRowSpanHeight(box.row, box.rowSpan)
+                  } as CSSProperties}
                   aria-hidden="true"
                 />
-              )}
+              ))}
               {animationFrameHeaders}
               <LayerTimelineCells
                 displayRows={displayRows}
@@ -1069,6 +1103,7 @@ export function LayersPanel({
                 visualCellStateBySlot={visualCellStateBySlot}
                 showLinkedCelVisuals={showLinkedCelVisuals}
                 linkedCelMemberKeys={linkedCelMemberKeys}
+                selectedLinkedCelMemberKeys={selectedLinkedCelMemberKeys}
                 linkedCelBridgeEndKeys={linkedCelBridgeEndKeys}
                 linkedMaskSlotVisuals={linkedMaskSlotVisuals}
                 session={session}

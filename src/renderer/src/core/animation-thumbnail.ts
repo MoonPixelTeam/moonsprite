@@ -113,11 +113,12 @@ export const renderAnimationCelThumbnailPixels = (
   thumbnailSize: number,
   surface: AnimationCelSurface,
   palette: readonly PaletteEntry[] = [],
-  opacity = 1
+  opacity = 1,
+  transparentBackground = false
 ): Uint8ClampedArray => {
   const size = Math.max(1, Math.trunc(thumbnailSize))
   const output = new Uint8ClampedArray(size * size * 4)
-  fillThumbnailBackground(output, size)
+  if (!transparentBackground) fillThumbnailBackground(output, size)
 
   const width = Math.trunc(surface.width)
   const height = Math.trunc(surface.height)
@@ -163,7 +164,12 @@ export const renderAnimationCelThumbnailPixels = (
       }
     }
     const targetIndex = (y * size + x) * 4
-    blendThumbnailPixel(output, targetIndex, r, g, b, alpha * celOpacity)
+    if (transparentBackground) {
+      output[targetIndex] = r
+      output[targetIndex + 1] = g
+      output[targetIndex + 2] = b
+      output[targetIndex + 3] = Math.round(alpha * celOpacity * 255)
+    } else blendThumbnailPixel(output, targetIndex, r, g, b, alpha * celOpacity)
   }
   return output
 }

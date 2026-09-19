@@ -5,7 +5,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import { cacheRasterContentBounds, cachedRasterContentBounds, isLayerMask, markLayerContentChanged, normalizeLayerPackedValue, readLayerColor } from './document-model'
 import { beginPixelEdit, recordPixel, type PixelEdit } from './history'
 import { translateCurrent as tr } from './localization'
-import { packColor } from './raster'
+import { packColor, rgbToHsv } from './raster'
 import { selectionContains } from './selection'
 
 export type AdjustmentKind = 'color-balance' | 'brightness-contrast' | 'hue-saturation' | 'curves'
@@ -28,6 +28,8 @@ export interface ColorAdjustment {
   contrast?: number
   hue?: number
   saturation?: number
+  /** Use absolute hue/saturation while retaining each pixel's lightness. */
+  colorize?: boolean
   lightness?: number
   /** Curve's midpoint, 0-255. 128 is the identity. */
   curveMidpoint?: number
@@ -51,6 +53,7 @@ const identityCurvePoints = (points: CurvePoint[] | undefined): boolean => !poin
   || (points.length === 2 && points[0].x === 0 && points[0].y === 0 && points[1].x === 255 && points[1].y === 255)
 
 export const isColorAdjustmentIdentity = (adjustment: ColorAdjustment): boolean => {
+  if (adjustment.kind === 'hue-saturation' && adjustment.colorize) return false
   if (adjustment.kind === 'brightness-contrast') return (adjustment.brightness ?? 0) === 0 && (adjustment.contrast ?? 0) === 0
   if (adjustment.kind === 'hue-saturation') return (adjustment.hue ?? 0) === 0 && (adjustment.saturation ?? 0) === 0 && (adjustment.lightness ?? 0) === 0
   if (adjustment.kind === 'curves') return (adjustment.curveMidpoint ?? 128) === 128
@@ -73,6 +76,10 @@ export const isColorAdjustmentIdentity = (adjustment: ColorAdjustment): boolean 
 }
 
 const clamp = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))
+
+export const createColorizeAdjustment = (foreground: RgbaColor): ColorAdjustment => ({
+  kind: 'hue-saturation', colorize: true, hue: rgbToHsv(foreground).h, saturation: 25, lightness: 0
+})
 
 const identityCurve: CurvePoint[] = [{ x: 0, y: 0 }, { x: 255, y: 255 }]
 
@@ -240,8 +247,8 @@ const hueSaturationPackedRgb = (red: number, green: number, blue: number, adjust
   const hue = delta === 0 ? 0 : ((max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4) * 60 + 360) % 360
   const lightnessDelta = (adjustment.lightness ?? 0) / 100
   const lightness = lightnessDelta >= 0 ? l + (1 - l) * lightnessDelta : l * (1 + lightnessDelta)
-  const h = (((hue + (adjustment.hue ?? 0)) % 360) + 360) % 360 / 360
-  const s = Math.max(0, Math.min(1, saturation * (1 + (adjustment.saturation ?? 0) / 100)))
+  const h = ((((adjustment.colorize ? 0 : hue) + (adjustment.hue ?? 0)) % 360) + 360) % 360 / 360
+  const s = Math.max(0, Math.min(1, adjustment.colorize ? (adjustment.saturation ?? 25) / 100 : saturation * (1 + (adjustment.saturation ?? 0) / 100)))
   const nextLightness = Math.max(0, Math.min(1, lightness))
   if (s === 0) {
     const value = clamp(nextLightness * 255)

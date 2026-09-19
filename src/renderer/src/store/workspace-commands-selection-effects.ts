@@ -1,3 +1,4 @@
+import { publishEditorEvent } from '@/core/extension-editor-events'
 import type { OutlineSettings } from '@shared/types-selection'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { antiAliasSelection, outlineSelection, outlineSelectionBoundary } from '@/core/tools-outline'
@@ -126,7 +127,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
           const label = active.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground')
           const entry = commitSelectedEffectInSession(recordDocumentOperation, active, label, (target) =>
             fillSelectionOrCanvas(active.document, target.layer, active.primaryColor, active.selection))
-          if (entry) result = 'done'
+          if (entry) { result = 'done'; publishEditorEvent('fill.completed', active.document.id) }
         }, false)
         if (result === 'empty') set({ message: tr('workspace.fill.empty') })
         else if (result === 'locked') set({ message: tr('workspace.fill.locked') })
@@ -155,7 +156,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         return
       }
       const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-      get().commitPixelEdit(edit, session.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground'))
+      if (get().commitPixelEdit(edit, session.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground'))) publishEditorEvent('fill.completed', session.document.id)
       operationProbe?.recordOperationStage?.('selection-fill.commit-total', performance.now() - commitStartedAt)
     },
     outlineActiveSelection(settings) {

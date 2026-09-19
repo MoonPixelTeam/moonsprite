@@ -4,7 +4,7 @@ import type { SpriteSheetExportOptions, SpriteSheetExportSelection, SpriteSheetB
 import type { GifDirection } from './gif'
 import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
 
-export type DocumentExportWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'psd'
+export type DocumentExportWorkerFormat = 'png-auto' | 'png-rgba' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite'
 export type DocumentExportWorkerJob = 'document' | 'selection' | 'slices' | 'frames' | 'layers' | 'timelapse' | 'sprite-sheet'
 
 export interface DocumentExportWorkerRequest {
@@ -13,6 +13,8 @@ export interface DocumentExportWorkerRequest {
   job: DocumentExportWorkerJob
   format: DocumentExportWorkerFormat
   scalePercent: number
+  trim?: boolean
+  trimMode?: 'individual' | 'common'
   selection?: SelectionMask | null
   slices?: DocumentSlice[]
   layerIds?: string[]
@@ -29,7 +31,7 @@ export interface DocumentExportWorkerRequest {
 export interface DocumentExportWorkerResult {
   index: number
   bytes: Uint8Array
-  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'psd'
+  extension: 'png' | 'jpg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd' | 'ase' | 'aseprite'
   indexed: boolean
 }
 

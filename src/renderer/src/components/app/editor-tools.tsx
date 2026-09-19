@@ -25,6 +25,8 @@ import selectionEllipseIcon from '@/assets/tool-icons/selection-ellipse.svg'
 import selectionLassoIcon from '@/assets/tool-icons/selection-lasso.svg'
 import selectionPolygonLassoIcon from '@/assets/tool-icons/selection-polygon-lasso.svg'
 import selectionMagicIcon from '@/assets/tool-icons/selection-magic.svg'
+import selectionBrushIcon from '@/assets/tool-icons/selection-brush.svg'
+import selectionBrushNormalIcon from '@/assets/tool-icons/selection-brush-normal.svg'
 import selectionReplaceIcon from '@/assets/tool-icons/selection-replace.svg'
 import selectionAddIcon from '@/assets/tool-icons/selection-add.svg'
 import selectionSubtractIcon from '@/assets/tool-icons/selection-subtract.svg'
@@ -83,6 +85,7 @@ const NORMAL_EDITOR_TOOL_ICON_BY_SOURCE = new Map<string, string>([
   [selectionLassoIcon, selectionLassoNormalIcon],
   [selectionPolygonLassoIcon, selectionPolygonLassoNormalIcon],
   [selectionMagicIcon, selectionMagicNormalIcon],
+  [selectionBrushIcon, selectionBrushNormalIcon],
   [toolMoveIcon, toolMoveNormalIcon],
   [toolSliceIcon, toolSliceNormalIcon],
   [shapeRectangleIcon, shapeRectangleNormalIcon],
@@ -116,6 +119,7 @@ export const SELECTION_KIND_ICONS = {
   ellipse: selectionEllipseIcon,
   lasso: selectionLassoIcon,
   'polygon-lasso': selectionPolygonLassoIcon,
+  brush: selectionBrushIcon,
   magic: selectionMagicIcon
 } as const
 
@@ -129,7 +133,7 @@ const SELECTION_KIND_BASE: Array<{
   id: SelectionKind
   shortcutId: ShortcutId
 }> = [
-  { id: 'rectangle', shortcutId: 'tool.selection' }, { id: 'ellipse', shortcutId: 'tool.selection.ellipse' }, { id: 'lasso', shortcutId: 'lasso' }, { id: 'polygon-lasso', shortcutId: 'polygonLasso' }, { id: 'magic', shortcutId: 'magic' }
+  { id: 'rectangle', shortcutId: 'tool.selection' }, { id: 'ellipse', shortcutId: 'tool.selection.ellipse' }, { id: 'lasso', shortcutId: 'lasso' }, { id: 'polygon-lasso', shortcutId: 'polygonLasso' }, { id: 'magic', shortcutId: 'magic' }, { id: 'brush', shortcutId: 'tool.selection' }
 ]
 export const selectionKindDefinitions = (locale: AppLocale) => SELECTION_KIND_BASE.map((item) => ({ ...item, ...selectionToolCopyByLocale[locale][item.id] }))
 export const SELECTION_KIND_DEFINITIONS = selectionKindDefinitions(DEFAULT_APP_LOCALE)

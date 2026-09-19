@@ -4,6 +4,7 @@ import {
   ACTIVE_WORKSPACE_STORAGE_KEY,
   BOTTOM_DOCK_HEIGHT_STORAGE_KEY,
   COLOR_SQUARE_DOCK_STORAGE_KEY,
+  LEFT_DOCK_WIDTH_STORAGE_KEY,
   DEFAULT_PANEL_DOCKS,
   DEFAULT_PANEL_VISIBILITY,
   FLOATING_PANEL_STORAGE_KEYS,
@@ -12,7 +13,9 @@ import {
   PANEL_VISIBILITY_STORAGE_KEY,
   POPUP_PANEL_STORAGE_KEYS,
   TOOL_RAIL_SIDE_STORAGE_KEY,
-  WORKSPACE_LAYOUT_STORAGE_KEYS
+  WORKSPACE_LAYOUT_STORAGE_KEYS,
+  constrainLeftDockWidth,
+  loadLeftDockWidth
 } from './workspace-layout-preferences'
 import { DEFAULT_INSPECTOR_ORDER } from './panel-layout'
 
@@ -29,6 +32,16 @@ const memoryStorage = (): Storage => {
 }
 
 describe('workspace layout storage boundary', () => {
+  it('allows the left dock to use the full available width without arbitrary limits', () => {
+    const storage = memoryStorage()
+    storage.setItem(LEFT_DOCK_WIDTH_STORAGE_KEY, '960')
+
+    expect(loadLeftDockWidth(storage)).toBe(960)
+    expect(constrainLeftDockWidth(4, 1200)).toBe(4)
+    expect(constrainLeftDockWidth(960, 1200)).toBe(960)
+    expect(constrainLeftDockWidth(1400, 1200)).toBe(1200)
+  })
+
   it('preserves every workspace layout value while unrelated preferences are cleared', () => {
     const storage = memoryStorage()
     for (const key of WORKSPACE_LAYOUT_STORAGE_KEYS) storage.setItem(key, `layout:${key}`)

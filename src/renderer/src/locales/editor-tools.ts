@@ -75,6 +75,7 @@ const zhSelections: Record<SelectionKind, ToolCopy> = {
   ellipse: { label: '椭圆框选工具', description: '拖动建立椭圆选区；按住 Shift 可创建圆形选区。' },
   lasso: { label: '套索工具', description: '按住并沿目标边缘自由拖动，松开后闭合选区。' },
   'polygon-lasso': { label: '多边形套索工具', description: '逐点单击建立边界，双击、点击起点或按 Enter 完成。' },
+  brush: { label: '选区笔刷', description: '像笔刷一样拖动涂抹，松开后将笔触范围转为选区；支持新建、加选、减选和交集模式。' },
   magic: { label: '魔棒工具', description: '单击选择颜色相近的连续区域，可在属性栏调整容差。' }
 }
 
@@ -83,6 +84,7 @@ const enSelections: Record<SelectionKind, ToolCopy> = {
   ellipse: { label: 'Elliptical Selection Tool', description: 'Drag to create an elliptical selection. Hold Shift to create a circle.' },
   lasso: { label: 'Lasso Tool', description: 'Drag freely around the target edge, then release to close the selection.' },
   'polygon-lasso': { label: 'Polygonal Lasso Tool', description: 'Click to add boundary points. Double-click, click the start point, or press Enter to finish.' },
+  brush: { label: 'Selection Brush', description: 'Brush over pixels to create a selection when released. Supports replace, add, subtract, and intersect modes.' },
   magic: { label: 'Magic Wand Tool', description: 'Click to select a contiguous area of similar colors. Adjust tolerance in the options bar.' }
 }
 
@@ -160,13 +162,13 @@ export const lineToolCopyByLocale: Record<AppLocale, Record<LineKind, ToolCopy>>
 export const selectionToolCopyByLocale: Record<AppLocale, Record<SelectionKind, ToolCopy>> = {
   'zh-CN': zhSelections,
   'en-US': enSelections,
-  'ja-JP': localizedCopies(enSelections, { rectangle: '長方形選択', ellipse: '楕円選択', lasso: 'なげなわ', 'polygon-lasso': '多角形なげなわ', magic: '自動選択' }, 'ja-JP'),
-  'ko-KR': localizedCopies(enSelections, { rectangle: '사각형 선택', ellipse: '타원 선택', lasso: '올가미', 'polygon-lasso': '다각형 올가미', magic: '자동 선택' }, 'ko-KR'),
-  'es-ES': localizedCopies(enSelections, { rectangle: 'Selección rectangular', ellipse: 'Selección elíptica', lasso: 'Lazo', 'polygon-lasso': 'Lazo poligonal', magic: 'Varita mágica' }, 'es-ES'),
-  'fr-FR': localizedCopies(enSelections, { rectangle: 'Sélection rectangulaire', ellipse: 'Sélection elliptique', lasso: 'Lasso', 'polygon-lasso': 'Lasso polygonal', magic: 'Baguette magique' }, 'fr-FR'),
-  'de-DE': localizedCopies(enSelections, { rectangle: 'Rechteckauswahl', ellipse: 'Ellipsenauswahl', lasso: 'Lasso', 'polygon-lasso': 'Polygon-Lasso', magic: 'Zauberstab' }, 'de-DE'),
-  'pt-BR': localizedCopies(enSelections, { rectangle: 'Seleção retangular', ellipse: 'Seleção elíptica', lasso: 'Laço', 'polygon-lasso': 'Laço poligonal', magic: 'Varinha mágica' }, 'pt-BR'),
-  'ru-RU': localizedCopies(enSelections, { rectangle: 'Прямоугольное выделение', ellipse: 'Эллиптическое выделение', lasso: 'Лассо', 'polygon-lasso': 'Многоугольное лассо', magic: 'Волшебная палочка' }, 'ru-RU')
+  'ja-JP': localizedCopies(enSelections, { rectangle: '長方形選択', ellipse: '楕円選択', lasso: 'なげなわ', 'polygon-lasso': '多角形なげなわ', brush: '選択ブラシ', magic: '自動選択' }, 'ja-JP'),
+  'ko-KR': localizedCopies(enSelections, { rectangle: '사각형 선택', ellipse: '타원 선택', lasso: '올가미', 'polygon-lasso': '다각형 올가미', brush: '선택 브러시', magic: '자동 선택' }, 'ko-KR'),
+  'es-ES': localizedCopies(enSelections, { rectangle: 'Selección rectangular', ellipse: 'Selección elíptica', lasso: 'Lazo', 'polygon-lasso': 'Lazo poligonal', brush: 'Pincel de selección', magic: 'Varita mágica' }, 'es-ES'),
+  'fr-FR': localizedCopies(enSelections, { rectangle: 'Sélection rectangulaire', ellipse: 'Sélection elliptique', lasso: 'Lasso', 'polygon-lasso': 'Lasso polygonal', brush: 'Pinceau de sélection', magic: 'Baguette magique' }, 'fr-FR'),
+  'de-DE': localizedCopies(enSelections, { rectangle: 'Rechteckauswahl', ellipse: 'Ellipsenauswahl', lasso: 'Lasso', 'polygon-lasso': 'Polygon-Lasso', brush: 'Auswahlpinsel', magic: 'Zauberstab' }, 'de-DE'),
+  'pt-BR': localizedCopies(enSelections, { rectangle: 'Seleção retangular', ellipse: 'Seleção elíptica', lasso: 'Laço', 'polygon-lasso': 'Laço poligonal', brush: 'Pincel de seleção', magic: 'Varinha mágica' }, 'pt-BR'),
+  'ru-RU': localizedCopies(enSelections, { rectangle: 'Прямоугольное выделение', ellipse: 'Эллиптическое выделение', lasso: 'Лассо', 'polygon-lasso': 'Многоугольное лассо', brush: 'Кисть выделения', magic: 'Волшебная палочка' }, 'ru-RU')
 }
 export const shapeToolCopyByLocale: Record<AppLocale, Record<ShapeKind, ToolCopy>> = {
   'zh-CN': zhShapes,

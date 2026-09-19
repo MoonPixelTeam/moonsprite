@@ -1,3 +1,4 @@
+import { publishEditorEvent } from '@/core/extension-editor-events'
 import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -149,7 +150,7 @@ export function createFillCanvasInput(ports: Ports) {
       )
       if (edit) {
         const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-        state.commitPixelEdit(
+        const committed = state.commitPixelEdit(
           edit,
           activeBrushImage || activeBrushTexture !== 'solid'
             ? t('canvas.history.brushFill')
@@ -157,6 +158,7 @@ export function createFillCanvasInput(ports: Ports) {
               ? t('canvas.history.contiguousFill')
               : t('canvas.history.nonContiguousFill')
         )
+        if (committed) publishEditorEvent('fill.completed', session.document.id)
         operationProbe?.recordOperationStage?.('bucket.commit-total', performance.now() - commitStartedAt, {
           points: edit.before.size,
           runs: edit.runs?.length ?? 0

@@ -98,3 +98,29 @@ it('saves an export only for the matching user action and does not replay it',as
   expect(view.getByRole('status').textContent).toContain('disk full');expect((view.getByRole('button',{name:'导出宠物包'}) as HTMLButtonElement).disabled).toBe(false);
  }finally{window.removeEventListener('moonsprite:dialog-message',listener)}
 });
+
+it('renders a generic condition dialog with component-library select and submits selected values', async () => {
+ const messages:any[]=[];const listener=(event:Event)=>messages.push((event as CustomEvent).detail.message)
+ window.addEventListener('moonsprite:dialog-message',listener)
+ try {
+  const view=render(<ExtensionDialogForm extensionId="test" windowId="manager" resourceId="ui" onClose={()=>{}} />)
+  await act(async()=>mock.receive({nodes:[{id:'prompt',type:'dialog',label:'选择条件',action:{type:'cancel'},children:[{id:'event',type:'select',label:'触发条件',tooltip:'条件说明',value:'undo',options:[{value:'undo',label:'撤销',description:'完成撤销后播放'},{value:'redo',label:'重做',description:'完成重做后播放'}]},{id:'submit',type:'button',label:'确定',action:{type:'confirm'}}]}]}))
+  const prompt=view.getByRole('dialog',{name:'选择条件'})
+  expect(prompt.closest('[data-extension-prompt]')?.parentElement).toBe(document.body)
+  expect(view.container.contains(prompt)).toBe(false)
+  fireEvent.click(view.getByRole('button',{name:'确定'}))
+  expect(messages[0].type).toBe('confirm')
+ } finally { window.removeEventListener('moonsprite:dialog-message',listener) }
+})
+
+it('hides irrelevant dependent fields and preserves zero numeric defaults', async()=>{
+ const view=render(<ExtensionDialogForm extensionId="test" windowId="manager" resourceId="ui" onClose={()=>{}} />)
+ const nodes=(event:string)=>[{id:'event',type:'select',label:'条件',value:event,options:[{value:'idle',label:'空闲'},{value:'tool',label:'工具'}]},{id:'idle',type:'number',label:'空闲秒数',value:60,visibleWhen:{event:'idle'}},{id:'tool',type:'text',label:'目标工具',visibleWhen:{event:'tool'}},{id:'cooldown',type:'number',label:'冷却',min:0,value:0}]
+ await act(async()=>mock.receive({nodes:nodes('idle')}))
+ expect(view.queryByText('目标工具')).toBeNull()
+ expect(view.getByLabelText('空闲秒数')).toBeTruthy()
+ expect((view.getByLabelText('冷却') as HTMLInputElement).value).toBe('0')
+ await act(async()=>mock.receive({nodes:nodes('tool')}))
+ expect(view.queryByLabelText('空闲秒数')).toBeNull()
+ expect(view.getByText('目标工具')).toBeTruthy()
+})

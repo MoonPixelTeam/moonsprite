@@ -1,4 +1,4 @@
-import { CanvasAdaptiveOutline } from './canvas-adaptive-outline'
+import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
 import { compositeRegion } from '@/core/document-composite'
@@ -19,6 +19,8 @@ export function renderCanvasBrush({
   currentActiveLayer,
   currentSession,
   brushPreviewMode,
+  brushEdgeColor,
+  brushEdgeThickness = 1,
   canRenderToolPreview,
   inputRef,
   activeDrag,
@@ -52,6 +54,8 @@ export function renderCanvasBrush({
   currentActiveLayer: import('@shared/types-layer').RasterLayer
   currentSession: DocumentSession
   brushPreviewMode: import('@/core/file-preferences').BrushPreviewMode
+  brushEdgeColor?: RgbaColor
+  brushEdgeThickness: number
   canRenderToolPreview: boolean
   inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
   activeDrag: DragState | null
@@ -154,7 +158,7 @@ export function renderCanvasBrush({
     inputRef.current.pointer.visible &&
     !inputRef.current.sampling &&
     (!drag || (drag.kind === 'draw' && drawingBrushPreviewEnabled)) &&
-    (currentSession.tool === 'pencil' || currentSession.tool === 'eraser') &&
+    (currentSession.tool === 'pencil' || currentSession.tool === 'eraser' || currentSession.tool === 'line') &&
     !brushPreviewOverlaySupported(currentSession) &&
     // Hit testing can flush browser rendering work. Only pay for it when an
     // idle brush preview needs it; navigation and active strokes do not.
@@ -275,7 +279,8 @@ export function renderCanvasBrush({
           if (neighbor.left > row.left) horizontalSegment(row.left, Math.min(row.right, neighbor.left - 1), row.y, bottom)
           if (neighbor.right < row.right) horizontalSegment(Math.max(row.left, neighbor.right + 1), row.right, row.y, bottom)
         }
-        context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+        context.lineWidth = brushEdgeThickness
+        alignCanvasStrokePath(context)
         context.beginPath()
         for (let rowIndex = 0; rowIndex < clippedRows.length; rowIndex += 1) {
           const row = clippedRows[rowIndex]
@@ -292,7 +297,7 @@ export function renderCanvasBrush({
           exposedHorizontal(row, previous, false)
           exposedHorizontal(row, next, true)
         }
-        outline.stroke(context)
+        outline.stroke(context, undefined, brushEdgeColor)
       }
     } else {
       const mask = brushMaskOffsets(
@@ -350,7 +355,8 @@ export function renderCanvasBrush({
         sampleY: number
         color: RgbaColor
       }> = []
-      context.lineWidth = Math.max(1, Math.min(2, view.zoom / 4))
+      context.lineWidth = brushEdgeThickness
+      alignCanvasStrokePath(context)
       context.beginPath()
       const cacheableSolidHover =
         !drawing &&
@@ -481,7 +487,7 @@ export function renderCanvasBrush({
         }
       }
       fillPreviewPixelRects(previewFillRects)
-      if (drawPreviewOutline) outline.stroke(context)
+      if (drawPreviewOutline) outline.stroke(context, undefined, brushEdgeColor)
     }
     context.restore()
   }

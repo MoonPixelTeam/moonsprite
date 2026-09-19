@@ -357,6 +357,16 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       }, false)
     },
 
+    setDrawingAnchor(point) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return
+      get().mutateActive((session) => {
+        session.drawingAnchor = { x: Math.round(point.x * 2) / 2 / session.document.width, y: Math.round(point.y * 2) / 2 / session.document.height }
+        persistToolSettings(session)
+      }, false)
+    },
+    setDrawingAnchorVisible(visible) { get().mutateActive((session) => { session.drawingAnchorVisible = visible; persistToolSettings(session) }, false) },
+    setDrawFromCanvasCenter(enabled) { get().mutateActive((session) => { session.drawFromCanvasCenter = enabled; persistToolSettings(session) }, false) },
+
     setShapeRounded(enabled) { get().mutateActive((session) => { session.shapeRounded = enabled; persistToolSettings(session) }, false) },
 
     setShapeCornerRadius(radius) { get().mutateActive((session) => { session.shapeCornerRadius = Math.max(0, Math.min(256, Math.round(radius) || 0)); persistToolSettings(session) }, false) },

@@ -21,7 +21,7 @@ beforeEach(() => {
   useWorkspace.setState({ sessions: [], activeId: null, message: null, saveProgress: null })
   useWorkspace.getState().addSession(createDocument('sound export', 2, 2, 'rgba'))
 })
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear() })
 
 const spriteSheetOptions: SpriteSheetExportOptions = {
   layout: 'horizontal', constraint: 'none', fixedColumns: 1, fixedWidth: 2, fixedRows: 1, fixedHeight: 2,
@@ -44,5 +44,24 @@ describe.each(['document', 'timelapse', 'sprite-sheet'] as const)('%s export com
     else resolve(outcome === 'success' ? 'export complete' : null)
     await expect(pending).resolves.toBe(outcome === 'success')
     expect(mocks.play).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0)
+  })
+})
+
+
+describe.each([true, false])('sprite sheet auto-open (worker=%s)', worker => {
+  it.each([true, false])('opens the actual exported path only when enabled (%s)', async enabled => {
+    if (!worker) vi.stubGlobal('Worker', undefined)
+    mocks.exportFile.mockResolvedValue('D:/exports/sheet-renamed.png')
+    const open = vi.spyOn(useWorkspace.getState(), 'openPath').mockResolvedValue(true)
+    await expect(useWorkspace.getState().exportSpriteSheet({ ...spriteSheetOptions, openAfterExport: enabled })).resolves.toBe(true)
+    if (enabled) expect(open).toHaveBeenCalledWith('D:/exports/sheet-renamed.png')
+    else expect(open).not.toHaveBeenCalled()
+  })
+  it('does not open a canceled export', async () => {
+    if (!worker) vi.stubGlobal('Worker', undefined)
+    mocks.exportFile.mockResolvedValue(null)
+    const open = vi.spyOn(useWorkspace.getState(), 'openPath').mockResolvedValue(true)
+    await expect(useWorkspace.getState().exportSpriteSheet({ ...spriteSheetOptions, openAfterExport: true })).resolves.toBe(false)
+    expect(open).not.toHaveBeenCalled()
   })
 })

@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDocument, readLayerColorAt, writeLayerColor } from '@/core/document'
 import { beginPixelEdit } from '@/core/history'
 import { applyLiquifyPushPath, applyLiquifyHoldStep, createLiquifyPushStroke } from '@/core/liquify'
+import { createStrokeCanvasInput } from './canvas-input-stroke'
+import { sessionFromDocument } from '@/store/workspace-session'
+import type { CanvasDragState } from '@/core/canvas-input'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useWorkspace } from '@/store/workspace'
 import { accumulateLiquifyHoldStrength, applyAccumulatedLiquifyPush, createLiquifyHoldClock, LIQUIFY_HOLD_STEP_MS } from './canvas-liquify-interaction'
 
@@ -171,4 +175,22 @@ describe('CanvasStage liquify interactions', () => {
     expect(useWorkspace.getState().sessions[0]!.history.position).toBe(0)
     expect(driver.pendingFrames).toBe(0)
   })
+})
+
+
+it.each(['inflate', 'deflate'] as const)('applies %s immediately along pointer movement and invalidates the canvas', mode => {
+  const { document, layer } = createFixture()
+  const original = layer.pixels.slice()
+  const session = sessionFromDocument(document)
+  Object.assign(session, { tool: 'liquify', liquifyMode: mode, liquifyRadius: 4, liquifyStrength: 100 })
+  const invalidate = vi.fn()
+  const input = createStrokeCanvasInput({
+    localContinuousPointAt: (x: number, y: number) => ({ x, y }),
+    invalidateCompositeRect: invalidate, scheduleDraw: vi.fn()
+  } as unknown as Parameters<typeof createStrokeCanvasInput>[0])
+  const drag: CanvasDragState = { kind: 'liquify', start: { x: 1, y: 4 }, last: { x: 1, y: 4 }, edit: beginPixelEdit(layer.id), liquifyMode: mode }
+  expect(input.moveLiquify({ drag, session, event: { clientX: 7, clientY: 4 } as ReactPointerEvent<HTMLCanvasElement> })).toBe(true)
+  expect(drag.last).toEqual({ x: 7, y: 4 })
+  expect(layer.pixels).not.toEqual(original)
+  expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ width: expect.any(Number) }), [layer.id])
 })

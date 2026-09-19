@@ -27,9 +27,12 @@ import {
   parseEyedropperMagnifierSize,
   parseIsoViewPreferences,
   parseKeyDisplayDuration,
+  parseKeyDisplaySize,
   parseMoveLayerClickFlashDuration,
   parseOutlineSettingsPreference,
   parseBodyFontScale,
+  parseBrushEdgeThickness,
+  parseCursorColorMode,
   parseUiScale,
   parseViewDragSensitivity,
   saveEditorPreferences,
@@ -114,16 +117,32 @@ describe('editor preferences boundary', () => {
       localHistoryLimit: 50,
       historyLimit: 1000,
       historyLimitEnabled: false,
+      cursorColorMode: 'auto',
+      cursorColor: { r: 255, g: 255, b: 255, a: 255 },
+      brushEdgeThickness: 1,
       isoView: DEFAULT_ISO_VIEW_PREFERENCES
     })
-    expect(parseUiScale('1.25')).toBe(1)
+    expect(parseUiScale('1.25')).toBe(1.25)
     expect(parseBodyFontScale('1.3')).toBe(1.3)
     expect(parseBodyFontScale('1.5')).toBe(1)
     expect(parseViewDragSensitivity('1.25')).toBe(1)
     expect(parseEyedropperMagnifierSize('2')).toBe(1)
     expect(parseMoveLayerClickFlashDuration('240')).toBe(120)
+    expect(parseKeyDisplaySize(null)).toBe(1.3)
+    expect(parseKeyDisplaySize('invalid')).toBe(1.3)
+    expect(parseKeyDisplaySize('2.5')).toBe(2.5)
+    expect(parseKeyDisplaySize('1.3')).toBe(1.3)
+    expect(parseKeyDisplaySize('0.75')).toBe(0.75)
+    expect(parseKeyDisplaySize('1')).toBe(1.3)
+    expect(parseKeyDisplaySize('1.4')).toBe(1.9)
+    expect(parseKeyDisplaySize('1.9')).toBe(1.9)
     expect(parseKeyDisplayDuration('2000')).toBe(2000)
     expect(parseKeyDisplayDuration('9999')).toBe(1400)
+    expect(parseCursorColorMode('custom')).toBe('custom')
+    expect(parseCursorColorMode('invalid')).toBe('auto')
+    expect(parseBrushEdgeThickness('4')).toBe(4)
+    expect(parseBrushEdgeThickness('99')).toBe(8)
+    expect(parseBrushEdgeThickness('0')).toBe(1)
   })
 
   it('persists the last-used outline settings as a software preference', () => {
@@ -194,7 +213,10 @@ describe('editor preferences boundary', () => {
       animationPlaybackMode: 'tag',
       animationReturnToStart: true,
       skipDisabledFrames: false,
-      isoView: { ...DEFAULT_EDITOR_PREFERENCES.isoView, snapToGrid: true }
+      isoView: { ...DEFAULT_EDITOR_PREFERENCES.isoView, snapToGrid: true },
+      cursorColorMode: 'custom',
+      cursorColor: { r: 12, g: 34, b: 56, a: 200 },
+      brushEdgeThickness: 4
     }, storage)
 
     const loaded = loadEditorPreferences(storage)
@@ -217,6 +239,9 @@ describe('editor preferences boundary', () => {
     expect(loaded.localHistoryLimit).toBe(200)
     expect(loaded.historyLimit).toBe(1234)
     expect(loaded.historyLimitEnabled).toBe(true)
+    expect(loaded.cursorColorMode).toBe('custom')
+    expect(loaded.cursorColor).toEqual({ r: 12, g: 34, b: 56, a: 200 })
+    expect(loaded.brushEdgeThickness).toBe(4)
     expect(historyEntryLimit(loaded)).toBe(1234)
     expect(loaded.animationPlaybackRate).toBe(1.5)
     expect(loaded.animationPlaybackMode).toBe('tag')

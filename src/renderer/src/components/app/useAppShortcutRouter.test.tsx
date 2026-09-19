@@ -20,6 +20,28 @@ function options(): Parameters<typeof useAppShortcutRouter>[0] {
   }
 }
 
+it('routes paste to the focused reference panel without editing the sprite', () => {
+  const initial = options()
+  initial.shortcuts.paste = ['Ctrl+V']
+  initial.shortcuts.undo = ['Ctrl+Z']
+  const panel = document.createElement('section')
+  panel.className = 'reference-image-panel'
+  panel.tabIndex = -1
+  document.body.append(panel)
+  panel.focus()
+  const referencePaste = vi.fn()
+  panel.addEventListener('moonsprite:paste-reference', referencePaste)
+  const paste = vi.spyOn(useWorkspace.getState(), 'pasteClipboard')
+  const undo = vi.spyOn(useWorkspace.getState(), 'undo')
+  renderHook(() => useAppShortcutRouter(initial), { wrapper: I18nProvider })
+  act(() => panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true })))
+  act(() => panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true })))
+  expect(referencePaste).toHaveBeenCalledTimes(1)
+  expect(paste).not.toHaveBeenCalled()
+  expect(undo).not.toHaveBeenCalled()
+  panel.remove()
+})
+
 it('uses the latest UI command, suppresses repeats and removes listeners on unmount', () => {
   const first = vi.fn(), next = vi.fn(), initial = options()
   initial.shortcuts.newDocument = ['Ctrl+N']
@@ -33,6 +55,18 @@ it('uses the latest UI command, suppresses repeats and removes listeners on unmo
   expect(next).toHaveBeenCalledTimes(1)
   hook.unmount(); press()
   expect(next).toHaveBeenCalledTimes(1)
+})
+
+it('routes F11 to the fullscreen command', () => {
+  const fullscreen = vi.fn()
+  const initial = options()
+  initial.shortcuts.toggleFullscreen = ['F11']
+  initial.commands.toggleFullscreen = fullscreen
+  renderHook(() => useAppShortcutRouter(initial), {wrapper: I18nProvider})
+
+  act(() => window.dispatchEvent(new KeyboardEvent('keydown', {key: 'F11', code: 'F11', cancelable: true})))
+
+  expect(fullscreen).toHaveBeenCalledTimes(1)
 })
 
 it('cycles shared tool bindings using the current Store state between events', () => {

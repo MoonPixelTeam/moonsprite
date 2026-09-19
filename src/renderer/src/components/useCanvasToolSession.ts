@@ -1,15 +1,14 @@
 import { withDeviceTemporaryTool } from './canvas-device-tools'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
-import { matchingModifierShortcut, modifierShortcutHeldByBindings, shortcutBindingsFor } from '@/core/shortcuts'
+import { modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutHeldByKeyParts } from '@/core/shortcuts'
 import {
   CanvasInputState,
-  brushLineConnectionOverridesTemporaryMove,
   selectionMarqueeUsesConstraint,
   selectionTransformModifiers,
   temporaryMoveToolAllowed
 } from '@/core/canvas-input'
 import { applyQuickToolTarget, quickToolNeedsContextualCanvasHandling } from '@/core/quick-tools'
-import { currentQuickToolMatch, quickToolConflictsFor, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
+import { currentHeldShortcutKeyParts, currentQuickToolMatch, quickToolConflictsFor, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
 import { useCanvasShortcutBindings } from './useCanvasShortcutBindings'
 import { shareCanvasToolSettings } from './canvas-stage-helpers'
 interface Ports {
@@ -28,7 +27,11 @@ export function useCanvasToolSession(ports: Ports) {
 
   const shortcutConflictState = quickToolConflictsFor(shortcuts)
 
-  const quickToolMatch = useQuickToolShortcut(shortcuts)
+  const heldQuickToolMatch = useQuickToolShortcut(shortcuts)
+  const brushSizingHeld = (current: DocumentSession): boolean =>
+    ['pencil', 'line', 'airbrush', 'eraser', 'smooth', 'liquify'].includes(current.tool) &&
+    shortcutBindingsFor(shortcuts, 'brushSizeAdjust').some((binding) => shortcutHeldByKeyParts(currentHeldShortcutKeyParts(), binding))
+  const quickToolMatch = brushSizingHeld(ports.storedSession) ? null : heldQuickToolMatch
 
   const directQuickToolTarget = quickToolMatch && !quickToolNeedsContextualCanvasHandling(quickToolMatch.target) ? quickToolMatch.target : null
 
@@ -45,7 +48,7 @@ export function useCanvasToolSession(ports: Ports) {
 
   const session = applyQuickToolTarget(ports.storedSession, directQuickToolTarget)
 
-  const currentQuickTool = () => currentQuickToolMatch(shortcuts, shortcutConflictState)
+  const currentQuickTool = () => brushSizingHeld(ports.storedSession) ? null : currentQuickToolMatch(shortcuts, shortcutConflictState)
 
   const quickToolActive = (tool: DocumentSession['tool']): boolean => currentQuickTool()?.target.tool === tool
 
@@ -67,22 +70,18 @@ export function useCanvasToolSession(ports: Ports) {
     if (!current) return session
     const resolved = sessionWithActiveQuickTool(sharedCanvasSession(current))
     const temporaryTool = ports.inputRef.current.temporaryTool
-    return withDeviceTemporaryTool(resolved, temporaryTool)
+    return withDeviceTemporaryTool(resolved, temporaryTool, ports.inputRef.current.temporaryRightClickAction)
   }
 
   const modifierActive = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: keyof typeof shortcuts): boolean =>
-    modifierShortcutHeldByBindings(event, shortcuts[id] ?? [])
+    modifierShortcutHeldByBindings(event, shortcuts[id] ?? [], currentHeldShortcutKeyParts())
 
   const brushLineConnectionHasPriority = (
     event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
     targetSession: DocumentSession = session
   ): boolean =>
-    brushLineConnectionOverridesTemporaryMove(
-      targetSession.tool,
-      event,
-      matchingModifierShortcut(event, shortcutBindingsFor(shortcuts, 'lineConnectionMode')),
-      Boolean(targetSession.tool === 'eraser' ? targetSession.lastEraserPoint : targetSession.tool === 'pencil' ? targetSession.lastPencilPoint : null)
-    )
+    Boolean(targetSession.tool === 'eraser' ? targetSession.lastEraserPoint : targetSession.tool === 'pencil' ? targetSession.lastPencilPoint : null) &&
+    modifierActive(event, 'lineConnectionMode')
 
   const temporaryMoveActive = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, targetSession: DocumentSession = session): boolean =>
     targetSession.freeTransformActive !== true &&
@@ -102,7 +101,7 @@ export function useCanvasToolSession(ports: Ports) {
   const currentSelectionTransformModifierState = () =>
     selectionTransformModifierState({
       ctrlKey: ports.inputRef.current.ctrlHeld,
-      metaKey: false,
+      metaKey: currentHeldShortcutKeyParts().has('Win'),
       altKey: ports.inputRef.current.altHeld,
       shiftKey: ports.inputRef.current.shiftHeld
     })
@@ -128,7 +127,7 @@ export function useCanvasToolSession(ports: Ports) {
   const currentSelectionMarqueeModifierState = () =>
     selectionMarqueeModifierState({
       ctrlKey: ports.inputRef.current.ctrlHeld,
-      metaKey: false,
+      metaKey: currentHeldShortcutKeyParts().has('Win'),
       altKey: ports.inputRef.current.altHeld,
       shiftKey: ports.inputRef.current.shiftHeld
     })

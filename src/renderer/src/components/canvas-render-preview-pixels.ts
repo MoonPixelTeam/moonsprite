@@ -169,12 +169,9 @@ export function createCanvasPreviewPixels({
   ): void => {
     const transparency = transparencyColorAt(sampleX, sampleY, checkerboard)
     const displayColor = canvasPreviewDisplayColor(color, Boolean(view.relativeLuminance), onionColor)
-    context.fillStyle = `rgb(${transparency.r} ${transparency.g} ${transparency.b})`
+    const opaque = blendOver(transparency, displayColor)
+    context.fillStyle = `rgb(${opaque.r} ${opaque.g} ${opaque.b})`
     context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
-    if (displayColor.a > 0) {
-      context.fillStyle = `rgb(${displayColor.r} ${displayColor.g} ${displayColor.b} / ${displayColor.a / 255})`
-      context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
-    }
   }
   /**
    * Fill a brush preview as a small set of paths instead of one canvas
@@ -194,7 +191,6 @@ export function createCanvasPreviewPixels({
       }
       return
     }
-    const backgrounds = new Map<string, Path2D>()
     const foregrounds = new Map<string, Path2D>()
     const addRect = (paths: Map<string, Path2D>, key: string, pixelRect: { x: number; y: number; width: number; height: number }): void => {
       let path = paths.get(key)
@@ -206,16 +202,10 @@ export function createCanvasPreviewPixels({
     }
     for (const entry of entries) {
       const transparency = transparencyColorAt(entry.sampleX, entry.sampleY, checkerboard)
-      addRect(backgrounds, `rgb(${transparency.r} ${transparency.g} ${transparency.b})`, entry.pixelRect)
       const onionColor = preserveOnionSkin ? sampleOnionSkinForPreview(entry.sampleX, entry.sampleY) : null
       const displayColor = canvasPreviewDisplayColor(entry.color, Boolean(view.relativeLuminance), onionColor)
-      if (displayColor.a > 0) {
-        addRect(foregrounds, `rgb(${displayColor.r} ${displayColor.g} ${displayColor.b} / ${displayColor.a / 255})`, entry.pixelRect)
-      }
-    }
-    for (const [fillStyle, path] of backgrounds) {
-      context.fillStyle = fillStyle
-      context.fill(path)
+      const opaque = blendOver(transparency, displayColor)
+      addRect(foregrounds, `rgb(${opaque.r} ${opaque.g} ${opaque.b})`, entry.pixelRect)
     }
     for (const [fillStyle, path] of foregrounds) {
       context.fillStyle = fillStyle

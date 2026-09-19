@@ -5,7 +5,7 @@ import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
 
 export interface CanvasPenCursorPorts {
   readonly canvasRef: RefObject<HTMLCanvasElement | null>
-  readonly interfaceScale: 0.75 | 1 | 1.5 | 2
+  readonly interfaceScale: import('@/core/file-preferences').UiScale
   readonly stageBounds: () => DOMRect
 }
 

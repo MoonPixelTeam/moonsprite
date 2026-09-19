@@ -1,20 +1,22 @@
+import { createCanvasPivotInput } from './canvas-pivot-input'
+import { canvasCenteredDragFields, drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import type { SelectionMask, SelectionMode } from '@shared/types-selection'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
-import { cloneSelection, combineSelection, lassoSelection } from '@/core/selection'
+import { cloneSelection, combineSelection, selectionMaskFromVisitedPixels } from '@/core/selection'
+import { moveSelectionBrush } from './canvas-selection-brush-gesture'
 import { CanvasInputState } from '@/core/canvas-input-controller'
 import { appendCanvasPathStep, marqueeSelectionCommit, shouldClosePolygonLasso } from '@/core/canvas-input-path'
 import { constrainedTranslation, selectionMovePointerDelta } from '@/core/canvas-input-resize'
 import { selectionGestureMoved } from '@/core/canvas-input-preview'
-import { selectionPivotAtDragPoint } from '@/core/canvas-input-hit-test'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input-contracts'
 import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { symmetrySelection, symmetrySelectionDragDelta } from '@/core/symmetry'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
-import { tileRepeatIncludesX, tileRepeatIncludesY } from '@/core/tilemap'
+import { repeatedLassoSelection } from '@/core/repeated-selection'
 import { timelineSelectionPrecedesCanvasMarquee } from './canvas-stage-helpers'
 
 interface Ports {
@@ -65,9 +67,11 @@ interface Ports {
   draw: () => void
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   tilemapPaintSelectionForIncoming: (incoming: SelectionMask | null, current?: DocumentSession) => SelectionMask | null
+  optimizedRotationEnabled: boolean
 }
 
 export function createSelectionCanvasInput(ports: Ports) {
+  const { beginPivot, movePivot, endPivot } = createCanvasPivotInput(ports)
   function routeFreeTransform({ freeTransformActive, event }: { freeTransformActive: boolean; event: React.PointerEvent<HTMLCanvasElement> }): boolean {
     const { selectionHit, updateCursor } = ports
     if (freeTransformActive) {
@@ -76,45 +80,6 @@ export function createSelectionCanvasInput(ports: Ports) {
       const freeTransformContent = freeTransformHit === 'inside'
       if (!(event.button === 0 && (freeTransformCorner || freeTransformContent))) {
         updateCursor(event)
-        event.preventDefault()
-        return true
-      }
-    }
-    return false
-  }
-
-  function beginPivot({
-    event,
-    viewNavigationToolActive,
-    pivotSamplingHeld,
-    freeTransformActive,
-    session
-  }: {
-    event: React.PointerEvent<HTMLCanvasElement>
-    viewNavigationToolActive: boolean
-    pivotSamplingHeld: boolean
-    freeTransformActive: boolean
-    session: DocumentSession
-  }): boolean {
-    const { selectionPivotHitAt, selectionPivotForSession, localContinuousPointAt, inputRef } = ports
-    if (
-      event.button === 0 &&
-      !viewNavigationToolActive &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !pivotSamplingHeld &&
-      !freeTransformActive &&
-      selectionPivotHitAt(event.clientX, event.clientY)
-    ) {
-      const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
-      const pivot = selectionPivotForSession(currentSession)
-      const pointer = localContinuousPointAt(event.clientX, event.clientY)
-      if (pivot && pointer) {
-        inputRef.current.drag = { kind: 'move-selection-pivot', start: pointer, last: pointer, selectionPivotStart: pivot, previewPivot: { ...pivot } }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        event.currentTarget.style.cursor = canvasCursors.default
         event.preventDefault()
         return true
       }
@@ -183,23 +148,10 @@ export function createSelectionCanvasInput(ports: Ports) {
         selectionStart: cloneSelection(session.selection),
         selectionMode: mode,
         constrain: false,
-        tileRepeatPoint: repeatedStart
+        tileRepeatPoint: repeatedStart,
+        ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, repeatedStart, false, null, drawingAnchorPoint(session))
       }
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
-      return true
-    }
-    return false
-  }
-
-  function movePivot({ drag, event }: { drag: DragState; event: React.PointerEvent<HTMLCanvasElement> }): boolean {
-    const { localContinuousPointAt, scheduleDraw } = ports
-    if (drag.kind === 'move-selection-pivot' && drag.selectionPivotStart) {
-      const continuousPoint = localContinuousPointAt(event.clientX, event.clientY)
-      if (!continuousPoint) return true
-      drag.last = continuousPoint
-      drag.previewPivot = selectionPivotAtDragPoint(drag.selectionPivotStart, drag.start, continuousPoint)
-      event.currentTarget.style.cursor = canvasCursors.move
-      scheduleDraw()
       return true
     }
     return false
@@ -253,6 +205,15 @@ export function createSelectionCanvasInput(ports: Ports) {
       return true
     }
     return false
+  }
+
+  function moveBrush({ drag, session, point, event }: { drag: DragState; session: DocumentSession; point: Point; event: React.PointerEvent<HTMLCanvasElement> }): boolean {
+    const { optimizedRotationEnabled, scheduleDraw, liveViewRef, repeatedDocumentPointsAt } = ports
+    const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
+    const brushPoint = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? drag.last)
+    if (!moveSelectionBrush(drag, session, brushPoint, optimizedRotationEnabled, repeatMode)) return false
+    scheduleDraw()
+    return true
   }
 
   function movePolygonLasso({ drag }: { drag: DragState }): boolean {
@@ -309,25 +270,6 @@ export function createSelectionCanvasInput(ports: Ports) {
     return false
   }
 
-  function endPivot({
-    drag,
-    state,
-    event
-  }: {
-    drag: DragState
-    state: ReturnType<typeof useWorkspace.getState>
-    event: React.PointerEvent<HTMLCanvasElement>
-  }): boolean {
-    const { updateCursor, draw } = ports
-    if (drag.kind === 'move-selection-pivot') {
-      if (drag.previewPivot) state.setSelectionPivot(drag.previewPivot)
-      updateCursor(event)
-      draw()
-      return true
-    }
-    return false
-  }
-
   function endMarquee({
     drag,
     event,
@@ -367,23 +309,7 @@ export function createSelectionCanvasInput(ports: Ports) {
       const before = drag.selectionStart ?? null
       const path = drag.path ?? []
       const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
-      const repeatX = tileRepeatIncludesX(repeatMode)
-      const repeatY = tileRepeatIncludesY(repeatMode)
-      // Match the marquee's repeated-space behavior without ever rasterizing
-      // one unbounded lasso mask. Normalize around the starting copy, then
-      // clip the lasso independently against its finite neighboring copies.
-      const originX = drag.tileRepeatStart && repeatX ? Math.floor(drag.tileRepeatStart.x / session.document.width) * session.document.width : 0
-      const originY = drag.tileRepeatStart && repeatY ? Math.floor(drag.tileRepeatStart.y / session.document.height) * session.document.height : 0
-      const normalizedPath = (originX === 0 && originY === 0) ? path : path.map((point) => ({ x: point.x - originX, y: point.y - originY }))
-      const xOffsets = repeatX ? [-session.document.width, 0, session.document.width] : [0]
-      const yOffsets = repeatY ? [-session.document.height, 0, session.document.height] : [0]
-      let incomingSelection = null
-      for (const offsetY of yOffsets) for (const offsetX of xOffsets) {
-        const copyPath = (offsetX === 0 && offsetY === 0)
-          ? normalizedPath
-          : normalizedPath.map((point) => ({ x: point.x - offsetX, y: point.y - offsetY }))
-        incomingSelection = combineSelection(incomingSelection, lassoSelection(session.document, copyPath), 'add')
-      }
+      const incomingSelection = repeatedLassoSelection(session.document, path, repeatMode)
       const incoming = tilemapPaintSelectionForIncoming(
         symmetrySelection(
           incomingSelection,
@@ -395,6 +321,20 @@ export function createSelectionCanvasInput(ports: Ports) {
       )
       const after = combineSelection(before, incoming, mode)
       state.commitSelectionChange(before, after, t('canvas.history.lassoSelection'))
+    }
+    return false
+  }
+
+  function endBrush({ drag, session, state }: { drag: DragState; session: DocumentSession; state: ReturnType<typeof useWorkspace.getState> }): boolean {
+    const { tilemapPaintSelectionForIncoming, symmetryCenter, t } = ports
+    if (drag.kind === 'selection-brush') {
+      const incoming = tilemapPaintSelectionForIncoming(
+        symmetrySelection(selectionMaskFromVisitedPixels(drag.selectionBrushStroke?.visited ?? new Set(), session.document.width), session.document.width, session.document.height, session.symmetryAxes, symmetryCenter)
+      )
+      const before = drag.selectionStart ?? null
+      const after = combineSelection(before, incoming, drag.selectionMode ?? session.selectionMode)
+      state.commitSelectionChange(before, after, t('canvas.history.createSelection'))
+      return true
     }
     return false
   }
@@ -412,7 +352,10 @@ export function createSelectionCanvasInput(ports: Ports) {
         state.commitFloatingSelectionBoxMove(drag.selectionStart, drag.previewSelection, drag.selectionPivotStart ?? null, drag.previewPivot ?? null)
       else {
         state.commitSelectionChange(drag.selectionStart, drag.previewSelection, t('canvas.history.moveSelectionBox'))
-        if (drag.previewPivot) state.setSelectionPivot(drag.previewPivot)
+        if (drag.previewPivot) {
+        if (drag.drawingAnchorMove) state.setDrawingAnchor(drag.previewPivot)
+        else state.setSelectionPivot(drag.previewPivot)
+      }
       }
     }
     return false
@@ -426,11 +369,13 @@ export function createSelectionCanvasInput(ports: Ports) {
     moveMarquee,
     moveMagic,
     moveLasso,
+    moveBrush,
     movePolygonLasso,
     moveSelection,
     endPivot,
     endMarquee,
     endLasso,
+    endBrush,
     endMagic,
     endSelectionMove
   }

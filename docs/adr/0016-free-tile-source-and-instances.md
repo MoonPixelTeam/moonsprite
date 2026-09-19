@@ -2,6 +2,8 @@
 
 中文 | [English](0016-free-tile-source-and-instances.en.md)
 
+> 本文记录 v15 决定。源所有权已由 [ADR 0022](0022-shared-free-tile-sets.md) 扩展为共享集合；当前实例界面可使用独立栏目或图层栏目内视图，见 [工作区契约](../interactions/workspace-docking.md)。
+
 ## 状态
 
 接受

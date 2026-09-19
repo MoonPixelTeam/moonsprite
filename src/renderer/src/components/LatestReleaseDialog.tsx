@@ -6,7 +6,7 @@ import { latestRelease, type LatestReleaseDefinition } from '@/core/latest-relea
 export function LatestReleaseDialog({ onClose, release = latestRelease }: { onClose: () => void; release?: LatestReleaseDefinition }) {
   const { locale, t } = useI18n()
   const publishedAt = new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(`${release.publishedAt}T00:00:00`))
-  return <div className="modal-backdrop latest-release-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <ModalShell storageKey="latest-release" defaultWidth={720} defaultHeight={620} minWidth={480} minHeight={420} maxWidth={820} maxHeight={800} className="latest-release-modal" role="dialog" aria-modal="true" aria-labelledby="latest-release-title">
       <DialogHeader eyebrow={`MOONSPRITE ${release.version}`} title={t('latestRelease.title')} titleId="latest-release-title" closeLabel={t('common.close')} onClose={onClose} />
       <div className="latest-release-body">
