@@ -10,6 +10,7 @@ import { animationCelKey, createDefaultAnimationTimeline, ensureAnimationDocumen
 import { resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { type AnimationLoopSectionResizePreview } from './layer-timeline-layout'
+import { animationFrameTargetFromElement, animationPointerTargetElement, loopSectionFrameIndexAtPointer, timelineAutoScrollDelta, timelineFrameRange, timelineSelectionOutlineHit } from './animation-gesture-helpers'
 
 interface Options {
   session: Readonly<DocumentSession>
@@ -72,22 +73,8 @@ export function useAnimationGestures(options: Options) {
     autoScroll.frame = null
     autoScroll.event = null
   }
-  const pointerHitsSelectionOutline = (event: React.PointerEvent<HTMLElement>, selector: string): boolean => {
-    const outline = layerListRef.current?.querySelector<HTMLElement>(selector)
-    if (!outline) return false
-    const bounds = outline.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return false
-    const inset = 6
-    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
-    return inside && (event.clientX - bounds.left <= inset || bounds.right - event.clientX <= inset || event.clientY - bounds.top <= inset || bounds.bottom - event.clientY <= inset)
-  }
-  const frameRange = (anchorId: string, targetId: string): string[] => {
-    const anchorIndex = timeline.frames.findIndex((frame) => frame.id === anchorId)
-    const targetIndex = timeline.frames.findIndex((frame) => frame.id === targetId)
-    if (anchorIndex < 0 || targetIndex < 0) return [anchorId]
-    const [from, to] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex]
-    return timeline.frames.slice(from, to + 1).map((frame) => frame.id)
-  }
+  const pointerHitsSelectionOutline = (event: React.PointerEvent<HTMLElement>, selector: string): boolean => timelineSelectionOutlineHit(layerListRef, event, selector)
+  const frameRange = (anchorId: string, targetId: string): string[] => timelineFrameRange(timeline.frames, anchorId, targetId)
   useEffect(() => {
     // Group-slot visuals are transient timeline selection state; clear them
     // whenever another formal animation mode or a non-group row becomes
@@ -125,16 +112,7 @@ export function useAnimationGestures(options: Options) {
     setAnimationGestureSelection(null)
     setAnimationGestureActiveTarget(null)
   }
-  const loopSectionFrameIndexAtPointer = (clientX: number, edge: AnimationLoopSectionResizeEdge): number | null => {
-    const firstHeader = layerListRef.current?.querySelector<HTMLElement>('[data-animation-frame-id][data-frame-index="0"]')
-    if (!firstHeader) return null
-    const bounds = firstHeader.getBoundingClientRect()
-    if (bounds.width <= 0) return null
-    // The start edge sits on a frame boundary; the end edge sits one boundary after its last frame.
-    const boundaryIndex = Math.round((clientX - bounds.left) / bounds.width)
-    const rawIndex = edge === 'start' ? boundaryIndex : boundaryIndex - 1
-    return Math.max(0, Math.min(timeline.frames.length - 1, rawIndex))
-  }
+  const loopSectionFrameIndexAtPointerForTimeline = (clientX: number, edge: AnimationLoopSectionResizeEdge): number | null => loopSectionFrameIndexAtPointer(layerListRef, timeline.frames.length, clientX, edge)
   const beginAnimationLoopSectionResize = (event: React.PointerEvent<HTMLElement>, sectionId: string, edge: AnimationLoopSectionResizeEdge): void => {
     if (event.button !== 0) return
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
@@ -366,21 +344,8 @@ export function useAnimationGestures(options: Options) {
     animationPointerDragRef.current = drag
     event.preventDefault()
   }
-  const pointerTargetElement = (event: PointerEvent): Element | null => {
-    const pointed = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
-    const animationTarget = pointed?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-animation-group-cel-key]')
-    if (animationTarget) return animationTarget
-    return event.target instanceof Element ? event.target : pointed
-  }
-  const animationFrameTarget = (target: Element | null): { frameId: string; element: HTMLElement } | null => {
-    const header = target?.closest<HTMLElement>('[data-animation-frame-id]')
-    if (header?.dataset.animationFrameId) return { frameId: header.dataset.animationFrameId, element: header }
-    const cell = target?.closest<HTMLElement>('[data-animation-cel-key]')
-    const parsed = cell?.dataset.animationCelKey ? parseAnimationCelKey(cell.dataset.animationCelKey) : null
-    const maskCell = target?.closest<HTMLElement>('[data-animation-mask-cel-key]')
-    const maskParsed = maskCell?.dataset.animationMaskCelKey ? parseAnimationCelKey(maskCell.dataset.animationMaskCelKey) : null
-    return maskCell && maskParsed ? { frameId: maskParsed.frameId, element: maskCell } : cell && parsed ? { frameId: parsed.frameId, element: cell } : null
-  }
+  const pointerTargetElement = animationPointerTargetElement
+  const animationFrameTarget = animationFrameTargetFromElement
   const updateAnimationItemCursor = (event: React.PointerEvent<HTMLElement>, frameId: string, cellKey?: string): void => {
     const maskCell = event.currentTarget.matches('[data-animation-mask-cel-key]')
     const frameMove = !maskCell && session.selectedAnimationFrameIds.includes(frameId) && pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`)
@@ -445,22 +410,7 @@ export function useAnimationGestures(options: Options) {
     if (clientX > last.bounds.right) return last.key
     return null
   }
-  const animationTimelineAutoScrollDelta = (clientX: number): number => {
-    const list = layerListRef.current
-    if (!list) return 0
-    const maxScrollLeft = Math.max(0, list.scrollWidth - list.clientWidth)
-    if (maxScrollLeft <= 0) return 0
-    const bounds = list.getBoundingClientRect()
-    // The layer tree is sticky and covers the list's left side. The usable
-    // timeline starts at its right edge, not at the panel's outer edge.
-    const stickyTreeRight = list.querySelector<HTMLElement>('.layer-animation-tree')?.getBoundingClientRect().right ?? bounds.left
-    const timelineLeft = Math.max(bounds.left, stickyTreeRight)
-    const edgeSize = 30
-    const delta = clientX > bounds.right - edgeSize ? 18 : clientX < timelineLeft + edgeSize ? -18 : 0
-    if (delta === 0) return 0
-    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, list.scrollLeft + delta))
-    return nextScrollLeft === list.scrollLeft ? 0 : delta
-  }
+  const animationTimelineAutoScrollDelta = (clientX: number): number => timelineAutoScrollDelta(layerListRef, clientX)
   const scrollAnimationTimelineAtPointer = (clientX: number): boolean => {
     const list = layerListRef.current
     const delta = animationTimelineAutoScrollDelta(clientX)
@@ -497,7 +447,7 @@ export function useAnimationGestures(options: Options) {
         if (event.clientX > bounds.right - 30) list.scrollLeft += 18
         else if (event.clientX < bounds.left + 30) list.scrollLeft -= 18
       }
-      const nextIndex = loopSectionFrameIndexAtPointer(event.clientX, drag.edge)
+      const nextIndex = loopSectionFrameIndexAtPointerForTimeline(event.clientX, drag.edge)
       if (nextIndex === null) return
       const nextStartIndex = drag.edge === 'start' ? Math.min(nextIndex, drag.endIndex) : drag.startIndex
       const nextEndIndex = drag.edge === 'end' ? Math.max(nextIndex, drag.startIndex) : drag.endIndex
