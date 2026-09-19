@@ -19,7 +19,7 @@ it('ships installable static menu references and runtime items accepted by the h
   let settingsOpened = false
   expect(manifest.commands.find((command: {id: string}) => command.id === 'settings').opensSettings).toBe(true)
   try {
-    vm.runInNewContext(strFromU8(files['runtime/index.html']).match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)![1], {
+    vm.runInNewContext(strFromU8(files['runtime/index.html']).match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)![1], {
       moonsprite: {
         ui: {openSettings: async () => { settingsOpened = true }},
         on: (name: string, fn: typeof handlers[string]) => { handlers[name] = fn },
