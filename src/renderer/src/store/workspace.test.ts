@@ -1852,7 +1852,7 @@ describe('selection clipboard', () => {
     const timeline = ensureAnimationDocument(document)
     const [first, second] = timeline.frames
     useWorkspace.getState().selectLayerRows([bottom.id, top.id], [])
-    useWorkspace.getState().selectAnimationFrame(first.id)
+    useWorkspace.getState().selectAnimationFrame(first.id, 'toggle')
     useWorkspace.getState().selectAnimationFrame(second.id, 'range')
     useWorkspace.getState().setSelection({ x: 0, y: 0, width: 1, height: 1 })
     const expectedActiveLayerId = document.activeLayerId

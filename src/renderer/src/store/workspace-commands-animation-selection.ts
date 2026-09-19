@@ -179,10 +179,10 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
         session.animationMaskCellSelectionAnchorKey = null
         session.activeLayerMaskId = preservedActiveMaskId
         if (!preserveMaskContext) session.layerMaskIsolatedView = false
-        const preserveExplicitLayerContext = session.layerSelectionExplicit === true && session.selectedLayerIds.length > 0 && session.selectedGroupIds.length === 0 && session.selectedGroupId === null
-        // Explicit row selection and frame selection form a batch target.
-        // A plain frame click only replaces the automatic row selection left
-        // by a paste, never rows the user selected themselves.
+        const preserveExplicitLayerContext = mode !== 'replace' && session.layerSelectionExplicit === true && session.selectedLayerIds.length > 0 && session.selectedGroupIds.length === 0 && session.selectedGroupId === null
+        // A plain frame-header click selects the whole frame, replacing even
+        // the automatic row selection left by a paste. Ctrl/Shift additions
+        // can intentionally retain a layer/frame intersection.
         if (preserveMaskContext || !preserveExplicitLayerContext) session.selectedLayerIds = []
         session.selectedGroupIds = []
         session.selectedGroupId = null
