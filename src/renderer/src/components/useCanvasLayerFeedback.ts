@@ -144,6 +144,7 @@ export function useCanvasLayerFeedback(ports: Ports) {
 
   const alignedDragTranslation = (drag: DragState, distance: Point): Point => {
     const gridEnabled = drag.alignmentGridEnabled === true && ports.session.view.showGrid
+    const selectionGridSnap = drag.alignmentSnapToGridOrigin === true && gridEnabled
     const snappedDistance =
       drag.alignmentSnapToGridOrigin && gridEnabled
         ? snapSelectionTranslationToGrid(drag.alignmentMovingBounds ?? [], distance, ports.session.view.grid ?? DEFAULT_GRID_SETTINGS)
@@ -156,7 +157,7 @@ export function useCanvasLayerFeedback(ports: Ports) {
       canvasHeight: ports.session.document.height,
       grid: ports.session.view.grid ?? DEFAULT_GRID_SETTINGS,
       gridEnabled: drag.alignmentSnapToGridOrigin ? false : gridEnabled,
-      smartEnabled: drag.alignmentSmartEnabled === true,
+      smartEnabled: !selectionGridSnap && drag.alignmentSmartEnabled === true,
       threshold: alignmentThresholdForZoom(drag.alignmentThreshold ?? ports.alignmentPreferences.alignmentThreshold, ports.liveViewRef.current.zoom),
       lockedAxis: drag.axisLock
     })
@@ -164,7 +165,10 @@ export function useCanvasLayerFeedback(ports: Ports) {
       drag.alignmentGuides = result.guides
       ports.scheduleDraw()
     }
-    return result.offset
+    return {
+      x: drag.axisLock === 'y' ? 0 : result.offset.x,
+      y: drag.axisLock === 'x' ? 0 : result.offset.y
+    }
   }
 
   const hideMoveLayerContentPreview = (delayMs = 0): void => {

@@ -6,13 +6,14 @@
 
 ## 产品与架构
 
+- [MoonSprite 使用手册](user-guide.md)：面向使用者的中文功能说明与操作指南，优先介绍特色功能。
 - [产品行为契约](product/behavior.md)：用户可见能力和稳定规则。
 - [UI 设计规范](ui-design-system.md)：颜色、字号、间距、控件密度、像素图标和组件复用规则。
 - [架构概览](architecture/overview.md)：模块职责和依赖方向。
 - [状态与历史](architecture/state-history.md)：会话、dirty、撤销和视图状态。
 - [坐标与渲染](architecture/coordinates-rendering.md)：屏幕、视图、画布和图层坐标。
 - [多语言架构](architecture/localization.md)：语言资源、回退、持久化和新增语言门禁。
-- [文件格式](file-format.md)：`.moonsprite` v18 容器。
+- [文件格式](file-format.md)：`.moonsprite` v20 容器。
 
 ## 交互契约
 

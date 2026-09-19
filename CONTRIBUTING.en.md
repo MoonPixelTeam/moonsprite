@@ -14,7 +14,7 @@ Unless a separate written agreement applies, by submitting a contribution you re
 2. Read `AGENTS.en.md`, `docs/README.en.md`, and the contracts related to the task.
 3. Write a specification before a feature, and reproduction steps plus a regression test before a bug fix.
 4. Keep each commit focused and do not mix in unrelated formatting or refactoring.
-5. Follow the Chinese-only `docs/release/changelog-policy.md` and append every independently describable change in the batch to the canonical `CHANGELOG.md` without overwriting existing entries.
+5. Keep affected behavior contracts current during development. Only when explicitly preparing a release, follow `docs/release/changelog-policy.md` and collect the full cycle diff in `CHANGELOG.md`, preserving published entries.
 6. Complete the required checks before opening a pull request.
 
 ## Definition of Done
@@ -23,8 +23,8 @@ Unless a separate written agreement applies, by submitting a contribution you re
 - Bugs have automated regression coverage, and pixel algorithms use deterministic data assertions.
 - UI work reuses the component library where possible and covers default, selected, disabled, and interactive states.
 - View state is not written into document history, and coordinate conversion is not duplicated.
-- `pnpm typecheck`, `pnpm test`, Rust checks, and affected builds pass.
-- Features, fixes, interactions, performance changes, refactors, dependencies, build changes, and platform changes are each recorded in the canonical `CHANGELOG.md`.
+- Complete the checks required by the D0-D3 levels in `AGENTS.md`. D2/D3 use `pnpm check:dev` with the changed-file list; D3 also requires a real focused test. Full checks, complete builds, and desktop regression belong to the relevant audit or release workflow.
+- Affected contracts are synchronized. During release preparation, record each feature, fix, interaction, performance change, refactor, dependency, build change, and platform change from the complete development cycle in `CHANGELOG.md`.
 
 ## Commit Format
 

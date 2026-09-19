@@ -46,7 +46,7 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movemen
   expect(setSize).toHaveBeenCalledOnce()
 })
 
-it.each(['line', 'curve'] as const)('adjusts %s brush size with Ctrl+wheel without zooming', lineKind => {
+it.each([['line', false], ['line', true], ['curve', false], ['curve', true]] as const)('adjusts %s brush size with Ctrl+wheel without zooming (reversed=%s)', (lineKind, brushSizeWheelReversed) => {
   const session = sessionFromDocument(createDocument('wheel size', 32, 32, 'rgba'))
   Object.assign(session, { tool: 'line', lineKind, brushSize: 4 })
   const canvas = document.createElement('canvas')
@@ -60,10 +60,10 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with Ctrl+wheel witho
     activeLayer: session.document.layers[0], canvasResizePreviewRef: { current: null },
     modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey'>, id: string) => id === 'brushSizeWheelAdjust' && event.ctrlKey,
     activeBrushImage: null, updateCursorAt: vi.fn(), scheduleDraw, scheduleZoomPreview,
-    wheelZoomEnabled: true, liveViewRef: { current: session.view }
+    brushSizeWheelReversed, wheelZoomEnabled: true, liveViewRef: { current: session.view }
   } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]))
   try {
-    for (const [deltaY, size] of [[-100, 5], [100, 4]]) {
+    for (const [deltaY, size] of [[-100, brushSizeWheelReversed ? 3 : 5], [100, 4]]) {
       const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, clientX: 16, clientY: 16, deltaY })
       act(() => { canvas.dispatchEvent(event) })
       expect(event.defaultPrevented).toBe(true)

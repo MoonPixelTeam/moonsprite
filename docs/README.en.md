@@ -4,7 +4,7 @@
 
 > Human-facing English mirror. AI agents use `docs/README.md` and the Chinese contracts as their sole routine documentation context. Do not load this index during ordinary development.
 
-This is the project's Chinese canonical entry point, and the only documentation version AI reads and maintains day to day. The English link at the top of each page is for human readers; ordinary tasks must not follow it into `*.en.md`. When code and documentation disagree, confirm the current implementation and tests first, then update the matching Chinese contract — two contradictory documents must never be left standing side by side.
+This is the English mirror of the project's documentation index. The Chinese index is the canonical entry point for routine development. When code and documentation disagree, confirm the current implementation and tests first, then update the Chinese contract and its English mirror together.
 
 ## Product and Architecture
 
@@ -14,7 +14,7 @@ This is the project's Chinese canonical entry point, and the only documentation 
 - [State and history](architecture/state-history.en.md): sessions, dirty state, undo, and view state.
 - [Coordinates and rendering](architecture/coordinates-rendering.en.md): screen, view, canvas, and layer coordinates.
 - [Localization architecture](architecture/localization.en.md): language resources, fallback, persistence, and adding-language gates.
-- [File format](file-format.en.md): the `.moonsprite` v18 container.
+- [File format](file-format.en.md): the `.moonsprite` v20 container.
 
 ## Interaction Contracts
 

@@ -3,7 +3,7 @@ import type { SelectionMask } from '@shared/types-selection'
 import { commitPixelEdit, revertPixelEdit } from '@/core/history'
 import { invalidateRasterContentBounds } from '@/core/document-model'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
-import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
+import { ensureAnimationDocument } from '@/core/animation'
 import {
   applySelectionTransform,
   flipLayer,
@@ -20,13 +20,15 @@ import { flipSelectionMask, transformSelectionMask } from '@/core/selection'
 import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { applyTilemapDocumentEdit, flipTilemapSelection } from '@/core/tilemap-document'
 import { tilemapEditBytes } from '@/core/tilemap'
-import { cloneFreeTileCelData, createFreeTileCelData, freeTileCelDataEqual } from '@/core/free-tile'
+import { cloneFreeTileCelData, freeTileCelDataEqual } from '@/core/free-tile'
 import { activeFreeTileCelTarget, applyFreeTilePlacementEdit, type FreeTilePlacementEdit } from '@/core/free-tile-document'
 import { freeTileTransformTargetToEditRaster } from '@/core/free-tile-edit'
 import { flipFreeTileSourceSelection } from './workspace-free-tile-selection-flip'
+import { flipSelectedTimelineContents } from './workspace-selection-timeline-flip'
 import { activePaintLayer, cloneSelectionMask, selectedTransformLayersForSession, invalidateSessionContent } from './workspace-session'
 import type { WorkspaceViewSelectionCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
+import type { DocumentSession } from './workspace-types'
 import { selectionMasksEqual } from './workspace-selection-geometry'
 import { tr } from './workspace-translation'
 import {
@@ -48,7 +50,7 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
   const { recordDocumentOperation } = recording
   return {
     flipActiveSelection(axis) {
-      get().mutateActive((session) => {
+      const applyFlip = (session: DocumentSession): void => {
         if (session.pendingPaste) {
           const pending = session.pendingPaste
           clearFloatingSelectionBoxHistory(pending)
@@ -158,61 +160,7 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
         // previously selected timeline cel. Keep the cel selection intact for
         // timeline workflows, but do not let it broaden this transform.
         const selectedFreeTileInstanceTakesPriority = !session.selection && tilemapLayer.kind === 'free-tile' && freeTileInstanceIds.length > 0
-        // A selected free-tile cel mirrors all of its frame-local instances.
-        // Do this before the instance-only path so Shift+H/V on a timeline cel
-        // persists in the cel data and cannot be lost on the next refresh.
-        const timelineForFreeTiles = ensureAnimationDocument(session.document)
-        const selectedFreeTileCelKeys = new Set(session.selectedAnimationCellKeys)
-        if (session.selectedAnimationFrameIds.length > 0) {
-          for (const cel of timelineForFreeTiles.cels) {
-            if (session.selectedAnimationFrameIds.includes(cel.frameId)) selectedFreeTileCelKeys.add(animationCelKey(cel.layerId, cel.frameId))
-          }
-        }
-        const freeTileCelEdits = timelineForFreeTiles.cels
-          .filter((cel) => !selectedFreeTileInstanceTakesPriority && selectedFreeTileCelKeys.has(animationCelKey(cel.layerId, cel.frameId)) && session.document.layers.some((layer) => layer.id === cel.layerId && layer.kind === 'free-tile'))
-          .map((cel) => {
-            if (!cel.freeTiles) cel.freeTiles = createFreeTileCelData()
-            const before = cloneFreeTileCelData(cel.freeTiles)
-            const after = cloneFreeTileCelData(before)
-            for (const instance of after.instances) {
-              if (axis === 'horizontal') instance.flipHorizontal = instance.flipHorizontal !== true
-              else instance.flipVertical = instance.flipVertical !== true
-            }
-            return {
-              cel,
-              before,
-              after,
-              edit: {
-                layerId: cel.layerId,
-                frameId: cel.frameId,
-                before,
-                after,
-                dirtyRect: null
-              } as FreeTilePlacementEdit
-            }
-          })
-        if (!session.selection && freeTileCelEdits.length > 0) {
-          const changed = freeTileCelEdits.filter(({ before, after }) => !freeTileCelDataEqual(before, after))
-          if (changed.length > 0) {
-            for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'after')
-            session.history.push({
-              label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'),
-              bytes: changed.reduce((total, entry) => total + (entry.before.instances.length + entry.after.instances.length) * 72, 0),
-              undo: () => {
-                for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'before')
-              },
-              redo: () => {
-                for (const entry of changed) applyFreeTilePlacementEdit(session.document, entry.edit, 'after')
-              },
-              invalidation: { kind: 'full' },
-              affectedLayerIds: [...new Set(changed.map((entry) => entry.cel.layerId))],
-              contentChanged: true,
-              requiresAnimationSync: false
-            })
-            completeDocumentChange(session, 'content', recordDocumentOperation, { kind: 'full' })
-          }
-          return
-        }
+        if (!selectedFreeTileInstanceTakesPriority && flipSelectedTimelineContents(session, axis, recordDocumentOperation)) return
         // Shift+H/V also applies to selected free-tile instances. Keep the
         // operation on the instance metadata (rather than flipping the
         // rendered raster), otherwise the next canvas refresh restores the
@@ -253,45 +201,6 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
               })
               completeDocumentChange(session, 'content', recordDocumentOperation, { kind: 'full' })
             }
-          }
-          return
-        }
-        // A selected timeline cel on a tilemap layer represents the complete
-        // tilemap cel. With no pixel selection, mirror all of its cells in one
-        // document edit so the persisted tile metadata matches the preview.
-        const activeTimeline = ensureAnimationDocument(session.document)
-        const activeCelKey = animationCelKey(tilemapLayer.id, activeTimeline.activeFrameId)
-        const tilemapCelSelected = session.selectedAnimationCellKeys.includes(activeCelKey) || session.selectedAnimationFrameIds.includes(activeTimeline.activeFrameId)
-        if (!session.selection && tilemapLayer.kind === 'tilemap' && tilemapCelSelected) {
-          const fullCanvasSelection: SelectionMask = {
-            x: 0,
-            y: 0,
-            width: session.document.width,
-            height: session.document.height
-          }
-          const edit = flipTilemapSelection(session.document, tilemapLayer.id, activeTimeline.activeFrameId, fullCanvasSelection, axis)
-          if (edit) {
-            session.history.push({
-              label: axis === 'horizontal' ? tr('workspace.history.flipSelectionHorizontal') : tr('workspace.history.flipSelectionVertical'),
-              bytes: tilemapEditBytes(edit),
-              undo: () => {
-                applyTilemapDocumentEdit(session.document, edit, 'before')
-              },
-              redo: () => {
-                applyTilemapDocumentEdit(session.document, edit, 'after')
-              },
-              invalidation: edit.dirtyRect
-                ? {
-                    kind: 'region',
-                    frameId: edit.frameId,
-                    rect: { ...edit.dirtyRect }
-                  }
-                : { kind: 'full' },
-              affectedLayerIds: [tilemapLayer.id],
-              contentChanged: true,
-              requiresAnimationSync: false
-            })
-            completeDocumentChange(session, 'content', recordDocumentOperation, { kind: 'full' })
           }
           return
         }
@@ -458,6 +367,12 @@ export function createSelectionFlipCommands({ get, recording }: WorkspaceCommand
             }
           })
         }
+      }
+      get().mutateActive((session) => {
+        applyFlip(session)
+        // All flip paths retain selection guides, including batches and source
+        // edits that advance the revision before mutateActive finalizes it.
+        session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
       })
     }
   }

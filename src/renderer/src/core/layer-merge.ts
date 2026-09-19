@@ -1,8 +1,9 @@
 import type { BlendMode } from '@shared/types-color'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { SpriteDocument } from '@shared/types-document'
+import { animationLayersAtFrame, ensureAnimationDocument, refreshActiveAnimationFrame, syncActiveAnimationFrame } from './animation'
 import { compositeDocument } from './document-composite'
-import { createLayer, getDescendantGroupIds, isLayerEffectivelyLocked, paletteColorIdForCanvas } from './document-model'
+import { createId, createLayer, getDescendantGroupIds, isLayerEffectivelyLocked, paletteColorIdForCanvas } from './document-model'
 import { applyRelativeLuminance } from './raster'
 import { translateCurrent as tr } from './localization'
 
@@ -58,6 +59,38 @@ function compositeLayers(document: SpriteDocument, layers: RasterLayer[]): Uint8
   return compositeDocument(temporary)
 }
 
+/** Bake every frame before changing the source layer tree or timeline slots. */
+function renderMergedFrames(document: SpriteDocument, name: string, properties: MergedLayerProperties, render: (frame: SpriteDocument) => Uint8ClampedArray) {
+  syncActiveAnimationFrame(document)
+  const timeline = ensureAnimationDocument(document)
+  return timeline.frames.map((frame) => {
+    const frameDocument = {
+      ...document,
+      layers: animationLayersAtFrame(document, frame.id),
+      animation: { ...timeline, activeFrameId: frame.id }
+    }
+    return { frameId: frame.id, layer: createMergedLayer(document, name, render(frameDocument), properties) }
+  })
+}
+
+function installMergedFrames(document: SpriteDocument, merged: RasterLayer, frames: ReturnType<typeof renderMergedFrames>, removedLayerIds: readonly string[]): void {
+  // The layer tree has already changed: do not normalize it until all output
+  // slots exist, or non-active frames would be filled with blank cels.
+  const timeline = document.animation!
+  const removed = new Set(removedLayerIds)
+  timeline.cels = timeline.cels.filter((cel) => !removed.has(cel.layerId))
+  for (const { frameId, layer } of frames) {
+    const geometry = { width: layer.width, height: layer.height, offsetX: layer.offsetX, offsetY: layer.offsetY }
+    timeline.cels.push({
+      id: createId('cel'), layerId: merged.id, frameId, opacity: layer.opacity,
+      surface: layer.format === 'rgba'
+        ? { ...geometry, format: 'rgba', pixels: layer.pixels }
+        : { ...geometry, format: 'indexed', pixels: layer.pixels }
+    })
+  }
+  refreshActiveAnimationFrame(document)
+}
+
 export function mergeRasterLayers(document: SpriteDocument, layerIds: string[]): LayerMergeResult {
   const requested = new Set(layerIds)
   const layers = document.layers.filter((layer) => requested.has(layer.id))
@@ -69,19 +102,16 @@ export function mergeRasterLayers(document: SpriteDocument, layerIds: string[]):
   const indexes = layers.map((layer) => document.layers.indexOf(layer)).sort((left, right) => left - right)
   if (indexes.at(-1)! - indexes[0] + 1 !== indexes.length) return { ok: false, reason: tr('core.layerMerge.contiguous') }
 
-  const pixels = compositeLayers(document, layers)
   const topLayer = layers.at(-1)!
-  const merged = createMergedLayer(document, tr('core.layerMerge.nameSuffix', { name: topLayer.name }), pixels, {
-    groupId: parentGroupId,
-    visible: true,
-    locked: false,
-    opacity: 1,
-    blendMode: 'normal'
-  })
+  const mergedFrames = renderMergedFrames(document, tr('core.layerMerge.nameSuffix', { name: topLayer.name }), {
+    groupId: parentGroupId, visible: true, locked: false, opacity: 1, blendMode: 'normal'
+  }, (frame) => compositeLayers(frame, frame.layers.filter((layer) => requested.has(layer.id))))
+  const merged = mergedFrames.find((frame) => frame.frameId === document.animation!.activeFrameId)!.layer
   const removedLayerIds = layers.map((layer) => layer.id)
   document.layers = document.layers.filter((layer) => !requested.has(layer.id))
   document.layers.splice(indexes[0], 0, merged)
   document.activeLayerId = merged.id
+  installMergedFrames(document, merged, mergedFrames, removedLayerIds)
   return { ok: true, layerId: merged.id, removedLayerIds, removedGroupIds: [] }
 }
 
@@ -108,21 +138,21 @@ export function mergeLayerGroup(document: SpriteDocument, groupId: string): Laye
     .map((candidate): LayerGroup => candidate.id === groupId
       ? { ...candidate, parentGroupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal' }
       : { ...candidate })
-  const temporary: SpriteDocument = {
-    ...document,
-    layers: layers.map((layer) => ({ ...layer } as RasterLayer)),
-    groups: groupCopies,
-    activeLayerId: layers.at(-1)!.id
-  }
-  const pixels = compositeDocument(temporary)
-  const merged = createMergedLayer(document, group.name, pixels, {
+  const sourceIds = new Set(layers.map((layer) => layer.id))
+  const mergedFrames = renderMergedFrames(document, group.name, {
     groupId: group.parentGroupId ?? null,
     visible: group.visible,
     locked: group.locked,
     opacity: group.opacity,
     blendMode: group.blendMode,
     clippingMask: group.clippingMask === true
-  })
+  }, (frame) => compositeDocument({
+    ...frame,
+    layers: frame.layers.filter((layer) => sourceIds.has(layer.id)),
+    groups: groupCopies,
+    activeLayerId: layers.at(-1)!.id
+  }))
+  const merged = mergedFrames.find((frame) => frame.frameId === document.animation!.activeFrameId)!.layer
   const indexes = layers.map((layer) => document.layers.indexOf(layer))
   const insertionIndex = Math.min(...indexes)
   const removedLayerIds = layers.map((layer) => layer.id)
@@ -131,6 +161,7 @@ export function mergeLayerGroup(document: SpriteDocument, groupId: string): Laye
   document.layers.splice(insertionIndex, 0, merged)
   document.groups = document.groups.filter((candidate) => !groupIds.has(candidate.id))
   document.activeLayerId = merged.id
+  installMergedFrames(document, merged, mergedFrames, removedLayerIds)
   return { ok: true, layerId: merged.id, removedLayerIds, removedGroupIds }
 }
 
@@ -167,19 +198,16 @@ export function mergeVisibleLayers(document: SpriteDocument): LayerMergeResult {
   if (visibleLayers.length < 2) return { ok: false, reason: tr('core.layerMerge.visibleNeedTwo') }
   if (visibleLayers.some((layer) => isLayerEffectivelyLocked(document, layer))) return { ok: false, reason: tr('core.layerMerge.visibleLocked') }
 
-  const pixels = compositeDocument(document)
-  const merged = createMergedLayer(document, tr('core.layerMerge.visibleName'), pixels, {
-    groupId: null,
-    visible: true,
-    locked: false,
-    opacity: 1,
-    blendMode: 'normal'
-  })
+  const mergedFrames = renderMergedFrames(document, tr('core.layerMerge.visibleName'), {
+    groupId: null, visible: true, locked: false, opacity: 1, blendMode: 'normal'
+  }, compositeDocument)
+  const merged = mergedFrames.find((frame) => frame.frameId === document.animation!.activeFrameId)!.layer
   const removedLayerIds = visibleLayers.map((layer) => layer.id)
   const removedLayerSet = new Set(removedLayerIds)
   document.layers = document.layers.filter((layer) => !removedLayerSet.has(layer.id))
   document.layers.push(merged)
   const removedGroupIds = removeEmptyGroups(document)
   document.activeLayerId = merged.id
+  installMergedFrames(document, merged, mergedFrames, removedLayerIds)
   return { ok: true, layerId: merged.id, removedLayerIds, removedGroupIds }
 }

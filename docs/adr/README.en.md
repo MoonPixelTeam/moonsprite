@@ -32,6 +32,8 @@ Each ADR contains context, a decision, consequences, and alternatives. Record on
 - [0018: Use Stable Frame Endpoints for Animation Loop Sections](0018-animation-loop-sections.en.md)
 - [0019: Use Snapshots and Typed Transaction Boundaries for Lua Scripts](0019-lua-script-snapshot-transactions.en.md)
 - [0020: Use a Restricted ZIP, Atomic Installation, and Runtime Security Boundary for Extension Packages](0020-extension-package-format.en.md)
+- [0021: Linked layers use stable identities and shared raster storage (Chinese)](0021-linked-layers.md)
+- [0022: Free-tile layers share a stable source set (Chinese)](0022-shared-free-tile-sets.md)
 - [0023: Local immutable timelapse library](0023-local-timelapse-library.en.md)
 
 Increment the number when adding an ADR. Keep deprecated decisions in place and link them to the superseding ADR.

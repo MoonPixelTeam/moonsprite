@@ -90,7 +90,7 @@
 | cel 批量剪贴板 | 多选 cel 按第一格锚点和相对行列复制粘贴，必要时扩展帧，整个操作只产生一次历史 | `workspace.test.ts` |
 | 动画图层复制 | 复制图层或组时包含全部 frame/cel、空帧状态和属性，不只复制当前帧 | `workspace.test.ts`、`layer-operations.test.ts` |
 | 播放时钟与状态 | 图层栏和预览栏共享单一时钟；帧时长、倍率、循环和停止回退确定，播放不改变 dirty | `animation.test.ts`、`workspace-animation-loop-sections.test.ts` |
-| 命名循环节 | 多选帧可创建、编辑、删除和独立播放正向/反向有限或无限循环；标签播放优先重复当前帧所在的最内层循环节，范围外退化为全部循环；嵌套括号显示在父范围内部；条目范围随稳定帧 ID 排列，端点删除收缩，配置可撤销并随 v16 工程往返 | `workspace-animation-loop-sections.test.ts`、`project-format.test.ts` |
+| 命名循环节 | 多选帧可创建、编辑、删除和独立播放正向、反向、往返和反向往返的有限或无限循环；标签播放优先重复当前帧所在的最内层循环节，范围外退化为全部循环；嵌套括号显示在父范围内部；条目范围随稳定帧 ID 排列，端点删除收缩，配置可撤销并随 v16 工程往返 | `workspace-animation-loop-sections.test.ts`、`project-format.test.ts` |
 | 嵌套图层结构 | 移动、复制、建组、解组和删除保持树顺序与父子关系，拒绝循环父级，批量操作不重复处理后代 | `layer-operations.test.ts`、`workspace.test.ts` |
 | 锁定传播 | 锁定组及其后代不得修改像素、属性或结构；解锁和历史恢复不丢显式锁定状态 | `layer-operations.test.ts`、`workspace.test.ts` |
 | 图层合并结果 | 不同颜色模式、透明度和混合模式合并后的像素确定，合并及 Undo/Redo 保持图层顺序和选择 | `layer-merge.test.ts`、`workspace.test.ts` |
@@ -109,5 +109,5 @@
 
 - 修改高风险逻辑时先查找对应契约，优先扩展该行引用的测试。
 - 新场景没有自动化保护时，只在确属数据、兼容或平台安全缺口时标为“发布门禁”；普通 UI 不得以“待补”形式进入矩阵。
-- 每次 `DEV.N` 发布审计重复和过时契约；合并语义，不按 Debug 次数膨胀行数。
+- 每次 Beta 或正式版本发布审计重复和过时契约；合并语义，不按 Debug 次数膨胀行数。
 - 性能回归只记录在 `performance-baseline.md` 和 `performance-history.md`，不混入本矩阵。

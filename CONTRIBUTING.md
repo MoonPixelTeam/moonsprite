@@ -14,7 +14,7 @@ MoonSprite 是原创实现。禁止提交复制自 Aseprite 或其他项目的�
 2. 阅读 `AGENTS.md`、`docs/README.md` 和任务相关契约。
 3. 功能先写规格，Bug 先写复现步骤和回归测试。
 4. 保持提交主题单一，禁止混入无关格式化或重构。
-5. 按 `docs/release/changelog-policy.md` 将本批每个独立变化追加到 `CHANGELOG.md`，不得覆盖既有记录。
+5. 开发时维护相关行为契约；仅在明确准备发布时，按 `docs/release/changelog-policy.md` 对照本周期完整差异集中更新 `CHANGELOG.md`，不得覆盖已发布记录。
 6. 完成必要检查后提交 Pull Request。
 
 ## 完成标准
@@ -23,8 +23,8 @@ MoonSprite 是原创实现。禁止提交复制自 Aseprite 或其他项目的�
 - Bug 有自动化回归测试，像素算法使用确定性数据断言。
 - UI 优先复用组件库，并验证默认、选中、禁用和交互状态。
 - 没有把视图状态写入文档历史，也没有重复实现坐标换算。
-- `pnpm typecheck`、`pnpm test`、Rust 检查和受影响构建通过。
-- 功能、修复、交互、性能、重构、依赖、构建和平台变化均已逐项写入 `CHANGELOG.md`。
+- 按 `AGENTS.md` 的 D0-D3 分级完成必要检查；D2/D3 使用带本次文件清单的 `pnpm check:dev`，D3 同时提供真实定向测试。全量检查、完整构建和桌面回归只在对应专项或发布流程执行。
+- 相关契约已同步；准备发布时再将本周期功能、修复、交互、性能、重构、依赖、构建和平台变化逐项写入 `CHANGELOG.md`。
 
 ## 提交格式
 

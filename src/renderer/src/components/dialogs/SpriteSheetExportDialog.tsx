@@ -64,6 +64,7 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
     splitLayers: false,
     frameScope: 'all',
     splitLoopSections: false,
+    openAfterExport: false,
     outputFile: false,
     name: t('spriteSheet.output.defaultName', { name: document.name }),
     directory: defaultDirectory
@@ -82,6 +83,7 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
     splitLayers: options.splitLayers,
     frameScope: options.frameScope,
     splitLoopSections: options.splitLoopSections,
+    openAfterExport: false,
     outputFile: false,
     name: '',
     directory: ''
@@ -247,6 +249,7 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
 
         {page === 'output' && <SettingsSection title={t('spriteSheet.section.output')} actions={<CheckboxField controlPosition="end" checked={options.outputFile} label={t('spriteSheet.output.file')} onChange={(checked) => update('outputFile', checked)} />}>
           {options.outputFile && <div className="settings-section-body sprite-sheet-output-fields">
+            <CheckboxField checked={options.openAfterExport === true} label={t('spriteSheet.output.openAfterExport')} onChange={(checked) => update('openAfterExport', checked)} />
             <FormField className="export-file-field" label={t('spriteSheet.output.name')} hint={pathError
               ? <span className="sprite-sheet-output-error">{pathError}</span>
               : <span className="export-selected-directory" title={options.directory}>{t('spriteSheet.output.selectedDirectory', { path: options.directory })}</span>}>

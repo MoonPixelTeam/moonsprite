@@ -1,9 +1,10 @@
 import { type PixelSource } from '@/components/pixel-source'
 import { useEffect, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { LayerMask } from '@shared/types-layer'
 import type { PaletteEntry } from '@shared/types-color'
-import { animationMaskAt } from '@/core/document-model'
+import { animationMaskAt, getRasterContentRevision } from '@/core/document-model'
 import { animationCelHasContent, createAnimationCelLookup } from '@/core/animation'
 import { renderAnimationCelThumbnailPixels, renderLayerMaskThumbnailPixels } from '@/core/animation-thumbnail'
 import { useWorkspace } from '@/store/workspace'
@@ -11,9 +12,9 @@ import { useI18n } from '@/components/I18nProvider'
 import { rasterStorageIdentity } from '@/core/runtime-raster'
 import { notifyAnimationCelThumbnailPreview, notifyLayerMaskThumbnailPreview, registerAnimationCelThumbnailPreviewListener, registerLayerMaskThumbnailPreviewListener } from '@/core/canvas-preview-lifecycle'
 
-export const celContentCache = new WeakMap<object, Map<string, { revision: number; value: boolean }>>()
+export const celContentCache = new WeakMap<object, Map<string, { revision: number; storageRevision: number; value: boolean }>>()
 
-export const celThumbnailCache = new WeakMap<object, Map<string, { revision: number; pixels: Uint8ClampedArray }>>()
+export const celThumbnailCache = new WeakMap<object, Map<string, { revision: number; storageRevision: number; pixels: Uint8ClampedArray }>>()
 
 export const scheduleThumbnailRender = (render: () => void): (() => void) => {
   let timeoutId: number | null = null
@@ -40,17 +41,20 @@ export const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly 
   if (!surface) return false
   const key = surface.format === 'rgba' ? 'rgba' : paletteVisibilityKey(palette)
   const storage = rasterStorageIdentity(surface)
-  const entries = celContentCache.get(storage) ?? new Map<string, { revision: number; value: boolean }>()
+  const storageRevision = getRasterContentRevision(storage)
+  const entries = celContentCache.get(storage) ?? new Map<string, { revision: number; storageRevision: number; value: boolean }>()
   const cached = entries.get(key)
-  if (cached && (revision === 0 || cached.revision === revision)) return cached.value
+  if (cached && cached.storageRevision === storageRevision && (revision === 0 || cached.revision === revision)) return cached.value
   const value = animationCelHasContent(cel, palette)
-  entries.set(key, { revision, value })
+  entries.set(key, { revision, storageRevision, value })
   celContentCache.set(storage, entries)
   return value
 }
 
 export function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
   const cel = celSource()
+  const storage = cel.surface ? rasterStorageIdentity(cel.surface) : null
+  const storageRevision = storage ? getRasterContentRevision(storage) : 0
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     let cancelScheduledRender: (() => void) | null = null
@@ -65,13 +69,14 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
           if (!context) return
           const key = `${documentWidth}:${documentHeight}:${canvas.width}:${surface.width}:${surface.height}:${surface.offsetX}:${surface.offsetY}:${opacity}:${surface.format === 'rgba' ? 'rgba' : paletteRenderKey(livePalette)}`
           const storage = rasterStorageIdentity(surface)
-          const entries = celThumbnailCache.get(storage) ?? new Map<string, { revision: number; pixels: Uint8ClampedArray }>()
+          const storageRevision = getRasterContentRevision(storage)
+          const entries = celThumbnailCache.get(storage) ?? new Map<string, { revision: number; storageRevision: number; pixels: Uint8ClampedArray }>()
           const cached = entries.get(key)
-          const pixels = !bypassCache && cached && (revision === 0 || cached.revision === revision)
+          const pixels = !bypassCache && cached && cached.storageRevision === storageRevision && (revision === 0 || cached.revision === revision)
             ? cached.pixels
             : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity)
           if (!bypassCache && (!cached || pixels !== cached.pixels)) {
-            entries.set(key, { revision, pixels })
+            entries.set(key, { revision, storageRevision, pixels })
             celThumbnailCache.set(storage, entries)
           }
           const image = context.createImageData(canvas.width, canvas.height)
@@ -94,7 +99,7 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
       unregisterPreview()
       cancelScheduledRender?.()
     }
-  }, [cel, documentHeight, documentId, documentWidth, layerId, palette, revision, thumbnailSize])
+  }, [cel, documentHeight, documentId, documentWidth, layerId, palette, revision, storage, storageRevision, thumbnailSize])
   return <span className="cel-thumbnail" aria-hidden="true"><canvas ref={ref} width={thumbnailSize} height={thumbnailSize} /></span>
 }
 
@@ -199,7 +204,16 @@ export function AnimationCelContent({ active, documentId, layerId, celSource, pa
   selectionMarker: boolean
 }) {
   const cel = celSource()
-  const liveRevision = useWorkspace((state) => active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision)
+  // Batch edits mutate inactive cels in place without rerendering the panel.
+  // Observe each cel's storage/version so only changed previews redraw.
+  const [liveRevision] = useWorkspace(useShallow((state) => {
+    const storage = cel.surface ? rasterStorageIdentity(cel.surface) : null
+    return [
+      active ? state.sessions.find((item) => item.document.id === documentId)?.contentRevision ?? revision : revision,
+      storage,
+      storage ? getRasterContentRevision(storage) : 0
+    ] as const
+  }))
   const liveSession = active ? useWorkspace.getState().sessions.find((item) => item.document.id === documentId) : null
   const livePalette = liveSession?.document.palette ?? palette
   const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)

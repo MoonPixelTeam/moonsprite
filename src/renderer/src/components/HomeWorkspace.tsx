@@ -1007,7 +1007,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         </div>
       </header>
       <div className="start-screen-rule" />
-      {activeBanner && <section className="home-feature-banner" aria-label="首页作品横幅">
+      {activeBanner && <section className="home-feature-banner" aria-label={t('home.featureBanner')}>
         <div className="home-feature-banner-grid">
           {bannerProjects.map((project, index) => {
             const isActive = index === bannerIndex % bannerProjects.length
@@ -1016,13 +1016,13 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
                 <button className="home-feature-banner-art" type="button" tabIndex={isActive ? undefined : -1} onClick={() => {
                   if (project.imageUrl) void onOpenImage(project.imageUrl, project.name)
                   else if (project.filePath) void openProject({ filePath: project.filePath, name: project.name })
-                }} aria-label={`打开作品 ${project.name}`}>
+                }} aria-label={t('home.openArtwork', { name: project.name })}>
                   {project.imageUrl ? <img src={project.imageUrl} alt={project.name} /> : project.previewUrl ? <img src={project.previewUrl} alt={project.name} /> : <PixelUtilityIcon kind="image" />}
                 </button>
                 <span className="home-feature-banner-title">{project.name}</span>
-                <button type="button" className="home-feature-banner-author" tabIndex={isActive ? undefined : -1} onClick={() => openExternalLink(project.authorUrl)} aria-label={`打开作者 ${project.author}`}>作者：{project.author}</button>
-                {bannerProjects.length > 1 && <div className="home-feature-banner-dots" role="tablist" aria-label="横幅图片切换">
-                  {bannerProjects.map((_, dotIndex) => <button key={dotIndex} type="button" tabIndex={isActive ? undefined : -1} role="tab" aria-selected={isActive && dotIndex === bannerIndex} aria-label={`第 ${dotIndex + 1} 张图片`} className={`home-feature-banner-dot ${isActive && dotIndex === bannerIndex ? 'active' : ''}`} onClick={() => setBannerIndex(dotIndex)} />)}
+                <button type="button" className="home-feature-banner-author" tabIndex={isActive ? undefined : -1} onClick={() => openExternalLink(project.authorUrl)} aria-label={t('home.openAuthor', { name: project.author })}>{t('home.author', { name: project.author })}</button>
+                {bannerProjects.length > 1 && <div className="home-feature-banner-dots" role="tablist" aria-label={t('home.featureBannerPages')}>
+                  {bannerProjects.map((_, dotIndex) => <button key={dotIndex} type="button" tabIndex={isActive ? undefined : -1} role="tab" aria-selected={isActive && dotIndex === bannerIndex} aria-label={t('home.bannerImage', { index: dotIndex + 1 })} className={`home-feature-banner-dot ${isActive && dotIndex === bannerIndex ? 'active' : ''}`} onClick={() => setBannerIndex(dotIndex)} />)}
                 </div>}
               </div>
             </article>
@@ -1033,7 +1033,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         <aside className="start-actions" aria-label={t('home.actionsAria')}>
           <button className="start-action primary-button" type="button" onClick={onNew}><Plus size={20} /><span><strong>{t('home.newSprite')}</strong><small>{t('home.newSpriteDetail')}</small></span></button>
           <button className="start-action quiet-button" type="button" onClick={onOpen}><PixelUtilityIcon kind="folderOpen" /><span><strong>{t('home.openSprite')}</strong><small>{t('home.openSpriteDetail')}</small></span></button>
-          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : '无法打开工程备份文件夹。')) }}><PixelUtilityIcon kind="save" /><span><strong>工程备份</strong><small>打开工程备份文件夹</small></span></button>
+          <button className="start-action quiet-button" type="button" onClick={() => { void window.moonSprite.openProjectBackupFolder().catch((error) => setMessage(error instanceof Error ? error.message : t('home.openProjectBackupsFailed'))) }}><PixelUtilityIcon kind="save" /><span><strong>{t('home.projectBackups')}</strong><small>{t('home.openProjectBackups')}</small></span></button>
           <section className="start-screen-news" aria-label={t('home.news')}>
             <article className="home-steam-card" aria-label={`${t('home.steam')} · MoonSprite`}>
               <header className="home-steam-card-heading">

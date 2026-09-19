@@ -395,7 +395,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
               transformStartTarget: { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height },
               previewTarget: { x: selectionStart.x, y: selectionStart.y, width: selectionStart.width, height: selectionStart.height },
               previewAngle: 0,
-              ...alignmentDragFields([selectionStart], [editableLayer.id]),
+              ...alignmentDragFields([selectionStart], [editableLayer.id], true),
               freeTilePlacementEdit: placementEdit,
               freeTileInstanceId: freeTileSelectionTarget.instance.id,
               freeTileInstanceStart: { x: freeTileSelectionTarget.instance.x, y: freeTileSelectionTarget.instance.y },

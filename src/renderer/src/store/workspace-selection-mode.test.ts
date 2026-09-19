@@ -265,7 +265,8 @@ describe('layer, frame, and cel selection modes', () => {
     session = useWorkspace.getState().sessions[0]
     expect(session.selectedAnimationFrameIds).toEqual([frameId])
     expect(session.selectedAnimationCellKeys).toEqual([])
-    expect(session.selectedLayerIds).toEqual([firstLayer.id, secondLayer.id])
+    expect(session.selectedLayerIds).toEqual([])
+    expect(session.layerSelectionExplicit).toBe(false)
     expect(session.contentRevision).toBe(contentRevisionBeforeFrameSelection)
     expect(session.document.dirty).toBe(false)
 

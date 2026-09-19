@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import type { FreeTileInstance } from '@shared/types-tiles'
 import { createDocument, getActiveLayer, readLayerColorAt } from '@/core/document'
-import { ensureAnimationDocument, refreshActiveAnimationFrame } from '@/core/animation'
+import { animationCelAt, ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel } from '@/core/animation'
 import { createBlankTileset, readTilesetTilePixels, writeTilesetTilePixels } from '@/core/tilemap'
 import { activeFreeTileCelTarget, captureFreeTileSourceSnapshot } from '@/core/free-tile-document'
 import { freeTileInstanceBounds, freeTileSourceRefs, renderFreeTileSurface } from '@/core/free-tile'
@@ -38,6 +38,35 @@ const shortcutFlip = (axis: 'horizontal' | 'vertical') => {
   expect(handleSelectionShortcuts(context as unknown as Parameters<typeof handleSelectionShortcuts>[0])).toBe(true)
 }
 
+it.each(['horizontal', 'vertical'] as const)('mirrors all instances in selected frames after an earlier instance selection: %s', axis => {
+  const { document, layer } = setup()
+  const commands = useWorkspace.getState()
+  commands.duplicateAnimationFrame()
+  commands.duplicateAnimationFrame()
+  commands.selectFreeTileInstanceRow('a')
+  const timeline = ensureAnimationDocument(document)
+  commands.selectAnimationFrame(timeline.frames[0].id)
+  commands.selectAnimationFrame(timeline.frames[1].id, 'toggle')
+  const session = useWorkspace.getState().sessions[0]
+  const before = timeline.frames.map(frame => structuredClone(resolveAnimationCel(timeline, animationCelAt(timeline, layer.id, frame.id))!.freeTiles!))
+  const position = session.history.position
+
+  shortcutFlip(axis)
+
+  const field = axis === 'horizontal' ? 'flipHorizontal' : 'flipVertical'
+  const snapshot = () => timeline.frames.map(frame => resolveAnimationCel(timeline, animationCelAt(timeline, layer.id, frame.id))!.freeTiles!)
+  const expected = before.map((data, index) => index < 2
+    ? { ...data, instances: data.instances.map(instance => ({ ...instance, [field]: true })) }
+    : data)
+  expect(snapshot()).toEqual(expected)
+  expect(session.selectedAnimationFrameIds).toEqual(timeline.frames.slice(0, 2).map(frame => frame.id))
+  expect(session.history.position).toBe(position + 1)
+  commands.undo()
+  expect(snapshot()).toEqual(before)
+  commands.redo()
+  expect(snapshot()).toEqual(expected)
+})
+
 it.each(['horizontal', 'vertical'] as const)('Shift %s mirrors selected source pixels and shared instances with undo/redo', axis => {
   const { document, layer, target, sourcePixels, at } = setup()
   const instances = structuredClone(target().freeTiles.instances)
@@ -45,6 +74,7 @@ it.each(['horizontal', 'vertical'] as const)('Shift %s mirrors selected source p
   const selection = { x: 8, y: 7, width: 2, height: 2 }
   useWorkspace.getState().setSelection(selection)
   shortcutFlip(axis)
+  expect(useWorkspace.getState().sessions[0].selectionGuidesPreservedAtContentRevision).toBe(useWorkspace.getState().sessions[0].contentRevision)
   const expected = axis === 'horizontal' ? [2, 1, 3, 5, 4, 6] : [4, 5, 3, 1, 2, 6]
   expect(sourcePixels()).toEqual(expected)
   expect(target().freeTiles.instances).toEqual(instances)

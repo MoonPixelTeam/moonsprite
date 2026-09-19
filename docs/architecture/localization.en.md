@@ -2,7 +2,7 @@
 
 [中文](localization.md) | English
 
-MoonSprite's interface language is managed by plain TypeScript language catalogs and a React language context. The current release supports Simplified Chinese `zh-CN` and English `en-US`. No other language may enter the available-language list until its resources are complete and it has passed layout acceptance and desktop regression, preventing mixed-language UI or unreachable switching controls.
+MoonSprite's interface language is managed by plain TypeScript language catalogs and a React language context. The registered languages are Simplified Chinese `zh-CN`, English `en-US`, Japanese `ja-JP`, Korean `ko-KR`, Spanish `es-ES`, French `fr-FR`, German `de-DE`, Brazilian Portuguese `pt-BR`, and Russian `ru-RU`. Every catalog must have the same keys and named interpolation placeholders as the source catalog.
 
 ## Module Boundaries
 
@@ -20,8 +20,9 @@ MoonSprite's interface language is managed by plain TypeScript language catalogs
 3. Dynamic text uses named placeholders and does not concatenate sentence fragments whose order depends on language. Interpolation values may only be strings or numbers.
 4. Dates, times, numbers, and percentages use `Intl` for the active `locale`. Shortcuts, file extensions, brand names, and API identifiers remain unchanged.
 5. A new language catalog must cover every translation key and pass text-overflow checks at 1024 x 640, 1080p, and 4K before entering `AVAILABLE_APP_LOCALES`.
-6. User-visible errors and history labels in the TypeScript core use `translateCurrent()`. Rust errors should gradually return stable error codes for Renderer translation; program behavior must never depend on parsing a Chinese error sentence.
+6. `TranslationCatalog` requires every key at compile time; `locales/catalogs.test.ts` checks missing/extra keys, empty values, interpolation placeholders, and known placeholder-copy regressions. These checks do not replace native-speaker review or desktop layout acceptance.
+7. User-visible errors and history labels in the TypeScript core use `translateCurrent()`. Rust errors should gradually return stable error codes for Renderer translation; program behavior must never depend on parsing a Chinese error sentence.
 
 ## Current Migration Scope
 
-The Simplified Chinese and English catalogs cover the same typed key set. Startup, home, editor menus, toolbars, tool options, dialogs, preferences, shortcuts, layers, palettes, color editing, the component library, save and export messages, Windows native file dialogs, undo history, and TypeScript core errors all use language catalogs. Applying a language in Preferences refreshes the interface immediately and updates `document.documentElement.lang`. User input, existing project names, layer names, file paths, and pixel data remain unchanged.
+All nine language catalogs cover the same typed key set. Startup, home, editor menus, toolbars, tool options, dialogs, preferences, shortcuts, layers, palettes, color editing, the component library, save and export messages, Windows native file dialogs, undo history, and TypeScript core errors all use language catalogs. Applying a language in Preferences refreshes the interface immediately and updates `document.documentElement.lang`. User input, existing project names, layer names, file paths, and pixel data remain unchanged.

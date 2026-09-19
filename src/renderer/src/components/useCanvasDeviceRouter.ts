@@ -50,6 +50,7 @@ interface Ports {
   readonly activeBrushImage: import('@shared/types-brush').ImageBrush | null
   readonly updateCursorAt: (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey?: boolean) => void
   readonly scheduleDraw: () => void
+  readonly brushSizeWheelReversed: boolean
   readonly wheelZoomEnabled: boolean
   readonly liveViewRef: import('react').RefObject<import('@shared/types-view').ViewState>
   readonly wheelZoomMode: import('@/core/file-preferences').WheelZoomMode
@@ -197,9 +198,10 @@ export function useCanvasDeviceRouter(ports: Ports) {
       event.preventDefault()
       event.stopImmediatePropagation()
       wheelBrushSizePreviewRef.current = true
-      if (ports.session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(ports.session.airbrushScatterRadius + (delta < 0 ? 1 : -1))
-      else if (ports.session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(ports.session.liquifyRadius + (delta < 0 ? 1 : -1))
-      else useWorkspace.getState().setBrushSize(ports.session.brushSize + (delta < 0 ? 1 : -1))
+      const sizeStep = (delta < 0 ? 1 : -1) * (ports.brushSizeWheelReversed ? -1 : 1)
+      if (ports.session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(ports.session.airbrushScatterRadius + sizeStep)
+      else if (ports.session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(ports.session.liquifyRadius + sizeStep)
+      else useWorkspace.getState().setBrushSize(ports.session.brushSize + sizeStep)
       ports.updateCursorAt(clientX, clientY, wheelModifiers.ctrlKey, wheelModifiers.altKey, wheelModifiers.shiftKey)
       ports.scheduleDraw()
       return

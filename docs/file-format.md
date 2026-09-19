@@ -8,7 +8,7 @@ v18 为自由瓦片图层新增稳定 `freeTileSetId`。多个自由瓦片图层
 
 v17 为普通栅格图层新增可选 `linkedContentId`。具有相同非空 ID 的图层在每个对应动画帧共享实际栅格资源，但各自保存独立的 `offsetX`、`offsetY`、名称、图层结构和显示属性；写入器允许多个图层或 cel 清单项引用同一个 `dataFile`，并只写入一次底层像素数据。读取器要求同一关联组的图层格式、宽高和解码后存储身份一致，同时要求每个对应帧的 cel surface 具有相同格式、宽高和存储身份；组内任一成员指向不同资源、缺少对应 surface，或把 `linkedContentId` 用于背景、文本、Tilemap、自由瓦片图层时，工程视为损坏并拒绝打开。只有一个成员的关联 ID 仍按普通图层读取，之后复制可继续扩展该组。v1-v16 工程迁移时删除未知 `linkedContentId`，不根据重复像素猜测关联关系。
 
-v16 在动画时间轴中新增 `loopSections`。每个循环节保存稳定 `id`、名称、`startFrameId`、`endFrameId`、`direction`（`forward` 或 `reverse`）以及 `repeatCount`；正整数表示总播放次数，`null` 表示无限重复。端点必须引用现有帧，读取时按当前帧顺序规范化起止范围，重复 ID 只保留首项，无效端点或非法条目忽略，并限制名称和重复次数。v1-v15 工程迁移为空循环节列表，不采纳旧版本中偶然出现的同名未知字段。v16 同时允许 `layerStyles` 保存顶层 `enabled` 开关；缺少该字段的 v11-v15 样式按启用迁移。
+v16 在动画时间轴中新增 `loopSections`。每个循环节保存稳定 `id`、名称、`startFrameId`、`endFrameId`、`direction`（当前支持 `forward`、`reverse`、`ping-pong` 和 `ping-pong-reverse`）以及 `repeatCount`；正整数表示总播放次数，`null` 表示无限重复。端点必须引用现有帧，读取时按当前帧顺序规范化起止范围，重复 ID 只保留首项，无效端点或非法条目忽略，并限制名称和重复次数。v1-v15 工程迁移为空循环节列表，不采纳旧版本中偶然出现的同名未知字段。v16 同时允许 `layerStyles` 保存顶层 `enabled` 开关；缺少该字段的 v11-v15 样式按启用迁移。
 
 v15 将自由瓦片源从单一多瓦片 Tileset 改为图层级 `freeTileSources`。每个源保存稳定 `id`、名称、可选描述与显示颜色、显隐、锁定、不透明度、混合模式、整数像素偏移和 `tilesetId`；对应 Tileset 必须只含一个瓦片，其宽高就是该源的动态尺寸。v15-v17 中该资源由单个图层独占，v18 起独占边界提升为 `freeTileSetId` 集合：同一集合的图层共同引用，集合之间及与 Tilemap 之间不得共享。每个非链接源 cel 的 `freeTiles.instances` 按从后到前保存稳定实例 ID、有效 `sourceId`、cel surface 本地整数像素锚点，以及可选 `visible`、`locked`、`flipHorizontal`、`flipVertical` 布尔值、`rotation` 整 `90°` 四分之一转数、实例不透明度和混合模式，不再保存 v14 `tileId` 引用。省略变换字段表示不旋转、不镜像；读取时拒绝非 `0..3` 的旋转值、非布尔镜像值，并继续验证源 ID、实例 ID、自由瓦片所有权与坐标，再按源属性、源像素和实例列表重新生成 cel surface。v14 工程的 `freeTileTilesetId` 会按原 Tileset 的稳定瓦片顺序拆成多个独立源，为每个源创建单瓦片 Tileset，再把旧实例 `tileId` 映射到新 `sourceId`。
 
@@ -44,7 +44,7 @@ v6 新增项目级 `slices` 数组；每个切片保存稳定 ID、名称和画�
 
 v5 动画元数据至少包含一帧、当前帧、帧持续时间、循环状态、cel 与图层/帧的稳定关联，以及可选的逐帧图层组蒙版；v16 额外保存上述命名循环节，v17 额外允许关联图层的对应 cel 共用同一像素资源，v18 额外允许自由瓦片图层通过 `freeTileSetId` 共用源库。`layers/` 保留活动帧兼容位图和图层属性，动画 cel 像素独立写入 `cels/`；解码后活动帧图层表面引用对应 cel，画布工具不直接解析时间轴。早期 v2 文件没有 `cels/` 时，使用 `layers/` 位图补成活动帧 cel。
 
-图层和 cel 清单项通过可选 `dataEncoding` 声明资源编码。缺失或为 `raw` 时按原始连续像素读取；`sparse-tiles-v1` 时按稀疏分块读取。写入器逐资源比较原始字节数与分块容器字节数，仅在分块更小时使用 `.tiles`，因此小型或密集表面仍保持原始表示。v5 稀疏资源打开后恢复为覆盖已存分块包围范围的连续 `Uint8ClampedArray` 或 `Uint32Array`，并通过图层偏移和稳定存储原点保持画布坐标；画笔、合成、撤销和 Store 不直接感知文件分块。若非空块在图层内相距很远，连续包围范围仍可能较大，这不是运行时永久分块模型。
+图层和 cel 清单项通过可选 `dataEncoding` 声明资源编码。缺失或为 `raw` 时按原始连续像素读取；`sparse-tiles-v1` 时按稀疏分块读取。写入器逐资源比较原始字节数与分块容器字节数，仅在分块更小时使用 `.tiles`，因此小型或密集表面仍保持原始表示。稀疏资源可通过 `runtime-raster.ts` 以分块存储延迟接入图层和 cel，合成与读取按需访问已存分块；需要连续 `pixels` 的编辑路径才实体化 `Uint8ClampedArray` 或 `Uint32Array`。层偏移与稳定存储原点保持画布和撤销坐标一致。不得把“读取 `.tiles`”等同于立即展开完整连续位图。
 
 `sparse-tiles-v1` 使用 24 字节小端序头：magic `0x3154534d`、块尺寸 `u16`（固定 64）、格式 `u8`（RGBA 为 1，索引色为 2）、保留字节、宽 `u32`、高 `u32`、块数 `u32`、payload 字节数 `u32`。随后每块使用 16 字节目录项：`x u32`、`y u32`、宽 `u16`、高 `u16`、数据偏移 `u32`；payload 按目录顺序保存每块连续原始像素。未列出的块按全零恢复。读取器拒绝 magic、格式、尺寸、块边界、目录顺序、重复槽位、偏移或 payload 长度不一致的资源。
 

@@ -737,6 +737,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
       get activeBrushImage() { return activeBrushImage },
       get updateCursorAt() { return updateCursorAt },
       get scheduleDraw() { return scheduleDraw },
+      get brushSizeWheelReversed() { return canvasPreferences.brushSizeWheelReversed },
       get wheelZoomEnabled() { return wheelZoomEnabled },
       get liveViewRef() { return liveViewRef },
       get wheelZoomMode() { return wheelZoomMode },
@@ -1504,7 +1505,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
             className="canvas-key-display"
             style={{ transform: `scale(${keyDisplaySize})`, '--key-display-duration': `${keyDisplayDuration}ms` } as CSSProperties}
             aria-live="polite"
-            aria-label="按键显示"
+            aria-label={t('canvas.keyDisplay')}
           >
             {keyDisplayEntries.map((entry) => (
               <span className="canvas-key-display-item" key={entry.id}>

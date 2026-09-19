@@ -148,6 +148,10 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
         const timeline = session.document.animation
         if (!timeline) return
         if (!timeline.frames.some((frame) => frame.id === frameId)) return
+        // A frame selection replaces a previous instance pick. Otherwise the
+        // instance-only transform takes priority over the newly selected frames.
+        session.freeTileInstanceLayerId = null
+        clearFreeTileInstanceSelection(session)
         // During playback the timeline playhead is independent from the frame
         // being selected for an action such as disabling or copying. Changing
         // activeFrameId here would make the playhead jump to the context-menu
@@ -175,12 +179,11 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
         session.animationMaskCellSelectionAnchorKey = null
         session.activeLayerMaskId = preservedActiveMaskId
         if (!preserveMaskContext) session.layerMaskIsolatedView = false
-        const preserveExplicitLayerContext = session.layerSelectionExplicit === true && session.selectedLayerIds.length > 0 && session.selectedGroupIds.length === 0 && session.selectedGroupId === null
-        // Animation frame selection is mutually exclusive with layer/group
-        // selection. Keep layerSelectionAnchorId as a non-selecting context
-        // hint so the timeline can retain the previous group as active context
-        // without leaving descendant layers formally selected.
-        if (preserveMaskContext) session.selectedLayerIds = []
+        const preserveExplicitLayerContext = mode !== 'replace' && session.layerSelectionExplicit === true && session.selectedLayerIds.length > 0 && session.selectedGroupIds.length === 0 && session.selectedGroupId === null
+        // A plain frame-header click selects the whole frame, replacing even
+        // the automatic row selection left by a paste. Ctrl/Shift additions
+        // can intentionally retain a layer/frame intersection.
+        if (preserveMaskContext || !preserveExplicitLayerContext) session.selectedLayerIds = []
         session.selectedGroupIds = []
         session.selectedGroupId = null
         session.layerSelectionExplicit = preserveMaskContext ? false : preserveExplicitLayerContext

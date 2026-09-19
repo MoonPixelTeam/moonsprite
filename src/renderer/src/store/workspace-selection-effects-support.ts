@@ -2,7 +2,7 @@ import type { WorkspaceRecording } from './workspace-recording'
 import type { RasterLayer } from '@shared/types-layer'
 import { commitPixelEdit, revertPixelEdit, type HistoryEntry, type PixelEdit } from '@/core/history'
 import { animationMaskAt } from '@/core/document-model'
-import { animationLayerAtFrame, parseAnimationCelKey, syncActiveAnimationFrame } from '@/core/animation'
+import { animationLayerAtFrame, parseAnimationCelKey, refreshActiveAnimationFrame, syncActiveAnimationFrame, syncAnimationLayerAtFrame } from '@/core/animation'
 import { clearSelection, fillSelectionOrCanvas } from '@/core/tools-fill'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { freeTileInstanceBounds, freeTileSourceForInstance } from '@/core/free-tile'
@@ -48,6 +48,14 @@ export interface SelectionEffectTarget {
   layer: RasterLayer
   frameId?: string
   mask: boolean
+}
+
+/** Effects may expand a frame proxy and replace its storage even when no pixel edit is returned. */
+export const syncSelectionEffectTarget = (session: DocumentSession, target: SelectionEffectTarget): void => {
+  if (!target.frameId || target.mask) return
+  syncAnimationLayerAtFrame(session.document, target.layer, target.frameId)
+  // Read back the persisted surface before any active-frame sync can overwrite it.
+  refreshActiveAnimationFrame(session.document)
 }
 
 export const selectedEffectTargets = (session: DocumentSession): SelectionEffectTarget[] => {
@@ -101,6 +109,7 @@ export const commitSelectedEffectInSession = (
   const edits: PixelEdit[] = []
   for (const target of selectedEffectTargets(session)) {
     const edit = createEdit(target)
+    syncSelectionEffectTarget(session, target)
     if (!edit) continue
     if (target.frameId) edit.frameId = target.frameId
     edits.push(edit)

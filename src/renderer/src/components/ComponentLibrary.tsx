@@ -256,7 +256,7 @@ const colorPickerVariants: Array<{ id: string; labelKey: TranslationKey; config:
 ]
 
 function ButtonsPreview({ locale }: { locale: AppLocale }) {
-  return <div className="component-preview-row"><Button variant="primary" type="button"><PixelUtilityIcon kind="plus" />{componentText(locale, 'componentLibrary.preview.new')}</Button><Button variant="quiet" type="button">{componentText(locale, 'componentLibrary.preview.cancel')}</Button><Button variant="danger" type="button"><PixelUtilityIcon kind="delete" />{componentText(locale, 'componentLibrary.preview.delete')}</Button><Button variant="quiet" type="button" disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button><FileButton label="选择文件" accept="image/*" onFiles={() => {}}>选择文件</FileButton></div>
+  return <div className="component-preview-row"><Button variant="primary" type="button"><PixelUtilityIcon kind="plus" />{componentText(locale, 'componentLibrary.preview.new')}</Button><Button variant="quiet" type="button">{componentText(locale, 'componentLibrary.preview.cancel')}</Button><Button variant="danger" type="button"><PixelUtilityIcon kind="delete" />{componentText(locale, 'componentLibrary.preview.delete')}</Button><Button variant="quiet" type="button" disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button><FileButton label={componentText(locale, 'common.chooseFile')} accept="image/*" onFiles={() => {}}>{componentText(locale, 'common.chooseFile')}</FileButton></div>
 }
 
 function IconButtonPreview({ locale }: { locale: AppLocale }) {

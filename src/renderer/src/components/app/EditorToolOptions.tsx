@@ -1202,7 +1202,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
         {inkFlyoutOpen && <div className="menu-popover ink-popover" role="menu" aria-label={t('toolOptions.ink')}>
           {INK_MODE_OPTIONS.map((option) => <InkMenuItem key={option.value} label={t(option.label)} description={t(option.description)} selected={session.inkMode === option.value} role="menuitemradio" onClick={() => { workspace.setInkMode(option.value); setInkFlyoutOpen(false) }} />)}
           <span className="menu-divider" aria-hidden="true" />
-          <InkMenuItem label="同步所有工具" description="开启后，切换墨水会同步到所有支持墨水的工具。" selected={session.syncInkAcrossTools} role="menuitemcheckbox" onClick={() => workspace.setSyncInkAcrossTools(!session.syncInkAcrossTools)} />
+          <InkMenuItem label={t('ink.syncAllTools')} description={t('ink.syncAllToolsHint')} selected={session.syncInkAcrossTools} role="menuitemcheckbox" onClick={() => workspace.setSyncInkAcrossTools(!session.syncInkAcrossTools)} />
         </div>}
       </div>}
       {(session.tool === 'pencil' || session.tool === 'smooth' || session.tool === 'eraser') && <div ref={pressureControlRef} className="pressure-control">

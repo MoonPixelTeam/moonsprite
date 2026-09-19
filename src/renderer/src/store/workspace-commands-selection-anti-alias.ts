@@ -7,7 +7,7 @@ import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
 import type { WorkspaceViewSelectionCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
-import { commitSelectedEffectInSession, invalidateAntiAliasPreview, restoreAntiAliasPreviewState, selectedEffectTargets, selectionEffectUsesMultipleTargets } from './workspace-selection-effects-support'
+import { commitSelectedEffectInSession, invalidateAntiAliasPreview, restoreAntiAliasPreviewState, selectedEffectTargets, selectionEffectUsesMultipleTargets, syncSelectionEffectTarget } from './workspace-selection-effects-support'
 
 type AntiAliasCommandContext = Omit<WorkspaceCommandContext<'commitPixelEdit' | 'mutateActive'>, 'services'>
 
@@ -64,6 +64,7 @@ export function createSelectionAntiAliasCommands({ get, set, recording }: AntiAl
       }
       const edits = targets.flatMap((target) => {
         const edit = antiAliasSelection(session.document, target.layer, session.selection, color, autoColorOpacity, includeInteriorColors, colorSource)
+        syncSelectionEffectTarget(session, target)
         if (!edit) return []
         if (target.frameId) edit.frameId = target.frameId
         return [edit]

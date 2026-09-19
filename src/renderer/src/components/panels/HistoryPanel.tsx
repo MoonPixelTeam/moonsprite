@@ -13,7 +13,7 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [hidden, setHidden] = useState(readHiddenHistoryTypes)
   const changeHidden = (next: string[]): void => {
-    if (!writeStoredString(HISTORY_DISPLAY_KEY, JSON.stringify(next))) useWorkspace.getState().setMessage('历史记录显示设置无法保存。')
+    if (!writeStoredString(HISTORY_DISPLAY_KEY, JSON.stringify(next))) useWorkspace.getState().setMessage(t('history.display.saveFailed'))
     setHidden(next)
     window.dispatchEvent(new Event('moonsprite:history-display-changed'))
   }
@@ -56,7 +56,7 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
     <header aria-label={t('panel.history')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
       <span className="history-panel-heading"><strong>{t('panel.history')}</strong><small aria-label={t('history.position', { current: timeline.position, total: timeline.entries.length })}>（{timeline.position}/{timeline.entries.length}）</small></span>
       <span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>
-      <button type="button" className={settingsOpen ? 'active' : ''} title="历史记录显示设置" aria-label="历史记录显示设置" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}><PixelUtilityIcon kind="properties" /></button>
+      <button type="button" className={settingsOpen ? 'active' : ''} title={t('history.display.title')} aria-label={t('history.display.title')} aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}><PixelUtilityIcon kind="properties" /></button>
       </span>
     </header>
     <div className="history-list component-scrollbar" role="listbox" aria-label={t('history.listAria')}>

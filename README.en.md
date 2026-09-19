@@ -4,13 +4,13 @@
 
 MoonSprite is an original, source-available pixel art workstation for Windows, built with Tauri 2, React, TypeScript, Zustand, and Canvas. It is not affiliated with Aseprite and does not use Aseprite source code, branding, or visual assets.
 
-The current Beta channel is `1.0.0-beta3`, and the latest packaged version is `1.0.0-beta3`.
+The current Beta channel is `1.0.0-beta4`, and the latest packaged version is `1.0.0-beta4`.
 
 ## Current Capabilities
 
 - Pixel drawing: pencil, eraser, pattern brushes, dithering templates, shapes, gradients, paint bucket, magic wand, color picker, smart closure, and symmetry drawing.
 - Selections and transforms: rectangle, ellipse, lasso, and polygon selections, plus move, copy, flip, scale, rotate, multi-layer, and multi-frame editing.
-- Colors and brushes: RGBA and indexed color, foreground and background colors, custom palettes, synchronized palette colors, a pattern brush library, and local brush folders.
+- Colors and brushes: RGBA, indexed, and grayscale color, foreground and background colors, custom palettes, synchronized palette colors, a pattern brush library, and local brush folders.
 - Layers and animation: raster layers, background layers, layer groups, text, masks, layer styles, a multi-frame timeline, onion skinning, and animation loop sections.
 - Tile workflows: tilemap layers with shareable tilesets, plus free-tile layers with overlapping instances and synchronized source-tile editing.
 - Workspace: multi-document tabs, docked and floating panels, saved workspaces, categorized home projects, crash recovery, and multiple themes.

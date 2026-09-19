@@ -56,6 +56,7 @@ export const FREE_TILE_INSTANCE_OUTLINE_COLOR_PREFERENCE_KEY = 'moonsprite.prefe
 export const TEXT_BOX_COLOR_PREFERENCE_KEY = 'moonsprite.preference.text-box-color'
 export const CANVAS_RESIZE_COLOR_PREFERENCE_KEY = 'moonsprite.preference.canvas-resize-color'
 export const SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.slice-outlines-visible'
+export const BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY = 'moonsprite.preference.brush-size-wheel-reversed'
 export const WHEEL_ZOOM_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-enabled'
 export const SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.shift-line-preview-enabled'
 export const GRADIENT_LINE_VISIBLE_PREFERENCE_KEY = 'moonsprite.preference.gradient-line-visible'
@@ -690,6 +691,7 @@ export interface EditorPreferences {
   textBoxColor: RgbaColor
   canvasResizeColor: RgbaColor
   sliceOutlinesVisible: boolean
+  brushSizeWheelReversed: boolean
   wheelZoomEnabled: boolean
   wheelZoomMode: WheelZoomMode
   shiftLinePreviewEnabled: boolean
@@ -788,6 +790,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   textBoxColor: DEFAULT_TEXT_BOX_COLOR,
   canvasResizeColor: DEFAULT_CANVAS_RESIZE_COLOR,
   sliceOutlinesVisible: true,
+  brushSizeWheelReversed: false,
   wheelZoomEnabled: true,
   wheelZoomMode: 'stepped',
   shiftLinePreviewEnabled: true,
@@ -1288,6 +1291,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     textBoxColor: parseHexColor(get(TEXT_BOX_COLOR_PREFERENCE_KEY), DEFAULT_TEXT_BOX_COLOR),
     canvasResizeColor: parseHexColor(get(CANVAS_RESIZE_COLOR_PREFERENCE_KEY), DEFAULT_CANVAS_RESIZE_COLOR),
     sliceOutlinesVisible: get(SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY) !== 'false',
+    brushSizeWheelReversed: get(BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY) === 'true',
     wheelZoomEnabled: get(WHEEL_ZOOM_ENABLED_PREFERENCE_KEY) !== 'false',
     wheelZoomMode: parseWheelZoomMode(get(WHEEL_ZOOM_MODE_PREFERENCE_KEY)),
     shiftLinePreviewEnabled: get(SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY) !== 'false',
@@ -1395,6 +1399,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [TEXT_BOX_COLOR_PREFERENCE_KEY]: colorHex(preferences.textBoxColor),
     [CANVAS_RESIZE_COLOR_PREFERENCE_KEY]: colorHex(preferences.canvasResizeColor),
     [SLICE_OUTLINES_VISIBLE_PREFERENCE_KEY]: String(preferences.sliceOutlinesVisible),
+    [BRUSH_SIZE_WHEEL_REVERSED_PREFERENCE_KEY]: String(preferences.brushSizeWheelReversed),
     [WHEEL_ZOOM_ENABLED_PREFERENCE_KEY]: String(preferences.wheelZoomEnabled),
     [WHEEL_ZOOM_MODE_PREFERENCE_KEY]: preferences.wheelZoomMode,
     [SHIFT_LINE_PREVIEW_ENABLED_PREFERENCE_KEY]: String(preferences.shiftLinePreviewEnabled),

@@ -219,8 +219,8 @@ export function flipSelection(document: SpriteDocument, selection: SelectionMask
   return edit.before.size > 0 ? edit : null
 }
 
-export function flipLayer(document: SpriteDocument, axis: 'horizontal' | 'vertical'): PixelEdit | null {
-  const layer = getActiveLayer(document)
+export function flipLayer(document: SpriteDocument, axis: 'horizontal' | 'vertical', targetLayer?: RasterLayer): PixelEdit | null {
+  const layer = targetLayer ?? getActiveLayer(document)
   if (isLayerEffectivelyLocked(document, layer) || layer.width < 1 || layer.height < 1) return null
   const edit = beginPixelEdit(layer.id)
   const swap = (first: number, second: number): void => {

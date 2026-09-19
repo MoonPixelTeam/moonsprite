@@ -198,8 +198,8 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
   const runtimeFor = (id: QuickCommandId): QuickCommandRuntime => {
     const selectionUnavailable = !session.selection
     switch (id) {
-      case 'selectionFlipHorizontal': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.flipActiveSelection('horizontal')) }
-      case 'selectionFlipVertical': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.flipActiveSelection('vertical')) }
+      case 'selectionFlipHorizontal': return { run: () => runForDocument((state) => state.flipActiveSelection('horizontal')) }
+      case 'selectionFlipVertical': return { run: () => runForDocument((state) => state.flipActiveSelection('vertical')) }
       case 'canvasMirrorHorizontal': return { pressed: session.view.mirrored, run: () => runForDocument(() => onToggleMirror('horizontal', edge === 'top' ? barRef.current?.getBoundingClientRect().bottom : undefined)) }
       case 'canvasMirrorVertical': return { pressed: session.view.mirroredVertical, run: () => runForDocument(() => onToggleMirror('vertical', edge === 'top' ? barRef.current?.getBoundingClientRect().bottom : undefined)) }
       case 'invertSelection': return { disabled: selectionUnavailable, run: () => runForDocument((state) => state.invertSelection()) }

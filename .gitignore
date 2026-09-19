@@ -3,6 +3,7 @@ node_modules/
 out/
 website/dist/
 /release/
+/output/documentation-audit/
 coverage/
 .vite/
 .planning/
