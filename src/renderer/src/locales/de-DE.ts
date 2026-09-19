@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const deDEMessages = {
+  'panel.reference': "Referenzbild",
+  'reference.empty': "Klicken zum Einfügen oder Strg+V drücken",
+  'reference.close': "Vorschaubild schließen",
+  'reference.relativeBrightness': 'Sehen Sie Relative Luminans',
+  'reference.fit': "An Panel anpassen",
+  'reference.previous': "Vorheriges Referenzbild",
+  'reference.next': "Nächstes Referenzbild",
+  'reference.pasteFailed': "Referenzbild konnte nicht eingefügt werden",
+
   'preferences.cursorColorGroup': 'Zeigerfarbe',
   'preferences.cursorColor.auto': 'Standard (automatischer Kontrast)',
   'preferences.cursorColor.custom': 'Benutzerdefinierte Farbe',
@@ -1207,7 +1216,7 @@ export const deDEMessages = {
   "toolOptions.canvasCenter": "Mit Ankerpunkt zeichnen",
   "toolOptions.canvasCenterHint": "Der Zeichenanker bleibt beim Ändern der Größe der Auswahl oder Form fixiert.",
   "toolOptions.adjustDrawingAnchor": "Zeichenanker anpassen",
-  "toolOptions.showDrawingAnchor": "Zeichenanker anzeigen",
+  "toolOptions.showDrawingAnchor": "Anker anzeigen",
   "toolOptions.roundedCorners": 'Runde Korne',
   "toolOptions.cornerRadius": 'Eckenradius',
   "toolOptions.shapeWidthRatio": "Form Breite Verhältnis",
@@ -1310,6 +1319,7 @@ export const deDEMessages = {
   "outline.apply": "Anwenden Kontur",
   "adjustment.title.colorBalance": 'Farbbalance',
   "adjustment.title.brightnessContrast": 'Helligkeit/Kontrast',
+  'adjustment.title.colorize': 'Einfärben',
   "adjustment.title.hueSaturation": 'Farbton/Sättigung',
   "adjustment.title.curves": 'Gradationskurven',
   "adjustment.brightness": "BRechtsness",
@@ -2573,6 +2583,8 @@ export const deDEMessages = {
   "componentLibrary.category.panels": 'Bedienfelder',
   "componentLibrary.category.dialogs": 'Dialogen',
   "componentLibrary.category.editor": "Bearbeitenor",
+  "componentLibrary.entry.anchor-preset-icons.name": "Anker-Vorgabesymbole",
+  "componentLibrary.entry.anchor-preset-icons.description": "Neun Anker-Vorgaben als 11×11-SVGs mit originalen Pixeln und Transparenz.",
   "componentLibrary.entry.buttons.name": "Button Gruppe",
   "componentLibrary.entry.buttons.description": 'Primäre, sekundäre und destruktive Aktionen teilen konsequente Größen und Staaten.',
   "componentLibrary.entry.icon-button.name": 'Ikonen Button',

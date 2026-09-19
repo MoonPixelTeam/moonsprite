@@ -6,14 +6,15 @@
 ---@alias MseColorMode "rgba" | "grayscale" | "indexed"
 ---@alias MseLayerKind "raster" | "text" | "tilemap" | "free-tile"
 ---@alias MseAnimationDirection "forward" | "reverse"
+---@alias MseAnimationReadDirection "forward" | "reverse" | "ping-pong" | "ping-pong-reverse"
 ---@alias MsePanelId "color" | "palette" | "layers" | "freeTileInstances" | "history" | "preview" | "tileset" | "brushes"
 ---@alias MsePanelDock "left" | "right" | "bottom" | "floating"
 ---@alias MseBlendMode "normal" | "darken" | "multiply" | "color-burn" | "linear-burn" | "lighten" | "screen" | "color-dodge" | "linear-dodge" | "overlay" | "soft-light" | "hard-light" | "vivid-light" | "linear-light" | "pin-light" | "hard-mix" | "difference" | "exclusion" | "subtract" | "divide" | "hue" | "saturation" | "color" | "luminosity"
 ---@alias MseGradientDither "none" | "checker" | "diagonal" | "diagonal-reverse" | "horizontal" | "vertical" | "bayer-2" | "bayer-4" | "bayer-8"
 ---@alias MseOutlinePosition "inside" | "outside" | "both"
 ---@alias MseOutlineKernel "round" | "square" | "horizontal" | "vertical"
----@alias MseExportFormat "png-auto" | "png-rgba" | "jpeg" | "webp" | "svg" | "gif" | "psd"
----@alias MseExportTarget "document" | "slices" | "frames"
+---@alias MseExportFormat "png-auto" | "png-rgba" | "jpeg" | "webp" | "svg" | "gif" | "bmp" | "ico" | "psd" | "ase" | "aseprite"
+---@alias MseExportTarget "document" | "slices" | "frames" | "selection" | "layer"
 
 ---@class MseColor
 ---@field r integer
@@ -152,6 +153,7 @@
 ---@field colorMode? MseColorMode
 
 ---@class MseSaveAsOptions
+---@field includeTimelapse? boolean Include portable timelapse data in a project Save As.
 ---@field name string
 ---@field format "moonsprite" | MseExportFormat
 ---@field scalePercent integer
@@ -180,6 +182,7 @@
 ---@field id string
 ---@field number integer
 ---@field duration integer
+---@field disabled boolean
 ---@field active boolean
 
 ---@class MseAnimationLoop
@@ -187,7 +190,7 @@
 ---@field name string
 ---@field startFrameId string
 ---@field endFrameId string
----@field direction MseAnimationDirection
+---@field direction MseAnimationReadDirection
 ---@field repeatCount integer|nil
 
 ---@class MseAnimationLoopSpec
@@ -197,7 +200,7 @@
 ---@field end? integer|string
 ---@field endFrameId? string
 ---@field direction? MseAnimationDirection
----@field repeatCount? integer|nil
+---@field repeatCount? integer Omitted/nil is absent in a Lua table and currently defaults to 1, not infinity.
 
 ---@class MsePaletteEntry
 ---@field id integer
@@ -340,7 +343,7 @@
 ---@field name string
 
 ---@class MseSliceCreateSpec: MseBounds
----@field name? string
+--- Name is set with slices.update after creation.
 
 ---@class MseSliceUpdateSpec
 ---@field name? string
@@ -372,15 +375,22 @@
 ---@field format MseExportFormat
 ---@field scalePercent integer
 ---@field target? MseExportTarget
+---@field selection? MseSelectionSetSpec Host-managed; target="selection" replaces this with the active selection.
+---@field layerId? string Omit with target="layer" to export all layers.
+---@field trim? boolean
+---@field trimMode? "individual" | "common"
 ---@field sliceId? string
 ---@field directory? string
----@field gifFrameRange? "all" | "range"
+---@field gifFrameRange? "all" | "range" | "loop-section"
 ---@field gifFrameStart? integer
 ---@field gifFrameEnd? integer
----@field gifDirection? "forward" | "reverse" | "ping-pong"
+---@field gifLoopSectionId? string
+---@field gifDirection? "forward" | "reverse" | "forward-ping-pong" | "reverse-ping-pong"
 ---@field presetName? string
 
 ---@class MseDialog
+---@field id string
+---@field bounds MseBounds Compatibility placeholder, not actual host geometry.
 ---@field data table<string, any>
 ---@field button fun(self: MseDialog, options: table): MseDialog
 ---@field check fun(self: MseDialog, options: table): MseDialog
@@ -394,6 +404,9 @@
 ---@field slider fun(self: MseDialog, options: table): MseDialog
 ---@field show fun(self: MseDialog, options?: table): MseDialog
 ---@field close fun(self: MseDialog): nil
+---@field modify fun(self: MseDialog, options: table): MseDialog
+---@field newrow fun(self: MseDialog): MseDialog Compatibility no-op.
+---@field repaint fun(self: MseDialog): nil Compatibility no-op.
 
 ---@class MseDocumentApi
 ---@field info fun(): MseDocumentInfo

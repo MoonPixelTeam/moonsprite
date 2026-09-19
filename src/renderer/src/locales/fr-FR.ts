@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const frFRMessages = {
+  'panel.reference': "Image de référence",
+  'reference.empty': "Cliquez pour coller ou appuyez sur Ctrl+V",
+  'reference.close': "Fermer l’image d’aperçu",
+  'reference.relativeBrightness': 'Voir Lumière Relative',
+  'reference.fit': "Adapter au panneau",
+  'reference.previous': "Référence précédente",
+  'reference.next': "Référence suivante",
+  'reference.pasteFailed': "Impossible de coller la référence",
+
   'preferences.cursorColorGroup': 'Couleur du curseur',
   'preferences.cursorColor.auto': 'Par défaut (contraste automatique)',
   'preferences.cursorColor.custom': 'Couleur personnalisée',
@@ -1317,6 +1326,7 @@ export const frFRMessages = {
   'outline.apply': 'Appliquer Outline',
   'adjustment.title.colorBalance': 'Balance des couleurs',
   'adjustment.title.brightnessContrast': 'Luminosité/Contraste',
+  'adjustment.title.colorize': 'Coloriser',
   'adjustment.title.hueSaturation': 'Teinte/Saturation',
   'adjustment.title.curves': 'Courbes',
   'adjustment.brightness': 'Brilleur',
@@ -2580,6 +2590,8 @@ export const frFRMessages = {
   'componentLibrary.category.panels': 'Panneaux',
   'componentLibrary.category.dialogs': 'Dialogue',
   'componentLibrary.category.editor': 'éditeur',
+  "componentLibrary.entry.anchor-preset-icons.name": "Icônes de préréglage d’ancrage",
+  "componentLibrary.entry.anchor-preset-icons.description": "Neuf préréglages en SVG 11×11 conservant les pixels et l’opacité d’origine.",
   'componentLibrary.entry.buttons.name': 'Groupe Button',
   'componentLibrary.entry.buttons.description': 'Les actions primaires, secondaires et destructrices partagent des dimensions et des états cohérents.',
   'componentLibrary.entry.icon-button.name': 'L’icône Button',

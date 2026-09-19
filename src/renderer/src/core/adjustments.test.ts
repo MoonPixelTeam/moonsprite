@@ -1,9 +1,46 @@
 import { describe, expect, it } from 'vitest'
-import { applyColorAdjustment, applyColorAdjustmentDirect, adjustColor, buildCurveHistogram, buildCurveHistogramChunked, buildCurveLut, buildCurvePath, isColorAdjustmentIdentity, type ColorAdjustment } from './adjustments'
+import { applyColorAdjustment, applyColorAdjustmentDirect, adjustColor, createColorizeAdjustment, buildCurveHistogram, buildCurveHistogramChunked, buildCurveLut, buildCurvePath, isColorAdjustmentIdentity, type ColorAdjustment } from './adjustments'
 import { processAdjustmentPreview } from './adjustment-preview-processing'
 import { createDocument, getActiveLayer, readLayerColor, writeLayerColor } from './document'
 
 describe('color adjustments', () => {
+  it('colorizes gray and colored pixels to one hue while retaining lightness and alpha', () => {
+    const adjustment = createColorizeAdjustment({ r: 0, g: 0, b: 255, a: 0 })
+    for (const color of [{ r: 80, g: 80, b: 80, a: 127 }, { r: 40, g: 180, b: 90, a: 255 }]) {
+      const next = adjustColor(color, adjustment)
+      expect(next.b).toBeGreaterThan(next.r)
+      expect(next.r).toBe(next.g)
+      expect(next.a).toBe(color.a)
+      expect(Math.max(next.r, next.g, next.b) + Math.min(next.r, next.g, next.b)).toBeCloseTo(Math.max(color.r, color.g, color.b) + Math.min(color.r, color.g, color.b), 0)
+    }
+    for (const color of [{ r: 0, g: 0, b: 0, a: 255 }, { r: 255, g: 255, b: 255, a: 255 }, { r: 80, g: 90, b: 100, a: 0 }]) {
+      expect(adjustColor(color, adjustment)).toEqual(color)
+    }
+  })
+
+  it('uses red for achromatic foreground and treats zero-saturation colorizing as desaturation', () => {
+    for (const value of [0, 255]) expect(createColorizeAdjustment({ r: value, g: value, b: value, a: 255 }).hue).toBe(0)
+    const adjustment: ColorAdjustment = { kind: 'hue-saturation', colorize: true, hue: 0, saturation: 0 }
+    expect(isColorAdjustmentIdentity(adjustment)).toBe(false)
+    expect(adjustColor({ r: 40, g: 180, b: 90, a: 128 }, adjustment)).toEqual({ r: 110, g: 110, b: 110, a: 128 })
+  })
+
+  it('matches direct preview colorizing to committed edits inside a selection', () => {
+    const expected = createDocument('colorize', 3, 1, 'rgba')
+    const actual = createDocument('colorize preview', 3, 1, 'rgba')
+    const before = new Uint8ClampedArray([80, 80, 80, 128, 40, 180, 90, 255, 12, 34, 56, 0])
+    const expectedLayer = getActiveLayer(expected)
+    const actualLayer = getActiveLayer(actual)
+    expectedLayer.pixels.set(before)
+    actualLayer.pixels.set(before)
+    const selection = { x: 0, y: 0, width: 3, height: 1, mask: new Uint8Array([1, 0, 1]) }
+    const adjustment = createColorizeAdjustment({ r: 0, g: 0, b: 255, a: 255 })
+    applyColorAdjustment(expected, expectedLayer, adjustment, selection)
+    applyColorAdjustmentDirect(actual, actualLayer, adjustment, selection)
+    expect(actualLayer.pixels).toEqual(expectedLayer.pixels)
+    expect(Array.from(actualLayer.pixels.slice(4))).toEqual(Array.from(before.slice(4)))
+    expect(actualLayer.pixels[2]).toBeGreaterThan(actualLayer.pixels[0])
+  })
   it('keeps alpha while applying brightness and contrast', () => {
     const next = adjustColor({ r: 80, g: 100, b: 120, a: 140 }, { kind: 'brightness-contrast', brightness: 20, contrast: 10 })
     expect(next.a).toBe(140)

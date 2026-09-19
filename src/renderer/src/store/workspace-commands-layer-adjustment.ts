@@ -337,7 +337,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
     applyActiveLayerAdjustment(adjustment) {
       get().mutateActive((session) => {
         const labels: Record<ColorAdjustment['kind'], string> = {
-          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr('adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
+          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
         }
         const targetIds = distinctLinkedLayerTargets(session.document, activeLayerMask(session) ? [activeLayerMask(session)!.id] : session.selection
           ? [getActiveLayer(session.document).id]
@@ -457,7 +457,7 @@ export function createLayerAdjustmentCommands({ get, set, recording }: Workspace
         const affectedLayerIds = before.layers.map((layer) => layer.layerId)
         commitLinkedLayerAdjustmentContents(session.document, affectedLayerIds)
         const labels: Record<ColorAdjustment['kind'], string> = {
-          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr('adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
+          'color-balance': tr('adjustment.title.colorBalance'), 'brightness-contrast': tr('adjustment.title.brightnessContrast'), 'hue-saturation': tr(adjustment.colorize ? 'adjustment.title.colorize' : 'adjustment.title.hueSaturation'), curves: tr('adjustment.title.curves')
         }
         session.history.push({
           label: labels[adjustment.kind],

@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ptBRMessages = {
+  'panel.reference': "Imagem de referência",
+  'reference.empty': "Clique para colar ou pressione Ctrl+V",
+  'reference.close': "Fechar imagem de prévia",
+  'reference.relativeBrightness': 'Ver Relatividade Luminosa',
+  'reference.fit': "Ajustar ao painel",
+  'reference.previous': "Referência anterior",
+  'reference.next': "Próxima referência",
+  'reference.pasteFailed': "Não foi possível colar a referência",
+
   'preferences.cursorColorGroup': 'Cor do cursor',
   'preferences.cursorColor.auto': 'Padrão (contraste automático)',
   'preferences.cursorColor.custom': 'Cor personalizada',
@@ -1207,7 +1216,7 @@ export const ptBRMessages = {
   "toolOptions.canvasCenter": "Desenhar com ponto de ancoragem",
   "toolOptions.canvasCenterHint": "Mantém a âncora fixa ao arrastar para redimensionar a seleção ou forma.",
   "toolOptions.adjustDrawingAnchor": "Ajustar âncora de desenho",
-  "toolOptions.showDrawingAnchor": "Mostrar âncora de desenho",
+  "toolOptions.showDrawingAnchor": "Mostrar âncora",
   "toolOptions.roundedCorners": 'Coroação Rounded',
   "toolOptions.cornerRadius": 'Raio dos cantos',
   "toolOptions.shapeWidthRatio": "forma Largura proporção",
@@ -1310,6 +1319,7 @@ export const ptBRMessages = {
   "outline.apply": "Aplicar Contorno",
   "adjustment.title.colorBalance": 'Equilíbrio de cores',
   "adjustment.title.brightnessContrast": 'Brilho/Contraste',
+  'adjustment.title.colorize': 'Colorir',
   "adjustment.title.hueSaturation": 'Matiz/Saturação',
   "adjustment.title.curves": 'Curvas',
   "adjustment.brightness": "BDireitaness",
@@ -2573,6 +2583,8 @@ export const ptBRMessages = {
   "componentLibrary.category.panels": 'Painéis',
   "componentLibrary.category.dialogs": 'Diálogos',
   "componentLibrary.category.editor": "Editaror",
+  "componentLibrary.entry.anchor-preset-icons.name": "Ícones de âncoras predefinidas",
+  "componentLibrary.entry.anchor-preset-icons.description": "Nove âncoras em SVGs de 11×11 que preservam os pixels e a opacidade originais.",
   "componentLibrary.entry.buttons.name": "Button Grupo",
   "componentLibrary.entry.buttons.description": 'As ações primárias, secundárias e destrutivas compartilham tamanhos e estados consistentes.',
   "componentLibrary.entry.icon-button.name": 'Icon do botão',

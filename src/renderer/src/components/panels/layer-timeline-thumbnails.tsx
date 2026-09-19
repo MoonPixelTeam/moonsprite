@@ -51,7 +51,7 @@ export const cachedCelHasContent = (cel: AnimationCel | null, palette: readonly 
   return value
 }
 
-export function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number }) {
+export function CelThumbnail({ documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, sharedCheckerboard = false }: { documentId: string; layerId: string; celSource: PixelSource<AnimationCel>; palette: readonly PaletteEntry[]; revision: number; documentWidth: number; documentHeight: number; thumbnailSize: number; sharedCheckerboard?: boolean }) {
   const cel = celSource()
   const storage = cel.surface ? rasterStorageIdentity(cel.surface) : null
   const storageRevision = storage ? getRasterContentRevision(storage) : 0
@@ -67,14 +67,14 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
         try {
           const context = canvas.getContext('2d')
           if (!context) return
-          const key = `${documentWidth}:${documentHeight}:${canvas.width}:${surface.width}:${surface.height}:${surface.offsetX}:${surface.offsetY}:${opacity}:${surface.format === 'rgba' ? 'rgba' : paletteRenderKey(livePalette)}`
+          const key = `${documentWidth}:${documentHeight}:${canvas.width}:${surface.width}:${surface.height}:${surface.offsetX}:${surface.offsetY}:${opacity}:${sharedCheckerboard}:${surface.format === 'rgba' ? 'rgba' : paletteRenderKey(livePalette)}`
           const storage = rasterStorageIdentity(surface)
           const storageRevision = getRasterContentRevision(storage)
           const entries = celThumbnailCache.get(storage) ?? new Map<string, { revision: number; storageRevision: number; pixels: Uint8ClampedArray }>()
           const cached = entries.get(key)
           const pixels = !bypassCache && cached && cached.storageRevision === storageRevision && (revision === 0 || cached.revision === revision)
             ? cached.pixels
-            : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity)
+            : renderAnimationCelThumbnailPixels(documentWidth, documentHeight, canvas.width, surface, livePalette, opacity, sharedCheckerboard)
           if (!bypassCache && (!cached || pixels !== cached.pixels)) {
             entries.set(key, { revision, storageRevision, pixels })
             celThumbnailCache.set(storage, entries)
@@ -99,8 +99,8 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
       unregisterPreview()
       cancelScheduledRender?.()
     }
-  }, [cel, documentHeight, documentId, documentWidth, layerId, palette, revision, storage, storageRevision, thumbnailSize])
-  return <span className="cel-thumbnail" aria-hidden="true"><canvas ref={ref} width={thumbnailSize} height={thumbnailSize} /></span>
+  }, [cel, documentHeight, documentId, documentWidth, layerId, palette, revision, storage, storageRevision, thumbnailSize, sharedCheckerboard])
+  return <span className={`cel-thumbnail${sharedCheckerboard ? ' shared-checkerboard' : ''}`} aria-hidden="true"><canvas ref={ref} width={thumbnailSize} height={thumbnailSize} /></span>
 }
 
 export const drawLayerMaskThumbnail = (canvas: HTMLCanvasElement, mask: LayerMask, documentWidth: number, documentHeight: number): void => {
@@ -190,7 +190,7 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
   }, [documentId])
 }
 
-export function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker }: {
+export function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker, sharedCheckerboard = false }: {
   active: boolean
   documentId: string
   layerId: string
@@ -202,6 +202,7 @@ export function AnimationCelContent({ active, documentId, layerId, celSource, pa
   thumbnailSize: number
   showThumbnail: boolean
   selectionMarker: boolean
+  sharedCheckerboard?: boolean
 }) {
   const cel = celSource()
   // Batch edits mutate inactive cels in place without rerendering the panel.
@@ -219,7 +220,7 @@ export function AnimationCelContent({ active, documentId, layerId, celSource, pa
   const hasContent = cachedCelHasContent(cel, livePalette, liveRevision)
   if (!hasContent) return null
   return showThumbnail
-    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} />
+    ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} sharedCheckerboard={sharedCheckerboard} />
     : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
 }
 

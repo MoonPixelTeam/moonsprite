@@ -26,6 +26,7 @@ export interface ExtensionRuntimeProjectSnapshot {
 }
 
 export type ExtensionRuntimeEvent =
+  | { type: 'locale-changed'; locale: string }
   | { type: 'editor-event'; name: string; timestamp: number; projectId?: string; detail: Record<string, string | number | boolean | null> }
   | { type: 'activate'; apiVersion: string; extensionId: string }
   | { type: 'project'; project: ExtensionRuntimeProjectSnapshot | null; homeOpen: boolean }

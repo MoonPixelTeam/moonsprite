@@ -1,3 +1,5 @@
+import { ReferenceImagePanel } from './panels/ReferenceImagePanel'
+import { useReferenceImages } from './panels/reference-image-state'
 import { beginWorkspaceResize, endWorkspaceResize, createResizeFrame } from './workspace-resize'
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -19,7 +21,8 @@ import { loadFreeTileInstancePanelLayout, type FreeTileInstancePanelLayout } fro
 import { bottomPanelFlex, COLOR_SQUARE_ANCHOR_STORAGE_KEY, COLOR_SQUARE_DOCK_STORAGE_KEY, DEFAULT_BOTTOM_WIDTHS, DEFAULT_INSPECTOR_ORDER, DEFAULT_INSPECTOR_SIZES, INSPECTOR_LAYOUT_STORAGE_KEY, MINIMUM_BOTTOM_WIDTHS, MINIMUM_INSPECTOR_SIZES, loadInspectorLayout, moveInspectorPanel, proportionalPanelFlex, type WorkspacePanelId } from '@/core/panel-layout'
 import { FLOATING_PANEL_STORAGE_KEYS } from '@/core/workspace-layout-preferences'
 import { brushPanelRenderKey, colorPanelRenderKey, layersPanelRenderKey, palettePanelRenderKey, previewPanelRenderKey, tilesetPanelRenderKey } from '@/core/panel-render-keys'
-import { FloatingDockPreview, panelDockZoneAt } from './floating-panel'
+import { FloatingDockPreview } from './floating-panel'
+import { createPanelDockIntent, panelDockZoneAt, PANEL_DRAG_THRESHOLD, type PanelDockZone } from './panel-docking'
 import type { FixedPanelDock, PanelDock } from './floating-panel'
 import { PerformanceProfiler } from './PerformanceProfiler'
 import { PopupPanelWindow, type PopupPanelAnchor } from './PopupPanelWindow'
@@ -69,28 +72,9 @@ const MemoTilesetPanel = memo(function MemoTilesetPanel({ renderKey: _renderKey,
   return <TilesetPanel {...props} />
 }, samePanelRender)
 
-export function inspectorDockHitAtPoint(movingId: WorkspacePanelId, clientX: number, clientY: number): InspectorDockHit | null {
-  const zone = panelDockZoneAt(clientX, clientY)
-  if (!zone) return null
-  const slots = [...document.querySelectorAll<HTMLElement>(`[data-panel-dock-zone="${zone.dock}"] [data-inspector-panel-id]`)].filter((slot) => slot.dataset.inspectorPanelId !== movingId)
-  let targetSlot = slots.find((slot) => {
-    const bounds = slot.getBoundingClientRect()
-    return clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom
-  })
-  if (!targetSlot && slots.length > 0) {
-    const pointer = zone.dock === 'bottom' ? clientX : clientY
-    targetSlot = slots.reduce((closest, slot) => {
-      const closestBounds = closest.getBoundingClientRect()
-      const slotBounds = slot.getBoundingClientRect()
-      const closestCenter = zone.dock === 'bottom' ? closestBounds.left + closestBounds.width / 2 : closestBounds.top + closestBounds.height / 2
-      const slotCenter = zone.dock === 'bottom' ? slotBounds.left + slotBounds.width / 2 : slotBounds.top + slotBounds.height / 2
-      return Math.abs(pointer - slotCenter) < Math.abs(pointer - closestCenter) ? slot : closest
-    })
-  }
-  const id = targetSlot?.dataset.inspectorPanelId as WorkspacePanelId | undefined
-  const bounds = targetSlot?.getBoundingClientRect()
-  const insertAfter = bounds ? (zone.dock === 'bottom' ? clientX >= bounds.left + bounds.width / 2 : clientY >= bounds.top + bounds.height / 2) : true
-  return { target: { kind: 'dock', dock: zone.dock, id, insertAfter }, preview: id ? null : zone.preview }
+export function inspectorDockHitAtPoint(movingId: WorkspacePanelId, clientX: number, clientY: number, current?: PanelDockZone | null): InspectorDockHit | null {
+  const zone = panelDockZoneAt(clientX, clientY, movingId, current)
+  return zone ? { target: { kind: 'dock', dock: zone.dock, id: zone.id, insertAfter: zone.insertAfter }, preview: zone.preview } : null
 }
 
 export function InspectorPanels({ session, panelVisibility, onClosePreview, panelDocks, leftDockHost, bottomDockHost, onPanelDockChange, onPanelVisibilityChange, relativeLuminanceInPreview = true, popupPanelId = null, onPopupPanelClose }: {
@@ -108,7 +92,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
 }) {
   const { t } = useI18n()
   const brushLibrary = useBrushLibrary(session)
-  const panelLabels: Record<WorkspacePanelId, string> = { color: t('panel.color'), palette: t('panel.palette'), layers: t('panel.layers'), freeTileInstances: t('panel.freeTileInstances'), history: t('panel.history'), preview: t('panel.preview'), tileset: t('panel.tileset'), brushes: t('panel.brushes') }
+  const panelLabels: Record<WorkspacePanelId, string> = { color: t('panel.color'), palette: t('panel.palette'), layers: t('panel.layers'), freeTileInstances: t('panel.freeTileInstances'), history: t('panel.history'), preview: t('panel.preview'), reference: t('panel.reference'), tileset: t('panel.tileset'), brushes: t('panel.brushes') }
   const panelDockLabels: Record<PanelDock, string> = { left: t('panel.dock.left'), right: t('panel.dock.right'), bottom: t('panel.dock.bottom'), floating: t('panel.dock.floating') }
   const panelStateKey = useWorkspace((state) => {
     const current = state.sessions.find((item) => item.document.id === session.document.id) ?? session
@@ -133,20 +117,20 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
   const [colorSquareAnchor, setColorSquareAnchor] = useState<SquareAnchor>(() => readStoredString(COLOR_SQUARE_ANCHOR_STORAGE_KEY) === 'start' ? 'start' : 'end')
   const [draggingPanel, setDraggingPanel] = useState<WorkspacePanelId | null>(null)
   const [detachPreview, setDetachPreview] = useState<React.CSSProperties | null>(null)
-  const [dockDropTarget, setDockDropTarget] = useState<InspectorDockTarget | null>(null)
   const [panelContextMenu, setPanelContextMenu] = useState<{ id: WorkspacePanelId; x: number; y: number; bounds: { left: number; top: number; width: number; height: number } } | null>(null)
   const [previewRelativeLuminanceOverride, setPreviewRelativeLuminanceOverride] = useState<boolean | null>(null)
+  const referenceRelativeLuminance = useReferenceImages((state) => state.relativeLuminance)
   const [freeTileInstancePanelLayout, setFreeTileInstancePanelLayout] = useState<FreeTileInstancePanelLayout>(loadFreeTileInstancePanelLayout)
   const verticalWeightsRef = useRef(verticalWeights)
   const bottomWeightsRef = useRef(bottomWeights)
   const orderRef = useRef(order)
   const colorSquareDockRef = useRef<FixedPanelDock | null>(colorSquareDock)
   const detachPreviewRef = useRef<React.CSSProperties | null>(null)
-  const dockDropTargetRef = useRef<InspectorDockTarget | null>(null)
   const popupPanelAnchorRef = useRef<PopupPanelAnchor>({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
   const resizeRef = useRef<{ upper: WorkspacePanelId; dock: 'left' | 'right'; startY: number; startSizes: Record<WorkspacePanelId, number> } | null>(null)
   const bottomResizeRef = useRef<{ leading: WorkspacePanelId; trailing: WorkspacePanelId; startX: number; startWidths: Record<WorkspacePanelId, number> } | null>(null)
   const previewRelativeLuminance = previewRelativeLuminanceOverride ?? (session.view.relativeLuminance && relativeLuminanceInPreview)
+  const contextRelativeLuminance = panelContextMenu?.id === 'reference' ? referenceRelativeLuminance : previewRelativeLuminance
   const dockDragRef = useRef<{ id: WorkspacePanelId; startX: number; startY: number; detach: (clientX: number, clientY: number, continueDrag?: boolean) => void; moved: boolean } | null>(null)
   const instancePanelAutoOpenRef = useRef<{ key: string; count: number; layout: FreeTileInstancePanelLayout } | null>(null)
   const activeFreeTileTarget = freeTileInstancePanelLayout === 'separate' ? activeFreeTileCelTarget(session.document) : null
@@ -280,11 +264,12 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
     }
     notifyWorkspaceLayoutChanged()
   }
-  const setDockTarget = (target: InspectorDockTarget | null): void => {
-    dockDropTargetRef.current = target
-    setDockDropTarget(target)
-  }
   useEffect(() => {
+    let lastPoint: { x: number; y: number } | null = null
+    const intent = createPanelDockIntent(zone => {
+      detachPreviewRef.current = zone?.preview ?? null
+      setDetachPreview(zone?.preview ?? null)
+    })
     const previewWeights = (weights: Record<WorkspacePanelId, number>, dock: FixedPanelDock): void => {
       const slots = [...document.querySelectorAll<HTMLElement>(`[data-panel-dock-content="${dock}"] [data-inspector-panel-id]`)]
       const ids = slots.map(slot => slot.dataset.inspectorPanelId as WorkspacePanelId)
@@ -296,7 +281,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
         slot.style.setProperty('--locked-size', `${weights[id]}px`)
       }
     }
-    const applyMove = (event: { clientX: number; clientY: number }): void => {
+    const applyMove = (event: { clientX: number; clientY: number; altKey?: boolean }): void => {
       const bottomResize = bottomResizeRef.current
       if (bottomResize) {
         if (Math.abs(event.clientX - bottomResize.startX) > 1 && colorSquareDockRef.current === 'bottom') setSquareDock(null)
@@ -337,18 +322,20 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       }
       const dockDrag = dockDragRef.current
       if (!dockDrag) return
-      if (!dockDrag.moved && Math.hypot(event.clientX - dockDrag.startX, event.clientY - dockDrag.startY) < 4) return
+      if (!dockDrag.moved && Math.hypot(event.clientX - dockDrag.startX, event.clientY - dockDrag.startY) < PANEL_DRAG_THRESHOLD) return
+      lastPoint = { x: event.clientX, y: event.clientY }
       dockDrag.moved = true
       setDraggingPanel(dockDrag.id)
-      const dockHit = inspectorDockHitAtPoint(dockDrag.id, event.clientX, event.clientY)
-      if (dockHit) {
-        detachPreviewRef.current = dockHit.preview
-        setDetachPreview(dockHit.preview)
-        setDockTarget(dockHit.target)
-        return
-      }
+      intent.update(event.altKey ? null : panelDockZoneAt(event.clientX, event.clientY, dockDrag.id, intent.active))
+      if (intent.active) return
       {
         const source = document.querySelector<HTMLElement>(`[data-inspector-panel-id="${dockDrag.id}"]`)?.getBoundingClientRect()
+        // A small title-bar drag within the original panel is not a detach.
+        if (!event.altKey && source && event.clientX >= source.left && event.clientX <= source.right && event.clientY >= source.top && event.clientY <= source.bottom) {
+          detachPreviewRef.current = null
+          setDetachPreview(null)
+          return
+        }
         const width = source?.width ?? 280
         const height = source?.height ?? verticalWeightsRef.current[dockDrag.id]
         const preview = {
@@ -360,7 +347,6 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
         } satisfies React.CSSProperties
         detachPreviewRef.current = preview
         setDetachPreview(preview)
-        setDockTarget({ kind: 'floating' })
         return
       }
     }
@@ -377,10 +363,11 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       if (resizeRef.current) persistLayout(orderRef.current, verticalWeightsRef.current)
       if (bottomResizeRef.current) persistLayout(orderRef.current, verticalWeightsRef.current, bottomWeightsRef.current)
       const dockDrag = dockDragRef.current
-      const releaseDockHit = dockDrag?.moved && event.type === 'pointerup' ? inspectorDockHitAtPoint(dockDrag.id, event.clientX, event.clientY) : null
-      const target: InspectorDockTarget | null = dockDrag?.moved
-        ? event.type === 'pointerup' ? releaseDockHit?.target ?? { kind: 'floating' } : null
-        : dockDropTargetRef.current
+      const target: InspectorDockTarget | null = dockDrag?.moved && event.type === 'pointerup'
+        ? !event.altKey && intent.active
+          ? { kind: 'dock', dock: intent.active.dock, id: intent.active.id, insertAfter: intent.active.insertAfter }
+          : detachPreviewRef.current ? { kind: 'floating' } : null
+        : null
       if (dockDrag?.moved && target?.kind === 'dock') {
         const nextOrder = moveInspectorPanel(orderRef.current, dockDrag.id, target.id, target.insertAfter)
         const currentDock = dockFor(dockDrag.id)
@@ -402,19 +389,32 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       resizeRef.current = null
       bottomResizeRef.current = null
       if (resizing) endWorkspaceResize()
+      intent.clear()
       dockDragRef.current = null
       detachPreviewRef.current = null
       setDetachPreview(null)
-      setDockTarget(null)
       setDraggingPanel(null)
       document.documentElement.classList.remove(workspacePanelDraggingClass)
     }
-    const blur = (): void => { if (resizeRef.current || bottomResizeRef.current) up(new PointerEvent('pointercancel')) }
+    const keydown = (event: KeyboardEvent): void => {
+      if (!dockDragRef.current) return
+      if (event.key === 'Alt' && dockDragRef.current.moved && lastPoint) applyMove(new PointerEvent('pointermove', { clientX: lastPoint.x, clientY: lastPoint.y, altKey: true }))
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); up(new PointerEvent('pointercancel')) }
+    }
+    const blur = (): void => { if (dockDragRef.current || resizeRef.current || bottomResizeRef.current) up(new PointerEvent('pointercancel')) }
+    const keyup = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt' && dockDragRef.current?.moved && lastPoint) applyMove(new PointerEvent('pointermove', { clientX: lastPoint.x, clientY: lastPoint.y }))
+    }
+    window.addEventListener('keyup', keyup, true)
+    window.addEventListener('keydown', keydown, true)
     window.addEventListener('blur', blur)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
     return () => {
+      intent.clear()
+      window.removeEventListener('keyup', keyup, true)
+      window.removeEventListener('keydown', keydown, true)
       frame.cancel()
       if (resizeRef.current || bottomResizeRef.current) endWorkspaceResize()
       window.removeEventListener('blur', blur)
@@ -493,7 +493,15 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       ? { docked: true, onPanelContextMenu: (event) => openPanelContextMenu(id, event), onDockDragStart: (event) => popupDragStart?.(event) }
       : id === 'freeTileInstances'
         ? { docked, onPanelContextMenu: (event) => openPanelContextMenu(id, event) }
-        : { docked, onFloatingDock: (dock) => onPanelDockChange(id, dock), onPanelContextMenu: (event) => openPanelContextMenu(id, event), onDockDragStart: (event, detach) => {
+        : { docked, onFloatingDock: (dock, placement) => {
+          if (placement) {
+            const next = moveInspectorPanel(orderRef.current, id, placement.id, placement.insertAfter)
+            orderRef.current = next
+            setOrder(next)
+            persistLayout(next, verticalWeightsRef.current)
+          }
+          onPanelDockChange(id, dock)
+        }, onPanelContextMenu: (event) => openPanelContextMenu(id, event), onDockDragStart: (event, detach) => {
       if (event.button !== 0 || (event.target as HTMLElement).closest('button, input, select')) return
       dockDragRef.current = { id, startX: event.clientX, startY: event.clientY, detach, moved: false }
       document.documentElement.classList.add(workspacePanelDraggingClass)
@@ -509,6 +517,8 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
             ? <MemoFreeTileInstancesPanel renderKey={layersPanelRenderKey(session)} session={session} {...dockProps} />
           : id === 'history'
             ? <HistoryPanel session={session} {...dockProps} />
+          : id === 'reference'
+            ? <ReferenceImagePanel onClose={popup ? onPopupPanelClose ?? (() => onPanelVisibilityChange('reference', false)) : () => onPanelVisibilityChange('reference', false)} {...dockProps} />
           : id === 'brushes'
             ? <BrushLibraryPanel session={session} controller={brushLibrary} {...dockProps} />
             : id === 'tileset'
@@ -528,7 +538,6 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
         : dockOrder.find((id) => id !== 'color' || colorSquareDock !== 'bottom') ?? dockOrder[0]
       : undefined
     return <div className={horizontal ? 'bottom-panel-stack' : 'inspector-stack'} data-panel-dock-content={dock}>{dockOrder.map((id, index) => {
-      const dropPreview = dockDropTarget?.kind === 'dock' && dockDropTarget.dock === dock && dockDropTarget.id === id ? dockDropTarget : null
       const nextId = dockOrder[index + 1]
       const squareLocked = id === 'color' && colorSquareDock === dock
       return <Fragment key={id}><div className={`${horizontal ? 'bottom-panel-group' : 'inspector-panel-group'} ${draggingPanel === id ? 'dock-dragging' : ''} ${squareLocked && (horizontal || dockOrder.length > 1) ? 'square-locked' : ''}`} data-inspector-panel-id={id} style={horizontal ? { flex: squareLocked ? `0 0 ${bottomWeights[id]}px` : bottomPanelFlex(bottomWeights[id], id === bottomFillId), minWidth: MINIMUM_BOTTOM_WIDTHS[id], '--locked-size': `${bottomWeights[id]}px` } as React.CSSProperties : { flex: squareLocked ? `0 0 ${verticalWeights[id]}px` : proportionalPanelFlex(verticalWeights[id]), minHeight: MINIMUM_INSPECTOR_SIZES[id] + (index < dockOrder.length - 1 ? 7 : 0), '--locked-size': `${verticalWeights[id]}px` } as React.CSSProperties}>
@@ -545,7 +554,6 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
           event.currentTarget.setPointerCapture?.(event.pointerId)
           event.preventDefault()
         }}><span /></div>}
-        {dropPreview && <span className={`inspector-drop-indicator ${horizontal ? 'vertical' : ''} ${dropPreview.insertAfter ? 'below' : 'above'}`} aria-hidden="true" />}
       </div>{horizontal && nextId && <div className="bottom-panel-resizer" role="separator" aria-orientation="vertical" aria-label={t('panel.resizeWidth', { first: panelLabels[id], second: panelLabels[nextId] })} onPointerDown={(event) => {
         const measured = { ...bottomWeightsRef.current }
         for (const slot of document.querySelectorAll<HTMLElement>('[data-panel-dock-content="bottom"] [data-inspector-panel-id]')) {
@@ -578,7 +586,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       <button className="context-menu-item" type="button" role="menuitem" onClick={() => { onPanelVisibilityChange(panelContextMenu.id, false); if (popupPanelId === panelContextMenu.id) onPopupPanelClose?.(); setPanelContextMenu(null) }}><PixelUtilityIcon kind="eyeOff" /><span>{t('panel.hide', { panel: panelLabels[panelContextMenu.id] })}</span></button>
       <span className="context-menu-divider" />
       {panelContextMenu.id !== 'freeTileInstances' && (['left', 'right', 'bottom', 'floating'] as PanelDock[]).map((dock) => <button key={dock} className="context-menu-item" type="button" role="menuitemradio" aria-checked={dockFor(panelContextMenu.id) === dock} onClick={() => movePanelFromMenu(panelContextMenu.id, dock)}>{dockFor(panelContextMenu.id) === dock ? <PixelUtilityIcon kind="check" /> : <PixelUtilityIcon kind="move" />}<span>{panelDockLabels[dock]}</span></button>)}
-      {panelContextMenu.id === 'preview' && <><span className="context-menu-divider" /><button className="context-menu-item" type="button" role="menuitemcheckbox" aria-checked={previewRelativeLuminance} onClick={() => { setPreviewRelativeLuminanceOverride(!previewRelativeLuminance); setPanelContextMenu(null) }}>{previewRelativeLuminance ? <PixelUtilityIcon kind="check" /> : <span />}<span>{t('preview.relativeLuminance')}</span></button></>}
+      {(panelContextMenu.id === 'preview' || panelContextMenu.id === 'reference') && <><span className="context-menu-divider" /><button className="context-menu-item" type="button" role="menuitemcheckbox" aria-checked={contextRelativeLuminance} onClick={() => { if (panelContextMenu.id === 'reference') useReferenceImages.getState().toggleRelativeLuminance(); else setPreviewRelativeLuminanceOverride(!previewRelativeLuminance); setPanelContextMenu(null) }}>{contextRelativeLuminance ? <PixelUtilityIcon kind="check" /> : <span />}<span>{t(panelContextMenu.id === 'reference' ? 'reference.relativeBrightness' : 'preview.relativeLuminance')}</span></button></>}
     </div>, document.body)}
   </></PerformanceProfiler>
 }

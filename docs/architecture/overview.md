@@ -2,7 +2,7 @@
 
 中文 | [English](overview.en.md)
 
-MoonSprite 是单窗口、多文档的 Tauri 2 应用。React 渲染工作台，Zustand 管理编辑会话，Canvas 负责像素视图，Rust 提供受控的 Windows 系统能力。
+MoonSprite 是以主窗口承载多文档工作台的 Tauri 2 应用。项目分屏和项目浮窗位于工作台内；扩展还可创建受主窗口生命周期约束的原生附属窗口、宿主弹窗或覆盖层。React 渲染工作台，Zustand 管理编辑会话，Canvas 负责像素视图，Rust 提供受控的 Windows 系统能力。
 
 ## 依赖方向
 
@@ -16,7 +16,7 @@ Zustand store ----> core algorithms
 platform/tauri-api ----> Tauri commands ----> Windows/file system
 ```
 
-- `core/` 不依赖 React、DOM 或 Tauri，应使用确定性单元测试覆盖。
+- `core/` 不依赖 React、components、store 或 Tauri；纯算法应使用确定性单元测试覆盖。少数浏览器适配模块封装存储、事件或 Canvas 能力，不能因此让领域算法依赖 UI 或原生命令。
 - `store/` 编排会话、历史和核心算法，不直接绘制 UI。
 - `components/` 读取状态、收集输入并渲染，不重复核心算法。
 - `platform/` 封装所有渲染器 IPC，组件不得直接散落调用 Tauri。
@@ -24,7 +24,7 @@ platform/tauri-api ----> Tauri commands ----> Windows/file system
 - `src-tauri/src/platform_paths.rs` 统一管理随应用目录保存的图库、色板、笔刷、工作区和脚本目录；迁移用户数据位置时只从这里切换。
 - `src-tauri/src/platform_clipboard.rs`、`platform_files.rs` 和 `platform_resources.rs` 分别负责系统剪贴板、二进制文件和资源信息；`lib.rs` 只注册命令并协调窗口生命周期。
 - `src-tauri/src/platform_scripts.rs` 持有程序根目录脚本发现、路径校验和 Lua 会话线程；`platform_scripts/lua_api.rs` 持有受限 Lua 5.4 VM、Aseprite 兼容对象与通用对话框桥接，`platform_scripts/mse_api.rs` 声明 MoonSprite 专属命名空间、能力表、结构快照查询和类型化操作序列化。平台层只接收脚本文件名、活动目标快照和对话框事件，返回类型化像素、Cel 表面、新图层、新文档或 `mse` 操作批次，不持有或直接修改 Renderer 文档状态。持久对话框回调先以 Renderer 提供的当前同目标像素与结构快照重建 VM 基线；阻塞对话框由 Lua coroutine 挂起并在关闭事件后继续执行。
-- `src-tauri/src/platform_extensions.rs` 是 `.msext` ZIP 扩展包的唯一平台边界，负责清单、声明式命令、栏目、现有菜单目标和新增顶层菜单位置校验、解压安全、staging 替换、启用状态、卸载、打开扩展目录和已启用 Lua 入口解析；`platform_scripts.rs` 只接收 `extension:<id>` 或 `extension:<id>:<commandId>`，再通过该边界取得经过校验的入口并复用受限 Lua runtime。Renderer 通过 `core/extension-contributions.ts` 把平台返回的已验证贡献映射到内置菜单首尾、动态顶层菜单和 MoonSprite 自己渲染的浮动栏目，所有入口仍只调用脚本 ID；扩展不能注入 Renderer 代码、访问扩展目录或传入扩展路径。
+- `src-tauri/src/platform_extensions.rs` 是 `.msext` 清单校验、资源读取、原子安装、启用状态和卸载的平台边界。schema 1 支持受限 Lua 命令；schema 2 还支持常驻 Runtime、设置和附属窗口。`core/extension-contributions.ts` 映射菜单和栏目贡献，`core/extension-runtime.ts` 定义权限与方法，`components/extensions/ExtensionRuntimeHost.tsx` 编排隔离 iframe 与宿主调用；窗口使用 `ExtensionWindow.tsx` 和 `ExtensionOverlay.tsx`。命令可执行 Lua、发送 Runtime 事件或打开设置，文档写入仍经过 Lua 快照与 Store 事务。扩展只使用已授权的不透明 ID 和桥 API，不获得主界面 DOM、Store、Tauri 或安装路径。
 
 ## 当前维护风险状态
 

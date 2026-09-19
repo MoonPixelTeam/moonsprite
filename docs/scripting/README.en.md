@@ -81,6 +81,8 @@ This is not the complete Aseprite API. Creating, copying, or deleting Frames and
 
 See [mse-api.en.md](mse-api.en.md) for the complete MSE API shape, endpoint status, and error conventions. Editor type hints are in [mse-api.lua](mse-api.lua), which can be added to a VS Code LuaLS workspace library path.
 
+The current `mse.animation` API exposes frame queries, active-frame switching, and loop-section operations. It does not provide a general frame create/duplicate/delete API; the MSE namespace is not a workaround for those missing compatibility methods. Check the documented method list and `mse.isSupported()` before use.
+
 ## Currently Available Interfaces
 
 `mse` currently exposes documents, layers, animation loops, palettes, tilemaps, free tiles, pattern brushes, selections, slices, layer styles, workspace panels, file operations, and generic UI. Queries return the structural snapshot captured at script start. Writes join the current `app.transaction()` and are then committed in order through Renderer Store domain commands:
@@ -100,3 +102,5 @@ Pixel edits and `mse` writes inside one Lua transaction form one undo step; if a
 Scripts can use `mse.apiVersion`, `mse.status`, `mse.capabilities`, and `mse.isSupported("document.info")` for capability detection. Every method in the current `0.2.0` capability table is implemented; it contains no planning placeholders that only return errors.
 
 Runnable examples are available in [examples/intro.lua](examples/intro.lua) and [examples/moon-phase.lua](examples/moon-phase.lua). The first time File > Scripts opens, `moon-phase.lua` is also copied to the executable-root `scripts` directory unless a file with that name already exists.
+
+Complete compatibility members and no-op behavior: [Lua compatibility API](compatibility-api.en.md). The [API coverage index](../extensions/api-index.en.md) lists every registered MSE method and its typed signature.

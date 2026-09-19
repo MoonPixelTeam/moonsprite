@@ -2,7 +2,7 @@
 
 [中文](overview.md) | English
 
-MoonSprite is a single-window, multi-document Tauri 2 application. React renders the workstation, Zustand manages editing sessions, Canvas renders pixel views, and Rust exposes controlled Windows system capabilities.
+MoonSprite is a Tauri 2 application with a multi-document workstation in its main window. Project splits and floating project views live inside that workstation; extensions can also create owner-bound native auxiliary windows, host dialogs, or overlays. React renders the workstation, Zustand manages editing sessions, Canvas renders pixel views, and Rust exposes controlled Windows system capabilities.
 
 ## Dependency Direction
 
@@ -16,7 +16,7 @@ Zustand store ----> core algorithms
 platform/tauri-api ----> Tauri commands ----> Windows/file system
 ```
 
-- `core/` does not depend on React, the DOM, or Tauri and should be covered by deterministic unit tests.
+- `core/` does not depend on React, components, store, or Tauri. Pure algorithms should have deterministic unit tests. A few browser adapters encapsulate storage, events, or Canvas APIs; they do not permit domain algorithms to depend on UI or native commands.
 - `store/` orchestrates sessions, history, and core algorithms without drawing UI directly.
 - `components/` reads state, collects input, and renders without duplicating core algorithms.
 - `platform/` wraps all Renderer IPC. Components must not scatter direct Tauri calls.
@@ -24,7 +24,7 @@ platform/tauri-api ----> Tauri commands ----> Windows/file system
 - `src-tauri/src/platform_paths.rs` centrally manages gallery, palette, brush, workspace, and script directories beside the application. User-data location migrations change only this boundary.
 - `src-tauri/src/platform_clipboard.rs`, `platform_files.rs`, and `platform_resources.rs` own the system clipboard, binary files, and resource metadata. `lib.rs` only registers commands and coordinates the window lifecycle.
 - `src-tauri/src/platform_scripts.rs` owns script discovery beside the executable, path validation, and Lua session threads. `platform_scripts/lua_api.rs` owns the restricted Lua 5.4 VM, Aseprite-compatible objects, and the generic dialog bridge. `platform_scripts/mse_api.rs` declares the MoonSprite namespace, capability table, structural snapshot queries, and serialization of typed operations. The platform receives only a script file name, active-target snapshot, and dialog events, and returns typed pixel, Cel-surface, new-layer, new-document, or `mse` operation batches. It never owns or directly modifies Renderer document state. Persistent dialog callbacks rebuild the VM baseline from current pixel and structural snapshots for the same target supplied by the Renderer. Blocking dialogs suspend a Lua coroutine and continue after the close event.
-- `src-tauri/src/platform_extensions.rs` is the only platform boundary for `.msext` ZIP packages. It owns manifest validation, declarative command and panel validation, existing-menu targets, top-level menu positions, extraction security, staging replacement, enabled state, uninstall, opening the extension directory, and resolution of enabled Lua entries. `platform_scripts.rs` receives only `extension:<id>` or `extension:<id>:<commandId>`, then obtains a validated entry through this boundary and reuses the restricted Lua runtime. In the Renderer, `core/extension-contributions.ts` maps platform-validated contributions to the start or end of built-in menus, dynamic top-level menus, and MoonSprite-rendered floating panels. Every entry still invokes only a script ID. Extensions cannot inject Renderer code, access the extension directory, or submit extension paths.
+- `src-tauri/src/platform_extensions.rs` is the platform boundary for `.msext` manifest validation, resource reads, atomic installation, enabled state, and uninstall. Schema 1 supports restricted Lua commands; schema 2 also supports persistent runtimes, settings, and auxiliary windows. `core/extension-contributions.ts` maps menu and panel contributions, `core/extension-runtime.ts` defines permissions and methods, and `components/extensions/ExtensionRuntimeHost.tsx` coordinates isolated iframes and host calls; windows use `ExtensionWindow.tsx` and `ExtensionOverlay.tsx`. Commands can run Lua, dispatch Runtime events, or open settings. Document writes still use Lua snapshots and Store transactions. Extensions receive authorized opaque IDs and bridge APIs, never host DOM, Store, Tauri, or installation paths.
 
 ## Current Maintained Risk State
 

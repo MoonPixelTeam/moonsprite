@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
+  'panel.reference': "참고 이미지",
+  'reference.empty': "클릭하거나 Ctrl+V로 참고 이미지 붙여넣기",
+  'reference.close': "미리보기 이미지 닫기",
+  'reference.relativeBrightness': 'Relative Luminance에 대한 리뷰 보기',
+  'reference.fit': "패널에 맞추기",
+  'reference.previous': "이전 참고 이미지",
+  'reference.next': "다음 참고 이미지",
+  'reference.pasteFailed': "참고 이미지를 붙여넣을 수 없습니다",
+
   'preferences.cursorColorGroup': '커서 색상',
   'preferences.cursorColor.auto': '기본값(자동 대비)',
   'preferences.cursorColor.custom': '사용자 지정 색상',
@@ -1214,7 +1223,7 @@ export const koKRMessages = {
   "toolOptions.canvasCenter": "기준점에서 그리기",
   "toolOptions.canvasCenterHint": "그리기 기준점을 고정하고 드래그하여 선택 영역이나 도형의 크기를 조절합니다.",
   "toolOptions.adjustDrawingAnchor": "그리기 기준점 조정",
-  "toolOptions.showDrawingAnchor": "그리기 기준점 표시",
+  "toolOptions.showDrawingAnchor": "기준점 표시",
   'toolOptions.roundedCorners': '둥근 코너',
   'toolOptions.cornerRadius': '모서리 반경',
   'toolOptions.shapeWidthRatio': '넓은 형태의 비율',
@@ -1317,6 +1326,7 @@ export const koKRMessages = {
   'outline.apply': '적용 윤곽선',
   'adjustment.title.colorBalance': '색상 균형',
   'adjustment.title.brightnessContrast': '밝기/대비',
+  'adjustment.title.colorize': '색상화',
   'adjustment.title.hueSaturation': '색조/채도',
   'adjustment.title.curves': '곡선',
   'adjustment.brightness': '밝기',
@@ -2580,6 +2590,8 @@ export const koKRMessages = {
   'componentLibrary.category.panels': '패널',
   'componentLibrary.category.dialogs': '대화',
   'componentLibrary.category.editor': '편집자',
+  "componentLibrary.entry.anchor-preset-icons.name": "기준점 프리셋 아이콘",
+  "componentLibrary.entry.anchor-preset-icons.description": "원본 픽셀과 불투명도를 유지하는 11×11 SVG 기준점 프리셋 9개입니다.",
   'componentLibrary.entry.buttons.name': '버튼 그룹',
   'componentLibrary.entry.buttons.description': '초기, 초기 및 파괴적인 행동은 일관된 크기와 상태를 공유합니다.',
   'componentLibrary.entry.icon-button.name': '아이콘 버튼',

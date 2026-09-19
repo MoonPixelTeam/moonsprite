@@ -81,6 +81,8 @@ end)
 
 完整的 MSE API 外形、端点状态和错误约定见 [mse-api.md](mse-api.md)。编辑器类型提示见 [mse-api.lua](mse-api.lua)，可以将它加入 VS Code 的 LuaLS 工作区库路径。
 
+当前 `mse.animation` 提供帧查询、切换活动帧和循环节操作，也没有通用的新建、复制或删除帧接口；不能把切换到 `mse.*` 理解成这些兼容层缺口都已补齐。调用前应核对具体方法表及 `mse.isSupported()`。
+
 ## 当前可用接口
 
 `mse` 当前开放文档、图层、动画循环节、调色板、瓦片、自由瓦片、图案笔刷、选区、切片、图层样式、工作区栏目、文件操作和通用 UI。查询立即返回脚本启动时的结构快照；写入会加入当前 `app.transaction()`，脚本调用成功后再由 Renderer 通过 Store 领域命令顺序提交：
@@ -100,3 +102,5 @@ end)
 脚本可以用 `mse.apiVersion`、`mse.status`、`mse.capabilities` 和 `mse.isSupported("document.info")` 做能力探测。当前 `0.2.0` 能力表中的所有方法均为真实实现，不再包含只报错的规划占位端点。
 
 可运行示例见 [examples/intro.lua](examples/intro.lua) 和 [examples/moon-phase.lua](examples/moon-phase.lua)。首次打开“文件 > 脚本”时，`moon-phase.lua` 也会自动放入程序根目录的 `scripts` 文件夹；如果用户已经存在同名文件则不会覆盖。
+
+完整兼容成员和无操作限制见 [Lua 兼容 API](compatibility-api.md)；全部 MSE 注册方法及类型签名见 [API 覆盖索引](../extensions/api-index.md)。

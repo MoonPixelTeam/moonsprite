@@ -1,3 +1,4 @@
+import { REFERENCE_PASTE_EVENT } from '@/components/panels/reference-image-state'
 import type { AppShortcutContext } from './app-shortcut-context'
 import { handleSelectionShortcuts } from './app-selection-shortcuts'
 import { handleDocumentShortcuts } from './app-document-shortcuts'
@@ -126,6 +127,17 @@ export function useAppShortcutRouter(options: Options) {
           event.stopImmediatePropagation()
           return
         }
+      }
+
+      const referencePanel = target?.closest('.reference-image-panel') ?? document.activeElement?.closest('.reference-image-panel')
+      if (referencePanel && !isTextEntry) {
+        if (matches('paste')) {
+          event.preventDefault()
+          event.stopPropagation()
+          if (!event.repeat) referencePanel.dispatchEvent(new Event(REFERENCE_PASTE_EVENT))
+        }
+        // A focused reference viewer must not run drawing, deletion or history commands.
+        return
       }
 
       if (matches('advancedMode')) {

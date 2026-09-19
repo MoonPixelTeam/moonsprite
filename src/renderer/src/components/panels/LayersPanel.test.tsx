@@ -952,6 +952,44 @@ describe('LayersPanel animation', () => {
     expect(timeline.frames.map((frame) => frame.id)).toEqual([secondFrame.id, thirdFrame.id, firstFrame.id])
   })
 
+  it('continues scrolling the timeline while dragging selected frames at its horizontal edge', () => {
+    vi.useFakeTimers()
+    const document = createDocument('animation frame edge auto scroll', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const session = useWorkspace.getState().sessions[0]
+    useWorkspace.getState().selectAnimationFrame(timeline.frames[0].id)
+    const { container } = render(<LayersPanel session={session} docked />)
+    const list = container.querySelector<HTMLElement>('.layer-animation-list')!
+    const first = container.querySelector<HTMLElement>(`[data-animation-frame-id="${timeline.frames[0].id}"]`)!
+    const outline = container.querySelector<HTMLElement>('[data-animation-frame-selection]')!
+    vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(1_000)
+    vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(200)
+    vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200, top: 0, bottom: 120, width: 200, height: 120, x: 0, y: 0, toJSON: () => ({}) })
+    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200, top: 0, bottom: 120, width: 200, height: 120, x: 0, y: 0, toJSON: () => ({}) })
+
+    fireEvent.pointerDown(first, { button: 0, pointerId: 7, clientX: 1, clientY: 10 })
+    fireEvent.pointerMove(first, { pointerId: 7, clientX: 199, clientY: 10 })
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBeGreaterThan(18)
+
+    fireEvent.pointerUp(first, { pointerId: 7, clientX: 199, clientY: 10 })
+    const stoppedAt = list.scrollLeft
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBe(stoppedAt)
+
+    const tree = container.querySelector<HTMLElement>('.layer-animation-tree')!
+    vi.spyOn(tree, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 100, top: 0, bottom: 120, width: 100, height: 120, x: 0, y: 0, toJSON: () => ({}) })
+    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 200, top: 0, bottom: 120, width: 100, height: 120, x: 100, y: 0, toJSON: () => ({}) })
+    list.scrollLeft = 100
+    fireEvent.pointerDown(first, { button: 0, pointerId: 8, clientX: 199, clientY: 10 })
+    fireEvent.pointerMove(first, { pointerId: 8, clientX: 101, clientY: 10 })
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBeLessThan(100)
+    fireEvent.pointerUp(first, { pointerId: 8, clientX: 101, clientY: 10 })
+  })
+
 
 
 
@@ -1109,7 +1147,7 @@ describe('LayersPanel animation', () => {
     expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
   })
 
-  it('highlights the linked run at the active layer and frame by default', () => {
+  it('does not highlight the linked run from active context after deselection', () => {
     const document = createDocument('active linked cel visual', 1, 1, 'rgba')
     const layer = getActiveLayer(document)
     layer.pixels[3] = 255
@@ -1123,7 +1161,7 @@ describe('LayersPanel animation', () => {
 
     const { container } = render(<ConnectedLayersPanel />)
 
-    expect(container.querySelector('[data-linked-cel-block]')).toHaveClass('selected')
+    expect(container.querySelector('[data-linked-cel-block]')).not.toHaveClass('selected')
   })
 
 
@@ -1142,9 +1180,10 @@ describe('LayersPanel animation', () => {
     const { container } = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
 
     expect(container.querySelectorAll('.layer-animation-cel .cel-thumbnail canvas')).toHaveLength(3)
-    expect(container.querySelector('[data-linked-cel-block]')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-linked-cel-block]')).toBeInTheDocument()
     expect(container.querySelector('[data-linked-cel-connector]')).not.toBeInTheDocument()
-    expect(container.querySelector('.layer-animation-cel.linked-cel')).not.toBeInTheDocument()
+    expect(container.querySelector('.layer-animation-cel.linked-cel')).toBeInTheDocument()
+    expect(container.querySelectorAll('.cel-thumbnail.shared-checkerboard')).toHaveLength(3)
   })
 
 

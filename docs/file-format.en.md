@@ -66,6 +66,10 @@ Indexed-color documents reserve color ID `0` for transparency. Other color IDs r
 
 `paletteOrder` continues storing stable order of visible colors. `paletteColumns` and `paletteSlots` additionally store the palette's two-dimensional column count and row-major color IDs or empty `null` slots. Old v2 projects without these fields use eight columns and fill complete rows left to right from `paletteOrder`. Invalid, duplicate, or hidden color IDs are ignored and missing visible colors fill the first empty slots. Panel resizing only adds or removes safe blank edges for display. The current two-dimensional layout is written back to the project only after the user drags a color.
 
+The current reader also accepts v19 and normalizes it to v20 in memory. Local recording references are accepted only from v20; v19 and earlier retain embedded `dataFile` semantics. Recording settings additionally preserve `mode` (`full` or `smart`); missing legacy values normalize to `smart`, and optional snapshot `changeScore` guides smart compaction. These do not change the PNG payload format.
+
+Layers and masks may store `autoLinkAnimationCels: true` for automatic cel linking; missing values leave it off. This per-track document property is separate from explicit cel links and from cross-layer `linkedContentId`. Encoding and decoding preserve the flag alongside the corresponding pixel resources.
+
 ## Local Palette Files
 
 User-saved `*.palette.json` files use `schemaVersion: 2`. `colors` stores independent RGBA colors, `columns` stores the two-dimensional column count, and `slots` stores indices into `colors` or empty `null` positions in row order. Every color index must appear exactly once. Reading rejects unknown versions, invalid column counts, and out-of-range or duplicate indices. Old `schemaVersion: 1` palettes remain readable; they contain only a compact color list and are arranged in current default-column order when applied.

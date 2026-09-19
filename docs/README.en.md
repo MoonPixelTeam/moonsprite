@@ -6,6 +6,8 @@
 
 This is the English mirror of the project's documentation index. The Chinese index is the canonical entry point for routine development. When code and documentation disagree, confirm the current implementation and tests first, then update the Chinese contract and its English mirror together.
 
+Current guides and contracts describe the checked-out source. Packaged-release scope is recorded separately in `changelog/`; archived documents and performance measurements retain their original version and measurement context. ADRs retain decision history, with later decisions taking precedence where explicitly stated. Documentation changes should update both feature summaries and operational details in their maintained language mirrors.
+
 ## Product and Architecture
 
 - [Product behavior contract](product/behavior.en.md): user-visible capabilities and stable rules.
@@ -42,3 +44,5 @@ This is the English mirror of the project's documentation index. The Chinese ind
 - [Architecture decision records](adr/README.en.md)
 
 Daily agent rules, risk tiers, and command entry points live in [AGENTS.md](../AGENTS.md); release, performance, and context-recovery procedures live in [the development workflow](agent-workflow.md), which is maintained in Chinese only. Read other documents only when a task touches them, and move outdated material into `archive/`.
+
+Extension authoring references: [quickstart](extensions/quickstart.en.md), [manifest](extensions/manifest.en.md), [host forms](extensions/ui-form.en.md), [complete API index](extensions/api-index.en.md), [Lua compatibility](scripting/compatibility-api.en.md).

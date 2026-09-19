@@ -4,16 +4,37 @@ import type { StoredExtension } from '@shared/types-extensions'
 import { ExtensionRuntimeHost } from './ExtensionRuntimeHost'
 import { isExtensionCommandVisible, extensionMenuItems } from '@/core/extension-command-state'
 
-const mocks = vi.hoisted(() => ({ listener: null as null | ((message: unknown) => void), read: vi.fn(async () => '<html></html>'), connect: vi.fn(async () => () => {}) }))
+const mocks = vi.hoisted(() => ({ locale: 'zh-CN', listener: null as null | ((message: unknown) => void), read: vi.fn(async () => '<html></html>'), connect: vi.fn(async () => () => {}) }))
+vi.mock('@/core/file-preferences', () => ({ loadEditorPreferences: () => ({ language: mocks.locale }) }))
 vi.mock('./ExtensionWindow', () => ({ ExtensionWindow: () => <div data-testid="extension-dialog-content" /> }))
 vi.mock('@/components/ModalShell', () => ({ ModalShell: ({ children, ...props }: any) => <section role="dialog" aria-label={props['aria-label']}>{children}</section> }))
 vi.mock('@/components/DialogHeader', () => ({ DialogHeader: ({ title, onClose }: any) => <header>{title}<button onClick={onClose}>关闭</button></header> }))
 vi.mock('@/store/workspace', () => ({ useWorkspace: { getState: () => ({}) } }))
 vi.mock('@/platform/extension-window', () => ({ listenForExtensionRuntimeWindowMessage: async (listener: (message: unknown) => void) => { mocks.listener = listener; return mocks.connect() } }))
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); mocks.locale='zh-CN'; vi.clearAllMocks() })
 
 const extension = { id:'test.pet', name:'Pet', enabled:true, version:'2.0.1', commands:[{id:'pet.1'},{id:'pet.2'}], runtime:{permissions:['windows','commands'],resources:[]} } as unknown as StoredExtension
 const props = { extensions:[extension], session:null, homeOpen:true, onRunLuaScript:vi.fn(), onOpenSettings:vi.fn() }
+
+it('exposes the current locale and sends initial and changed locales without restarting the runtime', async () => {
+  window.moonSprite = {readExtensionRuntimeEntry:mocks.read,closeExtensionWindows:async()=>{}} as unknown as typeof window.moonSprite
+  const owner={...extension,runtime:{permissions:['runtime'] as const,resources:[]}} as unknown as StoredExtension
+  const view=render(<ExtensionRuntimeHost {...props} extensions={[owner]} />)
+  await waitFor(()=>expect(view.container.querySelector('iframe')).not.toBeNull())
+  const frame=view.container.querySelector('iframe')!
+  const post=vi.spyOn(frame.contentWindow!,'postMessage')
+  fireEvent.load(frame)
+  expect(post).toHaveBeenCalledWith({type:'moonsprite-extension-event',event:{type:'locale-changed',locale:'zh-CN'}},'*')
+  mocks.locale='ja-JP'
+  fireEvent(window,new Event('moonsprite:preferences-changed'))
+  expect(post).toHaveBeenCalledWith({type:'moonsprite-extension-event',event:{type:'locale-changed',locale:'ja-JP'}},'*')
+  const count=post.mock.calls.length
+  fireEvent(window,new Event('moonsprite:preferences-changed'))
+  expect(post.mock.calls).toHaveLength(count)
+  fireEvent(window,new MessageEvent('message',{source:frame.contentWindow,data:{type:'moonsprite-extension-request',requestId:'locale',method:'runtime.getLocale'}}))
+  await waitFor(()=>expect(post).toHaveBeenCalledWith({type:'moonsprite-extension-response',requestId:'locale',ok:true,result:{locale:'ja-JP'}},'*'))
+  expect(mocks.read).toHaveBeenCalledTimes(1)
+})
 
 it('applies visibility from a companion window to the main menu state', async () => {
   window.moonSprite = { readExtensionRuntimeEntry:mocks.read, closeExtensionWindows:async()=>{} } as unknown as typeof window.moonSprite

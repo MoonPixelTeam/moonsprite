@@ -58,9 +58,15 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
         ? current : { left, top, minWidth })
     }
     place()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
+    if (menuRef.current) observer?.observe(menuRef.current)
+    if (triggerRef.current) observer?.observe(triggerRef.current)
     window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
-  }, [open])
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', place)
+    }
+  }, [open, popoverWidth, groups])
 
   useEffect(() => {
     if (!open) return

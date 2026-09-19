@@ -14,7 +14,8 @@ export function MenuItemButton({ children, title, className = '', ...props }: Bu
   Children.toArray(children).forEach((child) => {
     const separate = isValidElement<{ className?: string }>(child)
       && (child.type === 'kbd' || /\bmenu-(?:check|submenu-arrow)\b/.test(child.props.className ?? ''))
-    ;(separate ? decorations : content).push(child)
+    if (separate) decorations.push(child)
+    else content.push(child)
   })
   const label = textContent(content).trim()
   const hint = title && title !== label ? `${label}\n${title}` : label

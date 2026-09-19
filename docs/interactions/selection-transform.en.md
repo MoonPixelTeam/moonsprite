@@ -4,6 +4,8 @@
 
 ## Creating Selections
 
+- Rectangle/ellipse selections and matching shapes can use a fixed drawing anchor. The default is the canvas center; nine-position presets, X/Y controls, and canvas dragging adjust it, with a separate visibility toggle. The anchor is stored relative to canvas size and resolved on the half-pixel grid. With fixed-center drawing enabled, preview and committed geometry use the same anchor; these tool preferences do not enter document undo history.
+
 - Rectangle, ellipse, free lasso, polygon lasso, and magic wand share Replace, Add, Subtract, and Intersect modes.
 - All five selection tools share horizontal, vertical, upper-right-to-lower-left, and upper-left-to-lower-right symmetry axes. Every new original mask first computes and deduplicates its closure through all enabled axes and the movable pivot, then combines with the previous selection according to Replace, Add, Subtract, or Intersect. Path preview, magic-wand preview, and committed result must match. Diagonal mirrored pixels outside a rectangular canvas do not enter the mask.
 - With symmetry enabled, moving, scaling, rotating, or skewing transforms only one representative region from each symmetry orbit and regenerates the mirrored closure around the current pivot. A move may begin from any mirrored region; the pressed region follows the pointer while all other regions move with the corresponding reflection in real time. Outline, pixel preview, actual write, and the single undo entry must agree. Already symmetric source content must not be copied again into extra duplicates.

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hello window</title>
+<style>body { padding: 16px; } button { margin-top: 12px; }</style>
+<body data-ms-dialog>
+  <p id="greeting">正在连接 / Connecting…</p>
+  <button id="close" class="primary">关闭 / Close</button>
+  <script>
+  const ready = () => moonsprite.window.postMessage({ type: 'hello-ready' });
+  moonsprite.window.onMessage(message => {
+    if (message?.type === 'hello-ping') ready().catch(console.error);
+    if (message?.type === 'greeting') document.getElementById('greeting').textContent = String(message.text);
+  });
+  document.getElementById('close').onclick = () => moonsprite.window.close().catch(console.error);
+  ready().catch(console.error);
+  </script>
+</body>

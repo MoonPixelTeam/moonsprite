@@ -18,13 +18,16 @@ export interface ExtensionCommandState {
 export type ExtensionCommandStateListener = () => void
 
 const commandStates = new Map<string, ExtensionCommandState>()
-export interface ExtensionMenuItem { id: string; name: string; event: string; checked: boolean }
+export interface ExtensionMenuItem { id: string; name: string; event: string; checked: boolean; dividerBefore?: boolean }
+const menuNames = new Map<string, string>()
+export const extensionMenuName = (extensionId: string, menuId: string): string | undefined => menuNames.get(commandStateKey(extensionId, menuId))
 const menuItems = new Map<string, ExtensionMenuItem[]>()
 export const extensionMenuItems = (extensionId: string, menuId: string): readonly ExtensionMenuItem[] =>
   menuItems.get(commandStateKey(extensionId, menuId)) ?? []
 
 /** Runtime items belong only to an already declared menu in the owning extension. */
-export const setExtensionMenuItems = (extensionId: string, menuId: string, items: unknown): void => {
+export const setExtensionMenuItems = (extensionId: string, menuId: string, items: unknown, name?: unknown): void => {
+  if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 80)) throw new Error('菜单名称无效。')
   if (!Array.isArray(items) || items.length > 64) throw new Error('菜单最多包含 64 个选项。')
   const ids = new Set<string>()
   const next = items.map(item => {
@@ -32,12 +35,15 @@ export const setExtensionMenuItems = (extensionId: string, menuId: string, items
       || typeof item.id !== 'string' || !/^[a-zA-Z0-9._-]{1,80}$/.test(item.id)
       || typeof item.event !== 'string' || !/^[a-zA-Z0-9._-]{1,80}$/.test(item.event)
       || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 80
+      || (item.dividerBefore !== undefined && typeof item.dividerBefore !== 'boolean')
       || typeof item.checked !== 'boolean' || ids.has(item.id)) throw new Error('菜单选项无效或重复。')
     ids.add(item.id)
-    return { id: item.id, name: item.name, event: item.event, checked: item.checked }
+    return { id: item.id, name: item.name, event: item.event, checked: item.checked, ...(item.dividerBefore ? {dividerBefore: true} : {}) }
   })
   const key = commandStateKey(extensionId, menuId)
-  if (JSON.stringify(menuItems.get(key) ?? []) === JSON.stringify(next)) return
+  const nameChanged = typeof name === 'string' && menuNames.get(key) !== name
+  if (typeof name === 'string') menuNames.set(key, name)
+  if (!nameChanged && JSON.stringify(menuItems.get(key) ?? []) === JSON.stringify(next)) return
   menuItems.set(key, next)
   notify()
 }
@@ -89,6 +95,7 @@ export const setExtensionCommandState = (
 export const clearExtensionCommandState = (extensionId: string): void => {
   const prefix = `${extensionId}:`
   let removed = false
+  for (const key of [...menuNames.keys()]) { if (key.startsWith(prefix)) { menuNames.delete(key); removed = true } }
   for (const key of [...menuItems.keys()]) {
     if (!key.startsWith(prefix)) continue
     menuItems.delete(key)

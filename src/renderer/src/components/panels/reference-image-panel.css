@@ -1,0 +1,10 @@
+.reference-image-panel { outline: none; }
+.reference-image-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reference-image-navigation { position: absolute; bottom: var(--ui-space-4); left: 50%; transform: translateX(-50%); align-items: center; gap: 0; padding: var(--ui-space-1); background: var(--theme-raised-surface); border: 1px solid var(--theme-border); color: var(--theme-text-primary); cursor: default; opacity: 0; pointer-events: none; }
+.reference-image-panel .preview-canvas-wrap:hover .reference-image-navigation,
+.reference-image-navigation:focus-within { opacity: 1; pointer-events: auto; }
+.reference-image-count { min-width: 4ch; text-align: center; white-space: nowrap; font-weight: 400; font-variant-numeric: tabular-nums; line-height: 1; }
+@media (hover: none) {
+  .reference-image-navigation { opacity: 1; pointer-events: auto; }
+}
+.reference-image-empty { position: absolute; inset: 0; width: 100%; height: 100%; padding: var(--ui-space-4); border: 0; background: transparent; color: var(--theme-text-muted); white-space: normal; }

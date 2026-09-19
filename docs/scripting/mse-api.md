@@ -7,7 +7,7 @@ MSE（MoonSprite Extension）是 MoonSprite 的专属 Lua API。当前 API 版�
 ## 执行模型
 
 - 查询方法立即返回脚本启动时的结构快照。持久对话框每次派发事件前会重新取得当前快照。
-- 写入方法通过参数校验后返回 `true`，并加入当前脚本事务；它们不会把 Renderer 的可变 Store、DOM 或原生命令交给 Lua。
+- 写入方法序列化参数并排队后返回 `true`；领域参数校验和实际执行发生在宿主应用事务时。它们不会把 Renderer 的可变 Store、DOM 或原生命令交给 Lua。
 - `app.transaction(label, fn)` 中的像素修改和 `mse` 文档写入作为一个撤销步骤提交。任一操作失败时，当前事务内已经提交的文档改动会回滚。
 - 创建或打开工程、保存、导出、导入本地笔刷、消息通知和栏目布局属于文档外操作，不进入当前工程撤销历史。
 - 查询返回的表是副本。修改返回表本身不会修改工程，必须调用对应写入方法。
@@ -97,7 +97,7 @@ mse.layers.update(layerId, {
 
 ## 动画 `mse.animation`
 
-- `frames()`：返回 `{ id, number, duration, active }[]`。
+- `frames()`：返回 `{ id, number, duration, disabled, active }[]`。
 - `setFrame(frame)`：切换活动帧。
 - `loops()`：返回动画循环节。
 - `createLoop(spec)`：创建循环节。
@@ -113,9 +113,11 @@ mse.layers.update(layerId, {
   start = 1,       -- 或 startFrameId
   ["end"] = 8,    -- 或 endFrameId
   direction = "forward", -- forward / reverse
-  repeatCount = nil       -- nil 表示无限重复
+  repeatCount = 1         -- 省略/nil 当前默认重复一次
 }
 ```
+
+当前 Lua 写入适配器的循环方向仅处理 `forward` 和 `reverse`；界面已有的 `ping-pong` 与 `ping-pong-reverse` 不能据此推断为 Lua 写入能力。其他方向会落到正向默认值，脚本应只传本节列出的受支持值。
 
 ## 调色板 `mse.palette`
 
@@ -255,3 +257,34 @@ dlg:show { wait = false }
 ## 安全边界
 
 Lua 仍不能直接访问文件系统、网络、进程、调试库、DOM、React、原始 Store、历史栈或任意 Tauri 命令。文件选择、保存、导出与资源导入只能经过本 API 中明确开放的受控入口；像素和结构写入仍受目标身份、revision、尺寸、内存、指令数、执行时间与撤销校验保护。
+
+## 参数细节与当前限制
+
+[完整方法索引](../extensions/api-index.md)覆盖全部 68 个注册方法；[LuaLS 声明](mse-api.lua)给出结构参数和查询返回字段。get 查无对象返回 nil。创建方法返回排队确认而不是新 ID；引用新对象前，应在后续调用取得新快照。MSE 写入后立即查询仍读原快照。序列化拒绝不支持的值、非有限数、超过 24 层嵌套或 262144 个值；后续领域执行错误由宿主报告，不能靠前面的 Lua 调用/pcall 捕获。
+
+- 动画 frame number 从 1 开始，duration 为毫秒，disabled 为布尔值。循环查询可返回往返方向，写入仍只支持 forward/reverse。updateLoop 会像创建一样补默认值，不是只修改传入字段的稀疏 patch；应传完整名称、范围、方向和次数。省略或 nil 的 repeatCount 在 Lua 表中成为缺失键，默认值为 1，不会编码成 JSON null；需要无限重复时，兼容层 Tag.repeats = 0 会显式排队 null。
+- `tiles.edit { tilesetId, tileId, pixels }` 使用既有瓦片尺寸；tiles.place.rotation 是 0–3 个四分之一圈，不是角度，帧默认活动帧。打包 RGBA 为 `r | g<<8 | b<<16 | a<<24`，按行排列，也可传 RGBA 表数组或四通道数组。
+- `freeTiles.createSource { layerId, name? }`、`place { layerId, sourceId, frame?, x, y }`、`edit { sourceId, width?, height?, offsetX?, offsetY?, pixels }`：编辑尺寸/偏移默认沿用原源。源查询仅覆盖活动自由瓦片图层。
+- Tileset 快照共享 1,048,576 像素预算，超额条目不提供 pixels；工程笔刷 coverage/colors 使用同样的单数组长度上限。
+- slices.create 使用矩形字段，自定义名称应在取得 ID 后使用 slices.update；styles.apply 使用 LuaLS 中完整 MseLayerStyles 模型，不是任意部分 CSS 对象。
+
+## 保存与导出选项
+
+document.save / io.save 接受 `{ saveAs?, options? }`，options 包含 name、format、scalePercent，以及可选 directory、includeTimelapse。工程另存为使用 includeTimelapse: true 携带可移植延时录像；普通保存使用本地录像库。非工程格式沿用软件兼容性确认。
+
+| 导出字段 | 值与行为 |
+| --- | --- |
+| `name`、`format`、`scalePercent` | 默认取工程名称、png-auto、100%；缩放夹紧至 1–6400。 |
+| `format` | png-auto、png-rgba、jpeg、webp、svg、gif、bmp、ico、psd、ase、aseprite；保存另支持 moonsprite。 |
+| `target` | document（默认）、slices、frames、selection、layer；结构化工程导出要求 document 目标。 |
+| `sliceId`、`layerId` | 限制对应目标；layer 目标未提供有效 layerId 时导出全部图层。 |
+| `selection` | 由宿主管理；selection 目标使用执行时活动选区，覆盖传入的 mask。 |
+| `directory` | 目标目录；省略时沿用宿主文件选择流程。 |
+| `trim`、`trimMode` | 透明裁剪；模式 individual/common，具体受目标/格式约束。 |
+| `gifFrameRange` | all、range、loop-section。 |
+| `gifFrameStart`、`gifFrameEnd` | range 模式的含端点帧序号。 |
+| `gifLoopSectionId` | loop-section 模式的既有循环 ID。 |
+| `gifDirection` | forward、reverse、forward-ping-pong、reverse-ping-pong，与循环方向枚举名称不同。 |
+| `presetName` | 保存的导出预设标签。 |
+
+桥将选项交给 [document-file-service.ts](../../src/renderer/src/store/document-file-service.ts) 与 [export-settings.ts](../../src/renderer/src/core/export-settings.ts)，不返回最终保存路径；取消/失败通过宿主界面报告，之前的排队确认不代表文件已写入。

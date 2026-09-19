@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hello Runtime</title>
+<script>
+const defaults = { greeting: '你好，MoonSprite！' };
+const report = error => moonsprite.ui.notify({ message: String(error) }).catch(console.error);
+const capabilities = moonsprite.runtime.getCapabilities();
+capabilities.catch(report);
+let windowReady = false;
+
+async function sendGreeting() {
+  const stored = await moonsprite.storage.get({ key: 'preferences' });
+  const greeting = typeof stored?.greeting === 'string' ? stored.greeting : defaults.greeting;
+  await moonsprite.windows.postMessage({ windowId: 'hello', message: { type: 'greeting', text: greeting } });
+}
+
+moonsprite.on('command', async event => {
+  if (event.event !== 'hello') return;
+  try {
+    const supported = await capabilities;
+    if (!supported.windowPresentations?.includes('dialog')) {
+      await moonsprite.ui.notify({ message: defaults.greeting });
+      return;
+    }
+    windowReady = false;
+    await moonsprite.windows.open({
+      windowId: 'hello', resourceId: 'hello-window',
+      options: { presentation: 'dialog', title: '示例 / Example' }
+    });
+    // A newly loaded page announces readiness; this also reaches an already open page.
+    await moonsprite.windows.postMessage({ windowId: 'hello', message: { type: 'hello-ping' } });
+  } catch (error) { report(error); }
+});
+
+moonsprite.on('window-message', async event => {
+  if (event.windowId !== 'hello' || event.message?.type !== 'hello-ready') return;
+  windowReady = true;
+  try { await sendGreeting(); } catch (error) { report(error); }
+});
+
+moonsprite.on('settings-changed', async event => {
+  if (event.key !== 'preferences' || !windowReady) return;
+  try { await sendGreeting(); } catch (error) { report(error); }
+});
+</script>

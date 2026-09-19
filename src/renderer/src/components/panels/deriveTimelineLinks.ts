@@ -11,8 +11,7 @@ interface Options {
   readonly renderedMaskCellKeySet: Set<string>
   readonly renderedCellKeySet: Set<string>
   readonly renderedFrameIdSet: Set<string>
-  readonly playbackActiveLayerId: string | null
-  readonly visualActiveFrameIndex: number
+  readonly selectionVisible: boolean
 }
 export function deriveTimelineLinks({
   displayRows,
@@ -23,8 +22,7 @@ export function deriveTimelineLinks({
   renderedMaskCellKeySet,
   renderedCellKeySet,
   renderedFrameIdSet,
-  playbackActiveLayerId,
-  visualActiveFrameIndex
+  selectionVisible
 }: Options) {
   const linkedCelGroups = displayRows.flatMap((displayRow, row) => {
     const owner = displayRow.kind === 'node' && displayRow.node.kind === 'layer' ? displayRow.node.layer : displayRow.kind === 'mask' ? displayRow.owner : null
@@ -68,6 +66,7 @@ export function deriveTimelineLinks({
   const selectedLinkedCelGroups = new Set<string>()
 
   for (const group of linkedCelGroups) {
+    if (!selectionVisible) break
     const selectedCells = group.kind === 'mask' ? renderedMaskCellKeySet : renderedCellKeySet
     let selected = false
     for (const frameIndex of group.frameIndexes) {
@@ -83,12 +82,8 @@ export function deriveTimelineLinks({
   const highlightedLinkedCelGroups = new Set([
     ...selectedLinkedCelGroups,
     ...linkedCelGroups
-      // The active layer/frame is an implicit visual focus. When that slot is
-      // part of a linked run, keep the run highlighted even before the user
-      // explicitly selects a cel or layer row.
-      .filter(
-        (group) => (group.layerSelected || (group.kind === 'cel' && group.layerId === playbackActiveLayerId)) && group.frameIndexSet.has(visualActiveFrameIndex)
-      )
+      // Active editing context must not keep a link selected after deselection.
+      .filter((group) => selectionVisible && session.layerSelectionExplicit && group.layerSelected)
       .map(linkedGroupKey)
   ])
 
@@ -178,5 +173,10 @@ export function deriveTimelineLinks({
       group.frameIndexes.map((frameIndex) => `${group.kind}|${animationCelKey(group.layerId, timeline.frames[frameIndex].id)}`)
     )
   )
-  return { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys }
+  const selectedLinkedCelMemberKeys = new Set(
+    linkedCelGroups.filter(group => highlightedLinkedCelGroups.has(linkedGroupKey(group))).flatMap(group =>
+      group.frameIndexes.map(frameIndex => `${group.kind}|${animationCelKey(group.layerId, timeline.frames[frameIndex].id)}`)
+    )
+  )
+  return { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys }
 }

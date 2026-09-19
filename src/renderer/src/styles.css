@@ -670,8 +670,13 @@ body .quick-command-bar .quick-command-move { cursor: var(--cursor-move); touch-
 .workspace-panel-popup-layer { position: fixed; z-index: 560; inset: 0; }
 .workspace-panel-popup { min-width: 180px; min-height: 120px; overflow: visible; color: var(--theme-text-primary); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
 .workspace-panel-popup > .panel { width: 100%; height: 100%; overflow: hidden; border: 0; }
-.tool-options { position: relative; z-index: 180; display: flex; width: 100%; min-width: 0; min-height: var(--ui-tool-options-height); height: auto; flex-wrap: wrap; align-items: center; align-content: center; gap: var(--ui-space-2) var(--ui-space-4); padding: var(--ui-space-2) var(--ui-control-inline-padding); overflow: visible; border-bottom: 1px solid var(--theme-border); background: var(--theme-raised-surface); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); container-name: tool-options; container-type: inline-size; }
+.tool-options { --action-button-gap: var(--ui-space-1); position: relative; z-index: 180; display: flex; width: 100%; min-width: 0; min-height: var(--ui-tool-options-height); height: auto; flex-wrap: wrap; align-items: center; align-content: center; gap: var(--ui-space-2) var(--ui-space-4); padding: var(--ui-space-2) var(--ui-control-inline-padding); overflow: visible; border-bottom: 1px solid var(--theme-border); background: var(--theme-raised-surface); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); container-name: tool-options; container-type: inline-size; }
 .tool-options > :not(.tool-options-spacer) { flex-shrink: 0; }
+/* Related icons stay together; the toolbar retains its wider inter-group gap. */
+.tool-options .tool-icon-group { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--action-button-gap); }
+.tool-options .tool-icon-group:empty { display: none; }
+.tool-options .tool-icon-group > * { flex-shrink: 0; }
+.tool-options .slice-tool-actions { gap: var(--action-button-gap); }
 .eyedropper-current-colors, .eyedropper-replace-control { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--ui-space-2); }
 .eyedropper-current-colors .color-value-action-row { width: 116px; }
 .eyedropper-current-colors .color-value-trigger { padding-inline: var(--ui-space-3); }
@@ -986,6 +991,8 @@ body .free-tile-instance-rotation-control button.selected, body .free-tile-insta
 .selection-pivot-trigger { display: grid; width: var(--ui-command-button-height); height: var(--ui-command-button-height); padding: 0; place-items: center; }
 .selection-pivot-trigger.active { color: var(--theme-text-primary); background: var(--theme-surface-active); border-color: var(--theme-accent); }
 .selection-pivot-preset-icon { display: block; width: 18px; height: 18px; background-color: currentColor; image-rendering: pixelated; pointer-events: none; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: 66px 66px; mask-size: 66px 66px; }
+.pixel-anchor-preset-icon { display: block; flex: 0 0 auto; width: 22px; height: 22px; pointer-events: none; }
+.pixel-anchor-preset-icon > svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }
 .selection-pivot-popover { position: fixed; z-index: 610; display: grid; gap: var(--ui-space-2); width: max-content; padding: var(--ui-space-3); color: var(--theme-text-soft); background: var(--theme-surface); border: 1px solid var(--theme-border-strong); }
 .selection-pivot-visibility { min-height: var(--ui-command-button-height); padding: 0 var(--ui-space-1) var(--ui-space-2); border-bottom: 1px solid var(--theme-border); }
 .selection-pivot-grid { display: grid; grid-template-columns: repeat(3, var(--ui-command-button-height)); gap: var(--ui-space-1); }
@@ -2130,7 +2137,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .palette-dialog-body > p { margin: 0; overflow-wrap: anywhere; color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: 1.5; }
 @media (max-width: 520px) { .palette-form-grid { grid-template-columns: 1fr; } .palette-operation-dialog footer { flex-wrap: wrap; } }
 
-.layers-panel { --animation-frame-header-height: 34px; --animation-loop-section-lane-height: 20px; --animation-loop-section-track-height: 0px; --animation-loop-section-top-gap: var(--ui-space-2); --layers-panel-header-height: max(var(--ui-panel-header-height), calc(var(--animation-loop-section-track-height) + var(--animation-loop-section-top-gap))); --animation-header-height: var(--animation-frame-header-height); --layer-row-height: 42px; --layer-frame-width: 34px; --layer-mask-marker-height: 11px; --layer-effective-label-width: max(var(--layer-label-width, 190px), var(--animation-toolbar-extent, 0px)); display: grid; grid-template-rows: var(--layers-panel-header-height) minmax(58px, 1fr); min-height: 0; background: var(--theme-layers-background); border-bottom: 0; }
+.layers-panel { --timeline-selection-width: 2px; --animation-frame-header-height: 34px; --animation-loop-section-lane-height: 20px; --animation-loop-section-track-height: 0px; --animation-loop-section-top-gap: var(--ui-space-2); --layers-panel-header-height: max(var(--ui-panel-header-height), calc(var(--animation-loop-section-track-height) + var(--animation-loop-section-top-gap))); --animation-header-height: var(--animation-frame-header-height); --layer-row-height: 42px; --layer-frame-width: 34px; --layer-mask-marker-height: 11px; --layer-effective-label-width: max(var(--layer-label-width, 190px), var(--animation-toolbar-extent, 0px)); display: grid; grid-template-rows: var(--layers-panel-header-height) minmax(58px, 1fr); min-height: 0; background: var(--theme-layers-background); border-bottom: 0; }
 .layers-panel > header { position: relative; height: var(--layers-panel-header-height); gap: var(--ui-space-2); padding: 0 var(--ui-space-4); overflow: hidden; }
 .layers-panel > header > .layer-animation-toolbar,
 .layers-panel > header > .panel-actions {
@@ -2141,6 +2148,8 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
   background: var(--theme-raised-surface);
 }
 .layers-panel > header > .layer-animation-toolbar { flex: 0 1 auto; }
+.layers-panel > header > .layer-quick-actions { background: transparent; pointer-events: none; }
+.layers-panel > header > .layer-quick-actions > button { pointer-events: auto; }
 .layers-panel.timeline-hidden > header > .layer-quick-actions-timeline-hidden { margin-left: 0; }
 .layers-panel.has-animation-loop-sections > header > :is(.layer-animation-toolbar, .panel-actions) { align-self: flex-start; }
 .layer-panel-title { min-width: 0; overflow: hidden; color: var(--theme-text-primary); font-size: var(--ui-font-regular); text-overflow: ellipsis; white-space: nowrap; }
@@ -2159,7 +2168,7 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layers-panel.timeline-hidden .layer-animation-list { --animation-header-height: 0px; --layer-effective-label-width: 100%; grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
 .layers-panel.timeline-hidden .layer-animation-tree { position: relative; grid-column: 1; width: 100%; }
 .layer-animation-list { --animation-grid-line: var(--theme-border); position: relative; display: grid; min-width: 0; min-height: 0; grid-template-columns: var(--layer-effective-label-width) max-content; align-content: start; overflow: auto; background: var(--theme-layers-background); scrollbar-color: var(--theme-scrollbar-thumb) var(--theme-scrollbar-track); scrollbar-width: thin; }
-.layer-animation-list.has-layer-selection-outline::after { position: absolute; z-index: 31; top: calc(var(--animation-header-height) + var(--layer-selection-start, 0) * var(--layer-row-height)); left: 0; width: calc(var(--layer-effective-label-width) + var(--layer-frame-count) * var(--layer-frame-width)); height: calc(var(--layer-selection-span, 1) * var(--layer-row-height)); box-sizing: border-box; content: ''; border: 2px solid var(--theme-accent); pointer-events: none; }
+.layer-animation-list.has-layer-selection-outline::after { position: absolute; z-index: 31; top: calc(var(--animation-header-height) + var(--layer-selection-start, 0) * var(--layer-row-height)); left: 0; width: calc(var(--layer-effective-label-width) + var(--layer-frame-count) * var(--layer-frame-width)); height: calc(var(--layer-selection-span, 1) * var(--layer-row-height)); box-sizing: border-box; content: ''; border: var(--timeline-selection-width) solid var(--theme-accent); pointer-events: none; }
 .layer-animation-list.has-layer-selection-outline .layer-row.selected { box-shadow: none; }
 .layer-animation-list.has-layer-selection-outline .animation-selected-layer-row { display: none; }
 .layer-animation-tree { position: sticky; z-index: 20; grid-column: 1; grid-row: 1; left: 0; width: 100%; min-width: 0; box-sizing: border-box; background: var(--theme-layers-background); box-shadow: inset -1px 0 var(--theme-border); }
@@ -2197,14 +2206,14 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layers-panel.loop-section-resizing * { cursor: var(--cursor-ew-resize) !important; }
 .layer-animation-cel.selected-cel { background: var(--theme-surface-active); }
 .layer-animation-frame-header.selected-animation-frame, .layer-animation-cel.selected-animation-frame { background: var(--theme-surface-active); }
-.animation-selected-layer-row { position: absolute; z-index: 10; top: var(--animation-row-top); left: 0; width: calc(var(--layer-frame-count) * var(--layer-frame-width)); height: var(--animation-row-height); box-sizing: border-box; background: transparent; box-shadow: inset 0 0 0 2px var(--theme-accent); pointer-events: none; }
-.animation-frame-selection-column { position: absolute; z-index: 30; top: 0; bottom: 0; left: calc(var(--animation-frame-index) * var(--layer-frame-width)); box-sizing: border-box; width: calc(var(--animation-frame-span) * var(--layer-frame-width)); border: 2px solid var(--theme-accent); pointer-events: none; }
+.animation-selected-layer-row { position: absolute; z-index: 10; top: var(--animation-row-top); left: 0; width: calc(var(--layer-frame-count) * var(--layer-frame-width)); height: var(--animation-row-height); box-sizing: border-box; background: transparent; box-shadow: inset 0 0 0 var(--timeline-selection-width) var(--theme-accent); pointer-events: none; }
+.animation-frame-selection-column { position: absolute; z-index: 30; top: 0; bottom: 0; left: calc(var(--animation-frame-index) * var(--layer-frame-width)); box-sizing: border-box; width: calc(var(--animation-frame-span) * var(--layer-frame-width)); border: var(--timeline-selection-width) solid var(--theme-accent); pointer-events: none; }
 .animation-active-cell-column { position: absolute; z-index: 1; top: var(--animation-header-height); bottom: 0; left: calc(var(--animation-frame-index) * var(--layer-frame-width)); width: calc(var(--animation-frame-span) * var(--layer-frame-width)); background: var(--theme-surface-active); pointer-events: none; }
 .animation-active-cell-row { position: absolute; z-index: 1; top: var(--animation-row-top); left: 0; width: calc(var(--layer-frame-count) * var(--layer-frame-width)); height: var(--animation-row-height); background: var(--theme-surface-active); pointer-events: none; }
-.animation-cel-selection-box { position: absolute; z-index: 13; top: var(--animation-row-top); left: calc(var(--animation-frame-index) * var(--layer-frame-width)); width: calc(var(--animation-frame-span) * var(--layer-frame-width)); height: var(--animation-row-height); box-sizing: border-box; border: 2px solid var(--theme-accent); pointer-events: none; }
+.animation-cel-selection-box { position: absolute; z-index: 13; top: var(--animation-row-top); left: calc(var(--animation-frame-index) * var(--layer-frame-width)); width: calc(var(--animation-frame-span) * var(--layer-frame-width)); height: var(--animation-row-height); box-sizing: border-box; border: var(--timeline-selection-width) solid var(--theme-accent); pointer-events: none; }
 .animation-frame-drop-line { position: absolute; z-index: 31; top: 0; bottom: 0; left: calc(var(--animation-frame-drop-index) * var(--layer-frame-width) - 1px); width: 2px; background: var(--theme-accent); pointer-events: none; }
 .animation-linked-cel-block { --linked-cel-inset: 10px; --linked-cel-fill: var(--animation-cel-background); position: absolute; z-index: 7; top: calc(var(--animation-row-top) + var(--linked-cel-inset)); left: calc(var(--animation-frame-index) * var(--layer-frame-width) + var(--linked-cel-inset)); width: calc(var(--animation-frame-span) * var(--layer-frame-width) - var(--linked-cel-inset) * 2); height: calc(var(--animation-row-height) - var(--linked-cel-inset) * 2); box-sizing: border-box; background: var(--linked-cel-fill); border: 1px solid var(--animation-cel-border); pointer-events: none; }
-.animation-linked-cel-connector { --linked-cel-inset: 10px; --linked-cel-fill: var(--animation-cel-background); position: absolute; z-index: 10; top: calc(var(--animation-row-top) + var(--animation-row-height) / 2 - 3px); left: calc((var(--animation-link-start) + 1) * var(--layer-frame-width) - var(--linked-cel-inset)); width: calc((var(--animation-link-end) - var(--animation-link-start) - 1) * var(--layer-frame-width) + var(--linked-cel-inset) * 2); height: 6px; box-sizing: border-box; background: var(--linked-cel-fill); border: 1px solid var(--animation-cel-border); box-shadow: 0 2px 4px var(--theme-shadow); pointer-events: none; }
+.animation-linked-cel-connector { --linked-cel-inset: 10px; --linked-cel-fill: var(--animation-cel-background); position: absolute; z-index: 10; top: calc(var(--animation-row-top) + var(--animation-row-height) / 2 - (var(--timeline-selection-width) + 1px) / 2); left: calc((var(--animation-link-start) + 1) * var(--layer-frame-width) - var(--linked-cel-inset)); width: calc((var(--animation-link-end) - var(--animation-link-start) - 1) * var(--layer-frame-width) + var(--linked-cel-inset) * 2); height: calc(var(--timeline-selection-width) + 1px); box-sizing: border-box; background: var(--linked-cel-fill); border: 1px solid var(--animation-cel-border); box-shadow: 0 2px 4px var(--theme-shadow); pointer-events: none; }
 .animation-linked-cel-grid-line { position: absolute; z-index: 0; top: calc(var(--animation-header-height) + var(--animation-row-index) * var(--layer-row-height)); left: calc(var(--animation-frame-index) * var(--layer-frame-width) - 1px); width: 1px; height: var(--layer-row-height); background: var(--animation-grid-line); pointer-events: none; }
 .animation-linked-cel-grid-line.selected { background: var(--theme-accent); }
 .layer-animation-cel { --cel-marker-inset: 10px; position: relative; z-index: 2; box-sizing: border-box; height: var(--layer-row-height); background: transparent; }
@@ -2258,10 +2267,10 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layers-panel.layer-density-compact .layer-name small { display: none; }
 .layers-panel.layer-density-compact .layer-animation-cel { --cel-marker-inset: 7px; }
 .layers-panel.layer-density-detailed { --layer-row-height: 54px; --layer-frame-width: 54px; --layer-mask-marker-height: 17px; }
-.layers-panel.layer-density-expanded { --layer-row-height: 72px; --layer-frame-width: 72px; --layer-mask-marker-height: 26px; }
+.layers-panel.layer-density-expanded { --timeline-selection-width: 3px; --layer-row-height: 72px; --layer-frame-width: 72px; --layer-mask-marker-height: 26px; }
 .layers-panel.layer-density-expanded .layer-name small { font-size: var(--ui-font-small); }
-.layers-panel.layer-density-large { --layer-row-height: 96px; --layer-frame-width: 96px; --layer-mask-marker-height: 38px; }
-.layers-panel.layer-density-huge { --layer-row-height: 128px; --layer-frame-width: 128px; --layer-mask-marker-height: 54px; }
+.layers-panel.layer-density-large { --timeline-selection-width: 3px; --layer-row-height: 96px; --layer-frame-width: 96px; --layer-mask-marker-height: 38px; }
+.layers-panel.layer-density-huge { --timeline-selection-width: 4px; --layer-row-height: 128px; --layer-frame-width: 128px; --layer-mask-marker-height: 54px; }
 .layers-panel.layer-density-huge .layer-animation-list { padding-bottom: var(--ui-space-5); scroll-padding-bottom: var(--ui-space-5); }
 .layers-panel.layer-density-large .layer-name small, .layers-panel.layer-density-huge .layer-name small { font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); }
 .layers-panel.layer-density-detailed .layer-animation-cel.linked-cel::before,
@@ -2303,6 +2312,11 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layers-panel.layer-density-large .cel-thumbnail,
 .layers-panel.layer-density-huge .cel-thumbnail { z-index: 8; }
 .cel-thumbnail canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+/* Linked thumbnails share one checkerboard across each contiguous run.
+   Preview bridges overlap only the selection border, never the thumbnail interior. */
+.layers-panel:is(.layer-density-detailed, .layer-density-expanded, .layer-density-large, .layer-density-huge) .animation-linked-cel-block { z-index: 7; border: 0; box-shadow: none; background: repeating-conic-gradient(#8f96a1 0% 25%, #c9ced6 0% 50%) 0 0 / 12px 12px; }
+.layers-panel:is(.layer-density-detailed, .layer-density-expanded, .layer-density-large, .layer-density-huge) .layer-animation-cel.linked-cel-member { background: transparent !important; }
+.layers-panel:is(.layer-density-detailed, .layer-density-expanded, .layer-density-large, .layer-density-huge) .animation-linked-cel-connector { top: calc(var(--animation-row-top) + var(--animation-row-height) - var(--linked-cel-inset) - 9px); left: calc((var(--animation-link-start) + 1) * var(--layer-frame-width) - var(--timeline-selection-width)); width: calc((var(--animation-link-end) - var(--animation-link-start) - 1) * var(--layer-frame-width) + var(--timeline-selection-width) * 2); height: calc(var(--timeline-selection-width) + 1px); background: var(--theme-accent); border: 0; box-shadow: none; }
 .animation-context-menu { position: fixed; z-index: 720; width: 236px; max-height: calc(100vh - 16px); overflow-y: auto; }
 .animation-context-menu .context-menu-item { grid-template-columns: var(--ui-menu-icon-column) minmax(0, 1fr) auto; }
 .animation-context-menu .context-menu-item.danger { color: var(--theme-danger); }
@@ -2333,14 +2347,14 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .free-tile-instance-settings-modal .ui-field-inline { grid-template-columns: minmax(0, 1fr) 148px; }
 .free-tile-instance-layer-view { --animation-grid-line: var(--theme-border); --layer-row-height: 42px; background: var(--theme-layers-background); }
 .layer-row.free-tile-instance-row { grid-template-columns: repeat(2, var(--layer-row-icon-slot)) minmax(0, 1fr) var(--layer-row-icon-slot); height: var(--layer-row-height); min-height: var(--layer-row-height); }
-.layer-row.free-tile-instance-row.selected { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-first { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 2px 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-last { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 -2px 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-first.selection-last { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 2px 0 var(--theme-accent), inset 0 -2px 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected:focus, .layer-row.free-tile-instance-row.selected:focus-visible { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-first:focus, .layer-row.free-tile-instance-row.selected.selection-first:focus-visible { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 2px 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-last:focus, .layer-row.free-tile-instance-row.selected.selection-last:focus-visible { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 -2px 0 var(--theme-accent); }
-.layer-row.free-tile-instance-row.selected.selection-first.selection-last:focus, .layer-row.free-tile-instance-row.selected.selection-first.selection-last:focus-visible { box-shadow: inset 2px 0 0 var(--theme-accent), inset -2px 0 0 var(--theme-accent), inset 0 2px 0 var(--theme-accent), inset 0 -2px 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-first { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 var(--timeline-selection-width) 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-last { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 calc(-1 * var(--timeline-selection-width)) 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-first.selection-last { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 var(--timeline-selection-width) 0 var(--theme-accent), inset 0 calc(-1 * var(--timeline-selection-width)) 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected:focus, .layer-row.free-tile-instance-row.selected:focus-visible { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-first:focus, .layer-row.free-tile-instance-row.selected.selection-first:focus-visible { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 var(--timeline-selection-width) 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-last:focus, .layer-row.free-tile-instance-row.selected.selection-last:focus-visible { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 calc(-1 * var(--timeline-selection-width)) 0 var(--theme-accent); }
+.layer-row.free-tile-instance-row.selected.selection-first.selection-last:focus, .layer-row.free-tile-instance-row.selected.selection-first.selection-last:focus-visible { box-shadow: inset var(--timeline-selection-width) 0 0 var(--theme-accent), inset calc(-1 * var(--timeline-selection-width)) 0 0 var(--theme-accent), inset 0 var(--timeline-selection-width) 0 var(--theme-accent), inset 0 calc(-1 * var(--timeline-selection-width)) 0 var(--theme-accent); }
 .free-tile-instance-context-menu { position: fixed; z-index: 720; width: 236px; }
 .layers-panel.layer-density-compact .free-tile-instance-layer-view { --layer-row-height: 26px; }
 .layers-panel.layer-density-detailed .free-tile-instance-layer-view { --layer-row-height: 54px; }
@@ -2380,9 +2394,9 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .layer-row:hover { background: var(--theme-surface-hover); }
 .layer-row.active-layer { background: var(--theme-surface-active); }
 .layer-row.cel-owner-active { background: var(--theme-surface-active); }
-.layer-row.selected { color: var(--theme-text-primary); background: var(--theme-surface-active); box-shadow: inset 0 0 0 2px var(--theme-accent); }
+.layer-row.selected { color: var(--theme-text-primary); background: var(--theme-surface-active); box-shadow: inset 0 0 0 var(--timeline-selection-width) var(--theme-accent); }
 .layer-row:focus, .layer-row:focus-visible { outline: 0; box-shadow: none; }
-.layer-row.selected:focus, .layer-row.selected:focus-visible { box-shadow: inset 0 0 0 2px var(--theme-accent); }
+.layer-row.selected:focus, .layer-row.selected:focus-visible { box-shadow: inset 0 0 0 var(--timeline-selection-width) var(--theme-accent); }
 .layer-row.dragging { cursor: var(--cursor-grabbing); opacity: .45; }
 .layers-panel.layer-copy-drag, .layers-panel.layer-copy-drag * { cursor: var(--cursor-copy) !important; }
 .layers-panel.layer-style-copy-drag, .layers-panel.layer-style-copy-drag * { cursor: var(--cursor-copy) !important; }

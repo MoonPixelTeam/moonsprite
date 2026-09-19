@@ -99,7 +99,7 @@ export function useLayerPanelPreferences({
     session.document.layers.some((layer) => layer.kind === 'tilemap' && layer.tilemapTilesetId === tileset.id)
   )
 
-  const showLinkedCelVisuals = layerDensityOrder.indexOf(layerDensity) < layerDensityOrder.indexOf('detailed')
+  const showLinkedCelVisuals = true
 
   const showLinkedVisuals = showLinkedCelVisuals
 

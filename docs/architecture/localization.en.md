@@ -26,3 +26,5 @@ MoonSprite's interface language is managed by plain TypeScript language catalogs
 ## Current Migration Scope
 
 All nine language catalogs cover the same typed key set. Startup, home, editor menus, toolbars, tool options, dialogs, preferences, shortcuts, layers, palettes, color editing, the component library, save and export messages, Windows native file dialogs, undo history, and TypeScript core errors all use language catalogs. Applying a language in Preferences refreshes the interface immediately and updates `document.documentElement.lang`. User input, existing project names, layer names, file paths, and pixel data remain unchanged.
+
+Layout also forms part of localization: menus and dropdowns size to content within viewport bounds, keep shortcuts separate, and expose full text through shared tooltips when truncation is necessary. See the [UI design system](../ui-design-system.en.md). Key completeness and placeholder checks do not establish native-language quality or desktop visual acceptance.

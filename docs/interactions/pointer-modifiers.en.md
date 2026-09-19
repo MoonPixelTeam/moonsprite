@@ -60,6 +60,8 @@ A locked symmetry axis cannot move through an ordinary pointer drag. Holding `Ct
 
 Canvas wheel input supports standard `wheel`, legacy `mousewheel`, and devices that provide horizontal deltas only. Devices such as TourBox do not need activation by an ordinary mouse wheel first. An event affects only the active canvas under the pointer; input fields, panel scroll regions, and modal dialogs retain their own scrolling semantics.
 
+The initial press is the default center for rectangle/ellipse creation. With fixed-center drawing enabled in tool options, the saved drawing anchor takes precedence for both preview and commit. See [Selections and Transforms](selection-transform.en.md) for anchor adjustment and visibility.
+
 ## Hotspot Rules
 
 - Brush pointer hotspots identify the actual painted pixel. Even-sized brushes use the product rule of the lower-right center pixel.

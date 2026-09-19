@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const jaJPMessages = {
+  'panel.reference': "参考画像",
+  'reference.empty': "クリックまたは Ctrl+V で参考画像を貼り付け",
+  'reference.close': "プレビュー画像を閉じる",
+  'reference.relativeBrightness': '相対照明を見る',
+  'reference.fit': "パネルに合わせる",
+  'reference.previous': "前の参考画像",
+  'reference.next': "次の参考画像",
+  'reference.pasteFailed': "参考画像を貼り付けできませんでした",
+
   'preferences.cursorColorGroup': 'カーソルの色',
   'preferences.cursorColor.auto': '既定（自動コントラスト）',
   'preferences.cursorColor.custom': 'カスタム色',
@@ -1214,7 +1223,7 @@ export const jaJPMessages = {
   "toolOptions.canvasCenter": "アンカーポイントから描画",
   "toolOptions.canvasCenterHint": "選択範囲や図形のアンカーを固定し、ドラッグでサイズを調整します。",
   "toolOptions.adjustDrawingAnchor": "描画アンカーを調整",
-  "toolOptions.showDrawingAnchor": "描画アンカーを表示",
+  "toolOptions.showDrawingAnchor": "アンカーを表示",
   'toolOptions.roundedCorners': 'ラウンドコーナー',
   'toolOptions.cornerRadius': '角の半径',
   'toolOptions.shapeWidthRatio': '形幅比率',
@@ -1317,6 +1326,7 @@ export const jaJPMessages = {
   'outline.apply': '適用 アウトライン',
   'adjustment.title.colorBalance': 'カラーバランス',
   'adjustment.title.brightnessContrast': '明るさ・コントラスト',
+  'adjustment.title.colorize': '着色',
   'adjustment.title.hueSaturation': '色相・彩度',
   'adjustment.title.curves': 'トーンカーブ',
   'adjustment.brightness': '明るさ',
@@ -2580,6 +2590,8 @@ export const jaJPMessages = {
   'componentLibrary.category.panels': 'パネル',
   'componentLibrary.category.dialogs': '対話',
   'componentLibrary.category.editor': '編集者',
+  "componentLibrary.entry.anchor-preset-icons.name": "アンカープリセットアイコン",
+  "componentLibrary.entry.anchor-preset-icons.description": "元のピクセルと透明度を保持した11×11 SVGの9種類のアンカープリセット。",
   'componentLibrary.entry.buttons.name': 'ボタン グループ',
   'componentLibrary.entry.buttons.description': '基本的、次元的、破壊的な行動は、一貫した規模と状態を共有する。',
   'componentLibrary.entry.icon-button.name': 'ボタンアイコン',

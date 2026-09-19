@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ruRUMessages = {
+  'panel.reference': "Референс",
+  'reference.empty': "Нажмите для вставки или используйте Ctrl+V",
+  'reference.close': "Закрыть изображение предпросмотра",
+  'reference.relativeBrightness': 'Смотреть Relative Luminance',
+  'reference.fit': "Вписать в панель",
+  'reference.previous': "Предыдущий референс",
+  'reference.next': "Следующий референс",
+  'reference.pasteFailed': "Не удалось вставить референс",
+
   'preferences.cursorColorGroup': 'Цвет курсора',
   'preferences.cursorColor.auto': 'По умолчанию (автоматический контраст)',
   'preferences.cursorColor.custom': 'Свой цвет',
@@ -1310,6 +1319,7 @@ export const ruRUMessages = {
   "outline.apply": "Применить Контур",
   "adjustment.title.colorBalance": 'Цветовой баланс',
   "adjustment.title.brightnessContrast": 'Яркость/Контрастность',
+  'adjustment.title.colorize': 'Тонирование',
   "adjustment.title.hueSaturation": 'Тон/Насыщенность',
   "adjustment.title.curves": 'Кривые',
   "adjustment.brightness": "BСправаness",
@@ -2573,6 +2583,8 @@ export const ruRUMessages = {
   "componentLibrary.category.panels": 'Панели',
   "componentLibrary.category.dialogs": 'Диалог',
   "componentLibrary.category.editor": "Изменитьor",
+  "componentLibrary.entry.anchor-preset-icons.name": "Значки опорных точек",
+  "componentLibrary.entry.anchor-preset-icons.description": "Девять опорных точек в SVG 11×11 с сохранением исходных пикселей и прозрачности.",
   "componentLibrary.entry.buttons.name": "Button Группа",
   "componentLibrary.entry.buttons.description": 'Первичные, вторичные и разрушительные действия разделяют последовательные размеры и состояния.',
   "componentLibrary.entry.icon-button.name": 'Иконы кнопки',

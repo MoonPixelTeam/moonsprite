@@ -4,6 +4,8 @@
 
 这里是项目的中文规范入口，也是 AI 日常开发时唯一读取和维护的文档版本。页面顶部的 English 链接仅供人工阅读；普通任务不得跟随链接读取 `*.en.md`。代码与文档冲突时，先确认当前实现和测试，再更新对应中文契约，禁止让两个互相矛盾的说明长期共存。
 
+现行指南与契约描述当前检出的源码；已打包范围单独见 `changelog/`。归档和性能测量保留原版本与测量背景，ADR 保留决策沿革，明确标注的后续决定优先。更新文档时应同时核对功能摘要、操作细节及其维护中的语言镜像，不能只更新版本号和标题。
+
 ## 产品与架构
 
 - [MoonSprite 使用手册](user-guide.md)：面向使用者的中文功能说明与操作指南，优先介绍特色功能。
@@ -41,3 +43,5 @@
 - [架构决策记录](adr/README.md)
 
 日常 Agent 规则、风险分级和命令入口见 [AGENTS.md](../AGENTS.md)；发布、性能和上下文恢复流程见 [开发工作流](agent-workflow.md)。其他文档只在任务触及时定向读取，过期内容移入 `archive/`。
+
+扩展作者参考：[快速开始](extensions/quickstart.md)、[完整清单](extensions/manifest.md)、[宿主表单](extensions/ui-form.md)、[完整 API 索引](extensions/api-index.md)、[Lua 兼容层](scripting/compatibility-api.md)。

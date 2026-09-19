@@ -72,3 +72,12 @@ MoonSprite 会先校验并解压到 staging 目录，再原子替换同 ID 版�
 - [Extension Runtime v1](runtime-api.md)：权限、调用、事件、设置页与窗口桥。
 - [Lua 脚本与 MSE API](../scripting/README.md)：Lua 命令、事务和脚本能力。
 - [扩展包格式 ADR](../adr/0020-extension-package-format.md)：安装、安全和架构决策。
+
+## 开发参考导航
+
+1. [快速开始](quickstart.md)：可打包的三文件示例、就绪握手与排错。
+2. [清单参考](manifest.md)：全部根字段、贡献和设置字段及默认值。
+3. [Runtime API](runtime-api.md)：权限、返回值、事件和窗口展示方式。
+4. [宿主表单](ui-form.md)：全部节点及操作/文件往返协议。
+5. [API 覆盖索引](api-index.md)：Runtime、窗口桥、MSE 方法与源码覆盖检查。
+6. [Lua 兼容层](../scripting/compatibility-api.md)：已实现 app/对象子集与无操作限制。

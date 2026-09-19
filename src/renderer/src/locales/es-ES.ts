@@ -1,6 +1,15 @@
 import type { TranslationCatalog } from './contracts'
 
 export const esESMessages = {
+  'panel.reference': "Imagen de referencia",
+  'reference.empty': "Haz clic para pegar o pulsa Ctrl+V",
+  'reference.close': "Cerrar imagen de vista previa",
+  'reference.relativeBrightness': 'Ver la iluminación relativa',
+  'reference.fit': "Ajustar al panel",
+  'reference.previous': "Referencia anterior",
+  'reference.next': "Siguiente referencia",
+  'reference.pasteFailed': "No se pudo pegar la imagen de referencia",
+
   'preferences.cursorColorGroup': 'Color del cursor',
   'preferences.cursorColor.auto': 'Predeterminado (contraste automático)',
   'preferences.cursorColor.custom': 'Color personalizado',
@@ -1317,6 +1326,7 @@ export const esESMessages = {
   'outline.apply': 'Aplicar Outline',
   'adjustment.title.colorBalance': 'Equilibrio de color',
   'adjustment.title.brightnessContrast': 'Brillo/Contraste',
+  'adjustment.title.colorize': 'Colorear',
   'adjustment.title.hueSaturation': 'Tono/Saturación',
   'adjustment.title.curves': 'Curvas',
   'adjustment.brightness': 'brillo',
@@ -2580,6 +2590,8 @@ export const esESMessages = {
   'componentLibrary.category.panels': 'Paneles',
   'componentLibrary.category.dialogs': 'Diálogo',
   'componentLibrary.category.editor': 'El editor',
+  "componentLibrary.entry.anchor-preset-icons.name": "Iconos de anclaje predefinido",
+  "componentLibrary.entry.anchor-preset-icons.description": "Nueve anclajes en SVG de 11×11 que conservan los píxeles y la opacidad originales.",
   'componentLibrary.entry.buttons.name': 'Grupo Button',
   'componentLibrary.entry.buttons.description': 'Las acciones primarias, secundarias y destructivas comparten tamaños y estados consistentes.',
   'componentLibrary.entry.icon-button.name': 'Icon de botón',
