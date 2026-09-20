@@ -214,6 +214,13 @@ export function createCanvasPointerDown(ports: Ports) {
     event.currentTarget.focus({ preventScroll: true })
     const state = useWorkspace.getState()
     if (zoomPreviewStartRef.current) finishZoomPreview()
+    // View-only navigation belongs to the pointed canvas. Activating another
+    // document here refreshes every editor panel before the first pan frame.
+    if (event.button === 1) {
+      beginCanvasToolGesture(event.pointerId)
+      navigationInput.beginPan({ event, playbackNavigationTool: null })
+      return
+    }
     if (state.activeId !== session.document.id) {
       state.setActive(session.document.id)
       return

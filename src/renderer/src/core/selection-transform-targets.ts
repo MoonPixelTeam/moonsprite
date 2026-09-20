@@ -46,7 +46,8 @@ export const captureAnimationFrameSelectionTransformStates = (
   selectedFrameIds: readonly string[],
   selectedLayerIds: readonly string[],
   selection: SelectionMask,
-  selectedCellKeys: readonly string[] = []
+  selectedCellKeys: readonly string[] = [],
+  options?: { preserveOutsideCanvas?: boolean }
 ): SelectionTransformLayerState[] => {
   const timeline = ensureAnimationDocument(document)
   const pairs = animationSelectionTargetPairs(selectedFrameIds, selectedLayerIds, selectedCellKeys)
@@ -80,7 +81,7 @@ export const captureAnimationFrameSelectionTransformStates = (
       ? layerDefinition
       : animationLayerAtFrame(document, layerId, frameId)
     if (!layer || layer.kind) continue
-    const source = captureSelectionTransform(document, selection, layer)
+    const source = captureSelectionTransform(document, selection, layer, options)
     if (!source) continue
     capturedSourceIds.add(sourceKey)
     states.push({ layerId, frameId, source, previewEdit: null, translationPreview: null })

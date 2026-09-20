@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RgbaColor } from '@shared/types-color'
 import { ColorPicker, type ColorPickerConfig } from './ColorPicker'
 import { finishColorPickerSampling, sampleColorPickerAtClientPoint } from './color-picker-sampling'
+import { rgbToHsv } from '@/core/raster'
 
 vi.mock('./ColorValueControl', () => ({ ColorValueControl: () => null }))
 const initial = { r: 151, g: 103, b: 55, a: 180 }
@@ -26,6 +27,17 @@ afterEach(() => { finishColorPickerSampling(); cleanup(); vi.restoreAllMocks(); 
 const flush = (): void => { act(() => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)) }) }
 
 describe('color picker coordinate sampling', () => {
+  it('changes hue repeatedly with the wheel, preserves alpha, and wraps snapped hue', () => {
+    const changes = vi.fn()
+    const view = render(<ColorPicker wheelHue color={{ r: 255, g: 0, b: 0, a: 180 }} onChange={changes} config={{ scheme: 'sv-square', hueSteps: 12, colorSteps: 0 }} />)
+    const field = view.container.querySelector('.color-field-interaction')!
+    fireEvent.wheel(field, { deltaY: -100 })
+    fireEvent.wheel(field, { deltaY: -100 })
+    expect(rgbToHsv(changes.mock.lastCall![0]).h).toBeCloseTo(60)
+    expect(changes.mock.lastCall![0].a).toBe(180)
+    for (let i = 0; i < 3; i++) fireEvent.wheel(field, { deltaY: 100 })
+    expect(rgbToHsv(changes.mock.lastCall![0]).h).toBeCloseTo(330, 0)
+  })
   it.each<ColorPickerConfig>([
     { scheme: 'sv-square', hueSteps: 0, colorSteps: 0 },
     { scheme: 'hs-square', hueSteps: 12, colorSteps: 9 },

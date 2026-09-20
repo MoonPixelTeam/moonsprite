@@ -22,8 +22,8 @@ const viewKey = (view: ViewState): string => [view.zoom, view.panX, view.panY, v
 
 export function useCanvasViewScrollbars(options: CanvasViewScrollbarOptions) {
   const storedViewKey = viewKey(options.view)
-  const [preview, setPreview] = useState<{ baseKey: string; view: ViewState } | null>(null)
-  const activeView = preview?.baseKey === storedViewKey ? preview.view : options.view
+  const [preview, setPreview] = useState<{ documentId: string; baseKey: string; view: ViewState } | null>(null)
+  const activeView = preview?.documentId === options.documentId && preview.baseKey === storedViewKey ? preview.view : options.view
   const metrics = canvasViewScrollbarMetrics(
     options.viewportWidth,
     options.viewportHeight,
@@ -34,7 +34,7 @@ export function useCanvasViewScrollbars(options: CanvasViewScrollbarOptions) {
   )
 
   useEffect(() => registerViewPreviewListener(options.documentId, (nextView) => {
-    setPreview({ baseKey: storedViewKey, view: nextView })
+    setPreview({ documentId: options.documentId, baseKey: storedViewKey, view: nextView })
   }), [options.documentId, storedViewKey])
 
   const scroll = (axis: 'horizontal' | 'vertical', position: number): void => {

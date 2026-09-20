@@ -46,7 +46,8 @@ function mountGeometry() {
     rotationIndicatorPosition: 'canvas',
     liveViewRef: { current: session.view },
     pendingViewRef: { current: null },
-    scheduleDraw: vi.fn()
+    scheduleDraw: vi.fn(),
+    drawNow: vi.fn()
   }
   const hook = renderHook(() => useCanvasViewportGeometry(ports))
   return { ...hook, ports, session }
@@ -66,7 +67,7 @@ it('ignores unchanged notifications without publishing Store changes or redrawin
   unsubscribe()
 })
 
-it('publishes the latest resize once outside observer delivery and preserves view placement', () => {
+it('corrects each resize before paint and publishes the latest geometry once outside observer delivery', () => {
   const { ports, session } = mountGeometry()
   const initialView = { ...ports.liveViewRef.current }
   const sizeChanged = vi.spyOn(useWorkspace.getState(), 'setViewportSizeForDocument')
@@ -78,9 +79,14 @@ it('publishes the latest resize once outside observer delivery and preserves vie
   })
   expect(sizeChanged).not.toHaveBeenCalled()
   expect(ports.scheduleDraw).not.toHaveBeenCalled()
+  expect(ports.drawNow).toHaveBeenCalledTimes(2)
+  expect(ports.liveViewRef.current).toEqual(preserveViewOnViewportChange(
+    initialView, { left: 0, top: 0, width: 320, height: 240 },
+    { left: 20, top: 10, width: 360, height: 260 }, 'canvas'
+  ))
   act(() => vi.advanceTimersToNextFrame())
   expect(sizeChanged).toHaveBeenCalledTimes(1)
-  expect(ports.scheduleDraw).toHaveBeenCalledTimes(1)
+  expect(ports.drawNow).toHaveBeenCalledTimes(2)
   expect(ports.liveViewRef.current).toEqual(preserveViewOnViewportChange(
     initialView, { left: 0, top: 0, width: 320, height: 240 },
     { left: 20, top: 10, width: 360, height: 260 }, 'canvas'
@@ -139,7 +145,7 @@ it('defers frozen split geometry until release and preserves the final screen pl
     endWorkspaceResize()
   })
   expect(sizeChanged).toHaveBeenCalledTimes(1)
-  expect(ports.scheduleDraw).toHaveBeenCalledTimes(1)
+  expect(ports.drawNow).toHaveBeenCalledTimes(1)
   expect(ports.liveViewRef.current).toEqual(preserveViewOnViewportChange(initialView,
     { left: 0, top: 0, width: 320, height: 240 }, { left: 60, top: 40, width: 240, height: 180 }, 'canvas'))
   expect(useWorkspace.getState().sessions[0].contentRevision).toBe(session.contentRevision)

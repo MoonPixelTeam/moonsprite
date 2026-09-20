@@ -448,9 +448,9 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
         if (workspaceCommandRuntime.activeExportCancellation === cancel) workspaceCommandRuntime.activeExportCancellation = null
       }
     },
-    pushHistory(entry) {
+    pushHistory(entry, documentId) {
       const state = get()
-      const session = activeSession(state)
+      const session = documentId ? state.sessions.find((item) => item.document.id === documentId) : activeSession(state)
       if (!session) return
       session.history.push(entry)
       if (session.activeLayerMaskId && !findLayerMask(session.document, session.activeLayerMaskId)) session.activeLayerMaskId = null

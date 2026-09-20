@@ -23,6 +23,7 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movemen
   const setSize = vi.spyOn(useWorkspace.getState(), 'setBrushSize').mockImplementation(size => { session.brushSize = size })
   const scheduleOverlay = vi.fn()
   const scheduleDraw = vi.fn()
+  const readCoalescedSamples = vi.fn(() => [])
   const move = createCanvasPointerMove({
     inputRef: { current: input }, liveInputSession: () => session,
     canvasRef: { current: canvas }, liveViewRef: { current: session.view },
@@ -35,7 +36,7 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movemen
     scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false
   } as unknown as Parameters<typeof createCanvasPointerMove>[0])
   const moveAt = (clientX: number, sizing = true) => {
-    const event = { clientX, clientY: 16, ctrlKey: sizing, altKey: sizing, metaKey: false, shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+    const event = { clientX, clientY: 16, ctrlKey: sizing, altKey: sizing, metaKey: false, shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'pen', pressure: 0, getCoalescedEvents: readCoalescedSamples }
     move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as ReactPointerEvent<HTMLCanvasElement>)
   }
   moveAt(16)
@@ -49,6 +50,7 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movemen
   expect(setSize).toHaveBeenLastCalledWith(8)
   expect(input.modifierBrushSize).toBeNull()
   expect(setSize).toHaveBeenCalledOnce()
+  expect(readCoalescedSamples).not.toHaveBeenCalled()
 })
 
 it.each([['line', false], ['line', true], ['curve', false], ['curve', true]] as const)('adjusts %s brush size with Ctrl+wheel without zooming (reversed=%s)', (lineKind, brushSizeWheelReversed) => {
@@ -61,7 +63,7 @@ it.each([['line', false], ['line', true], ['curve', false], ['curve', true]] as 
   const scheduleZoomPreview = vi.fn()
   const { result, unmount } = renderHook(() => useCanvasDeviceRouter({
     inputRef: { current: new CanvasInputState() }, session, canvasRef: { current: canvas },
-    stageBounds: () => ({ left: 0, top: 0, right: 32, bottom: 32 }),
+    stageBounds: () => ({ left: 0, top: 0, right: 32, bottom: 32 }), liveInputSession: () => session,
     activeLayer: session.document.layers[0], canvasResizePreviewRef: { current: null },
     modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey'>, id: string) => id === 'brushSizeWheelAdjust' && event.ctrlKey,
     activeBrushImage: null, updateCursorAt: vi.fn(), scheduleDraw, scheduleZoomPreview,

@@ -313,12 +313,11 @@ pub fn run() {
                     return;
                 };
                 let _ = window.emit("app:request-close", ());
-                let app = window.app_handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(12));
-                    if pending.expire(generation) {
-                        app.exit(1);
-                    }
+                    // Allow another close request if the renderer is unresponsive,
+                    // but never interrupt an in-flight save by forcing process exit.
+                    pending.expire(generation);
                 });
             }
         })

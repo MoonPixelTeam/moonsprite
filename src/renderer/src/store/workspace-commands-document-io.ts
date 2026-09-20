@@ -1,4 +1,5 @@
 import { publishEditorEvent } from '@/core/extension-editor-events'
+import { openImageSequencePaths } from './image-sequence-import'
 import { resolveDocumentClose } from './workspace-close-coordinator'
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { SpriteDocument } from '@shared/types-document'
@@ -23,6 +24,7 @@ import { captureFreeTileImageResizeState, resizeFreeTileDocumentImage, validateF
 import { exportDocumentFile, openDocumentFile, saveDocumentFile, type ExportOptions, type SaveAsOptions } from './document-file-service'
 import { flushLocalHistoryPersist, scheduleLocalHistoryPersist, restoreLocalHistory } from './local-history-service'
 import { startDocumentCloseTask, waitForDocumentCloseTasks } from './document-close-tasks'
+import { runDocumentSave, waitForDocumentSaves } from './document-save-tasks'
 import { recordUsageEvent, recordUsageExport } from '@/platform/usage-statistics'
 import { captureDocumentCanvasResizeSnapshot, captureDocumentColorModeSnapshot, documentCanvasResizeSnapshotBytes, documentColorModeSnapshotBytes, restoreDocumentCanvasResizeSnapshot, restoreDocumentColorModeSnapshot } from './workspace-document-history'
 import { cloneSelectionMask, sessionFromDocument } from './workspace-session'
@@ -136,7 +138,7 @@ const commitCanvasResize = (
   })
 }
 
-export function createWorkspaceDocumentIoCommands({ get, set, recording, services: { recoveryService, documentTransactions } }: WorkspaceCommandContext<'addSession' | 'autosaveDirty' | 'commitFloatingPaste' | 'discardRecovery' | 'mutateActive' | 'openFiles' | 'openPath' | 'requestDialog' | 'saveActive' | 'setActive', 'recoveryService' | 'documentTransactions'>): WorkspaceDocumentIoCommands {
+export function createWorkspaceDocumentIoCommands({ get, set, recording, services: { recoveryService, documentTransactions } }: WorkspaceCommandContext<'addSession' | 'autosaveDirty' | 'commitFloatingPaste' | 'discardRecovery' | 'mutateActive' | 'openFiles' | 'openPaths' | 'openPath' | 'requestDialog' | 'saveActive' | 'setActive', 'recoveryService' | 'documentTransactions'>): WorkspaceDocumentIoCommands {
   const { flushTimelapseCapture, flushTimelapseCaptures } = recording
   const trimCanvas = async (allFrames: boolean): Promise<void> => {
     get().commitFloatingPaste()
@@ -285,123 +287,126 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     },
 
     async saveActive(saveAs = false, options?: SaveAsOptions) {
-      let session = activeSession(get())
-      if (!session) return false
-      const documentId = session.document.id
-      const removeSavedRecovery = (recoveryId: string): void => {
-        void recoveryService.delete(window.moonSprite, recoveryId).then(() => {
-          set((state) => {
-            const recoveredSession = state.sessions.find((item) => item.recoveryOriginId === recoveryId)
-            if (recoveredSession) recoveredSession.recoveryOriginId = null
-            return {
-              recoveryRecords: state.recoveryRecords.filter((item) => item.id !== recoveryId),
-              ...(recoveredSession ? { sessions: [...state.sessions] } : {})
-            }
+      const documentId = activeSession(get())?.document.id
+      if (!documentId) return false
+      return runDocumentSave(documentId, async () => {
+        let session = get().sessions.find((item) => item.document.id === documentId) ?? null
+        if (!session) return false
+        const removeSavedRecovery = (recoveryId: string): void => {
+          void recoveryService.delete(window.moonSprite, recoveryId).then(() => {
+            set((state) => {
+              const recoveredSession = state.sessions.find((item) => item.recoveryOriginId === recoveryId)
+              if (recoveredSession) recoveredSession.recoveryOriginId = null
+              return {
+                recoveryRecords: state.recoveryRecords.filter((item) => item.id !== recoveryId),
+                ...(recoveredSession ? { sessions: [...state.sessions] } : {})
+              }
+            })
+          }).catch((error) => {
+            console.error('MoonSprite recovery cleanup after save failed', error)
           })
-        }).catch((error) => {
-          console.error('MoonSprite recovery cleanup after save failed', error)
-        })
-      }
-      get().commitFloatingPaste()
-      try {
-        await flushTimelapseCapture(session)
-      } catch (error) {
-        set({ message: `${session.document.name}: ${error instanceof Error ? error.message : String(error)}` })
-        return false
-      }
-      session = get().sessions.find((item) => item.document.id === documentId) ?? null
-      if (!session) return false
-      persistProjectLayerPanelState(session)
-      const savedTarget = documentSaveTarget(session.document)
-      if (!saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
-        if (session.recoveryOriginId) removeSavedRecovery(session.recoveryOriginId)
-        set({ message: tr('workspace.save.done') })
-        return true
-      }
-      let finishSaveProgress: ((succeeded?: boolean) => void) | undefined
-      const beginSaveProgress = (): void => {
-        if (!finishSaveProgress) finishSaveProgress = saveProgress.begin(saveAs ? 'saveAs' : 'save')
-      }
-      const endSaveProgress = (succeeded = true): void => {
-        const finish = finishSaveProgress
-        if (finish) finish(succeeded)
-      }
-      let encodedTimelapseSnapshots = session.document.timelapse?.snapshots
-      try {
-        const result = await saveDocumentFile({
-          api: window.moonSprite,
-          documentId,
-          getDocument: () => {
-            const current = get().sessions.find((item) => item.document.id === documentId)
-            encodedTimelapseSnapshots = current?.document.timelapse?.snapshots
-            return current ? { document: current.document, revision: current.contentRevision } : null
-          },
-          saveAs,
-          options,
-          preferredImageFormat: saveImageKindForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)),
-          lifecycle: {
-            onEncodeStart: beginSaveProgress,
-            onProjectSaveRequested: async () => (await get().requestDialog({
-              title: tr('file.save.projectPreferredTitle'),
-              message: tr('file.save.projectPreferredMessage'),
-              choices: [
-                { id: 'project', label: tr('file.save.keepProject'), tone: 'primary' },
-                { id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }
-              ]
-            })) === 'project',
-            onSaveCompatibility: async (format, issues) => {
-              const choice = await get().requestDialog({
-                title: tr('file.save.compatibilityTitle'),
-                message: tr('file.save.compatibilityMessage', { format: saveFormatLabel(format) }),
-                detail: issues.map((issue) => tr(`file.save.loss.${issue}`)).join('\n'),
+        }
+        get().commitFloatingPaste()
+        try {
+          await flushTimelapseCapture(session)
+        } catch (error) {
+          set({ message: `${session.document.name}: ${error instanceof Error ? error.message : String(error)}` })
+          return false
+        }
+        session = get().sessions.find((item) => item.document.id === documentId) ?? null
+        if (!session) return false
+        persistProjectLayerPanelState(session)
+        const savedTarget = documentSaveTarget(session.document)
+        if (!saveAs && !session.document.dirty && savedTarget && (loadEditorPreferences().saveOriginalFormat || savedTarget.format === 'moonsprite')) {
+          if (session.recoveryOriginId) removeSavedRecovery(session.recoveryOriginId)
+          set({ message: tr('workspace.save.done') })
+          return true
+        }
+        let finishSaveProgress: ((succeeded?: boolean) => void) | undefined
+        const beginSaveProgress = (): void => {
+          if (!finishSaveProgress) finishSaveProgress = saveProgress.begin(saveAs ? 'saveAs' : 'save')
+        }
+        const endSaveProgress = (succeeded = true): void => {
+          const finish = finishSaveProgress
+          if (finish) finish(succeeded)
+        }
+        let encodedTimelapseSnapshots = session.document.timelapse?.snapshots
+        try {
+          const result = await saveDocumentFile({
+            api: window.moonSprite,
+            documentId,
+            getDocument: () => {
+              const current = get().sessions.find((item) => item.document.id === documentId)
+              encodedTimelapseSnapshots = current?.document.timelapse?.snapshots
+              return current ? { document: current.document, revision: current.contentRevision } : null
+            },
+            saveAs,
+            options,
+            preferredImageFormat: saveImageKindForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)),
+            lifecycle: {
+              onEncodeStart: beginSaveProgress,
+              onProjectSaveRequested: async () => (await get().requestDialog({
+                title: tr('file.save.projectPreferredTitle'),
+                message: tr('file.save.projectPreferredMessage'),
                 choices: [
                   { id: 'project', label: tr('file.save.keepProject'), tone: 'primary' },
-                  { id: 'format', label: tr('file.save.keepFormat', { format: saveFormatLabel(format) }), tone: 'danger' },
                   { id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }
                 ]
-              })
-              return choice === 'project' || choice === 'format' ? choice : 'cancel'
+              })) === 'project',
+              onSaveCompatibility: async (format, issues) => {
+                const choice = await get().requestDialog({
+                  title: tr('file.save.compatibilityTitle'),
+                  message: tr('file.save.compatibilityMessage', { format: saveFormatLabel(format) }),
+                  detail: issues.map((issue) => tr(`file.save.loss.${issue}`)).join('\n'),
+                  choices: [
+                    { id: 'project', label: tr('file.save.keepProject'), tone: 'primary' },
+                    { id: 'format', label: tr('file.save.keepFormat', { format: saveFormatLabel(format) }), tone: 'danger' },
+                    { id: 'cancel', label: tr('common.cancel'), tone: 'quiet' }
+                  ]
+                })
+                return choice === 'project' || choice === 'format' ? choice : 'cancel'
+              }
             }
+          })
+          if (!result) { endSaveProgress(false); return false }
+          const saved = get().sessions.find((item) => item.document.id === documentId)
+          if (!saved) { endSaveProgress(false); return false }
+          if (result.setDocumentFilePath) saved.document.filePath = result.filePath
+          else saved.document.sourceFilePath = result.filePath
+          saved.document.name = fileNameFromPath(result.filePath)
+          persistProjectLayerPanelState(saved)
+          const fullySaved = saved.contentRevision === result.revision
+            && saved.document.timelapse?.snapshots === encodedTimelapseSnapshots
+          if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'project.save.recording', {
+            documentId, encodedFrames: encodedTimelapseSnapshots?.length ?? 0,
+            currentFrames: saved.document.timelapse?.snapshots.length ?? 0,
+            pending: recording.pendingCount(saved.document),
+            format: result.filePath.split('.').pop()?.toLowerCase() ?? '',
+            fullySaved, encodedRevision: result.revision, currentRevision: saved.contentRevision
+          })
+          saved.document.dirty = !fullySaved
+          set({ sessions: [...get().sessions] })
+          recordRecentProject(result.filePath, saved.document.name)
+          scheduleLocalHistoryPersist(window.moonSprite, saved)
+          const latest = get().sessions.find((item) => item.document.id === documentId)
+          if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
+            removeSavedRecovery(latest.recoveryOriginId ?? documentId)
+          } else {
+            // A save that raced with newer edits should finish immediately; recovery
+            // protection continues in the background instead of extending Ctrl+S.
+            void get().autosaveDirty().catch(() => undefined)
           }
-        })
-        if (!result) { endSaveProgress(false); return false }
-        const saved = get().sessions.find((item) => item.document.id === documentId)
-        if (!saved) { endSaveProgress(false); return false }
-        if (result.setDocumentFilePath) saved.document.filePath = result.filePath
-        else saved.document.sourceFilePath = result.filePath
-        saved.document.name = fileNameFromPath(result.filePath)
-        persistProjectLayerPanelState(saved)
-        const fullySaved = saved.contentRevision === result.revision
-          && saved.document.timelapse?.snapshots === encodedTimelapseSnapshots
-        if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'project.save.recording', {
-          documentId, encodedFrames: encodedTimelapseSnapshots?.length ?? 0,
-          currentFrames: saved.document.timelapse?.snapshots.length ?? 0,
-          pending: recording.pendingCount(saved.document),
-          format: result.filePath.split('.').pop()?.toLowerCase() ?? '',
-          fullySaved, encodedRevision: result.revision, currentRevision: saved.contentRevision
-        })
-        saved.document.dirty = !fullySaved
-        set({ sessions: [...get().sessions] })
-        recordRecentProject(result.filePath, saved.document.name)
-        scheduleLocalHistoryPersist(window.moonSprite, saved)
-        const latest = get().sessions.find((item) => item.document.id === documentId)
-        if (latest && latest.contentRevision === result.revision && !latest.document.dirty) {
-          removeSavedRecovery(latest.recoveryOriginId ?? documentId)
-        } else {
-          // A save that raced with newer edits should finish immediately; recovery
-          // protection continues in the background instead of extending Ctrl+S.
-          void get().autosaveDirty().catch(() => undefined)
+          set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
+          endSaveProgress()
+          publishEditorEvent('document.saved', documentId, { fullySaved })
+          recordUsageEvent('save')
+          return true
+        } catch (error) {
+          endSaveProgress(false)
+          set({ message: error instanceof Error ? error.message : tr('workspace.save.error') })
+          return false
         }
-        set({ message: fullySaved ? tr('workspace.save.done') : tr('workspace.save.newerChanges') })
-        endSaveProgress()
-        publishEditorEvent('document.saved', documentId, { fullySaved })
-        recordUsageEvent('save')
-        return true
-      } catch (error) {
-        endSaveProgress(false)
-        set({ message: error instanceof Error ? error.message : tr('workspace.save.error') })
-        return false
-      }
+      })
     },
 
     async exportActive(options) {
@@ -475,8 +480,22 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     async openFiles() {
       const result = await window.moonSprite.openFiles()
       if (!result.canceled) {
-        for (const filePath of result.filePaths) await get().openPath(filePath)
+        await get().openPaths(result.filePaths)
       }
+    },
+
+    async openPaths(filePaths) {
+      return openImageSequencePaths(filePaths, {
+        openPath: (path) => get().openPath(path),
+        read: (path) => openDocumentFile(window.moonSprite, path),
+        add: (document) => get().addSession(document),
+        ask: (options) => get().requestDialog(options),
+        error: (message) => set({ message }),
+        checkMemory: async (width, height, count) => {
+          const check = checkResourceLimit(width, height, count, 'rgba', await window.moonSprite.getResourceInfo())
+          if (!check.allowed) throw new Error(check.reason)
+        }
+      })
     },
 
     async openPath(filePath, options) {
@@ -518,6 +537,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
     },
 
     async closeDocument(id) {
+      if (!await waitForDocumentSaves(id)) return
       const session = get().sessions.find((item) => item.document.id === id)
       if (!session) return
       const preserveOpenedRecovery = session.recoveryOriginId !== null
@@ -541,6 +561,7 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
         return get().saveActive()
       })
       if (choice === 'cancel') return
+      if (!await waitForDocumentSaves(id)) return
       if (choice === 'discard' && !preserveOpenedRecovery) discardClosedRecovery = true
       discardClosedRecovery ||= !session.document.dirty && !preserveOpenedRecovery
       if (discardClosedRecovery) session.recoverySuppressed = true

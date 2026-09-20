@@ -16,13 +16,22 @@ export const createDiagnosticWriter = (
 ) => {
   const pending: RuntimeDiagnosticEvent[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
+  let timerUrgent = false
   let running: Promise<void> | undefined
   let inFlight: RuntimeDiagnosticEvent[] = []
   let droppedEvents = 0
   let generation = 0
+  let fallbackFailed = false
+  const saveFallback = (events: readonly RuntimeDiagnosticEvent[]): void => {
+    try { fallback(events) } catch (error) {
+      if (!fallbackFailed) console.warn('Diagnostic fallback unavailable; recent events remain in memory.', error)
+      fallbackFailed = true
+    }
+  }
   const cancelTimer = (): void => {
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
+    timerUrgent = false
   }
   const flush = (): Promise<void> => {
     cancelTimer()
@@ -45,8 +54,11 @@ export const createDiagnosticWriter = (
         const batchGeneration = generation
         try {
           await persist(inFlight)
-        } catch {
-          if (batchGeneration === generation) fallback(inFlight)
+        } catch (error) {
+          if (batchGeneration === generation) {
+            inFlight[0] = { ...inFlight[0], detail: { ...inFlight[0].detail, diagnosticPersistenceError: String(error).slice(0, 500) } }
+            saveFallback(inFlight)
+          }
         } finally {
           inFlight = []
         }
@@ -80,17 +92,21 @@ export const createDiagnosticWriter = (
       pending.push(event)
       droppedEvents += 1
     }
-    if (urgent) {
-      void flush()
-    } else if (!running && timer === undefined) {
-      timer = setTimeout(() => { void flush() }, BATCH_DELAY_MS)
+    // Even errors leave the input/error handler before serialization or IPC.
+    // A synchronous error burst is one batch, not one write per exception.
+    if (!running) {
+      if (urgent && !timerUrgent) cancelTimer()
+      if (timer === undefined) {
+        timerUrgent = urgent
+        timer = setTimeout(() => { void flush() }, urgent ? 0 : BATCH_DELAY_MS)
+      }
     }
   }
   // Page teardown cannot await native IPC. Keep an emergency browser copy,
   // without removing the events from the normal ordered persistence queue.
   const checkpoint = (): void => {
     const events = [...inFlight, ...pending]
-    if (events.length) fallback(events)
+    if (events.length) saveFallback(events)
   }
   const discardPending = (): void => {
     generation++

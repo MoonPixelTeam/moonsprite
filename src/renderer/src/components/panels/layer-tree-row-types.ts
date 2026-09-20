@@ -7,6 +7,8 @@ import type { ReactNode } from 'react'
 import type { DocumentSession } from '@/store/workspace'
 
 export interface LayerTreeRowsProps {
+  readonly onMaskContextMenu?: (event: React.MouseEvent<HTMLElement>, ownerId: string, frameId: string, kind: 'mask') => void
+  readonly thumbnailSize?: number
   readonly displayRows: ReturnType<typeof deriveLayerPanelVisuals>['displayRows']
   readonly timelineVisualState: ReturnType<typeof deriveLayerPanelVisuals>['timelineVisualState']
   readonly renderAnimationMaskRow: (

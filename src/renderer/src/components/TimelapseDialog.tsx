@@ -13,6 +13,7 @@ import { PixelUtilityIcon } from './PixelUtilityIcon'
 import { FormField } from './FormField'
 import { PreferenceToggle } from './PreferenceToggle'
 import { readTimelapseFrame } from '@/platform/timelapse-library'
+import { useWorkspace } from '@/store/workspace'
 
 interface TimelapseDialogProps {
   settings: TimelapseSettings
@@ -22,6 +23,11 @@ interface TimelapseDialogProps {
   onClear: () => void
   onExport: (format: TimelapseExportFormat, options: TimelapseExportOptions) => Promise<boolean>
   onClose: () => void
+}
+
+export function ProjectTimelapseDialog({ documentId, ...props }: Omit<TimelapseDialogProps, 'settings'> & { documentId: string }) {
+  const settings = useWorkspace(state => state.sessions.find(item => item.document.id === documentId)?.document.timelapse)
+  return settings ? <TimelapseDialog {...props} settings={settings} /> : null
 }
 
 export function TimelapseDialog({ documentName, defaultDirectory, settings, onChange, onClear, onExport, onClose }: TimelapseDialogProps) {

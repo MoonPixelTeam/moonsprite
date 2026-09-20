@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { loadEditorPreferences } from '@/core/file-preferences'
+import { isRedundantTooltip } from './tooltip-content'
 
 interface TooltipProps {
   children: ReactNode
@@ -27,6 +28,11 @@ export function Tooltip({ children, content, className = '' }: TooltipProps) {
   const tooltipRef = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 8, top: 8 })
+  const show = (): void => {
+    const redundant = anchorRef.current && (typeof content === 'string' || typeof content === 'number')
+      ? isRedundantTooltip(anchorRef.current, String(content)) : false
+    setOpen(tooltipsEnabled && Boolean(content) && !redundant)
+  }
 
   useLayoutEffect(() => {
     if (!open || !tooltipsEnabled) return
@@ -44,7 +50,7 @@ export function Tooltip({ children, content, className = '' }: TooltipProps) {
     if (!tooltipsEnabled) setOpen(false)
   }, [tooltipsEnabled])
 
-  return <span ref={anchorRef} className={`moon-tooltip-anchor ${className}`.trim()} aria-describedby={tooltipsEnabled && open && content ? id : undefined} onPointerEnter={() => setOpen(tooltipsEnabled && Boolean(content))} onPointerLeave={() => setOpen(false)} onFocus={() => setOpen(tooltipsEnabled && Boolean(content))} onBlur={() => setOpen(false)}>
+  return <span ref={anchorRef} className={`moon-tooltip-anchor ${className}`.trim()} aria-describedby={tooltipsEnabled && open && content ? id : undefined} onPointerEnter={show} onPointerLeave={() => setOpen(false)} onFocus={show} onBlur={() => setOpen(false)}>
     {children}
     {tooltipsEnabled && open && content && createPortal(<span ref={tooltipRef} id={id} className="moon-tooltip" role="tooltip" style={position}>{content}</span>, document.body)}
   </span>
@@ -121,7 +127,7 @@ export function NativeTooltipBridge() {
     // scheduled. Keep a data copy so React rerenders cannot lose the text.
     anchor.setAttribute('data-moon-tooltip', content)
     anchor.removeAttribute('title')
-    if (tooltipsEnabled) setActive({ anchor, content })
+    if (tooltipsEnabled && !isRedundantTooltip(anchor, content)) setActive({ anchor, content })
   }, [tooltipsEnabled])
 
   const cancelPending = useCallback((): void => {

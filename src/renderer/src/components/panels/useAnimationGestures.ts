@@ -1,10 +1,10 @@
 import { useAnimationFramePreview } from './useAnimationFramePreview'
+import { useAnimationCopyCursor } from './useAnimationCopyCursor'
 import type { AnimationPointerDrag, AnimationGestureSelection, AnimationGestureActiveTarget, AnimationLoopSectionResizeEdge } from './animation-gesture-types'
 import { animationSlotRange } from '@/core/animation-slot-selection'
-import { createAnimationCelLookup } from '@/core/animation'
+import { isLayerCellShortcut, runLayerCellShortcut, toggleLayerMaskIsolatedView } from './layer-cell-shortcuts'
 import { useEffect, useRef, useState } from 'react'
 import { animationMaskAt } from '@/core/document-model'
-import { COMMAND_SCOPE_EVENT } from '@/core/command-context'
 import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { animationCelKey, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
@@ -32,49 +32,13 @@ export function useAnimationGestures(options: Options) {
   const session = options.session
   const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const layerListRef = options.listRef
-  const celLookup = createAnimationCelLookup(timeline)
   const { showAnimationSelectionOutline, showAnimationCellSelectionOutline, setSelectionOutlineVisible, setAnimationCellSelectionOutlineVisible } = options
   const cellRange = (a: string, b: string) => optionsRef.current.cellRange(a, b)
   const maskCellRange = (a: string, b: string) => optionsRef.current.maskCellRange(a, b)
   const selectAnimationFrame = (id: string, mode: 'replace' | 'toggle' | 'range' = 'replace') => store.selectAnimationFrame(id, mode)
   const [loopSectionResizePreview, setLoopSectionResizePreview] = useState<AnimationLoopSectionResizePreview | null>(null)
   const animationPointerDragRef = useRef<AnimationPointerDrag | null>(null)
-  const animationCopyRef = useRef(false)
-  const hoverCopyCursorRef = useRef<HTMLElement | null>(null)
-  const syncCopyCursor = (): void => {
-    const drag = animationPointerDragRef.current
-    document.body.classList.toggle('animation-copy-drag', Boolean(drag && (drag.kind === 'frame' || drag.kind === 'cel') && drag.moved && drag.canMove && animationCopyRef.current))
-  }
-  useEffect(() => {
-    const modifiers = (event: KeyboardEvent): void => {
-      const hovered = hoverCopyCursorRef.current
-      if (hovered?.isConnected) hovered.style.cursor = event.altKey ? 'var(--cursor-copy)' : 'var(--cursor-move)'
-      const drag = animationPointerDragRef.current
-      if (!drag || (drag.kind !== 'frame' && drag.kind !== 'cel')) return
-      animationCopyRef.current = event.altKey
-      syncCopyCursor()
-    }
-    window.addEventListener('keydown', modifiers)
-    window.addEventListener('keyup', modifiers)
-    const clearHover = (): void => {
-      if (hoverCopyCursorRef.current) hoverCopyCursorRef.current.style.cursor = ''
-      hoverCopyCursorRef.current = null
-    }
-    const leave = (event: PointerEvent): void => {
-      const hovered = hoverCopyCursorRef.current
-      if (hovered && event.target instanceof Node && hovered.contains(event.target) && !(event.relatedTarget instanceof Node && hovered.contains(event.relatedTarget))) clearHover()
-    }
-    window.addEventListener('pointerout', leave, true)
-    window.addEventListener('blur', clearHover)
-    return () => {
-      clearHover()
-      window.removeEventListener('pointerout', leave, true)
-      window.removeEventListener('blur', clearHover)
-      window.removeEventListener('keydown', modifiers)
-      window.removeEventListener('keyup', modifiers)
-      document.body.classList.remove('animation-copy-drag')
-    }
-  }, [])
+  const { animationCopyRef, hoverCopyCursorRef, syncCopyCursor } = useAnimationCopyCursor(animationPointerDragRef)
   const framePreview = useAnimationFramePreview(session.document.id)
   const [animationGestureSelection, setAnimationGestureSelection] = useState<AnimationGestureSelection | null>(null)
   const [animationGestureActiveTarget, setAnimationGestureActiveTarget] = useState<AnimationGestureActiveTarget | null>(null)
@@ -218,10 +182,9 @@ export function useAnimationGestures(options: Options) {
     const key = animationCelKey(layerId, frameId)
     animationCopyRef.current = event.altKey
     const copySelection = event.altKey && session.selectedAnimationCellKeys.length > 1 && session.selectedAnimationCellKeys.includes(key)
-    if (event.altKey && !copySelection) {
+    if (isLayerCellShortcut(event, 'cel') && !copySelection) {
       cancelAnimationPointerDrag()
-      store.selectAnimationCelContent(key, event.shiftKey)
-      window.dispatchEvent(new CustomEvent(COMMAND_SCOPE_EVENT, { detail: { scope: 'canvas', preferSelection: true } }))
+      runLayerCellShortcut(event, session.document.id, layerId, frameId, 'cel')
       event.preventDefault()
       event.stopPropagation()
       return
@@ -313,24 +276,15 @@ export function useAnimationGestures(options: Options) {
     event.preventDefault()
     event.stopPropagation()
   }
-  const toggleAnimationMaskIsolatedView = (layerId: string, frameId: string, additive = false): boolean => {
-    const key = animationCelKey(layerId, frameId)
-    const cel = celLookup.at(layerId, frameId)
-    const mask = animationMaskAt(timeline, layerId, frameId)
-    if (!mask) return false
-    if (!additive && session.layerMaskIsolatedView && session.activeLayerMaskId === mask.id) store.selectAnimationMaskCell(key)
-    else if (cel) store.selectLayerMask(cel.id, additive)
-    else store.selectGroupMask(layerId, frameId, additive)
-    return true
-  }
+  const toggleAnimationMaskIsolatedView = (layerId: string, frameId: string, additive = false): boolean => toggleLayerMaskIsolatedView(session.document.id, layerId, frameId, additive)
   const beginAnimationMaskDrag = (event: React.PointerEvent<HTMLButtonElement>, layerId: string, frameId: string): void => {
     if (event.button !== 0) return
     const key = animationCelKey(layerId, frameId)
     const mask = animationMaskAt(timeline, layerId, frameId)
-    if (event.altKey) {
+    if (isLayerCellShortcut(event, 'mask')) {
       if (!mask) return
       cancelAnimationPointerDrag()
-      toggleAnimationMaskIsolatedView(layerId, frameId, event.shiftKey)
+      runLayerCellShortcut(event, session.document.id, layerId, frameId, 'mask')
       suppressNextClick()
       event.preventDefault()
       event.stopPropagation()

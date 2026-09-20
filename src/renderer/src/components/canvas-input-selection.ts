@@ -43,6 +43,7 @@ interface Ports {
     }
   } | null
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
   selectionInteractionEditable: boolean
   currentSelectionMarqueeModifierState: () => {
     fromCenter: boolean
@@ -151,7 +152,7 @@ export function createSelectionCanvasInput(ports: Ports) {
         tileRepeatPoint: repeatedStart,
         ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, repeatedStart, false, null, drawingAnchorPoint(session))
       }
-      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
       return true
     }
     return false

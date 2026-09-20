@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Button, Checkbox, IconButton } from '../ui'
 import { ArrowLeft, Check, ChevronRight, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
 import { SITE_CONFIG } from '../config'
 import type { Copy, Language } from '../content'
 import { PetSpriteStrip, PixelPet } from '../market/PixelArt'
 import { PET_ANIMATIONS, petPacks, type PetAnimationId, type PetId } from '../market/petSprites'
 import {
-  MARKET_PRODUCTS,
   bundleItems,
   bundleValue,
   formatPrice,
@@ -17,76 +17,20 @@ import {
   type PetPackProduct,
   type SortKey,
 } from '../market/catalog'
-import { marketPackHash } from '../router'
+import { marketPackHash, navigate } from '../router'
+import { useAccount } from '../account/store'
+import { Select } from '../ui/Select'
+import { useCatalogue, useProduct } from '../market/catalogue'
+import { AddButton, CategoryTag, PackGrid, PackImage, animationCount, isArtworkPack, isBundleProduct, isPetProduct } from '../market/PackCard'
+import { useCart, useCartStore, type Cart } from '../market/cart'
 
-/** The shelf features the packs below, strongest sellers first. */
-const SHELF_FEATURED = ['asset-cavern', 'asset-character', 'asset-interface', 'asset-icons', 'pet-moonlit', 'pet-starter']
-
-type CartLine = { id: string; quantity: number }
-
-const CART_KEY = 'moonsprite-market-cart'
-
-function readCart(): CartLine[] {
-  try {
-    const raw = localStorage.getItem(CART_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((line): line is CartLine => {
-      if (typeof line !== 'object' || line === null) return false
-      const candidate = line as Partial<CartLine>
-      return typeof candidate.id === 'string' && typeof candidate.quantity === 'number' && candidate.quantity > 0
-    })
-  } catch (error) {
-    console.warn('MoonSprite market: could not read the saved cart, starting empty.', error)
-    return []
-  }
-}
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
-/** Cart state is shared by the market grid and every detail page. */
-function useCart() {
-  const [cart, setCart] = useState<CartLine[]>(readCart)
-  useEffect(() => {
-    try {
-      localStorage.setItem(CART_KEY, JSON.stringify(cart))
-    } catch (error) {
-      console.warn('MoonSprite market: cart could not be saved for this session.', error)
-    }
-  }, [cart])
-  const lines = cart
-    .map((line) => ({ product: MARKET_PRODUCTS.find((product) => product.id === line.id), quantity: line.quantity }))
-    .filter((line): line is { product: MarketProduct; quantity: number } => Boolean(line.product))
-  return {
-    lines,
-    count: lines.reduce((total, line) => total + line.quantity, 0),
-    subtotal: lines.reduce((total, line) => total + line.product.price * line.quantity, 0),
-    has: (id: string) => cart.some((line) => line.id === id),
-    add: (id: string) => setCart((current) => current.some((line) => line.id === id) ? current : [...current, { id, quantity: 1 }]),
-    setQuantity: (id: string, quantity: number) => setCart((current) => quantity < 1
-      ? current.filter((line) => line.id !== id)
-      : current.map((line) => line.id === id ? { ...line, quantity } : line)),
-    remove: (id: string) => setCart((current) => current.filter((line) => line.id !== id)),
-    clear: () => setCart([]),
-  }
-}
-
-type Cart = ReturnType<typeof useCart>
+/** The shelf leads with the one pack that has real artwork in it, then the asset packs. */
+const SHELF_FEATURED = ['pet-nailong', 'asset-cavern', 'asset-character', 'asset-interface', 'asset-icons']
 
 /*
- * TypeScript loses the discriminant when narrowing through a union member's own
- * members, so these guards keep the narrowing explicit.
+ * Detail-page pieces. The card and its cart live in market/PackCard.tsx because the
+ * homepage shows the same cards; these are only used here.
  */
-function isPetProduct(product: MarketProduct): product is PetPackProduct {
-  return product.category === 'pets'
-}
-
-function isBundleProduct(product: MarketProduct): product is BundleProduct {
-  return product.category === 'bundles'
-}
 
 /** Animation ids for a code-drawn pet pack; real .mspet packs describe their own. */
 function petAnimationsOf(product: MarketProduct): PetAnimationId[] {
@@ -102,63 +46,18 @@ function packPets(product: MarketProduct): PetId[] {
   return []
 }
 
-/** Animation loops a pack advertises, counted from the pack's own data. */
-function animationCount(product: MarketProduct): number {
-  if (!isPetProduct(product)) return 0
-  if (product.animations) return product.animations.order.length
-  return product.pack ? petsOf(product).length * petPacks[product.pack].animations.length : 0
-}
-
-function CategoryTag({ product, t }: { product: MarketProduct; t: Copy }) {
-  const labels: Record<MarketCategory, string> = {
-    pets: t.marketPage.categories.pets,
-    assets: t.marketPage.categories.assets,
-    bundles: t.marketPage.categories.bundles,
-  }
-  if (product.category === 'bundles') {
-    return <span className="pack-tag bundle">{labels.bundles} · {t.marketPage.card.bundleOf(bundleItems(product).length)}</span>
-  }
-  return <span className={`pack-tag ${product.category}`}>{labels[product.category]}</span>
-}
-
 function PriceRow({ product, t, language }: { product: MarketProduct; t: Copy; language: Language }) {
   if (product.category === 'bundles') {
     const full = bundleValue(product)
     return <div className="pack-price">
-      <strong>{formatPrice(product.price, language)}</strong>
-      <s>{formatPrice(full, language)}</s>
-      <em>{t.marketPage.card.save} {formatPrice(full - product.price, language)}</em>
+      <strong>{formatPrice(product.price)}</strong>
+      <s>{formatPrice(full)}</s>
+      <em>{t.marketPage.card.save} {formatPrice(full - product.price)}</em>
     </div>
   }
-  return <div className="pack-price"><strong>{formatPrice(product.price, language)}</strong></div>
+  return <div className="pack-price"><strong>{formatPrice(product.price)}</strong></div>
 }
 
-/** Real .mspet packs preview with their own artwork, framed as pixel art. */
-function isArtworkPack(product: MarketProduct): boolean {
-  return isPetProduct(product) && Boolean(product.animations)
-}
-
-/**
- * The pack's preview image. A real .mspet pack previews with its own idle loop, so
- * the thumbnail is the pet alive rather than a still; every other pack shows its
- * product shot, which fills the fixed 16:10 frame so the grid stays aligned.
- */
-function PackImage({ product, alt, zoom = 2, className }: {
-  product: MarketProduct
-  alt: string
-  zoom?: number
-  className?: string
-}) {
-  if (isPetProduct(product) && product.animations) {
-    return <PetSpriteStrip sheet={product.animations.idle} zoom={zoom} className={className} />
-  }
-  return <img
-    className={className ? `pack-image ${className}` : 'pack-image'}
-    src={product.image}
-    alt={alt}
-    loading="lazy"
-    decoding="async" />
-}
 function PetStrip({ pets, animation, px = 5 }: { pets: PetId[]; animation: PetAnimationId; px?: number }) {
   return <div className="pet-strip" style={{ '--strip-cols': pets.length } as CSSProperties}>
     {pets.map((pet, index) => <span className="pet-cell" key={pet}>
@@ -261,64 +160,6 @@ function IncludesList({ product, t, language }: { product: MarketProduct; t: Cop
   </ul>
 }
 
-function AddButton({ product, t, inCart, onAdd, block = false }: {
-  product: MarketProduct
-  t: Copy
-  inCart: boolean
-  onAdd: (id: string) => void
-  block?: boolean
-}) {
-  const market = t.marketPage
-  return <button
-    type="button"
-    className={`button primary compact add-button${block ? ' block' : ''}`}
-    onClick={(event) => { event.preventDefault(); event.stopPropagation(); onAdd(product.id) }}>
-    {inCart ? <Check aria-hidden="true" /> : <ShoppingCart aria-hidden="true" />}
-    {inCart ? market.card.owned : market.card.add}
-  </button>
-}
-
-function PackCard({ product, t, language, cart, animation }: {
-  product: MarketProduct
-  t: Copy
-  language: Language
-  cart: Cart
-  animation: PetAnimationId
-}) {
-  const market = t.marketPage
-  const loops = animationCount(product)
-
-  return <article className="pack-card">
-    <a className="pack-card-link" href={marketPackHash(product.id)} aria-label={`${productCopy(product.name, language)} - ${market.card.details}`}>
-      <div className={isArtworkPack(product) ? 'pack-art-frame artwork' : 'pack-art-frame'}>
-        <PackImage product={product} alt={productCopy(product.name, language)} zoom={2} />
-        <CategoryTag product={product} t={t} />
-      </div>
-
-      <div className="pack-body">
-        <header className="pack-head">
-          <h3>{productCopy(product.name, language)}</h3>
-          <p className="pack-tagline">{productCopy(product.tagline, language)}</p>
-        </header>
-        <p className="pack-copy">{productCopy(product.body, language)}</p>
-        <ul className="pack-chips">
-          <li>{productCopy(product.size, language)}</li>
-          {loops > 0 && <li>{market.card.loops(loops)}</li>}
-          <li>{product.formats[0]}</li>
-        </ul>
-      </div>
-    </a>
-
-    <footer className="pack-foot">
-      <PriceRow product={product} t={t} language={language} />
-      <div className="pack-actions">
-        <a className="pack-more" href={marketPackHash(product.id)}>{market.card.details}<ChevronRight aria-hidden="true" /></a>
-        <AddButton product={product} t={t} inCart={cart.has(product.id)} onAdd={cart.add} />
-      </div>
-    </footer>
-  </article>
-}
-
 function CartDrawer({ open, cart, t, language, onClose }: {
   open: boolean
   cart: Cart
@@ -327,6 +168,58 @@ function CartDrawer({ open, cart, t, language, onClose }: {
   onClose: () => void
 }) {
   const market = t.marketPage
+  const { account, addOrder } = useAccount()
+  const [step, setStep] = useState<'cart' | 'review'>('cart')
+  const [agreed, setAgreed] = useState(false)
+  const [agreeError, setAgreeError] = useState(false)
+  const [paying, setPaying] = useState(false)
+
+  /*
+   * Two steps, because a purchase needs a confirmation: the cart asks to review, the
+   * review states the licence and the no-refund policy, and only then does paying run.
+   * Steam takes over entirely once its store URL exists.
+   */
+  const checkout = () => {
+    if (!account) {
+      onClose()
+      navigate('#/account')
+      return
+    }
+    setStep('review')
+  }
+
+  const pay = async () => {
+    if (!agreed) {
+      setAgreeError(true)
+      return
+    }
+    setPaying(true)
+    const lines = cart.lines.map(({ product, quantity }) => ({
+      id: product.id,
+      name: productCopy(product.name, language),
+      price: product.price,
+      quantity,
+    }))
+    const result = await addOrder(lines)
+    setPaying(false)
+    if (!result.ok) {
+      setAgreeError(true)
+      return
+    }
+    cart.clear()
+    setStep('cart')
+    setAgreed(false)
+    onClose()
+    // The receipt is the point: it carries the download the buyer just paid for.
+    navigate('#/receipt')
+  }
+
+  useEffect(() => {
+    if (!open) {
+      setStep('cart')
+      setAgreeError(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -342,51 +235,86 @@ function CartDrawer({ open, cart, t, language, onClose }: {
     <aside className="cart-drawer" role="dialog" aria-modal="true" aria-label={market.cart.title}>
       <header className="cart-head">
         <h2>{market.cart.title}<span>{cart.count}</span></h2>
-        <button type="button" className="icon-button" onClick={onClose} aria-label={market.cart.close}><X aria-hidden="true" /></button>
+        <IconButton label={market.cart.close} onClick={onClose} icon={<X aria-hidden="true" />} />
       </header>
 
-      {cart.lines.length === 0
-        ? <div className="cart-empty">
-          <p>{market.cart.empty}</p>
-          <button type="button" className="button secondary compact" onClick={onClose}>{market.cart.continue}</button>
-        </div>
-        : <ul className="cart-lines">
-          {cart.lines.map(({ product, quantity }) => <li key={product.id}>
-            <a className="cart-line-art" href={marketPackHash(product.id)} onClick={onClose}>
-              <img src={product.image} alt="" loading="lazy" decoding="async" />
-              {product.category === 'bundles' && <span className="cart-line-count">×{bundleItems(product).length}</span>}
-            </a>
-            <div className="cart-line-body">
-              <a href={marketPackHash(product.id)} onClick={onClose}>{productCopy(product.name, language)}</a>
-              <span>{productCopy(product.size, language)}</span>
-              <div className="cart-line-controls">
-                <button type="button" onClick={() => cart.setQuantity(product.id, quantity - 1)} aria-label={market.cart.decrease}><Minus aria-hidden="true" /></button>
-                <span>{quantity}</span>
-                <button type="button" onClick={() => cart.setQuantity(product.id, quantity + 1)} aria-label={market.cart.increase}><Plus aria-hidden="true" /></button>
-                <button type="button" className="cart-remove" onClick={() => cart.remove(product.id)} aria-label={`${market.cart.remove} ${productCopy(product.name, language)}`}><Trash2 aria-hidden="true" /></button>
-              </div>
-            </div>
-            <span className="cart-line-price">{formatPrice(product.price * quantity, language)}</span>
-          </li>)}
-        </ul>}
+      {step === 'review'
+        ? <div className="cart-review">
+          <h3>{market.checkout.review}</h3>
+          <ul className="cart-review-lines">
+            {cart.lines.map(({ product, quantity }) => <li key={product.id}>
+              <span>{productCopy(product.name, language)}<em>×{quantity}</em></span>
+              <span>{formatPrice(product.price * quantity)}</span>
+            </li>)}
+          </ul>
+          <dl className="cart-review-total">
+            <div><dt>{market.checkout.subtotal}</dt><dd>{formatPrice(cart.subtotal)}</dd></div>
+            <div className="grand"><dt>{market.checkout.total}</dt><dd>{formatPrice(cart.subtotal)}</dd></div>
+          </dl>
 
-      <footer className="cart-foot">
-        <div className="cart-subtotal"><span>{market.cart.subtotal}</span><strong>{formatPrice(cart.subtotal, language)}</strong></div>
-        <p className="cart-note">{market.cart.note}</p>
-        {SITE_CONFIG.steamUrl
-          ? <a className="button primary" href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer">{market.cart.checkout}</a>
-          : <button type="button" className="button primary" disabled>{market.cart.checkout}</button>}
-        <span className="cart-status">{market.cart.checkoutSoon}</span>
-        {cart.lines.length > 0 && <button type="button" className="cart-clear" onClick={cart.clear}>{market.cart.clear}</button>}
-      </footer>
+          {/* The licence is stated and acknowledged here, not assumed. */}
+          <div className="cart-agreement">
+            <strong>{market.checkout.agreementTitle}</strong>
+            <p>{market.checkout.agreement}</p>
+            <a href="#/license" onClick={onClose}>{market.checkout.agreementLink}</a>
+            <Checkbox checked={agreed} onChange={(next) => { setAgreed(next); setAgreeError(false) }} label={market.checkout.agreeLabel} />
+          </div>
+
+          <div className="cart-review-actions">
+            <Button variant="primary" disabled={paying} onClick={pay}>
+              {paying ? market.checkout.paying : market.checkout.pay}
+            </Button>
+            <Button onClick={() => setStep('cart')}>{market.checkout.back}</Button>
+          </div>
+          {agreeError && <p className="account-error" role="alert">{market.checkout.mustAgree}</p>}
+        </div>
+        : <>
+          {cart.lines.length === 0
+            ? <div className="cart-empty">
+              <p>{market.cart.empty}</p>
+              <Button size="compact" onClick={onClose}>{market.cart.continue}</Button>
+            </div>
+            : <ul className="cart-lines">
+              {cart.lines.map(({ product, quantity }) => <li key={product.id}>
+                <a className="cart-line-art" href={marketPackHash(product.id)} onClick={onClose}>
+                  <PackImage product={product} t={t} alt="" />
+                  {product.category === 'bundles' && <span className="cart-line-count">×{bundleItems(product).length}</span>}
+                </a>
+                <div className="cart-line-body">
+                  <a href={marketPackHash(product.id)} onClick={onClose}>{productCopy(product.name, language)}</a>
+                  <span>{productCopy(product.size, language)}</span>
+                  <div className="cart-line-controls">
+                    <button type="button" onClick={() => cart.setQuantity(product.id, quantity - 1)} aria-label={market.cart.decrease}><Minus aria-hidden="true" /></button>
+                    <span>{quantity}</span>
+                    <button type="button" onClick={() => cart.setQuantity(product.id, quantity + 1)} aria-label={market.cart.increase}><Plus aria-hidden="true" /></button>
+                    <button type="button" className="cart-remove" onClick={() => cart.remove(product.id)} aria-label={`${market.cart.remove} ${productCopy(product.name, language)}`}><Trash2 aria-hidden="true" /></button>
+                  </div>
+                </div>
+                <span className="cart-line-price">{formatPrice(product.price * quantity)}</span>
+              </li>)}
+            </ul>}
+
+          <footer className="cart-foot">
+            <div className="cart-subtotal"><span>{market.cart.subtotal}</span><strong>{formatPrice(cart.subtotal)}</strong></div>
+            <p className="cart-note">{market.cart.note}</p>
+            {SITE_CONFIG.steamUrl
+              ? <a className="button primary" href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer">{market.cart.checkout}</a>
+              : <Button variant="primary" onClick={checkout} disabled={cart.lines.length === 0}>{account ? market.cart.checkout : market.cart.signInToBuy}</Button>}
+            <span className="cart-status">
+              {SITE_CONFIG.steamUrl || account ? market.cart.checkoutSoon : market.cart.checkoutAccount}
+            </span>
+            {cart.lines.length > 0 && <button type="button" className="cart-clear" onClick={cart.clear}>{market.cart.clear}</button>}
+          </footer>
+        </>}
     </aside>
   </div>
 }
 
 function MarketHero({ t, language }: { t: Copy; language: Language }) {
   const market = t.marketPage
+  const { products: catalogue } = useCatalogue()
   const featured = SHELF_FEATURED
-    .map((id) => MARKET_PRODUCTS.find((product) => product.id === id))
+    .map((id) => catalogue.find((product) => product.id === id))
     .filter((product): product is MarketProduct => Boolean(product))
 
   return <section className="market-shelf">
@@ -399,11 +327,14 @@ function MarketHero({ t, language }: { t: Copy; language: Language }) {
       <div className="shelf-stage">
         {featured.map((product) => <a className="shelf-item" href={marketPackHash(product.id)} key={product.id}>
           <span className="shelf-cover">
-            <img src={product.image} alt={productCopy(product.name, language)} loading="lazy" decoding="async" />
+            {/* Zoom 2 rather than the card's 3: the tile is a thumbnail, and at 3 the
+                sprite is taller than the cover's 16:10 box on narrow screens, which
+                cropped the pet. */}
+            <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={2} />
           </span>
           <figcaption>
             {productCopy(product.name, language)}
-            <span>{formatPrice(product.price, language)}</span>
+            <span>{formatPrice(product.price)}</span>
           </figcaption>
         </a>)}
       </div>
@@ -439,10 +370,19 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
   const [sort, setSort] = useState<SortKey>('featured')
   const [cartOpen, setCartOpen] = useState(false)
   const cart = useCart()
+  const { registerOpener } = useCartStore()
+
+  // The header's cart button opens whichever page's drawer is mounted.
+  useEffect(() => {
+    registerOpener(() => setCartOpen(true))
+    return () => registerOpener(null)
+  }, [registerOpener])
+
+  const { products: catalogue } = useCatalogue()
 
   const products = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const matched = MARKET_PRODUCTS.filter((product) => {
+    const matched = catalogue.filter((product) => {
       if (category !== 'all' && product.category !== category) return false
       if (!needle) return true
       const haystack = [
@@ -451,15 +391,38 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
         productCopy(product.body, language),
         productCopy(product.size, language),
         ...product.formats,
+        // Tags a seller chose in the studio are searchable here, which is what they are for.
+        ...(product.tags ?? []),
       ].join(' ').toLowerCase()
       return haystack.includes(needle)
     })
     if (sort === 'price-asc') return [...matched].sort((a, b) => a.price - b.price)
     if (sort === 'price-desc') return [...matched].sort((a, b) => b.price - a.price)
     return matched
-  }, [category, query, sort, language])
+    // `catalogue` belongs here: a pack published in the studio arrives after the first
+    // render, and without it the list kept showing the built-in packs only.
+  }, [catalogue, category, query, sort, language])
 
-  const categories: (MarketCategory | 'all')[] = ['all', 'pets', 'assets', 'bundles']
+  /*
+   * The filter row is derived from what is actually on sale, so a category appears the
+   * moment a pack in it is published and disappears when the last one is pulled. The
+   * order is fixed so the chips do not jump around as packs come and go.
+   */
+  const categories = useMemo(() => {
+    const order: (MarketCategory | 'all')[] = ['all', 'pets', 'assets', 'bundles', 'extensions', 'scripts']
+    const present = new Set(catalogue.map((product) => product.category))
+    return order.filter((item) => item === 'all' || present.has(item))
+  }, [catalogue])
+
+  const countIn = useCallback((item: MarketCategory | 'all') => item === 'all'
+    ? catalogue.length
+    : catalogue.filter((product) => product.category === item).length, [catalogue])
+
+  // A filter that no longer has any packs would strand the view on an empty list.
+  useEffect(() => {
+    if (category !== 'all' && !catalogue.some((product) => product.category === category)) setCategory('all')
+  }, [catalogue, category])
+
   const resetFilters = () => { setCategory('all'); setQuery(''); setSort('featured') }
 
   return <main id="main" className="market">
@@ -479,7 +442,10 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
               type="button"
               className={category === item ? 'filter-chip active' : 'filter-chip'}
               aria-pressed={category === item}
-              onClick={() => setCategory(item)}>{item === 'all' ? market.categories.all : market.categories[item]}</button>)}
+              onClick={() => setCategory(item)}>
+              {item === 'all' ? market.categories.all : market.categories[item]}
+              <span className="filter-count">{countIn(item)}</span>
+            </button>)}
           </div>
           <div className="market-tools">
             <label className="search-field">
@@ -491,39 +457,36 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
                 title={market.searchHint}
                 onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <label className="sort-field">
+            <div className="sort-field">
               <span>{market.sort}</span>
-              <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-                <option value="featured">{market.sortOptions.featured}</option>
-                <option value="price-asc">{market.sortOptions.priceAsc}</option>
-                <option value="price-desc">{market.sortOptions.priceDesc}</option>
-              </select>
-            </label>
-            <button type="button" className="button primary compact cart-button" onClick={() => setCartOpen(true)} aria-label={market.cart.open}>
-              <ShoppingCart aria-hidden="true" />
-              {market.cart.title}
+              <Select
+                value={sort}
+                label={market.sort}
+                align="end"
+                onChange={setSort}
+                options={[
+                  { value: 'featured', label: market.sortOptions.featured },
+                  { value: 'price-asc', label: market.sortOptions.priceAsc },
+                  { value: 'price-desc', label: market.sortOptions.priceDesc },
+                ] satisfies { value: SortKey; label: string }[]} />
+            </div>
+            <span className="cart-slot">
+              <Button variant="primary" size="compact" icon={<ShoppingCart aria-hidden="true" />} onClick={() => setCartOpen(true)} ariaLabel={market.cart.open}>
+                {market.cart.title}
+              </Button>
               {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
-            </button>
+            </span>
           </div>
         </div>
 
-        <p className="market-count">{market.count(products.length, MARKET_PRODUCTS.length)}</p>
-
+        <p className="market-count">{market.count(products.length, catalogue.length)}</p>
         {products.length === 0
           ? <div className="market-empty">
             <h3>{market.empty.title}</h3>
             <p>{market.empty.body}</p>
-            <button type="button" className="button secondary compact" onClick={resetFilters}>{market.empty.action}</button>
+            <Button size="compact" onClick={resetFilters}>{market.empty.action}</Button>
           </div>
-          : <div className="pack-grid">
-            {products.map((product) => <PackCard
-              key={product.id}
-              product={product}
-              t={t}
-              language={language}
-              cart={cart}
-              animation="idle" />)}
-          </div>}
+          : <PackGrid products={products} t={t} language={language} />}
       </div>
     </section>
 
@@ -537,15 +500,22 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
   const market = t.marketPage
   const [cartOpen, setCartOpen] = useState(false)
   const cart = useCart()
-  const product = productId ? MARKET_PRODUCTS.find((item) => item.id === productId) : undefined
-  const related = product ? MARKET_PRODUCTS.filter((item) => item.id !== product.id).slice(0, 3) : []
+  const { registerOpener } = useCartStore()
+
+  useEffect(() => {
+    registerOpener(() => setCartOpen(true))
+    return () => registerOpener(null)
+  }, [registerOpener])
+
+  const { product, siblings, loading } = useProduct(productId)
+  const related = product ? siblings.filter((item) => item.id !== product.id).slice(0, 3) : []
 
   if (!product) return <main id="main" className="market">
     <MarketHero t={t} language={language} />
     <section className="market-browse">
       <div className="content-wrap market-missing">
         <h1>{market.detail.notFound}</h1>
-        <a className="button secondary" href="#/market"><ArrowLeft aria-hidden="true" />{market.detail.back}</a>
+        <Button href="#/market"><ArrowLeft aria-hidden="true" />{market.detail.back}</Button>
       </div>
     </section>
     <MarketNotes t={t} />
@@ -564,7 +534,7 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
         <div className="pack-hero-grid">
           <div className="pack-hero-media">
             <figure className={isArtworkPack(product) ? 'pack-hero-figure artwork' : 'pack-hero-figure'}>
-              <PackImage product={product} alt={productCopy(product.name, language)} zoom={6} />
+              <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={6} />
               <figcaption><CategoryTag product={product} t={t} /></figcaption>
             </figure>
           </div>
@@ -583,14 +553,15 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
             <PriceRow product={product} t={t} language={language} />
             <div className="pack-hero-actions">
               <AddButton product={product} t={t} inCart={cart.has(product.id)} onAdd={cart.add} block />
-              <button type="button" className="button secondary compact cart-button" onClick={() => setCartOpen(true)}>
-                <ShoppingCart aria-hidden="true" />
-                {market.cart.title}
+              <span className="cart-slot">
+                <Button size="compact" icon={<ShoppingCart aria-hidden="true" />} onClick={() => setCartOpen(true)}>
+                  {market.cart.title}
+                </Button>
                 {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
-              </button>
+              </span>
             </div>
-            {isPetProduct(product) && product.animations
-              ? <a className="pack-download" href={product.animations.download} download>{product.formats[0]} · {productCopy(product.name, language)}</a>
+            {product.download
+              ? <a className="pack-download" href={product.download} download>{product.formats[0]} · {productCopy(product.name, language)}</a>
               : null}
             <p className="pack-hero-note">{market.detail.buy}</p>
           </div>
@@ -610,13 +581,13 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
                 {bundleItems(product).map((item) => <li key={item.id}>
                   <a className="bundle-item" href={marketPackHash(item.id)}>
                     <span className="bundle-item-art">
-                      <img src={item.image} alt="" loading="lazy" decoding="async" />
+                      <PackImage product={item} t={t} alt="" />
                     </span>
                     <span className="bundle-item-copy">
                       <strong>{productCopy(item.name, language)}</strong>
                       <span>{productCopy(item.tagline, language)}</span>
                     </span>
-                    <span className="bundle-item-price">{formatPrice(item.price, language)}</span>
+                    <span className="bundle-item-price">{formatPrice(item.price)}</span>
                     <ChevronRight aria-hidden="true" />
                   </a>
                 </li>)}
@@ -648,15 +619,7 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
     <section className="market-browse related">
       <div className="content-wrap">
         <header className="page-head market-head"><h2>{market.detail.related}</h2></header>
-        <div className="pack-grid">
-          {related.map((item) => <PackCard
-            key={item.id}
-            product={item}
-            t={t}
-            language={language}
-            cart={cart}
-            animation="idle" />)}
-        </div>
+        <PackGrid products={related} t={t} language={language} />
       </div>
     </section>
 

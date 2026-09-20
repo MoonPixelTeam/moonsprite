@@ -1,17 +1,18 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import { paletteSelectionBoundaryEdges } from '@/core/palette-layout'
+import { pixelGridMetrics, useDisplayPixelRatio } from '@/components/usePixelGridMetrics'
 
 /** Follow the occupied perimeter, retaining the original CSS border placement. */
-export function PaletteSelectionOutline({ slots, columns, selectedIds, swatchSize }: {
+export function PaletteSelectionOutline({ slots, columns, selectedIds, swatchSize, gap = 1 }: {
   slots: readonly (number | null)[]
   columns: number
   selectedIds: readonly number[]
   swatchSize: number
+  gap?: number
 }) {
-  const id = useId()
   const edges = paletteSelectionBoundaryEdges(slots, columns, selectedIds)
   if (edges.length === 0) return null
-  const step = swatchSize + 1
+  const step = swatchSize + gap
   const segments = edges.map(({ slot, side }) => {
     const x = slot % columns
     const y = Math.floor(slot / columns)
@@ -48,8 +49,8 @@ export function PaletteSelectionOutline({ slots, columns, selectedIds, swatchSiz
       if (previous.side === edge.side) return []
       // Right/bottom bounds exclude the trailing 1px grid gap, just like the
       // original border-box. Shared edges and internal gaps are not outlined.
-      const x = edge.x1 * step - (edge.side === 'right' || previous.side === 'right' ? 1 : 0)
-      const y = edge.y1 * step - (edge.side === 'bottom' || previous.side === 'bottom' ? 1 : 0)
+      const x = edge.x1 * step - (edge.side === 'right' || previous.side === 'right' ? gap : 0)
+      const y = edge.y1 * step - (edge.side === 'bottom' || previous.side === 'bottom' ? gap : 0)
       return [`${x},${y}`]
     })
     contours.push(`M${corners.join('L')}Z`)
@@ -57,20 +58,33 @@ export function PaletteSelectionOutline({ slots, columns, selectedIds, swatchSiz
   const path = contours.join(' ')
   const width = columns * step
   const height = Math.ceil(slots.length / columns) * step
+  return <PaletteSelectionPath path={path} width={width} height={height}>
+    {segments.map(({ slot, side, x1, y1, x2, y2 }) => <line key={`${slot}-${side}`} data-palette-selection-outline data-slot={slot} data-side={side}
+      x1={Math.min(x1, x2) * step} y1={Math.min(y1, y2) * step} x2={Math.max(x1, x2) * step} y2={Math.max(y1, y2) * step} />)}
+  </PaletteSelectionPath>
+}
+
+/** Shared palette contour: 1px dark inside, 2px light and 1px dark outside. */
+export function PaletteSelectionPath({ path, width, height, padding = 4, children }: {
+  path: string; width: number; height: number; padding?: number; children?: ReactNode
+}) {
+  const id = useId()
+  const ratio = useDisplayPixelRatio()
+  const line = pixelGridMetrics(1, 1, ratio).line
+  const maskPadding = Math.max(padding, 3 * line)
   return <svg className="palette-selection-outline" aria-hidden="true" width={width} height={height} fill="none" strokeLinejoin="miter">
     <defs>
       <clipPath id={`${id}-inside`}><path d={path} fill="white" fillRule="evenodd" clipRule="evenodd" /></clipPath>
-      <mask id={`${id}-outside`} maskUnits="userSpaceOnUse" x={-4} y={-4} width={width + 8} height={height + 8}>
-        <rect x={-4} y={-4} width={width + 8} height={height + 8} fill="white" />
+      <mask id={`${id}-outside`} maskUnits="userSpaceOnUse" x={-maskPadding} y={-maskPadding} width={width + maskPadding * 2} height={height + maskPadding * 2}>
+        <rect x={-maskPadding} y={-maskPadding} width={width + maskPadding * 2} height={height + maskPadding * 2} fill="white" />
         <path d={path} fill="black" fillRule="evenodd" />
       </mask>
     </defs>
     <g mask={`url(#${id}-outside)`}>
-      <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={6} />
-      <path d={path} stroke="var(--theme-selection-outline-light)" strokeWidth={4} />
+      <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={6 * line} vectorEffect="non-scaling-stroke" />
+      <path d={path} stroke="var(--theme-selection-outline-light)" strokeWidth={4 * line} vectorEffect="non-scaling-stroke" />
     </g>
-    <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={2} clipPath={`url(#${id}-inside)`} />
-    {segments.map(({ slot, side, x1, y1, x2, y2 }) => <line key={`${slot}-${side}`} data-palette-selection-outline data-slot={slot} data-side={side}
-      x1={Math.min(x1, x2) * step} y1={Math.min(y1, y2) * step} x2={Math.max(x1, x2) * step} y2={Math.max(y1, y2) * step} />)}
+    <path d={path} stroke="var(--theme-selection-outline-dark)" strokeWidth={2 * line} vectorEffect="non-scaling-stroke" clipPath={`url(#${id}-inside)`} />
+    {children}
   </svg>
 }

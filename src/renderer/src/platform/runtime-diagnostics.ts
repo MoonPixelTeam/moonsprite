@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { version as appVersion } from '../../../../package.json'
 import { createDiagnosticWriter } from './runtime-diagnostic-writer'
 import { playExportSuccessSound } from './export-success-sound'
 import { DIAGNOSTIC_MODE_CHANGED, loadDiagnosticMode, type DiagnosticMode } from '@/core/diagnostic-preferences'
@@ -18,19 +19,22 @@ let installed = false
 let mode: DiagnosticMode | null = null
 let browserEvents: RuntimeDiagnosticEvent[] | undefined
 
+const readBrowserEvents = (): RuntimeDiagnosticEvent[] => {
+  if (browserEvents) return browserEvents
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(BROWSER_DIAGNOSTIC_STORAGE_KEY) ?? '[]')
+    browserEvents = Array.isArray(stored) ? stored.slice(-MAX_BROWSER_EVENTS).filter((event): event is RuntimeDiagnosticEvent =>
+      event !== null && typeof event === 'object' && typeof event.sessionId === 'string' && typeof event.sequence === 'number'
+    ) : []
+  } catch {
+    browserEvents = []
+  }
+  return browserEvents
+}
+
 const persistBrowserFallback = (events: readonly RuntimeDiagnosticEvent[]): void => {
   try {
-    if (!browserEvents) {
-      try {
-        const stored: unknown = JSON.parse(localStorage.getItem(BROWSER_DIAGNOSTIC_STORAGE_KEY) ?? '[]')
-        browserEvents = Array.isArray(stored) ? stored.slice(-MAX_BROWSER_EVENTS).filter((event): event is RuntimeDiagnosticEvent =>
-          event !== null && typeof event === 'object' && typeof event.sessionId === 'string' && typeof event.sequence === 'number'
-        ) : []
-      } catch {
-        browserEvents = []
-      }
-    }
-    const unique = new Map(browserEvents.map((event) => [`${event.sessionId}:${event.sequence}`, event]))
+    const unique = new Map(readBrowserEvents().map((event) => [`${event.sessionId}:${event.sequence}`, event]))
     for (const event of events) unique.set(`${event.sessionId}:${event.sequence}`, event)
     browserEvents = [...unique.values()].slice(-MAX_BROWSER_EVENTS)
     localStorage.setItem(BROWSER_DIAGNOSTIC_STORAGE_KEY, JSON.stringify(browserEvents))
@@ -63,7 +67,7 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
     configureRuntimeDiagnostics(next === 'full' ? writer.enqueue : next === 'memory' ? () => {} : null, contextProvider)
     if (next !== 'off') {
       stopWatchdog ??= installRuntimeDiagnosticWatchdog()
-      recordRuntimeDiagnostic('session', 'diagnostic.mode', { mode: next })
+      recordRuntimeDiagnostic('session', 'diagnostic.mode', { mode: next, appVersion })
     }
   }
   const checkpoint = (): void => { if (mode === 'full') { writer.checkpoint(); void writer.flush() } }
@@ -89,11 +93,22 @@ export const installRuntimeDiagnostics = (contextProvider: () => RuntimeDiagnost
 
 export const openRuntimeDiagnosticLogs = async (): Promise<void> => {
   if (mode === 'full') await writer.flush()
+  const saved = mode === 'full' ? readBrowserEvents() : []
   if ('__TAURI_INTERNALS__' in window && mode !== 'memory') {
-    await invoke('open_diagnostic_logs')
-    return
+    try { await invoke('open_diagnostic_logs') } catch (error) {
+      if (!saved.length) throw error
+      recordRuntimeDiagnostic('error', 'diagnostic.open-folder', { message: String(error) })
+    }
+    if (!saved.length) return
   }
-  const events = runtimeDiagnosticSnapshot()
+  // A failed native write or pagehide checkpoint may only exist in this copy.
+  // Include prior-session fallback records when the user asks for diagnostics.
+  const unique = new Map(saved.map(event => [`${event.sessionId}:${event.sequence}`, event]))
+  for (const event of runtimeDiagnosticSnapshot()) {
+    const key = `${event.sessionId}:${event.sequence}`
+    if (!unique.has(key)) unique.set(key, event)
+  }
+  const events = [...unique.values()]
   const url = URL.createObjectURL(new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' }))
   const anchor = document.createElement('a')
   anchor.href = url

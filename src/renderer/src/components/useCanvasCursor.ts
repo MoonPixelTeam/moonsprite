@@ -80,6 +80,7 @@ interface Ports {
   readonly displayedSelectionPoint: (point: Point) => Point
   readonly inputRef: import('react').RefObject<CanvasInputState>
   readonly selectionCrosshair: boolean
+  useLocalCursors?: boolean
   readonly selectionInteractionEditable: boolean
   readonly quickToolActive: (tool: DocumentSession['tool']) => boolean
   readonly canvasResizePreviewRef: import('react').RefObject<import('@/store/workspace').CanvasResizePreview | null>
@@ -289,7 +290,7 @@ export function useCanvasCursor(ports: Ports) {
       const drag = ports.inputRef.current.drag
       canvas.style.cursor =
         drag?.kind === 'marquee'
-          ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+          ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
           : drag?.kind === 'shape'
             ? canvasToolCursor(ports.session.tool, ports.session.primaryColor)
             : drag?.kind === 'pan'
@@ -309,7 +310,7 @@ export function useCanvasCursor(ports: Ports) {
       ports.inputRef.current.drag?.kind === 'marquee' || ports.inputRef.current.drag?.kind === 'lasso' || ports.inputRef.current.drag?.kind === 'polygon-lasso'
     if (selectionCreationDrag) {
       ports.inputRef.current.sampling = false
-      canvas.style.cursor = selectionCreationCursor(ports.selectionCrosshair, true, true)
+      canvas.style.cursor = selectionCreationCursor(ports.selectionCrosshair, true, true, ports.useLocalCursors)
       return
     }
     const liveCursorSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
@@ -426,7 +427,7 @@ export function useCanvasCursor(ports: Ports) {
             ? drag.copy
               ? canvasCursors.copy
               : canvasCursors.move
-            : selectionCreationCursor(ports.selectionCrosshair)
+            : selectionCreationCursor(ports.selectionCrosshair, true, false, ports.useLocalCursors)
       return
     }
     if (drag?.kind === 'transform-text-box') {
@@ -443,7 +444,7 @@ export function useCanvasCursor(ports: Ports) {
     }
     if (drag?.kind === 'marquee' || drag?.kind === 'lasso' || drag?.kind === 'polygon-lasso' || drag?.kind === 'magic-preview') {
       ports.inputRef.current.sampling = false
-      canvas.style.cursor = selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+      canvas.style.cursor = selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
       return
     }
     if (drag?.kind === 'shape') {
@@ -579,7 +580,7 @@ export function useCanvasCursor(ports: Ports) {
                   ? canvasCursors.move
                   : hit === 'edge'
                     ? canvasCursors.selectionMove
-                    : selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable || selectionModifierActive)
+                    : selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable || selectionModifierActive, false, ports.useLocalCursors)
     } else if (ports.sliceTool) {
       const selectedIds = ports.session.selectedSliceIds?.length
         ? ports.session.selectedSliceIds
@@ -593,7 +594,7 @@ export function useCanvasCursor(ports: Ports) {
         ? displayedResizeCursorForHandle(handle)
         : hit
           ? canvasCursors.move
-          : selectionCreationCursor(ports.selectionCrosshair, insideDocument)
+          : selectionCreationCursor(ports.selectionCrosshair, insideDocument, false, ports.useLocalCursors)
     } else canvas.style.cursor = canvasToolCursor(ports.session.tool, contrastColor, available)
   }
 

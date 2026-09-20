@@ -4,6 +4,7 @@ import { useWorkspace, type DocumentSession } from '@/store/workspace'
 interface PendingSize {
   size: number
   documentId: string
+  canvasDocumentId: string
   tool: DocumentSession['tool']
   previewOnly: boolean
   valid: () => boolean
@@ -24,7 +25,7 @@ export const canvasBrushSizePreview = (documentId: string, tool: DocumentSession
 }
 export const canvasBrushSizePreviewSession = (input: CanvasInputState, session: DocumentSession): DocumentSession => {
   const preview = pendingSizes.get(input)
-  if (!preview?.previewOnly || preview.documentId !== session.document.id || preview.tool !== session.tool || !preview.valid()) return session
+  if (!preview?.previewOnly || preview.canvasDocumentId !== session.document.id || preview.tool !== session.tool || !preview.valid()) return session
   return { ...session, [session.tool === 'liquify' ? 'liquifyRadius' : session.tool === 'airbrush' ? 'airbrushScatterRadius' : 'brushSize']: preview.size }
 }
 
@@ -39,13 +40,14 @@ export function queueCanvasBrushSize(input: CanvasInputState, session: DocumentS
     if (pending.previewOnly !== previewOnly || !pending.valid()) pending.flush()
     else { if (pending.size !== size) { pending.size = size; pending.schedule() }; return }
   }
-  const documentId = session.document.id, tool = session.tool
+  const documentId = useWorkspace.getState().activeId ?? session.document.id, canvasDocumentId = session.document.id, tool = session.tool
   const gesture = input.modifierBrushSize ?? input.drag
   let frame: number | null = null
   let unsubscribe: (() => void) | undefined
-  const entry: PendingSize = { size, documentId, tool, previewOnly, valid: () => {
+  const entry: PendingSize = { size, documentId, canvasDocumentId, tool, previewOnly, valid: () => {
     const state = useWorkspace.getState()
     return canvas.isConnected && state.activeId === documentId
+      && state.sessions.some(item => item.document.id === canvasDocumentId)
       && state.sessions.find(item => item.document.id === documentId)?.tool === tool
       && (input.modifierBrushSize ?? input.drag) === gesture
   }, schedule: () => {

@@ -19,8 +19,12 @@
 /*
  * Color tokens come from the MoonSprite desktop app's built-in themes
  * (src/renderer/src/core/theme.ts): dark by default, light via [data-theme='light'].
+ *
+ * The homepage is a fixed dark surface — it opens on its own artwork and only reads at
+ * #090a0d — so the light theme's tokens are re-declared in the dark palette for its
+ * header and main. Everything layout-related reads the same tokens in both cases.
  */
-:root {
+:root, .theme-dark main {
   --bg: #090a0d;
   --panel: #10141b;
   --surface: #171a21;
@@ -44,6 +48,46 @@
   --surface-active: #212c40;
   --hero-bg-opacity: .3;
   --shadow: rgb(0 0 0 / 42%);
+  /* A dot grid on the page surface, so panels read as objects on a workspace rather
+     than fills on a flat sheet. Two background steps away from --bg: visible as texture,
+     quiet enough to read text over. */
+  --page-dot: rgb(255 255 255 / 7%);
+  --wash-strong: rgb(255 255 255 / 5%);
+  --wash-soft: rgb(255 255 255 / 2.5%);
+  --glow: rgb(41 121 255 / 13%);
+  color-scheme: dark;
+}
+
+/* The header sits above the fixed-dark homepage, so it is pinned to the same palette. */
+:root[data-theme='light'] .site-shell.theme-dark > .app-chrome,
+/* The shell paints the page background, and the dark palette's text is light. Without this
+   line the homepage in the light theme showed light text on the light page background —
+   about 1.2:1, which is why the drawer-less sections of the home page were unreadable.
+   The pinned shell keeps the dark surface that the pinned text assumes. */
+:root[data-theme='light'] .site-shell.theme-dark,
+:root[data-theme='light'] .theme-dark main {
+  --bg: #090a0d;
+  --panel: #10141b;
+  --surface: #171a21;
+  --raised: #20242d;
+  --control: #0b0e13;
+  --border: #303641;
+  --border-strong: #596271;
+  --divider: #252b36;
+  --text: #f1f4f8;
+  --text-2: #c2cad5;
+  --text-3: #9aa3b2;
+  --text-4: #7f8998;
+  --accent: #2979ff;
+  --accent-hover: #478bff;
+  --accent-soft: #182a46;
+  --on-accent: #ffffff;
+  --warn: #ffab26;
+  --warn-soft: #45361d;
+  --danger: #ef5350;
+  --success: #66bb6a;
+  --surface-active: #212c40;
+  --shadow: rgb(0 0 0 / 42%);
   color-scheme: dark;
 }
 
@@ -56,15 +100,27 @@
   --border: #98a5b4;
   --border-strong: #5f6d7f;
   --divider: #d5dce3;
+  --page-dot: rgb(23 32 43 / 9%);
+  --wash-strong: rgb(255 255 255 / 70%);
+  --wash-soft: rgb(255 255 255 / 34%);
+  --glow: rgb(29 99 216 / 16%);
   --text: #17202b;
-  --text-2: #334155;
-  --text-3: #667386;
-  --text-4: #525e6f;
+  --text-2: #2b3644;
+  /*
+   * Light-theme muted colours, darkened for contrast.
+   *
+   * The previous values were chosen to look calm and measured 3.2–3.9:1 against the light
+   * surfaces — under the 4.5:1 that body text needs, and the whole light theme failed on
+   * every page. These are the darkest steps that still read as secondary rather than as
+   * body copy; the dark theme is unaffected because it carries its own values.
+   */
+  --text-3: #3f4a58;
+  --text-4: #3a4451;
   --accent: #1d63d8;
   --accent-hover: #3876dd;
   --accent-soft: #dfe9fa;
   --on-accent: #ffffff;
-  --warn: #9a5a00;
+  --warn: #6b3d00;
   --warn-soft: #f3ebe0;
   --danger: #b8323a;
   --success: #247a4d;
@@ -95,14 +151,23 @@
  * --font-body 16px (app 13px). Display tiers top out at 56px.
  */
 :root {
+  /*
+   * One control height for inputs, selects, and the select-shaped button. Buttons are
+   * their own step above it (see .button), because a button is a target rather than a
+   * field; a compact button sits at 34px for use inside rows.
+   */
+  --control-height: 40px;
   --font-pixel-tag: 12px;   /* tag, badge, caption in the pixel face */
   --font-pixel-label: 14px; /* outline group heading in the pixel face */
   --font-small: 14px;       /* secondary copy, metadata, dense UI labels */
   --font-body: 16px;        /* body copy, fields, buttons, navigation */
   --font-lead: 18px;        /* lead paragraph, card and block heading */
   --font-h3: 20px;          /* in-page section heading */
+  --font-h3-lg: 24px;       /* in-page section heading on wide screens */
   --font-h2: 30px;          /* page and FAQ section heading */
-  --font-price: 18px;       /* the one numeric emphasis step */
+  --font-h2-lg: 38px;       /* section heading on wide screens */
+  --font-price: 18px;       /* card price */
+  --font-price-lg: 34px;    /* the price in a page's buying block, the one numeric shout */
   --font-display: 44px;     /* display heading upper bound */
   --font-display-lg: 56px;  /* hero heading upper bound */
 }
@@ -151,16 +216,24 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 84px; }
-body { margin: 0; min-width: 320px; color: var(--text); background: var(--bg); }
-body[data-menu-open="true"] { overflow: hidden; }
+body { margin: 0; min-width: 320px; color: var(--text); background: var(--bg); }body[data-menu-open="true"] { overflow: hidden; }
 button { font: inherit; }
 a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
 h1, h2, h3, p, figure { margin: 0; }
 ul { margin: 0; padding: 0; }
 .content-wrap { width: min(calc(100% - 48px), var(--max)); margin: 0 auto; }
-.site-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.site-shell > main { flex: 1 0 auto; }
+/* The dot grid lives on the shell, fixed, so every page shares one surface and the
+   panels and cards read as objects placed on it. */
+.site-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle at 8px 8px, var(--page-dot) 1.2px, transparent 1.6px);
+  background-size: 32px 32px;
+  background-attachment: fixed;
+}.site-shell > main { flex: 1 0 auto; }
 .skip-link { position: fixed; top: -60px; left: 16px; z-index: 100; padding: var(--space-5) var(--space-7); color: var(--on-accent); background: var(--accent); }
 .skip-link:focus { top: 10px; }
 :focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
@@ -186,6 +259,13 @@ ul { margin: 0; padding: 0; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; }
 .icon-button svg { width: 16px; height: 16px; }
 .icon-button:hover { color: var(--text); }
+/* Header cart and account. The cart carries the same count badge the drawer does.
+   The account icon keeps one neutral treatment in both states — only the glyph changes
+   between signed out and signed in, so the header never grows a second highlighted
+   control next to the cart. */
+.cart-button-icon { position: relative; }
+.cart-button-icon .cart-badge { top: -4px; right: -4px; min-width: 16px; line-height: 16px; }
+.account-button { text-decoration: none; }
 .language-button, .menu-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); height: 32px; padding: 0 var(--space-4); color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; font-size: var(--font-small); }
 .language-button svg { width: 15px; }
 .language-button:hover { color: var(--text); }
@@ -200,6 +280,9 @@ ul { margin: 0; padding: 0; }
 
 /* ---------- buttons ---------- */
 
+/* Three declared control sizes, and nothing invented between them: fields 40px
+   (--control-height), buttons 44px as targets, compact controls 34px inside rows. A form
+   that mixes a 40px input with a 44px button is deliberate — the button is the target. */
 .button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); min-height: 44px; padding: 0 var(--space-10); border: 1px solid transparent; font-size: var(--font-body); font-weight: 700; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease; }
 .button svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .button.primary { color: var(--on-accent); background: var(--accent); }
@@ -239,8 +322,13 @@ ul { margin: 0; padding: 0; }
 .hero-nav button svg { width: 15px; height: 15px; }
 .hero-inner { position: absolute; inset: 0; z-index: 2; display: flex; height: 100%; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: var(--space-6) var(--space-28) var(--space-9); }
 .hero-copy { max-width: 610px; }
-.dev-badge { display: inline-flex; align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5); background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
-.dev-badge::before { content: ""; width: 6px; height: 6px; background: var(--warn); }
+/*
+ * The hero is a dark photograph with a dark shade over it in both themes, so everything
+ * inside it is light on purpose. The badge previously used the theme's warning colours,
+ * which are dark brown in the light theme — 1.1:1 against that image, effectively invisible.
+ */
+.dev-badge { display: inline-flex; align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5); background: rgb(9 10 13 / 55%); border: 1px solid rgb(255 255 255 / 24%); color: #fff; font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.dev-badge::before { content: ""; width: 6px; height: 6px; background: #ffb648; }
 .hero h1 { margin-top: var(--space-5); color: #fff; font-family: var(--font-pixel); font-size: clamp(30px, 4vw, var(--font-display-lg)); font-weight: 700; line-height: .98; letter-spacing: -.035em; text-shadow: 0 2px 18px rgb(0 0 0 / 26%); }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-8); }
 .hero .button.compact { min-height: 34px; }
@@ -269,17 +357,57 @@ ul { margin: 0; padding: 0; }
 /* ---------- sections shared ---------- */
 
 .section-title { max-width: 700px; }
-.section-title > span, .final-cta span { display: inline-flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); color: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; font-weight: 400; }
+/* Section eyebrows read as an editor tool label: a hairline rule runs out from the text
+   to the edge of the column, so each band opens the way a labelled region does on a
+   canvas. The amber square marks the label the way the app marks the active tool. */
+.section-title > span, .final-cta span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-7);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: .02em;
+}
 .section-title > span::before, .final-cta span::before { content: ""; width: 7px; height: 7px; background: currentColor; }
-.section-title h2 { font-size: clamp(34px, 4.1vw, var(--font-display)); line-height: 1.12; font-weight: 700; letter-spacing: -.018em; }
-.section-title p { max-width: 640px; margin-top: var(--space-8); color: var(--text-3); font-size: var(--font-body); line-height: 1.75; }
+.section-title h2 {
+  /* Chinese headings are short, so this mainly keeps a long English heading from
+     running the full 1160px column; balance handles the line breaks. */
+  max-width: 26ch;
+  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+}
+.section-title p { max-width: 58ch; margin-top: var(--space-7); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+
+/* The rule sits on the eyebrow's own line, extending to the column edge. */
+.section-title { display: grid; }
+.section-title > span, .final-cta span { width: 100%; }
+.section-title > span::after, .final-cta span::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  margin-left: var(--space-7);
+  background: var(--divider);
+}
 
 .tile-icon { display: grid; place-items: center; flex: 0 0 auto; background: var(--accent-soft); border: 1px solid var(--border); color: var(--accent); }
 
 /* ---------- showcase ---------- */
 
-.showcase { padding: var(--space-38) 0 var(--space-42); background: var(--bg); }
-.showcase .section-title { margin-bottom: var(--space-16); }
+/* A breath of light behind the artwork wall, so the cards sit in a space rather than on
+   a flat plate. */
+.showcase {
+  padding: var(--space-24) 0 var(--space-26);
+  background-color: var(--bg);
+  background-image: radial-gradient(60% 70% at 50% 0%, var(--glow), transparent 70%);
+}
+.showcase .section-title { margin-bottom: var(--space-13); }
 .showcase-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 248px; gap: var(--space-7); }
 .showcase-item { position: relative; min-width: 0; overflow: hidden; background: var(--control); border: 1px solid var(--border); }
 .showcase-item img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 480ms ease; }
@@ -289,12 +417,20 @@ ul { margin: 0; padding: 0; }
 
 /* ---------- features: gif masonry ---------- */
 
-.features { padding: var(--space-38) 0 var(--space-42); background: var(--panel); border-block: 1px solid var(--divider); }
-.features .section-title { margin-bottom: var(--space-18); }
+/* The homepage runs on one background; sections are separated by a hairline and their
+   own spacing, so the page reads as one surface instead of stacked panels. A faint top
+   wash keeps each band from being a perfectly flat rectangle. */
+.features {
+  padding: var(--space-24) 0 var(--space-26);
+  background-color: var(--bg);
+  background-image: linear-gradient(180deg, var(--wash-strong), transparent 34%);
+  border-top: 1px solid var(--divider);
+}
+.features .section-title { margin-bottom: var(--space-13); }
 .masonry { columns: 4; column-gap: var(--space-7); }
-.masonry-card { break-inside: avoid; margin: 0 0 var(--space-7); overflow: hidden; border: 1px solid var(--border); background: var(--surface); transition: border-color 120ms ease, transform 160ms ease; }
+.masonry-card { break-inside: avoid; margin: 0 0 var(--space-7); overflow: hidden; border: 1px solid var(--border); background-color: var(--panel); background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%); transition: border-color 120ms ease, transform 160ms ease; }
 .masonry-card:hover { border-color: var(--accent); }
-.gif-placeholder { position: relative; display: grid; place-items: center; border-bottom: 1px solid var(--border); background-color: var(--control); color: var(--accent); }
+.gif-placeholder { position: relative; display: grid; place-items: center; border-bottom: 1px solid var(--divider); background-color: var(--bg); color: var(--accent); }
 .gif-placeholder svg { width: 28px; height: 28px; opacity: .85; }
 .masonry-card:nth-child(6n + 1) .gif-placeholder { height: 168px; }
 .masonry-card:nth-child(6n + 2) .gif-placeholder { height: 204px; }
@@ -305,9 +441,440 @@ ul { margin: 0; padding: 0; }
 .gif-tag { position: absolute; left: 12px; bottom: 10px; padding: var(--space-2) var(--space-3); background: var(--bg); border: 1px solid var(--border-strong); color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
 .masonry-copy { margin: 0; padding: var(--space-7) var(--space-8) var(--space-8); color: var(--text-3); font-size: var(--font-small); line-height: 1.65; }
 
+/* ---------- homepage ---------- */
+
+/* The colour is set here, not inherited: without it the main area would take the
+   inherited value from the light theme while its own tokens say dark. No background
+   fill though — that would paint over the shared grid the rest of the site sits on. */
+.home-main { color: var(--text); }
+
+/* ---------- market teaser ---------- */
+/* Mirrors the market's card language at homepage scale: same frame, same price type,
+   so a pack looks the same wherever it appears. */
+.market-teaser { padding: var(--space-24) 0 var(--space-26); border-top: 1px solid var(--divider); }
+.market-teaser .section-title { margin-bottom: var(--space-13); }
+/* The homepage shows the market's own cards, so the only thing it contributes is the
+   grid they wrap in: a tighter column floor than the browse grid, since this is a
+   feature strip rather than a catalogue. */
+.pack-grid.featured { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-7); }
+.teaser-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-13); }
+.teaser-actions > span { color: var(--text-4); font-size: var(--font-small); }
+
+/* ---------- component library ---------- */
+
+/*
+ * The shared shapes every page composes from: fields, alerts, panels, page headers and
+ * drop zones. They live here rather than beside any one page, because a second page
+ * copying them is exactly how the studio and the account page drifted apart.
+ * See docs/ui-design-system.md.
+ */
+
+/* Field: label row, control, hint. One gap value for all three. */
+.field { display: grid; gap: var(--space-3); align-content: start; }
+.field-label { display: flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
+.field-label em {
+  color: var(--text-4);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-style: normal;
+}
+.field-counter {
+  padding: 0 var(--space-3);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-weight: 400;
+}
+.field-hint { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.field.invalid input,
+.field.invalid textarea,
+.field.invalid .ui-select-button,
+.field.invalid .inline-add input { border-color: var(--danger); }
+
+/* Inputs and textareas: one height, one border, square corners. */
+.field input,
+.field textarea,
+.field select,
+.inline-add input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+.field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; }
+.field input[type="number"]::-webkit-outer-spin-button,
+.field input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.field input[type="number"] { -moz-appearance: textfield; }
+.field input:focus-visible,
+.field textarea:focus-visible { border-color: var(--accent); outline: none; }
+
+/*
+ * Structural guards against horizontal overflow.
+ *
+ * A grid or flex item defaults to `min-width: auto`, meaning it refuses to shrink below its
+ * content. One long word, one wide select, or one unwrapped row of controls is then enough
+ * to push the whole document wider than the viewport — which is how the publish page came to
+ * scroll sideways at phone width while every other route was fine.
+ *
+ * These rules let containers shrink and inputs fill whatever room they are given, so a new
+ * field cannot reintroduce the problem.
+ */
+.field,
+.studio-fieldset,
+.studio-publish-grid > *,
+.settings-grid > *,
+.account-form > * { min-width: 0; }
+
+.field input,
+.field textarea,
+.field select,
+.inline-add input { max-width: 100%; min-width: 0; }
+
+/* An input and its add button on one row. */
+.inline-add { display: flex; gap: var(--space-5); min-width: 0; }
+.inline-add input { flex: 1 1 auto; }
+.inline-add .button { flex: 0 0 auto; }
+/* On a phone the add button wraps under the field rather than squeezing both. */
+@media (max-width: 560px) {
+  .inline-add { flex-wrap: wrap; }
+  .inline-add .button { flex: 1 1 100%; }
+}
+
+/* Alert: one shape, four tones. */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--divider);
+  font-size: var(--font-small);
+}
+.alert svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.alert-body { line-height: 1.6; }
+.alert-info { color: var(--text-2); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.alert-info svg { color: var(--accent); }
+.alert-success { color: var(--text-2); background: var(--raised); border-color: var(--divider); }
+.alert-success svg { color: var(--success); }
+.alert-warning { color: var(--text-2); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.alert-warning svg { color: var(--warn); }
+.alert-danger { color: var(--text-2); background: var(--warn-soft); border-color: var(--danger); }
+.alert-danger svg { color: var(--danger); }
+
+/* Panel: the page-level block. Nothing inside it is another bordered box. */
+.panel {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.panel-warning { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.panel-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text);
+  font-size: var(--font-lead);
+  font-weight: 700;
+}
+.panel-head h2 svg { width: 16px; height: 16px; color: var(--warn); }
+.panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin-left: auto; }
+.panel-body { display: grid; gap: var(--space-8); min-width: 0; }
+
+/* Page header: crumbs, eyebrow with its rule, title, standfirst. */
+.page-head-block { display: grid; gap: var(--space-8); max-width: 720px; }
+.page-crumbs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-7); }
+.page-back { color: var(--text-3); font-size: var(--font-small); text-decoration: none; }
+.page-back:hover { color: var(--accent); }
+.page-crumbs > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  letter-spacing: .02em;
+}
+.page-crumbs > span::before { content: ""; width: 7px; height: 7px; background: currentColor; }
+.page-head-copy { display: grid; gap: var(--space-7); }
+.page-head-copy h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  max-width: 26ch;
+  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+}
+.page-head-copy h1 svg { width: 24px; height: 24px; color: var(--warn); }
+.page-head-copy p { max-width: 58ch; color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+.page-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+
+/* Gallery: a stack of panels, each showing one component's states. */
+.ui-gallery { display: grid; gap: var(--space-9); }
+.ui-gallery .panel + .panel { margin-top: 0; }
+.ui-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+.ui-note { margin: 0; color: var(--text-4); font-size: var(--font-small); line-height: 1.6; }
+.ui-frame { padding: var(--space-10); background: var(--bg); border: 1px solid var(--divider); }
+
+/* ---------- settlement, orders, support, admin ---------- */
+
+/*
+ * These screens were built as plain markup and never given rules, which is why they read
+ * as unstyled HTML: rows ran together, actions wrapped onto their own line, and small
+ * chips floated in empty space. Each list below is a grid with declared columns, so every
+ * row lines up and a long value truncates instead of shoving its neighbours.
+ */
+
+/* One row shape for every list on these pages: fixed leading columns, a flexible
+   description, then a right-hand column for state or an action. */
+.payout-list,
+.method-list,
+.report-list,
+.ticket-list,
+.admin-list,
+.license-list {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Payout history: date, amount, state, destination. The flexible column is the button
+   cell, not the state badge — a badge must stay its own width. */
+.payout-list li {
+  display: grid;
+  grid-template-columns: 96px auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-6) var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.payout-list time { color: var(--text-4); font-size: var(--font-small); white-space: nowrap; }
+.payout-amount { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); }
+/* The destination takes the leftover width and truncates rather than stretching anything
+   else; a long account string must not push the row wider. */
+.payout-dest { min-width: 0; color: var(--text-3); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payout-state,
+.admin-state,
+.ticket-state {
+  width: fit-content;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--divider);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  white-space: nowrap;
+}
+.payout-state.requested, .admin-state.pending, .ticket-state.open { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
+.payout-state.approved { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
+.payout-state.paid, .admin-state.approved { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); background: var(--raised); }
+.payout-state.rejected, .admin-state.rejected { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: var(--warn-soft); }
+.ticket-state.answered { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); background: var(--raised); }
+
+/* Payout methods: one row per saved destination, actions kept together at the end. */
+.method-list li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-6) var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.method-kind { color: var(--text); font-size: var(--font-small); font-weight: 600; }
+.method-account { color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-small); }
+.method-holder { color: var(--text-4); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.method-list .button,
+.method-default { grid-column: 4; }
+/* The default marker and the two actions share one cell, so they never wrap apart. */
+.method-list li > .button:first-of-type,
+.method-default { justify-self: end; }
+.method-default {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--success);
+  font-size: var(--font-small);
+}
+.method-default svg { width: 13px; height: 13px; }
+.method-list li > .button:last-child { justify-self: start; }
+
+/*
+ * The add-method / ticket / settings forms: fields capped at a readable width, and the
+ * submit on its own line. A panel-wide input is harder to scan than a short one.
+ *
+ * `align-self: start` matters: a button is a grid item here, and a grid item stretches to
+ * its row by default, so a two-field form rendered a 51px button beside a 34px one.
+ */
+.settings-form {
+  display: grid;
+  gap: var(--space-7);
+  justify-items: start;
+}
+.settings-form .field { width: 100%; max-width: 420px; }
+.settings-form .button,
+.settings-actions { justify-self: start; align-self: start; }
+.settings-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); }
+
+/*
+ * The settings page was one long left-aligned column inside a 1160px panel, so most of the
+ * width sat empty and every section looked unfinished. Two balanced columns instead, with
+ * related panels stacked, and the danger zone given its own full-width row.
+ */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-9);
+  align-items: start;
+}
+.settings-grid .settings-form .field { max-width: none; }
+.settings-grid .panel { height: 100%; }
+.settings-note { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+
+/* Report and ticket entries: title line, body, then the action. */
+.report-list li,
+.ticket-list li {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.report-list li > small,
+.ticket-list li > small { color: var(--text-4); font-size: var(--font-small); }
+.report-list li > .button,
+.ticket-list li > .button { justify-self: start; }
+.report-pack,
+.ticket-head strong { color: var(--text); font-size: var(--font-body); font-weight: 600; }
+.report-reason { color: var(--warn); font-size: var(--font-small); }
+.report-list p,
+.ticket-list p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.ticket-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-6); }
+
+/* Admin listing review: pack, state, actions, and the reject form when open. */
+.admin-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.admin-pack { display: grid; gap: 2px; min-width: 0; }
+.admin-pack strong { color: var(--text); font-size: var(--font-body); }
+.admin-pack small { color: var(--text-4); font-size: var(--font-small); }
+.admin-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.admin-reason { grid-column: 1 / -1; color: var(--danger); font-size: var(--font-small); }
+/* The reject form spans the row so its field is not squeezed into a column. */
+.admin-reject {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--divider);
+}
+.admin-reject .field { flex: 1 1 260px; max-width: 420px; }
+
+/* The licence: a plain list with a leading mark, generous line height. */
+.license-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-6);
+  color: var(--text-2);
+  font-size: var(--font-body);
+  line-height: 1.7;
+}
+.license-list svg { width: 16px; height: 16px; margin-top: 5px; color: var(--text-4); }
+.license-list.granted svg { color: var(--success); }
+.license-list.denied svg { color: var(--danger); }
+.license-actions { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+
+/*
+ * Narrow screens: these rows have four and five columns, which cannot fit a phone. Rather
+ * than let them overflow, each becomes two lines — money and state on the first, the
+ * description under it — and the action moves to its own row.
+ */
+@media (max-width: 760px) {
+  .payout-list li { grid-template-columns: auto auto minmax(0, 1fr); row-gap: var(--space-4); }
+  .payout-list time { grid-column: 1; grid-row: 2; }
+  .payout-dest { grid-column: 1 / -1; grid-row: 2; text-align: right; }
+  .method-list li { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-5); }
+  .method-holder { grid-column: 2; }
+  .method-list li > .button,
+  .method-default { grid-column: auto; justify-self: start; }
+  .method-list li > .button:last-child { justify-self: start; }
+  .admin-list li { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-5); }
+  .admin-actions { justify-content: flex-start; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .order-lines li { grid-template-columns: auto minmax(0, 1fr) auto; }
+}
+
+/* Order totals and the receipt's action row. */
+.order-totals { display: grid; gap: var(--space-4); margin: 0; padding-top: var(--space-7); border-top: 1px solid var(--divider); }
+.order-totals > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); }
+.order-totals dt { color: var(--text-3); font-size: var(--font-small); }
+.order-totals dd { margin: 0; color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-price); }
+.order-totals .grand dt { color: var(--text); }
+.order-totals .grand dd { color: var(--warn); font-size: var(--font-price-lg); }
+.order-state { color: var(--success); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.receipt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.panel-copy { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+
+/* Drop zone: one target for choosing and dropping a file. */.drop-zone {
+  display: grid;
+  gap: var(--space-5);
+  justify-items: center;
+  padding: var(--space-8);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+}
+.drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone.invalid { border-color: var(--danger); }
+.drop-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  color: var(--text-4);
+  font-size: var(--font-small);
+  text-align: center;
+  cursor: pointer;
+}
+.drop-empty:hover { color: var(--text-2); }
+.drop-empty svg { width: 20px; height: 20px; color: var(--accent); }
+.drop-empty strong { color: var(--text-2); font-weight: 600; }
+.drop-file { display: flex; align-items: center; gap: var(--space-6); width: 100%; min-width: 0; }
+.drop-file > svg { width: 18px; height: 18px; color: var(--accent); flex: 0 0 auto; }
+.drop-file-copy { display: grid; gap: 2px; min-width: 0; }
+.drop-file-copy strong { color: var(--text); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-file-copy small { color: var(--text-4); font-size: var(--font-small); }
+.drop-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: center; }
+
 /* ---------- final cta ---------- */
 
-.final-cta { padding: var(--space-28) 0; background: var(--panel); border-top: 1px solid var(--divider); }
+/* Closing note: light gathers at the bottom edge, under the buttons. */
+.final-cta {
+  padding: var(--space-21) 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(70% 120% at 50% 100%, var(--glow), transparent 72%);
+  border-top: 1px solid var(--divider);
+}
 .final-cta .content-wrap { display: grid; grid-template-columns: 1fr auto; gap: var(--space-18); align-items: center; }
 .final-cta h2 { font-size: clamp(30px, 3.6vw, var(--font-display)); line-height: 1.1; font-weight: 700; }
 .final-cta p { max-width: 640px; margin-top: var(--space-5); color: var(--text-3); font-size: var(--font-body); line-height: 1.65; }
@@ -318,10 +885,24 @@ ul { margin: 0; padding: 0; }
 
 /* ---------- standalone pages: three-column shell ---------- */
 
-.page-shell { width: min(calc(100% - 48px), 1280px); margin: 0 auto; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; gap: var(--space-24); align-items: start; padding: var(--space-16) 0 var(--space-48); }
+.page-shell { width: min(calc(100% - 48px), 1280px); margin: 0 auto; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; gap: var(--space-24); align-items: start; padding: var(--space-16) 0 var(--space-30); }
 .page-shell.no-right { grid-template-columns: 200px minmax(0, 1fr); }
-.outline-side { min-width: 0; }
-.page-outline { position: sticky; top: 86px; }
+/*
+ * The side columns hold still while the article scrolls. The sticky sits on the grid
+ * item, not on the nav inside it: an `aside` is only as tall as its own content, so a
+ * sticky child would run out of travel after one screen and scroll away with the page.
+ * Both the column and the nav inside it are capped to the room below the sticky chrome,
+ * so an outline taller than the viewport scrolls on its own instead of being clipped.
+ */
+.outline-side {
+  min-width: 0;
+  position: sticky;
+  top: var(--space-26);
+  max-height: calc(100vh - var(--space-26) - var(--space-9));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.outline-side .page-outline { max-height: calc(100vh - var(--space-26) - var(--space-9)); overflow-y: auto; }
 .page-outline.panel { background: var(--surface); border: 1px solid var(--border); }
 .panel-body { padding: var(--space-4) var(--space-3) var(--space-5); }
 .outline-group { margin: var(--space-7) var(--space-3) var(--space-2); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; font-weight: 400; }
@@ -341,8 +922,15 @@ ul { margin: 0; padding: 0; }
 
 
 .page-body { min-width: 0; max-width: 720px; }
-.page-head { margin-bottom: var(--space-16); padding-bottom: var(--space-13); border-bottom: 1px solid var(--divider); }
-.page-head h1 { font-size: clamp(34px, 4vw, var(--font-display)); font-weight: 700; }
+/* Inner pages (docs, FAQ, blog) share one treatment: a shallow wash behind the page
+   title that fades into the grid, so each page opens with light instead of a flat band. */
+.page-head {
+  margin-bottom: var(--space-16);
+  padding-bottom: var(--space-13);
+  border-bottom: 1px solid var(--divider);
+  background-image: linear-gradient(180deg, var(--wash-strong) 0%, transparent 100%);
+}
+.page-head h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .page-head p { margin-top: var(--space-6); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
 
 .doc-section { scroll-margin-top: var(--space-28); }
@@ -527,13 +1115,21 @@ ul { margin: 0; padding: 0; }
  * opacity blends two poses, and both read as flicker. A single image can only ever
  * show one frame.
  *
- * The window is exactly one frame; only the width needs a cap for narrow screens.
+ * The window is exactly one frame and keeps the frame's own ratio, so narrowing it
+ * scales the sprite down whole instead of cropping or squashing it. Each host picks the
+ * zoom that fits its box; `--sprite-max-w` only guards a host narrower than one frame.
  */
 .sprite-strip {
   display: block;
   flex: 0 0 auto;
   width: min(var(--frame-px, 82px), var(--sprite-max-w, 100%));
-  height: var(--frame-py, 62px);
+  aspect-ratio: var(--frame-w, 41) / var(--frame-h, 31);
+}
+.sprite-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
 }
 .sprite-img {
   display: block;
@@ -542,41 +1138,46 @@ ul { margin: 0; padding: 0; }
   image-rendering: pixelated;
 }
 
-/* Each context caps the pet; the size itself comes from the component. */
+/* Each context caps the pet; the size itself comes from the component. The card's cap
+   lives with its padding so the two cannot drift apart. */
 .animation-stage { --sprite-max-w: 100%; }
-.pack-art-frame.artwork { --sprite-max-w: calc(100% - 32px); }
 .pack-hero-figure.artwork { --sprite-max-w: 62%; }
 
+/* The shelf opens the market the way the hero opens the homepage: a wide wash from the
+   top, so the feature row sits in light rather than on a bare band. */
 .market-shelf {
   position: relative;
-  padding: var(--space-31) 0 var(--space-17);
-  background: var(--panel);
+  padding: var(--space-24) 0 var(--space-13);
+  background-image:
+    radial-gradient(72% 130% at 22% 0%, var(--glow) 0%, transparent 68%),
+    linear-gradient(180deg, var(--wash-strong) 0%, transparent 55%);
   border-bottom: 1px solid var(--divider);
 }
 
 .shelf-head { max-width: 760px; }
 .shelf-head > span { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; }
 .shelf-head > span::before { content: ""; width: 7px; height: 7px; background: currentColor; }
-.shelf-head h1 { margin: var(--space-7) 0 var(--space-6); font-size: clamp(30px, 3.8vw, var(--font-display)); line-height: 1.12; font-weight: 700; letter-spacing: -.018em; }
+/*
+ * The older shelf header uses the same display step as PageHeader. It was clamping to
+ * `--font-display` (44px) while every page built on PageHeader rendered 38px, so five
+ * routes had a visibly larger title than the other nine for no reason anyone chose.
+ */
+.shelf-head h1 { margin: var(--space-7) 0 var(--space-6); font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.1; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .shelf-head p { max-width: 640px; color: var(--text-3); font-size: var(--font-body); line-height: 1.75; }
 
-/* Featured packs: exactly one row that never wraps. The tiles shrink together as the
-   viewport narrows, and below the six-tile width the row scrolls instead of stacking
-   into a second line. */
+/* Featured packs reflow with the page: as many columns as fit at a readable tile
+   width, then fewer as it narrows. It never scrolls sideways, so no tile ends up
+   unreachable on a phone. */
 .shelf-stage {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--space-5);
   margin: var(--space-16) 0 0;
-  padding-bottom: var(--space-1);
-  overflow-x: auto;
 }
 .shelf-item {
   display: flex;
-  flex: 1 1 0;
-  /* Floors the tile so a narrow viewport scrolls the row instead of shrinking the
-     covers past readability. */
-  min-width: 128px;
+  min-width: 0;
+  max-width: 360px;
   flex-direction: column;
   overflow: hidden;
   background: var(--surface);
@@ -585,8 +1186,35 @@ ul { margin: 0; padding: 0; }
 }
 .shelf-item:hover { border-color: var(--accent); }
 .shelf-item:hover figcaption { color: var(--accent); }
-.shelf-cover { aspect-ratio: 16 / 10; overflow: hidden; background: var(--control); border-bottom: 1px solid var(--divider); }
+/* The cover centres its content the same way the card frame does: a fixed 16:10 tile
+   that the pet sits inside rather than fills. */
+.shelf-cover {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  padding: var(--space-5);
+  overflow: hidden;
+  background: var(--control);
+  border-bottom: 1px solid var(--divider);
+}
+.shelf-cover .pack-placeholder { gap: var(--space-4); }
 .shelf-cover img { width: 100%; height: 100%; object-fit: cover; }
+/* A pet sprite is pixel art: it keeps its authored pixels and is never stretched to
+   fill the frame. The tile's ratio is wider than the sprite's, so the height is the
+   tight side here: capping the width by the height the tile has left — expressed through
+   the frame's own ratio — scales the pet down whole instead of cropping it. The zero
+   minimums let the strip shrink below one full frame. */
+.shelf-cover .sprite-strip {
+  min-width: 0;
+  min-height: 0;
+  width: min(var(--frame-px, 82px), calc((100% - 2 * var(--space-5)) * var(--frame-w, 41) / var(--frame-h, 31)));
+}
+.shelf-cover .sprite-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
 .shelf-item figcaption {
   display: flex;
   flex: 1 1 auto;
@@ -600,7 +1228,7 @@ ul { margin: 0; padding: 0; }
 }
 .shelf-item figcaption span { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); white-space: nowrap; }
 
-.market-browse { padding: var(--space-27) 0 var(--space-37); background: var(--bg); }
+.market-browse { padding: var(--space-20) 0 var(--space-26); }
 .market-head { margin-bottom: var(--space-11); }
 .market-head h2 { color: var(--text); }
 .market-head p { color: var(--text-3); }
@@ -614,19 +1242,28 @@ ul { margin: 0; padding: 0; }
   padding-bottom: var(--space-9);
   border-bottom: 1px solid var(--divider);
 }
-.market-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+/* The one chip: market filters, studio presets and selected tags all use this. */
+.chip,
 .filter-chip {
-  padding: var(--space-4) var(--space-7);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
   color: var(--text-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  cursor: pointer;
+  font: inherit;
   font-size: var(--font-small);
   line-height: 1.4;
+  cursor: pointer;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
+.chip:hover,
 .filter-chip:hover { color: var(--text); border-color: var(--border-strong); }
-.filter-chip.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.chip.active,
+.filter-chip.active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.chip svg { width: 11px; height: 11px; }
+.market-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 
 .market-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
 .search-field input {
@@ -641,35 +1278,113 @@ ul { margin: 0; padding: 0; }
 .search-field input::placeholder { color: var(--text-4); }
 .search-field input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
 .sort-field { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-4); font-size: var(--font-small); }
-.sort-field select {
+
+/* ---------- select ---------- */
+
+/* The option list is the language menu in the header restated as a control: same
+   surface, same border, square corners, amber hairline. The native popup is drawn by
+   the OS and cannot be styled, which is why this exists. */
+.ui-select { position: relative; display: inline-flex; }
+.ui-select-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-width: 132px;
   height: 36px;
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-5);
   color: var(--text-2);
   background: var(--control);
   border: 1px solid var(--border);
   font: inherit;
   font-size: var(--font-small);
+  text-align: left;
+  cursor: pointer;
 }
-.cart-button { position: relative; }
+.ui-select-button:hover { color: var(--text); border-color: var(--border-strong); }
+.ui-select-button svg { width: 14px; height: 14px; color: var(--text-4); flex: 0 0 auto; }
+.ui-select-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--space-2) 0;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-top-color: var(--accent);
+  box-shadow: 0 12px 28px var(--shadow);
+  list-style: none;
+  white-space: nowrap;
+}
+.ui-select-list.end { left: auto; right: 0; }
+.ui-select-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--font-small);
+  text-align: left;
+  cursor: pointer;
+}
+.ui-select-list button svg { width: 13px; height: 13px; color: var(--accent); }
+.ui-select-list button[data-active="true"] { color: var(--text); background: var(--raised); }
+.ui-select-list button.selected { color: var(--accent); }
+/* Visually hidden but still focusable and announced: used for the file inputs the styled
+   labels drive. `position: fixed` matters — an absolutely positioned 1px box still takes
+   part in the document's scrollable width and was pushing the page 164px wide. */
+.visually-hidden {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+/* The count hangs off the button, so the two share a positioned wrapper rather than the
+   badge being nested inside the button's own box. */
+.cart-slot { position: relative; display: inline-flex; }
+.cart-slot .cart-badge { top: -6px; right: -6px; }
+.add-button { display: inline-flex; }
+.add-button .button { width: 100%; }
 .cart-badge { position: absolute; top: -7px; right: -7px; min-width: 18px; padding: 0 var(--space-2); color: var(--on-accent); background: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); line-height: 18px; text-align: center; }
 
 .market-count { margin: var(--space-7) 0 var(--space-10); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
 
-.pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-9); align-items: stretch; }
+/* 350px is the width at which a full three-tag row still fits in either language;
+   narrower and the row would have to trim a tag, so the grid reflows instead. */
+.pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-9); align-items: stretch; }
 
 /* Cards are cloned from one mold: art, then a fixed number of text lines, so
    every card in the grid is exactly the same height. */
-.pack-card { position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); transition: border-color 140ms ease, transform 140ms ease; }
+.pack-card { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--border); transition: border-color 140ms ease, transform 140ms ease; }
 .pack-card:hover { border-color: var(--accent); }
-.pack-card-link { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.pack-card-link { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
 .pack-card-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* One preview frame for every pack: a fixed 16:10 crop, so no card can sit
    taller or shorter than its neighbours. The inset ring keeps the frame readable
-   even when a screenshot's own background is nearly black. */
+   even when a screenshot's own background is nearly black. Every pack gets the same
+   internal padding, so a pet pack's card matches a product shot's card height. */
 .pack-art-frame {
   position: relative;
   aspect-ratio: 16 / 10;
+  box-sizing: border-box;
+  padding: clamp(12px, 4vw, 26px);
   overflow: hidden;
   background: var(--control);
   border-bottom: 1px solid var(--border);
@@ -678,9 +1393,42 @@ ul { margin: 0; padding: 0; }
 /* Product shots, not pixel art: they are downscaled, so leave smoothing on. */
 .pack-image { width: 100%; height: 100%; object-fit: cover; }
 /* An animated pet is placed in the frame rather than stretched into it: without
-   this it lands in the corner of the 16:10 frame, touching the edges. */
-.pack-art-frame.artwork { display: grid; place-items: center; padding: var(--space-12) var(--space-8) var(--space-9); }
+   centring it lands in the corner of the 16:10 frame, touching the edges. Its cap
+   subtracts the padding that is actually applied, instead of a fixed guess. */
+.pack-art-frame.artwork {
+  display: grid;
+  place-items: center;
+  /* The padding is inherited from .pack-art-frame; the cap subtracts it so the pet
+     keeps clear of the frame at every width. */
+  --sprite-max-w: calc(100% - 2 * clamp(12px, 4vw, 26px));
+}
 .pack-art-frame.artwork .pack-image { object-fit: contain; image-rendering: pixelated; }
+/* Packs whose artwork is not drawn yet keep an empty frame: no stand-in screenshot,
+   just a quiet marker so the card does not read as a loading failure. */
+.pack-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  width: 100%;
+  height: 100%;
+  text-align: center;
+}
+.pack-placeholder-mark {
+  width: 34px;
+  height: 34px;
+  background: var(--raised);
+  border: 1px dashed var(--border-strong);
+}
+.pack-placeholder-text { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+/* In the small thumbnails the label has no room, so only the marker shows. */
+.cart-line-art .pack-placeholder-text,
+.bundle-item-art .pack-placeholder-text,
+.shelf-cover .pack-placeholder-text { display: none; }
+.cart-line-art .pack-placeholder-mark,
+.bundle-item-art .pack-placeholder-mark { width: 18px; height: 18px; }
+.shelf-cover .pack-placeholder-mark { width: 28px; height: 28px; }
 .pack-tag {
   position: absolute;
   top: 10px;
@@ -695,13 +1443,22 @@ ul { margin: 0; padding: 0; }
 .pack-tag.pets { color: var(--pet-color); border-color: currentColor; }
 .pack-tag.assets { color: var(--accent); border-color: currentColor; }
 .pack-tag.bundle { color: var(--warn); border-color: currentColor; }
+/* Extensions and scripts are tooling rather than artwork, so they borrow the success
+   colour instead of repeating the accent that already marks price and selection. */
+.pack-tag.extensions { color: var(--success); border-color: currentColor; }
+.pack-tag.scripts { color: var(--text-2); border-color: var(--border-strong); }
+
+/* The add command stays an outline in the card footer: it may not glow accent on
+   hover, or the card would carry two competing highlights next to the price. */
+.pack-foot .button.add-button { border-color: var(--border); }
+.pack-foot .button.add-button:hover { border-color: var(--border-strong); background: var(--raised); }
 
 .pet-strip { display: grid; grid-template-columns: repeat(var(--strip-cols, 3), auto); gap: var(--space-4); }
 .pet-cell { display: grid; place-items: center; width: 92px; height: 100px; }
 .pet-strip .pet-cell { width: 84px; height: 96px; }
 
 .pack-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-5); padding: var(--space-9) var(--space-9) var(--space-8); }
-.pack-head h3 { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+.pack-head h2 { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
 /* Two lines minimum for the tagline and three clamped lines of body copy keep
    the text block the same height whether the copy is short or long. */
 .pack-tagline {
@@ -709,7 +1466,10 @@ ul { margin: 0; padding: 0; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 2.4em;
+  /* Exactly two lines of room, in the tagline's own line-height units. A 2.4em floor
+     mixes units with the 1.3 line-height, so a one-line tagline still shrank the card
+     and rows ended up different heights. */
+  min-height: calc(2 * 1.3em);
   margin-top: var(--space-3);
   color: var(--text-4);
   font-size: var(--font-small);
@@ -720,13 +1480,42 @@ ul { margin: 0; padding: 0; }
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 4.2em;
+  /* Exactly three lines of room, whatever the copy's own length: this is what keeps
+     every card the same height when one pack's text is a line shorter. */
+  min-height: calc(3 * 1.75em);
   color: var(--text-2);
   font-size: var(--font-small);
   line-height: 1.75;
 }
-.pack-chips { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: auto 0 0; padding: 0; list-style: none; }
-.pack-chips li { padding: var(--space-2) var(--space-4); color: var(--text-3); background: var(--raised); border: 1px solid var(--divider); font-size: var(--font-small); line-height: 1.4; }
+/* One chip row, never two. Every chip may shrink and ellipsise, including the first:
+   a long size string like "16x16 + 24x24 + 32x32" would otherwise hold its full width,
+   push the card past its column, and spill out of a narrow container such as the studio
+   preview. Chips keep their own text when there is room. */
+.pack-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin: auto 0 0;
+  padding: var(--space-1) 0;
+  overflow: hidden;
+  list-style: none;
+}
+.pack-chips li {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-2);
+  color: var(--text-3);
+  background: var(--raised);
+  border: 1px solid var(--divider);
+  font-size: var(--font-pixel-tag);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The first chip used to be pinned at its full width, which is what pushed a card with a
+   long size string past its column. It shrinks like the rest now. */
 
 .pack-foot {
   position: relative;
@@ -740,25 +1529,39 @@ ul { margin: 0; padding: 0; }
   padding: var(--space-6) var(--space-9) var(--space-8);
   border-top: 1px solid var(--divider);
 }
-.pack-price { display: flex; align-items: baseline; gap: var(--space-4); }
-.pack-price strong { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); }
-.pack-price s { color: var(--text-4); font-size: var(--font-small); }
-.pack-price em { padding: var(--space-2) var(--space-3); color: var(--warn); background: var(--warn-soft); font-size: var(--font-small); font-style: normal; }
+/* Reserving the discounted tag's own height keeps every footer the same size, whether
+   or not that pack has one — otherwise the bundle sits a few pixels taller. */
+.pack-price { display: flex; align-items: baseline; flex-wrap: nowrap; gap: var(--space-4); min-height: 27px; }
+/* The price is the card's one emphasized value: the warning yellow marks it, and the
+   add button stays a quiet outline so the two do not compete for the eye. */
+.pack-price strong { color: var(--warn); font-family: var(--font-pixel); font-size: var(--font-price); }
+.pack-price s { color: var(--text-4); font-size: var(--font-small); white-space: nowrap; }
+.pack-price em { padding: var(--space-2) var(--space-3); color: var(--warn); background: var(--warn-soft); font-size: var(--font-small); font-style: normal; white-space: nowrap; }
+/* The bundle's three price parts need ~330px. Below that the strikethrough is the one
+   to drop — the saving is already stated in the em beside it — so the row cannot wrap
+   and the card keeps the height of its neighbours. */
+@media (max-width: 1100px) {
+  .pack-price s { display: none; }
+}
 .pack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-left: auto; }
-.pack-more { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-3); font-size: var(--font-small); }
-.pack-more:hover { color: var(--accent); }
-.pack-more svg { width: 13px; height: 13px; }
 .add-button.block { width: 100%; min-height: 40px; }
 
 .market-empty { display: grid; justify-items: start; gap: var(--space-5); padding: var(--space-23) var(--space-10); background: var(--surface); border: 1px dashed var(--border-strong); }
 .market-empty h3 { font-size: var(--font-h3); font-weight: 700; }
 .market-empty p { max-width: 460px; color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
-.market-missing { display: grid; justify-items: start; gap: var(--space-9); padding: var(--space-30) 0 var(--space-38); }
+.market-missing { display: grid; justify-items: start; gap: var(--space-9); padding: var(--space-20) 0 var(--space-26); }
 .market-missing h1 { font-size: var(--font-h2); font-weight: 700; }
 
 /* ---------- pack detail page ---------- */
 
-.pack-hero { padding: var(--space-17) 0 var(--space-21); background: var(--panel); border-bottom: 1px solid var(--divider); }
+/* Shop header: the wash sweeps in from the left, behind the pack's own artwork. */
+.pack-hero {
+  padding: var(--space-13) 0 var(--space-17);
+  background-image:
+    linear-gradient(105deg, var(--glow) 0%, transparent 46%),
+    linear-gradient(180deg, var(--wash-strong) 0%, transparent 60%);
+  border-bottom: 1px solid var(--divider);
+}
 .pack-crumbs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-11); }
 .pack-crumbs a { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
 .pack-crumbs a:hover { color: var(--accent); }
@@ -770,7 +1573,9 @@ ul { margin: 0; padding: 0; }
    than the viewport once the layout collapses to one column. */
 .pack-hero-grid > * { min-width: 0; }
 .pack-hero-media { position: sticky; top: 86px; }
-.pack-hero-figure { position: relative; margin: 0; overflow: hidden; background: var(--control); border: 1px solid var(--border); }
+/* The media frame keeps a stand-in height when a pack has no art yet; without it the
+   blank placeholder would collapse the whole hero. */
+.pack-hero-figure { position: relative; display: grid; place-items: center; min-height: 300px; margin: 0; overflow: hidden; background: var(--control); border: 1px solid var(--border); }
 .pack-hero-figure .pack-image { width: 100%; height: auto; max-height: 460px; object-fit: contain; }
 .pack-hero-figure figcaption { position: absolute; top: 10px; left: 10px; }
 /* Artwork heroes size the frame to the pet instead of the other way round, so the
@@ -778,12 +1583,19 @@ ul { margin: 0; padding: 0; }
 .pack-hero-figure.artwork { display: grid; place-items: center; padding: var(--space-13) var(--space-10); }
 .pack-hero-figure.artwork .pack-image,
 .pack-hero-figure.artwork .sprite-strip { max-width: 100%; }
-.pack-hero-copy h1 { font-size: clamp(30px, 3.4vw, var(--font-display)); line-height: 1.14; font-weight: 700; letter-spacing: -.016em; }
+/*
+ * The pack name is the page's subject, so it takes the same display step as every other
+ * page title. It read 44px while the rest of the site read 38px, which made the detail page
+ * look like a different product.
+ */
+.pack-hero-copy h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.14; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .pack-hero-tagline { margin-top: var(--space-5); color: var(--text-4); font-size: var(--font-body); line-height: 1.6; }
 .pack-hero-body { margin-top: var(--space-8); color: var(--text-2); font-size: var(--font-body); line-height: 1.8; }
 .pack-hero-copy .pack-chips { margin-top: var(--space-9); }
 .pack-hero-copy .pack-price { margin-top: var(--space-10); }
-.pack-hero-copy .pack-price strong { font-size: var(--font-h2); }
+/* The price in a pack's buying block is the page's one numeric shout. */
+.pack-hero-copy .pack-price { margin: var(--space-9) 0 var(--space-6); }
+.pack-hero-copy .pack-price strong { font-size: var(--font-price-lg); line-height: 1; }
 .pack-hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); margin-top: var(--space-9); }
 .pack-hero-actions .add-button.block { width: auto; min-width: 190px; }
 .pack-hero-actions .cart-button { position: relative; }
@@ -795,7 +1607,7 @@ ul { margin: 0; padding: 0; }
 }
 .pack-hero-note { margin-top: var(--space-7); color: var(--text-4); font-size: var(--font-small); line-height: 1.7; }
 
-.detail-main { padding: var(--space-22) 0 var(--space-26); background: var(--bg); }
+.detail-main { padding: var(--space-18) 0 var(--space-20); }
 .detail-columns { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--space-20); align-items: start; }
 .detail-primary { display: grid; gap: var(--space-17); min-width: 0; }
 .detail-side { display: grid; gap: var(--space-13); }
@@ -826,9 +1638,7 @@ ul { margin: 0; padding: 0; }
 .pack-download::before { content: "↓"; color: var(--accent); font-family: var(--font-pixel); font-size: var(--font-small); }
 .pack-download:hover { color: var(--text); border-color: var(--accent); }
 .detail-animations { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
-.chip { padding: var(--space-2) var(--space-4); color: var(--text-3); background: var(--raised); border: 1px solid var(--border); cursor: pointer; font-size: var(--font-small); }
-.chip:hover { color: var(--text); border-color: var(--border-strong); }
-.chip.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+/* The animation pickers use the shared chip; only the row they sit in is local. */
 
 .detail-list { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
 .detail-list li { display: flex; align-items: flex-start; gap: var(--space-5); color: var(--text-2); font-size: var(--font-small); line-height: 1.65; }
@@ -850,7 +1660,12 @@ ul { margin: 0; padding: 0; }
 .bundle-item svg { width: 14px; height: 14px; color: var(--text-4); }
 .market-browse.related { border-top: 1px solid var(--divider); }
 
-.market-notes { padding: var(--space-22) 0 var(--space-27); background: var(--panel); border-top: 1px solid var(--divider); }
+/* Closing notes: a faint lift so the page does not end on the same flat tone it began. */
+.market-notes {
+  padding: var(--space-18) 0 var(--space-20);
+  background-image: linear-gradient(180deg, transparent 0%, var(--wash-strong) 100%);
+  border-top: 1px solid var(--divider);
+}
 .notes-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: var(--space-17); }
 .notes-block h3 { display: inline-flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); color: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
 .notes-block h3::before { content: ""; width: 6px; height: 6px; background: currentColor; }
@@ -909,6 +1724,445 @@ ul { margin: 0; padding: 0; }
 .cart-line-price { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-small); white-space: nowrap; }
 
 .cart-foot { display: grid; gap: var(--space-6); padding: var(--space-8); background: var(--panel); border-top: 1px solid var(--border); }
+
+/*
+ * The checkout confirmation, inside a ~410px drawer. Written for that width: one item per
+ * line with the price right-aligned, totals on a ruled block, then the licence and its
+ * checkbox. Without these rules the classes fell back to default markup and everything
+ * collided — the section headings landed on the same line as the values.
+ */
+.cart-review {
+  display: grid;
+  gap: var(--space-9);
+  padding: var(--space-8);
+  overflow-y: auto;
+}
+.cart-review h3 {
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+}
+.cart-review-lines { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.cart-review-lines li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--divider);
+}
+.cart-review-lines li > span:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--font-small);
+}
+.cart-review-lines em { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); font-style: normal; }
+.cart-review-lines li > span:last-child {
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-price);
+  white-space: nowrap;
+}
+
+/* Totals: label left, figure right, and the payable line carrying the weight. */
+.cart-review-total { display: grid; gap: var(--space-4); margin: 0; }
+.cart-review-total > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); }
+.cart-review-total dt { color: var(--text-3); font-size: var(--font-small); }
+.cart-review-total dd { margin: 0; color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-price); }
+.cart-review-total .grand { padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.cart-review-total .grand dt { color: var(--text); font-size: var(--font-body); }
+.cart-review-total .grand dd { color: var(--warn); font-size: var(--font-price-lg); }
+
+/* The licence: a titled block with its own surface so it reads as terms, not as body. */
+.cart-agreement {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top-color: var(--warn);
+}
+.cart-agreement > strong {
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  font-weight: 400;
+}
+.cart-agreement p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.cart-agreement a { color: var(--accent); font-size: var(--font-small); text-decoration: none; }
+.cart-agreement a:hover { text-decoration: underline; }
+
+/*
+ * A checkbox drawn as a square, because the OS control belongs to another design.
+ *
+ * The input is clipped rather than moved off-screen: `position: absolute` with `inset: 0`
+ * and a clip keeps it over the square, so the whole row is a click target and the control
+ * is still focusable and announced. An earlier version used `pointer-events: none` plus an
+ * off-page offset, which left only the label text clickable.
+ */
+.checkbox {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--divider);
+  cursor: pointer;
+}
+.checkbox input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  clip-path: inset(0);
+}
+.checkbox-box {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--on-accent);
+  background: var(--control);
+  border: 1px solid var(--border-strong);
+}
+.checkbox-box svg { width: 13px; height: 13px; }
+.checkbox input:checked + .checkbox-box { background: var(--accent); border-color: var(--accent); }
+.checkbox input:focus-visible + .checkbox-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+.checkbox-label { color: var(--text-2); font-size: var(--font-small); line-height: 1.6; }
+.checkbox:has(input:checked) .checkbox-label { color: var(--text); }
+
+.cart-review-actions { display: grid; gap: var(--space-5); }
+.cart-review-actions .button { width: 100%; justify-content: center; }
+
+/* ---------- account ---------- */
+
+.account-head { padding-bottom: var(--space-17); }
+.account-wrap { padding-top: 0; }
+.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-9); align-items: start; }
+.account-panel {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.account-panel h2 { display: flex; align-items: center; gap: var(--space-4); color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+.account-panel h2 svg { width: 16px; height: 16px; color: var(--warn); }
+.account-panel .button { justify-self: start; }
+.account-facts { display: grid; gap: var(--space-5); margin: 0; }
+.account-facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); padding-bottom: var(--space-4); border-bottom: 1px solid var(--divider); }
+.account-facts dt { color: var(--text-4); font-size: var(--font-small); }
+.account-facts dd { margin: 0; color: var(--text); font-size: var(--font-small); }
+.account-empty { color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.account-tabs { display: flex; gap: var(--space-3); border-bottom: 1px solid var(--divider); }
+.account-tabs button { padding: var(--space-4) var(--space-6); color: var(--text-3); background: transparent; border: 0; border-bottom: 2px solid transparent; font-size: var(--font-small); font-weight: 600; cursor: pointer; }
+.account-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.account-form { display: grid; gap: var(--space-7); }
+.account-form label { display: grid; gap: var(--space-3); }
+.account-form label > span { color: var(--text-3); font-size: var(--font-small); }
+.account-form input,
+.account-form input[type="number"] {
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+/* The browser's spinner is OS chrome; the forms here take plain typed numbers. */
+.account-form input[type="number"]::-webkit-outer-spin-button,
+.account-form input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.account-form input[type="number"] { -moz-appearance: textfield; }
+.account-form input:focus-visible { border-color: var(--accent); outline: none; }
+.account-error { margin: 0; padding: var(--space-4) var(--space-5); color: var(--danger); background: var(--warn-soft); border: 1px solid var(--danger); font-size: var(--font-small); }
+.account-notice p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.75; }
+.order-list { display: grid; gap: var(--space-8); margin: 0; padding: 0; list-style: none; }
+.order { display: grid; gap: var(--space-5); padding: var(--space-6); background: var(--bg); border: 1px solid var(--divider); }
+.order-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-5); }
+.order-head strong { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.order-head span { color: var(--text-4); font-size: var(--font-small); }
+.order-head em { margin-left: auto; color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); font-style: normal; }
+/* Without the id and date there is nothing to separate, so the total carries the line. */
+.order-head.bare { justify-content: flex-end; }
+.order-lines { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.order-lines li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-6); padding: var(--space-2) 0; color: var(--text-3); font-size: var(--font-small); }
+.order-lines svg { width: 14px; height: 14px; color: var(--success); }
+.order-line-name { display: grid; gap: 2px; min-width: 0; }
+.order-lines a { color: var(--text-2); }
+.order-line-name small { color: var(--text-4); font-size: var(--font-small); }
+.order-line-price { min-width: 64px; text-align: right; white-space: nowrap; }
+/* Download per pack. A pack whose file does not exist yet keeps the same shape but is
+   inert and says so, so the row never looks like a link that merely failed. */
+.order-download {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: var(--font-small);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.order-download:hover { color: var(--accent-hover); border-color: var(--accent); }
+.order-download svg { width: 13px; height: 13px; color: currentColor; }
+.order-download.pending { color: var(--text-4); background: transparent; border-color: var(--divider); cursor: not-allowed; }
+.order-download.pending svg { color: var(--text-4); }
+.order-count { margin-left: var(--space-3); padding: 0 var(--space-3); color: var(--text-3); background: var(--raised); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.button-count { margin-left: var(--space-3); padding: 0 var(--space-2); color: var(--text-3); background: var(--raised); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.purchases-wrap { padding-top: 0; }
+
+/* ---------- creator studio ---------- */
+
+/* Not linked from the site navigation: it is a seller tool, not a page for visitors. */
+.studio-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-bottom: var(--space-9); }
+.studio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-bottom: var(--space-9); }
+.shelf-head-icon { width: 22px; height: 22px; margin-right: var(--space-5); color: var(--warn); vertical-align: middle; }
+.studio-badge { display: inline-flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); color: var(--success); background: var(--raised); border: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-badge svg { width: 14px; height: 14px; }
+.studio-prototype { margin-bottom: var(--space-9); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.studio-prototype p { margin: 0; color: var(--text-2); font-size: var(--font-small); line-height: 1.75; }
+.studio-gate { max-width: 520px; }
+.studio-hint { margin: 0; color: var(--text-4); font-size: var(--font-small); line-height: 1.6; }
+.studio-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-7); margin-bottom: var(--space-9); }
+.studio-metric {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.studio-metric > span { color: var(--text-4); font-size: var(--font-small); }
+.studio-metric strong { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price-lg); }
+.studio-metric small { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.studio-metric.accent { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.studio-metric.accent strong { color: var(--accent); }
+.studio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-9); align-items: start; margin-bottom: var(--space-9); }
+/*
+ * One height for every control in a form. The shapes differed before — an input measured
+ * 45px (padding-driven) while the select was a fixed 36px — and a select sitting in an
+ * inline flow added baseline space under its label, so the two columns of a row started
+ * 29px apart. Everything is a border-box block at --control-height now.
+ */
+.account-form label,
+.studio-row label { display: grid; gap: var(--space-3); align-content: start; }
+.studio-row { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(180px, 1.2fr); gap: var(--space-7); align-items: start; }
+.studio-field-hint { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.account-form label > span,
+.studio-row label > span { color: var(--text-3); font-size: var(--font-small); }
+.account-form input,
+.account-form input[type="number"],
+.account-form select,
+.ui-select,
+.ui-select-button {
+  box-sizing: border-box;
+  height: var(--control-height);
+}
+.account-form input,
+.account-form input[type="number"],
+.account-form select,
+.account-form textarea {
+  width: 100%;
+  padding: 0 var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+.account-form textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; }
+.account-form select { padding-right: var(--space-8); }
+/* The browser's spinner is OS chrome; the forms here take plain typed numbers. */
+.account-form input[type="number"]::-webkit-outer-spin-button,
+.account-form input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.account-form input[type="number"] { -moz-appearance: textfield; }
+.account-form input:focus-visible { border-color: var(--accent); outline: none; }
+.ui-select { display: block; }
+.ui-select-button { width: 100%; }
+.account-form textarea { resize: vertical; }
+.studio-ok { margin: 0; padding: var(--space-4) var(--space-5); color: var(--success); background: var(--raised); border: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-cover { display: grid; gap: var(--space-4); }
+.studio-cover-label { color: var(--text-3); font-size: var(--font-small); }
+.studio-cover-picked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.studio-cover-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-8);
+  color: var(--text-4);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+  font-size: var(--font-small);
+  cursor: pointer;
+}
+.studio-cover-empty:hover { color: var(--text-2); border-color: var(--accent); }
+.studio-cover-empty svg { width: 16px; height: 16px; }
+.studio-cover-preview { max-width: 220px; max-height: 140px; object-fit: contain; border: 1px solid var(--border); image-rendering: pixelated; }
+
+/* ---------- publish form ---------- */
+
+/* The form and the listing preview sit side by side: a seller should see the card they
+   are about to publish while filling it in, not after. */
+/* The form column flexes; the preview column is a fixed 400px so the card it renders
+   keeps its natural width instead of being squeezed and spilling over. */
+.studio-publish-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: var(--space-13); align-items: start; }
+.studio-fieldset { display: grid; gap: var(--space-7); margin: 0; padding: var(--space-9) 0 0; border: 0; border-top: 1px solid var(--divider); }
+.studio-fieldset:first-of-type { padding-top: 0; border-top: 0; }
+.studio-fieldset legend {
+  padding: 0 0 var(--space-5);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  letter-spacing: .02em;
+}
+.studio-field { display: grid; gap: var(--space-3); align-content: start; }
+.studio-field-label { display: flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
+.studio-field-tally {
+  padding: 0 var(--space-3);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-weight: 400;
+}
+/* Values typed by hand lead the row, so what is actually set reads first. */
+.chip-set.custom { padding-bottom: var(--space-2); border-bottom: 1px dashed var(--divider); }
+.studio-inline-add .button:disabled { opacity: .45; cursor: not-allowed; }
+.studio-editing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: var(--font-small);
+}
+.studio-editing svg { width: 15px; height: 15px; }
+.studio-field-label em, .account-form label > span em {
+  color: var(--text-4);
+  font-size: var(--font-pixel-tag);
+  font-style: normal;
+  font-family: var(--font-pixel);
+}
+/* A field that failed validation says so on its own border, not only in a summary. */
+.account-form label.invalid input,
+.studio-field.invalid .studio-inline-add input { border-color: var(--danger); }
+/* Chips: presets are a row of pressable tags, the same shape the market's cards use. */
+.chip-set { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+
+.studio-inline-add { display: flex; gap: var(--space-5); }
+.studio-inline-add input { flex: 1 1 auto; }
+.studio-inline-add .button { flex: 0 0 auto; }
+/* Cover image: the one drop target that shows a picture instead of a filename, so it keeps
+   its own markup rather than using the library's FileField. */
+.cover-field {
+  display: grid;
+  gap: var(--space-5);
+  justify-items: center;
+  padding: var(--space-8);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+}
+.cover-field.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.cover-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  color: var(--text-4);
+  font-size: var(--font-small);
+  text-align: center;
+  cursor: pointer;
+}
+.cover-empty:hover { color: var(--text-2); }
+.cover-empty svg { width: 20px; height: 20px; color: var(--accent); }
+.cover-empty strong { color: var(--text-2); font-weight: 600; }
+.cover-empty small { color: var(--text-4); }
+.cover-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: center; }
+.studio-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); padding-top: var(--space-4); }
+.studio-preview { position: sticky; top: 86px; display: grid; gap: var(--space-5); align-content: start; min-width: 0; }
+.studio-preview h2 { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+/* The card is a preview of the listing's shape and content, not a life-size copy, so it
+   is bounded by its column: a long "what's inside" string would otherwise widen the card
+   past the column and spill out of the panel. */
+.studio-preview-card { min-width: 0; overflow: hidden; }
+.studio-preview-card .pack-card { width: 100%; pointer-events: none; }
+@media (max-width: 1100px) {
+  .studio-publish-grid { grid-template-columns: minmax(0, 1fr); }
+  .studio-preview { position: static; max-width: 420px; }
+}
+.studio-withdrawals { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.studio-withdrawals li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: baseline; gap: var(--space-5); padding: var(--space-4) 0; border-top: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-withdrawals strong { color: var(--text); font-family: var(--font-pixel); }
+.studio-withdrawals span { color: var(--text-3); }
+.studio-withdrawals em { color: var(--warn); font-style: normal; }
+.studio-withdrawals time { color: var(--text-4); }
+.studio-packs { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.studio-packs li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--space-6); padding: var(--space-5) 0; border-top: 1px solid var(--divider); }
+.studio-packs .button svg { width: 13px; height: 13px; }
+.filter-count {
+  margin-left: var(--space-4);
+  padding: 0 var(--space-2);
+  color: var(--text-4);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+}
+.filter-chip.active .filter-count { color: var(--accent); }
+.studio-pack-art { display: grid; place-items: center; width: 64px; height: 46px; overflow: hidden; background: var(--bg); border: 1px solid var(--divider); }
+.studio-pack-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.studio-pack-empty { width: 20px; height: 20px; background: var(--raised); border: 1px dashed var(--border-strong); }
+.studio-pack-copy { display: grid; gap: 2px; min-width: 0; }
+.studio-pack-copy strong { color: var(--text); font-size: var(--font-small); }
+.studio-pack-copy small { color: var(--text-4); font-size: var(--font-small); }
+.studio-pack-price { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); }
+.studio-table { width: 100%; border-collapse: collapse; font-size: var(--font-small); }
+.studio-table th { padding: var(--space-4) var(--space-5); color: var(--text-4); border-bottom: 1px solid var(--border); font-weight: 400; text-align: left; }
+.studio-table td { padding: var(--space-4) var(--space-5); color: var(--text-2); border-bottom: 1px solid var(--divider); }
+.studio-table td:last-child { color: var(--text); font-family: var(--font-pixel); }
+.account-studio-link { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--text-4); font-size: var(--font-small); }
+/* The account panel's secondary links stack with a rule above them, so they read as
+   navigation rather than as stray text under the sign-out button. */
+.account-links { display: grid; gap: var(--space-5); padding-top: var(--space-7); border-top: 1px solid var(--divider); }
+/* The owned marker replaces the add button, so it takes the button's place and height
+   without looking pressable. */
+.owned-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-height);
+  padding: 0 var(--space-6);
+  color: var(--success);
+  background: var(--raised);
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+  font-size: var(--font-small);
+  white-space: nowrap;
+}
+.owned-flag svg { width: 14px; height: 14px; }
+.account-studio-link:hover { color: var(--accent); }
+.account-studio-link svg { width: 14px; height: 14px; }
+@media (max-width: 760px) {
+  .account-grid { grid-template-columns: 1fr; }
+  .account-panel { padding: var(--space-8); }
+  .order-lines li { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: var(--space-3); }
+  .order-line-price { grid-column: 3; }
+  .order-download { grid-column: 2 / -1; justify-self: start; }
+  .studio-table { display: block; overflow-x: auto; }
+}
 .cart-subtotal { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-6); }
 .cart-subtotal span { color: var(--text-3); font-size: var(--font-small); }
 .cart-subtotal strong { font-family: var(--font-pixel); font-size: var(--font-price); }
@@ -948,7 +2202,9 @@ ul { margin: 0; padding: 0; }
 }
 
 @media (max-width: 1024px) {
-  .pack-grid { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+  /* Below the grid's own 350px minimum this rule would squeeze cards back under the
+     width a full tag row needs, so it holds that floor rather than shrinking it. */
+  .pack-grid { grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); }
   .notes-grid { grid-template-columns: 1fr; gap: var(--space-13); }
   .pack-hero-grid { grid-template-columns: 1fr; gap: var(--space-13); }
   .pack-hero-media { position: static; }
@@ -976,7 +2232,9 @@ ul { margin: 0; padding: 0; }
   .content-wrap { width: calc(100% - 32px); }
   .page-shell { width: calc(100% - 32px); grid-template-columns: 1fr; gap: var(--space-13); padding: var(--space-10) 0 var(--space-48); }
   .page-shell.no-right { grid-template-columns: 1fr; }
-  .page-outline { position: static; }
+  /* One column: the outline becomes a wrapping chip row above the article, so it must
+     not stay pinned or scroll on its own. */
+  .outline-side { position: static; max-height: none; overflow-y: visible; }
   .page-outline ul { display: flex; flex-wrap: wrap; gap: var(--space-3); }
   .page-outline li button, .page-outline li a { width: auto; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); }
   .page-outline li .active { border-color: var(--accent); }
@@ -995,7 +2253,7 @@ ul { margin: 0; padding: 0; }
   .masonry .masonry-card .gif-placeholder { height: 220px; }
   .final-cta .content-wrap { grid-template-columns: 1fr; }
   .final-actions { width: 100%; margin-top: var(--space-6); }
-  .footer-cols { padding: var(--space-24) 0 var(--space-20); }
+  .footer-cols { padding: var(--space-20) 0 var(--space-17); }
   .market-shelf { padding: var(--space-22) 0 var(--space-13); }
   .market-browse { padding: var(--space-22) 0 var(--space-30); }
   .market-tools { width: 100%; }
@@ -1031,6 +2289,8 @@ ul { margin: 0; padding: 0; }
   .sort-field { justify-content: space-between; }
   .sort-field select { flex: 1 1 auto; }
   .cart-button { width: 100%; }
+  .shelf-stage { grid-template-columns: 1fr; }
+  .shelf-item { max-width: none; }
   .pet-strip .pet-cell { width: 72px; height: 88px; }
   .detail-pets { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); }
   .cart-drawer { width: 100%; border-left: 0; }
@@ -1048,5 +2308,4 @@ ul { margin: 0; padding: 0; }
   .pet-motion { animation: none !important; }
   .pixel-frame { opacity: 0; }
   .pixel-frame:first-child { opacity: 1; }
-  .market-shelf::before { animation: none; }
 }

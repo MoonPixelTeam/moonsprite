@@ -55,6 +55,7 @@ interface Ports {
   repeatedDocumentPointsAt: (clientX: number, clientY: number, continuous?: boolean, allowOutsideCopies?: boolean) => { local: Point; repeated: Point } | null
   localContinuousPointAt: (clientX: number, clientY: number) => Point | null
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
   activeLayer: RasterLayer
   modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
   interfaceScale: import('@/core/file-preferences').UiScale
@@ -163,21 +164,6 @@ export function createCanvasPointerMove(ports: Ports) {
       )
       return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
     }
-    const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
-      const adapted = pressureAdapterRef.current.adapt({
-        pointerId: event.pointerId,
-        pointerType: sample.pointerType ?? event.pointerType,
-        pressure: sample.pressure,
-        buttons: event.buttons
-      })
-      return {
-        ...sample,
-        pointerType: adapted.pointerType,
-        pressure: adapted.pressure,
-        pressureAvailable: adapted.pressureAvailable,
-        previousPressure: adapted.previousPressure
-      }
-    })
     const activeDrag = inputRef.current.drag
     if (activeDrag?.kind === 'sample-color' && routeCanvasColorSampling(event.clientX, event.clientY)) {
       updateRotationIndicator(liveViewRef.current.rotation, false)
@@ -236,7 +222,7 @@ export function createCanvasPointerMove(ports: Ports) {
       (freeTransformActive || activeDrag?.freeTransform === true || textBoxInteraction ? localContinuousPointAt(event.clientX, event.clientY) : null)
     if (point) inputRef.current.updatePointer({ point, clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, altKey: event.altKey })
     if (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'lasso' || inputRef.current.drag?.kind === 'polygon-lasso') {
-      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true)
+      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true, ports.useLocalCursors)
     }
     const modifierSizing =
       (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') &&
@@ -317,6 +303,21 @@ export function createCanvasPointerMove(ports: Ports) {
     )
       return
     if (drag.kind === 'move-layer' && drag.layerId && drag.layerOffset && layerMoveInput.moveLayer({ drag, point, event, state, session })) return
+    const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
+      const adapted = pressureAdapterRef.current.adapt({
+        pointerId: event.pointerId,
+        pointerType: sample.pointerType ?? event.pointerType,
+        pressure: sample.pressure,
+        buttons: event.buttons
+      })
+      return {
+        ...sample,
+        pointerType: adapted.pointerType,
+        pressure: adapted.pressure,
+        pressureAvailable: adapted.pressureAvailable,
+        previousPressure: adapted.previousPressure
+      }
+    })
     if (drag.kind === 'free-tile-draw' && drag.freeTilePlacementEdit && freeTileInput.moveFreeTileDraw({ drag, session, previousPoint, pointerSamples, state }))
       return
     if (

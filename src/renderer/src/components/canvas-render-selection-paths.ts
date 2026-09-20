@@ -9,6 +9,7 @@ import type { DocumentSession } from '@/store/workspace-types'
 import { PolygonPathPreviewRenderCache, SELECTION_PATH_PREVIEW_BATCH_THRESHOLD } from './canvas-stage-helpers'
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 export function createCanvasSelectionPaths({
+  useLocalCursors = false,
   selectionPreviewColorMode,
   selectionPreviewColor,
   repeatCopies,
@@ -27,6 +28,7 @@ export function createCanvasSelectionPaths({
   polygonPathPreviewRenderCacheRef,
   previewPixelRect
 }: {
+  useLocalCursors?: boolean
   selectionPreviewColorMode: import('@/core/file-preferences').SelectionPreviewColorMode
   selectionPreviewColor: RgbaColor
   repeatCopies: {
@@ -251,6 +253,7 @@ export function createCanvasSelectionPaths({
     return next
   }
   const drawSelectionCursorCorners = (pixelX: number, pixelY: number, color: string): void => {
+    if (useLocalCursors) return
     const pixelRect = previewPixelRect(pixelX, pixelY)
     const marks = selectionCursorCornerRects(pixelRect, deviceScale.x)
     const left = Math.min(...marks.map(mark => mark.x)), top = Math.min(...marks.map(mark => mark.y))

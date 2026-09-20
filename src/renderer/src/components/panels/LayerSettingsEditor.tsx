@@ -7,6 +7,7 @@ import { DialogHeader } from '@/components/DialogHeader'
 import { ModalShell } from '@/components/ModalShell'
 import { NumberInput } from '@/components/NumberInput'
 import { PreferenceToggle } from '@/components/PreferenceToggle'
+import { SegmentedControl } from '@/components/SegmentedControl'
 import { RangeField } from '@/components/RangeField'
 import { Tooltip } from '@/components/Tooltip'
 import { DEFAULT_ONION_SKIN_PREFERENCES } from '@/core/file-preferences'
@@ -188,12 +189,14 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
           <section className="layer-settings-section">
             <div className="layer-settings-section-heading"><h3>{t('layers.panelDisplay')}</h3></div>
             <div className="layer-settings-section-body">
-              <div className="layer-settings-density">
+              {!layerSettings.timelineHidden && <div className="layer-settings-density">
                 <span className="layer-settings-control-label">{t('layers.thumbnailSize')}</span>
                 <RangeField className="layer-density-range" ariaLabel={t('layers.thumbnailSize')} ariaValueText={densityLabel} min={0} max={layerDensityOrder.length - 1} step={1} value={layerDensityOrder.indexOf(layerSettings.density)} valueLabel={<Tooltip className="layer-density-value-tooltip" content={<><strong>{densityLabel}</strong><span>{densityDescription}</span></>}><span className="layer-density-value-label">{densityLabel}</span></Tooltip>} onChange={(value) => applyLayerSettings({ ...layerSettings, density: layerDensityOrder[value] })} />
-              </div>
+              </div>}
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.sideDockAutoHide')} tooltip={t('layers.sideDockAutoHideDescription')} aria-label={t('layers.sideDockAutoHide')} checked={layerSettings.sideDockAutoHide} onChange={(sideDockAutoHide) => applyLayerSettings({ ...layerSettings, sideDockAutoHide })} />
-              <PreferenceToggle className="layer-settings-toggle" label={t('layers.hideTimeline')} tooltip={t('layers.hideTimelineDescription')} aria-label={t('layers.hideTimeline')} checked={layerSettings.timelineHidden} onChange={(timelineHidden) => applyLayerSettings({ ...layerSettings, timelineHidden })} />
+              <SegmentedControl label={t('layers.panelMode')} value={layerSettings.timelineHidden ? 'default' : 'animation'}
+                options={[{ value: 'default', label: t('layers.mode.default') }, { value: 'animation', label: t('layers.mode.animation') }]}
+                onChange={mode => applyLayerSettings({ ...layerSettings, timelineHidden: mode === 'default' })} />
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
             </div>
           </section>

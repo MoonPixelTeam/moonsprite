@@ -7,6 +7,11 @@ import { clipboardService } from '@/store/clipboard-service'
 import { useWorkspace } from '@/store/workspace'
 import { CanvasStage } from '../CanvasStage'
 import { EditorCanvasHost } from './EditorCanvasHost'
+import { FloatingDocumentWindow } from './FloatingDocumentWindow'
+import { clearCanvasToolGestures } from '@/core/canvas-tool-gesture-lock'
+
+const originalSetActive = useWorkspace.getState().setActive
+const originalSyncTools = useWorkspace.getState().syncCanvasToolSettings
 
 // Exercise the real split activation, clipboard commands and canvas gestures.
 // Only raster presentation and unrelated toolbar UI are stubbed.
@@ -37,7 +42,49 @@ beforeEach(() => {
   vi.stubGlobal('moonSprite', { readClipboardImage: vi.fn().mockResolvedValue(null), writeClipboardImage: vi.fn().mockResolvedValue(undefined) })
 })
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => {
+  cleanup(); clearCanvasToolGestures(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers()
+  useWorkspace.setState({ setActive: originalSetActive, syncCanvasToolSettings: originalSyncTools })
+})
+
+it.each(['split', 'standalone', 'floating'] as const)('starts middle-button pan immediately on an inactive %s canvas without activating its document', async mode => {
+  const a = createDocument('a', 32, 24, 'rgba')
+  const b = createDocument('b', 32, 24, 'rgba')
+  useWorkspace.getState().addSession(a)
+  useWorkspace.getState().addSession(b)
+  useWorkspace.getState().setActive(a.id)
+  useWorkspace.getState().setViewForDocument(b.id, { zoom: 2, panX: 0, panY: 0 })
+  const [sessionA, sessionB] = useWorkspace.getState().sessions
+  const beforeA = { ...sessionA.view }
+  const beforeB = { ...sessionB.view }
+  const historyRevision = sessionB.history.revision
+  const activate = vi.spyOn(useWorkspace.getState(), 'setActive')
+  const syncTools = vi.spyOn(useWorkspace.getState(), 'syncCanvasToolSettings')
+  await act(async () => {
+    if (mode === 'split') render(<EditorCanvasHost documentPaneLayout={insertDocumentPane(createDocumentPaneLayout(a.id), a.id, b.id, 'right')}
+      workspaceDocumentId={a.id} paneOnlyDocumentIds={[b.id]} onDocumentPaneLayoutChange={vi.fn()} onDocumentPaneMove={vi.fn()}
+      onDocumentPaneReturnToTabs={vi.fn()} shortcutFor={() => ''} onToggleMirror={vi.fn()} onOpenAntiAlias={vi.fn()} onOpenPreferences={vi.fn()} />)
+    else if (mode === 'floating') render(<FloatingDocumentWindow session={sessionB} initialPosition={{ x: 10, y: 10, width: 320, height: 240 }}
+      pinned={false} stackIndex={0} onActivate={activate} onPinnedChange={vi.fn()} onReturnToTabs={vi.fn()}
+      onCloseDocument={vi.fn()} shortcutFor={() => ''} onToggleMirror={vi.fn()} onOpenAntiAlias={vi.fn()} onOpenPreferences={vi.fn()} />)
+    else render(<CanvasStage session={sessionB} />)
+  })
+  act(() => vi.advanceTimersToNextFrame())
+  const canvas = document.querySelector<HTMLCanvasElement>(`canvas.stage-canvas[data-document-id="${b.id}"]`)!
+  expect(canvas).not.toBeNull()
+  fireEvent.pointerEnter(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
+  fireEvent.pointerDown(canvas, { pointerId: 1, button: 1, buttons: 4, clientX: 100, clientY: 100 })
+  expect(activate).not.toHaveBeenCalled()
+  expect(syncTools).not.toHaveBeenCalled()
+  fireEvent.pointerMove(canvas, { pointerId: 1, button: -1, buttons: 4, clientX: 135, clientY: 120 })
+  act(() => vi.advanceTimersToNextFrame())
+  fireEvent.pointerUp(canvas, { pointerId: 1, button: 1, buttons: 0, clientX: 135, clientY: 120 })
+  expect(sessionB.view.panX).toBeCloseTo(beforeB.panX + 35)
+  expect(sessionB.view.panY).toBeCloseTo(beforeB.panY + 20)
+  expect(sessionA.view).toEqual(beforeA)
+  expect(sessionB.history.revision).toBe(historyRevision)
+  expect(useWorkspace.getState().activeId).toBe(a.id)
+})
 
 it.each([false, true])('preserves each document background when moving split pastes and returning to the source (same-document first=%s)', async sameFirst => {
   const source = createDocument('copy source', 32, 24, 'rgba')

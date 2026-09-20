@@ -14,7 +14,7 @@ import { petPacks, type PetAnimationId, type PetId, type PetPackId } from './pet
 import { frameSrc, type SpriteSheet } from './PixelArt'
 
 export type Language = 'zh' | 'en'
-export type MarketCategory = 'pets' | 'assets' | 'bundles'
+export type MarketCategory = 'pets' | 'assets' | 'bundles' | 'extensions' | 'scripts'
 
 type Bilingual = { zh: string; en: string }
 
@@ -33,8 +33,6 @@ export type PackAnimations = {
   /** Pack animation id to display name, per language. */
   labels: Record<string, Bilingual>
   idle: SpriteSheet
-  /** The installable package, offered as a download. */
-  download: string
 }
 
 export type PetPackProduct = {
@@ -43,7 +41,15 @@ export type PetPackProduct = {
   /** Set for code-drawn pets; real .mspet packs use `animations`. */
   pack?: PetPackId
   animations?: PackAnimations
-  image: string
+  /** Still fallback; a real pack animates from its frames instead. */
+  image?: string
+  /**
+   * The file a buyer downloads for this pack. Unset until the real artifact exists —
+   * the purchase list shows a disabled button with a reason rather than a dead link.
+   */
+  download?: string
+  /** Market filter tags; authored by the seller in the studio. */
+  tags?: string[]
   name: Bilingual
   tagline: Bilingual
   body: Bilingual
@@ -53,10 +59,23 @@ export type PetPackProduct = {
   includes: Bilingual[]
 }
 
+/*
+ * `image` is the pack's own preview artwork. Leave it unset until the real art exists:
+ * the market shows an empty frame rather than a stand-in screenshot of the editor,
+ * which would read as if the pack contained that screen. Drop the file in
+ * public/assets/market/ and point this at it.
+ */
 export type AssetPackProduct = {
   id: string
   category: 'assets'
-  image: string
+  image?: string
+  /**
+   * The file a buyer downloads for this pack. Unset until the real artifact exists —
+   * the purchase list shows a disabled button with a reason rather than a dead link.
+   */
+  download?: string
+  /** Market filter tags; authored by the seller in the studio. */
+  tags?: string[]
   name: Bilingual
   tagline: Bilingual
   body: Bilingual
@@ -70,7 +89,14 @@ export type BundleProduct = {
   id: string
   category: 'bundles'
   packs: string[]
-  image: string
+  image?: string
+  /**
+   * The file a buyer downloads for this pack. Unset until the real artifact exists —
+   * the purchase list shows a disabled button with a reason rather than a dead link.
+   */
+  download?: string
+  /** Market filter tags; authored by the seller in the studio. */
+  tags?: string[]
   name: Bilingual
   tagline: Bilingual
   body: Bilingual
@@ -80,7 +106,50 @@ export type BundleProduct = {
   includes: Bilingual[]
 }
 
-export type MarketProduct = PetPackProduct | AssetPackProduct | BundleProduct
+/*
+ * Extensions ship a packaged .msext feature (a panel, a tool, an import hook) and a
+ * script pack ships Lua automation. Both are sold and listed like any other pack:
+ * same card, same cart, same license. Their files land in the app's extension and
+ * script folders instead of the document.
+ */
+export type ExtensionProduct = {
+  id: string
+  category: 'extensions'
+  image?: string
+  download?: string
+  /** Market filter tags; authored by the seller in the studio. */
+  tags?: string[]
+  name: Bilingual
+  tagline: Bilingual
+  body: Bilingual
+  price: number
+  size: Bilingual
+  formats: string[]
+  includes: Bilingual[]
+}
+
+export type ScriptProduct = {
+  id: string
+  category: 'scripts'
+  image?: string
+  download?: string
+  /** Market filter tags; authored by the seller in the studio. */
+  tags?: string[]
+  name: Bilingual
+  tagline: Bilingual
+  body: Bilingual
+  price: number
+  size: Bilingual
+  formats: string[]
+  includes: Bilingual[]
+}
+
+export type MarketProduct =
+  | PetPackProduct
+  | AssetPackProduct
+  | BundleProduct
+  | ExtensionProduct
+  | ScriptProduct
 
 export const productCopy = L
 
@@ -110,7 +179,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
         TRIGGER_UNDO: { zh: '撤销', en: 'Undo' },
       },
       idle: nailongSheets.IDLE,
-      download: '/assets/market/nailong.mspet',
     },
     // A real pack previews with its idle frames; this stays as the still fallback.
     image: frameSrc(nailongSheets.IDLE, 0),
@@ -123,6 +191,7 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
     price: 4,
     size: { zh: '1 只宠物 · 4 组动画 · 78 帧', en: '1 pet · 4 animations · 78 frames' },
     formats: ['.mspet', 'PNG sprite sheet'],
+    download: '/assets/market/nailong.mspet',
     includes: [
       { zh: '出场动画 41 帧，预览图就是它', en: 'Entrance animation, 41 frames — the preview above is it' },
       { zh: '待机循环 7 帧，小口呼吸', en: 'Idle loop, 7 frames of quiet breathing' },
@@ -135,7 +204,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
     id: 'pet-starter',
     category: 'pets',
     pack: 'starter',
-    image: '/assets/product/workspace-v4.png',
     name: { zh: '初伴宠物包', en: 'Starter Companions' },
     tagline: { zh: '第一只陪你画画的像素宠物', en: 'The first pets that sit with you while you draw' },
     body: {
@@ -156,7 +224,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
     id: 'pet-moonlit',
     category: 'pets',
     pack: 'moonlit',
-    image: '/assets/product/timeline-v3-1280.webp',
     name: { zh: '月影兽群宠物包', en: 'Moonlit Beasts' },
     tagline: { zh: '会飞、会嚎、会发光的三只大型伙伴', en: 'Three larger companions that glide, howl, and glow' },
     body: {
@@ -176,7 +243,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
   {
     id: 'asset-cavern',
     category: 'assets',
-    image: '/assets/product/source/creation.png',
     name: { zh: '地下洞穴瓦片集', en: 'Cavern Tileset' },
     tagline: { zh: '8px 网格对齐的地形与水体瓦片', en: 'Terrain and water tiles locked to an 8px grid' },
     body: {
@@ -196,7 +262,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
   {
     id: 'asset-interface',
     category: 'assets',
-    image: '/assets/product/workspace-v3-1280.webp',
     name: { zh: '像素界面套件', en: 'Pixel Interface Kit' },
     tagline: { zh: '面板、按钮与光标，直角九宫格', en: 'Panels, buttons, and cursors on a square-cornered 9-slice' },
     body: {
@@ -218,7 +283,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
     category: 'assets',
     // The source/ PNGs are screen-grabs of dark panels and read as blank at card
     // size, so the packs use the light-background artwork instead.
-    image: '/assets/product/source/workspace.png',
     name: { zh: '角色基础套件', en: 'Character Base' },
     tagline: { zh: '可换色、可拼接的 16px 角色基础形', en: 'A 16px base body you can recolor and recombine' },
     body: {
@@ -238,7 +302,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
   {
     id: 'asset-icons',
     category: 'assets',
-    image: '/assets/product/luminance-v3-1280.webp',
     name: { zh: '道具图标集', en: 'Item Icon Set' },
     tagline: { zh: '背包与商店会用到的 24px 道具图标', en: '24px item icons for inventories and shops' },
     body: {
@@ -259,7 +322,6 @@ export const MARKET_PRODUCTS: MarketProduct[] = [
     id: 'bundle-everything',
     category: 'bundles',
     packs: ['pet-nailong', 'pet-starter', 'pet-moonlit', 'asset-cavern', 'asset-interface', 'asset-character', 'asset-icons'],
-    image: '/assets/product/source/layers.png',
     name: { zh: '全套创作包', en: 'Complete Studio Bundle' },
     tagline: { zh: '市场上所有包，一次拿全', en: 'Every pack on the market in one purchase' },
     body: {
@@ -308,12 +370,31 @@ export type SortKey = 'featured' | 'price-asc' | 'price-desc'
 const USD_TO_CNY = 7.2
 
 /** Rounded to whole yuan: a pixel pack price does not need sub-yuan precision. */
-export function priceIn(amount: number, language: Language): number {
-  return language === 'zh' ? Math.round(amount * USD_TO_CNY) : amount
+/**
+ * The studio prices in CNY, the catalogue stores USD. This is the same fixed rate
+ * formatPrice uses, so a price typed in the studio shows the same number in the market.
+ */
+export function cnyToUsd(cny: number): number {
+  return Math.max(0, Math.round(cny / USD_TO_CNY))
 }
 
-export function formatPrice(amount: number, language: Language): string {
-  const value = priceIn(amount, language)
+/** The other direction, for opening a listing whose stored price is USD. */
+export function usdToCny(usd: number): number {
+  return Math.max(0, Math.round(usd * USD_TO_CNY))
+}
+
+/**
+ * Prices are stored in USD — that is the unit the catalogue has always been authored in,
+ * and changing it would reprice every built-in pack — but the shop is quoted in CNY
+ * whatever the interface language is, because that is the currency the store settles in.
+ * One fixed rate, applied in one place.
+ */
+export function priceIn(amount: number): number {
+  return Math.round(amount * USD_TO_CNY)
+}
+
+export function formatPrice(amount: number): string {
+  const value = priceIn(amount)
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2)
-  return language === 'zh' ? `¥${text}` : `$${text}`
+  return `¥${text}`
 }

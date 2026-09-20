@@ -1,5 +1,7 @@
+import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { usePixelGridMetrics } from '@/components/usePixelGridMetrics'
 import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import { SegmentedControl } from '@/components/SegmentedControl'
 import { ThemedSelect } from '@/components/ThemedSelect'
@@ -60,6 +62,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
   const selectedTileId = selectedTileset?.tileIds.includes(session.selectedTileId ?? '') ? session.selectedTileId! : selectedTileset?.tileIds[0] ?? null
   const secondaryTileId = selectedTileset?.tileIds.includes(session.secondaryTileId ?? '') ? session.secondaryTileId! : selectedTileset?.tileIds[0] ?? null
   const tileGridRef = useRef<HTMLDivElement>(null)
+  useProjectScrollMemory(tileGridRef, session.document.id, 'tileset')
   const tileDragRef = useRef<{ tilesetId: string; tileIds: string[]; baseSlots: Array<string | null>; anchorTileId: string; columns: number; pointerId: number; element: HTMLDivElement; startX: number; startY: number; moved: boolean; targetIndex: number | null; previewSlots: Array<string | null> } | null>(null)
   const tileSelectionGestureRef = useRef<TileSelectionGesture | null>(null)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
@@ -72,6 +75,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
     const stored = readStoredString(TILESET_SWATCH_SIZE_STORAGE_KEY)
     return TILESET_SWATCH_SIZE_ORDER.includes(stored as PaletteSwatchSize) ? stored as PaletteSwatchSize : 'medium'
   })
+  const gridMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize], PALETTE_SWATCH_GAP)
   const [tilePreview, setTilePreview] = useState<{ tilesetId: string; slots: Array<string | null> } | null>(null)
   const [draggingTileIds, setDraggingTileIds] = useState<string[]>([])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
@@ -159,7 +163,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
       const verticalPadding = (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0)
       const columnGap = Number.parseFloat(styles.columnGap) || PALETTE_SWATCH_GAP
       const rowGap = Number.parseFloat(styles.rowGap) || PALETTE_SWATCH_GAP
-      const tileSize = PALETTE_SWATCH_PIXELS[swatchSize]
+      const tileSize = gridMetrics.size
       const columns = Math.max(1, Math.floor((Math.max(0, grid.clientWidth - horizontalPadding) + columnGap) / (tileSize + columnGap)))
       const rows = Math.max(1, Math.floor((Math.max(0, grid.clientHeight - verticalPadding) + rowGap) / (tileSize + rowGap)))
       setGridCapacity((current) => current.columns === columns && current.rows === rows ? current : { columns, rows })
@@ -172,7 +176,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
       observer?.disconnect()
       window.removeEventListener('resize', updateCapacity)
     }
-  }, [selectedTileset?.id, swatchSize])
+  }, [selectedTileset?.id, gridMetrics.size, gridMetrics.gap])
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Control' || event.ctrlKey) setCtrlHeld(true)
@@ -441,7 +445,7 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
           description: <><strong>{option.label}</strong><span>{option.description}</span></>
         }))} onChange={store.setTilemapMode} />
       </div>
-      <div ref={tileGridRef} className={`swatch-grid tileset-tile-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`} role="listbox" aria-multiselectable="true" aria-label={t('toolOptions.tiles')} style={{ '--swatch-size': `${PALETTE_SWATCH_PIXELS[swatchSize]}px`, '--palette-swatch-gap': `${PALETTE_SWATCH_GAP}px` } as CSSProperties} onPointerDownCapture={beginTileOutlineDrag} onPointerMove={moveTilePointer} onPointerLeave={() => { if (!tileDragRef.current && !tileSelectionGestureRef.current) setSelectionOutlineHovered(false) }} onPointerUp={(event) => finishTilePointer(event.pointerId)} onPointerCancel={(event) => finishTilePointer(event.pointerId, true)} onWheel={handleTileWheel} onBlur={clearTileSelection}>
+      <div ref={tileGridRef} className={`swatch-grid tileset-tile-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`} role="listbox" aria-multiselectable="true" aria-label={t('toolOptions.tiles')} style={gridMetrics.style} onPointerDownCapture={beginTileOutlineDrag} onPointerMove={moveTilePointer} onPointerLeave={() => { if (!tileDragRef.current && !tileSelectionGestureRef.current) setSelectionOutlineHovered(false) }} onPointerUp={(event) => finishTilePointer(event.pointerId)} onPointerCancel={(event) => finishTilePointer(event.pointerId, true)} onWheel={handleTileWheel} onBlur={clearTileSelection}>
         {displayedTileSlots.map((tileId, index) => {
           const tileNumber = tileId === null ? -1 : selectedTileset.tileIds.indexOf(tileId)
           const hasOccupiedRight = tileId !== null && index % gridCapacity.columns < gridCapacity.columns - 1 && displayedTileSlots[index + 1] !== null
@@ -491,6 +495,7 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
   })
   const [ctrlHeld, setCtrlHeld] = useState(false)
   const [sourceContextMenu, setSourceContextMenu] = useState<{ sourceId: string; x: number; y: number } | null>(null)
+  const gridMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize], PALETTE_SWATCH_GAP)
   const [sourcePropertiesId, setSourcePropertiesId] = useState<string | null>(null)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const panelTitle = t('panel.tileset')
@@ -618,7 +623,7 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
           description: <><strong>{option.label}</strong><span>{option.description}</span></>
         }))} onChange={store.setFreeTileMode} />
       </div>
-      <div className="swatch-grid tileset-tile-grid free-tile-source-grid component-scrollbar" role="listbox" aria-label={t('freeTiles.sources')} style={{ '--swatch-size': `${PALETTE_SWATCH_PIXELS[swatchSize]}px`, '--palette-swatch-gap': `${PALETTE_SWATCH_GAP}px` } as CSSProperties} onWheel={handleWheel}>
+      <div className="swatch-grid tileset-tile-grid free-tile-source-grid component-scrollbar" role="listbox" aria-label={t('freeTiles.sources')} style={gridMetrics.style} onWheel={handleWheel}>
         {sourceEntries.map(({ source, tileset }, index) => {
           const tileId = tileset.tileIds[0]
           const selected = selectedEntry.source.id === source.id

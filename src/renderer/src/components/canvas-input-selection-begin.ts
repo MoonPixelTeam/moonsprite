@@ -77,6 +77,7 @@ interface Ports {
   inputRef: import('react').RefObject<CanvasInputState>
   quickSelectionHandledAtRef: import('react').RefObject<number | null>
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
   selectionInteractionEditable: boolean
   scheduleDraw: () => void
   displayedResizeCursorForHandle: (hit: SelectionHandle, contentRotation?: number) => string
@@ -256,7 +257,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             moved: false
           }
           quickSelectionHandledAtRef.current = event.timeStamp
-          event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+          event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
           scheduleDraw()
           return true
         }
@@ -852,7 +853,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             })
         }
         drag.magicRequest(point)
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         drawSelectionOverlay()
         scheduleDraw()
         return true
@@ -875,7 +876,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           path: [lassoStart],
           ...(lassoTileStart ? { tileRepeatStart: lassoTileStart } : {})
         }
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         return true
       }
       if (session.selectionKind === 'polygon-lasso') {
@@ -888,7 +889,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           previewSelection: cloneSelection(currentSelection),
           path: [point]
         }
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         return true
       }
     }

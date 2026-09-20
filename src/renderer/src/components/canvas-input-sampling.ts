@@ -1,3 +1,4 @@
+import { sampleReferenceColor } from './canvas-reference-sampling'
 import { TRANSPARENT } from '@/core/raster'
 import type { FreeTileInstance, TilemapCell } from '@shared/types-tiles'
 import type { RgbaColor } from '@shared/types-color'
@@ -71,8 +72,9 @@ export function createSamplingCanvasInput(ports: Ports) {
       updateEyedropperMagnifier
     } = ports
     if (drag.kind === 'sample-color') {
-      if (point.x >= 0 && point.y >= 0 && point.x < session.document.width && point.y < session.document.height) {
-        if (drag.tileSampling) {
+      const reference = sampleReferenceColor(session.document.id, event.clientX, event.clientY)
+      if (reference || (point.x >= 0 && point.y >= 0 && point.x < session.document.width && point.y < session.document.height)) {
+        if (drag.tileSampling && !reference) {
           const sampledFreeTile = freeTileAtPoint(point)
           if (sampledFreeTile !== undefined) {
             if (sampledFreeTile) {
@@ -92,10 +94,8 @@ export function createSamplingCanvasInput(ports: Ports) {
           return true
         }
         const mask = activeLayerMask(session)
-        const sampled = mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y)
-        // Color setters synchronize every open session and may remap brush
-        // assets. Commit at most once per animation frame while keeping the
-        // newest sample in the drag state for an immediate pointer-up flush.
+        const sampled = reference ?? (mask ? readLayerMaskDisplayColorAt(mask, point.x, point.y) : cursorCompositePointSamplerFor(session)(point.x, point.y))
+        // Batch cross-session color updates; pointer-up flushes the latest sample.
         queueEyedropperSampleColor(sampled, Boolean(drag.sampleSecondary))
         drag.sampledColor = { ...sampled }
         inputRef.current.sampling = true

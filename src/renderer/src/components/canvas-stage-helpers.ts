@@ -238,6 +238,11 @@ export const shareCanvasToolSettings = (target: DocumentSession, source: Documen
   airbrushScatterRadius: source.airbrushScatterRadius,
   airbrushDensity: source.airbrushDensity,
   airbrushIntervalMs: source.airbrushIntervalMs,
+  liquifyRadius: source.liquifyRadius,
+  liquifyMode: source.liquifyMode,
+  liquifyStrength: source.liquifyStrength,
+  liquifySmoothing: source.liquifySmoothing,
+  liquifySmoothingStrength: source.liquifySmoothingStrength,
 })
 
 export const timelineSelectionPrecedesCanvasMarquee = (session: DocumentSession, selection = session.selection): boolean => timelineSelectionPrecedesMarquee({

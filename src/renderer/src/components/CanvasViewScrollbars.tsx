@@ -24,6 +24,6 @@ export function CanvasViewScrollbars({ ariaLabel, onHorizontalVisibilityChange, 
       orientation="vertical" value={vertical.position} thumbRatio={vertical.thumbRatio}
       ariaLabel={`${ariaLabel} Y`} onChange={vertical.onChange}
     />}
-    {horizontal.visible && vertical.visible && <span className="stage-view-scrollbar-corner" aria-hidden="true" />}
+
   </>
 }

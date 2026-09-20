@@ -3,7 +3,7 @@ import type { SelectionMask } from '@shared/types-selection'
 import { layerMaskDisplayColor, readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
 import { compositePixelWithLayerColor } from '@/core/document-composite'
 import { blendOver } from '@/core/raster'
-import { bezierCurvePixelPoints, lineShapePixelPoints, perfectPixelPathPoints, shapeBoundaryPixelPoints } from '@/core/tools-shapes'
+import { bezierCurvePixelPoints, lineShapePixelPoints, perfectPixelPathPoints, shapeBoundaryPixelPoints, rotatedShapePixelPoints } from '@/core/tools-shapes'
 import { outlinePixelSamples } from '@/core/tools-outline'
 import { resolveOutlineStrokeColor } from '@/core/outline-settings'
 import { activePaintLayer } from '@/store/workspace-session'
@@ -127,7 +127,9 @@ export function renderCanvasShapePreview({
     const angle = drag.previewAngle ?? 0
     const selection = paintSelectionForDrag(drag)
     drawShapeContourPreview(
-      shapeBoundaryPixelPoints(shape, session.shapeKind, document.width, document.height, angle, shapeCornerRadius),
+      session.brushSize > 1 && (session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse-outline')
+        ? rotatedShapePixelPoints(shape, session.shapeKind, document.width, document.height, angle, shapeCornerRadius, session.brushSize)
+        : shapeBoundaryPixelPoints(shape, session.shapeKind, document.width, document.height, angle, shapeCornerRadius),
       drag.color ?? session.primaryColor,
       selection
     )

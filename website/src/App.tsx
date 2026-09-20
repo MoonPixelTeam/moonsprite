@@ -1,14 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
-import { ExternalLink, Languages, Menu, Moon, Sun, X } from 'lucide-react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { IconButton } from './ui'
+import { ExternalLink, Languages, Menu, Moon, ShoppingCart, Sun, User, UserCheck, X } from 'lucide-react'
 import { SITE_CONFIG } from './config'
 import { copy, type Language } from './content'
 import { navigate, useRoute, type Route } from './router'
 import { scrollToId } from './ui'
 import { Home } from './pages/Home'
-import { DocsPage } from './pages/Docs'
-import { FaqPage } from './pages/Faq'
-import { BlogPage } from './pages/Blog'
 import { MarketPage, PackDetailPage } from './pages/Market'
+import { AccountPage } from './pages/Account'
+import { PurchasesPage } from './pages/Purchases'
+import { StudioPage } from './pages/Studio'
+import { StudioPublishPage } from './pages/StudioPublish'
+import { UiPage } from './pages/Ui'
+import { LicensePage } from './pages/License'
+import { OrderPage, ReceiptPage } from './pages/Orders'
+import { SettingsPage } from './pages/Settings'
+import { SupportPage } from './pages/Support'
+import { SettlementPage } from './pages/Settlement'
+import { AdminPage } from './pages/Admin'
+import { useAccount } from './account/store'
+import { useCartStore } from './market/cart'
+
+/*
+ * The docs, FAQ and blog carry long-form copy — 164 kB of it between them — and nobody
+ * reads a manual on arrival. Loading them on demand keeps that text out of the first
+ * download; react-dom alone is the fixed cost of the entry chunk.
+ */
+const DocsPage = lazy(() => import('./pages/Docs').then((module) => ({ default: module.DocsPage })))
+const FaqPage = lazy(() => import('./pages/Faq').then((module) => ({ default: module.FaqPage })))
+const BlogPage = lazy(() => import('./pages/Blog').then((module) => ({ default: module.BlogPage })))
+
+import { LAZY_PAGE_TITLES } from './pages/pageTitles'
 
 type SiteTheme = 'dark' | 'light'
 
@@ -34,6 +56,22 @@ export function App() {
   const langMenuRef = useRef<HTMLDivElement>(null)
   const route = useRoute()
   const t = copy[language]
+  const { cart, openCart, hasOpener } = useCartStore()
+  const { account } = useAccount()
+
+  /*
+   * The header shows the cart on every route, but only the market and pack pages own a
+   * drawer. Off those pages the button brings the market up and opens the drawer once it
+   * has mounted, so the button always does what it looks like it does.
+   */
+  const openCartFromHeader = () => {
+    if (hasOpener) {
+      openCart()
+      return
+    }
+    navigate('#/market')
+    window.setTimeout(openCart, 120)
+  }
 
   useEffect(() => {
     if (!langOpen) return
@@ -59,9 +97,21 @@ export function App() {
     const titles: Record<Route['page'], string> = {
       home: t.meta.title,
       market: `${t.marketPage.title} - MoonSprite`,
-      docs: `${t.docsPage.title} - MoonSprite`,
-      faq: `${t.faqPage.title} - MoonSprite`,
-      blog: `${t.blogPage.title} - MoonSprite`,
+      docs: `${LAZY_PAGE_TITLES.docs[language]} - MoonSprite`,
+      faq: `${LAZY_PAGE_TITLES.faq[language]} - MoonSprite`,
+      blog: `${LAZY_PAGE_TITLES.blog[language]} - MoonSprite`,
+      account: `${t.accountPage.title} - MoonSprite`,
+      purchases: `${t.accountPage.purchasesTitle} - MoonSprite`,
+      studio: `${t.studioPage.title} - MoonSprite`,
+      'studio-publish': `${t.studioPage.upload} - MoonSprite`,
+      ui: `UI kit - MoonSprite`,
+      license: `${t.marketPage.license.title} - MoonSprite`,
+      receipt: `${t.marketPage.receipt.title} - MoonSprite`,
+      orders: `${t.marketPage.orders.title} - MoonSprite`,
+      settings: `${t.accountSettings.title} - MoonSprite`,
+      support: `${t.supportPage.title} - MoonSprite`,
+      settlement: `${t.studioSettlement.title} - MoonSprite`,
+      admin: `${t.adminPage.title} - MoonSprite`,
     }
     document.title = titles[route.page]
     document.querySelector('meta[name="description"]')?.setAttribute('content', t.meta.description)
@@ -109,7 +159,7 @@ export function App() {
     <a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
   </>
 
-  return <div className="site-shell">
+  return <div className={route.page === 'home' ? 'site-shell theme-dark' : 'site-shell'}>
     <a className="skip-link" href="#main">Skip to content</a>
 
     <header className="app-chrome">
@@ -124,7 +174,20 @@ export function App() {
       <div className="menubar">
         <nav className={menuOpen ? 'menubar-tabs open' : 'menubar-tabs'} aria-label="Primary navigation">{navLinks}</nav>
         <div className="menubar-utils">
-          <button className="icon-button" type="button" onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')} aria-label={theme === 'dark' ? t.common.themeToLight : t.common.themeToDark}>{theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button>
+          <span className="cart-slot">
+            <IconButton className="cart-button-icon" label={t.marketPage.cart.open} onClick={openCartFromHeader} icon={<ShoppingCart aria-hidden="true" />} />
+            {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
+          </span>
+          <a
+            className="icon-button account-button"
+            href="#/account"
+            onClick={closeMenu}
+            aria-label={account ? `${t.accountPage.signedInAs}: ${account.name}` : t.accountPage.title}
+            aria-current={route.page === 'account' ? 'page' : undefined}>
+            {/* Same neutral treatment either way: the glyph is the only sign of state. */}
+            {account ? <UserCheck aria-hidden="true" /> : <User aria-hidden="true" />}
+          </a>
+          <IconButton label={theme === 'dark' ? t.common.themeToLight : t.common.themeToDark} onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')} icon={theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />} />
           <div className="lang-menu" ref={langMenuRef}>
             <button className="language-button" type="button" onClick={() => setLangOpen((value) => !value)} aria-haspopup="listbox" aria-expanded={langOpen}><Languages aria-hidden="true" />{language === 'zh' ? '中文' : 'EN'}</button>
             {langOpen && <ul className="lang-options" role="listbox" aria-label="Language">
@@ -137,13 +200,27 @@ export function App() {
       </div>
     </header>
 
-    {route.page === 'home' && <Home t={t} />}
+    {route.page === 'home' && <Home t={t} language={language} />}
     {route.page === 'market' && (route.subId
       ? <PackDetailPage t={t} language={language} productId={route.subId} />
       : <MarketPage t={t} language={language} />)}
-    {route.page === 'docs' && <main id="main"><DocsPage t={t} subId={route.subId} /></main>}
-    {route.page === 'faq' && <main id="main"><FaqPage t={t} subId={route.subId} /></main>}
-    {route.page === 'blog' && <main id="main"><BlogPage t={t} subId={route.subId} /></main>}
+    <Suspense fallback={<main id="main" className="route-loading" aria-busy="true" />}>
+      {route.page === 'docs' && <main id="main"><DocsPage t={t} language={language} subId={route.subId} /></main>}
+      {route.page === 'faq' && <main id="main"><FaqPage t={t} language={language} subId={route.subId} /></main>}
+      {route.page === 'blog' && <main id="main"><BlogPage t={t} language={language} subId={route.subId} /></main>}
+    </Suspense>
+    {route.page === 'account' && <AccountPage t={t} language={language} />}
+    {route.page === 'purchases' && <PurchasesPage t={t} language={language} />}
+    {route.page === 'studio' && <StudioPage t={t} language={language} />}
+    {route.page === 'studio-publish' && <StudioPublishPage t={t} language={language} productId={route.subId} />}
+    {route.page === 'ui' && <UiPage t={t} language={language} />}
+    {route.page === 'license' && <LicensePage t={t} language={language} />}
+    {route.page === 'receipt' && <ReceiptPage t={t} language={language} />}
+    {route.page === 'orders' && <OrderPage t={t} language={language} orderId={route.subId} />}
+    {route.page === 'settings' && <SettingsPage t={t} language={language} />}
+    {route.page === 'support' && <SupportPage t={t} language={language} />}
+    {route.page === 'settlement' && <SettlementPage t={t} language={language} />}
+    {route.page === 'admin' && <AdminPage t={t} language={language} />}
 
     <footer className="site-footer">
       <div className="content-wrap footer-cols">

@@ -16,6 +16,7 @@ import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type Timelin
 import type { LayerDisplayRow, LayerTreeNode } from './layer-panel-contracts'
 
 interface Options {
+  inlineMasks?: boolean
   session: DocumentSession
   timeline: import('@shared/types-animation').AnimationTimeline
   animationGestureActiveTarget: import('@/components/panels/animation-gesture-types').AnimationGestureActiveTarget | null
@@ -30,6 +31,7 @@ interface Options {
 }
 
 export function deriveLayerPanelVisuals({
+  inlineMasks = false,
   session,
   timeline,
   animationGestureActiveTarget,
@@ -209,7 +211,7 @@ export function deriveLayerPanelVisuals({
 
   const displayRows: LayerDisplayRow[] = nodes.flatMap((node): LayerDisplayRow[] => {
     const hasMask = node.kind === 'layer' ? animationMaskLayerIds.has(node.layer.id) : animationMaskGroupIds.has(node.group.id)
-    if (!hasMask) return [{ kind: 'node', node }]
+    if (!hasMask || inlineMasks) return [{ kind: 'node', node }]
     const owner = node.kind === 'layer' ? node.layer : node.group
     return [
       { kind: 'mask', ownerKind: node.kind, owner, depth: node.depth },

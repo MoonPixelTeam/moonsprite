@@ -131,7 +131,7 @@ function normalizeExportPreset(value: unknown): ExportPreset | null {
     ...(target === 'slices' && sliceId ? { sliceId } : {}),
     ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
-    ...(format === 'gif' ? {
+    ...(format === 'gif' || target === 'frames' ? {
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),
@@ -176,7 +176,7 @@ function normalizeDocumentExportSettings(value: unknown): DocumentExportSettings
     ...(target === 'layer' && layerId ? { layerId } : {}),
     ...(directory ? { directory } : {}),
     ...(presetName ? { presetName } : {}),
-    ...(format === 'gif' ? {
+    ...(format === 'gif' || target === 'frames' ? {
       gifFrameRange,
       ...(gifFrameStart !== undefined ? { gifFrameStart } : {}),
       ...(gifFrameEnd !== undefined ? { gifFrameEnd } : {}),

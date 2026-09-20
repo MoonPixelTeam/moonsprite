@@ -1252,10 +1252,11 @@ describe('LayersPanel animation', () => {
     const { container } = render(<LayersPanel session={session} docked />)
 
     fireEvent.click(container.querySelector<HTMLButtonElement>('.panel-actions button:last-child')!)
-    fireEvent.click(screen.getByRole('checkbox', { name: '隐藏时间轴' }))
+    fireEvent.click(screen.getByRole('button', { name: '默认模式' }))
 
     expect(container.querySelector('.layers-panel')).toHaveClass('timeline-hidden')
-    expect(container.querySelector('.layer-animation-toolbar')).toBeInTheDocument()
+    expect(container.querySelector('.layer-animation-toolbar')).toBeNull()
+    expect(container.querySelector('.layer-header-properties')).toBeInTheDocument()
     expect(document.querySelector('.layer-settings-modal')).toHaveClass('timeline-disabled')
     expect(document.querySelector('.layer-settings-onion')).toBeDisabled()
     expect(localStorage.getItem(TIMELINE_HIDDEN_PREFERENCE_KEY)).toBe('true')

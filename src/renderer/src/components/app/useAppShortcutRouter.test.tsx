@@ -1,3 +1,4 @@
+import { CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
@@ -82,4 +83,43 @@ it('cycles shared tool bindings using the current Store state between events', (
   expect(useWorkspace.getState().sessions[0].tool).toBe('eraser')
   press()
   expect(useWorkspace.getState().sessions[0].tool).toBe('pencil')
+})
+
+it('offers Ctrl+V to selected canvas references without pasting into the document or text fields', () => {
+  const initial = options()
+  initial.shortcuts.paste = ['Ctrl+V']
+  const paste = vi.spyOn(useWorkspace.getState(), 'pasteClipboard')
+  const receive = vi.fn((event: Event) => event.preventDefault())
+  window.addEventListener(CANVAS_REFERENCE_PASTE_EVENT, receive)
+  const hook = renderHook(() => useAppShortcutRouter(initial), { wrapper: I18nProvider })
+  act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, cancelable: true })))
+  expect(receive).toHaveBeenCalledTimes(1)
+  expect(paste).not.toHaveBeenCalled()
+  const input = document.createElement('input')
+  document.body.append(input)
+  act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true })))
+  expect(receive).toHaveBeenCalledTimes(1)
+  input.remove()
+  hook.unmount()
+  window.removeEventListener(CANVAS_REFERENCE_PASTE_EVENT, receive)
+})
+
+it('routes Ctrl+X to selected layers instead of the canvas selection', () => {
+  useWorkspace.setState({ sessions: [], activeId: null })
+  const doc = createDocument('cut layers', 2, 2, 'rgba')
+  useWorkspace.getState().addSession(doc)
+  useWorkspace.getState().selectLayer(doc.activeLayerId)
+  const initial = options()
+  initial.shortcuts.cut = ['Ctrl+X']
+  initial.commandScope = () => 'layers'
+  const copy = vi.spyOn(useWorkspace.getState(), 'copySelectedLayersToClipboard').mockReturnValue(true)
+  const remove = vi.spyOn(useWorkspace.getState(), 'deleteSelectedLayers').mockImplementation(() => {})
+  const selection = vi.spyOn(useWorkspace.getState(), 'cutSelection').mockImplementation(() => {})
+  renderHook(() => useAppShortcutRouter(initial), { wrapper: I18nProvider })
+  act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true, cancelable: true })))
+  expect(copy).toHaveBeenCalledTimes(1)
+  expect(remove).toHaveBeenCalledTimes(1)
+  expect(selection).not.toHaveBeenCalled()
+  act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true, repeat: true, cancelable: true })))
+  expect(remove).toHaveBeenCalledTimes(1)
 })

@@ -135,7 +135,7 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
     setBrushSize(size) {
       if (!Number.isFinite(size)) return
       const current = activeSession(get()), next = Math.max(1, Math.min(128, Math.round(size)))
-      if (!current || current.brushSize === next || (current.tool !== 'smooth' && current.brushImage?.intrinsicSize)) return
+      if (!current || current.brushSize === next || (current.tool !== 'smooth' && current.tool !== 'shape' && current.brushImage?.intrinsicSize)) return
       get().mutateActive((session) => { session.brushSize = next; rememberBrushProfile(session); persistToolSettings(session) }, false)
     },
 

@@ -1,3 +1,4 @@
+import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { writeStoredString } from '@/core/storage'
 import { HistoryDisplaySettings } from './HistoryDisplaySettings'
@@ -28,10 +29,15 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
   const timeline = currentSession.history.timeline
   const currentRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const restoredScroll = useProjectScrollMemory(listRef, session.document.id, 'history')
   const defaultPosition = { x: Math.max(8, window.innerWidth - 320), y: 96, width: 300, height: 420 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.history-panel.v1', true, onFloatingDock, docked)
 
+  const historyDocumentRef = useRef<string | null>(null)
   useEffect(() => {
+    const switching = historyDocumentRef.current !== session.document.id
+    historyDocumentRef.current = session.document.id
+    if (switching && restoredScroll.current) return
     const current = currentRef.current, list = listRef.current
     if (!current || !list) return
     // Observe after layout instead of forcing the entire editor to lay out
@@ -45,7 +51,7 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
     }, { root: list, threshold: 1 })
     observer.observe(current)
     return () => observer.disconnect()
-  }, [historyRevision, timeline.position])
+  }, [historyRevision, timeline.position, session.document.id])
 
   const renderEntry = (position: number, label: string) => {
     const selected = timeline.position === position

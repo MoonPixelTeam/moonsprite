@@ -1,5 +1,6 @@
 import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
 import { Button } from '@/components/Button'
+import { useToolOptionsScroll } from './useToolOptionsScroll'
 import { drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { pixelSource } from '@/components/pixel-source'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -641,6 +642,7 @@ export function BrushDynamicsSettingsPanel({ settings, tool, intrinsicSize, brus
 }
 
 export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorReplacement }: { onOpenColorReplacement: () => void }) {
+  const optionsScrollRef = useToolOptionsScroll()
   const { locale, t } = useI18n()
   const renderKey = useWorkspace((state) => toolOptionsRenderKey(
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
@@ -1090,7 +1092,8 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     workspace.setBrushTexture('solid')
     workspace.setBrushImage(brush)
   }
-  return <PerformanceProfiler id="EditorToolOptions"><div className="tool-options">
+  return <PerformanceProfiler id="EditorToolOptions"><div ref={optionsScrollRef} className="tool-options">
+    {session.tool === 'shape' && (session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse-outline') && <FormField className="shape-stroke-width-control" layout="inline" label={t('outline.width')}><NumberInput aria-label={t('outline.width')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} /></FormField>}
     {session.tool === 'eyedropper' && <>
       <div className="eyedropper-current-colors" aria-label={t('toolOptions.eyedropperColors')}>
         <ColorValueControl color={session.primaryColor} density="compact" onChange={workspace.setPrimaryColor} label={t('toolOptions.eyedropperForeground')} roleLabel={t('toolOptions.eyedropperForeground')} className="eyedropper-color-control" storageKey="eyedropper-foreground" fillWithColor />

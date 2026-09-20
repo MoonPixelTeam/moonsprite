@@ -292,7 +292,7 @@ export interface WorkspaceHistoryCommands {
   commitPixelEdit(edit: PixelEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapEdit(edit: TilemapEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
   commitTilemapTilesetEdit(edit: TilemapTilesetEdit, label: string, activity?: { stroke?: boolean; durationMs?: number }): HistoryEntry | null
-  pushHistory(entry: HistoryEntry): void
+  pushHistory(entry: HistoryEntry, documentId?: string): void
   undo(): void
   redo(): void
   setHistoryPosition(position: number): void
@@ -543,9 +543,9 @@ export interface WorkspaceLayerCommands {
 
 export interface WorkspaceClipboardCommands {
   copyFreeTileInstances(): boolean
-  copySelection(): void
+  copySelection(merged?: boolean): void
   copyActiveLayerToClipboard(): void
-  copySelectedLayersToClipboard(): void
+  copySelectedLayersToClipboard(): boolean
   cutSelection(): void
   pasteSelection(): Promise<void>
   pasteClipboard(): Promise<void>
@@ -565,6 +565,7 @@ export interface WorkspaceDocumentIoCommands {
   saveActive(saveAs?: boolean, options?: SaveAsOptions): Promise<boolean>
   exportActive(options?: ExportOptions): Promise<boolean>
   openFiles(): Promise<void>
+  openPaths(filePaths: readonly string[]): Promise<boolean>
   openPath(filePath: string, options?: { duplicate?: boolean; onBeforeSession?: () => void }): Promise<boolean>
   closeDocument(id: string): Promise<void>
   /** Awaits the recording encodes still in flight so closing cannot drop frames. */

@@ -17,6 +17,7 @@ import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-
 import { syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { CanvasOverlayDamage } from './canvas-overlay-damage'
 import { canvasBrushSizePreviewSession } from './canvas-brush-size-update'
+import { shareCanvasToolSettings } from './canvas-stage-helpers'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { brushOpacityScale } from '@/core/pressure'
 import { BrushPreviewCompositeCache, BrushPreviewStackCache, brushAngleWithDynamics, brushBaseAngle } from './canvas-stage-helpers'
@@ -143,7 +144,10 @@ export function useCanvasBrushOverlay(ports: Ports) {
     const overlay = brushPreviewCanvasRef.current
     if (!overlay) return
     const storedSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
-    const currentSession = canvasBrushSizePreviewSession(ports.inputRef.current, storedSession)
+    const state = useWorkspace.getState()
+    const active = state.sessions.find(item => item.document.id === state.activeId)
+    const shared = active && active !== storedSession ? shareCanvasToolSettings(storedSession, active) : storedSession
+    const currentSession = canvasBrushSizePreviewSession(ports.inputRef.current, shared)
     const rect = ports.stageSize()
     const displaySize = ports.stageDisplaySize()
     const dpr = canvasBackingRatioForInterfaceScale(window.devicePixelRatio || 1, ports.interfaceScale)

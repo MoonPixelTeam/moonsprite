@@ -1,3 +1,4 @@
+import { useProjectScrollMemory } from '@/components/useProjectScrollMemory'
 import { PaletteSwatch, usePaletteSwatchActions } from './PaletteSwatch'
 import { PaletteSelectionOutline } from './PaletteSelectionOutline'
 import { encodePaletteClipboard, parsePaletteClipboard, type PaletteClipboard } from '@/components/palette-clipboard'
@@ -34,6 +35,7 @@ import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { usePanelColorSampling } from '@/components/usePanelColorSampling'
 import { useSpaceDragScroll } from '@/components/useSpaceDragScroll'
+import { usePixelGridMetrics } from '@/components/usePixelGridMetrics'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import type { ShortcutId } from '@/core/shortcuts'
 
@@ -88,6 +90,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const paletteActionsButtonRef = useRef<HTMLButtonElement>(null)
   const libraryButtonRef = useRef<HTMLButtonElement>(null)
   const swatchGridRef = useRef<HTMLDivElement>(null)
+  useProjectScrollMemory(swatchGridRef, session.document.id, 'palette')
   const spaceDragScroll = useSpaceDragScroll(swatchGridRef)
   const paletteActionsPopoverRef = useRef<HTMLSpanElement>(null)
   const libraryPopoverRef = useRef<HTMLSpanElement>(null)
@@ -118,7 +121,8 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const storedColumns = normalizePaletteColumns(session.document.paletteColumns)
   const storedSlots = useMemo(() => normalizePaletteSlots(session.document.palette.map((entry) => entry.id), session.document.paletteOrder, session.document.paletteSlots, storedColumns), [session.document.palette, session.document.paletteOrder, session.document.paletteSlots, storedColumns, paletteRenderKey])
   const occupiedColumns = useMemo(() => storedSlots.reduce<number>((maximum, id, index) => id === null ? maximum : Math.max(maximum, index % storedColumns + 1), 1), [storedSlots, storedColumns])
-  const gridColumns = usePaletteGridColumns(swatchGridRef, PALETTE_SWATCH_PIXELS[swatchSize], paletteLayoutMode === 'manual' ? occupiedColumns : 1, paletteLayoutMode, paletteRenderKey)
+  const gridMetrics = usePixelGridMetrics(PALETTE_SWATCH_PIXELS[swatchSize])
+  const gridColumns = usePaletteGridColumns(swatchGridRef, gridMetrics.size, paletteLayoutMode === 'manual' ? occupiedColumns : 1, paletteLayoutMode, paletteRenderKey, gridMetrics.gap)
   // Keep empty rows virtual; the grid background resolves their hit targets.
   // Height changes do not need to rebuild the occupied swatches.
   const fittedLayout = useMemo(() => fitPaletteSlotsToGrid(storedSlots, storedColumns, gridColumns, 1), [storedSlots, storedColumns, gridColumns])
@@ -382,8 +386,8 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     const computed = window.getComputedStyle(surface)
     const gapX = Number.parseFloat(computed.columnGap || computed.gap) || 1
     const gapY = Number.parseFloat(computed.rowGap || computed.gap) || 1
-    const stepX = (sampleBounds?.width || PALETTE_SWATCH_PIXELS[swatchSize]) + gapX
-    const stepY = (sampleBounds?.height || PALETTE_SWATCH_PIXELS[swatchSize]) + gapY
+    const stepX = (sampleBounds?.width || gridMetrics.size) + gapX
+    const stepY = (sampleBounds?.height || gridMetrics.size) + gapY
     const sampleSlot = Number(sample?.dataset.paletteSlot ?? 0)
     const gridStyle = window.getComputedStyle(grid)
     const originX = sampleBounds ? sampleBounds.left - (sampleSlot % paletteSurfaceColumns) * stepX
@@ -903,7 +907,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     <div
       ref={swatchGridRef}
       className={`swatch-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`}
-      style={{ '--swatch-size': `${PALETTE_SWATCH_PIXELS[swatchSize]}px`, '--palette-swatch-gap': '1px', '--palette-columns': paletteColumns, '--palette-surface-columns': paletteSurfaceColumns } as React.CSSProperties}
+      style={{ ...gridMetrics.style, '--palette-columns': paletteColumns, '--palette-surface-columns': paletteSurfaceColumns } as React.CSSProperties}
       onPointerEnter={spaceDragScroll.enter}
       onPointerDownCapture={(event) => { if (!spaceDragScroll.begin(event)) beginPaletteOutlineDrag(event) }}
       onPointerDown={(event) => {
@@ -944,7 +948,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
         />
       })}
       {paletteLineSegments.map((segment) => <span key={segment.key} data-palette-line={segment.key} className={paletteGridLineClass(segment)} hidden={segment.hidden} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
-      {paletteLayoutMode === 'auto' && <PaletteSelectionOutline slots={displayedSlots} columns={paletteSurfaceColumns} selectedIds={displayedSelectedIds} swatchSize={PALETTE_SWATCH_PIXELS[swatchSize]} />}
+      {paletteLayoutMode === 'auto' && <PaletteSelectionOutline slots={displayedSlots} columns={paletteSurfaceColumns} selectedIds={displayedSelectedIds} swatchSize={gridMetrics.size} gap={gridMetrics.gap} />}
       </span>
       {displayedSelectionRange && <span data-palette-selection-outline className="palette-selection-box" aria-hidden="true" style={{ '--palette-selection-left': displayedSelectionRange.left, '--palette-selection-top': displayedSelectionRange.top, '--palette-selection-width': displayedSelectionRange.right - displayedSelectionRange.left + 1, '--palette-selection-height': displayedSelectionRange.bottom - displayedSelectionRange.top + 1 } as React.CSSProperties} />}
     </div>

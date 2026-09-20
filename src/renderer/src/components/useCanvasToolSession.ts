@@ -41,12 +41,13 @@ export function useCanvasToolSession(ports: Ports) {
   // Sessions are updated in place, so subscribe to the scalar that drives the
   // hover preview as well as the active session reference.
   const activeToolBrushSize = useWorkspace((state) => {
-    if (state.activeId !== ports.storedSession.document.id) return null
     const active = state.sessions.find((item) => item.document.id === state.activeId)
-    return active ? (active.tool === 'liquify' ? active.liquifyRadius : active.brushSize) : null
+    return active ? (active.tool === 'liquify' ? active.liquifyRadius : active.tool === 'airbrush' ? active.airbrushScatterRadius : active.brushSize) : null
   })
 
-  const session = applyQuickToolTarget(ports.storedSession, directQuickToolTarget)
+  const activeSession = useWorkspace.getState().sessions.find(item => item.document.id === useWorkspace.getState().activeId)
+  const session = applyQuickToolTarget(activeSession && activeSession !== ports.storedSession
+    ? shareCanvasToolSettings(ports.storedSession, activeSession) : ports.storedSession, directQuickToolTarget)
 
   const currentQuickTool = () => brushSizingHeld(ports.storedSession) ? null : currentQuickToolMatch(shortcuts, shortcutConflictState)
 

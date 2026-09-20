@@ -42,6 +42,7 @@ interface Ports {
   readonly session: DocumentSession
   readonly pendingViewRef: import('react').RefObject<Partial<import('@shared/types-view').ViewState> | null>
   readonly scheduleDraw: () => void
+  readonly drawNow: () => void
 }
 
 export function useCanvasViewportGeometry(ports: Ports) {
@@ -157,10 +158,10 @@ export function useCanvasViewportGeometry(ports: Ports) {
       const current = state.sessions.find((item) => item.document.id === ports.session.document.id)
       if (!current) return
       const size = stageSizeRef.current
+      const view = { ...ports.liveViewRef.current }
       if (current.viewportSize.width !== size.width || current.viewportSize.height !== size.height) {
         state.setViewportSizeForDocument(ports.session.document.id, size)
       }
-      const view = ports.liveViewRef.current
       if (current.view.panX !== view.panX || current.view.panY !== view.panY) {
         state.setViewForDocument(ports.session.document.id, { panX: view.panX, panY: view.panY })
       }
@@ -184,41 +185,43 @@ export function useCanvasViewportGeometry(ports: Ports) {
         ports.liveViewRef.current = preserveViewOnViewportChange(ports.liveViewRef.current, placement, next, ports.rotationIndicatorPosition)
         // Survive unrelated React updates during a dock gesture (e.g. playback).
         // The shared view hook consumes this pending view until it is published.
-        if (isWorkspaceResizing()) {
-          ports.pendingViewRef.current = { ...ports.liveViewRef.current }
-          layoutViewPending = true
-        }
+        ports.pendingViewRef.current = { ...ports.liveViewRef.current }
+        layoutViewPending = true
       }
       placement = next
       // Local geometry remains live. Publish once when the layout gesture ends
       // instead of notifying all document/store subscribers on every resize.
-      if (!isWorkspaceResizing()) syncViewport()
       return true
     }
     const stopListening = onWorkspaceResizeEnd(() => {
       const bounds = ports.stageRef.current?.getBoundingClientRect()
       if (bounds) updateSize(bounds)
       syncViewport()
-      ports.scheduleDraw()
+      ports.drawNow()
     })
     const observer = new ResizeObserver((entries) => {
       const deliveredAt = runtimeDiagnosticsActive() ? performance.now() : null
       observerReports.record(deliveredAt, () => ({ documentId: ports.session.document.id, observer: 'canvas-stage', pendingFrame: resizeFrame !== null }))
-      if (!entries.length || resizeFrame !== null || ports.stageRef.current?.dataset.canvasResizeFrozen === 'true') return
-      // Store notifications can also change layout. Move both geometry
-      // publication and redraw requests outside the observer delivery cycle.
+      if (!entries.length || ports.stageRef.current?.dataset.canvasResizeFrozen === 'true') return
+      // ResizeObserver runs before paint. Correct the backing surface now, so
+      // the browser cannot paint the old canvas stretched into the new layout.
+      const started = isWorkspaceResizing() ? performance.now() : 0
+      const bounds = ports.stageRef.current?.getBoundingClientRect()
+      if (!bounds || !updateSize(bounds)) return
+      ports.drawNow()
+      if (started) recordWorkspaceResizeStage('observer', performance.now() - started)
+      if (resizeFrame !== null) return
+      // Only Store publication is deferred; it can trigger React layout work.
       resizeFrame = window.requestAnimationFrame(() => measureRuntimeDiagnostic('canvas.viewport.update', () => {
         resizeFrame = null
         if (ports.stageRef.current?.dataset.canvasResizeFrozen === 'true') return
-        const started = isWorkspaceResizing() ? performance.now() : 0
-        const bounds = ports.stageRef.current?.getBoundingClientRect()
-        if (bounds && updateSize(bounds)) ports.scheduleDraw()
-        if (started) recordWorkspaceResizeStage('observer', performance.now() - started)
+        if (!isWorkspaceResizing()) syncViewport()
       }, () => ({ documentId: ports.session.document.id, observer: 'canvas-stage', width: stageSizeRef.current.width, height: stageSizeRef.current.height })))
     })
     if (ports.stageRef.current) {
       const bounds = ports.stageRef.current.getBoundingClientRect()
       updateSize(bounds)
+      if (!isWorkspaceResizing()) syncViewport()
       observer.observe(ports.stageRef.current)
     }
     return () => {

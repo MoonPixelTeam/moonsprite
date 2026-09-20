@@ -93,3 +93,28 @@ it('uses only variables provided by the shared cursor component library', async 
   const variables = new Set(CURSOR_ICON_LIBRARY.map((cursor) => cursor.variable))
   for (const variable of Object.values(CURSOR_SEMANTICS)) expect(variables.has(variable)).toBe(true)
 })
+
+it('uses native UI and simple crosshair cursors while retaining specialized tool artwork', async () => {
+  const { cursorPreferenceSource } = await import('./cursor-theme')
+  for (const variable of ['--cursor-default', '--cursor-project', '--cursor-selection-black', '--cursor-selection-white', '--cursor-crosshair', '--cursor-move', '--cursor-ns-resize']) {
+    expect(cursorPreferenceSource(variable, true)).toBe('system')
+    expect(cursorPreferenceSource(variable, false)).toBe('moonsprite')
+  }
+  for (const variable of ['--cursor-pencil-black', '--cursor-eyedropper', '--cursor-zoom']) {
+    expect(cursorPreferenceSource(variable, true)).toBe('moonsprite')
+  }
+})
+
+it('keeps software rotation cursors while using native resize cursors', async () => {
+  const { cursorPreferenceSource, cursorOverlayDescriptor, CURSOR_ICON_LIBRARY } = await import('./cursor-theme')
+  for (const direction of ['ne', 'se', 'sw', 'nw', 'n', 's']) {
+    const variable = `--cursor-selection-rotate-${direction}`
+    expect(cursorPreferenceSource(variable, true)).toBe('moonsprite')
+    expect(cursorOverlayDescriptor(`var(${variable})`, true, 1)).not.toBeNull()
+    expect(CURSOR_ICON_LIBRARY.find(cursor => cursor.variable === variable)?.fallback).toBe('crosshair')
+    expect(cursorPreferenceSource(variable, false)).toBe('moonsprite')
+  }
+  for (const variable of ['--cursor-nwse-resize', '--cursor-nesw-resize']) {
+    expect(cursorPreferenceSource(variable, true)).toBe('system')
+  }
+})

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, GitFork } from 'lucide-react'
-import type { Copy } from '../content'
-import { SteamButton } from '../ui'
+import type { Copy, Language } from '../content'
+import { Button, SteamButton } from '../ui'
 import { SITE_CONFIG } from '../config'
 import { toolIconSvgs } from '../toolIcons'
+import { MARKET_PRODUCTS, type MarketProduct } from '../market/catalog'
+import { PackGrid } from '../market/PackCard'
 
 const HERO_SLIDES = [
   '/assets/hero/home-banner-fire.png',
@@ -13,7 +15,14 @@ const HERO_SLIDES = [
 ]
 const SHOWCASE_IMAGES = ['/assets/hero/hero-1.png', '/assets/hero/hero-2.png', '/assets/hero/hero-3.png', '/assets/hero/hero-4.png', '/assets/hero/hero-5.png', '/assets/hero/hero-6.png']
 
-export function Home({ t }: { t: Copy }) {
+/**
+ * The homepage features the leading packs — the same ones the market shelf leads with —
+ * and renders them with the market's own card, so a pack looks and behaves the same
+ * wherever it appears and there is only one card to keep in step.
+ */
+const TEASER_PACKS = ['pet-nailong', 'asset-cavern', 'asset-character']
+
+export function Home({ t, language }: { t: Copy; language: Language }) {
   const [slide, setSlide] = useState(0)
 
   useEffect(() => {
@@ -22,8 +31,11 @@ export function Home({ t }: { t: Copy }) {
     return () => clearInterval(timer)
   }, [])
   const goTo = (index: number) => setSlide((index + HERO_SLIDES.length) % HERO_SLIDES.length)
+  const teaser = TEASER_PACKS
+    .map((id) => MARKET_PRODUCTS.find((product) => product.id === id))
+    .filter((product): product is MarketProduct => Boolean(product))
 
-  return <main id="main">
+  return <main id="main" className="home-main">
     <section className="hero" id="top">
       <div className="hero-stage">
         <div className="hero-bg" aria-hidden="true">
@@ -73,6 +85,21 @@ export function Home({ t }: { t: Copy }) {
           {SHOWCASE_IMAGES.map((src, index) => <figure key={src} className="showcase-item">
             <img src={src} loading="lazy" decoding="async" alt={t.work.itemAlt[index]} />
           </figure>)}
+        </div>
+      </div>
+    </section>
+
+    <section className="market-teaser">
+      <div className="content-wrap">
+        <div className="section-title">
+          <span>{t.marketTeaser.eyebrow}</span>
+          <h2>{t.marketTeaser.title}</h2>
+          <p>{t.marketTeaser.description}</p>
+        </div>
+        <PackGrid products={teaser} t={t} language={language} className="featured" />
+        <div className="teaser-actions">
+          <Button variant="primary" href="#/market">{t.marketTeaser.cta}<ArrowRight aria-hidden="true" /></Button>
+          <span>{t.marketTeaser.note}</span>
         </div>
       </div>
     </section>

@@ -1,8 +1,9 @@
-import type { Copy } from '../content'
+import { faqPageCopy } from './FaqCopy'
+import type { Copy, Language } from '../content'
 import { OutlineNav, PageShell, useActiveHeading } from '../ui'
 
-export function FaqPage({ t, subId }: { t: Copy; subId?: string }) {
-  const faq = t.faqPage
+export function FaqPage({ t, language, subId }: { t: Copy; language: Language; subId?: string }) {
+  const faq = faqPageCopy(language)
   const categories = faq.categories
   const current = categories.find((category) => category.id === subId) ?? categories[0]
   const rightItems = current.items.map((item) => ({ id: item.id, label: item.q }))

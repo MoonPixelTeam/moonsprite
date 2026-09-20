@@ -195,7 +195,8 @@ pub(crate) fn save_project(
         }
     }
     let (label, extensions) = project_save_filter(format.as_deref(), language.as_deref());
-    let path = dialog.add_filter(label, &extensions).save_file();
+    let path = dialog.add_filter(label, &extensions).add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
+        .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
         file_path: path.map(|value| value.to_string_lossy().to_string()),
@@ -217,7 +218,8 @@ pub(crate) fn export_image(
             dialog = dialog.set_directory(directory);
         }
     }
-    let path = dialog.add_filter(label, &extensions).save_file();
+    let path = dialog.add_filter(label, &extensions).add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
+        .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
         file_path: path.map(|value| value.to_string_lossy().to_string()),
@@ -242,6 +244,7 @@ pub(crate) fn save_palette_image(
             dialog_label(language.as_deref(), "PNG palette image"),
             &["png"],
         )
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -292,6 +295,7 @@ pub(crate) fn save_shortcut_file(
             dialog_label(language.as_deref(), "MoonSprite shortcut settings"),
             JSON,
         )
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -307,6 +311,7 @@ pub(crate) fn save_theme_file(
 ) -> SaveDialogResult {
     let path = file_dialog(default_path.as_deref(), &window)
         .add_filter(dialog_label(language.as_deref(), "MoonSprite theme"), JSON)
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -325,6 +330,7 @@ pub(crate) fn save_usage_statistics_file(
             dialog_label(language.as_deref(), "MoonSprite usage statistics"),
             JSON,
         )
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -363,6 +369,7 @@ pub(crate) fn save_extension_data_file(
             dialog_label(language.as_deref(), "Extension data"),
             &[extension],
         )
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     Ok(SaveDialogResult {
         canceled: path.is_none(),

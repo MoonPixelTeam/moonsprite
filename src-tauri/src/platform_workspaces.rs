@@ -114,8 +114,8 @@ fn workspace_from_file(
 
 fn built_in_workspace() -> StoredWorkspace {
     let layout = serde_json::json!({
-        "panelDocks": { "color": "left", "palette": "left", "layers": "bottom", "freeTileInstances": "bottom", "history": "right", "preview": "right", "tileset": "right", "brushes": "right" },
-        "panelVisibility": { "color": true, "palette": true, "layers": true, "freeTileInstances": false, "history": true, "preview": true, "tileset": false, "brushes": false },
+        "panelDocks": { "color": "left", "palette": "left", "layers": "bottom", "freeTileInstances": "bottom", "history": "right", "reference": "left", "preview": "right", "tileset": "right", "brushes": "right" },
+        "panelVisibility": { "color": true, "palette": true, "layers": true, "freeTileInstances": false, "history": true, "reference": true, "preview": true, "tileset": false, "brushes": false },
         "inspectorWidth": 300,
         "leftDockWidth": 280,
         "bottomDockHeight": 220,
@@ -124,21 +124,42 @@ fn built_in_workspace() -> StoredWorkspace {
         "bottomDockHeightRatio": 0.275,
         "toolRailSide": "right",
         "previewOpen": true,
-        "inspectorLayout": "{\"order\":[\"palette\",\"color\",\"layers\",\"freeTileInstances\",\"history\",\"preview\",\"tileset\",\"brushes\"],\"verticalWeights\":{\"color\":330,\"palette\":620,\"layers\":560,\"freeTileInstances\":180,\"history\":220,\"preview\":220,\"tileset\":280,\"brushes\":240},\"bottomWeights\":{\"color\":280,\"palette\":280,\"layers\":720,\"freeTileInstances\":300,\"history\":320,\"preview\":280,\"tileset\":360,\"brushes\":320}}",
-        "colorSquareDock": "left",
-        "colorSquareAnchor": "end",
-        "floatingPanels": { "color": null, "palette": null, "layers": null, "freeTileInstances": null, "history": null, "preview": null, "tileset": null, "brushes": null },
+        "timelineHidden": false,
+        "inspectorLayout": "{\"order\":[\"palette\",\"reference\",\"color\",\"layers\",\"freeTileInstances\",\"history\",\"preview\",\"tileset\",\"brushes\"],\"squarePanels\":[\"reference\",\"color\",\"preview\"],\"verticalWeights\":{\"color\":330,\"palette\":280,\"reference\":280,\"layers\":560,\"freeTileInstances\":180,\"history\":220,\"preview\":300,\"tileset\":280,\"brushes\":240},\"bottomWeights\":{\"color\":280,\"palette\":280,\"reference\":280,\"layers\":720,\"freeTileInstances\":300,\"history\":320,\"preview\":280,\"tileset\":360,\"brushes\":320}}",
+        "colorSquareDock": null,
+        "colorSquareAnchor": null,
+        "floatingPanels": { "color": null, "palette": null, "layers": null, "freeTileInstances": null, "history": null, "reference": null, "preview": null, "tileset": null, "brushes": null },
         "mainWindow": null
     });
     StoredWorkspace {
         id: "builtin-default".to_string(),
-        name: "默认工作区".to_string(),
+        name: "默认工作区（专业）".to_string(),
         file_path: String::new(),
         updated_at: String::new(),
         built_in: true,
         layout: layout.clone(),
         initial_layout: layout,
     }
+}
+
+fn built_in_normal_workspace() -> Result<StoredWorkspace, String> {
+    let layout: serde_json::Value = serde_json::from_str(include_str!("../../src/shared/workspace-normal.json"))
+        .map_err(|error| format!("普通工作区预设无效：{error}"))?;
+    Ok(StoredWorkspace {
+        id: "builtin-normal".to_string(), name: "默认工作区（普通）".to_string(),
+        file_path: String::new(), updated_at: String::new(), built_in: true,
+        layout: layout.clone(), initial_layout: layout,
+    })
+}
+
+fn read_normal_workspace(path: &Path) -> Result<StoredWorkspace, String> {
+    let mut workspace = read_workspace(path)?;
+    if workspace.id != "builtin-normal" { return Err("普通工作区 ID 无效。".to_string()); }
+    let preset = built_in_normal_workspace()?;
+    workspace.name = preset.name;
+    workspace.built_in = true;
+    workspace.initial_layout = preset.initial_layout;
+    Ok(workspace)
 }
 
 fn looks_like_legacy_builtin_layout(layout: &serde_json::Value) -> bool {
@@ -271,12 +292,17 @@ fn read_default_workspace(path: &Path) -> Result<StoredWorkspace, String> {
         return Err("默认工作区 ID 无效。".to_string());
     }
     // The built-in workspace is editable, but keeps its stable user-facing name.
-    workspace.name = "默认工作区".to_string();
+    workspace.name = "默认工作区（专业）".to_string();
     // Migrate an untouched copy of the previous built-in defaults. User-edited
     // layouts remain intact, including an intentional bottom-docked preview.
     let legacy_layout = looks_like_legacy_builtin_layout(&workspace.layout);
     let legacy_baseline = looks_like_legacy_builtin_layout(&workspace.initial_layout);
     if legacy_layout && (workspace.layout == workspace.initial_layout || legacy_baseline) {
+        workspace.layout = built_in_workspace().layout;
+    }
+    if workspace.layout == workspace.initial_layout
+        && workspace.layout.get("panelVisibility").and_then(|panels| panels.get("reference")).and_then(|value| value.as_bool()) != Some(true)
+    {
         workspace.layout = built_in_workspace().layout;
     }
     // Preserve the current layout while keeping Reset aligned with this build.
@@ -293,7 +319,11 @@ pub(crate) fn list_workspaces() -> Result<WorkspaceListing, String> {
     } else {
         built_in_workspace()
     };
-    let mut workspaces = vec![default_workspace];
+    let normal_path = directory.join("builtin-normal.workspace.json");
+    let normal_workspace = if normal_path.is_file() {
+        read_normal_workspace(&normal_path)?
+    } else { built_in_normal_workspace()? };
+    let mut workspaces = vec![default_workspace, normal_workspace];
     for entry in
         fs::read_dir(&directory).map_err(|error| format!("无法读取工作区文件夹：{error}"))?
     {
@@ -305,7 +335,7 @@ pub(crate) fn list_workspaces() -> Result<WorkspaceListing, String> {
             .and_then(|value| value.to_str())
             .map(|value| value.ends_with(".workspace.json"))
             .unwrap_or(false);
-        if path.is_file() && is_workspace && path != default_path {
+        if path.is_file() && is_workspace && path != default_path && path != normal_path {
             if let Ok(workspace) = read_workspace(&path) {
                 workspaces.push(workspace);
             }
@@ -361,13 +391,15 @@ pub(crate) fn save_workspace(
             candidate
         }
     };
-    let built_in = workspace_id == "builtin-default";
-    let path = if built_in {
+    let built_in = workspace_id == "builtin-default" || workspace_id == "builtin-normal";
+    let path = if workspace_id == "builtin-default" {
         default_workspace_path(&directory)
     } else {
         directory.join(format!("{workspace_id}.workspace.json"))
     };
-    let initial_layout = if built_in {
+    let initial_layout = if workspace_id == "builtin-normal" {
+        built_in_normal_workspace()?.initial_layout
+    } else if built_in {
         built_in_workspace().initial_layout
     } else if path.is_file() {
         let existing: WorkspaceDiskFile =
@@ -387,7 +419,9 @@ pub(crate) fn save_workspace(
     };
     let encoded = serde_json::to_vec_pretty(&file).map_err(|error| error.to_string())?;
     atomic_write(&path, &encoded)?;
-    if built_in {
+    if file.id == "builtin-normal" {
+        read_normal_workspace(&path)
+    } else if built_in {
         read_default_workspace(&path)
     } else {
         read_workspace(&path)
@@ -396,7 +430,7 @@ pub(crate) fn save_workspace(
 
 #[tauri::command]
 pub(crate) fn delete_workspace(id: String) -> Result<(), String> {
-    if !valid_workspace_id(&id) || id == "builtin-default" {
+    if !valid_workspace_id(&id) || id == "builtin-default" || id == "builtin-normal" {
         return Err("工作区 ID 无效。".to_string());
     }
     let path = workspace_dir()?.join(format!("{id}.workspace.json"));
@@ -484,7 +518,7 @@ mod tests {
         let file = WorkspaceDiskFile {
             schema_version: 1,
             id: "builtin-default".to_string(),
-            name: "默认工作区".to_string(),
+            name: "默认工作区（专业）".to_string(),
             updated_at: String::new(),
             layout: legacy_layout.clone(),
             initial_layout: Some(legacy_layout),

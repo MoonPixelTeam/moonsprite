@@ -150,14 +150,13 @@ export function useAppDocumentIO({
     void window.moonSprite
       .takeStartupFiles()
       .then(async (paths) => {
-        let opened = false
         for (const path of paths) {
           if (isExtensionPackagePath(path)) {
             await installExtensionPackage(path)
             continue
           }
-          if (await useWorkspace.getState().openPath(path)) opened = true
         }
+        const opened = await useWorkspace.getState().openPaths(paths.filter((path) => !isExtensionPackagePath(path)))
         if (active && opened) setHomeOpen(false)
       })
       .catch(() => {
@@ -198,14 +197,11 @@ export function useAppDocumentIO({
             publishBrushLibraryImportPaths(otherPaths)
             return true
           }
-          for (const path of otherPaths) {
-            if (await useWorkspace.getState().openPath(path)) setHomeOpen(false)
-          }
+          if (await useWorkspace.getState().openPaths(otherPaths)) setHomeOpen(false)
           return true
         }
-        if (!position) return false
-        const target = document.elementFromPoint(position.x, position.y)
-        if (paths.length === 1 && /\.gif$/i.test(paths[0])) {
+        const target = position ? document.elementFromPoint(position.x, position.y) : null
+        if (position && paths.length === 1 && /\.gif$/i.test(paths[0])) {
           const timelineDropzone = target?.closest<HTMLElement>('.layer-animation-grid')
           if (timelineDropzone) {
             window.dispatchEvent(
@@ -221,8 +217,8 @@ export function useAppDocumentIO({
             return true
           }
         }
-        if (!target?.closest('[data-brush-library-dropzone]')) return false
-        publishBrushLibraryImportPaths(paths)
+        if (target?.closest('[data-brush-library-dropzone]')) publishBrushLibraryImportPaths(paths)
+        else if (await useWorkspace.getState().openPaths(paths)) setHomeOpen(false)
         return true
       },
       onDragOver: (paths, position) => {

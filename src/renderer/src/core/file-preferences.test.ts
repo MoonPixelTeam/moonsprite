@@ -1,3 +1,4 @@
+import { REFERENCE_SCALING_KEY } from './file-preferences'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_EDITOR_PREFERENCES,
@@ -286,4 +287,13 @@ describe('editor preferences boundary', () => {
     expect(storage.getItem(ANIMATION_RETURN_TO_START_PREFERENCE_KEY)).toBe('true')
     expect(storage.getItem(SKIP_DISABLED_FRAMES_PREFERENCE_KEY)).toBe('false')
   })
+})
+
+it('defaults reference scaling to smooth and persists hard edges with invalid-value fallback', () => {
+  const storage = memoryStorage()
+  expect(loadEditorPreferences(storage).referenceScaling).toBe('smooth')
+  saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, referenceScaling: 'pixelated' }, storage)
+  expect(loadEditorPreferences(storage).referenceScaling).toBe('pixelated')
+  storage.setItem(REFERENCE_SCALING_KEY, 'invalid')
+  expect(loadEditorPreferences(storage).referenceScaling).toBe('smooth')
 })

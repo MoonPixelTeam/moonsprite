@@ -51,13 +51,13 @@ export const CURSOR_ICON_LIBRARY: readonly CursorDefinition[] = [
   { variable: '--cursor-progress', source: cursorProgress, hotspot: [11, 5], fallback: 'progress' },
   { variable: '--cursor-wait', source: cursorProgress, hotspot: [11, 5], fallback: 'wait' },
   { variable: '--cursor-project', source: cursorProgress, hotspot: [11, 5], fallback: 'pointer' },
-  { variable: '--cursor-crosshair', source: cursorWhite, hotspot: [15, 15], fallback: 'none' },
+  { variable: '--cursor-crosshair', source: cursorWhite, hotspot: [15, 15], fallback: 'crosshair' },
   { variable: '--cursor-text', source: cursorDefault, hotspot: [9, 5], fallback: 'text' },
   { variable: '--cursor-pointer', source: cursorDefault, hotspot: [9, 5], fallback: 'pointer' },
   { variable: '--cursor-pencil-black', source: cursorBlack, hotspot: [15, 15], fallback: 'none' },
   { variable: '--cursor-pencil-white', source: cursorWhite, hotspot: [15, 15], fallback: 'none' },
-  { variable: '--cursor-selection-black', source: cursorBlack, hotspot: [15, 15], fallback: 'none' },
-  { variable: '--cursor-selection-white', source: cursorWhite, hotspot: [15, 15], fallback: 'none' },
+  { variable: '--cursor-selection-black', source: cursorBlack, hotspot: [15, 15], fallback: 'crosshair' },
+  { variable: '--cursor-selection-white', source: cursorWhite, hotspot: [15, 15], fallback: 'crosshair' },
   { variable: '--cursor-unavailable', source: cursorUnavailable, hotspot: [15, 15], fallback: 'not-allowed' },
   { variable: '--cursor-grab', source: cursorGrab, hotspot: [16, 16], fallback: 'grab' },
   { variable: '--cursor-grabbing', source: cursorGrab, hotspot: [16, 16], fallback: 'grabbing' },
@@ -87,22 +87,12 @@ export const CURSOR_ICON_LIBRARY: readonly CursorDefinition[] = [
 
 const cursorDefinitions: CursorDefinition[] = [...CURSOR_ICON_LIBRARY]
 
-// Editing feedback must stay deterministic. The system crosshair is visually
-// indistinguishable from a lost/unfinished canvas interaction, and the home
-// project-card cursor is part of the product's visual language. These cursors
-// always use the bundled pixel assets; the preference still controls ordinary
-// application cursors and resize cursors.
+// Tool-specific cursors without a system equivalent keep bundled artwork.
 const canvasPixelCursorVariables = new Set([
-  '--cursor-crosshair',
   '--cursor-pencil-black',
   '--cursor-pencil-white',
-  '--cursor-selection-black',
-  '--cursor-selection-white',
   '--cursor-eyedropper',
-  '--cursor-zoom',
-  // Home project cards use a dedicated pixel pointer. Keep it available even
-  // when ordinary application pointers are delegated to the system cursor.
-  '--cursor-project'
+  '--cursor-zoom'
 ])
 
 export type CursorPreferenceSource = 'system' | 'moonsprite'
@@ -122,11 +112,11 @@ export interface CursorOverlayDescriptor {
 const CURSOR_ASSET_SIZE = 32
 const cursorVariablePattern = /^var\((--cursor-[^)]+)\)$/
 
-export function cursorOverlayDescriptor(cursorValue: string, useLocalCursors: boolean, scale: CursorScale, interfaceScale = 1): CursorOverlayDescriptor | null {
+export function cursorOverlayDescriptor(cursorValue: string, useLocalCursors: boolean, scale: number, interfaceScale = 1): CursorOverlayDescriptor | null {
   const variable = cursorVariablePattern.exec(cursorValue.trim())?.[1]
   if (!variable) return null
   const definition = cursorDefinitions.find((item) => item.variable === variable)
-  if (!definition) return null
+  if (!definition || cursorPreferenceSource(variable, useLocalCursors) === 'system') return null
   const normalizedInterfaceScale = Number.isFinite(interfaceScale) && interfaceScale > 0 ? interfaceScale : 1
   const normalizedScale = (Number.isFinite(scale) && scale > 0 ? scale : 1) / normalizedInterfaceScale
   return {

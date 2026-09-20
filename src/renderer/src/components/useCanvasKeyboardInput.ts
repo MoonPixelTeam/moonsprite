@@ -59,6 +59,7 @@ interface Ports {
   readonly updateRotationIndicator: (rotation: number, visible: boolean) => void
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly selectionCrosshair: boolean
+  readonly useLocalCursors?: boolean
   readonly selectionInteractionEditable: boolean
   readonly scheduleBrushPreviewOverlay: () => void
   readonly lineConnectionConfigured: boolean
@@ -372,7 +373,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           if (ports.canvasRef.current && ports.inputRef.current.pointer.visible) {
             ports.canvasRef.current.style.cursor =
               drag?.kind === 'marquee'
-                ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+                ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
                 : drag?.kind === 'shape'
                   ? canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
                   : drag?.kind === 'pan'
@@ -631,7 +632,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         if (ports.canvasRef.current)
           ports.canvasRef.current.style.cursor =
             drag?.kind === 'marquee'
-              ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+              ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
               : canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
         // Restore the smooth preview as soon as temporary hand navigation is
         // released (the overlay draw will re-check the live input state).

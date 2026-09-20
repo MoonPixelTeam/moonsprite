@@ -1,3 +1,4 @@
+import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, type ToolRailPreference } from './tool-rail-preferences'
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
@@ -22,6 +23,7 @@ export const LAST_EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
+export const REFERENCE_SCALING_KEY = 'moonsprite.preference.reference-scaling'
 export const CANVAS_VIEW_SCROLLBARS_ENABLED_KEY = 'moonsprite.preference.canvas-view-scrollbars-enabled'
 export const DRAWING_BRUSH_PREVIEW_ENABLED_KEY = 'moonsprite.preference.drawing-brush-preview-enabled'
 export const RELATIVE_LUMINANCE_SCOPE_KEY = 'moonsprite.preference.relative-luminance-scope'
@@ -42,6 +44,7 @@ export const VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY = 'moonsprite.preference.view-
 export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-mode'
 export const BRUSH_SHIFT_LINE_ENABLED_KEY = 'moonsprite.preference.brush-shift-line-enabled'
 export const USE_LOCAL_CURSORS_PREFERENCE_KEY = 'moonsprite.preference.use-local-cursors'
+export const PAINTING_CURSOR_TYPE_KEY = 'moonsprite.preference.painting-cursor-type'
 export const CURSOR_SCALE_PREFERENCE_KEY = 'moonsprite.preference.cursor-scale'
 export const CURSOR_COLOR_PREFERENCE_KEY = 'moonsprite.preference.cursor-color'
 export const CURSOR_COLOR_MODE_PREFERENCE_KEY = 'moonsprite.preference.cursor-color-mode'
@@ -121,7 +124,8 @@ export type ZoomToolDragMode = 'smooth' | 'stepped'
 export type WheelZoomMode = 'smooth' | 'stepped'
 export const VIEW_DRAG_SENSITIVITY_VALUES = [0.5, 0.75, 1, 1.5, 2] as const
 export type ViewDragSensitivity = typeof VIEW_DRAG_SENSITIVITY_VALUES[number]
-export type CursorScale = 1 | 1.25 | 1.5 | 2
+export type PaintingCursorType = 'simple' | 'sprite' | 'sprite-unscaled'
+export type CursorScale = 1 | 1.25 | 1.5 | 2 | 3 | 4
 export type CursorColorMode = 'auto' | 'custom'
 export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
@@ -422,9 +426,13 @@ export function parseBrushShiftLineEnabled(value: string | null): boolean {
   return value !== 'false'
 }
 
+export function parsePaintingCursorType(value: string | null): PaintingCursorType {
+  return value === 'simple' || value === 'sprite-unscaled' ? value : 'sprite'
+}
+
 export function parseCursorScale(value: string | null): CursorScale {
   const parsed = Number(value)
-  return parsed === 1.25 || parsed === 1.5 || parsed === 2 ? parsed : 1
+  return parsed === 1.25 || parsed === 1.5 || parsed === 2 || parsed === 3 || parsed === 4 ? parsed : 1
 }
 
 export function parseCursorColorMode(value: string | null): CursorColorMode {
@@ -643,6 +651,7 @@ export type SaveLocationMode = 'recent' | 'fixed'
 export type PasteTarget = 'current-cell' | 'new-layer' | 'new-project'
 
 export interface EditorPreferences {
+  toolRail: ToolRailPreference[]
   language: AppLocale
   uiScale: UiScale
   bodyFontScale: BodyFontScale
@@ -682,12 +691,14 @@ export interface EditorPreferences {
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
+  referenceScaling: 'smooth' | 'pixelated'
   canvasViewScrollbarsEnabled: boolean
   drawingBrushPreviewEnabled: boolean
   relativeLuminanceScope: RelativeLuminanceScope
   zoomToolDragMode: ZoomToolDragMode
   viewDragSensitivity: ViewDragSensitivity
   brushShiftLineEnabled: boolean
+  paintingCursorType: PaintingCursorType
   useLocalCursors: boolean
   cursorScale: CursorScale
   cursorColorMode: CursorColorMode
@@ -752,6 +763,7 @@ export interface EditorPreferences {
 }
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
+  toolRail: DEFAULT_TOOL_RAIL,
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
   bodyFontScale: 1,
@@ -786,12 +798,14 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
+  referenceScaling: 'smooth',
   canvasViewScrollbarsEnabled: true,
   drawingBrushPreviewEnabled: true,
   relativeLuminanceScope: 'canvas',
   zoomToolDragMode: 'stepped',
   viewDragSensitivity: 1,
   brushShiftLineEnabled: true,
+  paintingCursorType: 'sprite',
   useLocalCursors: false,
   cursorScale: 1,
   cursorColorMode: 'auto',
@@ -1314,12 +1328,14 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
+    referenceScaling: get(REFERENCE_SCALING_KEY) === 'pixelated' ? 'pixelated' : 'smooth',
     canvasViewScrollbarsEnabled: get(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY) !== 'false',
     drawingBrushPreviewEnabled: parseDrawingBrushPreviewEnabled(get(DRAWING_BRUSH_PREVIEW_ENABLED_KEY)),
     relativeLuminanceScope: parseRelativeLuminanceScope(get(RELATIVE_LUMINANCE_SCOPE_KEY)),
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
     viewDragSensitivity: parseViewDragSensitivity(get(VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY)),
     brushShiftLineEnabled: parseBrushShiftLineEnabled(get(BRUSH_SHIFT_LINE_ENABLED_KEY)),
+    paintingCursorType: parsePaintingCursorType(get(PAINTING_CURSOR_TYPE_KEY)),
     useLocalCursors: get(USE_LOCAL_CURSORS_PREFERENCE_KEY) === 'true',
     cursorScale: parseCursorScale(get(CURSOR_SCALE_PREFERENCE_KEY)),
     cursorColorMode: parseCursorColorMode(get(CURSOR_COLOR_MODE_PREFERENCE_KEY)),
@@ -1377,6 +1393,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     quickCommandBarExpanded: get(QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY) === 'true',
     quickCommandBarTranslucent: get(QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY) === 'true',
     quickCommandPreferences: parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY)),
+    toolRail: parseToolRail(get(TOOL_RAIL_PREFERENCE_KEY)),
     quickCommandBars: parseQuickCommandBars(get(QUICK_COMMAND_BARS_PREFERENCE_KEY), parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY))),
     tablet: parseTabletPreferences(get(TABLET_PREFERENCES_KEY)),
     outlineSettings: parseOutlineSettingsPreference(get(OUTLINE_SETTINGS_PREFERENCE_KEY)),
@@ -1425,12 +1442,14 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
+    [REFERENCE_SCALING_KEY]: preferences.referenceScaling,
     [CANVAS_VIEW_SCROLLBARS_ENABLED_KEY]: String(preferences.canvasViewScrollbarsEnabled),
     [DRAWING_BRUSH_PREVIEW_ENABLED_KEY]: String(preferences.drawingBrushPreviewEnabled),
     [RELATIVE_LUMINANCE_SCOPE_KEY]: preferences.relativeLuminanceScope,
     [ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY]: preferences.zoomToolDragMode,
     [VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY]: String(parseViewDragSensitivity(String(preferences.viewDragSensitivity))),
     [BRUSH_SHIFT_LINE_ENABLED_KEY]: String(preferences.brushShiftLineEnabled),
+    [PAINTING_CURSOR_TYPE_KEY]: preferences.paintingCursorType,
     [USE_LOCAL_CURSORS_PREFERENCE_KEY]: String(preferences.useLocalCursors),
     [CURSOR_SCALE_PREFERENCE_KEY]: String(preferences.cursorScale),
     [CURSOR_COLOR_MODE_PREFERENCE_KEY]: parseCursorColorMode(preferences.cursorColorMode),
@@ -1489,6 +1508,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY]: String(preferences.quickCommandBarExpanded),
     [QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY]: String(preferences.quickCommandBarTranslucent),
     [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences))),
+    [TOOL_RAIL_PREFERENCE_KEY]: JSON.stringify(parseToolRail(JSON.stringify(preferences.toolRail))),
     [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences)),
     [TABLET_PREFERENCES_KEY]: JSON.stringify(parseTabletPreferences(JSON.stringify(preferences.tablet))),
     [OUTLINE_SETTINGS_PREFERENCE_KEY]: preferences.outlineSettings ? JSON.stringify(cloneOutlineSettings(normalizeOutlineSettings(preferences.outlineSettings)!)) : ''

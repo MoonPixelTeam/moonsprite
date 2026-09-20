@@ -1,8 +1,9 @@
-import type { Copy } from '../content'
+import { docsCopy } from './DocsCopy'
+import type { Copy, Language } from '../content'
 import { DocsOutline, OutlineNav, PageShell, useActiveHeading } from '../ui'
 
-export function DocsPage({ t, subId }: { t: Copy; subId?: string }) {
-  const docs = t.docsPage
+export function DocsPage({ t, language, subId }: { t: Copy; language: Language; subId?: string }) {
+  const docs = docsCopy(language)
   const sections = docs.sections
   const current = sections.find((section) => section.id === subId) ?? sections[0]
   const rightItems = current.blocks

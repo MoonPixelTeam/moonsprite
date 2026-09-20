@@ -59,4 +59,13 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   context.stroke.mockClear()
   act(() => result.current.brushPreviewDrawRef.current())
   expect(context.stroke).not.toHaveBeenCalled()
+  const other = sessionFromDocument(createDocument('other canvas', 256, 256, 'rgba'))
+  Object.assign(other, { tool, brushSize: 24, inkMode: 'simple', brushTexture: 'solid' })
+  act(() => useWorkspace.setState({ sessions: [session, other], activeId: other.document.id }))
+  input.pointer.visible = true
+  input.drag = null
+  context.rect.mockClear()
+  act(() => result.current.brushPreviewDrawRef.current())
+  expect(Math.max(...context.rect.mock.calls.map(call => call[2]))).toBeGreaterThan(oldWidth * 2)
+  expect(useWorkspace.getState().activeId).toBe(other.document.id)
 })

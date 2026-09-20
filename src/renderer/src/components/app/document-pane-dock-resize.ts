@@ -4,8 +4,19 @@ import { freezeDocumentPaneCanvases } from './document-pane-resize'
 /** Keep internal dividers stationary: only leaves touching the resized outer
  * edge absorb its movement. Fixed tracks also work through nested splits. */
 export function beginDocumentPaneDockResize(workArea: HTMLElement | null, layout: DocumentPaneNode | null, edge: 'left' | 'right' | 'bottom') {
-  const root = workArea?.querySelector<HTMLElement>('.split-workspace')
-  if (!root || !layout || layout.kind !== 'split') return null
+  if (!workArea) return null
+  const root = workArea.querySelector<HTMLElement>('.split-workspace')
+  if (!root || !layout || layout.kind !== 'split') {
+    const canvases = freezeDocumentPaneCanvases(workArea)
+    let finished = false
+    return {
+      update(): void { if (!finished) canvases.update() },
+      finish(_cancelled = false): DocumentPaneNode | null {
+        if (!finished) { finished = true; canvases.restore() }
+        return layout
+      }
+    }
+  }
   const horizontal = edge !== 'bottom'
   const dimension = horizontal ? 'width' : 'height'
   const property = horizontal ? 'gridTemplateColumns' : 'gridTemplateRows'

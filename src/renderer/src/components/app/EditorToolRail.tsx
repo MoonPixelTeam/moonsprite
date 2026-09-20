@@ -13,6 +13,7 @@ import { applyQuickToolTarget } from '@/core/quick-tools'
 import { currentHeldShortcutKeyParts, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
 import { useWorkspace } from '@/store/workspace'
 import { isToolAvailableForSession } from '@/store/workspace-session'
+import { loadEditorPreferences } from '@/core/file-preferences'
 import { ALL_EDITOR_TOOL_ICONS, FILL_KIND_ICONS, PixelAssetIcon, SELECTION_KIND_ICONS, activeToolPresentation, fillKindDefinitions, lineKindDefinitions, moveKindDefinitions, selectionKindDefinitions, shapeKindDefinitions, toolDefinitions } from './editor-tools'
 
 interface EditorToolRailProps {
@@ -25,6 +26,12 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const renderKey = useWorkspace((state) => toolRailRenderKey(
     state.sessions.find((item) => item.document.id === state.activeId) ?? null
   ))
+  const [toolRail, setToolRail] = useState(() => loadEditorPreferences().toolRail)
+  useEffect(() => {
+    const refresh = () => setToolRail(loadEditorPreferences().toolRail)
+    window.addEventListener('moonsprite:preferences-changed', refresh)
+    return () => window.removeEventListener('moonsprite:preferences-changed', refresh)
+  }, [])
   const [shapeFlyoutOpen, setShapeFlyoutOpen] = useState(false)
   const [lineFlyoutOpen, setLineFlyoutOpen] = useState(false)
   const [selectionFlyoutOpen, setSelectionFlyoutOpen] = useState(false)
@@ -114,7 +121,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const allTools = toolDefinitions(locale)
   // Keep pencil-family tools in one rail slot; all definitions remain available
   // to the flyout, shortcut handling, and component-library previews.
-  const tools = allTools.filter((tool) => tool.id !== 'airbrush' && tool.id !== 'smooth')
+  const tools = toolRail.filter(item => item.enabled).flatMap(item => allTools.find(tool => tool.id === item.id) ?? [])
   const brushTools: Array<{ id: ToolId; icon: string; shortcutId: ShortcutId; label: string; description: string }> =
     (['pencil', 'airbrush', 'smooth'] as const).flatMap((id) => allTools.find((tool) => tool.id === id) ?? [])
   const selectionKinds = selectionKindDefinitions(locale)

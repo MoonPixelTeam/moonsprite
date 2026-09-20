@@ -1,0 +1,26 @@
+.canvas-references { position: absolute; z-index: 4; inset: 0; pointer-events: none; overflow: hidden; }
+.canvas-reference-plane { position: absolute; inset: 0; pointer-events: none; }
+.canvas-reference { position: absolute; pointer-events: auto; cursor: var(--cursor-move); user-select: none; touch-action: none; border: 0; outline: none; }
+.canvas-reference img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; border: 0; }
+.canvas-reference-hit-area { position: absolute; pointer-events: auto; }
+.canvas-reference.locked { cursor: var(--cursor-default); }
+.context-menu.canvas-reference-menu { position: fixed; z-index: 10080; width: 280px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
+.canvas-reference-heading { display: flex; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3); color: var(--theme-text-primary); }
+.canvas-reference-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-font-regular); }
+.canvas-reference-heading > svg { flex: 0 0 auto; color: var(--theme-text-muted); }
+.canvas-reference-properties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3) var(--ui-space-4); padding: var(--ui-space-3); }
+.canvas-reference-properties .ui-field-inline { grid-template-columns: 18px minmax(0, 1fr); gap: var(--ui-space-2); }
+.canvas-reference-properties .canvas-reference-angle { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.canvas-reference-mirrors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3); padding: var(--ui-space-3); }
+.canvas-reference-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-top: var(--ui-space-2); padding: var(--ui-space-3); border-top: 1px solid var(--theme-border-subtle); }
+/* Scope shared menu styles to menu actions, away from numeric steppers. */
+.canvas-reference-actions.menu-popover { position: static; width: 100%; min-width: 0; padding: 0; border: 0; }
+
+.canvas-reference-menu.canvas-reference-add-menu { width: max-content; min-width: 0; }
+.canvas-reference-add-menu .menu-action { padding-inline: var(--ui-space-4); }
+.canvas-reference-footer-tools { display: flex; align-items: center; gap: var(--ui-space-3); }
+.canvas-reference-mirrors button[aria-pressed='true'] { color: var(--theme-accent); background: var(--theme-surface-active); }
+
+.canvas-reference-add-menu .menu-action { grid-template-columns: minmax(0, 1fr); }
+.canvas-reference-add-menu .menu-action::before { content: none; }
+.canvas-reference-add-menu .menu-action > .menu-action-label { grid-column: 1; }

@@ -188,7 +188,7 @@ export const triangleWeightsFromColor = (color: RgbaColor): TriangleWeights => {
   return { tip: tip / total, white: white / total, black: black / total }
 }
 
-export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange, paletteColors, onAddPaletteColor, addToPaletteShortcut, roleControls, compact = false, label, config = { scheme: 'sv-square', hueSteps: 0, colorSteps: 0 } }: { color: RgbaColor; secondaryColor?: RgbaColor; onChange: (color: RgbaColor) => void; onSecondaryChange?: (color: RgbaColor) => void; paletteColors?: readonly RgbaColor[]; onAddPaletteColor?: (color: RgbaColor) => void; addToPaletteShortcut?: string; roleControls?: ReactNode; compact?: boolean; label?: string; config?: ColorPickerConfig }) {
+export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange, paletteColors, onAddPaletteColor, addToPaletteShortcut, roleControls, wheelHue = false, compact = false, label, config = { scheme: 'sv-square', hueSteps: 0, colorSteps: 0 } }: { color: RgbaColor; secondaryColor?: RgbaColor; onChange: (color: RgbaColor) => void; onSecondaryChange?: (color: RgbaColor) => void; paletteColors?: readonly RgbaColor[]; onAddPaletteColor?: (color: RgbaColor) => void; addToPaletteShortcut?: string; roleControls?: ReactNode; wheelHue?: boolean; compact?: boolean; label?: string; config?: ColorPickerConfig }) {
   const { t } = useI18n()
   const effectiveLabel = label ?? t('colorPicker.defaultLabel')
   const [pickerHsv, setPickerHsv] = useState(() => rgbToHsv(color))
@@ -755,6 +755,25 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
       }
     })
   }, [])
+  const wheelHueHandlerRef = useRef<(event: WheelEvent) => void>(() => {})
+  wheelHueHandlerRef.current = event => {
+    if (!event.deltaY || pointerInputActiveRef.current || externalSamplingRef.current) return
+    if (event.target instanceof Element && event.target.closest('input:not([type="range"]), textarea, button, [contenteditable="true"]')) return
+    event.preventDefault()
+    event.stopPropagation()
+    const secondary = stripRoleRef.current === 'secondary' && Boolean(secondaryColor)
+    const current = secondary ? secondaryPickerHsvRef.current : pickerHsvRef.current
+    const next = { ...current, h: snapHue(current.h + (event.deltaY < 0 ? 1 : -1) * (hueSteps > 0 ? 360 / hueSteps : 1)) }
+    emitPointerColor(hsvToRgb(next, (secondary ? secondaryColor! : color).a), secondary, next)
+    flushPendingColor()
+  }
+  useEffect(() => {
+    const element = pickerRef.current
+    if (!wheelHue || !element) return
+    const wheel = (event: WheelEvent) => wheelHueHandlerRef.current(event)
+    element.addEventListener('wheel', wheel, { passive: false })
+    return () => element.removeEventListener('wheel', wheel)
+  }, [wheelHue])
   const wheelCursor = quantizedWheelVector(Math.cos(cursorHue * Math.PI / 180) * displayHsv.s, Math.sin(cursorHue * Math.PI / 180) * displayHsv.s, colorSteps, Math.max(0.94, 1 - 10 / wheelCanvasSize))
   const fieldCursor = scheme === 'hs-square'
     ? { left: `${steppedCellCenter(cursorHue / 360) * 100}%`, top: `${steppedCellCenter(1 - displayHsv.s) * 100}%` }

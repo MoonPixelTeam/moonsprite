@@ -19,7 +19,7 @@ import { GridSettingsDialog } from '@/components/GridSettingsDialog'
 import { IsoViewSettingsDialog } from '@/components/IsoViewSettingsDialog'
 import { ProjectInfoDialog } from '@/components/ProjectInfoDialog'
 import { ProjectRollbackDialog } from '@/components/ProjectRollbackDialog'
-import { TimelapseDialog } from '@/components/TimelapseDialog'
+import { ProjectTimelapseDialog } from '@/components/TimelapseDialog'
 import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences, outputDirectoryForOperation, saveDirectoryForNewDocument } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { documentSaveTarget } from '@/core/document-save-policy'
@@ -148,11 +148,11 @@ export function useAppDocumentDialogs({
         <ProjectRollbackDialog projectPath={session.document.filePath} onClose={() => setProjectRollbackOpen(false)} onRestore={restoreProjectBackup} />
       )}
       {session && timelapseOpen && (
-        <TimelapseDialog
+        <ProjectTimelapseDialog
           key={session.document.id}
           documentName={session.document.name}
           defaultDirectory={outputDirectoryForOperation(runtimePreferences) || defaultFileDirectories.exportDirectory}
-          settings={session.document.timelapse!}
+          documentId={session.document.id}
           onChange={(settings) => workspace.setTimelapseSettings(settings)}
           onClear={() => {
             void workspace

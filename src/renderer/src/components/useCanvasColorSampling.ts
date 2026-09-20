@@ -1,3 +1,4 @@
+import { sampleReferenceColor } from './canvas-reference-sampling'
 import { TRANSPARENT } from '@/core/raster'
 import { useCanvasEyedropperMagnifier } from './useCanvasEyedropperMagnifier'
 import { useEffect, useRef } from 'react'
@@ -56,6 +57,8 @@ export function useCanvasColorSampling(ports: Ports) {
     const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
     const bounds = ports.stageBounds()
     if (clientX < bounds.left || clientY < bounds.top || clientX >= bounds.right || clientY >= bounds.bottom) return null
+    const reference = sampleReferenceColor(ports.session.document.id, clientX, clientY)
+    if (reference) return reference
     const point = ports.localPointAt(clientX, clientY) ?? ports.localContinuousPointAt(clientX, clientY)
     if (!point) return null
     if (point.x < 0 || point.y < 0 || point.x >= currentSession.document.width || point.y >= currentSession.document.height) return { ...TRANSPARENT }

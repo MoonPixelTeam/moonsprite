@@ -24,6 +24,8 @@ function rasterRowRenderKey(panel: LayerTreeRowsProps, rowIndex: number): string
   const drop = panel.dropTarget?.kind === 'layer' && panel.dropTarget.id === layer.id ? panel.dropTarget : null
   const styleDrop = panel.layerStyleDrag?.target
   return JSON.stringify([
+    panel.thumbnailSize,
+    Boolean(panel.thumbnailSize && panel.activeMaskOwnerKey === `layer:${layer.id}`),
     panel.session.document.id, panel.session.layersPanelRevision ?? panel.session.revision,
     layer.id, rowIndex, row.node.depth, layer.name, layer.description, layer.visible, layer.locked,
     layer.opacity, layer.blendMode, layer.background, layer.linkedContentId, layer.clippingMask,

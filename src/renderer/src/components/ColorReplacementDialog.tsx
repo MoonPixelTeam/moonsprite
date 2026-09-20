@@ -12,6 +12,7 @@ import { ThemedSelect } from './ThemedSelect'
 import { useI18n } from './I18nProvider'
 import { normalEditorToolIconFor, PixelAssetIcon, TOOL_DEFINITIONS } from './app/editor-tools'
 import { colorEquals } from '@/core/raster'
+import { loadColorReplacementPreferences, saveColorReplacementPreferences } from '@/core/color-replacement-preferences'
 import { useWorkspace, type ColorReplacementPreview, type ColorReplacementTarget } from '@/store/workspace'
 
 type DialogTarget = Exclude<ColorReplacementTarget, 'layer'>
@@ -28,14 +29,17 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
   const activeId = useWorkspace((state) => state.activeId)
   const session = sessions.find((item) => item.document.id === activeId) ?? null
   const documentId = useRef(session?.document.id ?? null)
-  // Each dialog mount starts from the editor's two active swatches. Keep the
-  // values local afterwards so sampling and manual edits remain independent.
-  const [sourceColor, setSourceColor] = useState<RgbaColor>(() => copyColor(session?.primaryColor ?? WHITE))
-  const [replacementColor, setReplacementColor] = useState<RgbaColor>(() => copyColor(session?.secondaryColor ?? WHITE))
-  const [target, setTarget] = useState<DialogTarget>('layers')
-  // Replacement previews are opt-in because large documents and multi-frame
-  // targets can make each parameter change expensive.
-  const [previewEnabled, setPreviewEnabled] = useState(false)
+  const [remembered] = useState(() => loadColorReplacementPreferences({
+    sourceColor: copyColor(session?.primaryColor ?? WHITE), replacementColor: copyColor(session?.secondaryColor ?? WHITE),
+    target: 'layers', previewEnabled: false
+  }))
+  const [sourceColor, setSourceColor] = useState<RgbaColor>(remembered.sourceColor)
+  const [replacementColor, setReplacementColor] = useState<RgbaColor>(remembered.replacementColor)
+  const [target, setTarget] = useState<DialogTarget>(remembered.target)
+  const [previewEnabled, setPreviewEnabled] = useState(remembered.previewEnabled)
+  useEffect(() => {
+    saveColorReplacementPreferences({ sourceColor, replacementColor, target, previewEnabled })
+  }, [sourceColor, replacementColor, target, previewEnabled])
   const [samplingTarget, setSamplingTarget] = useState<SamplingTarget | null>(null)
   const samplingTargetRef = useRef<SamplingTarget | null>(null)
   const samplingReturnToolRef = useRef<ToolId | null>(null)
@@ -113,6 +117,9 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
       repeats: section.repeatCount ?? t('timeline.loopSectionInfiniteShort')
     })
   })))
+  if (!targetOptions.some(option => option.value === target)) {
+    targetOptions.push({ value: target, label: t('colorReplacement.targetUnavailable'), description: t('colorReplacement.targetUnavailable') })
+  }
   const targetGroups = [{ label: t('colorReplacement.target'), options: targetOptions }]
 
   const cancelScheduledPreview = (): void => {

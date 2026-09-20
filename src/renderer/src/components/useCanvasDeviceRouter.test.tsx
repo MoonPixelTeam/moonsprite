@@ -91,7 +91,7 @@ it('keeps each right-click action active through down/move/up and restores the o
   }
 })
 
-it('clears a previous pen cursor when an ignored compatibility mouse move follows it', () => {
+it('preserves the live pen cursor when an ignored compatibility mouse move follows it', () => {
   const input = new CanvasInputState()
   const hidePenCursor = vi.fn()
   vi.spyOn(input, 'acceptPointerDeviceEvent').mockReturnValue(false)
@@ -107,6 +107,6 @@ it('clears a previous pen cursor when an ignored compatibility mouse move follow
 
   act(() => result.current.pointerMove(event))
 
-  expect(hidePenCursor).toHaveBeenCalledOnce()
+  expect(hidePenCursor).not.toHaveBeenCalled()
   unmount()
 })

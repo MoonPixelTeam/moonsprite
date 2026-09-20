@@ -1,3 +1,4 @@
+import { isScrollbarPointer } from '../scrollbar-pointer'
 import { useAnimationGestures } from './useAnimationGestures'
 import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { observeLayerPanelReveal } from './layer-panel-reveal-scroll'
@@ -252,7 +253,12 @@ export function useLayerSelectionGuides({
       const target = event.target instanceof Element ? event.target : null
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       const list = layerListRef.current
-      if (!target) return
+      if (!target || isScrollbarPointer(event)) return
+      // This listener runs before control handlers (including portalled ones).
+      // Parameter editing must retain the batch it is about to operate on.
+      if (target.closest('input[type="range"], [role="slider"], .range-field, .pressure-range-stack, .color-editor-field')) return
+      const rangeLabel = target.closest('label')
+      if (rangeLabel?.control instanceof HTMLInputElement && rangeLabel.control.type === 'range') return
       const insideList = Boolean(list?.contains(target))
       if (
         insideList &&

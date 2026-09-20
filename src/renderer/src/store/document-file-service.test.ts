@@ -346,6 +346,16 @@ describe('timelapse image sequence export service', () => {
 })
 
 describe('sprite sheet file export service', () => {
+  it('uses the chosen native file name for sprite sheets and cancels before writing', async () => {
+    const exportImage = vi.fn().mockResolvedValueOnce({ canceled: false, filePath: 'D:/exports/Chosen.png' }).mockResolvedValueOnce({ canceled: true })
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const api = { exportImage, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Combined', 1, 2, 'rgba')
+    await expect(exportSpriteSheetFile(api, document, 'Original')).resolves.toBe('D:/exports/Chosen.png')
+    expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
+    await expect(exportSpriteSheetFile(api, document, 'Original')).resolves.toBeNull()
+    expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
+  })
   it('writes one combined PNG file to the selected directory with a safe name', async () => {
     const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
     const chooseDirectory = vi.fn(async () => ({ canceled: false, directoryPath: 'D:/exports' }))

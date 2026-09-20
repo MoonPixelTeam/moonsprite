@@ -1,3 +1,5 @@
+import { parseAnimationCelKey } from '@/core/animation'
+import { createCompositePointSampler } from '@/core/document-composite'
 import { captureFreeTileInstances, pasteFreeTileInstances } from './workspace-free-tile-instance-clipboard'
 import { floatingSelectionClipboard } from './workspace-floating-clipboard'
 import { completeDocumentChange } from './workspace-document-change'
@@ -424,7 +426,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     copySelectedLayersToClipboard() {
       get().commitFloatingPaste()
       const session = activeSession(get())
-      if (!session) return
+      if (!session) return false
       const document = session.document
       syncActiveAnimationFrame(document)
       const selectedGroupIdSet = new Set<string>()
@@ -437,7 +439,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
       const layers = document.layers.filter((layer) => selectedLayerIdSet.has(layer.id))
       if (layers.length === 0) {
         set({ message: tr('workspace.copy.layerRequired') })
-        return
+        return false
       }
       const layerClipboards = layers.map((layer) => layerClipboardFromDocument(document, layer, layer.groupId && selectedGroupIdSet.has(layer.groupId) ? layer.groupId : null))
       const referencedTilesetIds = new Set([
@@ -476,6 +478,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         clipboardService.captureLayerCopySystemBaselineSize(() => window.moonSprite.readClipboardImageSize())
       }
       set({ message: clipboard.groups.length > 0 ? tr('workspace.copy.group', { name: clipboard.groups[0].name, count: layers.length }) : layers.length === 1 ? tr('workspace.copy.layer', { name: layers[0].name }) : tr('workspace.copy.layers', { count: layers.length }) })
+      return true
     },
 
     pasteLayerFromClipboard() {
@@ -715,24 +718,27 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
       return true
     },
 
-    copySelection() {
+    copySelection(merged = false) {
+      if (merged) get().commitFloatingPaste()
       const session = activeSession(get())
       if (!session) return
-      if (!session.selection && get().copyFreeTileInstances()) return
-      if (!session.selection) { set({ message: tr('workspace.selectionRequired') }); return }
+      if (!merged && !session.selection && get().copyFreeTileInstances()) return
+      if (!merged && !session.selection) { set({ message: tr('workspace.selectionRequired') }); return }
       const layer = getActiveLayer(session.document)
       const document = session.document
       const floating = floatingSelectionClipboard(session)
       if (session.pendingPaste && !floating) return
-      const selection = floating ? { x: floating.originX!, y: floating.originY!, width: floating.width, height: floating.height } : clampSelection(document, session.selection)
+      const sourceSelection = session.selection ?? { x: 0, y: 0, width: document.width, height: document.height }
+      const sampleMerged = merged ? createCompositePointSampler(document) : null
+      const selection = floating ? { x: floating.originX!, y: floating.originY!, width: floating.width, height: floating.height } : clampSelection(document, sourceSelection)
       if (!selection) { set({ message: tr('workspace.clipboard.outside') }); return }
       const pixels = new Uint32Array(selection.width * selection.height)
       const mask = new Uint8Array(selection.width * selection.height)
       let copied = 0
       for (let y = 0; y < selection.height; y += 1) for (let x = 0; x < selection.width; x += 1) {
         const index = y * selection.width + x
-        if (floating ? !floating.mask?.[index] : !selectionContains(session.selection, selection.x + x, selection.y + y)) continue
-        const color = floating ? unpackColor(floating.pixels[index]) : readLayerColorAt(document, layer, selection.x + x, selection.y + y)
+        if (floating ? !floating.mask?.[index] : !selectionContains(sourceSelection, selection.x + x, selection.y + y)) continue
+        const color = sampleMerged ? sampleMerged(selection.x + x, selection.y + y) : floating ? unpackColor(floating.pixels[index]) : readLayerColorAt(document, layer, selection.x + x, selection.y + y)
         if (color.a === 0) continue
         const clipboardIndex = y * selection.width + x
         pixels[clipboardIndex] = packColor(color)
@@ -799,6 +805,12 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
       // cannot be shadowed by a stale layer/cel clipboard.
       const externalImage = await clipboardService.readSystemSelection(() => window.moonSprite.readClipboardImage())
       const active = activeSession(get())
+      // Cutting the last mask removes its row; allow its owner cel as a paste target.
+      if (active?.animationMaskClipboard.length && !active.selectedAnimationMaskCellKeys.length && active.selectedAnimationCellKeys.length
+        && await clipboardService.preferInternalAnimation(externalImage)) {
+        const target = parseAnimationCelKey(active.selectedAnimationCellKeys.at(-1)!)
+        if (target) { get().pasteAnimationMasks(target.layerId, target.frameId); return }
+      }
       const hasAnimationClipboardTarget = Boolean(active && (
         active.selectedAnimationMaskCellKeys.length && active.animationMaskClipboard.length
         || active.selectedAnimationCellKeys.length && (active.animationCellClipboard.length || globalAnimationCells)

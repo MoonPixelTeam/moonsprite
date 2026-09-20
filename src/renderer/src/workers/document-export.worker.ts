@@ -1,6 +1,7 @@
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
+import { exportFrameIds } from '@/core/export-frame-range'
 import { exportAnimationGif } from '@/core/gif'
 import { decodePng, exportDocumentImage, exportDocumentSelectionImage, exportDocumentSliceImage } from '@/core/png'
 import { documentForLayerExport } from '@/core/layer-export'
@@ -97,9 +98,7 @@ scope.onmessage = async (event): Promise<void> => {
     const jobs: Array<{ slice?: DocumentSlice; layerId?: string; document?: SpriteDocument }> = request.job === 'slices'
       ? (request.slices ?? []).map((slice) => ({ slice }))
       : request.job === 'frames'
-          ? (sourceDocument.animation?.frames?.length
-          ? sourceDocument.animation.frames.map((frame) => ({ document: cloneDocumentForAnimationFrame(sourceDocument, frame.id) }))
-          : [{ document: sourceDocument }])
+          ? exportFrameIds(sourceDocument, request).map(frameId => ({ document: frameId ? cloneDocumentForAnimationFrame(sourceDocument, frameId) : sourceDocument }))
         : request.job === 'layers'
           ? (request.layerIds ?? []).map((layerId) => ({ layerId }))
           : request.job === 'timelapse'

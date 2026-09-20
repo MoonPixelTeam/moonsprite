@@ -7,6 +7,8 @@ import { hasConfiguredLayerStyles } from '@/core/layer-styles'
 import { PixelAutoLinkIcon } from '@/components/PixelAutoLinkIcon'
 import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
 import type { LayerTreeRowsProps } from './layer-tree-row-types'
+import { LayerRowThumbnail } from './LayerRowThumbnail'
+import { LayerRowMaskThumbnail } from './LayerRowMaskThumbnail'
 
 export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTreeRowsProps; displayRow: LayerDisplayRow; rowIndex: number }) {
   const {
@@ -70,7 +72,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
       timelineVisualState.selectionGuidesVisible && effectiveSelectedGroupIds.length > 0 && !hasNonRowAnimationItemSelection && visualRow?.selected
     const groupRowVisualClasses = {
       ...timelineVisualClasses(visualRow, undefined, timelineVisualState.selectionGuidesVisible),
-      active: Boolean(visualRow?.active && activeMaskOwnerKey !== groupOwnerKey),
+      active: Boolean((visualRow?.active && activeMaskOwnerKey !== groupOwnerKey) || (panel.thumbnailSize && activeMaskOwnerKey === groupOwnerKey)),
       selected: Boolean(groupRowSelected || (timelineVisualState.selectionGuidesVisible && layerSelectionActive && visualRow?.selected))
     }
     const inheritedVisibilityHidden = getLayerPanelAncestorGroupIds(session.document.groups, node.group.parentGroupId).some(
@@ -141,12 +143,15 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
         >
           {collapsed ? <PixelUtilityIcon kind="folder" /> : <PixelUtilityIcon kind="folderOpen" />}
         </span>
+        <span className="layer-row-content">
+        {panel.thumbnailSize && <LayerRowMaskThumbnail documentId={session.document.id} ownerId={node.group.id} ownerKind="group" size={panel.thumbnailSize} onContextMenu={panel.onMaskContextMenu} />}
         <Tooltip className="layer-name" content={node.group.description?.trim()}>
           <span>{node.group.name}</span>
-          <small>
+          {!panel.thumbnailSize && <small>
             {blendOptions.find((option) => option.value === node.group.blendMode)?.label} · {Math.round(node.group.opacity * 100)}%
-          </small>
+          </small>}
         </Tooltip>
+        </span>
         {node.group.clippingMask === true && (
           <Tooltip className="layer-status-icon-tooltip" content={clippingMaskTooltip}>
             <span className="layer-clipping-mask-indicator" aria-hidden="true">
@@ -179,7 +184,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
   const layerHasLayerStyles = hasConfiguredLayerStyles(node.layer.layerStyles)
   const layerRowVisualClasses = {
     ...timelineVisualClasses(visualRow, undefined, timelineVisualState.selectionGuidesVisible),
-    active: Boolean(!maskVisualSelectionActive && visualRow?.active && activeMaskOwnerKey !== layerOwnerKey),
+    active: Boolean((!maskVisualSelectionActive && visualRow?.active && activeMaskOwnerKey !== layerOwnerKey) || (panel.thumbnailSize && activeMaskOwnerKey === layerOwnerKey)),
     selected: Boolean(timelineVisualState.selectionGuidesVisible && layerSelectionActive && visualRow?.selected)
   }
   return (
@@ -249,12 +254,16 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
       >
         <PixelAutoLinkIcon enabled={liveAutoLinkById.get(node.layer.id) === true} />
       </span>
+      <span className="layer-row-content">
+      {panel.thumbnailSize && <LayerRowThumbnail documentId={session.document.id} layerId={node.layer.id} size={panel.thumbnailSize} />}
+      {panel.thumbnailSize && <LayerRowMaskThumbnail documentId={session.document.id} ownerId={node.layer.id} ownerKind="layer" size={panel.thumbnailSize} onContextMenu={panel.onMaskContextMenu} />}
       <Tooltip className="layer-name" content={node.layer.description?.trim()}>
         <span>{node.layer.name}</span>
-        <small>
+        {!panel.thumbnailSize && <small>
           {blendOptions.find((option) => option.value === node.layer.blendMode)?.label} · {Math.round(node.layer.opacity * 100)}%
-        </small>
+        </small>}
       </Tooltip>
+      </span>
       {node.layer.kind === 'text' && (
         <Tooltip className="layer-status-icon-tooltip" content={t('layers.textLayerHint')}>
           <span className="layer-text-indicator" aria-hidden="true">

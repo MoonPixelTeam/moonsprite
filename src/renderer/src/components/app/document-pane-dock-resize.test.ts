@@ -66,13 +66,49 @@ it('anchors nested dividers while leaving the perpendicular split ratio intact',
   expect(nested.ratio).toBe(0.5)
 })
 
-it('restores temporary tracks on cleanup and ignores workspaces without splits', () => {
+it('restores temporary tracks on cleanup without changing unsplit layout', () => {
   const { area, layout, split, property } = fixture()
   const template = split.style[property]
   const gesture = beginDocumentPaneDockResize(area, layout, 'right')!
   expect(gesture.finish(true)).toBe(layout)
   expect(split.style[property]).toBe(template)
-  expect(beginDocumentPaneDockResize(area, null, 'left')).toBeNull()
+  expect(beginDocumentPaneDockResize(area, null, 'left')!.finish()).toBeNull()
   expect(beginDocumentPaneDockResize(null, layout, 'right')).toBeNull()
-  expect(beginDocumentPaneDockResize(area, layout.first as DocumentPaneNode, 'bottom')).toBeNull()
+  expect(beginDocumentPaneDockResize(area, layout.first as DocumentPaneNode, 'bottom')!.finish()).toBe(layout.first)
+})
+
+it.each([0.75, 1, 1.5, 2])('holds a single canvas at the same screen position at interface scale %s', (scale) => {
+  const area = document.createElement('div')
+  area.innerHTML = '<div class="stage-wrap"><div class="stage-surface" style="width: 500px; height: 400px"><canvas width="1000" height="800"></canvas></div></div>'
+  document.body.append(area)
+  const surface = area.querySelector<HTMLElement>('.stage-surface')!
+  const original = surface.style.cssText
+  let bounds = new DOMRect(100 * scale, 60 * scale, 500 * scale, 400 * scale)
+  vi.spyOn(surface.parentElement!, 'getBoundingClientRect').mockImplementation(() => bounds)
+  const gesture = beginDocumentPaneDockResize(area, null, 'left')!
+  bounds = new DOMRect(180 * scale, 60 * scale, 420 * scale, 400 * scale)
+  gesture.update()
+  expect(surface.style.transform).toBe('translate(-80px, 0px)')
+  expect(surface.style.width).toBe('500px')
+  expect(surface.dataset.canvasResizeFrozen).toBe('true')
+  expect(surface.querySelector('canvas')!.width).toBe(1000)
+  expect(gesture.finish()).toBeNull()
+  expect(surface.style.cssText).toBe(original)
+  expect(surface.dataset.canvasResizeFrozen).toBeUndefined()
+})
+
+it('anchors both embedded canvases independently while the left dock moves', () => {
+  const { area, layout, split, first } = fixture()
+  for (const child of [split.children[0], split.children[2]]) {
+    child.innerHTML = '<div class="stage-surface" style="width: 500px; height: 500px"><canvas width="1000" height="1000"></canvas></div>'
+  }
+  const surfaces = [...area.querySelectorAll<HTMLElement>('.stage-surface')]
+  const gesture = beginDocumentPaneDockResize(area, layout, 'left')!
+  first.mockReturnValue(new DOMRect(320, 100, 380, 500))
+  gesture.update()
+  expect(surfaces.map((surface) => surface.style.transform)).toEqual(['translate(-120px, 0px)', 'translate(0px, 0px)'])
+  expect(surfaces.every((surface) => surface.dataset.canvasResizeFrozen === 'true')).toBe(true)
+  expect(surfaces.map((surface) => surface.querySelector('canvas')!.width)).toEqual([1000, 1000])
+  gesture.finish()
+  expect(surfaces.every((surface) => !surface.dataset.canvasResizeFrozen && surface.style.transform === '')).toBe(true)
 })

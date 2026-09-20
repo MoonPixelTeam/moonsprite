@@ -1,0 +1,45 @@
+{
+  "panelDocks": {
+    "color": "left",
+    "palette": "left",
+    "preview": "left",
+    "history": "right",
+    "layers": "right",
+    "freeTileInstances": "right",
+    "reference": "right",
+    "tileset": "right",
+    "brushes": "right"
+  },
+  "panelVisibility": {
+    "color": true,
+    "palette": true,
+    "preview": true,
+    "history": true,
+    "layers": true,
+    "freeTileInstances": false,
+    "reference": false,
+    "tileset": false,
+    "brushes": false
+  },
+  "inspectorWidth": 280,
+  "leftDockWidth": 240,
+  "bottomDockHeight": 220,
+  "toolRailSide": "right",
+  "previewOpen": true,
+  "timelineHidden": true,
+  "inspectorLayout": "{\"order\":[\"palette\",\"color\",\"preview\",\"history\",\"layers\",\"freeTileInstances\",\"reference\",\"tileset\",\"brushes\"],\"squarePanels\":[\"color\",\"preview\",\"history\"],\"verticalWeights\":{\"palette\":1,\"layers\":1}}",
+  "colorSquareDock": null,
+  "colorSquareAnchor": null,
+  "floatingPanels": {
+    "color": null,
+    "palette": null,
+    "preview": null,
+    "history": null,
+    "layers": null,
+    "freeTileInstances": null,
+    "reference": null,
+    "tileset": null,
+    "brushes": null
+  },
+  "mainWindow": null
+}

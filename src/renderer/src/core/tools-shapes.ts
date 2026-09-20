@@ -92,15 +92,19 @@ export function paintShape(
   symmetryAxes?: SymmetryAxes,
   symmetryCenter?: SymmetryCenter,
   angle = 0,
-  cornerRadius = 0
+  cornerRadius = 0,
+  strokeWidth = 1
 ): void {
-  const points = [...rotatedShapePixelPoints(bounds, kind, document.width, document.height, angle, cornerRadius)]
+  const points = rotatedShapePixelPoints(bounds, kind, document.width, document.height, angle, cornerRadius, strokeWidth)
   if (points.length === 0) return
   const destinations = points.flatMap((point) => symmetryPoints(point, document.width, document.height, symmetryAxes, symmetryCenter))
-  const left = Math.min(...destinations.map((point) => point.x))
-  const top = Math.min(...destinations.map((point) => point.y))
-  const right = Math.max(...destinations.map((point) => point.x)) + 1
-  const bottom = Math.max(...destinations.map((point) => point.y)) + 1
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+  for (const point of destinations) {
+    left = Math.min(left, point.x)
+    top = Math.min(top, point.y)
+    right = Math.max(right, point.x + 1)
+    bottom = Math.max(bottom, point.y + 1)
+  }
   if (!ensureLayerCoversEditRect(document, layer, edit, { x: left, y: top, width: right - left, height: bottom - top })) return
   for (const point of points) {
     for (const { x, y } of symmetryPoints(point, document.width, document.height, symmetryAxes, symmetryCenter)) {
@@ -488,9 +492,25 @@ export function rotatedShapePixelPoints(
   canvasWidth: number,
   canvasHeight: number,
   angle = 0,
-  cornerRadius = 0
+  cornerRadius = 0,
+  strokeWidth = 1
 ): BrushMaskPoint[] {
   if (kind === 'freeform' || kind === 'polygon') return []
+  const thickness = Number.isFinite(strokeWidth) ? Math.max(1, Math.min(128, Math.round(strokeWidth))) : 1
+  if (thickness > 1 && (kind === 'rectangle-outline' || kind === 'ellipse-outline')) {
+    const filledKind = kind === 'ellipse-outline' ? 'ellipse' : 'rectangle'
+    const outer = rotatedShapePixelPoints(bounds, filledKind, canvasWidth, canvasHeight, angle, cornerRadius)
+    const innerBounds = { x: bounds.x + thickness, y: bounds.y + thickness, width: bounds.width - thickness * 2, height: bounds.height - thickness * 2 }
+    if (innerBounds.width <= 0 || innerBounds.height <= 0) return outer
+    const inner = rotatedShapePixelPoints(innerBounds, filledKind, canvasWidth, canvasHeight, angle, Math.max(0, cornerRadius - thickness))
+    const rows = new Map<number, Set<number>>()
+    for (const point of inner) {
+      let row = rows.get(point.y)
+      if (!row) { row = new Set(); rows.set(point.y, row) }
+      row.add(point.x)
+    }
+    return outer.filter(point => !rows.get(point.y)?.has(point.x))
+  }
   const normalizedAngle = ((angle % 360) + 360) % 360
   if (normalizedAngle < 1e-9 || Math.abs(normalizedAngle - 360) < 1e-9) return shapePixelPoints(bounds, kind, cornerRadius)
   const ellipse = kind === 'ellipse' || kind === 'ellipse-outline'

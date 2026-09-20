@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Button } from './index'
 import { ChevronRight, ExternalLink, Play } from 'lucide-react'
-import { SITE_CONFIG } from './config'
-import type { DocsOutlineEntry } from './content'
+import { SITE_CONFIG } from '../config'
+import type { DocsOutlineEntry } from '../content'
 
 type ProductImageName = 'workspace-v3' | 'timeline-v3' | 'luminance-v3' | 'export'
 
@@ -41,7 +42,7 @@ export function AppWindow({ title, children }: { title: string; children: ReactN
 }
 
 export function SteamButton({ label, soon, compact = false }: { label: string; soon: string; compact?: boolean }) {
-  if (!SITE_CONFIG.steamUrl) return <span className={`button primary disabled ${compact ? 'compact' : ''}`} aria-disabled="true"><Play aria-hidden="true" />{soon}</span>
+  if (!SITE_CONFIG.steamUrl) return <Button variant="primary" size={compact ? 'compact' : 'regular'} icon={<Play aria-hidden="true" />} disabled>{soon}</Button>
   return <a className={`button primary ${compact ? 'compact' : ''}`} href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer"><Play aria-hidden="true" />{label}<ExternalLink aria-hidden="true" /></a>
 }
 

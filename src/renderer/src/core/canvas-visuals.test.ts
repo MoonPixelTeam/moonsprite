@@ -18,9 +18,16 @@ describe('selection resize cursors', () => {
 })
 
 describe('selection creation cursor', () => {
+  it('uses the native crosshair both before and during selection creation', () => {
+    expect(selectionCreationCursor(false, true, false, true)).toBe('crosshair')
+    expect(selectionCreationCursor(true, true, true, true)).toBe('crosshair')
+    expect(selectionCreationCursor(false, true, true, true)).toBe('none')
+    expect(selectionCreationCursor(true, false, true, true)).toBe(canvasCursors.unavailable)
+  })
+
   it('stays visible while a selection is being created', () => {
     expect(selectionCreationCursor(false, true, true)).toBe('none')
-    expect(selectionCreationCursor(true, true, true)).toBe('none')
+    expect(selectionCreationCursor(true, true, true)).toBe(canvasCursors.crosshair)
   })
 
   it('still follows the crosshair preference while idle', () => {

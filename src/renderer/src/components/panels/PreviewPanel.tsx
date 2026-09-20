@@ -21,6 +21,8 @@ import { pixelSamplingMode } from '@/core/pixel-display'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { clearCanvasBacking } from '@/components/canvas-display-size'
 import { PREVIEW_ZOOM_SHORTCUT_EVENT, type PreviewZoomShortcutDetail } from '@/core/preview-zoom-shortcuts'
+import { createCompositePointSampler } from '@/core/document-composite'
+import { samplePanelColor, usePanelColorSampling, type PanelColorSource } from './usePanelColorSampling'
 
 interface FollowViewportSnapshot {
   viewportSize: { width: number; height: number }
@@ -64,6 +66,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const defaultPosition = { x: Math.max(12, window.innerWidth - 310 - 250 - 16), y: Math.max(46, window.innerHeight - 27 - 260 - 16), width: 250, height: 260 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.preview-panel.v1', true, onFloatingDock, docked)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const colorSource = useRef<PanelColorSource | null>(null)
+  const sampling = usePanelColorSampling((x, y) => canvasRef.current && colorSource.current ? samplePanelColor(canvasRef.current, colorSource.current, x, y) : null)
   // null keeps the artwork fitted until the first explicit zoom operation.
   // Once set, zoom is an absolute document-pixel scale: 1 === 100%.
   const [zoom, setZoom] = useState<number | null>(null)
@@ -547,6 +551,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       const drawHeight = sourceDocument.height * scale
       const originX = (displayWidth - drawWidth) / 2 + effectivePan.x
       const originY = (displayHeight - drawHeight) / 2 + effectivePan.y
+      let sampler: ReturnType<typeof createCompositePointSampler> | undefined
+      colorSource.current = {
+        width: sourceDocument.width, height: sourceDocument.height, viewportWidth: displayWidth, viewportHeight: displayHeight, originX, originY, scale,
+        read: (x, y) => (sampler ??= createCompositePointSampler(previewDocument))(x, y)
+      }
       const canvasBoundary = deviceAlignedCanvasRect(originX, originY, drawWidth, drawHeight, dpr)
       context.fillStyle = canvasSurround
       context.fillRect(0, 0, displayWidth, displayHeight)
@@ -724,6 +733,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     setFollowViewport((current) => !current)
   }
   const startPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (sampling.start(event)) return
     if (event.button !== 0 && event.button !== 1) return
     let start = pan
     if (followViewport) {
@@ -740,11 +750,13 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     event.preventDefault()
   }
   const finishPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    sampling.finish(event)
     panDrag.current = null
     setPanning(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const movePan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (sampling.move(event)) return
     const drag = panDrag.current
     if (!drag) return
     const delta = viewDragClientDelta(
@@ -756,7 +768,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   }
   return <section ref={floating.ref} className={`panel preview-panel ${floating.style ? 'floating-panel' : ''}`} style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
     <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><span>{t('panel.preview')}</span><span className="panel-actions"><button className={followViewport ? 'active' : ''} title={t('preview.followViewport')} aria-label={t('preview.followViewport')} aria-pressed={followViewport} onClick={toggleFollowViewport}><PixelUtilityIcon kind="follow" /></button><button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button><button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button><button className={previewPlaying ? 'active' : ''} disabled={timelineHidden || timeline.frames.length <= 1} title={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} aria-label={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} onClick={() => setPreviewPlayingState(!previewPlaying)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!timelineHidden) setPlaybackMenu({ x: event.clientX, y: event.clientY }) }}><PlaybackPixelIcon kind={previewPlaying ? 'pause' : 'play'} /></button><button title={t('preview.close')} aria-label={t('preview.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button></span></header>
-    <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} onWheel={adjustWheelZoom} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan}><div className="preview-canvas-frame"><canvas ref={canvasRef} aria-label={t('preview.canvasAria')} /></div></div>
+    <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} style={{ cursor: sampling.cursor }} onContextMenu={event => { if (event.altKey || sampling.cursor) { event.preventDefault(); event.stopPropagation() } }} onWheel={adjustWheelZoom} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan} onLostPointerCapture={() => { sampling.cancel(); panDrag.current = null; setPanning(false) }}><div className="preview-canvas-frame"><canvas ref={canvasRef} aria-label={t('preview.canvasAria')} /></div></div>
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
     <FloatingDockPreview style={floating.dockPreview} />
     {playbackMenu && <AnimationPlaybackMenu session={session} x={playbackMenu.x} y={playbackMenu.y} playback={previewPlayback} onClose={() => setPlaybackMenu(null)} />}

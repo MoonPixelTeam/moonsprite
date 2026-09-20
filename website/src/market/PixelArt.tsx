@@ -71,6 +71,10 @@ export function PetSpriteStrip({ sheet, zoom = 2, className }: {
   const style = {
     '--frame-px': `${sheet.frameWidth * zoom}px`,
     '--frame-py': `${sheet.frameHeight * zoom}px`,
+    /* The frame's own ratio, so a host that narrows the window below one frame scales
+       the sprite down whole instead of cropping or squashing it. */
+    '--frame-w': String(sheet.frameWidth),
+    '--frame-h': String(sheet.frameHeight),
   } as CSSProperties
   return <span className={`sprite-strip${className ? ` ${className}` : ''}`} style={style}>
     <img

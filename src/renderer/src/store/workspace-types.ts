@@ -368,6 +368,10 @@ export interface AppDialogDetailSection {
 }
 
 export interface AppDialog {
+  imageSequence?: {
+    files: string[]
+    settings: import('@/core/image-sequence-preferences').ImageSequenceSettings
+  }
   title: string
   message: string
   detail?: string

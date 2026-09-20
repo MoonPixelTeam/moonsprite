@@ -12,7 +12,7 @@ interface PreferenceToggleProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 
 export function PreferenceToggle({ checked, className = '', copyClassName = '', label, onChange, tooltip, ...inputProps }: PreferenceToggleProps) {
   const search = useContext(PreferenceSearchContext)
-  const searchUnmatched = Boolean(search?.query && !search.matches(label))
+  const searchUnmatched = Boolean(search?.query && !search.matches([label, tooltip]))
   const copy = <span className={copyClassName || undefined}>{label}</span>
   return <label className={`preference-toggle ${className} ${searchUnmatched ? 'search-unmatched' : ''}`.trim()} data-search-text={searchUnmatched ? searchText(label) : undefined}>
     {tooltip ? <Tooltip content={tooltip}>{copy}</Tooltip> : copy}

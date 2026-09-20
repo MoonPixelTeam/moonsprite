@@ -14,6 +14,7 @@ interface Ports {
   displayedResizeCursorForHandle: (hit: SelectionHandle, contentRotation?: number) => string
   scheduleDraw: () => void
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
 }
 
 export function createSliceCanvasInput(ports: Ports) {
@@ -92,7 +93,7 @@ export function createSliceCanvasInput(ports: Ports) {
         moved: false,
         previewTarget: clampSliceRect(shapeBounds(point, point), session.document.width, session.document.height)
       }
-      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair)
+      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, false, ports.useLocalCursors)
       return true
     }
     return false

@@ -1,3 +1,4 @@
+import { chooseExportLocation } from '@/platform/export-location'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentSession } from '@/store/workspace'
 import type { SpriteSheetConstraint, SpriteSheetExportOptions, SpriteSheetFrameScope, SpriteSheetLayerScope, SpriteSheetLayout } from '@/core/sprite-sheet'
@@ -141,8 +142,8 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
   const chooseDirectory = async (): Promise<void> => {
     setPathError('')
     try {
-      const result = await window.moonSprite.chooseDirectory(options.directory || defaultDirectory)
-      if (!result.canceled && result.directoryPath) update('directory', result.directoryPath)
+      const result = await chooseExportLocation(window.moonSprite, options.directory || defaultDirectory, options.name, 'png')
+      if (result) setOptions(current => ({ ...current, ...result }))
     } catch (error) {
       setPathError(error instanceof Error ? error.message : t('spriteSheet.output.directoryError'))
     }

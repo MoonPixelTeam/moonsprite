@@ -6,6 +6,7 @@ export function useLayerTreeRowActions(panel: LayerTreeRowsProps) {
   const latest = useRef(panel)
   useLayoutEffect(() => { latest.current = panel })
   return useMemo(() => ({
+    onMaskContextMenu: ((...args) => latest.current.onMaskContextMenu?.(...args)) as NonNullable<LayerTreeRowsProps['onMaskContextMenu']>,
     beginLayerDrag: ((event, id) => latest.current.beginLayerDrag(event, id)) as LayerTreeRowsProps['beginLayerDrag'],
     editLayerRow: ((layer) => {
       const current = latest.current.session.document.layers.find((item) => item.id === layer.id)

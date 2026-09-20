@@ -4,6 +4,7 @@ import {
   configureRuntimeDiagnostics,
   createRuntimeDiagnosticSessionId,
   mainThreadStallDuration,
+  installRuntimeDiagnosticWatchdog,
   measureRuntimeDiagnostic,
   recordRuntimeDiagnostic,
   resetRuntimeDiagnosticsForTests,
@@ -143,6 +144,26 @@ describe('runtime diagnostics', () => {
     configureRuntimeDiagnostics(() => { throw new Error('sink') })
     const original = new Error('tool error')
     expect(() => measureRuntimeDiagnostic('tool', () => { throw original }, () => { throw new Error('context') })).toThrow(original)
+    expect(runtimeDiagnosticSnapshot().at(-1)?.detail).toMatchObject({ message: 'tool error', name: 'Error', contextUnavailable: true })
+  })
+
+  it('retains useful stack frames and the age and device of the last action on global errors', () => {
+    vi.useFakeTimers()
+    let now = 100
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const stop = installRuntimeDiagnosticWatchdog()
+    try {
+      const pointer = new Event('pointerdown')
+      Object.assign(pointer, { button: 1, buttons: 4, pointerType: 'pen' })
+      window.dispatchEvent(pointer)
+      now += 150
+      const error = new Error('drawing failed')
+      error.stack = `Error: drawing failed\n${Array.from({ length: 10 }, (_, i) => `    at handler${i} (${ 'x'.repeat(70) }:10:20)`).join('\n')}`
+      window.dispatchEvent(new ErrorEvent('error', { error, filename: 'canvas.js', lineno: 10, colno: 20 }))
+      const logged = runtimeDiagnosticSnapshot().at(-1)!
+      expect(logged.detail).toMatchObject({ message: 'drawing failed', filename: 'canvas.js', line: 10, column: 20, pointerType: 'pen', button: 1, buttons: 4, lastActionAgeMs: 150 })
+      expect(logged.detail.stack).toContain('handler9')
+    } finally { stop() }
   })
 
   it('bounds the completed span ring under sustained slow input', () => {

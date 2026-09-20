@@ -1,3 +1,4 @@
+import { chooseExportLocation } from '@/platform/export-location'
 import { useState } from 'react'
 import { ThemedSelect } from '@/components/ThemedSelect'
 import { DialogHeader } from '@/components/DialogHeader'
@@ -40,8 +41,8 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, exp
   const [saving, setSaving] = useState(false)
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const chooseDirectory = async (directory: string): Promise<void> => {
-    const result = await window.moonSprite.chooseDirectory(directory)
-    if (!result.canceled && result.directoryPath) setForm((current) => ({ ...current, directory: result.directoryPath }))
+    const result = await chooseExportLocation(window.moonSprite, directory, form.name, form.format, true)
+    if (result) setForm(current => ({ ...current, ...result }))
   }
   const submit = async (): Promise<void> => {
     if (!form.name.trim() || saving) return

@@ -1,3 +1,6 @@
+import { paintingCursorPixelCenter } from '@/core/painting-cursor'
+import { referenceNavigationActive } from './canvas-reference-input'
+import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { useCanvasToolSession } from './useCanvasToolSession'
 import { createCanvasBrushConfig } from './createCanvasBrushConfig'
 import { deriveCanvasEditTargets } from './deriveCanvasEditTargets'
@@ -71,6 +74,7 @@ import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
 import { CANVAS_VIEW_SCROLLBAR_THICKNESS } from './useCanvasViewScrollbars'
 import { CanvasViewScrollbars } from './CanvasViewScrollbars'
+import { CanvasReferences, isOutsideReferenceCanvas } from './CanvasReferences'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
   const { t } = useI18n()
@@ -305,10 +309,12 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get liveViewRef() { return liveViewRef },
     get session() { return session },
     get pendingViewRef() { return pendingViewRef },
+    drawNow: () => drawRef.current(),
     get scheduleDraw() { return scheduleDraw }
   })
 
   const { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor } = useCanvasPenCursor({
+    paintingPoint: point => paintingCursorPixelCenter(point, stageSize(), session.document, liveViewRef.current, rotationIndicatorPosition, interfaceScale),
     get canvasRef() { return canvasRef },
     get interfaceScale() { return interfaceScale },
     get pressureAdapterRef() { return pressureAdapterRef },
@@ -592,6 +598,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     updateCursorAt,
     updateCursor
   } = useCanvasCursor({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get session() { return session },
     get canvasRef() { return canvasRef },
     get stageSize() { return stageSize },
@@ -633,6 +640,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const { keyDisplayEntries, keyDisplayWheelRef } = useCanvasKeyboardInput({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get keyDisplayEnabled() { return keyDisplayEnabled },
     get inputRef() { return inputRef },
     get modifierActive() { return modifierActive },
@@ -719,6 +727,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const { pressureAdapterRef, wheelBrushSizePreviewRef, pointerDown, pointerMove, pointerUp, pointerCancel, pointerLeave, pointerEnter } =
     useCanvasDeviceRouter({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
       get inputRef() { return inputRef },
       get session() { return session },
       get canvasRef() { return canvasRef },
@@ -772,7 +781,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         inputRef.current.drag.alignmentGuides = []
         scheduleDraw()
       }
-      cursorPreferencesRef.current = { useLocalCursors: preferences.useLocalCursors, cursorScale: preferences.cursorScale }
+      cursorPreferencesRef.current = preferences
       refreshPenCursor()
       if (preferences.symmetryAxis.locked && !inputRef.current.ctrlHeld) symmetryDragRef.current = null
       onionSkinCacheRef.current.invalidateAll()
@@ -871,6 +880,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         moveLayerClickFlashTimerRef
       },
       settings: {
+        useLocalCursors: canvasPreferences.useLocalCursors,
         session,
         interfaceScale,
         rotationIndicatorPosition,
@@ -996,6 +1006,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const selectionInput = createSelectionCanvasInput({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get selectionHit() { return selectionHit },
     get updateCursor() { return updateCursor },
     get selectionPivotHitAt() { return selectionPivotHitAt },
@@ -1021,6 +1032,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const selectionBeginInput = createSelectionBeginCanvasInput({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get selectedFreeTileSelectionTarget() { return selectedFreeTileSelectionTarget },
     get selectionHit() { return selectionHit },
     get liveViewRef() { return liveViewRef },
@@ -1123,6 +1135,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const sliceInput = createSliceCanvasInput({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get sliceTool() { return sliceTool },
     get sliceHandleAt() { return sliceHandleAt },
     get inputRef() { return inputRef },
@@ -1379,6 +1392,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get startRaster() { return startRaster }
   })
   const handlePointerMove = createCanvasPointerMove({
+    get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get inputRef() { return inputRef },
     get navigationInput() { return navigationInput },
     get liveInputSession() { return liveInputSession },
@@ -1479,6 +1493,18 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <img ref={penCursorRef} className="stage-pen-cursor" alt="" hidden aria-hidden="true" draggable={false} />
         <span ref={adaptiveCursorRef} className="stage-pen-cursor stage-adaptive-cursor" hidden aria-hidden="true" />
         {eyedropperLens.overlay}
+        <CanvasReferences stageRef={stageRef} documentId={session.document.id}
+          viewport={{ width: session.viewportSize.width, height: session.viewportSize.height, documentWidth: session.document.width, documentHeight: session.document.height, view: session.view, interfaceScale, rotationIndicatorPosition }}
+          navigationActive={() => referenceNavigationActive(inputRef.current.spaceHeld, liveInputSession().tool, liveInputSession().animationPlaying)}
+          onNavigatePointerDown={(event) => {
+            const canvas = canvasRef.current
+            if (!canvas || !(event.button === 1 || (event.button === 0 && (event.ctrlKey || event.metaKey || referenceNavigationActive(inputRef.current.spaceHeld, liveInputSession().tool, liveInputSession().animationPlaying))))) return false
+            pointerDown(Object.assign(Object.create(event), { currentTarget: canvas, target: canvas }))
+            return true
+          }}
+          samplingActive={() => liveInputSession().tool === 'eyedropper' || quickToolActive('eyedropper') || paletteSamplingShortcutActive()}
+          transformModifiers={(event) => ({ ...selectionTransformModifierState(event), constrainAxis: modifierActive(event, 'constrainAxis') })}
+          snapRotation={(event) => modifierActive(event.nativeEvent, 'snapSelectionRotation')} isOutside={(x, y) => isOutsideReferenceCanvas(localPointAt(x, y), session.document.width, session.document.height)} />
         {canvasPreferences.canvasViewScrollbarsEnabled && <CanvasViewScrollbars
           documentId={session.document.id}
           documentWidth={session.document.width} documentHeight={session.document.height}

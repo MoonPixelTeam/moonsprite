@@ -13,6 +13,7 @@ export const DEFAULT_BOTTOM_WIDTHS: Record<WorkspacePanelId, number> = { color: 
 export const MINIMUM_BOTTOM_WIDTHS: Record<WorkspacePanelId, number> = { color: 96, palette: 180, layers: 360, freeTileInstances: 220, history: 220, preview: 180, reference: 180, tileset: 240, brushes: 180 }
 
 export interface InspectorLayout {
+  squarePanels: WorkspacePanelId[]
   order: WorkspacePanelId[]
   verticalWeights: Record<WorkspacePanelId, number>
   bottomWeights: Record<WorkspacePanelId, number>
@@ -23,6 +24,7 @@ const isWorkspacePanelId = (value: unknown): value is WorkspacePanelId => typeof
 export function loadInspectorLayout(storedValue = readStoredString(INSPECTOR_LAYOUT_STORAGE_KEY)): InspectorLayout {
   try {
     const value = JSON.parse(storedValue ?? 'null') as {
+      squarePanels?: unknown[]
       order?: unknown[]
       verticalWeights?: Partial<Record<WorkspacePanelId, number>>
       bottomWeights?: Partial<Record<WorkspacePanelId, number>>
@@ -42,9 +44,9 @@ export function loadInspectorLayout(storedValue = readStoredString(INSPECTOR_LAY
       const stored = Number(storedBottomWeights?.[id])
       return [id, Math.max(MINIMUM_BOTTOM_WIDTHS[id], stored || DEFAULT_BOTTOM_WIDTHS[id])]
     })) as Record<WorkspacePanelId, number>
-    return { order, verticalWeights, bottomWeights }
+    return { order, verticalWeights, bottomWeights, squarePanels: Array.isArray(value?.squarePanels) ? value.squarePanels.filter(isWorkspacePanelId) : [] }
   } catch {
-    return { order: [...DEFAULT_INSPECTOR_ORDER], verticalWeights: { ...DEFAULT_INSPECTOR_SIZES }, bottomWeights: { ...DEFAULT_BOTTOM_WIDTHS } }
+    return { squarePanels: [], order: [...DEFAULT_INSPECTOR_ORDER], verticalWeights: { ...DEFAULT_INSPECTOR_SIZES }, bottomWeights: { ...DEFAULT_BOTTOM_WIDTHS } }
   }
 }
 

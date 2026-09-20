@@ -6,6 +6,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import type { FloatingPosition } from '@/core/panel-preferences'
 import type { DocumentSession } from '@/store/workspace'
 import { useWorkspace } from '@/store/workspace'
+import { isCanvasMiddlePanPointer } from '@/components/canvas-reference-input'
 import { QuickCommandBar } from './QuickCommandBar'
 import type { QuickCommandSettingsTarget } from './quick-command-registry'
 import type { ShortcutId } from '@/core/shortcuts'
@@ -145,8 +146,8 @@ export function FloatingDocumentWindow({ session, initialPosition, pinned, stack
     }
   }, [onReturnToTabs, session.document.id])
 
-  const activate = (): void => {
-    onActivate(session.document.id)
+  const activate = (event?: ReactPointerEvent<HTMLElement>): void => {
+    if (!event || !isCanvasMiddlePanPointer(event)) onActivate(session.document.id)
     floating.bringToFront()
   }
   const beginDrag = (event: ReactPointerEvent<HTMLElement>): void => {

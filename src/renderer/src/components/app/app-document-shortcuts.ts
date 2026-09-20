@@ -1,3 +1,5 @@
+import { cutWorkspaceItems } from '@/store/workspace-cut'
+import { invertWorkspaceColors, rotateWorkspaceContent } from '@/store/workspace-edit-actions'
 import type { AppShortcutContext } from './app-shortcut-context'
 import type { ColorMode } from '@shared/types-raster'
 import type { AdjustmentKind } from '@/core/adjustments'
@@ -8,6 +10,14 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
   const { openAdjustment, event, workspace, session, t, matches, runCommand, commandScope, selectionOverride, uiCommands, publishShortcutCommand } = context
   if (runCommand('openHome', () => uiCommands['openHome']?.()))
     return true
+  if (runCommand('copyMerged', () => workspace.copySelection(true))) return true
+  if (runCommand('rotateContent180', () => rotateWorkspaceContent(180))) return true
+  if (runCommand('rotateContentCounterClockwise', () => rotateWorkspaceContent(-90))) return true
+  if (runCommand('rotateContentClockwise', () => rotateWorkspaceContent(90))) return true
+  if (runCommand('centerContentBoth', () => workspace.centerActiveContent('both'))) return true
+  if (runCommand('centerContentHorizontal', () => workspace.centerActiveContent('horizontal'))) return true
+  if (runCommand('centerContentVertical', () => workspace.centerActiveContent('vertical'))) return true
+  if (runCommand('invertColors', invertWorkspaceColors)) return true
   if (runCommand('newDocument', () => uiCommands['newDocument']?.()))
     return true
   if (runCommand('openDocument', () => uiCommands['openDocument']?.()))
@@ -53,7 +63,17 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
     else workspace.setMessage(t('app.copy.required'))
   }))
     return true
-  if (runCommand('cut', () => workspace.cutSelection()))
+  if (runCommand('cut', () => {
+    if (commandScope() === 'layers' && session?.freeTileInstanceLayerId && session.selectedFreeTileInstanceId) cutWorkspaceItems('free-tiles')
+    else if (session?.selectedAnimationMaskCellKeys.length && !selectionOverride()) cutWorkspaceItems('masks')
+    else if (session?.selectedAnimationCellKeys.length && !selectionOverride()) cutWorkspaceItems('cels')
+    else if (session?.selectedAnimationFrameIds.length) cutWorkspaceItems('frames')
+    else {
+      const target = selectionOverride() && session?.selection ? 'selection' : resolveCopyCommand(commandScope(), Boolean(session?.selection))
+      if (target) cutWorkspaceItems(target)
+      else if (commandScope() !== 'palette' && (session?.selectedLayerIds.length || session?.selectedGroupIds.length)) cutWorkspaceItems('layers')
+    }
+  }))
     return true
   if (runCommand('paste', () => {
     if (commandScope() === 'palette') {

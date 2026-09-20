@@ -1,3 +1,4 @@
+import { chooseExportLocation } from '@/platform/export-location'
 import { useMemo, useRef, useState } from 'react'
 import type { TimelapseExportFormat, TimelapseQuality, TimelapseSettings } from '@shared/types-timelapse'
 import { isTimelapseVideoFormat, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapseSourceDurationMs, timelapseVideoFramePlan, type TimelapseExportMode, type TimelapseExportOptions } from '@/core/timelapse'
@@ -51,8 +52,8 @@ export function TimelapseExportDialog({ settings, documentName, defaultDirectory
   })
   const chooseDirectory = async (): Promise<void> => {
     try {
-      const result = await window.moonSprite.chooseDirectory(directory || defaultDirectory)
-      if (!result.canceled && result.directoryPath) setDirectory(result.directoryPath)
+      const result = await chooseExportLocation(window.moonSprite, directory || defaultDirectory, name, format)
+      if (result) { setDirectory(result.directory); setName(result.name) }
     } catch (error) {
       useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error))
     }

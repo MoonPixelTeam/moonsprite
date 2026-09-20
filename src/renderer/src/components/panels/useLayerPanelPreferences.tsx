@@ -130,10 +130,22 @@ export function useLayerPanelPreferences({
   }, [freeTileInstanceLayer, session.document.activeLayerId, session.document.id, session.freeTileInstanceLayerId, store])
 
   useEffect(() => {
-    const refreshLayout = (): void => setFreeTileInstancePanelLayout(loadFreeTileInstancePanelLayout())
+    const refreshLayout = (): void => {
+      setFreeTileInstancePanelLayout(loadFreeTileInstancePanelLayout())
+      const preferences = loadEditorPreferences()
+      setLayerSettings(current => ({ ...current, timelineHidden: preferences.timelineHidden, onionSkin: preferences.onionSkin }))
+    }
     window.addEventListener('moonsprite:preferences-changed', refreshLayout)
     return () => window.removeEventListener('moonsprite:preferences-changed', refreshLayout)
   }, [])
+
+  useEffect(() => {
+    if (!layerSettings.timelineHidden) return
+    store.setAnimationPlaying(false)
+    store.clearAnimationSelection()
+    setAnimationMenu(null)
+    if (layerListRef.current) layerListRef.current.scrollLeft = 0
+  }, [layerSettings.timelineHidden, session.document.id])
 
   const openLayerSettings = (): void => {
     const preferences = loadEditorPreferences()
@@ -207,6 +219,7 @@ export function useLayerPanelPreferences({
   }
 
   const changeLayerDensity = (direction: -1 | 1, step = 1): void => {
+    if (layerSettings.timelineHidden) return
     setLayerDensity((current) => {
       const index = layerDensityOrder.indexOf(current)
       const next = layerDensityOrder[Math.max(0, Math.min(layerDensityOrder.length - 1, index + direction * step))]

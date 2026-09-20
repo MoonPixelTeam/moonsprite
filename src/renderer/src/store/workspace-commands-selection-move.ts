@@ -302,7 +302,8 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
             session.selectedAnimationFrameIds,
             selectedLayers.map((layer) => layer.id),
             currentSelection,
-            session.selectedAnimationCellKeys
+            session.selectedAnimationCellKeys,
+            { preserveOutsideCanvas: true }
           )
           if (layers.length === 0) return
           const nextSelection = { ...currentSelection, x: nextX, y: nextY }
@@ -345,7 +346,9 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
         if (selectedLayers.some((candidate) => !isLayerEffectivelyVisible(session.document, candidate) || isLayerEffectivelyLocked(session.document, candidate))) return
         const layer = multipleLayers ? selectedLayers[0] : activePaintLayer(session)
         if (isLayerEffectivelyLocked(session.document, layer)) return
-        const source = captureSelectionTransform(session.document, currentSelection, layer)
+        // Keep source and target dimensions identical when the marquee extends
+        // outside the canvas; clipping the source turns later nudges into scaling.
+        const source = captureSelectionTransform(session.document, currentSelection, layer, { preserveOutsideCanvas: true })
         if (!source) return
         const nextSelection = { ...currentSelection, x: nextX, y: nextY }
         const tilemapEditCellIndex = tilemapEditCellIndexForSelection(session, currentSelection)
@@ -353,7 +356,7 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
         const translationPreview = applySelectionTranslationPreview(session.document, source, nextSelection, false, null, layer, tilemapEditClipForCell(session, tilemapEditCellIndex), session.view.tileRepeatMode)
         const layers = multipleLayers
           ? selectedLayers.map((candidate) => {
-              const candidateSource = candidate.id === layer.id ? source : captureSelectionTransform(session.document, currentSelection, candidate)!
+              const candidateSource = candidate.id === layer.id ? source : captureSelectionTransform(session.document, currentSelection, candidate, { preserveOutsideCanvas: true })!
               const candidatePreview = candidate.id === layer.id ? translationPreview : applySelectionTranslationPreview(session.document, candidateSource, nextSelection, false, null, candidate, undefined, session.view.tileRepeatMode)
               return {
                 layerId: candidate.id,

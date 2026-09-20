@@ -5,6 +5,18 @@ import type { DocumentSession } from '@/store/workspace'
 
 type DeviceEvent = { pointerType: string; button: number; buttons: number }
 
+export function deviceRightClickAction(event: DeviceEvent, preferences: TabletPreferences): RightClickAction {
+  if (isPenBarrelButtonEvent(event) && preferences.rightClickAction === 'background' && preferences.barrelButtonAction !== 'disabled') {
+    return preferences.barrelButtonAction === 'eyedropper' ? 'foreground-eyedropper' : preferences.barrelButtonAction
+  }
+  return preferences.rightClickAction
+}
+
+export function penEraserToolEvent<T extends DeviceEvent>(event: T, preferences: TabletPreferences): T {
+  if (!preferences.eraserTipEnabled || !isPenEraserEvent(event)) return event
+  return Object.assign(Object.create(event), { button: event.button === 5 ? 0 : event.button, buttons: (event.buttons & ~32) | (event.buttons & 32 ? 1 : 0) })
+}
+
 export function deviceTemporaryTool(event: DeviceEvent, preferences: TabletPreferences): ToolId | null {
   if (event.pointerType === 'pen' && preferences.api === 'disabled') return null
   if (preferences.eraserTipEnabled && isPenEraserEvent(event)) return 'eraser'

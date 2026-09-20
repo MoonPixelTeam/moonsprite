@@ -5,12 +5,13 @@ import type { StoredExtension } from '@shared/types-extensions'
 import { AppMenuBar } from './AppMenuBar'
 import { clearExtensionCommandState, setExtensionMenuItems } from '@/core/extension-command-state'
 import { registerExtensionRuntime } from '@/core/extension-runtime'
+import { DEFAULT_SHORTCUTS } from '@/core/shortcuts'
 
 vi.mock('@/store/workspace', () => {
   const state = { sessions: [], activeId: null }
   return { useWorkspace: Object.assign((select: (value: typeof state) => unknown) => select(state), { getState: () => state }) }
 })
-vi.mock('@/components/I18nProvider', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/components/I18nProvider', () => ({ useI18n: () => ({ locale: 'zh-CN', t: (key: string) => key }) }))
 vi.mock('@/components/PerformanceProfiler', () => ({ PerformanceProfiler: ({ children }: { children: ReactNode }) => children }))
 
 const extension: StoredExtension = {
@@ -44,6 +45,14 @@ function Menu() {
   return <AppMenuBar {...defaults} openMenu={openMenu} setOpenMenu={setOpenMenu} />
 }
 afterEach(() => { cleanup(); clearExtensionCommandState(extension.id) })
+
+it('groups clipboard, outline, content transforms and color actions in Edit', () => {
+  const view = render(<AppMenuBar {...defaults} openMenu="edit" setOpenMenu={noop} shortcutFor={id => DEFAULT_SHORTCUTS[id]} />)
+  expect(view.getByText('复制合并').closest('button')).toHaveTextContent('Ctrl+Shift+C')
+  expect(view.getByText('快捷描边').closest('button')).toHaveTextContent('S')
+  expect(view.getByText('旋转 180°').closest('.menu-submenu')).toHaveTextContent('90° 顺时针')
+  expect(view.getByText('反色')).toBeTruthy()
+})
 
 it('opens the installed pet menu before dynamic options arrive, then renders and dispatches each pet', () => {
   const dispatch = vi.fn(), unregister = registerExtensionRuntime(extension.id, dispatch)
