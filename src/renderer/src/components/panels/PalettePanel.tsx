@@ -1,3 +1,6 @@
+import { PaletteSwatch, usePaletteSwatchActions } from './PaletteSwatch'
+import { PaletteSelectionOutline } from './PaletteSelectionOutline'
+import { encodePaletteClipboard, parsePaletteClipboard, type PaletteClipboard } from '@/components/palette-clipboard'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { playExportSuccessSound } from '@/platform/export-success-sound'
 import { usePaletteGridColumns } from '@/components/use-palette-grid-columns'
@@ -17,19 +20,20 @@ import { TextInput } from '@/components/TextInput'
 import { Tooltip } from '@/components/Tooltip'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { encodePalettePng, extractPaletteColors, mergePaletteColors, type PaletteSortDirection, type PaletteSortMode } from '@/core/palette'
-import { addPaletteIdToSlots, fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorRoles, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
+import { fitPaletteSlotsToGrid, normalizePaletteColumns, normalizePaletteSlots, PALETTE_SWATCH_PIXELS, paletteColorRoles, paletteColorsEqual, paletteMarkerColor, paletteRangeIdsBySlots, paletteSlotRange, repositionPaletteSlots, type PaletteSwatchSize } from '@/core/palette-layout'
 import { ACTIVE_PALETTE_ID_STORAGE_KEY, readStoredString, removeStoredValue, writeStoredString } from '@/core/panel-preferences'
 import { colorEquals } from '@/core/raster'
 import { builtInPaletteNameKeys } from '@/core/built-in-palettes'
 import { joinDirectoryPath } from '@/core/document-files'
 import { RECENT_EXPORTS_CHANGED_EVENT, recordRecentExportPath } from '@/core/export-settings'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadEditorPreferences, outputDirectoryForOperation, saveEditorPreferences } from '@/core/file-preferences'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
 import { publishCanvasColorSample, publishCanvasColorSamplingCompleted } from '@/components/color-sampling-events'
 import { usePanelColorSampling } from '@/components/usePanelColorSampling'
+import { useSpaceDragScroll } from '@/components/useSpaceDragScroll'
 import { EDITOR_SHORTCUT_COMMAND_EVENT, type EditorShortcutCommandDetail } from '@/core/command-context'
 import type { ShortcutId } from '@/core/shortcuts'
 
@@ -55,6 +59,8 @@ const PALETTE_SORT_OPTIONS: Array<{ mode: PaletteSortMode; label: 'palette.sort.
   { mode: 'blue', label: 'palette.sort.blue' },
   { mode: 'alpha', label: 'palette.sort.alpha' }
 ]
+
+let paletteClipboardFallback: PaletteClipboard | null = null
 
 export function PalettePanel({ session, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { session: DocumentSession } & DockDragProps) {
   const { t } = useI18n()
@@ -82,13 +88,14 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const paletteActionsButtonRef = useRef<HTMLButtonElement>(null)
   const libraryButtonRef = useRef<HTMLButtonElement>(null)
   const swatchGridRef = useRef<HTMLDivElement>(null)
+  const spaceDragScroll = useSpaceDragScroll(swatchGridRef)
   const paletteActionsPopoverRef = useRef<HTMLSpanElement>(null)
   const libraryPopoverRef = useRef<HTMLSpanElement>(null)
   const paletteContextRef = useRef<HTMLSpanElement>(null)
   const shortcutCommandHandlerRef = useRef<(id: ShortcutId) => void>(() => {})
   const [paletteActionsPopoverPosition, setPaletteActionsPopoverPosition] = useState({ left: 8, top: 8 })
   const [libraryPopoverPosition, setLibraryPopoverPosition] = useState({ left: 8, top: 8 })
-  const dragRef = useRef<{ ids: number[]; baseSlots: Array<number | null>; previewSlots: Array<number | null>; columns: number; clickedId: number; pointerId: number; element: HTMLElement; startX: number; startY: number; moved: boolean; targetSlot: number | null } | null>(null)
+  const dragRef = useRef<{ ids: number[]; baseSlots: Array<number | null>; previewSlots: Array<number | null>; columns: number; clickedId: number; pointerId: number; element: HTMLElement; startX: number; startY: number; moved: boolean; targetSlot: number | null; selectionBox: { startSlot: number; endSlot: number } | null } | null>(null)
   const selectionGestureRef = useRef<{ pointerId: number; element: HTMLElement; slots: Array<number | null>; columns: number; startSlot: number; lastSlot: number; startX: number; startY: number; clickedId: number | null; active: boolean; longPressTimer: number | null } | null>(null)
   const [draggingIds, setDraggingIds] = useState<number[]>([])
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null)
@@ -112,11 +119,23 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const storedSlots = useMemo(() => normalizePaletteSlots(session.document.palette.map((entry) => entry.id), session.document.paletteOrder, session.document.paletteSlots, storedColumns), [session.document.palette, session.document.paletteOrder, session.document.paletteSlots, storedColumns, paletteRenderKey])
   const occupiedColumns = useMemo(() => storedSlots.reduce<number>((maximum, id, index) => id === null ? maximum : Math.max(maximum, index % storedColumns + 1), 1), [storedSlots, storedColumns])
   const gridColumns = usePaletteGridColumns(swatchGridRef, PALETTE_SWATCH_PIXELS[swatchSize], paletteLayoutMode === 'manual' ? occupiedColumns : 1, paletteLayoutMode, paletteRenderKey)
-  // Trailing empty rows have no rendered swatches or hit targets. Retain all
-  // occupied coordinates, without rebuilding the palette for height changes.
+  // Keep empty rows virtual; the grid background resolves their hit targets.
+  // Height changes do not need to rebuild the occupied swatches.
   const fittedLayout = useMemo(() => fitPaletteSlotsToGrid(storedSlots, storedColumns, gridColumns, 1), [storedSlots, storedColumns, gridColumns])
   const paletteSlots = paletteLayoutMode === 'auto' ? ordered.map((entry) => entry.id) : fittedLayout.slots
   const paletteColumns = paletteLayoutMode === 'auto' ? gridColumns : fittedLayout.columns
+  const selectionRestore = useWorkspace(state => state.sessions.find(item => item.document.id === session.document.id)?.paletteSelectionRestore)
+  const appliedSelectionRestoreRef = useRef(selectionRestore)
+  useLayoutEffect(() => {
+    if (!selectionRestore || appliedSelectionRestoreRef.current === selectionRestore) return
+    appliedSelectionRestoreRef.current = selectionRestore
+    const slot = (index: number): number => Math.floor(index / selectionRestore.columns) * paletteColumns + index % selectionRestore.columns
+    setFocusedSlot(selectionRestore.focusedSlot === null ? null : slot(selectionRestore.focusedSlot))
+    setPaletteBoxSelection(selectionRestore.boxSelection ? {
+      startSlot: slot(selectionRestore.boxSelection.startSlot), endSlot: slot(selectionRestore.boxSelection.endSlot)
+    } : null)
+    setGestureSelectedIds(null)
+  }, [selectionRestore, paletteColumns])
   const rawDisplayedSlots = palettePreviewSlots ?? paletteSlots
   const lastOccupiedSlot = rawDisplayedSlots.reduce<number>((last, id, index) => id !== null ? index : last, -1)
   const displayedSlotCount = rawDisplayedSlots.length === 0 ? 0 : Math.max(1, lastOccupiedSlot + 1, paletteLayoutMode === 'manual' ? paletteColumns : 0)
@@ -138,19 +157,21 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
         const x = gradientSelectionRange.left + index % width
         const y = gradientSelectionRange.top + Math.floor(index / width)
         return y * paletteColumns + x
-      }).filter((slot) => slot < displayedSlots.length)
+      }).filter((slot) => paletteLayoutMode === 'manual' || slot < displayedSlots.length)
     : []
-  const focusedEmptySlotRange = palettePreviewSlots === null && displayedSelectedIds.length === 0 && focusedSlot !== null && displayedSlots[focusedSlot] === null
-    ? paletteSlotRange(paletteColumns, focusedSlot, focusedSlot)
+  const focusedEmptySlotRange = paletteLayoutMode === 'manual' && palettePreviewSlots === null && displayedSelectedIds.length === 0
+    ? boxSelectionRange ?? (focusedSlot !== null && displayedSlots[focusedSlot] == null ? paletteSlotRange(paletteColumns, focusedSlot, focusedSlot) : null)
     : null
-  const displayedSelectionRange = boxSelectionRange ?? focusedEmptySlotRange ?? selectedSlotRange
+  const displayedSelectionRange = paletteLayoutMode === 'manual'
+    ? boxSelectionRange ?? selectedSlotRange ?? focusedEmptySlotRange
+    : focusedEmptySlotRange
   const swatchPresentations = useMemo(() => new Map(session.document.palette.map(entry => {
     const roles = paletteColorRoles(entry.color, session.primaryColor, session.secondaryColor)
     const roleLabel = [roles.primary ? t('palette.foreground') : '', roles.secondary ? t('palette.background') : ''].filter(Boolean).join(t('palette.roleSeparator'))
     return [entry.id, {
       roles,
       label: `${entry.name} ${rgbaHex(entry.color)}${roleLabel ? ` · ${roleLabel}` : ''}`,
-      style: { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) } as React.CSSProperties
+      style: { '--swatch-color': colorCss(entry.color), '--swatch-corner-color': paletteMarkerColor(entry.color) }
     }]
   })), [paletteRenderKey, session.document.palette, session.primaryColor, session.secondaryColor, t])
   // Moving colors can temporarily leave holes even in auto mode. Preserve the
@@ -158,6 +179,91 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   const paletteAutoBorders = paletteLayoutMode === 'auto' && displayedSlots.every(id => id !== null && paletteById.has(id))
   const paletteLineSegments = paletteAutoBorders ? [] : paletteGridLines(displayedSlots.map(id => id !== null && paletteById.has(id) ? id : null), paletteSurfaceColumns)
   const orderedColors = ordered.map((entry) => ({ ...entry.color }))
+  const copySelectedPaletteColors = async (): Promise<void> => {
+    const selected = new Set(session.selectedPaletteIds)
+    const entries = ordered.filter((entry) => selected.has(entry.id))
+    const colors = entries.map((entry) => ({ ...entry.color }))
+    if (colors.length === 0) return
+    const clipboard: PaletteClipboard = { colors }
+    const range = boxSelectionRange ?? selectedSlotRange
+    if (paletteLayoutMode === 'manual' && range) {
+      const indices = new Map(entries.map((entry, index) => [entry.id, index]))
+      const columns = range.right - range.left + 1
+      clipboard.layout = { columns, slots: Array.from({ length: columns * (range.bottom - range.top + 1) }, (_, index) => {
+        const id = paletteSlots[(range.top + Math.floor(index / columns)) * paletteColumns + range.left + index % columns]
+        return id == null ? null : indices.get(id) ?? null
+      }) }
+    }
+    paletteClipboardFallback = clipboard
+    try {
+      await navigator.clipboard?.writeText(encodePaletteClipboard(clipboard))
+    } catch {
+      // The in-process clipboard remains available when the browser denies
+      // clipboard permission (for example in the embedded renderer).
+    }
+  }
+  const pastePaletteColorsFromClipboard = async (): Promise<void> => {
+    const destination = paletteLayoutMode === 'manual' && boxSelectionRange
+      ? [...gradientSelectionSlots]
+      : selectedSlotIndices.length > 0 ? [...selectedSlotIndices] : focusedSlot !== null ? [focusedSlot] : []
+    let slots = [...paletteSlots]
+    let columns = paletteColumns
+    const bounded = paletteLayoutMode === 'manual' && boxSelectionRange !== null
+    const before = { columns, focusedSlot, boxSelection: paletteBoxSelection ? { ...paletteBoxSelection } : null }
+    let clipboard = paletteClipboardFallback
+    try {
+      const text = await navigator.clipboard?.readText()
+      if (text) clipboard = parsePaletteClipboard(text) ?? clipboard
+    } catch {
+      // Fall back to the last copy made in this palette.
+    }
+    if (!clipboard || clipboard.colors.length === 0) return
+    const workspace = useWorkspace.getState()
+    if (workspace.activeId !== session.document.id) return
+    let colors = clipboard.colors
+    let indices = destination.length === 1 && !bounded
+      ? colors.map((_, index) => destination[0] + index) : destination
+    let after = before
+    if (paletteLayoutMode === 'manual' && clipboard.layout) {
+      const source = clipboard.layout
+      const anchor = destination[0] ?? slots.findIndex(id => id === null)
+      const start = anchor < 0 ? slots.length : anchor
+      const x = start % columns, y = Math.floor(start / columns)
+      const height = source.slots.length / source.columns
+      const fitted = fitPaletteSlotsToGrid(slots, columns, Math.max(columns, x + source.columns), y + height)
+      slots = fitted.slots
+      columns = fitted.columns
+      const cells = source.slots.flatMap((colorIndex, index) => {
+        const column = x + index % source.columns
+        return colorIndex === null || column >= columns ? [] : [{
+          slot: (y + Math.floor(index / source.columns)) * columns + column, color: clipboard.colors[colorIndex]
+        }]
+      })
+      indices = cells.map(cell => cell.slot)
+      colors = cells.map(cell => cell.color)
+      after = { columns, focusedSlot: y * columns + x, boxSelection: {
+        startSlot: y * columns + x, endSlot: (y + height - 1) * columns + Math.min(columns - 1, x + source.columns - 1)
+      } }
+    }
+    const pastedIds = workspace.pastePaletteColors(colors, indices.length > 0 ? { slots, columns, indices, selection: { before, after } } : undefined)
+    if (pastedIds.length > 0) {
+      if (paletteLayoutMode === 'auto') setPaletteBoxSelection(null)
+      setGestureSelectedIds(null)
+    }
+  }
+  const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+    const key = event.key.toLowerCase()
+    if (key === 'c') {
+      event.preventDefault()
+      event.stopPropagation()
+      void copySelectedPaletteColors()
+    } else if (key === 'v') {
+      event.preventDefault()
+      event.stopPropagation()
+      void pastePaletteColorsFromClipboard()
+    }
+  }
   const activePalette = paletteFiles.find((palette) => palette.id === activePaletteId) ?? null
   const paletteDisplayName = (palette: StoredPalette): string => {
     const nameKey = palette.builtIn ? builtInPaletteNameKeys[palette.id] : undefined
@@ -254,25 +360,58 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       return next
     })
   }
-  const resolvePaletteSlot = (clientX: number, clientY: number): number | null => {
+  const resolvePaletteSlot = (clientX: number, clientY: number, selecting = false): number | null => {
     const grid = swatchGridRef.current
     const gridBounds = grid?.getBoundingClientRect()
-    if (!grid || !gridBounds || clientX < gridBounds.left || clientX > gridBounds.right || clientY < gridBounds.top || clientY > gridBounds.bottom) return null
+    if (!grid || !gridBounds) return null
+    if (!selecting && (clientX < gridBounds.left || clientX > gridBounds.right || clientY < gridBounds.top || clientY > gridBounds.bottom)) return null
     const swatches = Array.from(grid.querySelectorAll<HTMLElement>('[data-palette-slot]'))
     for (const swatch of swatches) {
       const bounds = swatch.getBoundingClientRect()
       if (clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom) return Number(swatch.dataset.paletteSlot)
     }
-    return null
+    // Empty cells in the last row do not have a button, but they still belong
+    // to the palette grid. Resolve the coordinate from the surface so a
+    // diagonal drag can finish in an empty bottom/right slot and include every
+    // occupied color in between.
+    const surface = grid.querySelector<HTMLElement>('.palette-swatch-grid-surface')
+    const sample = swatches[0]
+    const surfaceBounds = surface?.getBoundingClientRect()
+    const sampleBounds = sample?.getBoundingClientRect()
+    if (!surface || !surfaceBounds) return null
+    const computed = window.getComputedStyle(surface)
+    const gapX = Number.parseFloat(computed.columnGap || computed.gap) || 1
+    const gapY = Number.parseFloat(computed.rowGap || computed.gap) || 1
+    const stepX = (sampleBounds?.width || PALETTE_SWATCH_PIXELS[swatchSize]) + gapX
+    const stepY = (sampleBounds?.height || PALETTE_SWATCH_PIXELS[swatchSize]) + gapY
+    const sampleSlot = Number(sample?.dataset.paletteSlot ?? 0)
+    const gridStyle = window.getComputedStyle(grid)
+    const originX = sampleBounds ? sampleBounds.left - (sampleSlot % paletteSurfaceColumns) * stepX
+      : gridBounds.left + (Number.parseFloat(gridStyle.paddingLeft) || 0) - grid.scrollLeft
+    const originY = sampleBounds ? sampleBounds.top - Math.floor(sampleSlot / paletteSurfaceColumns) * stepY
+      : gridBounds.top + (Number.parseFloat(gridStyle.paddingTop) || 0) - grid.scrollTop
+    // Pointer capture keeps reporting movement while the pointer is over the
+    // panel's empty space. Clamp that space to the last grid cell so a drag
+    // from the first swatch to the lower-right corner still selects the full
+    // rectangle, even when the final row has no rendered button at that point.
+    const slotX = Math.max(0, Math.min(paletteSurfaceColumns - 1, Math.floor((clientX - originX) / stepX)))
+    const rows = Math.max(1, Math.ceil(displayedSlotCount / paletteSurfaceColumns))
+    const pointerY = paletteLayoutMode === 'manual' && selecting ? Math.min(clientY, gridBounds.bottom - 1) : clientY
+    const slotY = Math.max(0, Math.floor((pointerY - originY) / stepY))
+    if (paletteLayoutMode === 'manual') return slotY * paletteColumns + slotX
+    const row = selecting ? Math.min(rows - 1, slotY) : slotY
+    return row < rows ? row * paletteColumns + slotX : null
   }
   const pointerHitsPaletteSelectionOutline = (clientX: number, clientY: number): boolean => {
-    const outline = swatchGridRef.current?.querySelector<HTMLElement>('[data-palette-selection-outline]')
-    if (!outline) return false
-    const bounds = outline.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return false
+    const outlines = Array.from(swatchGridRef.current?.querySelectorAll<HTMLElement>('[data-palette-selection-outline]') ?? [])
     const tolerance = 6
-    const inside = clientX >= bounds.left - tolerance && clientX <= bounds.right + tolerance && clientY >= bounds.top - tolerance && clientY <= bounds.bottom + tolerance
-    return inside && (Math.abs(clientX - bounds.left) <= tolerance || Math.abs(bounds.right - clientX) <= tolerance || Math.abs(clientY - bounds.top) <= tolerance || Math.abs(bounds.bottom - clientY) <= tolerance)
+    return outlines.some((outline) => {
+      const bounds = outline.getBoundingClientRect()
+      // SVG boundary segments have zero width or height. Only skip empty ones.
+      if (bounds.width <= 0 && bounds.height <= 0) return false
+      const inside = clientX >= bounds.left - tolerance && clientX <= bounds.right + tolerance && clientY >= bounds.top - tolerance && clientY <= bounds.bottom + tolerance
+      return inside && (Math.abs(clientX - bounds.left) <= tolerance || Math.abs(bounds.right - clientX) <= tolerance || Math.abs(clientY - bounds.top) <= tolerance || Math.abs(bounds.bottom - clientY) <= tolerance)
+    })
   }
   const nearestSelectedPaletteId = (clientX: number, clientY: number): number | null => {
     const selected = new Set(session.selectedPaletteIds)
@@ -291,10 +430,9 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     if (!grid) return
     const ids = [...session.selectedPaletteIds]
     const baseSlots = [...paletteSlots]
-    // A box selection is a temporary gesture; once dragging starts, the outline
-    // must be derived from the moving preview slots so it follows the colors.
-    setPaletteBoxSelection(null)
-    dragRef.current = { ids, baseSlots, previewSlots: baseSlots, columns: paletteColumns, clickedId, pointerId: event.pointerId, element: grid, startX: event.clientX, startY: event.clientY, moved: false, targetSlot: null }
+    const selectionBox = paletteLayoutMode === 'manual' ? paletteBoxSelection : null
+    if (!selectionBox) setPaletteBoxSelection(null)
+    dragRef.current = { ids, baseSlots, previewSlots: baseSlots, columns: paletteColumns, clickedId, pointerId: event.pointerId, element: grid, startX: event.clientX, startY: event.clientY, moved: false, targetSlot: null, selectionBox }
     grid.setPointerCapture?.(event.pointerId)
     setSelectionOutlineHovered(true)
     event.preventDefault()
@@ -306,7 +444,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     startPaletteMove(event, clickedId)
     event.stopPropagation()
   }
-  const beginPaletteDrag = (event: React.PointerEvent<HTMLButtonElement>, slotIndex: number, id: number | null): void => {
+  const beginPaletteDrag = (event: React.PointerEvent<HTMLElement>, slotIndex: number, id: number | null): void => {
     event.currentTarget.focus({ preventScroll: true })
     setFocusedSlot(slotIndex)
     const sampledEntry = id === null ? null : session.document.palette.find((entry) => entry.id === id) ?? null
@@ -334,6 +472,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       const anchorId = session.paletteSelectionId
       if (anchorId !== null) {
         const anchorSlot = paletteSlots.indexOf(anchorId)
+        if (paletteLayoutMode === 'manual' && anchorSlot >= 0) setPaletteBoxSelection({ startSlot: anchorSlot, endSlot: slotIndex })
         const ids = anchorSlot < 0 ? (id === null ? [] : [id]) : paletteRangeIdsBySlots(paletteSlots, paletteColumns, anchorSlot, slotIndex)
         store.selectPaletteColors(ids, id ?? ids.at(-1) ?? anchorId)
       } else if (id !== null) store.selectPaletteColor(id)
@@ -369,9 +508,19 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       }
       const pointerSlot = resolvePaletteSlot(event.clientX, event.clientY)
       if (pointerSlot === null) return
-      const preview = repositionPaletteSlots(drag.baseSlots, drag.ids, pointerSlot, drag.clickedId, drag.columns)
-      drag.targetSlot = pointerSlot
-      setDropTargetSlot(pointerSlot)
+      let targetSlot = pointerSlot
+      if (drag.selectionBox) {
+        const range = paletteSlotRange(drag.columns, drag.selectionBox.startSlot, drag.selectionBox.endSlot)
+        const anchorSlot = drag.baseSlots.indexOf(drag.clickedId)
+        const dx = Math.max(-range.left, Math.min(drag.columns - 1 - range.right, pointerSlot % drag.columns - anchorSlot % drag.columns))
+        const dy = Math.max(-range.top, Math.floor(pointerSlot / drag.columns) - Math.floor(anchorSlot / drag.columns))
+        const delta = dy * drag.columns + dx
+        targetSlot = anchorSlot + delta
+        setPaletteBoxSelection({ startSlot: drag.selectionBox.startSlot + delta, endSlot: drag.selectionBox.endSlot + delta })
+      }
+      const preview = repositionPaletteSlots(drag.baseSlots, drag.ids, targetSlot, drag.clickedId, drag.columns)
+      drag.targetSlot = targetSlot
+      setDropTargetSlot(targetSlot)
       if (preview.length === drag.previewSlots.length && preview.every((entryId, index) => entryId === drag.previewSlots[index])) return
       drag.previewSlots = preview
       setPalettePreviewSlots(preview)
@@ -382,9 +531,17 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       setSelectionOutlineHovered(pointerHitsPaletteSelectionOutline(event.clientX, event.clientY))
       return
     }
-    const pointerSlot = resolvePaletteSlot(event.clientX, event.clientY)
+    const pointerSlot = resolvePaletteSlot(event.clientX, event.clientY, true)
     if (pointerSlot === null || pointerSlot === gesture.lastSlot) return
     gesture.lastSlot = pointerSlot
+    // A palette drag is a selection gesture as soon as the pointer moves.
+    // Waiting for the long-press timer made quick diagonal drags select only
+    // the button where they ended.
+    if (!gesture.active && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) >= 2) {
+      gesture.active = true
+      if (gesture.longPressTimer !== null) window.clearTimeout(gesture.longPressTimer)
+      gesture.longPressTimer = null
+    }
     if (!gesture.active) return
     setPaletteBoxSelection({ startSlot: gesture.startSlot, endSlot: pointerSlot })
     setGestureSelectedIds(paletteRangeIdsBySlots(gesture.slots, gesture.columns, gesture.startSlot, pointerSlot))
@@ -462,7 +619,8 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   }
   const addCurrentColorToSlot = (slotIndex: number): void => {
     const workspace = useWorkspace.getState()
-    const id = workspace.addPaletteColor(session.primaryColor)
+    const id = workspace.addPaletteColor(session.primaryColor, paletteLayoutMode === 'manual'
+      ? { slots: paletteSlots, columns: paletteColumns, indices: [slotIndex] } : undefined)
     if (id === null) return
     if (paletteLayoutMode === 'auto') {
       if (!paletteEditLocked) {
@@ -472,9 +630,6 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       }
       return
     }
-    const withColor = addPaletteIdToSlots(paletteSlots, id, paletteColumns)
-    const placed = repositionPaletteSlots(withColor, [id], slotIndex, id, paletteColumns)
-    useWorkspace.getState().reorderPaletteColors([id], placed, paletteColumns)
     if (!paletteEditLocked) {
       setFocusedSlot(null)
       setPaletteBoxSelection(null)
@@ -486,11 +641,17 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     const previousCount = visiblePaletteCountRef.current
     const nextCount = session.document.paletteOrder.length
     visiblePaletteCountRef.current = nextCount
+    if (paletteLayoutMode === 'auto' && nextCount < previousCount) {
+      setFocusedSlot(null)
+      setPaletteBoxSelection(null)
+      setGestureSelectedIds(null)
+      return
+    }
     if (paletteEditLocked || nextCount <= previousCount) return
     setFocusedSlot(null)
     setPaletteBoxSelection(null)
     setGestureSelectedIds(null)
-  }, [paletteEditLocked, session.document.paletteOrder.length])
+  }, [paletteEditLocked, paletteLayoutMode, session.document.paletteOrder.length])
 
   useEffect(() => {
     const clearSelectionOutside = (event: PointerEvent): void => {
@@ -662,17 +823,36 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     }
   }
 
+  const importPalette = async (): Promise<void> => {
+    setOperationBusy(true)
+    try {
+      const imported = await window.moonSprite.importPalette()
+      if (!imported) return
+      upsertPalette(imported)
+      applyStoredPalette(imported)
+      store.setMessage(t('palette.imported', { name: paletteDisplayName(imported) }))
+    } catch (error) {
+      store.setMessage(error instanceof Error ? error.message : typeof error === 'string' ? error : t('palette.importFailed'))
+    } finally {
+      setOperationBusy(false)
+    }
+  }
+
   const savePaletteAsImage = async (): Promise<void> => {
     if (orderedColors.length === 0) { store.setMessage(t('palette.noColorsToSave')); return }
     setOperationBusy(true)
     try {
       const safeName = (saveName.trim() || t('palette.defaultName', { name: session.document.name })).replace(/[<>:"/\\|?*]/g, '_')
-      const result = await window.moonSprite.savePaletteImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${safeName}.png`))
+      const result = await window.moonSprite.savePaletteImage(joinDirectoryPath(outputDirectoryForOperation(loadEditorPreferences()), `${safeName}.png`))
       if (result.canceled || !result.filePath) return
       const encoded = encodePalettePng(orderedColors)
       await window.moonSprite.writeBinaryAtomic(result.filePath, encoded.bytes)
       playExportSuccessSound()
+      const preferences = loadEditorPreferences()
+      const directory = result.filePath.replace(/[\\/][^\\/]+$/, '')
+      if (directory && preferences.lastExportDirectory !== directory) saveEditorPreferences({ ...preferences, lastExportDirectory: directory })
       if (recordRecentExportPath(result.filePath)) window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
+      window.dispatchEvent(new Event('moonsprite:preferences-changed'))
       setSaveOpen(false)
       store.setMessage(t('palette.imageSaved', { path: result.filePath }))
     } catch (error) {
@@ -684,6 +864,8 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
 
   shortcutCommandHandlerRef.current = (id): void => {
     switch (id) {
+      case 'copy': void copySelectedPaletteColors(); break
+      case 'paste': void pastePaletteColorsFromClipboard(); break
       case 'togglePaletteEditLock': togglePaletteEditLock(); break
       case 'extractPaletteColors': openExtractDialog(); break
       case 'togglePaletteColorSync': togglePaletteColorSynchronization(); break
@@ -711,6 +893,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     }
   }
 
+  const swatchActions = usePaletteSwatchActions(beginPaletteDrag, addCurrentColorToSlot)
   return <><section ref={floating.ref} className={`panel palette-panel ${panelColorSampling.active ? 'panel-color-sampling' : ''} ${floating.style ? 'floating-panel' : ''}`} data-command-scope="palette" style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
     <header aria-label={t('panel.palette')} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><strong>{t('panel.palette')}</strong><span className="panel-actions palette-actions" onPointerDown={(event) => event.stopPropagation()}>
       <span ref={libraryControlRef} className="palette-library-control"><button ref={libraryButtonRef} className={libraryOpen ? 'active' : ''} title={t('palette.chooseLocal')} aria-label={t('palette.chooseLocal')} aria-expanded={libraryOpen} onClick={() => { setLibraryOpen((open) => !open); setPaletteActionsOpen(false) }}><PixelUtilityIcon kind="paletteLocal" /></button></span>
@@ -721,12 +904,27 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
       ref={swatchGridRef}
       className={`swatch-grid component-scrollbar ${selectionOutlineHovered ? 'selection-outline-hovered' : ''}`}
       style={{ '--swatch-size': `${PALETTE_SWATCH_PIXELS[swatchSize]}px`, '--palette-swatch-gap': '1px', '--palette-columns': paletteColumns, '--palette-surface-columns': paletteSurfaceColumns } as React.CSSProperties}
-      onPointerDownCapture={beginPaletteOutlineDrag}
-      onPointerMove={movePalettePointer}
-      onPointerLeave={() => { if (!dragRef.current && !selectionGestureRef.current) setSelectionOutlineHovered(false) }}
-      onPointerUp={(event) => finishPalettePointer(event.pointerId)}
-      onPointerCancel={(event) => finishPalettePointer(event.pointerId, true)}
+      onPointerEnter={spaceDragScroll.enter}
+      onPointerDownCapture={(event) => { if (!spaceDragScroll.begin(event)) beginPaletteOutlineDrag(event) }}
+      onPointerDown={(event) => {
+        if (paletteLayoutMode !== 'manual' || event.button !== 0 || (event.target as Element).closest('[data-palette-slot]')) return
+        const slot = resolvePaletteSlot(event.clientX, event.clientY)
+        if (slot !== null) beginPaletteDrag(event, slot, displayedSlots[slot] ?? null)
+      }}
+      onDoubleClick={(event) => {
+        if (paletteLayoutMode !== 'manual' || (event.target as Element).closest('[data-palette-slot]')) return
+        const slot = resolvePaletteSlot(event.clientX, event.clientY)
+        if (slot !== null) addCurrentColorToSlot(slot)
+      }}
+      onPointerMove={(event) => { if (!spaceDragScroll.move(event)) movePalettePointer(event) }}
+      onPointerLeave={() => {
+        if (!spaceDragScroll.leave() && !dragRef.current && !selectionGestureRef.current) setSelectionOutlineHovered(false)
+      }}
+      onPointerUp={(event) => { if (!spaceDragScroll.finish(event)) finishPalettePointer(event.pointerId) }}
+      onPointerCancel={(event) => { if (!spaceDragScroll.cancel(event)) finishPalettePointer(event.pointerId, true) }}
       onWheel={handlePaletteWheel}
+      onKeyDown={handlePaletteKeyDown}
+      tabIndex={0}
       onBlur={clearPaletteFocus}
     >
       <span className={`palette-swatch-grid-surface ${paletteLayoutMode === 'manual' ? 'palette-grid-manual' : paletteAutoBorders ? 'palette-grid-auto' : ''}`} style={{ '--palette-layout-columns': paletteSurfaceColumns, '--palette-layout-rows': Math.ceil(displayedSlots.length / paletteSurfaceColumns) } as React.CSSProperties}>
@@ -736,20 +934,17 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
         const roles = presentation?.roles ?? { primary: false, secondary: false }
         const selected = Boolean(entry && displayedSelectedIds.includes(entry.id))
         const label = presentation?.label ?? t('palette.emptySlot', { index: slotIndex + 1 })
-        return <span key={slotIndex} className={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''} ${paletteAutoBorders ? paletteAutoCellClass(slotIndex, paletteSurfaceColumns, displayedSlots.length) : ''}`.trim()} style={paletteLayoutMode === 'manual' ? { left: `calc(${slotIndex % paletteColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))`, top: `calc(${Math.floor(slotIndex / paletteColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))` } : undefined}><button
-          data-palette-slot={slotIndex}
-          data-palette-id={entry?.id}
+        return <PaletteSwatch key={slotIndex} slot={slotIndex} id={entry?.id}
+          wrapClassName={`palette-swatch-wrap ${entry ? 'palette-swatch-occupied' : ''} ${paletteAutoBorders ? paletteAutoCellClass(slotIndex, paletteSurfaceColumns, displayedSlots.length) : ''}`.trim()}
+          left={paletteLayoutMode === 'manual' ? `calc(${slotIndex % paletteColumns} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
+          top={paletteLayoutMode === 'manual' ? `calc(${Math.floor(slotIndex / paletteColumns)} * (var(--swatch-size) + var(--palette-swatch-gap)))` : undefined}
           className={`swatch palette-slot ${entry ? 'occupied' : 'empty'} ${focusedSlot === slotIndex ? 'focused' : ''} ${selected ? 'selected' : ''} ${roles.primary ? 'primary' : ''} ${roles.secondary ? 'secondary' : ''} ${entry?.color.a === 0 ? 'transparent' : ''} ${entry && draggingIds.includes(entry.id) ? 'dragging' : ''} ${dropTargetSlot === slotIndex ? 'drop-target' : ''}`}
-          title={label}
-          aria-label={label}
-          aria-pressed={selected}
-          style={presentation?.style}
-          onContextMenu={(event) => event.preventDefault()}
-          onPointerDown={(event) => beginPaletteDrag(event, slotIndex, entry?.id ?? null)}
-          onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); addCurrentColorToSlot(slotIndex) }}
-        /></span>
+          label={label} selected={selected} color={presentation?.style['--swatch-color']}
+          markerColor={presentation?.style['--swatch-corner-color']} actions={swatchActions}
+        />
       })}
       {paletteLineSegments.map((segment) => <span key={segment.key} data-palette-line={segment.key} className={paletteGridLineClass(segment)} hidden={segment.hidden} aria-hidden="true" style={{ '--palette-line-column': segment.column, '--palette-line-row': segment.row } as React.CSSProperties} />)}
+      {paletteLayoutMode === 'auto' && <PaletteSelectionOutline slots={displayedSlots} columns={paletteSurfaceColumns} selectedIds={displayedSelectedIds} swatchSize={PALETTE_SWATCH_PIXELS[swatchSize]} />}
       </span>
       {displayedSelectionRange && <span data-palette-selection-outline className="palette-selection-box" aria-hidden="true" style={{ '--palette-selection-left': displayedSelectionRange.left, '--palette-selection-top': displayedSelectionRange.top, '--palette-selection-width': displayedSelectionRange.right - displayedSelectionRange.left + 1, '--palette-selection-height': displayedSelectionRange.bottom - displayedSelectionRange.top + 1 } as React.CSSProperties} />}
     </div>
@@ -759,9 +954,9 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
   {libraryOpen && createPortal(
     <span ref={libraryPopoverRef} className="palette-library-popover" role="menu" aria-label={t('palette.localPalettes')} style={libraryPopoverPosition}>
       <span className="palette-library-list component-scrollbar">
-        {paletteLoading ? <span className="palette-library-state">{t('palette.loading')}</span> : paletteFiles.length === 0 ? <span className="palette-library-state">{t('palette.empty')}</span> : paletteFiles.map((palette) => <button key={palette.id} type="button" role="menuitem" className={activePaletteId === palette.id ? 'selected' : ''} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}><span className="palette-library-name">{paletteDisplayName(palette)}{palette.builtIn && <PixelUtilityIcon kind="lock" />}</span><span className="palette-library-swatches" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${Math.max(1, palette.colors.length)}, minmax(0, 1fr))` }}>{palette.colors.map((color, index) => <i key={index} style={{ background: colorCss(color) }} />)}</span></button>)}
+        {paletteLoading ? <span className="palette-library-state">{t('palette.loading')}</span> : paletteFiles.length === 0 ? <span className="palette-library-state">{t('palette.empty')}</span> : paletteFiles.map((palette) => <button key={palette.id} type="button" role="menuitem" className={activePaletteId === palette.id ? 'selected' : ''} title={t(palette.builtIn ? 'palette.builtInHint' : 'palette.userDeleteHint')} onClick={() => applyStoredPalette(palette)} onContextMenu={(event) => { event.preventDefault(); if (palette.builtIn) { store.setMessage(t('palette.builtInDeleteBlocked')); setPaletteContext(null); return } setPaletteContext({ id: palette.id, x: Math.min(event.clientX, window.innerWidth - 150), y: Math.min(event.clientY, window.innerHeight - 42) }) }}><span className="palette-library-name">{paletteDisplayName(palette)}</span><span className="palette-library-swatches" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${Math.max(1, palette.colors.length)}, minmax(0, 1fr))` }}>{palette.colors.map((color, index) => <i key={index} style={{ background: colorCss(color) }} />)}</span></button>)}
       </span>
-      <span className="palette-library-actions"><button type="button" className="quiet-button" onClick={() => { void window.moonSprite.openPaletteFolder(); setLibraryOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('palette.openUserFolder')}</span></button><button type="button" className="quiet-button" disabled={paletteLoading} onClick={() => void refreshPalettes(activePaletteId ?? undefined)}><PixelUtilityIcon kind="refresh" /><span>{t('palette.refresh')}</span></button></span>
+      <span className="palette-library-actions"><button type="button" className="quiet-button" onClick={() => { void window.moonSprite.openPaletteFolder(); setLibraryOpen(false) }}><PixelUtilityIcon kind="folderOpen" /><span>{t('palette.openUserFolder')}</span></button><button type="button" className="quiet-button" disabled={operationBusy} onClick={() => void importPalette()}><PixelUtilityIcon kind="import" /><span>{t('palette.import')}</span></button><button type="button" className="quiet-button" disabled={paletteLoading || operationBusy} onClick={() => void refreshPalettes(activePaletteId ?? undefined)}><PixelUtilityIcon kind="refresh" /><span>{t('palette.refresh')}</span></button></span>
     </span>,
     document.body
   )}

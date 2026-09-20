@@ -27,11 +27,24 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
   const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
   const timeline = currentSession.history.timeline
   const currentRef = useRef<HTMLButtonElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const defaultPosition = { x: Math.max(8, window.innerWidth - 320), y: 96, width: 300, height: 420 }
   const floating = useFloatingPanel(docked ? null : defaultPosition, false, true, 'moonsprite.history-panel.v1', true, onFloatingDock, docked)
 
   useEffect(() => {
-    currentRef.current?.scrollIntoView?.({ block: 'nearest' })
+    const current = currentRef.current, list = listRef.current
+    if (!current || !list) return
+    // Observe after layout instead of forcing the entire editor to lay out
+    // synchronously inside the history update. Scroll only this list.
+    if (typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry || !entry.rootBounds || entry.intersectionRatio >= 1) return
+      const bounds = entry.boundingClientRect, root = entry.rootBounds
+      if (bounds.top < root.top) list.scrollTop += bounds.top - root.top
+      else if (bounds.bottom > root.bottom) list.scrollTop += bounds.bottom - root.bottom
+    }, { root: list, threshold: 1 })
+    observer.observe(current)
+    return () => observer.disconnect()
   }, [historyRevision, timeline.position])
 
   const renderEntry = (position: number, label: string) => {
@@ -59,7 +72,7 @@ export function HistoryPanel({ session, docked = false, onDockDragStart, onPanel
       <button type="button" className={settingsOpen ? 'active' : ''} title={t('history.display.title')} aria-label={t('history.display.title')} aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}><PixelUtilityIcon kind="properties" /></button>
       </span>
     </header>
-    <div className="history-list component-scrollbar" role="listbox" aria-label={t('history.listAria')}>
+    <div ref={listRef} className="history-list component-scrollbar" role="listbox" aria-label={t('history.listAria')}>
       {renderEntry(0, t('history.start'))}
       {timeline.entries.filter((entry) => !hidden.includes(historyDisplayType(entry.label))).map((entry) => renderEntry(entry.position, entry.label))}
     </div>

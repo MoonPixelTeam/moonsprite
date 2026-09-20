@@ -22,6 +22,19 @@ import type {
   TimelineRowRef,
 } from '@/core/animation-timeline-identity'
 
+export interface PaletteColorTarget {
+  slots: Array<number | null>
+  columns: number
+  indices: number[]
+  selection?: { before: PaletteSelectionView; after: PaletteSelectionView }
+}
+
+export interface PaletteSelectionView {
+  columns: number
+  focusedSlot: number | null
+  boxSelection: { startSlot: number; endSlot: number } | null
+}
+
 /** Internal typed timeline selection identities. Legacy persisted arrays remain unchanged. */
 export interface TimelineSelectionIdentity {
   rows: ReadonlySet<string>
@@ -140,6 +153,7 @@ export interface TextBoxTransformState {
 export interface BrushProfile {
   inkMode: InkMode
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -193,6 +207,7 @@ export interface DocumentSession {
   primaryColor: RgbaColor
   secondaryColor: RgbaColor
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -287,6 +302,8 @@ export interface DocumentSession {
   paletteSelectionId: number | null
   paletteSecondarySelectionId: number | null
   selectedPaletteIds: number[]
+  /** A fresh value requests restoration of transient palette UI after an edit. */
+  paletteSelectionRestore?: PaletteSelectionView
   selectedGroupId: string | null
   selectedGroupIds: string[]
   selectedLayerIds: string[]

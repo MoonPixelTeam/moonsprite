@@ -7,6 +7,11 @@ export const rememberCompositeSurface = <T extends CompositeSurface>(
   maxCacheBytes: number,
   maxCachedFrames: number
 ): void => {
+  const previous = cache.get(key)
+  if (previous && previous !== value) {
+    previous.bitmap?.close()
+    previous.bitmapGeneration = (previous.bitmapGeneration ?? 0) + 1
+  }
   cache.delete(key)
   cache.set(key, value)
   let cacheBytes = [...cache.values()].reduce((total, entry) => total + entry.canvas.width * entry.canvas.height * 4, 0)
@@ -17,6 +22,7 @@ export const rememberCompositeSurface = <T extends CompositeSurface>(
     if (oldest) {
       cacheBytes -= oldest.canvas.width * oldest.canvas.height * 4
       oldest.bitmap?.close()
+      oldest.bitmapGeneration = (oldest.bitmapGeneration ?? 0) + 1
     }
     cache.delete(oldestKey)
   }

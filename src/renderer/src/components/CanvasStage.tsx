@@ -47,7 +47,7 @@ import { useCanvasColorSampling } from './useCanvasColorSampling'
 import { useCanvasMagicLifecycle } from './useCanvasMagicLifecycle'
 import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 import { useCanvasPreferences } from './useCanvasPreferences'
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
@@ -69,8 +69,8 @@ import { canvasStageIsVisible } from './canvas-stage-visibility'
 import { subscribeAnimationTweenPreview } from './animation-tween-preview'
 import { useAnimationTweenPreviewDrag } from './useAnimationTweenPreviewDrag'
 import { LineAnchorHistory } from './canvas-stage-helpers'
-import { CANVAS_VIEW_SCROLLBAR_THICKNESS, useCanvasViewScrollbars } from './useCanvasViewScrollbars'
-import { Scrollbar } from './Scrollbar'
+import { CANVAS_VIEW_SCROLLBAR_THICKNESS } from './useCanvasViewScrollbars'
+import { CanvasViewScrollbars } from './CanvasViewScrollbars'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
   const { t } = useI18n()
@@ -196,16 +196,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     selectionCanvasRef,
     requestDrawRef
   })
-  const viewScrollbars = useCanvasViewScrollbars({
-    documentId: session.document.id,
-    documentWidth: session.document.width,
-    documentHeight: session.document.height,
-    viewportWidth: session.viewportSize.width,
-    viewportHeight: session.viewportSize.height,
-    view: session.view,
-    rotationIndicatorPosition
-  })
-  const canvasStatusBottomInset = canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible
+  const [horizontalScrollbarVisible, setHorizontalScrollbarVisible] = useState(false)
+  const canvasStatusBottomInset = canvasPreferences.canvasViewScrollbarsEnabled && horizontalScrollbarVisible
     ? CANVAS_VIEW_SCROLLBAR_THICKNESS
     : 0
   const {
@@ -423,7 +415,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get cursorCompositePointSamplerFor() { return cursorCompositePointSamplerFor },
     get activeTheme() { return activeTheme },
     get scheduleDraw() { return scheduleDraw },
-    get activeToolBrushSize() { return activeToolBrushSize }
+    get activeToolBrushSize() { return activeToolBrushSize },
+    get temporaryMoveActive() { return temporaryMoveActive }
   })
 
   const {
@@ -615,6 +608,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get canvasResizeHitAt() { return canvasResizeHitAt },
     get canvasResizeContainsAt() { return canvasResizeContainsAt },
     get symmetryAxisHitAt() { return symmetryAxisHitAt },
+    get symmetryDragRef() { return symmetryDragRef },
     get temporaryMoveActive() { return temporaryMoveActive },
     get localPointAt() { return localPointAt },
     get cursorCompositePointSamplerFor() { return cursorCompositePointSamplerFor },
@@ -714,7 +708,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get checkerboard() { return checkerboard }
   })
 
-  const { magicGestureRef, magicWandWorkerRef } = useCanvasMagicLifecycle({
+  const { magicGestureRef, magicWandWorkerRef, magicPreviewFlash } = useCanvasMagicLifecycle({
     get session() { return session },
     get inputRef() { return inputRef },
     get commitPolygonShape() { return commitPolygonShape },
@@ -843,6 +837,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         canvasRef,
         inputRef,
         wheelBrushSizePreviewRef,
+        magicPreviewFlash,
         canvasResizePreviewRef,
         liveViewRef,
         zoomPreviewStartRef,
@@ -1061,6 +1056,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     get t() { return t },
     get drawSelectionOverlay() { return drawSelectionOverlay },
     get magicWandWorkerRef() { return magicWandWorkerRef },
+    get magicPreviewFlash() { return magicPreviewFlash },
     get optimizedRotationEnabled() { return optimizedRotationEnabled }
   })
 
@@ -1483,23 +1479,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
         <img ref={penCursorRef} className="stage-pen-cursor" alt="" hidden aria-hidden="true" draggable={false} />
         <span ref={adaptiveCursorRef} className="stage-pen-cursor stage-adaptive-cursor" hidden aria-hidden="true" />
         {eyedropperLens.overlay}
-        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible && <Scrollbar
-          className={`stage-view-scrollbar stage-view-scrollbar-horizontal${viewScrollbars.vertical.visible ? ' stage-view-scrollbar-with-corner' : ''}`}
-          orientation="horizontal"
-          value={viewScrollbars.horizontal.position}
-          thumbRatio={viewScrollbars.horizontal.thumbRatio}
-          ariaLabel={`${t('canvas.aria')} X`}
-          onChange={viewScrollbars.horizontal.onChange}
+        {canvasPreferences.canvasViewScrollbarsEnabled && <CanvasViewScrollbars
+          documentId={session.document.id}
+          documentWidth={session.document.width} documentHeight={session.document.height}
+          viewportWidth={session.viewportSize.width} viewportHeight={session.viewportSize.height}
+          view={session.view} rotationIndicatorPosition={rotationIndicatorPosition}
+          ariaLabel={t('canvas.aria')}
+          onHorizontalVisibilityChange={setHorizontalScrollbarVisible}
         />}
-        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.vertical.visible && <Scrollbar
-          className={`stage-view-scrollbar stage-view-scrollbar-vertical${viewScrollbars.horizontal.visible ? ' stage-view-scrollbar-with-corner' : ''}`}
-          orientation="vertical"
-          value={viewScrollbars.vertical.position}
-          thumbRatio={viewScrollbars.vertical.thumbRatio}
-          ariaLabel={`${t('canvas.aria')} Y`}
-          onChange={viewScrollbars.vertical.onChange}
-        />}
-        {canvasPreferences.canvasViewScrollbarsEnabled && viewScrollbars.horizontal.visible && viewScrollbars.vertical.visible && <span className="stage-view-scrollbar-corner" aria-hidden="true" />}
         {keyDisplayEnabled && keyDisplayEntries.length > 0 && (
           <div
             className="canvas-key-display"

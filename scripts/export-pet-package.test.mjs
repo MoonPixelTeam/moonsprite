@@ -74,17 +74,9 @@ test('manager switches all nine languages, preserves names and persists reminder
     assert.equal(dialog.options[0].description,catalogs[locale]['实际完成一次撤销后播放。']);
     await send({type:'ui-cancel-trigger'});
   }
-  await send({type:'ui-preference',key:'remindersEnabled',value:false});
-  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='clockEnabled'));
-  await send({type:'ui-preference',key:'remindersEnabled',value:true});
-  await send({type:'ui-preference',key:'unsavedEnabled',value:false});
-  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='unsavedMinutes'));
-  assert.ok(flatten(views.at(-1).nodes).some(node=>node.id==='breakMinutes'));
-  await send({type:'ui-preference',key:'breakMinutes',values:{breakMinutes:42}});
-  assert.equal(stored.get('preferences').breakMinutes,42);
-  assert.equal(stored.get('preferences').unsavedMinutes,17);
-  assert.equal(stored.get('preferences').enabled,false);
-  assert.deepEqual(errors,[]);
+  assert.equal(stored.get('preferences').breakMinutes,33);
+  assert.equal(stored.get('preferences').unsavedMinutes,17);
+ assert.deepEqual(errors,[]);
   assert.ok(messages.some(message=>message.type==='catalog'));
 });
 
@@ -327,9 +319,9 @@ test('supplementing SHOW preserves IDLE, drops unsupported slots, and rollback p
 test('manifest keeps a neutral settings launcher and runtime owns localized menus', () => {
  const manifest=vm.runInContext('manifest',context);
  assert.deepEqual(Array.from(manifest.topMenus[0].commands),['settings']);
- assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['manager']);
- assert.equal(manifest.settingsUi.controls[0].fullWidth,true);
- assert.equal(manifest.settingsUi.controls[0].closeOnRun,true);
+ assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes','manager']);
+ assert.equal(manifest.settingsUi.controls.at(-1).fullWidth,true);
+ assert.equal(manifest.settingsUi.controls.at(-1).closeOnRun,true);
  assert.ok(generated.runtimePage.includes("name:t('宠物管理…')"));
 });
 

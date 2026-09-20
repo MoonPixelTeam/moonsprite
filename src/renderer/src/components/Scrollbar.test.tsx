@@ -12,7 +12,9 @@ describe('Scrollbar', () => {
     expect(scrollbar).toHaveClass('ui-scrollbar-horizontal')
     expect(scrollbar).toHaveAttribute('aria-valuenow', '25')
     expect(thumb.style.width).toBe('40%')
-    expect(thumb.style.left).toBe('25%')
+    expect(thumb.style.left).toBe('0px')
+    expect(thumb.style.transform).toBe('translateX(-25%)')
+    expect(thumb.parentElement!.style.transform).toBe('translateX(25%)')
   })
 
   it('supports keyboard scrolling and clamps at the ends', () => {

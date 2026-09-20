@@ -87,7 +87,7 @@ export function useCanvasToolSession(ports: Ports) {
     targetSession.freeTransformActive !== true &&
     !ports.radialGradientCenterModifierActive(targetSession, event) &&
     quickMoveToolActive() &&
-    temporaryMoveToolAllowed(targetSession.tool, targetSession.moveKind) &&
+    temporaryMoveToolAllowed(targetSession.tool, targetSession.moveKind, targetSession.selectionKind) &&
     !brushLineConnectionHasPriority(event, targetSession)
 
   const selectionTransformModifierState = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>) =>

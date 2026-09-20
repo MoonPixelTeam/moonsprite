@@ -1472,7 +1472,7 @@ export const restoreAnimationCels = (document: SpriteDocument, cels: readonly An
   refreshActiveAnimationFrame(document)
 }
 
-const layerFromAnimationCel = (layer: RasterLayer | undefined, cel: AnimationCel | null): RasterLayer | null => {
+export const layerFromAnimationCel = (layer: RasterLayer | undefined, cel: AnimationCel | null): RasterLayer | null => {
   const surface = cel?.surface
   if (!layer || !surface || layer.format !== surface.format) return null
   const target: RasterLayer | null = layer.format === 'rgba' && surface.format === 'rgba'

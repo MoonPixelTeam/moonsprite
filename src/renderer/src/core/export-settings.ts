@@ -7,6 +7,7 @@ import { readStoredJson, writeStoredJson } from './storage'
 export const EXPORT_PRESETS_STORAGE_KEY = 'moonsprite.export-presets.v2'
 export const LEGACY_EXPORT_PRESETS_STORAGE_KEY = 'moonsprite.export-presets.v1'
 export const RECENT_EXPORT_PATHS_STORAGE_KEY = 'moonsprite.recent-export-paths.v1'
+export const RECENT_SAVE_PATHS_STORAGE_KEY = 'moonsprite.recent-save-paths.v1'
 export const DOCUMENT_EXPORT_SETTINGS_STORAGE_KEY = 'moonsprite.document-export-settings.v1'
 export const RECENT_EXPORTS_CHANGED_EVENT = 'moonsprite:recent-exports-changed'
 
@@ -308,8 +309,8 @@ function normalizeRecentExportPath(value: unknown): RecentExportPath | null {
   return { filePath, exportedAt }
 }
 
-export function loadRecentExportPaths(storage?: Storage): RecentExportPath[] {
-  const stored = readStoredJson<unknown>(RECENT_EXPORT_PATHS_STORAGE_KEY, null, storage)
+function loadRecentPaths(key: string, storage?: Storage): RecentExportPath[] {
+  const stored = readStoredJson<unknown>(key, null, storage)
   if (!isRecord(stored) || stored.schemaVersion !== RECENT_EXPORT_PATHS_SCHEMA_VERSION || !Array.isArray(stored.paths)) return []
   const seen = new Set<string>()
   return stored.paths.flatMap((value) => {
@@ -322,16 +323,32 @@ export function loadRecentExportPaths(storage?: Storage): RecentExportPath[] {
   }).slice(0, MAX_RECENT_EXPORT_PATHS)
 }
 
-export function recordRecentExportPath(filePath: string, storage?: Storage, now = new Date()): boolean {
+export function loadRecentExportPaths(storage?: Storage): RecentExportPath[] {
+  return loadRecentPaths(RECENT_EXPORT_PATHS_STORAGE_KEY, storage)
+}
+
+export function loadRecentSavePaths(storage?: Storage): RecentExportPath[] {
+  return loadRecentPaths(RECENT_SAVE_PATHS_STORAGE_KEY, storage)
+}
+
+function recordRecentPath(keyName: string, filePath: string, storage?: Storage, now = new Date()): boolean {
   const normalizedPath = filePath.trim()
   if (!normalizedPath) return false
   const key = normalizedPath.toLocaleLowerCase()
   const next = [
     { filePath: normalizedPath, exportedAt: now.toISOString() },
-    ...loadRecentExportPaths(storage).filter((item) => item.filePath.toLocaleLowerCase() !== key)
+    ...loadRecentPaths(keyName, storage).filter((item) => item.filePath.toLocaleLowerCase() !== key)
   ].slice(0, MAX_RECENT_EXPORT_PATHS)
-  return writeStoredJson(RECENT_EXPORT_PATHS_STORAGE_KEY, {
+  return writeStoredJson(keyName, {
     schemaVersion: RECENT_EXPORT_PATHS_SCHEMA_VERSION,
     paths: next
   } satisfies StoredRecentExportPaths, storage)
+}
+
+export function recordRecentExportPath(filePath: string, storage?: Storage, now = new Date()): boolean {
+  return recordRecentPath(RECENT_EXPORT_PATHS_STORAGE_KEY, filePath, storage, now)
+}
+
+export function recordRecentSavePath(filePath: string, storage?: Storage, now = new Date()): boolean {
+  return recordRecentPath(RECENT_SAVE_PATHS_STORAGE_KEY, filePath, storage, now)
 }

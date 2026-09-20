@@ -181,7 +181,7 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
       if (pending) restoreFloatingPreview(current)
       if (states.length > 0) {
         const edits = states.flatMap((state) => {
-          const edit = applySelectionTransformLayerState(current.document, state, target, angle, false, shear, undefined, undefined, undefined, undefined, current.selectionRotationAlgorithm === 'rotsprite')
+          const edit = applySelectionTransformLayerState(current.document, state, target, angle, pending?.copy ?? false, shear, undefined, undefined, undefined, undefined, current.selectionRotationAlgorithm === 'rotsprite')
           return edit ? [edit] : []
         })
         const primaryEdit = edits[0] ?? null
@@ -195,7 +195,7 @@ export function createSelectionPropertiesCommands({ get, set }: WorkspaceCommand
         }, false)
         return
       }
-      const edit = applySelectionTransform(current.document, source, target, angle, false, shear, undefined, undefined, layer, undefined, undefined, true, current.selectionRotationAlgorithm === 'rotsprite')
+      const edit = applySelectionTransform(current.document, source, target, angle, pending?.copy ?? false, shear, undefined, undefined, layer, undefined, undefined, true, current.selectionRotationAlgorithm === 'rotsprite')
       if (pending) {
         get().updateFloatingPastePreview(edit, after, null, target, angle, shear, false)
       } else {

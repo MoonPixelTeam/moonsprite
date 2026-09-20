@@ -56,7 +56,7 @@ export function useLayerRowDrag(options: Options) {
     if (layerDragFrameRef.current !== null) window.cancelAnimationFrame(layerDragFrameRef.current)
     layerDragFrameRef.current = null
     dragRef.current = null
-    setDraggingIds([])
+    setDraggingIds((current) => current.length === 0 ? current : [])
     setDraggingGroupId(null)
     setDraggingCopy(false)
     dropTargetRef.current = null
@@ -218,6 +218,9 @@ export function useLayerRowDrag(options: Options) {
   }
 
   const finishLayerDrag = (clientX: number, clientY: number): void => {
+    // The panel listens on window: a canvas stroke/pan also releases here.
+    // An idle gesture must not allocate state and rerender every layer row.
+    if (!dragRef.current) return
     if (useWorkspace.getState().activeId !== optionsRef.current.documentId) {
       clearTransientLayerDrag()
       return

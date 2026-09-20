@@ -757,7 +757,7 @@ export const isLayerEffectivelyVisible = (document: SpriteDocument, layer: Raste
 
 export const getPaletteEntry = (document: SpriteDocument, id: number): PaletteEntry => document.palette.find((entry) => entry.id === id) ?? transparentEntry()
 
-export function findOrAddPaletteColor(document: SpriteDocument, color: RgbaColor, addToVisiblePalette = false): number {
+export function findOrAddPaletteColor(document: SpriteDocument, color: RgbaColor, addToVisiblePalette = false, allowDuplicate = false): number {
   const addVisibleColor = (id: number): void => {
     const columns = normalizePaletteColumns(document.paletteColumns)
     const currentSlots = normalizePaletteSlots(document.palette.map((entry) => entry.id), document.paletteOrder, document.paletteSlots, columns)
@@ -771,7 +771,7 @@ export function findOrAddPaletteColor(document: SpriteDocument, color: RgbaColor
     if (addToVisiblePalette) addVisibleColor(0)
     return 0
   }
-  const existing = document.palette.find((entry) => colorEquals(entry.color, color))
+  const existing = allowDuplicate ? undefined : document.palette.find((entry) => colorEquals(entry.color, color))
   if (existing) {
     if (addToVisiblePalette) addVisibleColor(existing.id)
     return existing.id

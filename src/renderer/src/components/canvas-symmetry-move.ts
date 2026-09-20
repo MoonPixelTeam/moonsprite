@@ -17,16 +17,25 @@ export function createCanvasSymmetryMove(ports: {
     if (symmetryDrag) {
       if (!symmetryAxisDragAllowed(symmetryAxisPreferences.locked, event.ctrlKey)) {
         const pointerId = symmetryDrag.pointerId
+        if (symmetryDrag.previewFrame !== null) cancelAnimationFrame(symmetryDrag.previewFrame)
         symmetryDragRef.current = null
         if (event.currentTarget.hasPointerCapture(pointerId)) event.currentTarget.releasePointerCapture(pointerId)
         updateCursor(event)
         return true
       }
       const point = localContinuousPointAt(event.clientX, event.clientY)
-      if (point)
-        useWorkspace.getState().setSymmetryCenter(moveSymmetryCenter(symmetryCenter, symmetryDrag.axis, point, session.document.width, session.document.height))
+      if (point) {
+        const nextCenter = moveSymmetryCenter(symmetryDrag.center ?? symmetryCenter, symmetryDrag.axis, point, session.document.width, session.document.height)
+        symmetryDrag.center = nextCenter
+        if (symmetryDrag.previewFrame !== null) cancelAnimationFrame(symmetryDrag.previewFrame)
+        symmetryDrag.previewFrame = requestAnimationFrame(() => {
+          if (symmetryDragRef.current !== symmetryDrag) return
+          symmetryDrag.previewFrame = null
+          useWorkspace.getState().previewSymmetryCenter(symmetryDrag.center)
+          scheduleDraw()
+        })
+      }
       event.currentTarget.style.cursor = canvasCursors.move
-      scheduleDraw()
       return true
     }
     return false

@@ -15,6 +15,7 @@ import { tileRepeatContinuousPreviewPlacements } from '@/core/tilemap'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 import { BrushPreviewStackCache, BrushPreviewCompositeCache, brushBaseAngle } from './canvas-stage-helpers'
+import { brushOpacityScale } from '@/core/pressure'
 export function renderCanvasBrush({
   currentActiveLayer,
   currentSession,
@@ -241,7 +242,8 @@ export function renderCanvasBrush({
 
       if (directFullPreview) {
         const displayColor = resolveLayerCanvasColor(document, currentActiveLayer, currentSession.primaryColor)
-        context.fillStyle = `rgb(${displayColor.r} ${displayColor.g} ${displayColor.b} / ${displayColor.a / 255})`
+        const previewColor = { ...displayColor, a: Math.round(displayColor.a * brushOpacityScale(1, currentSession.brushOpacity)) }
+        context.fillStyle = `rgb(${previewColor.r} ${previewColor.g} ${previewColor.b} / ${previewColor.a / 255})`
         context.beginPath()
         for (const row of rowBounds) {
           if (row.y < 0 || row.y >= document.height) continue

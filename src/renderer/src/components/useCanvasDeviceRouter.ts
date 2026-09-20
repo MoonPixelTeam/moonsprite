@@ -21,6 +21,7 @@ import {
   PointerPressureAdapter,
   clampCanvasZoom as clampZoom,
   createCanvasPanDrag,
+  isCanvasViewNavigationDrag,
   isCanvasViewNavigationTool,
   normalizeCanvasWheelDelta,
   wheelCanvasZoom,
@@ -35,6 +36,23 @@ export const retainsCanvasCursorOverlayOnLeave = (
 ): boolean => {
   if (drag?.kind === 'marquee' || drag?.kind === 'lasso' || drag?.kind === 'polygon-lasso') return true
   return (drag?.kind === 'draw' || drag?.kind === 'tile-draw' || drag?.kind === 'move-content' || drag?.kind === 'move-selection') && tileRepeatMode !== 'off'
+}
+
+/** A secondary press during a primary drawing gesture cancels that in-flight gesture. */
+export const cancelsActiveCanvasDrawWithRightClick = (
+  event: Pick<PointerEvent, 'button' | 'buttons'>,
+  drag: CanvasInputState['drag']
+): boolean => {
+  return event.button === 2 && cancelsActiveCanvasDrawWhileRightHeld(event, drag)
+}
+
+/** Browsers report a second mouse button during a captured stroke as pointermove, not pointerdown. */
+export const cancelsActiveCanvasDrawWhileRightHeld = (
+  event: Pick<PointerEvent, 'buttons'>,
+  drag: CanvasInputState['drag']
+): boolean => {
+  if ((event.buttons & 3) !== 3 || !drag) return false
+  return !isCanvasViewNavigationDrag(drag)
 }
 
 interface Ports {
@@ -296,6 +314,18 @@ export function useCanvasDeviceRouter(ports: Ports) {
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down', pointerType: event.pointerType }))
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
+    if (cancelsActiveCanvasDrawWithRightClick(event.nativeEvent, ports.inputRef.current.drag)) {
+      // Do this before the normal right-click mapping so the secondary press
+      // cannot start a second tool gesture while the primary stroke is being
+      // rolled back.
+      ports.cancelActiveCanvasInteraction()
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      ports.hideEyedropperMagnifier()
+      event.preventDefault()
+      event.stopPropagation()
+      ports.updateCursor(event)
+      return
+    }
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
     // device ownership before accepting the new interaction.
     ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
@@ -328,6 +358,15 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
+    if (cancelsActiveCanvasDrawWhileRightHeld(event.nativeEvent, ports.inputRef.current.drag)) {
+      ports.cancelActiveCanvasInteraction()
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      ports.hideEyedropperMagnifier()
+      event.preventDefault()
+      event.stopPropagation()
+      ports.updateCursor(event)
+      return
+    }
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (!ports.inputRef.current.temporaryRightClickAction) {
       if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)

@@ -19,6 +19,7 @@ import {
   PROJECT_BACKUP_RETENTION_DAYS_PREFERENCE_KEY,
   PROJECT_BACKUP_DIRECTORY_PREFERENCE_KEY,
   PROJECT_BACKUP_VERSIONS_PREFERENCE_KEY,
+  PASTE_TARGET_PREFERENCE_KEY,
   MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY,
   SAVE_FORMAT_PREFERENCE_KEY,
   imageExportKindForPreference,
@@ -35,6 +36,7 @@ import {
   parseCursorColorMode,
   parseUiScale,
   parseViewDragSensitivity,
+  parsePasteTarget,
   saveEditorPreferences,
   saveImageKindForPreference
 } from './file-preferences'
@@ -59,6 +61,15 @@ describe('editor preferences boundary', () => {
     saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, canvasViewScrollbarsEnabled: false }, storage)
     expect(storage.getItem(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY)).toBe('false')
     expect(loadEditorPreferences(storage).canvasViewScrollbarsEnabled).toBe(false)
+  })
+
+  it('remembers the default paste target and normalizes unsupported values', () => {
+    const storage = memoryStorage()
+    expect(loadEditorPreferences(storage).pasteTarget).toBe('current-cell')
+    expect(parsePasteTarget('unsupported')).toBe('current-cell')
+    saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, pasteTarget: 'new-layer' }, storage)
+    expect(storage.getItem(PASTE_TARGET_PREFERENCE_KEY)).toBe('new-layer')
+    expect(loadEditorPreferences(storage).pasteTarget).toBe('new-layer')
   })
 
   it('defaults to unlimited steps and remembers the count while the limit is off', () => {
@@ -192,6 +203,10 @@ describe('editor preferences boundary', () => {
       ...DEFAULT_EDITOR_PREFERENCES,
       saveFormat: 'psd',
       exportFormat: 'psd',
+      saveLocationMode: 'recent',
+      exportLocationMode: 'recent',
+      lastSaveDirectory: 'D:/recent-saves',
+      lastExportDirectory: 'D:/recent-exports',
       uiScale: 1.5,
       bodyFontScale: 1.15,
       viewDragSensitivity: 1.5,
@@ -222,6 +237,11 @@ describe('editor preferences boundary', () => {
     const loaded = loadEditorPreferences(storage)
     expect(loaded.saveFormat).toBe('psd')
     expect(loaded.exportFormat).toBe('psd')
+    expect(loaded.pasteTarget).toBe('current-cell')
+    expect(loaded.saveLocationMode).toBe('recent')
+    expect(loaded.exportLocationMode).toBe('recent')
+    expect(loaded.lastSaveDirectory).toBe('D:/recent-saves')
+    expect(loaded.lastExportDirectory).toBe('D:/recent-exports')
     expect(loaded.uiScale).toBe(1.5)
     expect(loaded.bodyFontScale).toBe(1.15)
     expect(loaded.viewDragSensitivity).toBe(1.5)

@@ -5,7 +5,60 @@ import { CanvasInputState } from '@/core/canvas-input'
 import { DEFAULT_TABLET_PREFERENCES, RIGHT_CLICK_ACTIONS } from '@/core/file-preferences'
 import type { DocumentSession } from '@/store/workspace'
 import { withDeviceTemporaryTool } from './canvas-device-tools'
-import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
+import { cancelsActiveCanvasDrawWhileRightHeld, cancelsActiveCanvasDrawWithRightClick, useCanvasDeviceRouter } from './useCanvasDeviceRouter'
+
+it('cancels only an active non-navigation gesture when the right button joins a left-button gesture', () => {
+  expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 3 }, { kind: 'draw' } as never)).toBe(true)
+  expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 2 }, { kind: 'draw' } as never)).toBe(false)
+  expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 3 }, { kind: 'pan' } as never)).toBe(false)
+  expect(cancelsActiveCanvasDrawWhileRightHeld({ buttons: 3 }, { kind: 'draw' } as never)).toBe(true)
+})
+
+it('cancels when the browser reports the joined right button through pointer movement', () => {
+  const input = new CanvasInputState()
+  input.drag = { kind: 'draw', start: { x: 0, y: 0 }, last: { x: 0, y: 0 } }
+  const cancelActiveCanvasInteraction = vi.fn()
+  const handlePointerMove = vi.fn()
+  const session = { document: { id: 'cancel-draw-move-test' }, tool: 'pencil' } as DocumentSession
+  const ports = {
+    inputRef: { current: input }, session, canvasRef: { current: document.createElement('canvas') },
+    tabletPreferences: DEFAULT_TABLET_PREFERENCES, liveInputSession: () => session,
+    cancelActiveCanvasInteraction, handlePointerMove, hideEyedropperMagnifier: vi.fn(), updateCursor: vi.fn()
+  } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]
+  const { result, unmount } = renderHook(() => useCanvasDeviceRouter(ports))
+  const nativeEvent = { pointerId: 9, pointerType: 'mouse', button: -1, buttons: 3, timeStamp: performance.now() }
+  const event = { ...nativeEvent, nativeEvent, currentTarget: { hasPointerCapture: vi.fn(() => false), releasePointerCapture: vi.fn() }, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactPointerEvent<HTMLCanvasElement>
+
+  act(() => result.current.pointerMove(event))
+
+  expect(cancelActiveCanvasInteraction).toHaveBeenCalledOnce()
+  expect(handlePointerMove).not.toHaveBeenCalled()
+  expect(event.preventDefault).toHaveBeenCalledOnce()
+  unmount()
+})
+
+it('rolls back an in-flight draw instead of routing the joined right click to a tool', () => {
+  const input = new CanvasInputState()
+  input.drag = { kind: 'draw', start: { x: 0, y: 0 }, last: { x: 0, y: 0 } }
+  const cancelActiveCanvasInteraction = vi.fn()
+  const handlePointerDown = vi.fn()
+  const session = { document: { id: 'cancel-draw-test' }, tool: 'pencil' } as DocumentSession
+  const ports = {
+    inputRef: { current: input }, session, canvasRef: { current: document.createElement('canvas') },
+    tabletPreferences: DEFAULT_TABLET_PREFERENCES, liveInputSession: () => session,
+    cancelActiveCanvasInteraction, handlePointerDown, hideEyedropperMagnifier: vi.fn(), updateCursor: vi.fn()
+  } as unknown as Parameters<typeof useCanvasDeviceRouter>[0]
+  const { result, unmount } = renderHook(() => useCanvasDeviceRouter(ports))
+  const nativeEvent = { pointerId: 9, pointerType: 'mouse', button: 2, buttons: 3, timeStamp: performance.now() }
+  const event = { ...nativeEvent, nativeEvent, currentTarget: { hasPointerCapture: vi.fn(() => false), releasePointerCapture: vi.fn() }, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactPointerEvent<HTMLCanvasElement>
+
+  act(() => result.current.pointerDown(event))
+
+  expect(cancelActiveCanvasInteraction).toHaveBeenCalledOnce()
+  expect(handlePointerDown).not.toHaveBeenCalled()
+  expect(event.preventDefault).toHaveBeenCalledOnce()
+  unmount()
+})
 
 it('keeps each right-click action active through down/move/up and restores the original tool', () => {
   for (const action of RIGHT_CLICK_ACTIONS) {

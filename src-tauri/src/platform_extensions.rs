@@ -335,6 +335,8 @@ struct ExtensionState {
     enabled: BTreeMap<String, bool>,
     #[serde(default)]
     seeded_builtin: HashSet<String>,
+    #[serde(default)]
+    builtin_revisions: BTreeMap<String, BTreeMap<String, (u32, u64)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -360,11 +362,11 @@ fn extension_directory() -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-/// Installs the bundled pet once through the ordinary package installer.
+/// Installs or updates bundled extensions through the ordinary atomic installer.
 ///
 /// The seed state is distinct from the enabled state so the companion behaves
-/// exactly like a user-installed extension after its first installation: users
-/// can disable or uninstall it without it being restored on every launch.
+/// can remain disabled or uninstalled across application updates. Content revisions
+/// detect same-version bundle changes and migrate older seed-only state.
 pub(crate) fn ensure_builtin_extensions() -> Result<(), String> {
     let directory = extension_directory()?;
     ensure_builtin_extension_at(
@@ -380,7 +382,17 @@ fn ensure_builtin_extension_at(
     package: &[u8],
 ) -> Result<(), String> {
     let mut state = read_state(directory)?;
-    if state.seeded_builtin.contains(extension_id) {
+    let installed_path = installed_extension_path(directory, extension_id)?;
+    let installed = match fs::symlink_metadata(&installed_path) {
+        Ok(_) => {
+            ensure_safe_directory(&installed_path)?;
+            true
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(format!("无法访问内置扩展：{error}")),
+    };
+    // A previously seeded but absent extension was uninstalled by the user.
+    if state.seeded_builtin.contains(extension_id) && !installed {
         return Ok(());
     }
 
@@ -388,25 +400,43 @@ fn ensure_builtin_extension_at(
     if inspection.manifest.id != extension_id {
         return Err("内置扩展包 ID 与预期不一致。".to_string());
     }
-
-    let installed_path = installed_extension_path(directory, extension_id)?;
-    if installed_path.exists() {
+    // ZIP CRC and uncompressed size are a content revision, not an authenticity check.
+    // Names are sorted so archive ordering and compression changes do not force updates.
+    let mut archive = ZipArchive::new(io::Cursor::new(package))
+        .map_err(|error| format!("无法读取内置扩展修订信息：{error}"))?;
+    let mut revision = BTreeMap::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index)
+            .map_err(|error| format!("无法读取内置扩展修订项：{error}"))?;
+        if !entry.is_dir() {
+            revision.insert(entry.name().to_string(), (entry.crc32(), entry.size()));
+        }
+    }
+    if installed {
         let manifest = manifest_from_directory(&installed_path)?;
         if manifest.id != extension_id {
             return Err("已安装扩展的 ID 与内置扩展不一致。".to_string());
         }
-    } else {
-        let package_path =
-            directory.join(format!(".bundled-{extension_id}-{}.msext", unique_suffix()));
-        atomic_write(&package_path, package)?;
-        let install_result = install_extension_at(&package_path, directory);
-        fs::remove_file(&package_path)
-            .map_err(|error| format!("无法清理内置扩展安装包：{error}"))?;
-        install_result?;
+        if state.builtin_revisions.get(extension_id) == Some(&revision) {
+            return Ok(());
+        }
+    }
+
+    let package_path =
+        directory.join(format!(".bundled-{extension_id}-{}.msext", unique_suffix()));
+    atomic_write(&package_path, package)?;
+    let install_result = install_extension_at(&package_path, directory);
+    let cleanup_result = fs::remove_file(&package_path)
+        .map_err(|error| format!("无法清理内置扩展安装包：{error}"));
+    match (install_result, cleanup_result) {
+        (Err(install), Err(cleanup)) => return Err(format!("{install}；{cleanup}")),
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+        (Ok(_), Ok(())) => {}
     }
 
     state = read_state(directory)?;
     state.seeded_builtin.insert(extension_id.to_string());
+    state.builtin_revisions.insert(extension_id.to_string(), revision);
     write_state(directory, &state)
 }
 
@@ -1968,7 +1998,7 @@ mod tests {
         let bytes = archive(&[
             (
                 "manifest.json",
-                br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","settingsEntry":"settings.html","runtime":{"entry":"runtime.html","permissions":["runtime","resources","windows"],"resources":{"window":"window.html","image":"image.png"}},"commands":[{"id":"show","name":"Show","runtimeEvent":"show"},{"id":"settings","name":"Settings","opensSettings":true}],"menuItems":[{"id":"menu","name":"Example","menu":"window","commands":["show","settings"]}]}"#,
+                br#"{"schemaVersion":2,"apiVersion":"1.0.0","id":"com.example.runtime","name":"Runtime","version":"1.0.0","settingsEntry":"settings.html","runtime":{"entry":"runtime.html","permissions":["runtime","commands","resources","windows"],"resources":{"window":"window.html","image":"image.png"}},"commands":[{"id":"show","name":"Show","runtimeEvent":"show"},{"id":"settings","name":"Settings","opensSettings":true}],"menuItems":[{"id":"menu","name":"Example","menu":"window","commands":["show","settings"]}]}"#,
             ),
             ("runtime.html", b"<!doctype html>"),
             ("settings.html", b"<!doctype html>"),
@@ -1976,6 +2006,59 @@ mod tests {
             ("image.png", b"opaque runtime resource"),
         ]);
         assert!(inspect_archive(Cursor::new(bytes)).is_ok());
+    }
+
+    #[test]
+    fn bundled_update_migrates_legacy_state_and_preserves_disabled_settings() -> Result<(), String> {
+        let directory = temporary_directory();
+        let id = "com.example.bundled";
+        let metadata = manifest(id);
+        let old = archive(&[("manifest.json", &metadata), ("main.lua", b"return 1")]);
+        let new = archive(&[("manifest.json", &metadata), ("main.lua", b"return 2")]);
+        super::ensure_builtin_extension_at(&directory, id, &old)?;
+        super::set_extension_enabled_at(&directory, id, false)?;
+        let mut legacy = super::read_state(&directory)?;
+        legacy.builtin_revisions.clear();
+        super::write_state(&directory, &legacy)?;
+        let settings = directory.join("user-pet-settings.json");
+        fs::write(&settings, b"preserved").map_err(|error| error.to_string())?;
+
+        super::ensure_builtin_extension_at(&directory, id, &new)?;
+        let state = super::read_state(&directory)?;
+        assert_eq!(state.enabled.get(id), Some(&false));
+        assert!(state.builtin_revisions.contains_key(id));
+        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 2");
+        assert_eq!(fs::read(&settings).map_err(|error| error.to_string())?, b"preserved");
+
+        // An unchanged bundle must not replace the installation on every launch.
+        fs::write(directory.join(id).join("main.lua"), b"manual edit").map_err(|error| error.to_string())?;
+        super::ensure_builtin_extension_at(&directory, id, &new)?;
+        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"manual edit");
+        let third = archive(&[("manifest.json", &metadata), ("main.lua", b"return 3")]);
+        super::ensure_builtin_extension_at(&directory, id, &third)?;
+        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 3");
+        assert_eq!(super::read_state(&directory)?.enabled.get(id), Some(&false));
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn bundled_update_failure_and_uninstall_do_not_restore_or_damage_existing_data() -> Result<(), String> {
+        let directory = temporary_directory();
+        let id = "com.example.bundled";
+        let metadata = manifest(id);
+        let old = archive(&[("manifest.json", &metadata), ("main.lua", b"return 1")]);
+        let new = archive(&[("manifest.json", &metadata), ("main.lua", b"return 2")]);
+        super::ensure_builtin_extension_at(&directory, id, &old)?;
+        let state_before = fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?;
+        assert!(super::ensure_builtin_extension_at(&directory, id, b"broken zip").is_err());
+        let invalid = archive(&[("manifest.json", &metadata)]);
+        assert!(super::ensure_builtin_extension_at(&directory, id, &invalid).is_err());
+        assert_eq!(fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?, state_before);
+        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 1");
+        super::uninstall_extension_at(&directory, id)?;
+        super::ensure_builtin_extension_at(&directory, id, &new)?;
+        assert!(!directory.join(id).exists());
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())
     }
 
     #[test]

@@ -990,6 +990,31 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerUp(first, { pointerId: 8, clientX: 101, clientY: 10 })
   })
 
+  it('continues scrolling the timeline while extending a frame range at its horizontal edge', () => {
+    vi.useFakeTimers()
+    const document = createDocument('animation frame range edge auto scroll', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const session = useWorkspace.getState().sessions[0]
+    const { container } = render(<LayersPanel session={session} docked />)
+    const list = container.querySelector<HTMLElement>('.layer-animation-list')!
+    const first = container.querySelector<HTMLElement>(`[data-animation-frame-id="${timeline.frames[0].id}"]`)!
+    vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(1_000)
+    vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(200)
+    vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200, top: 0, bottom: 120, width: 200, height: 120, x: 0, y: 0, toJSON: () => ({}) })
+
+    fireEvent.pointerDown(first, { button: 0, pointerId: 9, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(first, { pointerId: 9, clientX: 199, clientY: 10 })
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBeGreaterThan(18)
+
+    fireEvent.pointerUp(first, { pointerId: 9, clientX: 199, clientY: 10 })
+    const stoppedAt = list.scrollLeft
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBe(stoppedAt)
+  })
+
 
 
 

@@ -107,7 +107,11 @@ export function createCanvasPointerUp(ports: Ports) {
       }
     }
     if (symmetryDragRef.current) {
+      const drag = symmetryDragRef.current
+      const finalCenter = drag.center
+      if (drag.previewFrame !== null) cancelAnimationFrame(drag.previewFrame)
       symmetryDragRef.current = null
+      if (finalCenter) useWorkspace.getState().setSymmetryCenter(finalCenter)
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       updateCursor(event)
       draw()

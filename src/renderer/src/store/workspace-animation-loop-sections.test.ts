@@ -243,6 +243,38 @@ describe('workspace animation loop sections', () => {
     expect(document.dirty).toBe(false)
   })
 
+  it('resumes a paused loop section from its current playback position', () => {
+    const document = createDocument('resume paused loop', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const [firstFrame, secondFrame, thirdFrame] = timeline.frames
+    const loopId = useWorkspace.getState().createAnimationLoopSection({
+      name: 'Bounce',
+      startFrameId: firstFrame.id,
+      endFrameId: thirdFrame.id,
+      direction: 'ping-pong',
+      repeatCount: null
+    })!
+
+    useWorkspace.getState().playAnimationLoopSection(loopId)
+    useWorkspace.getState().advanceAnimationFrame()
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(thirdFrame.id)
+
+    useWorkspace.getState().setAnimationPlaying(false)
+    expect(useWorkspace.getState().sessions[0]).toMatchObject({
+      animationPlaying: false,
+      animationPlaybackLoopSectionId: loopId
+    })
+    useWorkspace.getState().setAnimationPlaying(true)
+
+    expect(timeline.activeFrameId).toBe(thirdFrame.id)
+    useWorkspace.getState().advanceAnimationFrame()
+    expect(timeline.activeFrameId).toBe(secondFrame.id)
+  })
+
   it('repeats a nested loop before resuming and repeating its outer loop', () => {
     const document = createDocument('nested loop playback', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)

@@ -9,12 +9,12 @@ import { decodeDocumentFileAsync, encodeDocumentForPath, encodeDocumentForSource
 import { documentSaveTarget, documentSaveCompatibility, type DocumentSaveFormat, type SaveCompatibilityIssue } from '@/core/document-save-policy'
 import { decodePng, exportDocumentImage, exportDocumentSliceImage, type SaveImageKind } from '@/core/png'
 import { sliceExportFileName } from '@/core/slices'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadEditorPreferences, outputDirectoryForOperation, saveDirectoryForNewDocument, saveEditorPreferences } from '@/core/file-preferences'
 import { translate, translateCurrent as tr } from '@/core/localization'
 import { exportAnimationGif } from '@/core/gif'
 import { encodeTimelapseVideo, isTimelapseVideoFormat, type TimelapseExportOptions } from '@/core/timelapse'
 import { normalizeTimelapseSettings } from '@/core/project-metadata'
-import { RECENT_EXPORTS_CHANGED_EVENT, exportFileExtension, parentDirectoryFromPath, recordRecentExportPath, saveDocumentExportSettings, withExportFileExtension, type DocumentExportSettings } from '@/core/export-settings'
+import { RECENT_EXPORTS_CHANGED_EVENT, exportFileExtension, parentDirectoryFromPath, recordRecentExportPath, recordRecentSavePath, saveDocumentExportSettings, withExportFileExtension, type DocumentExportSettings } from '@/core/export-settings'
 import { acceptProjectSaveBaseline, encodeProjectAsync, encodeProjectSaveAsync, registerProjectSaveBaseline, type ProjectDecodeReport } from '@/core/project-format'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
 import { compositeRegion, compositeRegionAsync } from '@/core/document-composite'
@@ -172,13 +172,32 @@ async function writeDocumentPngAtomicResponsive(
 async function resolveBatchExportDirectory(api: MoonSpriteApi, requestedDirectory?: string): Promise<string | null> {
   const directory = requestedDirectory?.trim()
   if (directory) return directory
-  const result = await api.chooseDirectory(loadEditorPreferences().exportDirectory)
+  const result = await api.chooseDirectory(outputDirectoryForOperation(loadEditorPreferences()))
   return result.canceled || !result.directoryPath ? null : result.directoryPath
 }
 
+function rememberSavePath(filePath: string): void {
+  const directory = parentDirectoryFromPath(filePath)
+  if (!directory) return
+  const preferences = loadEditorPreferences()
+  if (preferences.lastSaveDirectory !== directory) saveEditorPreferences({ ...preferences, lastSaveDirectory: directory })
+  recordRecentSavePath(filePath)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+  }
+}
+
 function rememberExportPath(filePath: string): void {
-  if (!recordRecentExportPath(filePath)) return
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
+  const directory = parentDirectoryFromPath(filePath)
+  if (!directory) return
+  const preferences = loadEditorPreferences()
+  if (preferences.lastExportDirectory !== directory) saveEditorPreferences({ ...preferences, lastExportDirectory: directory })
+  recordRecentExportPath(filePath)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(RECENT_EXPORTS_CHANGED_EVENT))
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+  }
 }
 
 function rememberLastDocumentExport(document: SpriteDocument, options: ExportOptions | undefined, actual: Pick<DocumentExportSettings, 'name' | 'format' | 'scalePercent' | 'target' | 'directory' | 'layerId' | 'trim' | 'trimMode'>): void {
@@ -346,6 +365,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
           request.lifecycle?.onWriteStart?.()
           await request.api.writeBinaryAtomic(currentTarget.filePath, data)
         }
+        rememberSavePath(currentTarget.filePath)
         return { filePath: currentTarget.filePath, revision: source.revision, setDocumentFilePath: Boolean(source.document.filePath) }
       }
       if (!forceProject) return null
@@ -362,7 +382,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
     const imageFormat = selectedFormat === 'moonsprite' ? null : selectedFormat
     const fallbackName = sanitizeFileStem(initial.document.name, 'MoonSprite-export')
     const requestedName = sanitizeFileStem(request.options?.name ?? fallbackName, fallbackName)
-    const saveDirectory = request.options?.directory?.trim() || loadEditorPreferences().saveDirectory
+    const saveDirectory = request.options?.directory?.trim() || saveDirectoryForNewDocument(loadEditorPreferences())
     const requestedDirectory = request.options?.directory?.trim()
     let filePath = forceProject ? null : initial.document.filePath
     if ((!filePath || request.saveAs) && requestedDirectory) {
@@ -393,6 +413,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
         const data = await encodeProjectAsync(portable, { onProgress: request.lifecycle?.onEncodeProgress })
         request.lifecycle?.onWriteStart?.()
         await request.api.writeBinaryAtomic(filePath, data)
+        rememberSavePath(filePath)
         return { filePath, revision: source.revision, setDocumentFilePath: true }
       }
       const encoded = await encodeProjectSaveAsync(source.document, { onProgress: request.lifecycle?.onEncodeProgress })
@@ -424,6 +445,7 @@ export function saveDocumentFile(request: SaveDocumentRequest): Promise<SaveDocu
       }
     }
     const result = { filePath, revision: source.revision, setDocumentFilePath: true }
+    rememberSavePath(filePath)
     if (!imageFormat && !request.saveAs && !request.options) savedGenerations.set(result, generation)
     return result
   })()
@@ -558,7 +580,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
     const selectedDirectory = options.directory?.trim()
     let path = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
     if (!path) {
-      const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${requestedName}.${extension}`), dialogFormat)
+      const result = await api.exportImage(joinDirectoryPath(outputDirectoryForOperation(loadEditorPreferences()), `${requestedName}.${extension}`), dialogFormat)
       if (result.canceled || !result.filePath) return null
       path = result.filePath.toLowerCase().endsWith(`.${extension}`) ? result.filePath : `${result.filePath}.${extension}`
     }
@@ -800,7 +822,7 @@ export async function exportDocumentFile(api: MoonSpriteApi, document: SpriteDoc
   const selectedDirectory = options?.directory?.trim()
   let path = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
   if (!path) {
-    const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${requestedName}.${extension}`), dialogFormat)
+    const result = await api.exportImage(joinDirectoryPath(outputDirectoryForOperation(loadEditorPreferences()), `${requestedName}.${extension}`), dialogFormat)
     if (result.canceled || !result.filePath) return null
     path = result.filePath.toLowerCase().endsWith(`.${extension}`) ? result.filePath : `${result.filePath}.${extension}`
   }
@@ -927,7 +949,7 @@ export async function exportTimelapseFile(api: MoonSpriteApi, document: SpriteDo
   const selectedDirectory = options.directory?.trim()
   let selectedPath = selectedDirectory ? joinDirectoryPath(selectedDirectory, `${requestedName}.${extension}`) : ''
   if (!selectedPath) {
-    const result = await api.exportImage(joinDirectoryPath(loadEditorPreferences().exportDirectory, `${requestedName}.${extension}`), format)
+    const result = await api.exportImage(joinDirectoryPath(outputDirectoryForOperation(loadEditorPreferences()), `${requestedName}.${extension}`), format)
     if (result.canceled || !result.filePath) return null
     selectedPath = result.filePath
   }

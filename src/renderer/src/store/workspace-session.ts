@@ -59,6 +59,7 @@ export const copyCanvasToolSettings = (source: DocumentSession, target: Document
     primaryColor: { ...source.primaryColor },
     secondaryColor: { ...source.secondaryColor },
     brushSize: source.brushSize,
+    brushOpacity: source.brushOpacity,
     brushShape: source.brushShape,
     brushAngle: source.brushAngle,
     brushDither: structuredClone(source.brushDither),
@@ -186,6 +187,7 @@ export const selectedTransformLayersAreEditable = (
 export const brushProfileFromSession = (session: DocumentSession): BrushProfile => ({
   inkMode: session.inkMode,
   brushSize: session.brushSize,
+  brushOpacity: session.brushOpacity,
   brushShape: session.brushShape,
   brushAngle: session.brushAngle,
   brushDither: { ...(session.brushDither ?? defaultToolSettings.brushDither) },
@@ -206,6 +208,7 @@ export const brushProfileFromSession = (session: DocumentSession): BrushProfile 
 export const applyBrushProfile = (session: DocumentSession, profile: BrushProfile): void => {
   session.inkMode = profile.inkMode
   session.brushSize = profile.brushSize
+  session.brushOpacity = profile.brushOpacity
   session.brushShape = profile.brushShape
   session.brushAngle = profile.brushAngle
   session.brushDither = { ...profile.brushDither }
@@ -248,6 +251,7 @@ function persistedBrushProfileFromSession(profile: BrushProfile): PersistedBrush
   return {
     inkMode: profile.inkMode,
     brushSize: profile.brushSize,
+    brushOpacity: profile.brushOpacity,
     brushShape: profile.brushShape,
     brushAngle: profile.brushAngle,
     brushDither: { ...profile.brushDither },
@@ -404,6 +408,7 @@ export const sessionFromDocument = (document: SpriteDocument): DocumentSession =
     primaryColor: document.palette.find((entry) => entry.id !== 0)?.color ?? defaultColor,
     secondaryColor: defaultSecondary,
     brushSize: settings.brushSize,
+    brushOpacity: settings.brushOpacity,
     brushShape: settings.brushShape,
     brushAngle: settings.brushAngle,
     brushDither: { ...settings.brushDither },

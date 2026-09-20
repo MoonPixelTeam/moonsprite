@@ -18,9 +18,12 @@ export function Scrollbar({ ariaLabel, className = '', orientation, thumbRatio, 
   const normalizedValue = clampUnit(value)
   const normalizedRatio = clampUnit(thumbRatio)
   const horizontal = orientation === 'horizontal'
+  // Translate a track-sized carrier and counter-translate the thumb by its
+  // own size. This retains min-thumb sizing without changing layout on pan.
+  const carrierStyle = { transform: `translate${horizontal ? 'X' : 'Y'}(${normalizedValue * 100}%)` }
   const thumbStyle = horizontal
-    ? { left: `${normalizedValue * 100}%`, width: `${normalizedRatio * 100}%`, transform: `translateX(-${normalizedValue * 100}%)` }
-    : { top: `${normalizedValue * 100}%`, height: `${normalizedRatio * 100}%`, transform: `translateY(-${normalizedValue * 100}%)` }
+    ? { left: 0, width: `${normalizedRatio * 100}%`, transform: `translateX(-${normalizedValue * 100}%)` }
+    : { top: 0, height: `${normalizedRatio * 100}%`, transform: `translateY(-${normalizedValue * 100}%)` }
 
   const pointerCoordinate = (event: PointerEvent<HTMLDivElement>): number => horizontal ? event.clientX : event.clientY
   const updateFromPointer = (event: PointerEvent<HTMLDivElement>, offset: number): void => {
@@ -95,6 +98,8 @@ export function Scrollbar({ ariaLabel, className = '', orientation, thumbRatio, 
     onLostPointerCapture={(event) => { if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null }}
     onContextMenu={(event) => event.preventDefault()}
   >
-    <span ref={thumbRef} className="ui-scrollbar-thumb" style={thumbStyle as CSSProperties} />
+    <span className="ui-scrollbar-carrier" style={carrierStyle}>
+      <span ref={thumbRef} className="ui-scrollbar-thumb" style={thumbStyle as CSSProperties} />
+    </span>
   </div>
 }

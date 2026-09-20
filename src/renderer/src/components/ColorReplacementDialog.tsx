@@ -28,8 +28,10 @@ export function ColorReplacementDialog({ onClose }: { onClose: () => void }) {
   const activeId = useWorkspace((state) => state.activeId)
   const session = sessions.find((item) => item.document.id === activeId) ?? null
   const documentId = useRef(session?.document.id ?? null)
-  const [sourceColor, setSourceColor] = useState<RgbaColor>(() => copyColor(WHITE))
-  const [replacementColor, setReplacementColor] = useState<RgbaColor>(() => copyColor(WHITE))
+  // Each dialog mount starts from the editor's two active swatches. Keep the
+  // values local afterwards so sampling and manual edits remain independent.
+  const [sourceColor, setSourceColor] = useState<RgbaColor>(() => copyColor(session?.primaryColor ?? WHITE))
+  const [replacementColor, setReplacementColor] = useState<RgbaColor>(() => copyColor(session?.secondaryColor ?? WHITE))
   const [target, setTarget] = useState<DialogTarget>('layers')
   // Replacement previews are opt-in because large documents and multi-frame
   // targets can make each parameter change expensive.

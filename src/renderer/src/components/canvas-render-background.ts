@@ -64,12 +64,13 @@ export function createCanvasBackground({
     context.fillStyle = `rgb(${checkerboard.lightColor.r} ${checkerboard.lightColor.g} ${checkerboard.lightColor.b})`
     context.fillRect(boundary.left, boundary.top, boundary.width, boundary.height)
     if (checkerCell >= 2) {
-      const integerCell = Number.isInteger(checkerCell)
-      const tileKey = `${checkerCell}:${checkerboard.lightColor.r},${checkerboard.lightColor.g},${checkerboard.lightColor.b}:${checkerboard.darkColor.r},${checkerboard.darkColor.g},${checkerboard.darkColor.b}`
+      const tileKey = `checker-v2:${checkerboard.lightColor.r},${checkerboard.lightColor.g},${checkerboard.lightColor.b}:${checkerboard.darkColor.r},${checkerboard.darkColor.g},${checkerboard.darkColor.b}`
       let pattern: CanvasPattern | null = null
-      if (integerCell && typeof context.createPattern === 'function') {
+      if (typeof context.createPattern === 'function') {
         let tile = checkerboardTileRef.current
-        const tileSize = Math.max(1, Math.round(checkerCell))
+        // A fixed tile also covers fractional zoom. Rebuilding or individually
+        // drawing thousands of small squares stalls navigation at overview scale.
+        const tileSize = 1
         if (!tile || tile.key !== tileKey || tile.canvas.width !== tileSize * 2 || tile.canvas.height !== tileSize * 2) {
           const canvas = new OffscreenCanvas(tileSize * 2, tileSize * 2)
           const tileContext = canvas.getContext('2d')
@@ -84,9 +85,10 @@ export function createCanvasBackground({
           checkerboardTileRef.current = tile
         }
         pattern = context.createPattern(tile.canvas, 'repeat')
-        pattern?.setTransform(new DOMMatrix([1, 0, 0, 1, copy.originX, copy.originY]))
+        pattern?.setTransform(new DOMMatrix([checkerCell, 0, 0, checkerCell, copy.originX, copy.originY]))
       }
       if (pattern) {
+        context.imageSmoothingEnabled = false
         context.fillStyle = pattern
         context.fillRect(copy.originX, copy.originY, renderCanvasWidth, renderCanvasHeight)
       } else {

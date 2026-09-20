@@ -1,6 +1,7 @@
 import { animationSlotRange } from '@/core/animation-slot-selection'
 import { createLayerMaskRowRenderer } from './LayerMaskRow'
 import { LayerTreeRows } from './LayerTreeRows'
+import { useLayerPanelLiveControls } from './useLayerPanelLiveControls'
 import { LayerTimelineCells } from './LayerTimelineCells'
 import { useLayerPanelPreferences, layerLabelWidthLimits } from './useLayerPanelPreferences'
 import { useLayerSelectionGuides } from './useLayerSelectionGuides'
@@ -31,6 +32,7 @@ import { FreeTileInstanceLayers } from '@/components/panels/FreeTileInstanceLaye
 import { FreeTileInstancePanelSettings } from '@/components/panels/FreeTileInstancePanelSettings'
 import { useTimelineThumbnailContentSync, ActiveFrameSync } from './layer-timeline-thumbnails'
 import { layoutAnimationLoopSections, timelineWithLoopSectionPreview } from './layer-timeline-layout'
+import { useSpaceDragScroll } from '@/components/useSpaceDragScroll'
 export function LayersPanel({
   session,
   docked = false,
@@ -64,15 +66,10 @@ export function LayersPanel({
   useTimelineThumbnailContentSync(session.document.id)
   const blendOptions = layerBlendOptions(t)
   const store = useWorkspace.getState()
-  const timelineActiveContext = useWorkspace(
-    (state) => state.sessions.find((item) => item.document.id === session.document.id)?.timelineActiveContext ?? session.timelineActiveContext
-  )
-  const liveLayers = useWorkspace(
-    (state) => state.sessions.find((item) => item.document.id === session.document.id)?.document.layers ?? session.document.layers
-  )
-  const liveAutoLinkById = new Map(liveLayers.map((layer) => [layer.id, layer.autoLinkAnimationCels === true]))
+  const { timelineActiveContext, liveAutoLinkById } = useLayerPanelLiveControls(session)
   const layerStyleClipboard = useWorkspace((state) => state.layerStyleClipboard)
   const layerListRef = useRef<HTMLDivElement>(null)
+  const spaceDragScroll = useSpaceDragScroll(layerListRef)
 
   const animationGestures = useAnimationGestures({
     session,
@@ -954,6 +951,12 @@ export function LayersPanel({
               } as CSSProperties
             }
             onScroll={syncAnimationLoopSectionScroll}
+            onPointerEnter={spaceDragScroll.enter}
+            onPointerDownCapture={(event) => { spaceDragScroll.begin(event) }}
+            onPointerMove={(event) => { spaceDragScroll.move(event) }}
+            onPointerLeave={() => { spaceDragScroll.leave() }}
+            onPointerUp={(event) => { spaceDragScroll.finish(event) }}
+            onPointerCancel={(event) => { spaceDragScroll.cancel(event) }}
             onPointerDown={(event) => {
               if (event.target === event.currentTarget) clearSelectionFromBlank()
             }}

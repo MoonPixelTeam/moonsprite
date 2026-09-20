@@ -379,7 +379,7 @@ export function useCanvasRenderEngine(ports: Ports) {
     ports.session.selectionPivot?.x,
     ports.session.selectionPivot?.y,
     ports.session.outlinePreview,
-    ports.session.brushSize,
+    // useCanvasBrushOverlay owns size-only redraws, including modifier sizing.
     ports.session.brushShape,
     ports.session.brushAngle,
     ports.activeBrushDither?.enabled,

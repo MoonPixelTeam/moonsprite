@@ -61,7 +61,7 @@ export function SaveAsDialog({ initialName, initialFormat, initialDirectory, exp
         <FormField className="export-file-field" label={t('saveAs.fileName')} hint={<span className="export-selected-directory" title={selectedDirectory}>{t('saveAs.selectedDirectory', { path: selectedDirectory })}</span>}>
           <div className="export-file-control">
             <TextInput autoFocus aria-label={t('saveAs.fileName')} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={initialDirectory} open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />
+            <FileLocationPicker directory={selectedDirectory} defaultDirectory={initialDirectory} localGalleryDirectory={initialDirectory} recentPathKind="save" open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => setForm((current) => ({ ...current, directory }))} disabled={saving} />
           </div>
         </FormField>
         <div className="export-primary-fields">

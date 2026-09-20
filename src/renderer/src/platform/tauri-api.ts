@@ -94,6 +94,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   sampleWindowColor: async () => null,
   sampleWindowColorRegion: async () => null,
   listPalettes: async () => ({ directoryPath: 'palettes', palettes: [...browserPalettes.values()].map(cloneStoredPalette) }),
+  importPalette: async () => null,
   savePalette: async (requestedId, name, colors, columns, slots) => {
     const id = requestedId ?? browserPaletteId(name)
     const palette: StoredPalette = { id, name, filePath: `palettes/${id}.palette.json`, builtIn: false, colors: colors.map((color: RgbaColor) => ({ ...color })), columns, slots: [...slots] }
@@ -447,6 +448,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   sampleWindowColor: (clientX, clientY) => invoke<RgbaColor>('sample_window_color', { clientX, clientY }),
   sampleWindowColorRegion: (clientX, clientY, radius) => invoke<RgbaColor[]>('sample_window_color_region', { clientX, clientY, radius }),
   listPalettes: () => invoke('list_palettes'),
+  importPalette: () => invoke('import_palette'),
   savePalette: (id, name, colors, columns, slots) => invoke('save_palette', { id, name, colors, columns, slots }),
   deletePalette: (id) => invoke('delete_palette', { id }),
   openPaletteFolder: () => invoke('open_palette_folder'),

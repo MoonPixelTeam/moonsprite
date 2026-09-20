@@ -16,10 +16,46 @@ interface BlogPost { id: string; date: string; title: string; excerpt: string; s
 interface BlogContent { title: string; subtitle: string; backToList: string; readMore: string; posts: BlogPost[] }
 interface FooterColumn { title: string; items: { key: string; label: string }[] }
 interface FeatureCard { title: string; body: string; icon: string }
+export interface MarketContent {
+  title: string
+  subtitle: string
+  shelfEyebrow: string
+  shelfTitle: string
+  shelfBody: string
+  animations: Record<string, string>
+  pets: Record<string, string>
+  categories: { all: string; pets: string; assets: string; bundles: string }
+  search: string
+  searchHint: string
+  sort: string
+  sortOptions: { featured: string; priceAsc: string; priceDesc: string }
+  count: (visible: number, total: number) => string
+  empty: { title: string; body: string; action: string }
+  card: { details: string; add: string; owned: string; save: string; bundleOf: (count: number) => string; valueOf: (price: string) => string; loops: (count: number) => string }
+  detail: {
+    back: string
+    eyebrow: string
+    preview: string
+    includes: string
+    bundleContents: string
+    specs: string
+    formats: string
+    size: string
+    license: string
+    licenseBody: string
+    buy: string
+    related: string
+    frames: (count: number) => string
+    notFound: string
+  }
+  cart: { title: string; open: string; close: string; empty: string; subtotal: string; remove: string; increase: string; decrease: string; checkout: string; checkoutSoon: string; note: string; continue: string; clear: string }
+  trust: { title: string; license: string; updates: string; refunds: string }
+  support: { title: string; body: string; link: string }
+}
 
 export interface Copy {
   meta: { title: string; description: string }
-  nav: { work: string; features: string; docs: string; faq: string; blog: string; community: string; menu: string; close: string }
+  nav: { work: string; features: string; market: string; docs: string; faq: string; blog: string; community: string; menu: string; close: string }
   common: { dev: string; steam: string; steamSoon: string; github: string; themeToLight: string; themeToDark: string }
   chrome: { docLabel: string }
   hero: { title: string; subtitle: string; description: string; platform: string; license: string; windowTitle: string; imageAlt: string; prevSlide: string; nextSlide: string }
@@ -30,6 +66,7 @@ export interface Copy {
   docsPage: DocsContent
   faqPage: FaqContent
   blogPage: BlogContent
+  marketPage: MarketContent
 }
 
 const docs: Record<Language, DocsContent> = {
@@ -831,13 +868,142 @@ const blog: Record<Language, BlogContent> = {
   },
 }
 
+const marketPage: Record<Language, MarketContent> = {
+  zh: {
+    title: '市场',
+    subtitle: '为 MoonSprite 准备的资产包与宠物包。买下即用：导入后在软件里直接编辑每一帧。',
+    shelfEyebrow: 'MARKET / 热门资产包',
+    shelfTitle: '热门资产包',
+    shelfBody: '卖得最好的瓦片、界面、角色与图标包。每个包都按像素网格绘制，导入后直接在软件里编辑。',
+    animations: { idle: '待机', walk: '行走', run: '奔跑', sit: '坐下', sleep: '睡觉', celebrate: '庆祝', hurt: '受击' },
+    pets: { slime: '月史莱姆', cat: '像素猫', mushroom: '蘑菇仔', dragon: '幼龙', wolf: '月狼', wisp: '游魂', phoenix: '小火凤' },
+    categories: { all: '全部', pets: '宠物包', assets: '资产包', bundles: '捆绑包' },
+    search: '搜索包',
+    searchHint: '输入包名或关键词，例如“瓦片”“宠物”。',
+    sort: '排序',
+    sortOptions: { featured: '推荐顺序', priceAsc: '价格从低到高', priceDesc: '价格从高到低' },
+    count: (visible, total) => `显示 ${visible} / ${total} 个包`,
+    empty: { title: '没有匹配的包。', body: '换一个关键词，或者把分类切回“全部”。', action: '清空筛选' },
+    card: {
+      details: '查看详情',
+      add: '加入购物车',
+      owned: '已在购物车',
+      save: '省',
+      bundleOf: (count) => `包含 ${count} 个包`,
+      valueOf: (price) => `单独购买 ${price}`,
+      loops: (count) => `${count} 组动画`,
+    },
+    detail: {
+      back: '返回市场',
+      eyebrow: 'MARKET / 包详情',
+      preview: '动画预览',
+      includes: '包含内容',
+      bundleContents: '这个捆绑包含哪些包',
+      specs: '规格与授权',
+      formats: '文件格式',
+      size: '规格',
+      license: '授权',
+      licenseBody: '个人与商业项目均可使用，不限作品数量；不得转售或再分发原始资源。',
+      buy: '把想买的包放进购物车，正式发布后一键结算。',
+      related: '其他包',
+      frames: (count) => `${count} 帧`,
+      notFound: '找不到这个包。',
+    },
+    cart: {
+      title: '购物车',
+      open: '打开购物车',
+      close: '关闭购物车',
+      empty: '购物车是空的。先挑一个包，它就会出现在这里。',
+      subtotal: '小计',
+      remove: '移除',
+      increase: '增加一份',
+      decrease: '减少一份',
+      checkout: '去结算',
+      checkoutSoon: '结算通道随正式发布开放',
+      note: 'Beta 期间先把想买的包放进购物车，正式发布后即可一键结算。',
+      continue: '继续浏览',
+      clear: '清空购物车',
+    },
+    trust: {
+      title: '购买说明',
+      license: '一次购买，个人与商业项目都能用；原始资源不得转售。',
+      updates: '已购资产包的后续更新免费，会出现在软件的更新通道里。',
+      refunds: '发布后提供 14 天无理由退款；结算前会再次展示许可条款。',
+    },
+    support: { title: '找不到想要的包？', body: '告诉我们你缺什么素材，或者提交你做的包。社区渠道与 GitHub Discussions 都可以。', link: '前往社区' },
+  },
+  en: {
+    title: 'Market',
+    subtitle: 'Asset packs and pet packs for MoonSprite. Buy once, then edit every frame inside the app.',
+    shelfEyebrow: 'MARKET / POPULAR ASSET PACKS',
+    shelfTitle: 'Popular asset packs',
+    shelfBody: 'The tiles, interface, character, and icon packs people buy most. Everything is drawn on a pixel grid and stays editable once it is in the app.',
+    animations: { idle: 'Idle', walk: 'Walk', run: 'Run', sit: 'Sit', sleep: 'Sleep', celebrate: 'Celebrate', hurt: 'Hurt' },
+    pets: { slime: 'Moon slime', cat: 'Pixel cat', mushroom: 'Mushroom kid', dragon: 'Wyrmling', wolf: 'Moon wolf', wisp: 'Wisp', phoenix: 'Ember phoenix' },
+    categories: { all: 'All packs', pets: 'Pet packs', assets: 'Asset packs', bundles: 'Bundles' },
+    search: 'Search packs',
+    searchHint: 'Try a pack name or a keyword such as “tiles” or “pet”.',
+    sort: 'Sort',
+    sortOptions: { featured: 'Featured order', priceAsc: 'Price: low to high', priceDesc: 'Price: high to low' },
+    count: (visible, total) => `Showing ${visible} of ${total} packs`,
+    empty: { title: 'No packs match.', body: 'Try another keyword, or switch the category back to all packs.', action: 'Clear filters' },
+    card: {
+      details: 'View details',
+      add: 'Add to cart',
+      owned: 'In cart',
+      save: 'Save',
+      bundleOf: (count) => `${count} packs included`,
+      valueOf: (price) => `Bought separately ${price}`,
+      loops: (count) => `${count} animation loops`,
+    },
+    detail: {
+      back: 'Back to market',
+      eyebrow: 'MARKET / PACK',
+      preview: 'Animation preview',
+      includes: 'What is inside',
+      bundleContents: 'What this bundle contains',
+      specs: 'Spec and license',
+      formats: 'Formats',
+      size: 'Spec',
+      license: 'License',
+      licenseBody: 'Personal and commercial projects, no title limit. Reselling or redistributing the source assets is not allowed.',
+      buy: 'Stage the packs you want in the cart; one-click checkout opens with the official release.',
+      related: 'Other packs',
+      frames: (count) => `${count} frames`,
+      notFound: 'That pack does not exist.',
+    },
+    cart: {
+      title: 'Cart',
+      open: 'Open cart',
+      close: 'Close cart',
+      empty: 'Your cart is empty. Pick a pack and it lands here.',
+      subtotal: 'Subtotal',
+      remove: 'Remove',
+      increase: 'Add one more',
+      decrease: 'Remove one',
+      checkout: 'Checkout',
+      checkoutSoon: 'Checkout opens at release',
+      note: 'During the beta you can stage the packs you want here; one-click checkout opens with the official release.',
+      continue: 'Keep browsing',
+      clear: 'Empty cart',
+    },
+    trust: {
+      title: 'Before you buy',
+      license: 'Buy once, use it in personal and commercial projects. Reselling the source assets is not allowed.',
+      updates: 'Updates to the packs you own are free and arrive through the app’s update channel.',
+      refunds: 'A 14-day no-questions refund applies after release, and the license is shown again before checkout.',
+    },
+    support: { title: 'Missing a pack?', body: 'Tell us what art you need, or submit a pack of your own through the community channels or GitHub Discussions.', link: 'Go to the community' },
+  },
+}
+
 export const copy: Record<Language, Copy> = {
   zh: {
     meta: {
       title: 'MoonSprite - Windows 像素画工作台',
       description: 'MoonSprite 是面向 Windows 的原创源码可见像素画工作台。绘制、制作动画并管理完整创作流程。',
     },
-    nav: { work: '作品', features: '功能', docs: '文档', faq: 'FAQ', blog: '博客', community: '社区', menu: '打开导航', close: '关闭导航' },
+    nav: { work: '作品', features: '功能', market: '市场', docs: '文档', faq: 'FAQ', blog: '博客', community: '社区', menu: '打开导航', close: '关闭导航' },
     common: { dev: 'Beta 开发中', steam: '在 Steam 加入愿望单', steamSoon: '即将登陆 Steam', github: '查看 GitHub', themeToLight: '切换到白天模式', themeToDark: '切换到黑夜模式' },
     chrome: { docLabel: '未命名工程' },
     hero: {
@@ -918,10 +1084,11 @@ export const copy: Record<Language, Copy> = {
     docsPage: docs.zh,
     faqPage: faqPage.zh,
     blogPage: blog.zh,
+    marketPage: marketPage.zh,
   },
   en: {
     meta: { title: 'MoonSprite - Pixel Art Workstation for Windows', description: 'MoonSprite is an original source-available pixel art workstation for Windows, built for drawing, animation, and a complete creative workflow.' },
-    nav: { work: 'Artwork', features: 'Features', docs: 'Docs', faq: 'FAQ', blog: 'Blog', community: 'Community', menu: 'Open navigation', close: 'Close navigation' },
+    nav: { work: 'Artwork', features: 'Features', market: 'Market', docs: 'Docs', faq: 'FAQ', blog: 'Blog', community: 'Community', menu: 'Open navigation', close: 'Close navigation' },
     common: { dev: 'Beta in development', steam: 'Wishlist on Steam', steamSoon: 'Coming soon to Steam', github: 'View on GitHub', themeToLight: 'Switch to light mode', themeToDark: 'Switch to dark mode' },
     chrome: { docLabel: 'Untitled project' },
     hero: {
@@ -1002,5 +1169,6 @@ export const copy: Record<Language, Copy> = {
     docsPage: docs.en,
     faqPage: faqPage.en,
     blogPage: blog.en,
+    marketPage: marketPage.en,
   },
 }

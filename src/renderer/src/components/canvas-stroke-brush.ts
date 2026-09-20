@@ -7,7 +7,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { advanceIsoAlignedStrokeSegment, traceIsoGridPointerEdges, updateIsoAlignedStrokePath } from '@/core/isometric'
 import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
-import { isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
+import { brushOpacityScale, isPressurePointerType, resolveBrushDynamics, smoothBrushSizeEnvelope } from '@/core/pressure'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { brushAngleWithDynamics } from './canvas-stage-helpers'
 
@@ -51,7 +51,8 @@ export function createCanvasStrokeBrush(session: DocumentSession, preferences: S
   previousPressure?: number
   ): { size: number; opacityScale: number; gradientAmount: number | null; angle: number } => {
     const resolved = resolveBrushDynamics(session.brushDynamics, { pointerType, pressure, speed, pressureAvailable: pressureAvailable && (!isPressurePointerType(pointerType) || tabletPreferences.pressureEnabled), previousPressure }, session.brushSize)
-    return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
+    const opacityScale = brushOpacityScale(resolved.opacityScale, session.brushOpacity)
+    return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize, opacityScale } : { ...resolved, opacityScale }
   }
 
   const sameRgbaColor = (left: RgbaColor, right: RgbaColor): boolean => left.r === right.r && left.g === right.g && left.b === right.b && left.a === right.a

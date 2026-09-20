@@ -86,6 +86,7 @@ interface Ports {
   readonly canvasResizeHitAt: (clientX: number, clientY: number) => DragState['canvasEdge'] | null
   readonly canvasResizeContainsAt: (clientX: number, clientY: number) => boolean
   readonly symmetryAxisHitAt: (clientX: number, clientY: number, ctrlHeld?: boolean) => SymmetryAxis | 'center' | null
+  readonly symmetryDragRef?: import('react').RefObject<import('./canvas-stage-helpers').SymmetryDragState | null>
   readonly temporaryMoveActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, targetSession?: DocumentSession) => boolean
   readonly localPointAt: (clientX: number, clientY: number, allowOutsideCopies?: boolean) => Point | null
   readonly cursorCompositePointSamplerFor: (currentSession: DocumentSession) => (x: number, y: number) => RgbaColor
@@ -275,6 +276,14 @@ export function useCanvasCursor(ports: Ports) {
   const updateCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {
     const canvas = ports.canvasRef.current
     if (!canvas) return
+    // The symmetry-axis drag owns the pointer until release. Keep this ahead
+    // of hover/tool resolution so pointer-capture events cannot briefly reset
+    // the cursor when the moving axis leaves its original hit area.
+    if (ports.symmetryDragRef?.current) {
+      ports.inputRef.current.sampling = false
+      canvas.style.cursor = canvasCursors.move
+      return
+    }
     if (ports.inputRef.current.spaceHeld) {
       ports.inputRef.current.sampling = false
       const drag = ports.inputRef.current.drag
@@ -359,6 +368,13 @@ export function useCanvasCursor(ports: Ports) {
       return
     }
     const brushSizeAdjustmentPreviewActive = Boolean(ports.inputRef.current.modifierBrushSize)
+    if (brushSizeAdjustmentPreviewActive && !activeDrag) {
+      // The modifier gesture uses this fixed cursor in canvas-pointer-move.
+      // Do not sample the layer stack for a contrast color that it overwrites.
+      ports.inputRef.current.sampling = false
+      canvas.style.cursor = canvasToolCursor('pencil', ports.session.primaryColor)
+      return
+    }
     if (
       !ports.inputRef.current.drag &&
       !brushSizeAdjustmentPreviewActive &&
@@ -491,7 +507,7 @@ export function useCanvasCursor(ports: Ports) {
     const temporaryMove =
       !freeTransformActive &&
       temporaryMoveRequested &&
-      temporaryMoveForCanvasInteractionAllowed(ports.session.tool, ports.session.moveKind, rawSelectionHit, addingToSelection)
+      temporaryMoveForCanvasInteractionAllowed(ports.session.tool, ports.session.moveKind, rawSelectionHit, addingToSelection, ports.session.selectionKind)
     const selectionModifierActive = shiftKey
     const selectionHit = selectionModifierActive
       ? 'outside'
@@ -509,6 +525,7 @@ export function useCanvasCursor(ports: Ports) {
           : ports.activeLayerEditable
       )
     const selectionCopyAvailable =
+      !temporaryMove &&
       ports.session.tool === 'selection' &&
       !altActive &&
       ctrlActive &&

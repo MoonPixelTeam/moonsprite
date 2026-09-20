@@ -4,12 +4,10 @@ import { documentDiagnosticDetail } from '../core/document-diagnostics'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
 import { shouldRenderPixelGrid } from '@/core/grid'
-import { animationLoopSectionAtFrame } from '@/core/animation-loop-sections'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { layerMovePreviewActive, type CanvasDragState as DragState } from '@/core/canvas-input'
 import { colorLuminance } from '@/core/canvas-visuals'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
-import { onionSkinFrameRefs } from '@/core/onion-skin'
 import { parseAnimationCelKey } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
 import { readTilesetTilePixels, tilemapCellBounds } from '@/core/tilemap'
@@ -22,15 +20,11 @@ import { drawAnimationTweenPreview } from './animation-tween-preview'
 export function renderCanvasContent({
   repeatCopies,
   isolatedLayerMask,
-  timelineHidden,
-  onionSkin,
   currentSession,
-  onionSkinCacheRef,
   context,
   renderCanvasWidth,
   renderCanvasHeight,
   view,
-  onionSkinInvalidation,
   smoothPixelSampling,
   deviceScale,
   compositeCacheRef,
@@ -62,36 +56,11 @@ export function renderCanvasContent({
     toY: number
   }[]
   isolatedLayerMask: import('@shared/types-layer').LayerMask | null
-  timelineHidden: boolean
-  onionSkin: import('@/core/file-preferences').OnionSkinPreferences
   currentSession: DocumentSession
-  onionSkinCacheRef: React.RefObject<import('@/components/onion-skin-composite-cache').OnionSkinCompositeCache>
   context: RasterContext2D
   renderCanvasWidth: number
   renderCanvasHeight: number
   view: import('@shared/types-view').ViewState
-  onionSkinInvalidation:
-    | {
-        kind: 'full'
-        fromRevision: number
-        revision: number
-        frameId: undefined
-      }
-    | ({
-        kind: 'full'
-      } & {
-        fromRevision: number
-        revision: number
-      })
-    | ({
-        kind: 'region'
-        frameId?: string
-        rect: SelectionRect
-      } & {
-        fromRevision: number
-        revision: number
-      })
-    | null
   smoothPixelSampling: boolean
   deviceScale: import('@/core/canvas-render-plan').CanvasDeviceScale
   compositeCacheRef: React.RefObject<import('@/components/canvas-composite-cache').CanvasCompositeCache>
@@ -137,32 +106,6 @@ export function renderCanvasContent({
   let paintedMoveLayerFlash: MoveLayerClickFlash | null = null
   for (const copy of repeatCopies) {
     if (copy.toX <= copy.fromX || copy.toY <= copy.fromY) continue
-    if (!isolatedLayerMask && !timelineHidden && onionSkin.enabled && (!currentSession.animationPlaying || onionSkin.showDuringPlayback)) {
-      const timeline = currentSession.document.animation
-      if (timeline && timeline.frames.length > 1) {
-        const loopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
-        const refs = onionSkinFrameRefs(timeline, onionSkin.previousFrames, onionSkin.nextFrames, loopSection)
-        onionSkinCacheRef.current.draw({
-          context,
-          document: currentSession.document,
-          refs,
-          style: onionSkin,
-          originX: copy.originX,
-          originY: copy.originY,
-          canvasWidth: renderCanvasWidth,
-          canvasHeight: renderCanvasHeight,
-          fromX: copy.fromX,
-          fromY: copy.fromY,
-          toX: copy.toX,
-          toY: copy.toY,
-          zoom: view.zoom,
-          revision: currentSession.contentRevision,
-          invalidation: onionSkinInvalidation,
-          imageSmoothingEnabled: smoothPixelSampling,
-          devicePixelRatio: deviceScale
-        })
-      }
-    }
     const compositeStarted = isWorkspaceResizing() ? performance.now() : 0
     measureRuntimeDiagnostic(
       'canvas.composite',
@@ -226,7 +169,7 @@ export function renderCanvasContent({
     if (compositeStarted) recordWorkspaceResizeStage('composite', performance.now() - compositeStarted)
     context.save()
     clipCanvasCopy(context, copy)
-    drawAnimationTweenPreview(context, document.id, copy.originX, copy.originY, view.zoom, deviceScale)
+    drawAnimationTweenPreview(context, currentSession.document.id, copy.originX, copy.originY, view.zoom, deviceScale)
     context.restore()
     const textPreview = textToolPreviewRef.current
     if (textPreview?.format === 'rgba') {

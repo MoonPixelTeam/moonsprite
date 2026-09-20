@@ -148,6 +148,36 @@ export const paletteRangeIdsBySlots = (slots: readonly (number | null)[], column
   return result
 }
 
+export type PaletteSelectionBoundarySide = 'top' | 'right' | 'bottom' | 'left'
+export interface PaletteSelectionBoundaryEdge {
+  slot: number
+  side: PaletteSelectionBoundarySide
+}
+
+/** Returns only the outer edges of selected occupied slots, including turns. */
+export const paletteSelectionBoundaryEdges = (
+  slots: readonly (number | null)[],
+  columns: number,
+  selectedIds: readonly number[]
+): PaletteSelectionBoundaryEdge[] => {
+  const normalizedColumns = normalizePaletteColumns(columns)
+  const selected = new Set(selectedIds)
+  const isSelected = (slot: number): boolean => {
+    const id = slots[slot]
+    return id !== null && id !== undefined && selected.has(id)
+  }
+  const edges: PaletteSelectionBoundaryEdge[] = []
+  for (let slot = 0; slot < slots.length; slot += 1) {
+    if (!isSelected(slot)) continue
+    const column = slot % normalizedColumns
+    if (!isSelected(slot - normalizedColumns)) edges.push({ slot, side: 'top' })
+    if (column === normalizedColumns - 1 || !isSelected(slot + 1)) edges.push({ slot, side: 'right' })
+    if (!isSelected(slot + normalizedColumns)) edges.push({ slot, side: 'bottom' })
+    if (column === 0 || !isSelected(slot - 1)) edges.push({ slot, side: 'left' })
+  }
+  return edges
+}
+
 export const repositionPaletteSlots = (
   slots: readonly (number | null)[],
   ids: readonly number[],

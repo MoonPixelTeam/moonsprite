@@ -19,7 +19,7 @@ import { isWorkspaceResizing, recordWorkspaceResizeStage, recordWorkspaceResizeC
 import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { activeLayerMask, activePaintLayer, selectedTransformLayersAreEditable } from '@/store/workspace-session'
-import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { deferredSelectionPreviewOwner, temporaryMoveSuppressesToolPreview } from '@/core/canvas-input'
 import { presentCanvasClickFlash } from './canvas-click-flash'
@@ -47,6 +47,7 @@ export interface CanvasRenderContext {
     canvasRef: React.RefObject<HTMLCanvasElement | null>
     inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
     wheelBrushSizePreviewRef: React.RefObject<boolean>
+    magicPreviewFlash: import('./canvas-magic-preview-flash').CanvasMagicPreviewFlash
     canvasResizePreviewRef: React.RefObject<import('@/store/workspace-types').CanvasResizePreview | null>
     liveViewRef: React.RefObject<import('@shared/types-view').ViewState>
     zoomPreviewStartRef: React.RefObject<import('@shared/types-view').ViewState | null>
@@ -544,6 +545,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canvasRef,
     inputRef,
     wheelBrushSizePreviewRef,
+    magicPreviewFlash,
     canvasResizePreviewRef,
     liveViewRef,
     zoomPreviewStartRef,
@@ -722,10 +724,6 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     activeDrag?.kind === 'rotate-view' ||
     zoomPreviewStartRef.current !== null
   const pixelSamplingQuality: ImageSmoothingQuality = viewPreviewActive ? 'low' : 'high'
-  const onionSkinInvalidation =
-    currentSession.selectedAnimationFrameIds.length > 1 && currentSession.contentInvalidation
-      ? { ...currentSession.contentInvalidation, frameId: undefined }
-      : currentSession.contentInvalidation
   const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition, deviceScale)
   const { rotated, viewport, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY } = renderPlan
   let context: RasterContext2D = displayContext
@@ -758,7 +756,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   // Rounding each floating-point copy origin independently can make the
   // right edge of one copy differ from the left edge of its neighbour by a
   // physical pixel, which shows up as a transient seam during previews.
-  const baseCanvasBoundary = deviceAlignedCanvasRect(deviceAlignedCoordinate(originX, deviceScale.x), deviceAlignedCoordinate(originY, deviceScale.y), canvasWidth, canvasHeight, deviceScale)
+  const baseCanvasBoundary = renderPlan.canvasBoundary
   const renderCanvasWidth = baseCanvasBoundary.width
   const renderCanvasHeight = baseCanvasBoundary.height
   const repeatOffsets = tileRepeatOffsetsForViewport(viewport, originX, originY, canvasWidth, canvasHeight, view.tileRepeatMode ?? 'off')
@@ -810,22 +808,22 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     isoGuideTileRef
   })
   checkpoint('background')
+  const displayDocument = !isolatedLayerMask && !timelineHidden &&
+    (!currentSession.animationPlaying || onionSkin.showDuringPlayback)
+    ? onionSkinCacheRef.current.displayDocument(document, currentActiveLayer.id, currentSession.contentRevision, onionSkin)
+    : document
   const { paintedMoveLayerFlash } = renderCanvasContent({
     repeatCopies,
     isolatedLayerMask,
-    timelineHidden,
-    onionSkin,
     currentSession,
-    onionSkinCacheRef,
     context,
     renderCanvasWidth,
     renderCanvasHeight,
     view,
-    onionSkinInvalidation,
     smoothPixelSampling,
     deviceScale,
     compositeCacheRef,
-    document,
+    document: displayDocument,
     pixelSamplingQuality,
     viewPreviewActive,
     activeDrag,
@@ -859,7 +857,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   } = createCanvasPreviewPixels({
     currentSession,
     compositePointSamplerRef,
-    document,
+    document: displayDocument,
     compositeReplacementSamplerRef,
     isolatedLayerMask,
     currentActiveLayer,
@@ -869,8 +867,6 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     deviceScale,
     repeatCopies,
     checkerboard,
-    onionSkin,
-    timelineHidden,
     context
   })
   const { pendingTilesetTilePreview, queueTilesetTilePreview, drawTilemapEditPreviewTiles } = createCanvasTilePreview({
@@ -1026,6 +1022,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   })
   renderCanvasSelectionPreview({
     inputRef,
+    magicPreviewFlash,
     drawSelectionPathPreview,
     repeatCopies,
     view,

@@ -35,7 +35,7 @@ import { commitFreeTileSourceEditInSession } from './workspace-free-tile-transac
 import { setFreeTileInstanceSelectionState } from './workspace-free-tile-selection'
 import { setAnimationMaskSlot } from './workspace-animation-mask-slots'
 import { activeSession } from './workspace-access'
-import { selectedGroupRows, selectedDirectLayerRows, selectedRowInsertionTarget, insertionTargetParent, applyLayerRowSelection } from './workspace-animation-selection'
+import { selectedGroupRows, selectedDirectLayerRows, selectedRowInsertionTarget, insertionTargetParent, applyLayerRowSelection, setTimelineActiveContext } from './workspace-animation-selection'
 import { assignLayerStyles, layerHistoryBytes, groupHistoryBytes } from './workspace-layer-style-history'
 import { requestTilesetPanelVisibility } from './workspace-tileset-panel'
 import { rectangularSelection } from './workspace-selection-geometry'
@@ -403,7 +403,7 @@ function applyLayerClipboardAnimationCel(
   setAnimationMaskSlot(document, layer.id, frame.id, layerMaskFromClipboard(source.mask, layer.id) ?? null)
 }
 
-export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'cancelFloatingPaste' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copyFreeTileInstances' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
+export function createWorkspaceClipboardCommands({ get, set, recording }: WorkspaceCommandContext<'addSession' | 'cancelFloatingPaste' | 'commitFloatingPaste' | 'copySelectedLayersToClipboard' | 'copyFreeTileInstances' | 'copySelection' | 'deleteSelection' | 'mutateActive' | 'pasteAnimationCels' | 'pasteAnimationFrames' | 'pasteAnimationMasks' | 'pasteAsNewDocument' | 'pasteAsNewLayer' | 'pasteLayersFromClipboard' | 'pasteSelection' | 'setSelection'>): WorkspaceClipboardCommands {
   const { recordDocumentOperation } = recording
   return {
     copyFreeTileInstances() {
@@ -663,6 +663,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         document.activeLayerId = layers.at(-1)!.id
         session.collapsedGroupIds = [...new Set([...previousCollapsedGroupIds, ...pastedCollapsedGroupIds])]
         applyLayerRowSelection(session, pastedIds, groups.map((group) => group.id), { kind: 'layer', id: layers.at(-1)!.id })
+        setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layers.at(-1)!.id })
         session.history.beginCompound()
         session.history.push({
           label: layers.length === 1 && groups.length === 0 ? tr('workspace.history.pasteLayer') : tr('workspace.history.pasteCollection'),
@@ -767,6 +768,15 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
 
     async pasteClipboard() {
       if (isCanvasToolGestureLocked()) return
+      const pasteTarget = loadEditorPreferences().pasteTarget
+      if (pasteTarget === 'new-layer') {
+        await get().pasteAsNewLayer()
+        return
+      }
+      if (pasteTarget === 'new-project') {
+        await get().pasteAsNewDocument()
+        return
+      }
       const current = activeSession(get())
       const globalAnimationCells = clipboardService.getAnimationCells()
       const globalAnimationFrames = clipboardService.getAnimationFrames()
@@ -987,6 +997,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         session.selectedGroupIds = []
         session.selectedLayerIds = [layer.id]
         session.layerSelectionAnchorId = layer.id
+        setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layer.id })
         session.history.push({
           label: tr('workspace.history.pasteAsLayer'),
           bytes: layer.pixels.byteLength + 64,

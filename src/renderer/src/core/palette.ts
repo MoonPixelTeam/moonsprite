@@ -149,6 +149,31 @@ const averageBucket = (colors: WeightedColor[]): RgbaColor => {
   return { r: average('r'), g: average('g'), b: average('b'), a: average('a') }
 }
 
+/**
+ * Returns the first occurrence of every opaque color while traversing each
+ * surface in its native scanline order. This intentionally does not quantize:
+ * the palette-panel "Extract colors" command promises positional order, so
+ * reaching its limit means later colors are omitted rather than reordered.
+ */
+export function extractPaletteColorsInScanlineOrderFromRgbaSurfaces(surfaces: readonly Uint8ClampedArray[], requestedLimit: number): RgbaColor[] {
+  const limit = Math.max(1, Math.min(4096, Math.round(requestedLimit) || 1))
+  const result: RgbaColor[] = []
+  const seen = new Set<number>()
+  for (const pixels of surfaces) {
+    for (let offset = 0; offset + 3 < pixels.length; offset += 4) {
+      const alpha = pixels[offset + 3]
+      if (alpha === 0) continue
+      const color = { r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2], a: alpha }
+      const key = colorKey(color)
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(color)
+      if (result.length === limit) return result
+    }
+  }
+  return result
+}
+
 export function extractPaletteColorsFromRgbaSurfaces(surfaces: readonly Uint8ClampedArray[], requestedLimit: number, maximumSamples = Number.POSITIVE_INFINITY): RgbaColor[] {
   const limit = Math.max(1, Math.min(4096, Math.round(requestedLimit) || 1))
   const totalPixels = surfaces.reduce((total, pixels) => total + Math.floor(pixels.length / 4), 0)
@@ -220,7 +245,7 @@ export function extractPaletteColorsFromRgbaSurfaces(surfaces: readonly Uint8Cla
 }
 
 export function extractPaletteColors(document: SpriteDocument, requestedLimit: number): RgbaColor[] {
-  return sortPaletteColors(extractPaletteColorsFromRgbaSurfaces([compositeDocument(document)], requestedLimit), 'luminance')
+  return extractPaletteColorsInScanlineOrderFromRgbaSurfaces([compositeDocument(document)], requestedLimit)
 }
 
 export function mergePaletteColors(current: RgbaColor[], incoming: RgbaColor[]): RgbaColor[] {

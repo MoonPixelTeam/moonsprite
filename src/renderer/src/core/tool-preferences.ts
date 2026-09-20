@@ -27,6 +27,7 @@ export type BrushTool = typeof BRUSH_TOOLS[number]
 export interface PersistedBrushProfile {
   inkMode: InkMode
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -103,6 +104,7 @@ const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, Proce
 export const defaultToolSettings: PersistedToolSettings = {
   syncInkAcrossTools: false,
   brushSize: 1,
+  brushOpacity: 100,
   brushShape: 'round',
   brushAngle: 0,
   brushDither: { ...DEFAULT_BRUSH_DITHER_SETTINGS },
@@ -198,6 +200,7 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
   return {
     inkMode: stored?.inkMode === 'copy-alpha-color' || stored?.inkMode === 'lock-alpha' ? stored.inkMode : fallback.inkMode,
     brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(128, Math.round(stored!.brushSize!))) : fallback.brushSize,
+    brushOpacity: Number.isFinite(stored?.brushOpacity) ? Math.max(0, Math.min(100, Math.round(stored!.brushOpacity!))) : fallback.brushOpacity,
     brushShape: stored?.brushShape === 'square' || stored?.brushShape === 'round' || stored?.brushShape === 'line' ? stored.brushShape : fallback.brushShape,
     brushAngle: Number.isFinite(stored?.brushAngle) ? Math.max(-180, Math.min(180, Math.round(stored!.brushAngle!))) : fallback.brushAngle,
     brushDither: normalizeBrushDitherSettings(stored?.brushDither, fallback.brushDither),

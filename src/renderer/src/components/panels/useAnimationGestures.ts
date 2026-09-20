@@ -39,6 +39,42 @@ export function useAnimationGestures(options: Options) {
   const selectAnimationFrame = (id: string, mode: 'replace' | 'toggle' | 'range' = 'replace') => store.selectAnimationFrame(id, mode)
   const [loopSectionResizePreview, setLoopSectionResizePreview] = useState<AnimationLoopSectionResizePreview | null>(null)
   const animationPointerDragRef = useRef<AnimationPointerDrag | null>(null)
+  const animationCopyRef = useRef(false)
+  const hoverCopyCursorRef = useRef<HTMLElement | null>(null)
+  const syncCopyCursor = (): void => {
+    const drag = animationPointerDragRef.current
+    document.body.classList.toggle('animation-copy-drag', Boolean(drag && (drag.kind === 'frame' || drag.kind === 'cel') && drag.moved && drag.canMove && animationCopyRef.current))
+  }
+  useEffect(() => {
+    const modifiers = (event: KeyboardEvent): void => {
+      const hovered = hoverCopyCursorRef.current
+      if (hovered?.isConnected) hovered.style.cursor = event.altKey ? 'var(--cursor-copy)' : 'var(--cursor-move)'
+      const drag = animationPointerDragRef.current
+      if (!drag || (drag.kind !== 'frame' && drag.kind !== 'cel')) return
+      animationCopyRef.current = event.altKey
+      syncCopyCursor()
+    }
+    window.addEventListener('keydown', modifiers)
+    window.addEventListener('keyup', modifiers)
+    const clearHover = (): void => {
+      if (hoverCopyCursorRef.current) hoverCopyCursorRef.current.style.cursor = ''
+      hoverCopyCursorRef.current = null
+    }
+    const leave = (event: PointerEvent): void => {
+      const hovered = hoverCopyCursorRef.current
+      if (hovered && event.target instanceof Node && hovered.contains(event.target) && !(event.relatedTarget instanceof Node && hovered.contains(event.relatedTarget))) clearHover()
+    }
+    window.addEventListener('pointerout', leave, true)
+    window.addEventListener('blur', clearHover)
+    return () => {
+      clearHover()
+      window.removeEventListener('pointerout', leave, true)
+      window.removeEventListener('blur', clearHover)
+      window.removeEventListener('keydown', modifiers)
+      window.removeEventListener('keyup', modifiers)
+      document.body.classList.remove('animation-copy-drag')
+    }
+  }, [])
   const framePreview = useAnimationFramePreview(session.document.id)
   const [animationGestureSelection, setAnimationGestureSelection] = useState<AnimationGestureSelection | null>(null)
   const [animationGestureActiveTarget, setAnimationGestureActiveTarget] = useState<AnimationGestureActiveTarget | null>(null)
@@ -94,6 +130,7 @@ export function useAnimationGestures(options: Options) {
     }
   }, [selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys.length, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
   const cancelAnimationPointerDrag = (): void => {
+    document.body.classList.remove('animation-copy-drag')
     stopAnimationTimelineAutoScroll()
     framePreview.cancel()
     const drag = animationPointerDragRef.current
@@ -139,6 +176,7 @@ export function useAnimationGestures(options: Options) {
   }
   const beginAnimationFrameDrag = (event: React.PointerEvent<HTMLElement>, frameId: string): void => {
     if (event.button !== 0) return
+    animationCopyRef.current = event.altKey
     const selected = session.selectedAnimationFrameIds.includes(frameId)
     // Drawing hides selection guides without clearing the formal selection.
     // Clicking an already-selected frame must make that selection visible
@@ -151,7 +189,7 @@ export function useAnimationGestures(options: Options) {
       event.preventDefault()
       return
     }
-    const canMove = selected && pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`)
+    const canMove = selected && (event.altKey || pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`))
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
     const drag: AnimationPointerDrag = {
       kind: 'frame',
@@ -178,7 +216,9 @@ export function useAnimationGestures(options: Options) {
   const beginAnimationCelDrag = (event: React.PointerEvent<HTMLButtonElement>, layerId: string, frameId: string): void => {
     if (event.button !== 0) return
     const key = animationCelKey(layerId, frameId)
-    if (event.altKey) {
+    animationCopyRef.current = event.altKey
+    const copySelection = event.altKey && session.selectedAnimationCellKeys.length > 1 && session.selectedAnimationCellKeys.includes(key)
+    if (event.altKey && !copySelection) {
       cancelAnimationPointerDrag()
       store.selectAnimationCelContent(key, event.shiftKey)
       window.dispatchEvent(new CustomEvent(COMMAND_SCOPE_EVENT, { detail: { scope: 'canvas', preferSelection: true } }))
@@ -209,7 +249,7 @@ export function useAnimationGestures(options: Options) {
     // Empty cels are real timeline slots (ensureAnimationDocument gives them
     // a blank surface), so they must remain draggable just like populated
     // cels.  Content presence only controls thumbnail rendering.
-    const canMove = selected && pointerHitsSelectionOutline(event, '[data-animation-cel-selection]')
+    const canMove = selected && (copySelection || pointerHitsSelectionOutline(event, '[data-animation-cel-selection]'))
     if (!canMove) {
       showAnimationSelectionOutline()
       showAnimationCellSelectionOutline()
@@ -354,7 +394,9 @@ export function useAnimationGestures(options: Options) {
     const maskMove = maskCell && Boolean(cellKey && session.selectedAnimationMaskCellKeys.includes(cellKey))
     && pointerHitsSelectionOutline(event, '[data-animation-cel-selection]')
     event.currentTarget.classList.toggle('mask-selection-move', maskMove)
-    event.currentTarget.style.cursor = frameMove || celMove || maskMove ? 'var(--cursor-move)' : ''
+    if (hoverCopyCursorRef.current && hoverCopyCursorRef.current !== event.currentTarget) hoverCopyCursorRef.current.style.cursor = ''
+    hoverCopyCursorRef.current = frameMove || celMove ? event.currentTarget : null
+    event.currentTarget.style.cursor = (frameMove || celMove) && event.altKey ? 'var(--cursor-copy)' : frameMove || celMove || maskMove ? 'var(--cursor-move)' : ''
   }
   const clampAnimationCelDropTarget = (drag: Extract<AnimationPointerDrag, { kind: 'cel' | 'mask' }>, candidateKey: string): string | null => {
     const anchor = parseAnimationCelKey(drag.sourceAnchorKey)
@@ -422,7 +464,8 @@ export function useAnimationGestures(options: Options) {
     const drag = animationPointerDragRef.current
     const autoScroll = animationTimelineAutoScrollRef.current
     autoScroll.event = event
-    if (!drag || drag.kind === 'loop-section' || !drag.canMove || !drag.moved || animationTimelineAutoScrollDelta(event.clientX) === 0) {
+    const extendingSelection = Boolean(drag && drag.kind !== 'loop-section' && !drag.canMove && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 4)
+    if (!drag || drag.kind === 'loop-section' || (!drag.canMove && !extendingSelection) || (drag.canMove && !drag.moved) || animationTimelineAutoScrollDelta(event.clientX) === 0) {
       stopAnimationTimelineAutoScroll()
       return
     }
@@ -440,6 +483,7 @@ export function useAnimationGestures(options: Options) {
   const moveAnimationPointerDrag = (event: PointerEvent): void => {
     const drag = animationPointerDragRef.current
     if (!drag) return
+    if (drag.kind === 'frame' || drag.kind === 'cel') { animationCopyRef.current = event.altKey; syncCopyCursor() }
     if (drag.kind === 'loop-section') {
       const list = layerListRef.current
       if (list) {
@@ -501,6 +545,9 @@ export function useAnimationGestures(options: Options) {
           setAnimationGestureSelection({ kind: drag.kind, keys: drag.kind === 'mask' ? maskCellRange(drag.sourceAnchorKey, key) : cellRange(drag.sourceAnchorKey, key) })
         }
       }
+      // Extending a range may need to reveal frames beyond the current
+      // viewport, even though it is not yet a content-move drag.
+      scheduleAnimationTimelineAutoScroll(event)
       return
     }
     if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return
@@ -513,6 +560,7 @@ export function useAnimationGestures(options: Options) {
         setDraggingAnimationCellKind(drag.kind)
       }
     }
+    syncCopyCursor()
     scheduleAnimationTimelineAutoScroll(event)
     const pointed = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
     const target = pointed?.closest('[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-animation-group-cel-key]') ? pointed : pointerTargetElement(event)
@@ -550,6 +598,7 @@ export function useAnimationGestures(options: Options) {
     if (previewTarget) framePreview.preview(previewTarget.frameId)
   }
   const finishAnimationPointerDrag = (cancelled = false): void => {
+    document.body.classList.remove('animation-copy-drag')
     stopAnimationTimelineAutoScroll()
     const drag = animationPointerDragRef.current
     if (!drag) return
@@ -582,7 +631,8 @@ export function useAnimationGestures(options: Options) {
     if ('longPressTimer' in drag && drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
     if (drag.moved) {
       if (drag.kind === 'frame' && animationFrameDropTargetRef.current) {
-        store.moveSelectedAnimationFrames(animationFrameDropTargetRef.current.frameId, animationFrameDropTargetRef.current.insertAfter)
+        if (animationCopyRef.current) store.pasteAnimationFrames(animationFrameDropTargetRef.current)
+        else store.moveSelectedAnimationFrames(animationFrameDropTargetRef.current.frameId, animationFrameDropTargetRef.current.insertAfter)
       } else if (drag.kind === 'cel' && animationCelDropTargetKeyRef.current) {
         const targetKey = animationCelDropTargetKeyRef.current
         const target = targetKey.lastIndexOf(':')
@@ -591,7 +641,7 @@ export function useAnimationGestures(options: Options) {
           // preserve the destination selection guides through that revision
           // transition so the post-drop bbox does not flash away.
           optionsRef.current.preserveSelectionAfterEdit()
-          store.moveSelectedAnimationCels(targetKey.slice(0, target), targetKey.slice(target + 1), drag.sourceAnchorKey)
+          store.moveSelectedAnimationCels(targetKey.slice(0, target), targetKey.slice(target + 1), drag.sourceAnchorKey, animationCopyRef.current)
           // Keep the formal destination selection visible after the Store
           // replaces the moved keys; this lets the new multi-cel bbox settle
           // instead of hiding the outline on pointerup.

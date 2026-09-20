@@ -7,7 +7,7 @@ import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
 import { loadDocumentExportSettings, loadExportPresets, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
-import { EXPORT_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences } from '@/core/file-preferences'
+import { EXPORT_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { type ExportOptions, useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -75,7 +75,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
       format,
       scalePercent: remembered?.scalePercent ?? defaultScale,
       trimMode: remembered?.trimMode ?? (remembered?.trim ? 'individual' : undefined),
-      directory: remembered?.directory || preferences.exportDirectory || defaultFileDirectories.exportDirectory,
+      directory: outputDirectoryForOperation(preferences) || defaultFileDirectories.exportDirectory,
       target,
       ...(sliceId ? { sliceId } : {}),
       ...(layerId ? { layerId } : {}),

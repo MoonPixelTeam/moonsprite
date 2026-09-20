@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useI18n } from '@/components/I18nProvider'
-import { RECENT_EXPORTS_CHANGED_EVENT, loadRecentExportPaths, parentDirectoryFromPath, type RecentExportPath } from '@/core/export-settings'
+import { RECENT_EXPORTS_CHANGED_EVENT, loadRecentExportPaths, loadRecentSavePaths, parentDirectoryFromPath, type RecentExportPath } from '@/core/export-settings'
 
 interface FileLocationPickerProps {
   directory: string
@@ -12,22 +12,24 @@ interface FileLocationPickerProps {
   onOpenChange: (open: boolean) => void
   onChooseDirectory: (directory: string) => Promise<void> | void
   onSelectDirectory: (directory: string) => void
+  recentPathKind?: 'save' | 'export'
   disabled?: boolean
 }
 
 /** Shared location menu used by export and Save As dialogs. */
-export function FileLocationPicker({ directory, defaultDirectory, localGalleryDirectory, open, onOpenChange, onChooseDirectory, onSelectDirectory, disabled = false }: FileLocationPickerProps) {
+export function FileLocationPicker({ directory, defaultDirectory, localGalleryDirectory, open, onOpenChange, onChooseDirectory, onSelectDirectory, recentPathKind = 'export', disabled = false }: FileLocationPickerProps) {
   const { t } = useI18n()
-  const [recentPaths, setRecentPaths] = useState<RecentExportPath[]>(loadRecentExportPaths)
+  const loadRecentPaths = (): RecentExportPath[] => recentPathKind === 'save' ? loadRecentSavePaths() : loadRecentExportPaths()
+  const [recentPaths, setRecentPaths] = useState<RecentExportPath[]>(loadRecentPaths)
   const [choosing, setChoosing] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [position, setPosition] = useState({ left: 8, top: 8, width: 280 })
 
   useEffect(() => {
-    const sync = (): void => setRecentPaths(loadRecentExportPaths())
+    const sync = (): void => setRecentPaths(loadRecentPaths())
     window.addEventListener(RECENT_EXPORTS_CHANGED_EVENT, sync)
     return () => window.removeEventListener(RECENT_EXPORTS_CHANGED_EVENT, sync)
-  }, [])
+  }, [recentPathKind])
 
   useEffect(() => {
     if (!open) return

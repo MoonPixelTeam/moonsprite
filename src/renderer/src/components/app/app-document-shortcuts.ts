@@ -39,6 +39,10 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
   if (session?.selectedAnimationFrameIds.length && runCommand('copy', () => workspace.copySelectedAnimationFrames()))
     return true
   if (runCommand('copy', () => {
+    if (commandScope() === 'palette') {
+      publishShortcutCommand('copy', 'palette')
+      return
+    }
     const target = selectionOverride() && session?.selection
     ? 'selection'
     : resolveCopyCommand(commandScope(), Boolean(session?.selection))
@@ -52,12 +56,15 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
   if (runCommand('cut', () => workspace.cutSelection()))
     return true
   if (runCommand('paste', () => {
+    if (commandScope() === 'palette') {
+      publishShortcutCommand('paste', 'palette')
+      return
+    }
     const hasAnimationTarget = Boolean(session && (session.selectedAnimationMaskCellKeys.length || session.selectedAnimationCellKeys.length || session.selectedAnimationFrameIds.length))
     if (!session || (!hasAnimationTarget && !session.activeLayerMaskId && session.selectedLayerIds.length === 0 && session.selectedGroupIds.length === 0 && !session.selectedGroupId)) {
       workspace.setMessage(t('workspace.clipboard.selectTarget'))
       return
     }
-    if (commandScope() === 'palette') { workspace.setMessage(t('app.palette.pasteUnsupported')); return }
     // Centralize clipboard precedence (OS image first, then animation or
     // internal layer payload) so every paste entry point sees the latest
     // copy source regardless of the active panel.

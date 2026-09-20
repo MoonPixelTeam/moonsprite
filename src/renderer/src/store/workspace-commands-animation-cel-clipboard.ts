@@ -336,7 +336,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
         true
       )
     },
-    moveSelectedAnimationCels(layerId, frameId, sourceAnchorKey) {
+    moveSelectedAnimationCels(layerId, frameId, sourceAnchorKey, copy = false) {
       get().mutateActive(
         (session) => {
           const beforeSelection = captureAnimationSelectionHistory(session)
@@ -364,6 +364,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           for (const { target: destination } of placements) affected.set(animationCelKey(destination.layerId, destination.frameId), cloneAnimationCel(destination))
           for (const source of sources) {
             const original = timeline.cels.find((cel) => cel.layerId === source.layerId && cel.frameId === source.frameId)
+            if (copy) continue
             if (original?.surface)
               original.surface =
                 original.surface.format === 'rgba'
@@ -405,7 +406,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           if (after.length) {
             const afterSelection = captureAnimationSelectionHistory(session)
             const entry: HistoryEntry = {
-              label: tr('workspace.history.moveAnimationCel'),
+              label: tr(copy ? 'workspace.history.pasteAnimationCel' : 'workspace.history.moveAnimationCel'),
               bytes: [...before, ...after].reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0),
               undo: () => restoreAnimationCels(session.document, before),
               redo: () => restoreAnimationCels(session.document, after),

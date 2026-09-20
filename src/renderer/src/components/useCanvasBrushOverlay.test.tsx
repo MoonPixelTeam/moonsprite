@@ -30,3 +30,30 @@ it('invalidates and clears the liquify overlay when a group is selected without 
   expect(request).toHaveBeenCalledTimes(1)
   expect(session.tool).toBe('liquify')
 })
+
+it('suppresses the brush overlay while Ctrl temporarily activates the move tool', () => {
+  localStorage.clear()
+  useWorkspace.setState({ sessions: [], activeId: null })
+  useWorkspace.getState().addSession(createDocument('preview', 8, 8, 'rgba'))
+  const session = useWorkspace.getState().sessions[0]
+  session.tool = 'pencil'
+  const input = new CanvasInputState()
+  input.pointer.visible = true
+  input.ctrlHeld = true
+  const { result } = renderHook(() =>
+    useCanvasBrushOverlay({
+      session,
+      inputRef: { current: input },
+      liveViewRef: { current: session.view },
+      brushPreviewMode: 'full-edge',
+      drawingBrushPreviewEnabled: true,
+      scheduleDraw: vi.fn(),
+      temporaryMoveActive: () => true
+    } as unknown as Parameters<typeof useCanvasBrushOverlay>[0])
+  )
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+  input.modifierBrushSize = { x: 0, y: 0, size: 1 }
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+  input.modifierBrushSize = null
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+})

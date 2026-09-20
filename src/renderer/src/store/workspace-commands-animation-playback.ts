@@ -44,6 +44,17 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
         if (playing) {
           const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
+          const pausedLoopSection = session.animationPlaybackLoopSectionId
+            ? (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackLoopSectionId)
+            : null
+          // Pausing a loop section must keep both its playhead and traversal
+          // state.  In particular, ping-pong sections cannot infer their
+          // return direction from the current frame alone.  A frame change
+          // outside the paused section still starts a fresh playback instead.
+          if (pausedLoopSection && animationLoopSectionContainsFrame(timeline, pausedLoopSection, timeline.activeFrameId)) {
+            session.animationPlaying = true
+            return
+          }
           clearAnimationLoopPlayback(session)
           const firstPlayableFrameId = firstPlayableAnimationFrameId(timeline)
           if (!firstPlayableFrameId) return
@@ -75,6 +86,10 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           return
         }
         session.animationPlaying = false
+        // The UI play button and playback shortcut use this path as Pause.
+        // Keep the loop section and its progress so the following Play resumes
+        // at the current frame rather than restarting the section.
+        if (!completed) return
         const loopSectionId = session.animationPlaybackLoopSectionId
         const startFrameId = session.animationPlaybackStartFrameId
         session.animationPlaybackStartFrameId = null
@@ -94,8 +109,6 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
       get().mutateActive((session) => {
         if (!session.animationPlaying) return
         session.animationPlaying = false
-        session.animationPlaybackStartFrameId = null
-        clearAnimationLoopPlayback(session)
         // Pausing is also a playhead operation. Do not turn the paused frame
         // into a new selection or clear an existing multi-selection.
       }, false)

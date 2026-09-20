@@ -31,7 +31,7 @@ import type { FilterPresetId, LcdScreenFilterOptions } from '@/core/filter-prese
 import type { ExportOptions, SaveAsOptions } from './document-file-service'
 import type { LayerMoveDuplicateResult, LayerMoveState } from './workspace-layer-move'
 import type { LayerPropertyField, LayerPropertyTarget, LayerPropertyValues } from './workspace-layer-properties'
-import type { AdjustmentSnapshot, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, OutlinePreview, SelectionPivot } from './workspace-types'
+import type { AdjustmentSnapshot, AnimationPlaybackMode, AppDialog, CanvasResizePreview, DocumentSession, OutlinePreview, PaletteColorTarget, SelectionPivot } from './workspace-types'
 
 export type ColorReplacementTarget = 'layer' | 'document' | 'selection' | 'layers' | 'frames' | 'cells' | 'palette' | `loop-section:${string}`
 
@@ -117,6 +117,7 @@ export interface WorkspaceToolCommands {
   syncCanvasToolSettings(documentId: string): void
   setMoveKind(kind: MoveKind): void
   setBrushSize(size: number): void
+  setBrushOpacity(opacity: number): void
   setBrushAngle(angle: number): void
   setAirbrushParticleRadius(radius: number): void
   setAirbrushParticleAngle(angle: number): void
@@ -177,6 +178,7 @@ export interface WorkspaceToolCommands {
   setMoveAutoSelect(enabled: boolean): void
   setPerfectPixels(enabled: boolean): void
   setSymmetryAxis(axis: keyof SymmetryAxes, enabled: boolean): void
+  previewSymmetryCenter(center: SymmetryCenter): void
   setSymmetryCenter(center: SymmetryCenter): void
   resetSymmetryCenter(): void
   setLastPencilPoint(point: { x: number; y: number } | null): void
@@ -194,7 +196,8 @@ export interface WorkspaceColorCommands {
   swapPrimarySecondaryColors(): void
   selectPaletteColor(id: number, additive?: boolean): void
   selectPaletteColors(ids: number[], primaryId: number): void
-  addPaletteColor(color?: RgbaColor): number | null
+  addPaletteColor(color?: RgbaColor, target?: PaletteColorTarget): number | null
+  pastePaletteColors(colors: RgbaColor[], target?: PaletteColorTarget): number[]
   updatePaletteColor(id: number, color: RgbaColor): void
   applyPalette(colors: RgbaColor[], layout?: PaletteSlotLayout): void
   deletePaletteColor(id: number): void
@@ -399,14 +402,14 @@ export interface WorkspaceAnimationCommands {
   disconnectSelectedAnimationCels(): void
   copySelectedAnimationCels(): void
   pasteAnimationCels(): void
-  moveSelectedAnimationCels(layerId: string, frameId: string, sourceAnchorKey: string): void
+  moveSelectedAnimationCels(layerId: string, frameId: string, sourceAnchorKey: string, copy?: boolean): void
   copySelectedAnimationMasks(): void
   pasteAnimationMasks(ownerId?: string, frameId?: string): void
   moveSelectedAnimationMasks(ownerId: string, frameId: string, sourceAnchorKey: string): void
   connectSelectedAnimationMasks(): void
   disconnectSelectedAnimationMasks(): void
   copySelectedAnimationFrames(): void
-  pasteAnimationFrames(): void
+  pasteAnimationFrames(duplicateAt?: { frameId: string; insertAfter: boolean }): void
   setSelectedAnimationFramesDisabled(disabled: boolean): void
   toggleSelectedAnimationFramesDisabled(): void
   moveSelectedAnimationFrames(targetFrameId: string, insertAfter: boolean): void

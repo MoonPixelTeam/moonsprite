@@ -118,7 +118,13 @@ export interface BrushPreviewStackCache {
   upper: Uint8ClampedArray
 }
 
-export interface SymmetryDragState { axis: SymmetryAxis | 'center'; pointerId: number }
+export interface SymmetryDragState {
+  axis: SymmetryAxis | 'center'
+  pointerId: number
+  /** Latest transient center, kept outside React props while dragging. */
+  center: { x: number; y: number }
+  previewFrame: number | null
+}
 
 export type MoveLayerContentPreview = CanvasMoveLayerContentPreview
 

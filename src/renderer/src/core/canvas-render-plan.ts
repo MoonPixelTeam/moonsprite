@@ -16,6 +16,7 @@ export interface CanvasRenderPlan {
   originY: number
   canvasWidth: number
   canvasHeight: number
+  canvasBoundary: DeviceAlignedCanvasRect
   fromX: number
   fromY: number
   toX: number
@@ -72,7 +73,8 @@ export const deviceAlignedCoordinate = (value: number, devicePixelRatio: number)
   // Translating an aligned tile can introduce tiny errors around a half-pixel
   // tie. Preserve the same tie rule on both sides of every repeated boundary.
   const tolerance = Math.max(1e-9, Math.abs(shifted) * Number.EPSILON * 4)
-  return Math.ceil(Math.abs(shifted - nearest) <= tolerance ? nearest : shifted) / devicePixelRatio
+  const aligned = Math.ceil(Math.abs(shifted - nearest) <= tolerance ? nearest : shifted) / devicePixelRatio
+  return aligned === 0 ? 0 : aligned
 }
 
 /**
@@ -213,6 +215,27 @@ export function repeatedDeviceAlignedCanvasRect(base: DeviceAlignedCanvasRect, o
   return { left, top, right, bottom, width: right - left, height: bottom - top }
 }
 
+/** Snap the origin before deriving the shared repeat period, for every consumer. */
+export function deviceAlignedCanvasPlacement(originX: number, originY: number, width: number, height: number, scale: CanvasDeviceScaleInput): DeviceAlignedCanvasRect {
+  const dpr = normalizeCanvasDeviceScale(scale)
+  return deviceAlignedCanvasRect(deviceAlignedCoordinate(originX, dpr.x), deviceAlignedCoordinate(originY, dpr.y), width, height, dpr)
+}
+
+/** Resolve the displayed copy first: rounded repeat periods are not width * zoom. */
+export function deviceAlignedRepeatedPointAtViewport(point: { x: number; y: number }, base: DeviceAlignedCanvasRect,
+  width: number, height: number, zoom: number, scale: CanvasDeviceScaleInput, mode: ViewState['tileRepeatMode'], continuous = false): { x: number; y: number } {
+  const offsetX = mode === 'x' || mode === 'both' ? Math.floor((point.x - base.left) / base.width) : 0
+  const offsetY = mode === 'y' || mode === 'both' ? Math.floor((point.y - base.top) / base.height) : 0
+  const copy = repeatedDeviceAlignedCanvasRect(base, offsetX, offsetY)
+  const local = deviceAlignedDocumentPointAtViewport(point.x, point.y, copy.left, copy.top, zoom, scale)
+  if (continuous) {
+    const pixel = deviceAlignedPixelRect(copy.left, copy.top, zoom, local.x, local.y, scale)
+    local.x += (point.x - pixel.x) / pixel.width
+    local.y += (point.y - pixel.y) / pixel.height
+  }
+  return { x: local.x + offsetX * width, y: local.y + offsetY * height }
+}
+
 export function createCanvasRenderPlan(
   viewportWidth: number,
   viewportHeight: number,
@@ -233,6 +256,7 @@ export function createCanvasRenderPlan(
   const origin = viewCanvasOrigin(viewportWidth, viewportHeight, document.width, document.height, view)
   const canvasWidth = document.width * view.zoom
   const canvasHeight = document.height * view.zoom
+  const canvasBoundary = deviceAlignedCanvasPlacement(origin.x, origin.y, canvasWidth, canvasHeight, deviceScale)
   return {
     viewportWidth,
     viewportHeight,
@@ -242,13 +266,14 @@ export function createCanvasRenderPlan(
     sceneTop,
     sceneWidth,
     sceneHeight,
-    originX: origin.x,
-    originY: origin.y,
+    originX: canvasBoundary.left,
+    originY: canvasBoundary.top,
     canvasWidth,
     canvasHeight,
-    fromX: Math.max(0, Math.floor((viewport.left - origin.x) / view.zoom)),
-    fromY: Math.max(0, Math.floor((viewport.top - origin.y) / view.zoom)),
-    toX: Math.min(document.width, Math.ceil((viewport.right - origin.x) / view.zoom)),
-    toY: Math.min(document.height, Math.ceil((viewport.bottom - origin.y) / view.zoom))
+    canvasBoundary,
+    fromX: Math.max(0, Math.floor((viewport.left - canvasBoundary.left) / view.zoom)),
+    fromY: Math.max(0, Math.floor((viewport.top - canvasBoundary.top) / view.zoom)),
+    toX: Math.min(document.width, Math.ceil((viewport.right - canvasBoundary.left) / view.zoom)),
+    toY: Math.min(document.height, Math.ceil((viewport.bottom - canvasBoundary.top) / view.zoom))
   }
 }

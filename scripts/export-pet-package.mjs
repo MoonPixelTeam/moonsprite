@@ -182,7 +182,15 @@ const manifest = {
   name: 'Pet Companion',
   version: '1.0.0',
   description: 'Animated companions with custom animations, pet packages and reminders. Supports 9 languages.',
-  settingsUi: { storageKey: 'preferences', controls: [{id:'manager',type:'button',label:'宠物管理…',fullWidth:true,commandId:'manager',variant:'primary',closeOnRun:true}] },
+  settingsUi: { storageKey: 'preferences', controls: [
+    {id:'remindersEnabled',type:'checkbox',label:'提醒总开关',description:'统一控制报时、保存和休息提醒；关闭后保留各项设置。',defaultValue:true},
+    {id:'clockEnabled',type:'checkbox',visibleWhen:{remindersEnabled:true},label:'自动报时',description:'在整点和半点显示当前时间。',defaultValue:true},
+    {id:'unsavedEnabled',type:'checkbox',visibleWhen:{remindersEnabled:true},label:'启用保存提醒',defaultValue:true},
+    {id:'breakEnabled',type:'checkbox',visibleWhen:{remindersEnabled:true},label:'启用连续绘制提醒',defaultValue:true},
+    {id:'unsavedMinutes',type:'number',label:'未保存时长（分钟）',visibleWhen:{remindersEnabled:true,unsavedEnabled:true},defaultValue:15,min:1,max:1440,step:1},
+    {id:'breakMinutes',type:'number',label:'连续绘制时长（分钟）',visibleWhen:{remindersEnabled:true,breakEnabled:true},defaultValue:60,min:1,max:1440,step:1},
+    {id:'manager',type:'button',label:'宠物管理…',fullWidth:true,commandId:'manager',variant:'primary',closeOnRun:true}
+  ] },
   runtime: {
     entry: 'runtime/index.html',
     permissions: ['runtime', 'commands', 'menus', 'ui', 'windows', 'workspace.read', 'document.read', 'events', 'storage', 'resources', 'notifications', 'diagnostics'],
@@ -421,8 +429,6 @@ const renderList=async()=>{
  detail.push({id:'hint',type:'text',label:t('每个槽位独立上传、替换或清除。支持 GIF、PNG、WebP。')},{id:'package-line',type:'separator'},{id:'export-pet',type:'button',label:t('导出宠物包…'),action:{type:'ui-export-pet',petId:target.id}});
  if(target.id!==BUILT_IN.id)detail.push({id:'delete-line',type:'separator'},{id:'delete-'+target.id,type:'button',label:t('删除此宠物'),action:{type:'ui-delete',petId:target.id}});
  }
- detail.push({id:'reminder-line',type:'separator'},{id:'remindersEnabled',type:'toggle',label:t('提醒总开关'),value:prefs.remindersEnabled,action:{type:'ui-preference',key:'remindersEnabled'}});
- if(prefs.remindersEnabled){for(const [key,label] of [['clockEnabled',t('自动报时')],['unsavedEnabled',t('启用保存提醒')],['breakEnabled',t('启用连续绘制提醒')]])detail.push({id:key,type:'toggle',label,value:prefs[key],action:{type:'ui-preference',key}});for(const [key,enabled,label] of [['unsavedMinutes',prefs.unsavedEnabled,t('未保存时长（分钟）')],['breakMinutes',prefs.breakEnabled,t('连续绘制时长（分钟）')]])if(enabled)detail.push({id:key+'-row',type:'row',align:'end',children:[{id:key,type:'number',label,value:prefs[key],min:1,max:1440},{id:key+'-apply',type:'button',label:t('应用'),action:{type:'ui-preference',key}}]})}
  const nodes=[{id:'manager-layout',type:'split',children:[{id:'pet-list',type:'sidebar',label:t('宠物列表'),children:sidebar},{id:'pet-detail',type:'column',label:t('当前宠物设置'),children:detail}]}];
  const editing=target?.triggerSlots?.find(slot=>slot.id===editingTriggerId);
  if(conditionDialog)nodes.push({id:'trigger-dialog',type:'dialog',label:editing?t('编辑条件动画槽'):t('添加条件动画槽'),action:{type:'ui-cancel-trigger'},children:[

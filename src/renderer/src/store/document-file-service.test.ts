@@ -5,6 +5,7 @@ import { createDocument } from '@/core/document'
 import { setRuntimeAppLocale } from '@/core/localization'
 import { decodePng } from '@/core/png'
 import { encodePng } from '@/core/png-encode'
+import { loadEditorPreferences } from '@/core/file-preferences'
 import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, saveDocumentFile } from './document-file-service'
 
 beforeAll(() => {
@@ -50,6 +51,7 @@ describe('document PSD export service', () => {
 
     expect(saveProject).not.toHaveBeenCalled()
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/selected-folder/chosen-location.moonsprite', expect.any(Uint8Array))
+    expect(loadEditorPreferences()).toMatchObject({ lastSaveDirectory: 'D:/selected-folder', lastExportDirectory: '' })
   })
 
   it('writes a layered PSD file directly to an explicit export directory', async () => {
@@ -63,6 +65,7 @@ describe('document PSD export service', () => {
     expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
     expect(writeBinaryAtomic.mock.calls[0][0]).toBe('D:/exports/layers.psd')
     expect(new TextDecoder().decode(writeBinaryAtomic.mock.calls[0][1].subarray(0, 4))).toBe('8BPS')
+    expect(loadEditorPreferences()).toMatchObject({ lastSaveDirectory: '', lastExportDirectory: 'D:/exports' })
   })
 
   it('keeps the native export dialog fallback when no directory is supplied', async () => {

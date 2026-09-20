@@ -14,6 +14,11 @@ export const SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-o
 export const EXPORT_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.export-format'
 export const SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.save-directory'
 export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-directory'
+export const SAVE_LOCATION_MODE_PREFERENCE_KEY = 'moonsprite.preference.save-location-mode'
+export const EXPORT_LOCATION_MODE_PREFERENCE_KEY = 'moonsprite.preference.export-location-mode'
+export const PASTE_TARGET_PREFERENCE_KEY = 'moonsprite.preference.paste-target'
+export const LAST_SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-save-directory'
+export const LAST_EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-export-directory'
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
@@ -634,6 +639,8 @@ export const DEFAULT_ISO_VIEW_PREFERENCES: IsoViewPreferences = {
 
 export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite'
 export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd'
+export type SaveLocationMode = 'recent' | 'fixed'
+export type PasteTarget = 'current-cell' | 'new-layer' | 'new-project'
 
 export interface EditorPreferences {
   language: AppLocale
@@ -649,8 +656,16 @@ export interface EditorPreferences {
   saveFormat: SaveFormatPreference
   saveOriginalFormat: boolean
   exportFormat: ExportFormatPreference
+  /** Whether new unsaved projects start from the shared recent output folder or the fixed folder. */
+  saveLocationMode: SaveLocationMode
+  exportLocationMode: SaveLocationMode
+  pasteTarget: PasteTarget
   saveDirectory: string
   exportDirectory: string
+  /** Location remembered by Save and Save As. */
+  lastSaveDirectory: string
+  /** Shared location remembered by every export operation. */
+  lastExportDirectory: string
   recovery: boolean
   recoveryMinutes: number
   recoveryRetentionDays: number
@@ -750,8 +765,13 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   saveFormat: 'moonsprite',
   saveOriginalFormat: true,
   exportFormat: 'png',
+  saveLocationMode: 'recent',
+  exportLocationMode: 'recent',
+  pasteTarget: 'current-cell',
   saveDirectory: '',
   exportDirectory: '',
+  lastSaveDirectory: '',
+  lastExportDirectory: '',
   recovery: true,
   recoveryMinutes: 5,
   recoveryRetentionDays: 7,
@@ -1136,6 +1156,28 @@ function parseDirectoryPreference(value: string | null): string {
   return value?.trim() ?? ''
 }
 
+function parseSaveLocationMode(value: string | null): SaveLocationMode {
+  return value === 'recent' ? 'recent' : 'fixed'
+}
+
+export function parsePasteTarget(value: string | null): PasteTarget {
+  return value === 'new-layer' || value === 'new-project' ? value : 'current-cell'
+}
+
+/** Default folder for an unsaved project; saved projects always keep their own file path. */
+export function saveDirectoryForNewDocument(preferences: Pick<EditorPreferences, 'saveLocationMode' | 'saveDirectory' | 'lastSaveDirectory'>): string {
+  return preferences.saveLocationMode === 'recent' && preferences.lastSaveDirectory
+    ? preferences.lastSaveDirectory
+    : preferences.saveDirectory
+}
+
+/** The one shared location used to prefill every export-like operation. */
+export function outputDirectoryForOperation(preferences: Pick<EditorPreferences, 'exportLocationMode' | 'lastExportDirectory' | 'exportDirectory'>): string {
+  return preferences.exportLocationMode === 'recent' && preferences.lastExportDirectory
+    ? preferences.lastExportDirectory
+    : preferences.exportDirectory
+}
+
 export function parseRecoveryMinutes(value: string | null): number {
   if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.recoveryMinutes
   const parsed = Number(value)
@@ -1251,8 +1293,13 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     saveFormat: parseSaveFormat(get(SAVE_FORMAT_PREFERENCE_KEY)),
     saveOriginalFormat: get(SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY) !== 'false',
     exportFormat: parseExportFormat(get(EXPORT_FORMAT_PREFERENCE_KEY)),
+    saveLocationMode: parseSaveLocationMode(get(SAVE_LOCATION_MODE_PREFERENCE_KEY)),
+    exportLocationMode: parseSaveLocationMode(get(EXPORT_LOCATION_MODE_PREFERENCE_KEY)),
+    pasteTarget: parsePasteTarget(get(PASTE_TARGET_PREFERENCE_KEY)),
     saveDirectory: parseDirectoryPreference(get(SAVE_DIRECTORY_PREFERENCE_KEY)),
     exportDirectory: parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
+    lastSaveDirectory: parseDirectoryPreference(get(LAST_SAVE_DIRECTORY_PREFERENCE_KEY)),
+    lastExportDirectory: parseDirectoryPreference(get(LAST_EXPORT_DIRECTORY_PREFERENCE_KEY)) || parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
     recovery: get(RECOVERY_PREFERENCE_KEY) !== 'false',
     recoveryMinutes: parseRecoveryMinutes(get(RECOVERY_MINUTES_PREFERENCE_KEY)),
     recoveryRetentionDays: parseRecoveryRetentionDays(get(RECOVERY_RETENTION_DAYS_PREFERENCE_KEY)),
@@ -1357,8 +1404,13 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY]: String(preferences.saveOriginalFormat),
     [PIXEL_FORMAT_PREFERENCE_KEY]: preferences.pixelFormat,
     [EXPORT_FORMAT_PREFERENCE_KEY]: preferences.exportFormat,
+    [SAVE_LOCATION_MODE_PREFERENCE_KEY]: preferences.saveLocationMode,
+    [EXPORT_LOCATION_MODE_PREFERENCE_KEY]: preferences.exportLocationMode,
+    [PASTE_TARGET_PREFERENCE_KEY]: parsePasteTarget(preferences.pasteTarget),
     [SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.saveDirectory),
     [EXPORT_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.exportDirectory),
+    [LAST_SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.lastSaveDirectory),
+    [LAST_EXPORT_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.lastExportDirectory),
     [RECOVERY_PREFERENCE_KEY]: String(preferences.recovery),
     [RECOVERY_MINUTES_PREFERENCE_KEY]: String(parseRecoveryMinutes(String(preferences.recoveryMinutes))),
     [RECOVERY_RETENTION_DAYS_PREFERENCE_KEY]: String(parseRecoveryRetentionDays(String(preferences.recoveryRetentionDays))),

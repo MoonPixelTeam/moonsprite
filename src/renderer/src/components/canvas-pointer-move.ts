@@ -35,6 +35,7 @@ import { isPressurePointerType, resolveBrushDynamics } from '@/core/pressure'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { syncHeldShortcutModifiers } from '@/components/useQuickToolShortcut'
 import { SymmetryDragState } from './canvas-stage-helpers'
+import { flushCanvasBrushSize, queueCanvasBrushSize } from './canvas-brush-size-update'
 interface Ports {
   inputRef: import('react').RefObject<CanvasInputState>
   navigationInput: ReturnType<typeof createNavigationCanvasInput>
@@ -258,9 +259,7 @@ export function createCanvasPointerMove(ports: Ports) {
       else {
         const delta = canvasClientDeltaForInterfaceScale(event.clientX - inputRef.current.modifierBrushSize.x, interfaceScale)
         const nextSize = inputRef.current.modifierBrushSize.size + Math.round(delta / 4)
-        if (session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(nextSize)
-        else if (session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(nextSize)
-        else useWorkspace.getState().setBrushSize(nextSize)
+        queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget, brushPreviewOverlaySupported(session))
       }
       // The first move can initialize the modifier state after the cursor
       // update above. The brush overlay is enough while sizing; a full canvas
@@ -270,7 +269,7 @@ export function createCanvasPointerMove(ports: Ports) {
       else scheduleDraw()
       return
     }
-    if (!modifierSizing) inputRef.current.modifierBrushSize = null
+    if (!modifierSizing) { flushCanvasBrushSize(inputRef.current); inputRef.current.modifierBrushSize = null }
     if (!point) return
     const drag = inputRef.current.drag
     if (moveQuickSampling({ drag, session, event })) return
@@ -288,9 +287,7 @@ export function createCanvasPointerMove(ports: Ports) {
         (drag.startBrushSize ??
           (session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize)) +
         Math.round(delta / 4)
-      if (session.tool === 'airbrush') state.setAirbrushScatterRadius(nextSize)
-      else if (session.tool === 'liquify') state.setLiquifyRadius(nextSize)
-      else state.setBrushSize(nextSize)
+      queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget)
       event.currentTarget.style.cursor = canvasCursors.ewResize
       return
     }

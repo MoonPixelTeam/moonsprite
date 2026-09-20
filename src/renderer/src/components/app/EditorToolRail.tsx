@@ -107,7 +107,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const sizing = ['pencil', 'line', 'airbrush', 'eraser', 'smooth', 'liquify'].includes(session.tool)
     && modifierShortcutHeldByBindings(heldModifiers, shortcutBindingsFor(shortcuts, 'brushSizeAdjust'), heldParts)
   const quickTarget = sizing || (quickToolMatch?.id === 'tool.move.quick'
-    && (!temporaryMoveToolAllowed(session.tool, session.moveKind) || lineConnectionHasPriority))
+    && (!temporaryMoveToolAllowed(session.tool, session.moveKind, session.selectionKind) || lineConnectionHasPriority))
     ? null
     : quickToolMatch?.target ?? null
   const displaySession = applyQuickToolTarget(session, quickTarget)

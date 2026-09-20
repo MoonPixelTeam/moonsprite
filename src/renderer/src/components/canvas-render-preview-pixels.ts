@@ -13,8 +13,7 @@ import { deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 import { transparencyColorAt } from '@/core/canvas-visuals'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
 import { tileRepeatMappedPointForCopies, tileRepeatPreviewPlacements } from '@/core/tilemap'
-import { animationLoopSectionAtFrame } from '@/core/animation-loop-sections'
-import { createOnionSkinPointSampler, onionSkinFrameRefs } from '@/core/onion-skin'
+import { brushOpacityScale } from '@/core/pressure'
 import type * as React from 'react'
 import type { DocumentSession } from '@/store/workspace-types'
 
@@ -22,6 +21,9 @@ export const canvasPreviewDisplayColor = (color: RgbaColor, relativeLuminance: b
   const foreground = relativeLuminance ? relativeLuminanceColor(color) : color
   return onionColor ? blendOver(onionColor, foreground) : foreground
 }
+
+export const brushPreviewCoverage = (coverage: number, brushOpacity: number): number =>
+  Math.round(Math.max(0, Math.min(255, coverage)) * brushOpacityScale(1, brushOpacity))
 
 export function createCanvasPreviewPixels({
   currentSession,
@@ -36,8 +38,6 @@ export function createCanvasPreviewPixels({
   deviceScale,
   repeatCopies,
   checkerboard,
-  onionSkin,
-  timelineHidden,
   context
 }: {
   currentSession: DocumentSession
@@ -70,8 +70,6 @@ export function createCanvasPreviewPixels({
     toY: number
   }[]
   checkerboard: import('@/core/file-preferences').CheckerboardPreferences
-  onionSkin: import('@/core/file-preferences').OnionSkinPreferences
-  timelineHidden: boolean
   context: RasterContext2D
 }) {
   const activeLayer = activePaintLayer(currentSession)
@@ -93,20 +91,6 @@ export function createCanvasPreviewPixels({
   if (compositePointReplacementSampler !== cachedReplacementSampler?.sampler) {
     compositeReplacementSamplerRef.current = { document, revision: currentSession.revision, layerId: activeLayer.id, sampler: compositePointReplacementSampler }
   }
-  let onionSkinPointSampler: ((x: number, y: number) => RgbaColor) | null | undefined
-  const sampleOnionSkinForPreview = (x: number, y: number): RgbaColor | null => {
-    if (onionSkinPointSampler === undefined) {
-      const timeline = document.animation
-      if (isolatedLayerMask || timelineHidden || !onionSkin.enabled || (currentSession.animationPlaying && !onionSkin.showDuringPlayback) || !timeline || timeline.frames.length <= 1) {
-        onionSkinPointSampler = null
-      } else {
-        const loopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
-        const refs = onionSkinFrameRefs(timeline, onionSkin.previousFrames, onionSkin.nextFrames, loopSection)
-        onionSkinPointSampler = refs.length > 0 ? createOnionSkinPointSampler(document, refs, onionSkin) : null
-      }
-    }
-    return onionSkinPointSampler?.(x, y) ?? null
-  }
   const sampleCompositeForPreview = (x: number, y: number): RgbaColor => {
     if (isolatedLayerMask) return readLayerMaskDisplayColorAt(isolatedLayerMask, x, y)
     return compositePointSampler(x, y)
@@ -121,18 +105,19 @@ export function createCanvasPreviewPixels({
     overwrite = false
   ): RgbaColor => {
     const layerColor = baseColor ?? readLayerColorAt(document, currentActiveLayer, pixelX, pixelY)
+    const effectiveCoverage = brushPreviewCoverage(coverage, currentSession.brushOpacity)
     const inkMode = currentSession.tool === 'pencil' || currentSession.tool === 'eraser' || currentSession.tool === 'line' ? currentSession.inkMode : 'simple'
-    const stampedColor = resolveInkStampColor(inkMode, paintColor, coverage)
+    const stampedColor = resolveInkStampColor(inkMode, paintColor, effectiveCoverage)
     const replacement = erase
-      ? coverage === 255
+      ? effectiveCoverage === 255
         ? TRANSPARENT
-        : { ...layerColor, a: Math.round(layerColor.a * (1 - coverage / 255)) }
+        : { ...layerColor, a: Math.round(layerColor.a * (1 - effectiveCoverage / 255)) }
       : inkMode !== 'simple'
         ? (applyInkColor(inkMode, layerColor, stampedColor) ?? layerColor)
         : overwrite
           ? stampedColor
-          : coverage < 255 || (paintColor.a > 0 && paintColor.a < 255)
-            ? blendOver(layerColor, { ...paintColor, a: Math.round((paintColor.a * coverage) / 255) })
+          : effectiveCoverage < 255 || (paintColor.a > 0 && paintColor.a < 255)
+            ? blendOver(layerColor, { ...paintColor, a: Math.round((paintColor.a * effectiveCoverage) / 255) })
             : paintColor
     return resolveLayerCanvasColor(document, currentActiveLayer, replacement)
   }
@@ -181,13 +166,12 @@ export function createCanvasPreviewPixels({
    */
   const fillPreviewPixelRects = (
     entries: ReadonlyArray<{ pixelRect: { x: number; y: number; width: number; height: number }; sampleX: number; sampleY: number; color: RgbaColor }>,
-    preserveOnionSkin = false
+    _preserveOnionSkin = false
   ): void => {
     if (entries.length === 0) return
     if (typeof Path2D === 'undefined') {
       for (const entry of entries) {
-        const onionColor = preserveOnionSkin ? sampleOnionSkinForPreview(entry.sampleX, entry.sampleY) : null
-        fillPreviewPixelRect(entry.pixelRect, entry.sampleX, entry.sampleY, entry.color, onionColor)
+        fillPreviewPixelRect(entry.pixelRect, entry.sampleX, entry.sampleY, entry.color)
       }
       return
     }
@@ -202,8 +186,7 @@ export function createCanvasPreviewPixels({
     }
     for (const entry of entries) {
       const transparency = transparencyColorAt(entry.sampleX, entry.sampleY, checkerboard)
-      const onionColor = preserveOnionSkin ? sampleOnionSkinForPreview(entry.sampleX, entry.sampleY) : null
-      const displayColor = canvasPreviewDisplayColor(entry.color, Boolean(view.relativeLuminance), onionColor)
+      const displayColor = canvasPreviewDisplayColor(entry.color, Boolean(view.relativeLuminance))
       const opaque = blendOver(transparency, displayColor)
       addRect(foregrounds, `rgb(${opaque.r} ${opaque.g} ${opaque.b})`, entry.pixelRect)
     }

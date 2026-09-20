@@ -8,6 +8,7 @@ import { Home } from './pages/Home'
 import { DocsPage } from './pages/Docs'
 import { FaqPage } from './pages/Faq'
 import { BlogPage } from './pages/Blog'
+import { MarketPage, PackDetailPage } from './pages/Market'
 
 type SiteTheme = 'dark' | 'light'
 
@@ -57,6 +58,7 @@ export function App() {
   useEffect(() => {
     const titles: Record<Route['page'], string> = {
       home: t.meta.title,
+      market: `${t.marketPage.title} - MoonSprite`,
       docs: `${t.docsPage.title} - MoonSprite`,
       faq: `${t.faqPage.title} - MoonSprite`,
       blog: `${t.blogPage.title} - MoonSprite`,
@@ -100,6 +102,7 @@ export function App() {
     <a href="#/" onClick={(event) => { event.preventDefault(); goSection('work') }}>{t.nav.work}</a>
     <a href="#/" onClick={(event) => { event.preventDefault(); goSection('features') }}>{t.nav.features}</a>
     <a href="#/docs" onClick={closeMenu} aria-current={route.page === 'docs' ? 'page' : undefined}>{t.nav.docs}</a>
+    <a href="#/market" onClick={closeMenu} aria-current={route.page === 'market' ? 'page' : undefined}>{t.nav.market}</a>
     <a href="#/faq" onClick={closeMenu} aria-current={route.page === 'faq' ? 'page' : undefined}>{t.nav.faq}</a>
     <a href="#/blog" onClick={closeMenu} aria-current={route.page === 'blog' ? 'page' : undefined}>{t.nav.blog}</a>
     <a href={SITE_CONFIG.communityUrl} target="_blank" rel="noopener noreferrer">{t.nav.community}</a>
@@ -135,6 +138,9 @@ export function App() {
     </header>
 
     {route.page === 'home' && <Home t={t} />}
+    {route.page === 'market' && (route.subId
+      ? <PackDetailPage t={t} language={language} productId={route.subId} />
+      : <MarketPage t={t} language={language} />)}
     {route.page === 'docs' && <main id="main"><DocsPage t={t} subId={route.subId} /></main>}
     {route.page === 'faq' && <main id="main"><FaqPage t={t} subId={route.subId} /></main>}
     {route.page === 'blog' && <main id="main"><BlogPage t={t} subId={route.subId} /></main>}

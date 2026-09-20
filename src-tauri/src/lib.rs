@@ -234,6 +234,7 @@ pub fn run() {
             platform_screen_color::sample_window_color_region,
             platform_resources::get_resource_info,
             platform_palette::list_palettes,
+            platform_palette::import_palette,
             platform_palette::save_palette,
             platform_palette::delete_palette,
             platform_palette::open_palette_folder,

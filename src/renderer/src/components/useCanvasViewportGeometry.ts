@@ -17,7 +17,7 @@ import {
   viewCanvasOrigin,
   viewRotationPivot
 } from '@/core/view-geometry'
-import { deviceAlignedCanvasRect, deviceAlignedDocumentPointAtViewport } from '@/core/canvas-render-plan'
+import { deviceAlignedCanvasPlacement, deviceAlignedRepeatedPointAtViewport } from '@/core/canvas-render-plan'
 import {
   canvasBackingRatioForInterfaceScale,
   canvasClientDeltaForInterfaceScale,
@@ -265,7 +265,7 @@ export function useCanvasViewportGeometry(ports: Ports) {
           ports.liveViewRef.current,
           ports.rotationIndicatorPosition
         )
-    if (!continuous && pixelSamplingMode(ports.liveViewRef.current.zoom) === 'hard') {
+    if (pixelSamplingMode(ports.liveViewRef.current.zoom) === 'hard') {
       const origin = viewCanvasOrigin(size.width, size.height, ports.session.document.width, ports.session.document.height, ports.liveViewRef.current)
       const deviceScale = canvasDisplayDeviceScale(
         ports.canvasRef.current,
@@ -276,21 +276,16 @@ export function useCanvasViewportGeometry(ports: Ports) {
       // can cross an exact device-pixel tie at high zoom due to floating-point
       // round trips, making the brush preview land one row below the pointer.
       const unrotatedPoint = unrotatedViewportPoint(viewportPoint, size.width, size.height, ports.liveViewRef.current, ports.rotationIndicatorPosition)
-      const alignedCanvas = deviceAlignedCanvasRect(
+      const alignedCanvas = deviceAlignedCanvasPlacement(
         origin.x,
         origin.y,
         ports.session.document.width * ports.liveViewRef.current.zoom,
         ports.session.document.height * ports.liveViewRef.current.zoom,
         deviceScale
       )
-      repeated = deviceAlignedDocumentPointAtViewport(
-        unrotatedPoint.x,
-        unrotatedPoint.y,
-        alignedCanvas.left,
-        alignedCanvas.top,
-        ports.liveViewRef.current.zoom,
-        deviceScale
-      )
+      repeated = deviceAlignedRepeatedPointAtViewport(unrotatedPoint, alignedCanvas,
+        ports.session.document.width, ports.session.document.height, ports.liveViewRef.current.zoom,
+        deviceScale, ports.liveViewRef.current.tileRepeatMode, continuous)
     }
     const mapped = tileRepeatMappedPointForCopies(
       repeated,

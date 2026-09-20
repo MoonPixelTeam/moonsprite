@@ -235,20 +235,28 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
         } else clipboardService.clearAnimation()
       }, false)
     },
-    pasteAnimationFrames() {
+    pasteAnimationFrames(duplicateAt) {
       get().mutateActive(
         (session) => {
           const timeline = ensureAnimationDocument(session.document)
           const crossDocumentClipboard = clipboardService.getAnimationFrames()
-          if (crossDocumentClipboard && crossDocumentClipboard.sourceDocumentId !== session.document.id) {
+          if (!duplicateAt && crossDocumentClipboard && crossDocumentClipboard.sourceDocumentId !== session.document.id) {
             pasteCrossDocumentAnimationFrames(session, crossDocumentClipboard)
             return
           }
-          const clipboard = session.animationFrameClipboard
+          // Drag-copy takes its own snapshot, never replacing the user's clipboard.
+          if (duplicateAt && !timeline.frames.some(frame => frame.id === duplicateAt.frameId)) return
+          if (duplicateAt) syncActiveAnimationFrame(session.document)
+          const clipboard = duplicateAt ? timeline.frames.filter(frame => session.selectedAnimationFrameIds.includes(frame.id)).map(frame => ({
+            frameId: frame.id, duration: frame.duration, disabled: frame.disabled,
+            cels: timeline.cels.filter(cel => cel.frameId === frame.id).map(cel => ({ ...cloneAnimationCel(cel), linkedCelId: null })),
+            layerMasks: (timeline.layerMasks ?? []).filter(mask => mask.frameId === frame.id).map(mask => cloneAnimationLayerMask(mask)),
+            groupMasks: (timeline.groupMasks ?? []).filter(mask => mask.frameId === frame.id).map(mask => cloneAnimationGroupMask(mask))
+          })) : session.animationFrameClipboard
           if (!clipboard.length) return
           const selectedIds = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId])
           const anchorIndex = Math.max(-1, ...timeline.frames.map((frame, index) => (selectedIds.has(frame.id) ? index : -1)))
-          const insertIndex = anchorIndex + 1
+          const insertIndex = duplicateAt ? timeline.frames.findIndex(frame => frame.id === duplicateAt.frameId) + (duplicateAt.insertAfter ? 1 : 0) : anchorIndex + 1
           const insertedFrames = clipboard.map((item) => ({
             id: createId('frame'),
             duration: item.duration,
@@ -276,7 +284,7 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
             session.selectedAnimationMaskCellKeys = []
             session.selectedAnimationMaskRowKeys = []
             session.animationMaskCellSelectionAnchorKey = null
-            if (hasActiveCel && activeCelKey) {
+            if (!duplicateAt && hasActiveCel && activeCelKey) {
               session.selectedAnimationFrameIds = []
               session.animationFrameSelectionAnchorId = null
               session.selectedAnimationCellKeys = [activeCelKey]
