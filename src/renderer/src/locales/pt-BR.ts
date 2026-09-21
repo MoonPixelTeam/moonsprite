@@ -3,8 +3,8 @@ import type { TranslationCatalog } from './contracts'
 export const ptBRMessages = {
   "preferences.exportProtection.title": "Proteção na exportação",
   "preferences.exportProtection.off": "Desativada",
-  "preferences.exportProtection.blur": "Desfoque suave",
-  "preferences.exportProtection.noise": "Desfoque suave + ruído fino",
+  "preferences.exportProtection.blur": "Suavização estreita das bordas",
+  "preferences.exportProtection.noise": "Suavização estreita das bordas + ruído fino",
   "preferences.exportProtection.hint": "Apenas imagens exportadas acima de 100%, sem alterar projetos ou salvamentos normais. Dificulta recuperar o original, mas não impede cópias. Exclui formatos de projeto e vídeo; GIF pode reduzir o efeito.",
 
   'sequence.files': "Arquivos",

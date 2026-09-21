@@ -16,7 +16,8 @@ it.each(['detailed', 'expanded', 'large', 'huge'])('refreshes batch mirror thumb
   const rendered = new WeakMap<HTMLCanvasElement, Uint8ClampedArray>()
   const counts = new WeakMap<HTMLCanvasElement, number>()
   vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('MoonSpriteTest')
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement, _kind, options) {
+    expect(options).toEqual({ willReadFrequently: true })
     const canvas = this
     return {
       createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),

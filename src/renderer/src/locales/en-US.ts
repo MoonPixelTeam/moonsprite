@@ -3,8 +3,8 @@ import type { TranslationCatalog } from './contracts'
 export const enUSMessages = {
   "preferences.exportProtection.title": "Export protection",
   "preferences.exportProtection.off": "Off",
-  "preferences.exportProtection.blur": "Subtle blur",
-  "preferences.exportProtection.noise": "Subtle blur + fine noise",
+  "preferences.exportProtection.blur": "Narrow edge softening",
+  "preferences.exportProtection.noise": "Narrow edge softening + fine noise",
   "preferences.exportProtection.hint": "Only affects image exports above 100%; projects and normal saves stay unchanged. Makes nearest-neighbor recovery harder, but cannot prevent copying. Project formats and video are excluded; GIF quantization may weaken the effect.",
 
   'sequence.files': "Files",

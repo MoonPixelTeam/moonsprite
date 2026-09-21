@@ -41,3 +41,21 @@ it('only protects explicitly requested image encodes, leaving subsequent save en
   expect((await exportDocumentImage(document, 400, 'png-rgba')).bytes).toEqual(plain.bytes)
   expect(document.layers[0].pixels).toEqual(before)
 })
+
+it.each([2, 4, 8, 16, 64])('limits softening to a narrow pixel-block boundary at %ix export', scale => {
+  const width = scale * 4
+  const image = { width, height: 1, pixels: new Uint8ClampedArray(width * 4) }
+  for (let x = 0; x < width; x++) image.pixels.set(x < scale * 2 ? [255, 0, 0, 255] : [0, 0, 255, 255], x * 4)
+  const result = protectExportPixels(image, scale * 100, 'blur').pixels
+  const leftEdge = (scale * 2 - 1) * 4
+  const rightEdge = scale * 2 * 4
+  expect(result[leftEdge]).toBe(scale < 4 ? 223 : 199)
+  expect(result[rightEdge]).toBe(scale < 4 ? 32 : 56)
+  const radius = scale < 4 ? 1 : 2
+  for (let x = 0; x < width; x++) {
+    if (x >= scale * 2 - radius && x < scale * 2 + radius) continue
+    expect([...result.slice(x * 4, x * 4 + 4)]).toEqual([...image.pixels.slice(x * 4, x * 4 + 4)])
+  }
+  const vertical = protectExportPixels({ width: 1, height: width, pixels: image.pixels }, scale * 100, 'blur')
+  expect(vertical.pixels).toEqual(result)
+})

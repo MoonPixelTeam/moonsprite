@@ -3,8 +3,8 @@ import type { TranslationCatalog } from './contracts'
 export const ruRUMessages = {
   "preferences.exportProtection.title": "Защита при экспорте",
   "preferences.exportProtection.off": "Выключена",
-  "preferences.exportProtection.blur": "Лёгкое размытие",
-  "preferences.exportProtection.noise": "Лёгкое размытие + мелкий шум",
+  "preferences.exportProtection.blur": "Узкое сглаживание краёв",
+  "preferences.exportProtection.noise": "Узкое сглаживание краёв + мелкий шум",
   "preferences.exportProtection.hint": "Только для экспорта изображений с масштабом больше 100%. Проекты и обычное сохранение не меняются. Затрудняет восстановление оригинала, но не предотвращает копирование. Форматы проектов и видео исключены; GIF может ослабить эффект.",
 
   'sequence.files': "Файлы",

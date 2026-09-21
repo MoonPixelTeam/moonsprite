@@ -18,7 +18,7 @@ export function DiagnosticPreferencesField() {
     }
   }, [])
   return <>
-    <FormField className="preference-field" label={t('preferences.diagnostics.mode')} hint={t('preferences.diagnostics.hint')}>
+    <FormField className="preference-field" label={t('preferences.diagnostics.mode')} tooltip={t('preferences.diagnostics.hint')}>
       <ThemedSelect<DiagnosticMode> value={mode} label={t('preferences.diagnostics.mode')} groups={[{
         label: t('preferences.diagnostics.mode'), options: [
           { value: 'off', label: t('preferences.diagnostics.off') },

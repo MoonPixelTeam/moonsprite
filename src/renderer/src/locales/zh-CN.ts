@@ -1,8 +1,8 @@
 export const zhCNMessages = {
   "preferences.exportProtection.title": "导出防盗处理",
   "preferences.exportProtection.off": "关闭",
-  "preferences.exportProtection.blur": "轻微模糊",
-  "preferences.exportProtection.noise": "轻微模糊＋细微噪点",
+  "preferences.exportProtection.blur": "窄边缘柔化",
+  "preferences.exportProtection.noise": "窄边缘柔化＋细微噪点",
   "preferences.exportProtection.hint": "仅对大于 100% 的图片导出生效，不影响工程和普通保存。增加硬边缘缩小还原的难度，但不能保证防盗。工程格式和视频不支持；GIF 调色板可能减弱效果。",
 
   'sequence.files': "文件列表",

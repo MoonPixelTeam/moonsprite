@@ -3,8 +3,8 @@ import type { TranslationCatalog } from './contracts'
 export const esESMessages = {
   "preferences.exportProtection.title": "Protección de exportación",
   "preferences.exportProtection.off": "Desactivada",
-  "preferences.exportProtection.blur": "Desenfoque suave",
-  "preferences.exportProtection.noise": "Desenfoque suave + ruido fino",
+  "preferences.exportProtection.blur": "Suavizado estrecho de bordes",
+  "preferences.exportProtection.noise": "Suavizado estrecho de bordes + ruido fino",
   "preferences.exportProtection.hint": "Solo afecta a imágenes exportadas por encima del 100%, sin modificar proyectos ni guardados normales. Dificulta recuperar el original, pero no impide copiarlo. Excluye formatos de proyecto y vídeo; GIF puede reducir el efecto.",
 
   'sequence.files': "Archivos",

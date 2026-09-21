@@ -65,7 +65,10 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
         if (!canvas) return
         if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return
         try {
-          const context = canvas.getContext('2d')
+          // Pixels are already sampled on the CPU; these tiny canvases only
+          // receive putImageData. Keep them software-backed so dozens of cels
+          // do not add GPU layers to every main-canvas compositing update.
+          const context = canvas.getContext('2d', { willReadFrequently: true })
           if (!context) return
           const key = `${documentWidth}:${documentHeight}:${canvas.width}:${surface.width}:${surface.height}:${surface.offsetX}:${surface.offsetY}:${opacity}:${sharedCheckerboard}:${framing}:${surface.format === 'rgba' ? 'rgba' : paletteRenderKey(livePalette)}`
           const storage = rasterStorageIdentity(surface)
@@ -106,7 +109,7 @@ export function CelThumbnail({ documentId, layerId, celSource, palette, revision
 export const drawLayerMaskThumbnail = (canvas: HTMLCanvasElement, mask: LayerMask, documentWidth: number, documentHeight: number): void => {
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return
   try {
-    const context = canvas.getContext('2d')
+    const context = canvas.getContext('2d', { willReadFrequently: true })
     if (!context) return
     const pixels = renderLayerMaskThumbnailPixels(documentWidth, documentHeight, canvas.width, canvas.height, mask)
     const image = context.createImageData(canvas.width, canvas.height)
