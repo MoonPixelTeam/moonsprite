@@ -382,3 +382,17 @@ describe('sprite sheet file export service', () => {
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/Hero (1).png', expect.any(Uint8Array))
   })
 })
+
+it('applies export protection instead of bypassing it through native PNG writing', async () => {
+  const { api, writeBinaryAtomic } = exportApi()
+  const writeScaledPngAtomic = vi.fn()
+  api.writeScaledPngAtomic = writeScaledPngAtomic
+  localStorage.setItem('moonsprite.preference.export-protection', 'blur')
+  const document = createDocument('protected', 2, 1, 'rgba')
+  document.layers[0].pixels.set([255, 0, 0, 255, 0, 0, 255, 255])
+  await exportDocumentFile(api, document, { name: 'protected', format: 'png-rgba', target: 'document', scalePercent: 400, directory: 'D:/exports' })
+  expect(writeScaledPngAtomic).not.toHaveBeenCalled()
+  expect(writeBinaryAtomic).toHaveBeenCalledOnce()
+  const exported = decodePng(writeBinaryAtomic.mock.calls[0][1])
+  expect(exported.width).toBe(8)
+})

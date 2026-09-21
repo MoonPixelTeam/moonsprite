@@ -1,3 +1,4 @@
+import { brushPreviewHasUpperLayers } from './canvas-brush-layer-preview'
 import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
@@ -212,11 +213,10 @@ export function renderCanvasBrush({
       (view.tileRepeatMode ?? 'off') === 'off'
         ? solidBrushPreviewRowSpans(previewBrushSize, currentSession.brushShape, previewBrushAngle, optimizedRotationEnabled)
         : null
-    // Keep the hover path independent of layer position. The preview is a
-    // transient cursor overlay, so every editable raster layer receives the
-    // same fast geometry treatment instead of only the topmost layer.
+    const compositeFilledPreview = !drawing && (brushPreviewMode === 'full' || brushPreviewMode === 'full-edge')
+      && brushPreviewHasUpperLayers(document, currentActiveLayer.id)
     const directFullPreview = Boolean(
-      !drawing &&
+      !drawing && !compositeFilledPreview &&
         solidPreviewSpans &&
         currentSession.tool === 'pencil' &&
         currentSession.inkMode === 'simple' &&
@@ -225,7 +225,7 @@ export function renderCanvasBrush({
     // Full-edge keeps an outline during a stroke. It uses the same exact
     // row-span geometry as the hover cursor, so drawing does not fall back
     // to the per-pixel Map/Set preview path.
-    const fastSolidPreview = Boolean(solidPreviewSpans && (brushPreviewMode === 'edge' || directFullPreview || drawPreviewOutline))
+    const fastSolidPreview = Boolean(!compositeFilledPreview && solidPreviewSpans && (brushPreviewMode === 'edge' || directFullPreview || drawPreviewOutline))
 
     // A drawing pencil in `full` mode has no cursor overlay by design. The
     // old path still built the complete mask/maps/set every frame before
@@ -357,9 +357,6 @@ export function renderCanvasBrush({
         sampleY: number
         color: RgbaColor
       }> = []
-      context.lineWidth = brushEdgeThickness
-      alignCanvasStrokePath(context)
-      context.beginPath()
       const cacheableSolidHover =
         !drawing &&
         !previewBrushImage &&
@@ -465,31 +462,42 @@ export function renderCanvasBrush({
                 )
           })
         }
-        if (!drawPreviewOutline) continue
-        const left = !occupied.has(`${previewPoint.x - 1}:${previewPoint.y}`)
-        const right = !occupied.has(`${previewPoint.x + 1}:${previewPoint.y}`)
-        const top = !occupied.has(`${previewPoint.x}:${previewPoint.y - 1}`)
-        const bottom = !occupied.has(`${previewPoint.x}:${previewPoint.y + 1}`)
-        if (left || right || top || bottom) outline.include(pixelRect)
-        if (left) {
-          context.moveTo(pixelRect.x, pixelRect.y)
-          context.lineTo(pixelRect.x, pixelRect.y + pixelRect.height)
-        }
-        if (right) {
-          context.moveTo(pixelRect.x + pixelRect.width, pixelRect.y)
-          context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y + pixelRect.height)
-        }
-        if (top) {
-          context.moveTo(pixelRect.x, pixelRect.y)
-          context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y)
-        }
-        if (bottom) {
-          context.moveTo(pixelRect.x, pixelRect.y + pixelRect.height)
-          context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y + pixelRect.height)
-        }
       }
+      // Composited colors replace document pixels, so they must use the
+      // document grid. The half-device-pixel stroke offset applies only to
+      // the outline; applying it to fills shifts upper layers under the cursor.
       fillPreviewPixelRects(previewFillRects)
-      if (drawPreviewOutline) outline.stroke(context, undefined, brushEdgeColor)
+      if (drawPreviewOutline) {
+        context.lineWidth = brushEdgeThickness
+        alignCanvasStrokePath(context)
+        context.beginPath()
+        for (const previewPoint of renderedPreviewPoints.values()) {
+          if (!previewAllowed || (previewSelection && !selectionContains(previewSelection, previewPoint.sampleX, previewPoint.sampleY))) continue
+          const pixelRect = previewPixelRect(previewPoint.x, previewPoint.y)
+          const left = !occupied.has(`${previewPoint.x - 1}:${previewPoint.y}`)
+          const right = !occupied.has(`${previewPoint.x + 1}:${previewPoint.y}`)
+          const top = !occupied.has(`${previewPoint.x}:${previewPoint.y - 1}`)
+          const bottom = !occupied.has(`${previewPoint.x}:${previewPoint.y + 1}`)
+          if (left || right || top || bottom) outline.include(pixelRect)
+          if (left) {
+            context.moveTo(pixelRect.x, pixelRect.y)
+            context.lineTo(pixelRect.x, pixelRect.y + pixelRect.height)
+          }
+          if (right) {
+            context.moveTo(pixelRect.x + pixelRect.width, pixelRect.y)
+            context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y + pixelRect.height)
+          }
+          if (top) {
+            context.moveTo(pixelRect.x, pixelRect.y)
+            context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y)
+          }
+          if (bottom) {
+            context.moveTo(pixelRect.x, pixelRect.y + pixelRect.height)
+            context.lineTo(pixelRect.x + pixelRect.width, pixelRect.y + pixelRect.height)
+          }
+        }
+        outline.stroke(context, undefined, brushEdgeColor)
+      }
     }
     context.restore()
   }

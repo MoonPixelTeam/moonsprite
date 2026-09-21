@@ -1,6 +1,12 @@
 import type { TranslationCatalog } from './contracts'
 
 export const deDEMessages = {
+  "preferences.exportProtection.title": "Exportschutz",
+  "preferences.exportProtection.off": "Aus",
+  "preferences.exportProtection.blur": "Leichte Unschärfe",
+  "preferences.exportProtection.noise": "Leichte Unschärfe + feines Rauschen",
+  "preferences.exportProtection.hint": "Nur für Bildexporte über 100 %. Projekte und normales Speichern bleiben unverändert. Erschwert die Wiederherstellung, verhindert aber kein Kopieren. Projektformate und Videos sind ausgenommen; GIF kann den Effekt abschwächen.",
+
   'sequence.files': "Dateien",
   'sequence.duration': "Dauer",
   'sequence.repeat': "Für weitere Dateien ebenso verfahren",

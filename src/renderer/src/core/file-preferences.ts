@@ -1,3 +1,4 @@
+import type { ExportProtection } from './export-protection'
 import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, type ToolRailPreference } from './tool-rail-preferences'
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
@@ -23,6 +24,7 @@ export const LAST_EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
+export const EXPORT_PROTECTION_KEY = 'moonsprite.preference.export-protection'
 export const REFERENCE_SCALING_KEY = 'moonsprite.preference.reference-scaling'
 export const CANVAS_VIEW_SCROLLBARS_ENABLED_KEY = 'moonsprite.preference.canvas-view-scrollbars-enabled'
 export const DRAWING_BRUSH_PREVIEW_ENABLED_KEY = 'moonsprite.preference.drawing-brush-preview-enabled'
@@ -691,6 +693,7 @@ export interface EditorPreferences {
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
+  exportProtection: ExportProtection
   referenceScaling: 'smooth' | 'pixelated'
   canvasViewScrollbarsEnabled: boolean
   drawingBrushPreviewEnabled: boolean
@@ -798,6 +801,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
+  exportProtection: 'off',
   referenceScaling: 'smooth',
   canvasViewScrollbarsEnabled: true,
   drawingBrushPreviewEnabled: true,
@@ -1328,6 +1332,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
+    exportProtection: get(EXPORT_PROTECTION_KEY) === 'blur-noise' ? 'blur-noise' : get(EXPORT_PROTECTION_KEY) === 'blur' ? 'blur' : 'off',
     referenceScaling: get(REFERENCE_SCALING_KEY) === 'pixelated' ? 'pixelated' : 'smooth',
     canvasViewScrollbarsEnabled: get(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY) !== 'false',
     drawingBrushPreviewEnabled: parseDrawingBrushPreviewEnabled(get(DRAWING_BRUSH_PREVIEW_ENABLED_KEY)),
@@ -1442,6 +1447,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
+    [EXPORT_PROTECTION_KEY]: preferences.exportProtection,
     [REFERENCE_SCALING_KEY]: preferences.referenceScaling,
     [CANVAS_VIEW_SCROLLBARS_ENABLED_KEY]: String(preferences.canvasViewScrollbarsEnabled),
     [DRAWING_BRUSH_PREVIEW_ENABLED_KEY]: String(preferences.drawingBrushPreviewEnabled),

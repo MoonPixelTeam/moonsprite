@@ -175,6 +175,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.pendingPaste?.transformAngle ?? 0,
     session.pendingPaste?.transformShear ? `${session.pendingPaste.transformShear.axis}:${session.pendingPaste.transformShear.edge}:${session.pendingPaste.transformShear.amount}` : '',
     session.view.showSelectionPivot === false ? 0 : 1,
+    session.magicEraserContiguous ? 1 : 0,
     session.wandTolerance,
     session.wandContiguous ? 1 : 0,
     session.wandGapClosing ? 1 : 0,

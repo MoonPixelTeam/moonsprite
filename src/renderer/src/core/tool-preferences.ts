@@ -78,6 +78,7 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   selectionRounded: boolean
   selectionCornerRadius: number
   wandTolerance: number
+  magicEraserContiguous: boolean
   wandContiguous: boolean
   wandGapClosing: boolean
   wandGapThreshold: number
@@ -154,6 +155,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   selectionRounded: false,
   selectionCornerRadius: 4,
   wandTolerance: 0,
+  magicEraserContiguous: false,
   wandContiguous: true,
   wandGapClosing: false,
   wandGapThreshold: DEFAULT_GAP_CLOSING_THRESHOLD,
@@ -278,6 +280,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       selectionRounded: typeof stored.selectionRounded === 'boolean' ? stored.selectionRounded : defaultToolSettings.selectionRounded,
       selectionCornerRadius: Number.isFinite(stored.selectionCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.selectionCornerRadius!))) : defaultToolSettings.selectionCornerRadius,
       wandTolerance: Number.isFinite(stored.wandTolerance) ? Math.max(0, Math.min(255, Math.round(stored.wandTolerance!))) : defaultToolSettings.wandTolerance,
+      magicEraserContiguous: stored.magicEraserContiguous === true,
       wandContiguous: typeof stored.wandContiguous === 'boolean' ? stored.wandContiguous : defaultToolSettings.wandContiguous,
       wandGapClosing: typeof stored.wandGapClosing === 'boolean' ? stored.wandGapClosing : defaultToolSettings.wandGapClosing,
       wandGapThreshold: Number.isFinite(stored.wandGapThreshold) ? normalizeGapClosingThreshold(stored.wandGapThreshold!) : defaultToolSettings.wandGapThreshold,

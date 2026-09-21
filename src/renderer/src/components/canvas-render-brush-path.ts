@@ -19,6 +19,7 @@ import {
 } from '@/core/tilemap'
 import type { DocumentSession } from '@/store/workspace-types'
 import { brushBaseAngle } from './canvas-stage-helpers'
+import { solidBrushPathSpans, visitSolidBrushPathColors } from './canvas-solid-brush-path'
 export function createCanvasBrushPath({
   session,
   activeBrushImage,
@@ -163,6 +164,27 @@ export function createCanvasBrushPath({
       }
     }
     const centers = brushPathStampPoints(points, session.brushSize, activeBrushImage, previewAngle, session.brushShape)
+    const exactSolidSpans = session.brushShape === 'round' || (session.brushShape === 'square' && previewAngle % 90 === 0)
+      || (session.brushShape === 'line' && previewAngle % 360 === 0)
+    if (!activeBrushImage && activeBrushTexture === 'solid' && !activeBrushDither?.enabled && exactSolidSpans
+      && !hasSymmetry(session.symmetryAxes) && (view.tileRepeatMode ?? 'off') === 'off' && !tilemapTarget
+      && Math.min(view.zoom * deviceScale.x, view.zoom * deviceScale.y) >= 1) {
+      const spans = solidBrushPathSpans(centers, session.brushSize, session.brushShape, previewAngle, optimizedRotationEnabled, document.width, document.height)
+      visitSolidBrushPathColors(spans, selection, (x, y) => {
+        const index = baseline ? layerIndexAt(activeLayer, x, y) : null
+        const packed = index === null ? undefined : baseline?.get(index)
+        const base = packed === undefined ? undefined : activeLayer.format === 'rgba' ? unpackColor(packed) : getPaletteEntry(document, packed).color
+        return previewColorAt(x, y, erase, 255, color, base, false)
+      }, (left, right, y, color) => {
+        for (const { point, copy } of previewPixelPlacements(left, y)) {
+          const first = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
+          const last = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x + right - left, point.y, deviceScale)
+          previewFillRects.push({ pixelRect: { ...first, width: last.x + last.width - first.x }, sampleX: point.x, sampleY: point.y, color })
+        }
+      })
+      fillPreviewPixelRects(previewFillRects, erase)
+      return
+    }
     if (overwriteImageBrushPixels) centers.reverse()
     for (const center of centers) {
       const x = center.x

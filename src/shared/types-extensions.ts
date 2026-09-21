@@ -16,6 +16,7 @@ export interface LuaScriptListing {
 }
 
 export interface StoredExtension {
+  translations?: Record<string, Record<string, string>>
   id: string
   name: string
   version: string
@@ -139,6 +140,7 @@ export interface ExtensionListing {
 }
 
 export interface ExtensionPackagePreview {
+  translations?: Record<string, Record<string, string>>
   name: string
   version: string
   description: string

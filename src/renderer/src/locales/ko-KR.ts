@@ -1,6 +1,12 @@
 import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
+  "preferences.exportProtection.title": "내보내기 보호",
+  "preferences.exportProtection.off": "끄기",
+  "preferences.exportProtection.blur": "약한 흐림",
+  "preferences.exportProtection.noise": "약한 흐림 + 미세 노이즈",
+  "preferences.exportProtection.hint": "100% 초과 이미지 내보내기에만 적용됩니다. 일반 저장과 프로젝트에는 영향을 주지 않습니다. 원본 복원을 어렵게 하지만 도용을 막지는 못합니다. 프로젝트 형식과 동영상은 제외되며 GIF에서는 효과가 약해질 수 있습니다.",
+
   'sequence.files': "파일",
   'sequence.duration': "지속 시간",
   'sequence.repeat': "다른 파일에도 동일하게 적용",

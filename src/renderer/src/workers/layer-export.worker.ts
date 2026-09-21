@@ -34,10 +34,10 @@ scope.onmessage = async (event): Promise<void> => {
         : request.trimMode === 'individual' ? (request.format === 'gif' ? trimBoundsForLayerAnimation(request.document, layerId) : documentVisibleContentBounds(layerDocument))
         : null
       const encoded = request.format === 'gif'
-        ? { ...exportAnimationGif(request.document, { scalePercent: request.scalePercent, frameStart: request.gifFrameRange === 'range' ? request.gifFrameStart : undefined, frameEnd: request.gifFrameRange === 'range' ? request.gifFrameEnd : undefined, loopSectionId: request.gifFrameRange === 'loop-section' ? request.gifLoopSectionId : undefined, direction: request.gifDirection ?? 'forward', layerId, ...(trimBounds ? { crop: trimBounds } : {}) }), extension: 'gif' as const, indexed: false }
+        ? { ...exportAnimationGif(request.document, { scalePercent: request.scalePercent, protection: request.protection, frameStart: request.gifFrameRange === 'range' ? request.gifFrameStart : undefined, frameEnd: request.gifFrameRange === 'range' ? request.gifFrameEnd : undefined, loopSectionId: request.gifFrameRange === 'loop-section' ? request.gifLoopSectionId : undefined, direction: request.gifDirection ?? 'forward', layerId, ...(trimBounds ? { crop: trimBounds } : {}) }), extension: 'gif' as const, indexed: false }
         : trimBounds
-          ? await exportDocumentSliceImage(layerDocument, { id: 'trim', name: 'Trim', ...trimBounds }, request.scalePercent, request.format)
-          : await exportDocumentImage(layerDocument, request.scalePercent, request.format)
+          ? await exportDocumentSliceImage(layerDocument, { id: 'trim', name: 'Trim', ...trimBounds }, request.scalePercent, request.format, request.protection)
+          : await exportDocumentImage(layerDocument, request.scalePercent, request.format, request.protection)
       const result: LayerExportWorkerResult = { index, layerId, bytes: encoded.bytes, extension: encoded.extension as LayerExportWorkerResult['extension'], indexed: encoded.indexed }
       scope.postMessage({ id: request.id, progress: (index + 1) / request.layerIds.length * 100, result }, [encoded.bytes.buffer])
     }

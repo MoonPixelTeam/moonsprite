@@ -17,6 +17,8 @@ export const DEFAULT_SHORTCUTS = {
   'tool.airbrush': 'J',
   'tool.airbrush.quick': '',
   'tool.eraser': 'E',
+  'tool.magicEraser': 'Shift+E',
+  'tool.magicEraser.quick': '',
   'tool.eraser.quick': '',
   'tool.selection': 'M',
   'tool.selection.quick': '',

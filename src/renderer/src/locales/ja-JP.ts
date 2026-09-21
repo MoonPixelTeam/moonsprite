@@ -1,6 +1,12 @@
 import type { TranslationCatalog } from './contracts'
 
 export const jaJPMessages = {
+  "preferences.exportProtection.title": "書き出し保護",
+  "preferences.exportProtection.off": "オフ",
+  "preferences.exportProtection.blur": "弱いぼかし",
+  "preferences.exportProtection.noise": "弱いぼかし＋微細ノイズ",
+  "preferences.exportProtection.hint": "100% を超える画像書き出しにのみ適用。通常保存とプロジェクトは変更しません。元画像の復元を難しくしますが、盗用防止は保証しません。プロジェクト形式と動画は対象外。GIF では効果が弱まる場合があります。",
+
   'sequence.files': "ファイル",
   'sequence.duration': "表示時間",
   'sequence.repeat': "他のファイルにも同じ操作を行う",

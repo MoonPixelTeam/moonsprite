@@ -17,6 +17,7 @@ import { hasSymmetry, symmetryPoints, symmetrySelectionDragRegion, type Symmetry
 import { compositeSelectionPixelForEdit } from './tools-pixel-edit'
 import { captureSelectionTransform, forEachSelectedSourceOffset } from './tools-selection-transform-source'
 import { selectionTransformCells } from './tools-selection-transform-raster'
+import { applyPackedSelectionTransform } from './tools-selection-transform-commit'
 import { type SelectionTransformSource } from './tools-selection-transform-types'
 
 const isSymmetryRepresentative = (point: { x: number; y: number }, selection: SelectionMask, document: SpriteDocument, axes?: SymmetryAxes, center?: SymmetryCenter): boolean => {
@@ -160,7 +161,10 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
     })
     return edit.before.size > 0 ? edit : null
   }
-
+  if (!hasSymmetry(symmetryAxes) && !pixelCenteredSampling) {
+    const packed = applyPackedSelectionTransform(document, layer, source, target, angle, copy, shear, quad, optimizedRotation)
+    if (packed !== undefined) return packed
+  }
   if (!copy) {
     const selection = sourceSelection
     for (let y = selection.y; y < selection.y + selection.height; y += 1) {

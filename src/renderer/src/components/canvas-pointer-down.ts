@@ -634,6 +634,10 @@ export function createCanvasPointerDown(ports: Ports) {
     }
     if (shouldStartCanvasPan(session.tool) && navigationInput.beginHandPan({ session, event })) return
     if (session.tool === 'zoom' && navigationInput.beginZoom({ session, point, event })) return
+    if (session.tool === 'magic-eraser') {
+      if (event.button === 0 && canEditLayer && !tilemapPixelEditBlocked) fillInput.beginMagicEraser(point)
+      return
+    }
     if (session.tool === 'smooth' && strokeInput.beginSmooth({ session, event, hasRasterFocus, canEditLayer, tilemapPixelEditBlocked, editableLayer, point }))
       return
     if (

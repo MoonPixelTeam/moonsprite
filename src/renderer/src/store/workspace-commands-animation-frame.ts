@@ -1,3 +1,4 @@
+import { linkCelsInRightFrame } from './workspace-animation-linked-cel'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import { createId, createLayer, paletteColorIdForCanvas } from '@/core/document-model'
 import { applyRelativeLuminance } from '@/core/raster'
@@ -99,7 +100,8 @@ export function createAnimationFrameCommands({ get, set }: WorkspaceCommandConte
           const selectedFrameId =
             session.animationFrameSelectionAnchorId && session.selectedAnimationFrameIds.includes(session.animationFrameSelectionAnchorId) ? session.animationFrameSelectionAnchorId : session.selectedAnimationFrameIds.at(-1)
           const sourceFrameId = selectedCell?.frameId ?? (selectedFrameId && timeline.frames.some((frame) => frame.id === selectedFrameId) ? selectedFrameId : timeline.activeFrameId)
-          const layerIds = selectedCell ? [selectedCell.layerId] : session.document.layers.map((layer) => layer.id)
+          const layerIds = selectedCell ? [selectedCell.layerId] : selectedFrameId ? session.document.layers.map((layer) => layer.id) : [session.document.activeLayerId]
+          if (linkCelsInRightFrame(session, sourceFrameId, layerIds)) return
           if (sourceFrameId !== timeline.activeFrameId) activateAnimationFrame(session.document, sourceFrameId)
           const frameId = addBlankAnimationFrame(session.document)
           const loopSectionsAfter = cloneAnimationLoopSections(timeline.loopSections)

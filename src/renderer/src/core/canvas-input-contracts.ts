@@ -52,6 +52,8 @@ export type SelectionShearHandle = 'shear-n' | 'shear-e' | 'shear-s' | 'shear-w'
 export interface CanvasDragState extends LayerMoveState {
   kind:
     | 'draw'
+    | 'magic-eraser'
+    | 'fill'
     | 'tile-draw'
     | 'free-tile-draw'
     | 'free-tile-edit'
@@ -92,6 +94,8 @@ export interface CanvasDragState extends LayerMoveState {
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
+  fillHistoryLabel?: string
+  fillHistoryCommitted?: boolean
   perfectPixelCommittedEdit?: PixelEdit
   perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }

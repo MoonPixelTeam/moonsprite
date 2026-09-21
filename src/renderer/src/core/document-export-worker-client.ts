@@ -1,3 +1,4 @@
+import type { ExportProtection } from './export-protection'
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteSheetExportOptions, SpriteSheetExportSelection, SpriteSheetBuildNames } from './sprite-sheet'
@@ -12,6 +13,7 @@ export interface DocumentExportWorkerRequest {
   document: SpriteDocument
   job: DocumentExportWorkerJob
   format: DocumentExportWorkerFormat
+  protection?: ExportProtection
   scalePercent: number
   trim?: boolean
   trimMode?: 'individual' | 'common'

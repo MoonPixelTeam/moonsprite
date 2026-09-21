@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { deviceAlignedCoordinate } from '@/core/canvas-render-plan'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 
+
 describe('stable navigation sampling', () => {
   it('covers a fractional-zoom crop with touching integer device edges', () => {
     const blitter = new CanvasCompositeBlitter()

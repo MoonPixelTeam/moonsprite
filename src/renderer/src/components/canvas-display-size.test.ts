@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { canvasBackingCapacity, canvasDisplayDeviceScale, syncCanvasDisplaySize } from './canvas-display-size'
+import { canvasBackingCapacity, canvasDisplayDeviceScale, resizeOffscreenCanvas, syncCanvasDisplaySize } from './canvas-display-size'
 
 function trackedCanvas() {
   const canvas = document.createElement('canvas')
@@ -51,4 +51,15 @@ it('grows rotated backing capacity only when required and shrinks on commit', ()
   expect(canvasBackingCapacity(901, 1024, true)).toBe(1024)
   expect(canvasBackingCapacity(1025, 1024, true)).toBe(1152)
   expect(canvasBackingCapacity(901, 1152, false)).toBe(901)
+  const tracked = trackedCanvas()
+  const scene = tracked.canvas as unknown as OffscreenCanvas
+  for (const size of [901, 905, 1015, 940, 900]) {
+    expect(resizeOffscreenCanvas(scene, size, size, true)).toBe(scene)
+    expect(scene.width).toBeGreaterThanOrEqual(size)
+  }
+  expect(tracked.resets()).toBe(2)
+  expect(resizeOffscreenCanvas(scene, 900, 900)).toBe(scene)
+  expect(scene.width).toBe(900)
+  expect(scene.height).toBe(900)
+  expect(tracked.resets()).toBe(4)
 })

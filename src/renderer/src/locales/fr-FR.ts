@@ -1,6 +1,12 @@
 import type { TranslationCatalog } from './contracts'
 
 export const frFRMessages = {
+  "preferences.exportProtection.title": "Protection à l’exportation",
+  "preferences.exportProtection.off": "Désactivée",
+  "preferences.exportProtection.blur": "Flou léger",
+  "preferences.exportProtection.noise": "Flou léger + bruit fin",
+  "preferences.exportProtection.hint": "Uniquement pour les images exportées au-delà de 100 %, sans modifier les projets ni les enregistrements ordinaires. Rend la récupération plus difficile sans empêcher la copie. Projets et vidéos exclus ; le GIF peut atténuer l’effet.",
+
   'sequence.files': "Fichiers",
   'sequence.duration': "Durée",
   'sequence.repeat': "Appliquer aux autres fichiers",

@@ -57,7 +57,16 @@ pnpm bench:canvas -- --size=512 --scenario=pan,zoom
 pnpm bench:canvas -- --full
 pnpm bench:canvas:large
 pnpm bench:canvas:profile -- --size=1024 --scenario=zoom,draw,bucket-fill --repeat=3
+pnpm bench:canvas -- --size=4096 --layers=100 --frames=1 --preview=on --scenario=large-selection-move,large-selection-scale,large-selection-rotate --output-json=output/4k-selection.json
 ```
+
+定向大画布排查也支持 `4096`、`--layers=2..200`、`--frames=1..24` 与 `--preview=on|off`。自定义图层数仍保留两张全尺寸底图，其余为局部图层，并在分配前检查 192 MiB 像素预算；多帧通过共享像素、改变位置构造，不能代表所有帧像素都独立的内存负载。新增大画布场景包括画布旋转、旋转后缩放、擦除、选区移动/缩放/旋转、撤销和播放。预览开关必须识别实际预览面板，不能把复用样式的参考图面板算入。
+
+基准会关闭新用户更新日志弹窗并检查画布命中目标，避免弹窗遮挡导致操作没有执行却输出低耗时。设置 `MOONSPRITE_CPU_PROFILE_DIR` 可保存场景的 CPU profile；此时的耗时只用于热点定位，不与无采样器数据直接比较。单次扫描只能用于定位候选，不能声明稳定性能差异或 Aseprite 的相对速度。
+
+2026-09-21 补充导航覆盖：`--zoom=3 --viewport=1920x1080 --device-scale=1.5` 可显式测试放大视图、高分屏和较大窗口；默认适应窗口的缩略视图不能代表这些条件。`MOONSPRITE_TRACE_DIR` 保存浏览器栅格化、布局和图形任务追踪，采集时的数据与普通计时分开。`drawP95` 是同步 CPU 提交耗时，不含后续 GPU 工作；无界面浏览器的 RAF 统计也不等于桌面显示帧率，不能据此宣布流畅。
+
+原生导航复核必须保留画布滚动条和实际栏目。放大后滚动条的 DOM 位移可能触发整页合成层重建，而不会计入 `drawP95`；需要同时观察 `Paint`、`Layerize` / `PaintArtifactCompositor::Update`、输入排队及 RAF 间隔。隔离测试实例须使用不同的应用 identifier 和 WebView2 数据目录；Windows 的 Known Folder API 不保证采用覆盖后的 `APPDATA`，不能仅依靠该环境变量隔离恢复与诊断数据。
 
 支持标准尺寸 `128`、`512`、`1024` 和大画布尺寸 `800`、`2048`、`4000`。普通场景包括 `pan`、`zoom`、`rotated-zoom`、`draw`、`shape`、`marquee`、`bucket-fill`、`gradient`；复杂动画工程包括绘制、独立撤销/重做和播放；大画布工程额外覆盖全图概览与 100% 局部编辑两种视图。
 

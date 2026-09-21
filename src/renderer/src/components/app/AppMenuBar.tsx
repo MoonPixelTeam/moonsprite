@@ -1,3 +1,4 @@
+import { localizeExtension } from '@/core/extension-localization'
 import { EditMenuCommands } from './EditMenuCommands'
 import { MenuItemButton } from '@/components/MenuItemButton'
 import { useMenuViewport } from '@/components/useMenuViewport'
@@ -166,7 +167,7 @@ export function AppMenuBar({
   onOpenDiagnostics,
   onOpenAbout
 }: AppMenuBarProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const menuRef = useRef<HTMLElement>(null)
   useMenuViewport(menuRef)
   // Reported command state lives outside the workspace store, so the bar has to
@@ -180,7 +181,7 @@ export function AppMenuBar({
   const closeMenu = (): void => setOpenMenu(null)
   const toggleMenu = (menu: string): void => setOpenMenu(openMenu === menu ? null : menu)
   const extensionMenuContributions = listExtensionMenuItemContributions(extensions)
-  const extensionTopMenus = listExtensionTopMenuContributions(extensions)
+  const extensionTopMenus = listExtensionTopMenuContributions(extensions.map(extension => localizeExtension(extension, locale)))
   const extensionPanels = listExtensionPanelContributions(extensions)
   const orderedTopMenuIds = arrangeExtensionTopMenuIds(TOP_MENU_IDS, extensionTopMenus)
   const hoverMenuAt = (index: number): void => {

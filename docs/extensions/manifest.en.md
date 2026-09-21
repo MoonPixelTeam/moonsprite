@@ -85,3 +85,5 @@ Every control requires `id`, `type`, nonblank `label`; optional `description: ""
 ## Implementation sources
 
 [platform_extensions.rs](../../src-tauri/src/platform_extensions.rs) validates manifests; [ExtensionSettingsDialog.tsx](../../src/renderer/src/components/dialogs/ExtensionSettingsDialog.tsx) implements settings behavior. [types-extensions.ts](../../src/shared/types-extensions.ts) describes processed installed contributions, not the raw manifest format.
+
+Optional `translations` maps locale codes to dictionaries of source display text and translated text. The host localizes names, descriptions, labels, suffixes and placeholders, but preserves IDs and settings values. Up to 64 locales and 512 messages per locale are accepted, within the manifest size limit.

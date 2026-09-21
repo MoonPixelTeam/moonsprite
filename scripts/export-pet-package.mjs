@@ -4,7 +4,7 @@ import { basename, resolve } from 'node:path'
 import { strFromU8, unzipSync, zipSync } from 'fflate'
 import UPNG from 'upng-js'
 import { animationLoopFrameIdsForExport } from '../src/renderer/src/core/animation-loop-sections.ts'
-import { createLocalizationSource } from './pet-companion-localization.mjs'
+import { createLocalizationSource, catalogs } from './pet-companion-localization.mjs'
 
 /**
  * Build a MoonSprite pet extension package.
@@ -179,9 +179,10 @@ const manifest = {
   schemaVersion: 2,
   apiVersion: '1.0.0',
   id: extensionId,
-  name: 'Pet Companion',
+  name: '宠物伴侣',
+  translations: catalogs,
   version: '1.0.0',
-  description: 'Animated companions with custom animations, pet packages and reminders. Supports 9 languages.',
+  description: '支持多宠物、自定义动画、宠物包导入导出及报时、保存和休息提醒。',
   settingsUi: { storageKey: 'preferences', controls: [
     {id:'remindersEnabled',type:'checkbox',label:'提醒总开关',description:'统一控制报时、保存和休息提醒；关闭后保留各项设置。',defaultValue:true},
     {id:'clockEnabled',type:'checkbox',visibleWhen:{remindersEnabled:true},label:'自动报时',description:'在整点和半点显示当前时间。',defaultValue:true},
@@ -197,14 +198,14 @@ const manifest = {
     resources: { 'pet-window': 'ui/pet.html', 'pet-manager': 'ui/manager.html', sprite: 'assets/companion.png' }
   },
   commands: [
-    { id: 'manager', name: 'Pet Companion…', runtimeEvent: 'manager' },
+    { id: 'manager', name: '宠物管理…', runtimeEvent: 'manager' },
     { id: 'settings', name: '宠物设置…', opensSettings: true }
   ],
   topMenus: [
     {
       id: 'pet-menu',
       name: '宠物',
-      description: 'Pet Companion',
+      description: '宠物伴侣',
       position: 'after:window',
       commands: ['settings']
     }
@@ -218,6 +219,7 @@ const manifest = {
  * the host storage bridge, shared by the manager and companion windows.
  */
 const builtinSource = `
+const orderPets=(pets,order)=>{const ranks=new Map((Array.isArray(order)?order:[]).filter(id=>typeof id==='string').map((id,index)=>[id,index]));return pets.slice().sort((a,b)=>(ranks.get(a.id)??Infinity)-(ranks.get(b.id)??Infinity))};
 const resolveBuiltin=(saved,builtin)=>{const entry=saved&&saved.assetVersion===builtin.assetVersion?saved:{...builtin,...(saved?.scale?{scale:saved.scale}:{}),...(typeof saved?.mirrored==='boolean'?{mirrored:saved.mirrored}:{})};return entry.localizedName?{...entry,name:t(entry.localizedName)}:entry};
 `;
 const storeSource = `
@@ -230,7 +232,7 @@ const spriteWrite=async(key,value)=>{if(new TextEncoder().encode(JSON.stringify(
 const spriteDelete=key=>moonsprite.storage.remove('sprite.'+key);
 const readMeta=async()=>{const stored=await moonsprite.storage.get(META_KEY);return Array.isArray(stored)?stored.filter(entry=>entry&&typeof entry.id==='string'):[]};
 const writeMeta=list=>moonsprite.storage.set(META_KEY,list);
-const listPets=async()=>{const meta=await readMeta();return[resolveBuiltin(meta.find(entry=>entry.id===BUILT_IN.id),BUILT_IN),...meta.filter(entry=>entry.id!==BUILT_IN.id)]};
+const listPets=async()=>{const meta=await readMeta();return orderPets([resolveBuiltin(meta.find(entry=>entry.id===BUILT_IN.id),BUILT_IN),...meta.filter(entry=>entry.id!==BUILT_IN.id)],await moonsprite.storage.get('pet-order'))};
 const loadSheetUrl=async pet=>{if(pet.source==='builtin'){const bytes=await moonsprite.resources.read('sprite');return{url:URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'image/png'})),revoke:true}}const dataUrl=await spriteRead(pet.spriteKey||pet.id);if(typeof dataUrl!=='string')throw new Error(t('宠物素材已丢失：{name}',{name:pet.name}));return{url:dataUrl,revoke:false}};
 const decodeImage=url=>new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error(t('宠物素材无法解码。')));image.src=url});
 `
@@ -262,11 +264,11 @@ const notifyNearest=message=>{const task=noticeQueue.then(async()=>{
  if(!winner)return;await Promise.all([...visible].filter(id=>id!==winner).map(id=>send(id,{type:'dismiss-notice'})));if(visible.has(winner))await send(winner,message);
  });noticeQueue=task.catch(report);return noticeQueue};
 
-const catalog=async()=>{const meta=await read('pet-sprites')||[];return[resolveBuiltin(meta.find(pet=>pet.id===builtInPet.id),builtInPet),...meta.filter(pet=>pet.id!==builtInPet.id)]};
+const catalog=async()=>{const meta=await read('pet-sprites')||[];return orderPets([resolveBuiltin(meta.find(pet=>pet.id===builtInPet.id),builtInPet),...meta.filter(pet=>pet.id!==builtInPet.id)],await read('pet-order'))};
 const configure=(pet,playShow)=>({type:'configure',windowId:'pet-'+pet.id,pet,project,preferences:{...preferences,scale:pet.scale||preferences.scale||2},activePetId:pet.id,playShow,positionKey:'position:'+pet.id});
 const syncMenu=pets=>{const available=pets.filter(pet=>pet.frameCount>0);return moonsprite.menus.setItems({menuId:'pet-menu',name:t('宠物'),items:[...available.map(pet=>({id:pet.id,name:pet.name,event:'toggle-pet',checked:preferences.enabled&&shownIds.includes(pet.id)})),{id:'manager',name:t('宠物管理…'),event:'manager',checked:false,dividerBefore:available.length>0},{id:'settings',name:t('宠物设置…'),event:'settings',checked:false}]})};
 const enqueue=operation=>{const task=queue.then(operation);queue=task.catch(report);return task};
-const reload=async()=>{preferences={...defaults,...await read('preferences'),hostLocale};setPetLanguage(preferences.language,preferences.hostLocale);const stored=await read('shownPets');shownIds=Array.isArray(stored)?stored:[]};
+const reload=async()=>{preferences={...defaults,...await read('preferences'),hostLocale};setPetLanguage('auto',preferences.hostLocale);const stored=await read('shownPets');shownIds=Array.isArray(stored)?stored:[]};
 const reconcileNow=async()=>{
  const pets=await catalog(),wanted=preferences.enabled?pets.filter(pet=>pet.frameCount>0&&shownIds.includes(pet.id)):[];
  for(const [id,pet] of live)if(!wanted.some(next=>next.id===pet.id)&&visible.has(id)){await moonsprite.windows.setVisible({windowId:id,visible:false});visible.delete(id);await send(id,{type:'visibility',visible:false})}
@@ -378,10 +380,10 @@ if(message.type==='notice-distance'){(async()=>{let distance=null;try{if(pet&&ty
 if(message.type==='dismiss-notice'){clearTimeout(noticeTimer);notice.hidden=true;syncBubbleLayout();return}
 
 
-if(message.type==='configure'){petVisible=true;if(moonsprite.window.id&&message.windowId!==moonsprite.window.id)return;activePets=message.pet?[message.pet]:null;positionKey=message.positionKey||positionKey;project=message.project;preferences={...preferences,...message.preferences};setPetLanguage(preferences.language,preferences.hostLocale);activePetId=message.activePetId||activePetId;(async()=>{await refreshCatalog(message.playShow===true)})().catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
+if(message.type==='configure'){petVisible=true;if(moonsprite.window.id&&message.windowId!==moonsprite.window.id)return;activePets=message.pet?[message.pet]:null;positionKey=message.positionKey||positionKey;project=message.project;preferences={...preferences,...message.preferences};setPetLanguage('auto',preferences.hostLocale);activePetId=message.activePetId||activePetId;(async()=>{await refreshCatalog(message.playShow===true)})().catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
 if(message.type==='visibility'&&message.visible===false){petVisible=false;draggingAnimation=false;triggerBusyUntil=0;animationToken++;return}
 if(message.type==='project'){project=message.project;return}
-if(message.type==='preferences'){preferences={...preferences,...message.preferences};setPetLanguage(preferences.language,preferences.hostLocale);if(pet)updateScale();return}
+if(message.type==='preferences'){preferences={...preferences,...message.preferences};setPetLanguage('auto',preferences.hostLocale);if(pet)updateScale();return}
 if(message.type==='cursorPolicy'){applyCursorPolicy(message.useLocalCursors===true);return}
 if(message.type==='activate'){activePetId=message.petId;activePets=Array.isArray(message.pets)?message.pets:null;refreshCatalog(true).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
 if(message.type==='catalog'||message.type==='refresh'){activePets=null;refreshCatalog(false).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
@@ -412,10 +414,11 @@ let hostLocale=null;
 let activeId=BUILT_IN.id,status='',nameInput={value:''},result=null,staged=[];
 const publish=()=>moonsprite.window.postMessage({type:'catalog'});
 const renderList=async()=>{
- const prefs={...${JSON.stringify(defaults)},...await moonsprite.storage.get('preferences')};setPetLanguage(prefs.language,hostLocale);const pets=await listPets(),shown=await moonsprite.storage.get('shownPets')||[];
+ const prefs={...${JSON.stringify(defaults)},...await moonsprite.storage.get('preferences')};setPetLanguage('auto',hostLocale);const pets=await listPets(),shown=await moonsprite.storage.get('shownPets')||[];
  if(!pets.some(pet=>pet.id===activeId))activeId=BUILT_IN.id;
- const sidebar=[{id:'language',type:'select',label:t('语言'),value:prefs.language||'auto',options:[{value:'auto',label:t('跟随软件')},...PET_LANGUAGES.map(([value,label])=>({value,label}))]},{id:'apply-language',type:'button',label:t('应用语言'),action:{type:'ui-language'}},{id:'language-line',type:'separator'},{id:'list-title',type:'heading',label:t('我的宠物')}];
+ const sidebar=[{id:'list-title',type:'heading',label:t('我的宠物')}];
  for(const pet of pets)sidebar.push({id:'edit-'+pet.id,type:'choice',label:pet.name,description:!pet.frameCount?t('待上传动画'):prefs.enabled!==false&&shown.includes(pet.id)?t('显示中'):t('已隐藏'),selected:pet.id===activeId,action:{type:'ui-edit',petId:pet.id}});
+ sidebar.push({id:'pet-order',type:'row',children:[{id:'pet-up',type:'button',label:t('上移'),disabled:pets.findIndex(pet=>pet.id===activeId)<=0,action:{type:'ui-reorder',petId:activeId,direction:-1}},{id:'pet-down',type:'button',label:t('下移'),disabled:pets.findIndex(pet=>pet.id===activeId)>=pets.length-1,action:{type:'ui-reorder',petId:activeId,direction:1}}]});
  sidebar.push({id:'create-line',type:'separator'},{id:'newName',type:'input',label:t('新宠物名称'),value:nameInput.value},{id:'create',type:'button',label:t('创建宠物'),action:{type:'ui-create'}},{id:'import-pet',type:'file',label:t('导入宠物包…'),accept:'.mspet',multiple:false,action:{type:'ui-import-pet'}});
  const detail=[],target=pets.find(pet=>pet.id===activeId);
  if(target){
@@ -509,7 +512,6 @@ moonsprite.window.onMessage(message=>{
   try{
    const values=message.values||{};if(typeof values.newName==='string')nameInput.value=values.newName;staged=staged.map((file,index)=>({...file,animation:String(values['animation-'+index]??file.animation)}));
    if(message.type==='catalog'){if(message.hostLocale)hostLocale=message.hostLocale;if(message.petId&&(await listPets()).some(pet=>pet.id===message.petId)){activeId=message.petId;staged=[]}}
-   else if(message.type==='ui-language'){const language=String(values.language||'auto');if(language!=='auto'&&!PET_LANGUAGES.some(([id])=>id===language))throw new Error(t('语言无效'));const prefs=await moonsprite.storage.get('preferences')||{};await moonsprite.storage.set('preferences',{...prefs,language});setPetLanguage(language,hostLocale);status='';await publish();await moonsprite.window.postMessage({type:'language'})}
    else if(message.type==='ui-preference'){const key=message.key;if(!['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes'].includes(key))return;const value=key.endsWith('Minutes')?Math.max(1,Math.min(1440,Math.round(Number(values[key])||1))):message.value===true;const prefs=await moonsprite.storage.get('preferences')||{};await moonsprite.storage.set('preferences',{...prefs,[key]:value});await publish()}
    else if(message.type==='ui-export-pet'){const file=await exportPetPackage(message.petId);result={requestId:message.requestId,ok:true,file};status=t('宠物包已准备好')}
    else if(message.type==='ui-import-pet'){await importPetPackage(message.files)}
@@ -530,6 +532,7 @@ moonsprite.window.onMessage(message=>{
     const target=(await listPets()).find(pet=>pet.id===message.petId);if(!target?.triggerSlots?.some(slot=>slot.id===message.animation))throw new Error(t('槽位不存在'));
     await importAnimations([],message.petId,message.animation);const meta=await readMeta();await writeMeta(meta.map(pet=>pet.id===message.petId?{...pet,triggerSlots:(pet.triggerSlots||[]).filter(slot=>slot.id!==message.animation)}:pet));await publish();
    }
+   else if(message.type==='ui-reorder'){const pets=await listPets(),index=pets.findIndex(pet=>pet.id===message.petId),direction=message.direction;if(index<0||(direction!==-1&&direction!==1))return;const next=index+direction;if(next<0||next>=pets.length)return;[pets[index],pets[next]]=[pets[next],pets[index]];await moonsprite.storage.set('pet-order',pets.map(pet=>pet.id));await publish()}
    else if(message.type==='ui-edit'){activeId=message.petId;staged=[]}
    else if(message.type==='ui-upload-slot'){if(message.petId!==activeId)throw new Error(t('编辑对象已变更'));const target=(await listPets()).find(pet=>pet.id===activeId);if(!target||!animationSlots(target).includes(message.animation))throw new Error(t('动画槽位不存在'));if(!Array.isArray(message.files)||message.files.length!==1)throw new Error(t('每个槽位请选择一个动画文件'));await importAnimations([{...message.files[0],animation:message.animation}],target.id)}
    else if(message.type==='ui-clear-slot'){if(message.petId!==activeId)throw new Error(t('编辑对象已变更'));if(!animationSlots((await listPets()).find(pet=>pet.id===message.petId)).includes(message.animation))throw new Error(t('动画槽位不存在'));await importAnimations([],message.petId,message.animation);status=t('已清除 {name} 动画',{name:message.animation})}

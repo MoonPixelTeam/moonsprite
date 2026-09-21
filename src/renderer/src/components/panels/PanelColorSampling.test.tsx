@@ -7,6 +7,8 @@ import { useWorkspace } from '@/store/workspace'
 import { ReferenceImagePanel } from './ReferenceImagePanel'
 import { PreviewPanel } from './PreviewPanel'
 import { useReferenceImages } from './reference-image-state'
+import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
+import { captureSelectionTransform } from '@/core/tools-selection-transform-source'
 
 let previous: ReturnType<typeof useWorkspace.getState>
 const color = { r: 35, g: 70, b: 105, a: 128 }
@@ -70,4 +72,18 @@ it('Alt-samples preview document pixels including alpha without sampling its che
   expect(session.tool).toBe('pencil')
   expect(session.contentRevision).toBe(revision)
   expect(view.container.querySelector('.space-panning')).toBeNull()
+})
+
+it('retains the committed base after a deferred transform ends but clears mutated live previews', () => {
+  const session = useWorkspace.getState().sessions[0]
+  render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
+  const invalidate = vi.spyOn(CanvasCompositeCache.prototype, 'invalidateAll')
+  const source = captureSelectionTransform(session.document, { x: 0, y: 0, width: 2, height: 2 })!
+  const snapshot = { document: session.document, frameId: session.document.animation!.activeFrameId, revision: session.revision, contentRevision: session.contentRevision }
+  notifyCanvasPreview(session.document.id, { ...snapshot, selectionPreview: { layerId: session.document.activeLayerId, source, target: source.selection, angle: 23, copy: false } })
+  notifyCanvasPreview(session.document.id, null)
+  expect(invalidate).not.toHaveBeenCalled()
+  notifyCanvasPreview(session.document.id, snapshot)
+  notifyCanvasPreview(session.document.id, null)
+  expect(invalidate).toHaveBeenCalledOnce()
 })

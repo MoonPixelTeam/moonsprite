@@ -68,7 +68,7 @@ export const revertCancelledCanvasDragPixelChanges = (document: SpriteDocument, 
     restoreSelectionTranslationPreview(document, drag.translationPreview)
     return changed
   }
-  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' || drag.kind === 'liquify' || drag.kind === 'smooth' ? drag.edit : drag.previewEdit
+  const edit = drag.kind === 'draw' || drag.kind === 'fill' || drag.kind === 'airbrush' || drag.kind === 'liquify' || drag.kind === 'smooth' ? drag.edit : drag.previewEdit
   if (!edit) return false
   const changed = pixelEditHasChanges(edit)
   revertPixelEdit(document, edit)

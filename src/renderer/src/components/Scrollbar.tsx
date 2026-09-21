@@ -1,4 +1,5 @@
-import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
+import { useRef, type KeyboardEvent, type PointerEvent } from 'react'
+import { useScrollbarThumb } from './useScrollbarThumb'
 
 export interface ScrollbarProps {
   ariaLabel: string
@@ -13,26 +14,19 @@ const clampUnit = (value: number): number => Math.min(1, Math.max(0, Number.isFi
 
 export function Scrollbar({ ariaLabel, className = '', orientation, thumbRatio, value, onChange }: ScrollbarProps) {
   const trackRef = useRef<HTMLDivElement>(null)
-  const thumbRef = useRef<HTMLSpanElement>(null)
   const dragRef = useRef<{ pointerId: number; offset: number } | null>(null)
   const normalizedValue = clampUnit(value)
   const normalizedRatio = clampUnit(thumbRatio)
   const horizontal = orientation === 'horizontal'
-  // Translate a track-sized carrier and counter-translate the thumb by its
-  // own size. This retains min-thumb sizing without changing layout on pan.
-  const carrierStyle = { transform: `translate${horizontal ? 'X' : 'Y'}(${normalizedValue * 100}%)` }
-  const thumbStyle = horizontal
-    ? { left: 0, width: `${normalizedRatio * 100}%`, transform: `translateX(-${normalizedValue * 100}%)` }
-    : { top: 0, height: `${normalizedRatio * 100}%`, transform: `translateY(-${normalizedValue * 100}%)` }
+  const { canvasRef, thumbAt, setHovered } = useScrollbarThumb(trackRef, horizontal, normalizedRatio, normalizedValue)
 
   const pointerCoordinate = (event: PointerEvent<HTMLDivElement>): number => horizontal ? event.clientX : event.clientY
   const updateFromPointer = (event: PointerEvent<HTMLDivElement>, offset: number): void => {
     const track = trackRef.current?.getBoundingClientRect()
-    const thumb = thumbRef.current?.getBoundingClientRect()
-    if (!track || !thumb) return
+    if (!track) return
     const trackStart = horizontal ? track.left : track.top
     const trackLength = horizontal ? track.width : track.height
-    const thumbLength = horizontal ? thumb.width : thumb.height
+    const { length: thumbLength } = thumbAt(trackLength)
     const travel = trackLength - thumbLength
     onChange(travel > 0 ? clampUnit((pointerCoordinate(event) - trackStart - offset) / travel) : 0)
   }
@@ -40,12 +34,10 @@ export function Scrollbar({ ariaLabel, className = '', orientation, thumbRatio, 
     if (event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
-    const thumb = thumbRef.current
-    if (!thumb) return
-    const bounds = thumb.getBoundingClientRect()
-    const thumbStart = horizontal ? bounds.left : bounds.top
-    const thumbLength = horizontal ? bounds.width : bounds.height
-    const pressedThumb = thumb.contains(event.target as Node)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const { offset: thumbOffset, length: thumbLength } = thumbAt(horizontal ? bounds.width : bounds.height)
+    const thumbStart = (horizontal ? bounds.left : bounds.top) + thumbOffset
+    const pressedThumb = pointerCoordinate(event) >= thumbStart && pointerCoordinate(event) <= thumbStart + thumbLength
     const offset = pressedThumb ? pointerCoordinate(event) - thumbStart : thumbLength / 2
     dragRef.current = { pointerId: event.pointerId, offset }
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* Pointer capture is unavailable in some test hosts. */ }
@@ -95,11 +87,11 @@ export function Scrollbar({ ariaLabel, className = '', orientation, thumbRatio, 
     onPointerMove={movePointer}
     onPointerUp={finishPointer}
     onPointerCancel={finishPointer}
+    onPointerEnter={() => setHovered(true)}
+    onPointerLeave={() => setHovered(false)}
     onLostPointerCapture={(event) => { if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null }}
     onContextMenu={(event) => event.preventDefault()}
   >
-    <span className="ui-scrollbar-carrier" style={carrierStyle}>
-      <span ref={thumbRef} className="ui-scrollbar-thumb" style={thumbStyle as CSSProperties} />
-    </span>
+    <canvas ref={canvasRef} className="ui-scrollbar-thumb" aria-hidden="true" />
   </div>
 }

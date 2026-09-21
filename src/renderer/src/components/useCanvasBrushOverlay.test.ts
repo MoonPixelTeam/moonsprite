@@ -1,11 +1,12 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CanvasInputState } from '@/core/canvas-input'
-import { createDocument } from '@/core/document-model'
+import { CanvasInputState, PointerPressureAdapter } from '@/core/canvas-input'
+import { createDocument, createLayer } from '@/core/document-model'
 import { sessionFromDocument } from '@/store/workspace-session'
 import { useWorkspace } from '@/store/workspace'
 import { useCanvasBrushOverlay } from './useCanvasBrushOverlay'
 import { flushCanvasBrushSize, queueCanvasBrushSize } from './canvas-brush-size-update'
+import { createCanvasPointerMove } from './canvas-pointer-move'
 
 afterEach(() => { cleanup(); window.dispatchEvent(new Event('blur')); vi.restoreAllMocks(); useWorkspace.setState({ sessions: [], activeId: null }); document.querySelectorAll('canvas').forEach(canvas => canvas.remove()) })
 
@@ -31,6 +32,41 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
   const { result } = renderHook(() => useCanvasBrushOverlay(ports))
   result.current.brushPreviewCanvasRef.current = canvas
   expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+  input.shiftLinePreview = true
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+  input.shiftLinePreview = false
+  expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+  const scheduleOverlay = vi.fn()
+  const scheduleDraw = vi.mocked(ports.scheduleDraw)
+  scheduleDraw.mockClear()
+  const move = createCanvasPointerMove({
+    inputRef: { current: input }, liveInputSession: () => session, canvasRef: { current: canvas },
+    liveViewRef: { current: session.view }, pressureAdapterRef: { current: new PointerPressureAdapter() },
+    moveSymmetry: () => false, autoPanSelection: vi.fn(), updateCursor: vi.fn(),
+    lineConnectionPreviewActive: (event: { shiftKey: boolean }) => event.shiftKey,
+    localPoint: (event: { clientX: number; clientY: number }) => ({ x: event.clientX, y: event.clientY }),
+    activeLayer: session.document.layers[0], interfaceScale: 1, modifierActive: () => false,
+    brushPreviewOverlaySupported: result.current.brushPreviewOverlaySupported,
+    scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false
+  } as unknown as Parameters<typeof createCanvasPointerMove>[0])
+  // A → B → C must each schedule the line canvas, not just the cursor.
+  for (const clientX of [100, 120, 140]) {
+    const event = { clientX, clientY: 128, ctrlKey: false, altKey: false, metaKey: false, shiftKey: true, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+    move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as Parameters<typeof move>[0])
+    expect(input.pointer.point.x).toBe(clientX)
+  }
+  expect(scheduleDraw).toHaveBeenCalledTimes(3)
+  expect(scheduleOverlay).not.toHaveBeenCalled()
+  input.shiftLinePreview = false
+  if (tool === 'pencil') {
+    const upper = createLayer('upper', 256, 256, 'rgba')
+    session.document.layers.push(upper)
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    upper.visible = false
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
+    session.document.layers.pop()
+  }
+
   act(() => result.current.brushPreviewDrawRef.current())
   expect(context.stroke).toHaveBeenCalledOnce()
   expect(context.fill).toHaveBeenCalledTimes(tool === 'eraser' ? 0 : 1)

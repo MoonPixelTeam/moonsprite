@@ -44,7 +44,7 @@ export const cancelsActiveCanvasDrawWithRightClick = (
   event: Pick<PointerEvent, 'button' | 'buttons'>,
   drag: CanvasInputState['drag']
 ): boolean => {
-  return event.button === 2 && cancelsActiveCanvasDrawWhileRightHeld(event, drag)
+  return (event.button === 0 || event.button === 2) && cancelsActiveCanvasDrawWhileRightHeld(event, drag)
 }
 
 /** Browsers report a second mouse button during a captured stroke as pointermove, not pointerdown. */

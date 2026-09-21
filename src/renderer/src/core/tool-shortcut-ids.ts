@@ -1,5 +1,5 @@
 export const CYCLING_TOOL_SHORTCUT_IDS = [
-  'tool.pencil', 'tool.airbrush', 'tool.eraser', 'tool.selection', 'tool.selection.ellipse',
+  'tool.pencil', 'tool.airbrush', 'tool.eraser', 'tool.magicEraser', 'tool.selection', 'tool.selection.ellipse',
   'lasso', 'polygonLasso', 'magic', 'tool.move', 'tool.slice', 'tool.shape',
   'tool.shape.rectangleOutline', 'tool.shape.rectangle', 'tool.shape.ellipseOutline',
   'tool.shape.ellipse', 'tool.shape.freeform', 'tool.shape.polygon', 'tool.line',

@@ -1,3 +1,4 @@
+import { brushPreviewHasUpperLayers } from './canvas-brush-layer-preview'
 import { isWorkspaceResizing } from './workspace-resize'
 import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
@@ -92,6 +93,9 @@ export function useCanvasBrushOverlay(ports: Ports) {
 
   const brushPreviewOverlaySupported = (currentSession: DocumentSession): boolean => {
     if (currentSession.animationPlaying || !isToolAvailableForSession(currentSession, currentSession.tool)) return false
+    // Shift-connected strokes are rendered on the document canvas. Updating
+    // only this cursor overlay leaves the line frozen at the last full draw.
+    if (ports.inputRef.current.shiftLinePreview && (currentSession.tool === 'pencil' || currentSession.tool === 'eraser')) return false
     if (
       !ports.inputRef.current.modifierBrushSize && ports.temporaryMoveActive?.(
         {
@@ -125,6 +129,8 @@ export function useCanvasBrushOverlay(ports: Ports) {
     if (ports.brushPreviewMode === 'none' || !['pencil', 'eraser', 'line'].includes(currentSession.tool)
       || (currentSession.tool !== 'eraser' && currentSession.inkMode !== 'simple')) return false
     if (currentSession.tool === 'line' && ports.brushPreviewMode === 'full') return false
+    if ((ports.brushPreviewMode === 'full' || ports.brushPreviewMode === 'full-edge') && currentSession.tool !== 'eraser'
+      && brushPreviewHasUpperLayers(currentSession.document, activePaintLayer(currentSession).id)) return false
     const drag = ports.inputRef.current.drag
     if ((drag && (drag.kind !== 'draw' || !ports.drawingBrushPreviewEnabled)) || !ports.inputRef.current.pointer.visible || ports.inputRef.current.sampling || ports.inputRef.current.spaceHeld)
       return false

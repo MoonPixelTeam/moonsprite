@@ -1220,6 +1220,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const fillInput = createFillCanvasInput({
+    get invalidateCompositeRect() { return invalidateCompositeRect },
     get gridSnapActive() { return gridSnapActive },
     get gradientPreviewCoverageCacheRef() { return gradientPreviewCoverageCacheRef },
     get inputRef() { return inputRef },

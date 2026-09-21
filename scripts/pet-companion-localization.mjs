@@ -3,6 +3,13 @@ export const languages = [['zh-CN','简体中文'],['en-US','English'],['ja-JP',
 
 // Chinese source | English | Japanese | Korean | German | French | Spanish | Portuguese | Russian
 const rows = `
+宠物伴侣|Pet Companion|ペットコンパニオン|펫 컴패니언|Haustierbegleiter|Compagnon animé|Compañero mascota|Companheiro mascote|Питомец-компаньон
+支持多宠物、自定义动画、宠物包导入导出及报时、保存和休息提醒。|Multiple pets, custom animations, pet package import/export, and time, save and break reminders.|複数のペット、カスタムアニメーション、ペットの読み込み・書き出し、時刻・保存・休憩のお知らせ。|여러 펫, 사용자 애니메이션, 펫 가져오기·내보내기 및 시간·저장·휴식 알림.|Mehrere Haustiere, eigene Animationen, Paketimport/-export sowie Zeit-, Speicher- und Pausenerinnerungen.|Plusieurs compagnons, animations personnalisées, import/export et rappels d’heure, d’enregistrement et de pause.|Varias mascotas, animaciones propias, importación/exportación y avisos de hora, guardado y descanso.|Vários mascotes, animações próprias, importação/exportação e lembretes de horário, salvamento e pausa.|Несколько питомцев, свои анимации, импорт/экспорт и напоминания о времени, сохранении и отдыхе.
+统一控制报时、保存和休息提醒；关闭后保留各项设置。|Control all reminders. Turning off preserves their settings.|すべてのお知らせを制御します。オフでも設定は保持されます。|모든 알림을 제어합니다. 꺼도 설정은 유지됩니다.|Alle Erinnerungen steuern. Einstellungen bleiben beim Ausschalten erhalten.|Contrôle tous les rappels. Les réglages sont conservés à l’arrêt.|Controla todos los avisos. Desactivarlos conserva los ajustes.|Controla todos os lembretes. Desativar mantém as configurações.|Управляет всеми напоминаниями. При отключении настройки сохраняются.
+在整点和半点显示当前时间。|Show the time every hour and half hour.|毎時と30分に時刻を表示します。|매시 정각과 30분에 시간을 표시합니다.|Uhrzeit zu jeder vollen und halben Stunde anzeigen.|Afficher l’heure toutes les heures et demi-heures.|Muestra la hora cada hora y media hora.|Mostra a hora a cada hora e meia hora.|Показывать время каждый час и каждые полчаса.
+
+上移|Move up|上へ|위로|Nach oben|Monter|Subir|Mover para cima|Вверх
+下移|Move down|下へ|아래로|Nach unten|Descendre|Bajar|Mover para baixo|Вниз
 奶龙|Nailong|ナイロン|나이롱|Nailong|Nailong|Nailong|Nailong|Найлон
 语言|Language|言語|언어|Sprache|Langue|Idioma|Idioma|Язык
 跟随软件|App language|アプリの言語|앱 언어|App-Sprache|Langue de l’application|Idioma de la aplicación|Idioma do aplicativo|Язык приложения
@@ -174,7 +181,7 @@ const rows = `
 宠物素材无法解码。|Cannot decode the pet asset.|ペット素材をデコードできません。|펫 소재를 디코딩할 수 없습니다.|Haustierressource kann nicht decodiert werden.|Impossible de décoder la ressource.|No se puede decodificar el recurso.|Não foi possível decodificar o recurso.|Не удалось декодировать ресурс питомца.
 宠物素材解码尺寸不一致。|Decoded pet dimensions do not match.|デコードした素材の寸法が一致しません。|디코딩된 펫 크기가 일치하지 않습니다.|Decodierte Haustiergröße stimmt nicht überein.|Les dimensions décodées ne correspondent pas.|Las dimensiones decodificadas no coinciden.|As dimensões decodificadas não correspondem.|Размеры декодированного питомца не совпадают.
 无法更新宠物命中区域：|Cannot update pet hit region: |ペットの当たり判定を更新できません：|펫 감지 영역을 업데이트할 수 없음: |Trefferbereich kann nicht aktualisiert werden: |Impossible d’actualiser la zone interactive : |No se puede actualizar el área interactiva: |Não foi possível atualizar a área interativa: |Не удалось обновить область взаимодействия: 
-`.trim().split('\n')
+`.trim().split('\n').filter(Boolean)
 
 export const catalogs = Object.fromEntries(languages.map(([locale]) => [locale, {}]))
 for (const row of rows) {

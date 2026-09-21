@@ -37,6 +37,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   const [selectionFlyoutOpen, setSelectionFlyoutOpen] = useState(false)
   const [fillFlyoutOpen, setFillFlyoutOpen] = useState(false)
   const [moveFlyoutOpen, setMoveFlyoutOpen] = useState(false)
+  const [eraserFlyoutOpen, setEraserFlyoutOpen] = useState(false)
   const [brushFlyoutOpen, setBrushFlyoutOpen] = useState(false)
   const [rememberedBrushTool, setRememberedBrushTool] = useState<ToolId>(() => {
     const saved = readStoredString('moonsprite.tool-rail.brush-tool')
@@ -62,6 +63,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
         setFillFlyoutOpen(false)
         setMoveFlyoutOpen(false)
         setBrushFlyoutOpen(false)
+        setEraserFlyoutOpen(false)
       }
     }
     const closeAll = (event: Event): void => {
@@ -73,6 +75,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
       setFillFlyoutOpen(false)
       setMoveFlyoutOpen(false)
       setBrushFlyoutOpen(false)
+      setEraserFlyoutOpen(false)
     }
     window.addEventListener('pointerdown', closeOutside, true)
     window.addEventListener('moonsprite:close-dialog', closeAll)
@@ -83,6 +86,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
   }, [])
 
   useEffect(() => {
+    if (session?.tool !== 'eraser' && session?.tool !== 'magic-eraser') setEraserFlyoutOpen(false)
     if (session?.tool !== 'shape') setShapeFlyoutOpen(false)
     if (session?.tool !== 'line') setLineFlyoutOpen(false)
     if (session?.tool !== 'selection') setSelectionFlyoutOpen(false)
@@ -140,7 +144,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
     </span>
     <button className="tool-rail-grip" type="button" aria-label={t('tools.moveToolbar')} title={t('tools.moveToolbarHint')} onPointerDown={onGripPointerDown}><PixelUtilityIcon kind="move" /></button>
     {tools.map((tool) => {
-      const presentationToolId = tool.id === 'pencil' ? (['pencil', 'airbrush', 'smooth'].includes(displaySession.tool) ? displaySession.tool : rememberedBrushTool) : tool.id
+      const presentationToolId = tool.id === 'eraser' && displaySession.tool === 'magic-eraser' ? 'magic-eraser' : tool.id === 'pencil' ? (['pencil', 'airbrush', 'smooth'].includes(displaySession.tool) ? displaySession.tool : rememberedBrushTool) : tool.id
       const presentation = activeToolPresentation(presentationToolId, displaySession.selectionKind, displaySession.shapeKind, locale, fillKind, displaySession.lineKind, displaySession.moveKind)
       const shortcut = primaryShortcutFor(presentation.shortcutId)
       const toolAvailable = isToolAvailableForSession(session, tool.id)
@@ -149,6 +153,7 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
         const target = isToolAvailableForSession(session, presentationToolId) ? presentationToolId : tool.id
         workspace.setTool(target)
         setBrushFlyoutOpen(tool.id === 'pencil' ? !brushFlyoutOpen : false)
+        setEraserFlyoutOpen(tool.id === 'eraser' ? !eraserFlyoutOpen : false)
         setShapeFlyoutOpen(tool.id === 'shape' ? !shapeFlyoutOpen : false)
         setLineFlyoutOpen(tool.id === 'line' ? !lineFlyoutOpen : false)
         setSelectionFlyoutOpen(tool.id === 'selection' ? !selectionFlyoutOpen : false)
@@ -157,12 +162,15 @@ export const EditorToolRail = memo(function EditorToolRail({ side, onGripPointer
       }
       const toolSelected = tool.id === 'pencil'
         ? displaySession.tool === 'pencil' || displaySession.tool === 'airbrush' || displaySession.tool === 'smooth'
-        : displaySession.tool === tool.id
+        : displaySession.tool === tool.id || (tool.id === 'eraser' && displaySession.tool === 'magic-eraser')
       return <div className="tool-slot" key={tool.id}>
         <Tooltip className="rail-tool-tooltip" content={flyoutTooltip(presentation.label, presentation.description, shortcutFor(presentation.shortcutId))}><button className={toolSelected ? 'selected' : ''} aria-label={presentation.label} disabled={!toolAvailable} onClick={openToolFlyout}>
           <PixelAssetIcon src={presentation.icon} className="rail-tool-icon" />
           <small>{shortcut}</small>
         </button></Tooltip>
+        {tool.id === 'eraser' && eraserFlyoutOpen && <div className="tool-flyout" style={{ gridAutoFlow: 'column' }} role="dialog" aria-label={tool.label}>
+          {(['eraser', 'magic-eraser'] as const).map(id => allTools.find(definition => definition.id === id)!).map(definition => <Tooltip key={definition.id} className="tool-flyout-tooltip" content={flyoutTooltip(definition.label, definition.description, shortcutFor(definition.shortcutId))}><button className={session.tool === definition.id ? 'selected' : ''} aria-label={definition.label} disabled={!isToolAvailableForSession(session, definition.id)} onClick={() => { workspace.setTool(definition.id); setEraserFlyoutOpen(false) }}><PixelAssetIcon src={definition.icon} /></button></Tooltip>)}
+        </div>}
         {tool.id === 'pencil' && brushFlyoutOpen && <div className="tool-flyout brush-flyout" role="dialog" aria-label={t('tools.toolbar')}>
           {brushTools.map((definition) => {
             const definitionAvailable = isToolAvailableForSession(session, definition.id)

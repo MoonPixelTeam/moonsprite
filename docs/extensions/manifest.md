@@ -85,3 +85,5 @@ ID 必须为 1–80 字节 ASCII 字母、数字、`.`、`-`、`_`；不能以�
 ## 维护依据
 
 清单行为由 [platform_extensions.rs](../../src-tauri/src/platform_extensions.rs) 验证；设置运行行为由 [ExtensionSettingsDialog.tsx](../../src/renderer/src/components/dialogs/ExtensionSettingsDialog.tsx) 实现。贡献安装结构见 [types-extensions.ts](../../src/shared/types-extensions.ts)，该类型不能替代原始清单规范。
+
+可选 `translations` 为语言代码到“原始展示文本 → 翻译”字典的映射。宿主翻译名称、描述、标签、后缀和占位提示，不修改 ID 或设置值。最多 64 种语言、每种 512 条，仍受清单大小限制。

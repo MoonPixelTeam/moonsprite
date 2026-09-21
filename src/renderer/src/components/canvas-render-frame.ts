@@ -24,7 +24,7 @@ import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-sca
 import { deferredSelectionPreviewOwner, temporaryMoveSuppressesToolPreview } from '@/core/canvas-input'
 import { presentCanvasClickFlash } from './canvas-click-flash'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
-import { canvasBackingCapacity, clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
+import { resizeOffscreenCanvas, clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { pixelSamplingMode } from '@/core/pixel-display'
 import { tileRepeatOffsetsForViewport } from '@/core/tilemap'
 import type * as React from 'react'
@@ -425,13 +425,11 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const { rotated, viewport, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY } = renderPlan
   let context: RasterContext2D = displayContext
   if (rotated) {
-    let scene = rotationSceneRef.current
-    const sceneBackingWidth = canvasBackingCapacity(Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), scene?.width ?? 0, isWorkspaceResizing())
-    const sceneBackingHeight = canvasBackingCapacity(Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), scene?.height ?? 0, isWorkspaceResizing())
-    if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
-      scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
-      rotationSceneRef.current = scene
-    }
+    // Rotation changes the scene bounds on each pointer sample. Keep its
+    // backing allocation through the gesture instead of replacing a large
+    // GPU surface on every angle; settled draws return to exact dimensions.
+    const scene = resizeOffscreenCanvas(rotationSceneRef.current, Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), viewPreviewActive)
+    rotationSceneRef.current = scene
     const sceneContext = scene.getContext('2d')
     if (!sceneContext) return
     sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)

@@ -9,6 +9,7 @@ import { cancelsActiveCanvasDrawWhileRightHeld, cancelsActiveCanvasDrawWithRight
 
 it('cancels only an active non-navigation gesture when the right button joins a left-button gesture', () => {
   expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 3 }, { kind: 'draw' } as never)).toBe(true)
+  expect(cancelsActiveCanvasDrawWithRightClick({ button: 0, buttons: 3 }, { kind: 'draw' } as never)).toBe(true)
   expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 2 }, { kind: 'draw' } as never)).toBe(false)
   expect(cancelsActiveCanvasDrawWithRightClick({ button: 2, buttons: 3 }, { kind: 'pan' } as never)).toBe(false)
   expect(cancelsActiveCanvasDrawWhileRightHeld({ buttons: 3 }, { kind: 'draw' } as never)).toBe(true)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ViewState } from '@shared/types-view'
 import { notifyViewPreview } from '@/core/view-preview-lifecycle'
 import { CanvasViewScrollbars } from './CanvasViewScrollbars'
@@ -8,7 +8,11 @@ import { useCanvasViewScrollbars } from './useCanvasViewScrollbars'
 
 const { setView } = vi.hoisted(() => ({ setView: vi.fn() }))
 vi.mock('@/store/workspace', () => ({ useWorkspace: { getState: () => ({ setViewForDocument: setView }) } }))
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+})
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 const view: ViewState = { zoom: 4, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false, showGrid: false, relativeLuminance: false }
 const options = { documentId: 'large', documentWidth: 4596, documentHeight: 1767, viewportWidth: 1200, viewportHeight: 800, view, rotationIndicatorPosition: 'canvas' as const }
 

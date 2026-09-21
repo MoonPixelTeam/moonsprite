@@ -1,3 +1,4 @@
+import { localizeExtension } from '@/core/extension-localization'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { StoredExtension, ExtensionPackagePreview } from '@shared/types-extensions'
 import {
@@ -19,7 +20,7 @@ export function useAppExtensions({
   setOpenMenu: (menu: string | null) => void
   refreshLuaScripts: () => Promise<void>
 }) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const workspace = useWorkspace.getState()
   const [extensions, setExtensions] = useState<StoredExtension[]>([])
 
@@ -85,7 +86,7 @@ export function useAppExtensions({
 
   const confirmExtensionInstall = async (preview: ExtensionPackagePreview): Promise<boolean> => {
     const installed = extensions.find((extension) => extension.id === preview.id)
-    const content = extensionInstallDialogContent(preview, installed)
+    const content = extensionInstallDialogContent(localizeExtension(preview, locale), installed)
     const choice = await workspace.requestDialog({
       title: content.title,
       message: content.message,
@@ -104,7 +105,7 @@ export function useAppExtensions({
       if (!(await confirmExtensionInstall(preview))) return false
       const extension = await window.moonSprite.installExtension(filePath)
       window.dispatchEvent(new Event('moonsprite:extensions-changed'))
-      useWorkspace.getState().setMessage(t('preferences.extensions.installSuccess', { name: extension.name }))
+      useWorkspace.getState().setMessage(t('preferences.extensions.installSuccess', { name: localizeExtension(extension, locale).name }))
       return true
     } catch (error) {
       useWorkspace.getState().setMessage(error instanceof Error ? error.message : t('preferences.extensions.installFailed'))

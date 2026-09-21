@@ -1,4 +1,5 @@
 import type { AppShortcutContext } from './app-shortcut-context'
+import { setMagicEraserContiguous } from '@/store/workspace-magic-eraser'
 import { TOOL_DEFINITIONS } from '@/components/app/editor-tools'
 import { CYCLING_TOOL_SHORTCUT_IDS, shortcutText } from '@/core/shortcuts'
 import { useWorkspace } from '@/store/workspace'
@@ -97,6 +98,12 @@ export function createToolShortcutHandler() {
       return true
     if (session?.tool === 'selection' && session.selectionKind === 'magic'
     && runCommand('toggleContiguous', () => workspace.setWandContiguous(!session.wandContiguous)))
+      return true
+    if (session?.tool === 'magic-eraser'
+    && runCommand('toggleContiguous', () => setMagicEraserContiguous(!session.magicEraserContiguous)))
+      return true
+    if (session?.tool === 'magic-eraser' && session.magicEraserContiguous
+    && runCommand('toggleSmartClosure', () => workspace.setWandGapClosing(!session.wandGapClosing)))
       return true
     if (session?.tool === 'fill' && session.fillKind === 'bucket'
     && runCommand('toggleContiguous', () => workspace.setFillMode(session.fillMode === 'contiguous' ? 'global' : 'contiguous')))

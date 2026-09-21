@@ -1264,12 +1264,7 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .stage-selection-overlay { position: absolute; z-index: 3; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 .ui-scrollbar { position: relative; display: block; min-width: 0; min-height: 0; overflow: hidden; padding: 0; background: var(--theme-scrollbar-track); border: 0; border-radius: 0; touch-action: none; user-select: none; }
 .ui-scrollbar:focus-visible { outline: 1px solid var(--theme-accent); outline-offset: -1px; }
-.ui-scrollbar-carrier { position: absolute; inset: 0; display: block; pointer-events: none; will-change: transform; }
-.ui-scrollbar-carrier > .ui-scrollbar-thumb { pointer-events: auto; will-change: transform; }
-.ui-scrollbar-thumb { position: absolute; display: block; max-width: 100%; max-height: 100%; background: var(--theme-scrollbar-thumb); border-radius: 0; }
-.ui-scrollbar-horizontal .ui-scrollbar-thumb { top: 0; height: 100%; min-width: 20px; }
-.ui-scrollbar-vertical .ui-scrollbar-thumb { left: 0; width: 100%; min-height: 20px; }
-.ui-scrollbar:hover .ui-scrollbar-thumb { background: var(--theme-text-muted); }
+.ui-scrollbar-thumb { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
 .stage-view-scrollbar { position: absolute; z-index: 10; overscroll-behavior: contain; }
 .stage-view-scrollbar-horizontal { right: 0; bottom: 0; left: 0; height: var(--stage-view-scrollbar-thickness); }
 .stage-view-scrollbar-vertical { top: 0; right: 0; bottom: 0; width: var(--stage-view-scrollbar-thickness); }

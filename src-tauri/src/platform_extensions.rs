@@ -71,6 +71,8 @@ fn is_false(value: &bool) -> bool {
 pub(crate) struct StoredExtension {
     id: String,
     name: String,
+    #[serde(default)]
+    translations: BTreeMap<String, BTreeMap<String, String>>,
     version: String,
     description: String,
     author: String,
@@ -152,6 +154,8 @@ pub(crate) struct ExtensionListing {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExtensionPackagePreview {
     name: String,
+    #[serde(default)]
+    translations: BTreeMap<String, BTreeMap<String, String>>,
     version: String,
     description: String,
     author: String,
@@ -303,6 +307,8 @@ struct ExtensionManifest {
     schema_version: u32,
     id: String,
     name: String,
+    #[serde(default)]
+    translations: BTreeMap<String, BTreeMap<String, String>>,
     version: String,
     #[serde(default)]
     description: String,
@@ -693,6 +699,13 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
     }
     if !valid_extension_id(&manifest.id) {
         return Err("扩展 ID 无效，只能使用字母、数字、点、短横线和下划线。".to_string());
+    }
+    if manifest.translations.len() > 64 || manifest.translations.iter().any(|(locale, catalog)| {
+        !valid_text(locale, 32, true) || catalog.len() > 512 || catalog.iter().any(|(key, value)| {
+            !valid_text(key, MAX_DESCRIPTION_BYTES, true) || !valid_text(value, MAX_DESCRIPTION_BYTES, true)
+        })
+    }) {
+        return Err("扩展翻译内容无效或超过限制。".to_string());
     }
     if !valid_text(&manifest.name, MAX_NAME_BYTES, true) {
         return Err("扩展名称无效或过长。".to_string());
@@ -1479,6 +1492,7 @@ fn stored_extension(_path: &Path, manifest: ExtensionManifest, enabled: bool) ->
     StoredExtension {
         id: manifest.id,
         name: manifest.name,
+        translations: manifest.translations,
         version: manifest.version,
         description: manifest.description,
         author: manifest.author,
@@ -1734,6 +1748,7 @@ pub(crate) fn inspect_extension_package(
     let manifest = inspection.manifest;
     Ok(ExtensionPackagePreview {
         name: manifest.name,
+        translations: manifest.translations,
         version: manifest.version,
         description: manifest.description,
         author: manifest.author,

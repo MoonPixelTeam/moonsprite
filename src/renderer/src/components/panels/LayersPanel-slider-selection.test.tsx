@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPortal } from 'react-dom'
 import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { createDocument, createLayer } from '@/core/document-model'
@@ -10,10 +10,12 @@ import { RangeField } from '../RangeField'
 import { LayersPanel } from './LayersPanel'
 
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   localStorage.clear()
   useWorkspace.setState({ sessions: [], activeId: null, message: null, dialog: null })
 })
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 function Controls() {
   const [scroll, setScroll] = useState(0)
@@ -113,7 +115,10 @@ it('keeps multi-frame outlines while dragging canvas scrollbars and native timel
   for (const bar of screen.getAllByRole('scrollbar')) {
     const thumb = bar.querySelector('.ui-scrollbar-thumb')!
     bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} })
-    thumb.getBoundingClientRect = () => ({ left: 0, top: 0, width: 20, height: 20, right: 20, bottom: 20, x: 0, y: 0, toJSON() {} })
+    // Both axes share the controlled value in this harness. Reset before
+    // grabbing so the pointer is inside the actual thumb, including axis two.
+    fireEvent.keyDown(bar, { key: 'Home' })
+    assertSelected()
     fireEvent.pointerDown(thumb, { button: 0, pointerId: 1, clientX: 5, clientY: 5 })
     assertSelected()
     fireEvent.pointerMove(bar, { pointerId: 1, clientX: 45, clientY: 45 })

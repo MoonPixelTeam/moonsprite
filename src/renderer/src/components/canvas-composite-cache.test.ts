@@ -15,6 +15,7 @@ import { filledShapePathPixelPoints, paintShapePixelPoints } from '@/core/tools-
 import { invalidateRasterContentBounds } from '@/core/document-model'
 import { gpuBlendModeFor } from './canvas-composite-cache-surfaces'
 import { createStrokeCanvasInput } from './canvas-input-stroke'
+import * as selectionRaster from '@/core/tools-selection-transform-raster'
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = []
@@ -762,6 +763,62 @@ describe('CanvasCompositeCache', () => {
     // Pixel-run alignment is an axis-aligned optimization. Applying it
     // before the outer rotation creates a seam at every run boundary.
     expect(context.drawImage).toHaveBeenCalledOnce()
+  })
+
+  it('shares transformed pixels across canvases and refreshes changed transforms and content', () => {
+    const document = createDocument('shared selection', 8, 4, 'rgba')
+    const layer = document.layers[0]
+    writeLayerColor(document, layer, 0, { r: 255, g: 80, b: 40, a: 255 })
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 2, height: 2 }, layer)!
+    const rasterize = vi.spyOn(selectionRaster, 'selectionTransformPreviewRasterPacked')
+    const canvases = [new CanvasCompositeCache(), new CanvasCompositeCache()]
+    const contexts = [makeContext(), makeContext()]
+    const selectionPreview = { layerId: layer.id, source, target: { x: 3, y: 0, width: 3, height: 3 }, angle: 0, copy: false }
+    const renderBoth = (contentRevision: number) => canvases.forEach((cache, i) => draw(cache, document, contexts[i], { selectionPreview, contentRevision }))
+    renderBoth(1)
+    expect(rasterize).toHaveBeenCalledTimes(1)
+    expect((contexts[0].drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels).toEqual((contexts[1].drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels)
+    selectionPreview.target.x += 1
+    renderBoth(1)
+    expect(rasterize).toHaveBeenCalledTimes(1)
+    selectionPreview.target.width += 1
+    renderBoth(1)
+    expect(rasterize).toHaveBeenCalledTimes(2)
+    renderBoth(2)
+    expect(rasterize).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps cached selection pixels exact while moving, cancelling and revising content', () => {
+    const document = createDocument('cached selection pixels', 384, 128, 'rgba')
+    const lower = document.layers[0]
+    const layer = createLayer('selection', 384, 128, 'rgba')
+    document.layers.push(layer)
+    const colorAt = (x: number) => ({ r: 230, g: 60, b: 40, a: [0, 128, 255][x % 3] })
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 384; x++) {
+      writeLayerColor(document, lower, y * 384 + x, { r: 40, g: 90, b: 180, a: 190 })
+      if (x < 128) writeLayerColor(document, layer, y * 384 + x, colorAt(x))
+    }
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 128, height: 128 }, layer)!
+    const original = layer.pixels.slice()
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const displayed = () => (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels
+    const renderMoved = (x: number, contentRevision: number) => {
+      draw(cache, document, context, { contentRevision, selectionPreview: { layerId: layer.id, source, target: { x, y: 0, width: 128, height: 128 }, angle: 0, copy: false } })
+      const actual = displayed().slice()
+      layer.pixels.fill(0)
+      for (let y = 0; y < 128; y++) for (let col = 0; col < 128; col++) writeLayerColor(document, layer, y * 384 + x + col, colorAt(col))
+      const expected = compositeRegion(document, 0, 0, 384, 128, new DocumentCompositeCache(), contentRevision)
+      layer.pixels.set(original)
+      expect(actual).toEqual(expected)
+    }
+    renderMoved(160, 1)
+    renderMoved(180, 1)
+    draw(cache, document, context)
+    expect(displayed()).toEqual(compositeRegion(document, 0, 0, 384, 128, new DocumentCompositeCache(), 1))
+    renderMoved(160, 1)
+    writeLayerColor(document, lower, 161, { r: 1, g: 2, b: 3, a: 255 })
+    renderMoved(160, 2)
+    expect(layer.pixels).toEqual(original)
   })
 
   it('keeps a moved selection preview separate from document pixels', () => {

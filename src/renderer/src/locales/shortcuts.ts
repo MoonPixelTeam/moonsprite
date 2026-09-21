@@ -14,6 +14,7 @@ const enGroups: Record<ShortcutGroupId, string> = {
 }
 
 const zhBaseLabels: Record<BaseShortcutId, string> = {
+  'tool.magicEraser': '魔术橡皮擦',
   copyMerged: '复制合并', rotateContent180: '旋转 180°', rotateContentCounterClockwise: '90° 逆时针', rotateContentClockwise: '90° 顺时针', centerContentBoth: '水平垂直居中', centerContentHorizontal: '水平居中', centerContentVertical: '垂直居中', invertColors: '反色',
   'tool.slice': '切片工具',
   'tool.text': '文本工具',
@@ -41,6 +42,7 @@ const zhBaseLabels: Record<BaseShortcutId, string> = {
 }
 
 const enBaseLabels: Record<BaseShortcutId, string> = {
+  'tool.magicEraser': 'Magic Eraser',
   copyMerged: 'Copy Merged', rotateContent180: 'Rotate 180°', rotateContentCounterClockwise: '90° Counterclockwise', rotateContentClockwise: '90° Clockwise', centerContentBoth: 'Center Horizontally and Vertically', centerContentHorizontal: 'Center Horizontally', centerContentVertical: 'Center Vertically', invertColors: 'Invert Colors',
   'tool.slice': 'Slice Tool',
   'tool.text': 'Text Tool',

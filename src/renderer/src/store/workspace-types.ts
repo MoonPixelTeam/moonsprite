@@ -269,6 +269,7 @@ export interface DocumentSession {
   selectionRounded: boolean
   selectionCornerRadius: number
   wandTolerance: number
+  magicEraserContiguous: boolean
   wandContiguous: boolean
   wandGapClosing: boolean
   wandGapThreshold: number

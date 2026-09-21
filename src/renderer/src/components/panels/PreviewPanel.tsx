@@ -204,10 +204,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       // updates this panel once when the stroke ends.
       if (snapshot?.deferAuxiliaryDraw) return
       const previousSnapshot = liveCanvasPreviewRef.current
-      // A null snapshot can mean either commit or cancellation. It carries no
-      // commit revision, so discard the transient composite rather than
-      // retaining pixels which may just have been rolled back.
-      if (!snapshot && previousSnapshot) {
+      // Deferred selection previews are separate surfaces; the base composite
+      // still contains committed pixels. Keep it on commit/cancel and let the
+      // committed dirty region patch it. Other live previews mutate pixels.
+      if (!snapshot && previousSnapshot && !previousSnapshot.selectionPreview) {
         compositeCacheRef.current.invalidateAll()
       }
       liveCanvasPreviewRef.current = snapshot
