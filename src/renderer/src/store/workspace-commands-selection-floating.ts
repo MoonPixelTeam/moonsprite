@@ -230,7 +230,7 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
           for (const layerState of pending.layers) {
             const layer = selectionTransformLayerForState(session.document, layerState)
             if (!layer || layer.kind) continue
-            const edit = pending.previewDeferred
+            const edit = pending.previewDeferred && !layerState.previewEdit && !layerState.translationPreview
               ? layerState.frameId
                 ? applySelectionTransformLayerState(
                     session.document,
@@ -357,7 +357,7 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
             : null
         const edit = hybridCellTranslation
           ? null
-          : pending.previewDeferred && activeLayer && (!activeLayer.kind || activeLayer.kind === 'tilemap')
+          : pending.previewDeferred && !pending.previewEdit && !pending.translationPreview && activeLayer && (!activeLayer.kind || activeLayer.kind === 'tilemap')
             ? simpleTranslation
               ? applySelectionTranslationCommit(session.document, pending.source, transformTarget, pending.copy, activeLayer, session.view.tileRepeatMode)
               : applySelectionTransform(

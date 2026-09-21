@@ -2050,6 +2050,7 @@ export const deDEMessages = {
   "app.export.pathMenu": "Auswählen Exportieren Speicherort",
   "app.export.choosePath": "Auswählen Pfad",
   "app.export.localGallery": "Lokal GAlleery",
+  "app.export.projectRootDirectory": "Projektstammverzeichnis ({path})",
   "app.export.recentPaths": "Zuletzt verwendet Exportieren Pfads",
   "app.export.noRecentPaths": "Keine Zuletzt verwendet Exportieren Pfads",
   "app.export.selectedDirectory": "Exportieren Speicherort: {path}",

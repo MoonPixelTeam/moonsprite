@@ -8,10 +8,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check:classes": "node scripts/check-classes.mjs",
-    "check": "tsc --noEmit && node scripts/check-classes.mjs"
+    "check": "tsc --noEmit && node scripts/check-classes.mjs && node scripts/check-icons.mjs",
+    "check:icons": "node scripts/check-icons.mjs"
   },
   "dependencies": {
-    "lucide-react": "1.26.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

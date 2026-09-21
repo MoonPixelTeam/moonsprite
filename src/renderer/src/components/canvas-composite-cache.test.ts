@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, readLayerColor, writeLayerColor } from '@/core/document'
+import { compositeRegion, createDocument, createLayer, createLayerMask, DocumentCompositeCache, readLayerColorAt, readLayerColor, writeLayerColor } from '@/core/document'
 import { animationCelKey, ensureAnimationDocument, setAnimationCelOffsetsForKeys } from '@/core/animation'
 import { brushStrokeInvalidationRects, captureSelectionTransform, paintBrush, paintLine, solidBrushStampDifferenceRects, type SelectionTransformSource } from '@/core/tools'
 import { beginPixelEdit, commitPixelEdit } from '@/core/history'
@@ -16,6 +16,7 @@ import { invalidateRasterContentBounds } from '@/core/document-model'
 import { gpuBlendModeFor } from './canvas-composite-cache-surfaces'
 import { createStrokeCanvasInput } from './canvas-input-stroke'
 import * as selectionRaster from '@/core/tools-selection-transform-raster'
+import { blendOver } from '@/core/raster'
 
 class MockOffscreenCanvas {
   static instances: MockOffscreenCanvas[] = []
@@ -128,6 +129,45 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it.each([1, 0.6])('preserves the lower-half circle move on apply at opacity %s', opacity => {
+    useWorkspace.setState({ sessions: [], activeId: null, message: null })
+    const document = createDocument('lower half moved up', 12, 12, 'rgba')
+    const layer = document.layers[0]
+    layer.opacity = opacity
+    const color = { r: 80, g: 100, b: 130, a: 64 }
+    const clear = { r: 0, g: 0, b: 0, a: 0 }
+    const original = Array.from({ length: 144 }, (_, i) =>
+      (i % 12 - 5.5) ** 2 + (Math.floor(i / 12) - 5.5) ** 2 <= 25 ? color : clear)
+    original.forEach((pixel, i) => writeLayerColor(document, layer, i, pixel))
+    useWorkspace.getState().addSession(document)
+    const selection = { x: 0, y: 6, width: 12, height: 6 }
+    const target = { ...selection, y: 4 }
+    useWorkspace.getState().setSelection(selection)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    let displayed: Uint8ClampedArray = new Uint8ClampedArray()
+    for (const y of [4, 3, 4]) {
+      draw(cache, document, context, { selectionPreview: { layerId: layer.id, source, target: { ...target, y }, angle: 0, copy: false } })
+      displayed = (context.drawImage.mock.lastCall![0] as MockOffscreenCanvas).pixels.slice()
+    }
+    useWorkspace.getState().beginFloatingSelectionTransform(source, null, selection, target, false, 'move lower half', null, target, 0, undefined, true)
+    useWorkspace.getState().commitFloatingPaste()
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) {
+      const base = y < 6 ? original[y * 12 + x] : clear
+      const top = y >= 4 && y < 10 ? original[(y + 2) * 12 + x] : clear
+      expect(readLayerColorAt(document, layer, x, y)).toEqual(blendOver(base, top))
+    }
+    // Only the two-row overlap band darkens; the moved lower half stays at 64.
+    expect(readLayerColorAt(document, layer, 5, 4).a).toBe(112)
+    expect(readLayerColorAt(document, layer, 5, 7).a).toBe(64)
+    expect(readLayerColorAt(document, layer, 5, 10).a).toBe(0)
+    expect(displayed).toEqual(compositeRegion(document, 0, 0, 12, 12, new DocumentCompositeCache(), 2))
+    useWorkspace.getState().undo()
+    original.forEach((pixel, i) => expect(readLayerColorAt(document, layer, i % 12, Math.floor(i / 12))).toEqual(pixel))
+    useWorkspace.getState().redo()
+    expect(displayed).toEqual(compositeRegion(document, 0, 0, 12, 12, new DocumentCompositeCache(), 3))
+  })
+
   it('shares an existing preview bootstrap without compositing and reports unrendered offscreen damage', () => {
     const document = createDocument('shared preview', 16, 16, 'rgba', false)
     const cache = new CanvasCompositeCache()

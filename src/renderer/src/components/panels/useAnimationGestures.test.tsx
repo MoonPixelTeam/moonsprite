@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document-model'
 import { useWorkspace } from '@/store/workspace'
 import { useAnimationGestures } from './useAnimationGestures'
+import { timelineSelectionOutlineHit } from './animation-gesture-helpers'
 
 afterEach(() => { cleanup(); useWorkspace.setState({sessions: [], activeId: null}) })
 
@@ -14,6 +15,31 @@ it('starts an Alt drag from inside an already selected frame without replacing t
   act(() => result.current.beginAnimationFrameDrag({button:0,altKey:true,clientX:10,clientY:10,preventDefault:vi.fn()} as unknown as ReactPointerEvent<HTMLElement>,frameId))
   expect(result.current.readGesture()).toMatchObject({kind:'frame',canMove:true,frameIds:[frameId]})
   act(() => result.current.finish(true))
+})
+
+it('starts a right-button move gesture for a multi-selected frame range without collapsing it on a click', () => {
+  const { result, session } = setup()
+  useWorkspace.getState().duplicateAnimationFrame()
+  const frameIds = session.document.animation!.frames.map(frame => frame.id)
+  session.selectedAnimationFrameIds = frameIds.slice(0, 2)
+  act(() => result.current.beginAnimationFrameDrag({button:2,clientX:10,clientY:10,preventDefault:vi.fn()} as unknown as ReactPointerEvent<HTMLElement>, frameIds[0]))
+  expect(result.current.readGesture()).toMatchObject({kind:'frame',button:2,canMove:true,frameIds:frameIds.slice(0, 2)})
+  act(() => result.current.finish())
+  expect(session.selectedAnimationFrameIds).toEqual(frameIds.slice(0, 2))
+  expect(result.current.consumeContextMenu()).toBe(false)
+})
+
+it('starts a right-button move gesture for a multi-selected cel range', () => {
+  const { result, session } = setup()
+  useWorkspace.getState().duplicateAnimationFrame()
+  const frameIds = session.document.animation!.frames.map(frame => frame.id)
+  const layerId = session.document.activeLayerId
+  const keys = frameIds.slice(0, 2).map(frameId => `${layerId}:${frameId}`)
+  session.selectedAnimationCellKeys = keys
+  act(() => result.current.beginAnimationCelDrag({button:2,clientX:10,clientY:10,preventDefault:vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, layerId, frameIds[0]))
+  expect(result.current.readGesture()).toMatchObject({kind:'cel',button:2,canMove:true,cellKeys:keys})
+  act(() => result.current.finish())
+  expect(session.selectedAnimationCellKeys).toEqual(keys)
 })
 
 function setup(list: HTMLDivElement | null = null) {
@@ -79,6 +105,20 @@ it.each(['frame', 'cel'])('updates the hovered %s border cursor when Alt changes
   act(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Alt',altKey:true})))
   expect(item.style.cursor).toBe('')
   unmount();list.remove()
+})
+
+it('checks every selection outline box so separated group borders remain draggable', () => {
+  const list = document.createElement('div')
+  const first = document.createElement('div')
+  const second = document.createElement('div')
+  first.dataset.animationSelectedRow = ''
+  second.dataset.animationSelectedRow = ''
+  list.append(first, second)
+  document.body.append(list)
+  vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20, x: 0, y: 0, toJSON: () => ({})})
+  vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({left: 0, top: 40, right: 100, bottom: 60, width: 100, height: 20, x: 0, y: 40, toJSON: () => ({})})
+  expect(timelineSelectionOutlineHit({current: list}, {clientX: 1, clientY: 59} as unknown as ReactPointerEvent<HTMLElement>, '[data-animation-selected-row]')).toBe(true)
+  list.remove()
 })
 
 it('discards a pending gesture when another document becomes active', () => {

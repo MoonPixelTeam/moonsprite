@@ -2138,6 +2138,7 @@ export const zhCNMessages = {
   'app.export.pathMenu': '选择导出位置',
   'app.export.choosePath': '选择路径',
   'app.export.localGallery': '本地展馆',
+  'app.export.projectRootDirectory': '工程根目录（{path}）',
   'app.export.recentPaths': '最近的导出路径',
   'app.export.noRecentPaths': '暂无最近导出路径',
   'app.export.selectedDirectory': '导出位置：{path}',

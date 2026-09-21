@@ -1,0 +1,144 @@
+/* ---------- hero ---------- */
+
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--divider); background: var(--bg); }
+.hero-stage { position: relative; aspect-ratio: 6.7 / 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.hero-bg { position: absolute; inset: 0; pointer-events: none; }
+.hero-bg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; opacity: 0; transition: opacity 800ms ease; }
+.hero-bg img.active { opacity: 1; }
+.hero-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: rgb(9 10 13 / 52%); }
+
+.hero-nav { position: absolute; top: 50%; right: 16px; left: 16px; z-index: 3; display: flex; justify-content: space-between; transform: translateY(-50%); pointer-events: none; }
+.hero-nav .hero-arrow { display: grid; place-items: center; width: 36px; height: 36px; color: rgb(255 255 255 / 76%); background: rgb(9 10 13 / 38%); border: 1px solid rgb(255 255 255 / 16%); cursor: pointer; pointer-events: auto; transition: color 120ms ease, background 120ms ease, border-color 120ms ease; }
+.hero-nav .hero-arrow:hover { color: #fff; background: rgb(9 10 13 / 64%); border-color: rgb(255 255 255 / 34%); }
+.hero-nav .hero-arrow svg { width: 15px; height: 15px; }
+.hero-inner { position: absolute; inset: 0; z-index: 2; display: flex; height: 100%; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: var(--space-6) var(--space-28) var(--space-9); }
+.hero-copy { max-width: 610px; }
+/*
+ * The hero is a dark photograph with a dark shade over it in both themes, so everything
+ * inside it is light on purpose. The badge previously used the theme's warning colours,
+ * which are dark brown in the light theme — 1.1:1 against that image, effectively invisible.
+ */
+.dev-badge { display: inline-flex; align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5); background: rgb(9 10 13 / 55%); border: 1px solid rgb(255 255 255 / 24%); color: #fff; font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.hero h1 { margin-top: var(--space-5); color: #fff; font-family: var(--font-pixel); font-size: clamp(30px, 4vw, var(--font-display-lg)); font-weight: 700; line-height: .98; letter-spacing: -.035em; text-shadow: 0 2px 18px rgb(0 0 0 / 26%); }
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-8); }
+.hero .button.compact { min-height: 34px; }
+.hero-github { display: inline-flex; align-items: center; gap: var(--space-4); color: rgb(255 255 255 / 80%); font-size: var(--font-small); font-weight: 600; }
+.hero-github:hover { color: #fff; }
+.hero-github svg { width: 14px; height: 14px; }
+.hero-github svg:last-child { width: 12px; }
+.hero-pagination { position: absolute; right: 56px; bottom: 18px; z-index: 3; display: flex; align-items: center; gap: var(--space-7); color: rgb(255 255 255 / 68%); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.hero-dots { display: flex; align-items: center; gap: var(--space-3); }
+.hero-dots button { width: 18px; height: 2px; padding: 0; background: rgb(255 255 255 / 36%); border: 0; cursor: pointer; transition: width 160ms ease, background 160ms ease; }
+.hero-dots button:hover { background: rgb(255 255 255 / 72%); }
+.hero-dots button.active { width: 34px; background: #fff; }
+
+.window { border: 1px solid var(--border-strong); background: var(--surface); box-shadow: 0 16px 44px var(--shadow); }
+.window-bar { display: flex; align-items: center; gap: var(--space-6); height: 36px; padding: 0 var(--space-6); background: var(--raised); border-bottom: 1px solid var(--border); }
+.window-bar strong { flex: 1; overflow: hidden; color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-small); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.window-body img { width: 100%; height: auto; }
+
+.palette-strip { position: relative; z-index: 1; display: flex; height: 14px; border-top: 1px solid var(--divider); }
+.palette-strip span { flex: 1; min-width: 0; }
+.palette-strip span:hover { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- sections shared ---------- */
+
+.section-title { max-width: 700px; }
+/* Section eyebrows read as an editor tool label: a hairline rule runs out from the text
+   to the edge of the column, so each band opens the way a labelled region does on a
+   canvas. The amber square marks the label the way the app marks the active tool. */
+.section-title > span, .final-cta span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-7);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: .02em;
+}
+.section-title > span::before, .final-cta span::before { content: none; }
+.section-title h2 {
+  /* Chinese headings are short, so this mainly keeps a long English heading from
+     running the full 1160px column; balance handles the line breaks. */
+  max-width: 26ch;
+  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+}
+.section-title p { max-width: 58ch; margin-top: var(--space-7); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+
+/* The rule sits on the eyebrow's own line, extending to the column edge. */
+.section-title { display: grid; }
+.section-title > span, .final-cta span { width: 100%; }
+.section-title > span::after, .final-cta span::after { content: none; }
+
+.tile-icon { display: grid; place-items: center; flex: 0 0 auto; background: var(--accent-soft); border: 1px solid var(--border); color: var(--accent); }
+
+/* ---------- showcase ---------- */
+
+/* A breath of light behind the artwork wall, so the cards sit in a space rather than on
+   a flat plate. */
+.showcase {
+  padding: var(--space-24) 0 var(--space-26);
+  background-color: var(--bg);
+  background-image: radial-gradient(60% 70% at 50% 0%, var(--glow), transparent 70%);
+}
+.showcase .section-title { margin-bottom: var(--space-13); }
+.showcase-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 248px; gap: var(--space-7); }
+.showcase-item { position: relative; min-width: 0; overflow: hidden; background: var(--control); border: 1px solid var(--border); }
+.showcase-item img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 480ms ease; }
+.showcase-item:hover img { transform: scale(1.02); }
+
+/* ---------- facts ---------- */
+
+/* ---------- features: gif masonry ---------- */
+
+/* The homepage runs on one background; sections are separated by a hairline and their
+   own spacing, so the page reads as one surface instead of stacked panels. A faint top
+   wash keeps each band from being a perfectly flat rectangle. */
+.features {
+  padding: var(--space-24) 0 var(--space-26);
+  background-color: var(--bg);
+  background-image: linear-gradient(180deg, var(--wash-strong), transparent 34%);
+  border-top: 1px solid var(--divider);
+}
+.features .section-title { margin-bottom: var(--space-13); }
+.masonry { columns: 4; column-gap: var(--space-7); }
+.masonry-card { break-inside: avoid; margin: 0 0 var(--space-7); overflow: hidden; border: 1px solid var(--border); background-color: var(--panel); background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%); transition: border-color 120ms ease, transform 160ms ease; }
+.masonry-card:hover { border-color: var(--accent); }
+.masonry-copy { margin: 0; padding: var(--space-7) var(--space-8) var(--space-8); color: var(--text-3); font-size: var(--font-small); line-height: 1.65; }
+
+/* ---------- homepage ---------- */
+
+/* The colour is set here, not inherited: without it the main area would take the
+   inherited value from the light theme while its own tokens say dark. No background
+   fill though — that would paint over the shared grid the rest of the site sits on. */
+.home-main { color: var(--text); }
+
+/* ---------- market teaser ---------- */
+/* Mirrors the market's card language at homepage scale: same frame, same price type,
+   so a pack looks the same wherever it appears. */
+.market-teaser { padding: var(--space-24) 0 var(--space-26); border-top: 1px solid var(--divider); }
+.market-teaser .section-title { margin-bottom: var(--space-13); }
+/* The homepage shows the market's own cards, so the only thing it contributes is the
+   grid they wrap in: a tighter column floor than the browse grid, since this is a
+   feature strip rather than a catalogue. */
+.pack-grid.featured { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-7); }
+.teaser-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-13); }
+.teaser-actions > span { color: var(--text-4); font-size: var(--font-small); }
+
+
+.gif-placeholder { position: relative; display: grid; place-items: center; border-bottom: 1px solid var(--divider); background-color: var(--bg); color: var(--accent); }
+.gif-placeholder svg { width: 28px; height: 28px; opacity: .85; }
+.masonry-card:nth-child(6n + 1) .gif-placeholder { height: 168px; }
+.masonry-card:nth-child(6n + 2) .gif-placeholder { height: 204px; }
+.masonry-card:nth-child(6n + 3) .gif-placeholder { height: 148px; }
+.masonry-card:nth-child(6n + 4) .gif-placeholder { height: 184px; }
+.masonry-card:nth-child(6n + 5) .gif-placeholder { height: 160px; }
+.masonry-card:nth-child(6n + 6) .gif-placeholder { height: 212px; }
+.gif-tag { position: absolute; left: 12px; bottom: 10px; padding: var(--space-2) var(--space-3); background: var(--bg); border: 1px solid var(--border-strong); color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }

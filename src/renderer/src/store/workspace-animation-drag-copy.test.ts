@@ -14,6 +14,27 @@ function setup() {
   return { document, layer, timeline: ensureAnimationDocument(document), commands: useWorkspace.getState() }
 }
 
+it('restores the frame selection context when undoing a frame move', () => {
+  const { timeline, commands } = setup()
+  const ids = timeline.frames.map(frame => frame.id)
+  commands.selectAnimationFrame(ids[0], 'replace')
+  commands.selectAnimationFrame(ids[1], 'toggle')
+  commands.setActiveAnimationFrame(ids[1])
+  const session = useWorkspace.getState().sessions[0]
+  const before = {
+    selected: [...session.selectedAnimationFrameIds],
+    anchor: session.animationFrameSelectionAnchorId,
+    active: timeline.activeFrameId,
+    activeLayer: session.document.activeLayerId
+  }
+  commands.moveSelectedAnimationFrames(ids[3], true)
+  commands.undo()
+  expect(session.selectedAnimationFrameIds).toEqual(before.selected)
+  expect(session.animationFrameSelectionAnchorId).toBe(before.anchor)
+  expect(timeline.activeFrameId).toBe(before.active)
+  expect(session.document.activeLayerId).toBe(before.activeLayer)
+})
+
 it('copies a multi-cel block without clearing sources and supports undo/redo', () => {
   const { document, layer, timeline, commands } = setup()
   const keys = timeline.frames.map(frame => animationCelKey(layer.id, frame.id))

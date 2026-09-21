@@ -49,10 +49,8 @@ export const paintLayerValue = (
 }
 
 export /**
- * Composites a captured selection pixel over the destination pixel for copy /
- * paste-style operations. A normal selection move bypasses this helper and
- * writes the captured packed value directly, so moving a translucent pixel
- * cannot accumulate alpha. Masks keep their scalar/direct-write semantics and
+ * Composites a captured selection pixel over the destination for moves,
+ * copies, and pastes. Masks keep their scalar/direct-write semantics and
  * therefore bypass color compositing.
  */
 const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {

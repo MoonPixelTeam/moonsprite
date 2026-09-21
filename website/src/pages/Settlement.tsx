@@ -1,9 +1,10 @@
+import { WorkspacePage } from '../workspace/WorkspaceLayout'
 import { useState } from 'react'
-import { Banknote, Check, CreditCard, Trash2 } from 'lucide-react'
+import { PixelCheck as Check, PixelTrash2 as Trash2 } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { useStudio } from '../studio/store'
 import { useData, maskAccount, type PayoutMethod } from '../data/store'
-import { Alert, Button, Field, Panel, PageHeader, Select } from '../ui'
+import { Alert, Button, Field, Panel, Select } from '../ui'
 import { formatPrice } from '../market/catalog'
 
 /**
@@ -17,6 +18,9 @@ export function SettlementPage({ t, language }: { t: Copy; language: Language })
   const studio = useStudio()
   const { payoutMethods, addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } = useData()
 
+  const [amount, setAmount] = useState('')
+  const [methodId, setMethodId] = useState('')
+  const [busy, setBusy] = useState(false)
   const [kind, setKind] = useState('alipay')
   const [account, setAccount] = useState('')
   const [holder, setHolder] = useState('')
@@ -27,47 +31,65 @@ export function SettlementPage({ t, language }: { t: Copy; language: Language })
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (busy) return
+    setBusy(true)
     setProblem(null)
     setNotice(null)
+    try {
     const result = await addPayoutMethod({ kind, account, holder })
     if (!result.ok) {
       setProblem(result.error === 'account' ? strings.errorAccount : result.error === 'holder' ? strings.errorHolder : strings.errorKind)
       return
     }
-    setNotice(t.studioPage.published)
+    setNotice(language === 'zh' ? '收款账户已保存。' : 'Payout method saved.')
     setAccount('')
     setHolder('')
+    } catch { setProblem(language === 'zh' ? '保存收款账户失败，请重试。' : 'Could not save payout method. Please retry.') }
+    finally { setBusy(false) }
   }
 
-  return <main id="main" className="market">
-    <section className="market-shelf account-head">
-      <div className="content-wrap">
-        <PageHeader
+
+  return <WorkspacePage
           eyebrow={t.studioPage.eyebrow}
           title={strings.title}
           subtitle={strings.subtitle}
-          icon={<Banknote aria-hidden="true" />}
           back="#/studio"
-          backLabel={t.studioPage.backToStudio} />
-      </div>
-    </section>
-
-    <section className="market-browse">
-      <div className="content-wrap purchases-wrap">
-        {problem && <Alert tone="danger" role="alert" icon={<Banknote aria-hidden="true" />}>{problem}</Alert>}
+          backLabel={t.studioPage.backToStudio} >
+        {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
         {notice && <Alert tone="success" icon={<Check aria-hidden="true" />}>{notice}</Alert>}
 
-        <Panel title={strings.title} icon={<Banknote aria-hidden="true" />}>
-          <dl className="account-facts">
+        <Panel title={strings.title} className="settlement-overview">
+          <dl className="account-facts settlement-ledger">
             <div><dt>{strings.cycle}</dt><dd>{strings.cycleValue}</dd></div>
             <div><dt>{strings.nextPayout}</dt><dd>{formatPrice(studio.available)}</dd></div>
             <div><dt>{strings.method}</dt><dd>{defaultMethod ? `${defaultMethod.kind} ${maskAccount(defaultMethod.account)}` : strings.noMethod}</dd></div>
             <div><dt>{t.studioPage.platformFee}</dt><dd>{studio.platformFeePercent}%</dd></div>
           </dl>
-          <Alert tone="info" icon={<Banknote aria-hidden="true" />}>{strings.feeNote(studio.platformFeePercent)}</Alert>
+          <Alert tone="info">{strings.feeNote(studio.platformFeePercent)}</Alert>
         </Panel>
 
-        <Panel title={strings.payoutHistory}>
+        <div className="settlement-split">
+        <Panel title={t.studioPage.withdraw} className="settlement-withdraw">
+          {payoutMethods.length === 0 ? <p className="panel-copy">{strings.noMethod}</p> : <form className="settings-form" onSubmit={async (event) => {
+            event.preventDefault()
+            if (busy) return
+            const method = payoutMethods.find((item) => item.id === methodId) ?? defaultMethod ?? payoutMethods[0]
+            if (!method) return
+            setBusy(true); setNotice(null); setProblem(null)
+            try {
+              const result = await studio.requestWithdrawal(Number(amount), `${method.kind} ${method.account} (${method.holder})`)
+              if (!result.ok) setProblem(result.error === 'insufficient' ? t.studioPage.errorInsufficient : t.studioPage.errorAmount)
+              else { setNotice(t.studioPage.withdrawRequested); setAmount('') }
+            } catch { setProblem(language === 'zh' ? '提现申请失败，请重试。' : 'Withdrawal failed. Please retry.') }
+            finally { setBusy(false) }
+          }}>
+            <Field label={language === 'zh' ? '提现金额（USD）' : 'Withdrawal amount (USD)'} hint={`${t.studioPage.available}: USD ${studio.available.toFixed(2)}`}><input type="number" min="0.01" step="0.01" max={studio.available} value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field>
+            <Field label={strings.method}><Select label={strings.method} value={payoutMethods.find((item) => item.id === methodId)?.id ?? defaultMethod?.id ?? payoutMethods[0]?.id ?? ''} onChange={setMethodId} options={payoutMethods.map((item) => ({ value: item.id, label: `${item.kind} · ${maskAccount(item.account)}` }))} /></Field>
+            <Button type="submit" variant="primary" disabled={busy || studio.available <= 0}>{t.studioPage.withdrawSubmit}</Button>
+          </form>}
+        </Panel>
+
+        <Panel title={strings.payoutHistory} className="settlement-history">
           {studio.withdrawals.length === 0
             ? <p className="panel-copy">{strings.noPayouts}</p>
             : <ul className="payout-list">
@@ -80,8 +102,9 @@ export function SettlementPage({ t, language }: { t: Copy; language: Language })
               </li>)}
             </ul>}
         </Panel>
+        </div>
 
-        <Panel title={strings.addMethod} icon={<CreditCard aria-hidden="true" />}>
+        <Panel title={strings.addMethod} className="settlement-methods">
           <form className="settings-form" onSubmit={submit}>
             <Field label={strings.methodKind}>
               <Select
@@ -101,7 +124,7 @@ export function SettlementPage({ t, language }: { t: Copy; language: Language })
             <Field label={strings.methodHolder}>
               <input value={holder} onChange={(event) => setHolder(event.target.value)} maxLength={40} />
             </Field>
-            <Button type="submit" variant="primary" size="compact">{strings.addMethod}</Button>
+            <Button type="submit" variant="primary" size="compact" disabled={busy}>{strings.addMethod}</Button>
           </form>
 
           {payoutMethods.length > 0 && <ul className="method-list">
@@ -112,14 +135,12 @@ export function SettlementPage({ t, language }: { t: Copy; language: Language })
               <span className="method-holder">{method.holder}</span>
               {method.isDefault
                 ? <span className="method-default"><Check aria-hidden="true" />{strings.methodDefault}</span>
-                : <Button size="compact" onClick={() => { void setDefaultPayoutMethod(method.id) }}>{strings.setDefault}</Button>}
-              <Button size="compact" icon={<Trash2 aria-hidden="true" />} onClick={() => { void removePayoutMethod(method.id) }}>
+                : <Button size="compact" onClick={() => { void setDefaultPayoutMethod(method.id).catch(() => setProblem(language === 'zh' ? '设置默认账户失败。' : 'Could not change default method.')) }}>{strings.setDefault}</Button>}
+              <Button size="compact" icon={<Trash2 aria-hidden="true" />} onClick={() => { void removePayoutMethod(method.id).catch(() => setProblem(language === 'zh' ? '移除收款账户失败。' : 'Could not remove payout method.')) }}>
                 {strings.removeMethod}
               </Button>
             </li>)}
           </ul>}
         </Panel>
-      </div>
-    </section>
-  </main>
+  </WorkspacePage>
 }

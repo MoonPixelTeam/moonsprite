@@ -82,6 +82,7 @@ export const selectionOptimizedRotationEnabled = (selection: SelectionTransformC
 
 export interface SelectionPreviewSurface {
   backdrop: import('./canvas-selection-backdrop-cache').CanvasSelectionBackdropCache
+  lowerBackdrop: import('./canvas-selection-backdrop-cache').CanvasSelectionBackdropCache
   key: string
   x: number
   y: number

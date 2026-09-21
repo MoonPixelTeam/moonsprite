@@ -1,6 +1,6 @@
-import { AlertTriangle, Check, Download, Plus, ShoppingCart, Trash2, Upload, X } from 'lucide-react'
+import { PixelCheck as Check, PixelDownload as Download, PixelPlus as Plus, PixelTrash2 as Trash2, PixelUpload as Upload, PixelX as X } from '../ui/icons'
 import type { Copy, Language } from '../content'
-import { Alert, Button, Chip, Field, FormField, IconButton, Panel, PageHeader, Select } from '../ui'
+import { EmptyState, LoadingState, SectionHeading, PageIntro, Alert, Button, Chip, Field, FormField, IconButton, Panel, PageHeader, Select } from '../ui'
 import { ChipField } from '../ui/ChipField'
 import { FileField } from '../ui/Field'
 import { useState } from 'react'
@@ -19,24 +19,25 @@ export function UiPage({ t, language }: { t: Copy; language: Language }) {
   const [file, setFile] = useState<{ name: string; size: number } | null>({ name: 'deep-sea.mspet', size: 1160 })
 
   return <main id="main" className="market">
-    <section className="market-shelf account-head">
-      <div className="content-wrap">
-        <PageHeader
+    <PageIntro><PageHeader
           eyebrow="UI KIT"
           title="组件库"
           subtitle="官网所有界面元素都从这里取用。本页直接渲染真实组件，不是仿制样式，因此组件一旦损坏或走样，这里会立刻反映出来。"
-        />
-      </div>
-    </section>
+        /></PageIntro>
 
     <section className="market-browse">
       <div className="content-wrap purchases-wrap ui-gallery">
+        <Panel title="Hierarchy & feedback">
+          <SectionHeading eyebrow="MoonSprite" title={language === 'zh' ? '清晰、有序的创作空间' : 'A clear space to create'} description={language === 'zh' ? '标题引导阅读，颜色表达状态，作品承担视觉主角。' : 'Headings guide reading; colour communicates state; artwork takes the lead.'} />
+          <EmptyState title={language === 'zh' ? '还没有作品' : 'No artwork yet'} action={<Button href="#/market">{t.nav.market}</Button>} />
+          <LoadingState label={language === 'zh' ? '正在载入内容…' : 'Loading content…'} />
+        </Panel>
         <Panel title="Button" icon={<Check aria-hidden="true" />}>
           <div className="ui-row">
             <Button variant="primary">主要操作</Button>
             <Button>次要操作</Button>
             <Button size="compact">紧凑</Button>
-            <Button variant="primary" icon={<ShoppingCart aria-hidden="true" />}>带图标</Button>
+            <Button variant="primary">带图标</Button>
             <Button disabled>禁用</Button>
             <Button href="#/market">链接式</Button>
           </div>
@@ -44,7 +45,7 @@ export function UiPage({ t, language }: { t: Copy; language: Language }) {
 
         <Panel title="IconButton" icon={<Upload aria-hidden="true" />}>
           <div className="ui-row">
-            <IconButton label="购物车" icon={<ShoppingCart aria-hidden="true" />} />
+            <IconButton label="关闭" icon={<X />} />
             <IconButton label="下载" icon={<Download aria-hidden="true" />} />
             <IconButton label="删除" icon={<Trash2 aria-hidden="true" />} />
             <IconButton label="已选中" icon={<Check aria-hidden="true" />} active />
@@ -115,11 +116,11 @@ export function UiPage({ t, language }: { t: Copy; language: Language }) {
             hint="买家付款后下载的就是这个文件" />
         </Panel>
 
-        <Panel title="Alert" icon={<AlertTriangle aria-hidden="true" />}>
+        <Panel title="Alert">
           <Alert tone="info" icon={<Check aria-hidden="true" />}>信息提示</Alert>
           <Alert tone="success" icon={<Check aria-hidden="true" />}>已上架，市场里立刻可以购买。</Alert>
-          <Alert tone="warning" icon={<AlertTriangle aria-hidden="true" />} title="这是原型">金额与提现都不会真的执行。</Alert>
-          <Alert tone="danger" icon={<AlertTriangle aria-hidden="true" />} role="alert">还差这些必填项：包文件</Alert>
+          <Alert tone="warning" title="这是原型">金额与提现都不会真的执行。</Alert>
+          <Alert tone="danger" role="alert">还差这些必填项：包文件</Alert>
         </Panel>
 
         <Panel title="PageHeader" icon={<Check aria-hidden="true" />}>

@@ -26,7 +26,7 @@ function walk(dir) {
   return files
 }
 
-const css = readFileSync(join(srcDir, 'styles.css'), 'utf8')
+const css = [readFileSync(join(srcDir, 'styles.css'), 'utf8'), ...readdirSync(join(srcDir, 'styles')).filter((file) => file.endsWith('.css')).map((file) => readFileSync(join(srcDir, 'styles', file), 'utf8'))].join('\n')
 // Every class the stylesheet mentions, from selectors and from :has()/:not() clauses alike.
 const styled = new Set((css.match(/\.([a-zA-Z][\w-]*)/g) ?? []).map((token) => token.slice(1)))
 

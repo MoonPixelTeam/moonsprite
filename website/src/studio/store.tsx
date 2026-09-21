@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, readStudioUnlocked, writeStudioUnlocked } from '../api'
+import { useAccount } from '../account/store'
 import type { Ledger, StudioProduct, Withdrawal } from '../api'
 import { MARKET_PRODUCTS, type MarketProduct } from '../market/catalog'
 
@@ -31,6 +32,7 @@ export type StudioStore = {
   available: number
   withdrawals: Withdrawal[]
   requestWithdrawal: (amount: number, destination: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  setWithdrawalStatus: (id: string, status: Withdrawal['status'], note?: string) => Promise<void>
   platformFeePercent: number
   setPlatformFeePercent: (percent: number) => Promise<void>
   loading: boolean
@@ -58,11 +60,17 @@ export function allProducts(studioProducts: StudioProduct[]): MarketProduct[] {
 }
 
 export function StudioProvider({ children }: { children: ReactNode }) {
+  const { account } = useAccount()
   const [products, setProducts] = useState<StudioProduct[]>([])
   const [ledger, setLedger] = useState<Ledger>(EMPTY_LEDGER)
   const [platformFeePercent, setFeePercent] = useState(8)
   const [loading, setLoading] = useState(true)
-  const [unlocked, setUnlockedState] = useState(readStudioUnlocked)
+  const [unlocked, setUnlockedState] = useState(() => readStudioUnlocked(account?.id))
+
+  // A seller gate belongs to the signed-in account, not to the browser session.
+  useEffect(() => {
+    setUnlockedState(readStudioUnlocked(account?.id))
+  }, [account?.id])
 
   const reload = useCallback(async () => {
     try {
@@ -75,7 +83,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [account?.id])
 
   // Revenue is computed from orders, so a purchase anywhere refreshes this.
   useEffect(() => {
@@ -90,9 +98,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [reload])
 
   const setUnlocked = useCallback((value: boolean) => {
-    setUnlockedState(value)
-    writeStudioUnlocked(value)
-  }, [])
+    const next = Boolean(value && account)
+    setUnlockedState(next)
+    writeStudioUnlocked(next, account?.id)
+  }, [account])
 
   const publish: StudioStore['publish'] = useCallback(async (input) => {
     const result = await api.studio.publish(input)
@@ -121,6 +130,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     return { ok: true as const }
   }, [reload])
 
+  const setWithdrawalStatus = useCallback(async (id: string, status: Withdrawal['status'], note?: string) => {
+    await api.studio.setWithdrawalStatus(id, status, note)
+    await reload()
+  }, [reload])
+
   const setPlatformFeePercent = useCallback(async (percent: number) => {
     await api.studio.setPlatformFee(percent)
     await reload()
@@ -141,10 +155,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     available: ledger.available,
     withdrawals: ledger.withdrawals,
     requestWithdrawal,
+    setWithdrawalStatus,
     platformFeePercent,
     setPlatformFeePercent,
     loading,
-  }), [unlocked, setUnlocked, products, publish, update, unpublish, ledger, requestWithdrawal, platformFeePercent, setPlatformFeePercent, loading])
+  }), [unlocked, setUnlocked, products, publish, update, unpublish, ledger, requestWithdrawal, setWithdrawalStatus, platformFeePercent, setPlatformFeePercent, loading])
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>
 }

@@ -1,8 +1,9 @@
+import { WorkspacePage } from '../workspace/WorkspaceLayout'
 import { useState } from 'react'
-import { AlertTriangle, Check, KeyRound, Mail, ShieldAlert, Trash2, User } from 'lucide-react'
+import { PixelCheck as Check, PixelKeyRound as KeyRound, PixelTrash2 as Trash2 } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { useAccount } from '../account/store'
-import { Alert, Button, Field, Panel, PageHeader } from '../ui'
+import { Alert, Button, Field, Panel } from '../ui'
 
 /**
  * Account settings: the things a signed-in person has to be able to change. Before this
@@ -13,6 +14,8 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
   const strings = t.accountSettings
   const { account, updateName, updateEmail, changePassword, requestPasswordReset, verifyEmail, deleteAccount } = useAccount()
 
+  const [tab, setTab] = useState<'profile' | 'security'>('profile')
+  const [busy, setBusy] = useState(false)
   const [name, setName] = useState(account?.name ?? '')
   const [email, setEmail] = useState(account?.email ?? '')
   const [current, setCurrent] = useState('')
@@ -24,51 +27,51 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
   const [problem, setProblem] = useState<string | null>(null)
 
   if (!account) {
-    return <main id="main" className="market">
-      <section className="market-shelf account-head">
-        <div className="content-wrap">
-          <PageHeader eyebrow={t.accountPage.eyebrow} title={strings.title} subtitle={strings.forgotBody} back="#/account" backLabel={strings.back} />
-        </div>
-      </section>
-      <section className="market-browse">
-        <div className="content-wrap purchases-wrap">
+    return <WorkspacePage eyebrow={t.accountPage.eyebrow} title={strings.title} subtitle={strings.forgotBody} back="#/account" backLabel={strings.back} >
           <Panel>
             <div className="receipt-actions">
               <Button variant="primary" href="#/account">{t.accountPage.signIn}</Button>
             </div>
           </Panel>
-        </div>
-      </section>
-    </main>
+  </WorkspacePage>
   }
 
   const run = async (action: () => Promise<{ ok: true } | { ok: false; error: string }>, success: string, messages: Record<string, string>) => {
-    setNotice(null)
-    setProblem(null)
-    const result = await action()
-    if (result.ok) setNotice(success)
-    else setProblem(messages[result.error] ?? messages.default)
+    if (busy) return false
+    setBusy(true); setNotice(null); setProblem(null)
+    try {
+      const result = await action()
+      if (result.ok) setNotice(success)
+      else setProblem(messages[result.error] ?? messages.default)
+      return result.ok
+    } catch { setProblem(language === 'zh' ? '操作失败，请重试。' : 'Could not save. Please retry.'); return false }
+    finally { setBusy(false) }
+
   }
 
-  return <main id="main" className="market">
-    <section className="market-shelf account-head">
-      <div className="content-wrap">
-        <PageHeader eyebrow={t.accountPage.eyebrow} title={strings.title} subtitle={account.email} back="#/account" backLabel={strings.back} />
-      </div>
-    </section>
-
-    <section className="market-browse">
-      <div className="content-wrap purchases-wrap">
+  return <WorkspacePage eyebrow={t.accountPage.eyebrow} title={strings.title} subtitle={account.email} back="#/account" backLabel={strings.back} >
         {notice && <Alert tone="success" icon={<Check aria-hidden="true" />}>{notice}</Alert>}
-        {problem && <Alert tone="danger" role="alert" icon={<AlertTriangle aria-hidden="true" />}>{problem}</Alert>}
+        {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
 
-        <div className="settings-grid">
-        <Panel title={strings.profile} icon={<User aria-hidden="true" />}>
+        <div className="workspace-tabs settings-section-nav" role="group" aria-label={strings.title}>
+          <Button size="compact" variant={tab === 'profile' ? 'primary' : 'secondary'} onClick={() => { setTab('profile'); setNotice(null); setProblem(null) }}>{strings.profile}</Button>
+          <Button size="compact" variant={tab === 'security' ? 'primary' : 'secondary'} onClick={() => { setTab('security'); setNotice(null); setProblem(null) }}>{language === 'zh' ? '安全与隐私' : 'Security & privacy'}</Button>
+        </div>
+        <fieldset className="workspace-form-group account-settings-view" disabled={busy}>
+        {tab === 'profile' && <>
+
+        <Panel title={strings.profile} className="account-settings-profile">
+          <div className="account-settings-identity">
+            <strong>{account.name}</strong>
+            <span>{account.email}</span>
+            <em className={account.emailVerified ? 'verified' : 'unverified'}>{account.emailVerified ? strings.emailVerified : strings.emailUnverified}</em>
+          </div>
+          <div className="settings-grid">
           <form className="settings-form" onSubmit={(event) => {
             event.preventDefault()
             void run(() => updateName(name), strings.changed, { name: strings.errorCurrent, default: strings.errorCurrent })
           }}>
-            <Field label={strings.changeName} badge={strings.emailVerified === '' ? undefined : undefined}>
+            <Field label={strings.changeName} >
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} />
             </Field>
             <Button type="submit" size="compact">{strings.changeName}</Button>
@@ -76,7 +79,7 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
 
           <form className="settings-form" onSubmit={(event) => {
             event.preventDefault()
-            void run(() => updateEmail(email), strings.verified, { taken: strings.errorTaken, email: strings.errorTaken, default: strings.errorTaken })
+            void run(() => updateEmail(email), strings.changed, { taken: strings.errorTaken, email: strings.errorTaken, default: strings.errorTaken })
           }}>
             <Field
               label={strings.changeEmail}
@@ -86,21 +89,25 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
             </Field>
             <div className="settings-actions">
               <Button type="submit" size="compact">{strings.changeEmail}</Button>
-              {!account.emailVerified && <Button size="compact" icon={<Mail aria-hidden="true" />} onClick={() => { void run(async () => { await verifyEmail(); return { ok: true as const } }, strings.verified, { default: strings.errorCurrent }) }}>
+              {!account.emailVerified && <Button size="compact" onClick={() => { void run(async () => { await verifyEmail(); return { ok: true as const } }, strings.verified, { default: strings.errorCurrent }) }}>
                 {strings.verifyEmail}
               </Button>}
             </div>
           </form>
+          </div>
         </Panel>
 
-        <Panel title={strings.password} icon={<KeyRound aria-hidden="true" />}>
+        </>}
+        {tab === 'security' && <>
+        <Panel title={strings.password} icon={<KeyRound aria-hidden="true" />} className="account-settings-security">
+          <div className="settings-grid">
           <form className="settings-form" onSubmit={(event) => {
             event.preventDefault()
             void run(() => changePassword({ current, next }), strings.changed, {
               current: strings.errorCurrent,
               same: strings.errorSame,
               default: strings.errorSame,
-            }).then(() => { setCurrent(''); setNext('') })
+            }).then((ok) => { if (ok) { setCurrent(''); setNext('') } })
           }}>
             <Field label={strings.currentPassword}>
               <input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} autoComplete="current-password" />
@@ -116,7 +123,7 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
             event.preventDefault()
             setNotice(null)
             setProblem(null)
-            void requestPasswordReset(resetEmail || account.email).then(() => setNotice(strings.resetSent))
+            void run(async () => { await requestPasswordReset(resetEmail || account.email); return { ok: true as const } }, strings.resetSent, { default: strings.errorCurrent })
           }}>
             <h3 className="settings-note">{strings.forgotTitle}</h3>
             <p className="panel-copy">{strings.forgotBody}</p>
@@ -125,13 +132,13 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
             </Field>
             <Button type="submit" size="compact">{strings.sendReset}</Button>
           </form>
+          </div>
         </Panel>
 
-        </div>
 
         {/* The destructive action is deliberately outside the two-column grid: it should
             not sit beside ordinary settings as if it were one of them. */}
-        <Panel tone="warning" title={strings.danger} icon={<ShieldAlert aria-hidden="true" />}>
+        <Panel tone="warning" title={strings.danger} className="account-settings-danger">
           <p className="panel-copy">{strings.deleteWarning}</p>
           <div className="settings-actions">
             <Field label={strings.deleteConfirm}>
@@ -141,12 +148,12 @@ export function SettingsPage({ t, language }: { t: Copy; language: Language }) {
               size="compact"
               icon={<Trash2 aria-hidden="true" />}
               disabled={confirm !== 'DELETE'}
-              onClick={() => { void deleteAccount().then(() => setNotice(strings.deleted)) }}>
+              onClick={() => { void run(async () => { await deleteAccount(); return { ok: true as const } }, strings.deleted, { default: strings.errorCurrent }) }}>
               {strings.deleteAccount}
             </Button>
           </div>
         </Panel>
-      </div>
-    </section>
-  </main>
+        </>}
+        </fieldset>
+  </WorkspacePage>
 }

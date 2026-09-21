@@ -1,11 +1,13 @@
+import { WorkspacePage } from '../workspace/WorkspaceLayout'
 import { useState } from 'react'
-import { ArrowLeft, FileText, ShieldAlert } from 'lucide-react'
+
 import type { Copy, Language } from '../content'
-import { MARKET_PRODUCTS, formatPrice, productCopy } from '../market/catalog'
+import { formatPrice, productCopy } from '../market/catalog'
+import { useCatalogue } from '../market/catalogue'
 import { downloadProduct } from '../api/files'
 import { useAccount } from '../account/store'
 import type { Order } from '../account/store'
-import { Button, Panel, Alert, PageHeader } from '../ui'
+import { Button, Panel, Alert } from '../ui'
 import { OrderList } from '../account/OrderList'
 
 /**
@@ -16,57 +18,40 @@ import { OrderList } from '../account/OrderList'
 export function OrderPage({ t, language, orderId }: { t: Copy; language: Language; orderId?: string }) {
   const strings = t.accountPage
   const orderStrings = t.marketPage.orders
-  const { orders, owns } = useAccount()
+  const { orders } = useAccount()
   const order = orderId ? orders.find((item) => item.id === orderId) : undefined
 
   if (!order) {
-    return <main id="main" className="market">
-      <section className="market-shelf account-head">
-        <div className="content-wrap">
-          <PageHeader
+    return <WorkspacePage
             eyebrow={strings.eyebrow}
             title={orderStrings.notFound}
             subtitle={orderStrings.notFoundBody}
             back="#/purchases"
-            backLabel={orderStrings.back} />
-        </div>
-      </section>
-      <section className="market-browse">
-        <div className="content-wrap purchases-wrap">
+            backLabel={orderStrings.back} >
           <Panel>
             <div className="receipt-actions">
               <Button variant="primary" href="#/purchases">{orderStrings.viewAll}</Button>
               <Button href="#/market">{t.marketTeaser.cta}</Button>
             </div>
           </Panel>
-        </div>
-      </section>
-    </main>
+  </WorkspacePage>
   }
 
-  return <main id="main" className="market">
-    <section className="market-shelf account-head">
-      <div className="content-wrap">
-        <PageHeader
+  return <WorkspacePage
           eyebrow={strings.eyebrow}
           title={`${orderStrings.detailTitle} ${order.id}`}
           subtitle={`${orderStrings.date}：${new Date(order.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}`}
           back="#/purchases"
-          backLabel={orderStrings.back} />
-      </div>
-    </section>
-
-    <section className="market-browse">
-      <div className="content-wrap purchases-wrap">
+          backLabel={orderStrings.back} >
         <Panel title={orderStrings.items} actions={<span className="order-state">{orderStrings.statusPaid}</span>}>
           <OrderList orders={[order]} t={t} language={language} showOrderId={false} />
           <dl className="order-totals">
             <div><dt>{t.marketPage.cart.subtotal}</dt><dd>{formatPrice(order.total)}</dd></div>
-            <div className="grand"><dt>{orderStrings.status}</dt><dd>{formatPrice(order.total)}</dd></div>
+            <div className="grand"><dt>{t.marketPage.checkout.total}</dt><dd>{formatPrice(order.total)}</dd></div>
           </dl>
         </Panel>
 
-        <Panel title={orderStrings.license} icon={<FileText aria-hidden="true" />}>
+        <Panel title={orderStrings.license}>
           <p className="panel-copy">{t.marketPage.detail.licenseBody}</p>
           <div className="receipt-actions">
             <Button href="#/license">{orderStrings.licenseDownload}</Button>
@@ -75,14 +60,12 @@ export function OrderPage({ t, language, orderId }: { t: Copy; language: Languag
         </Panel>
 
         {/* Says the policy plainly rather than hiding it behind a link. */}
-        <Panel tone="warning" icon={<ShieldAlert aria-hidden="true" />} title={orderStrings.noRefund}>
-          <Alert tone="warning" icon={<ShieldAlert aria-hidden="true" />}>
+        <Panel tone="warning" title={orderStrings.noRefund}>
+          <Alert tone="warning">
             {orderStrings.noRefundBody}
           </Alert>
         </Panel>
-      </div>
-    </section>
-  </main>
+  </WorkspacePage>
 }
 
 /**
@@ -92,6 +75,7 @@ export function OrderPage({ t, language, orderId }: { t: Copy; language: Languag
 export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
   const receipt = t.marketPage.receipt
   const { orders } = useAccount()
+  const { products } = useCatalogue()
   const [busy, setBusy] = useState(false)
   const order: Order | undefined = orders[0]
 
@@ -99,26 +83,18 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
     if (!order) return
     setBusy(true)
     for (const line of order.lines) {
-      const product = MARKET_PRODUCTS.find((item) => item.id === line.id)
+      const product = products.find((item) => item.id === line.id)
       await downloadProduct(line.id, product?.download, product ? productCopy(product.name, language) : line.name)
     }
     setBusy(false)
   }
 
-  return <main id="main" className="market">
-    <section className="market-shelf account-head">
-      <div className="content-wrap">
-        <PageHeader
+  return <WorkspacePage
           eyebrow={t.marketPage.cart.title}
           title={receipt.title}
           subtitle={receipt.subtitle}
           back="#/market"
-          backLabel={receipt.keepShopping} />
-      </div>
-    </section>
-
-    <section className="market-browse">
-      <div className="content-wrap purchases-wrap">
+          backLabel={receipt.keepShopping} >
         {order
           ? <>
             <Panel title={t.marketPage.checkout.items}>
@@ -129,7 +105,7 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
             </Panel>
             <Panel>
               <div className="receipt-actions">
-                <Button variant="primary" icon={<FileText aria-hidden="true" />} disabled={busy} onClick={() => { void downloadAll() }}>
+                <Button variant="primary" disabled={busy} onClick={() => { void downloadAll() }}>
                   {busy ? t.marketPage.checkout.paying : receipt.downloadAll}
                 </Button>
                 <Button href={`#/orders/${order.id}`}>{receipt.viewOrder}</Button>
@@ -144,7 +120,5 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
               <Button variant="primary" href="#/market">{t.marketPage.cart.continue}</Button>
             </div>
           </Panel>}
-      </div>
-    </section>
-  </main>
+  </WorkspacePage>
 }

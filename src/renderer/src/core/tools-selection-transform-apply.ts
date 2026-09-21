@@ -63,6 +63,8 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
   if (!ensureLayerCoversCanvas(document, layer)) return null
   const edit = beginPixelEdit(layer.id)
   const sourceSelection = source.selection
+  const compositeAt = (x: number, y: number, index: number, value: number): number =>
+    !copy && selectionContains(sourceSelection, x, y) ? value : compositeSelectionPixelForEdit(document, layer, edit, index, value)
   const normalizedAngle = ((angle % 360) + 360) % 360
   const recordCanvasPixel = (x: number, y: number, value: number): void => {
     const index = layerIndexAt(layer, x, y)
@@ -103,9 +105,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
           const index = layerIndexAt(layer, destination.x, destination.y)
           if (index === null || written.has(index)) continue
           written.add(index)
-          recordCanvasPixel(destination.x, destination.y, copy
-            ? compositeSelectionPixelForEdit(document, layer, edit, index, value)
-            : value)
+          recordCanvasPixel(destination.x, destination.y, compositeAt(destination.x, destination.y, index, value))
         }
       }
     }
@@ -139,7 +139,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
           : value === 0 || getPaletteEntry(document, value).color.a === 0
         if (!transparent) {
           const destinationIndex = layerIndexAt(layer, x, y)
-          if (destinationIndex !== null) recordCanvasPixel(x, y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value))
+          if (destinationIndex !== null) recordCanvasPixel(x, y, compositeAt(x, y, destinationIndex, value))
         }
       }
     } else forEachSelectedSourceOffset(source, (offset) => {
@@ -154,9 +154,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
         : value === 0 || getPaletteEntry(document, value).color.a === 0
       if (!transparent) {
         const destinationIndex = layerIndexAt(layer, x, y)
-        if (destinationIndex !== null) recordCanvasPixel(x, y, copy
-          ? compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, value)
-          : value)
+        if (destinationIndex !== null) recordCanvasPixel(x, y, compositeAt(x, y, destinationIndex, value))
       }
     })
     return edit.before.size > 0 ? edit : null
@@ -183,7 +181,7 @@ export function applySelectionTransform(document: SpriteDocument, source: Select
     if (transparent) continue
     for (const destination of symmetryPoints({ x: cell.x, y: cell.y }, document.width, document.height, symmetryAxes, symmetryCenter)) {
       const destinationIndex = layerIndexAt(layer, destination.x, destination.y)
-      if (destinationIndex !== null) recordCanvasPixel(destination.x, destination.y, compositeSelectionPixelForEdit(document, layer, edit, destinationIndex, cell.value))
+      if (destinationIndex !== null) recordCanvasPixel(destination.x, destination.y, compositeAt(destination.x, destination.y, destinationIndex, cell.value))
     }
   }
   return edit.before.size > 0 ? edit : null

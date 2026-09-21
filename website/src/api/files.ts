@@ -42,9 +42,10 @@ async function withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectSto
   return await new Promise<T>((resolve, reject) => {
     const transaction = database.transaction(STORE, mode)
     const request = work(transaction.objectStore(STORE))
-    request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error ?? new Error('indexedDB request failed'))
-    transaction.oncomplete = () => database.close()
+    transaction.oncomplete = () => { database.close(); resolve(request.result) }
+    transaction.onabort = () => { database.close(); reject(transaction.error ?? new Error('indexedDB transaction aborted')) }
+    transaction.onerror = () => { database.close(); reject(transaction.error ?? new Error('indexedDB transaction failed')) }
   })
 }
 
@@ -104,6 +105,8 @@ export function filesSupported(): boolean {
  * the click has been dispatched.
  */
 export async function downloadProduct(productId: string, fallbackPath: string | undefined, filename: string): Promise<boolean> {
+  const orders = await api.orders.list()
+  if (!orders.some((order) => order.lines.some((line) => line.id === productId))) return false
   const stored = await getFile(productId)
   if (stored) {
     const url = URL.createObjectURL(stored.blob)

@@ -27,6 +27,7 @@ import { tr } from './workspace-translation'
 import { cloneAnimationCelsForLayerIds } from './workspace-animation-clone'
 import { layerHistoryBytes, groupHistoryBytes } from './workspace-layer-style-history'
 import { type IndexedTilesetSnapshot, removeTilesetSnapshots, removableOwnedTilesets } from './workspace-layer-owned-tilesets'
+import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 
 const cloneAnimationLayerMasksForLayerIds = (document: SpriteDocument, layerIds: ReadonlySet<string>): AnimationLayerMask[] =>
   (ensureAnimationDocument(document).layerMasks ?? [])
@@ -498,21 +499,24 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
     },
     moveLayer(direction) {
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const document = session.document
         const index = document.layers.findIndex((layer) => layer.id === document.activeLayerId)
         const target = index + direction
         if (target < 0 || target >= document.layers.length) return
         ;[document.layers[index], document.layers[target]] = [document.layers[target], document.layers[index]]
-        session.history.push({
+        const entry = {
           label: tr('canvas.history.moveLayer'), bytes: 32,
           undo: () => { ;[document.layers[index], document.layers[target]] = [document.layers[target], document.layers[index]] },
           redo: () => { ;[document.layers[index], document.layers[target]] = [document.layers[target], document.layers[index]] },
           requiresAnimationSync: false
-        })
+        }
+        session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
       }, 'content')
     },
     moveLayerBy(layerId, deltaX, deltaY, label = tr('canvas.history.moveLayer')) {
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const layer = session.document.layers.find((candidate) => candidate.id === layerId)
         if (!layer || isLayerEffectivelyLocked(session.document, layer)) return
         const before = { x: layer.offsetX, y: layer.offsetY }
@@ -524,11 +528,12 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         const activeCel = timeline.cels.find((candidate) => candidate.layerId === layer.id && candidate.frameId === timeline.activeFrameId)
         const textSource = activeCel ? resolveAnimationCel(timeline, activeCel) ?? activeCel : null
         if (layer.kind === 'text' && textSource?.text) translateTextCelData(textSource.text, after.x - before.x, after.y - before.y)
-        session.history.push({
+        const entry = {
           label, bytes: 32,
           undo: () => { layer.offsetX = before.x; layer.offsetY = before.y; if (textSource?.text) translateTextCelData(textSource.text, before.x - after.x, before.y - after.y) },
           redo: () => { layer.offsetX = after.x; layer.offsetY = after.y; if (textSource?.text) translateTextCelData(textSource.text, after.x - before.x, after.y - before.y) }
-        })
+        }
+        session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
       })
     },
     beginLayerMoveDuplicatePreview(documentId, layerId, copySuffix) {
@@ -572,16 +577,17 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
     commitLayerMove(documentId, move) {
       const session = activeSession(get())
       if (!session || session.document.id !== documentId) return
+      const beforeSelection = captureAnimationSelectionHistory(session)
       const entry = createLayerMoveHistoryEntry(session, move, {
         single: tr('canvas.history.moveLayer'),
         multiple: tr('canvas.history.moveSelectedLayers')
       })
       if (!entry) return
-      get().pushHistory(entry)
       // The copy is inserted while dragging for a live preview.  Confirming
       // that drag must make the copy (rather than the source layer) the active
       // editing target, without retaining a blue explicit layer selection.
       if (move.duplicatedLayerId) get().activateLayerForCanvas(move.duplicatedLayerId)
+      get().pushHistory(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
     },
     reorderLayer(layerId, targetLayerId) {
       get().reorderLayers([layerId], targetLayerId)
@@ -590,6 +596,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
       const current = activeSession(get())
       const beforeRenderOrder = current ? normalCompositeLayers(current.document) : null
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const history = reorderLayersOperation(session, layerIds, targetLayerId, insertAfterTarget)
         if (!history) return
         const invalidation = layerReorderInvalidation(session.document, beforeRenderOrder, normalCompositeLayers(session.document))
@@ -610,7 +617,7 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
         if (invalidation.kind === 'region') {
           session.layersPanelRevision += 1
         }
-        session.history.push(entry)
+        session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
         completeDocumentChange(session, 'content', recordDocumentOperation, invalidation)
       }, false)
     },
@@ -668,20 +675,32 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
     },
     moveLayersToRootEdge(layerIds, edge) {
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const history = moveLayersToRootEdgeOperation(session, layerIds, edge)
-        if (history) session.history.push({ ...history, requiresAnimationSync: false })
+        if (history) {
+          const entry = { ...history, requiresAnimationSync: false }
+          session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
+        }
       }, 'content')
     },
     moveGroupToRootEdge(groupId, edge) {
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const history = moveGroupToRootEdgeOperation(session, groupId, edge)
-        if (history) session.history.push({ ...history, requiresAnimationSync: false })
+        if (history) {
+          const entry = { ...history, requiresAnimationSync: false }
+          session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
+        }
       }, 'content')
     },
     moveLayerRows(layerIds, groupIds, target) {
       get().mutateActive((session) => {
+        const beforeSelection = captureAnimationSelectionHistory(session)
         const history = moveLayerPanelRowsOperation(session, layerIds, groupIds, target)
-        if (history) session.history.push({ ...history, requiresAnimationSync: false })
+        if (history) {
+          const entry = { ...history, requiresAnimationSync: false }
+          session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, captureAnimationSelectionHistory(session)))
+        }
       }, 'content')
     },
     createLayerGroup() {

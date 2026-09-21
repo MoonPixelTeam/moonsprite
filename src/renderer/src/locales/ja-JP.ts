@@ -2057,6 +2057,7 @@ export const jaJPMessages = {
   'app.export.pathMenu': 'エクスポート場所を選択',
   'app.export.choosePath': '選択 パス',
   'app.export.localGallery': '地元ギャラリー',
+  'app.export.projectRootDirectory': 'プロジェクトルートディレクトリ（{path}）',
   'app.export.recentPaths': '最近のエクスポート路線',
   'app.export.noRecentPaths': '最近のエクスポートルートなし',
   'app.export.selectedDirectory': 'エクスポート場所: {path}',

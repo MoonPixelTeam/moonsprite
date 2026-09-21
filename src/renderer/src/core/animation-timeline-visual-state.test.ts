@@ -1,3 +1,4 @@
+import { createAnimationTimelineVisualTopology } from './animation-timeline-visual-topology'
 import { describe, expect, it } from 'vitest'
 import { animationMaskAt } from './document'
 import { createAnimationTimelineVisualIndex, deriveAnimationTimelineVisualState, resolveTimelineMaskVisualFlags, shouldRenderTimelineCelSelectionMarker, type TimelineVisualCell, type TimelineVisualRow } from './animation-timeline-visual-state'
@@ -647,4 +648,27 @@ describe('deriveAnimationTimelineVisualState', () => {
     expect(state.selectionGuidesVisible).toBe(false)
     expect(state.cells.find((cell) => cell.key === 'layer-0:f1' && cell.kind === 'cel')?.explicitSelected).toBe(true)
   })
+})
+
+
+it('reuses prepared slot/link topology across range selections without mutating it', () => {
+  const canonicalIndex = createAnimationTimelineVisualIndex(frames, cells)
+  const topology = createAnimationTimelineVisualTopology(rows, frames, canonicalIndex)
+  const slots = topology.slots.map(slot => ({...slot}))
+  for (const presentationHidden of [false, true]) for (const activeFrame of frames) {
+    const input = {rows, frames, cells, canonicalIndex,
+      selection: {activeLayerId: 'layer-a', activeFrameId: activeFrame.id,
+        selectedFrameIds: ['f1', activeFrame.id], selectedLayerIds: ['layer-a'],
+        selectedCellKeys: ['layer-a:f2', 'layer-b:f3', 'missing:f1'],
+        selectedMaskCellKeys: ['group-a:f2', 'group-a:f3', 'group-a:missing']},
+      presentation: {presentationHidden}
+    }
+    const prepared = deriveAnimationTimelineVisualState({...input, topology})
+    expect(prepared).toEqual(deriveAnimationTimelineVisualState(input))
+    expect(prepared.normalizedSelection.staleCellKeys).toEqual(['missing:f1'])
+    expect(prepared.normalizedSelection.staleMaskCellKeys).toEqual(['group-a:f3', 'group-a:missing'])
+    expect(prepared.cells.find(cell => cell.key === 'layer-b:f3')?.explicitSelected).toBe(true)
+    expect(prepared.cells.find(cell => cell.key === 'group-a:f2')?.kind).toBe('mask')
+  }
+  expect(topology.slots).toEqual(slots)
 })

@@ -2050,6 +2050,7 @@ export const ptBRMessages = {
   "app.export.pathMenu": "Escolher Exportar Localização",
   "app.export.choosePath": "Escolher Caminho",
   "app.export.localGallery": "Local GTodosery",
+  "app.export.projectRootDirectory": "Diretório raiz do projeto ({path})",
   "app.export.recentPaths": "Recentes Exportar Caminhos",
   "app.export.noRecentPaths": "Nenhum Recentes Exportar Caminhos",
   "app.export.selectedDirectory": "Exportar Localização: {path}",

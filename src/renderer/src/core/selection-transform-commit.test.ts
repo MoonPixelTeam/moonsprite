@@ -47,7 +47,7 @@ describe('packed selection transform commit', () => {
       for (const cell of selectionTransformCells(document, source, target, angle, shear, layer, quad, false, optimized)) {
         if ((cell.value >>> 24) === 0) continue
         const index = layerIndexAt(layer, cell.x, cell.y)!
-        recordPixel(document, layer, reference, index, compositeSelectionPixelForEdit(document, layer, reference, index, cell.value))
+        recordPixel(document, layer, reference, index, !copy && selectionContains(selection, cell.x, cell.y) ? cell.value : compositeSelectionPixelForEdit(document, layer, reference, index, cell.value))
       }
       const expected = layer.pixels.slice()
       revertPixelEdit(document, reference)

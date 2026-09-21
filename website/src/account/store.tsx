@@ -53,7 +53,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         const current = await api.auth.current()
         if (!alive) return
         setAccount(current)
-        if (current) setOrders(await api.orders.list())
+        setOrders(current ? await api.orders.list() : [])
       } catch (error) {
         console.warn('MoonSprite account: could not restore the session.', error)
       } finally {
@@ -62,9 +62,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
     void boot()
     const refresh = () => { void loadOrders() }
+    const refreshSession = () => { void boot() }
+    window.addEventListener('storage', refreshSession)
     window.addEventListener('moonsprite:data', refresh)
     return () => {
       alive = false
+      window.removeEventListener('storage', refreshSession)
       window.removeEventListener('moonsprite:data', refresh)
     }
   }, [loadOrders])
@@ -94,10 +97,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const addOrder = useCallback(async (lines: OrderLine[]) => {
     const result = await api.orders.create(lines)
     if (!result.ok) return { ok: false as const, error: result.error }
-    setOrders((current) => [result.data, ...current])
+    await loadOrders()
     // The receipt needs the order it just created.
     return { ok: true as const, order: result.data }
-  }, [])
+  }, [loadOrders])
 
   const owned = useMemo(
     () => new Set(orders.flatMap((order) => order.lines.map((line) => line.id))),

@@ -1,8 +1,8 @@
 export type AnimationLoopSectionResizeEdge = 'start' | 'end'
 
 export type AnimationPointerDrag =
-| { kind: 'frame'; sourceFrameId: string; frameIds: string[]; preserveSelection: boolean; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
-| { kind: 'cel'; sourceAnchorKey: string; cellKeys: string[]; preserveSelection: boolean; selectionMode?: 'toggle' | 'range'; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
+| { kind: 'frame'; button: 0 | 2; sourceFrameId: string; frameIds: string[]; preserveSelection: boolean; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
+| { kind: 'cel'; button: 0 | 2; sourceAnchorKey: string; cellKeys: string[]; preserveSelection: boolean; selectionMode?: 'toggle' | 'range'; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
 | { kind: 'group-cel'; sourceAnchorKey: string; preserveSelection: boolean; selectionMode?: 'toggle' | 'range'; startX: number; startY: number; moved: boolean; canMove: boolean; lastSelectionTarget: string }
 | { kind: 'mask'; sourceAnchorKey: string; cellKeys: string[]; preserveSelection: boolean; selectionMode?: 'toggle' | 'range'; startX: number; startY: number; moved: boolean; canMove: boolean; pendingSelection: boolean; longPressed: boolean; longPressTimer: number | null; lastSelectionTarget: string }
 | { kind: 'loop-section'; sectionId: string; edge: AnimationLoopSectionResizeEdge; startX: number; startY: number; startIndex: number; endIndex: number; previewStartIndex: number; previewEndIndex: number; moved: boolean }

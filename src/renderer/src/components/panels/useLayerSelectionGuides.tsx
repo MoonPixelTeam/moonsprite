@@ -272,7 +272,7 @@ export function useLayerSelectionGuides({
       // must not be treated as a click on empty canvas/UI and clear it.
       if (
         target?.closest(
-          '[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal'
+          '[data-animation-frame-id], [data-animation-cel-key], [data-animation-group-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal'
         )
       )
         return

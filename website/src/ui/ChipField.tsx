@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { PixelPlus as Plus, PixelX as X } from './icons'
 import { Chip } from './index'
 
 /**

@@ -1,0 +1,406 @@
+/* ---------- component library ---------- */
+
+/*
+ * The shared shapes every page composes from: fields, alerts, panels, page headers and
+ * drop zones. They live here rather than beside any one page, because a second page
+ * copying them is exactly how the studio and the account page drifted apart.
+ * See docs/ui-design-system.md.
+ */
+
+/* Field: label row, control, hint. One gap value for all three. */
+.field { display: grid; gap: var(--space-3); align-content: start; }
+.field-label { display: flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
+.field-label em {
+  color: var(--text-4);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-style: normal;
+}
+.field-counter {
+  padding: 0 var(--space-3);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-weight: 400;
+}
+.field-hint { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.field.invalid input,
+.field.invalid textarea,
+.field.invalid .ui-select-button,
+.field.invalid .inline-add input { border-color: var(--danger); }
+
+/* Inputs and textareas: one height, one border, square corners. */
+.field input,
+.field textarea,
+.field select,
+.inline-add input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+.field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; }
+.field input[type="number"]::-webkit-outer-spin-button,
+.field input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.field input[type="number"] { -moz-appearance: textfield; }
+.field input:focus-visible,
+.field textarea:focus-visible { border-color: var(--accent); outline: none; }
+
+/*
+ * Structural guards against horizontal overflow.
+ *
+ * A grid or flex item defaults to `min-width: auto`, meaning it refuses to shrink below its
+ * content. One long word, one wide select, or one unwrapped row of controls is then enough
+ * to push the whole document wider than the viewport — which is how the publish page came to
+ * scroll sideways at phone width while every other route was fine.
+ *
+ * These rules let containers shrink and inputs fill whatever room they are given, so a new
+ * field cannot reintroduce the problem.
+ */
+.field,
+.studio-fieldset,
+.studio-publish-grid > *,
+.settings-grid > *,
+.account-form > * { min-width: 0; }
+
+.field input,
+.field textarea,
+.field select,
+.inline-add input { max-width: 100%; min-width: 0; }
+
+/* An input and its add button on one row. */
+.inline-add { display: flex; gap: var(--space-5); min-width: 0; }
+.inline-add input { flex: 1 1 auto; }
+.inline-add .button { flex: 0 0 auto; }
+/* On a phone the add button wraps under the field rather than squeezing both. */
+@media (max-width: 560px) {
+  .inline-add { flex-wrap: wrap; }
+  .inline-add .button { flex: 1 1 100%; }
+}
+
+/* Alert: one shape, four tones. */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--divider);
+  font-size: var(--font-small);
+}
+.alert svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.alert-body { line-height: 1.6; }
+.alert-info { color: var(--text-2); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.alert-info svg { color: var(--accent); }
+.alert-success { color: var(--text-2); background: var(--raised); border-color: var(--divider); }
+.alert-success svg { color: var(--success); }
+.alert-warning { color: var(--text-2); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.alert-warning svg { color: var(--warn); }
+.alert-danger { color: var(--text-2); background: var(--warn-soft); border-color: var(--danger); }
+.alert-danger svg { color: var(--danger); }
+
+/* Panel: the page-level block. Nothing inside it is another bordered box. */
+.panel {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.panel-warning { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.panel-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text);
+  font-size: var(--font-lead);
+  font-weight: 700;
+}
+.panel-head h2 svg { width: 16px; height: 16px; color: var(--warn); }
+.panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin-left: auto; }
+.panel-body { display: grid; gap: var(--space-8); min-width: 0; }
+
+/* Page header: crumbs, eyebrow with its rule, title, standfirst. */
+.page-head-block { display: grid; gap: var(--space-8); max-width: 720px; }
+.page-crumbs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-7); }
+.page-back { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); text-decoration: none; }
+.page-back:hover { color: var(--accent); }
+.page-crumbs > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  letter-spacing: .02em;
+}
+.page-crumbs > span::before { content: none; }
+.page-head-copy { display: grid; gap: var(--space-7); }
+.page-head-copy h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  max-width: 26ch;
+  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+}
+.page-head-copy h1 svg { width: 24px; height: 24px; color: var(--warn); }
+.page-head-copy p { max-width: 58ch; color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+.page-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+
+/* Gallery: a stack of panels, each showing one component's states. */
+.ui-gallery { display: grid; gap: var(--space-9); }
+.ui-gallery .panel + .panel { margin-top: 0; }
+.ui-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+.ui-note { margin: 0; color: var(--text-4); font-size: var(--font-small); line-height: 1.6; }
+.ui-frame { padding: var(--space-10); background: var(--bg); border: 1px solid var(--divider); }
+
+/* ---------- settlement, orders, support, admin ---------- */
+
+/*
+ * These screens were built as plain markup and never given rules, which is why they read
+ * as unstyled HTML: rows ran together, actions wrapped onto their own line, and small
+ * chips floated in empty space. Each list below is a grid with declared columns, so every
+ * row lines up and a long value truncates instead of shoving its neighbours.
+ */
+
+/* One row shape for every list on these pages: fixed leading columns, a flexible
+   description, then a right-hand column for state or an action. */
+.payout-list,
+.method-list,
+.report-list,
+.ticket-list,
+.admin-list,
+.license-list {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Payout history: date, amount, state, destination. The flexible column is the button
+   cell, not the state badge — a badge must stay its own width. */
+.payout-list li {
+  display: grid;
+  grid-template-columns: 96px auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-6) var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.payout-list time { color: var(--text-4); font-size: var(--font-small); white-space: nowrap; }
+.payout-amount { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); }
+/* The destination takes the leftover width and truncates rather than stretching anything
+   else; a long account string must not push the row wider. */
+.payout-dest { min-width: 0; color: var(--text-3); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payout-state,
+.admin-state,
+.ticket-state {
+  width: fit-content;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--divider);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  white-space: nowrap;
+}
+.payout-state.requested, .admin-state.pending, .ticket-state.open { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
+.payout-state.approved { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
+.payout-state.paid, .admin-state.approved { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); background: var(--raised); }
+.payout-state.rejected, .admin-state.rejected { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: var(--warn-soft); }
+.ticket-state.answered { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); background: var(--raised); }
+
+/* Payout methods: one row per saved destination, actions kept together at the end. */
+.method-list li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-6) var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.method-kind { color: var(--text); font-size: var(--font-small); font-weight: 600; }
+.method-account { color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-small); }
+.method-holder { color: var(--text-4); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.method-list .button,
+.method-default { grid-column: 4; }
+/* The default marker and the two actions share one cell, so they never wrap apart. */
+.method-list li > .button:first-of-type,
+.method-default { justify-self: end; }
+.method-default {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--success);
+  font-size: var(--font-small);
+}
+.method-default svg { width: 13px; height: 13px; }
+.method-list li > .button:last-child { justify-self: start; }
+
+/*
+ * The add-method / ticket / settings forms: fields capped at a readable width, and the
+ * submit on its own line. A panel-wide input is harder to scan than a short one.
+ *
+ * `align-self: start` matters: a button is a grid item here, and a grid item stretches to
+ * its row by default, so a two-field form rendered a 51px button beside a 34px one.
+ */
+.settings-form {
+  display: grid;
+  gap: var(--space-7);
+  justify-items: start;
+}
+.settings-form .field { width: 100%; max-width: 420px; }
+.settings-form .button,
+.settings-actions { justify-self: start; align-self: start; }
+.settings-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); }
+
+/*
+ * The settings page was one long left-aligned column inside a 1160px panel, so most of the
+ * width sat empty and every section looked unfinished. Two balanced columns instead, with
+ * related panels stacked, and the danger zone given its own full-width row.
+ */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-9);
+  align-items: start;
+}
+.settings-grid .settings-form .field { max-width: none; }
+.settings-grid .panel { height: 100%; }
+.settings-note { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+
+/* Report and ticket entries: title line, body, then the action. */
+.report-list li,
+.ticket-list li {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.report-list li > small,
+.ticket-list li > small { color: var(--text-4); font-size: var(--font-small); }
+.report-list li > .button,
+.ticket-list li > .button { justify-self: start; }
+.report-pack,
+.ticket-head strong { color: var(--text); font-size: var(--font-body); font-weight: 600; }
+.report-reason { color: var(--warn); font-size: var(--font-small); }
+.report-list p,
+.ticket-list p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.ticket-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-6); }
+
+/* Admin listing review: pack, state, actions, and the reject form when open. */
+.admin-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+}
+.admin-pack { display: grid; gap: 2px; min-width: 0; }
+.admin-pack strong { color: var(--text); font-size: var(--font-body); }
+.admin-pack small { color: var(--text-4); font-size: var(--font-small); }
+.admin-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.admin-reason { grid-column: 1 / -1; color: var(--danger); font-size: var(--font-small); }
+/* The reject form spans the row so its field is not squeezed into a column. */
+.admin-reject {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--divider);
+}
+.admin-reject .field { flex: 1 1 260px; max-width: 420px; }
+
+/* The licence: a plain list with a leading mark, generous line height. */
+.license-list li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--space-6);
+  color: var(--text-2);
+  font-size: var(--font-body);
+  line-height: 1.7;
+}
+.license-list svg { width: 16px; height: 16px; margin-top: 5px; color: var(--text-4); }
+.license-list.granted svg { color: var(--success); }
+.license-list.denied svg { color: var(--danger); }
+.license-actions { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+
+/*
+ * Narrow screens: these rows have four and five columns, which cannot fit a phone. Rather
+ * than let them overflow, each becomes two lines — money and state on the first, the
+ * description under it — and the action moves to its own row.
+ */
+@media (max-width: 760px) {
+  .payout-list li { grid-template-columns: auto auto minmax(0, 1fr); row-gap: var(--space-4); }
+  .payout-list time { grid-column: 1; grid-row: 2; }
+  .payout-dest { grid-column: 1 / -1; grid-row: 2; text-align: right; }
+  .method-list li { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-5); }
+  .method-holder { grid-column: 2; }
+  .method-list li > .button,
+  .method-default { grid-column: auto; justify-self: start; }
+  .method-list li > .button:last-child { justify-self: start; }
+  .admin-list li { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-5); }
+  .admin-actions { justify-content: flex-start; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .order-lines li { grid-template-columns: auto minmax(0, 1fr) auto; }
+}
+
+/* Order totals and the receipt's action row. */
+.order-totals { display: grid; gap: var(--space-4); margin: 0; padding-top: var(--space-7); border-top: 1px solid var(--divider); }
+.order-totals > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); }
+.order-totals dt { color: var(--text-3); font-size: var(--font-small); }
+.order-totals dd { margin: 0; color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-price); }
+.order-totals .grand dt { color: var(--text); }
+.order-totals .grand dd { color: var(--warn); font-size: var(--font-price-lg); }
+.order-state { color: var(--success); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.receipt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.panel-copy { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+
+/* Drop zone: one target for choosing and dropping a file. */.drop-zone {
+  display: grid;
+  gap: var(--space-5);
+  justify-items: center;
+  padding: var(--space-8);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+}
+.drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone.invalid { border-color: var(--danger); }
+.drop-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  color: var(--text-4);
+  font-size: var(--font-small);
+  text-align: center;
+  cursor: pointer;
+}
+.drop-empty:hover { color: var(--text-2); }
+.drop-empty svg { width: 20px; height: 20px; color: var(--accent); }
+.drop-empty strong { color: var(--text-2); font-weight: 600; }
+.drop-file { display: flex; align-items: center; gap: var(--space-6); width: 100%; min-width: 0; }
+.drop-file > svg { width: 18px; height: 18px; color: var(--accent); flex: 0 0 auto; }
+.drop-file-copy { display: grid; gap: 2px; min-width: 0; }
+.drop-file-copy strong { color: var(--text); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-file-copy small { color: var(--text-4); font-size: var(--font-small); }
+.drop-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: center; }
+

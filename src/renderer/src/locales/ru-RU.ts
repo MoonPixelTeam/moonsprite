@@ -2050,6 +2050,7 @@ export const ruRUMessages = {
   "app.export.pathMenu": "Выбрать Экспортировать Расположение",
   "app.export.choosePath": "Выбрать Путь",
   "app.export.localGallery": "Локальный GВсеery",
+  "app.export.projectRootDirectory": "Корневой каталог проекта ({path})",
   "app.export.recentPaths": "Недавние Экспортировать Путьs",
   "app.export.noRecentPaths": "Нет Недавние Экспортировать Путьs",
   "app.export.selectedDirectory": "Экспортировать Расположение: {path}",

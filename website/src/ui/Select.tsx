@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { PixelCheck as Check, PixelChevronDown as ChevronDown } from './icons'
 
 export type SelectOption<T extends string> = { value: T; label: string }
 
@@ -66,6 +66,12 @@ export function Select<T extends string>({ value, options, onChange, label, clas
       setActive((index) => (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length)
       return
     }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      if (!open) { setOpen(true); return }
+      setActive(event.key === 'Home' ? 0 : Math.max(0, options.length - 1))
+      return
+    }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       if (open) choose(options[active].value)
@@ -91,10 +97,12 @@ export function Select<T extends string>({ value, options, onChange, label, clas
       id={`${id}-list`}
       role="listbox"
       aria-label={label}
+      aria-activedescendant={`${id}-option-${active}`}
       ref={listRef}>
       {options.map((option, index) => <li key={option.value} role="none">
         <button
           type="button"
+          id={`${id}-option-${index}`}
           role="option"
           aria-selected={option.value === value}
           data-active={index === active}

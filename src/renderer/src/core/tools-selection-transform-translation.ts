@@ -131,13 +131,8 @@ export function applySelectionTranslationCommit(
     if (targetX >= 0 && targetY >= 0 && targetX < target.width && targetY < target.height) {
       const offset = targetY * sourceSelection.width + targetX
       if ((!mask || mask[offset] === 1) && isOpaque(source.values[offset])) {
-        // A normal move relocates the captured pixel exactly. Compositing a
-        // translucent source over the destination would accumulate alpha and
-        // change the pixel merely because it was moved. Clipboard/copy
-        // operations remain source-over so they behave like a paste.
-        next = copy || source.origin === 'clipboard'
-          ? compositeSelectionPixelOver(document, layer, before, source.values[offset])
-          : source.values[offset]
+        // Clear the moved source first, then blend over the remaining destination.
+        next = compositeSelectionPixelOver(document, layer, next, source.values[offset])
       }
     }
     return next
@@ -306,7 +301,7 @@ export function applySelectionTranslationPreview(
     if (index !== null) {
       const destination = previewBeforeByCanvas.get(canvasIndex)
       writeLayerPacked(document, layer, index, composite
-        ? compositeSelectionPixelOver(document, layer, destination ?? readLayerPacked(document, layer, index), value)
+        ? compositeSelectionPixelOver(document, layer, !copy && source.origin !== 'clipboard' && selectionContains(source.selection, x, y) ? 0 : destination ?? readLayerPacked(document, layer, index), value)
         : value)
     }
   }
@@ -357,7 +352,9 @@ export function applySelectionTranslationPreview(
     })
     forEachOpaqueSource((localOffset, value) => {
       const targetIndex = targetCanvasIndex(localOffset)
-      if (targetIndex !== null) writeCanvasPacked(targetIndex, value, copy || source.origin === 'clipboard')
+      if (targetIndex !== null) {
+        writeCanvasPacked(targetIndex, value, true)
+      }
     })
     return finishPreview()
   }
@@ -428,7 +425,10 @@ export function applySelectionTranslationPreview(
     const localOffset = source.opaqueOffsets[offset]
     const x = target.x + localOffset % sourceSelection.width
     const y = target.y + Math.floor(localOffset / sourceSelection.width)
-    if (isInBounds(document.width, document.height, x, y)) writeCanvasPacked(pixelIndex(document.width, x, y), source.opaqueValues[offset], copy)
+    if (isInBounds(document.width, document.height, x, y)) {
+      const targetIndex = pixelIndex(document.width, x, y)
+      writeCanvasPacked(targetIndex, source.opaqueValues[offset], true)
+    }
   }
   return finishPreview()
 }

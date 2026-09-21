@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../ui'
-import { Check, ShoppingCart } from 'lucide-react'
+import { PixelCheck as Check } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { PetSpriteStrip } from './PixelArt'
 import { petPacks } from './petSprites'
@@ -125,7 +125,7 @@ export function AddButton({ product, t, inCart, owned, onAdd, block = false }: {
     <Button
       size="compact"
       block={block}
-      icon={inCart ? <Check aria-hidden="true" /> : <ShoppingCart aria-hidden="true" />}
+      icon={inCart ? <Check aria-hidden="true" /> : undefined}
       onClick={() => onAdd(product.id)}>
       {inCart ? market.card.owned : market.card.add}
     </Button>
@@ -133,15 +133,28 @@ export function AddButton({ product, t, inCart, owned, onAdd, block = false }: {
 }
 
 /** One pack, exactly as the market lists it. Used by the market grid and the homepage. */
-export function PackCard({ product, t, language, cart, owned }: {
+export function PackCard({ product, t, language, cart, owned, compact = false }: {
   product: MarketProduct
   t: Copy
   language: Language
   cart: Cart
   owned?: boolean
+  compact?: boolean
 }) {
   const market = t.marketPage
   const loops = animationCount(product)
+
+  if (compact) return <article className="pack-tile">
+    <a href={marketPackHash(product.id)} aria-label={`${productCopy(product.name, language)} - ${market.card.details}`}>
+      <div className={isArtworkPack(product) ? 'pack-art-frame artwork' : 'pack-art-frame'}>
+        <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={4} />
+      </div>
+      <div className="pack-tile-caption">
+        <h3>{productCopy(product.name, language)}</h3>
+        <span>{formatPrice(product.price)}</span>
+      </div>
+    </a>
+  </article>
 
   return <article className="pack-card">
     <a className="pack-card-link" href={marketPackHash(product.id)} aria-label={`${productCopy(product.name, language)} - ${market.card.details}`}>
@@ -179,11 +192,12 @@ export function PackCard({ product, t, language, cart, owned }: {
 }
 
 /** The grid the cards sit in, so both pages space and wrap them the same way. */
-export function PackGrid({ products, t, language, className }: {
+export function PackGrid({ products, t, language, className, compact = false }: {
   products: MarketProduct[]
   t: Copy
   language: Language
   className?: string
+  compact?: boolean
 }) {
   const cart = useCart()
   const { owns } = useAccount()
@@ -194,6 +208,7 @@ export function PackGrid({ products, t, language, className }: {
       t={t}
       language={language}
       cart={cart}
-      owned={owns(product.id)} />)}
+      owned={owns(product.id)}
+      compact={compact} />)}
   </div>
 }

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Download, PackageCheck } from 'lucide-react'
+import { PixelDownload as Download } from '../ui/icons'
 import type { Copy, Language } from '../content'
-import { MARKET_PRODUCTS, formatPrice, productCopy } from '../market/catalog'
+import { formatPrice, productCopy } from '../market/catalog'
+import { useCatalogue } from '../market/catalogue'
 import { downloadProduct, listFileIds } from '../api/files'
 import { marketPackHash } from '../router'
 import type { Order } from './store'
+import { PackImage } from '../market/PackCard'
 
 /**
  * The purchase list, shared by the account page's recent block and the full purchases
@@ -17,6 +19,7 @@ export function OrderList({ orders, t, language, showOrderId = true }: {
   showOrderId?: boolean
 }) {
   const strings = t.accountPage
+  const { products } = useCatalogue()
   // A published pack's bytes live in IndexedDB rather than at a URL, so the list asks
   // which products actually have a file before deciding what the button does.
   const [storedIds, setStoredIds] = useState<string[]>([])
@@ -38,13 +41,16 @@ export function OrderList({ orders, t, language, showOrderId = true }: {
       {/* On the order page the id and date are already in the page header, so the row shows
           only what is not repeated above it. */}
       <header className={showOrderId ? 'order-head' : 'order-head bare'}>
-        {showOrderId && <strong>{order.id}</strong>}
-        {showOrderId && <span>{new Date(order.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}</span>}
+        <div className="order-head-main">
+          <span className="order-label">{language === 'zh' ? '购买订单' : 'Purchase'}</span>
+          {showOrderId && <a href={`#/orders/${order.id}`}><strong>{order.id}</strong></a>}
+          <time>{new Date(order.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</time>
+        </div>
         <em>{formatPrice(order.total)}</em>
       </header>
       <ul className="order-lines">
         {order.lines.map((line) => {
-          const product = MARKET_PRODUCTS.find((item) => item.id === line.id)
+          const product = products.find((item) => item.id === line.id)
           const name = product ? productCopy(product.name, language) : line.name
           /*
            * A pack is downloadable when it ships a file in public/ or has one stored from
@@ -54,10 +60,10 @@ export function OrderList({ orders, t, language, showOrderId = true }: {
           const hasStored = storedIds.includes(line.id)
           const downloadable = Boolean(file) || hasStored
           return <li key={line.id}>
-            <PackageCheck aria-hidden="true" />
+            <span className="order-line-thumb"><PackImage product={product ?? { id: line.id, category: 'assets', name: { zh: line.name, en: line.name }, tagline: { zh: '', en: '' }, body: { zh: '', en: '' }, price: line.price, size: { zh: '', en: '' }, formats: [], includes: [] }} t={t} alt="" /></span>
             <span className="order-line-name">
               <a href={marketPackHash(line.id)}>{name}</a>
-              <small>×{line.quantity} · {product ? productCopy(product.size, language) : ''}</small>
+              <small>{line.quantity > 1 ? `×${line.quantity}` : ''}</small>
             </span>
             {downloadable
               ? <button

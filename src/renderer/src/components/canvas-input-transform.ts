@@ -1,5 +1,5 @@
 import type { SelectionQuad, SelectionRect } from '@shared/types-selection'
-import { applySelectionTransform } from '@/core/tools-selection-transform'
+import { applySelectionTransform, applySelectionTranslationCommit } from '@/core/tools-selection-transform'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
 import {
@@ -255,21 +255,23 @@ export function createTransformCanvasInput(ports: Ports) {
           !target.flipHorizontal &&
           !target.flipVertical
         if (deferredSelectionPreviewMaterializationRequired(simpleTranslation, Boolean(drag.floatingPaste), drag.selectionSource.origin)) {
-          drag.previewEdit = applySelectionTransform(
-            session.document,
-            drag.selectionSource,
-            target,
-            drag.previewAngle ?? 0,
-            Boolean(drag.copy),
-            drag.previewShear,
-            session.symmetryAxes,
-            symmetryCenter,
-            activePaintLayer(session),
-            symmetryStartPointForDrag(drag),
-            drag.previewQuad,
-            false,
-            session.selectionRotationAlgorithm === 'rotsprite'
-          )
+          drag.previewEdit = simpleTranslation
+            ? applySelectionTranslationCommit(session.document, drag.selectionSource, target, Boolean(drag.copy), activePaintLayer(session), session.view.tileRepeatMode)
+            : applySelectionTransform(
+                session.document,
+                drag.selectionSource,
+                target,
+                drag.previewAngle ?? 0,
+                Boolean(drag.copy),
+                drag.previewShear,
+                session.symmetryAxes,
+                symmetryCenter,
+                activePaintLayer(session),
+                symmetryStartPointForDrag(drag),
+                drag.previewQuad,
+                false,
+                session.selectionRotationAlgorithm === 'rotsprite'
+              )
           drag.deferredSelectionPreview = false
           for (const rect of deferredSelectionCommitInvalidationRects(drag)) invalidateCompositeRect(rect)
         }

@@ -7,7 +7,7 @@ import { ModalShell } from '@/components/ModalShell'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
-import { loadDocumentExportSettings, loadExportPresets, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
+import { loadDocumentExportSettings, loadExportPresets, parentDirectoryFromPath, saveExportPresets, withExportFileExtension, type ExportPreset } from '@/core/export-settings'
 import { EXPORT_FORMAT_PREFERENCE_KEY, imageExportKindForPreference, loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { type ExportOptions, useWorkspace } from '@/store/workspace'
@@ -33,6 +33,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
   useWorkspace(state => exportOpen ? state.sessions.find(item => item.document.id === activeId)?.revision : null)
   const workspace = useWorkspace.getState()
   const session = workspace.sessions.find(item => item.document.id === activeId)
+  const projectRootDirectory = session ? parentDirectoryFromPath(session.document.filePath ?? session.document.sourceFilePath ?? '') : ''
   const runExportActive = useCallback((options: ExportOptions): Promise<boolean> => {
     if (exportActiveOperationRef.current) return exportActiveOperationRef.current
     const operation = workspace.exportActive(options)
@@ -182,7 +183,7 @@ export const ExportDialogHost = forwardRef<ExportDialogHandle, Props>(function E
           <FormField className="export-file-field" label={t('app.export.fileName')} hint={<span className="export-selected-directory" title={exportForm.directory || defaultFileDirectories.exportDirectory}>{t('app.export.selectedDirectory', { path: exportForm.directory || defaultFileDirectories.exportDirectory })}</span>}>
             <div className="export-file-control">
               <TextInput autoFocus aria-label={t('app.export.fileName')} value={exportForm.name} onChange={(event) => setExportForm({ ...exportForm, name: event.target.value })} />
-              <FileLocationPicker directory={exportForm.directory || defaultFileDirectories.exportDirectory} defaultDirectory={defaultFileDirectories.exportDirectory} localGalleryDirectory={defaultFileDirectories.saveDirectory} open={exportPathMenuOpen} onOpenChange={setExportPathMenuOpen} onChooseDirectory={chooseExportDirectory} onSelectDirectory={(directory) => setExportForm((current) => ({ ...current, directory }))} />
+              <FileLocationPicker directory={exportForm.directory || defaultFileDirectories.exportDirectory} defaultDirectory={defaultFileDirectories.exportDirectory} localGalleryDirectory={defaultFileDirectories.saveDirectory} projectRootDirectory={projectRootDirectory} open={exportPathMenuOpen} onOpenChange={setExportPathMenuOpen} onChooseDirectory={chooseExportDirectory} onSelectDirectory={(directory) => setExportForm((current) => ({ ...current, directory }))} />
             </div>
           </FormField>
           <div className="export-primary-fields">

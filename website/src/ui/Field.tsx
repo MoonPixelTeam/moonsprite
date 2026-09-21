@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import { FileArchive, ImagePlus, X } from 'lucide-react'
+import { PixelFileArchive as FileArchive, PixelImagePlus as ImagePlus, PixelX as X } from './icons'
 
 /*
  * Form fields. Before this, every form assembled its own label + control + hint markup,

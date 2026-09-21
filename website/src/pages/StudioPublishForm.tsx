@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileArchive, ImagePlus, PackagePlus, Pencil, X } from 'lucide-react'
+import { PixelFileArchive as FileArchive, PixelImagePlus as ImagePlus, PixelPencil as Pencil } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { useStudio, type StudioProduct } from '../studio/store'
 import { Button, ChipField, Field, FileField, FormField, Select } from '../ui'
@@ -93,10 +93,14 @@ export function StudioPublish({ t, language, editing, onDone }: {
     setCategory('assets'); setPackFile(null); setPendingFile(null)
   }
 
+  const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (busy) return
     setTried(true)
     if (missing.length > 0) return
+    setBusy(true)
+    try {
     const payload = {
       name: { zh: name.trim(), en: name.trim() },
       tagline: { zh: tagline.trim(), en: tagline.trim() },
@@ -138,8 +142,10 @@ export function StudioPublish({ t, language, editing, onDone }: {
       }
     }
     setMessage(editing ? strings.updated : strings.published)
-    if (editing) onDone?.()
-    else reset()
+    onDone?.()
+    } catch {
+      setMessage(strings.errorStorage)
+    } finally { setBusy(false) }
   }
 
   const sizePresets = strings.presetSizes[category] ?? []
@@ -295,10 +301,10 @@ export function StudioPublish({ t, language, editing, onDone }: {
         {tried && missing.length > 0 && <p className="account-error" role="alert">
           {strings.missing}：{missing.join('、')}
         </p>}
-        {message && <p className="studio-ok" role="status">{message}</p>}
+        {message && <p className="account-error" role="alert">{message}</p>}
 
         <div className="studio-submit">
-          <Button type="submit" variant="primary"><PackagePlus aria-hidden="true" />{editing ? strings.saveEdit : strings.publish}</Button>
+          <Button type="submit" variant="primary" disabled={busy}>{editing ? strings.saveEdit : strings.publish}</Button>
           {editing
             ? <Button size="compact" onClick={() => onDone?.()}>{strings.cancelEdit}</Button>
             : <Button size="compact" onClick={reset}>{strings.reset}</Button>}

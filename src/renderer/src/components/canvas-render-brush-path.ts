@@ -174,7 +174,7 @@ export function createCanvasBrushPath({
         const index = baseline ? layerIndexAt(activeLayer, x, y) : null
         const packed = index === null ? undefined : baseline?.get(index)
         const base = packed === undefined ? undefined : activeLayer.format === 'rgba' ? unpackColor(packed) : getPaletteEntry(document, packed).color
-        return previewColorAt(x, y, erase, 255, color, base, false)
+        return previewColorAt(x, y, erase, 255, color, base, Boolean(baseline && base && base.r === color.r && base.g === color.g && base.b === color.b && base.a === color.a))
       }, (left, right, y, color) => {
         for (const { point, copy } of previewPixelPlacements(left, y)) {
           const first = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
@@ -237,7 +237,7 @@ export function createCanvasBrushPath({
               queuePreviewPixel(
                 pixelX,
                 pixelY,
-                previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels)
+                previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels || Boolean(baseline && baseColor && (offset.color ?? color).r === baseColor.r && (offset.color ?? color).g === baseColor.g && (offset.color ?? color).b === baseColor.b && (offset.color ?? color).a === baseColor.a))
               )
               continue
             }
@@ -248,7 +248,7 @@ export function createCanvasBrushPath({
                 queuePreviewPixel(
                   pixelX,
                   pixelY,
-                  previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels)
+                  previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels || Boolean(baseline && baseColor && (offset.color ?? color).r === baseColor.r && (offset.color ?? color).g === baseColor.g && (offset.color ?? color).b === baseColor.b && (offset.color ?? color).a === baseColor.a))
                 )
               continue
             }
@@ -281,7 +281,7 @@ export function createCanvasBrushPath({
             queuePreviewPixel(
               pixelX,
               pixelY,
-              previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels)
+              previewColorAt(pixelX, pixelY, erase, offset.coverage, offset.color ?? color, baseColor, overwriteImageBrushPixels || Boolean(baseline && baseColor && (offset.color ?? color).r === baseColor.r && (offset.color ?? color).g === baseColor.g && (offset.color ?? color).b === baseColor.b && (offset.color ?? color).a === baseColor.a))
             )
         }
       }

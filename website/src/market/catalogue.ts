@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../api'
 import type { StudioProduct } from '../api'
 import { MARKET_PRODUCTS, type MarketProduct } from './catalog'
+import { useData } from '../data/store'
 
 /**
  * A studio pack is stored leaner than a catalogue entry — no `includes` list, and its
@@ -32,7 +33,11 @@ export function studioToProduct(item: StudioProduct): MarketProduct {
  * This is a hook, and it listens for data changes, because a pack published in another
  * tab or on another page must appear here without a reload.
  */
-export function useCatalogue(): { products: MarketProduct[]; loading: boolean } {
+type CatalogueState = { products: MarketProduct[]; loading: boolean }
+const CatalogueContext = createContext<CatalogueState | null>(null)
+
+function useCatalogueSource(): CatalogueState {
+  const { statusOf } = useData()
   const [published, setPublished] = useState<MarketProduct[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -60,8 +65,22 @@ export function useCatalogue(): { products: MarketProduct[]; loading: boolean } 
     }
   }, [])
 
-  const products = useMemo(() => [...published, ...MARKET_PRODUCTS], [published])
+  const products = useMemo(() => [
+    ...published.filter((product) => statusOf(product.id) === 'approved'),
+    ...MARKET_PRODUCTS,
+  ], [published, statusOf])
   return { products, loading }
+}
+
+export function CatalogueProvider({ children }: { children: ReactNode }) {
+  const value = useCatalogueSource()
+  return createElement(CatalogueContext.Provider, { value }, children)
+}
+
+export function useCatalogue(): CatalogueState {
+  const value = useContext(CatalogueContext)
+  if (!value) throw new Error('useCatalogue must be used inside CatalogueProvider')
+  return value
 }
 
 /** The product a page is showing, whichever side of the catalogue it came from. */

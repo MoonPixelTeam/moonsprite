@@ -8,6 +8,7 @@ interface FileLocationPickerProps {
   directory: string
   defaultDirectory: string
   localGalleryDirectory: string
+  projectRootDirectory?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onChooseDirectory: (directory: string) => Promise<void> | void
@@ -17,7 +18,7 @@ interface FileLocationPickerProps {
 }
 
 /** Shared location menu used by export and Save As dialogs. */
-export function FileLocationPicker({ directory, defaultDirectory, localGalleryDirectory, open, onOpenChange, onChooseDirectory, onSelectDirectory, recentPathKind = 'export', disabled = false }: FileLocationPickerProps) {
+export function FileLocationPicker({ directory, defaultDirectory, localGalleryDirectory, projectRootDirectory = '', open, onOpenChange, onChooseDirectory, onSelectDirectory, recentPathKind = 'export', disabled = false }: FileLocationPickerProps) {
   const { t } = useI18n()
   const loadRecentPaths = (): RecentExportPath[] => recentPathKind === 'save' ? loadRecentSavePaths() : loadRecentExportPaths()
   const [recentPaths, setRecentPaths] = useState<RecentExportPath[]>(loadRecentPaths)
@@ -77,6 +78,7 @@ export function FileLocationPicker({ directory, defaultDirectory, localGalleryDi
     {open && createPortal(<div className="export-path-menu context-menu" role="menu" aria-label={t('app.export.pathMenu')} style={position}>
       <button type="button" className="context-menu-item" role="menuitem" onClick={() => void chooseDirectory()}><PixelUtilityIcon kind="folderOpen" /><span>{t('app.export.choosePath')}</span></button>
       <button type="button" className="context-menu-item" role="menuitem" onClick={() => selectDirectory(localGalleryDirectory)}><PixelUtilityIcon kind="image" /><span>{t('app.export.localGallery')}</span></button>
+      {recentPathKind === 'export' && projectRootDirectory && <button type="button" className="context-menu-item export-project-root" role="menuitem" onClick={() => selectDirectory(projectRootDirectory)}><PixelUtilityIcon kind="folderOpen" /><span title={t('app.export.projectRootDirectory', { path: projectRootDirectory })}>{t('app.export.projectRootDirectory', { path: projectRootDirectory })}</span></button>}
       <span className="context-menu-divider" />
       <strong className="export-path-menu-heading">{t('app.export.recentPaths')}</strong>
       {recentPaths.length === 0 ? <span className="export-path-menu-empty">{t('app.export.noRecentPaths')}</span> : recentPaths.map((item) => <button type="button" className="context-menu-item export-recent-path" role="menuitem" key={item.filePath.toLocaleLowerCase()} title={item.filePath} onClick={() => selectDirectory(parentDirectoryFromPath(item.filePath))}><PixelUtilityIcon kind="export" /><span>{item.filePath}</span></button>)}

@@ -1,0 +1,942 @@
+/* ---------- pixel art runtime ---------- */
+
+.pixel-art { display: inline-grid; place-items: center; line-height: 0; }
+
+.pixel-frame { grid-area: 1 / 1; display: block; }
+.pixel-cells { display: grid; gap: 0; animation: pixel-frames var(--cycle, 0ms) steps(1, end) infinite; }
+.pixel-row { display: grid; grid-template-columns: repeat(var(--cols), var(--px, 4px)); grid-auto-rows: var(--px, 4px); }
+.pixel-row i { display: block; }
+.pixel-row .px-off { background: transparent; }
+
+/* Each frame holds the stage for an equal slice of the cycle, offset by its own delay. */
+.pixel-frame:nth-child(1) .pixel-cells { animation-delay: var(--delay, 0ms); }
+.pixel-frame:nth-child(2) .pixel-cells { animation-delay: calc(var(--delay, 0ms) - var(--cycle, 0ms) / var(--count, 1)); }
+.pixel-frame:nth-child(3) .pixel-cells { animation-delay: calc(var(--delay, 0ms) - var(--cycle, 0ms) * 2 / var(--count, 1)); }
+.pixel-frame:nth-child(4) .pixel-cells { animation-delay: calc(var(--delay, 0ms) - var(--cycle, 0ms) * 3 / var(--count, 1)); }
+
+@keyframes pixel-frames {
+  0%, 33.33% { opacity: 1; }
+  33.34%, 100% { opacity: 0; }
+}
+
+/*
+ * Animation loops are authored as transforms on one sprite: the frame strip
+ * supplies the pose, the motion wrapper supplies the movement. That is how a
+ * single authored body reads as idle, walk, run, sit, sleep, celebrate, and hurt.
+ */
+
+:root {
+  --pet-color: #45d67a;
+  /* Empty space inside an asset pack preview, so the pack's own bounds stay
+     readable against the card's backdrop. */
+  --pack-void: #12161d;
+}
+
+:root[data-theme='light'] {
+  --pet-color: #1f9b52;
+  --pack-void: #2f3844;
+}
+
+.pet { display: inline-flex; align-items: center; justify-content: center; --cycle: 0ms; }
+.pet-idle { --cycle: 1600ms; }
+.pet-walk { --cycle: 900ms; }
+.pet-run { --cycle: 500ms; }
+.pet-sit { --cycle: 2600ms; }
+.pet-sleep { --cycle: 3400ms; }
+.pet-celebrate { --cycle: 700ms; }
+.pet-hurt { --cycle: 320ms; }
+
+.pet-motion {
+  display: block;
+  transform-origin: 50% 100%;
+  animation-duration: var(--duration, 1600ms);
+  animation-delay: var(--delay, 0ms);
+  animation-iteration-count: infinite;
+  animation-timing-function: steps(2, end);
+}
+
+.anim-idle .pet-motion { animation-name: pet-breathe; animation-timing-function: ease-in-out; }
+.anim-sit .pet-motion { animation-name: pet-sit; animation-timing-function: ease-in-out; }
+.anim-sleep .pet-motion { animation-name: pet-sleep; animation-timing-function: ease-in-out; }
+.anim-walk .pet-motion { animation-name: pet-hop; }
+.anim-run .pet-motion { animation-name: pet-sprint; }
+.anim-celebrate .pet-motion { animation-name: pet-cheer; }
+.anim-hurt .pet-motion { animation-name: pet-hurt; }
+
+.pet-cat.anim-walk .pet-motion { animation-name: pet-strut; }
+.pet-cat.anim-run .pet-motion { animation-name: pet-dash; }
+.pet-dragon.anim-idle .pet-motion, .pet-wisp.anim-idle .pet-motion { animation-name: pet-hover; }
+.pet-dragon.anim-run .pet-motion, .pet-wisp.anim-run .pet-motion { animation-name: pet-sway; }
+
+.anim-hurt .pixel-art { animation: pet-flash var(--duration, 320ms) steps(2, end) infinite; }
+
+@keyframes pet-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(calc(var(--px, 4px) * -.5)) scale(1.02, .97); }
+}
+
+@keyframes pet-hover {
+  0%, 100% { transform: translateY(calc(var(--px, 4px) * -.6)) scale(1.01); }
+  50% { transform: translateY(calc(var(--px, 4px) * .4)) scale(.99); }
+}
+
+@keyframes pet-hop {
+  0%, 100% { transform: translateY(0) scale(1.07, .93); }
+  25% { transform: translateY(calc(var(--px, 4px) * -1.8)) scale(.98, 1.03); }
+  50% { transform: translateY(0) scale(1, 1); }
+  75% { transform: translateY(calc(var(--px, 4px) * -1.4)) scale(.99, 1.01); }
+}
+
+@keyframes pet-strut {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  25% { transform: translateY(calc(var(--px, 4px) * -1.4)) rotate(0deg) scale(1, 1.03); }
+  50% { transform: translateY(0) rotate(2deg); }
+  75% { transform: translateY(calc(var(--px, 4px) * -1.4)) rotate(0deg) scale(1, 1.03); }
+}
+
+@keyframes pet-sprint {
+  0%, 100% { transform: translateX(calc(var(--px, 4px) * -.6)) translateY(0) rotate(-6deg) scale(1.05, .96); }
+  50% { transform: translateX(calc(var(--px, 4px) * .6)) translateY(calc(var(--px, 4px) * -2)) rotate(6deg) scale(.98, 1.06); }
+}
+
+@keyframes pet-dash {
+  0%, 100% { transform: translateX(calc(var(--px, 4px) * -1.2)) translateY(0) rotate(-4deg) scale(1.06, .94); }
+  50% { transform: translateX(calc(var(--px, 4px) * 1.2)) translateY(calc(var(--px, 4px) * -2.4)) rotate(4deg) scale(.96, 1.08); }
+}
+
+@keyframes pet-sway {
+  0%, 100% { transform: translateX(calc(var(--px, 4px) * -1.2)) translateY(0) scale(1, 1.02); }
+  50% { transform: translateX(calc(var(--px, 4px) * 1.2)) translateY(calc(var(--px, 4px) * -1.6)) scale(1.03, .98); }
+}
+
+@keyframes pet-sit {
+  0%, 100% { transform: scaleY(.9) scaleX(1.06); }
+  50% { transform: scaleY(.86) scaleX(1.08); }
+}
+
+@keyframes pet-sleep {
+  0%, 100% { transform: translateY(calc(var(--px, 4px) * .6)) scale(1.04, .88); }
+  50% { transform: translateY(calc(var(--px, 4px) * .9)) scale(1.06, .84); }
+}
+
+@keyframes pet-cheer {
+  0%, 100% { transform: translateY(0) scale(1.1, .9); }
+  40% { transform: translateY(calc(var(--px, 4px) * -3)) scale(.96, 1.04) rotate(-4deg); }
+  70% { transform: translateY(calc(var(--px, 4px) * -1)) scale(1.02, .98) rotate(4deg); }
+}
+
+@keyframes pet-hurt {
+  0%, 100% { transform: translateX(calc(var(--px, 4px) * -1.2)); }
+  50% { transform: translateX(calc(var(--px, 4px) * 1.2)); }
+}
+
+@keyframes pet-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+/* Holding a pet still has to be possible: hover or focus freezes its loop. */
+.detail-pet:hover .pet-motion, .detail-pet:hover .pixel-cells, .detail-pet:hover .pixel-art {
+  animation-play-state: paused;
+}
+
+/* ---------- market ---------- */
+
+/*
+ * A real .mspet animation: one image, whose frame is swapped by the component. CSS
+ * was the wrong tool - animating `background-position` slides the sheet, and stepping
+ * opacity blends two poses, and both read as flicker. A single image can only ever
+ * show one frame.
+ *
+ * The window is exactly one frame and keeps the frame's own ratio, so narrowing it
+ * scales the sprite down whole instead of cropping or squashing it. Each host picks the
+ * zoom that fits its box; `--sprite-max-w` only guards a host narrower than one frame.
+ */
+.sprite-strip {
+  display: block;
+  flex: 0 0 auto;
+  width: min(var(--frame-px, 82px), var(--sprite-max-w, 100%));
+  aspect-ratio: var(--frame-w, 41) / var(--frame-h, 31);
+}
+.sprite-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.sprite-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* Each context caps the pet; the size itself comes from the component. The card's cap
+   lives with its padding so the two cannot drift apart. */
+.animation-stage { --sprite-max-w: 100%; }
+.pack-hero-figure.artwork { --sprite-max-w: 62%; }
+
+/* The shelf opens the market the way the hero opens the homepage: a wide wash from the
+   top, so the feature row sits in light rather than on a bare band. */
+.market-shelf {
+  position: relative;
+  padding: var(--space-24) 0 var(--space-13);
+  background-image:
+    radial-gradient(72% 130% at 22% 0%, var(--glow) 0%, transparent 68%),
+    linear-gradient(180deg, var(--wash-strong) 0%, transparent 55%);
+  border-bottom: 1px solid var(--divider);
+}
+
+.shelf-head { max-width: 760px; }
+.shelf-head > span { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; }
+/*
+ * The older shelf header uses the same display step as PageHeader. It was clamping to
+ * `--font-display` (44px) while every page built on PageHeader rendered 38px, so five
+ * routes had a visibly larger title than the other nine for no reason anyone chose.
+ */
+.shelf-head h1 { margin: var(--space-7) 0 var(--space-6); font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.1; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.shelf-head p { max-width: 640px; color: var(--text-3); font-size: var(--font-body); line-height: 1.75; }
+
+/* Featured packs reflow with the page: as many columns as fit at a readable tile
+   width, then fewer as it narrows. It never scrolls sideways, so no tile ends up
+   unreachable on a phone. */
+.shelf-stage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-5);
+  margin: var(--space-16) 0 0;
+}
+.shelf-item {
+  display: flex;
+  min-width: 0;
+  max-width: 360px;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: border-color 140ms ease;
+}
+.shelf-item:hover { border-color: var(--accent); }
+.shelf-item:hover figcaption { color: var(--accent); }
+/* The cover centres its content the same way the card frame does: a fixed 16:10 tile
+   that the pet sits inside rather than fills. */
+.shelf-cover {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  padding: var(--space-5);
+  overflow: hidden;
+  background: var(--control);
+  border-bottom: 1px solid var(--divider);
+}
+.shelf-cover .pack-placeholder { gap: var(--space-4); }
+.shelf-cover img { width: 100%; height: 100%; object-fit: cover; }
+/* A pet sprite is pixel art: it keeps its authored pixels and is never stretched to
+   fill the frame. The tile's ratio is wider than the sprite's, so the height is the
+   tight side here: capping the width by the height the tile has left — expressed through
+   the frame's own ratio — scales the pet down whole instead of cropping it. The zero
+   minimums let the strip shrink below one full frame. */
+.shelf-cover .sprite-strip {
+  min-width: 0;
+  min-height: 0;
+  width: min(var(--frame-px, 82px), calc((100% - 2 * var(--space-5)) * var(--frame-w, 41) / var(--frame-h, 31)));
+}
+.shelf-cover .sprite-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.shelf-item figcaption {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  color: var(--text-2);
+  font-size: var(--font-small);
+  transition: color 140ms ease;
+}
+.shelf-item figcaption span { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); white-space: nowrap; }
+
+.market-browse { padding: var(--space-20) 0 var(--space-26); }
+.market-head { margin-bottom: var(--space-11); }
+.market-head h2 { color: var(--text); }
+.market-head p { color: var(--text-3); }
+
+.market-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding-bottom: var(--space-9);
+  border-bottom: 1px solid var(--divider);
+}
+/* The one chip: market filters, studio presets and selected tags all use this. */
+.chip,
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.chip:hover,
+.filter-chip:hover { color: var(--text); border-color: var(--border-strong); }
+.chip.active,
+.filter-chip.active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.chip svg { width: 11px; height: 11px; }
+.market-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+
+.market-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+.search-field input {
+  width: 220px;
+  height: 36px;
+  padding: 0 var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font-size: var(--font-small);
+}
+.search-field input::placeholder { color: var(--text-4); }
+.search-field input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.sort-field { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-4); font-size: var(--font-small); }
+
+/* ---------- select ---------- */
+
+/* The option list is the language menu in the header restated as a control: same
+   surface, same border, square corners, amber hairline. The native popup is drawn by
+   the OS and cannot be styled, which is why this exists. */
+.ui-select { position: relative; display: inline-flex; }
+.ui-select-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-width: 132px;
+  height: 36px;
+  padding: 0 var(--space-5);
+  color: var(--text-2);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  text-align: left;
+  cursor: pointer;
+}
+.ui-select-button:hover { color: var(--text); border-color: var(--border-strong); }
+.ui-select-button svg { width: 14px; height: 14px; color: var(--text-4); flex: 0 0 auto; }
+.ui-select-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--space-2) 0;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-top-color: var(--accent);
+  box-shadow: 0 12px 28px var(--shadow);
+  list-style: none;
+  white-space: nowrap;
+}
+.ui-select-list.end { left: auto; right: 0; }
+.ui-select-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--font-small);
+  text-align: left;
+  cursor: pointer;
+}
+.ui-select-list button svg { width: 13px; height: 13px; color: var(--accent); }
+.ui-select-list button[data-active="true"] { color: var(--text); background: var(--raised); }
+.ui-select-list button.selected { color: var(--accent); }
+/* Visually hidden but still focusable and announced: used for the file inputs the styled
+   labels drive. `position: fixed` matters — an absolutely positioned 1px box still takes
+   part in the document's scrollable width and was pushing the page 164px wide. */
+.visually-hidden {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+/* The count hangs off the button, so the two share a positioned wrapper rather than the
+   badge being nested inside the button's own box. */
+.cart-slot { position: relative; display: inline-flex; }
+.cart-slot .cart-badge { top: -6px; right: -6px; }
+.add-button { display: inline-flex; }
+.add-button .button { width: 100%; }
+.cart-badge { position: absolute; top: -7px; right: -7px; min-width: 18px; padding: 0 var(--space-2); color: var(--on-accent); background: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); line-height: 18px; text-align: center; }
+
+.market-count { margin: var(--space-7) 0 var(--space-10); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+
+/* 350px is the width at which a full three-tag row still fits in either language;
+   narrower and the row would have to trim a tag, so the grid reflows instead. */
+.pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-9); align-items: stretch; }
+
+/* Cards are cloned from one mold: art, then a fixed number of text lines, so
+   every card in the grid is exactly the same height. */
+.pack-card { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--border); transition: border-color 140ms ease, transform 140ms ease; }
+.pack-card:hover { border-color: var(--accent); }
+.pack-card-link { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
+.pack-card-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* One preview frame for every pack: a fixed 16:10 crop, so no card can sit
+   taller or shorter than its neighbours. The inset ring keeps the frame readable
+   even when a screenshot's own background is nearly black. Every pack gets the same
+   internal padding, so a pet pack's card matches a product shot's card height. */
+.pack-art-frame {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  box-sizing: border-box;
+  padding: clamp(12px, 4vw, 26px);
+  overflow: hidden;
+  background: var(--control);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 50%, transparent);
+}
+/* Product shots, not pixel art: they are downscaled, so leave smoothing on. */
+.pack-image { width: 100%; height: 100%; object-fit: cover; }
+/* An animated pet is placed in the frame rather than stretched into it: without
+   centring it lands in the corner of the 16:10 frame, touching the edges. Its cap
+   subtracts the padding that is actually applied, instead of a fixed guess. */
+.pack-art-frame.artwork {
+  display: grid;
+  place-items: center;
+  /* The padding is inherited from .pack-art-frame; the cap subtracts it so the pet
+     keeps clear of the frame at every width. */
+  --sprite-max-w: calc(100% - 2 * clamp(12px, 4vw, 26px));
+}
+.pack-art-frame.artwork .pack-image { object-fit: contain; image-rendering: pixelated; }
+/* Packs whose artwork is not drawn yet keep an empty frame: no stand-in screenshot,
+   just a quiet marker so the card does not read as a loading failure. */
+.pack-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  width: 100%;
+  height: 100%;
+  text-align: center;
+}
+.pack-placeholder-mark {
+  width: 34px;
+  height: 34px;
+  background: var(--raised);
+  border: 1px dashed var(--border-strong);
+}
+.pack-placeholder-text { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+/* In the small thumbnails the label has no room, so only the marker shows. */
+.cart-line-art .pack-placeholder-text,
+.bundle-item-art .pack-placeholder-text,
+.shelf-cover .pack-placeholder-text { display: none; }
+.cart-line-art .pack-placeholder-mark,
+.bundle-item-art .pack-placeholder-mark { width: 18px; height: 18px; }
+.shelf-cover .pack-placeholder-mark { width: 28px; height: 28px; }
+.pack-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+}
+.pack-tag.pets { color: var(--pet-color); border-color: currentColor; }
+.pack-tag.assets { color: var(--accent); border-color: currentColor; }
+.pack-tag.bundle { color: var(--warn); border-color: currentColor; }
+/* Extensions and scripts are tooling rather than artwork, so they borrow the success
+   colour instead of repeating the accent that already marks price and selection. */
+.pack-tag.extensions { color: var(--success); border-color: currentColor; }
+.pack-tag.scripts { color: var(--text-2); border-color: var(--border-strong); }
+
+/* The add command stays an outline in the card footer: it may not glow accent on
+   hover, or the card would carry two competing highlights next to the price. */
+.pack-foot .button.add-button { border-color: var(--border); }
+.pack-foot .button.add-button:hover { border-color: var(--border-strong); background: var(--raised); }
+
+.pet-strip { display: grid; grid-template-columns: repeat(var(--strip-cols, 3), auto); gap: var(--space-4); }
+.pet-cell { display: grid; place-items: center; width: 92px; height: 100px; }
+.pet-strip .pet-cell { width: 84px; height: 96px; }
+
+.pack-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-5); padding: var(--space-9) var(--space-9) var(--space-8); }
+.pack-head h2 { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+/* Two lines minimum for the tagline and three clamped lines of body copy keep
+   the text block the same height whether the copy is short or long. */
+.pack-tagline {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Exactly two lines of room, in the tagline's own line-height units. A 2.4em floor
+     mixes units with the 1.3 line-height, so a one-line tagline still shrank the card
+     and rows ended up different heights. */
+  min-height: calc(2 * 1.3em);
+  margin-top: var(--space-3);
+  color: var(--text-4);
+  font-size: var(--font-small);
+  line-height: 1.3;
+}
+.pack-copy {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Exactly three lines of room, whatever the copy's own length: this is what keeps
+     every card the same height when one pack's text is a line shorter. */
+  min-height: calc(3 * 1.75em);
+  color: var(--text-2);
+  font-size: var(--font-small);
+  line-height: 1.75;
+}
+/* One chip row, never two. Every chip may shrink and ellipsise, including the first:
+   a long size string like "16x16 + 24x24 + 32x32" would otherwise hold its full width,
+   push the card past its column, and spill out of a narrow container such as the studio
+   preview. Chips keep their own text when there is room. */
+.pack-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin: auto 0 0;
+  padding: var(--space-1) 0;
+  overflow: hidden;
+  list-style: none;
+}
+.pack-chips li {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-2);
+  color: var(--text-3);
+  background: var(--raised);
+  border: 1px solid var(--divider);
+  font-size: var(--font-pixel-tag);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The first chip used to be pinned at its full width, which is what pushed a card with a
+   long size string past its column. It shrinks like the rest now. */
+
+.pack-foot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-top: auto;
+  padding: var(--space-6) var(--space-9) var(--space-8);
+  border-top: 1px solid var(--divider);
+}
+/* Reserving the discounted tag's own height keeps every footer the same size, whether
+   or not that pack has one — otherwise the bundle sits a few pixels taller. */
+.pack-price { display: flex; align-items: baseline; flex-wrap: nowrap; gap: var(--space-4); min-height: 27px; }
+/* The price is the card's one emphasized value: the warning yellow marks it, and the
+   add button stays a quiet outline so the two do not compete for the eye. */
+.pack-price strong { color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-price); }
+.pack-price s { color: var(--text-4); font-size: var(--font-small); white-space: nowrap; }
+.pack-price em { padding: var(--space-2) var(--space-3); color: var(--warn); background: var(--warn-soft); font-size: var(--font-small); font-style: normal; white-space: nowrap; }
+/* The bundle's three price parts need ~330px. Below that the strikethrough is the one
+   to drop — the saving is already stated in the em beside it — so the row cannot wrap
+   and the card keeps the height of its neighbours. */
+@media (max-width: 1100px) {
+  .pack-price s { display: none; }
+}
+.pack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-left: auto; }
+.add-button.block { width: 100%; min-height: 40px; }
+
+.market-empty { display: grid; justify-items: start; gap: var(--space-5); padding: var(--space-23) var(--space-10); background: var(--surface); border: 1px dashed var(--border-strong); }
+.market-empty h3 { font-size: var(--font-h3); font-weight: 700; }
+.market-empty p { max-width: 460px; color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+.market-missing { display: grid; justify-items: start; gap: var(--space-9); padding: var(--space-20) 0 var(--space-26); }
+.market-missing h1 { font-size: var(--font-h2); font-weight: 700; }
+
+/* ---------- pack detail page ---------- */
+
+/* Shop header: the wash sweeps in from the left, behind the pack's own artwork. */
+.pack-hero {
+  padding: var(--space-13) 0 var(--space-17);
+  background-image:
+    linear-gradient(105deg, var(--glow) 0%, transparent 46%),
+    linear-gradient(180deg, var(--wash-strong) 0%, transparent 60%);
+  border-bottom: 1px solid var(--divider);
+}
+.pack-crumbs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-11); }
+.pack-crumbs a { display: inline-flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
+.pack-crumbs a:hover { color: var(--accent); }
+.pack-crumbs svg { width: 14px; height: 14px; }
+.pack-crumbs > span { color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+
+.pack-hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-17); align-items: start; }
+/* Grid items default to min-width:auto, which lets long copy push the hero wider
+   than the viewport once the layout collapses to one column. */
+.pack-hero-grid > * { min-width: 0; }
+.pack-hero-media { position: sticky; top: 86px; }
+/* The media frame keeps a stand-in height when a pack has no art yet; without it the
+   blank placeholder would collapse the whole hero. */
+.pack-hero-figure { position: relative; display: grid; place-items: center; min-height: 300px; margin: 0; overflow: hidden; background: var(--control); border: 1px solid var(--border); }
+.pack-hero-figure .pack-image { width: 100%; height: auto; max-height: 460px; object-fit: contain; }
+.pack-hero-figure figcaption { position: absolute; top: 10px; left: 10px; }
+/* Artwork heroes size the frame to the pet instead of the other way round, so the
+   sprite is not left floating in a wide empty box. */
+.pack-hero-figure.artwork { display: grid; place-items: center; padding: var(--space-13) var(--space-10); }
+.pack-hero-figure.artwork .pack-image,
+.pack-hero-figure.artwork .sprite-strip { max-width: 100%; }
+/*
+ * The pack name is the page's subject, so it takes the same display step as every other
+ * page title. It read 44px while the rest of the site read 38px, which made the detail page
+ * look like a different product.
+ */
+.pack-hero-copy h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.14; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.pack-hero-tagline { margin-top: var(--space-5); color: var(--text-4); font-size: var(--font-body); line-height: 1.6; }
+.pack-hero-body { margin-top: var(--space-8); color: var(--text-2); font-size: var(--font-body); line-height: 1.8; }
+.pack-hero-copy .pack-chips { margin-top: var(--space-9); }
+.pack-hero-copy .pack-price { margin-top: var(--space-10); }
+/* The price in a pack's buying block is the page's one numeric shout. */
+.pack-hero-copy .pack-price { margin: var(--space-9) 0 var(--space-6); }
+.pack-hero-copy .pack-price strong { font-size: var(--font-price-lg); line-height: 1; }
+.pack-hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); margin-top: var(--space-9); }
+.pack-hero-actions .add-button.block { width: auto; min-width: 190px; }
+.pack-hero-actions .cart-button { position: relative; }
+/* The narrow-screen .button rule stretches every button; keep the hero row sized
+   to its content instead. */
+@media (max-width: 420px) {
+  .pack-hero-actions .add-button.block { width: auto; min-width: 0; flex: 1 1 auto; }
+  .pack-hero-actions .cart-button { width: auto; flex: 0 0 auto; }
+}
+.pack-hero-note { margin-top: var(--space-7); color: var(--text-4); font-size: var(--font-small); line-height: 1.7; }
+
+.detail-main { padding: var(--space-18) 0 var(--space-20); }
+.detail-columns { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--space-20); align-items: start; }
+.detail-primary { display: grid; gap: var(--space-17); min-width: 0; }
+.detail-side { display: grid; gap: var(--space-13); }
+.detail-block h2 { margin-bottom: var(--space-8); color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); font-weight: 400; }
+
+.detail-pets { display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: var(--space-7); }
+.detail-pet { display: grid; justify-items: center; gap: var(--space-5); padding: var(--space-7) var(--space-5); background: var(--surface); border: 1px solid var(--border); }
+.detail-pet-name { color: var(--text-2); font-size: var(--font-small); font-weight: 600; }
+.detail-pet-meta { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+
+/* One card per animation. The stage pads the sprite so it never touches the card
+   edge, and the grid reflows instead of squeezing. */
+.animation-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--space-7); }
+.animation-card { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); transition: border-color 140ms ease; }
+.animation-card:hover { border-color: var(--accent); }
+.animation-stage {
+  display: grid;
+  place-items: center;
+  padding: var(--space-11) var(--space-9);
+  background: var(--control);
+  border-bottom: 1px solid var(--divider);
+}
+.animation-card-body { display: grid; gap: var(--space-3); padding: var(--space-6) var(--space-7) var(--space-7); }
+.animation-card-body h3 { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); font-size: var(--font-small); font-weight: 600; }
+.animation-card-body h3 span { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); font-weight: 400; white-space: nowrap; }
+.animation-card-body p { color: var(--text-4); font-size: var(--font-small); }
+.pack-download { display: inline-flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); padding: var(--space-4) var(--space-6); color: var(--text-2); background: var(--raised); border: 1px solid var(--border); font-size: var(--font-small); }
+.pack-download:hover { color: var(--text); border-color: var(--accent); }
+.detail-animations { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+/* The animation pickers use the shared chip; only the row they sit in is local. */
+
+.detail-list { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.detail-list li { display: flex; align-items: flex-start; gap: var(--space-5); color: var(--text-2); font-size: var(--font-small); line-height: 1.65; }
+.detail-list svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: var(--space-2); color: var(--pet-color); }
+.detail-meta { display: grid; gap: var(--space-7); margin: 0; }
+.detail-meta div { display: grid; gap: var(--space-2); }
+.detail-meta dt { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.detail-meta dd { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+
+.bundle-list { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.bundle-item { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto 22px; align-items: center; gap: var(--space-7); padding: var(--space-6) var(--space-7); background: var(--surface); border: 1px solid var(--border); transition: border-color 140ms ease; }
+.bundle-item:hover { border-color: var(--accent); }
+.bundle-item-art { display: grid; place-items: center; width: 58px; height: 58px; overflow: hidden; background: var(--control); border: 1px solid var(--divider); }
+.bundle-item-art img { width: 100%; height: 100%; object-fit: cover; }
+.bundle-item-copy { display: grid; gap: var(--space-2); min-width: 0; }
+.bundle-item-copy strong { font-size: var(--font-body); font-weight: 600; }
+.bundle-item-copy span { color: var(--text-4); font-size: var(--font-small); line-height: 1.55; }
+.bundle-item-price { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-small); white-space: nowrap; }
+.bundle-item svg { width: 14px; height: 14px; color: var(--text-4); }
+.market-browse.related { border-top: 1px solid var(--divider); }
+
+/* Closing notes: a faint lift so the page does not end on the same flat tone it began. */
+.market-notes {
+  padding: var(--space-18) 0 var(--space-20);
+  background-image: linear-gradient(180deg, transparent 0%, var(--wash-strong) 100%);
+  border-top: 1px solid var(--divider);
+}
+.notes-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: var(--space-17); }
+.notes-block h3 { display: inline-flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.notes-block ul { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.notes-block li { display: flex; align-items: flex-start; gap: var(--space-5); color: var(--text-2); font-size: var(--font-small); line-height: 1.7; }
+.notes-block svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: var(--space-2); color: var(--pet-color); }
+.notes-block p { max-width: 560px; color: var(--text-3); font-size: var(--font-small); line-height: 1.75; }
+.notes-link { display: inline-flex; align-items: center; gap: var(--space-3); margin-top: var(--space-7); padding-bottom: var(--space-1); color: var(--accent); border-bottom: 1px solid currentColor; font-size: var(--font-small); }
+.notes-link:hover { color: var(--accent-hover); }
+
+/* ---------- cart ---------- */
+
+.cart-layer { position: fixed; inset: 0; z-index: 90; }
+.cart-backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 52%); animation: cart-fade 160ms ease; }
+.cart-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100%);
+  background: var(--surface);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -18px 0 48px var(--shadow);
+  animation: cart-slide 200ms ease;
+}
+
+@keyframes cart-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cart-slide { from { transform: translateX(24px); opacity: .4; } to { transform: translateX(0); opacity: 1; } }
+
+.cart-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: var(--space-8) var(--space-8); background: var(--raised); border-bottom: 1px solid var(--border); }
+.cart-head h2 { display: inline-flex; align-items: center; gap: var(--space-5); font-family: var(--font-pixel); font-size: var(--font-small); font-weight: 400; }
+.cart-head h2 span { min-width: 20px; padding: var(--space-1) var(--space-3); color: var(--on-accent); background: var(--accent); font-size: var(--font-pixel-tag); text-align: center; }
+
+.cart-empty { display: grid; gap: var(--space-8); justify-items: start; padding: var(--space-15) var(--space-9); }
+.cart-empty p { color: var(--text-3); font-size: var(--font-body); line-height: 1.75; }
+
+.cart-lines { flex: 1 1 auto; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.cart-lines li { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: var(--space-6); align-items: start; padding: var(--space-7) var(--space-8); border-bottom: 1px solid var(--divider); }
+.cart-line-art { position: relative; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; background: var(--control); border: 1px solid var(--divider); }
+.cart-line-art:hover { border-color: var(--accent); }
+.cart-line-art img { width: 100%; height: 100%; object-fit: cover; }
+.cart-line-count { position: absolute; inset: 0; display: grid; place-items: center; color: var(--warn); background: rgb(9 10 13 / 62%); font-family: var(--font-pixel); font-size: var(--font-small); }
+.cart-line-body { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
+.cart-line-body a { font-size: var(--font-small); font-weight: 600; }
+.cart-line-body a:hover { color: var(--accent); }
+.cart-line-body > span { color: var(--text-4); font-size: var(--font-small); }
+.cart-line-controls { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
+.cart-line-controls button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; color: var(--text-3); background: var(--raised); border: 1px solid var(--border); cursor: pointer; }
+.cart-line-controls button:hover { color: var(--text); border-color: var(--border-strong); }
+.cart-line-controls button svg { width: 12px; height: 12px; }
+.cart-line-controls > span { min-width: 22px; color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-pixel-label); text-align: center; }
+.cart-remove { margin-left: var(--space-2); color: var(--text-4); background: transparent; border-color: transparent; }
+.cart-remove:hover { color: var(--danger); border-color: var(--danger); }
+.cart-line-price { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-small); white-space: nowrap; }
+
+.cart-foot { display: grid; gap: var(--space-6); padding: var(--space-8); background: var(--panel); border-top: 1px solid var(--border); }
+
+/*
+ * The checkout confirmation, inside a ~410px drawer. Written for that width: one item per
+ * line with the price right-aligned, totals on a ruled block, then the licence and its
+ * checkbox. Without these rules the classes fell back to default markup and everything
+ * collided — the section headings landed on the same line as the values.
+ */
+.cart-review {
+  display: grid;
+  gap: var(--space-9);
+  padding: var(--space-8);
+  overflow-y: auto;
+}
+.cart-review h3 {
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+}
+.cart-review-lines { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.cart-review-lines li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--divider);
+}
+.cart-review-lines li > span:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--font-small);
+}
+.cart-review-lines em { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); font-style: normal; }
+.cart-review-lines li > span:last-child {
+  color: var(--text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-price);
+  white-space: nowrap;
+}
+
+/* Totals: label left, figure right, and the payable line carrying the weight. */
+.cart-review-total { display: grid; gap: var(--space-4); margin: 0; }
+.cart-review-total > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); }
+.cart-review-total dt { color: var(--text-3); font-size: var(--font-small); }
+.cart-review-total dd { margin: 0; color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-price); }
+.cart-review-total .grand { padding-top: var(--space-5); border-top: 1px solid var(--border); }
+.cart-review-total .grand dt { color: var(--text); font-size: var(--font-body); }
+.cart-review-total .grand dd { color: var(--warn); font-size: var(--font-price-lg); }
+
+/* The licence: a titled block with its own surface so it reads as terms, not as body. */
+.cart-agreement {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-7);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top-color: var(--warn);
+}
+.cart-agreement > strong {
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  font-weight: 400;
+}
+.cart-agreement p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.cart-agreement a { color: var(--accent); font-size: var(--font-small); text-decoration: none; }
+.cart-agreement a:hover { text-decoration: underline; }
+
+/*
+ * A checkbox drawn as a square, because the OS control belongs to another design.
+ *
+ * The input is clipped rather than moved off-screen: `position: absolute` with `inset: 0`
+ * and a clip keeps it over the square, so the whole row is a click target and the control
+ * is still focusable and announced. An earlier version used `pointer-events: none` plus an
+ * off-page offset, which left only the label text clickable.
+ */
+.checkbox {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--divider);
+  cursor: pointer;
+}
+.checkbox input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  clip-path: inset(0);
+}
+.checkbox-box {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--on-accent);
+  background: var(--control);
+  border: 1px solid var(--border-strong);
+}
+.checkbox-box svg { width: 13px; height: 13px; }
+.checkbox input:checked + .checkbox-box { background: var(--accent); border-color: var(--accent); }
+.checkbox input:focus-visible + .checkbox-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+.checkbox-label { color: var(--text-2); font-size: var(--font-small); line-height: 1.6; }
+.checkbox:has(input:checked) .checkbox-label { color: var(--text); }
+
+.cart-review-actions { display: grid; gap: var(--space-5); }
+.cart-review-actions .button { width: 100%; justify-content: center; }
+
+
+/* Product detail: quiet surfaces, one purchase action, content-sized empty previews. */
+.asset-detail { padding-block: var(--space-10) var(--space-20); }
+.asset-heading { display: grid; justify-items: start; gap: var(--space-5); margin-block: var(--space-13) var(--space-16); }
+.asset-heading h1 { font: 600 clamp(var(--font-h2), 3vw, var(--font-h2-lg))/1.2 var(--font-sans); letter-spacing: -.025em; overflow-wrap: anywhere; }
+.asset-heading > p { color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+.asset-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .52fr); gap: var(--space-16); align-items: start; }
+.asset-content { display: grid; gap: var(--space-13); min-width: 0; }
+.asset-preview { margin: 0; background: var(--panel); min-width: 0; }
+.asset-preview-stage { display: grid; place-items: center; aspect-ratio: 4 / 3; overflow: hidden; padding: var(--space-13); background: var(--control); --sprite-max-w: 80%; }
+.asset-preview-stage .pack-image { width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
+.asset-preview-stage .sprite-strip { max-width: 100%; }
+.asset-preview-stage.grid { background-image: linear-gradient(var(--divider) 1px, transparent 1px), linear-gradient(90deg, var(--divider) 1px, transparent 1px); background-size: var(--space-10) var(--space-10); }
+.asset-preview-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding: var(--space-5) var(--space-7); }
+.asset-preview-tools > span { color: var(--text-4); font-size: var(--font-small); }
+.asset-preview-options { display: flex; gap: var(--space-4); }
+.asset-preview figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-5); padding: var(--space-7); color: var(--text-4); border-top: 1px solid var(--divider); font-size: var(--font-small); }
+.asset-preview-empty { display: flex; align-items: center; gap: var(--space-9); padding: var(--space-16) var(--space-10); }
+.asset-preview-empty > svg { width: var(--space-16); height: var(--space-16); color: var(--border-strong); flex-shrink: 0; stroke-width: 1; }
+.asset-preview-empty strong { color: var(--text-2); font-size: var(--font-body); font-weight: 500; }
+.asset-preview-empty p { margin-top: var(--space-4); color: var(--text-4); font-size: var(--font-small); line-height: 1.7; }
+.asset-description p, .asset-content-note { color: var(--text-3); line-height: 1.85; white-space: pre-line; overflow-wrap: anywhere; }
+.asset-content > .detail-block, .asset-description { padding-top: var(--space-9); }
+.asset-content > .detail-block h2, .asset-description h2 { font: 600 var(--font-lead)/1.5 var(--font-sans); color: var(--text); margin-bottom: var(--space-9); }
+.asset-content .detail-list { gap: 0; }
+.asset-content .detail-list li { padding-block: var(--space-7); border-bottom: 1px solid var(--divider); font-size: var(--font-small); }
+.asset-content .detail-list svg { color: var(--text-4); }
+.asset-purchase { position: sticky; top: calc(var(--space-24) + var(--space-7)); min-width: 0; }
+.asset-purchase > .panel { padding: var(--space-10); background: var(--panel); border: 0; }
+.asset-purchase-heading { display: flex; justify-content: space-between; gap: var(--space-5); color: var(--text-4); font-size: var(--font-small); }
+.asset-purchase .pack-price { margin-block: var(--space-10); }
+.asset-purchase .pack-price strong { font-size: var(--font-price-lg); }
+.asset-purchase-actions { display: grid; gap: var(--space-5); }
+.asset-purchase-note { margin-top: var(--space-7); color: var(--text-4); font-size: var(--font-small); line-height: 1.7; }
+.asset-specifications { margin-top: var(--space-10); padding-top: var(--space-10); border-top: 1px solid var(--divider); }
+.asset-specifications h2 { font-size: var(--font-small); font-weight: 600; margin-bottom: var(--space-9); }
+.asset-specifications .detail-meta { gap: var(--space-9); }
+.asset-specifications .detail-meta div { grid-template-columns: minmax(0, .65fr) minmax(0, 1fr); gap: var(--space-7); }
+.asset-specifications .detail-meta dt { font-family: var(--font-sans); }
+.asset-specifications dd { overflow-wrap: anywhere; }
+.asset-license { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-10); color: var(--text-3); font-size: var(--font-small); line-height: 1.6; }
+.asset-license:hover { color: var(--accent); }
+.asset-license svg { width: var(--space-7); height: var(--space-7); flex-shrink: 0; }
+.asset-support { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .52fr); gap: var(--space-16); align-items: start; margin-top: var(--space-16); padding-top: var(--space-13); border-top: 1px solid var(--divider); }
+.asset-support > .panel { border: 0; background: transparent; padding: 0; }
+.asset-support-link { margin-top: var(--space-9); }
+.asset-report { padding-block: var(--space-5); min-width: 0; }
+.asset-report summary { cursor: pointer; color: var(--text-4); font-size: var(--font-small); }
+.asset-report summary:focus-visible { outline: 2px solid var(--accent); outline-offset: var(--space-2); }
+.asset-report[open] summary { margin-bottom: var(--space-9); }
+@media (max-width: 900px) {
+  .asset-layout, .asset-support { grid-template-columns: minmax(0, 1fr); }
+  .asset-content { display: contents; }
+  .asset-preview { grid-row: 1; }
+  .asset-purchase { position: static; grid-row: 2; }
+  .asset-purchase .detail-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .asset-purchase .detail-meta div { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .asset-preview-stage { padding: var(--space-7); }
+  .asset-heading { margin-block: var(--space-9); }
+  .asset-layout { gap: var(--space-10); }
+  .asset-preview-empty { padding: var(--space-10) var(--space-7); }
+  .asset-purchase > .panel { padding: var(--space-9); }
+}
+
+.asset-preview.empty { background: var(--surface); }
+
+.asset-purchase .panel-body { gap: 0; }

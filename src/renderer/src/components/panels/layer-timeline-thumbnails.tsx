@@ -1,5 +1,5 @@
 import { type PixelSource } from '@/components/pixel-source'
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { AnimationCel, AnimationCelSurface } from '@shared/types-animation'
 import type { LayerMask } from '@shared/types-layer'
@@ -193,7 +193,7 @@ export const useTimelineThumbnailContentSync = (documentId: string): void => {
   }, [documentId])
 }
 
-export function AnimationCelContent({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker, sharedCheckerboard = false }: {
+function AnimationCelContentView({ active, documentId, layerId, celSource, palette, revision, documentWidth, documentHeight, thumbnailSize, showThumbnail, selectionMarker, sharedCheckerboard = false }: {
   active: boolean
   documentId: string
   layerId: string
@@ -226,6 +226,8 @@ export function AnimationCelContent({ active, documentId, layerId, celSource, pa
     ? <CelThumbnail documentId={documentId} layerId={layerId} celSource={celSource} palette={livePalette} revision={liveRevision} documentWidth={liveSession?.document.width ?? documentWidth} documentHeight={liveSession?.document.height ?? documentHeight} thumbnailSize={thumbnailSize} sharedCheckerboard={sharedCheckerboard} />
     : <span className={`cel-content-marker ${selectionMarker ? 'selection-marker' : ''}`} />
 }
+
+export const AnimationCelContent = memo(AnimationCelContentView)
 
 export function ActiveFrameSync({ documentId, frameIds, containerRef, suppressActiveGuide, activeFrameIdOverride }: {
   documentId: string

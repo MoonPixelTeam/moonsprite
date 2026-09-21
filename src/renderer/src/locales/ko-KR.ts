@@ -2057,6 +2057,7 @@ export const koKRMessages = {
   'app.export.pathMenu': '내보내기 위치 선택',
   'app.export.choosePath': '선택 경로',
   'app.export.localGallery': '지역 갤러리',
+  'app.export.projectRootDirectory': '프로젝트 루트 디렉터리 ({path})',
   'app.export.recentPaths': '최근의 내보내기 경로',
   'app.export.noRecentPaths': '최근의 내보내기 경로가 없습니다.',
   'app.export.selectedDirectory': '내보내기 위치: {path}',

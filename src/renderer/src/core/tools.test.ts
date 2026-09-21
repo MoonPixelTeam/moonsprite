@@ -153,16 +153,16 @@ describe('pixel tools', () => {
     expect(layer.pixels.every((value, index) => value === filled[index])).toBe(true)
   })
 
-  it('preserves translucent selection pixels when moved and composites them when copied', () => {
+  it.each([128, 255])('composites moved and copied translucent pixels over destination alpha %i', (alpha) => {
     const document = createDocument('translucent selection source-over', 4, 1, 'rgba')
     const layer = getActiveLayer(document)
-    const base = { r: 30, g: 90, b: 210, a: 255 }
+    const base = { r: 30, g: 90, b: 210, a: alpha }
     const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
     writeLayerColor(document, layer, 2, base)
     writeLayerColor(document, layer, 0, sourceColor)
     const selection = { x: 0, y: 0, width: 1, height: 1 }
     const source = captureSelectionTransform(document, selection, layer)!
-    const expected = sourceColor
+    const expected = blendOver(base, sourceColor)
 
     applySelectionTransform(document, source, { ...selection, x: 2 }, 0, false, undefined, undefined, undefined, layer)
     expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
@@ -171,7 +171,7 @@ describe('pixel tools', () => {
     writeLayerColor(document, layer, 0, sourceColor)
     const copySource = captureSelectionTransform(document, selection, layer)!
     applySelectionTransform(document, copySource, { ...selection, x: 2 }, 0, true, undefined, undefined, undefined, layer)
-    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blendOver(sourceColor, sourceColor))
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(blendOver(expected, sourceColor))
 
     const previewDocument = createDocument('translucent selection preview source-over', 4, 1, 'rgba')
     const previewLayer = getActiveLayer(previewDocument)
@@ -179,32 +179,39 @@ describe('pixel tools', () => {
     writeLayerColor(previewDocument, previewLayer, 0, sourceColor)
     const previewSource = captureSelectionTransform(previewDocument, selection, previewLayer)!
     applySelectionTranslationPreview(previewDocument, previewSource, { ...selection, x: 2 }, false, null, previewLayer)
-    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(sourceColor)
+    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(expected)
 
     writeLayerColor(previewDocument, previewLayer, 0, sourceColor)
     const copyPreviewSource = captureSelectionTransform(previewDocument, selection, previewLayer)!
     applySelectionTranslationPreview(previewDocument, copyPreviewSource, { ...selection, x: 2 }, true, null, previewLayer)
-    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(blendOver(sourceColor, sourceColor))
+    expect(readLayerColorAt(previewDocument, previewLayer, 2, 0)).toEqual(blendOver(expected, sourceColor))
   })
 
-  it('preserves translucent pixels in the committed translation path', () => {
+  it.each([128, 255])('composites committed translation over destination alpha %i', (alpha) => {
     const document = createDocument('translucent committed translation', 4, 1, 'rgba')
     const layer = getActiveLayer(document)
-    const base = { r: 30, g: 90, b: 210, a: 255 }
+    const base = { r: 30, g: 90, b: 210, a: alpha }
     const sourceColor = { r: 240, g: 40, b: 20, a: 128 }
     writeLayerColor(document, layer, 2, base)
     writeLayerColor(document, layer, 0, sourceColor)
     const selection = { x: 0, y: 0, width: 1, height: 1 }
     const source = captureSelectionTransform(document, selection, layer)!
-    const expected = sourceColor
+    const expected = blendOver(base, sourceColor)
 
     const edit = applySelectionTranslationCommit(document, source, { ...selection, x: 2 }, false, layer)
     expect(edit).not.toBeNull()
     expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
     expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+    const history = commitPixelEdit(document, edit!, 'move selection')!
+    history.undo()
+    expect(readLayerColorAt(document, layer, 0, 0)).toEqual(sourceColor)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(base)
+    history.redo()
+    expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(expected)
   })
 
-  it('moves overlapping translucent selection pixels without compositing', () => {
+  it('composites overlapping translucent selection pixels', () => {
     const document = createDocument('overlapping translucent selection transform', 3, 1, 'rgba')
     const layer = getActiveLayer(document)
     const base = { r: 30, g: 90, b: 210, a: 255 }
@@ -216,11 +223,28 @@ describe('pixel tools', () => {
 
     const edit = applySelectionTransform(document, source, { ...selection, x: 1 }, 0, false, undefined, undefined, undefined, layer)
     expect(edit).not.toBeNull()
-    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(sourceColor)
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blendOver(base, sourceColor))
     expect(readLayerColorAt(document, layer, 0, 0).a).toBe(0)
   })
 
-  it('moves overlapping translucent translation previews without compositing', () => {
+  it('keeps committed overlapping translation consistent with its preview', () => {
+    const document = createDocument('overlapping translucent translation commit', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 240, g: 40, b: 20, a: 128 }
+    const second = { r: 40, g: 220, b: 80, a: 128 }
+    writeLayerColor(document, layer, 0, first)
+    writeLayerColor(document, layer, 1, second)
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 2, height: 1 }, layer)!
+    const expected = first
+
+    const edit = applySelectionTransform(document, source, { x: 1, y: 0, width: 2, height: 1 }, 0, false, undefined, undefined, undefined, layer)
+
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(expected)
+    expect(readLayerColorAt(document, layer, 2, 0)).toEqual(second)
+  })
+
+  it('clears the source before compositing overlapping translucent translation previews', () => {
     const document = createDocument('overlapping translucent translation preview', 4, 1, 'rgba')
     const layer = getActiveLayer(document)
     const first = { r: 240, g: 40, b: 20, a: 128 }
@@ -236,6 +260,39 @@ describe('pixel tools', () => {
     expect(readLayerColorAt(document, layer, 2, 0)).toEqual(second)
   })
 
+  it('commits the same overlapping result that the translation preview displays', () => {
+    const document = createDocument('overlapping translucent preview commit', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 240, g: 40, b: 20, a: 128 }
+    const second = { r: 40, g: 220, b: 80, a: 128 }
+    writeLayerColor(document, layer, 0, first)
+    writeLayerColor(document, layer, 1, second)
+    const source = captureSelectionTransform(document, { x: 0, y: 0, width: 2, height: 1 }, layer)!
+    const preview = applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 2, height: 1 }, false, null, layer)
+    const displayed = readLayerColorAt(document, layer, 1, 0)
+    const edit = selectionTranslationPreviewEdit(document, preview)
+    expect(edit).not.toBeNull()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(displayed)
+  })
+
+  it('keeps deferred overlapping translation commit equal to preview', () => {
+    const make = () => {
+      const document = createDocument('deferred overlapping translation', 4, 1, 'rgba')
+      const layer = getActiveLayer(document)
+      const first = { r: 240, g: 40, b: 20, a: 128 }
+      const second = { r: 40, g: 220, b: 80, a: 128 }
+      writeLayerColor(document, layer, 0, first)
+      writeLayerColor(document, layer, 1, second)
+      return { document, layer, source: captureSelectionTransform(document, { x: 0, y: 0, width: 2, height: 1 }, layer)! }
+    }
+    const previewCase = make()
+    applySelectionTranslationPreview(previewCase.document, previewCase.source, { x: 1, y: 0, width: 2, height: 1 }, false, null, previewCase.layer)
+    const previewPixel = readLayerColorAt(previewCase.document, previewCase.layer, 1, 0)
+    const commitCase = make()
+    applySelectionTranslationCommit(commitCase.document, commitCase.source, { x: 1, y: 0, width: 2, height: 1 }, false, commitCase.layer)
+    expect(readLayerColorAt(commitCase.document, commitCase.layer, 1, 0)).toEqual(previewPixel)
+  })
+
   it('does not accumulate translucent pixels when a translation preview is refreshed', () => {
     const document = createDocument('stable translucent translation preview', 3, 1, 'rgba')
     const layer = getActiveLayer(document)
@@ -245,7 +302,7 @@ describe('pixel tools', () => {
     writeLayerColor(document, layer, 1, base)
     const source = captureSelectionTransform(document, { x: 0, y: 0, width: 1, height: 1 }, layer)!
     const first = applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 1, height: 1 }, false, null, layer)
-    const expected = sourceColor
+    const expected = blendOver(base, sourceColor)
     expect(readLayerColorAt(document, layer, 1, 0)).toEqual(expected)
     applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 1, height: 1 }, false, first, layer)
     expect(readLayerColorAt(document, layer, 1, 0)).toEqual(expected)

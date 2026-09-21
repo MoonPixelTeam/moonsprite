@@ -15,7 +15,7 @@ interface BlogSection { id: string; heading: string; paragraphs: string[] }
 interface BlogPost { id: string; date: string; title: string; excerpt: string; sections: BlogSection[] }
 export interface BlogContent { title: string; subtitle: string; backToList: string; readMore: string; posts: BlogPost[] }
 interface FooterColumn { title: string; items: { key: string; label: string }[] }
-interface FeatureCard { title: string; body: string; icon: string }
+interface FeatureCard { title: string; body: string; icon: string; gif?: string }
 export interface MarketContent {
   title: string
   subtitle: string
@@ -279,6 +279,7 @@ export interface Copy {
     pending: string; approved: string; rejected: string
     approve: string; reject: string; rejectReason: string
     reports: string; reportsHint: string; noReports: string; resolveReport: string; noListings: string
+    withdrawals: string; withdrawalsHint: string; noWithdrawals: string; approveWithdrawal: string; rejectWithdrawal: string; markPaid: string
     statusApproved: string; statusPending: string; statusRejected: string
   }
 }
@@ -594,7 +595,7 @@ export const copy: Record<Language, Copy> = {
       title: 'MoonSprite - Windows 像素画工作台',
       description: 'MoonSprite 是面向 Windows 的原创源码可见像素画工作台。绘制、制作动画并管理完整创作流程。',
     },
-    nav: { work: '作品', features: '功能', market: '市场', docs: '文档', faq: 'FAQ', blog: '博客', community: '社区', menu: '打开导航', close: '关闭导航' },
+    nav: { work: '作品', features: '特色功能', market: '市场', docs: '文档', faq: 'FAQ', blog: '博客', community: '社区', menu: '打开导航', close: '关闭导航' },
     common: { dev: 'Beta 开发中', steam: '在 Steam 加入愿望单', steamSoon: '即将登陆 Steam', github: '查看 GitHub', themeToLight: '切换到白天模式', themeToDark: '切换到黑夜模式' },
     chrome: { docLabel: '未命名工程' },
     hero: {
@@ -608,11 +609,11 @@ export const copy: Record<Language, Copy> = {
       prevSlide: '上一张背景',
       nextSlide: '下一张背景',
     },
-    work: { eyebrow: '画廊 gallery/', title: '从微小图标，到完整世界。', description: '以下像素作品来自工程的 gallery/ 目录，用于展示不同尺度、色彩与构图下的像素表现。', itemAlt: ['月面基地：蓝色地球下的月球观测站', '绿崖彗星：划过绿色山崖的彗星', '山丘城堡：绿色山丘上的白色城堡', '月光林道：月光下的森林小径', '云中红塔：云海之间的红色高塔', '草原雷暴：草原上空的闪电风暴'] },
+    work: { eyebrow: 'GALLERY', title: '从微小图标，到完整世界。', description: '来自比赛作品展的精选画作，探索不同尺度、色彩与构图下的像素世界。', itemAlt: ['月面基地：蓝色地球下的月球观测站', '绿崖彗星：划过绿色山崖的彗星', '山丘城堡：绿色山丘上的白色城堡', '月光林道：月光下的森林小径', '云中红塔：云海之间的红色高塔', '草原雷暴：草原上空的闪电风暴'] },
     features: {
       eyebrow: 'FEATURES',
-      title: '软件功能',
-      description: '从画笔到切片，再到逐帧动画与脚本扩展，官网的这一页只列出概览；每一项的入口与操作方式见使用手册。',
+      title: '特色功能',
+      description: '绘制、变换、配色与逐帧动画，在一个工作台里完成。点击预览查看细节，更多操作方式见文档。',
       items: [
         { icon: 'pencil', title: '铅笔与完美像素', body: '逐像素落笔，Shift 连接上一落点；完美像素清理折角处的多余像素，适合单像素线稿。' },
         { icon: 'airbrush', title: '喷枪与笔刷动态', body: '按住持续喷涂；粒子大小、散布、密度与频率可调，铅笔与橡皮擦还支持压力与速度动态。' },
@@ -631,7 +632,7 @@ export const copy: Record<Language, Copy> = {
     marketTeaser: {
       eyebrow: 'MARKET',
       title: '市场：买下就能用的资产与宠物。',
-      description: '瓦片集、界面套件、角色基础形与宠物包，全部按像素网格绘制，导入后直接在软件里编辑每一帧；扩展与脚本包同样从这里获取。',
+      description: '从场景瓦片、角色与界面图标，到桌面宠物。浏览资源内容、文件格式与授权信息，为你的创作找到起点。',
       cta: '浏览市场',
       note: '宠物包为可安装的 .mspet 文件，扩展为 .msext 包。',
     },
@@ -936,6 +937,7 @@ export const copy: Record<Language, Copy> = {
       noReports: '没有待处理的举报。',
       resolveReport: '标记已处理',
       noListings: '还没有上架的包。',
+      withdrawals: '提现申请', withdrawalsHint: '审核卖家的提现请求并记录打款状态。', noWithdrawals: '没有提现申请。', approveWithdrawal: '批准', rejectWithdrawal: '拒绝', markPaid: '标记已打款',
       statusApproved: '已上架',
       statusPending: '待审核',
       statusRejected: '已驳回',
@@ -957,11 +959,11 @@ export const copy: Record<Language, Copy> = {
       prevSlide: 'Previous artwork',
       nextSlide: 'Next artwork',
     },
-    work: { eyebrow: 'Gallery', title: 'From tiny icons to complete worlds.', description: 'These pixel pieces ship in the project gallery/ directory to demonstrate different scales, palettes, and compositions.', itemAlt: ['Lunar base: a moon observatory under a blue Earth', 'Green cliffs: a comet streaking past mossy cliffs', 'Hilltop castle: a white castle on a green hill', 'Moonlit path: a forest trail under the moon', 'Tower in the clouds: a red tower among storm clouds', 'Prairie storm: lightning over a grassland'] },
+    work: { eyebrow: 'Gallery', title: 'From tiny icons to complete worlds.', description: 'Selected works from the competition exhibition. Explore pixel worlds through different scales, palettes and compositions.', itemAlt: ['Lunar base: a moon observatory under a blue Earth', 'Green cliffs: a comet streaking past mossy cliffs', 'Hilltop castle: a white castle on a green hill', 'Moonlit path: a forest trail under the moon', 'Tower in the clouds: a red tower among storm clouds', 'Prairie storm: lightning over a grassland'] },
     features: {
       eyebrow: 'FEATURES',
       title: 'Features',
-      description: 'From brushes to slices, and on to frame-by-frame animation and scripting — this page is an overview; the user guide documents where each feature lives and how to use it.',
+      description: 'Draw, transform, color and animate in one workspace. Open a preview for a closer look, or explore the documentation.',
       items: [
         { icon: 'pencil', title: 'Pencil and pixel-perfect', body: 'Place pixels one by one and use Shift to connect from the previous point; pixel-perfect cleans up the redundant pixels at path corners.' },
         { icon: 'airbrush', title: 'Airbrush and brush dynamics', body: 'Spray while held, with particle size, spread, density, and frequency; the pencil and eraser also take pressure and speed dynamics.' },
@@ -1285,6 +1287,7 @@ export const copy: Record<Language, Copy> = {
       noReports: 'No reports waiting.',
       resolveReport: 'Mark handled',
       noListings: 'No packs published yet.',
+      withdrawals: 'Payout requests', withdrawalsHint: 'Review seller payout requests and record when they are paid.', noWithdrawals: 'No payout requests.', approveWithdrawal: 'Approve', rejectWithdrawal: 'Reject', markPaid: 'Mark paid',
       statusApproved: 'Live',
       statusPending: 'Pending',
       statusRejected: 'Rejected',

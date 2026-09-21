@@ -1,0 +1,97 @@
+/* ---------- final cta ---------- */
+
+/* Closing note: light gathers at the bottom edge, under the buttons. */
+.final-cta {
+  padding: var(--space-21) 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(70% 120% at 50% 100%, var(--glow), transparent 72%);
+  border-top: 1px solid var(--divider);
+}
+.final-cta .content-wrap { display: grid; grid-template-columns: 1fr auto; gap: var(--space-18); align-items: center; }
+.final-cta h2 { font-size: clamp(30px, 3.6vw, var(--font-display)); line-height: 1.1; font-weight: 700; }
+.final-cta p { max-width: 640px; margin-top: var(--space-5); color: var(--text-3); font-size: var(--font-body); line-height: 1.65; }
+.final-actions { min-width: 225px; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-7); }
+.final-actions > a:last-child { display: flex; align-items: center; justify-content: center; gap: var(--space-3); color: var(--text-3); font-size: var(--font-small); }
+.final-actions > a:last-child:hover { color: var(--text); }
+.final-actions > a:last-child svg { width: 14px; }
+
+/* ---------- standalone pages: three-column shell ---------- */
+
+.page-shell { width: min(calc(100% - 48px), 1280px); margin: 0 auto; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; gap: var(--space-24); align-items: start; padding: var(--space-16) 0 var(--space-30); }
+.page-shell.no-right { grid-template-columns: 200px minmax(0, 1fr); }
+/*
+ * The side columns hold still while the article scrolls. The sticky sits on the grid
+ * item, not on the nav inside it: an `aside` is only as tall as its own content, so a
+ * sticky child would run out of travel after one screen and scroll away with the page.
+ * Both the column and the nav inside it are capped to the room below the sticky chrome,
+ * so an outline taller than the viewport scrolls on its own instead of being clipped.
+ */
+.outline-side {
+  min-width: 0;
+  position: sticky;
+  top: var(--space-26);
+  max-height: calc(100vh - var(--space-26) - var(--space-9));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.outline-side .page-outline { max-height: calc(100vh - var(--space-26) - var(--space-9)); overflow-y: auto; }
+.page-outline.panel { background: var(--surface); border: 1px solid var(--border); }
+.panel-body { padding: var(--space-4) var(--space-3) var(--space-5); }
+.outline-group { margin: var(--space-7) var(--space-3) var(--space-2); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; font-weight: 400; }
+.page-outline ul { display: grid; gap: var(--space-1); list-style: none; }
+.page-outline li button, .page-outline li a { display: block; width: 100%; padding: var(--space-3) var(--space-4); color: var(--text-3); background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; text-align: left; font-size: var(--font-small); line-height: 1.45; }
+.page-outline li button:hover, .page-outline li a:hover { color: var(--text); }
+
+/* docs outline: larger type, collapsible groups */
+.docs-outline > ul > li > a, .outline-collapsible > button { font-size: var(--font-body); }
+.outline-collapsible > button { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; padding: var(--space-4) var(--space-4); color: var(--text-2); background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; text-align: left; font-weight: 600; }
+.outline-collapsible > button:hover { color: var(--text); }
+.outline-collapsible > button .chevron { width: 22px; height: 22px; flex: 0 0 22px; color: var(--text-4); transform: translateY(6px); transition: transform 120ms ease; }
+.outline-collapsible > button .chevron.open { transform: translateY(6px) rotate(90deg); }
+.outline-children { margin: var(--space-1) 0 var(--space-3); }
+.outline-children li a { font-size: var(--font-small); padding-left: var(--space-12); }
+.page-outline li .active { color: var(--accent); border-left-color: var(--accent); }
+
+
+.page-body { min-width: 0; max-width: 720px; }
+/* Inner pages (docs, FAQ, blog) share one treatment: a shallow wash behind the page
+   title that fades into the grid, so each page opens with light instead of a flat band. */
+.page-head {
+  margin-bottom: var(--space-16);
+  padding-bottom: var(--space-13);
+  border-bottom: 1px solid var(--divider);
+  background-image: linear-gradient(180deg, var(--wash-strong) 0%, transparent 100%);
+}
+.page-head h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.page-head p { margin-top: var(--space-6); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
+
+.doc-section { scroll-margin-top: var(--space-28); }
+.doc-section > h2 { margin: var(--space-18) 0 var(--space-7); font-size: var(--font-h2); font-weight: 700; scroll-margin-top: var(--space-28); }
+.doc-section h3 { margin: var(--space-19) 0 var(--space-6); font-size: var(--font-h3); font-weight: 700; scroll-margin-top: var(--space-28); }
+.doc-section p { margin: var(--space-6) 0; color: var(--text-2); font-size: var(--font-body); line-height: 1.8; }
+.doc-section ul { margin: var(--space-6) 0; padding: 0; list-style: none; }
+.doc-section li { position: relative; padding: var(--space-2) 0 var(--space-2) var(--space-9); color: var(--text-2); font-size: var(--font-body); line-height: 1.7; }
+.doc-section li::before { content: ""; position: absolute; left: 2px; top: 13px; width: 6px; height: 6px; background: var(--accent); }
+
+.faq-cat { scroll-margin-top: var(--space-28); }
+.faq-cat > h2 { margin: var(--space-16) 0 var(--space-11); font-size: var(--font-h2); font-weight: 700; }
+.faq-cat .faq-list details { scroll-margin-top: var(--space-28); }
+.faq-list { border-top: 1px solid var(--border); }
+.faq-list details { border-bottom: 1px solid var(--border); }
+.faq-list summary { min-height: 72px; display: grid; grid-template-columns: 1fr 22px; align-items: center; gap: var(--space-9); cursor: pointer; list-style: none; }
+.faq-list summary::-webkit-details-marker { display: none; }
+.faq-list strong { font-size: var(--font-lead); font-weight: 600; }
+.faq-list summary:hover strong { color: var(--accent); }
+.faq-toggle { width: 22px; height: 22px; color: var(--accent); }
+.faq-toggle .faq-collapse, .faq-list details[open] .faq-expand { display: none; }
+.faq-list details[open] .faq-collapse { display: inline-block; }
+.faq-list details p { max-width: 660px; padding: 0 var(--space-20) var(--space-12) 0; color: var(--text-2); font-size: var(--font-body); line-height: 1.75; }
+
+/* ---------- blog: chronological feed ---------- */
+
+.blog-post { margin-bottom: var(--space-19); padding-bottom: var(--space-18); border-bottom: 1px solid var(--divider); scroll-margin-top: var(--space-28); }
+.blog-post:last-of-type { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+.blog-post time { color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.blog-post > h2 { margin: var(--space-5) 0 var(--space-4); font-size: var(--font-h2); font-weight: 700; }
+.blog-post .doc-section h3 { margin: var(--space-13) 0 var(--space-4); font-size: var(--font-h3); font-weight: 700; }
+

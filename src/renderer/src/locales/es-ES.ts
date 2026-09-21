@@ -2057,6 +2057,7 @@ export const esESMessages = {
   'app.export.pathMenu': 'Elegir la ubicación de exportación',
   'app.export.choosePath': 'Elegir el camino',
   'app.export.localGallery': 'Galería local',
+  'app.export.projectRootDirectory': 'Directorio raíz del proyecto ({path})',
   'app.export.recentPaths': 'Paths de exportación recientes',
   'app.export.noRecentPaths': 'No hay recentes vías de exportación',
   'app.export.selectedDirectory': 'Lugar de exportación: {path}',

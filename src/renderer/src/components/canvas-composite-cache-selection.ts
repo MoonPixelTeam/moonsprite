@@ -6,6 +6,7 @@ import {
   DocumentCompositeCache
 } from '@/core/document-composite-cache'
 import { rasterContentBounds } from '@/core/document-model'
+import { selectionPreviewPixelWriter } from './canvas-selection-preview-pixels'
 import {
   selectionTransformPreviewPacked,
   selectionTransformPreviewRasterPacked
@@ -28,7 +29,6 @@ import {
   type SelectionTransformRasterSurface,
   type DrawCompositeOptions,
   imageData,
-  compositePreviewPixel,
   selectionPreviewTransformKey,
   repeatedSelectionTargets,
   shouldCacheFullCompositeSurface,
@@ -240,6 +240,7 @@ export class CanvasSelectionPreviewRenderer {
         baseDocumentX,
         baseDocumentY,
         canvas,
+        lowerBackdrop: new CanvasSelectionBackdropCache(this.compositeCache, undefined, true),
         previousPatchRects: [],
         source: null,
         transformKey: ''
@@ -278,7 +279,7 @@ export class CanvasSelectionPreviewRenderer {
       const transformedRaster = this.selectionTransformRasterFor(document, contentRevision, selection, activeLayer)
       for (const patchRect of visiblePatchRects) {
         const patchPixels = preview.backdrop.read(document, activeLayer, preview.lowerLayers, selection.source, selection.copy, patchRect, contentRevision)
-        const patchWords = activeLayer.format === 'rgba' && activeLayer.opacity === 1 ? new Uint32Array(patchPixels.buffer) : null
+        const writePreviewPixel = selectionPreviewPixelWriter(document, activeLayer, preview.lowerLayers, selection, patchRect, contentRevision, patchPixels, palette, preview.lowerBackdrop)
         for (let targetIndex = 0; targetIndex < selectionTargets.length; targetIndex += 1) {
           const transformedRect = currentBounds[targetIndex]
           const overlap = intersectRect(transformedRect, patchRect)
@@ -301,7 +302,7 @@ export class CanvasSelectionPreviewRenderer {
             )
             for (let offset = 0; offset < transformed.length; offset += 1) {
               const outputOffset = offset * 4
-              compositePreviewPixel(patchPixels, outputOffset, transformed[offset], activeLayer.format, activeLayer.opacity, palette)
+              writePreviewPixel(transformed[offset], outputOffset)
             }
             continue
           }
@@ -310,9 +311,7 @@ export class CanvasSelectionPreviewRenderer {
               const rasterOffset = (pixelY - transformedRect.y) * transformedRaster.width + pixelX - transformedRect.x
               const packed = transformedRaster.pixels[rasterOffset]
               const outputOffset = ((pixelY - patchRect.y) * patchRect.width + pixelX - patchRect.x) * 4
-              if (activeLayer.format === 'rgba' && (packed >>> 24) === 0) continue
-              if (patchWords && ((packed >>> 24) === 255 || patchPixels[outputOffset + 3] === 0)) patchWords[outputOffset / 4] = packed
-              else compositePreviewPixel(patchPixels, outputOffset, packed, activeLayer.format, activeLayer.opacity, palette)
+              writePreviewPixel(packed, outputOffset)
             }
         }
         if (preview.upperLayers.length > 0) this.compositeCache.compositeNormalLayersInto(document, preview.upperLayers, patchRect.x, patchRect.y, patchRect.width, patchRect.height, contentRevision, patchPixels)

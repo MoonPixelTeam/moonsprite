@@ -8,11 +8,14 @@ import { SITE_CONFIG } from '../config'
  */
 
 export type Account = { id: string; name: string; email: string; createdAt: number; emailVerified: boolean }
-export type OrderLine = { id: string; name: string; price: number; quantity: number }
+export type OrderLine = { platformFeePercent?: number; id: string; name: string; price: number; quantity: number }
 export type Order = { id: string; createdAt: number; total: number; lines: OrderLine[] }
 export type AuthResult = { ok: true; account: Account } | { ok: false; error: string }
 
 export type StudioProduct = {
+  sellerId?: string
+  archived?: boolean
+  updatedAt?: number
   id: string
   name: { zh: string; en: string }
   tagline: { zh: string; en: string }
@@ -31,6 +34,7 @@ export type StudioProduct = {
 export type WithdrawalStatus = 'requested' | 'approved' | 'paid' | 'rejected'
 
 export type Withdrawal = {
+  sellerId?: string
   id: string
   amount: number
   status: WithdrawalStatus
@@ -42,6 +46,7 @@ export type Withdrawal = {
 }
 
 export type SaleLine = {
+  platformFeePercent?: number
   orderId: string
   createdAt: number
   productId: string

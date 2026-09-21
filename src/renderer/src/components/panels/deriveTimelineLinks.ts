@@ -3,6 +3,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { timelineCellSlotKey } from '@/core/animation-timeline-identity'
 import type { LayerDisplayRow } from './layer-panel-contracts'
 interface Options {
+  readonly groups?: ReturnType<typeof createTimelineLinkGroups>
   readonly displayRows: LayerDisplayRow[]
   readonly timeline: import('@shared/types-animation').AnimationTimeline
   readonly canonicalTimelineIndex: import('@/core/animation-timeline-visual-state').CanonicalTimelineIndex
@@ -14,6 +15,7 @@ interface Options {
   readonly selectionVisible: boolean
 }
 export function deriveTimelineLinks({
+  groups,
   displayRows,
   timeline,
   canonicalTimelineIndex,
@@ -24,39 +26,10 @@ export function deriveTimelineLinks({
   renderedFrameIdSet,
   selectionVisible
 }: Options) {
-  const linkedCelGroups = displayRows.flatMap((displayRow, row) => {
-    const owner = displayRow.kind === 'node' && displayRow.node.kind === 'layer' ? displayRow.node.layer : displayRow.kind === 'mask' ? displayRow.owner : null
-    if (!owner) return []
-    const bySource = new Map<string, number[]>()
-    timeline.frames.forEach((frame, frameIndex) => {
-      const slot =
-        displayRow.kind === 'mask'
-          ? canonicalTimelineIndex.maskByOwnerFrame.get(
-              timelineCellSlotKey({ kind: 'mask', ownerKind: displayRow.ownerKind, ownerId: owner.id, frameId: frame.id })
-            )
-          : canonicalTimelineIndex.celByOwnerFrame.get(timelineCellSlotKey({ kind: 'cel', ownerKind: 'layer', ownerId: owner.id, frameId: frame.id }))
-      const sourceId = slot
-        ? ((displayRow.kind === 'mask' ? canonicalTimelineIndex.maskRootById.get(slot.id) : canonicalTimelineIndex.celRootById.get(slot.id)) ?? slot.id)
-        : null
-      if (!sourceId) return
-      const indexes = bySource.get(sourceId) ?? []
-      indexes.push(frameIndex)
-      bySource.set(sourceId, indexes)
-    })
-    return [...bySource.entries()]
-      .filter(([, frameIndexes]) => frameIndexes.length > 1)
-      .map(([sourceId, frameIndexes]) => ({
-        kind: displayRow.kind === 'mask' ? ('mask' as const) : ('cel' as const),
-        ownerKind: displayRow.kind === 'mask' ? displayRow.ownerKind : ('layer' as const),
-        layerId: owner.id,
-        row,
-        sourceId,
-        frameIndexes,
-        frameIndexSet: new Set(frameIndexes),
-        layerSelected:
-          displayRow.kind === 'mask' ? false : showLayerSelectionAcrossTimeline && session.selectedLayerIds.includes(owner.id) && !session.selectedGroupId
-      }))
-  })
+  const selectedLayers = new Set(session.selectedLayerIds)
+  const linkedCelGroups = (groups ?? createTimelineLinkGroups({displayRows, timeline, canonicalTimelineIndex})).map(group => ({...group,
+    layerSelected: group.kind !== 'mask' && showLayerSelectionAcrossTimeline && selectedLayers.has(group.layerId) && !session.selectedGroupId
+  }))
 
   const linkedGroupKey = (group: { kind: 'cel' | 'mask'; ownerKind: 'layer' | 'group'; layerId: string; sourceId: string }): string =>
     `${group.kind}:${group.ownerKind}:${group.layerId}:${group.sourceId}`
@@ -180,3 +153,38 @@ export function deriveTimelineLinks({
   )
   return { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys }
 }
+
+export function createTimelineLinkGroups({displayRows, timeline, canonicalTimelineIndex}: Pick<Options, 'displayRows' | 'timeline' | 'canonicalTimelineIndex'>) {
+  return displayRows.flatMap((displayRow, row) => {
+    const owner = displayRow.kind === 'node' && displayRow.node.kind === 'layer' ? displayRow.node.layer : displayRow.kind === 'mask' ? displayRow.owner : null
+    if (!owner) return []
+    const bySource = new Map<string, number[]>()
+    timeline.frames.forEach((frame, frameIndex) => {
+      const slot =
+        displayRow.kind === 'mask'
+          ? canonicalTimelineIndex.maskByOwnerFrame.get(
+              timelineCellSlotKey({ kind: 'mask', ownerKind: displayRow.ownerKind, ownerId: owner.id, frameId: frame.id })
+            )
+          : canonicalTimelineIndex.celByOwnerFrame.get(timelineCellSlotKey({ kind: 'cel', ownerKind: 'layer', ownerId: owner.id, frameId: frame.id }))
+      const sourceId = slot
+        ? ((displayRow.kind === 'mask' ? canonicalTimelineIndex.maskRootById.get(slot.id) : canonicalTimelineIndex.celRootById.get(slot.id)) ?? slot.id)
+        : null
+      if (!sourceId) return
+      const indexes = bySource.get(sourceId) ?? []
+      indexes.push(frameIndex)
+      bySource.set(sourceId, indexes)
+    })
+    return [...bySource.entries()]
+      .filter(([, frameIndexes]) => frameIndexes.length > 1)
+      .map(([sourceId, frameIndexes]) => ({
+        kind: displayRow.kind === 'mask' ? ('mask' as const) : ('cel' as const),
+        ownerKind: displayRow.kind === 'mask' ? displayRow.ownerKind : ('layer' as const),
+        layerId: owner.id,
+        row,
+        sourceId,
+        frameIndexes,
+        frameIndexSet: new Set(frameIndexes)
+      }))
+  })
+
+ }

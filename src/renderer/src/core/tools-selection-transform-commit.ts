@@ -56,7 +56,7 @@ export function applyPackedSelectionTransform(
     if (canvasX >= left && canvasY >= top && canvasX < right && canvasY < bottom) {
       const value = raster[(canvasY - top) * width + canvasX - left]
       // Preserve the original pre-clear backdrop for overlapping transforms.
-      if ((value >>> 24) !== 0) next = compositeSelectionPixelOver(document, layer, original, value)
+      if ((value >>> 24) !== 0) next = compositeSelectionPixelOver(document, layer, next, value)
     }
     before[offset] = original
     after[offset] = next

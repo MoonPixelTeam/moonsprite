@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDocument, getActiveLayer, readLayerColorAt, writeLayerColor } from '@/core/document'
-import { applySelectionTransform, captureSelectionTransform } from '@/core/tools'
+import { applySelectionTransform, applySelectionTranslationPreview, captureSelectionTransform } from '@/core/tools'
 import { useWorkspace } from './workspace'
 
 const red = { r: 255, g: 0, b: 0, a: 255 }
@@ -124,5 +124,37 @@ describe('floating selection rollback', () => {
     expect(readLayerColorAt(document, layer, 0, 0)).toEqual(red)
     expect(readLayerColorAt(document, layer, 1, 0)).toEqual(blue)
     expect(readLayerColorAt(document, layer, 100, 0)).toEqual(transparent)
+  })
+
+  it('does not apply a materialized translucent overlap twice on commit', () => {
+    const document = createDocument('commit materialized translucent overlap', 4, 1, 'rgba')
+    const layer = getActiveLayer(document)
+    const first = { r: 240, g: 40, b: 20, a: 128 }
+    const second = { r: 40, g: 220, b: 80, a: 128 }
+    writeLayerColor(document, layer, 0, first)
+    writeLayerColor(document, layer, 1, second)
+    useWorkspace.getState().addSession(document)
+    const selection = { x: 0, y: 0, width: 2, height: 1 }
+    useWorkspace.getState().setSelection(selection)
+    const source = captureSelectionTransform(document, selection, layer)!
+    const preview = applySelectionTranslationPreview(document, source, { x: 1, y: 0, width: 2, height: 1 }, false, null, layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(
+      source,
+      null,
+      selection,
+      { ...selection, x: 1 },
+      false,
+      'moveSelectionContent',
+      preview,
+      { x: 1, y: 0, width: 2, height: 1 },
+      0,
+      undefined,
+      true
+    )
+    useWorkspace.getState().commitFloatingPaste()
+
+    const session = useWorkspace.getState().sessions.find((candidate) => candidate.document === document)!
+    expect(session.pendingPaste).toBeNull()
+    expect(readLayerColorAt(document, layer, 1, 0)).toEqual(first)
   })
 })

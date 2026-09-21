@@ -79,9 +79,18 @@ export const historyEntryWithAnimationSelection = (
   entry: HistoryEntry,
   before: AnimationSelectionHistorySnapshot,
   after: AnimationSelectionHistorySnapshot
-): HistoryEntry => ({
-  ...entry,
-  bytes: entry.bytes + 64 + (before.selectedAnimationCellKeys.length + before.selectedAnimationMaskCellKeys.length + after.selectedAnimationCellKeys.length + after.selectedAnimationMaskCellKeys.length) * 16,
-  undo: () => { entry.undo(); restoreAnimationSelectionHistory(session, before) },
-  redo: () => { entry.redo(); restoreAnimationSelectionHistory(session, after) }
-})
+): HistoryEntry => {
+  const restore = (snapshot: AnimationSelectionHistorySnapshot): void => {
+    restoreAnimationSelectionHistory(session, snapshot)
+    // History commands invalidate content after applying the entry.
+    if (entry.documentChanged !== false && entry.contentChanged !== false) {
+      session.selectionGuidesPreservedAtContentRevision = session.contentRevision + 1
+    }
+  }
+  return {
+    ...entry,
+    bytes: entry.bytes + 64 + (before.selectedAnimationCellKeys.length + before.selectedAnimationMaskCellKeys.length + after.selectedAnimationCellKeys.length + after.selectedAnimationMaskCellKeys.length) * 16,
+    undo: () => { entry.undo(); restore(before) },
+    redo: () => { entry.redo(); restore(after) }
+  }
+}

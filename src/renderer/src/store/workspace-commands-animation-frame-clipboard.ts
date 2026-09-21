@@ -19,7 +19,7 @@ import type { WorkspaceCommandContext } from './workspace-command-context'
 import { tr } from './workspace-translation'
 import { setAnimationLoopSections } from './workspace-animation-commands-helpers'
 import { animationCelClipboardSnapshot, animationCelForTarget } from './workspace-animation-cel-conversion'
-
+import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 function pasteCrossDocumentAnimationFrames(session: DocumentSession, snapshot: AnimationFrameClipboardSnapshot): void {
   const timeline = ensureAnimationDocument(session.document)
   const targetLayers = [...session.document.layers]
@@ -151,7 +151,6 @@ function pasteCrossDocumentAnimationFrames(session: DocumentSession, snapshot: A
     }
   })
 }
-
 export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandContext<'mutateActive'>): Pick<WorkspaceAnimationCommands, 'copySelectedAnimationFrames' | 'pasteAnimationFrames' | 'moveSelectedAnimationFrames'> {
   return {
     copySelectedAnimationFrames() {
@@ -244,7 +243,6 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
             pasteCrossDocumentAnimationFrames(session, crossDocumentClipboard)
             return
           }
-          // Drag-copy takes its own snapshot, never replacing the user's clipboard.
           if (duplicateAt && !timeline.frames.some(frame => frame.id === duplicateAt.frameId)) return
           if (duplicateAt) syncActiveAnimationFrame(session.document)
           const clipboard = duplicateAt ? timeline.frames.filter(frame => session.selectedAnimationFrameIds.includes(frame.id)).map(frame => ({
@@ -353,26 +351,18 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
     moveSelectedAnimationFrames(targetFrameId, insertAfter) {
       get().mutateActive(
         (session) => {
-          const timeline = ensureAnimationDocument(session.document)
-          const selected = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId])
-          const beforeIds = timeline.frames.map((frame) => frame.id)
+          const timeline = ensureAnimationDocument(session.document); const beforeSelection = captureAnimationSelectionHistory(session)
+          const selected = new Set(session.selectedAnimationFrameIds.length ? session.selectedAnimationFrameIds : [timeline.activeFrameId]); const beforeIds = timeline.frames.map((frame) => frame.id)
           const beforeLoopSections = cloneAnimationLoopSections(timeline.loopSections)
           const moving = timeline.frames.filter((frame) => selected.has(frame.id))
           const remaining = timeline.frames.filter((frame) => !selected.has(frame.id))
           if (moving.length === 0) return
-          const targetIndex = remaining.findIndex((frame) => frame.id === targetFrameId)
-          const selectedTarget = selected.has(targetFrameId)
+          const targetIndex = remaining.findIndex((frame) => frame.id === targetFrameId); const selectedTarget = selected.has(targetFrameId)
           const selectedTargetIndex = timeline.frames.findIndex((frame) => frame.id === targetFrameId)
-          const movingIndexes = timeline.frames.map((frame, index) => (selected.has(frame.id) ? index : -1)).filter((index) => index >= 0)
-          const movingStartIndex = movingIndexes.length > 0 ? Math.min(...movingIndexes) : -1
-          const movingEndIndex = movingIndexes.length > 0 ? Math.max(...movingIndexes) : -1
+          const movingIndexes = timeline.frames.map((frame, index) => (selected.has(frame.id) ? index : -1)).filter((index) => index >= 0); const movingStartIndex = movingIndexes.length > 0 ? Math.min(...movingIndexes) : -1; const movingEndIndex = movingIndexes.length > 0 ? Math.max(...movingIndexes) : -1
           const insertionIndex = targetIndex >= 0 ? targetIndex + (insertAfter ? 1 : 0) : selectedTarget ? timeline.frames.slice(0, selectedTargetIndex).filter((frame) => !selected.has(frame.id)).length : -1
           if (insertionIndex < 0) return
           const dropBoundaryIndex = selectedTarget ? insertionIndex : Math.min(insertionIndex, remaining.length)
-          // A boundary can be reported by either adjacent header (the previous
-          // frame's right edge or the next frame's left edge). Normalize those
-          // equivalent DOM targets to the selected block's actual side so loop
-          // membership does not depend on which header received the pointer.
           const targetOriginalIndex = timeline.frames.findIndex((frame) => frame.id === targetFrameId)
           const dropSide = selectedTarget
             ? insertAfter
@@ -412,7 +402,8 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
           apply(afterIds)
           setAnimationLoopSections(session, afterLoopSections)
           session.selectedAnimationFrameIds = afterIds.filter((id) => selected.has(id))
-          session.history.push({
+          const afterSelection = captureAnimationSelectionHistory(session)
+          const entry = {
             label: tr('workspace.history.moveAnimationFrame'),
             bytes: 64,
             undo: () => {
@@ -423,7 +414,8 @@ export function createAnimationFrameClipboardCommands({ get }: WorkspaceCommandC
               apply(afterIds)
               setAnimationLoopSections(session, afterLoopSections)
             }
-          })
+          }
+          session.history.push(historyEntryWithAnimationSelection(session, entry, beforeSelection, afterSelection))
         },
         'metadata',
         true

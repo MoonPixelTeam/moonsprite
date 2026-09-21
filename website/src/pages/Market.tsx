@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Button, Checkbox, IconButton } from '../ui'
-import { ArrowLeft, Check, ChevronRight, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
+import { Alert, Button, Checkbox, Chip, Field, IconButton, Panel } from '../ui'
+import { PixelArrowLeft as ArrowLeft, PixelCheck as Check, PixelChevronRight as ChevronRight, PixelMinus as Minus, PixelPlus as Plus, PixelTrash2 as Trash2, PixelX as X } from '../ui/icons'
 import { SITE_CONFIG } from '../config'
 import type { Copy, Language } from '../content'
 import { PetSpriteStrip, PixelPet } from '../market/PixelArt'
@@ -19,6 +19,7 @@ import {
 } from '../market/catalog'
 import { marketPackHash, navigate } from '../router'
 import { useAccount } from '../account/store'
+import { useData, type ReportReason } from '../data/store'
 import { Select } from '../ui/Select'
 import { useCatalogue, useProduct } from '../market/catalogue'
 import { AddButton, CategoryTag, PackGrid, PackImage, animationCount, isArtworkPack, isBundleProduct, isPetProduct } from '../market/PackCard'
@@ -188,7 +189,10 @@ function CartDrawer({ open, cart, t, language, onClose }: {
     setStep('review')
   }
 
+  const [paymentError, setPaymentError] = useState(false)
   const pay = async () => {
+    if (paying) return
+    setPaymentError(false)
     if (!agreed) {
       setAgreeError(true)
       return
@@ -203,7 +207,7 @@ function CartDrawer({ open, cart, t, language, onClose }: {
     const result = await addOrder(lines)
     setPaying(false)
     if (!result.ok) {
-      setAgreeError(true)
+      setPaymentError(true)
       return
     }
     cart.clear()
@@ -266,6 +270,7 @@ function CartDrawer({ open, cart, t, language, onClose }: {
             </Button>
             <Button onClick={() => setStep('cart')}>{market.checkout.back}</Button>
           </div>
+          {paymentError && <p className="account-error" role="alert">{language === 'zh' ? '订单未完成。请检查登录状态，刷新商品价格与上架状态后重试。' : 'Order failed. Check your session and refresh product prices and availability before retrying.'}</p>}
           {agreeError && <p className="account-error" role="alert">{market.checkout.mustAgree}</p>}
         </div>
         : <>
@@ -471,7 +476,7 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
                 ] satisfies { value: SortKey; label: string }[]} />
             </div>
             <span className="cart-slot">
-              <Button variant="primary" size="compact" icon={<ShoppingCart aria-hidden="true" />} onClick={() => setCartOpen(true)} ariaLabel={market.cart.open}>
+              <Button variant="primary" size="compact" onClick={() => setCartOpen(true)} ariaLabel={market.cart.open}>
                 {market.cart.title}
               </Button>
               {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
@@ -498,8 +503,18 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
 
 export function PackDetailPage({ t, language, productId }: { t: Copy; language: Language; productId?: string }) {
   const market = t.marketPage
+  const [previewSurface, setPreviewSurface] = useState<'plain' | 'grid'>('plain')
+  const [previewZoom, setPreviewZoom] = useState(4)
   const [cartOpen, setCartOpen] = useState(false)
   const cart = useCart()
+  const { owns, account } = useAccount()
+  const { fileReport } = useData()
+  const [reportReason, setReportReason] = useState<ReportReason | ''>('')
+  const [reportDetail, setReportDetail] = useState('')
+  const [reportState, setReportState] = useState<'idle' | 'error' | 'sent'>('idle')
+  useEffect(() => {
+    setReportReason(''); setReportDetail(''); setReportState('idle')
+  }, [productId])
   const { registerOpener } = useCartStore()
 
   useEffect(() => {
@@ -508,7 +523,12 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
   }, [registerOpener])
 
   const { product, siblings, loading } = useProduct(productId)
-  const related = product ? siblings.filter((item) => item.id !== product.id).slice(0, 3) : []
+  const related = product ? siblings.filter((item) => item.id !== product.id && item.category === product.category).slice(0, 3) : []
+
+  if (!product && loading) return <main id="main" className="market" aria-busy="true">
+    <MarketHero t={t} language={language} />
+    <section className="market-browse"><div className="content-wrap market-missing"><p>{market.subtitle}</p></div></section>
+  </main>
 
   if (!product) return <main id="main" className="market">
     <MarketHero t={t} language={language} />
@@ -521,59 +541,62 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
     <MarketNotes t={t} />
   </main>
 
+  const hasPreview = Boolean(product.image || isArtworkPack(product))
   const loops = animationCount(product)
+  const submitReport = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!reportReason) { setReportState('error'); return }
+    const result = await fileReport({
+      productId: product.id,
+      productName: productCopy(product.name, language),
+      reason: reportReason,
+      detail: reportDetail,
+    })
+    if (!result.ok) { setReportState('error'); return }
+    setReportState('sent')
+    setReportReason('')
+    setReportDetail('')
+  }
 
   return <main id="main" className="market market-detail-page">
-    <section className="pack-hero">
-      <div className="content-wrap">
-        <nav className="pack-crumbs" aria-label={market.title}>
-          <a href="#/market"><ArrowLeft aria-hidden="true" />{market.detail.back}</a>
-          <span>{market.detail.eyebrow}</span>
-        </nav>
-
-        <div className="pack-hero-grid">
-          <div className="pack-hero-media">
-            <figure className={isArtworkPack(product) ? 'pack-hero-figure artwork' : 'pack-hero-figure'}>
-              <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={6} />
-              <figcaption><CategoryTag product={product} t={t} /></figcaption>
-            </figure>
-          </div>
-
-          <div className="pack-hero-copy">
-            <h1>{productCopy(product.name, language)}</h1>
-            <p className="pack-hero-tagline">{productCopy(product.tagline, language)}</p>
-            <p className="pack-hero-body">{productCopy(product.body, language)}</p>
-
-            <ul className="pack-chips">
-              <li>{productCopy(product.size, language)}</li>
-              {loops > 0 && <li>{market.card.loops(loops)}</li>}
-              {product.formats.map((format) => <li key={format}>{format}</li>)}
-            </ul>
-
-            <PriceRow product={product} t={t} language={language} />
-            <div className="pack-hero-actions">
-              <AddButton product={product} t={t} inCart={cart.has(product.id)} onAdd={cart.add} block />
-              <span className="cart-slot">
-                <Button size="compact" icon={<ShoppingCart aria-hidden="true" />} onClick={() => setCartOpen(true)}>
-                  {market.cart.title}
-                </Button>
-                {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
-              </span>
-            </div>
-            {product.download
-              ? <a className="pack-download" href={product.download} download>{product.formats[0]} · {productCopy(product.name, language)}</a>
-              : null}
-            <p className="pack-hero-note">{market.detail.buy}</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section className="detail-main">
-      <div className="content-wrap detail-columns">
-        <div className="detail-primary">
+    <div className="content-wrap asset-detail">
+      <nav className="pack-crumbs" aria-label={market.title}>
+        <a href="#/market"><ArrowLeft aria-hidden="true" />{market.detail.back}</a>
+        <span aria-current="page">{productCopy(product.name, language)}</span>
+      </nav>
+      <header className="asset-heading">
+        <CategoryTag product={product} t={t} />
+        <h1>{productCopy(product.name, language)}</h1>
+        <p>{productCopy(product.tagline, language)}</p>
+      </header>
+      <div className="asset-layout">
+        <div className="asset-content">
+          <figure className={hasPreview ? 'asset-preview' : 'asset-preview empty'}>
+            {hasPreview ? <>
+              <div className={previewSurface === 'grid' ? 'asset-preview-stage grid' : 'asset-preview-stage'}>
+                <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={previewZoom} />
+              </div>
+              <div className="asset-preview-tools">
+                <span>{language === 'zh' ? '资源预览' : 'Asset preview'}</span>
+                <div className="asset-preview-options">
+                  <Chip active={previewSurface === 'grid'} onClick={() => setPreviewSurface(previewSurface === 'grid' ? 'plain' : 'grid')}>{language === 'zh' ? '网格' : 'Grid'}</Chip>
+                  {isArtworkPack(product) && <Chip active={previewZoom === 6} onClick={() => setPreviewZoom(previewZoom === 4 ? 6 : 4)}>{previewZoom}×</Chip>}
+                </div>
+              </div>
+            </> : <div className="asset-preview-empty">
+              
+              <div><strong>{market.detail.previewPending}</strong><p>{language === 'zh' ? '先了解资源内容、文件格式与使用授权。' : 'Explore the contents, file formats and license below.'}</p></div>
+            </div>}
+            <figcaption>
+              <span>{product.formats.join(' / ')}</span>
+              <span>{productCopy(product.size, language)}{loops > 0 ? ` · ${market.card.loops(loops)}` : ''}</span>
+            </figcaption>
+          </figure>
+          <section className="asset-description">
+            <h2>{language === 'zh' ? '关于这个资源包' : 'About this pack'}</h2>
+            <p>{productCopy(product.body, language)}</p>
+          </section>
           <AnimationPreview product={product} t={t} language={language} />
-
           {product.category === 'bundles'
             ? <section className="detail-block">
               <h2>{market.detail.bundleContents}</h2>
@@ -595,36 +618,64 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
             </section>
             : <section className="detail-block">
               <h2>{market.detail.includes}</h2>
-              <IncludesList product={product} t={t} language={language} />
+              {product.includes.length > 0 ? <IncludesList product={product} t={t} language={language} /> : <p className="asset-content-note">{language === 'zh' ? '此资源包提供以下文件格式：' : 'This pack provides these file formats: '}{product.formats.join(' · ')}</p>}
             </section>}
-        </div>
 
-        <aside className="detail-side">
-          <section className="detail-block">
-            <h2>{market.detail.specs}</h2>
-            <SpecList product={product} t={t} language={language} />
-          </section>
-          <section className="detail-block">
-            <h2>{market.trust.title}</h2>
-            <ul className="detail-list">
-              <li><Check aria-hidden="true" />{market.trust.license}</li>
-              <li><Check aria-hidden="true" />{market.trust.updates}</li>
-              <li><Check aria-hidden="true" />{market.trust.refunds}</li>
-            </ul>
-          </section>
+        </div>
+        <aside className="asset-purchase" aria-label={language === 'zh' ? '购买与资源信息' : 'Purchase and pack information'}>
+          <Panel>
+            <div className="asset-purchase-heading"><span>{language === 'zh' ? '数字资源包' : 'Digital asset pack'}</span><span>{owns(product.id) ? market.card.ownedPack : product.formats[0]}</span></div>
+            <PriceRow product={product} t={t} language={language} />
+            <div className="asset-purchase-actions">
+              {owns(product.id)
+                ? <Button href="#/purchases" variant="primary" block>{language === 'zh' ? '下载已购资源' : 'Download purchased pack'}</Button>
+                : <Button variant="primary" block onClick={() => { if (cart.has(product.id)) setCartOpen(true); else cart.add(product.id) }}>{cart.has(product.id) ? (language === 'zh' ? '查看购物车' : 'View cart') : market.card.add}</Button>}
+            </div>
+            <p className="asset-purchase-note">{market.detail.buy}</p>
+            <div className="asset-specifications">
+              <h2>{market.detail.specs}</h2>
+              <SpecList product={product} t={t} language={language} />
+            </div>
+            <a className="asset-license" href="#/license">{language === 'zh' ? '查看使用授权与许可条款' : 'Read the license and usage terms'}<ChevronRight aria-hidden="true" /></a>
+          </Panel>
         </aside>
       </div>
-    </section>
-
-    <section className="market-browse related">
+      <section className="asset-support">
+        <Panel title={market.trust.title}>
+          <ul className="detail-list">
+            <li><Check aria-hidden="true" />{market.trust.license}</li>
+            <li><Check aria-hidden="true" />{market.trust.updates}</li>
+            <li><Check aria-hidden="true" />{market.trust.refunds}</li>
+          </ul>
+          <div className="asset-support-link"><Button href="#/support" size="compact">{language === 'zh' ? '联系支持' : 'Contact support'}</Button></div>
+        </Panel>
+        <details className="asset-report">
+          <summary>{market.report.title}</summary>
+          {!account ? <Button href="#/account">{language === 'zh' ? '登录后提交举报' : 'Sign in to report'}</Button>
+            : reportState === 'sent' ? <Alert tone="success">{market.report.sent}</Alert>
+            : <form className="account-form" onSubmit={submitReport}>
+              <Field label={market.report.reason}>
+                <Select value={reportReason} label={market.report.reason} onChange={(value) => { setReportReason(value as ReportReason | ''); setReportState('idle') }} options={[
+                  { value: '', label: market.report.open },
+                  { value: 'copyright', label: market.report.reasonCopyright },
+                  { value: 'broken', label: market.report.reasonBroken },
+                  { value: 'misleading', label: market.report.reasonMisleading },
+                  { value: 'other', label: market.report.reasonOther },
+                ]} />
+              </Field>
+              <Field label={market.report.detail}><textarea value={reportDetail} onChange={(event) => setReportDetail(event.target.value)} rows={3} maxLength={1000} /></Field>
+              {reportState === 'error' && <Alert tone="danger" role="alert">{market.report.errorReason}</Alert>}
+              <Button type="submit" size="compact">{market.report.submit}</Button>
+            </form>}
+        </details>
+      </section>
+    </div>
+    {related.length > 0 && <section className="market-browse related">
       <div className="content-wrap">
         <header className="page-head market-head"><h2>{market.detail.related}</h2></header>
         <PackGrid products={related} t={t} language={language} />
       </div>
-    </section>
-
-    <MarketNotes t={t} />
-
+    </section>}
     <CartDrawer open={cartOpen} cart={cart} t={t} language={language} onClose={() => setCartOpen(false)} />
   </main>
 }

@@ -2057,6 +2057,7 @@ export const frFRMessages = {
   'app.export.pathMenu': 'Choisissez l’emplacement d’exportation',
   'app.export.choosePath': 'Choisir la voie',
   'app.export.localGallery': 'Galerie locale',
+  'app.export.projectRootDirectory': 'Répertoire racine du projet ({path})',
   'app.export.recentPaths': 'Les derniers chemins d’exportation',
   'app.export.noRecentPaths': 'Aucune voie d\'exportation récente',
   'app.export.selectedDirectory': 'Lieu d’exportation : {path}',

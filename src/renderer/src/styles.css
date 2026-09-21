@@ -1411,7 +1411,9 @@ html.floating-panel-dragging, html.floating-panel-dragging * { cursor: var(--cur
 .inspector-panel-slot > .panel:not(.floating-panel) { width: 100%; height: 100%; border-bottom: 0; }
 .inspector-resizer { grid-area: rightresize; position: relative; z-index: 4; display: grid; place-items: center; min-height: 0; cursor: var(--cursor-ew-resize); background: var(--theme-deep-surface); border-right: 1px solid var(--theme-border); border-left: 1px solid var(--theme-border); }
 .panel { position: relative; min-width: 0; border-bottom: 1px solid var(--theme-border); background: var(--theme-surface); }
-.panel > header { display: flex; align-items: center; gap: var(--action-button-gap, var(--ui-space-2)); height: var(--ui-panel-header-height); padding: 0 var(--ui-space-4); color: var(--theme-text-primary); background: var(--theme-raised-surface); border-bottom: 1px solid var(--theme-border); font-size: var(--ui-font-regular); font-weight: 700; cursor: var(--cursor-move); user-select: none; transition: color var(--ui-motion-fast) linear, background-color var(--ui-motion-fast) linear, border-color var(--ui-motion-fast) linear; }
+.panel > header { display: flex; align-items: center; min-width: 0; gap: var(--action-button-gap, var(--ui-space-2)); height: var(--ui-panel-header-height); min-height: var(--ui-panel-header-height); padding: 0 var(--ui-space-4); color: var(--theme-text-primary); background: var(--theme-raised-surface); border-bottom: 1px solid var(--theme-border); font-size: var(--ui-font-regular); font-weight: 700; cursor: var(--cursor-move); user-select: none; white-space: nowrap; transition: color var(--ui-motion-fast) linear, background-color var(--ui-motion-fast) linear, border-color var(--ui-motion-fast) linear; }
+.panel > header > :is(strong, small, span:not(.panel-actions)) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel > header > span:not(.panel-actions) > :is(strong, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel > header small { margin-left: auto; color: var(--theme-text-muted); font: var(--ui-font-small)/1 ui-monospace, Consolas, monospace; }
 .panel-actions { display: inline-flex; flex-shrink: 0; gap: var(--action-button-gap, var(--ui-space-2)); margin-left: 0; }
 .layers-panel > header > .panel-actions { margin-left: auto; }
@@ -3322,6 +3324,7 @@ body .modal.confirm-modal-bulk-actions > footer > button:last-child { grid-colum
 .export-path-menu-heading { padding: var(--ui-space-2) var(--ui-space-4) var(--ui-space-1); color: var(--theme-text-muted); font-size: var(--ui-font-small); font-weight: 600; }
 .export-path-menu-empty { padding: var(--ui-space-4); color: var(--theme-text-muted); font-size: var(--ui-font-regular); }
 .export-recent-path > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-project-root > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .export-primary-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--ui-space-4); min-width: 0; }
 .export-primary-fields > .ui-field { min-width: 0; }
 .export-slice-field { grid-column: 1 / -1; }

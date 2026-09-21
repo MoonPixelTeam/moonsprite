@@ -2136,6 +2136,7 @@ export const enUSMessages = {
   'app.export.pathMenu': 'Choose Export Location',
   'app.export.choosePath': 'Choose Path',
   'app.export.localGallery': 'Local Gallery',
+  'app.export.projectRootDirectory': 'Project Root Directory ({path})',
   'app.export.recentPaths': 'Recent Export Paths',
   'app.export.noRecentPaths': 'No recent export paths',
   'app.export.selectedDirectory': 'Export location: {path}',

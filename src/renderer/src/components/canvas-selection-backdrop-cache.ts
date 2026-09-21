@@ -21,7 +21,7 @@ export class CanvasSelectionBackdropCache {
   private tiles = new Map<string, Tile>()
   private bytes = 0
 
-  constructor(private readonly composite: DocumentCompositeCache, private readonly maxBytes = MAX_BYTES) {}
+  constructor(private readonly composite: DocumentCompositeCache, private readonly maxBytes = MAX_BYTES, private readonly lowerOnly = false) {}
 
   get retainedBytes(): number { return this.bytes }
 
@@ -36,6 +36,7 @@ export class CanvasSelectionBackdropCache {
     }
     const compose = (bounds: SelectionRect): Uint8ClampedArray => {
       const pixels = this.composite.normalLayerRegion(document, lowerLayers, bounds.x, bounds.y, bounds.width, bounds.height, revision)
+      if (this.lowerOnly) return pixels
       const selection = source.selection
       const palette = layer.format === 'indexed' ? new Map(document.palette.map(entry => [entry.id, entry.color])) : null
       for (let row = 0; row < bounds.height; row++) for (let col = 0; col < bounds.width; col++) {
