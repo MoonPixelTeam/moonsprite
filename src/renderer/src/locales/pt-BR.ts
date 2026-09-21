@@ -1,6 +1,9 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ptBRMessages = {
+  'quickCommands.cut': 'Recortar',
+  'quickCommands.copyMerged': 'Copiar mesclado',
+  'quickCommands.quickOutline': 'Contorno rápido',
   "preferences.exportProtection.title": "Proteção na exportação",
   "preferences.exportProtection.off": "Desativada",
   "preferences.exportProtection.blur": "Suavização estreita das bordas",

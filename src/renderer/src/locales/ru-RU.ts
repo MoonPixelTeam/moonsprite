@@ -1,6 +1,9 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ruRUMessages = {
+  'quickCommands.cut': 'Вырезать',
+  'quickCommands.copyMerged': 'Копировать объединённое',
+  'quickCommands.quickOutline': 'Быстрая обводка',
   "preferences.exportProtection.title": "Защита при экспорте",
   "preferences.exportProtection.off": "Выключена",
   "preferences.exportProtection.blur": "Узкое сглаживание краёв",

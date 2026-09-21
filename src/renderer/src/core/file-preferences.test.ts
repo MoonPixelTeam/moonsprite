@@ -1,5 +1,18 @@
 import { REFERENCE_SCALING_KEY } from './file-preferences'
+import { DEFAULT_QUICK_COMMAND_BARS, parseQuickCommandBars } from './file-preferences'
 import { describe, expect, it } from 'vitest'
+it('uses named editing defaults and preserves custom quick command bars', () => {
+  const bars = parseQuickCommandBars(null)
+  expect(bars.map(bar => bar.name)).toEqual(['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'])
+  expect(bars.map(bar => bar.edge)).toEqual(['top', 'bottom', 'none', 'none'])
+  expect(bars[1].commands.filter(item => item.enabled).slice(0, 6).map(item => item.id)).toEqual(['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste'])
+  const custom = structuredClone(DEFAULT_QUICK_COMMAND_BARS)
+  custom[1].name = '我的编辑'
+  custom[1].edge = 'left'
+  custom[1].commands = custom[1].commands.map(item => ({ ...item, enabled: item.id === 'copy' }))
+  expect(parseQuickCommandBars(JSON.stringify(custom))[1]).toEqual(custom[1])
+  expect(parseQuickCommandBars(JSON.stringify(bars))).toEqual(bars)
+})
 import {
   DEFAULT_EDITOR_PREFERENCES,
   DEFAULT_ISO_VIEW_PREFERENCES,

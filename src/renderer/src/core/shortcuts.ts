@@ -310,7 +310,22 @@ export function importShortcutBindings(value: string): ShortcutBindings | null {
 
 export function loadShortcutBindings(storage?: Storage): ShortcutBindings {
   const savedV2 = parseShortcutEntries(readStoredString(SHORTCUTS_V2_KEY, storage))
-  if (savedV2) return applyShortcutEntries(savedV2)
+  const outlineMigrationKey = 'moonsprite.shortcuts.migration.outline-shift-s'
+  if (savedV2) {
+    if (!readStoredString(outlineMigrationKey, storage)) {
+      const oldQuick = savedV2.find(([id]) => id === 'quickOutline')
+      const oldInside = savedV2.find(([id]) => id === 'outlineSelectionInside')
+      const shiftSTaken = savedV2.some(([id, keys]) => id !== 'quickOutline' && keys.includes('Shift+S'))
+      if (oldQuick?.[1].length === 1 && oldQuick[1][0] === 'S' && !oldInside?.[1].length && !shiftSTaken) {
+        oldQuick[1] = ['Shift+S']
+        if (oldInside) oldInside[1] = ['S']
+        else savedV2.push(['outlineSelectionInside', ['S']])
+        writeStoredJson(SHORTCUTS_V2_KEY, createShortcutSettingsFile(applyShortcutEntries(savedV2)), storage)
+      }
+      writeStoredString(outlineMigrationKey, '1', storage)
+    }
+    return applyShortcutEntries(savedV2)
+  }
   const migrated = shortcutBindingsFromMap(loadLegacyShortcuts(storage))
   writeStoredJson(SHORTCUTS_V2_KEY, createShortcutSettingsFile(migrated), storage)
   return migrated

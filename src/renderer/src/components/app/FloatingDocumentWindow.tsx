@@ -25,6 +25,7 @@ interface FloatingDocumentWindowProps {
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
   onOpenAntiAlias: () => void
+  onOpenOutline?: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
 }
@@ -55,7 +56,7 @@ interface FloatingDocumentDragState {
 const FLOATING_DOCUMENT_Z_INDEX = 181
 const PINNED_DOCUMENT_Z_INDEX = 10020
 
-export function FloatingDocumentWindow({ session, initialPosition, pinned, stackIndex, onActivate, onPinnedChange, onReturnToTabs, onCloseDocument, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings }: FloatingDocumentWindowProps) {
+export function FloatingDocumentWindow({ session, initialPosition, pinned, stackIndex, onActivate, onPinnedChange, onReturnToTabs, onCloseDocument, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenOutline, onOpenPreferences, onOpenCommandSettings }: FloatingDocumentWindowProps) {
   const { t } = useI18n()
   const floating = useFloatingPanel(initialPosition, false, false, undefined, true, undefined, false, { minWidth: 280, minHeight: 200 })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -171,7 +172,7 @@ export function FloatingDocumentWindow({ session, initialPosition, pinned, stack
         <button type="button" className="floating-document-pin" title={t(pinned ? 'tabs.unpinFloating' : 'tabs.pinFloating')} aria-label={t(pinned ? 'tabs.unpinFloating' : 'tabs.pinFloating')} aria-pressed={pinned} onClick={() => onPinnedChange(session.document.id, !pinned)}><PixelUtilityIcon kind="pin" /></button>
         <button type="button" title={t('tabs.returnToTabs')} aria-label={t('tabs.returnToTabs')} onClick={() => onReturnToTabs(session.document.id)}><PixelUtilityIcon kind="move" /></button>
       </header>
-      <div className="document-pane-canvas"><QuickCommandBar documentId={session.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><Suspense fallback={<div aria-hidden="true" />}><LazyCanvasStage session={session} /></Suspense></div></div>
+      <div className="document-pane-canvas"><QuickCommandBar documentId={session.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenOutline={onOpenOutline} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><Suspense fallback={<div aria-hidden="true" />}><LazyCanvasStage session={session} /></Suspense></div></div>
       <PanelResizeHandles onResize={floating.startResize} />
     </section>
     {tabReturnPreview && <div className="document-pane-tab-return-preview floating-document-tab-return-preview" aria-hidden="true" style={{ left: tabReturnPreview.left, top: tabReturnPreview.top, height: tabReturnPreview.height }} />}

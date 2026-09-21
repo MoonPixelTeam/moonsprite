@@ -1,5 +1,5 @@
 import type { ExportProtection } from './export-protection'
-import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, type ToolRailPreference } from './tool-rail-preferences'
+import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, serializeToolRail, type ToolRailPreference } from './tool-rail-preferences'
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
@@ -185,6 +185,7 @@ export type EyedropperMagnifierSize = typeof EYEDROPPER_MAGNIFIER_SIZE_VALUES[nu
 export type CheckerSize = number
 
 export const QUICK_COMMAND_IDS = [
+  'cut', 'copy', 'copyMerged', 'paste', 'pasteToCurrentCell', 'pasteAsNewDocument', 'pasteAsNewLayer', 'deleteContent', 'quickOutline', 'outline',
   'selectionFlipHorizontal',
   'selectionFlipVertical',
   'canvasMirrorHorizontal',
@@ -235,7 +236,7 @@ export interface QuickCommandBarPreference {
 
 const DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
   ['selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'customGrid', 'tileRepeatBoth', 'relativeLuminance', 'detectImageScale', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical', 'quickAntiAlias'],
-  ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
+  ['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste', 'pasteToCurrentCell', 'pasteAsNewDocument', 'pasteAsNewLayer', 'deleteContent', 'fillForeground', 'quickOutline', 'outline', 'selectionFlipHorizontal', 'selectionFlipVertical', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical', 'quickAntiAlias'],
   ['selectionFlipHorizontal'],
   ['selectionFlipHorizontal']
 ]
@@ -263,7 +264,7 @@ const RECENT_DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[
 
 const createQuickCommandPreferences = (enabledIds: readonly QuickCommandId[]): QuickCommandPreference[] => {
   const enabled = new Set(enabledIds)
-  return QUICK_COMMAND_IDS.map((id) => ({ id, enabled: enabled.has(id) }))
+  return [...enabledIds, ...QUICK_COMMAND_IDS.filter(id => !enabled.has(id))].map((id) => ({ id, enabled: enabled.has(id) }))
 }
 
 export const DEFAULT_QUICK_COMMAND_PREFERENCES: QuickCommandPreference[] = createQuickCommandPreferences(DEFAULT_QUICK_COMMAND_GROUPS[0])
@@ -313,8 +314,8 @@ export function parseQuickCommandPreferences(value: string | null): QuickCommand
 
 export const DEFAULT_QUICK_COMMAND_BARS: QuickCommandBarPreference[] = DEFAULT_QUICK_COMMAND_GROUPS.map((group, index) => ({
   id: `quick-command-bar-${index + 1}`,
-  name: `快捷指令栏 ${index + 1}`,
-  edge: index === 0 ? 'top' : 'none',
+  name: ['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'][index],
+  edge: index === 0 ? 'top' : index === 1 ? 'bottom' : 'none',
   position: 0.5,
   expanded: false,
   commands: createQuickCommandPreferences(group)
@@ -334,7 +335,7 @@ const normalizeQuickCommandBar = (candidate: unknown, index: number, fallbackCom
   const position = typeof value.position === 'number' && Number.isFinite(value.position) ? Math.min(1, Math.max(0, value.position)) : 0.5
   return {
     id: typeof value.id === 'string' && value.id.trim() ? value.id : `quick-command-bar-${index + 1}`,
-    name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 32) : `快捷指令栏 ${index + 1}`,
+    name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 32) : DEFAULT_QUICK_COMMAND_BARS[index].name,
     edge,
     position,
     expanded: value.expanded === true,
@@ -357,6 +358,15 @@ export function parseQuickCommandBars(value: string | null, legacyCommands = DEF
       bars.push(bar)
     }
     if (bars.length === 0) return fallback()
+    bars.forEach((bar, index) => {
+      const oldDefaultName = /^快捷指令栏\s*\d+$/.test(bar.name) || /^Quick Command Bar\s*\d+$/i.test(bar.name)
+      if (!oldDefaultName) return
+      bar.name = DEFAULT_QUICK_COMMAND_BARS[index].name
+      if (index === 1 && isQuickCommandGroup(bar, ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'])) {
+        bar.commands = createQuickCommandPreferences(DEFAULT_QUICK_COMMAND_GROUPS[1])
+        if (bar.edge === 'none') bar.edge = 'bottom'
+      }
+    })
     if (bars.length === 1 && isLegacyDefaultQuickCommandBar(bars[0])) {
       bars[0] = { ...bars[0], edge: 'top', commands: DEFAULT_QUICK_COMMAND_BARS[0].commands.map((item) => ({ ...item })) }
     }
@@ -1514,7 +1524,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY]: String(preferences.quickCommandBarExpanded),
     [QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY]: String(preferences.quickCommandBarTranslucent),
     [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences))),
-    [TOOL_RAIL_PREFERENCE_KEY]: JSON.stringify(parseToolRail(JSON.stringify(preferences.toolRail))),
+    [TOOL_RAIL_PREFERENCE_KEY]: serializeToolRail(preferences.toolRail),
     [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences)),
     [TABLET_PREFERENCES_KEY]: JSON.stringify(parseTabletPreferences(JSON.stringify(preferences.tablet))),
     [OUTLINE_SETTINGS_PREFERENCE_KEY]: preferences.outlineSettings ? JSON.stringify(cloneOutlineSettings(normalizeOutlineSettings(preferences.outlineSettings)!)) : ''

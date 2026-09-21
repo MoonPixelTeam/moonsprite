@@ -15,6 +15,7 @@ import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-
 import { applyRelativeLuminance } from '@/core/raster'
 import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
+  initialDocumentComposite,
   initialDocumentCompositePending,
   initialDocumentCompositeSurface,
   registerInitialDocumentCompositeSurface
@@ -44,7 +45,6 @@ import {
   sharedAnimationCompositeSurface,
   latestSharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
-  releaseSharedAnimationResources,
   shouldCacheFullCompositeSurface,
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
@@ -56,26 +56,7 @@ import { compositeRegionWindow } from './canvas-composite-region-window'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
 
-// CanvasStage instances are intentionally short lived when switching tabs or
-// changing pane layouts. Keep the derived composite surface with the document
-// so remounting a stage does not rebuild and upload a large canvas on its first
-// frame. WeakMap ownership lets closed documents be collected normally.
-const documentCompositeCaches = new WeakMap<SpriteDocument, CanvasCompositeCache>()
-
-export const canvasCompositeCacheFor = (document: SpriteDocument): CanvasCompositeCache => {
-  let cache = documentCompositeCaches.get(document)
-  if (!cache) {
-    cache = new CanvasCompositeCache()
-    documentCompositeCaches.set(document, cache)
-  }
-  return cache
-}
-
-export const releaseCanvasCompositeCache = (document: SpriteDocument): void => {
-  documentCompositeCaches.get(document)?.dispose()
-  documentCompositeCaches.delete(document)
-  releaseSharedAnimationResources(document)
-}
+export { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-registry'
 
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
 
@@ -128,6 +109,20 @@ export class CanvasCompositeCache {
   private lastConsumedFullContentRevision = -1
 
   private compositeCache = new DocumentCompositeCache()
+
+  /** Read-only bootstrap for a second viewport; never starts composition. */
+  previewSource(document: SpriteDocument, frameId: string, revision: number, relativeLuminance: boolean) {
+    const namespace = surfaceNamespace(document, { relativeLuminance })
+    const surface = this.surfaces.get(`${namespace}:${frameId}`)
+    if (!surface && revision === 0 && !relativeLuminance && !this.fullPreviewInvalidationPending
+      && !this.invalidatedInitialDocuments.has(document) && initialDocumentComposite(document, frameId)?.completeFrame) {
+      const source = initialDocumentCompositeSurface(document, frameId)
+      if (source) return { source, dirtyRects: [] }
+    }
+    if (this.lastDocument !== document || !surface || surface.revision !== revision || surface.transient) return null
+    return { source: surface.bitmap ?? surface.canvas,
+      dirtyRects: [...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])] }
+  }
 
   dispose(): void {
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
@@ -352,12 +347,9 @@ export class CanvasCompositeCache {
       this.invalidateSurface()
     }
     const frameKey = `${namespace}:${effectiveFrameId}`
-    // Animation cels are materialized after the document shell can already
-    // have produced an initial composite. Never reuse that early snapshot for
-    // an animated document: it may be blank even though the active cel has
-    // since been loaded, which otherwise makes the canvas recover only after
-    // an unrelated visibility toggle.
-    if (document.animation && contentRevision === 0) this.invalidatedInitialDocuments.add(document)
+    // Shell snapshots can precede cel materialization. Worker snapshots are
+    // made after decoding the complete active frame and are safe to reuse.
+    if (document.animation && contentRevision === 0 && !initialDocumentComposite(document, effectiveFrameId)?.completeFrame) this.invalidatedInitialDocuments.add(document)
     const liveSourceDirtyHint = this.sourceDirtyHints.get(effectiveFrameId)
     const liveSourceDirtyRect = liveSourceDirtyHint?.rect
     // A single draw pass can render several tile-repeat copies. Keep the hint

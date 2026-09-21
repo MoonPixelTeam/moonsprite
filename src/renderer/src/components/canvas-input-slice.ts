@@ -6,6 +6,7 @@ import { selectionGestureMoved } from '@/core/canvas-input-preview'
 import { type CanvasDragState as DragState, type CanvasPoint as Point, type SelectionHandle } from '@/core/canvas-input-contracts'
 import { canvasCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { clampSliceRect, moveSliceRect, moveSliceRects, sliceAtPoint } from '@/core/slices'
+import { sameBoxPreview } from './canvas-box-preview'
 
 interface Ports {
   sliceTool: boolean
@@ -114,7 +115,9 @@ export function createSliceCanvasInput(ports: Ports) {
     if (drag.kind === 'create-slice') {
       drag.moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       drag.last = point
-      drag.previewTarget = clampSliceRect(shapeBounds(drag.start, point), session.document.width, session.document.height)
+      const target = clampSliceRect(shapeBounds(drag.start, point), session.document.width, session.document.height)
+      if (sameBoxPreview(drag.previewTarget, target)) return true
+      drag.previewTarget = target
       scheduleDraw()
       return true
     }
@@ -139,12 +142,16 @@ export function createSliceCanvasInput(ports: Ports) {
       if (drag.sliceIds?.length && drag.sliceStarts) {
         const starts = drag.sliceIds.flatMap((id) => (drag.sliceStarts?.[id] ? [drag.sliceStarts[id]] : []))
         const targets = moveSliceRects(starts, point.x - drag.start.x, point.y - drag.start.y, session.document.width, session.document.height)
+        if (drag.sliceIds.every((id, index) => targets[index] && sameBoxPreview(drag.slicePreviewTargets?.[id], targets[index]))) return true
         drag.slicePreviewTargets = Object.fromEntries(
           drag.sliceIds.map((id, index) => [id, targets[index]]).filter((entry): entry is [string, SelectionRect] => Boolean(entry[1]))
         )
         drag.previewTarget = drag.slicePreviewTargets[drag.sliceId ?? ''] ?? targets[0]
-      } else
-        drag.previewTarget = moveSliceRect(drag.sliceStart, point.x - drag.start.x, point.y - drag.start.y, session.document.width, session.document.height)
+      } else {
+        const target = moveSliceRect(drag.sliceStart, point.x - drag.start.x, point.y - drag.start.y, session.document.width, session.document.height)
+        if (sameBoxPreview(drag.previewTarget, target)) return true
+        drag.previewTarget = target
+      }
       scheduleDraw()
       return true
     }
@@ -155,11 +162,13 @@ export function createSliceCanvasInput(ports: Ports) {
     const { scheduleDraw } = ports
     if (drag.kind === 'resize-slice' && drag.sliceStart && drag.handle) {
       drag.last = point
-      drag.previewTarget = clampSliceRect(
+      const target = clampSliceRect(
         resizeSelectionBounds(drag.sliceStart, point, drag.handle, session.document),
         session.document.width,
         session.document.height
       )
+      if (sameBoxPreview(drag.previewTarget, target)) return true
+      drag.previewTarget = target
       scheduleDraw()
       return true
     }

@@ -246,7 +246,7 @@ export interface WorkspaceViewSelectionCommands {
   togglePixelGrid(): void
   toggleGrid(): void
   deleteSelection(): void
-  fillForeground(): void
+  fillForeground(source?: 'foreground' | 'background'): void
   antiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource): boolean
   previewAntiAliasSelection(color: RgbaColor | null, autoColorOpacity?: number, includeInteriorColors?: boolean, colorSource?: AntiAliasColorSource, previous?: AntiAliasPreview | null): AntiAliasPreview | null
   restoreAntiAliasPreview(preview: AntiAliasPreview | null): void

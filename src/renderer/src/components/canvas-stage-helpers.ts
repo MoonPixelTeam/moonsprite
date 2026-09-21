@@ -27,8 +27,7 @@ export const nonContentPreviewDragKinds = new Set([
   'create-slice',
   'move-slice',
   'resize-slice',
-  'create-text-box',
-  'transform-text-box'
+  'create-text-box'
 ])
 
 export const SELECTION_PIVOT_ICON_SIZE = 18

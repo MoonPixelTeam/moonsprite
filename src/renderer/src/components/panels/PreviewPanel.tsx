@@ -5,6 +5,7 @@ import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PlaybackPixelIcon } from '@/components/PlaybackPixelIcon'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
+import { canvasCompositeCacheFor, existingCanvasCompositeCache } from '@/components/canvas-composite-registry'
 import type { DockDragProps } from '@/components/workspace-panel-types'
 import { cloneDocumentForAnimationFrame, ensureAnimationDocument, firstPlayableAnimationFrameId, nextAnimationFrameId } from '@/core/animation'
 import { advanceAnimationLoopSectionPlayback, animationLoopSectionAtFrame, animationLoopSectionStartFrameId, resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
@@ -17,6 +18,9 @@ import { useWorkspace, type AnimationPlaybackMode, type DocumentSession } from '
 import { useI18n } from '@/components/I18nProvider'
 import { resolveTheme } from '@/core/theme'
 import { initialDocumentCompositePending, subscribeInitialDocumentComposite } from '@/core/initial-document-composite'
+import { createPreviewDrawScheduler } from './preview-draw-scheduler'
+import { PreviewRasterCache } from './preview-raster-cache'
+import { supportsIncrementalPreview } from '@/core/preview-point-sampler'
 import { pixelSamplingMode } from '@/core/pixel-display'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { clearCanvasBacking } from '@/components/canvas-display-size'
@@ -100,13 +104,14 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [previewReturnToStart, setPreviewReturnToStart] = useState(false)
   const panDrag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const compositeCacheRef = useRef(new CanvasCompositeCache())
+  const rasterCacheRef = useRef(new PreviewRasterCache())
+  const previewSchedulerRef = useRef<ReturnType<typeof createPreviewDrawScheduler> | null>(null)
   const baseFitRef = useRef<{ documentId: string; width: number; height: number; viewportWidth: number; viewportHeight: number; devicePixelRatio: number; scale: number } | null>(null)
   const followSnapshotRef = useRef<FollowViewportSnapshot>(followViewportSnapshot(session))
   const drawRef = useRef<() => void>(() => {})
   const liveCanvasPreviewRef = useRef<CanvasPreviewSnapshot | null>(null)
   const followFrameRef = useRef<number | null>(null)
   const panFrameRef = useRef<number | null>(null)
-  const liveCanvasPreviewFrameRef = useRef<number | null>(null)
   const compositeWorkFrameRef = useRef<number | null>(null)
   const pendingPanRef = useRef<{ x: number; y: number } | null>(null)
   const inheritedRelativeLuminance = session.view.relativeLuminance && relativeLuminanceInPreview
@@ -185,24 +190,12 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   }, [floating.ref, followViewport, pan, session.document.height, session.document.id, session.document.width, zoom])
 
   useEffect(() => {
-    const scheduleDraw = (): void => {
-      if (liveCanvasPreviewFrameRef.current !== null) return
-      liveCanvasPreviewFrameRef.current = window.requestAnimationFrame(() => {
-        liveCanvasPreviewFrameRef.current = null
-        drawRef.current()
-      })
-    }
+    const scheduler = createPreviewDrawScheduler(() => drawRef.current())
+    previewSchedulerRef.current = scheduler
     const unregister = registerCanvasPreviewListener(session.document.id, (snapshot) => {
-      // The editor canvas already renders the live layer-move preview. A
-      // second full-size composite in this auxiliary panel doubles the
-      // synchronous blend work for every pointer event, so keep the panel at
-      // its last committed image until the move ends.
-      if (snapshot?.movingLayerIds?.length) return
-      // The editor is the latency-sensitive surface during freehand painting.
-      // Rebuilding the same full-size composite here for every pointer sample
-      // competes with it on the UI thread; the committed revision redraw below
-      // updates this panel once when the stroke ends.
-      if (snapshot?.deferAuxiliaryDraw) return
+      // Styled documents still use the full compositor; don't reintroduce its
+      // high-frequency source upload/composition cost during raster input.
+      if ((snapshot?.liveRasterEdit || snapshot?.movingLayerIds?.length) && !supportsIncrementalPreview(snapshot.document)) return
       const previousSnapshot = liveCanvasPreviewRef.current
       // Deferred selection previews are separate surfaces; the base composite
       // still contains committed pixels. Keep it on commit/cancel and let the
@@ -210,21 +203,24 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       if (!snapshot && previousSnapshot && !previousSnapshot.selectionPreview) {
         compositeCacheRef.current.invalidateAll()
       }
+      if (!snapshot) {
+        if (previousSnapshot?.selectionPreview) rasterCacheRef.current.invalidate()
+        else rasterCacheRef.current.finishLive()
+      } else if (snapshot.invalidation) rasterCacheRef.current.invalidate(snapshot.invalidation.kind === 'region' ? snapshot.invalidation.rect : undefined, true)
       liveCanvasPreviewRef.current = snapshot
-      if (snapshot?.invalidation?.kind === 'region') {
+      if (snapshot && (!supportsIncrementalPreview(snapshot.document) || snapshot.selectionPreview) && snapshot.invalidation?.kind === 'region') {
         if (snapshot.invalidation.placementOnly) {
           compositeCacheRef.current.invalidateDocumentPlacementRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId, snapshot.invalidation.layerIds)
         } else compositeCacheRef.current.invalidateDocumentRect(snapshot.invalidation.rect, snapshot.document, snapshot.frameId)
       } else if (snapshot?.invalidation?.kind === 'full') compositeCacheRef.current.invalidateAll()
-      scheduleDraw()
+      scheduler.request(!snapshot)
     })
     return () => {
       unregister()
       liveCanvasPreviewRef.current = null
-      if (liveCanvasPreviewFrameRef.current !== null) {
-        window.cancelAnimationFrame(liveCanvasPreviewFrameRef.current)
-        liveCanvasPreviewFrameRef.current = null
-      }
+      scheduler.cancel()
+      previewSchedulerRef.current = null
+      rasterCacheRef.current.dispose()
     }
   }, [session.document.id])
 
@@ -580,12 +576,29 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         }
       }
       context.imageSmoothingEnabled = smoothPixelSampling
-      if (smoothPixelSampling) context.imageSmoothingQuality = isWorkspaceResizing() ? 'low' : 'high'
+      if (smoothPixelSampling) context.imageSmoothingQuality = isWorkspaceResizing() || livePreviewForFrame ? 'low' : 'high'
       const fromX = Math.max(0, Math.floor((0 - originX) / scale))
       const fromY = Math.max(0, Math.floor((0 - originY) / scale))
       const toX = Math.min(sourceDocument.width, Math.ceil((displayWidth - originX) / scale))
       const toY = Math.min(sourceDocument.height, Math.ceil((displayHeight - originY) / scale))
-      if (toX > fromX && toY > fromY) compositeCacheRef.current.draw({
+      const useIncrementalRaster = !livePreviewForFrame?.selectionPreview && !previewPlaying
+        && !currentSession.animationPlaying && supportsIncrementalPreview(previewDocument)
+      if (useIncrementalRaster) {
+        const raster = rasterCacheRef.current
+        raster.configure(previewDocument, renderFrameId, renderContentRevision, {
+          width, height, originX: originX * dpr, originY: originY * dpr, scale: scale * dpr, luminance: showRelativeLuminance
+        }, currentSession.contentInvalidation)
+        const started = performance.now()
+        if (raster.requiresSeed) {
+          const cache = existingCanvasCompositeCache(previewDocument)
+            ?? (previewDocument === currentSession.document ? canvasCompositeCacheFor(previewDocument) : undefined)
+          const shared = cache?.previewSource(previewDocument, renderFrameId, renderContentRevision, showRelativeLuminance)
+          if (shared) raster.seedFromShared(shared.source, shared.dirtyRects)
+        }
+        const work = raster.render()
+        raster.draw(context, displayWidth, displayHeight)
+        window.__moonSpriteCanvasProbe?.recordOperationStage?.('preview.incremental', performance.now() - started, { pixels: work.pixels, pending: work.pending })
+      } else if (toX > fromX && toY > fromY) compositeCacheRef.current.draw({
         context,
         document: previewDocument,
         view: { zoom: scale, panX: 0, panY: 0, rotation: 0, mirrored: false, mirroredVertical: false, showGrid: false, relativeLuminance: showRelativeLuminance },
@@ -603,7 +616,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
         frameId: renderFrameId,
         imageSmoothingEnabled: smoothPixelSampling,
         fastViewPreview: isWorkspaceResizing(),
-        imageSmoothingQuality: isWorkspaceResizing() ? 'low' : 'high',
+        liveRasterEdit: Boolean(livePreviewForFrame),
+        imageSmoothingQuality: isWorkspaceResizing() || livePreviewForFrame ? 'low' : 'high',
         animationPlayback: previewPlaying || currentSession.animationPlaying,
         animationConsumerOnly: currentSession.animationPlaying,
         devicePixelRatio: dpr,
@@ -621,7 +635,10 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       if (previewStarted) recordWorkspaceResizeStage('preview', performance.now() - previewStarted)
     }
     drawRef.current = draw
-    draw()
+    // Main canvas rendering is queued first. Let it populate the shared
+    // composite before a large auxiliary viewport requests its initial image.
+    if (session.document.width * session.document.height >= 1024 * 1024) previewSchedulerRef.current?.request(true)
+    else draw()
   }, [session.document, session.contentRevision, session.animationPlaying, previewFrameId, previewPlaying, timeline.activeFrameId, showRelativeLuminance, checkerboard, canvasSurround, rotationIndicatorPosition, zoom, pan, followViewport, initialCompositeReady, initialPreviewViewport?.width, initialPreviewViewport?.height])
 
   useEffect(() => {
@@ -640,7 +657,6 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   useEffect(() => () => {
     if (panFrameRef.current !== null) window.cancelAnimationFrame(panFrameRef.current)
     if (followFrameRef.current !== null) window.cancelAnimationFrame(followFrameRef.current)
-    if (liveCanvasPreviewFrameRef.current !== null) window.cancelAnimationFrame(liveCanvasPreviewFrameRef.current)
     if (compositeWorkFrameRef.current !== null) window.cancelAnimationFrame(compositeWorkFrameRef.current)
   }, [])
 

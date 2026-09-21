@@ -128,6 +128,21 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it('shares an existing preview bootstrap without compositing and reports unrendered offscreen damage', () => {
+    const document = createDocument('shared preview', 16, 16, 'rgba', false)
+    const cache = new CanvasCompositeCache()
+    expect(cache.previewSource(document, 'frame-1', 1, false)).toBeNull()
+    draw(cache, document, makeContext(), { frameId: 'frame-1' })
+    const composite = vi.spyOn(DocumentCompositeCache.prototype, 'normalLayersFor')
+    expect(cache.previewSource(document, 'frame-1', 1, false)?.source).toBeDefined()
+    expect(cache.previewSource(document, 'frame-1', 2, false)).toBeNull()
+    expect(cache.previewSource(document, 'frame-2', 1, false)).toBeNull()
+    expect(cache.previewSource(document, 'frame-1', 1, true)).toBeNull()
+    const rect = { x: 12, y: 12, width: 2, height: 2 }
+    cache.invalidateDocumentRect(rect, document, 'frame-1')
+    expect(cache.previewSource(document, 'frame-1', 1, false)?.dirtyRects).toContainEqual(rect)
+    expect(composite).not.toHaveBeenCalled()
+  })
   it.each([false, true])('commits a styled stroke then pans without redrawing its full bounds (pending tail=%s)', pendingTail => {
     const document = createDocument('release then pan', 192, 192, 'rgba')
     const layer = document.layers[0]
@@ -1017,6 +1032,40 @@ describe('CanvasCompositeCache', () => {
     expect(cache.consumePreviewInvalidation()).toBeNull()
   })
 
+  it('reuses a decoded active frame without recompositing its layers', () => {
+    const document = createDocument('complete initial frame', 2, 1, 'rgba')
+    const pixels = new Uint8ClampedArray([0, 96, 255, 255, 0, 0, 0, 0])
+    registerInitialDocumentComposite(document, pixels, document.animation?.activeFrameId, { completeFrame: true })
+    const context = makeContext()
+    draw(new CanvasCompositeCache(), document, context, { contentRevision: 0, revision: 0 })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    // The layer is empty: these pixels must come from the prepared frame.
+    expect(surface.pixels).toEqual(pixels)
+  })
+
+  it.each(['shell', 'other-frame', 'edited'] as const)('rejects an initial %s snapshot', (kind) => {
+    const document = createDocument('unsafe initial frame', 2, 1, 'rgba')
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 96, b: 255, a: 255 })
+    registerInitialDocumentComposite(document, new Uint8ClampedArray(8), kind === 'other-frame' ? 'other' : document.animation?.activeFrameId, { completeFrame: kind !== 'shell' })
+    const context = makeContext()
+    draw(new CanvasCompositeCache(), document, context, { contentRevision: kind === 'edited' ? 1 : 0, revision: 0 })
+    const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas
+    expect(Array.from(surface.pixels.slice(0, 4))).toEqual([0, 96, 255, 255])
+  })
+
+  it('seeds preview before the first main draw but stops sharing after a live edit', () => {
+    const document = createDocument('preview first', 2, 1, 'rgba')
+    const frameId = document.animation!.activeFrameId
+    registerInitialDocumentComposite(document, new Uint8ClampedArray([0, 96, 255, 255, 0, 0, 0, 0]), frameId, { completeFrame: true })
+    const cache = new CanvasCompositeCache()
+    expect(cache.previewSource(document, frameId, 0, false)?.source).toBeInstanceOf(MockOffscreenCanvas)
+    expect(cache.previewSource(document, 'other', 0, false)).toBeNull()
+    expect(cache.previewSource(document, frameId, 0, true)).toBeNull()
+    expect(cache.previewSource(document, frameId, 1, false)).toBeNull()
+    cache.invalidateDocumentRect({ x: 0, y: 0, width: 1, height: 1 }, document, frameId)
+    expect(cache.previewSource(document, frameId, 0, false)).toBeNull()
+  })
+
   it('does not reuse a pending worker snapshot after the first edit', () => {
     const document = createDocument('edited while initial composite pending', 2, 1, 'rgba')
     const layer = document.layers[0]
@@ -1030,7 +1079,7 @@ describe('CanvasCompositeCache', () => {
     cache.invalidateDocumentRect({ x: 0, y: 0, width: 1, height: 1 }, document, frameId, [layer.id])
 
     // Simulate the worker completing with the stale pre-edit snapshot.
-    registerInitialDocumentComposite(document, new Uint8ClampedArray(2 * 4), frameId)
+    registerInitialDocumentComposite(document, new Uint8ClampedArray(2 * 4), frameId, { completeFrame: true })
     draw(cache, document, context, { contentRevision: 0, revision: 0 })
 
     const surface = context.drawImage.mock.calls.at(-1)?.[0] as MockOffscreenCanvas

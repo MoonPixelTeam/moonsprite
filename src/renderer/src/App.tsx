@@ -300,6 +300,7 @@ export default function App() {
       else if (lcdScreenOpen) setLcdScreenOpen(false)
       else if (colorReplacementOpen) setColorReplacementOpen(false)
       else if (extensionSettingsOpen) closeExtensionSettings()
+      else if (preferencesOpen && document.querySelector('.tool-rail-layout-modal')) window.dispatchEvent(new CustomEvent('moonsprite:close-dialog', { detail: { target: 'tool-rail-layout' } }))
       else if (preferencesOpen) setPreferencesOpen(false)
       else if (shortcutOpen) setShortcutOpen(false)
       else if (aboutOpen) setAboutOpen(false)
@@ -666,6 +667,7 @@ export default function App() {
           onPanelVisibilityChange={updatePanelVisibility}
           relativeLuminanceInPreview={relativeLuminanceScope === 'app'}
           onOpenColorReplacement={openColorReplacement}
+          onOpenOutline={() => setOutlineOpen(true)}
           onOpenAntiAlias={() => setAntiAliasOpen(true)}
           onOpenPreferences={openQuickCommandPreferences}
           onOpenCommandSettings={openQuickCommandSettings}
@@ -698,6 +700,7 @@ export default function App() {
             onPinnedChange={setFloatingDocumentPinned}
             onReturnToTabs={returnFloatingDocumentToTabs}
             onCloseDocument={closeFloatingDocument}
+            onOpenOutline={() => setOutlineOpen(true)}
             shortcutFor={shortcutFor}
             onToggleMirror={toggleMirrorView}
             onOpenAntiAlias={() => setAntiAliasOpen(true)}

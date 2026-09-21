@@ -1,6 +1,9 @@
 import type { TranslationCatalog } from './contracts'
 
 export const deDEMessages = {
+  'quickCommands.cut': 'Ausschneiden',
+  'quickCommands.copyMerged': 'Zusammengefasst kopieren',
+  'quickCommands.quickOutline': 'Schnelle Kontur',
   "preferences.exportProtection.title": "Exportschutz",
   "preferences.exportProtection.off": "Aus",
   "preferences.exportProtection.blur": "Schmale Kantenglättung",

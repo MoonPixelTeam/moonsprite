@@ -7,7 +7,7 @@ import type { LayerMoveState } from '@/core/layer-move-state'
 export type { LayerMoveState } from '@/core/layer-move-state'
 import type { ContentInvalidationHint, HistoryEntry } from '@/core/history'
 import { cloneLayerStyles, layerStylesHistoryBytes } from '@/core/layer-styles'
-import { cloneSelection, shiftSelection } from '@/core/selection'
+import { cloneSelection } from '@/core/selection'
 import { cloneTextCelData, translateTextCelData } from '@/core/text-cel-data'
 import type { DocumentSession } from './workspace-types'
 
@@ -144,7 +144,13 @@ export const previewLayerMove = (
     setAnimationCelOffsetsForKeys(session.document, offsets)
   }
   if (move.selectionStart) {
-    session.selection = shiftSelection(move.selectionStart, distanceX, distanceY, session.document.width, session.document.height)
+    // Layer movement preserves off-canvas pixels, so its selection must also
+    // remain intact instead of being clipped to the document bounds.
+    session.selection = {
+      ...cloneSelection(move.selectionStart)!,
+      x: move.selectionStart.x + distanceX,
+      y: move.selectionStart.y + distanceY
+    }
   }
   return true
 }

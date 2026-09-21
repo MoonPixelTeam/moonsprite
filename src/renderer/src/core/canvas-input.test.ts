@@ -46,6 +46,24 @@ describe('canvas input helpers', () => {
     expect(layerMovePreviewActive({ ...pressed, moved: true, layerPreviewOffset: { x: 0, y: 0 } })).toBe(true)
   })
 
+  it('hides the whole selection during layer moves and restores it after commit or cancel', () => {
+    const original = { x: 2, y: 3, width: 8, height: 6 }
+    const translated = { ...original, x: 7, y: 5 }
+    const moving: CanvasDragState = {
+      kind: 'move-layer', start: { x: 2, y: 3 }, last: { x: 7, y: 5 },
+      selectionStart: original, previewSelection: translated
+    }
+    expect(selectionOverlayFrameForDrag(original, moving).selection).toBe(original)
+    moving.moved = true
+    expect(selectionOverlayFrameForDrag(original, moving).selection).toBeNull()
+    expect(selectionOverlayFrameForDrag(translated, moving).selection).toBeNull()
+    const pan = createCanvasPanDrag({ x: 0, y: 0 }, { x: 0, y: 0 })
+    expect(selectionOverlayFrameForDrag(translated, pan).selection).toBe(translated)
+    expect(selectionOverlayFrameForDrag(translated, null).selection).toBe(translated)
+    expect(selectionOverlayFrameForDrag(original, null).selection).toBe(original)
+    expect(original).toEqual({ x: 2, y: 3, width: 8, height: 6 })
+  })
+
   it('exposes an asynchronous magic-wand preview through the selection overlay frame', () => {
     const current = { x: 0, y: 0, width: 1, height: 1 }
     const preview = { x: 4, y: 5, width: 8, height: 9, mask: new Uint8Array(72).fill(1) }

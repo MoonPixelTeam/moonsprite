@@ -4,6 +4,7 @@ interface InitialDocumentComposite {
   width: number
   height: number
   frameId: string
+  completeFrame?: boolean
   pixels?: Uint8ClampedArray
   canvas?: OffscreenCanvas
 }
@@ -41,9 +42,9 @@ const notifyInitialCompositeListeners = (document: SpriteDocument): void => {
 
 const initialCompositeFrameId = (document: SpriteDocument, frameId?: string): string => frameId ?? document.animation?.activeFrameId ?? 'static'
 
-export const registerInitialDocumentComposite = (document: SpriteDocument, pixels: Uint8ClampedArray, frameId?: string): void => {
+export const registerInitialDocumentComposite = (document: SpriteDocument, pixels: Uint8ClampedArray, frameId?: string, options: { completeFrame?: boolean } = {}): void => {
   if (!canPrepareInitialDocumentComposite(document.width, document.height) || pixels.byteLength !== document.width * document.height * 4) return
-  initialComposites.set(document, { width: document.width, height: document.height, frameId: initialCompositeFrameId(document, frameId), pixels })
+  initialComposites.set(document, { width: document.width, height: document.height, frameId: initialCompositeFrameId(document, frameId), pixels, completeFrame: options.completeFrame })
   notifyInitialCompositeListeners(document)
 }
 

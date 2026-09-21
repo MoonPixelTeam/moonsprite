@@ -73,8 +73,8 @@ import { applyThemeToDocument, resolveTheme, type ThemeVisualDefaults } from '@/
 import { ThemePreferencesSection } from './ThemePreferencesSection'
 import { DiagnosticPreferencesField } from './DiagnosticPreferencesField'
 import { QUICK_COMMAND_METADATA } from '@/components/app/quick-command-registry'
-import { DEFAULT_TOOL_RAIL } from '@/core/tool-rail-preferences'
-import { toolDefinitions, PixelAssetIcon, SELECTION_KIND_ICONS } from '@/components/app/editor-tools'
+import { ToolRailLayoutDialog } from './ToolRailLayoutDialog'
+import { PixelAssetIcon } from '@/components/app/editor-tools'
 import { colorValueModeLabel } from '@/core/color-values'
 import type { LuaScriptEntry, StoredExtension } from '@shared/types-extensions'
 import { initializeUsageStatistics, setUsageStatisticsEnabled, subscribeUsageStatistics, usageStatisticsSnapshot } from '@/platform/usage-statistics'
@@ -124,7 +124,7 @@ export const PREFERENCE_SEARCH_KEYS: Record<PreferenceSection, TranslationKey[]>
   reset: ['preferences.resetDescription', 'preferences.resetAll']
 }
 
-type PreferenceOrderKind = 'color-mode' | 'quick-command' | 'tool-rail'
+type PreferenceOrderKind = 'color-mode' | 'quick-command'
 
 interface PreferencePointerDrag {
   kind: PreferenceOrderKind
@@ -156,6 +156,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const { locale, t } = useI18n()
   const [section, setSection] = useState<PreferenceSection>(initialSection)
   const [query, setQuery] = useState('')
+  const [toolRailDialogOpen, setToolRailDialogOpen] = useState(false)
   const [preferences, setPreferences] = useState(loadEditorPreferences)
   const appliedPixelFormat = useRef(preferences.pixelFormat)
   const [defaultDirectories, setDefaultDirectories] = useState({ saveDirectory: 'gallery', exportDirectory: 'exports' })
@@ -225,6 +226,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
   const moveQuickCommand = (barId: string, id: QuickCommandId, targetId: QuickCommandId, insertAfter: boolean): void => setPreferences((current) => {
     const bar = current.quickCommandBars.find((candidate) => candidate.id === barId)
     if (!bar) return current
+    if (bar.commands.find(item => item.id === id)?.enabled !== bar.commands.find(item => item.id === targetId)?.enabled) return current
     const next = reorderPreferenceItems(bar.commands, id, targetId, insertAfter, (item) => item.id)
     if (next === bar.commands) return current
     return { ...current, quickCommandBars: current.quickCommandBars.map((candidate) => candidate.id === barId ? { ...candidate, commands: next } : candidate) }
@@ -307,7 +309,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     const updateAutoScroll = (event: PointerEvent, drag: PreferencePointerDrag): void => {
       const container = drag.kind === 'quick-command' && drag.barId
         ? document.querySelector<HTMLElement>(`[data-preference-quick-command-list="${drag.barId}"]`)
-        : document.querySelector<HTMLElement>(drag.kind === 'tool-rail' ? '.preference-tool-rail-list' : '.preference-color-mode-list')
+        : document.querySelector<HTMLElement>('.preference-color-mode-list')
       if (!container) return stopAutoScroll()
       const bounds = container.getBoundingClientRect()
       const edgeSize = Math.min(32, Math.max(16, bounds.height / 4))
@@ -321,7 +323,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         const activeDrag = preferencePointerDragRef.current
         const scrollingContainer = activeDrag?.kind === 'quick-command' && activeDrag.barId
           ? document.querySelector<HTMLElement>(`[data-preference-quick-command-list="${activeDrag.barId}"]`)
-          : document.querySelector<HTMLElement>(activeDrag?.kind === 'tool-rail' ? '.preference-tool-rail-list' : '.preference-color-mode-list')
+          : document.querySelector<HTMLElement>('.preference-color-mode-list')
         const scrollingDirection = preferenceAutoScrollDirectionRef.current
         if (!scrollingContainer || scrollingDirection === 0) {
           preferenceAutoScrollFrameRef.current = null
@@ -345,8 +347,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
       if (!row || !targetId || targetId === drag.id) return
       const bounds = row.getBoundingClientRect()
       const insertAfter = event.clientY >= bounds.top + bounds.height / 2
-      if (drag.kind === 'tool-rail') setPreferences(current => ({ ...current, toolRail: reorderPreferenceItems(current.toolRail, drag.id, targetId, insertAfter, item => item.id) }))
-      else if (drag.kind === 'color-mode') moveColorMode(drag.id, targetId, insertAfter)
+      if (drag.kind === 'color-mode') moveColorMode(drag.id, targetId, insertAfter)
       else if (drag.barId && row.dataset.quickCommandBarId === drag.barId) moveQuickCommand(drag.barId, drag.id as QuickCommandId, targetId as QuickCommandId, insertAfter)
       event.preventDefault()
     }
@@ -494,7 +495,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     return text.toLocaleLowerCase(locale).includes(normalizedQuery)
   })() }), [locale, normalizedQuery])
 
-  return <div className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}><ModalShell storageKey="preferences" defaultWidth={720} defaultHeight={560} minWidth={620} minHeight={460} fitContent={false} className="settings-modal" role="dialog" aria-label={t('preferences.title')}>
+  return <><div inert={toolRailDialogOpen} className="modal-backdrop modal-overlay-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}><ModalShell storageKey="preferences" defaultWidth={720} defaultHeight={560} minWidth={620} minHeight={460} fitContent={false} className="settings-modal" role="dialog" aria-label={t('preferences.title')}>
     <DialogHeader eyebrow={t('preferences.eyebrow')} title={t('preferences.title')} closeLabel={t('common.close')} onClose={onClose} />
     <div className="settings-layout"><aside className="preference-settings-sidebar"><div className="preference-sidebar-search"><TextInput className="preference-search" placeholder={t('preferences.search')} value={query} onChange={(event) => setQuery(event.target.value)} /></div><SettingsNavigation label={t('preferences.title')} value={section} items={visiblePreferenceSections.map(([value, labelKey]) => ({ value, label: t(labelKey), muted: Boolean(normalizedQuery && !preferenceSectionMatches.get(value)) }))} onChange={setSection} /></aside><PreferenceSearchContext.Provider value={preferenceSearch}><main className="component-scrollbar preference-settings-scroll">
       {section === 'general' && <>
@@ -529,19 +530,19 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.diagnostics.mode')}><DiagnosticPreferencesField /></PreferenceGroup>
       </>}
-      {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar, index) => ({ ...bar, name: t('preferences.quickCommandDefaultName', { index: index + 1 }), commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
+      {section === 'quickCommands' && <PreferenceGroup title={t('preferences.groups.quickCommandLayout')} actions={<button type="button" className="quiet-button" onClick={() => update('quickCommandBars', DEFAULT_QUICK_COMMAND_BARS.map((bar) => ({ ...bar, commands: bar.commands.map((item) => ({ ...item })) })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
         {toggle(t('preferences.quickCommandBar'), preferences.quickCommandBarEnabled, (value) => update('quickCommandBarEnabled', value), t('preferences.quickCommandBarHint'))}
         {toggle(t('preferences.quickCommandBarTranslucent'), preferences.quickCommandBarTranslucent, (value) => update('quickCommandBarTranslucent', value), t('preferences.quickCommandBarTranslucentHint'))}
-        <Tooltip className="preference-quick-command-hint" content={t('preferences.quickCommandOrderHint')}><span aria-hidden="true">ⓘ</span></Tooltip>
+        <small className="preference-quick-command-hint">{t('preferences.quickCommandOrderHint')}</small>
         <div className="preference-quick-command-bars">{preferences.quickCommandBars.map((bar) => {
           const collapsed = collapsedQuickCommandBars.has(bar.id)
           return <section className={`preference-quick-command-bar ${collapsed ? 'collapsed' : ''}`} key={bar.id}>
           <header className="preference-quick-command-bar-header"><TextInput className="preference-quick-command-bar-name" aria-label={t('preferences.quickCommandBarName')} value={bar.name} maxLength={32} onChange={(event) => updateQuickCommandBar(bar.id, { name: event.target.value })} /><ThemedSelect value={bar.edge} groups={[{ label: t('preferences.quickCommandBarEdge'), options: [{ value: 'top' as QuickCommandBarEdge, label: t('common.top') }, { value: 'right' as QuickCommandBarEdge, label: t('common.right') }, { value: 'bottom' as QuickCommandBarEdge, label: t('common.bottom') }, { value: 'left' as QuickCommandBarEdge, label: t('common.left') }, { value: 'none' as QuickCommandBarEdge, label: t('common.close') }] }]} label={t('preferences.quickCommandBarEdge')} onChange={(edge) => updateQuickCommandBar(bar.id, { edge })} /><button type="button" className="icon-button preference-quick-command-collapse" aria-label={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} title={t(collapsed ? 'quickCommands.expand' : 'quickCommands.collapse')} onClick={() => toggleQuickCommandBarCollapsed(bar.id)}><PixelUtilityIcon kind={collapsed ? 'down' : 'up'} /></button></header>
-          {!collapsed && <div className="preference-quick-command-list component-scrollbar" data-preference-quick-command-list={bar.id}>{bar.commands.map((item) => {
+          {!collapsed && <div className="preference-quick-command-list component-scrollbar" data-preference-quick-command-list={bar.id}>{[...bar.commands.filter(item => item.enabled), ...bar.commands.filter(item => !item.enabled)].map((item) => {
             const metadata = QUICK_COMMAND_METADATA[item.id]
             const enabledCount = bar.commands.filter((candidate) => candidate.enabled).length
             const label = t(metadata.label)
-            return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id && (draggedPreferenceItem.barId === bar.id) ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-bar-id={bar.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id, bar.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon">{metadata.iconSource ? <PixelAssetIcon src={metadata.iconSource} /> : <PixelUtilityIcon kind={metadata.icon} />}</span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => updateQuickCommandBar(bar.id, { commands: bar.commands.map((candidate) => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate) })} /></div>
+            return <div className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'quick-command' && draggedPreferenceItem.id === item.id && (draggedPreferenceItem.barId === bar.id) ? 'dragging' : ''}`} data-preference-order-kind="quick-command" data-preference-order-id={item.id} data-quick-command-bar-id={bar.id} data-quick-command-id={item.id} key={item.id} title={t(metadata.description)}><button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginPreferencePointerDrag(event, 'quick-command', item.id, bar.id)}><PixelUtilityIcon kind="move" /></button><span className="preference-quick-command-icon">{metadata.iconSource ? <PixelAssetIcon src={metadata.iconSource} /> : <PixelUtilityIcon kind={metadata.icon} />}</span><span className="preference-quick-command-name">{label}</span><PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={item.enabled} disabled={item.enabled && enabledCount === 1} onChange={() => updateQuickCommandBar(bar.id, { commands: [...bar.commands.filter(candidate => candidate.id !== item.id && candidate.enabled), { ...item, enabled: !item.enabled }, ...bar.commands.filter(candidate => candidate.id !== item.id && !candidate.enabled)] })} /></div>
           })}</div>}
         </section>
         })}</div>
@@ -607,15 +608,10 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.tablet.twist'), preferences.tablet.twistEnabled, (value) => update('tablet', { ...preferences.tablet, twistEnabled: value }))}
         </PreferenceGroup>}
       {section === 'tools' && <>
-        <PreferenceGroup title={t('tools.toolbar')} actions={<button type="button" className="quiet-button" onClick={() => update('toolRail', DEFAULT_TOOL_RAIL.map(item => ({ ...item })))}><PixelUtilityIcon kind="restore" />{t('preferences.restoreDefaults')}</button>}>
-          <div className="preference-quick-command-list preference-tool-rail-list component-scrollbar">{preferences.toolRail.map((item) => {
-            const tool = toolDefinitions(locale).find(tool => tool.id === item.id)!
-            return <div key={item.id} className={`preference-quick-command-row reorderable-list-row ${draggedPreferenceItem?.kind === 'tool-rail' && draggedPreferenceItem.id === item.id ? 'dragging' : ''}`} data-preference-order-kind="tool-rail" data-preference-order-id={item.id}>
-              <button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${tool.label} ${t('home.reorderHint')}`} onPointerDown={event => beginPreferencePointerDrag(event, 'tool-rail', item.id)}><PixelUtilityIcon kind="move" /></button>
-              <span className="preference-quick-command-icon"><PixelAssetIcon src={item.id === 'selection' ? SELECTION_KIND_ICONS.rectangle : tool.icon} /></span><span className="preference-quick-command-name">{tool.label}</span>
-              <PixelCheckbox aria-label={tool.label} checked={item.enabled} onChange={() => update('toolRail', preferences.toolRail.map(candidate => candidate.id === item.id ? { ...candidate, enabled: !candidate.enabled } : candidate))} />
-            </div>
-          })}</div>
+        <PreferenceGroup title={t('tools.toolbar')}>
+          <div className="tool-rail-settings-entry"><span>{locale === 'zh-CN' ? '调整工具的显示、顺序和分组。' : 'Choose tools, arrange their order and organize groups.'}</span>
+            <button type="button" className="quiet-button" onClick={() => setToolRailDialogOpen(true)}>{locale === 'zh-CN' ? '自定义工具栏…' : 'Customize toolbar…'}</button>
+          </div>
         </PreferenceGroup>
         <PreferenceGroup title={t('preferences.groups.previews')}>
           {toggle(t('preferences.moveLayerContentPreview'), preferences.moveLayerContentPreviewEnabled, (value) => update('moveLayerContentPreviewEnabled', value), t('preferences.moveLayerContentPreviewHint'))}
@@ -716,4 +712,6 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     </main></PreferenceSearchContext.Provider></div>
     <footer><button className="quiet-button" onClick={onClose}>{t('preferences.cancel')}</button><button className="quiet-button" onClick={persist}>{t('preferences.apply')}</button><button className="primary-button" onClick={() => { persist(); onClose() }}>{t('preferences.confirm')}</button></footer>
   </ModalShell></div>
+    {toolRailDialogOpen && <ToolRailLayoutDialog value={preferences.toolRail} onClose={() => setToolRailDialogOpen(false)} onConfirm={value => { update('toolRail', value); setToolRailDialogOpen(false) }} />}
+  </>
 }

@@ -9,6 +9,7 @@ import { PreviewPanel } from './PreviewPanel'
 import { useReferenceImages } from './reference-image-state'
 import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
 import { captureSelectionTransform } from '@/core/tools-selection-transform-source'
+import { canvasCompositeCacheFor } from '@/components/canvas-composite-cache'
 
 let previous: ReturnType<typeof useWorkspace.getState>
 const color = { r: 35, g: 70, b: 105, a: 128 }
@@ -26,7 +27,8 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     scale: vi.fn(), translate: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), clip: vi.fn(),
     fillRect: vi.fn(), clearRect: vi.fn(), createPattern: () => null, drawImage: vi.fn(),
-    setTransform: vi.fn(), save: vi.fn(), restore: vi.fn(), getImageData: read
+    setTransform: vi.fn(), save: vi.fn(), restore: vi.fn(), getImageData: read,
+    createImageData: (w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }), putImageData: vi.fn()
   } as unknown as CanvasRenderingContext2D)
   vi.spyOn(CanvasCompositeCache.prototype, 'draw').mockImplementation(() => {})
   read.mockClear()
@@ -86,4 +88,53 @@ it('retains the committed base after a deferred transform ends but clears mutate
   notifyCanvasPreview(session.document.id, snapshot)
   notifyCanvasPreview(session.document.id, null)
   expect(invalidate).toHaveBeenCalledOnce()
+})
+
+it.each(['raster', 'layer-move'])('updates %s through small raster surfaces without full-resolution composition', kind => {
+  vi.useFakeTimers()
+  try {
+    const session = useWorkspace.getState().sessions[0]
+    render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
+    vi.advanceTimersByTime(32)
+    const context = HTMLCanvasElement.prototype.getContext.call(document.createElement('canvas'), '2d') as CanvasRenderingContext2D
+    vi.mocked(context.drawImage).mockClear()
+    vi.mocked(CanvasCompositeCache.prototype.draw).mockClear()
+    const snapshot = { document: session.document, frameId: session.document.animation!.activeFrameId,
+      revision: session.revision, contentRevision: session.contentRevision,
+      liveRasterEdit: kind === 'raster', movingLayerIds: kind === 'layer-move' ? [session.document.activeLayerId] : undefined }
+    for (let i = 0; i < 120; i++) {
+      notifyCanvasPreview(session.document.id, { ...snapshot, invalidation: { kind: 'region', rect: { x: 0, y: 0, width: 1, height: 1 } } })
+      vi.advanceTimersByTime(8)
+    }
+    expect(context.drawImage).toHaveBeenCalled()
+    expect(CanvasCompositeCache.prototype.draw).not.toHaveBeenCalled()
+    vi.mocked(context.drawImage).mockClear()
+    notifyCanvasPreview(session.document.id, null)
+    vi.advanceTimersByTime(17)
+    expect(context.drawImage).toHaveBeenCalled()
+    expect(CanvasCompositeCache.prototype.draw).not.toHaveBeenCalled()
+  } finally { vi.useRealTimers() }
+})
+
+it('waits for the main 4K composite on mount and presents its complete shared image in one frame', () => {
+  vi.useFakeTimers()
+  try {
+    const doc = createDocument('large preview mount', 4096, 4096, 'rgba', false)
+    useWorkspace.getState().addSession(doc)
+    const session = useWorkspace.getState().sessions.find(item => item.document === doc)!
+    const mainCache = canvasCompositeCacheFor(doc)
+    const shared = document.createElement('canvas')
+    const source = vi.spyOn(mainCache, 'previewSource').mockReturnValue({ source: shared as unknown as OffscreenCanvas, dirtyRects: [] })
+    const context = shared.getContext('2d')!
+    vi.mocked(context.putImageData).mockClear()
+    render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
+    expect(source).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(17)
+    expect(source).toHaveBeenCalled()
+    expect(context.drawImage).toHaveBeenCalledWith(shared, 0, 0, 200, 200)
+    expect(context.putImageData).not.toHaveBeenCalled()
+    vi.mocked(context.drawImage).mockClear()
+    vi.advanceTimersByTime(200)
+    expect(context.drawImage).not.toHaveBeenCalled()
+  } finally { vi.useRealTimers() }
 })

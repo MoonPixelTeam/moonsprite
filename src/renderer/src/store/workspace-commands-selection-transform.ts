@@ -3,7 +3,7 @@ import type { SelectionRect } from '@shared/types-selection'
 import type { TextCelData } from '@shared/types-text'
 import { commitPixelEdit } from '@/core/history'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible, layerContentBounds, paletteColorIdForCanvas } from '@/core/document-model'
-import { cloneAnimationCelSurface, ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel } from '@/core/animation'
+import { cloneAnimationCelSurface, ensureAnimationDocument, refreshActiveAnimationFrame, resolveAnimationCel, setAnimationCelOffsets } from '@/core/animation'
 import { isCanvasToolGestureLocked } from '@/core/canvas-tool-gesture-lock'
 import {
   transformSelectionCopy
@@ -27,9 +27,6 @@ import { unionRects } from './workspace-selection-geometry'
 import { tr } from './workspace-translation'
 import { activeSession } from './workspace-access'
 import { renderTextAtCurrentSurface, applyTextSurface } from './workspace-text-surface'
-
-
-
 export function createSelectionTransformCommands({ get, set }: WorkspaceCommandContext<'cancelTextBoxTransform' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'previewTextBoxTransform' | 'redo' | 'undo'>): Pick<WorkspaceViewSelectionCommands, 'beginLayerTransform' | 'beginFreeTransform' | 'beginSelectedTextBoxTransform' | 'previewTextBoxTransform' | 'commitTextBoxTransform' | 'cancelTextBoxTransform' | 'transformActiveSelection' | 'commitSelectionTransform'> {
   return {
     beginLayerTransform() {
@@ -155,6 +152,9 @@ export function createSelectionTransformCommands({ get, set }: WorkspaceCommandC
       }, false)
     },
     previewTextBoxTransform(bounds) {
+      const target = normalizeTextBoxBounds(bounds)
+      const previous = activeSession(get())?.textBoxTransform?.bounds
+      if (!previous || (previous.x === target.x && previous.y === target.y && previous.width === target.width && previous.height === target.height)) return
       get().mutateActive((session) => {
         const transform = session.textBoxTransform
         if (!transform) return
@@ -163,7 +163,14 @@ export function createSelectionTransformCommands({ get, set }: WorkspaceCommandC
         const cel = timeline.cels.find((candidate) => candidate.layerId === transform.layerId && candidate.frameId === transform.frameId)
         const source = resolveAnimationCel(timeline, cel ?? null) ?? cel
         if (!layer || !cel || !source?.text) return
-        const target = normalizeTextBoxBounds(bounds)
+        if (source.surface && transform.bounds.width === target.width && transform.bounds.height === target.height) {
+          const dx = target.x - transform.bounds.x, dy = target.y - transform.bounds.y
+          setAnimationCelOffsets(session.document, transform.frameId, {
+            [layer.id]: { x: source.surface.offsetX + dx, y: source.surface.offsetY + dy }
+          })
+          session.textBoxTransform = { ...transform, bounds: target }
+          return
+        }
         const rendered = renderTextAtCurrentSurface(
           session.document,
           {
@@ -213,10 +220,18 @@ export function createSelectionTransformCommands({ get, set }: WorkspaceCommandC
         session.history.push({
           label: tr('workspace.history.transformSelectionContent'),
           bytes: beforeSurface.pixels.byteLength + afterSurface.pixels.byteLength + 128,
+          invalidation: { kind: 'region', frameId: activeTransform.frameId, rect: unionRects(
+            { x: beforeSurface.offsetX, y: beforeSurface.offsetY, width: beforeSurface.width, height: beforeSurface.height },
+            { x: afterSurface.offsetX, y: afterSurface.offsetY, width: afterSurface.width, height: afterSurface.height }
+          ) },
+          affectedLayerIds: [activeTransform.layerId],
           undo: () => restore(beforeText, beforeSurface),
           redo: () => restore(afterText, afterSurface)
         })
-      })
+      }, true, false, false, { kind: 'region', frameId: transform.frameId, rect: unionRects(
+        { x: beforeSurface.offsetX, y: beforeSurface.offsetY, width: beforeSurface.width, height: beforeSurface.height },
+        { x: source.surface.offsetX, y: source.surface.offsetY, width: source.surface.width, height: source.surface.height }
+      ) })
     },
     cancelTextBoxTransform() {
       get().mutateActive((session) => {

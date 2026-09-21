@@ -31,7 +31,12 @@ const prepareAudio = (): AudioContext | null => {
 export const installExportSuccessSound = (): void => {
   if (installed) return
   installed = true
-  const unlock = (): void => {
+  const unlock = (event: Event): void => {
+    // Opening an audio device can block synchronously in WebView2. Never put
+    // export-sound warmup on the first canvas stroke or a drawing shortcut.
+    const target = event.target
+    if (!(target instanceof Element) || target.closest('.stage-wrap')
+      || !target.closest('button, input, select, textarea, [role="menuitem"]')) return
     try {
       const audio = prepareAudio()
       if (audio?.state === 'suspended') void audio.resume().catch(reportAudioError)

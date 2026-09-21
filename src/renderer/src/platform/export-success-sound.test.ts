@@ -24,7 +24,10 @@ describe('export success audio', () => {
     const { installExportSuccessSound, playExportSuccessSound } = await import('./export-success-sound')
     installExportSuccessSound()
     const unlock = listen.mock.calls.find(([name]) => name === 'pointerdown')![1] as EventListener
-    unlock(new Event('pointerdown'))
+    const target = document.createElement('button')
+    const gesture = new Event('pointerdown')
+    Object.defineProperty(gesture, 'target', { value: target })
+    unlock(gesture)
     await vi.waitFor(() => expect(decodeAudioData).toHaveBeenCalledTimes(1))
     expect(resume).toHaveBeenCalledTimes(1)
     expect(start).not.toHaveBeenCalled()
@@ -33,6 +36,22 @@ describe('export success audio', () => {
     await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2))
     expect(fetchSound).toHaveBeenCalledTimes(1)
     expect(decodeAudioData).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not initialize an audio device on canvas strokes or drawing shortcuts', async () => {
+    const construct = vi.fn()
+    vi.stubGlobal('AudioContext', class { constructor() { construct() } })
+    const listen = vi.spyOn(window, 'addEventListener').mockImplementation(() => {})
+    const { installExportSuccessSound } = await import('./export-success-sound')
+    installExportSuccessSound()
+    const stage = document.createElement('div'); stage.className = 'stage-wrap'
+    const canvas = document.createElement('canvas'); stage.append(canvas)
+    for (const type of ['pointerdown', 'keydown']) {
+      const listener = listen.mock.calls.find(([name]) => name === type)![1] as EventListener
+      const event = new Event(type); Object.defineProperty(event, 'target', { value: canvas })
+      listener(event)
+    }
+    expect(construct).not.toHaveBeenCalled()
   })
 
   it('reports unavailable audio without throwing into a successful export', async () => {

@@ -120,6 +120,10 @@ const restoreMovedClipboardPaste = (session: DocumentSession): boolean => {
   pending.transformTarget = { x: target.x, y: target.y, width: target.width, height: target.height }
   pending.transformAngle = 0
   pending.transformShear = undefined
+  // The next content press prefers the quad over transformTarget. Restore both
+  // representations, otherwise an undone clipboard scale is reapplied on move.
+  pending.transformQuad = undefined
+  session.freeTransformQuad = null
   pending.translationPreview = null
   pending.previewEdit = pending.previewDeferred
     ? null
@@ -481,6 +485,7 @@ export function createWorkspaceHistoryCommands({ get, set, recording }: Workspac
       session = activeSession(get())
       if (session && consumeCanvasResizePreviewHistory(session.document.id, 'undo')) return
       if (session && consumePendingCanvasGestureHistory(session.document.id, 'undo')) return
+      if (session?.pendingPaste?.restoredFromDeselect) session.pendingPaste = null
       if (session?.pendingPaste) {
         if (undoFloatingSelectionBoxMove(session)) {
           set((state) => ({ sessions: [...state.sessions] }))

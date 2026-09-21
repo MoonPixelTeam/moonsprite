@@ -1,4 +1,15 @@
 import { describe, expect, it } from 'vitest'
+it('migrates the old S quick-outline binding to Shift+S and restores selection stroke', () => {
+  localStorage.clear()
+  const old = cloneShortcutBindings(DEFAULT_SHORTCUT_BINDINGS)
+  old.quickOutline = ['S']
+  old.outlineSelectionInside = []
+  localStorage.setItem(SHORTCUTS_V2_KEY, JSON.stringify(createShortcutSettingsFile(old)))
+  const loaded = loadShortcutBindings(localStorage)
+  expect(loaded.quickOutline).toEqual(['Shift+S'])
+  expect(loaded.outlineSelectionInside).toEqual(['S'])
+  localStorage.clear()
+})
 import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, assignShortcutBinding, modifierShortcutHeldByBindings, shortcutBindingSupported, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 import { SHORTCUT_LABELS } from '@/locales/shortcut-labels'
 
@@ -45,8 +56,8 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS.toggleLayersPanel).toBe('Tab')
     expect(DEFAULT_SHORTCUTS.swapForegroundBackground).toBe('X')
     expect(DEFAULT_SHORTCUTS.addForegroundToPalette).toBe('Alt+S')
-    expect(DEFAULT_SHORTCUTS.quickOutline).toBe('S')
-    expect(DEFAULT_SHORTCUTS.outlineSelectionInside).toBe('')
+    expect(DEFAULT_SHORTCUTS.quickOutline).toBe('Shift+S')
+    expect(DEFAULT_SHORTCUTS.outlineSelectionInside).toBe('S')
     expect(DEFAULT_SHORTCUTS.copyMerged).toBe('Ctrl+Shift+C')
     expect(SHORTCUT_GROUPS.edit).toEqual(expect.arrayContaining(['deleteSelection', 'quickOutline', 'outlineSelectionInside', 'copyMerged', 'rotateContent180', 'invertColors', 'fillForeground']))
     expect(SHORTCUT_GROUPS.color).toContain('addForegroundToPalette')
@@ -111,8 +122,8 @@ describe('shortcut persistence boundary', () => {
     expect(shortcutMatchesEvent(pressed, 'Alt+S')).toBe(true)
     expect(shortcutReleasedByEvent(releasedKey, 'Alt+S')).toBe(true)
     expect(shortcutReleasedByEvent(releasedModifier, 'Alt+S')).toBe(true)
-    expect(shortcutMatchesEvent({ key: 'S', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.quickOutline)).toBe(true)
-    expect(shortcutMatchesEvent({ key: 's', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.outlineSelectionInside)).toBe(false)
+    expect(shortcutMatchesEvent({ key: 'S', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent, DEFAULT_SHORTCUTS.quickOutline)).toBe(true)
+    expect(shortcutMatchesEvent({ key: 's', code: 'KeyS', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS.outlineSelectionInside)).toBe(true)
     expect(shortcutText({ key: 'k', code: 'KeyK', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent)).toBe('Win+K')
     expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, DEFAULT_SHORTCUTS['tool.eyedropper.quick'])).toBe(false)
     expect(shortcutMatchesEvent({ key: 'r', code: 'KeyR', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent, 'Ctrl+R')).toBe(true)

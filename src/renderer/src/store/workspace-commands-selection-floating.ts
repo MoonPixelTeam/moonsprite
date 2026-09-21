@@ -1,4 +1,5 @@
 import { completeDocumentChange } from './workspace-document-change'
+import { restoredClipboardBytes, restoredClipboardSnapshot } from './workspace-restored-clipboard'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { SelectionMask } from '@shared/types-selection'
 import type { TextCelData } from '@shared/types-text'
@@ -11,9 +12,7 @@ import {
   resolveAnimationCel,
   syncActiveAnimationLayer
 } from '@/core/animation'
-import {
-  applySelectionTransform
-} from '@/core/tools-selection-transform-apply'
+import { applySelectionTransform } from '@/core/tools-selection-transform-apply'
 import {
   applySelectionTranslationCommit,
   selectionTranslationPreviewEdit
@@ -53,15 +52,13 @@ import {
   combinedPixelHistoryEntry
 } from './workspace-view-selection-helpers'
 import { cloneSelectionQuad } from './workspace-selection-transform-geometry'
-
-
-
 export function createSelectionFloatingCommands({ get, recording }: WorkspaceCommandContext<'beginFloatingSelectionTransform' | 'cancelFloatingPaste' | 'commitFloatingPaste' | 'commitPixelEdit' | 'mutateActive' | 'redo' | 'undo' | 'updateFloatingPastePreview'>): Pick<WorkspaceViewSelectionCommands, 'updateFloatingPastePreview' | 'beginFloatingSelectionTransform' | 'beginFreeTileFloatingSelectionTransform' | 'commitFloatingPaste' | 'cancelFloatingPaste'> {
   const { recordDocumentOperation } = recording
   return {
     updateFloatingPastePreview(edit, target, translationPreview = null, transformTarget, transformAngle, transformShear, previewDeferred = false, layers, transformQuad) {
       get().mutateActive((session) => {
         if (!session.pendingPaste) return
+        session.pendingPaste.restoredFromDeselect = false
         const previousTarget = session.pendingPaste.target
         clearFloatingSelectionBoxHistory(session.pendingPaste)
         if (layers) session.pendingPaste.layers = layers
@@ -161,6 +158,12 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
     commitFloatingPaste(deselectLabel) {
       const current = activeSession(get())
       if (!current?.pendingPaste) return
+      if (current.pendingPaste.restoredFromDeselect) {
+        // Reconfirm unchanged restored content without duplicating pixel history.
+        if (deselectLabel && current.history.canRedo) { get().redo(); return }
+        get().mutateActive(session => { session.pendingPaste = null }, false)
+        return
+      }
       get().mutateActive((session) => {
         const pending = session.pendingPaste
         if (!pending) return
@@ -417,6 +420,9 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
           session.secondaryTileId = session.document.tilesets?.find((tileset) => tileset.id === tilemapPixelEdit!.tilesetId)?.tileIds.includes(session.secondaryTileId ?? '') ? session.secondaryTileId : selectedTileId
         }
         const selectionSnapshot = (value: SelectionMask | null): SelectionMask | null => (value ? { ...value } : null)
+        const restoredClipboard = deselectLabel && pending.source.origin === 'clipboard' && !activeLayer?.kind && edit
+          ? restoredClipboardSnapshot(pending, edit)
+          : null
         const beforeSelection = selectionSnapshot(pending.beforeSelection)
         const tileRepeatMode = session.view.tileRepeatMode ?? 'off'
         const visibleSelection = floatingPasteSelectionForCommit(session, pending)
@@ -523,8 +529,9 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
         if (deselectLabel)
           session.history.push({
             label: deselectLabel,
-            bytes: 48 + (afterSelection.mask?.byteLength ?? 0),
+            bytes: 48 + (afterSelection.mask?.byteLength ?? 0) + restoredClipboardBytes(restoredClipboard),
             undo: () => {
+              if (restoredClipboard) session.pendingPaste = restoredClipboardSnapshot(restoredClipboard, edit!)
               session.selection = selectionSnapshot(afterSelection)
               session.selectionPivot = null
               session.freeTransformActive = false
@@ -535,6 +542,7 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
               session.selectionPivot = null
               session.freeTransformActive = false
               session.freeTransformQuad = null
+              session.pendingPaste = null
             },
             documentChanged: false,
             contentChanged: false,
@@ -554,6 +562,10 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
     cancelFloatingPaste() {
       const current = activeSession(get())
       if (!current?.pendingPaste) return
+      if (current.pendingPaste.restoredFromDeselect) {
+        get().mutateActive(session => { session.pendingPaste = null }, false)
+        return
+      }
       get().mutateActive((session) => {
         const pending = session.pendingPaste
         if (!pending) return

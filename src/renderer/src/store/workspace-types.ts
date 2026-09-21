@@ -114,6 +114,8 @@ export interface FloatingSelectionBoxHistoryEntry {
 }
 
 export interface FloatingPaste {
+  /** An unchanged clipboard payload restored by undoing deselect; pixels are already committed. */
+  restoredFromDeselect?: boolean
   layerId: string
   layers?: SelectionTransformLayerState[]
   beforeSelection: SelectionMask | null

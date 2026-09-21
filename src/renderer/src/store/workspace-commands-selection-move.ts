@@ -58,6 +58,7 @@ export function createSelectionMoveCommands({ get }: WorkspaceCommandContext<'co
 
         const pending = session.pendingPaste
         if (pending) {
+          pending.restoredFromDeselect = false
           const pendingLayer = pending.layers?.length ? null : (session.document.layers.find((candidate) => candidate.id === pending.layerId) ?? activePaintLayer(session))
           if (pendingLayer && isLayerEffectivelyLocked(session.document, pendingLayer)) return
           const clipboardSelectionBoxMoved = pending.source.origin === 'clipboard' && !selectionMasksEqual(currentSelection, pending.target)
