@@ -396,6 +396,7 @@ describe('LayersPanel animation', () => {
   })
 
   it('resizes loop section boundaries by dragging either bracket edge', () => {
+    vi.useFakeTimers()
     const document = createDocument('timeline loop section resize', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
     for (let index = 0; index < 3; index += 1) useWorkspace.getState().duplicateAnimationFrame()
@@ -416,6 +417,7 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerDown(startEdge, { button: 0, clientX: 0, clientY: 10, pointerId: 71 })
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
     fireEvent.pointerMove(window, { clientX: 68, clientY: 10, pointerId: 71 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(loopBar.style.gridColumn).toBe('3 / span 1')
     fireEvent.pointerUp(window, { clientX: 68, clientY: 10, pointerId: 71 })
     expect(ensureAnimationDocument(document).loopSections?.[0]).toMatchObject({ startFrameId: timeline.frames[2].id, endFrameId: timeline.frames[2].id })
@@ -424,6 +426,7 @@ describe('LayersPanel animation', () => {
     const endEdge = loopBar.querySelector<HTMLElement>('.animation-loop-section-edge-end')!
     fireEvent.pointerDown(endEdge, { button: 0, clientX: 102, clientY: 10, pointerId: 72 })
     fireEvent.pointerMove(window, { clientX: 136, clientY: 10, pointerId: 72 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(loopBar.style.gridColumn).toBe('3 / span 2')
     fireEvent.pointerUp(window, { clientX: 136, clientY: 10, pointerId: 72 })
     expect(ensureAnimationDocument(document).loopSections?.[0]).toMatchObject({ startFrameId: timeline.frames[2].id, endFrameId: timeline.frames[3].id })
@@ -927,6 +930,7 @@ describe('LayersPanel animation', () => {
   })
 
   it('moves a pointer-dragged frame header and fades the source while dragging', () => {
+    vi.useFakeTimers()
     const document = createDocument('animation frame drag', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -945,6 +949,7 @@ describe('LayersPanel animation', () => {
     vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 34, top: 0, bottom: 114, width: 34, height: 114, x: 0, y: 0, toJSON: () => ({}) })
     fireEvent.pointerDown(first, { button: 0, clientX: 1, clientY: 10 })
     fireEvent.pointerMove(third, { clientX: 133, clientY: 10 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(first).toHaveClass('dragging')
     expect(container.querySelector('.animation-frame-drop-line')).toBeInTheDocument()
     fireEvent.pointerUp(third, { clientX: 133, clientY: 10 })

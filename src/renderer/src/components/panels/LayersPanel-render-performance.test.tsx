@@ -38,6 +38,9 @@ it.each(['frame', 'cel'] as const)('measures complete %s range/move React update
   fireEvent.pointerUp(target(14), {button: 0})
   fireEvent.pointerDown(target(0), {button: 2, clientX: 10, clientY: 10})
   fireEvent.pointerMove(target(20), {buttons: 2, clientX: 570, clientY: 10})
+  // Entering a content move is frame-coalesced. Commit that first frame
+  // before measuring subsequent move-only updates (which must reuse cells).
+  act(() => { vi.advanceTimersByTime(17) })
   const frameBefore = timeline.activeFrameId
   const historyBefore = session.history.position
   contentChecks.mockClear()
