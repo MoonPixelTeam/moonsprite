@@ -106,7 +106,7 @@ function write(key: string, value: unknown): boolean {
   }
 }
 
-const id = (prefix: string) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`
 
 /** Fires whenever any of the added stores change, so the UI can refresh. */
 export const DATA_EVENT = 'moonsprite:data'

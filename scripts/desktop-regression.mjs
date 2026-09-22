@@ -67,6 +67,10 @@ try {
 
   const activeTab = page.locator('.document-tab.active')
   assert(await activeTab.locator('i').count() === 0, 'Startup project unexpectedly began in a dirty state.')
+  const releaseDialog = page.locator('.latest-release-modal')
+  await releaseDialog.waitFor({ state: 'visible' })
+  await releaseDialog.locator('footer button').click()
+  await releaseDialog.waitFor({ state: 'hidden' })
   await page.locator('.statusbar').click({ position: { x: 24, y: 8 } })
 
   const selectTool = async (key, label) => {
@@ -116,9 +120,10 @@ try {
   await page.keyboard.press('Escape')
 
   const selectionToolButton = page.locator('.tool-rail button[aria-label="矩形框选工具"]')
-  await selectionToolButton.click()
-  await page.locator('.selection-flyout[aria-label="选择选区方式"]').waitFor({ state: 'visible' })
-  assert(await page.locator('.selection-flyout button').count() === 5, 'Selection tool menu is incomplete.')
+  await selectionToolButton.click({ button: 'right' })
+  const selectionFlyout = page.locator('.custom-tool-flyout[role="dialog"]')
+  await selectionFlyout.waitFor({ state: 'visible' })
+  assert(await selectionFlyout.locator('button').count() === 6, 'Selection tool menu is incomplete.')
 
   console.log('MoonSprite desktop regression test passed.')
 } finally {

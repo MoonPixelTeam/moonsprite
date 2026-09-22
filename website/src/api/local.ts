@@ -91,8 +91,8 @@ async function digest(value: string): Promise<string> {
   }
 }
 
-function id(prefix: string, length = 6): string {
-  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + length)}`
+function id(prefix: string): string {
+  return `${prefix}_${crypto.randomUUID()}`
 }
 
 function salesFor(products: StudioProduct[], orders: Order[]): SaleLine[] {
@@ -269,7 +269,7 @@ export const localAdapter: ApiClient = {
         seen.add(line.id)
       }
       const order: Order = {
-        id: id('ord', 4),
+        id: id('ord'),
         createdAt: Date.now(),
         total: lines.reduce((sum, line) => sum + line.price * line.quantity, 0),
         lines: lines.map((line) => ({ ...line, platformFeePercent: studio.platformFeePercent })),
@@ -305,7 +305,7 @@ export const localAdapter: ApiClient = {
       if (input.name.zh.trim().length < 2 && input.name.en.trim().length < 2) return { ok: false, error: 'name' }
       if (!Number.isFinite(input.price) || input.price < 0) return { ok: false, error: 'price' }
       const database = readStudio()
-      const product: StudioProduct = { ...input, sellerId, archived: false, id: id('pack', 4), publishedAt: Date.now() }
+      const product: StudioProduct = { ...input, sellerId, archived: false, id: id('pack'), publishedAt: Date.now() }
       if (!write(STUDIO_KEY, { ...database, products: [product, ...database.products] })) return { ok: false, error: 'storage' }
       return { ok: true, data: product }
     },
@@ -370,7 +370,7 @@ export const localAdapter: ApiClient = {
       if (amount > available) return { ok: false, error: 'insufficient' }
       if (destination.trim().length < 4) return { ok: false, error: 'destination' }
       const withdrawal: Withdrawal = {
-        id: id('wd', 4),
+        id: id('wd'),
         sellerId,
         amount: Math.round(amount),
         status: 'requested',
