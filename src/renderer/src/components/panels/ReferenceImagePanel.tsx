@@ -140,15 +140,15 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   return <section ref={floating.ref} className={`panel preview-panel reference-image-panel ${floating.style ? 'floating-panel' : ''}`} style={floating.style} tabIndex={-1} onPointerDown={(event) => { floating.bringToFront(); if (!(event.target as HTMLElement).closest('button')) event.currentTarget.focus({ preventScroll: true }) }} onContextMenu={onPanelContextMenu} onPaste={(event) => { event.preventDefault(); event.stopPropagation(); void paste() }}>
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
-      <span className="reference-image-title">{t('panel.reference')}</span><span className="panel-actions">
+<header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
+      <span className="reference-image-title">{t('panel.reference')}</span><PanelActions>
         <button title={t('common.paste')} aria-label={t('common.paste')} disabled={pasting} onClick={() => { void paste() }}><PixelUtilityIcon kind="paste" /></button>
         <button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} disabled={!current} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button>
         <button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} disabled={!current} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button>
         <button title={t('reference.fit')} aria-label={t('reference.fit')} disabled={!current} onClick={() => { fitRef.current = null; setView(null, { x: 0, y: 0 }) }}><PixelUtilityIcon kind="paletteCenter" /></button>
         <button title={t('common.delete')} aria-label={t('common.delete')} disabled={!current} onClick={() => remove(windowId)}><PixelUtilityIcon kind="delete" /></button>
         <button title={t('reference.close')} aria-label={t('reference.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button>
-      </span>
+      </PanelActions>
     </header>
     <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} style={{ cursor: sampling.cursor }} onContextMenu={event => { if (event.altKey || sampling.cursor) { event.preventDefault(); event.stopPropagation() } }} onWheel={(event) => {
       const bounds = canvasRef.current?.getBoundingClientRect()
@@ -192,3 +192,4 @@ export function ReferenceImageWindows() {
   const closeWindow = useReferenceImages((state) => state.closeWindow)
   return <>{windows.map((panel, index) => <ReferenceImagePanel key={panel.id} windowId={panel.id} windowOffset={24 * (1 + index % 8)} onClose={() => closeWindow(panel.id)} />)}</>
 }
+import { PanelActions } from './PanelActions'

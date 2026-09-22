@@ -463,13 +463,13 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
       setDropActive(false)
     }}
     >
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
+<header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
       <strong title={currentFolder?.name}>{currentFolder?.name ?? t('panel.brushes')}</strong>
-      <span className="panel-actions brush-panel-actions" onPointerDown={(event) => event.stopPropagation()}>
+      <PanelActions className="brush-panel-actions">
         <button ref={addButtonRef} type="button" className={addOpen ? 'active' : ''} title={t('brush.add')} aria-label={t('brush.add')} aria-expanded={addOpen} onClick={() => { setAddOpen((open) => !open); setManageOpen(false) }}><PixelUtilityIcon kind="plus" /></button>
         <button type="button" title={t('brush.deleteSelected')} aria-label={t('brush.deleteSelected')} disabled={selectedBrushes.length === 0} onClick={() => void controller.deleteBrushes(selectedBrushes)}><PixelUtilityIcon kind="delete" /></button>
         <button ref={manageButtonRef} type="button" className={manageOpen ? 'active' : ''} title={t('brush.manage')} aria-label={t('brush.manage')} aria-expanded={manageOpen} onClick={() => { setManageOpen((open) => !open); setAddOpen(false) }}><PixelUtilityIcon kind="properties" /></button>
-      </span>
+      </PanelActions>
     </header>
     <div
       ref={contentRef}
@@ -529,3 +529,4 @@ export function BrushLibraryPanel({ session, controller, docked = false, onDockD
   </div>}
   </>
 }
+import { PanelActions } from './PanelActions'

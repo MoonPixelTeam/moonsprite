@@ -78,9 +78,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [followViewport, setFollowViewport] = useState(false)
   const [panning, setPanning] = useState(false)
-  // Capture the initial viewport for fit calculations. The canvas itself
-  // remains adaptive, so resizing the dock reveals more content without
-  // changing the artwork scale.
+  // Fit mode follows the available viewport; an explicit zoom stays absolute.
   const [initialPreviewViewport, setInitialPreviewViewport] = useState<PreviewViewportSize | null>(null)
   const initialPreviewViewportRef = useRef<PreviewViewportSize | null>(null)
   const [checkerboard, setCheckerboard] = useState<CheckerboardPreferences>(() => loadEditorPreferences().checkerboard)
@@ -131,15 +129,15 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
   }, [session.document.id])
 
   useEffect(() => {
-    // A dock change creates a new viewport contract; capture its initial size
-    // once for fit calculations while allowing the canvas to resize freely.
+    // Keep fit geometry and pointer zoom anchored to the same live viewport.
     initialPreviewViewportRef.current = null
     setInitialPreviewViewport(null)
     const frame = canvasRef.current?.parentElement
     if (!frame) return
     const capture = (): void => {
-      if (initialPreviewViewportRef.current || frame.clientWidth < 1 || frame.clientHeight < 1) return
+      if (frame.clientWidth < 1 || frame.clientHeight < 1) return
       const next = { width: frame.clientWidth, height: frame.clientHeight }
+      if (initialPreviewViewportRef.current?.width === next.width && initialPreviewViewportRef.current?.height === next.height) return
       initialPreviewViewportRef.current = next
       setInitialPreviewViewport(next)
     }
@@ -152,8 +150,7 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       window.cancelAnimationFrame(frameReady)
       observer.disconnect()
     }
-  // The first non-zero frame size is intentionally captured once per dock
-  // placement. Do not include the captured value or resizing would relock it.
+  // The observer owns updates; do not recreate it for each measured size.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docked, session.document.id])
 
@@ -525,8 +522,8 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
       const displayHeight = bounds.height
       clearCanvasBacking(context, canvas)
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const fitViewportWidth = initialPreviewViewport?.width ?? displayWidth
-      const fitViewportHeight = initialPreviewViewport?.height ?? displayHeight
+      const fitViewportWidth = displayWidth
+      const fitViewportHeight = displayHeight
       let baseFit = baseFitRef.current
       if (!baseFit || baseFit.documentId !== sourceDocument.id || baseFit.width !== sourceDocument.width || baseFit.height !== sourceDocument.height || baseFit.viewportWidth !== fitViewportWidth || baseFit.viewportHeight !== fitViewportHeight || baseFit.devicePixelRatio !== dpr) {
         baseFit = { documentId: sourceDocument.id, width: sourceDocument.width, height: sourceDocument.height, viewportWidth: fitViewportWidth, viewportHeight: fitViewportHeight, devicePixelRatio: dpr, scale: pixelAlignedPreviewFitScale(Math.min(fitViewportWidth / sourceDocument.width, fitViewportHeight / sourceDocument.height), dpr) }
@@ -783,10 +780,11 @@ export function PreviewPanel({ session, onClose, docked = false, onDockDragStart
     schedulePan({ x: drag.panX + delta.x, y: drag.panY + delta.y })
   }
   return <section ref={floating.ref} className={`panel preview-panel ${floating.style ? 'floating-panel' : ''}`} style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><span>{t('panel.preview')}</span><span className="panel-actions"><button className={followViewport ? 'active' : ''} title={t('preview.followViewport')} aria-label={t('preview.followViewport')} aria-pressed={followViewport} onClick={toggleFollowViewport}><PixelUtilityIcon kind="follow" /></button><button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button><button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button><button className={previewPlaying ? 'active' : ''} disabled={timelineHidden || timeline.frames.length <= 1} title={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} aria-label={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} onClick={() => setPreviewPlayingState(!previewPlaying)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!timelineHidden) setPlaybackMenu({ x: event.clientX, y: event.clientY }) }}><PlaybackPixelIcon kind={previewPlaying ? 'pause' : 'play'} /></button><button title={t('preview.close')} aria-label={t('preview.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button></span></header>
+<header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}><span>{t('panel.preview')}</span><PanelActions><button className={followViewport ? 'active' : ''} title={t('preview.followViewport')} aria-label={t('preview.followViewport')} aria-pressed={followViewport} onClick={toggleFollowViewport}><PixelUtilityIcon kind="follow" /></button><button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button><button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button><button className={previewPlaying ? 'active' : ''} disabled={timelineHidden || timeline.frames.length <= 1} title={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} aria-label={t(previewPlaying ? 'timeline.pause' : 'timeline.play')} onClick={() => setPreviewPlayingState(!previewPlaying)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!timelineHidden) setPlaybackMenu({ x: event.clientX, y: event.clientY }) }}><PlaybackPixelIcon kind={previewPlaying ? 'pause' : 'play'} /></button><button title={t('preview.close')} aria-label={t('preview.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button></PanelActions></header>
     <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} style={{ cursor: sampling.cursor }} onContextMenu={event => { if (event.altKey || sampling.cursor) { event.preventDefault(); event.stopPropagation() } }} onWheel={adjustWheelZoom} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan} onLostPointerCapture={() => { sampling.cancel(); panDrag.current = null; setPanning(false) }}><div className="preview-canvas-frame"><canvas ref={canvasRef} aria-label={t('preview.canvasAria')} /></div></div>
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
     <FloatingDockPreview style={floating.dockPreview} />
     {playbackMenu && <AnimationPlaybackMenu session={session} x={playbackMenu.x} y={playbackMenu.y} playback={previewPlayback} onClose={() => setPlaybackMenu(null)} />}
   </section>
 }
+import { PanelActions } from './PanelActions'

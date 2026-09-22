@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
+  'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
+  'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
+  'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',
+  'release.beta6.fixes': 'Fix header scrollbars and clipped buttons, preserve batch timeline selections, and improve extension script tag handling.',
   "layers.animationSettings": "애니메이션 설정",
   "layers.defaultModeHint": "그리기에 필요한 레이어와 미리 보기를 표시합니다.",
   "layers.animationModeHint": "프레임, 반복 구간 및 애니메이션 도구를 표시합니다.",
@@ -1562,7 +1566,8 @@ export const koKRMessages = {
   'status.selection': '선택 {width} x {height}',
   'status.noSelection': 'No 선택 영역',
   'status.ready': '준비',
-  'panel.color': '색상 팔레트',
+'panel.color': '색상 팔레트',
+  'panel.moreActions': '추가 작업',
   'panel.palette': '색상 보드',
   'panel.layers': '레이어',
   'panel.freeTileInstances': '인스턴스 레이어',

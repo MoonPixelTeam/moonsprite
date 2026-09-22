@@ -1,6 +1,11 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ruRUMessages = {
+  'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
+  'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
+  'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',
+  'release.beta6.fixes': 'Fix header scrollbars and clipped buttons, preserve batch timeline selections, and improve extension script tag handling.',
+  'panel.moreActions': 'Другие действия',
   "layers.animationSettings": "Настройки анимации",
   "layers.defaultModeHint": "Слои и миниатюры для рисования.",
   "layers.animationModeHint": "Кадры, участки цикла и инструменты анимации.",

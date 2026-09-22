@@ -428,12 +428,12 @@ function TilemapTilesetPanel({ session, docked = false, onDockDragStart, onPanel
   const panelTitle = t('panel.tileset')
 
   return <><section ref={floating.ref} className={`panel tileset-panel ${floating.style ? 'floating-panel' : ''}`} data-command-scope="tileset" style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
-    <header aria-label={panelTitle} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
+<header aria-label={panelTitle} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
       <strong>{panelTitle}</strong>
-      <span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>
+      <PanelActions>
         <button type="button" className={session.tilemapMode === 'paint' ? 'selected' : ''} aria-pressed={session.tilemapMode === 'paint'} title={t('tileset.mode.paint')} aria-label={t('tileset.mode.paint')} onClick={enterPaintMode}><PixelUtilityIcon kind="tilePaint" /></button>
         <button type="button" disabled={!selectedTileset || (!selectedTileId && displayedSelectedTileIds.length === 0) || selectedTileset.tileIds.length <= 1} title={t('tileset.deleteTile')} aria-label={t('tileset.deleteTile')} onClick={deleteSelectedTiles}><PixelUtilityIcon kind="delete" /></button>
-      </span>
+      </PanelActions>
     </header>
     {selectedTileset ? <div className="tileset-panel-body">
       <div className="tileset-panel-toolbar">
@@ -605,13 +605,13 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
   const sourcePropertiesEntry = sourcePropertiesId ? sourceEntryForId(sourcePropertiesId) : null
 
   return <><section ref={floating.ref} className={`panel tileset-panel free-tiles-panel ${floating.style ? 'floating-panel' : ''}`} data-command-scope="tileset" style={floating.style} onPointerDown={floating.bringToFront} onContextMenu={onPanelContextMenu}>
-    <header aria-label={panelTitle} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
+<header aria-label={panelTitle} onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
       <strong>{panelTitle}</strong>
-      <span className="panel-actions" onPointerDown={(event) => event.stopPropagation()}>
+      <PanelActions>
         <button type="button" disabled={!selectedEntry} className={session.freeTileMode === 'paint' ? 'active' : ''} title={t('freeTiles.mode.paint')} aria-label={t('freeTiles.mode.paint')} aria-pressed={session.freeTileMode === 'paint'} onClick={placeInstance}><PixelUtilityIcon kind="tilePaint" /></button>
         <button type="button" disabled={!activeLayer} title={t('freeTiles.addTile')} aria-label={t('freeTiles.addTile')} onClick={addSource}><PixelUtilityIcon kind="plus" /></button>
         <button type="button" disabled={!selectedEntry || sourceEntries.length <= 1} title={t('tileset.deleteTile')} aria-label={t('tileset.deleteTile')} onClick={() => deleteSource()}><PixelUtilityIcon kind="delete" /></button>
-      </span>
+      </PanelActions>
     </header>
     {activeLayer && selectedEntry ? <div className="tileset-panel-body free-tile-source-panel-body">
       <div className="tileset-panel-toolbar">
@@ -646,3 +646,4 @@ export function TilesetPanel(props: TilesetPanelProps) {
   const activeLayer = props.session.document.layers.find((layer) => layer.id === props.session.document.activeLayerId)
   return activeLayer?.kind === 'free-tile' ? <FreeTileSourcesPanel {...props} /> : <TilemapTilesetPanel {...props} />
 }
+import { PanelActions } from './PanelActions'

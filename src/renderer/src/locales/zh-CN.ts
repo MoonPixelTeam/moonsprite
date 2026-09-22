@@ -1,4 +1,8 @@
 export const zhCNMessages = {
+  'release.beta6.summary': '栏目分阶段自适应、预览适配与交互修复。',
+  'release.beta6.panels': '栏目缩小时逐步精简标题与按钮，通过更多操作保留完整功能，改善窄栏间距和显示。',
+  'release.beta6.preview': '默认预览随栏目当前尺寸重新适配，修复缩小后图像裁剪；手动缩放保留设定倍率。',
+  'release.beta6.fixes': '修复标题栏滚动条与按钮裁切、时间轴批量选区保留，并加强扩展脚本标签处理。',
   "preferences.exportProtection.title": "导出防盗处理",
   "preferences.exportProtection.off": "关闭",
   "preferences.exportProtection.blur": "窄边缘柔化",
@@ -1628,6 +1632,7 @@ export const zhCNMessages = {
   'status.noSelection': '无选区',
   'status.ready': '准备就绪',
   'panel.color': '调色盘',
+  'panel.moreActions': '更多操作',
   'panel.palette': '颜色板',
   'panel.layers': '图层',
   'panel.freeTileInstances': '实例图层',

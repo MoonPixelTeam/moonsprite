@@ -1381,7 +1381,9 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 .floating-document-window > header > .floating-document-pin:hover { background: transparent; }
 .floating-document-window > header > .floating-document-pin[aria-pressed='true'] { color: var(--theme-accent); }
 .document-pane-canvas { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; }
-.document-pane-canvas-content { display: grid; min-width: 0; min-height: 0; overflow: hidden; }
+/* Dock resizing retains the old canvas size until release. Paint newly exposed
+   space with the canvas surround rather than the app background underneath. */
+.document-pane-canvas-content { display: grid; min-width: 0; min-height: 0; overflow: hidden; background: var(--theme-canvas-surround); }
 
 .inspector { grid-area: rightdock; position: relative; min-width: 0; min-height: 0; background: var(--theme-surface); border: 0; overflow: hidden; container-name: side-panel-dock; container-type: inline-size; }
 .inspector-empty { display: none; }
@@ -1408,6 +1410,7 @@ html.floating-panel-dragging, html.floating-panel-dragging * { cursor: var(--cur
 .inspector-drop-indicator.vertical.below { right: 1px; left: auto; }
 .inspector-drop-indicator.vertical::before, .inspector-drop-indicator.vertical::after { display: none; }
 .inspector-panel-slot { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.inspector-panel-slot:not(:has(.floating-panel)) { container: workspace-panel / size; }
 .inspector-panel-slot > .panel:not(.floating-panel) { width: 100%; height: 100%; border-bottom: 0; }
 .inspector-resizer { grid-area: rightresize; position: relative; z-index: 4; display: grid; place-items: center; min-height: 0; cursor: var(--cursor-ew-resize); background: var(--theme-deep-surface); border-right: 1px solid var(--theme-border); border-left: 1px solid var(--theme-border); }
 .panel { position: relative; min-width: 0; border-bottom: 1px solid var(--theme-border); background: var(--theme-surface); }
@@ -1416,6 +1419,8 @@ html.floating-panel-dragging, html.floating-panel-dragging * { cursor: var(--cur
 .panel > header > span:not(.panel-actions) > :is(strong, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel > header small { margin-left: auto; color: var(--theme-text-muted); font: var(--ui-font-small)/1 ui-monospace, Consolas, monospace; }
 .panel-actions { display: inline-flex; flex-shrink: 0; gap: var(--action-button-gap, var(--ui-space-2)); margin-left: 0; }
+.panel > header > .panel-actions { min-width: min(var(--ui-icon-button-size), 100%); max-width: 100%; flex-shrink: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.panel > header > .panel-actions > * { flex-shrink: 0; }
 .layers-panel > header > .panel-actions { margin-left: auto; }
 .panel-actions button { display: grid; place-items: center; width: var(--ui-icon-button-size); height: var(--ui-icon-button-size); color: var(--theme-text-muted); background: transparent; }
 .panel-actions button:hover:not(:disabled):not(.active):not(.selected):not([aria-pressed='true']):not([aria-expanded='true']):not([aria-selected='true']) { color: var(--theme-text-primary); background: var(--theme-surface-hover); }
@@ -2580,7 +2585,7 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .background-layer-preset-state { grid-column: 1 / -1; margin: 0; padding: var(--ui-space-5); color: var(--theme-text-muted); font-size: var(--ui-font-regular); text-align: center; }
 .background-layer-preset-status { margin: 0; color: var(--theme-warning); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
 
-.preview-panel { display: grid; grid-template-rows: var(--ui-panel-header-height) minmax(90px, 1fr); padding: 0; background: var(--theme-surface); border: 0; box-shadow: none; }
+.preview-panel { display: grid; grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr); padding: 0; background: var(--theme-surface); border: 0; box-shadow: none; }
 .preview-panel.floating-panel { border: 1px solid var(--theme-border); }
 .preview-panel > header { height: var(--ui-panel-header-height); padding: 0 var(--ui-space-4); }
 .preview-panel > header > .panel-actions { margin-left: auto; padding-top: var(--ui-space-4); padding-bottom: var(--ui-space-4); }
@@ -4130,10 +4135,33 @@ body input[type='checkbox'] {
   }
 }
 
+/* Compact content must keep navigation reachable instead of clipping it. */
 @container side-panel-dock (max-width: 128px) {
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .preview-panel:not(.floating-panel) .panel-actions > button:nth-child(-n + 3),
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .palette-panel:not(.floating-panel) :is(.palette-library-control, .palette-actions > button:last-child),
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .color-panel:not(.floating-panel) .color-scheme-control > button:first-child,
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header {
+    padding-inline: var(--ui-space-1);
+  }
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions {
+    gap: 0;
+  }
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions > button {
+    width: var(--ui-icon-button-size);
+    min-width: var(--ui-icon-button-size);
+    height: var(--ui-icon-button-size);
+  }
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .tileset-panel-body,
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .free-tile-source-panel-body {
+    grid-template-rows: auto minmax(0, 1fr);
+    padding: var(--ui-space-1);
+  }
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .tileset-panel-toolbar,
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .free-tile-source-panel-body > .tileset-panel-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: 64px;
+    overflow: auto;
+  }
+}
+
+@container side-panel-dock (max-width: 128px) {
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .layers-panel:not(.floating-panel) .layer-animation-toolbar,
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .layers-panel:not(.floating-panel) .layer-row :is(.layer-lock-toggle, .layer-mask-row-lock-slot, .layer-status-icon-tooltip) {
     display: none;
@@ -4153,24 +4181,38 @@ body input[type='checkbox'] {
 @container side-panel-dock (max-width: 96px) {
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) {
     display: grid;
-    grid-template-rows: 32px minmax(0, 1fr);
+    grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr);
   }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > :not(.panel-actions) {
     display: none;
   }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header {
-    height: 32px;
-    min-height: 32px;
+    height: var(--ui-panel-header-height);
+    min-height: var(--ui-panel-header-height);
     justify-content: center;
-    gap: 0;
-    padding: 0;
+    gap: var(--action-button-gap, var(--ui-space-2));
+    padding-inline: var(--ui-space-1);
     border-bottom: 1px solid var(--theme-border-strong);
   }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: safe center;
+    width: 100%;
+    height: var(--ui-panel-header-height);
     margin: 0;
     padding: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .preview-panel:not(.floating-panel) .panel-actions > button:not(:last-child) { display: none; }
+  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .panel:not(.floating-panel) > header > .panel-actions > button {
+    width: var(--ui-icon-button-size);
+    min-width: var(--ui-icon-button-size);
+    height: var(--ui-icon-button-size);
+    min-height: var(--ui-icon-button-size);
+    margin: 0;
+  }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .preview-panel:not(.floating-panel) .preview-canvas-wrap {
     --preview-frame-inset: var(--ui-space-1);
     display: block;
@@ -4190,24 +4232,6 @@ body input[type='checkbox'] {
   }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .palette-panel:not(.floating-panel) > .swatch-grid::-webkit-scrollbar { display: none; width: 0; height: 0; }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .palette-panel:not(.floating-panel) .palette-selection-box { display: none; }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .color-panel:not(.floating-panel) > .moon-color-picker {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .color-panel:not(.floating-panel)::after {
-    position: absolute;
-    z-index: 1;
-    top: 35px;
-    right: 3px;
-    bottom: 3px;
-    left: 3px;
-    content: '';
-    background:
-      linear-gradient(to bottom, transparent, #000),
-      linear-gradient(to bottom, #f33 0%, #ff0 18%, #0f0 36%, #0ff 54%, #00f 72%, #f0f 90%, #f33 100%);
-    border: 1px solid var(--theme-border-strong);
-    pointer-events: none;
-  }
   :is([data-panel-dock-content='left'], [data-panel-dock-content='right']) .layers-panel:not(.floating-panel) .layer-row {
     justify-content: center;
     padding: 0 3px;
@@ -4217,7 +4241,8 @@ body input[type='checkbox'] {
 
 @container bottom-panel-dock (max-height: 105px) {
   [data-panel-dock-content='bottom'] .panel:not(.floating-panel) {
-    display: block;
+    display: grid;
+    grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr);
   }
   [data-panel-dock-content='bottom'] :is(
     .preview-panel:not(.floating-panel) > .preview-canvas-wrap,
@@ -4225,7 +4250,7 @@ body input[type='checkbox'] {
     .color-panel:not(.floating-panel) > .moon-color-picker,
     .layers-panel:not(.floating-panel) > .layer-list
   ) {
-    display: none;
+    min-height: 0;
   }
   [data-panel-dock-content='bottom'] .panel:not(.floating-panel) > header {
     height: var(--ui-panel-header-height);
@@ -4234,7 +4259,143 @@ body input[type='checkbox'] {
   }
 }
 
+/* Shared by docked, floating and popup panels. Keep bodies independently
+   scrollable at their minimum height instead of hiding the entire content. */
+.tileset-panel-body, .free-tile-source-panel-body { grid-template-rows: auto minmax(0, 1fr); }
+.tileset-panel-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+.color-panel > .moon-color-picker.compact { overflow: auto; }
+.color-panel .moon-color-picker.compact .integrated-color-picker { min-height: 100px; }
+:is(.brush-library-panel-state, .free-tile-instance-empty, .reference-image-empty) { overflow-wrap: anywhere; }
+
+@container bottom-panel-dock (max-height: 72px) {
+  [data-panel-dock-content='bottom'] .panel:not(.floating-panel) {
+    --ui-panel-header-height: 32px;
+  }
+  [data-panel-dock-content='bottom'] .panel:not(.floating-panel) > header {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: var(--ui-space-4);
+  }
+  [data-panel-dock-content='bottom'] .panel:not(.floating-panel) > header > .panel-actions {
+    gap: var(--action-button-gap, var(--ui-space-2));
+  }
+  [data-panel-dock-content='bottom'] .panel:not(.floating-panel) > header > .panel-actions > button {
+    width: var(--ui-icon-button-size);
+    min-width: var(--ui-icon-button-size);
+    height: var(--ui-icon-button-size);
+  }
+  [data-panel-dock-content='bottom'] .panel:not(.floating-panel) > header > :not(.panel-actions) {
+    font-size: var(--ui-font-small);
+  }
+}
+
+/* Use each slot's actual dimensions: bottom panels can be narrow, and side
+   panels can be short independently of the size of their surrounding dock. */
+/* Header actions remain one button tall. Native scrollbars otherwise consume
+   their height and create a second scrollbar even for a single settings icon.
+   Keep keyboard/programmatic scrolling, but never paint tracks in a header. */
+html body .panel > header > .panel-actions {
+  min-width: min(var(--ui-icon-button-size), 100%);
+  height: var(--ui-icon-button-size);
+  min-height: var(--ui-icon-button-size);
+  padding-block: 0;
+  align-items: center;
+  align-self: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+html body .panel > header > .panel-actions::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html body .panel > header > .panel-actions > :only-child { flex-shrink: 0; }
+html body .panel > header > .panel-actions:has(> :only-child) { flex-shrink: 0; }
+/* Titles keep a readable fragment while long toolbars scroll independently. */
+.panel > header > :is(strong, span:not(.panel-actions, .free-tile-instance-header, .layer-animation-toolbar, .history-panel-heading)) { flex-shrink: 0; max-width: 40%; }
+.panel > header > .history-panel-heading { flex: 1 1 auto; max-width: none; }
+.history-panel > header .history-panel-heading > strong { flex-shrink: 0; }
+.history-panel > header .history-panel-heading > small { flex: 0 1 auto; }
+
+@container workspace-panel (max-width: 220px) {
+  .panel:not(.floating-panel) > header { padding-inline: var(--ui-space-2); gap: var(--ui-space-1); }
+  body .panel:not(.floating-panel) > header > .panel-actions {
+    flex-shrink: 1;
+    padding-block: 0;
+    align-items: center;
+    align-self: center;
+    max-height: 100%;
+  }
+  .tileset-panel-toolbar { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-2); max-height: 64px; overflow: auto; }
+  .brush-swatch-grid { padding: var(--ui-space-2); }
+  .brush-folder-item, .brush-folder-navigation > button { gap: var(--ui-space-1); padding-inline: var(--ui-space-2); }
+  .history-entry { column-gap: var(--ui-space-2); padding-inline: var(--ui-space-2); }
+  .reference-image-navigation { max-width: calc(100% - 4px); overflow-x: auto; justify-content: safe center; scrollbar-width: none; }
+  .reference-image-navigation > * { flex-shrink: 0; }
+  .preview-panel:not(.floating-panel) > header > span:first-child { display: none; }
+}
+
+@container workspace-panel (max-width: 128px) {
+  .panel:not(.floating-panel) > header { padding-inline: var(--ui-space-1); }
+  .panel:not(.floating-panel) > header > .panel-actions { gap: 0; }
+  .panel:not(.floating-panel) > header > :is(strong, span:not(.panel-actions, .free-tile-instance-header, .layer-animation-toolbar)) { display: none; }
+  .tileset-panel-body, .free-tile-source-panel-body { gap: var(--ui-space-1); padding: var(--ui-space-1); }
+  .preview-canvas-wrap { --preview-frame-inset: var(--ui-space-1); }
+  .reference-image-panel > header .panel-actions > button { display: grid; }
+  .reference-image-navigation { bottom: var(--ui-space-1); }
+  .brush-swatch-grid.is-empty { padding: var(--ui-space-2); }
+  .color-panel .color-current-button { grid-template-columns: 22px minmax(0, 1fr); gap: var(--ui-space-1); padding-inline: var(--ui-space-1); }
+  .color-panel .color-current-button small { display: none; }
+  .color-panel .tile-role-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
+@container workspace-panel (max-height: 160px) {
+  .preview-canvas-wrap { --preview-frame-inset: var(--ui-space-2); }
+  .tileset-panel-body, .free-tile-source-panel-body { gap: var(--ui-space-1); padding-block: var(--ui-space-1); }
+  .reference-image-navigation { bottom: var(--ui-space-1); }
+}
+
+@container workspace-panel (max-height: 105px) {
+  .panel:not(.floating-panel) {
+    --ui-panel-header-height: 32px;
+    --layers-panel-header-height: 32px;
+    grid-template-rows: var(--ui-panel-header-height) minmax(0, 1fr);
+  }
+  .panel:not(.floating-panel) > header { height: var(--ui-panel-header-height); min-height: var(--ui-panel-header-height); }
+  body .panel:not(.floating-panel) > header > :is(.panel-actions, .layer-animation-toolbar, .layer-header-properties) { padding-block: 0; align-self: center; }
+  body .panel:not(.floating-panel) > header > .panel-actions { height: auto; }
+  .preview-canvas-wrap { --preview-frame-inset: var(--ui-space-1); }
+  .tileset-panel-body, .free-tile-source-panel-body { display: block; overflow: auto; }
+  .tileset-panel-toolbar { margin-bottom: var(--ui-space-1); }
+}
+
 /* Press-state exceptions: these controls must remain fixed while pointer-down. */
+/* Responsive action groups switch as a whole: never show half an icon or
+   remove a command. The popup is portalled beyond the dock's clipping edge. */
+html body .panel > header > .responsive-panel-actions {
+  flex: 0 0 auto;
+  width: auto;
+  overflow: visible;
+  gap: var(--ui-space-2);
+}
+html body .panel > header > .responsive-panel-actions > *,
+html body .panel > header > .responsive-panel-actions > button { display: inline-flex; }
+html body .panel > header > .responsive-panel-actions > button { display: grid; }
+html body .panel-actions-popup {
+  position: fixed;
+  z-index: 750;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: var(--ui-space-2);
+  width: 200px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--theme-border-strong);
+  background: var(--theme-raised-surface);
+  box-shadow: 0 4px 12px var(--theme-shadow);
+}
+.panel-actions-popup > * { flex-shrink: 0; }
+
 :root .app-window-control:active:not(:disabled),
 :root .app-window-control-close:active:not(:disabled),
 :root .recent-file-pin:active:not(:disabled),
