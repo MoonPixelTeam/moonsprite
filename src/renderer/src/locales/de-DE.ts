@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const deDEMessages = {
+  "layers.animationSettings": "Animationseinstellungen",
+  "layers.defaultModeHint": "Ebenen und Vorschaubilder zum Zeichnen anzeigen.",
+  "layers.animationModeHint": "Frames, Schleifenabschnitte und Animationswerkzeuge anzeigen.",
+  "layers.settingsLiveHint": "Änderungen gelten sofort",
   'quickCommands.cut': 'Ausschneiden',
   'quickCommands.copyMerged': 'Zusammengefasst kopieren',
   'quickCommands.quickOutline': 'Schnelle Kontur',
@@ -50,7 +54,7 @@ export const deDEMessages = {
   'reference.openWindow': 'Aktuelle Referenz in schwebendem Fenster öffnen',
   'reference.newWindow': 'Neues Referenzfenster',
   'layers.panelMode': 'Ebenenbereich-Modus',
-  'layers.mode.default': 'Standardmodus',
+  'layers.mode.default': 'Normaler Modus',
   'layers.mode.animation': 'Animationsmodus',
   'panel.reference': "Referenzbild",
   'reference.empty': "Klicken zum Einfügen oder Strg+V drücken",
@@ -1946,6 +1950,9 @@ export const deDEMessages = {
   "layers.onionSkinRange": "Frame Bereich",
   "layers.onionSkinOpacity": "Overlay Deckkraft",
   "layers.onionSkinColors": "Frame Farben",
+  "layers.onionSkinScope": "Geltungsbereich",
+  "layers.onionSkinCurrentLayer": "Aktuelle Ebene",
+  "layers.onionSkinAllLayers": "Alle Ebenen",
   "layers.previous": 'Vorheriger',
   "layers.next": 'Nächste',
   "layers.previousFrames": 'Vorheriger Framework',

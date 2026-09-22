@@ -164,7 +164,7 @@ export function createLayerPanelStructure(session: DocumentSession, timeline: An
   const maskRowByOwner = new Map<string, number>()
   displayRows.forEach((item, row) => {
     if (item.kind === 'mask') maskRowByOwner.set(item.owner.id, row)
-    else if (item.node.kind === 'layer') celRowByOwner.set(item.node.id, row)
+    else celRowByOwner.set(item.node.id, row)
   })
 
   return { linkedGroups, celRowByOwner, maskRowByOwner, visualTopology, layerById, groupById, freeTileSetOptions, displayColorStripeSegments, nodes, maskOwnerFrameKey,

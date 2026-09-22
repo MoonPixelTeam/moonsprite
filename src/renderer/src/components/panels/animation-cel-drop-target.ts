@@ -3,6 +3,7 @@ import { buildLayerPanelTree } from '@/core/layer-panel-layout'
 import { animationCelKey, parseAnimationCelKey } from '@/core/animation'
 import type { DocumentSession } from '@/store/workspace'
 import type { AnimationPointerDrag } from './animation-gesture-types'
+import { createMixedCelPointerTarget } from './animation-mixed-cel-drag'
 
 export type AnimationCelDropClampContext = {
   drag: Extract<AnimationPointerDrag, { kind: 'cel' | 'mask' }>
@@ -15,6 +16,7 @@ export type AnimationCelDropClampContext = {
   maxRow: number
   minColumn: number
   maxColumn: number
+  pointerTarget: (key: string) => string | null
 }
 
 export const createAnimationCelDropClampContext = (
@@ -37,6 +39,7 @@ export const createAnimationCelDropClampContext = (
   })
   return {
     drag,
+    pointerTarget: drag.kind === 'cel' ? createMixedCelPointerTarget(session, drag) : key => key,
     ownerIds,
     frameIds,
     ownerIndex,
@@ -51,7 +54,8 @@ export const createAnimationCelDropClampContext = (
 
 export const clampAnimationCelDropTarget = (context: AnimationCelDropClampContext, candidateKey: string): string | null => {
   const anchor = parseAnimationCelKey(context.drag.sourceAnchorKey)
-  const candidate = parseAnimationCelKey(candidateKey)
+  const mappedKey = context.pointerTarget(candidateKey)
+  const candidate = mappedKey ? parseAnimationCelKey(mappedKey) : null
   if (!anchor || !candidate) return null
   const anchorOwner = context.ownerIndex.get(anchor.layerId)
   const anchorFrame = context.frameIndex.get(anchor.frameId)

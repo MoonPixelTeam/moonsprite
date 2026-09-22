@@ -1,11 +1,15 @@
+import { mixedCelMoveAnchor, movedGroupCellKeys } from './animation-mixed-cel-drag'
+import { createAnimationCelEdgeTarget } from './animation-cel-edge-target'
+import { commitAnimationCelRange } from './animation-cel-range'
 import { useAnimationFramePreview } from './useAnimationFramePreview'
+import { useAnimationPointerQueue } from './useAnimationPointerQueue'
 import { useAnimationCopyCursor } from './useAnimationCopyCursor'
 import type { AnimationPointerDrag, AnimationGestureSelection, AnimationGestureActiveTarget, AnimationLoopSectionResizeEdge } from './animation-gesture-types'
-import { animationSlotRange } from '@/core/animation-slot-selection'
 import { isLayerCellShortcut, runLayerCellShortcut, toggleLayerMaskIsolatedView } from './layer-cell-shortcuts'
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { animationMaskAt } from '@/core/document-model'
-import { animationCelKey, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'; import { buildLayerPanelTree } from '@/core/layer-panel-layout'
+import { animationCelKey, createDefaultAnimationTimeline, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
 import { resolveAnimationLoopSectionRange } from '@/core/animation-loop-sections'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { type AnimationLoopSectionResizePreview } from './layer-timeline-layout'
@@ -46,10 +50,21 @@ export function useAnimationGestures(options: Options) {
     setAnimationGestureActiveTarget(target)
     framePreview.preview(target.frameId)
   }
-  // Group rows do not own AnimationCel records. Keep their empty timeline
-  // slots as a presentation selection so they can still be hit, boxed and
-  // repositioned without selecting or mutating descendant layers.
-  const [selectedAnimationGroupCellKeys, setSelectedAnimationGroupCellKeys] = useState<string[]>([])
+  // Group slots extend the marquee but stay outside editable cel selection.
+  const [previewGroupCellKeys, setSelectedAnimationGroupCellKeys] = useState<string[]>(session.selectedAnimationGroupCellKeys ?? [])
+  const selectedAnimationGroupCellKeys = !animationGestureSelection && session.selectedAnimationCellKeys.length > 0 ? session.selectedAnimationGroupCellKeys ?? [] : previewGroupCellKeys
+  const groupSelectionOwnerRef = useRef<readonly string[] | null>(null)
+  const previewCelRange = (anchor: string, target: string): void => {
+    const keys = cellRange(anchor, target)
+    const groups = new Set(session.document.groups.map(group => group.id))
+    setSelectedAnimationGroupCellKeys(keys.filter(key => groups.has(parseAnimationCelKey(key)?.layerId ?? '')))
+    setAnimationGestureSelection({ kind: 'cel', keys })
+  }
+  const commitCelRange = (anchor: string, target: string): void => {
+    const groups = commitAnimationCelRange(session, cellRange(anchor, target), target)
+    groupSelectionOwnerRef.current = session.selectedAnimationCellKeys
+    setSelectedAnimationGroupCellKeys(groups)
+  }
   const suppressAnimationClickRef = useRef(false)
   const clickTimerRef = useRef<number | null>(null)
   const suppressNextClick = (): void => {
@@ -62,17 +77,16 @@ export function useAnimationGestures(options: Options) {
   const [draggingAnimationCellKind, setDraggingAnimationCellKind] = useState<'cel' | 'mask' | null>(null)
   const [animationCelDropTargetKey, setAnimationCelDropTargetKey] = useState<string | null>(null)
   const animationCelDropTargetKeyRef = useRef<string | null>(null)
-  const animationCelEdgeCellsRef = useRef<{
-    drag: Extract<AnimationPointerDrag, { kind: 'cel' | 'mask' | 'group-cel' }>
-    scrollLeft: number
-    scrollTop: number
-    cells: Array<{ bounds: DOMRect; key: string }>
-  } | null>(null)
+  const [celEdgeTarget] = useState(createAnimationCelEdgeTarget)
   const [animationCelDragAnchorKey, setAnimationCelDragAnchorKey] = useState<string | null>(null)
   const animationFrameDropTargetRef = useRef<{ frameId: string; insertAfter: boolean } | null>(null)
   const [animationFrameDropTarget, setAnimationFrameDropTarget] = useState<{ frameId: string; insertAfter: boolean } | null>(null)
   const animationTimelineAutoScrollRef = useRef<{ frame: number | null; event: PointerEvent | null }>({ frame: null, event: null })
   const selectedAnimationGroupCellKeySet = new Set(selectedAnimationGroupCellKeys)
+  const {take: takeAnimationPointerMove, schedule: queueAnimationPointerMove} = useAnimationPointerQueue(event => {
+    stopAnimationTimelineAutoScroll()
+    latestRef.current.moveAnimationPointerDrag(event)
+  })
   const stopAnimationTimelineAutoScroll = (): void => {
     const autoScroll = animationTimelineAutoScrollRef.current
     if (autoScroll.frame !== null) window.cancelAnimationFrame(autoScroll.frame)
@@ -82,10 +96,14 @@ export function useAnimationGestures(options: Options) {
   const pointerHitsSelectionOutline = (event: React.PointerEvent<HTMLElement>, selector: string): boolean => timelineSelectionOutlineHit(layerListRef, event, selector)
   const frameRange = (anchorId: string, targetId: string): string[] => timelineFrameRange(timeline.frames, anchorId, targetId)
   useEffect(() => {
-    // Group-slot visuals are transient timeline selection state; clear them
-    // whenever another formal animation mode or a non-group row becomes
-    // active.
-    if (animationPointerDragRef.current?.kind === 'group-cel' && animationGestureSelection?.kind === 'cel') return
+    // Retain group decoration only for its owning gesture or committed selection.
+    if (animationGestureSelection?.kind === 'cel') return
+    if (session.selectedAnimationGroupCellKeys?.length) {
+      groupSelectionOwnerRef.current = session.selectedAnimationCellKeys
+      setSelectedAnimationGroupCellKeys(session.selectedAnimationGroupCellKeys)
+      return
+    }
+    if (groupSelectionOwnerRef.current === session.selectedAnimationCellKeys) return
     const activeGroupIds = new Set(session.selectedGroupIds.length > 0 ? session.selectedGroupIds : session.selectedGroupId ? [session.selectedGroupId] : [])
     const hasForeignGroupSlot = selectedAnimationGroupCellKeys.some((key) => {
       const parsed = parseAnimationCelKey(key)
@@ -98,8 +116,9 @@ export function useAnimationGestures(options: Options) {
     || session.selectedAnimationMaskCellKeys.length > 0) {
       setSelectedAnimationGroupCellKeys([])
     }
-  }, [selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys.length, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
+  }, [session.selectedAnimationGroupCellKeys, selectedAnimationGroupCellKeys.join('\u0000'), animationGestureSelection?.kind, session.document.id, session.selectedGroupId, session.selectedGroupIds.join('\u0000'), session.selectedAnimationFrameIds.length, session.selectedAnimationCellKeys, session.selectedAnimationMaskCellKeys.length, session.selectedAnimationMaskRowKeys.length])
   const cancelAnimationPointerDrag = (): void => {
+    takeAnimationPointerMove()
     document.body.classList.remove('animation-copy-drag')
     stopAnimationTimelineAutoScroll()
     framePreview.cancel()
@@ -107,7 +126,7 @@ export function useAnimationGestures(options: Options) {
     if (drag && 'longPressTimer' in drag && drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
     if (drag?.kind === 'group-cel') setSelectedAnimationGroupCellKeys([drag.sourceAnchorKey])
     animationPointerDragRef.current = null
-    animationCelEdgeCellsRef.current = null
+    celEdgeTarget.clear()
     setLoopSectionResizePreview(null)
     animationFrameDropTargetRef.current = null
     animationCelDropTargetKeyRef.current = null
@@ -186,11 +205,11 @@ export function useAnimationGestures(options: Options) {
     animationPointerDragRef.current = drag
     event.preventDefault()
   }
-  const beginAnimationCelDrag = (event: React.PointerEvent<HTMLButtonElement>, layerId: string, frameId: string): void => {
+  const beginAnimationCelDrag = (event: React.PointerEvent<HTMLButtonElement>, layerId: string, frameId: string, pointerAnchorKey?: string): void => {
     if (event.button !== 0 && event.button !== 2) return
     const key = animationCelKey(layerId, frameId)
     animationCopyRef.current = event.button === 0 && event.altKey
-    const copySelection = event.altKey && session.selectedAnimationCellKeys.length > 1 && session.selectedAnimationCellKeys.includes(key)
+    const copySelection = event.altKey && (session.selectedAnimationCellKeys.length > 1 || selectedAnimationGroupCellKeys.length > 0) && session.selectedAnimationCellKeys.includes(key)
     if (isLayerCellShortcut(event, 'cel') && !copySelection) {
       cancelAnimationPointerDrag()
       runLayerCellShortcut(event, session.document.id, layerId, frameId, 'cel')
@@ -225,6 +244,8 @@ export function useAnimationGestures(options: Options) {
     const rightButtonMove = event.button === 2 && selected && session.selectedAnimationCellKeys.length > 1
     const canMove = selected && (rightButtonMove || copySelection || pointerHitsSelectionOutline(event, '[data-animation-cel-selection]'))
     if (!canMove) {
+      groupSelectionOwnerRef.current = null
+      setSelectedAnimationGroupCellKeys([])
       showAnimationSelectionOutline()
       showAnimationCellSelectionOutline()
     }
@@ -234,6 +255,8 @@ export function useAnimationGestures(options: Options) {
       button: event.button as 0 | 2,
       sourceAnchorKey: key,
       cellKeys: canMove ? [...(active?.selectedAnimationCellKeys ?? [key])] : [key],
+      groupCellKeys: canMove ? selectedAnimationGroupCellKeys : [],
+      pointerAnchorKey: pointerAnchorKey ?? key,
       preserveSelection,
       startX: event.clientX,
       startY: event.clientY,
@@ -252,35 +275,23 @@ export function useAnimationGestures(options: Options) {
   }
   const beginAnimationGroupCelDrag = (event: React.PointerEvent<HTMLButtonElement>, groupId: string, frameId: string): void => {
     if (event.button !== 0) return
-    const key = animationCelKey(groupId, frameId)
-    const selected = selectedAnimationGroupCellKeySet.has(key)
+    const key = animationCelKey(groupId, frameId), selected = selectedAnimationGroupCellKeySet.has(key)
     const preserveSelection = event.shiftKey || event.ctrlKey
-    if (preserveSelection) {
-      animationPointerDragRef.current = {
-        kind: 'group-cel', sourceAnchorKey: key, preserveSelection: false,
-        selectionMode: event.ctrlKey || selected ? 'toggle' : 'range',
-        startX: event.clientX, startY: event.clientY, moved: false, canMove: false, lastSelectionTarget: key
-      }
-      setAnimationGestureSelection({ kind: 'cel', keys: [key] })
-      setAnimationGestureActiveTarget({ kind: 'cel', layerId: groupId, frameId })
-      event.preventDefault()
+    const canMove = !preserveSelection && selected && pointerHitsSelectionOutline(event, '[data-animation-cel-selection], [data-animation-selected-row]')
+    const anchor = canMove ? mixedCelMoveAnchor(session, key) : null
+    if (anchor) {
+      beginAnimationCelDrag(event, anchor.layerId, anchor.frameId, key)
       event.stopPropagation()
       return
     }
-    const canMove = selected && pointerHitsSelectionOutline(event, '[data-animation-cel-selection], [data-animation-selected-row]')
-    // Keep group focus/selection transient until pointer-up, matching layer
-    // and mask cel gestures.
+    groupSelectionOwnerRef.current = null
+    setSelectedAnimationGroupCellKeys([key])
     setSelectionOutlineVisible(true)
     setAnimationCellSelectionOutlineVisible(true)
     animationPointerDragRef.current = {
-      kind: 'group-cel',
-      sourceAnchorKey: key,
-      preserveSelection,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-      canMove,
-      lastSelectionTarget: key
+      kind: 'group-cel', sourceAnchorKey: key, preserveSelection: false,
+      selectionMode: preserveSelection ? event.ctrlKey || selected ? 'toggle' : 'range' : undefined,
+      startX: event.clientX, startY: event.clientY, moved: false, canMove, lastSelectionTarget: key
     }
     setAnimationGestureSelection(canMove ? null : { kind: 'cel', keys: [key] })
     setAnimationGestureActiveTarget(canMove ? null : { kind: 'cel', layerId: groupId, frameId })
@@ -370,35 +381,8 @@ export function useAnimationGestures(options: Options) {
     const context = animationCelDropClampContextRef.current?.drag === drag ? animationCelDropClampContextRef.current : createAnimationCelDropClampContext(drag, session, timeline)
     animationCelDropClampContextRef.current = context; return clampAnimationCelDropTarget(context, candidateKey)
   }
-  const animationCelEdgeTarget = (drag: Extract<AnimationPointerDrag, { kind: 'cel' | 'mask' | 'group-cel' }>, clientX: number, clientY: number): string | null => {
-    const selector = drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : drag.kind === 'group-cel' ? '[data-animation-group-cel-key]' : '[data-animation-cel-key]'
-    const datasetKey = drag.kind === 'mask' ? 'animationMaskCelKey' : drag.kind === 'group-cel' ? 'animationGroupCelKey' : 'animationCelKey'
-    const list = layerListRef.current
-    if (!list) return null
-    const cached = animationCelEdgeCellsRef.current
-    const scrollLeft = list.scrollLeft
-    const scrollTop = list.scrollTop
-    const cells = cached?.drag === drag && cached.scrollLeft === scrollLeft && cached.scrollTop === scrollTop
-      ? cached.cells
-      : [...list.querySelectorAll<HTMLElement>(selector)]
-        .map((element) => ({ bounds: element.getBoundingClientRect(), key: element.dataset[datasetKey] }))
-        .filter((entry): entry is { bounds: DOMRect; key: string } => Boolean(entry.key && entry.bounds.width > 0 && entry.bounds.height > 0))
-    if (cached?.drag !== drag || cached.scrollLeft !== scrollLeft || cached.scrollTop !== scrollTop) animationCelEdgeCellsRef.current = { drag, scrollLeft, scrollTop, cells }
-    if (cells.length === 0) return null
-    const nearestRowCenter = cells.reduce((nearest, entry) => {
-      const center = entry.bounds.top + entry.bounds.height / 2
-      return Math.abs(center - clientY) < Math.abs(nearest - clientY) ? center : nearest
-    }, cells[0].bounds.top + cells[0].bounds.height / 2)
-    const rowCells = cells
-    .filter((entry) => Math.abs(entry.bounds.top + entry.bounds.height / 2 - nearestRowCenter) < 1)
-    .sort((left, right) => left.bounds.left - right.bounds.left)
-    const first = rowCells[0]
-    const last = rowCells.at(-1)
-    if (!first || !last) return null
-    if (clientX < first.bounds.left) return first.key
-    if (clientX > last.bounds.right) return last.key
-    return null
-  }
+  const animationCelEdgeTarget = (drag: Extract<AnimationPointerDrag, { kind: 'cel' | 'mask' | 'group-cel' }>, clientX: number, clientY: number): string | null =>
+    celEdgeTarget.at(layerListRef.current, drag, session.layersPanelRevision, session.collapsedGroupIds, clientX, clientY)
   const animationTimelineAutoScrollDelta = (clientX: number): number => timelineAutoScrollDelta(layerListRef, clientX)
   const scrollAnimationTimelineAtPointer = (clientX: number): boolean => {
     const list = layerListRef.current
@@ -419,12 +403,12 @@ export function useAnimationGestures(options: Options) {
     if (autoScroll.frame !== null) return
     autoScroll.frame = window.requestAnimationFrame(() => {
       autoScroll.frame = null
-      const latestEvent = autoScroll.event
+      const latestEvent = takeAnimationPointerMove() ?? autoScroll.event
       if (!latestEvent || !scrollAnimationTimelineAtPointer(latestEvent.clientX)) {
         autoScroll.event = null
         return
       }
-      moveAnimationPointerDrag(latestEvent)
+      flushSync(() => latestRef.current.moveAnimationPointerDrag(latestEvent))
     })
   }
   const moveAnimationPointerDrag = (event: PointerEvent): void => {
@@ -463,33 +447,23 @@ export function useAnimationGestures(options: Options) {
           previewGestureTarget({ kind: 'frame', frameId })
           setAnimationGestureSelection({ kind: 'frame', ids: frameRange(drag.sourceFrameId, frameId) })
         }
-      } else if (drag.kind === 'group-cel') {
-        const key = target?.closest<HTMLElement>('[data-animation-group-cel-key]')?.dataset.animationGroupCelKey
-        if (key && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 4 && key !== drag.lastSelectionTarget) {
-          drag.moved = true
-          drag.lastSelectionTarget = key
-          animationCelDropTargetKeyRef.current = key
-          setAnimationCelDropTargetKey(key)
-          const groups = buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).filter((node) => node.kind === 'group')
-          const keys = animationSlotRange(groups.map((node) => node.id), timeline.frames.map((frame) => frame.id), drag.sourceAnchorKey, key)
-          setSelectedAnimationGroupCellKeys(keys)
-          setAnimationGestureSelection({ kind: 'cel', keys })
-          const parsedTarget = parseAnimationCelKey(key)
-          if (parsedTarget) previewGestureTarget({ kind: 'frame', frameId: parsedTarget.frameId })
-        }
       } else {
-        const selector = drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : '[data-animation-cel-key]'
-        const key = target?.closest<HTMLElement>(selector)?.dataset[drag.kind === 'mask' ? 'animationMaskCelKey' : 'animationCelKey']
+        const cell = target?.closest<HTMLElement>(drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : '[data-animation-cel-key], [data-animation-group-cel-key]')
+        const key = drag.kind === 'mask' ? cell?.dataset.animationMaskCelKey : cell?.dataset.animationCelKey ?? cell?.dataset.animationGroupCelKey
         if (key && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= 4 && key !== drag.lastSelectionTarget) {
-          if (drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
-          drag.longPressTimer = null
-          drag.longPressed = true
-          drag.pendingSelection = false
+          if (drag.kind === 'group-cel') drag.moved = true
+          else {
+            if (drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
+            drag.longPressTimer = null
+            drag.longPressed = true
+            drag.pendingSelection = false
+          }
           drag.lastSelectionTarget = key
           showAnimationSelectionOutline()
           const parsedTarget = parseAnimationCelKey(key)
-          if (parsedTarget) previewGestureTarget({ kind: drag.kind, layerId: parsedTarget.layerId, frameId: parsedTarget.frameId })
-          setAnimationGestureSelection({ kind: drag.kind, keys: drag.kind === 'mask' ? maskCellRange(drag.sourceAnchorKey, key) : cellRange(drag.sourceAnchorKey, key) })
+          if (parsedTarget) previewGestureTarget({ kind: drag.kind === 'mask' ? 'mask' : 'cel', layerId: parsedTarget.layerId, frameId: parsedTarget.frameId })
+          if (drag.kind === 'mask') setAnimationGestureSelection({ kind: 'mask', keys: maskCellRange(drag.sourceAnchorKey, key) })
+          else previewCelRange(drag.sourceAnchorKey, key)
         }
       }
       // Extending a range may need to reveal frames beyond the current
@@ -531,8 +505,8 @@ export function useAnimationGestures(options: Options) {
       setAnimationFrameDropTarget(next)
       return
     }
-    const cell = target?.closest<HTMLElement>(drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : drag.kind === 'group-cel' ? '[data-animation-group-cel-key]' : '[data-animation-cel-key]')
-    const pointedKey = drag.kind === 'mask' ? cell?.dataset.animationMaskCelKey ?? null : drag.kind === 'group-cel' ? cell?.dataset.animationGroupCelKey ?? null : cell?.dataset.animationCelKey ?? null
+    const cell = target?.closest<HTMLElement>(drag.kind === 'mask' ? '[data-animation-mask-cel-key]' : drag.kind === 'group-cel' ? '[data-animation-group-cel-key]' : drag.groupCellKeys?.length ? '[data-animation-cel-key], [data-animation-group-cel-key]' : '[data-animation-cel-key]')
+    const pointedKey = drag.kind === 'mask' ? cell?.dataset.animationMaskCelKey ?? null : drag.kind === 'group-cel' ? cell?.dataset.animationGroupCelKey ?? null : cell?.dataset.animationCelKey ?? cell?.dataset.animationGroupCelKey ?? null
     const candidateKey = pointedKey ?? animationCelEdgeTarget(drag, event.clientX, event.clientY)
     const key = candidateKey && (drag.kind === 'cel' || drag.kind === 'mask')
     ? clampAnimationCelDropTargetForGesture(drag, candidateKey)
@@ -575,7 +549,8 @@ export function useAnimationGestures(options: Options) {
     if ('longPressTimer' in drag && drag.longPressTimer !== null) window.clearTimeout(drag.longPressTimer)
     if (drag.moved) {
       if ((drag.kind === 'frame' || drag.kind === 'cel') && drag.button === 2) suppressNextContextMenuRef.current = true
-      if (drag.kind === 'frame' && animationFrameDropTargetRef.current) {
+      if (drag.kind === 'group-cel' && !drag.canMove) commitCelRange(drag.sourceAnchorKey, drag.lastSelectionTarget)
+      else if (drag.kind === 'frame' && animationFrameDropTargetRef.current) {
         if (animationCopyRef.current) store.pasteAnimationFrames(animationFrameDropTargetRef.current)
         else store.moveSelectedAnimationFrames(animationFrameDropTargetRef.current.frameId, animationFrameDropTargetRef.current.insertAfter)
       } else if (drag.kind === 'cel' && animationCelDropTargetKeyRef.current) {
@@ -586,7 +561,10 @@ export function useAnimationGestures(options: Options) {
           // preserve the destination selection guides through that revision
           // transition so the post-drop bbox does not flash away.
           optionsRef.current.preserveSelectionAfterEdit()
-          store.moveSelectedAnimationCels(targetKey.slice(0, target), targetKey.slice(target + 1), drag.sourceAnchorKey, animationCopyRef.current)
+          const groups = movedGroupCellKeys(session, drag, targetKey)
+          store.moveSelectedAnimationCels(targetKey.slice(0, target), targetKey.slice(target + 1), drag.sourceAnchorKey, animationCopyRef.current, groups)
+          groupSelectionOwnerRef.current = session.selectedAnimationCellKeys
+          setSelectedAnimationGroupCellKeys(groups)
           // Keep the formal destination selection visible after the Store
           // replaces the moved keys; this lets the new multi-cel bbox settle
           // instead of hiding the outline on pointerup.
@@ -633,9 +611,7 @@ export function useAnimationGestures(options: Options) {
         if (!active?.selectedAnimationMaskCellKeys.includes(drag.sourceAnchorKey)) store.selectAnimationMaskCell(drag.sourceAnchorKey, 'replace')
         if (drag.lastSelectionTarget !== drag.sourceAnchorKey) store.selectAnimationMaskCell(drag.lastSelectionTarget, 'range')
       } else {
-        const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
-        if (!active?.selectedAnimationCellKeys.includes(drag.sourceAnchorKey)) store.selectAnimationCell(drag.sourceAnchorKey, 'replace')
-        if (drag.lastSelectionTarget !== drag.sourceAnchorKey) store.selectAnimationCell(drag.lastSelectionTarget, 'range')
+        commitCelRange(drag.sourceAnchorKey, drag.lastSelectionTarget)
       }
     } else if (!drag.preserveSelection && !((drag.kind === 'frame' || drag.kind === 'cel') && drag.button === 2 && drag.canMove)) {
       if (drag.kind === 'frame') selectAnimationFrame(drag.sourceFrameId)
@@ -657,7 +633,7 @@ export function useAnimationGestures(options: Options) {
       setSelectedAnimationGroupCellKeys([])
     }
     animationPointerDragRef.current = null
-    animationCelEdgeCellsRef.current = null
+    celEdgeTarget.clear()
     animationFrameDropTargetRef.current = null
     animationCelDropTargetKeyRef.current = null
     setAnimationCelDragAnchorKey(null)
@@ -671,6 +647,15 @@ export function useAnimationGestures(options: Options) {
   }
   const latestRef = useRef({ moveAnimationPointerDrag, finishAnimationPointerDrag, cancelAnimationPointerDrag })
   latestRef.current = { moveAnimationPointerDrag, finishAnimationPointerDrag, cancelAnimationPointerDrag }
+  const scheduleAnimationPointerMove = (event: PointerEvent): void => {
+    const drag = animationPointerDragRef.current
+    if (!drag) return
+    if (drag.kind === 'frame' || drag.kind === 'cel') {
+      animationCopyRef.current = event.altKey
+      document.body.classList.toggle('animation-copy-drag', event.altKey && drag.canMove)
+    }
+    queueAnimationPointerMove(event, drag.kind !== 'loop-section' && !drag.canMove)
+  }
   useEffect(() => () => {
     latestRef.current.cancelAnimationPointerDrag()
     if (clickTimerRef.current !== null) window.clearTimeout(clickTimerRef.current)
@@ -690,8 +675,12 @@ export function useAnimationGestures(options: Options) {
       return suppressed
     },
     clickSuppressed: () => suppressAnimationClickRef.current,
-    move: (event: PointerEvent) => latestRef.current.moveAnimationPointerDrag(event),
-    finish: (cancelled = false) => latestRef.current.finishAnimationPointerDrag(cancelled),
+    move: scheduleAnimationPointerMove,
+    finish: (cancelled = false) => {
+      const next = takeAnimationPointerMove()
+      if (next && !cancelled && useWorkspace.getState().activeId === optionsRef.current.session.document.id) latestRef.current.moveAnimationPointerDrag(next)
+      latestRef.current.finishAnimationPointerDrag(cancelled)
+    },
     cancel: () => latestRef.current.cancelAnimationPointerDrag()
   }
 }

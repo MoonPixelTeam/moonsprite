@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { deriveLayerPanelVisuals, type LayerPanelVisualOptions } from './deriveLayerPanelVisuals'
 import { createLayerPanelStructure } from './layer-panel-structure'
 import { createCelDragPreview } from './animation-cel-drag-preview'
+import { createTimelineVisualCellCache } from '@/core/animation-timeline-cell-cache'
 
 export function useLayerPanelVisuals(options: LayerPanelVisualOptions) {
   const {session, timeline, inlineMasks, gesture} = options
@@ -11,7 +12,8 @@ export function useLayerPanelVisuals(options: LayerPanelVisualOptions) {
     session.document, session.contentRevision, session.layersPanelRevision, session.collapsedGroupIds,
     timeline, inlineMasks
   ])
-  const visuals = useMemo(() => deriveLayerPanelVisuals({...options, structure, animationCelDropTargetKey: null}), [
+  const cellStateCache = useMemo(() => createTimelineVisualCellCache(structure.visualTopology), [structure])
+  const visuals = useMemo(() => deriveLayerPanelVisuals({...options, structure, cellStateCache, animationCelDropTargetKey: null}), [
     structure, session, session.revision, session.contentRevision, session.layersPanelRevision,
     session.document.activeLayerId, timeline.activeFrameId, session.activeLayerMaskId,
     session.animationCellSelectionExplicit, session.animationPlaying, session.layerMaskIsolatedView,

@@ -6,6 +6,7 @@ import { useWorkspace } from '@/store/workspace'
 import { deriveLayerPanelVisuals, type LayerPanelVisualOptions } from './deriveLayerPanelVisuals'
 import { createLayerPanelStructure } from './layer-panel-structure'
 import { useLayerPanelVisuals } from './useLayerPanelVisuals'
+import { createTimelineVisualCellCache } from '@/core/animation-timeline-cell-cache'
 
 afterEach(() => { cleanup(); useWorkspace.setState({sessions: [], activeId: null}) })
 
@@ -71,6 +72,31 @@ it('invalidates topology for in-place content/metadata edits and collapsed group
   }
 })
 
+it.each(['frame', 'cel'] as const)('reuses link geometry while extending a %s marquee and refreshes it after unlinking', kind => {
+  const options = {...setup(), gesture: null, animationCelDropTargetKey: null}
+  const {session, timeline} = options
+  const layerId = session.document.layers[0].id
+  const range = (frameIds: string[]) => ({...options, animationGestureSelection: kind === 'frame'
+    ? {kind: 'frame' as const, ids: frameIds}
+    : {kind: 'cel' as const, keys: frameIds.map(id => animationCelKey(layerId, id))}})
+  const {result, rerender} = renderHook(useLayerPanelVisuals, {initialProps: range(['f0'])})
+  const members = result.current.linkedCelMemberKeys
+  const maskSlots = result.current.linkedMaskSlotVisuals
+  expect(result.current.selectedLinkedCelMemberKeys.has(`cel|${layerId}:f1`)).toBe(true)
+  rerender(range(['f2']))
+  expect(result.current.linkedCelMemberKeys).toBe(members)
+  expect(result.current.linkedMaskSlotVisuals).toBe(maskSlots)
+  expect(result.current.selectedLinkedCelMemberKeys.has(`cel|${layerId}:f1`)).toBe(false)
+  rerender(range(['f0', 'f1', 'f2']))
+  expect(result.current.linkedCelMemberKeys).toBe(members)
+  expect(result.current.selectedLinkedCelMemberKeys.has(`cel|${layerId}:f1`)).toBe(true)
+  timeline.cels[1].linkedCelId = null
+  session.contentRevision++
+  rerender(range(['f0', 'f1', 'f2']))
+  expect(result.current.linkedCelMemberKeys).not.toBe(members)
+  expect(result.current.linkedCelMemberKeys.has(`cel|${layerId}:f1`)).toBe(false)
+})
+
 it('measures repeated movement and range selection on a 24 by 120 timeline', () => {
   const options = setup(24, 120)
   const targets = options.timeline.frames.slice(10, 30).map(frame => ({...options,
@@ -87,6 +113,17 @@ it('measures repeated movement and range selection on a 24 by 120 timeline', () 
   }}))
   const rangeBefore = measure(() => { for (const range of ranges) deriveLayerPanelVisuals(range) })
   const rangeAfter = measure(() => { for (const range of ranges) deriveLayerPanelVisuals({...range, structure}) })
+  const cellStateCache = createTimelineVisualCellCache(structure.visualTopology)
+  let previous = deriveLayerPanelVisuals({...ranges[0], structure, cellStateCache}).timelineVisualState.cells
+  let reused = 0
+  const rangeCached = measure(() => { for (const range of ranges) {
+    const current = deriveLayerPanelVisuals({...range, structure, cellStateCache}).timelineVisualState.cells
+    reused += current.filter((cell, index) => cell === previous[index]).length
+    previous = current
+  } })
+  expect(reused).toBeGreaterThan(2880 * ranges.length * 0.9)
+  expect(previous).toEqual(deriveLayerPanelVisuals({...ranges.at(-1)!, structure}).timelineVisualState.cells)
+  process.stdout.write(`Range state cache: ${rangeAfter.toFixed(1)} -> ${rangeCached.toFixed(1)} ms; reused ${reused}/${2880 * ranges.length} cell states\n`)
   process.stdout.write(`Timeline 2880 slots / 20 updates: move ${baseline.toFixed(1)} -> ${cached.toFixed(1)} ms; range derivation ${rangeBefore.toFixed(1)} -> ${rangeAfter.toFixed(1)} ms\n`)
 })
 

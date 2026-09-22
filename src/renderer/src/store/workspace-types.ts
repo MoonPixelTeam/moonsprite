@@ -334,6 +334,8 @@ export interface DocumentSession {
   selectedAnimationFrameIds: string[]
   animationFrameSelectionAnchorId: string | null
   selectedAnimationCellKeys: string[]
+  /** Blank group slots belonging to the cel marquee, never editable cels. */
+  selectedAnimationGroupCellKeys?: string[]
   animationCellSelectionAnchorKey: string | null
   /** Distinguishes timeline cel selection from cells derived only for selected-layer highlighting. */
   animationCellSelectionExplicit: boolean

@@ -22,7 +22,7 @@ import { useLayerRowDrag } from './useLayerRowDrag'
 import { LayerSettingsEditor } from './LayerSettingsEditor'
 import { layerQuickActionMetadata } from './layer-panel-settings'
 import { layerBlendOptions } from './layer-blend-options'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import type { DockDragProps } from '@/components/workspace-panel-types'
@@ -94,7 +94,7 @@ export function LayersPanel({
   // selecting or dragging an empty slot must not create blank AnimationCels.
   const timeline = session.document.animation ?? createDefaultAnimationTimeline()
   const loopSectionLayout = layoutAnimationLoopSections(timelineWithLoopSectionPreview(timeline, loopSectionResizePreview))
-  const celLookup = createAnimationCelLookup(timeline)
+  const celLookup = useMemo(() => createAnimationCelLookup(timeline), [timeline, timeline.cels, session.contentRevision, session.layersPanelRevision])
   const activeFrameIndex = Math.max(
     0,
     timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
@@ -364,7 +364,7 @@ export function LayersPanel({
   const { gifDropTargetIndex } = useTimelineFileDrop({ session, timeline })
 
   const cellRange = (anchorKey: string, targetKey: string): string[] =>
-    animationSlotRange(session.document.layers.map((layer) => layer.id), timeline.frames.map((frame) => frame.id), anchorKey, targetKey)
+    animationSlotRange(nodes.map((node) => node.id), timeline.frames.map((frame) => frame.id), anchorKey, targetKey)
   const maskOwnerIds = new Set([...(timeline.layerMasks ?? []).map((entry) => entry.layerId), ...(timeline.groupMasks ?? []).map((entry) => entry.groupId)])
   const maskCellRange = (anchorKey: string, targetKey: string): string[] =>
     animationSlotRange(buildLayerPanelTree({ layers: session.document.layers, groups: session.document.groups, collapsedGroupIds: [] }).map((node) => node.id).filter((id) => maskOwnerIds.has(id)), timeline.frames.map((frame) => frame.id), anchorKey, targetKey)
@@ -608,7 +608,7 @@ export function LayersPanel({
   })
   const animationLoopSectionHeader =
     visibleLoopSectionLaneCount > 0 ? (
-      <div className="animation-loop-section-viewport" onPointerDown={(event) => event.stopPropagation()}>
+      <div className="animation-loop-section-viewport" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button, input, select')) event.stopPropagation() }}>
         <div ref={animationLoopSectionTrackRef} className="animation-loop-section-track">
           {animationLoopSectionBars}
         </div>
@@ -734,7 +734,7 @@ export function LayersPanel({
     const viewportRect = viewport.getBoundingClientRect()
     if (trackRect.width <= 0 || viewportRect.width <= 0) return
     const next = Array.from(actions.querySelectorAll<HTMLButtonElement>('[data-timeline-quick-action]'))
-      .filter((button) => trackRect.width >= button.getBoundingClientRect().left - viewportRect.left)
+      .filter((button) => trackRect.right > button.getBoundingClientRect().left)
       .length
     setHiddenTimelineQuickActionCount((current) => current === next ? current : next)
   }, [hideSideDockActions, layerSettings.timelineHidden, visibleLoopSectionLaneCount, visibleLayerQuickActions.length, timeline.frames.length])
@@ -838,7 +838,7 @@ export function LayersPanel({
             </>
           ) : (
             <>
-              {layerSettings.timelineHidden ? <LayerHeaderProperties documentId={session.document.id} /> : <div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+              {layerSettings.timelineHidden ? <LayerHeaderProperties documentId={session.document.id} /> : <div ref={layerAnimationToolbarRef} className="layer-animation-toolbar" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button, input, select')) event.stopPropagation() }}>
                 <span className="layer-animation-playback">
                   <button type="button" title={t('timeline.firstFrame')} aria-label={t('timeline.firstFrame')} onClick={() => selectAnimationEdge('first')}>
                     <PlaybackPixelIcon kind="first" />
@@ -908,7 +908,7 @@ export function LayersPanel({
                 className="panel-actions layer-quick-actions"
                 role="toolbar"
                 aria-label={t('layers.quickActions')}
-                onPointerDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button, input, select')) event.stopPropagation() }}
               >
                 {layerQuickActionButtons}
                 <button
@@ -939,7 +939,7 @@ export function LayersPanel({
                 '--layer-selection-span': layerSelectionSpan
               } as CSSProperties
             }
-            onScroll={syncAnimationLoopSectionScroll}
+            onScroll={() => { syncAnimationLoopSectionScroll(); syncTimelineQuickActionVisibility() }}
             onPointerEnter={spaceDragScroll.enter}
             onPointerDownCapture={(event) => { spaceDragScroll.begin(event) }}
             onPointerMove={(event) => { spaceDragScroll.move(event) }}

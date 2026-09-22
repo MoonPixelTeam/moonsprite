@@ -18,7 +18,7 @@ export class OnionSkinCompositeCache {
       animationLoopSectionAtFrame(timeline, timeline.activeFrameId))
     const key = [layerId, revision, timeline.activeFrameId,
       ...refs.map((ref) => `${ref.frameId}:${ref.side}:${ref.distance}`),
-      style.previousOpacity, style.nextOpacity,
+      style.scope, style.previousOpacity, style.nextOpacity,
       ...[style.previousColor, style.nextColor].flatMap((color) => [color.r, color.g, color.b, color.a])].join(':')
     if (this.cached?.source === document && this.cached.key === key) return this.cached.document
     const display = createOnionSkinDisplayDocument(document, refs, style, layerId,

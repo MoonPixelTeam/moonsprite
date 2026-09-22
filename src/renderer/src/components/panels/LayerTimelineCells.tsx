@@ -14,6 +14,7 @@ import { memo, useRef } from 'react'
 import type { LayerTimelineCellsProps as Props } from './layer-timeline-cell-types'
 import { timelineCellRenderScope, timelineCellRenderState, timelineGridRenderState, sameTimelineCellState } from './layer-timeline-cell-cache'
 import { useTimelineCellActions } from './useTimelineCellActions'
+import { timelineCellElement, type TimelineCellElementCache } from './timeline-cell-element-cache'
 interface CellProps {
   panel: Props
   displayRow: Props['displayRows'][number]
@@ -242,7 +243,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
         key={`${node.id}-${frame.id}`}
         data-frame-index={index}
         data-animation-group-cel-key={groupCellKey}
-        className={`layer-animation-cel group ${groupRowClasses.active || groupRowClasses.frameActive ? 'active-frame' : ''} ${frameVisuallySelected ? 'selected-animation-frame' : ''} ${groupRowClasses.selected ? 'selected-layer' : ''} ${animationCelDropTargetKey === groupCellKey ? 'drop-target' : ''}`}
+        className={`layer-animation-cel group ${groupRowClasses.active || groupRowClasses.frameActive ? 'active-frame' : ''} ${frameVisuallySelected ? 'selected-animation-frame' : ''} ${groupCellSelected ? 'selected-cel' : ''} ${groupRowClasses.selected ? 'selected-layer' : ''} ${animationCelDropTargetKey === groupCellKey ? 'drop-target' : ''}`}
         title={t('timeline.frameNumber', { number: index + 1 })}
         onPointerDown={(event) => {
           const frameBorderMove = session.selectedAnimationFrameIds.includes(frame.id) && animationGestures.hitsSelectionOutline(event, `[data-animation-frame-selection~="${frame.id}"]`)
@@ -411,14 +412,20 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
 }, (previous, next) => next.renderState !== null && previous.renderState !== null && sameTimelineCellState(previous.renderState, next.renderState))
 
 const CachedTimelineGrid = memo(function TimelineGrid({panel, scope}: {panel: Props; scope: readonly unknown[]; renderState: readonly unknown[]}) {
+  const previous = useRef<TimelineCellElementCache>(new Map())
+  const next: TimelineCellElementCache = new Map()
   const draggingFrameIdSet = new Set(panel.draggingAnimationFrameIds)
   const draggingCellKeySet = new Set(panel.draggingAnimationCellKeys)
-  return <>{panel.displayRows.flatMap(displayRow => panel.timeline.frames.map((frame, index) => <CachedTimelineCell
-    key={`${displayRow.kind === 'mask' ? `mask-${displayRow.owner.id}` : displayRow.node.id}-${frame.id}`}
-    panel={panel} displayRow={displayRow} frame={frame} index={index}
-    draggingFrameIdSet={draggingFrameIdSet} draggingCellKeySet={draggingCellKeySet}
-    renderState={timelineCellRenderState(panel, displayRow, frame.id, index, scope, draggingFrameIdSet, draggingCellKeySet)}
-  />))}</>
+  const cells = panel.displayRows.flatMap(displayRow => panel.timeline.frames.map((frame, index) => {
+    const key = `${displayRow.kind === 'mask' ? `mask-${displayRow.owner.id}` : displayRow.node.id}-${frame.id}`
+    const state = timelineCellRenderState(panel, displayRow, frame.id, index, scope, draggingFrameIdSet, draggingCellKeySet)
+    return timelineCellElement(previous.current, next, key, state, () => <CachedTimelineCell
+      key={key} panel={panel} displayRow={displayRow} frame={frame} index={index}
+      draggingFrameIdSet={draggingFrameIdSet} draggingCellKeySet={draggingCellKeySet} renderState={state}
+    />)
+  }))
+  previous.current = next
+  return <>{cells}</>
 }, (previous, next) => sameTimelineCellState(previous.renderState, next.renderState))
 
 export function LayerTimelineCells(props: Props) {

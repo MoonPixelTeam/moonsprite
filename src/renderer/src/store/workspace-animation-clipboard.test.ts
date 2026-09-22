@@ -2,11 +2,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MoonSpriteApi } from '@shared/types-platform'
 import { addBlankAnimationFrame, animationCelAt, animationCelHasContent, animationCelKey, connectAnimationCels, ensureAnimationDocument } from '@/core/animation'
 import { createDocument, getActiveLayer, writeLayerColor } from '@/core/document'
+import { cutWorkspaceItems } from './workspace-cut'
 import { clipboardService } from './clipboard-service'
 import { useWorkspace } from './workspace'
 import { refreshActiveAnimationFrame } from '@/core/animation'
 
 describe('animation clipboard shortcuts', () => {
+  it.each([
+    { cut: false, subset: false, cross: false, clip: false },
+    { cut: false, subset: true, cross: false, clip: false },
+    { cut: true, subset: false, cross: false, clip: false },
+    { cut: false, subset: true, cross: true, clip: false },
+    { cut: true, subset: true, cross: true, clip: true }
+  ])('preserves clipboard links and history: %j', ({ cut, subset, cross, clip }) => {
+    const document = createDocument('linked clipboard', 1, 1, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    const layer = document.layers[0]
+    const frames = [timeline.activeFrameId, addBlankAnimationFrame(document), addBlankAnimationFrame(document), addBlankAnimationFrame(document)]
+    const originals = frames.slice(0, 3).map(frame => animationCelAt(timeline, layer.id, frame)!)
+    originals[0].surface!.pixels.set([255, 0, 0, 255])
+    refreshActiveAnimationFrame(document)
+    connectAnimationCels(document, originals.map(cel => cel.id))
+    useWorkspace.getState().addSession(document)
+    const copied = subset ? frames.slice(1, 3) : frames.slice(0, 3)
+    const keys = copied.map(frame => animationCelKey(layer.id, frame))
+    useWorkspace.getState().selectAnimationCell(keys[0], 'replace', keys)
+    if (clip) useWorkspace.getState().setSelection({x: 0, y: 0, width: 1, height: 1})
+    if (cut) cutWorkspaceItems('cels')
+    else useWorkspace.getState().copySelectedAnimationCels()
+    const target = cross ? createDocument('paste target', 1, 1, 'rgba') : document
+    if (cross) useWorkspace.getState().addSession(target)
+    else useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, frames[3]))
+    useWorkspace.getState().pasteAnimationCels()
+    const pastedTimeline = ensureAnimationDocument(target)
+    const pastedFrames = pastedTimeline.frames.slice(cross ? 0 : 3)
+    const checkLinks = () => {
+      const pasted = pastedFrames.map(frame => animationCelAt(pastedTimeline, target.activeLayerId, frame.id)!)
+      expect(pasted).toHaveLength(copied.length)
+      expect(pasted[0].linkedCelId).toBeNull()
+      for (const cel of pasted) expect(Array.from(cel.surface!.pixels)).toEqual([255, 0, 0, 255])
+      for (const cel of pasted.slice(1)) expect(cel.linkedCelId).toBe(pasted[0].id)
+      expect(originals.map(cel => cel.id)).not.toContain(pasted[0].id)
+    }
+    checkLinks()
+    useWorkspace.getState().undo()
+    expect(pastedTimeline.frames).toHaveLength(cross ? 1 : 4)
+    useWorkspace.getState().redo()
+    checkLinks()
+  })
+
   it('copies the canvas selection across multiple cels into another document', async () => {
     const source = createDocument('selected source', 4, 1, 'rgba')
     const layer = getActiveLayer(source)
@@ -210,5 +254,10 @@ describe('animation clipboard shortcuts', () => {
     expect(Array.from(fourthCel.surface!.pixels)).toEqual([0, 0, 255, 255])
     expect(thirdCel.linkedCelId).toBeNull()
     expect(fourthCel.linkedCelId).toBeNull()
+    useWorkspace.getState().undo()
+    expect(animationCelAt(timeline, layer.id, fourthFrameId)!.linkedCelId).toBe(thirdCel.id)
+    expect(Array.from(animationCelAt(timeline, layer.id, thirdFrameId)!.surface!.pixels)).toEqual([0, 255, 0, 255])
+    useWorkspace.getState().redo()
+    expect(animationCelAt(timeline, layer.id, fourthFrameId)!.linkedCelId).toBeNull()
   })
 })

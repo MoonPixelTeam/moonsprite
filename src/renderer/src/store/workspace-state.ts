@@ -391,7 +391,8 @@ export interface WorkspaceAnimationCommands {
   stepAnimationFrame(delta: number): void
   stepLayerSelection(delta: number): void
   selectAnimationFrame(frameId: string, mode?: 'replace' | 'toggle' | 'range'): void
-  selectAnimationCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
+  /** replacementKeys supplies an exact visible-row rectangle; group slots are ignored. */
+  selectAnimationCell(key: string, mode?: 'replace' | 'toggle' | 'range', replacementKeys?: readonly string[]): void
   selectAnimationMaskCell(key: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationMaskRow(ownerKind: 'layer' | 'group', ownerId: string, mode?: 'replace' | 'toggle' | 'range'): void
   selectAnimationCelContent(key: string, additive?: boolean): void
@@ -402,7 +403,7 @@ export interface WorkspaceAnimationCommands {
   disconnectSelectedAnimationCels(): void
   copySelectedAnimationCels(): void
   pasteAnimationCels(): void
-  moveSelectedAnimationCels(layerId: string, frameId: string, sourceAnchorKey: string, copy?: boolean): void
+  moveSelectedAnimationCels(layerId: string, frameId: string, sourceAnchorKey: string, copy?: boolean, groupCellKeys?: readonly string[]): void
   copySelectedAnimationMasks(): void
   pasteAnimationMasks(ownerId?: string, frameId?: string): void
   moveSelectedAnimationMasks(ownerId: string, frameId: string, sourceAnchorKey: string): void

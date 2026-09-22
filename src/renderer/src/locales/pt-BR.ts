@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ptBRMessages = {
+  "layers.animationSettings": "Configurações de animação",
+  "layers.defaultModeHint": "Exibe camadas e miniaturas para desenhar.",
+  "layers.animationModeHint": "Exibe quadros, seções de loop e ferramentas de animação.",
+  "layers.settingsLiveHint": "As alterações são aplicadas imediatamente",
   'quickCommands.cut': 'Recortar',
   'quickCommands.copyMerged': 'Copiar mesclado',
   'quickCommands.quickOutline': 'Contorno rápido',
@@ -50,7 +54,7 @@ export const ptBRMessages = {
   'reference.openWindow': 'Abrir referência atual em janela flutuante',
   'reference.newWindow': 'Nova janela de referência',
   'layers.panelMode': 'Modo do painel de camadas',
-  'layers.mode.default': 'Modo padrão',
+  'layers.mode.default': 'Modo normal',
   'layers.mode.animation': 'Modo de animação',
   'panel.reference': "Imagem de referência",
   'reference.empty': "Clique para colar ou pressione Ctrl+V",
@@ -1946,6 +1950,9 @@ export const ptBRMessages = {
   "layers.onionSkinRange": "Quadro Intervalo",
   "layers.onionSkinOpacity": "Overlay Opacidade",
   "layers.onionSkinColors": "Quadro Cores",
+  "layers.onionSkinScope": "Aplicar a",
+  "layers.onionSkinCurrentLayer": "Camada atual",
+  "layers.onionSkinAllLayers": "Todas as camadas",
   "layers.previous": 'Anteriores',
   "layers.next": 'Próxima',
   "layers.previousFrames": "anterior Quadros",

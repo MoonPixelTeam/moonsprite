@@ -1,4 +1,5 @@
 import { createAnimationTimelineVisualTopology, type AnimationTimelineVisualTopology } from './animation-timeline-visual-topology'
+import type { TimelineVisualCellCache } from './animation-timeline-cell-cache'
 /**
  * Pure, presentation-agnostic visual state for the animation timeline.
  *
@@ -73,6 +74,7 @@ export interface TimelineVisualStateInput {
   frames: readonly TimelineVisualFrame[]
   cells: readonly TimelineVisualCell[]
   topology?: AnimationTimelineVisualTopology
+  cellStateCache?: TimelineVisualCellCache
   canonicalIndex?: CanonicalTimelineIndex
   selection: TimelineSelectionSnapshot
   active?: {
@@ -591,7 +593,9 @@ export const deriveAnimationTimelineVisualState = (
   }))
 
   const cellStates: TimelineVisualCellState[] = []
-  for (const {row, frame, key, kind, cell, valid, groupId, groupKey, linked, role} of topology.slots) {
+  const cellCache = input.cellStateCache?.topology === topology ? input.cellStateCache : undefined
+  for (let slotIndex = 0; slotIndex < topology.slots.length; slotIndex++) {
+    const {row, frame, key, kind, cell, valid, groupId, groupKey, linked, role} = topology.slots[slotIndex]
     const activeLayer = row.ownerKind === 'layer' && row.ownerId === normalizedActiveLayerId
     const activeFrame = frame.id === normalizedActiveFrameId
     // A mask cell is current only when the mask row itself is the active row;
@@ -611,6 +615,11 @@ export const deriveAnimationTimelineVisualState = (
     const linkedSelectedByFrame = groupKey ? selectedByFrameGroups.has(groupKey) : false
     const linkedSelectedByFrameAndLayer = groupKey ? selectedByFrameAndLayerGroups.has(groupKey) : false
     const selectedVisible = explicitSelected && selectionGuidesVisible
+    const signature = Number(activeLayer) | Number(activeFrame) << 1 | Number(current) << 2 | Number(explicitSelected) << 3
+      | Number(cellSelectedByFrame) << 4 | Number(selectedByLayer) << 5 | Number(directSelected) << 6
+      | Number(linkedSelectedByFrame) << 7 | Number(linkedSelectedByFrameAndLayer) << 8 | Number(selectionGuidesVisible) << 9
+    const cached = cellCache?.states[slotIndex]
+    if (cached && cellCache!.signatures[slotIndex] === signature) { cellStates.push(cached); continue }
     const link: TimelineVisualLinkState = {
       linked,
       role,
@@ -633,7 +642,7 @@ export const deriveAnimationTimelineVisualState = (
     else if (current) priority = 'current-cel'
     else if (activeLayer || activeFrame) priority = 'active-row-column'
     else if (linked && selectionGuidesVisible) priority = 'linked-structure'
-    cellStates.push({
+    const state: TimelineVisualCellState = {
       cell,
       key,
       kind,
@@ -654,7 +663,9 @@ export const deriveAnimationTimelineVisualState = (
       presentationHidden: !selectionGuidesVisible,
       link,
       priority,
-    })
+    }
+    cellStates.push(state)
+    if (cellCache) { cellCache.signatures[slotIndex] = signature; cellCache.states[slotIndex] = state }
   }
 
   const connectors: TimelineVisualConnectorState[] = []

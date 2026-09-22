@@ -10,7 +10,7 @@ export function createCelDragPreview(displayRows: LayerDisplayRow[], frames: rea
   const kind = gesture?.kind
   for (const [row, item] of displayRows.entries()) {
     if (kind === 'mask' && item.kind === 'mask') rows.set(item.owner.id, row)
-    if (kind === 'cel' && item.kind === 'node' && item.node.kind === 'layer') rows.set(item.node.id, row)
+    if (kind === 'cel' && item.kind === 'node') rows.set(item.node.id, row)
   }
   const columns = new Map(frames.map((frame, column) => [frame.id, column]))
   const position = (key: string | null) => {
@@ -21,7 +21,7 @@ export function createCelDragPreview(displayRows: LayerDisplayRow[], frames: rea
   }
   const anchor = position(anchorKey)
   let top = Infinity, left = Infinity, bottom = -Infinity, right = -Infinity
-  if (gesture?.kind === 'cel' || gesture?.kind === 'mask') for (const key of gesture.cellKeys) {
+  if (gesture?.kind === 'cel' || gesture?.kind === 'mask') for (const key of [...gesture.cellKeys, ...(gesture.kind === 'cel' ? gesture.groupCellKeys ?? [] : [])]) {
     const source = position(key)
     if (!source) continue
     top = Math.min(top, source.row); bottom = Math.max(bottom, source.row)

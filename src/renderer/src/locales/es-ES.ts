@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const esESMessages = {
+  "layers.animationSettings": "Ajustes de animación",
+  "layers.defaultModeHint": "Muestra capas y miniaturas para dibujar.",
+  "layers.animationModeHint": "Muestra fotogramas, secciones de bucle y herramientas de animación.",
+  "layers.settingsLiveHint": "Los cambios se aplican al instante",
   "preferences.exportProtection.title": "Protección de exportación",
   "preferences.exportProtection.off": "Desactivada",
   "preferences.exportProtection.blur": "Suavizado estrecho de bordes",
@@ -47,7 +51,7 @@ export const esESMessages = {
   'reference.openWindow': 'Abrir referencia actual en ventana flotante',
   'reference.newWindow': 'Nueva ventana de referencia',
   'layers.panelMode': 'Modo del panel de capas',
-  'layers.mode.default': 'Modo predeterminado',
+  'layers.mode.default': 'Modo normal',
   'layers.mode.animation': 'Modo de animación',
   'panel.reference': "Imagen de referencia",
   'reference.empty': "Haz clic para pegar o pulsa Ctrl+V",
@@ -1953,6 +1957,9 @@ export const esESMessages = {
   'layers.onionSkinRange': 'Rango de fotograma',
   'layers.onionSkinOpacity': 'Overlay Opacidad',
   'layers.onionSkinColors': 'fotograma Colores',
+  'layers.onionSkinScope': 'Ámbito',
+  'layers.onionSkinCurrentLayer': 'Capa actual',
+  'layers.onionSkinAllLayers': 'Todas las capas',
   'layers.previous': 'Anterior',
   'layers.next': 'siguiente',
   'layers.previousFrames': 'Anteriores fotogramas',

@@ -583,8 +583,11 @@ export const DEFAULT_COLOR_EDITOR_MODES: ColorEditorModePreference[] = [
   { mode: 'cmyk', enabled: false }
 ]
 const LEGACY_DEFAULT_COLOR_EDITOR_MODES: ColorValueMode[] = ['rgb', 'hsv', 'hsl', 'gray', 'lab', 'cmyk']
+export type OnionSkinScope = 'current-layer' | 'all-layers'
+
 export interface OnionSkinPreferences {
   enabled: boolean
+  scope: OnionSkinScope
   showDuringPlayback: boolean
   previousFrames: number
   nextFrames: number
@@ -595,6 +598,7 @@ export interface OnionSkinPreferences {
 }
 export const DEFAULT_ONION_SKIN_PREFERENCES: OnionSkinPreferences = {
   enabled: false,
+  scope: 'current-layer',
   showDuringPlayback: true,
   previousFrames: 1,
   nextFrames: 1,
@@ -1036,6 +1040,7 @@ export function parseOnionSkinPreferences(value: string | null): OnionSkinPrefer
     const opacity = (candidate: unknown, fallback: number): number => typeof candidate === 'number' && Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : fallback
     return {
       enabled: parsed.enabled === true,
+      scope: parsed.scope === 'all-layers' ? 'all-layers' : 'current-layer',
       // Existing preferences predate this option. Preserve the new default
       // rather than treating their missing field as an explicit opt-out.
       showDuringPlayback: parsed.showDuringPlayback !== false,

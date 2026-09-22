@@ -434,6 +434,10 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       if (!dockDragRef.current) return
       if (event.key === 'Alt' && dockDragRef.current.moved && lastPoint) applyMove(new PointerEvent('pointermove', { clientX: lastPoint.x, clientY: lastPoint.y, altKey: true }))
       if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); up(new PointerEvent('pointercancel')) }
+      // A shortcut may synchronously replace the docked panel with a popup.
+      // Finish the pending workspace drag first so the old panel cannot leave
+      // a stale drag ref that hides every later panel toggle.
+      if (event.key !== 'Alt' && event.key !== 'Escape') up(new PointerEvent('pointercancel'))
     }
     const blur = (): void => { if (dockDragRef.current || resizeRef.current || bottomResizeRef.current) up(new PointerEvent('pointercancel')) }
     const keyup = (event: KeyboardEvent): void => {

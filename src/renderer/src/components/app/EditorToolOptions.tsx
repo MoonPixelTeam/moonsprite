@@ -678,6 +678,8 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const brushDitherResidentRef = useRef(false)
   const brushDitherPositionedRef = useRef(false)
   const [lineDirectionStep, setLineDirectionStep] = useState(() => loadEditorPreferences().lineDirectionStep)
+  const [moveLayerClickFlashEnabled, setMoveLayerClickFlashEnabled] = useState(() => loadEditorPreferences().moveLayerClickFlashEnabled)
+  const [moveLayerContentPreviewEnabled, setMoveLayerContentPreviewEnabled] = useState(() => loadEditorPreferences().moveLayerContentPreviewEnabled)
   const closeBrushDitherFlyout = useCallback((): void => {
     brushDitherDragRef.current = null
     brushDitherResidentRef.current = false
@@ -721,10 +723,23 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [autoSlicePreview, autoSlicePreviewEnabled, autoSliceSettings, session?.document.id])
 
   useEffect(() => {
-    const syncPreferences = (): void => setLineDirectionStep(loadEditorPreferences().lineDirectionStep)
+    const syncPreferences = (): void => {
+      const preferences = loadEditorPreferences()
+      setLineDirectionStep(preferences.lineDirectionStep)
+      setMoveLayerClickFlashEnabled(preferences.moveLayerClickFlashEnabled)
+      setMoveLayerContentPreviewEnabled(preferences.moveLayerContentPreviewEnabled)
+    }
     window.addEventListener('moonsprite:preferences-changed', syncPreferences)
     return () => window.removeEventListener('moonsprite:preferences-changed', syncPreferences)
   }, [])
+
+  const updateMoveLayerPreference = (key: 'moveLayerClickFlashEnabled' | 'moveLayerContentPreviewEnabled', value: boolean): void => {
+    const preferences = loadEditorPreferences()
+    saveEditorPreferences({ ...preferences, [key]: value })
+    if (key === 'moveLayerClickFlashEnabled') setMoveLayerClickFlashEnabled(value)
+    else setMoveLayerContentPreviewEnabled(value)
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+  }
 
   useEffect(() => {
     const handleShortcutCommand = (event: Event): void => {
@@ -1305,7 +1320,11 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       <GradientStopsEditor open={gradientStopsOpen && Boolean(session.gradientFreeform)} stops={gradientStops} disabled={false} primaryColor={session.primaryColor} secondaryColor={session.secondaryColor} onChange={workspace.setGradientStops} onClose={() => setGradientStopsOpen(false)} t={t} />
     </>}
     {supportsSymmetry && <SymmetryControls key={session.tool} axes={session.symmetryAxes} onAxisToggle={workspace.setSymmetryAxis} onResetCenter={workspace.resetSymmetryCenter} />}
-    {session.tool === 'move' && session.moveKind === 'move' && <CheckboxField className="tool-checkbox" checked={session.moveAutoSelect} label={t('toolOptions.autoSelectLayer')} onChange={workspace.setMoveAutoSelect} />}
+    {session.tool === 'move' && session.moveKind === 'move' && <>
+      <CheckboxField className="tool-checkbox" checked={session.moveAutoSelect} label={t('toolOptions.autoSelectLayer')} onChange={workspace.setMoveAutoSelect} />
+      <CheckboxField className="tool-checkbox" checked={moveLayerClickFlashEnabled} label="点击闪烁" tooltip={t('preferences.moveLayerClickFlashHint')} onChange={(value) => updateMoveLayerPreference('moveLayerClickFlashEnabled', value)} />
+      <CheckboxField className="tool-checkbox" checked={moveLayerContentPreviewEnabled} label="显示边缘" tooltip={t('preferences.moveLayerContentPreviewHint')} onChange={(value) => updateMoveLayerPreference('moveLayerContentPreviewEnabled', value)} />
+    </>}
     {session.tool === 'move' && session.moveKind === 'slice' && <><FormField className="slice-name-control" layout="inline" label={t('toolOptions.sliceName')}><TextInput density="compact" disabled={!selectedSlice} placeholder={t('toolOptions.sliceNamePlaceholder')} value={selectedSlice?.name ?? ''} onChange={(event) => { if (selectedSlice) workspace.updateSlice(selectedSlice.id, { name: event.target.value }) }} /></FormField><span className="slice-tool-actions"><button type="button" className="icon-button" title={t('toolOptions.autoSlice')} aria-label={t('toolOptions.autoSlice')} onClick={openAutoSlice}><PixelUtilityIcon kind="autoSlice" /></button><button type="button" className="tool-text-button" disabled={!session.document.slices?.length} onClick={workspace.selectAllSlices}>{t('toolOptions.sliceSelectAll')}</button><button type="button" className="icon-button" title={t('toolOptions.sliceProperties')} aria-label={t('toolOptions.sliceProperties')} disabled={!selectedSlice} onClick={openSliceProperties}><PixelUtilityIcon kind="properties" /></button><button type="button" className="icon-button" title={t('common.delete')} aria-label={t('common.delete')} disabled={selectedSliceIds.length === 0} onClick={() => workspace.deleteSlices(selectedSliceIds)}><PixelUtilityIcon kind="delete" /></button></span></>}
     {session.tool === 'rotate' && <div className="rotate-view-options"><FormField className="tool-inline-field" layout="inline" label={t('toolOptions.rotation')}><NumberInput aria-label={t('toolOptions.rotation')} density="compact" min={0} max={359.9} step={0.1} value={Math.round(session.view.rotation * 10) / 10} onValueChange={(rotation) => workspace.setView({ rotation: ((rotation % 360) + 360) % 360 })} /></FormField><button type="button" className="tool-text-button" onClick={() => workspace.setView({ rotation: 0 })}>{t('toolOptions.resetView')}</button></div>}
     <span className="tool-options-spacer" />

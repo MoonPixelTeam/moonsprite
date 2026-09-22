@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const jaJPMessages = {
+  "layers.animationSettings": "アニメーション設定",
+  "layers.defaultModeHint": "描画用にレイヤーとサムネイルを表示します。",
+  "layers.animationModeHint": "フレーム、ループ区間、アニメーション編集ツールを表示します。",
+  "layers.settingsLiveHint": "変更はすぐに反映されます",
   "preferences.exportProtection.title": "書き出し保護",
   "preferences.exportProtection.off": "オフ",
   "preferences.exportProtection.blur": "狭い境界の平滑化",
@@ -1953,6 +1957,9 @@ export const jaJPMessages = {
   'layers.onionSkinRange': 'フレーム 範囲',
   'layers.onionSkinOpacity': 'オーバーレイ 不透明度',
   'layers.onionSkinColors': 'フレーム カラー',
+  'layers.onionSkinScope': '適用範囲',
+  'layers.onionSkinCurrentLayer': '現在のレイヤー',
+  'layers.onionSkinAllLayers': 'すべてのレイヤー',
   'layers.previous': '前',
   'layers.next': '次',
   'layers.previousFrames': '前 フレーム',

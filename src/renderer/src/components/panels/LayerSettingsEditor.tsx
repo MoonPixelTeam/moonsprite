@@ -1,3 +1,4 @@
+import { layerDensityLabelKeys, layerDensityDescriptionKeys } from './layer-density-labels'
 import { forwardRef, useImperativeHandle } from 'react'
 import { layerQuickActionMetadata, type LayerSettingsState } from './layer-panel-settings'
 import { useEffect, useRef, useState } from 'react'
@@ -18,24 +19,6 @@ import { DEFAULT_LAYER_DENSITY as defaultLayerDensity, DEFAULT_LAYER_QUICK_ACTIO
 
 interface LayerQuickActionPointerDrag { id: LayerQuickActionId; pointerId: number; captureTarget: HTMLElement }
 
-const layerDensityLabelKeys = {
-  compact: 'layers.density.compact',
-  normal: 'layers.density.normal',
-  detailed: 'layers.density.detailed',
-  expanded: 'layers.density.expanded',
-  large: 'layers.density.large',
-  huge: 'layers.density.huge'
-} as const
-
-const layerDensityDescriptionKeys = {
-  compact: 'layers.density.compactDescription',
-  normal: 'layers.density.normalDescription',
-  detailed: 'layers.density.detailedDescription',
-  expanded: 'layers.density.expandedDescription',
-  large: 'layers.density.largeDescription',
-  huge: 'layers.density.hugeDescription'
-} as const
-
 export interface LayerSettingsEditorHandle { open(): void; close(): void }
 interface Props { value: LayerSettingsState; onChange(next: LayerSettingsState): void }
 /** Owns the settings surface, slider popovers and quick-action reorder/capture lifecycle. */
@@ -43,7 +26,7 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
   const {t} = useI18n()
   const [layerSettingsOpen, setLayerSettingsOpen] = useState(false)
 
-  const [layerQuickActionsExpanded, setLayerQuickActionsExpanded] = useState(false)
+  const [layerQuickActionsOpen, setLayerQuickActionsOpen] = useState(false)
 
   const [draggedLayerQuickAction, setDraggedLayerQuickAction] = useState<LayerQuickActionId | null>(null)
 
@@ -67,12 +50,7 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
       if (layerQuickActionAutoScrollFrameRef.current !== null) window.cancelAnimationFrame(layerQuickActionAutoScrollFrameRef.current)
       layerQuickActionAutoScrollFrameRef.current = null
     }
-  }, [layerSettingsOpen])
-
-  const saveLayerSettings = (): void => {
-    applyLayerSettings(layerSettings)
-    setLayerSettingsOpen(false)
-  }
+  }, [layerSettingsOpen, layerQuickActionsOpen])
 
   const resetLayerSettings = (): void => applyLayerSettings({
     density: defaultLayerDensity,
@@ -180,48 +158,37 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
   const densityLabel = t(layerDensityLabelKeys[layerSettings.density])
 
   const densityDescription = t(layerDensityDescriptionKeys[layerSettings.density])
-  useImperativeHandle(ref, () => ({open: () => {setLayerSettingsSlider(null); setLayerQuickActionsExpanded(false); setLayerSettingsOpen(true)}, close: () => setLayerSettingsOpen(false)}))
+  useImperativeHandle(ref, () => ({open: () => {setLayerSettingsSlider(null); setLayerQuickActionsOpen(false); setLayerSettingsOpen(true)}, close: () => setLayerSettingsOpen(false)}))
   useEffect(() => { if (layerSettings.timelineHidden) setLayerSettingsSlider(null) }, [layerSettings.timelineHidden])
-  return <>    {layerSettingsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setLayerSettingsOpen(false) }}>
-      <ModalShell as="form" storageKey="layer-settings-layout-v15" defaultWidth={360} defaultHeight={526} fitContentKey={layerSettings.onionSkin.enabled ? 'onion-expanded' : 'onion-collapsed'} minWidth={340} minHeight={layerSettings.onionSkin.enabled ? 496 : 326} maxWidth={420} maxHeight={700} className={`layer-modal layer-settings-modal ${layerSettings.timelineHidden ? 'timeline-disabled' : ''}`} onSubmit={(event) => { event.preventDefault(); saveLayerSettings() }}>
+  return <>    {layerSettingsOpen && !layerQuickActionsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setLayerSettingsOpen(false) }}>
+      <ModalShell as="form" storageKey="layer-settings-layout-v16" defaultWidth={400} defaultHeight={560} fitContent={false} fitContentKey={`${layerSettings.timelineHidden}:${layerSettings.onionSkin.enabled}:${layerQuickActionsOpen}`} minWidth={340} minHeight={326} maxWidth={480} maxHeight={700} className={`layer-modal layer-settings-modal ${layerSettings.timelineHidden ? 'timeline-disabled' : ''}`} onSubmit={(event) => { event.preventDefault(); setLayerSettingsOpen(false) }}>
         <DialogHeader title={t('layers.settings')} closeLabel={t('common.close')} onClose={() => setLayerSettingsOpen(false)} />
         <div className="modal-body component-scrollbar" onPointerDown={(event) => { if (!(event.target as Element).closest('.layer-setting-percent')) setLayerSettingsSlider(null) }}>
           <section className="layer-settings-section">
             <div className="layer-settings-section-heading"><h3>{t('layers.panelDisplay')}</h3></div>
             <div className="layer-settings-section-body">
+              <div className="layer-settings-mode">
+                <span className="layer-settings-control-label">{t('layers.panelMode')}</span>
+              <SegmentedControl label={t('layers.panelMode')} value={layerSettings.timelineHidden ? 'default' : 'animation'}
+                options={[{ value: 'animation', label: t('layers.mode.animation') }, { value: 'default', label: t('layers.mode.default') }]}
+                onChange={mode => applyLayerSettings({ ...layerSettings, timelineHidden: mode === 'default' })} />
+                <p className="layer-settings-hint">{t(layerSettings.timelineHidden ? 'layers.defaultModeHint' : 'layers.animationModeHint')}</p>
+              </div>
               {!layerSettings.timelineHidden && <div className="layer-settings-density">
                 <span className="layer-settings-control-label">{t('layers.thumbnailSize')}</span>
                 <RangeField className="layer-density-range" ariaLabel={t('layers.thumbnailSize')} ariaValueText={densityLabel} min={0} max={layerDensityOrder.length - 1} step={1} value={layerDensityOrder.indexOf(layerSettings.density)} valueLabel={<Tooltip className="layer-density-value-tooltip" content={<><strong>{densityLabel}</strong><span>{densityDescription}</span></>}><span className="layer-density-value-label">{densityLabel}</span></Tooltip>} onChange={(value) => applyLayerSettings({ ...layerSettings, density: layerDensityOrder[value] })} />
               </div>}
               <PreferenceToggle className="layer-settings-toggle" label={t('layers.sideDockAutoHide')} tooltip={t('layers.sideDockAutoHideDescription')} aria-label={t('layers.sideDockAutoHide')} checked={layerSettings.sideDockAutoHide} onChange={(sideDockAutoHide) => applyLayerSettings({ ...layerSettings, sideDockAutoHide })} />
-              <SegmentedControl label={t('layers.panelMode')} value={layerSettings.timelineHidden ? 'default' : 'animation'}
-                options={[{ value: 'default', label: t('layers.mode.default') }, { value: 'animation', label: t('layers.mode.animation') }]}
-                onChange={mode => applyLayerSettings({ ...layerSettings, timelineHidden: mode === 'default' })} />
-              <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
             </div>
           </section>
-          <section className="layer-settings-section layer-quick-actions-settings">
-            <div className="layer-settings-section-heading"><h3>{t('layers.quickActions')}</h3><button type="button" className="icon-button layer-quick-actions-collapse" aria-label={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} aria-expanded={layerQuickActionsExpanded} title={t(layerQuickActionsExpanded ? 'quickCommands.collapse' : 'quickCommands.expand')} onClick={() => setLayerQuickActionsExpanded((expanded) => !expanded)}><PixelUtilityIcon kind={layerQuickActionsExpanded ? 'up' : 'down'} /></button></div>
-            {layerQuickActionsExpanded && <><p className="layer-quick-actions-description">{t('layers.quickActionsDescription')}</p>
-            <div className="preference-quick-command-list layer-quick-actions-scroll component-scrollbar">
-              {layerSettings.quickActions.map((action) => {
-                const metadata = layerQuickActionMetadata[action.id]
-                const label = t(metadata.label)
-                const enabledCount = layerSettings.quickActions.filter((candidate) => candidate.enabled).length
-                return <div className={`preference-quick-command-row reorderable-list-row ${draggedLayerQuickAction === action.id ? 'dragging' : ''}`} data-layer-quick-action-id={action.id} key={action.id} title={label}>
-                  <button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginLayerQuickActionPointerDrag(event, action.id)}><PixelUtilityIcon kind="move" /></button>
-                  <span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span>
-                  <span className="preference-quick-command-name">{label}</span>
-                  <PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={action.enabled} disabled={!action.enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT} onChange={(event) => updateLayerQuickAction(action.id, event.currentTarget.checked)} />
-                </div>
-              })}
-            </div></>}
-          </section>
-          <section className="layer-settings-section layer-settings-onion-section">
-            <div className="layer-settings-section-heading"><h3>{t('layers.onionSkin')}</h3></div>
+          {!layerSettings.timelineHidden && <section className="layer-settings-section layer-settings-onion-section">
+            <div className="layer-settings-section-heading"><h3>{t('layers.animationSettings')}</h3></div>
+              <PreferenceToggle className="layer-settings-toggle" label={t('layers.skipDisabledFrames')} tooltip={t('layers.skipDisabledFramesDescription')} aria-label={t('layers.skipDisabledFrames')} checked={layerSettings.skipDisabledFrames} onChange={(skipDisabledFrames) => applyLayerSettings({ ...layerSettings, skipDisabledFrames })} />
+            <h4 className="layer-settings-subheading">{t('layers.onionSkin')}</h4>
             <fieldset className="layer-settings-onion" disabled={layerSettings.timelineHidden} aria-disabled={layerSettings.timelineHidden} aria-label={t('layers.onionSkin')}>
-              <PreferenceToggle className="layer-settings-toggle layer-onion-toggle" label={t('layers.onionSkinEnabled')} checked={layerSettings.onionSkin.enabled} onChange={(enabled) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, enabled } })} />
-              <PreferenceToggle className="layer-settings-toggle layer-onion-playback-toggle" label={t('layers.onionSkinDuringPlayback')} checked={layerSettings.onionSkin.showDuringPlayback} onChange={(showDuringPlayback) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, showDuringPlayback } })} />
+              <PreferenceToggle className="layer-settings-toggle layer-onion-toggle" label={t('layers.onionSkinEnabled')} checked={layerSettings.onionSkin.enabled} onChange={(enabled) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, enabled, showDuringPlayback: enabled ? true : layerSettings.onionSkin.showDuringPlayback } })} />
+              {layerSettings.onionSkin.enabled && <PreferenceToggle className="layer-settings-toggle layer-onion-playback-toggle" label={t('layers.onionSkinDuringPlayback')} checked={layerSettings.onionSkin.showDuringPlayback} onChange={(showDuringPlayback) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, showDuringPlayback } })} />}
+              {layerSettings.onionSkin.enabled && <div className="layer-onion-scope-field"><span className="layer-settings-control-label">{t('layers.onionSkinScope')}</span><SegmentedControl className="layer-onion-scope" label={t('layers.onionSkinScope')} value={layerSettings.onionSkin.scope} options={[{ value: 'current-layer', label: t('layers.onionSkinCurrentLayer') }, { value: 'all-layers', label: t('layers.onionSkinAllLayers') }]} onChange={(scope) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, scope } })} /></div>}
               {layerSettings.onionSkin.enabled && <div className="layer-settings-pair" role="group" aria-label={t('layers.onionSkin')}>
                 <span aria-hidden="true" />
                 <span className="layer-settings-pair-heading">{t('layers.previous')}</span>
@@ -237,9 +204,37 @@ export const LayerSettingsEditor = forwardRef<LayerSettingsEditorHandle, Props>(
                 <ColorValueControl color={layerSettings.onionSkin.nextColor} density="regular" onChange={(color) => applyLayerSettings({ ...layerSettings, onionSkin: { ...layerSettings.onionSkin, nextColor: color } })} label={t('layers.nextColor')} fillWithColor />
               </div>}
             </fieldset>
+          </section>}
+          <section className="layer-settings-section layer-quick-actions-settings">
+            <button type="button" className="layer-quick-actions-open" aria-haspopup="dialog" onClick={() => { setLayerSettingsSlider(null); setLayerQuickActionsOpen(true) }}>
+              <PixelUtilityIcon kind="properties" />
+              <span>{t('layers.quickActions')}</span>
+              <span className="layer-settings-count">{layerSettings.quickActions.filter(action => action.enabled).length} / {LAYER_QUICK_ACTION_LIMIT}</span>
+              <PixelUtilityIcon kind="right" />
+            </button>
           </section>
         </div>
-        <footer><button type="button" className="quiet-button" onClick={resetLayerSettings}><PixelUtilityIcon kind="restore" />{t('common.reset')}</button><span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={() => setLayerSettingsOpen(false)}>{t('common.cancel')}</button><button type="submit" className="primary-button">{t('common.save')}</button></footer>
+        <footer><button type="button" className="quiet-button" onClick={resetLayerSettings}><PixelUtilityIcon kind="restore" />{t('common.reset')}</button><span className="layer-settings-hint layer-settings-live-hint">{t('layers.settingsLiveHint')}</span><button type="submit" className="primary-button">{t('common.close')}</button></footer>
+      </ModalShell>
+    </div>, document.body)}
+    {layerSettingsOpen && layerQuickActionsOpen && createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) setLayerQuickActionsOpen(false) }}>
+      <ModalShell storageKey="layer-quick-actions-layout-v1" defaultWidth={460} defaultHeight={600} minWidth={340} minHeight={360} maxWidth={640} maxHeight={760} fitContent={false} className="layer-quick-actions-modal" role="dialog" aria-label={t('layers.quickActions')}>
+        <DialogHeader title={t('layers.quickActions')} closeLabel={t('common.close')} onClose={() => setLayerQuickActionsOpen(false)} />
+        <div className="layer-quick-actions-summary"><p className="layer-settings-hint">{t('layers.quickActionsDescription')}</p><span className="layer-settings-count">{layerSettings.quickActions.filter(action => action.enabled).length} / {LAYER_QUICK_ACTION_LIMIT}</span></div>
+            <div className="modal-body preference-quick-command-list layer-quick-actions-scroll component-scrollbar">
+              {layerSettings.quickActions.map((action) => {
+                const metadata = layerQuickActionMetadata[action.id]
+                const label = t(metadata.label)
+                const enabledCount = layerSettings.quickActions.filter((candidate) => candidate.enabled).length
+                return <div className={`preference-quick-command-row reorderable-list-row ${draggedLayerQuickAction === action.id ? 'dragging' : ''}`} data-layer-quick-action-id={action.id} key={action.id} title={label}>
+                  <button type="button" className="quick-command-drag-handle reorderable-list-handle" aria-label={`${label} ${t('home.reorderHint')}`} title={t('home.reorderHint')} onPointerDown={(event) => beginLayerQuickActionPointerDrag(event, action.id)}><PixelUtilityIcon kind="move" /></button>
+                  <span className="preference-quick-command-icon"><PixelUtilityIcon kind={metadata.icon} /></span>
+                  <span className="preference-quick-command-name">{label}</span>
+                  <PixelCheckbox aria-label={t('preferences.quickCommandEnabledAria', { command: label })} checked={action.enabled} disabled={!action.enabled && enabledCount >= LAYER_QUICK_ACTION_LIMIT} onChange={(event) => updateLayerQuickAction(action.id, event.currentTarget.checked)} />
+                </div>
+              })}
+            </div>
+        <footer><span className="layer-settings-hint layer-settings-live-hint">{t('layers.settingsLiveHint')}</span><button type="button" className="primary-button" onClick={() => setLayerQuickActionsOpen(false)}>{t('common.close')}</button></footer>
       </ModalShell>
     </div>, document.body)}
   </>

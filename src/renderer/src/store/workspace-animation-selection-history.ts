@@ -12,6 +12,7 @@ export type AnimationSelectionHistorySnapshot = {
   selectedAnimationFrameIds: string[]
   animationFrameSelectionAnchorId: string | null
   selectedAnimationCellKeys: string[]
+  selectedAnimationGroupCellKeys: string[]
   animationCellSelectionAnchorKey: string | null
   animationCellSelectionExplicit: boolean
   selectedAnimationMaskCellKeys: string[]
@@ -32,6 +33,7 @@ export const captureAnimationSelectionHistory = (session: DocumentSession): Anim
   selectedAnimationFrameIds: [...session.selectedAnimationFrameIds],
   animationFrameSelectionAnchorId: session.animationFrameSelectionAnchorId,
   selectedAnimationCellKeys: [...session.selectedAnimationCellKeys],
+  selectedAnimationGroupCellKeys: [...session.selectedAnimationGroupCellKeys ?? []],
   animationCellSelectionAnchorKey: session.animationCellSelectionAnchorKey,
   animationCellSelectionExplicit: session.animationCellSelectionExplicit,
   selectedAnimationMaskCellKeys: [...session.selectedAnimationMaskCellKeys],
@@ -56,6 +58,7 @@ export const restoreAnimationSelectionHistory = (session: DocumentSession, snaps
   session.selectedAnimationFrameIds = [...snapshot.selectedAnimationFrameIds]
   session.animationFrameSelectionAnchorId = snapshot.animationFrameSelectionAnchorId
   session.selectedAnimationCellKeys = [...snapshot.selectedAnimationCellKeys]
+  session.selectedAnimationGroupCellKeys = [...snapshot.selectedAnimationGroupCellKeys]
   session.animationCellSelectionAnchorKey = snapshot.animationCellSelectionAnchorKey
   session.animationCellSelectionExplicit = snapshot.animationCellSelectionExplicit
   session.selectedAnimationMaskCellKeys = [...snapshot.selectedAnimationMaskCellKeys]
@@ -89,7 +92,7 @@ export const historyEntryWithAnimationSelection = (
   }
   return {
     ...entry,
-    bytes: entry.bytes + 64 + (before.selectedAnimationCellKeys.length + before.selectedAnimationMaskCellKeys.length + after.selectedAnimationCellKeys.length + after.selectedAnimationMaskCellKeys.length) * 16,
+    bytes: entry.bytes + 64 + (before.selectedAnimationGroupCellKeys.length + after.selectedAnimationGroupCellKeys.length + before.selectedAnimationCellKeys.length + before.selectedAnimationMaskCellKeys.length + after.selectedAnimationCellKeys.length + after.selectedAnimationMaskCellKeys.length) * 16,
     undo: () => { entry.undo(); restore(before) },
     redo: () => { entry.redo(); restore(after) }
   }

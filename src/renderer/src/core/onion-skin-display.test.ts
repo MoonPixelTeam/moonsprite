@@ -12,8 +12,10 @@ const style = { ...DEFAULT_ONION_SKIN_PREFERENCES, enabled: true,
 const fixture = () => {
   const document = createDocument('onion over background', 4, 1, 'rgba')
   const background = document.layers[0]
+  background.background = { mode: 'canvas', repeatWidth: 4, repeatHeight: 1 }
   const actor = createLayer('actor', 4, 1, 'rgba')
-  document.layers.push(actor)
+  const foreground = createLayer('fixture foreground', 4, 1, 'rgba')
+  document.layers.push(actor, foreground)
   const timeline = ensureAnimationDocument(document)
   addBlankAnimationFrame(document)
   addBlankAnimationFrame(document)
@@ -29,12 +31,14 @@ const fixture = () => {
       format: 'rgba', width: 4, height: 1, offsetX: 0, offsetY: 0, pixels: backgroundPixels }
     animationCelAt(timeline, actor.id, frameId)!.surface = {
       format: 'rgba', width: 4, height: 1, offsetX: 0, offsetY: 0, pixels: actorPixels }
+    animationCelAt(timeline, foreground.id, frameId)!.surface = {
+      format: 'rgba', width: 4, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray(16) }
   }
   Object.assign(background, animationCelAt(timeline, background.id, timeline.activeFrameId)!.surface)
   Object.assign(actor, animationCelAt(timeline, actor.id, timeline.activeFrameId)!.surface)
   const refs = onionSkinFrameRefs(timeline, 1, 1)
   const display = () => createOnionSkinDisplayDocument(document, refs, style, actor.id, 'display')
-  return { document, actor, background, timeline, refs, display }
+  return { document, actor, foreground, background, timeline, refs, display }
 }
 
 describe('current-layer onion skin display', () => {
@@ -42,6 +46,20 @@ describe('current-layer onion skin display', () => {
     const { display } = fixture()
     expect([...compositeDocument(display())]).toEqual([
       128, 127, 0, 255, 255, 255, 255, 255, 0, 127, 128, 255, 0, 255, 0, 255])
+  })
+  it('shows all eligible layers while skipping background ghosts and preserving each layer occlusion', () => {
+    const { document, actor, foreground } = fixture()
+    const timeline = ensureAnimationDocument(document)
+    for (const frame of timeline.frames) animationCelAt(timeline, foreground.id, frame.id)!.surface = { format: 'rgba', width: 4, height: 1, offsetX: 0, offsetY: 0, pixels: new Uint8ClampedArray([0, 0, 0, 0, 0, 0, 0, 0, 10, 20, 30, 255, 0, 0, 0, 0]) }
+    Object.assign(foreground, animationCelAt(timeline, foreground.id, timeline.activeFrameId)!.surface)
+    const all = createOnionSkinDisplayDocument(document, onionSkinFrameRefs(timeline, 1, 1), { ...style, scope: 'all-layers' }, actor.id, 'all')
+    expect(all.layers.filter(layer => layer.id.startsWith('all:')).map(layer => layer.name)).toHaveLength(4)
+    expect(all.layers.some(layer => layer.id.includes(`${document.layers[0].id}:`))).toBe(false)
+    const actorIndex = all.layers.findIndex(layer => layer.id === actor.id)
+    const foregroundIndex = all.layers.findIndex(layer => layer.id === foreground.id)
+    expect(all.layers.slice(actorIndex - 2, actorIndex).every(layer => layer.id.startsWith('all:'))).toBe(true)
+    expect(all.layers.slice(foregroundIndex - 2, foregroundIndex).every(layer => layer.id.startsWith('all:'))).toBe(true)
+    expect([...compositeDocument(all)].slice(8, 12)).toEqual([10, 20, 30, 255])
   })
   it('never inserts display layers or cels into the source document', () => {
     const { document, display } = fixture()

@@ -6,7 +6,7 @@ export function useAnimationCopyCursor(animationPointerDragRef: RefObject<Animat
   const hoverCopyCursorRef = useRef<HTMLElement | null>(null)
   const syncCopyCursor = (): void => {
     const drag = animationPointerDragRef.current
-    document.body.classList.toggle('animation-copy-drag', Boolean(drag && (drag.kind === 'frame' || drag.kind === 'cel') && drag.moved && drag.canMove && animationCopyRef.current))
+    document.body.classList.toggle('animation-copy-drag', Boolean(drag && (drag.kind === 'frame' || drag.kind === 'cel') && drag.canMove && animationCopyRef.current))
   }
   useEffect(() => {
     const modifiers = (event: KeyboardEvent): void => {

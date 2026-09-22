@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const ruRUMessages = {
+  "layers.animationSettings": "Настройки анимации",
+  "layers.defaultModeHint": "Слои и миниатюры для рисования.",
+  "layers.animationModeHint": "Кадры, участки цикла и инструменты анимации.",
+  "layers.settingsLiveHint": "Изменения применяются сразу",
   'quickCommands.cut': 'Вырезать',
   'quickCommands.copyMerged': 'Копировать объединённое',
   'quickCommands.quickOutline': 'Быстрая обводка',
@@ -1946,6 +1950,9 @@ export const ruRUMessages = {
   "layers.onionSkinRange": "Кадр Диапазон",
   "layers.onionSkinOpacity": "Overlay Непрозрачность",
   "layers.onionSkinColors": "Кадр Цвета",
+  "layers.onionSkinScope": "Область применения",
+  "layers.onionSkinCurrentLayer": "Текущий слой",
+  "layers.onionSkinAllLayers": "Все слои",
   "layers.previous": 'Предыдущий',
   "layers.next": 'Следующая',
   "layers.previousFrames": "предыдущий Кадры",

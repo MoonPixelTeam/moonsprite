@@ -6,7 +6,8 @@ import { useWorkspace } from '@/store/workspace'
 import { useAnimationGestures } from './useAnimationGestures'
 import { timelineSelectionOutlineHit } from './animation-gesture-helpers'
 
-afterEach(() => { cleanup(); useWorkspace.setState({sessions: [], activeId: null}) })
+const originalSetActiveAnimationFrame = useWorkspace.getState().setActiveAnimationFrame
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); useWorkspace.setState({sessions: [], activeId: null, setActiveAnimationFrame: originalSetActiveAnimationFrame}) })
 
 it('starts an Alt drag from inside an already selected frame without replacing the range', () => {
   const { result, session } = setup()
@@ -56,6 +57,200 @@ function setup(list: HTMLDivElement | null = null) {
   const begin = () => act(() => hook.result.current.beginAnimationFrameDrag({button: 0, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLElement>, document.animation!.frames[0].id))
   return {...hook, session, begin}
 }
+
+function animationFrames() {
+  let id = 0
+  const callbacks = new Map<number, FrameRequestCallback>()
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callbacks.set(++id, callback); return id })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(frame => { callbacks.delete(frame) })
+  return {
+    callbacks,
+    tick: (beforePaint?: () => void) => act(() => {
+      const pending = [...callbacks.entries()]
+      for (const [frame, callback] of pending) if (callbacks.delete(frame)) callback(16)
+      beforePaint?.()
+    })
+  }
+}
+
+function framePointer(frameId: string, clientX = 40): PointerEvent {
+  const target = document.createElement('button')
+  target.dataset.animationFrameId = frameId
+  return {target, clientX, clientY: 10, altKey: false} as unknown as PointerEvent
+}
+
+it.each(['range', 'move'] as const)('commits the latest %s feedback before the animation callback returns to paint', mode => {
+  const raf = animationFrames()
+  const {result, session, begin} = setup()
+  act(() => useWorkspace.getState().duplicateAnimationFrame())
+  const frames = session.document.animation!.frames
+  if (mode === 'range') begin()
+  else {
+    session.selectedAnimationFrameIds = [frames[0].id]
+    act(() => result.current.beginAnimationFrameDrag({button: 0, altKey: true, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLElement>, frames[0].id))
+  }
+  act(() => result.current.move(framePointer(frames[1].id)))
+  // Checking inside the animation turn is intentional: act() otherwise drains
+  // React work afterward and conceals a one-paint delay in timeline feedback.
+  raf.tick(() => {
+    if (mode === 'range') expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: frames.map(frame => frame.id)})
+    else expect(result.current.animationFrameDropTarget?.frameId).toBe(frames[1].id)
+  })
+})
+
+it('updates the range during input and coalesces global frame preview until after the paint opportunity', () => {
+  vi.useFakeTimers()
+  const raf = animationFrames()
+  const {result, session, begin} = setup()
+  act(() => { useWorkspace.getState().duplicateAnimationFrame(); useWorkspace.getState().duplicateAnimationFrame() })
+  const frames = session.document.animation!.frames
+  act(() => useWorkspace.getState().setActiveAnimationFrame(frames[0].id))
+  const preview = vi.spyOn(useWorkspace.getState(), 'setActiveAnimationFrame')
+  const history = session.history.revision
+  begin()
+  act(() => {
+    for (let i = 0; i < 12; i++) result.current.move(framePointer(frames[1].id))
+    result.current.move(framePointer(frames[2].id))
+    expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: frames.map(frame => frame.id)})
+  })
+  expect(raf.callbacks.size).toBe(1)
+  expect(preview).not.toHaveBeenCalled()
+  raf.tick()
+  expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: frames.map(frame => frame.id)})
+  expect(preview).not.toHaveBeenCalled()
+  act(() => vi.runOnlyPendingTimers())
+  expect(preview).toHaveBeenCalledExactlyOnceWith(frames[2].id)
+  expect(raf.callbacks.size).toBe(0)
+  expect(session.history.revision).toBe(history)
+  act(() => result.current.cancel())
+  expect(session.document.animation!.activeFrameId).toBe(frames[0].id)
+})
+
+it('flushes the final pointer before release without waiting for a display tick', () => {
+  const raf = animationFrames()
+  const {result, session, begin} = setup()
+  act(() => useWorkspace.getState().duplicateAnimationFrame())
+  const frames = session.document.animation!.frames
+  act(() => useWorkspace.getState().setActiveAnimationFrame(frames[0].id))
+  begin()
+  act(() => { result.current.move(framePointer(frames[1].id)); result.current.finish() })
+  expect(session.selectedAnimationFrameIds).toEqual(frames.map(frame => frame.id))
+  expect(session.document.animation!.activeFrameId).toBe(frames[1].id)
+  expect(raf.callbacks.size).toBe(0)
+})
+
+it('shares the latest pointer with edge scrolling and keeps scrolling while the pointer rests', () => {
+  const raf = animationFrames()
+  const list = document.createElement('div')
+  Object.defineProperties(list, {scrollWidth: {value: 1000}, clientWidth: {value: 200}})
+  vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({left: 0, top: 0, right: 200, bottom: 40, width: 200, height: 40, x: 0, y: 0, toJSON: () => ({})})
+  const {result, session, begin} = setup(list)
+  act(() => { useWorkspace.getState().duplicateAnimationFrame(); useWorkspace.getState().duplicateAnimationFrame() })
+  const frames = session.document.animation!.frames
+  begin()
+  act(() => result.current.move(framePointer(frames[1].id, 190)))
+  raf.tick()
+  act(() => result.current.move(framePointer(frames[2].id, 190)))
+  raf.tick()
+  expect(list.scrollLeft).toBe(36)
+  expect(result.current.animationGestureActiveTarget?.frameId).toBe(frames[2].id)
+  expect(raf.callbacks.size).toBe(1)
+  raf.tick()
+  expect(list.scrollLeft).toBe(54)
+  act(() => result.current.finish(true))
+  expect(raf.callbacks.size).toBe(0)
+})
+
+it.each(['cancel', 'finish', 'unmount'] as const)('discards deferred preview on %s and leaves idle movement unscheduled', end => {
+  vi.useFakeTimers()
+  const raf = animationFrames()
+  const {result, session, begin, unmount} = setup()
+  act(() => useWorkspace.getState().duplicateAnimationFrame())
+  const frames = session.document.animation!.frames
+  const preview = vi.spyOn(useWorkspace.getState(), 'setActiveAnimationFrame')
+  act(() => result.current.move(framePointer(frames[1].id)))
+  expect(raf.callbacks.size).toBe(0)
+  begin()
+  act(() => result.current.move(framePointer(frames[1].id)))
+  expect(raf.callbacks.size).toBe(1)
+  raf.tick()
+  expect(preview).not.toHaveBeenCalled()
+  act(() => { if (end === 'unmount') unmount(); else if (end === 'finish') result.current.finish(true); else result.current.cancel() })
+  expect(raf.callbacks.size).toBe(0)
+  act(() => vi.runOnlyPendingTimers())
+  expect(preview).not.toHaveBeenCalled()
+})
+
+it('updates the cel target before the pointer handler returns', () => {
+  animationFrames()
+  const {result, session} = setup()
+  act(() => useWorkspace.getState().duplicateAnimationFrame())
+  const frames = session.document.animation!.frames, layerId = session.document.activeLayerId
+  act(() => result.current.beginAnimationCelDrag({button: 0, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, layerId, frames[0].id))
+  const target = document.createElement('button')
+  target.dataset.animationCelKey = `${layerId}:${frames[1].id}`
+  act(() => {
+    result.current.move({target, clientX: 40, clientY: 10, altKey: false} as unknown as PointerEvent)
+    expect(result.current.animationGestureActiveTarget).toEqual({kind: 'cel', layerId, frameId: frames[1].id})
+  })
+})
+
+it('does not apply a deferred preview to a document opened during the gesture', () => {
+  vi.useFakeTimers()
+  const raf = animationFrames()
+  const {result, session, begin} = setup()
+  act(() => useWorkspace.getState().duplicateAnimationFrame())
+  const frames = session.document.animation!.frames
+  act(() => useWorkspace.getState().setActiveAnimationFrame(frames[0].id))
+  begin()
+  act(() => result.current.move(framePointer(frames[1].id)))
+  raf.tick()
+  const nextDocument = createDocument('next', 4, 4, 'rgba')
+  act(() => useWorkspace.getState().addSession(nextDocument))
+  const activeFrameId = nextDocument.animation!.activeFrameId
+  const preview = vi.spyOn(useWorkspace.getState(), 'setActiveAnimationFrame')
+  act(() => vi.runOnlyPendingTimers())
+  expect(preview).not.toHaveBeenCalled()
+  expect(nextDocument.animation!.activeFrameId).toBe(activeFrameId)
+  expect(session.document.animation!.activeFrameId).toBe(frames[0].id)
+})
+
+it('reuses measured edge rows across scrolling and refreshes them after resize', () => {
+  const raf = animationFrames()
+  const list = document.createElement('div'), outline = document.createElement('div')
+  outline.dataset.animationCelSelection = ''
+  list.append(outline)
+  const bounds = (left: number, width: number) => ({left, top: 0, right: left + width, bottom: 40, width, height: 40, x: left, y: 0, toJSON: () => ({})})
+  const listBounds = vi.spyOn(list, 'getBoundingClientRect').mockReturnValue(bounds(0, 200))
+  vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue(bounds(0, 100))
+  const {result, session} = setup(list)
+  act(() => { useWorkspace.getState().duplicateAnimationFrame(); useWorkspace.getState().duplicateAnimationFrame() })
+  const frames = session.document.animation!.frames, layerId = session.document.activeLayerId
+  const keys = frames.map(frame => `${layerId}:${frame.id}`)
+  const measurements = keys.map((key, index) => {
+    const cell = document.createElement('button')
+    cell.dataset.animationCelKey = key
+    list.append(cell)
+    return vi.spyOn(cell, 'getBoundingClientRect').mockReturnValue(bounds(100 + index * 40, 40))
+  })
+  session.selectedAnimationCellKeys = [keys[0]]
+  act(() => result.current.beginAnimationCelDrag({button: 0, clientX: 1, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, layerId, frames[0].id))
+  const move = (clientX: number) => {
+    act(() => result.current.move({clientX, clientY: 10, target: document.body, altKey: false} as unknown as PointerEvent))
+    raf.tick()
+  }
+  move(300)
+  expect(result.current.animationCelDropTargetKey).toBe(keys[2])
+  list.scrollLeft = 100
+  move(130)
+  expect(result.current.animationCelDropTargetKey).toBe(keys[2])
+  move(-150)
+  expect(result.current.animationCelDropTargetKey).toBe(keys[0])
+  for (const measured of measurements) expect(measured).toHaveBeenCalledTimes(1)
+  listBounds.mockReturnValue(bounds(0, 250))
+  move(300)
+  for (const measured of measurements) expect(measured).toHaveBeenCalledTimes(2)
+})
 
 it('uses the copy cursor during Alt drag and restores it on Alt release and cancel', () => {
   const { result, session, unmount } = setup()

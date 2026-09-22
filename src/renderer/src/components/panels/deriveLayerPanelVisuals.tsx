@@ -11,6 +11,7 @@ import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
 
 export interface LayerPanelVisualOptions {
+  cellStateCache?: import('@/core/animation-timeline-cell-cache').TimelineVisualCellCache
   structure?: ReturnType<typeof createLayerPanelStructure>
   inlineMasks?: boolean
   session: DocumentSession
@@ -27,6 +28,7 @@ export interface LayerPanelVisualOptions {
 }
 
 export function deriveLayerPanelVisuals({
+  cellStateCache,
   structure,
   inlineMasks = false,
   session,
@@ -209,6 +211,7 @@ export function deriveLayerPanelVisuals({
     cells: visualCells,
     canonicalIndex: canonicalTimelineIndex,
     topology: visualTopology,
+    cellStateCache,
     selection: {
       activeLayerId: visualActiveLayerId,
       activeFrameId: visualActiveFrameId,
@@ -438,7 +441,7 @@ export function deriveLayerPanelVisuals({
     }
   }
   if (activeCelPreviewKind !== 'cel') addPositions(renderedMaskCellKeySet, maskRowByOwner)
-  if (activeCelPreviewKind !== 'mask') addPositions(renderedCellKeySet, celRowByOwner)
+  if (activeCelPreviewKind !== 'mask') addPositions(new Set([...renderedCellKeySet, ...selectedAnimationGroupCellKeys]), celRowByOwner)
   selectedCelPositions.sort((a, b) => a.row - b.row || a.column - b.column)
 
   const selectedCelRow = selectedCelPositions.length > 0 ? Math.min(...selectedCelPositions.map((position) => position.row)) : -1
@@ -474,30 +477,12 @@ export function deriveLayerPanelVisuals({
     selectionVisible: selectionOutlineVisible
   })
 
-  // This expansion is presentation-only. Stored selection and drag targets
-  // continue to contain exactly the cells directly selected by the user.
-  const animationCelSelectionBoxes = (() => {
-    if (animationCelDragPreview) return [animationCelDragPreview]
-    const selectedBlocks = linkedCelBlocks.filter(block => block.selected)
-    if (selectedBlocks.length === 0) return [{ row: selectedCelRow, column: selectedCelColumn, rowSpan: selectedCelRowSpan, columnSpan: selectedCelColumnSpan }]
-    const columnsByRow = new Map<number, Set<number>>()
-    const include = (row: number, column: number): void => {
-      const columns = columnsByRow.get(row) ?? new Set<number>()
-      columns.add(column)
-      columnsByRow.set(row, columns)
-    }
-    for (const position of selectedCelPositions) include(position.row, position.column)
-    for (const block of selectedBlocks) for (let column = block.start; column < block.start + block.span; column++) include(block.row, column)
-    return [...columnsByRow].flatMap(([row, columns]) => {
-      const runs: Array<{ row: number; column: number; rowSpan: number; columnSpan: number }> = []
-      for (const column of [...columns].sort((a, b) => a - b)) {
-        const last = runs.at(-1)
-        if (last && last.column + last.columnSpan === column) last.columnSpan++
-        else runs.push({ row, column, rowSpan: 1, columnSpan: 1 })
-      }
-      return runs
-    })
-  })()
+  // Linked highlighting may span other slots; the outline and move hit target
+  // must use the same directly selected bounds as the drag preview.
+  const animationCelSelectionBoxes = [animationCelDragPreview ?? {
+    row: selectedCelRow, column: selectedCelColumn,
+    rowSpan: selectedCelRowSpan, columnSpan: selectedCelColumnSpan
+  }]
 
   const selectedAnimationMaskOwners = new Set(session.selectedAnimationMaskRowKeys)
 

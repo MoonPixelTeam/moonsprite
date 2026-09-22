@@ -20,7 +20,7 @@ it('keeps pointer capture across settings updates and releases it when the edito
   const editor = (settings: LayerSettingsState) => <I18nProvider><LayerSettingsEditor ref={ref} value={settings} onChange={onChange} /></I18nProvider>
   const view = render(editor(value))
   act(() => ref.current!.open())
-  fireEvent.click(view.baseElement.querySelector('.layer-quick-actions-collapse')!)
+  fireEvent.click(view.baseElement.querySelector('.layer-quick-actions-open')!)
   const handle = view.baseElement.querySelector<HTMLButtonElement>('.quick-command-drag-handle')!
   handle.setPointerCapture = vi.fn()
   handle.hasPointerCapture = vi.fn().mockReturnValue(true)

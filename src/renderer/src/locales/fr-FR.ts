@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const frFRMessages = {
+  "layers.animationSettings": "Réglages d’animation",
+  "layers.defaultModeHint": "Afficher les calques et les miniatures pour dessiner.",
+  "layers.animationModeHint": "Afficher les images, les sections de boucle et les outils d’animation.",
+  "layers.settingsLiveHint": "Les modifications s’appliquent immédiatement",
   "preferences.exportProtection.title": "Protection à l’exportation",
   "preferences.exportProtection.off": "Désactivée",
   "preferences.exportProtection.blur": "Adoucissement fin des bords",
@@ -47,7 +51,7 @@ export const frFRMessages = {
   'reference.openWindow': 'Ouvrir la référence actuelle dans une fenêtre flottante',
   'reference.newWindow': 'Nouvelle fenêtre de référence',
   'layers.panelMode': 'Mode du panneau des calques',
-  'layers.mode.default': 'Mode par défaut',
+  'layers.mode.default': 'Mode normal',
   'layers.mode.animation': 'Mode animation',
   'panel.reference': "Image de référence",
   'reference.empty': "Cliquez pour coller ou appuyez sur Ctrl+V",
@@ -1953,6 +1957,9 @@ export const frFRMessages = {
   'layers.onionSkinRange': 'Range de Frame',
   'layers.onionSkinOpacity': 'Overlay Opacité',
   'layers.onionSkinColors': 'Frame Couleurs',
+  'layers.onionSkinScope': 'Portée',
+  'layers.onionSkinCurrentLayer': 'Calque actuel',
+  'layers.onionSkinAllLayers': 'Tous les calques',
   'layers.previous': 'Précédent',
   'layers.next': 'Suivant',
   'layers.previousFrames': 'Précédent Frame',

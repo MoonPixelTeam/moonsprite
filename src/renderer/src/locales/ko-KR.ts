@@ -1,6 +1,10 @@
 import type { TranslationCatalog } from './contracts'
 
 export const koKRMessages = {
+  "layers.animationSettings": "애니메이션 설정",
+  "layers.defaultModeHint": "그리기에 필요한 레이어와 미리 보기를 표시합니다.",
+  "layers.animationModeHint": "프레임, 반복 구간 및 애니메이션 도구를 표시합니다.",
+  "layers.settingsLiveHint": "변경 사항이 즉시 적용됩니다",
   "preferences.exportProtection.title": "내보내기 보호",
   "preferences.exportProtection.off": "끄기",
   "preferences.exportProtection.blur": "좁은 경계 부드럽게",
@@ -47,7 +51,7 @@ export const koKRMessages = {
   'reference.openWindow': '현재 참고 이미지를 플로팅 창에서 열기',
   'reference.newWindow': '새 참고 이미지 창',
   'layers.panelMode': '레이어 패널 모드',
-  'layers.mode.default': '기본 모드',
+  'layers.mode.default': '일반 모드',
   'layers.mode.animation': '애니메이션 모드',
   'panel.reference': "참고 이미지",
   'reference.empty': "클릭하거나 Ctrl+V로 참고 이미지 붙여넣기",
@@ -1953,6 +1957,9 @@ export const koKRMessages = {
   'layers.onionSkinRange': '프레임 범위',
   'layers.onionSkinOpacity': '오버레이 불투명도',
   'layers.onionSkinColors': '프레임 색상',
+  'layers.onionSkinScope': '적용 범위',
+  'layers.onionSkinCurrentLayer': '현재 레이어',
+  'layers.onionSkinAllLayers': '모든 레이어',
   'layers.previous': '이전',
   'layers.next': '다음',
   'layers.previousFrames': '이전 프레임',

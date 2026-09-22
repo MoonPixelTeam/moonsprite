@@ -36,7 +36,7 @@ it('switches modes without changing the active frame or document history and per
   const view = render(<ConnectedPanel />)
   expect(view.container.querySelector('.layer-animation-grid')).not.toBeNull()
   fireEvent.click(view.getByRole('button', { name: '图层设置' }))
-  fireEvent.click(view.getByRole('button', { name: '默认模式' }))
+  fireEvent.click(view.getByRole('button', { name: '普通模式' }))
   expect(view.container.querySelector('.layer-animation-grid')).toBeNull()
   expect(view.container.querySelector('.layer-animation-toolbar')).toBeNull()
   expect(view.container.querySelector('.layer-header-properties')).not.toBeNull()
@@ -165,7 +165,7 @@ it.each(['side', 'bottom', 'floating'])('hides clipped quick actions from left t
   resize()
   expect(buttons.every(button => button.style.visibility === '')).toBe(true)
   fireEvent.click(settings)
-  expect(view.getByRole('button', { name: '默认模式' })).toBeInTheDocument()
+  expect(view.getByRole('button', { name: '普通模式' })).toBeInTheDocument()
 })
 
 it.each(['compact', 'normal', 'detailed', 'expanded', 'large', 'huge'])('keeps default-mode thumbnails fixed while preserving animation density: %s', density => {

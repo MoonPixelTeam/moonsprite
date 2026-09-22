@@ -1913,15 +1913,31 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .preference-quick-command-icon > .pixel-asset-icon { width: 22px; height: 22px; }
 .preference-quick-command-name { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--theme-text-soft); font-size: var(--ui-font-regular); text-overflow: ellipsis; white-space: nowrap; }
 :is(.preference-color-mode-row, .preference-quick-command-row) > .pixel-checkbox { flex: 0 0 22px; }
-.layer-settings-modal { width: min(360px, calc(100vw - 32px)); }
-.layer-settings-modal .modal-body { display: grid; min-width: 0; align-content: start; gap: var(--ui-space-4); padding: var(--ui-space-5); overflow-x: hidden; overflow-y: auto; }
-.layer-settings-section { display: grid; min-width: 0; gap: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px dashed var(--theme-border-strong); }
+.layer-settings-modal { width: min(400px, calc(100vw - 32px)); overflow: hidden; }
+.resizable-modal.layer-settings-modal > .modal-body { display: grid; min-height: 0; scrollbar-gutter: stable; min-width: 0; align-content: start; gap: var(--ui-space-4); padding: var(--ui-space-5); overflow-x: hidden; overflow-y: auto; }
+.layer-settings-section { display: grid; min-width: 0; gap: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px solid var(--theme-border); }
+.layer-settings-section:first-child { padding-top: 0; border-top: 0; }
+.layer-settings-mode { display: grid; gap: var(--ui-space-3); margin-bottom: var(--ui-space-3); }
+.layer-settings-mode .segmented-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.layer-settings-hint { margin: 0; color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
+.layer-settings-live-hint { flex: 1; text-align: right; }
+.layer-settings-count { margin-left: auto; margin-right: var(--ui-space-3); color: var(--theme-text-muted); font-size: var(--ui-font-small); font-variant-numeric: tabular-nums; }
+.layer-settings-subheading { margin: var(--ui-space-2) 0 0; color: var(--theme-text-secondary); font-size: var(--ui-font-small); font-weight: 600; }
 .layer-settings-section-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; }
 .layer-settings-section-heading h3 { margin: 0; color: var(--theme-accent); font-size: var(--ui-font-regular); font-weight: 700; }
 .layer-settings-section-body { display: grid; min-width: 0; gap: var(--ui-space-3); }
 .layer-quick-actions-description { margin: calc(-1 * var(--ui-space-2)) 0 0; color: var(--theme-text-muted); font-size: var(--ui-font-small); line-height: var(--ui-line-small); }
 .layer-quick-actions-scroll { max-block-size: min(148px, 26vh); overflow-y: auto; overscroll-behavior: contain; }
 .layer-settings-onion { display: grid; min-width: 0; gap: var(--ui-space-3); }
+.layer-onion-scope-field { display: grid; gap: var(--ui-space-3); padding-block: var(--ui-space-3); }
+.layer-onion-scope { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.layer-quick-actions-open { display: flex; align-items: center; gap: var(--ui-space-3); width: 100%; padding: 10px; text-align: left; color: var(--theme-text-primary); background: var(--theme-raised-surface); border: 1px solid var(--theme-border); }
+.layer-quick-actions-open:hover { background: var(--theme-surface-hover); border-color: var(--theme-accent); }
+.layer-quick-actions-open:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: -2px; }
+.layer-quick-actions-summary { display: flex; flex: 0 0 auto; align-items: start; gap: var(--ui-space-4); padding: var(--ui-space-5); }
+.layer-quick-actions-summary .layer-settings-count { white-space: nowrap; }
+.resizable-modal.layer-quick-actions-modal > .layer-quick-actions-scroll { max-block-size: none; min-height: 0; overflow-y: auto; overflow-x: hidden; align-content: start; padding: 0 var(--ui-space-5) var(--ui-space-5); }
+.layer-quick-actions-modal .preference-quick-command-row { min-height: 42px; }
 .layer-settings-density { display: grid; min-width: 0; gap: var(--ui-space-2); }
 .layer-settings-control-label { min-width: 0; overflow: hidden; color: var(--theme-text-secondary); font-size: var(--ui-font-regular); line-height: var(--ui-line-regular); text-overflow: ellipsis; white-space: nowrap; }
 .layer-density-range .range-slider { --range-slider-height: 30px; }
