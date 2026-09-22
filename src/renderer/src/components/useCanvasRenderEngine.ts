@@ -20,7 +20,7 @@ import {
   notifyCanvasPreview,
   type CanvasPreviewSnapshot
 } from '@/core/canvas-preview-lifecycle'
-import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from '@/components/canvas-composite-cache'
+import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from '@/components/canvas-composite-registry'
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { animationFrameIdsForCellKeys } from '@/components/canvas-move-selection'
 import { type SelectionBoundaryCache } from '@/components/canvas-selection-renderer'

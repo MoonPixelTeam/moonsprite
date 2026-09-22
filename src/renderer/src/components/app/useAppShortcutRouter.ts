@@ -16,23 +16,7 @@ import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-to
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 
-interface Options {
-  pointerPosition: () => { x: number; y: number } | null
-  commandSurface: () => HTMLElement | null
-  rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
-  shortcuts: ReturnType<typeof loadShortcutBindings>
-  homeOpen: boolean
-  outlineOpen: boolean
-  openMenu: boolean
-  shortcutOpen: boolean
-  timelineHidden: boolean
-  commandScope(): EditorCommandScope
-  selectionOverride(): boolean
-  onEscape(event: KeyboardEvent): void
-  commands: AppShortcutContext['uiCommands']
-  openAdjustment: AppShortcutContext['openAdjustment']
-  publishShortcutCommand: AppShortcutContext['publishShortcutCommand']
-}
+import type { Options } from './app-shortcut-router-options'
 
 const heldCanvasShortcutIds = new Set<ShortcutId>(['addForegroundToPalette', ...QUICK_TOOL_SHORTCUT_IDS])
 

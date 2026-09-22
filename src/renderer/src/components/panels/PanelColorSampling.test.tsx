@@ -9,7 +9,7 @@ import { PreviewPanel } from './PreviewPanel'
 import { useReferenceImages } from './reference-image-state'
 import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
 import { captureSelectionTransform } from '@/core/tools-selection-transform-source'
-import { canvasCompositeCacheFor } from '@/components/canvas-composite-cache'
+import { canvasCompositeCacheFor } from '@/components/canvas-composite-registry'
 
 let previous: ReturnType<typeof useWorkspace.getState>
 const color = { r: 35, g: 70, b: 105, a: 128 }

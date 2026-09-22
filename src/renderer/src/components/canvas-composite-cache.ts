@@ -56,7 +56,6 @@ import { compositeRegionWindow } from './canvas-composite-region-window'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
 
-export { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-registry'
 
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
 

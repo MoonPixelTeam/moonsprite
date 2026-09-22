@@ -5,23 +5,8 @@ import { type CanvasPoint, type CanvasDragState } from './canvas-input-contracts
 import { type CanvasPointerDeviceEvent, PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS } from './canvas-input-pointer'
 import { isPendingCanvasPathGesture, undoCanvasPathStep } from './canvas-input-path'
 
-export interface CanvasPointerState {
-  point: CanvasPoint
-  clientX: number
-  clientY: number
-  ctrlKey: boolean
-  altKey: boolean
-  visible: boolean
-}
-
-const EMPTY_POINTER: CanvasPointerState = {
-  point: { x: 0, y: 0 },
-  clientX: 0,
-  clientY: 0,
-  ctrlKey: false,
-  altKey: false,
-  visible: false
-}
+import { EMPTY_POINTER, type CanvasPointerState } from './canvas-pointer-state'
+export type { CanvasPointerState } from './canvas-pointer-state'
 
 export class CanvasInputState {
   drag: CanvasDragState | null = null
