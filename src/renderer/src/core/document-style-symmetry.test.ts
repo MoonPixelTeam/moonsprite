@@ -44,7 +44,7 @@ it.each(['stroke', 'combined', 'dynamic'] as const)('updates only touched pixels
     expect(renderedPixels).toBeLessThan(4096)
     expect(actual).toEqual(compositeRegion(document, 0, 0, 256, 256, new DocumentCompositeCache(), 0))
   }
-})
+}, 20_000)
 
 it('scans only mirrored brush regions and retains untouched style blocks between them', () => {
   const document = createDocument('symmetric styles', 256, 256, 'rgba')

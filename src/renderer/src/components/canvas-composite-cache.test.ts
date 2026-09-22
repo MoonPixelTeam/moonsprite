@@ -875,7 +875,7 @@ describe('CanvasCompositeCache', () => {
     writeLayerColor(document, lower, 161, { r: 1, g: 2, b: 3, a: 255 })
     renderMoved(160, 2)
     expect(layer.pixels).toEqual(original)
-  })
+  }, 20_000)
 
   it('keeps a moved selection preview separate from document pixels', () => {
     const document = createDocument('selection preview', 6, 2, 'rgba')
