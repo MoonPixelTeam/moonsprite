@@ -195,7 +195,9 @@ pub(crate) fn save_project(
         }
     }
     let (label, extensions) = project_save_filter(format.as_deref(), language.as_deref());
-    let path = dialog.add_filter(label, &extensions).add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
+    let path = dialog
+        .add_filter(label, &extensions)
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),
@@ -218,7 +220,9 @@ pub(crate) fn export_image(
             dialog = dialog.set_directory(directory);
         }
     }
-    let path = dialog.add_filter(label, &extensions).add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
+    let path = dialog
+        .add_filter(label, &extensions)
+        .add_filter(dialog_label(language.as_deref(), "All files"), &["*"])
         .save_file();
     SaveDialogResult {
         canceled: path.is_none(),

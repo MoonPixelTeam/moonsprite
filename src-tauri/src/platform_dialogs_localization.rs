@@ -13,8 +13,15 @@ pub(super) fn dialog_label(language: Option<&str>, key: &'static str) -> &'stati
     };
     let labels: [&str; 9] = match key {
         "All files" => [
-            "所有文件", "All files", "すべてのファイル", "모든 파일", "Todos los archivos",
-            "Tous les fichiers", "Alle Dateien", "Todos os arquivos", "Все файлы",
+            "所有文件",
+            "All files",
+            "すべてのファイル",
+            "모든 파일",
+            "Todos los archivos",
+            "Tous les fichiers",
+            "Alle Dateien",
+            "Todos os arquivos",
+            "Все файлы",
         ],
         "PNG image" => [
             "PNG 图片",

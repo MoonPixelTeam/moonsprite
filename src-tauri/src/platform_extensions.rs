@@ -412,7 +412,8 @@ fn ensure_builtin_extension_at(
         .map_err(|error| format!("无法读取内置扩展修订信息：{error}"))?;
     let mut revision = BTreeMap::new();
     for index in 0..archive.len() {
-        let entry = archive.by_index(index)
+        let entry = archive
+            .by_index(index)
             .map_err(|error| format!("无法读取内置扩展修订项：{error}"))?;
         if !entry.is_dir() {
             revision.insert(entry.name().to_string(), (entry.crc32(), entry.size()));
@@ -428,12 +429,11 @@ fn ensure_builtin_extension_at(
         }
     }
 
-    let package_path =
-        directory.join(format!(".bundled-{extension_id}-{}.msext", unique_suffix()));
+    let package_path = directory.join(format!(".bundled-{extension_id}-{}.msext", unique_suffix()));
     atomic_write(&package_path, package)?;
     let install_result = install_extension_at(&package_path, directory);
-    let cleanup_result = fs::remove_file(&package_path)
-        .map_err(|error| format!("无法清理内置扩展安装包：{error}"));
+    let cleanup_result =
+        fs::remove_file(&package_path).map_err(|error| format!("无法清理内置扩展安装包：{error}"));
     match (install_result, cleanup_result) {
         (Err(install), Err(cleanup)) => return Err(format!("{install}；{cleanup}")),
         (Err(error), _) | (_, Err(error)) => return Err(error),
@@ -442,7 +442,9 @@ fn ensure_builtin_extension_at(
 
     state = read_state(directory)?;
     state.seeded_builtin.insert(extension_id.to_string());
-    state.builtin_revisions.insert(extension_id.to_string(), revision);
+    state
+        .builtin_revisions
+        .insert(extension_id.to_string(), revision);
     write_state(directory, &state)
 }
 
@@ -700,11 +702,16 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
     if !valid_extension_id(&manifest.id) {
         return Err("扩展 ID 无效，只能使用字母、数字、点、短横线和下划线。".to_string());
     }
-    if manifest.translations.len() > 64 || manifest.translations.iter().any(|(locale, catalog)| {
-        !valid_text(locale, 32, true) || catalog.len() > 512 || catalog.iter().any(|(key, value)| {
-            !valid_text(key, MAX_DESCRIPTION_BYTES, true) || !valid_text(value, MAX_DESCRIPTION_BYTES, true)
+    if manifest.translations.len() > 64
+        || manifest.translations.iter().any(|(locale, catalog)| {
+            !valid_text(locale, 32, true)
+                || catalog.len() > 512
+                || catalog.iter().any(|(key, value)| {
+                    !valid_text(key, MAX_DESCRIPTION_BYTES, true)
+                        || !valid_text(value, MAX_DESCRIPTION_BYTES, true)
+                })
         })
-    }) {
+    {
         return Err("扩展翻译内容无效或超过限制。".to_string());
     }
     if !valid_text(&manifest.name, MAX_NAME_BYTES, true) {
@@ -2024,7 +2031,8 @@ mod tests {
     }
 
     #[test]
-    fn bundled_update_migrates_legacy_state_and_preserves_disabled_settings() -> Result<(), String> {
+    fn bundled_update_migrates_legacy_state_and_preserves_disabled_settings() -> Result<(), String>
+    {
         let directory = temporary_directory();
         let id = "com.example.bundled";
         let metadata = manifest(id);
@@ -2042,34 +2050,55 @@ mod tests {
         let state = super::read_state(&directory)?;
         assert_eq!(state.enabled.get(id), Some(&false));
         assert!(state.builtin_revisions.contains_key(id));
-        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 2");
-        assert_eq!(fs::read(&settings).map_err(|error| error.to_string())?, b"preserved");
+        assert_eq!(
+            fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?,
+            b"return 2"
+        );
+        assert_eq!(
+            fs::read(&settings).map_err(|error| error.to_string())?,
+            b"preserved"
+        );
 
         // An unchanged bundle must not replace the installation on every launch.
-        fs::write(directory.join(id).join("main.lua"), b"manual edit").map_err(|error| error.to_string())?;
+        fs::write(directory.join(id).join("main.lua"), b"manual edit")
+            .map_err(|error| error.to_string())?;
         super::ensure_builtin_extension_at(&directory, id, &new)?;
-        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"manual edit");
+        assert_eq!(
+            fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?,
+            b"manual edit"
+        );
         let third = archive(&[("manifest.json", &metadata), ("main.lua", b"return 3")]);
         super::ensure_builtin_extension_at(&directory, id, &third)?;
-        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 3");
+        assert_eq!(
+            fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?,
+            b"return 3"
+        );
         assert_eq!(super::read_state(&directory)?.enabled.get(id), Some(&false));
         fs::remove_dir_all(directory).map_err(|error| error.to_string())
     }
 
     #[test]
-    fn bundled_update_failure_and_uninstall_do_not_restore_or_damage_existing_data() -> Result<(), String> {
+    fn bundled_update_failure_and_uninstall_do_not_restore_or_damage_existing_data(
+    ) -> Result<(), String> {
         let directory = temporary_directory();
         let id = "com.example.bundled";
         let metadata = manifest(id);
         let old = archive(&[("manifest.json", &metadata), ("main.lua", b"return 1")]);
         let new = archive(&[("manifest.json", &metadata), ("main.lua", b"return 2")]);
         super::ensure_builtin_extension_at(&directory, id, &old)?;
-        let state_before = fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?;
+        let state_before =
+            fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?;
         assert!(super::ensure_builtin_extension_at(&directory, id, b"broken zip").is_err());
         let invalid = archive(&[("manifest.json", &metadata)]);
         assert!(super::ensure_builtin_extension_at(&directory, id, &invalid).is_err());
-        assert_eq!(fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?, state_before);
-        assert_eq!(fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?, b"return 1");
+        assert_eq!(
+            fs::read(super::extension_state_path(&directory)).map_err(|error| error.to_string())?,
+            state_before
+        );
+        assert_eq!(
+            fs::read(directory.join(id).join("main.lua")).map_err(|error| error.to_string())?,
+            b"return 1"
+        );
         super::uninstall_extension_at(&directory, id)?;
         super::ensure_builtin_extension_at(&directory, id, &new)?;
         assert!(!directory.join(id).exists());

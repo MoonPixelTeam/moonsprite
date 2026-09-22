@@ -3,7 +3,10 @@ use std::{
     fs::{self, OpenOptions},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
-    sync::{atomic::{AtomicU64, Ordering}, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager};
@@ -118,8 +121,13 @@ fn trim_old_logs(directory: &Path, current: &Path) -> Result<(), String> {
         .map_err(|error| error.to_string())?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("jsonl")
-            && path.file_name().and_then(|value| value.to_str()).is_some_and(|name| name.starts_with("session-")))
+        .filter(|path| {
+            path.extension().and_then(|value| value.to_str()) == Some("jsonl")
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|name| name.starts_with("session-"))
+        })
         .collect::<Vec<_>>();
     files.sort_by_key(|path| (path != current, std::cmp::Reverse(modified_millis(path))));
     for path in files.into_iter().skip(MAX_LOG_FILES) {
@@ -146,7 +154,10 @@ fn create_session_file(directory: &Path, current: &mut Option<PathBuf>) -> Resul
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
     let sequence = LOG_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let path = directory.join(format!("session-{timestamp}-{}-{sequence}.jsonl", std::process::id()));
+    let path = directory.join(format!(
+        "session-{timestamp}-{}-{sequence}.jsonl",
+        std::process::id()
+    ));
     OpenOptions::new()
         .create(true)
         .append(true)
@@ -185,11 +196,19 @@ fn append_events_to_file(
         .map_err(|_| "诊断日志写入状态不可用".to_string())?;
     let path = session_file(app, state)?;
     let directory = path.parent().ok_or("诊断日志目录不可用")?;
-    let mut current = state.session_file.lock().map_err(|_| "诊断日志状态不可用".to_string())?;
+    let mut current = state
+        .session_file
+        .lock()
+        .map_err(|_| "诊断日志状态不可用".to_string())?;
     append_events_to_path(directory, &mut current, &path, events)
 }
 
-fn append_events_to_path(directory: &Path, current: &mut Option<PathBuf>, path: &Path, events: Vec<Value>) -> Result<(), String> {
+fn append_events_to_path(
+    directory: &Path,
+    current: &mut Option<PathBuf>,
+    path: &Path,
+    events: Vec<Value>,
+) -> Result<(), String> {
     let file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -199,12 +218,19 @@ fn append_events_to_path(directory: &Path, current: &mut Option<PathBuf>, path: 
     let mut writer = BufWriter::new(file);
     for event in events.into_iter().take(100) {
         let encoded = serde_json::to_vec(&event).map_err(|error| error.to_string())?;
-        if encoded.len() > MAX_EVENT_BYTES { return Err("诊断事件超过大小限制".to_string()); }
+        if encoded.len() > MAX_EVENT_BYTES {
+            return Err("诊断事件超过大小限制".to_string());
+        }
         let event_bytes = encoded.len() as u64 + 1;
         if bytes > 0 && bytes + event_bytes > MAX_LOG_BYTES {
             writer.flush().map_err(|error| error.to_string())?;
             let next = create_session_file(directory, current)?;
-            writer = BufWriter::new(OpenOptions::new().append(true).open(next).map_err(|error| error.to_string())?);
+            writer = BufWriter::new(
+                OpenOptions::new()
+                    .append(true)
+                    .open(next)
+                    .map_err(|error| error.to_string())?,
+            );
             bytes = 0;
         }
         writer
@@ -237,24 +263,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rotates_within_a_session_and_preserves_each_event() -> Result<(), Box<dyn std::error::Error>> {
-        let directory = std::env::temp_dir().join(format!("moonsprite-log-rotation-{}-{}", std::process::id(), LOG_SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+    fn rotates_within_a_session_and_preserves_each_event() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let directory = std::env::temp_dir().join(format!(
+            "moonsprite-log-rotation-{}-{}",
+            std::process::id(),
+            LOG_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir_all(&directory)?;
         let mut current = None;
         let first = create_session_file(&directory, &mut current)?;
         // Simulate a long-running session reaching its file limit.
-        OpenOptions::new().write(true).open(&first)?.set_len(MAX_LOG_BYTES - 2)?;
-        append_events_to_path(&directory, &mut current, &first, vec![serde_json::json!({"sequence": 1}), serde_json::json!({"sequence": 2})])?;
+        OpenOptions::new()
+            .write(true)
+            .open(&first)?
+            .set_len(MAX_LOG_BYTES - 2)?;
+        append_events_to_path(
+            &directory,
+            &mut current,
+            &first,
+            vec![
+                serde_json::json!({"sequence": 1}),
+                serde_json::json!({"sequence": 2}),
+            ],
+        )?;
         let next = current.as_ref().ok_or("missing current log")?;
         assert_ne!(&first, next);
-        assert_eq!(fs::read_to_string(next)?, "{\"sequence\":1}\n{\"sequence\":2}\n");
+        assert_eq!(
+            fs::read_to_string(next)?,
+            "{\"sequence\":1}\n{\"sequence\":2}\n"
+        );
         assert!(fs::metadata(&first)?.len() <= MAX_LOG_BYTES);
         fs::write(directory.join("user-notes.jsonl"), "keep")?;
-        for _ in 0..MAX_LOG_FILES + 2 { create_session_file(&directory, &mut current)?; }
+        for _ in 0..MAX_LOG_FILES + 2 {
+            create_session_file(&directory, &mut current)?;
+        }
         let current = current.as_ref().ok_or("missing rotated log")?;
         assert!(current.exists());
         assert_eq!(fs::read_dir(&directory)?.count(), MAX_LOG_FILES + 1);
-        assert_eq!(fs::read_to_string(directory.join("user-notes.jsonl"))?, "keep");
+        assert_eq!(
+            fs::read_to_string(directory.join("user-notes.jsonl"))?,
+            "keep"
+        );
         fs::remove_dir_all(directory)?;
         Ok(())
     }

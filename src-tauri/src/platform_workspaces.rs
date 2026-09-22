@@ -143,18 +143,25 @@ fn built_in_workspace() -> StoredWorkspace {
 }
 
 fn built_in_normal_workspace() -> Result<StoredWorkspace, String> {
-    let layout: serde_json::Value = serde_json::from_str(include_str!("../../src/shared/workspace-normal.json"))
-        .map_err(|error| format!("普通工作区预设无效：{error}"))?;
+    let layout: serde_json::Value =
+        serde_json::from_str(include_str!("../../src/shared/workspace-normal.json"))
+            .map_err(|error| format!("普通工作区预设无效：{error}"))?;
     Ok(StoredWorkspace {
-        id: "builtin-normal".to_string(), name: "默认工作区（普通）".to_string(),
-        file_path: String::new(), updated_at: String::new(), built_in: true,
-        layout: layout.clone(), initial_layout: layout,
+        id: "builtin-normal".to_string(),
+        name: "默认工作区（普通）".to_string(),
+        file_path: String::new(),
+        updated_at: String::new(),
+        built_in: true,
+        layout: layout.clone(),
+        initial_layout: layout,
     })
 }
 
 fn read_normal_workspace(path: &Path) -> Result<StoredWorkspace, String> {
     let mut workspace = read_workspace(path)?;
-    if workspace.id != "builtin-normal" { return Err("普通工作区 ID 无效。".to_string()); }
+    if workspace.id != "builtin-normal" {
+        return Err("普通工作区 ID 无效。".to_string());
+    }
     let preset = built_in_normal_workspace()?;
     workspace.name = preset.name;
     workspace.built_in = true;
@@ -301,7 +308,12 @@ fn read_default_workspace(path: &Path) -> Result<StoredWorkspace, String> {
         workspace.layout = built_in_workspace().layout;
     }
     if workspace.layout == workspace.initial_layout
-        && workspace.layout.get("panelVisibility").and_then(|panels| panels.get("reference")).and_then(|value| value.as_bool()) != Some(true)
+        && workspace
+            .layout
+            .get("panelVisibility")
+            .and_then(|panels| panels.get("reference"))
+            .and_then(|value| value.as_bool())
+            != Some(true)
     {
         workspace.layout = built_in_workspace().layout;
     }
@@ -322,7 +334,9 @@ pub(crate) fn list_workspaces() -> Result<WorkspaceListing, String> {
     let normal_path = directory.join("builtin-normal.workspace.json");
     let normal_workspace = if normal_path.is_file() {
         read_normal_workspace(&normal_path)?
-    } else { built_in_normal_workspace()? };
+    } else {
+        built_in_normal_workspace()?
+    };
     let mut workspaces = vec![default_workspace, normal_workspace];
     for entry in
         fs::read_dir(&directory).map_err(|error| format!("无法读取工作区文件夹：{error}"))?
