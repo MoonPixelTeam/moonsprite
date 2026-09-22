@@ -17,11 +17,13 @@ export function PanelActions({ children, className = '' }: { children: ReactNode
     if (!panel) return
     const update = () => {
       const width = panel.clientWidth
+      if (width <= 0) return
       // Above 220px the title also needs room; below it the header is icon-only.
       setCompact(width < count * 30 + 8 + (width > 220 ? 72 : 0))
       setPosition(null)
     }
     update()
+    if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(update)
     observer.observe(panel)
     return () => observer.disconnect()
