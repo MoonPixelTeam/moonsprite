@@ -80,8 +80,6 @@ interface Ports {
   useLocalCursors?: boolean
   selectionInteractionEditable: boolean
   scheduleDraw: () => void
-  updateMarqueePreview: (drag: DragState, point: Point, modifiers: { proportional: boolean; integerScale?: boolean; fromCenter?: boolean; constrainAxis?: boolean }, finalize?: boolean) => void
-  currentSelectionMarqueeModifierState: () => { proportional: boolean; integerScale?: boolean; fromCenter?: boolean; constrainAxis?: boolean }
   displayedResizeCursorForHandle: (hit: SelectionHandle, contentRotation?: number) => string
   modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
   selectionLayersEditable: boolean
@@ -172,8 +170,6 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
       selectionCrosshair,
       selectionInteractionEditable,
       scheduleDraw,
-      updateMarqueePreview,
-      currentSelectionMarqueeModifierState,
       displayedResizeCursorForHandle,
       modifierActive,
       selectionLayersEditable,

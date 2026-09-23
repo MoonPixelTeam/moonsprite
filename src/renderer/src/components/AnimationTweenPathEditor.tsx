@@ -174,35 +174,35 @@ export function AnimationTweenPathEditor({ initialPath, initialAnchor, source, p
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
   }
   const move = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const active = gesture.current
+    const pathGesture = gesture.current
     const local = localPoint(event)
     pointerRef.current = local
-    if (!active) { refreshPointer.current(event.shiftKey, event.ctrlKey || event.metaKey); return }
-    if (event.pointerId !== active.id) return
-    if (active.mode === 'pan') {
-      setView({ zoom: active.zoom, pan: { x: active.pan.x + local.x - active.start.x, y: active.pan.y + local.y - active.start.y } })
+    if (!pathGesture) { refreshPointer.current(event.shiftKey, event.ctrlKey || event.metaKey); return }
+    if (event.pointerId !== pathGesture.id) return
+    if (pathGesture.mode === 'pan') {
+      setView({ zoom: pathGesture.zoom, pan: { x: pathGesture.pan.x + local.x - pathGesture.start.x, y: pathGesture.pan.y + local.y - pathGesture.start.y } })
       return
     }
     const clamp = (value: number) => Math.max(-16384, Math.min(16384, Math.floor(value)))
-    const documentPoint = { x: clamp((local.x - origin.x) / active.zoom), y: clamp((local.y - origin.y) / active.zoom) }
-    if (active.mode === 'anchor') {
-      const dx = documentPoint.x - Math.floor((active.start.x - origin.x) / active.zoom)
-      const dy = documentPoint.y - Math.floor((active.start.y - origin.y) / active.zoom)
-      const anchor = { x: clamp(active.initial.anchor.x + dx), y: clamp(active.initial.anchor.y + dy) }
-      const shiftX = active.initial.anchor.x - anchor.x, shiftY = active.initial.anchor.y - anchor.y
-      if (!shiftX && !shiftY) { active.points = active.initial; setDraft(active.initial); return }
-      const path = active.initial.path.map((point, index) => index === 0 ? { x: 0, y: 0 } : { x: point.x + shiftX, y: point.y + shiftY })
+    const documentPoint = { x: clamp((local.x - origin.x) / pathGesture.zoom), y: clamp((local.y - origin.y) / pathGesture.zoom) }
+    if (pathGesture.mode === 'anchor') {
+      const dx = documentPoint.x - Math.floor((pathGesture.start.x - origin.x) / pathGesture.zoom)
+      const dy = documentPoint.y - Math.floor((pathGesture.start.y - origin.y) / pathGesture.zoom)
+      const anchor = { x: clamp(pathGesture.initial.anchor.x + dx), y: clamp(pathGesture.initial.anchor.y + dy) }
+      const shiftX = pathGesture.initial.anchor.x - anchor.x, shiftY = pathGesture.initial.anchor.y - anchor.y
+      if (!shiftX && !shiftY) { pathGesture.points = pathGesture.initial; setDraft(pathGesture.initial); return }
+      const path = pathGesture.initial.path.map((point, index) => index === 0 ? { x: 0, y: 0 } : { x: point.x + shiftX, y: point.y + shiftY })
       if (path.some(point => Math.abs(point.x) > 16384 || Math.abs(point.y) > 16384)) return
-      active.points = { anchor, path }
+      pathGesture.points = { anchor, path }
     } else {
-      const point = { x: clamp(documentPoint.x - active.points.anchor.x), y: clamp(documentPoint.y - active.points.anchor.y) }
-      if (event.shiftKey && !active.lineBase) active.lineBase = active.points
-      const base = active.lineBase ?? active.points
+      const point = { x: clamp(documentPoint.x - pathGesture.points.anchor.x), y: clamp(documentPoint.y - pathGesture.points.anchor.y) }
+      if (event.shiftKey && !pathGesture.lineBase) pathGesture.lineBase = pathGesture.points
+      const base = pathGesture.lineBase ?? pathGesture.points
       const nextPath = extendTweenPath(base.path, point, event.shiftKey && (event.ctrlKey || event.metaKey))
-      active.points = nextPath === base.path ? base : { ...base, path: nextPath }
-      if (!event.shiftKey) active.lineBase = undefined
+      pathGesture.points = nextPath === base.path ? base : { ...base, path: nextPath }
+      if (!event.shiftKey) pathGesture.lineBase = undefined
     }
-    setDraft(active.points)
+    setDraft(pathGesture.points)
   }
   refreshPointer.current = (shift, constrain) => {
     if (!shift || mode !== 'draw' || gesture.current || !pointerRef.current) { setLinePreview(null); return }
