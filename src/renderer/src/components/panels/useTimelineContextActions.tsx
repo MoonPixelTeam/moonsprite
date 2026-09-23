@@ -59,7 +59,7 @@ export function useTimelineContextActions({
   const [frameProperties, setFrameProperties] = useState<{ frameId: string; targetFrameIds: string[]; duration: number } | null>(null)
 
   const [loopSectionEditor, setLoopSectionEditor] = useState<AnimationLoopSectionEditorState | null>(null)
-  const [tweenTarget, setTweenTarget] = useState<{ documentId: string; frameId: string; layerId: string } | null>(null)
+  const [tweenTarget, setTweenTarget] = useState<{ documentId: string; frameId: string; layerId: string; initialLoopSectionId?: string } | null>(null)
 
   const [celProperties, setCelProperties] = useState<{ layerId: string; frameId: string; targetKeys: string[]; opacity: number; zIndex: number } | null>(null)
 
@@ -366,6 +366,17 @@ export function useTimelineContextActions({
         Boolean(item.mask.linkedMaskId && (selected.has(item.key) || selectedRoots.has(resolveAnimationMask(timeline, item.mask)?.id ?? '')))
       )
     })()
+  const tweenMenuItem = <button type="button" className="context-menu-item" role="menuitem" disabled={animationMenu?.kind === 'loop-section' && !animationMenuLoopSection} onClick={() => {
+    if (!animationMenu) return
+    if (animationMenu.kind === 'loop-section') {
+      const range = animationMenuLoopSection && resolveAnimationLoopSectionRange(timeline, animationMenuLoopSection)
+      if (!range) return
+      setTweenTarget({ documentId: session.document.id, frameId: range.startFrameId, layerId: session.document.activeLayerId, initialLoopSectionId: animationMenu.sectionId })
+    } else if (animationMenu.kind === 'frame' || animationMenu.kind === 'cel') {
+      setTweenTarget({ documentId: session.document.id, frameId: animationMenu.frameId, layerId: animationMenu.kind === 'cel' ? animationMenu.layerId : session.document.activeLayerId })
+    }
+    setAnimationMenu(null)
+  }}><PixelUtilityIcon kind="plus" /><span>{t('timeline.tween.title')}</span></button>
   const timelineContextSurfaces = (
     <>
       {animationMenu?.kind === 'playback' && (
@@ -385,10 +396,7 @@ export function useTimelineContextActions({
             onPointerDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
           >
-            {(animationMenu.kind === 'frame' || animationMenu.kind === 'cel') && <button type="button" className="context-menu-item" role="menuitem" onClick={() => {
-              setTweenTarget({ documentId: session.document.id, frameId: animationMenu.frameId, layerId: animationMenu.kind === 'cel' ? animationMenu.layerId : session.document.activeLayerId })
-              setAnimationMenu(null)
-            }}><PixelUtilityIcon kind="plus" /><span>{t('timeline.tween.title')}</span></button>}
+            {animationMenu.kind === 'cel' && tweenMenuItem}
             {animationMenu.kind === 'frame' ? (
               <>
                 <button className="context-menu-item" type="button" role="menuitem" onClick={openLoopSectionCreator}>
@@ -396,6 +404,7 @@ export function useTimelineContextActions({
                   <span>{t('timeline.createLoopSection')}</span>
                   {shortcutHint('createAnimationLoopSection')}
                 </button>
+                {tweenMenuItem}
                 <button className="context-menu-item" type="button" role="menuitem" onClick={openFrameProperties}>
                   <PixelUtilityIcon kind="info" />
                   <span>{t('timeline.frameProperties')}</span>
@@ -466,6 +475,7 @@ export function useTimelineContextActions({
               </>
             ) : animationMenu.kind === 'loop-section' ? (
               <>
+                {tweenMenuItem}
                 <button
                   className="context-menu-item"
                   type="button"

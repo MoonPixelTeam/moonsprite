@@ -1032,6 +1032,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   })
 
   const selectionBeginInput = createSelectionBeginCanvasInput({
+    get updateMarqueePreview() { return updateMarqueePreview },
+    get currentSelectionMarqueeModifierState() { return currentSelectionMarqueeModifierState },
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get selectedFreeTileSelectionTarget() { return selectedFreeTileSelectionTarget },
     get selectionHit() { return selectionHit },

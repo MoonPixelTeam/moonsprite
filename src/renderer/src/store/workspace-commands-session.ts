@@ -1,3 +1,4 @@
+import { createSpriteSheetImportCommands } from './workspace-sprite-sheet-import'
 import { mutateDocumentSession } from './workspace-mutation'
 import type { SpriteDocument } from '@shared/types-document'
 import type { StoredPalette } from '@shared/types-files'
@@ -74,6 +75,7 @@ async function buildSpriteSheetResult(sourceSession: DocumentSession, options: S
 export function createWorkspaceSessionCommands({ get, set, recording, services: { documentTransactions } }: WorkspaceCommandContext<'openPath' | 'addSession' | 'commitFloatingPaste' | 'requestDialog', 'documentTransactions'>): WorkspaceSessionCommands {
   const { recordDocumentOperation } = recording
   return {
+    ...createSpriteSheetImportCommands({ get, set, recording, services: {} }),
     async newDocument(name, width, height, colorMode, recordDrawing = false) {
       try {
         const resource = await window.moonSprite.getResourceInfo()

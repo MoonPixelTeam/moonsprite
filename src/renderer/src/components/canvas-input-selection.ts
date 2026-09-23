@@ -153,7 +153,7 @@ export function createSelectionCanvasInput(ports: Ports) {
         tileRepeatPoint: repeatedStart,
         ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, repeatedStart, false, null, drawingAnchorPoint(session))
       }
-      updateMarqueePreview(inputRef.current.drag, repeatedStart, currentSelectionMarqueeModifierState())
+      ports.updateMarqueePreview(inputRef.current.drag, repeatedStart, ports.currentSelectionMarqueeModifierState())
       event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
       return true
     }

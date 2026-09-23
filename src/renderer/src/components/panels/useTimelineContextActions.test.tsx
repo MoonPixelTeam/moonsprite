@@ -1,4 +1,4 @@
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, render, fireEvent } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument, readLayerPacked } from '@/core/document'
 import { createAnimationCelLookup, ensureAnimationDocument } from '@/core/animation'
@@ -8,13 +8,14 @@ import { useTimelineContextActions } from './useTimelineContextActions'
 
 const workspace = vi.hoisted(() => ({ getState: vi.fn() }))
 vi.mock('@/store/workspace', () => ({ useWorkspace: workspace }))
+vi.mock('@/components/AnimationTweenDialog', () => ({ AnimationTweenDialog: (props: { initialLoopSectionId?: string }) => <div data-testid="tween-dialog">{props.initialLoopSectionId ?? 'frame'}</div> }))
 vi.mock('@/components/I18nProvider', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function fixture() {
   const document = createDocument('history lifecycle', 4, 4, 'rgba')
   const timeline = ensureAnimationDocument(document)
-  const session = { document, history: new HistoryStack(), selectedAnimationFrameIds: [], selectedAnimationCellKeys: [] } as unknown as DocumentSession
+  const session = { document, history: new HistoryStack(), selectedAnimationFrameIds: [], selectedAnimationCellKeys: [], animationFrameClipboard: [] } as unknown as DocumentSession
   return { session, timeline, activeFrameIndex: 0, celLookup: createAnimationCelLookup(timeline),
     setContextMenu: vi.fn(), setLayerCreateMenu: vi.fn(), shortcutHint: () => null,
     emptyLayerMaskCelTooltip: <span />, layerMaskTooltip: <span /> }
@@ -81,4 +82,21 @@ it('commits applied property previews on document switch and closes an empty tra
   hook.unmount()
   paint(second.session, 0xff445566)
   expect(second.session.history.length).toBe(1)
+})
+
+it('places tween below loop creation for frames and passes the clicked loop to the dialog', () => {
+  const options = fixture()
+  installStore(options.session)
+  const frameId = options.timeline.activeFrameId
+  options.timeline.loopSections = [{ id: 'clicked-loop', name: 'Loop', startFrameId: frameId, endFrameId: frameId, direction: 'forward', repeatCount: null }]
+  const hook = renderHook(useTimelineContextActions, { initialProps: options })
+  const event = { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 10, clientY: 10 } as unknown as React.MouseEvent<HTMLElement>
+  act(() => hook.result.current.openAnimationMenu(event, { kind: 'frame', frameId, x: 10, y: 10 }))
+  const view = render(hook.result.current.timelineContextSurfaces)
+  expect(view.getAllByRole('menuitem').slice(0, 2).map(item => item.textContent)).toEqual(['timeline.createLoopSection', 'timeline.tween.title'])
+  act(() => hook.result.current.openLoopSectionMenu(event, 'clicked-loop'))
+  view.rerender(hook.result.current.timelineContextSurfaces)
+  fireEvent.click(view.getByRole('menuitem', { name: 'timeline.tween.title' }))
+  view.rerender(hook.result.current.timelineContextSurfaces)
+  expect(view.getByTestId('tween-dialog')).toHaveTextContent('clicked-loop')
 })

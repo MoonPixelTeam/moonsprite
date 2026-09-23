@@ -1,3 +1,5 @@
+import type { PixelLinePoint } from '@/core/pixel-line'
+import { perfectPixelPathPoints } from '@/core/tools-shapes'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { PaletteEntry } from '@shared/types-color'
 import type { CheckerboardPreferences } from '@/core/file-preferences'
@@ -72,5 +74,43 @@ export function drawTweenCheckerboard(context: CanvasRenderingContext2D, width: 
       const right = Math.min(width, originX + (column + 1) * cell), bottom = Math.min(height, originY + (row + 1) * cell)
       context.fillRect(left, top, right - left, bottom - top)
     }
+  }
+}
+
+/** Rasterize in document pixels, then display each pixel with the artwork's exact transform. */
+export function drawTweenPixelPath(context: Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>, points: readonly PixelLinePoint[], width: number, height: number,
+  view: { zoom: number; originX: number; originY: number; dpr?: number; showAnchor?: boolean }): void {
+  const { zoom, originX, originY, dpr = 1 } = view
+  if (!Number.isFinite(zoom) || zoom <= 0) return
+  const minX = Math.floor(-originX / zoom), maxX = Math.ceil((width - originX) / zoom)
+  const minY = Math.floor(-originY / zoom), maxY = Math.ceil((height - originY) / zoom)
+  const grid = (point: PixelLinePoint) => ({ x: Math.round(point.x), y: Math.round(point.y) })
+  const pixel = (point: PixelLinePoint) => {
+    const bounds = deviceAlignedCanvasRect(originX + point.x * zoom, originY + point.y * zoom, zoom, zoom, { x: dpr, y: dpr })
+    context.fillRect(bounds.left, bounds.top, bounds.width, bounds.height)
+  }
+  context.fillStyle = '#2979FF'
+  for (let index = 1; index < points.length; index++) {
+    const from = grid(points[index - 1]), to = grid(points[index])
+    if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) continue
+    const dx = to.x - from.x, dy = to.y - from.y
+    let enter = 0, leave = 1, visible = true
+    for (const [p, q] of [[-dx, from.x - minX], [dx, maxX - from.x], [-dy, from.y - minY], [dy, maxY - from.y]]) {
+      if (p === 0) { if (q < 0) visible = false; continue }
+      const ratio = q / p
+      if (p < 0) enter = Math.max(enter, ratio)
+      else leave = Math.min(leave, ratio)
+    }
+    if (!visible || enter > leave) continue
+    for (const point of perfectPixelPathPoints([{ x: Math.round(from.x + dx * enter), y: Math.round(from.y + dy * enter) },
+      { x: Math.round(from.x + dx * leave), y: Math.round(from.y + dy * leave) }])) pixel(point)
+  }
+  if (!points.length) return
+  for (const [index, source] of [points[points.length - 1], points[0]].entries()) {
+    if (index === 1 && view.showAnchor === false) continue
+    const point = grid(source)
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < minX || point.y < minY || point.x > maxX || point.y > maxY) continue
+    context.fillStyle = index === 1 ? '#FFB300' : '#FFFFFF'
+    pixel(point)
   }
 }

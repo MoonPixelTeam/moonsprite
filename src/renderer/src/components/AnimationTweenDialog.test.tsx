@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createDocument, writeLayerColor } from '@/core/document-model'
-import { syncActiveAnimationFrame } from '@/core/animation'
+import { addBlankAnimationFrame, syncActiveAnimationFrame } from '@/core/animation'
 import { translateCurrent } from '@/core/localization'
 import { useWorkspace } from '@/store/workspace'
 import { AnimationTweenDialog } from './AnimationTweenDialog'
@@ -9,13 +9,14 @@ import { animationTweenPreviewFor, drawAnimationTweenPreview } from './animation
 
 vi.mock('./I18nProvider', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
   localStorage.clear()
   useWorkspace.setState({ sessions: [], activeId: null, message: null })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers() })
 
-function fixture(withLoop = false) {
+function fixture(withLoop = false, initialLoopSectionId?: string) {
   const document = createDocument('dialog tween', 4, 4, 'rgba', false)
   writeLayerColor(document, document.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
   syncActiveAnimationFrame(document)
@@ -25,7 +26,7 @@ function fixture(withLoop = false) {
   }
   useWorkspace.getState().addSession(document)
   const close = vi.fn()
-  const view = render(<AnimationTweenDialog document={document} frameId={document.animation!.activeFrameId} layerId={document.activeLayerId} onClose={close} />)
+  const view = render(<AnimationTweenDialog document={document} frameId={document.animation!.activeFrameId} layerId={document.activeLayerId} initialLoopSectionId={initialLoopSectionId} onClose={close} />)
   return { document, close, view }
 }
 it('cancels without writing frames or history', () => {
@@ -35,6 +36,55 @@ it('cancels without writing frames or history', () => {
   expect(close).toHaveBeenCalledOnce()
   expect(document.animation!.frames).toHaveLength(1)
   expect(useWorkspace.getState().sessions[0].history.position).toBe(0)
+})
+it('defaults to between-frame generation when a next frame exists and previews both endpoints', () => {
+  const document = createDocument('between', 4, 4, 'rgba', false)
+  const first = document.animation!.activeFrameId
+  writeLayerColor(document, document.layers[0], 0, { r: 255, g: 0, b: 0, a: 255 })
+  const last = addBlankAnimationFrame(document)
+  writeLayerColor(document, document.layers[0], 0, { r: 0, g: 255, b: 0, a: 255 })
+  syncActiveAnimationFrame(document)
+  useWorkspace.getState().addSession(document)
+  const close = vi.fn()
+  const view = render(<AnimationTweenDialog document={document} frameId={first} layerId={document.activeLayerId} onClose={close} />)
+  expect(view.getByRole('button', { name: 'timeline.tween.scope' })).toHaveTextContent('timeline.tween.scopeBetween')
+  expect(view.getByRole('button', { name: 'timeline.tween.betweenMode' })).toHaveTextContent('timeline.tween.morph')
+  expect(view.getByRole('button', { name: 'timeline.tween.layerScope' })).toHaveTextContent('timeline.tween.allLayers')
+  expect(view.getByRole('slider')).toHaveAttribute('aria-valuetext', '10 / 10')
+  expect(view.getByRole('spinbutton', { name: 'timeline.tween.betweenCount' })).toHaveValue('8')
+  expect(view.queryByRole('spinbutton', { name: 'timeline.tween.offsetX' })).not.toBeInTheDocument()
+  expect(view.queryByRole('button', { name: 'timeline.tween.pathMode' })).not.toBeInTheDocument()
+  expect(view.queryByRole('checkbox', { name: 'timeline.tween.previewEndpoint' })).not.toBeInTheDocument()
+  fireEvent.click(view.getByText('timeline.tween.generate'))
+  expect(document.animation!.frames).toHaveLength(10)
+  expect(document.animation!.frames[0].id).toBe(first)
+  expect(document.animation!.frames.at(-1)!.id).toBe(last)
+  expect(close).toHaveBeenCalledOnce()
+})
+
+it('explains why between-frame generation is unavailable on the last frame', () => {
+  const { view } = fixture()
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.scope' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.scopeBetween' }))
+  expect(view.getByRole('alert')).toHaveTextContent(translateCurrent('timeline.tween.noNextFrame'))
+  expect(view.getByText('timeline.tween.generate')).toBeDisabled()
+})
+it('allows switching an empty endpoint from morphing to crossfade', () => {
+  const { document, view, close } = fixture()
+  act(() => { useWorkspace.getState().addAnimationFrame() })
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.scope' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.scopeBetween' }))
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.layerScope' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.currentLayer' }))
+  expect(view.getByRole('alert')).toHaveTextContent(translateCurrent('timeline.tween.morphNeedsContent'))
+  expect(view.getByText('timeline.tween.generate')).toBeDisabled()
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.betweenMode' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.crossfade' }))
+  expect(view.queryByRole('alert')).not.toBeInTheDocument()
+  expect(view.getByText('timeline.tween.generate')).toBeEnabled()
+  fireEvent.click(view.getByText('timeline.tween.generate'))
+  expect(document.animation!.frames).toHaveLength(10)
+  expect(close).toHaveBeenCalledOnce()
 })
 it('submits to the existing timeline in one history step', () => {
   const { document, close, view } = fixture()
@@ -173,4 +223,40 @@ it('plays at the configured frame duration, pauses on seek, and restarts from th
   expect(view.getByRole('button', { name: 'timelapse.playPreview' })).toBeEnabled()
   expect(document.animation!.frames).toHaveLength(1)
   expect(useWorkspace.getState().sessions[0].history.position).toBe(0)
+})
+
+it('applies a path from the large editor and generates it in one undoable operation', () => {
+  const { document, view } = fixture()
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.pathMode' }))
+  fireEvent.click(view.getByRole('option', { name: 'timeline.tween.pathDrawn' }))
+  const generate = view.getByText('timeline.tween.generate') as HTMLButtonElement
+  expect(generate.disabled).toBe(true)
+  const canvas = view.getByLabelText('timeline.tween.pathDrawn') as HTMLCanvasElement
+  vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 900, height: 520 } as DOMRect)
+  canvas.setPointerCapture = vi.fn(); canvas.hasPointerCapture = vi.fn().mockReturnValue(true); canvas.releasePointerCapture = vi.fn()
+  fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 100, clientY: 100 })
+  fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 200, clientY: 100 })
+  fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 200, clientY: 200 })
+  expect(generate.disabled).toBe(true)
+  expect(document.animation!.frames).toHaveLength(1)
+  expect(useWorkspace.getState().sessions[0].history.position).toBe(0)
+  fireEvent.click(view.getByRole('button', { name: 'common.apply' }))
+  expect(generate.disabled).toBe(false)
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.pathEdit' }))
+  fireEvent.click(view.getByRole('button', { name: 'timeline.tween.pathClear' }))
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(generate.disabled).toBe(false)
+  fireEvent.click(generate)
+  expect(document.animation!.frames).toHaveLength(9)
+  expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
+  act(() => useWorkspace.getState().undo())
+  expect(document.animation!.frames).toHaveLength(1)
+  act(() => useWorkspace.getState().redo())
+  expect(document.animation!.frames).toHaveLength(9)
+})
+
+it('opens directly on the loop requested by the context menu', () => {
+  const { view } = fixture(true, 'walk')
+  expect(view.getByRole('button', { name: 'timeline.tween.scope' })).toHaveTextContent('timeline.tween.scopeLoop')
+  expect(view.getByRole('button', { name: 'timeline.tween.loopSection' })).toHaveTextContent('Walk')
 })

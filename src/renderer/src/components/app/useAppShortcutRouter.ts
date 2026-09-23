@@ -1,3 +1,5 @@
+import { registerAppShortcutListeners } from './app-shortcut-listeners'
+import { hasExclusiveShortcutScope } from '../exclusive-shortcut-scope'
 import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { REFERENCE_PASTE_EVENT } from '@/components/panels/reference-image-state'
 import type { AppShortcutContext } from './app-shortcut-context'
@@ -35,6 +37,7 @@ export function useAppShortcutRouter(options: Options) {
     const shortcutConflictState = deriveShortcutConflicts(shortcuts)
     const heldShortcutParts = new Set<string>()
     const keydown = (event: KeyboardEvent): void => {
+      if (hasExclusiveShortcutScope()) { heldShortcutParts.clear(); return }
       const {pointerPosition, commandSurface, rotationIndicatorPosition, homeOpen, outlineOpen, openMenu, timelineHidden, commandScope, selectionOverride, commands: uiCommands, openAdjustment, publishShortcutCommand} = optionsRef.current
       const workspace = useWorkspace.getState()
       const session = workspace.sessions.find(item => item.document.id === workspace.activeId) ?? null
@@ -251,6 +254,7 @@ export function useAppShortcutRouter(options: Options) {
       if (handleCompletionShortcuts(context)) return
     }
     const keyup = (event: KeyboardEvent): void => {
+      if (hasExclusiveShortcutScope()) { heldShortcutParts.clear(); return }
       if (event.key === 'Alt') event.preventDefault()
       if (shortcutReleasedByBindings(event, shortcutBindingsFor(shortcuts, 'addForegroundToPalette'))) endPaletteSamplingShortcut()
       heldShortcutParts.delete(shortcutKeyPart(event))
@@ -321,28 +325,6 @@ export function useAppShortcutRouter(options: Options) {
       pendingDoubleClickShortcutPointersRef.current.clear()
       endPaletteSamplingShortcut()
     }
-    window.addEventListener('keydown', keydown, true)
-    window.addEventListener('keyup', keyup, true)
-    window.addEventListener('pointerdown', pointerdown, true)
-    window.addEventListener('pointerup', releasePointerShortcut, true)
-    window.addEventListener('pointercancel', releasePointerShortcut, true)
-    window.addEventListener('auxclick', auxclick, true)
-    window.addEventListener('dblclick', dblclick, true)
-    window.addEventListener('contextmenu', contextmenu, true)
-    window.addEventListener('wheel', wheel, { capture: true, passive: false })
-    window.addEventListener('blur', blur)
-    return () => {
-      blur()
-      window.removeEventListener('keydown', keydown, true)
-      window.removeEventListener('keyup', keyup, true)
-      window.removeEventListener('pointerdown', pointerdown, true)
-      window.removeEventListener('pointerup', releasePointerShortcut, true)
-      window.removeEventListener('pointercancel', releasePointerShortcut, true)
-      window.removeEventListener('auxclick', auxclick, true)
-      window.removeEventListener('dblclick', dblclick, true)
-      window.removeEventListener('contextmenu', contextmenu, true)
-      window.removeEventListener('wheel', wheel, true)
-      window.removeEventListener('blur', blur)
-    }
+    return registerAppShortcutListeners({ keydown, keyup, pointerdown, releasePointerShortcut, auxclick, dblclick, contextmenu, wheel, blur })
   }, [options.shortcuts])
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createDocument, writeLayerColor, readLayerColor, createLayer, createLayerMask } from './document-model'
+import { createDocument, writeLayerColor, readLayerColor, createLayer, createLayerMask, expandLayerToRect, readLayerColorAt } from './document-model'
 import { addBlankAnimationFrame, animationCelAt, syncActiveAnimationFrame, activateAnimationFrame, linkAnimationFrameCels } from './animation'
-import { DEFAULT_ANIMATION_TWEEN, animationTweenSource, animationTweenSourceFrameId, prepareAnimationTween, tweenProgress, tweenSurface } from './animation-tween'
+import { DEFAULT_ANIMATION_TWEEN, animationBetweenFrame, animationTweenPreviewBounds, animationTweenSource, animationTweenSourceFrameId, prepareAnimationTween, tweenTranslation, validateAnimationTween, tweenProgress, tweenSurface } from './animation-tween'
+import { crossfadeTweenSurface } from './animation-crossfade'
 import { decodeProject, encodeProject } from './project-format'
 import { useWorkspace } from '@/store/workspace'
 
@@ -29,6 +30,75 @@ function loopFixture(mode: 'rgba' | 'indexed' = 'rgba') {
 }
 
 describe('baked animation tween', () => {
+  it('crossfades different content between existing frames, matches preview and preserves endpoints through undo and save', () => {
+    localStorage.clear()
+    useWorkspace.setState({ sessions: [], activeId: null, message: null })
+    const { document, layer, frameId } = fixture()
+    const next = addBlankAnimationFrame(document)
+    expandLayerToRect(document.layers[0], 1, 1, 2, 2)
+    writeLayerColor(document, document.layers[0], 0, { r: 0, g: 255, b: 0, a: 255 })
+    syncActiveAnimationFrame(document)
+    const endpoints = JSON.stringify(document.animation!.cels)
+    const options = { ...DEFAULT_ANIMATION_TWEEN, scope: 'between' as const, betweenMode: 'crossfade' as const, frameCount: 1 }
+    const plan = animationTweenSource(document, frameId, layer.id, options)
+    const preview = animationBetweenFrame(document, layer.id, plan, options, 0.5)
+    const prepared = prepareAnimationTween(document, frameId, layer.id, options)
+    expect(prepared.cels[0].surface).toEqual(preview.surface)
+    expect(Array.from(preview.surface.pixels)).toEqual([128, 128, 0, 255, 0, 0, 255, 128])
+    expect(animationTweenPreviewBounds(document, layer.id, plan, options)).toEqual({ x: 1, y: 1, width: 2, height: 1 })
+    useWorkspace.getState().addSession(document)
+    expect(useWorkspace.getState().generateAnimationTween(document.id, frameId, layer.id, options)).toBe(true)
+    const timeline = document.animation!
+    expect(timeline.frames.map((frame) => frame.id)).toEqual([frameId, expect.any(String), next])
+    expect(JSON.stringify(timeline.cels.filter((cel) => cel.frameId === frameId || cel.frameId === next))).toBe(endpoints)
+    expect(timeline.loopSections![0]).toMatchObject({ startFrameId: frameId, endFrameId: next })
+    const saved = decodeProject(encodeProject(document))
+    expect(saved.animation!.frames).toEqual(timeline.frames)
+    expect(readLayerColorAt(saved, saved.layers[0], 1, 1)).toEqual({ r: 128, g: 128, b: 0, a: 255 })
+    expect(useWorkspace.getState().sessions[0].history.position).toBe(1)
+    useWorkspace.getState().undo()
+    expect(document.animation!.frames.map((frame) => frame.id)).toEqual([frameId, next])
+    expect(JSON.stringify(document.animation!.cels)).toBe(endpoints)
+    useWorkspace.getState().redo()
+    expect(document.animation!.frames).toHaveLength(3)
+    expect(readLayerColorAt(document, document.layers[0], 1, 1)).toEqual({ r: 128, g: 128, b: 0, a: 255 })
+  })
+
+  it('fades in from a missing cel and rejects a missing next frame without changes', () => {
+    const { document, layer, frameId } = fixture()
+    const next = addBlankAnimationFrame(document)
+    document.animation!.cels = document.animation!.cels.filter((cel) => cel.frameId !== frameId)
+    writeLayerColor(document, layer, 0, { r: 0, g: 255, b: 0, a: 255 })
+    syncActiveAnimationFrame(document)
+    const options = { ...DEFAULT_ANIMATION_TWEEN, scope: 'between' as const, betweenMode: 'crossfade' as const, frameCount: 1 }
+    const result = prepareAnimationTween(document, frameId, layer.id, options)
+    expect(Array.from(result.cels[0].surface!.pixels)).toEqual([0, 255, 0, 128])
+    expect(() => prepareAnimationTween(document, next, layer.id, options)).toThrow()
+    expect(document.animation!.frames).toHaveLength(2)
+  })
+
+  it('blends alpha and cel opacity without dark fringes, respects offsets and limits allocation', () => {
+    const a = { format: 'rgba' as const, width: 1, height: 1, offsetX: -2, offsetY: 3, pixels: new Uint8ClampedArray([255, 0, 0, 255]) }
+    const b = { ...a, pixels: new Uint8ClampedArray([0, 0, 255, 255]) }
+    const bounds = { x: -2, y: 3, width: 1, height: 1 }
+    const result = crossfadeTweenSurface(a, b, bounds, 'rgba', 0.5, 0.25, 0.75, 1)
+    expect(result.opacity).toBe(0.5)
+    expect(Array.from(result.surface.pixels)).toEqual([64, 0, 191, 255])
+    expect(crossfadeTweenSurface(a, b, bounds, 'rgba', 0, 1, 1, 1).surface.pixels).toEqual(a.pixels)
+    expect(crossfadeTweenSurface(a, b, bounds, 'rgba', 1, 1, 1, 1).surface.pixels).toEqual(b.pixels)
+    expect(() => crossfadeTweenSurface(a, b, bounds, 'rgba', 0.5, 1, 1, 0)).toThrow()
+  })
+
+  it('dissolves indexed pixels using original palette IDs and independent surfaces', () => {
+    const a = { format: 'indexed' as const, width: 4, height: 4, offsetX: 0, offsetY: 0, pixels: new Uint32Array(16).fill(3) }
+    const b = { ...a, pixels: new Uint32Array(16).fill(7) }
+    const result = crossfadeTweenSurface(a, b, { x: 0, y: 0, width: 4, height: 4 }, 'indexed', 0.5, 1, 1, 16)
+    expect(Array.from(result.surface.pixels).filter((id) => id === 3)).toHaveLength(8)
+    expect(Array.from(result.surface.pixels).filter((id) => id === 7)).toHaveLength(8)
+    expect(result.surface.pixels).not.toBe(a.pixels)
+    expect(result.surface.pixels).not.toBe(b.pixels)
+  })
+
   it.each(['rgba', 'indexed'] as const)('cycles %s poses with a shared pivot and matches the preview source sequence', (mode) => {
     const { document, layer, frameId } = loopFixture(mode)
     const options = { ...DEFAULT_ANIMATION_TWEEN, scope: 'loop' as const, loopSectionId: 'walk', frameCount: 4, offsetX: 8, opacity: 50 }
@@ -206,4 +276,50 @@ describe('baked animation tween', () => {
     expect(document.animation!.frames.map((frame) => frame.id)).toEqual(frames)
     expect(document.animation!.loopSections).toEqual([generatedLoop])
   })
+})
+
+describe('drawn tween paths', () => {
+  const path = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 2 }]
+  it('uses distance rather than point count and preserves turns and endpoints', () => {
+    const options = { ...DEFAULT_ANIMATION_TWEEN, path }
+    expect(tweenTranslation(options, 0)).toEqual({ x: 0, y: 0 })
+    expect(tweenTranslation(options, 0.5)).toEqual({ x: 4, y: 0 })
+    expect(tweenTranslation(options, 0.875)).toEqual({ x: 6, y: 1 })
+    expect(tweenTranslation(options, 1)).toEqual({ x: 6, y: 2 })
+    expect(tweenTranslation(options, tweenProgress(0.5, 'ease-in'))).toEqual({ x: 2, y: 0 })
+  })
+  it.each(['rgba', 'indexed'] as const)('generates %s frames along the path', (mode) => {
+    const { document, frameId, layer } = fixture(mode)
+    const options = { ...DEFAULT_ANIMATION_TWEEN, path, frameCount: 4 }
+    const result = prepareAnimationTween(document, frameId, layer.id, options)
+    expect(result.cels.filter(cel => cel.layerId === layer.id).map(cel => [cel.surface!.offsetX, cel.surface!.offsetY])).toEqual([[3, 1], [5, 1], [7, 1], [7, 3]])
+  })
+  it('rejects missing, stationary, nonfinite and oversized paths', () => {
+    for (const invalid of [[], [{ x: 0, y: 0 }], [{ x: 0, y: 0 }, { x: 0, y: 0 }], [{ x: 1, y: 0 }, { x: 2, y: 0 }], [{ x: 0, y: 0 }, { x: Infinity, y: 0 }], Array.from({ length: 2049 }, (_, x) => ({ x, y: 0 }))]) {
+      expect(() => validateAnimationTween({ ...DEFAULT_ANIMATION_TWEEN, path: invalid })).toThrow()
+    }
+  })
+})
+
+it('fits actual tween content instead of empty document margins', () => {
+  const { document, frameId, layer } = fixture()
+  document.width = 4096; document.height = 4096
+  const options = { ...DEFAULT_ANIMATION_TWEEN, offsetX: 0, offsetY: 0 }
+  const source = animationTweenSource(document, frameId, layer.id, options)
+  expect(animationTweenPreviewBounds(document, layer.id, source, options)).toEqual({ x: 1, y: 1, width: 2, height: 1 })
+})
+it('fits every generated loop pose including rotation, scaling and path excursions', () => {
+  const { document, frameId, layer } = loopFixture()
+  const options = { ...DEFAULT_ANIMATION_TWEEN, scope: 'loop' as const, loopSectionId: document.animation!.loopSections![0].id,
+    frameCount: 12, rotation: 135, scale: 250, path: [{ x: 0, y: 0 }, { x: -30, y: 20 }, { x: 40, y: -15 }] }
+  const source = animationTweenSource(document, frameId, layer.id, options)
+  const bounds = animationTweenPreviewBounds(document, layer.id, source, options)
+  const generated = prepareAnimationTween(document, frameId, layer.id, options)
+  for (const cel of generated.cels.filter(cel => cel.layerId === layer.id && cel.surface)) {
+    expect(cel.surface!.offsetX).toBeGreaterThanOrEqual(bounds.x)
+    expect(cel.surface!.offsetY).toBeGreaterThanOrEqual(bounds.y)
+    expect(cel.surface!.offsetX + cel.surface!.width).toBeLessThanOrEqual(bounds.x + bounds.width)
+    expect(cel.surface!.offsetY + cel.surface!.height).toBeLessThanOrEqual(bounds.y + bounds.height)
+  }
+  expect(bounds.x).toBeLessThanOrEqual(source.pivot.x + source.pivot.width / 2 - 30)
 })

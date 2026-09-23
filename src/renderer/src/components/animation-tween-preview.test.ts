@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { DEFAULT_CHECKERBOARD_PREFERENCES } from '@/core/file-preferences'
 import { deviceAlignedCanvasRect } from '@/core/canvas-render-plan'
-import { drawAnimationTweenPreview, drawTweenCheckerboard, publishAnimationTweenPreview, subscribeAnimationTweenPreview, tweenPreviewCanvas } from './animation-tween-preview'
+import { drawAnimationTweenPreview, drawTweenCheckerboard, drawTweenPixelPath, publishAnimationTweenPreview, subscribeAnimationTweenPreview, tweenPreviewCanvas } from './animation-tween-preview'
 
 afterEach(() => { publishAnimationTweenPreview('preview-test', null); vi.restoreAllMocks() })
 
@@ -66,4 +66,22 @@ it('routes transient previews to their document and uses device-aligned canvas c
   unsubscribeOther()
   publishAnimationTweenPreview('preview-test', null)
   expect(redraw).toHaveBeenCalledTimes(2)
+})
+
+it('draws one document pixel per line cell using the artwork zoom and origin', () => {
+  const fillRect = vi.fn()
+  const context = { fillRect, fillStyle: '' }
+  drawTweenPixelPath(context, [{ x: 2, y: 3 }, { x: 4, y: 3 }], 100, 80, { zoom: 8, originX: 4, originY: 2 })
+  expect(fillRect.mock.calls.slice(0, 3)).toEqual([[20, 26, 8, 8], [28, 26, 8, 8], [36, 26, 8, 8]])
+  expect(fillRect.mock.calls.every(([, , width, height]) => width === 8 && height === 8)).toBe(true)
+  expect(context.fillStyle).toBe('#FFB300')
+  fillRect.mockClear()
+  drawTweenPixelPath(context, [{ x: 2, y: 3 }, { x: 4, y: 3 }], 100, 80, { zoom: 2, originX: 4, originY: 2 })
+  expect(fillRect.mock.calls.slice(0, 3)).toEqual([[8, 8, 2, 2], [10, 8, 2, 2], [12, 8, 2, 2]])
+})
+it('clips far-offscreen document paths before generating pixel cells', () => {
+  const fillRect = vi.fn()
+  drawTweenPixelPath({ fillRect, fillStyle: '' }, [{ x: -1e9, y: 3 }, { x: 1e9, y: 3 }], 100, 80, { zoom: 2, originX: 0, originY: 0 })
+  expect(fillRect.mock.calls.length).toBeLessThanOrEqual(51)
+  expect(fillRect.mock.calls[0]).toEqual([0, 6, 2, 2])
 })

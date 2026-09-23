@@ -90,6 +90,8 @@ export interface WorkspaceData {
 }
 
 export interface WorkspaceSessionCommands {
+  chooseSpriteSheetImportSource(): Promise<string | null>
+  importSpriteSheet(documentId: string, options: import('@/core/sprite-sheet-import').SpriteSheetImportOptions): Promise<boolean>
   newDocument(name: string, width: number, height: number, colorMode: ColorMode, recordDrawing?: boolean): Promise<void>
   exportSpriteSheet(options: SpriteSheetExportOptions, sourceDocumentId?: string): Promise<boolean>
   previewSpriteSheet(sourceDocumentId: string, options: SpriteSheetExportOptions, previousPreviewDocumentIds: readonly string[]): Promise<string[] | null>

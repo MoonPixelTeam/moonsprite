@@ -212,6 +212,8 @@ export default function App() {
     setProjectRollbackOpen,
     timelapseOpen,
     setTimelapseOpen,
+    openSpriteSheetImport,
+    spriteSheetImportOpen,
     setSpriteSheetExportSourceId,
     exportDialogRef,
     openExport,
@@ -313,7 +315,8 @@ export default function App() {
       else if (projectRollbackOpen) setProjectRollbackOpen(false)
       else if (scriptRuntime.closeTopDialog()) {
         /* Script dialogs own their close action. */
-      } else if (spriteSheetExportOpen) setSpriteSheetExportSourceId(null)
+      } else if (spriteSheetImportOpen) window.dispatchEvent(new Event('moonsprite:close-sprite-sheet-import'))
+      else if (spriteSheetExportOpen) setSpriteSheetExportSourceId(null)
       else if (exportDialogRef.current?.closeIfOpen()) {
         /* Export owner handles its own closing state. */
       } else if (saveAsOpen) setSaveAsOpen(false)
@@ -473,6 +476,7 @@ export default function App() {
         onSaveAs={openSaveAs}
         onExport={() => openExport()}
         onExportAllFrames={() => openExport('frames')}
+        onImportSpriteSheet={openSpriteSheetImport}
         onExportSpriteSheet={() => {
           if (session) setSpriteSheetExportSourceId(session.document.id)
         }}
