@@ -155,7 +155,9 @@ it('pastes clipboard pixels as a reference and leaves empty clipboard failures o
   vi.stubGlobal('ImageData', class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ putImageData: vi.fn() } as unknown as CanvasRenderingContext2D)
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,pixels')
-  const read = vi.fn().mockResolvedValueOnce({ width: 10, height: 20, data: new Uint8Array(800) }).mockResolvedValueOnce(null)
+  // Opening the menu probes the clipboard before paste reads it again.
+  // Model stable clipboard contents instead of consuming the image on the first read.
+  const read = vi.fn().mockResolvedValue({ width: 10, height: 20, data: new Uint8Array(800) })
   vi.stubGlobal('moonSprite', { readClipboardImage: read })
   const message = vi.spyOn(useWorkspace.getState(), 'setMessage')
   const view = setup()
@@ -165,6 +167,7 @@ it('pastes clipboard pixels as a reference and leaves empty clipboard failures o
   expect(useCanvasReferences.getState().images[0]).toMatchObject({ width: 10, height: 20, documentId: 'test' })
   act(() => useWorkspace.getState().undo())
   expect(useCanvasReferences.getState().images).toHaveLength(0)
+  read.mockResolvedValue(null)
   fireEvent.contextMenu(view.canvas)
   fireEvent.click(view.getByRole('menuitem', { name: '粘贴为参考图' }))
   await waitFor(() => expect(message).toHaveBeenCalled())
