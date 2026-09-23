@@ -1,4 +1,4 @@
-import { CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
+import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
@@ -122,4 +122,26 @@ it('routes Ctrl+X to selected layers instead of the canvas selection', () => {
   expect(selection).not.toHaveBeenCalled()
   act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true, repeat: true, cancelable: true })))
   expect(remove).toHaveBeenCalledTimes(1)
+})
+
+it('routes the configured delete shortcut to the selected reference before canvas deletion', () => {
+  useWorkspace.getState().addSession(createDocument('reference deletion', 4, 4, 'rgba'))
+  const initial = options()
+  initial.shortcuts.deleteLayer = ['Ctrl+D']
+  const receive = vi.fn((event: Event) => event.preventDefault())
+  window.addEventListener(CANVAS_REFERENCE_DELETE_EVENT, receive)
+  const deleteSelection = vi.spyOn(useWorkspace.getState(), 'deleteSelection')
+  renderHook(() => useAppShortcutRouter(initial), { wrapper: I18nProvider })
+  try {
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true, cancelable: true })))
+    expect(receive).toHaveBeenCalledTimes(1)
+    expect(deleteSelection).not.toHaveBeenCalled()
+    const input = document.createElement('input')
+    document.body.append(input)
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })))
+    expect(receive).toHaveBeenCalledTimes(1)
+    input.remove()
+  } finally {
+    window.removeEventListener(CANVAS_REFERENCE_DELETE_EVENT, receive)
+  }
 })

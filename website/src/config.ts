@@ -18,11 +18,12 @@ export const SITE_CONFIG = {
     bilibili: '',
     heybox: '',
     docs: '#/docs',
+    ui: '#/ui',
     faq: '#/faq',
     support: '#/docs/support',
     blog: '#/blog',
     changelog: 'https://github.com/MoonPixelTeam/moonsprite/blob/main/CHANGELOG.md',
     team: 'https://github.com/MoonPixelTeam',
-    privacy: '',
+    privacy: '#/privacy',
   },
 } as const

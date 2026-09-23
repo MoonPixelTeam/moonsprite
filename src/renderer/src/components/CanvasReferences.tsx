@@ -1,4 +1,4 @@
-import { CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
+import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
 import { useCanvasPreferences } from './useCanvasPreferences'
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -6,6 +6,7 @@ import { useI18n } from './I18nProvider'
 import { useWorkspace } from '@/store/workspace'
 import { FormField } from './FormField'
 import { NumberInput } from './NumberInput'
+import { RangeField } from './RangeField'
 import { MenuItemButton } from './MenuItemButton'
 import { Button } from './Button'
 import { PixelUtilityIcon } from './PixelUtilityIcon'
@@ -49,6 +50,8 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   const { referenceScaling } = useCanvasPreferences()
   const images = allImages.filter((image) => image.documentId === documentId).sort((a, b) => Number(Boolean(a.floating)) - Number(Boolean(b.floating)))
   const [pasting, setPasting] = useState(false)
+  const [clipboardHasImage, setClipboardHasImage] = useState(true)
+  const clipboardImage = useRef<Awaited<ReturnType<typeof window.moonSprite.readClipboardImage>> | null>(null)
   const pasteBusy = useRef(false)
   const numericPointer = useRef<number | null>(null)
   useEffect(() => {
@@ -72,6 +75,17 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   const [selected, setSelected] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const menuDrag = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  const [editingProperty, setEditingProperty] = useState<'scale' | 'angle' | 'opacity' | null>(null)
+  useEffect(() => { setEditingProperty(null) }, [menu?.id, menu === null])
+  useEffect(() => {
+    if (!editingProperty) return
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.canvas-reference-value-control')) setEditingProperty(null)
+    }
+    window.addEventListener('pointerdown', dismiss)
+    return () => window.removeEventListener('pointerdown', dismiss)
+  }, [editingProperty])
   const insertion = useRef({ x: 0, y: 0, zoom: viewport.view.zoom / viewport.interfaceScale })
   const [preview, setPreview] = useState<{ base: ViewGeometryState; view: ViewGeometryState } | null>(null)
   const displayViewport = preview?.base === viewport.view ? { ...viewport, view: preview.view } : viewport
@@ -162,15 +176,36 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
     if (!stage) return
     const outside = (event: MouseEvent) => event.target instanceof HTMLCanvasElement
       && event.target.classList.contains('stage-canvas') && outsideRef.current(event.clientX, event.clientY)
+    const lockedReferenceAt = (event: MouseEvent) => {
+      if (!(event.target instanceof HTMLCanvasElement) || !event.target.classList.contains('stage-canvas')) return undefined
+      const bounds = stage.getBoundingClientRect()
+      const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+      return [...imagesRef.current].reverse().find((image) => image.locked
+        && referenceSourcePoint(referenceScreenBounds(image, viewportRef.current), point, 1, 1))
+    }
+    const openLockedReference = (event: MouseEvent): boolean => {
+      const locked = lockedReferenceAt(event)
+      if (!locked) return false
+      event.preventDefault(); event.stopPropagation()
+      setSelected(locked.id)
+      setMenu({ x: event.clientX, y: event.clientY, id: locked.id })
+      return true
+    }
     const down = (event: PointerEvent) => {
+      // Reserve right-click before tools can paint or fill on pointerdown.
+      // The later contextmenu event alone is too late to prevent a document edit.
+      if (event.button === 2 && openLockedReference(event)) return
       if (event.button === 0 && event.target instanceof HTMLCanvasElement && event.target.classList.contains('stage-canvas')) setSelected(null)
       if (event.button === 2 && outside(event)) { event.preventDefault(); event.stopPropagation() }
     }
     const context = (event: MouseEvent) => {
+      if (openLockedReference(event)) return
       if (!outside(event)) return
       event.preventDefault(); event.stopPropagation()
       insertion.current = { ...referenceDocumentPoint(event.clientX, event.clientY, stage.getBoundingClientRect(), viewportRef.current), zoom: viewportRef.current.view.zoom / viewportRef.current.interfaceScale }
       setMenu({ x: event.clientX, y: event.clientY })
+      setClipboardHasImage(true)
+      if (window.moonSprite?.readClipboardImage) void window.moonSprite.readClipboardImage().then((image) => { clipboardImage.current = image; setClipboardHasImage(Boolean(image && image.width > 0 && image.height > 0)) }).catch(() => setClipboardHasImage(false))
     }
     stage.addEventListener('pointerdown', down, true)
     stage.addEventListener('contextmenu', context, true)
@@ -178,29 +213,78 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   }, [stageRef])
   useEffect(() => {
     if (!menu) return
-    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenu(null) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); setMenu(null) } }
-    window.addEventListener('pointerdown', dismiss)
-    window.addEventListener('keydown', escape, true)
-    return () => { window.removeEventListener('pointerdown', dismiss); window.removeEventListener('keydown', escape, true) }
+    const dismiss = (event: Event) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null)
+    }
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.stopPropagation(); setMenu(null) }
+      else dismiss(event)
+    }
+    const blur = () => setMenu(null)
+    // Capture runs before canvas and reference handlers stop propagation.
+    window.addEventListener('pointerdown', dismiss, true)
+    window.addEventListener('wheel', dismiss, { capture: true, passive: true })
+    window.addEventListener('focusin', dismiss, true)
+    window.addEventListener('keydown', keyboard, true)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('pointerdown', dismiss, true)
+      window.removeEventListener('wheel', dismiss, true)
+      window.removeEventListener('focusin', dismiss, true)
+      window.removeEventListener('keydown', keyboard, true)
+      window.removeEventListener('blur', blur)
+    }
   }, [menu])
+  useEffect(() => {
+    const move = (event: PointerEvent) => { const drag = menuDrag.current; if (!drag) return; setMenu((value) => value ? { ...value, x: drag.left + event.clientX - drag.x, y: drag.top + event.clientY - drag.y } : value) }
+    const up = () => { menuDrag.current = null }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+  }, [])
   useLayoutEffect(() => {
     const popup = menuRef.current
     if (!menu || !popup) return
     const place = () => {
       const bounds = popup.getBoundingClientRect()
-      popup.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - bounds.width - 8))}px`
+      const slider = popup.querySelector<HTMLElement>('.canvas-reference-value-control .brush-size-popover')
+      const sliderWidth = slider?.getBoundingClientRect().width ?? 0
+      const gap = 8
+      const extraWidth = slider ? sliderWidth + gap : 0
+      popup.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - bounds.width - extraWidth - 8))}px`
       popup.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - bounds.height - 8))}px`
+      if (slider?.parentElement) {
+        const input = slider.parentElement.getBoundingClientRect()
+        const height = slider.getBoundingClientRect().height
+        slider.style.left = `${input.right + gap}px`
+        slider.style.top = `${Math.max(8, Math.min(input.top + (input.height - height) / 2, window.innerHeight - height - 8))}px`
+      }
     }
     place()
     window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
-  }, [menu])
+    popup.addEventListener('scroll', place)
+    return () => {
+      window.removeEventListener('resize', place)
+      popup.removeEventListener('scroll', place)
+    }
+  }, [menu, editingProperty])
   useEffect(() => () => {
     if (drag.current) { finish(true); endCanvasToolGesture(drag.current.pointer); drag.current = null }
   }, [finish])
   const current = images.find((image) => image.id === menu?.id)
   const selectedImage = images.find((image) => image.id === selected)
+  useEffect(() => {
+    const receive = (event: Event) => {
+      if (!selectedImage || useWorkspace.getState().activeId !== documentId) return
+      event.preventDefault()
+      if (selectedImage.locked || (event as CustomEvent<boolean>).detail || drag.current) return
+      finish()
+      remove(selectedImage.id)
+      setSelected(null)
+      setMenu(null)
+    }
+    window.addEventListener(CANVAS_REFERENCE_DELETE_EVENT, receive)
+    return () => window.removeEventListener(CANVAS_REFERENCE_DELETE_EVENT, receive)
+  }, [selectedImage, documentId, finish, remove])
   const importFile = async (file: File) => {
     const { zoom, ...position } = insertion.current
     try {
@@ -228,7 +312,8 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
     setPasting(true)
     const { zoom, ...position } = insertion.current
     try {
-      const image = await window.moonSprite.readClipboardImage()
+      const image = clipboardImage.current ?? await window.moonSprite.readClipboardImage()
+      clipboardImage.current = null
       if (!image) { useWorkspace.getState().setMessage(t('workspace.clipboard.emptyPixels')); return }
       const { width, height, data } = image
       if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || data.length !== width * height * 4) throw new Error(t('reference.pasteFailed'))
@@ -267,7 +352,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
         const image = referenceScreenBounds(source, displayViewport)
         const margin = selected === image.id && !image.locked ? ROTATION_HANDLE_HIT_RADIUS : 0
         return <div key={image.id} className={`canvas-reference ${selected === image.id ? 'selected' : ''} ${image.locked ? 'locked' : ''}`}
-        style={{ left: image.x, top: image.y, width: image.width, height: image.height, transform: `rotate(${image.angle}deg)` }}
+        style={{ pointerEvents: image.locked ? 'none' : undefined, left: image.x, top: image.y, width: image.width, height: image.height, opacity: image.opacity ?? 1, transform: `rotate(${image.angle}deg)` }}
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (samplingActive?.()) return; setSelected(image.id); setMenu({ x: event.clientX, y: event.clientY, id: image.id }) }}
         onPointerDown={(event) => {
           if (onNavigatePointerDown?.(event)) { event.preventDefault(); event.stopPropagation(); return }
@@ -307,7 +392,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
         onPointerUp={(event) => { if (samplingPointer.current?.pointer === event.pointerId) { samplingPointer.current = null; publishCanvasColorSamplingCompleted(); event.currentTarget.releasePointerCapture(event.pointerId) }; if (drag.current?.pointer === event.pointerId) { finish(); endCanvasToolGesture(event.pointerId); drag.current = null; event.currentTarget.releasePointerCapture(event.pointerId) } }}
         onPointerCancel={() => { samplingPointer.current = null; if (drag.current) { finish(true); endCanvasToolGesture(drag.current.pointer) }; drag.current = null }}
         onLostPointerCapture={() => { samplingPointer.current = null; if (drag.current) { finish(true); endCanvasToolGesture(drag.current.pointer) }; drag.current = null }}>
-          <span className="canvas-reference-hit-area" style={{ inset: -margin }} aria-hidden="true" />
+          <span className="canvas-reference-hit-area" style={{ inset: -margin, pointerEvents: image.locked ? 'none' : undefined }} aria-hidden="true" />
           <img ref={(element) => { if (element) imageElements.current.set(image.id, element); else imageElements.current.delete(image.id) }} src={image.src} alt={image.name} draggable={false} style={{ imageRendering: referenceScaling === 'pixelated' ? 'pixelated' : 'auto', transform: `scale(${image.flipX ? -1 : 1}, ${image.flipY ? -1 : 1})` }} />
         </div>
       })}
@@ -318,19 +403,35 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       style={{ left: menu.x, top: menu.y }}
       onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => event.stopPropagation()}>
       {current ? <>
-        <header className="canvas-reference-heading"><PixelUtilityIcon kind="image" /><strong title={current.name}>{current.name}</strong></header>
+        <header className="canvas-reference-heading" onPointerDown={(event) => { if (event.button !== 0) return; menuDrag.current = { x: event.clientX, y: event.clientY, left: menu?.x ?? 0, top: menu?.y ?? 0 }; event.preventDefault() }}><PixelUtilityIcon kind="image" /><strong title={current.name}>{current.name}</strong></header>
         <div className="canvas-reference-properties" onPointerDownCapture={(event) => {
           if (event.button !== 0 || current.locked || !(event.target instanceof Element)
             || !event.target.closest('[data-number-scrubbable="true"], .number-input-stepper')) return
           numericPointer.current = event.pointerId
           begin(current.id)
         }}>
-        {(['x', 'y', 'scale', 'angle'] as const).map((key) => {
-          const label = key === 'x' ? 'X' : key === 'y' ? 'Y' : t(key === 'scale' ? 'reference.scale' : 'reference.angle')
-          return <FormField key={key} label={label} layout="inline" className={key === 'angle' || key === 'scale' ? 'canvas-reference-angle' : undefined}>
-            <NumberInput aria-label={label} value={key === 'scale' ? Math.round(current.width / (current.initial?.width ?? current.width) * 10000) / 100 : Math.round(current[key] * 100) / 100} disabled={current.locked}
-              min={key === 'scale' ? 0.01 : undefined} step={key === 'scale' ? 1 : 0.01} suffix={key === 'scale' ? '%' : undefined}
-              onValueChange={(value) => update(current.id, key === 'scale' ? { width: (current.initial?.width ?? current.width) * value / 100 } : { [key]: value })} />
+        {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map((key) => {
+          const label = key === 'x' ? 'X' : key === 'y' ? 'Y' : t(key === 'scale' ? 'reference.scale' : key === 'opacity' ? 'reference.opacity' : 'reference.angle')
+          const hasSlider = key === 'scale' || key === 'angle' || key === 'opacity'
+          const value = key === 'scale' ? Math.round(current.width / (current.initial?.width ?? current.width) * 10000) / 100
+            : key === 'opacity' ? Math.round((current.opacity ?? 1) * 100) : Math.round((current[key] ?? 0) * 100) / 100
+          const change = (next: number) => update(current.id, key === 'scale' ? { width: (current.initial?.width ?? current.width) * next / 100 }
+            : key === 'opacity' ? { opacity: next / 100 } : { [key]: next })
+          const suffix = key === 'scale' || key === 'opacity' ? '%' : key === 'angle' ? '°' : undefined
+          return <FormField key={key} label={label} layout="inline" className={hasSlider ? 'canvas-reference-slider-field' : undefined}>
+            {hasSlider ? <div className="brush-size-control canvas-reference-value-control"
+              onPointerDown={() => { if (!current.locked) setEditingProperty(key) }}
+              onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setEditingProperty((active) => active === key ? null : active) }}>
+              <NumberInput aria-label={label} min={key === 'scale' ? 0.01 : key === 'opacity' ? 0 : undefined} max={key === 'opacity' ? 100 : undefined}
+                step={key === 'angle' ? 0.01 : 1} suffix={suffix} value={value} disabled={current.locked}
+                onFocus={() => setEditingProperty(key)} onValueChange={change} />
+              {editingProperty === key && !current.locked && <div className="brush-size-popover" role="dialog" aria-label={label}>
+                <RangeField interaction={{ begin: () => begin(current.id), commit: () => finish() }} ariaLabel={label} density="compact"
+                  min={key === 'scale' ? 0.01 : key === 'angle' ? Math.min(-180, value) : 0}
+                  max={key === 'scale' ? Math.max(1000, value) : key === 'angle' ? Math.max(180, value) : 100}
+                  step={key === 'scale' ? 0.01 : 1} suffix={suffix} value={value} onChange={change} />
+              </div>}
+            </div> : <NumberInput aria-label={label} value={value} disabled={current.locked} step={0.01} onValueChange={change} />}
           </FormField>
         })}
         </div>
@@ -338,23 +439,21 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
           <Button aria-pressed={current.flipX} disabled={current.locked} onClick={() => update(current.id, { flipX: !current.flipX })}>{t('reference.flipX')}</Button>
           <Button aria-pressed={current.flipY} disabled={current.locked} onClick={() => update(current.id, { flipY: !current.flipY })}>{t('reference.flipY')}</Button>
         </div>
-        <div className="menu-popover canvas-reference-actions" role="menu">
-          <MenuItemButton role="menuitemcheckbox" aria-checked={Boolean(current.floating)} disabled={current.locked} onClick={() => {
-            const convert = current.floating ? referenceDocumentBounds : referenceScreenBounds
-            const target = convert(current, viewportRef.current)
-            const initial = current.initial ? convert(current.initial, viewportRef.current) : undefined
-            update(current.id, { x: target.x, y: target.y, width: target.width, height: target.height, angle: target.angle, flipX: target.flipX, flipY: target.flipY, floating: !current.floating, ...(initial ? { initial } : {}) })
-          }}>{t('reference.fixedSize')}{current.floating && <span className="menu-check"><PixelUtilityIcon kind="check" /></span>}</MenuItemButton>
-        </div>
         <footer className="canvas-reference-footer">
           <div className="canvas-reference-footer-tools">
-            <Button className="icon-button" title={t(current.locked ? 'reference.unlock' : 'reference.lock')} aria-label={t(current.locked ? 'reference.unlock' : 'reference.lock')} aria-pressed={current.locked} onClick={() => { update(current.id, { locked: !current.locked }); setSelected(null) }}><PixelUtilityIcon kind={current.locked ? 'lock' : 'unlock'} /></Button>
-            <Button className="icon-button" title={t('common.reset')} aria-label={t('common.reset')} disabled={current.locked} onClick={() => reset(current.id)}><PixelUtilityIcon kind="refresh" /></Button>
-            <Button className="icon-button" title={t('reference.bringToFront')} aria-label={t('reference.bringToFront')} onClick={() => bringToFront(current.id)}><PixelUtilityIcon kind="canvasTop" /></Button>
+            <Button className="icon-button" title={t(current.locked ? 'reference.unlockHint' : 'reference.lockHint')} aria-label={t(current.locked ? 'reference.unlock' : 'reference.lock')} aria-pressed={current.locked} onClick={() => { update(current.id, { locked: !current.locked }); setSelected(null) }}><PixelUtilityIcon kind={current.locked ? 'lock' : 'unlock'} /></Button>
+            <Button className="icon-button" title={t('reference.fixedSizeHint')} aria-label={t('reference.fixedSize')} aria-pressed={Boolean(current.floating)} disabled={current.locked} onClick={() => {
+              const convert = current.floating ? referenceDocumentBounds : referenceScreenBounds
+              const target = convert(current, viewportRef.current)
+              const initial = current.initial ? convert(current.initial, viewportRef.current) : undefined
+              update(current.id, { x: target.x, y: target.y, width: target.width, height: target.height, angle: target.angle, flipX: target.flipX, flipY: target.flipY, floating: !current.floating, ...(initial ? { initial } : {}) })
+            }}><PixelUtilityIcon kind="export" /></Button>
+            <Button className="icon-button" title={t('reference.resetHint')} aria-label={t('common.reset')} disabled={current.locked} onClick={() => reset(current.id)}><PixelUtilityIcon kind="refresh" /></Button>
+            <Button className="icon-button" title={t('reference.bringToFrontHint')} aria-label={t('reference.bringToFront')} onClick={() => bringToFront(current.id)}><PixelUtilityIcon kind="canvasTop" /></Button>
           </div>
           <Button className="icon-button" title={t('common.delete')} aria-label={t('common.delete')} disabled={current.locked} onClick={() => { remove(current.id); setMenu(null); setSelected(null) }}><PixelUtilityIcon kind="delete" /></Button>
         </footer>
-      </> : <div className="menu-popover canvas-reference-actions" role="menu"><MenuItemButton role="menuitem" onClick={() => { fileRef.current?.click(); setMenu(null) }}>{t('reference.addCanvas')}</MenuItemButton><MenuItemButton role="menuitem" disabled={pasting} onClick={() => { void paste() }}>{t('reference.pasteCanvas')}</MenuItemButton></div>}
+      </> : <div className="menu-popover canvas-reference-actions" role="menu"><MenuItemButton role="menuitem" onClick={() => { fileRef.current?.click(); setMenu(null) }}>{t('reference.addCanvas')}</MenuItemButton>{clipboardHasImage && <MenuItemButton role="menuitem" disabled={pasting} onClick={() => { void paste() }}>{t('reference.pasteCanvas')}</MenuItemButton>}</div>}
     </div>, document.body)}
   </>
 }

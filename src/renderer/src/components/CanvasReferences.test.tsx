@@ -1,4 +1,4 @@
-import { CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
+import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
 import { REFERENCE_SCALING_KEY } from '@/core/file-preferences'
 import { targetsCanvasSurface, referenceNavigationActive } from './canvas-reference-input'
 import { createSamplingCanvasInput } from './canvas-input-sampling'
@@ -212,7 +212,7 @@ it('floats independently of all view changes and reattaches without a visual jum
   const view = setup()
   const target = view.getByAltText('fixed.png').parentElement!
   fireEvent.contextMenu(target)
-  fireEvent.click(view.getByRole('menuitemcheckbox', { name: '独立浮动' }))
+  fireEvent.click(view.getByRole('button', { name: '独立浮动' }))
   const style = target.getAttribute('style')
   const floating = useCanvasReferences.getState().images[0]
   expect(floating.floating).toBe(true)
@@ -220,7 +220,7 @@ it('floats independently of all view changes and reattaches without a visual jum
   act(() => notifyViewPreview('test', next))
   expect(target.getAttribute('style')).toBe(style)
   expect(useCanvasReferences.getState().images[0]).toBe(floating)
-  fireEvent.click(view.getByRole('menuitemcheckbox', { name: '独立浮动' }))
+  fireEvent.click(view.getByRole('button', { name: '独立浮动' }))
   const reattached = useCanvasReferences.getState().images[0]
   expect(reattached.floating).toBe(false)
   const displayed = referenceScreenBounds(reattached, { ...viewport, view: next })
@@ -405,4 +405,112 @@ it('renders references smoothly by default and applies hard-edge preference chan
   act(() => { localStorage.setItem(REFERENCE_SCALING_KEY, 'pixelated'); window.dispatchEvent(new Event('moonsprite:preferences-changed')) })
   expect(view.getByAltText('smooth').style.imageRendering).toBe('pixelated')
   localStorage.removeItem(REFERENCE_SCALING_KEY)
+})
+
+it.each([
+  { label: '不透明度', key: 'opacity' as const, first: '75', last: '40', initial: 1, final: 0.4 },
+  { label: '缩放', key: 'width' as const, first: '150', last: '200', initial: 30, final: 60 },
+  { label: '旋转角度（°）', key: 'angle' as const, first: '45', last: '90', initial: 0, final: 90 }
+])('previews $key while dragging and records only one undo entry on release', ({ label, key, first, last, initial, final }) => {
+  useCanvasReferences.getState().add({ id: 'opacity', name: 'opacity.png', src: 'data:image/png;base64,test', x: 0, y: 0, width: 30, height: 20, angle: 0, flipX: false, flipY: false, locked: false })
+  const view = setup()
+  fireEvent.contextMenu(view.getByAltText('opacity.png').parentElement!)
+  fireEvent.focus(view.getByRole('spinbutton', { name: label }))
+  const slider = view.getByRole('slider', { name: label })
+  const historyLength = () => useWorkspace.getState().sessions[0].history.length
+  const before = historyLength()
+  fireEvent.pointerDown(slider, { button: 0, pointerId: 3 })
+  fireEvent.change(slider, { target: { value: first } })
+  fireEvent.change(slider, { target: { value: last } })
+  expect(useCanvasReferences.getState().images[0][key]).toBe(final)
+  expect(historyLength()).toBe(before)
+  fireEvent.pointerUp(window, { pointerId: 3 })
+  expect(historyLength()).toBe(before + 1)
+  act(() => useWorkspace.getState().undo())
+  expect(useCanvasReferences.getState().images[0][key] ?? 1).toBe(initial)
+  act(() => useWorkspace.getState().redo())
+  expect(useCanvasReferences.getState().images[0][key]).toBe(final)
+})
+
+it('lets canvas drawing pass through locked references and retains the canvas unlock menu', () => {
+  const image = { id: 'locked-draw', name: 'locked-draw.png', src: 'data:image/png;base64,test', x: 0, y: 0, width: 30, height: 20, angle: 25, flipX: false, flipY: false, locked: true }
+  useCanvasReferences.getState().add(image)
+  const view = setup(false)
+  const reference = view.getByAltText(image.name).parentElement as HTMLElement
+  expect(reference.style.pointerEvents).toBe('none')
+  expect((reference.querySelector('.canvas-reference-hit-area') as HTMLElement).style.pointerEvents).toBe('none')
+  const draw = vi.fn()
+  view.canvas.addEventListener('pointerdown', draw)
+  const point = referenceViewportPoint({ x: 15, y: 10 }, viewport)
+  expect(fireEvent.pointerDown(view.canvas, { button: 0, pointerId: 1, clientX: point.x, clientY: point.y })).toBe(true)
+  expect(draw).toHaveBeenCalledTimes(1)
+  expect(useCanvasReferences.getState().pending).toBeNull()
+  expect(useWorkspace.getState().sessions[0].history.length).toBe(1)
+  fireEvent.contextMenu(view.canvas, { clientX: point.x, clientY: point.y })
+  fireEvent.click(view.getByRole('button', { name: '解锁参考图' }))
+  expect(useCanvasReferences.getState().images[0].locked).toBe(false)
+  expect(reference.style.pointerEvents).toBe('')
+  expect((reference.querySelector('.canvas-reference-hit-area') as HTMLElement).style.pointerEvents).toBe('')
+})
+
+it('deletes the selected reference through the command and supports undo without deleting locked references', () => {
+  const image = { id: 'delete-ref', name: 'delete-ref.png', src: '', x: 0, y: 0, width: 30, height: 20, angle: 0, flipX: false, flipY: false, locked: true }
+  useCanvasReferences.getState().add(image)
+  const view = setup()
+  fireEvent.contextMenu(view.getByAltText(image.name).parentElement!)
+  const command = () => window.dispatchEvent(new CustomEvent(CANVAS_REFERENCE_DELETE_EVENT, { cancelable: true }))
+  act(() => { expect(command()).toBe(false) })
+  expect(useCanvasReferences.getState().images).toHaveLength(1)
+  act(() => useCanvasReferences.getState().update(image.id, { locked: false }))
+  act(() => { expect(command()).toBe(false) })
+  expect(useCanvasReferences.getState().images).toHaveLength(0)
+  expect(view.queryByRole('dialog', { name: '参考图' })).toBeNull()
+  act(() => useWorkspace.getState().undo())
+  expect(useCanvasReferences.getState().images[0].id).toBe(image.id)
+})
+
+it('dismisses properties on outside actions even when propagation is stopped, but keeps slider actions inside', () => {
+  useCanvasReferences.getState().add({ id: 'dismiss-ref', name: 'dismiss-ref.png', src: '', x: 0, y: 0, width: 30, height: 20, angle: 0, flipX: false, flipY: false, locked: false })
+  const view = setup()
+  const reference = view.getByAltText('dismiss-ref.png').parentElement!
+  const open = () => fireEvent.contextMenu(reference)
+  open()
+  fireEvent.focus(view.getByRole('spinbutton', { name: '不透明度' }))
+  const slider = view.getByRole('slider')
+  fireEvent.pointerDown(slider, { button: 0, pointerId: 1 })
+  fireEvent.pointerUp(slider, { pointerId: 1 })
+  expect(view.getByRole('dialog', { name: '参考图' })).toBeTruthy()
+  const outside = document.createElement('button')
+  document.body.append(outside)
+  outside.addEventListener('pointerdown', event => event.stopPropagation())
+  fireEvent.pointerDown(outside, { button: 0 })
+  expect(view.queryByRole('dialog', { name: '参考图' })).toBeNull()
+  open()
+  fireEvent.wheel(view.canvas)
+  expect(view.queryByRole('dialog', { name: '参考图' })).toBeNull()
+  open()
+  fireEvent.focusIn(outside)
+  expect(view.queryByRole('dialog', { name: '参考图' })).toBeNull()
+  outside.remove()
+})
+
+it.each([false, true])('prioritizes locked reference properties over right-button canvas tools (floating=%s)', (floating) => {
+  const image = { id: 'right-priority', name: 'right-priority.png', src: '', x: 0, y: 0, width: 30, height: 20, angle: 45, flipX: false, flipY: false, locked: true, floating }
+  useCanvasReferences.getState().add(image)
+  const view = setup(false)
+  const backgroundFill = vi.fn()
+  view.canvas.addEventListener('pointerdown', event => { if (event.button === 2) backgroundFill() })
+  const point = floating ? { x: 15, y: 10 } : referenceViewportPoint({ x: 15, y: 10 }, viewport)
+  const historyLength = useWorkspace.getState().sessions[0].history.length
+  expect(fireEvent.pointerDown(view.canvas, { button: 2, pointerId: 2, clientX: point.x, clientY: point.y })).toBe(false)
+  expect(backgroundFill).not.toHaveBeenCalled()
+  expect(view.getByRole('button', { name: '解锁参考图' })).toBeTruthy()
+  fireEvent.contextMenu(view.canvas, { clientX: point.x, clientY: point.y })
+  expect(view.getAllByRole('dialog', { name: '参考图' })).toHaveLength(1)
+  expect(useWorkspace.getState().sessions[0].history.length).toBe(historyLength)
+  // This point is inside the unrotated bounds but outside the rotated image.
+  const clear = floating ? { x: 0, y: 0 } : referenceViewportPoint({ x: 0, y: 0 }, viewport)
+  expect(fireEvent.pointerDown(view.canvas, { button: 2, pointerId: 3, clientX: clear.x, clientY: clear.y })).toBe(true)
+  expect(backgroundFill).toHaveBeenCalledTimes(1)
+  expect(view.queryByRole('dialog', { name: '参考图' })).toBeNull()
 })

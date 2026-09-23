@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const enUSMessages = {
+  "reference.lockHint": "Lock reference: prevent accidental movement or edits.",
+  "reference.unlockHint": "Unlock reference: allow movement and property changes.",
+  "reference.fixedSizeHint": "Float independently: keep the reference fixed while the canvas pans, zooms or rotates. Turn off to follow the canvas again.",
+  "reference.resetHint": "Reset: restore the initial size, angle and mirroring.",
+  "reference.bringToFrontHint": "Bring to front: display this reference above other reference images.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',
@@ -22,6 +30,7 @@ export const enUSMessages = {
   'sequence.animation': "Import as Animation",
   'sequence.incompatible': "Images differ in size or already contain animation. Nothing was merged; select them again and open separately.",
   'reference.scale': "Scale",
+  'reference.opacity': "Opacity",
   'reference.fixedSize': "Float independently",
   'preferences.referenceScaling': 'Reference image scaling',
   'preferences.referenceScaling.smooth': 'Smooth',

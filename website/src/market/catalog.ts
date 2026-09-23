@@ -89,6 +89,7 @@ export type BundleProduct = {
   id: string
   category: 'bundles'
   packs: string[]
+  members?: MarketProduct[]
   image?: string
   /**
    * The file a buyer downloads for this pack. Unset until the real artifact exists —
@@ -144,12 +145,13 @@ export type ScriptProduct = {
   includes: Bilingual[]
 }
 
-export type MarketProduct =
+export type MarketProduct = { previews?: string[] } & (
   | PetPackProduct
   | AssetPackProduct
   | BundleProduct
   | ExtensionProduct
   | ScriptProduct
+)
 
 export const productCopy = L
 
@@ -351,7 +353,8 @@ export function animationsOf(product: PetPackProduct): PetAnimationId[] | string
 }
 
 export function bundleItems(bundle: BundleProduct): MarketProduct[] {
-  return bundle.packs
+  if (bundle.members) return bundle.members
+  return (bundle.packs ?? [])
     .map((id) => MARKET_PRODUCTS.find((product) => product.id === id))
     .filter((product): product is MarketProduct => Boolean(product))
 }
@@ -367,7 +370,7 @@ export type SortKey = 'featured' | 'price-asc' | 'price-desc'
  * rate so the page stays consistent; re-check it before the store opens, and note
  * that Steam and regional pricing will be the real source of truth at checkout.
  */
-const USD_TO_CNY = 7.2
+export const USD_TO_CNY = 7.2
 
 /** Rounded to whole yuan: a pixel pack price does not need sub-yuan precision. */
 /**
@@ -383,18 +386,14 @@ export function usdToCny(usd: number): number {
   return Math.max(0, Math.round(usd * USD_TO_CNY))
 }
 
-/**
- * Prices are stored in USD — that is the unit the catalogue has always been authored in,
- * and changing it would reprice every built-in pack — but the shop is quoted in CNY
- * whatever the interface language is, because that is the currency the store settles in.
- * One fixed rate, applied in one place.
- */
-export function priceIn(amount: number): number {
-  return Math.round(amount * USD_TO_CNY)
+/** Stored amounts remain USD; language selects display currency without changing records. */
+export function priceIn(amount: number, language: Language = 'zh'): number {
+  return Math.round(amount * (language === 'zh' ? USD_TO_CNY : 1) * 100) / 100
 }
 
-export function formatPrice(amount: number): string {
-  const value = priceIn(amount)
+export function formatPrice(amount: number, language: Language): string {
+  const value = priceIn(amount, language)
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2)
-  return `¥${text}`
+  return `${language === 'zh' ? '¥' : '$'}${text}`
 }
+

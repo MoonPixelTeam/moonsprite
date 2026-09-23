@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { PixelPlus as Plus, PixelX as X } from './icons'
-import { Chip } from './index'
+import { Button, Chip } from './primitives'
 
 /**
  * A field that offers ready-made values and still accepts anything else. Presets are the
@@ -22,6 +22,7 @@ export function ChipField({ label, value, presets, onChange, badge, hint, custom
   invalid?: boolean
 }) {
   const [draft, setDraft] = useState('')
+  const id = useId()
   const toggle = (item: string) => onChange(value.includes(item) ? value.filter((entry) => entry !== item) : [...value, item])
   const addDraft = () => {
     const next = draft.trim()
@@ -36,19 +37,19 @@ export function ChipField({ label, value, presets, onChange, badge, hint, custom
       rather than one input. The free-text box still needs its own name: without it a screen
       reader announces an unnamed edit field, and asking "which one?" is the only clue.
     */}
-    <span className="field-label" id={`chipfield-${label}`}>
+    <span className="field-label" id={id}>
       {label}
       {badge && <em>{badge}</em>}
       {value.length > 0 && <b className="field-counter">{value.length}</b>}
     </span>
 
-    {custom.length > 0 && <div className="chip-set custom" role="group" aria-labelledby={`chipfield-${label}`}>
+    {custom.length > 0 && <div className="chip-set custom" role="group" aria-labelledby={id}>
       {custom.map((item) => <Chip key={item} active title={removeLabel} onClick={() => toggle(item)}>
         {item}<X aria-hidden="true" />
       </Chip>)}
     </div>}
 
-    <div className="chip-set" role="group" aria-labelledby={`chipfield-${label}`}>
+    <div className="chip-set" role="group" aria-labelledby={id}>
       {presets.map((item) => <Chip key={item} active={value.includes(item)} onClick={() => toggle(item)}>{item}</Chip>)}
     </div>
 
@@ -63,9 +64,9 @@ export function ChipField({ label, value, presets, onChange, badge, hint, custom
         }}
         aria-label={customPlaceholder}
         placeholder={customPlaceholder} />
-      <button type="button" className="button secondary compact" onClick={addDraft} disabled={draft.trim().length === 0}>
+      <Button onClick={addDraft} disabled={draft.trim().length === 0}>
         <Plus aria-hidden="true" />{addLabel}
-      </button>
+      </Button>
     </div>}
 
     {hint && <small className="field-hint">{hint}</small>}

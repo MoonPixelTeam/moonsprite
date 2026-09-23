@@ -1,3 +1,4 @@
+import { ActionButton } from '../ui'
 import { competitionWorks } from '../competitions/data'
 import { MediaPreview, type PreviewMedia } from '../ui/MediaPreview'
 import { useState } from 'react'
@@ -6,7 +7,7 @@ import type { Copy, Language } from '../content'
 import { Button, IconButton, SteamButton, SectionHeading } from '../ui'
 import { SITE_CONFIG } from '../config'
 import { useCatalogue } from '../market/catalogue'
-import { PackGrid } from '../market/PackCard'
+import { PopularPackCard } from '../market/PackCard'
 
 const HERO_SLIDES = [
   '/assets/hero/home-banner-fire.png',
@@ -44,7 +45,7 @@ export function Home({ t, language }: { t: Copy; language: Language }) {
         <div className="hero-pagination" aria-label="Gallery slides">
           <span aria-hidden="true">{String(slide + 1).padStart(2, '0')} / {String(HERO_SLIDES.length).padStart(2, '0')}</span>
           <div className="hero-dots">
-            {HERO_SLIDES.map((src, index) => <button key={src} type="button" className={index === slide ? 'active' : ''} onClick={() => goTo(index)} aria-label={`${t.hero.title} ${index + 1}`} aria-current={index === slide ? 'true' : undefined} />)}
+            {HERO_SLIDES.map((src, index) => <ActionButton key={src} type="button" className={index === slide ? 'active' : ''} onClick={() => goTo(index)} aria-label={`${t.hero.title} ${index + 1}`} aria-current={index === slide ? 'true' : undefined} />)}
           </div>
         </div>
       </div>
@@ -52,14 +53,14 @@ export function Home({ t, language }: { t: Copy; language: Language }) {
 
     <section className="features" id="features">
       <div className="content-wrap">
-        <SectionHeading eyebrow={t.features.eyebrow} title={t.features.title} description={t.features.description} actions={<Button href="#/docs">{language === 'zh' ? '查看更多功能' : 'Explore all features'}<ArrowRight aria-hidden="true" /></Button>} />
+        <SectionHeading title={t.features.title} description={t.features.description} actions={<Button href="#/docs">{language === 'zh' ? '查看更多功能' : 'Explore all features'}<ArrowRight aria-hidden="true" /></Button>} />
         <div className="masonry">
           {t.features.items.map((item) => <article className="masonry-card" key={item.icon}>
             <div className="panel-header"><strong>{item.title}</strong></div>
-            <button type="button" className="gif-placeholder" aria-label={`${language === 'zh' ? '放大预览：' : 'Enlarge preview: '}${item.title}`} onClick={() => setPreview({ src: item.gif, title: item.title, description: item.gif ? item.body : (language === 'zh' ? '功能演示 GIF 待补充。' : 'The feature GIF will be added later.') })}>
+            <ActionButton type="button" className="gif-placeholder" aria-label={`${language === 'zh' ? '放大预览：' : 'Enlarge preview: '}${item.title}`} onClick={() => setPreview({ src: item.gif, title: item.title, description: item.gif ? item.body : (language === 'zh' ? '功能演示 GIF 待补充。' : 'The feature GIF will be added later.') })}>
               {item.gif && <img src={item.gif} alt={item.title} loading="lazy" decoding="async" />}
               <span className="gif-tag">GIF</span>
-            </button>
+            </ActionButton>
             <p className="masonry-copy">{item.body}</p>
           </article>)}
         </div>
@@ -68,22 +69,20 @@ export function Home({ t, language }: { t: Copy; language: Language }) {
 
     <section className="showcase" id="work">
       <div className="content-wrap">
-        <SectionHeading eyebrow={t.work.eyebrow} title={t.work.title} description={t.work.description} />
+        <SectionHeading title={t.work.title} description={t.work.description} actions={<Button href="#/competitions">{language === 'zh' ? '查看比赛作品' : 'View competition'}<ArrowRight aria-hidden="true" /></Button>} />
         <div className="showcase-grid">
           {competitionWorks.filter((work) => work.featured).slice(0, 6).map((work) => <figure key={work.id} className="showcase-item">
             <a href="#/competitions" aria-label={`${work.title[language]} · ${language === 'zh' ? '查看比赛作品' : 'View competition'}`}><img src={work.image} loading="lazy" decoding="async" alt={work.title[language]} /></a>
           </figure>)}
         </div>
-        <div className="teaser-actions"><Button href="#/competitions">{language === 'zh' ? '查看比赛作品' : 'View competition'}<ArrowRight aria-hidden="true" /></Button></div>
       </div>
     </section>
 
     <section className="market-teaser">
       <div className="content-wrap">
-        <SectionHeading eyebrow={t.marketTeaser.eyebrow} title={t.marketTeaser.title} />
-        <PackGrid products={teaser} t={t} language={language} className="featured" compact />
-        <div className="teaser-actions">
-          <Button variant="primary" href="#/market">{t.marketTeaser.cta}<ArrowRight aria-hidden="true" /></Button>
+        <SectionHeading title={t.marketTeaser.title} actions={<Button variant="primary" href="#/market">{t.marketTeaser.cta}<ArrowRight aria-hidden="true" /></Button>} />
+        <div className="shelf-stage home-popular-grid">
+          {teaser.map((product) => <PopularPackCard product={product} t={t} language={language} key={product.id} />)}
         </div>
       </div>
     </section>

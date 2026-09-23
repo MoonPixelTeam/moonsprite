@@ -111,7 +111,7 @@ export function useCanvasRotatableGeometry(ports: Ports) {
     return { target, angle }
   }
 
-  const updateMarqueePreview = (drag: DragState, point: Point, modifiers: ReturnType<typeof ports.selectionMarqueeModifierState>): void => {
+  const updateMarqueePreview = (drag: DragState, point: Point, modifiers: ReturnType<typeof ports.selectionMarqueeModifierState>, finalize = false): void => {
     if (drag.kind !== 'marquee') return
     if (drag.quickSelectCell) {
       const currentCell = ports.quickSelectionCellAt(ports.session, point)
@@ -131,10 +131,16 @@ export function useCanvasRotatableGeometry(ports: Ports) {
       ports.scheduleDraw()
       return
     }
-    const geometry = updateRotatableDragGeometry(drag, point, modifiers)
+    const geometry = finalize && drag.previewTarget
+      ? { target: drag.previewTarget, angle: drag.previewAngle ?? 0 }
+      : updateRotatableDragGeometry(drag, point, modifiers)
     if (!geometry) return
     const { target, angle } = geometry
     const repeatMode = ports.liveViewRef.current.tileRepeatMode ?? 'off'
+    if (!finalize && repeatMode === 'off') {
+      ports.scheduleDraw()
+      return
+    }
     const repeatedSelection =
       ports.session.selectionKind === 'ellipse'
         ? rotatedEllipseSelection(target, ports.session.document.width, ports.session.document.height, angle, repeatMode === 'off')

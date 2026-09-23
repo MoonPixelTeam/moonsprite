@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const esESMessages = {
+  "reference.lockHint": "Bloquear referencia: evitar movimientos o cambios accidentales.",
+  "reference.unlockHint": "Desbloquear referencia: permitir moverla y cambiar sus propiedades.",
+  "reference.fixedSizeHint": "Flotar de forma independiente: mantener la referencia fija al desplazar, ampliar o girar el lienzo. Desactivar para seguir el lienzo.",
+  "reference.resetHint": "Restablecer: recuperar el tamaño, ángulo y reflejo iniciales.",
+  "reference.bringToFrontHint": "Traer al frente: mostrar esta referencia sobre las demás.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

@@ -103,7 +103,7 @@
 .alert-success svg { color: var(--success); }
 .alert-warning { color: var(--text-2); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .alert-warning svg { color: var(--warn); }
-.alert-danger { color: var(--text-2); background: var(--warn-soft); border-color: var(--danger); }
+.alert-danger { color: var(--text-2); background: var(--danger-soft); border-color: var(--danger); }
 .alert-danger svg { color: var(--danger); }
 
 /* Panel: the page-level block. Nothing inside it is another bordered box. */
@@ -125,7 +125,7 @@
   font-size: var(--font-lead);
   font-weight: 700;
 }
-.panel-head h2 svg { width: 16px; height: 16px; color: var(--warn); }
+.panel-head h2 svg { width: var(--icon-size); height: var(--icon-size); color: var(--text-3); }
 .panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin-left: auto; }
 .panel-body { display: grid; gap: var(--space-8); min-width: 0; }
 
@@ -150,13 +150,13 @@
   align-items: center;
   gap: var(--space-5);
   max-width: 26ch;
-  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  font-size: clamp(var(--font-h2), 3.4vw, var(--font-h2-lg));
   line-height: 1.1;
   font-weight: 700;
   letter-spacing: -.022em;
   text-wrap: balance;
 }
-.page-head-copy h1 svg { width: 24px; height: 24px; color: var(--warn); }
+.page-head-copy h1 svg { width: var(--icon-size); height: var(--icon-size); color: var(--text-3); }
 .page-head-copy p { max-width: 58ch; color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
 .page-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
 
@@ -165,6 +165,18 @@
 .ui-gallery .panel + .panel { margin-top: 0; }
 .ui-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
 .ui-note { margin: 0; color: var(--text-4); font-size: var(--font-small); line-height: 1.6; }
+.ui-pack-card-group { display: grid; gap: var(--space-6); }
+.ui-pack-card-group + .ui-pack-card-group { margin-top: var(--space-10); padding-top: var(--space-10); border-top: 1px solid var(--divider); }
+.ui-pack-card-group h3 { color: var(--text-2); font-size: var(--font-body); font-weight: 600; }
+.ui-pack-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+.ui-pack-grid .pack-card .pack-art-frame { aspect-ratio: 1 / 1; padding: var(--space-5); }
+.ui-pack-grid .pack-body { padding: var(--space-5); gap: var(--space-4); }
+.ui-pack-grid .pack-head h2 { font-size: var(--font-body); }
+.ui-pack-grid .pack-foot { padding: var(--space-5); gap: var(--space-4); }
+.ui-popular-pack-grid { margin-top: 0; }
+.ui-popular-pack-grid .shelf-item { max-width: none; }
+@media (max-width: 1100px) { .ui-pack-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .ui-pack-grid { grid-template-columns: minmax(0, 1fr); } }
 .ui-frame { padding: var(--space-10); background: var(--bg); border: 1px solid var(--divider); }
 
 /* ---------- settlement, orders, support, admin ---------- */
@@ -179,7 +191,6 @@
 /* One row shape for every list on these pages: fixed leading columns, a flexible
    description, then a right-hand column for state or an action. */
 .payout-list,
-.method-list,
 .report-list,
 .ticket-list,
 .admin-list,
@@ -223,36 +234,8 @@
 .payout-state.rejected, .admin-state.rejected { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: var(--warn-soft); }
 .ticket-state.answered { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); background: var(--raised); }
 
-/* Payout methods: one row per saved destination, actions kept together at the end. */
-.method-list li {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-7);
-  padding: var(--space-6) var(--space-7);
-  background: var(--bg);
-  border: 1px solid var(--divider);
-}
-.method-kind { color: var(--text); font-size: var(--font-small); font-weight: 600; }
-.method-account { color: var(--text-2); font-family: var(--font-pixel); font-size: var(--font-small); }
-.method-holder { color: var(--text-4); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.method-list .button,
-.method-default { grid-column: 4; }
-/* The default marker and the two actions share one cell, so they never wrap apart. */
-.method-list li > .button:first-of-type,
-.method-default { justify-self: end; }
-.method-default {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  color: var(--success);
-  font-size: var(--font-small);
-}
-.method-default svg { width: 13px; height: 13px; }
-.method-list li > .button:last-child { justify-self: start; }
-
 /*
- * The add-method / ticket / settings forms: fields capped at a readable width, and the
+ * The withdrawal / ticket / settings forms: fields capped at a readable width, and the
  * submit on its own line. A panel-wide input is harder to scan than a short one.
  *
  * `align-self: start` matters: a button is a grid item here, and a grid item stretches to
@@ -313,7 +296,7 @@
   background: var(--bg);
   border: 1px solid var(--divider);
 }
-.admin-pack { display: grid; gap: 2px; min-width: 0; }
+.admin-pack { display: grid; gap: var(--space-1); min-width: 0; }
 .admin-pack strong { color: var(--text); font-size: var(--font-body); }
 .admin-pack small { color: var(--text-4); font-size: var(--font-small); }
 .admin-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
@@ -353,11 +336,6 @@
   .payout-list li { grid-template-columns: auto auto minmax(0, 1fr); row-gap: var(--space-4); }
   .payout-list time { grid-column: 1; grid-row: 2; }
   .payout-dest { grid-column: 1 / -1; grid-row: 2; text-align: right; }
-  .method-list li { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-5); }
-  .method-holder { grid-column: 2; }
-  .method-list li > .button,
-  .method-default { grid-column: auto; justify-self: start; }
-  .method-list li > .button:last-child { justify-self: start; }
   .admin-list li { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-5); }
   .admin-actions { justify-content: flex-start; }
   .settings-grid { grid-template-columns: 1fr; }
@@ -399,8 +377,7 @@
 .drop-empty strong { color: var(--text-2); font-weight: 600; }
 .drop-file { display: flex; align-items: center; gap: var(--space-6); width: 100%; min-width: 0; }
 .drop-file > svg { width: 18px; height: 18px; color: var(--accent); flex: 0 0 auto; }
-.drop-file-copy { display: grid; gap: 2px; min-width: 0; }
+.drop-file-copy { display: grid; gap: var(--space-1); min-width: 0; }
 .drop-file-copy strong { color: var(--text); font-size: var(--font-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drop-file-copy small { color: var(--text-4); font-size: var(--font-small); }
 .drop-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: center; }
-

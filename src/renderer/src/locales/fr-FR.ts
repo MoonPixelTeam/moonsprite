@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const frFRMessages = {
+  "reference.lockHint": "Verrouiller la référence : éviter les déplacements ou modifications involontaires.",
+  "reference.unlockHint": "Déverrouiller la référence : permettre les déplacements et modifications.",
+  "reference.fixedSizeHint": "Flottement indépendant : garder la référence fixe lors du déplacement, du zoom ou de la rotation du canevas. Désactiver pour suivre le canevas.",
+  "reference.resetHint": "Réinitialiser : restaurer la taille, l’angle et la symétrie initiaux.",
+  "reference.bringToFrontHint": "Mettre au premier plan : afficher cette référence au-dessus des autres.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

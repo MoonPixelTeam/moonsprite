@@ -8,7 +8,7 @@
   border-top: 1px solid var(--divider);
 }
 .final-cta .content-wrap { display: grid; grid-template-columns: 1fr auto; gap: var(--space-18); align-items: center; }
-.final-cta h2 { font-size: clamp(30px, 3.6vw, var(--font-display)); line-height: 1.1; font-weight: 700; }
+.final-cta h2 { font-size: clamp(var(--font-h2), 3.6vw, var(--font-display)); line-height: 1.1; font-weight: 700; }
 .final-cta p { max-width: 640px; margin-top: var(--space-5); color: var(--text-3); font-size: var(--font-body); line-height: 1.65; }
 .final-actions { min-width: 225px; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-7); }
 .final-actions > a:last-child { display: flex; align-items: center; justify-content: center; gap: var(--space-3); color: var(--text-3); font-size: var(--font-small); }
@@ -19,22 +19,9 @@
 
 .page-shell { width: min(calc(100% - 48px), 1280px); margin: 0 auto; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; gap: var(--space-24); align-items: start; padding: var(--space-16) 0 var(--space-30); }
 .page-shell.no-right { grid-template-columns: 200px minmax(0, 1fr); }
-/*
- * The side columns hold still while the article scrolls. The sticky sits on the grid
- * item, not on the nav inside it: an `aside` is only as tall as its own content, so a
- * sticky child would run out of travel after one screen and scroll away with the page.
- * Both the column and the nav inside it are capped to the room below the sticky chrome,
- * so an outline taller than the viewport scrolls on its own instead of being clipped.
- */
-.outline-side {
-  min-width: 0;
-  position: sticky;
-  top: var(--space-26);
-  max-height: calc(100vh - var(--space-26) - var(--space-9));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.outline-side .page-outline { max-height: calc(100vh - var(--space-26) - var(--space-9)); overflow-y: auto; }
+/* Long directories participate in document scrolling so every entry stays reachable. */
+.outline-side { min-width: 0; position: static; }
+.outline-side .page-outline { max-height: none; overflow: visible; }
 .page-outline.panel { background: var(--surface); border: 1px solid var(--border); }
 .panel-body { padding: var(--space-4) var(--space-3) var(--space-5); }
 .outline-group { margin: var(--space-7) var(--space-3) var(--space-2); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); line-height: 1.2; font-weight: 400; }
@@ -62,7 +49,7 @@
   border-bottom: 1px solid var(--divider);
   background-image: linear-gradient(180deg, var(--wash-strong) 0%, transparent 100%);
 }
-.page-head h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.page-head h1 { font-size: clamp(var(--font-h2), 3.4vw, var(--font-h2-lg)); font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .page-head p { margin-top: var(--space-6); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
 
 .doc-section { scroll-margin-top: var(--space-28); }
@@ -94,4 +81,3 @@
 .blog-post time { color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
 .blog-post > h2 { margin: var(--space-5) 0 var(--space-4); font-size: var(--font-h2); font-weight: 700; }
 .blog-post .doc-section h3 { margin: var(--space-13) 0 var(--space-4); font-size: var(--font-h3); font-weight: 700; }
-

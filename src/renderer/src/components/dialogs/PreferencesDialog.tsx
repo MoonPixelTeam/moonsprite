@@ -606,6 +606,7 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
           {toggle(t('preferences.tablet.twoFingerRotate'), preferences.tablet.twoFingerRotateEnabled, (value) => update('tablet', { ...preferences.tablet, twoFingerRotateEnabled: value }))}
           {toggle(t('preferences.tablet.tilt'), preferences.tablet.tiltEnabled, (value) => update('tablet', { ...preferences.tablet, tiltEnabled: value }))}
           {toggle(t('preferences.tablet.twist'), preferences.tablet.twistEnabled, (value) => update('tablet', { ...preferences.tablet, twistEnabled: value }))}
+          <TabletInputSettings value={preferences.tablet} onChange={value => update('tablet', value)} />
         </PreferenceGroup>}
       {section === 'tools' && <>
         <PreferenceGroup title={t('tools.toolbar')}>
@@ -715,3 +716,4 @@ export function PreferencesDialog({ initialSection = 'general', onClose, onPrese
     {toolRailDialogOpen && <ToolRailLayoutDialog value={preferences.toolRail} onClose={() => setToolRailDialogOpen(false)} onConfirm={value => { update('toolRail', value); setToolRailDialogOpen(false) }} />}
   </>
 }
+import { TabletInputSettings } from '@/components/tablet/TabletInputSettings'

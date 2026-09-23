@@ -4,6 +4,9 @@ import { CanvasInputState } from '@/core/canvas-input'
 import { sessionFromDocument } from '@/store/workspace-session'
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 import { renderCanvasBrush } from './canvas-render-brush'
+import { createCompositePointReplacementSampler } from '@/core/document-composite'
+import { BLEND_MODES } from '@shared/types-color'
+import { compositeRegion } from '@/core/document-composite'
 import { deviceAlignedPixelRect } from '@/core/canvas-render-plan'
 
 vi.mock('./canvas-adaptive-contrast', () => ({ canvasAdaptiveContrast: vi.fn(() => '#fff') }))
@@ -56,4 +59,39 @@ it.each(['full', 'full-edge'] as const)('composites %s brush below upper layers 
   expect(translation).toEqual({ x: 0, y: 0 })
   expect(context.stroke).toHaveBeenCalledTimes(mode === 'full-edge' ? 1 : 0)
  }
+})
+
+it.each(['full', 'full-edge'] as const)('matches painted pixels for %s previews on empty blended layers', mode => {
+  for (const blendMode of BLEND_MODES.filter(mode => mode !== 'normal')) {
+    const document = createDocument('blend preview', 4, 4, 'rgba', false)
+    writeLayerColor(document, document.layers[0], 0, { r: 120, g: 180, b: 240, a: 255 })
+    const layer = createLayer('paint', 4, 4, 'rgba')
+    layer.blendMode = blendMode
+    document.layers.push(layer)
+    document.activeLayerId = layer.id
+    const session = sessionFromDocument(document)
+    Object.assign(session, { tool: 'pencil', brushSize: 1, brushTexture: 'solid', inkMode: 'simple', primaryColor: { r: 200, g: 80, b: 40, a: 255 } })
+    const input = new CanvasInputState()
+    Object.assign(input.pointer, { visible: true, point: { x: 0, y: 0 } })
+    const sample = createCompositePointReplacementSampler(document, layer.id)
+    const fills = vi.fn()
+    renderCanvasBrush({
+      currentActiveLayer: layer, currentSession: session, document,
+      brushPreviewMode: mode, brushEdgeThickness: 1, canRenderToolPreview: true, inputRef: { current: input },
+      activeDrag: null, drag: null, pointerOverCanvas: () => true, drawingBrushPreviewEnabled: true,
+      brushPreviewOverlaySupported: () => false, repeatedDocumentPointsAt: () => null,
+      tilemapEditSelectionAtPoint: () => undefined, paintSelectionForDrag: () => null,
+      snapBrushPointToGrid: (point: unknown) => point, brushPatternOrigin: () => ({ x: 0, y: 0 }),
+      context: { save: vi.fn(), restore: vi.fn(), translate: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() },
+      view: session.view, optimizedRotationEnabled: false,
+      previewPixelRect: (x: number, y: number) => ({ x, y, width: 1, height: 1 }),
+      repeatCopies: [{ x: 0, y: 0, originX: 0, originY: 0, fromX: 0, fromY: 0, toX: 4, toY: 4 }],
+      fromX: 0, fromY: 0, toX: 4, toY: 4,
+      brushPreviewStackCacheRef: { current: null }, brushPreviewCompositeCacheRef: { current: null },
+      previewColorAt: (x: number, y: number) => sample(x, y, session.primaryColor), fillPreviewPixelRects: fills
+    } as unknown as Parameters<typeof renderCanvasBrush>[0])
+    writeLayerColor(document, layer, 0, session.primaryColor)
+    const expected = compositeRegion(document, 0, 0, 1, 1)
+    expect(fills.mock.lastCall?.[0][0].color).toEqual({ r: expected[0], g: expected[1], b: expected[2], a: expected[3] })
+  }
 })

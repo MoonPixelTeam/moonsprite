@@ -144,6 +144,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
           {collapsed ? <PixelUtilityIcon kind="folder" /> : <PixelUtilityIcon kind="folderOpen" />}
         </span>
         <span className="layer-row-content">
+        <span className="tablet-layer-grip" data-tablet-drag-handle aria-hidden="true"><PixelUtilityIcon kind="move" /></span>
         {panel.thumbnailSize && <LayerRowMaskThumbnail documentId={session.document.id} ownerId={node.group.id} ownerKind="group" size={panel.thumbnailSize} onContextMenu={panel.onMaskContextMenu} />}
         <Tooltip className="layer-name" content={node.group.description?.trim()}>
           <span>{node.group.name}</span>
@@ -255,6 +256,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
         <PixelAutoLinkIcon enabled={liveAutoLinkById.get(node.layer.id) === true} />
       </span>
       <span className="layer-row-content">
+      <span className="tablet-layer-grip" data-tablet-drag-handle aria-hidden="true"><PixelUtilityIcon kind="move" /></span>
       {panel.thumbnailSize && <LayerRowThumbnail documentId={session.document.id} layerId={node.layer.id} size={panel.thumbnailSize} />}
       {panel.thumbnailSize && <LayerRowMaskThumbnail documentId={session.document.id} ownerId={node.layer.id} ownerKind="layer" size={panel.thumbnailSize} onContextMenu={panel.onMaskContextMenu} />}
       <Tooltip className="layer-name" content={node.layer.description?.trim()}>

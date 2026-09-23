@@ -1,0 +1,94 @@
+/* Secondary routes only; navigation and footer retain their own contracts. */
+@scope (.site-shell) to (.app-chrome, .site-footer, .workspace-shell) {
+/* Shared density and route-specific layout corrections, after page styles. */
+.panel-head h2, .section-title h2, .home-section-head h2 { font-weight: 500; }
+.panel { gap: var(--space-5); }
+.panel-body { gap: var(--space-5); }
+.page-head-copy { gap: var(--space-4); }
+.page-head-copy h1 { font-size: var(--font-h3-lg); font-weight: 500; line-height: 1.4; }
+.page-head-copy p { font-size: var(--font-small); line-height: 1.65; }
+.page-intro { padding-block: var(--space-10); }
+.section-title h2 { font-size: var(--font-h3-lg); }
+.empty-state { padding: var(--space-10); gap: var(--space-5); }
+.empty-state h2 { font-size: var(--font-body); font-weight: 500; }
+.panel-actions, .receipt-actions, .settings-actions { gap: var(--space-4); }
+.panel-copy, .field-hint { overflow-wrap: anywhere; }
+/* Marketplace, product details, cart and checkout. */
+.market-browse, .market-shelf, .market-notes { padding-block: var(--space-10); }
+.pack-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--space-7); }
+.market-toolbar { align-items: center; gap: var(--space-5); }
+.market-tools { flex-wrap: wrap; min-width: 0; }
+.market-tools .search-field { min-width: 0; }
+.asset-detail { padding-block: var(--space-10); }
+.asset-layout { gap: var(--space-10); }
+.asset-heading h1 { font-size: var(--font-h3-lg); font-weight: 500; }
+.asset-support { gap: var(--space-10); margin-top: var(--space-10); padding-top: var(--space-7); }
+.cart-review, .cart-foot { gap: var(--space-5); }
+.cart-review-lines li { gap: var(--space-5); }
+.cart-review-lines li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.cart-review-lines li > span:last-child { flex-shrink: 0; }
+/* Documentation, FAQ, blog, licence and authentication. */
+.page-shell, .reading-layout { gap: var(--space-10); padding-block: var(--space-10) var(--space-16); }
+.reading-layout .page-head-block { padding-bottom: var(--space-7); margin-bottom: var(--space-7); }
+.reading-layout .page-head-copy h1 { font-size: var(--font-h3-lg); }
+.doc-section > h2, .blog-post > h2 { font-size: var(--font-h3); font-weight: 500; }
+.doc-section h3, .blog-post .doc-section h3 { font-size: var(--font-lead); font-weight: 500; }
+.doc-section > h2, .reading-layout .doc-section h3 { margin-top: var(--space-10); }
+.reading-layout .doc-section p, .reading-layout .doc-section li { line-height: 1.75; }
+.blog-post { margin-bottom: var(--space-10); padding-bottom: var(--space-10); }
+.faq-layout .faq-list { gap: var(--space-4); }
+.faq-layout .faq-list summary { min-height: var(--space-18); padding: var(--space-5); }
+.faq-layout .faq-list strong { font-size: var(--font-small); font-weight: 500; }
+.faq-layout .faq-list details p { padding: 0 var(--space-5) var(--space-5); line-height: 1.75; }
+.license-page { padding-block: var(--space-10) var(--space-16); }
+.license-page > .page-head-block { margin-bottom: var(--space-10); }
+.license-layout { gap: var(--space-10); }
+.license-section { padding: var(--space-7); }
+.license-section h2 { font-size: var(--font-body); font-weight: 500; margin-bottom: var(--space-5); }
+.auth-page { padding-block: var(--space-10) var(--space-16); }
+.auth-card { padding: var(--space-10); gap: var(--space-7); }
+.auth-card h1 { font-size: var(--font-h3-lg); font-weight: 500; }
+.auth-card .settings-form { gap: var(--space-5); }
+/* Home, competitions and shared footer keep artwork prominent without oversized gaps. */
+.features, .showcase, .market-teaser, .final-cta { padding-block: var(--space-16); }
+.home-section-head { gap: var(--space-7); margin-bottom: var(--space-7); }
+.competition-banner-content { padding-block: var(--space-16); }
+.competition-banner h1 { font-size: var(--font-h2); font-weight: 500; }
+.competition-main { padding-block: var(--space-10) var(--space-16); }
+.competition-demo { margin-bottom: var(--space-10); }
+.competition-gallery { gap: var(--space-7); }
+.competition-facts > div { min-width: 0; overflow-wrap: anywhere; }
+.footer-cols { gap: var(--space-10); padding-block: var(--space-16); }
+.footer-col ul { gap: var(--space-4); }
+.footer-col a, .footer-col .pending { font-size: var(--font-small); }
+.footer-bottom { padding-block: var(--space-10); gap: var(--space-4); }
+@media (max-width: 1000px) {
+  .workspace-body .studio-packs > li { grid-template-columns: var(--space-17) minmax(0, 1fr) auto; }
+  .workspace-body .studio-packs > li > .button { grid-row: auto; }
+  .workspace-body .studio-packs > li > .button:nth-last-child(2) { grid-column: 2; justify-self: start; }
+  .workspace-body .studio-packs > li > .button:last-child { grid-column: 3; justify-self: end; }
+  .workspace-body .studio-pack-art { width: var(--space-17); height: var(--space-17); }
+}
+@media (max-width: 760px) {
+  .workspace-shell { column-gap: 0; }
+  .workspace-body .admin-list > li { grid-template-columns: minmax(0, 1fr) auto; }
+  .workspace-body .admin-list .admin-actions { grid-column: 1 / -1; grid-row: auto; }
+  .workspace-body .studio-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-shell, .page-shell.no-right, .reading-layout, .reading-layout.no-right { grid-template-columns: minmax(0, 1fr); }
+  .asset-layout, .asset-support, .license-layout, .settlement-split { grid-template-columns: minmax(0, 1fr); }
+  .workspace-body .studio-row { grid-template-columns: minmax(0, 1fr); }
+  .home-section-head { gap: var(--space-5); }
+  .competition-banner h1 { font-size: var(--font-h3-lg); }
+}
+@media (max-width: 420px) {
+  .receipt-actions .button, .settings-actions .button, .panel-actions .button, .ui-row .button { width: auto; }
+  .settlement-withdraw .settings-form{ grid-template-columns: minmax(0, 1fr); }
+  .workspace-body .studio-metrics { grid-template-columns: minmax(0, 1fr); }
+  .workspace-body .studio-metric + .studio-metric { border-left: 0; border-top: 1px solid var(--divider); }
+}
+@media (pointer: coarse) {
+  .workspace-body .field input, .workspace-body .ui-select-button, .workspace-body .account-form input { height: var(--control-height); }
+}
+
+}
+

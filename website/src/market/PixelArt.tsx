@@ -16,6 +16,7 @@ import { PET_ANIMATIONS, petSprites, type PetAnimationId, type PetId } from './p
 export type SpriteSheet = {
   /** Folder holding the frame images, named 00.png upward. */
   dir: string
+  sources?: string[]
   /** Frames in the animation. */
   frames: number
   /** Width of one frame in the artwork. */
@@ -27,6 +28,7 @@ export type SpriteSheet = {
 }
 
 export function frameSrc(sheet: SpriteSheet, frame: number): string {
+  if (sheet.sources?.length) return sheet.sources[frame % sheet.sources.length]
   return `${sheet.dir}/${String(frame).padStart(2, '0')}.png`
 }
 

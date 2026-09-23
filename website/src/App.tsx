@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { copy } from './content'
 import { isWorkspaceRoute, useRoute } from './router'
-import { scrollToId } from './ui'
+import { BackToTop, scrollToId } from './ui'
 import { RouteOutlet } from './app/RouteOutlet'
 import { DocumentMeta } from './app/DocumentMeta'
 import { useSitePreferences } from './app/useSitePreferences'
@@ -13,8 +13,8 @@ export function App() {
   const { language } = preferences
   const route = useRoute()
   const t = copy[language]
+  const secondary = isWorkspaceRoute(route) || ['login', 'register', 'license', 'privacy', 'ui', 'blog'].includes(route.page) || Boolean(route.subId)
   useEffect(() => {
-    if (isWorkspaceRoute(route)) return
     if (route.page === 'blog' && route.subId) {
       const timer = setTimeout(() => scrollToId(`post-${route.subId}`), 90)
       return () => clearTimeout(timer)
@@ -22,11 +22,12 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [route.page, route.subId])
 
-  return <div className={`site-shell${isWorkspaceRoute(route) ? ' site-workspace' : ''}`}>
+  return <div data-secondary={secondary || undefined} className={`site-shell${isWorkspaceRoute(route) ? ' site-workspace' : ''}`}>
     <DocumentMeta route={route} language={language} t={t} />
     <a className="skip-link" href="#main">{language === 'zh' ? '跳到正文' : 'Skip to content'}</a>
     <SiteNavigation preferences={preferences} route={route} t={t} />
     <RouteOutlet route={route} t={t} language={language} />
     <SiteFooter t={t} />
+    <BackToTop routeKey={`${route.page}/${route.subId ?? ''}`} label={language === 'zh' ? '回到顶部' : 'Back to top'} supportLabel={language === 'zh' ? '客服' : 'Help'} topLabel={language === 'zh' ? '顶部' : 'Top'} />
   </div>
 }

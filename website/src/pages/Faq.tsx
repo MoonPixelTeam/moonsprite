@@ -9,11 +9,11 @@ export function FaqPage({ t, language, subId }: { t: Copy; language: Language; s
   const current = categories.find((category) => category.id === subId) ?? categories[0]
 
   return <PageShell className="reading-layout faq-layout"
-    left={<><p className="reading-nav-title">{language === 'zh' ? '问题分类' : 'Categories'}</p><OutlineNav
+    left={<OutlineNav
       items={categories.map((category) => ({ id: category.id, label: category.title, href: `#/faq/${category.id}` }))}
-      activeId={current.id} /></>}>
+      activeId={current.id} />}>
     <article className="faq-cat">
-      <PageHeader eyebrow={t.nav.faq} title={current.title} subtitle={faq.subtitle} />
+      <PageHeader title={current.title} subtitle={faq.subtitle} />
       <div className="faq-list">
         {current.items.map((item) => <details key={item.id} id={item.id}>
           <summary><strong>{item.q}</strong><span className="faq-toggle" aria-hidden="true"><PixelPlus className="faq-expand" /><PixelMinus className="faq-collapse" /></span></summary>

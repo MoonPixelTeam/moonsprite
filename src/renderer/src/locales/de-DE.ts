@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const deDEMessages = {
+  "reference.lockHint": "Referenz sperren: versehentliches Verschieben oder Bearbeiten verhindern.",
+  "reference.unlockHint": "Referenz entsperren: Verschieben und Bearbeiten erlauben.",
+  "reference.fixedSizeHint": "Unabhängig schweben: Die Referenz bleibt beim Verschieben, Zoomen oder Drehen der Leinwand fest. Ausschalten, um der Leinwand wieder zu folgen.",
+  "reference.resetHint": "Zurücksetzen: ursprüngliche Größe, Winkel und Spiegelung wiederherstellen.",
+  "reference.bringToFrontHint": "In den Vordergrund: diese Referenz über anderen Referenzbildern anzeigen.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

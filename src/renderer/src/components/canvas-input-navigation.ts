@@ -75,6 +75,9 @@ export function createNavigationCanvasInput(ports: Ports) {
       // Middle-button/Space panning must hide the smooth-brush overlay even
       // when the pointer does not move after the gesture starts.
       scheduleBrushPreviewOverlay()
+      // Selection corners live on the main canvas, not the brush overlay.
+      // Retire them on press even if no pointermove follows.
+      ports.scheduleDraw()
       event.preventDefault()
       return true
     }

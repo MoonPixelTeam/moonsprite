@@ -6,6 +6,8 @@ import { PerformanceProfiler } from '@/components/PerformanceProfiler'
 import { EditorCanvasHost } from './EditorCanvasHost'
 import { EditorToolOptions } from './EditorToolOptions'
 import { EditorToolRail } from './EditorToolRail'
+import { TabletAssistBar } from '@/components/tablet/TabletAssistBar'
+import { useTabletWorkspace } from '@/components/tablet/useTabletWorkspace'
 import { useI18n } from '@/components/I18nProvider'
 import { useAnimationPlaybackClock } from '@/components/useAnimationPlaybackClock'
 import type { DocumentPaneDirection, DocumentPaneNode } from '@/core/document-pane-layout'
@@ -107,6 +109,7 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
   onToggleMirror
 }: EditorWorkspaceShellProps) {
   const { t } = useI18n()
+  const tablet = useTabletWorkspace()
   useAnimationPlaybackClock(session.document.id)
   return <PerformanceProfiler id="EditorWorkspaceShell"><section className="editor-layout" style={{ '--left-dock-width': `${leftDockWidth}px`, '--inspector-width': `${inspectorWidth}px`, gridTemplateColumns: editorOnly ? 'minmax(0, 1fr)' : editorColumns, gridTemplateRows: editorOnly ? 'minmax(0, 1fr)' : editorRows, gridTemplateAreas: editorOnly ? '"work"' : editorAreas } as CSSProperties}>
     <EditorToolRail side={toolRailSide} onGripPointerDown={onToolRailGrip} />
@@ -114,6 +117,7 @@ export const EditorWorkspaceShell = memo(function EditorWorkspaceShell({
     {hasLeftDock && <div className="left-dock-resizer" role="separator" aria-orientation="vertical" aria-label={t('workspaceDock.resizeLeft')} onPointerDown={onLeftDockResize}><span aria-hidden="true" /></div>}
     <section ref={workAreaRef} className={`work-area ${hasBottomDock ? 'has-bottom-layers' : ''}`} style={{ '--bottom-layers-height': `${bottomDockHeight}px` } as CSSProperties}>
       <EditorToolOptions onOpenColorReplacement={onOpenColorReplacement} />
+      {tablet.enabled && <div className="tablet-assist-layer"><TabletAssistBar preferences={tablet.preferences} /></div>}
       <EditorCanvasHost documentPaneLayout={documentPaneLayout} workspaceDocumentId={workspaceDocumentId} paneOnlyDocumentIds={paneOnlyDocumentIds} onDocumentPaneLayoutChange={onDocumentPaneLayoutChange} onDocumentPaneMove={onDocumentPaneMove} onDocumentPaneReturnToTabs={onDocumentPaneReturnToTabs} onDocumentPaneFloat={onDocumentPaneFloat} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenOutline={onOpenOutline} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
       {hasBottomDock && <div className="bottom-layers-resizer" role="separator" aria-orientation="horizontal" aria-label={t('workspaceDock.resizeBottom')} onPointerDown={onBottomDockResize}><span /></div>}
       {hasBottomDock && <div ref={setBottomDockHost} className="bottom-layers-dock" data-panel-dock-zone="bottom" />}

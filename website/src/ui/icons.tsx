@@ -1,4 +1,5 @@
 import cartSvg from '../assets/icons/cart.svg?raw'
+import hotSvg from '../assets/icons/hot.svg?raw'
 import userSignedOutSvg from '../assets/icons/userSignedOut.svg?raw'
 import userSignedInSvg from '../assets/icons/userSignedIn.svg?raw'
 import sunSvg from '../assets/icons/sun.svg?raw'
@@ -56,6 +57,7 @@ export const PixelMenu = fromSvg(moreLinesSvg)
 export const PixelFileArchive = fromSvg(folderSvg)
 
 export const PixelCart = fromSvg(cartSvg)
+export const PixelHot = fromSvg(hotSvg)
 export const PixelUserSignedOut = fromSvg(userSignedOutSvg)
 export const PixelUserSignedIn = fromSvg(userSignedInSvg)
 export const PixelSun = fromSvg(sunSvg)

@@ -5,6 +5,8 @@ import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { expandLayerToRect, getLayerStorageOrigin, getPaletteEntry, isLayerMask, layerIndexAtStoragePoint, paletteColorIdForCanvas, readLayerColor, readLayerPacked } from './document-model'
 import { type PixelEdit } from './history'
+import { brushOriginalValue, relatedBrushEdit, brushCoverageByEdit, brushPaintBaselineByEdit, lastBrushStampByEdit, solidPointRecorderByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK } from './tools-pixel-edit-state'
+export { brushCoverageByEdit, brushPaintBaselineByEdit, lastBrushStampByEdit, solidPointRecorderByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK, type SolidPointRecorder } from './tools-pixel-edit-state'
 import { blendOver, clampByte, packColor, unpackColor } from './raster'
 import { selectionContains } from './selection'
 import { proceduralBrushCoverageAt } from './brushes'
@@ -29,7 +31,7 @@ export const paintLayerValue = (
     // restore the pixel from before the stroke and erase an earlier part of
     // the same stroke when the path crosses itself.
     if (useCurrentDestination) return readLayerPacked(document, layer, index)
-    const original = brushPaintBaselineByEdit.get(edit)?.get(index) ?? edit.before.get(index)
+    const original = brushOriginalValue(edit, index)
     if (original !== undefined) return original
     return readLayerPacked(document, layer, index)
   }
@@ -37,7 +39,7 @@ export const paintLayerValue = (
   let base: RgbaColor
   if (useCurrentDestination) base = readLayerColor(document, layer, index)
   else {
-    const original = brushPaintBaselineByEdit.get(edit)?.get(index) ?? edit.before.get(index)
+    const original = brushOriginalValue(edit, index)
     base = original === undefined
       ? readLayerColor(document, layer, index)
       : layer.format === 'rgba'
@@ -86,42 +88,6 @@ export /**
 const compositeSelectionPixelForEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number, value: number): number => (
   compositeSelectionPixelOver(document, layer, edit.before.get(index) ?? readLayerPacked(document, layer, index), value)
 )
-
-interface BrushCoverageChunks {
-  chunks: Map<number, Uint16Array>
-}
-
-interface BrushStampState {
-  key: string
-  stampX: number
-  stampY: number
-  width: number
-  height: number
-  occupied: Uint8Array
-}
-
-export interface SolidPointRecorder {
-  packedValue: number
-  seen: Uint8Array
-  indices: Uint32Array
-  before: Uint32Array
-  after: Uint32Array
-  count: number
-}
-
-export const BRUSH_COVERAGE_CHUNK_BITS = 12
-
-export const BRUSH_COVERAGE_CHUNK_SIZE = 1 << BRUSH_COVERAGE_CHUNK_BITS
-
-export const BRUSH_COVERAGE_CHUNK_MASK = BRUSH_COVERAGE_CHUNK_SIZE - 1
-
-export const brushCoverageByEdit = new WeakMap<PixelEdit, Map<string, BrushCoverageChunks>>()
-
-export const brushPaintBaselineByEdit = new WeakMap<PixelEdit, Map<number, number>>()
-
-export const lastBrushStampByEdit = new WeakMap<PixelEdit, BrushStampState>()
-
-export const solidPointRecorderByEdit = new WeakMap<PixelEdit, SolidPointRecorder>()
 
 export const EDIT_EXPANSION_PADDING = 64
 
@@ -174,7 +140,11 @@ export const ensureLayerCoversEditRect = (document: SpriteDocument, layer: Raste
   // footprint would copy the entire bitmap and remap stroke history again
   // at every advancing stamp, even while the brush still fits in storage.
   if (!expandLayerToRect(layer, Math.max(0, left - padding), Math.max(0, top - padding), Math.min(document.width, right + padding), Math.min(document.height, bottom + padding))) return false
-  if (edit.before.size > 0 || edit.after.size > 0 || brushCoverageByEdit.has(edit)) remapPixelEditAfterLayerExpansion(layer, edit, oldWidth, oldOrigin)
+  remapPixelEditAfterLayerExpansion(layer, edit, oldWidth, oldOrigin)
+  // Either half of a perfect-pixel stroke may grow storage. Both histories and
+  // coverage maps must use the new stride/origin before repaint, undo or cancel.
+  const related = relatedBrushEdit(edit)
+  if (related) remapPixelEditAfterLayerExpansion(layer, related, oldWidth, oldOrigin)
   return true
 }
 

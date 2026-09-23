@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const ptBRMessages = {
+  "reference.lockHint": "Bloquear referência: impedir movimentos ou alterações acidentais.",
+  "reference.unlockHint": "Desbloquear referência: permitir movimentos e alterações nas propriedades.",
+  "reference.fixedSizeHint": "Flutuar de forma independente: manter a referência fixa ao mover, ampliar ou girar a tela. Desative para acompanhar a tela novamente.",
+  "reference.resetHint": "Redefinir: restaurar tamanho, ângulo e espelhamento iniciais.",
+  "reference.bringToFrontHint": "Trazer para frente: exibir esta referência sobre as demais.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

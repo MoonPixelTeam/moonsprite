@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { Button } from '../ui'
-import { PixelCheck as Check } from '../ui/icons'
+import { Button, IconButton } from '../ui'
+import { PixelCart as CartIcon, PixelCheck as Check } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { PetSpriteStrip } from './PixelArt'
 import { petPacks } from './petSprites'
@@ -15,8 +14,8 @@ import {
   type MarketProduct,
   type PetPackProduct,
 } from './catalog'
-import { marketPackHash } from '../router'
-import { useCart, type Cart } from './cart'
+import { marketPackHash, navigate } from '../router'
+import { useCart, useCartStore, type Cart } from './cart'
 import { useAccount } from '../account/store'
 
 /*
@@ -67,12 +66,11 @@ function PriceRow({ product, t, language }: { product: MarketProduct; t: Copy; l
   if (product.category === 'bundles') {
     const full = bundleValue(product)
     return <div className="pack-price">
-      <strong>{formatPrice(product.price)}</strong>
-      <s>{formatPrice(full)}</s>
-      <em>{t.marketPage.card.save} {formatPrice(full - product.price)}</em>
+      <strong>{formatPrice(product.price, language)}</strong>
+      {full > product.price && <s>{formatPrice(full, language)}</s>}
     </div>
   }
-  return <div className="pack-price"><strong>{formatPrice(product.price)}</strong></div>
+  return <div className="pack-price"><strong>{formatPrice(product.price, language)}</strong></div>
 }
 
 /**
@@ -105,19 +103,38 @@ export function PackImage({ product, t, alt, zoom = 3, className }: {
     decoding="async" />
 }
 
-export function AddButton({ product, t, inCart, owned, onAdd, block = false }: {
+export function AddButton({ product, t, inCart, owned, ownedOrderId, onAdd, block = false }: {
   product: MarketProduct
   t: Copy
   inCart: boolean
   /** Already bought: offering the cart again would invite a duplicate purchase. */
   owned?: boolean
+  ownedOrderId?: string
   onAdd: (id: string) => void
   block?: boolean
 }) {
   const market = t.marketPage
+  const { openCart, hasOpener } = useCartStore()
+  const handleClick = () => {
+    if (!inCart) {
+      onAdd(product.id)
+      return
+    }
+    if (hasOpener) {
+      openCart()
+      return
+    }
+    // Homepage cards do not own a drawer; move to the market and open it there.
+    navigate('#/market')
+    window.setTimeout(openCart, 120)
+  }
   if (owned) {
     return <span className="add-button">
-      <span className="owned-flag"><Check aria-hidden="true" />{market.card.ownedPack}</span>
+      <IconButton
+        className="owned-flag"
+        href={ownedOrderId ? `#/orders/${ownedOrderId}` : '#/purchases'}
+        icon={<Check aria-hidden="true" />}
+        label={market.receipt.viewOrder} />
     </span>
   }
   // The card is one big link, so the button has to stop the click from following it.
@@ -125,38 +142,44 @@ export function AddButton({ product, t, inCart, owned, onAdd, block = false }: {
     <Button
       size="compact"
       block={block}
-      icon={inCart ? <Check aria-hidden="true" /> : undefined}
-      onClick={() => onAdd(product.id)}>
-      {inCart ? market.card.owned : market.card.add}
+      className={inCart ? 'cart-action cart-icon-button has-items' : 'cart-action cart-icon-button'}
+      ariaLabel={inCart ? market.card.owned : market.card.add}
+      icon={<CartIcon aria-hidden="true" />}
+      onClick={handleClick}>
     </Button>
   </span>
 }
 
-/** One pack, exactly as the market lists it. Used by the market grid and the homepage. */
-export function PackCard({ product, t, language, cart, owned, compact = false }: {
+/** Compact popular-pack tile used by the market shelf and the component library. */
+export function PopularPackCard({ product, t, language }: { product: MarketProduct; t: Copy; language: Language }) {
+  const name = productCopy(product.name, language)
+  return <a className="shelf-item" href={marketPackHash(product.id)}>
+    <span className="shelf-cover">
+      <PackImage product={product} t={t} alt={name} zoom={2} />
+    </span>
+    <figcaption>
+      <strong title={name}>{name}</strong>
+      <span>{formatPrice(product.price, language)}</span>
+    </figcaption>
+  </a>
+}
+
+type PackCardProps = {
   product: MarketProduct
   t: Copy
   language: Language
   cart: Cart
   owned?: boolean
-  compact?: boolean
-}) {
+  ownedOrderId?: string
+}
+
+/** Full catalogue card used by the market and related-pack lists. */
+export function AssetPackCard({ product, t, language, cart, owned, ownedOrderId }: PackCardProps) {
   const market = t.marketPage
-  const loops = animationCount(product)
+  const name = productCopy(product.name, language)
+  const summary = productCopy(product.tagline, language) || productCopy(product.body, language)
 
-  if (compact) return <article className="pack-tile">
-    <a href={marketPackHash(product.id)} aria-label={`${productCopy(product.name, language)} - ${market.card.details}`}>
-      <div className={isArtworkPack(product) ? 'pack-art-frame artwork' : 'pack-art-frame'}>
-        <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={4} />
-      </div>
-      <div className="pack-tile-caption">
-        <h3>{productCopy(product.name, language)}</h3>
-        <span>{formatPrice(product.price)}</span>
-      </div>
-    </a>
-  </article>
-
-  return <article className="pack-card">
+  return <article className="pack-card asset-pack-card">
     <a className="pack-card-link" href={marketPackHash(product.id)} aria-label={`${productCopy(product.name, language)} - ${market.card.details}`}>
       <div className={isArtworkPack(product) ? 'pack-art-frame artwork' : 'pack-art-frame'}>
         <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={4} />
@@ -170,14 +193,12 @@ export function PackCard({ product, t, language, cart, owned, compact = false }:
            * card sits directly under the page h1, so an h3 here left a level missing; h2 is
            * correct for a card too, since the card is a section of the grid.
            */}
-          <h2>{productCopy(product.name, language)}</h2>
-          <p className="pack-tagline">{productCopy(product.tagline, language)}</p>
+          <h2 title={name}>{name}</h2>
+          <p className="pack-tagline">{summary}</p>
         </header>
-        <p className="pack-copy">{productCopy(product.body, language)}</p>
         <ul className="pack-chips">
-          <li>{productCopy(product.size, language)}</li>
-          {loops > 0 && <li>{market.card.loops(loops)}</li>}
-          <li>{product.formats[0]}</li>
+          <li title={productCopy(product.size, language)}>{productCopy(product.size, language)}</li>
+          <li title={product.formats[0]}>{product.formats[0]}</li>
         </ul>
       </div>
     </a>
@@ -185,30 +206,68 @@ export function PackCard({ product, t, language, cart, owned, compact = false }:
     <footer className="pack-foot">
       <PriceRow product={product} t={t} language={language} />
       <div className="pack-actions">
-        <AddButton product={product} t={t} inCart={cart.has(product.id)} owned={owned} onAdd={cart.add} />
+        <AddButton product={product} t={t} inCart={cart.has(product.id)} owned={owned} ownedOrderId={ownedOrderId} onAdd={cart.add} />
       </div>
     </footer>
   </article>
 }
 
-/** The grid the cards sit in, so both pages space and wrap them the same way. */
-export function PackGrid({ products, t, language, className, compact = false }: {
+/** Lighter homepage card: artwork leads, with only the scan-friendly pack details below it. */
+export function FeaturedPackCard({ product, t, language, cart, owned, ownedOrderId }: PackCardProps) {
+  const market = t.marketPage
+  const name = productCopy(product.name, language)
+  const summary = productCopy(product.tagline, language) || productCopy(product.body, language)
+
+  return <article className="pack-card featured-pack-card">
+    <a className="pack-card-link" href={marketPackHash(product.id)} aria-label={`${name} - ${market.card.details}`}>
+      <div className={isArtworkPack(product) ? 'pack-art-frame artwork' : 'pack-art-frame'}>
+        <PackImage product={product} t={t} alt={name} zoom={4} />
+        <CategoryTag product={product} t={t} />
+      </div>
+      <div className="pack-body">
+        <header className="pack-head">
+          <h2 title={name}>{name}</h2>
+          <p className="pack-tagline">{summary}</p>
+        </header>
+        <ul className="pack-chips">
+          <li title={productCopy(product.size, language)}>{productCopy(product.size, language)}</li>
+          <li title={product.formats[0]}>{product.formats[0]}</li>
+        </ul>
+      </div>
+    </a>
+    <footer className="pack-foot">
+      <PriceRow product={product} t={t} language={language} />
+      <div className="pack-actions">
+        <AddButton product={product} t={t} inCart={cart.has(product.id)} owned={owned} ownedOrderId={ownedOrderId} onAdd={cart.add} />
+      </div>
+    </footer>
+  </article>
+}
+
+/** Backwards-compatible name for callers that need the full market card. */
+export const PackCard = AssetPackCard
+
+/** The shared grid chooses the card component for each browsing context. */
+export function PackGrid({ products, t, language, className, variant = 'market' }: {
   products: MarketProduct[]
   t: Copy
   language: Language
   className?: string
-  compact?: boolean
+  variant?: 'market' | 'featured'
 }) {
   const cart = useCart()
-  const { owns } = useAccount()
+  const { owns, orders } = useAccount()
   return <div className={className ? `pack-grid ${className}` : 'pack-grid'}>
-    {products.map((product) => <PackCard
+    {products.map((product) => {
+      const Card = variant === 'featured' ? FeaturedPackCard : AssetPackCard
+      return <Card
       key={product.id}
       product={product}
       t={t}
       language={language}
       cart={cart}
       owned={owns(product.id)}
-      compact={compact} />)}
+       ownedOrderId={orders.find((order) => order.lines.some((line) => line.id === product.id))?.id} />
+    })}
   </div>
 }

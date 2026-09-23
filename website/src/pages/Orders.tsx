@@ -1,4 +1,4 @@
-import { WorkspacePage } from '../workspace/WorkspaceLayout'
+import { WorkspacePage } from '../ui'
 import { useState } from 'react'
 
 import type { Copy, Language } from '../content'
@@ -39,18 +39,17 @@ export function OrderPage({ t, language, orderId }: { t: Copy; language: Languag
 
   return <WorkspacePage
           eyebrow={strings.eyebrow}
-          title={`${orderStrings.detailTitle} ${order.id}`}
-          subtitle={`${orderStrings.date}：${new Date(order.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}`}
+          title={orderStrings.detailTitle}
+          subtitle={language === 'zh' ? '查看购买明细、下载文件与使用许可。' : 'Review your purchase, downloads and licence.'}
           back="#/purchases"
           backLabel={orderStrings.back} >
-        <Panel title={orderStrings.items} actions={<span className="order-state">{orderStrings.statusPaid}</span>}>
+        <OrderSummary order={order} t={t} language={language} />
+        <div className="account-order-detail">
+        <Panel title={orderStrings.items}>
           <OrderList orders={[order]} t={t} language={language} showOrderId={false} />
-          <dl className="order-totals">
-            <div><dt>{t.marketPage.cart.subtotal}</dt><dd>{formatPrice(order.total)}</dd></div>
-            <div className="grand"><dt>{t.marketPage.checkout.total}</dt><dd>{formatPrice(order.total)}</dd></div>
-          </dl>
         </Panel>
 
+        <aside className="account-order-notes">
         <Panel title={orderStrings.license}>
           <p className="panel-copy">{t.marketPage.detail.licenseBody}</p>
           <div className="receipt-actions">
@@ -59,12 +58,9 @@ export function OrderPage({ t, language, orderId }: { t: Copy; language: Languag
           </div>
         </Panel>
 
-        {/* Says the policy plainly rather than hiding it behind a link. */}
-        <Panel tone="warning" title={orderStrings.noRefund}>
-          <Alert tone="warning">
-            {orderStrings.noRefundBody}
-          </Alert>
-        </Panel>
+        <Alert tone="warning" title={orderStrings.noRefund}>{orderStrings.noRefundBody}</Alert>
+        </aside>
+        </div>
   </WorkspacePage>
 }
 
@@ -77,16 +73,21 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
   const { orders } = useAccount()
   const { products } = useCatalogue()
   const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
   const order: Order | undefined = orders[0]
 
   const downloadAll = async () => {
     if (!order) return
     setBusy(true)
-    for (const line of order.lines) {
-      const product = products.find((item) => item.id === line.id)
-      await downloadProduct(line.id, product?.download, product ? productCopy(product.name, language) : line.name)
-    }
-    setBusy(false)
+    setProblem(null)
+    try {
+      for (const line of order.lines) {
+        const product = products.find((item) => item.id === line.id)
+        await downloadProduct(line.id, product?.download, product ? productCopy(product.name, language) : line.name)
+      }
+    } catch {
+      setProblem(language === 'zh' ? '部分文件下载失败，请在下方逐个重试。' : 'Some downloads failed. Please retry each file below.')
+    } finally { setBusy(false) }
   }
 
   return <WorkspacePage
@@ -97,21 +98,20 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
           backLabel={receipt.keepShopping} >
         {order
           ? <>
-            <Panel title={t.marketPage.checkout.items}>
-              <OrderList orders={[order]} t={t} language={language} showOrderId={false} />
-              <dl className="order-totals">
-                <div className="grand"><dt>{t.marketPage.checkout.total}</dt><dd>{formatPrice(order.total)}</dd></div>
-              </dl>
-            </Panel>
+            <OrderSummary order={order} t={t} language={language} />
             <Panel>
               <div className="receipt-actions">
                 <Button variant="primary" disabled={busy} onClick={() => { void downloadAll() }}>
-                  {busy ? t.marketPage.checkout.paying : receipt.downloadAll}
+                  {busy ? (language === 'zh' ? '正在下载…' : 'Downloading…') : receipt.downloadAll}
                 </Button>
                 <Button href={`#/orders/${order.id}`}>{receipt.viewOrder}</Button>
                 <Button href="#/market">{receipt.keepShopping}</Button>
               </div>
+              {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
               <p className="panel-copy">{receipt.emailed}</p>
+            </Panel>
+            <Panel title={t.marketPage.checkout.items}>
+              <OrderList orders={[order]} t={t} language={language} showOrderId={false} />
             </Panel>
           </>
           : <Panel>
@@ -121,4 +121,13 @@ export function ReceiptPage({ t, language }: { t: Copy; language: Language }) {
             </div>
           </Panel>}
   </WorkspacePage>
+}
+
+function OrderSummary({ order, t, language }: { order: Order; t: Copy; language: Language }) {
+  return <Panel title={language === 'zh' ? '订单摘要' : 'Order summary'}><dl className="workspace-facts">
+    <div><dt>{language === 'zh' ? '订单编号' : 'Order number'}</dt><dd>{order.id}</dd></div>
+    <div><dt>{t.marketPage.orders.date}</dt><dd>{new Date(order.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}</dd></div>
+    <div><dt>{language === 'zh' ? '订单状态' : 'Status'}</dt><dd className="purchase-status">{t.marketPage.orders.statusPaid}</dd></div>
+    <div><dt>{t.marketPage.checkout.total}</dt><dd>{formatPrice(order.total, language)}</dd></div>
+  </dl></Panel>
 }

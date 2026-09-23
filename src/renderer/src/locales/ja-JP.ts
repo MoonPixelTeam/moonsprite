@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const jaJPMessages = {
+  "reference.lockHint": "参考画像をロック：誤移動や編集を防ぎます。",
+  "reference.unlockHint": "参考画像をロック解除：移動や設定の変更を許可します。",
+  "reference.fixedSizeHint": "独立表示：キャンバスの移動・拡大縮小・回転に追従しません。オフにすると再び追従します。",
+  "reference.resetHint": "リセット：初期サイズ・角度・反転状態に戻します。",
+  "reference.bringToFrontHint": "最前面へ：他の参考画像より手前に表示します。",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

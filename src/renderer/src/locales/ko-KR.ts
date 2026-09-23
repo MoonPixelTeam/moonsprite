@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const koKRMessages = {
+  "reference.lockHint": "참조 잠금: 실수로 이동하거나 편집하지 못하게 합니다.",
+  "reference.unlockHint": "참조 잠금 해제: 이동과 속성 변경을 허용합니다.",
+  "reference.fixedSizeHint": "독립 표시: 캔버스를 이동, 확대 또는 회전해도 참조는 고정됩니다. 끄면 다시 캔버스를 따릅니다.",
+  "reference.resetHint": "초기화: 처음 크기, 각도 및 반전 상태로 되돌립니다.",
+  "reference.bringToFrontHint": "맨 앞으로: 다른 참조 이미지 위에 표시합니다.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

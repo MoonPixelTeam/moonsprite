@@ -1,5 +1,7 @@
 import { selectionBrushOwnsPointer } from './canvas-selection-brush-gesture'
-import { useEffect } from 'react'
+import { tabletBoxMove, tabletContentMove } from '@/core/tablet-interaction'
+import { tabletSelectionHandleHit } from '@/core/tablet-selection-hit'
+import { useLayoutEffect } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionQuad, SelectionRect } from '@shared/types-selection'
@@ -146,6 +148,15 @@ export function useCanvasCursor(ports: Ports) {
     const selection = currentSession.selection
     if (!selection) return 'outside'
     const hitAt = (candidate: Point): SelectionHit => {
+      if (tabletBoxMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'edge'
+      if (!currentSession.freeTransformActive && tabletContentMove(currentSession.document.id) && selectionContains(selection, Math.floor(candidate.x), Math.floor(candidate.y))) return 'inside'
+      if (document.documentElement.dataset.tabletUi === 'true') {
+        const target = ports.freeTransformQuadForSession(currentSession) ?? floating?.transformTarget ?? selection
+        const quad = 'nw' in target ? target : selectionQuadFromRect(target, floating?.transformAngle ?? 0, floating?.transformShear)
+        const handles = (['nw', 'ne', 'sw', 'se'] as const).map(handle => ({ handle, point: quad[handle] }))
+        const hit = tabletSelectionHandleHit(candidate, handles, ports.liveViewRef.current.zoom)
+        if (hit) return hit
+      }
       if (currentSession.freeTransformActive) {
         const target = ports.freeTransformQuadForSession(currentSession) ?? floating?.transformTarget ?? selection
         const corner = selectionFreeTransformHit(
@@ -274,7 +285,7 @@ export function useCanvasCursor(ports: Ports) {
     return selectionTransformDragCursor(drag.kind)
   }
 
-  const updateCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {
+  const resolveCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {
     const canvas = ports.canvasRef.current
     if (!canvas) return
     // The symmetry-axis drag owns the pointer until release. Keep this ahead
@@ -285,7 +296,7 @@ export function useCanvasCursor(ports: Ports) {
       canvas.style.cursor = canvasCursors.move
       return
     }
-    if (ports.inputRef.current.spaceHeld) {
+    if (ports.inputRef.current.spaceHeld || ports.inputRef.current.drag?.kind === 'pan') {
       ports.inputRef.current.sampling = false
       const drag = ports.inputRef.current.drag
       canvas.style.cursor =
@@ -298,9 +309,7 @@ export function useCanvasCursor(ports: Ports) {
               : canvasCursors.grab
       return
     }
-    // Once a selection gesture has started, its crosshair owns the pointer
-    // until release. Keep it ahead of transient layer/tool availability checks
-    // so a rerender cannot replace it with an invisible or unavailable cursor.
+    // Selection gestures retain cursor ownership through availability changes.
     if (ports.inputRef.current.drag?.kind === 'selection-brush') {
       ports.inputRef.current.sampling = false
       canvas.style.cursor = canvasToolCursor('pencil', ports.session.primaryColor)
@@ -317,7 +326,7 @@ export function useCanvasCursor(ports: Ports) {
     const playbackNavigationTool = liveCursorSession.animationPlaying ? playbackCanvasNavigationTool(liveCursorSession.tool) : null
     if (playbackNavigationTool === 'hand') {
       ports.inputRef.current.sampling = false
-      canvas.style.cursor = ports.inputRef.current.drag?.kind === 'pan' ? canvasCursors.grabbing : canvasCursors.grab
+      canvas.style.cursor = canvasCursors.grab
       return
     }
     const liveCursorGroupSelected = liveCursorSession.selectedGroupIds.length > 0 || Boolean(liveCursorSession.selectedGroupId)
@@ -386,9 +395,7 @@ export function useCanvasCursor(ports: Ports) {
       canvas.style.cursor = canvasCursors.move
       return
     }
-    // During a pointer drag the cursor is already determined by the gesture.
-    // Do this before composite sampling: sampling creates a compiled layer-tree
-    // reader and was needlessly paid on every marquee/lasso pointer move.
+    // Resolve gesture cursors before the expensive composite sampling below.
     const drag = ports.inputRef.current.drag
     // Alt+left temporary eyedropper drags keep the canvas pixels unchanged.
     // The magnifier owns the visual feedback, so avoid compiling a composite
@@ -598,6 +605,14 @@ export function useCanvasCursor(ports: Ports) {
     } else canvas.style.cursor = canvasToolCursor(ports.session.tool, contrastColor, available)
   }
 
+  const updateCursorAt = (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey = false): void => {
+    const canvas = ports.canvasRef.current
+    const hadSelectionCorners = canvas?.style.cursor === 'none'
+    resolveCursorAt(clientX, clientY, ctrlKey, altKey, shiftKey)
+    // Overlay-only paths also need a full draw when corner ownership changes.
+    if (canvas && ports.inputRef.current.pointer.visible && hadSelectionCorners !== (canvas.style.cursor === 'none')) ports.scheduleDraw()
+  }
+
   const updateCursor = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const rotatableDragModifierReleaseOnly = ports.inputRef.current.drag?.kind === 'marquee' || ports.inputRef.current.drag?.kind === 'shape'
     ports.inputRef.current.syncModifierKeys(event, rotatableDragModifierReleaseOnly)
@@ -613,7 +628,7 @@ export function useCanvasCursor(ports: Ports) {
     updateCursorAt(event.clientX, event.clientY, ctrlKey, altKey, shiftKey)
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pointer = ports.inputRef.current.pointer
     if (!pointer.visible) {
       if (!ports.inputRef.current.drag && ports.canvasRef.current) {
@@ -627,11 +642,12 @@ export function useCanvasCursor(ports: Ports) {
     }
     updateCursorAt(pointer.clientX, pointer.clientY, ports.inputRef.current.ctrlHeld, ports.inputRef.current.altHeld, ports.inputRef.current.shiftHeld)
     ports.scheduleDraw()
-    // Cursor assets and the preview under a stationary pointer must change with the selected tool.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ports.session.tool,
     ports.session.selectionKind,
+    ports.selectionCrosshair,
+    ports.useLocalCursors,
     ports.session.selectionMode,
     ports.session.selection,
     ports.session.freeTransformActive,

@@ -10,7 +10,7 @@ interface NumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
   live?: boolean
   min?: number
   max?: number
-  density?: 'compact' | 'regular'
+  density?: 'compact' | 'regular' | 'touch'
   step?: number
   suffix?: string
 }

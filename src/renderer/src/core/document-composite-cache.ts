@@ -154,10 +154,19 @@ export class DocumentCompositeCache {
     this.styleSourceBounds = new WeakMap()
   }
 
-  /** Drop source-derived visibility indexes while a live stroke mutates pixels. */
+  /** Drop source-derived visibility indexes and render plans while a live stroke mutates pixels. */
   invalidateLiveSourceCaches(): void {
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
+    // An empty non-normal layer is omitted from normalCompositeLayers(). The
+    // first live stroke can make that layer visible without changing the outer
+    // document revision yet, so the cached plan must be rebuilt immediately.
+    this.normalLayerPlans = new WeakMap()
+    // Group and move plans also omit empty blended layers. Rebuild every
+    // content-dependent plan before compositing the first live stamp.
+    this.opacityGroupPlans = new WeakMap()
+    this.movePreviewLayerPlans = new WeakMap()
+    this.styledLayerPlans = new WeakMap()
   }
 
   /** A translation preserves a layer's own style pixels, but changes the

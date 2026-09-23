@@ -7,7 +7,7 @@
 .auth-card .settings-form { display: grid; gap: var(--space-9); }
 .auth-switch { font-size: var(--font-small); color: var(--text-3); text-align: center; }
 .auth-switch a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
-.auth-note { padding-top: var(--space-7); border-top: 1px solid var(--divider); color: var(--text-4); font-size: 12px; line-height: 1.7; }
+.auth-note { padding-top: var(--space-7); border-top: 1px solid var(--divider); color: var(--text-4); font-size: var(--font-pixel-tag); line-height: 1.7; }
 .auth-back { color: var(--text-3); font-size: var(--font-small); text-align: center; }
 .license-page { width: min(calc(100% - 48px), 1120px); margin-inline: auto; padding-block: var(--space-19) var(--space-24); }
 .license-page > .page-head-block { max-width: 800px; margin-bottom: var(--space-18); }
@@ -31,3 +31,11 @@
   .license-outline .page-outline ul { display: flex; flex-wrap: wrap; gap: var(--space-4); }
   .license-section { padding: var(--space-9); }
 }
+
+/* Numbered legal clauses use a continuous reading rhythm, not feature bullets. */
+.license-body > .alert { margin-bottom: var(--space-9); }
+.license-clause { color: var(--text-2); font-size: var(--font-body); line-height: 1.85; overflow-wrap: anywhere; }
+.license-clause + .license-clause { margin-top: var(--space-5); }
+.license-clause > span { margin-right: var(--space-4); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.license-outline { max-height: none; overflow: visible; }
+@media (max-width: 760px) { .license-outline { max-height: none; overflow: visible; } }

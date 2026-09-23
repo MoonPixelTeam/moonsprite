@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Alert, Button, Checkbox, Chip, Field, IconButton, Panel } from '../ui'
-import { PixelArrowLeft as ArrowLeft, PixelCheck as Check, PixelChevronRight as ChevronRight, PixelMinus as Minus, PixelPlus as Plus, PixelTrash2 as Trash2, PixelX as X } from '../ui/icons'
+import { ControlRow, FormField, Alert, Button, Checkbox, Chip, Field, IconButton, Input, Panel } from '../ui'
+import { PixelArrowLeft as ArrowLeft, PixelCart as CartIcon, PixelCheck as Check, PixelChevronRight as ChevronRight, PixelMinus as Minus, PixelPlus as Plus, PixelHot as HotIcon, PixelTrash2 as Trash2, PixelX as X } from '../ui/icons'
 import { SITE_CONFIG } from '../config'
 import type { Copy, Language } from '../content'
 import { PetSpriteStrip, PixelPet } from '../market/PixelArt'
@@ -22,7 +22,7 @@ import { useAccount } from '../account/store'
 import { useData, type ReportReason } from '../data/store'
 import { Select } from '../ui/Select'
 import { useCatalogue, useProduct } from '../market/catalogue'
-import { AddButton, CategoryTag, PackGrid, PackImage, animationCount, isArtworkPack, isBundleProduct, isPetProduct } from '../market/PackCard'
+import { AddButton, CategoryTag, PackGrid, PackImage, PopularPackCard, animationCount, isArtworkPack, isBundleProduct, isPetProduct } from '../market/PackCard'
 import { useCart, useCartStore, type Cart } from '../market/cart'
 
 /** The shelf leads with the one pack that has real artwork in it, then the asset packs. */
@@ -51,12 +51,12 @@ function PriceRow({ product, t, language }: { product: MarketProduct; t: Copy; l
   if (product.category === 'bundles') {
     const full = bundleValue(product)
     return <div className="pack-price">
-      <strong>{formatPrice(product.price)}</strong>
-      <s>{formatPrice(full)}</s>
-      <em>{t.marketPage.card.save} {formatPrice(full - product.price)}</em>
+      <strong>{formatPrice(product.price, language)}</strong>
+      {full > product.price && <><s>{formatPrice(full, language)}</s>
+      <em>{t.marketPage.card.save} {formatPrice(full - product.price, language)}</em></>}
     </div>
   }
-  return <div className="pack-price"><strong>{formatPrice(product.price)}</strong></div>
+  return <div className="pack-price"><strong>{formatPrice(product.price, language)}</strong></div>
 }
 
 function PetStrip({ pets, animation, px = 5 }: { pets: PetId[]; animation: PetAnimationId; px?: number }) {
@@ -134,11 +134,10 @@ function AnimationPreview({ product, t, language }: { product: MarketProduct; t:
           <span className="detail-pet-name">{market.pets[pet]}</span>
           <PixelPet pet={pet} animation={active} px={5} />
           <div className="detail-animations">
-            {animations.map((animation) => <button
+            {animations.map((animation) => <Chip
               key={animation}
-              type="button"
-              className={active === animation ? 'chip active' : 'chip'}
-              onClick={() => setPreview({ pet, animation })}>{market.animations[animation]}</button>)}
+              active={active === animation}
+              onClick={() => setPreview({ pet, animation })}>{market.animations[animation]}</Chip>)}
           </div>
         </div>
       })}
@@ -248,12 +247,12 @@ function CartDrawer({ open, cart, t, language, onClose }: {
           <ul className="cart-review-lines">
             {cart.lines.map(({ product, quantity }) => <li key={product.id}>
               <span>{productCopy(product.name, language)}<em>×{quantity}</em></span>
-              <span>{formatPrice(product.price * quantity)}</span>
+              <span>{formatPrice(product.price * quantity, language)}</span>
             </li>)}
           </ul>
           <dl className="cart-review-total">
-            <div><dt>{market.checkout.subtotal}</dt><dd>{formatPrice(cart.subtotal)}</dd></div>
-            <div className="grand"><dt>{market.checkout.total}</dt><dd>{formatPrice(cart.subtotal)}</dd></div>
+            <div><dt>{market.checkout.subtotal}</dt><dd>{formatPrice(cart.subtotal, language)}</dd></div>
+            <div className="grand"><dt>{market.checkout.total}</dt><dd>{formatPrice(cart.subtotal, language)}</dd></div>
           </dl>
 
           {/* The licence is stated and acknowledged here, not assumed. */}
@@ -270,8 +269,8 @@ function CartDrawer({ open, cart, t, language, onClose }: {
             </Button>
             <Button onClick={() => setStep('cart')}>{market.checkout.back}</Button>
           </div>
-          {paymentError && <p className="account-error" role="alert">{language === 'zh' ? '订单未完成。请检查登录状态，刷新商品价格与上架状态后重试。' : 'Order failed. Check your session and refresh product prices and availability before retrying.'}</p>}
-          {agreeError && <p className="account-error" role="alert">{market.checkout.mustAgree}</p>}
+          {paymentError && <Alert tone="danger" role="alert">{language === 'zh' ? '订单未完成。请检查登录状态，刷新商品价格与上架状态后重试。' : 'Order failed. Check your session and refresh product prices and availability before retrying.'}</Alert>}
+          {agreeError && <Alert tone="danger" role="alert">{market.checkout.mustAgree}</Alert>}
         </div>
         : <>
           {cart.lines.length === 0
@@ -289,26 +288,26 @@ function CartDrawer({ open, cart, t, language, onClose }: {
                   <a href={marketPackHash(product.id)} onClick={onClose}>{productCopy(product.name, language)}</a>
                   <span>{productCopy(product.size, language)}</span>
                   <div className="cart-line-controls">
-                    <button type="button" onClick={() => cart.setQuantity(product.id, quantity - 1)} aria-label={market.cart.decrease}><Minus aria-hidden="true" /></button>
+                    <IconButton onClick={() => cart.setQuantity(product.id, quantity - 1)} label={market.cart.decrease} icon={<Minus aria-hidden="true" />} />
                     <span>{quantity}</span>
-                    <button type="button" onClick={() => cart.setQuantity(product.id, quantity + 1)} aria-label={market.cart.increase}><Plus aria-hidden="true" /></button>
-                    <button type="button" className="cart-remove" onClick={() => cart.remove(product.id)} aria-label={`${market.cart.remove} ${productCopy(product.name, language)}`}><Trash2 aria-hidden="true" /></button>
+                    <IconButton onClick={() => cart.setQuantity(product.id, quantity + 1)} label={market.cart.increase} icon={<Plus aria-hidden="true" />} />
+                    <IconButton className="cart-remove" onClick={() => cart.remove(product.id)} label={`${market.cart.remove} ${productCopy(product.name, language)}`} icon={<Trash2 aria-hidden="true" />} />
                   </div>
                 </div>
-                <span className="cart-line-price">{formatPrice(product.price * quantity)}</span>
+                <span className="cart-line-price">{formatPrice(product.price * quantity, language)}</span>
               </li>)}
             </ul>}
 
           <footer className="cart-foot">
-            <div className="cart-subtotal"><span>{market.cart.subtotal}</span><strong>{formatPrice(cart.subtotal)}</strong></div>
+            <div className="cart-subtotal"><span>{market.cart.subtotal}</span><strong>{formatPrice(cart.subtotal, language)}</strong></div>
             <p className="cart-note">{market.cart.note}</p>
             {SITE_CONFIG.steamUrl
-              ? <a className="button primary" href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer">{market.cart.checkout}</a>
+              ? <Button variant="primary" href={SITE_CONFIG.steamUrl} target="_blank">{market.cart.checkout}</Button>
               : <Button variant="primary" onClick={checkout} disabled={cart.lines.length === 0}>{account ? market.cart.checkout : market.cart.signInToBuy}</Button>}
             <span className="cart-status">
               {SITE_CONFIG.steamUrl || account ? market.cart.checkoutSoon : market.cart.checkoutAccount}
             </span>
-            {cart.lines.length > 0 && <button type="button" className="cart-clear" onClick={cart.clear}>{market.cart.clear}</button>}
+            {cart.lines.length > 0 && <Button size="compact" onClick={cart.clear}>{market.cart.clear}</Button>}
           </footer>
         </>}
     </aside>
@@ -325,23 +324,11 @@ function MarketHero({ t, language }: { t: Copy; language: Language }) {
   return <section className="market-shelf">
     <div className="content-wrap">
       <div className="shelf-head">
-        <span>{market.shelfEyebrow}</span>
-        <h1>{market.shelfTitle}</h1>
+        <h1><HotIcon aria-hidden="true" />{market.shelfTitle}</h1>
         <p>{market.shelfBody}</p>
       </div>
       <div className="shelf-stage">
-        {featured.map((product) => <a className="shelf-item" href={marketPackHash(product.id)} key={product.id}>
-          <span className="shelf-cover">
-            {/* Zoom 2 rather than the card's 3: the tile is a thumbnail, and at 3 the
-                sprite is taller than the cover's 16:10 box on narrow screens, which
-                cropped the pet. */}
-            <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={2} />
-          </span>
-          <figcaption>
-            {productCopy(product.name, language)}
-            <span>{formatPrice(product.price)}</span>
-          </figcaption>
-        </a>)}
+        {featured.map((product) => <PopularPackCard product={product} t={t} language={language} key={product.id} />)}
       </div>
     </div>
   </section>
@@ -373,6 +360,11 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
   const [category, setCategory] = useState<MarketCategory | 'all'>('all')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('featured')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [minPrice, setMinPrice] = useState('')
+  const [maxPrice, setMaxPrice] = useState('')
+  const [formatFilter, setFormatFilter] = useState('all')
+  const [freeOnly, setFreeOnly] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const cart = useCart()
   const { registerOpener } = useCartStore()
@@ -389,6 +381,12 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
     const needle = query.trim().toLowerCase()
     const matched = catalogue.filter((product) => {
       if (category !== 'all' && product.category !== category) return false
+      const min = Number(minPrice)
+      const max = Number(maxPrice)
+      if (minPrice && Number.isFinite(min) && product.price < min) return false
+      if (maxPrice && Number.isFinite(max) && product.price > max) return false
+      if (formatFilter !== 'all' && !product.formats.includes(formatFilter)) return false
+      if (freeOnly && product.price !== 0) return false
       if (!needle) return true
       const haystack = [
         productCopy(product.name, language),
@@ -406,7 +404,7 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
     return matched
     // `catalogue` belongs here: a pack published in the studio arrives after the first
     // render, and without it the list kept showing the built-in packs only.
-  }, [catalogue, category, query, sort, language])
+  }, [catalogue, category, query, sort, language, minPrice, maxPrice, formatFilter, freeOnly])
 
   /*
    * The filter row is derived from what is actually on sale, so a category appears the
@@ -428,7 +426,9 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
     if (category !== 'all' && !catalogue.some((product) => product.category === category)) setCategory('all')
   }, [catalogue, category])
 
-  const resetFilters = () => { setCategory('all'); setQuery(''); setSort('featured') }
+  const formats = useMemo(() => [...new Set(catalogue.flatMap((product) => product.formats))].sort(), [catalogue])
+  const activeFilterCount = [Boolean(minPrice), Boolean(maxPrice), formatFilter !== 'all', freeOnly, sort !== 'featured'].filter(Boolean).length
+  const resetFilters = () => { setCategory('all'); setQuery(''); setSort('featured'); setMinPrice(''); setMaxPrice(''); setFormatFilter('all'); setFreeOnly(false) }
 
   return <main id="main" className="market">
     <MarketHero t={t} language={language} />
@@ -437,24 +437,15 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
       <div className="content-wrap">
         <header className="page-head market-head">
           <h2>{market.title}</h2>
-          <p>{market.subtitle}</p>
         </header>
 
-        <div className="market-toolbar">
+        <ControlRow className="market-toolbar">
           <div className="market-filters" role="group" aria-label={market.title}>
-            {categories.map((item) => <button
-              key={item}
-              type="button"
-              className={category === item ? 'filter-chip active' : 'filter-chip'}
-              aria-pressed={category === item}
-              onClick={() => setCategory(item)}>
-              {item === 'all' ? market.categories.all : market.categories[item]}
-              <span className="filter-count">{countIn(item)}</span>
-            </button>)}
+            {categories.map((item) => <Chip key={item} active={category === item} onClick={() => setCategory(item)}>{item === 'all' ? market.categories.all : market.categories[item]}<span className="filter-count">{countIn(item)}</span></Chip>)}
           </div>
           <div className="market-tools">
             <label className="search-field">
-              <input
+              <Input
                 type="search"
                 value={query}
                 placeholder={market.search}
@@ -462,27 +453,28 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
                 title={market.searchHint}
                 onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <div className="sort-field">
-              <span>{market.sort}</span>
-              <Select
-                value={sort}
-                label={market.sort}
-                align="end"
-                onChange={setSort}
-                options={[
-                  { value: 'featured', label: market.sortOptions.featured },
-                  { value: 'price-asc', label: market.sortOptions.priceAsc },
-                  { value: 'price-desc', label: market.sortOptions.priceDesc },
-                ] satisfies { value: SortKey; label: string }[]} />
+            <div className="market-filter-dropdown">
+              <Button className="market-filter-trigger" onClick={() => setFiltersOpen((open) => !open)} ariaLabel={language === 'zh' ? '打开详细筛选' : 'Open detailed filters'}>{language === 'zh' ? '筛选' : 'Filters'}{activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}</Button>
+              {filtersOpen && <section className="market-filter-dialog" role="dialog" aria-label={language === 'zh' ? '详细筛选' : 'Detailed filters'}>
+                <header><div><h3>{language === 'zh' ? '详细筛选' : 'Detailed filters'}</h3></div></header>
+                <div className="filter-dialog-grid">
+                  <Field label={language === 'zh' ? '排序' : 'Sort by'}><Select value={sort} label={market.sort} onChange={setSort} options={[{ value: 'featured', label: market.sortOptions.featured }, { value: 'price-asc', label: market.sortOptions.priceAsc }, { value: 'price-desc', label: market.sortOptions.priceDesc }]} /></Field>
+                  <Field label={language === 'zh' ? '文件格式' : 'Format'}><Select value={formatFilter} label={language === 'zh' ? '文件格式' : 'Format'} onChange={setFormatFilter} options={[{ value: 'all', label: language === 'zh' ? '全部格式' : 'All formats' }, ...formats.map((format) => ({ value: format, label: format }))]} /></Field>
+                  <Field label={language === 'zh' ? '最低价格' : 'Minimum price'}><Input type="number" min="0" step="0.01" inputMode="decimal" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder={language === 'zh' ? '不限' : 'No minimum'} /></Field>
+                  <Field label={language === 'zh' ? '最高价格' : 'Maximum price'}><Input type="number" min="0" step="0.01" inputMode="decimal" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder={language === 'zh' ? '不限' : 'No maximum'} /></Field>
+                  <Checkbox className="filter-free-option" checked={freeOnly} onChange={setFreeOnly} label={language === 'zh' ? '仅显示免费内容' : 'Show free content only'} />
+                </div>
+                <footer><Button size="compact" onClick={resetFilters}>{language === 'zh' ? '清除全部' : 'Clear all'}</Button><span>{market.count(products.length, catalogue.length)}</span><Button size="compact" variant="primary" onClick={() => setFiltersOpen(false)}>{language === 'zh' ? '确定' : 'Apply'}</Button></footer>
+              </section>}
             </div>
             <span className="cart-slot">
-              <Button variant="primary" size="compact" onClick={() => setCartOpen(true)} ariaLabel={market.cart.open}>
+              <Button className={cart.count > 0 ? 'market-cart-button has-items' : 'market-cart-button'} icon={<CartIcon aria-hidden="true" />} onClick={() => setCartOpen(true)} ariaLabel={market.cart.open}>
                 {market.cart.title}
               </Button>
               {cart.count > 0 && <span className="cart-badge">{cart.count}</span>}
             </span>
           </div>
-        </div>
+        </ControlRow>
 
         <p className="market-count">{market.count(products.length, catalogue.length)}</p>
         {products.length === 0
@@ -501,10 +493,11 @@ export function MarketPage({ t, language }: { t: Copy; language: Language }) {
   </main>
 }
 
-export function PackDetailPage({ t, language, productId }: { t: Copy; language: Language; productId?: string }) {
+export function PackDetailPage({ t, language, productId, previewProduct }: { t: Copy; language: Language; productId?: string; previewProduct?: MarketProduct }) {
   const market = t.marketPage
   const [previewSurface, setPreviewSurface] = useState<'plain' | 'grid'>('plain')
   const [previewZoom, setPreviewZoom] = useState(4)
+  const [previewImage, setPreviewImage] = useState(0)
   const [cartOpen, setCartOpen] = useState(false)
   const cart = useCart()
   const { owns, account } = useAccount()
@@ -518,12 +511,15 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
   const { registerOpener } = useCartStore()
 
   useEffect(() => {
+    if (previewProduct) return
     registerOpener(() => setCartOpen(true))
     return () => registerOpener(null)
-  }, [registerOpener])
+  }, [registerOpener, Boolean(previewProduct)])
 
-  const { product, siblings, loading } = useProduct(productId)
-  const related = product ? siblings.filter((item) => item.id !== product.id && item.category === product.category).slice(0, 3) : []
+  const { product: listedProduct, siblings, loading } = useProduct(productId)
+  const product = previewProduct ?? listedProduct
+  const related = product && !previewProduct ? siblings.filter((item) => item.id !== product.id && item.category === product.category).slice(0, 4) : []
+  useEffect(() => { setPreviewImage(0) }, [product?.id])
 
   if (!product && loading) return <main id="main" className="market" aria-busy="true">
     <MarketHero t={t} language={language} />
@@ -541,7 +537,8 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
     <MarketNotes t={t} />
   </main>
 
-  const hasPreview = Boolean(product.image || isArtworkPack(product))
+  const gallery = product.previews?.length ? product.previews : product.image ? [product.image] : []
+  const hasPreview = Boolean(gallery.length || isArtworkPack(product))
   const loops = animationCount(product)
   const submitReport = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -558,12 +555,13 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
     setReportDetail('')
   }
 
-  return <main id="main" className="market market-detail-page">
+  const Root = previewProduct ? 'div' : 'main'
+  return <Root id={previewProduct ? undefined : 'main'} className="market market-detail-page">
     <div className="content-wrap asset-detail">
-      <nav className="pack-crumbs" aria-label={market.title}>
+      {!previewProduct && <nav className="pack-crumbs" aria-label={market.title}>
         <a href="#/market"><ArrowLeft aria-hidden="true" />{market.detail.back}</a>
         <span aria-current="page">{productCopy(product.name, language)}</span>
-      </nav>
+      </nav>}
       <header className="asset-heading">
         <CategoryTag product={product} t={t} />
         <h1>{productCopy(product.name, language)}</h1>
@@ -574,9 +572,12 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
           <figure className={hasPreview ? 'asset-preview' : 'asset-preview empty'}>
             {hasPreview ? <>
               <div className={previewSurface === 'grid' ? 'asset-preview-stage grid' : 'asset-preview-stage'}>
-                <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={previewZoom} />
+                {gallery.length > 0 ? <img className="pack-image" src={gallery[Math.min(previewImage, gallery.length - 1)]} alt={productCopy(product.name, language)} /> : <PackImage product={product} t={t} alt={productCopy(product.name, language)} zoom={previewZoom} />}
               </div>
               <div className="asset-preview-tools">
+                {gallery.length > 1 && <div className="asset-preview-options" role="group" aria-label={language === 'zh' ? '预览图片' : 'Preview images'}>
+                  {gallery.map((_, index) => <Chip key={index} active={previewImage === index} onClick={() => setPreviewImage(index)}>{index + 1}</Chip>)}
+                </div>}
                 <span>{language === 'zh' ? '资源预览' : 'Asset preview'}</span>
                 <div className="asset-preview-options">
                   <Chip active={previewSurface === 'grid'} onClick={() => setPreviewSurface(previewSurface === 'grid' ? 'plain' : 'grid')}>{language === 'zh' ? '网格' : 'Grid'}</Chip>
@@ -610,11 +611,12 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
                       <strong>{productCopy(item.name, language)}</strong>
                       <span>{productCopy(item.tagline, language)}</span>
                     </span>
-                    <span className="bundle-item-price">{formatPrice(item.price)}</span>
+                    <span className="bundle-item-price">{formatPrice(item.price, language)}</span>
                     <ChevronRight aria-hidden="true" />
                   </a>
                 </li>)}
               </ul>
+              {product.includes.length > 0 && <IncludesList product={product} t={t} language={language} />}
             </section>
             : <section className="detail-block">
               <h2>{market.detail.includes}</h2>
@@ -627,9 +629,9 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
             <div className="asset-purchase-heading"><span>{language === 'zh' ? '数字资源包' : 'Digital asset pack'}</span><span>{owns(product.id) ? market.card.ownedPack : product.formats[0]}</span></div>
             <PriceRow product={product} t={t} language={language} />
             <div className="asset-purchase-actions">
-              {owns(product.id)
+              {previewProduct ? <Button variant="primary" block disabled>{market.card.add}</Button> : owns(product.id)
                 ? <Button href="#/purchases" variant="primary" block>{language === 'zh' ? '下载已购资源' : 'Download purchased pack'}</Button>
-                : <Button variant="primary" block onClick={() => { if (cart.has(product.id)) setCartOpen(true); else cart.add(product.id) }}>{cart.has(product.id) ? (language === 'zh' ? '查看购物车' : 'View cart') : market.card.add}</Button>}
+                : <Button variant="primary" block className="cart-action" onClick={() => { if (cart.has(product.id)) setCartOpen(true); else cart.add(product.id) }}>{cart.has(product.id) ? (language === 'zh' ? '查看购物车' : 'View cart') : market.card.add}</Button>}
             </div>
             <p className="asset-purchase-note">{market.detail.buy}</p>
             <div className="asset-specifications">
@@ -649,12 +651,12 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
           </ul>
           <div className="asset-support-link"><Button href="#/support" size="compact">{language === 'zh' ? '联系支持' : 'Contact support'}</Button></div>
         </Panel>
-        <details className="asset-report">
+        {!previewProduct && <details className="asset-report">
           <summary>{market.report.title}</summary>
           {!account ? <Button href="#/account">{language === 'zh' ? '登录后提交举报' : 'Sign in to report'}</Button>
             : reportState === 'sent' ? <Alert tone="success">{market.report.sent}</Alert>
             : <form className="account-form" onSubmit={submitReport}>
-              <Field label={market.report.reason}>
+              <FormField label={market.report.reason}>
                 <Select value={reportReason} label={market.report.reason} onChange={(value) => { setReportReason(value as ReportReason | ''); setReportState('idle') }} options={[
                   { value: '', label: market.report.open },
                   { value: 'copyright', label: market.report.reasonCopyright },
@@ -662,12 +664,12 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
                   { value: 'misleading', label: market.report.reasonMisleading },
                   { value: 'other', label: market.report.reasonOther },
                 ]} />
-              </Field>
+              </FormField>
               <Field label={market.report.detail}><textarea value={reportDetail} onChange={(event) => setReportDetail(event.target.value)} rows={3} maxLength={1000} /></Field>
               {reportState === 'error' && <Alert tone="danger" role="alert">{market.report.errorReason}</Alert>}
               <Button type="submit" size="compact">{market.report.submit}</Button>
             </form>}
-        </details>
+        </details>}
       </section>
     </div>
     {related.length > 0 && <section className="market-browse related">
@@ -676,6 +678,6 @@ export function PackDetailPage({ t, language, productId }: { t: Copy; language: 
         <PackGrid products={related} t={t} language={language} />
       </div>
     </section>}
-    <CartDrawer open={cartOpen} cart={cart} t={t} language={language} onClose={() => setCartOpen(false)} />
-  </main>
+    {!previewProduct && <CartDrawer open={cartOpen} cart={cart} t={t} language={language} onClose={() => setCartOpen(false)} />}
+  </Root>
 }

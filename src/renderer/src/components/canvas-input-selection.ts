@@ -59,7 +59,8 @@ interface Ports {
         proportional: boolean
         rotate: boolean
       }
-    >
+    >,
+    finalize?: boolean
   ) => void
   symmetryCenter: import('@/core/symmetry').SymmetryCenter
   modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
@@ -285,6 +286,7 @@ export function createSelectionCanvasInput(ports: Ports) {
     const { t, updateCursor, scheduleDraw } = ports
     if (drag.kind === 'marquee') {
       const moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
+      if (moved && !drag.quickSelectCell) ports.updateMarqueePreview(drag, drag.last, ports.currentSelectionMarqueeModifierState(), true)
       const change = marqueeSelectionCommit(drag, session.selection, moved, session.selectionMode)
       // A timeline selection made before the first marquee is a navigation
       // context, not a multi-target transform request. Bind the new marquee

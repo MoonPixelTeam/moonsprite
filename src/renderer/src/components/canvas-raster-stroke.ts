@@ -6,6 +6,7 @@ import { beginPixelEdit, revertPixelEdit } from '@/core/history'
 import { DEFAULT_BRUSH_DITHER_SETTINGS } from '@/core/gradient-color'
 import { appendPerfectPixelSegment } from '@/core/tools-shapes'
 import { brushStrokeInvalidationRects, paintBrush, paintLine } from '@/core/tools-brush'
+import { beginBrushTailEdit } from '@/core/tools-pixel-edit-state'
 import { interpolateBrushAngle, type BrushGradientSample } from '@/core/tools-pixel-edit'
 import { type DocumentSession } from '@/store/workspace'
 import { activePaintLayer } from '@/store/workspace-session'
@@ -325,13 +326,13 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
       }
       const paintLayer = activePaintLayer(session)
       const committed = drag.perfectPixelCommittedEdit ?? beginPixelEdit(paintLayer.id)
+      const tail = beginBrushTailEdit(committed)
       const stableEnd = Math.max(0, path.length - 2)
       for (let index = drag.perfectPixelStablePathLength ?? 0; index < stableEnd; index += 1) {
         const center = path[index]
         const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)
         paintBrush(session.document, paintLayer, committed, wrapped.x, wrapped.y, center.size ?? session.brushSize, center.color ?? drag.color ?? activeColor(), session.brushShape, paintSelectionForDrag(drag), session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushTexture : 'solid', session.brushTextureScale, session.tool === 'pencil' || session.tool === 'eraser' ? activeBrushImage : null, session.brushImageSettings, proceduralAntialiasStrength, activeBrushPaintMode, drag.patternOrigin, session.symmetryAxes, symmetryCenter, drag.colorReplacement, center.opacityScale ?? 1, center.coverageKey, center.overrideImageBrushColor, center.gradient, repeatMode, activeBrushDither, center.angle, optimizedRotationEnabled, session.tool === 'eraser' ? 'simple' : session.inkMode)
       }
-      const tail = beginPixelEdit(paintLayer.id)
       for (let index = stableEnd; index < path.length; index += 1) {
         const center = path[index]
         const wrapped = wrapDocumentPointForTileRepeat(center, session.document.width, session.document.height, repeatMode)

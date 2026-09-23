@@ -1,4 +1,5 @@
 import { targetsCanvasSurface } from './canvas-reference-input'
+import { canvasTouchNavigationPorts } from './canvas-touch-navigation-ports'
 import { deviceTemporaryTool, deviceSampleUsesSecondary, rightClickToolEvent, deviceRightClickAction, penEraserToolEvent } from './canvas-device-tools'
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
 import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
@@ -20,8 +21,6 @@ import {
 import {
   CanvasInputState,
   PointerPressureAdapter,
-  clampCanvasZoom as clampZoom,
-  createCanvasPanDrag,
   isCanvasViewNavigationDrag,
   isCanvasViewNavigationTool,
   normalizeCanvasWheelDelta,
@@ -83,12 +82,13 @@ export function useCanvasDeviceRouter(ports: Ports) {
     middlePenPointerRef.current = null
     pressureAdapterRef.current.reset()
     ports.inputRef.current.resetPointerDeviceState()
-    touchNavigation.reset()
+    touchNavigation.clearDevices()
     const resetPointerDevices = (): void => {
       middlePenPointerRef.current = null
       ports.inputRef.current.resetPointerDeviceState()
       pressureAdapterRef.current.reset()
-      touchNavigation.reset()
+      ports.cancelActiveCanvasInteraction()
+      touchNavigation.clearDevices()
     }
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') resetPointerDevices()
@@ -101,7 +101,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       ports.inputRef.current.resetPointerDeviceState()
       pressureAdapterRef.current.reset()
-      touchNavigation.reset()
+      touchNavigation.clearDevices()
     }
   }, [ports.session.document.id])
 
@@ -228,42 +228,11 @@ export function useCanvasDeviceRouter(ports: Ports) {
     }
   }
 
-  touchNavigationPortsRef.current = {
-    read: () => ({
-      preferences: ports.tabletPreferences,
-      view: { ...ports.session.view, ...ports.liveViewRef.current },
-      documentSize: ports.session.document,
-      viewportSize: ports.stageSize(),
-      rotationIndicatorPosition: ports.rotationIndicatorPosition
-    }),
-    beginPan: (point) => {
-      const view = ports.liveViewRef.current
-      ports.inputRef.current.drag = createCanvasPanDrag({ x: view.panX, y: view.panY }, point)
-      ports.beginPanPreview()
-    },
-    endPan: (commit) => {
-      if (ports.inputRef.current.drag?.kind !== 'pan') return
-      ports.inputRef.current.finish()
-      if (commit) ports.finishPanPreview()
-    },
-    preview: (geometry) => {
-      const view = { ...ports.session.view, ...geometry }
-      ports.liveViewRef.current = view
-      ports.applyRotationStyle(view)
-      ports.scheduleZoomPreview(view)
-    },
-    finishPinch: (commitRotation) => {
-      const rotation = ports.liveViewRef.current.rotation
-      ports.finishZoomPreview()
-      if (commitRotation) useWorkspace.getState().setViewForDocument(ports.session.document.id, { rotation })
-    },
-    constrain: (view, size) => ports.constrainCanvasView({ ...ports.session.view, ...view }, size),
-    clampZoom,
-    grabbingCursor: canvasCursors.grabbing
-  }
+  touchNavigationPortsRef.current = canvasTouchNavigationPorts(ports)
 
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => measureRuntimeStages('canvas.pointer-down.total', checkpoint => {
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down', pointerType: event.pointerType }))
+    if (event.pointerType === 'pen' && ports.tabletPreferences.api !== 'disabled') touchNavigation.penDown()
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     // Back/forward side buttons belong to shortcuts, never to a paint stroke.
@@ -349,7 +318,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (!ports.inputRef.current.temporaryRightClickAction) {
       if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
-      else ports.inputRef.current.clearTemporaryTool(event.pointerId)
+      else if (!touchNavigation.isSampling(event.pointerId)) ports.inputRef.current.clearTemporaryTool(event.pointerId)
     }
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
     measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
@@ -357,6 +326,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (event.pointerType === 'pen') touchNavigation.penUp()
     if (touchNavigation.up(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
@@ -375,6 +345,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (event.pointerType === 'pen') touchNavigation.penUp()
     if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
     if (middlePenPointerRef.current === event.pointerId) middlePenPointerRef.current = null
     if (event.pointerType === 'touch') {

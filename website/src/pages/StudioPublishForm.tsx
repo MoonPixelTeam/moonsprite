@@ -1,13 +1,18 @@
+import { Input, Textarea } from '../ui'
 import { useEffect, useState } from 'react'
-import { PixelFileArchive as FileArchive, PixelImagePlus as ImagePlus, PixelPencil as Pencil } from '../ui/icons'
+import { PixelFileArchive as FileArchive, PixelPencil as Pencil } from '../ui/icons'
 import type { Copy, Language } from '../content'
+import { copy } from '../content'
 import { useStudio, type StudioProduct } from '../studio/store'
-import { Button, ChipField, Field, FileField, FormField, Select } from '../ui'
+import { Alert, Button, Panel, ChipField, Field, FileField, FormField, Select } from '../ui'
 import { PackCard } from '../market/PackCard'
 import { studioToProduct } from '../market/catalogue'
 import { cnyToUsd, formatPrice, usdToCny } from '../market/catalog'
 import { getFile, putFile } from '../api/files'
 import type { Cart } from '../market/cart'
+import { ListingFields, type ListingDetails } from '../studio/ListingFields'
+import { PackDetailPage } from './Market'
+import { saveListing } from '../studio/save-listing'
 
 /** The preview card is not for sale, so it gets a cart that ignores every action. */
 const previewCart: Cart = {
@@ -30,6 +35,12 @@ export function StudioPublish({ t, language, editing, onDone }: {
   const [category, setCategory] = useState<StudioProduct['category']>('assets')
   const [tagline, setTagline] = useState('')
   const [bodyText, setBodyText] = useState('')
+  const [english, setEnglish] = useState({ name: '', tagline: '', body: '' })
+  const [details, setDetails] = useState<ListingDetails>({})
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const [previewMode, setPreviewMode] = useState(false)
+  const [previewLanguage, setPreviewLanguage] = useState(language)
+  const [savedId, setSavedId] = useState<string | undefined>(editing?.id)
   const [sizes, setSizes] = useState<string[]>([])
   const [formats, setFormats] = useState<string[]>([])
   const [tags, setTags] = useState<string[]>([])
@@ -37,8 +48,6 @@ export function StudioPublish({ t, language, editing, onDone }: {
   const [packFile, setPackFile] = useState<{ name: string; size: number } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [tried, setTried] = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const [fileDragging, setFileDragging] = useState(false)
 
   // Opening a pack for editing loads it in; leaving edit mode clears the form again.
   useEffect(() => {
@@ -48,6 +57,9 @@ export function StudioPublish({ t, language, editing, onDone }: {
     setCategory(editing.category)
     setTagline(editing.tagline.zh)
     setBodyText(editing.body.zh)
+    setEnglish({ name: editing.name.en, tagline: editing.tagline.en, body: editing.body.en })
+    setDetails({ includes: editing.includes, previews: editing.previews, packs: editing.packs, animations: editing.animations })
+    setSavedId(editing.id)
     setSizes(editing.size ? [editing.size] : [])
     setFormats(editing.formats)
     setTags(editing.tags ?? [])
@@ -55,9 +67,14 @@ export function StudioPublish({ t, language, editing, onDone }: {
     setMessage(null)
     setTried(false)
     // A pack being edited keeps whatever file it already has; the picker only replaces it.
+    let active = true
+    setMediaBusy(true)
     void getFile(editing.id).then((stored) => {
+      if (!active) return
       setPackFile(stored ? { name: stored.name, size: stored.size } : null)
+      setMediaBusy(false)
     })
+    return () => { active = false }
   }, [editing])
 
   const priceUsd = cnyToUsd(Number(cny))
@@ -67,15 +84,19 @@ export function StudioPublish({ t, language, editing, onDone }: {
     !(Number(cny) > 0) ? strings.fieldPrice : null,
     formats.length === 0 ? strings.fieldFormats : null,
     // The buyer downloads this; a listing without it cannot be delivered.
-    !editing && !packFile ? strings.fieldFile : null,
+    !packFile ? strings.fieldFile : null,
+    category === 'bundles' && !(details.packs?.length) ? (language === 'zh' ? '合集成员' : 'Bundle members') : null,
+    category === 'bundles' && details.packs?.some((id) => !studio.products.some((product) => product.id === id && product.category !== 'bundles')) ? (language === 'zh' ? '合集包含已下架资源，请重新选择成员' : 'Remove unavailable bundle members') : null,
   ].filter((item): item is string => Boolean(item))
 
   const readCover = (file: File | undefined) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) { setMessage(strings.errorCover); return }
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 512 * 1024) { setMessage(language === 'zh' ? '封面需为 PNG / JPG / WebP / GIF，且不超过 512 KB。' : 'Use PNG / JPG / WebP / GIF under 512 KB.'); return }
+    setMediaBusy(true)
     const reader = new FileReader()
     reader.onload = () => setCover(typeof reader.result === 'string' ? reader.result : undefined)
     reader.onerror = () => setMessage(strings.errorCover)
+    reader.onloadend = () => setMediaBusy(false)
     reader.readAsDataURL(file)
   }
 
@@ -91,56 +112,34 @@ export function StudioPublish({ t, language, editing, onDone }: {
     setName(''); setCny(''); setTagline(''); setBodyText(''); setSizes([])
     setFormats([]); setTags([]); setCover(undefined); setTried(false); setMessage(null)
     setCategory('assets'); setPackFile(null); setPendingFile(null)
+    setEnglish({ name: '', tagline: '', body: '' }); setDetails({}); setSavedId(undefined)
   }
 
   const [busy, setBusy] = useState(false)
+  const payload = {
+    name: { zh: name.trim(), en: english.name.trim() || name.trim() },
+    tagline: { zh: tagline.trim(), en: english.tagline.trim() || tagline.trim() },
+    body: { zh: bodyText.trim(), en: english.body.trim() || bodyText.trim() },
+    price: priceUsd, category, size: sizeText, formats, tags, image: cover,
+    previews: details.previews,
+    includes: details.includes?.filter((item) => item.zh.trim() || item.en.trim()).map((item) => ({ zh: item.zh.trim() || item.en.trim(), en: item.en.trim() || item.zh.trim() })),
+    packs: category === 'bundles' ? details.packs : undefined,
+    animations: category === 'pets' ? details.animations : undefined,
+  }
+  const previewProduct = studioToProduct({ ...payload, id: savedId ?? 'preview', publishedAt: editing?.publishedAt ?? 0 }, studio.products)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (busy) return
+    if (busy || mediaBusy) return
     setTried(true)
     if (missing.length > 0) return
     setBusy(true)
     try {
-    const payload = {
-      name: { zh: name.trim(), en: name.trim() },
-      tagline: { zh: tagline.trim(), en: tagline.trim() },
-      body: { zh: bodyText.trim(), en: bodyText.trim() },
-      price: priceUsd,
-      category,
-      size: sizeText,
-      formats,
-      tags,
-      image: cover,
+    const result = await saveListing({ studio, payload, savedId, file: pendingFile, rememberId: setSavedId, putFile })
+    if (!result.ok) {
+      setMessage(result.error === 'file' ? `${strings.errorFile} ${language === 'zh' ? '商品已保留为待审核状态，再次提交会重试此商品。' : 'The listing is retained for review. Submit again to retry this listing.'}` : result.error === 'price' ? strings.errorPrice : strings.errorStorage)
+      return
     }
-    // The two calls return different shapes: publish mints an id, update keeps one.
-    let productId: string
-    if (editing) {
-      const result = await studio.update(editing.id, payload)
-      if (!result.ok) {
-        setMessage(result.error === 'price' ? strings.errorPrice : result.error === 'storage' ? strings.errorStorage : strings.errorName)
-        return
-      }
-      productId = editing.id
-    } else {
-      const result = await studio.publish(payload)
-      if (!result.ok) {
-        setMessage(result.error === 'price' ? strings.errorPrice : result.error === 'storage' ? strings.errorStorage : strings.errorName)
-        return
-      }
-      productId = result.id
-    }
-
-    // The file is keyed by product id, so it is stored once that id exists.
-    if (pendingFile) {
-      try {
-        await putFile(productId, pendingFile)
-        setPendingFile(null)
-      } catch (error) {
-        console.warn('MoonSprite studio: could not store the pack file.', error)
-        setMessage(strings.errorFile)
-        return
-      }
-    }
+    setPendingFile(null)
     setMessage(editing ? strings.updated : strings.published)
     onDone?.()
     } catch {
@@ -150,7 +149,18 @@ export function StudioPublish({ t, language, editing, onDone }: {
 
   const sizePresets = strings.presetSizes[category] ?? []
 
-  return <div className="account-panel studio-publish">
+  if (previewMode) return <div className="studio-detail-preview">
+    <div className="studio-submit">
+      <Button size="compact" onClick={() => setPreviewMode(false)}>{language === 'zh' ? '返回编辑' : 'Back to editor'}</Button>
+      <Button size="compact" onClick={() => setPreviewLanguage(previewLanguage === 'zh' ? 'en' : 'zh')}>{previewLanguage === 'zh' ? 'English' : '中文'}</Button>
+      <span>{language === 'zh' ? '详情预览 · 尚未提交' : 'Detail preview · Not submitted'}</span>
+    </div>
+    <div onClickCapture={(event) => { if ((event.target as HTMLElement).closest('a')) { event.preventDefault(); event.stopPropagation() } }}>
+      <PackDetailPage t={copy[previewLanguage]} language={previewLanguage} previewProduct={previewProduct} />
+    </div>
+  </div>
+
+  return <div className="studio-publish">
     {editing && <p className="studio-editing">
       <Pencil aria-hidden="true" />{strings.editHint}
     </p>}
@@ -158,14 +168,14 @@ export function StudioPublish({ t, language, editing, onDone }: {
 
     <div className="studio-publish-grid">
       <form className="account-form studio-form" onSubmit={submit} noValidate>
-        <fieldset className="studio-fieldset">
-          <legend>{strings.groupBasics}</legend>
+        <fieldset className="studio-form-fields" disabled={busy || mediaBusy}>
+        <Panel title={strings.groupBasics} className="studio-fieldset">
           <Field
             label={strings.fieldName}
             badge={strings.required}
             invalid={tried && name.trim().length < 2}
             counter={strings.counter(name.length, 48)}>
-            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={48} />
+            <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={48} />
           </Field>
           <div className="studio-row">
             <Field
@@ -174,9 +184,9 @@ export function StudioPublish({ t, language, editing, onDone }: {
               invalid={tried && !(Number(cny) > 0)}
               hint={<>
                 {strings.fieldPriceHint}
-                {priceUsd > 0 && <> · {strings.fieldPriceConverted(formatPrice(priceUsd))}</>}
+                {priceUsd > 0 && <> · {strings.fieldPriceConverted(formatPrice(priceUsd, language))}</>}
               </>}>
-              <input type="number" min="1" step="1" value={cny} onChange={(event) => setCny(event.target.value)} placeholder="29" />
+              <Input type="number" min="1" step="1" value={cny} onChange={(event) => setCny(event.target.value)} placeholder="29" />
             </Field>
             <FormField label={strings.fieldCategory}>
               <Select
@@ -192,10 +202,9 @@ export function StudioPublish({ t, language, editing, onDone }: {
                 ] satisfies { value: StudioProduct['category']; label: string }[]} />
             </FormField>
           </div>
-        </fieldset>
+        </Panel>
 
-        <fieldset className="studio-fieldset">
-          <legend>{strings.groupContents}</legend>
+        <Panel title={strings.groupContents} className="studio-fieldset">
           <ChipField
             label={strings.fieldSize}
             badge={strings.optional}
@@ -216,21 +225,20 @@ export function StudioPublish({ t, language, editing, onDone }: {
             customPlaceholder={strings.formatCustomPlaceholder}
             addLabel={strings.addValue}
             removeLabel={strings.fieldCoverRemove} />
-        </fieldset>
+        </Panel>
 
-        <fieldset className="studio-fieldset">
-          <legend>{strings.groupListing}</legend>
+        <Panel title={strings.groupListing} className="studio-fieldset">
           <Field
             label={strings.fieldTagline}
             badge={strings.optional}
             counter={strings.counter(tagline.length, 60)}>
-            <input value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={60} />
+            <Input value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={60} />
           </Field>
           <Field
             label={strings.fieldBody}
             badge={strings.optional}
-            counter={strings.counter(bodyText.length, 400)}>
-            <textarea rows={4} value={bodyText} onChange={(event) => setBodyText(event.target.value)} maxLength={400} />
+            counter={strings.counter(bodyText.length, 5000)}>
+            <Textarea rows={7} value={bodyText} onChange={(event) => setBodyText(event.target.value)} maxLength={5000} />
           </Field>
           <ChipField
             label={strings.fieldTags}
@@ -242,47 +250,25 @@ export function StudioPublish({ t, language, editing, onDone }: {
             customPlaceholder={strings.fieldTagsHint}
             addLabel={strings.addValue}
             removeLabel={strings.fieldCoverRemove} />
-        </fieldset>
+        </Panel>
 
-        <fieldset className="studio-fieldset">
-          <legend>{strings.groupCover}</legend>
-          {/* The native file control is hidden and driven from styled targets: its own
-              button is drawn by the OS, which is what this design avoids. */}
-          <input
-            className="visually-hidden"
-            id="studio-cover-input"
-            type="file"
-            accept="image/*"
-            onChange={(event) => readCover(event.target.files?.[0])} />
-          <div
-            className={dragging ? 'cover-field dragging' : 'cover-field'}
-            onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => {
-              event.preventDefault()
-              setDragging(false)
-              readCover(event.dataTransfer.files?.[0])
-            }}>
-            {cover
-              ? <>
-                <img src={cover} alt="" className="studio-cover-preview" />
-                <div className="cover-actions">
-                  <label className="button secondary compact" htmlFor="studio-cover-input">{strings.fieldCoverReplace}</label>
-                  <Button size="compact" onClick={() => setCover(undefined)}>{strings.fieldCoverRemove}</Button>
-                </div>
-              </>
-              : <label className="cover-empty" htmlFor="studio-cover-input">
-                <ImagePlus aria-hidden="true" />
-                <strong>{strings.fieldCoverHint}</strong>
-                <small>{strings.fieldCoverDrop}</small>
-              </label>}
-          </div>
-        </fieldset>
+        <details className="studio-translations">
+          <summary>{language === 'zh' ? '英文内容（选填，未填写时使用中文）' : 'English copy (optional; falls back to Chinese)'}</summary>
+          <Field label="Name"><Input maxLength={48} value={english.name} onChange={(event) => setEnglish({ ...english, name: event.target.value })} /></Field>
+          <Field label="Summary"><Input maxLength={60} value={english.tagline} onChange={(event) => setEnglish({ ...english, tagline: event.target.value })} /></Field>
+          <Field label="Description"><Textarea rows={7} maxLength={5000} value={english.body} onChange={(event) => setEnglish({ ...english, body: event.target.value })} /></Field>
+        </details>
+        <ListingFields value={details} onChange={setDetails} category={category} products={studio.products.filter((product) => product.id !== editing?.id)} language={language} onBusy={setMediaBusy} />
+        <Panel title={strings.groupCover} className="studio-fieldset">
+          {cover && <img src={cover} alt={strings.groupCover} className="studio-cover-preview" />}
+          <p className="studio-cover-ratio-note">{language === 'zh' ? '建议使用 1:1 正方形图片（淘宝商品主图常用比例）' : 'Use a 1:1 square image, the common proportion for Taobao product covers.'}</p>
+          <FileField label={strings.groupCover} file={null} onPick={readCover} disabled={busy || mediaBusy} accept="image/png,image/jpeg,image/webp,image/gif" emptyTitle={cover ? strings.fieldCoverReplace : strings.fieldCoverHint} emptyHint={strings.fieldCoverDrop} replaceLabel={strings.fieldCoverReplace} clearLabel={strings.fieldCoverRemove} />
+          {cover && <Button size="compact" onClick={() => setCover(undefined)}>{strings.fieldCoverRemove}</Button>}
+        </Panel>
 
         {/* The deliverable itself. Without it a buyer would have nothing to download.
             This is the library's FileField, not a second hand-rolled drop zone. */}
-        <fieldset className="studio-fieldset">
-          <legend>{strings.groupFile}</legend>
+        <Panel title={strings.groupFile} className="studio-fieldset">
           <FileField
             label={strings.fieldFile}
             badge={strings.required}
@@ -294,21 +280,23 @@ export function StudioPublish({ t, language, editing, onDone }: {
             replaceLabel={strings.fileReplace}
             clearLabel={strings.fieldCoverRemove}
             hint={strings.fileHint}
-            invalid={tried && !packFile && !editing}
+            invalid={tried && !packFile}
             icon={<FileArchive aria-hidden="true" />} />
-        </fieldset>
+        </Panel>
 
-        {tried && missing.length > 0 && <p className="account-error" role="alert">
+        {tried && missing.length > 0 && <Alert tone="danger" role="alert">
           {strings.missing}：{missing.join('、')}
-        </p>}
-        {message && <p className="account-error" role="alert">{message}</p>}
+        </Alert>}
+        {message && <Alert tone={message === strings.updated || message === strings.published ? 'success' : 'danger'} role={message === strings.updated || message === strings.published ? 'status' : 'alert'}>{message}</Alert>}
 
         <div className="studio-submit">
-          <Button type="submit" variant="primary" disabled={busy}>{editing ? strings.saveEdit : strings.publish}</Button>
+          <Button size="compact" type="submit" variant="primary" disabled={busy || mediaBusy}>{editing ? strings.saveEdit : strings.publish}</Button>
+          <Button size="compact" onClick={() => setPreviewMode(true)}>{language === 'zh' ? '预览完整详情页' : 'Preview full page'}</Button>
           {editing
             ? <Button size="compact" onClick={() => onDone?.()}>{strings.cancelEdit}</Button>
             : <Button size="compact" onClick={reset}>{strings.reset}</Button>}
         </div>
+        </fieldset>
       </form>
 
       {/* The preview is the seller's own card, rendered from the real market component.
@@ -319,19 +307,7 @@ export function StudioPublish({ t, language, editing, onDone }: {
         <p className="studio-hint">{strings.previewHint}</p>
         <div className="studio-preview-card">
           <PackCard
-            product={studioToProduct({
-              id: editing?.id ?? 'preview',
-              name: { zh: name || strings.previewPlaceholder, en: name || strings.previewPlaceholder },
-              tagline: { zh: tagline, en: tagline },
-              body: { zh: bodyText, en: bodyText },
-              price: priceUsd,
-              category,
-              size: sizeText,
-              formats,
-              tags,
-              image: cover,
-              publishedAt: editing?.publishedAt ?? 0,
-            })}
+            product={previewProduct}
             t={t}
             language={language}
             cart={previewCart}

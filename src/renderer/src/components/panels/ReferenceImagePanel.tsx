@@ -146,7 +146,6 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
         <button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} disabled={!current} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button>
         <button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} disabled={!current} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button>
         <button title={t('reference.fit')} aria-label={t('reference.fit')} disabled={!current} onClick={() => { fitRef.current = null; setView(null, { x: 0, y: 0 }) }}><PixelUtilityIcon kind="paletteCenter" /></button>
-        <button title={t('common.delete')} aria-label={t('common.delete')} disabled={!current} onClick={() => remove(windowId)}><PixelUtilityIcon kind="delete" /></button>
         <button title={t('reference.close')} aria-label={t('reference.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button>
       </PanelActions>
     </header>
@@ -177,6 +176,7 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
             <span className="reference-image-count" aria-live="polite">{images.findIndex((image) => image.id === activeId) + 1} / {images.length}</span>
             <button title={t('reference.next')} aria-label={t('reference.next')} onClick={() => step(1, windowId)}><PixelUtilityIcon kind="right" /></button>
           </>}
+          <button title={t('common.delete')} aria-label={t('common.delete')} disabled={!current} onClick={() => remove(windowId)}><PixelUtilityIcon kind="delete" /></button>
           {current && <button title={t('reference.openWindow')} aria-label={t('reference.openWindow')} onClick={() => openWindow(current.id)}><PixelUtilityIcon kind="export" /></button>}
           <button title={t('reference.newWindow')} aria-label={t('reference.newWindow')} onClick={() => openWindow()}><PixelUtilityIcon kind="plus" /></button>
         </div>

@@ -58,3 +58,16 @@ describe('repeated selection display', () => {
     for (const x of xs) for (const y of ys) expect(fillRect).toHaveBeenCalledWith(102 + x, 106 + y, 2, 2)
   })
 })
+
+it.each([false, true])('honors the rounded checkbox in marquee previews (enabled=%s)', selectionRounded => {
+  const draw = vi.fn()
+  const target = { x: 2, y: 2, width: 12, height: 12 }
+  renderCanvasSelectionPreview({
+    inputRef: { current: { drag: { kind: 'marquee', moved: true, previewTarget: target, last: { x: 13, y: 13 } }, sampling: true, pointer: { visible: false } } },
+    session: { tool: 'selection', selectionKind: 'rectangle', selectionRounded, selectionCornerRadius: 4, symmetryAxes: null },
+    document: { width: 16, height: 16 }, view: { tileRepeatMode: 'off' }, repeatCopies: [],
+    drawSelectionPathPreviewPoints: draw
+  } as unknown as Parameters<typeof renderCanvasSelectionPreview>[0])
+  const points = draw.mock.calls[0][0] as Array<{ x: number; y: number }>
+  expect(points.some(point => point.x === target.x && point.y === target.y)).toBe(!selectionRounded)
+})

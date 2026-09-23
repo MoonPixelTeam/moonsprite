@@ -12,12 +12,12 @@ export function DocsPage({ t, language, subId }: { t: Copy; language: Language; 
   const activeId = useActiveHeading(rightItems.map((item) => item.id))
 
   return <PageShell className="reading-layout"
-    left={<><p className="reading-nav-title">{t.nav.docs}</p><DocsOutline outline={docs.outline} sections={sections} currentId={current.id} /></>}
+    left={<DocsOutline outline={docs.outline} sections={sections} currentId={current.id} />}
     right={rightItems.length
-      ? <><p className="reading-nav-title">{language === 'zh' ? '本页内容' : 'On this page'}</p><OutlineNav items={rightItems} activeId={activeId} /></>
+      ? <OutlineNav items={rightItems} activeId={activeId} />
       : null}>
     <article className="doc-section">
-      <PageHeader eyebrow={t.nav.docs} title={current.title} />
+      <PageHeader title={current.title} />
       {current.blocks.map((block, index) => {
         if (block.kind === 'p') return <p key={index}>{block.text}</p>
         if (block.kind === 'h3') return <h3 key={index} id={block.id}>{block.text}</h3>

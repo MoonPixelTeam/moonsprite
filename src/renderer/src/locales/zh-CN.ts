@@ -1,4 +1,12 @@
+import { tabletZh } from './tablet'
+
 export const zhCNMessages = {
+  "reference.lockHint": "锁定参考图：防止误移动或修改。",
+  "reference.unlockHint": "解锁参考图：允许移动和调整属性。",
+  "reference.fixedSizeHint": "独立浮动：开启后，参考图不随画布平移、缩放或旋转；关闭后重新跟随画布。",
+  "reference.resetHint": "重置：恢复初始大小、角度和镜像状态。",
+  "reference.bringToFrontHint": "置于顶层：将这张参考图显示在其他参考图上方。",
+  ...tabletZh,
   'release.beta6.summary': '栏目分阶段自适应、预览适配与交互修复。',
   'release.beta6.panels': '栏目缩小时逐步精简标题与按钮，通过更多操作保留完整功能，改善窄栏间距和显示。',
   'release.beta6.preview': '默认预览随栏目当前尺寸重新适配，修复缩小后图像裁剪；手动缩放保留设定倍率。',
@@ -20,6 +28,7 @@ export const zhCNMessages = {
   'sequence.animation': "作为动画导入",
   'sequence.incompatible': "这些图片的尺寸不一致，或包含已有动画，未合并。请重新选择并分别打开。",
   'reference.scale': "缩放",
+  'reference.opacity': "不透明度",
   'reference.fixedSize': "独立浮动",
   'preferences.referenceScaling': '参考图缩放方式',
   'preferences.referenceScaling.smooth': '平滑',

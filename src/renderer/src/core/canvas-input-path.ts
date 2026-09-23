@@ -192,6 +192,6 @@ export const marqueeSelectionCommit = (
   const before = drag.selectionStart ?? null
   return {
     before,
-    after: finalizeMarqueeSelection(before, drag.previewSelection ?? currentSelection, moved, drag.selectionMode ?? fallbackMode)
+    after: finalizeMarqueeSelection(before, drag.previewSelection === undefined ? currentSelection : drag.previewSelection, moved, drag.selectionMode ?? fallbackMode)
   }
 }

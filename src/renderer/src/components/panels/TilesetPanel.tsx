@@ -557,6 +557,8 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
     if (!entry || !tileId) return
     store.setSelectedTile(entry.tileset.id, tileId)
     if (paint) store.setFreeTileMode('paint')
+    // Keep an already-open properties dialog bound to the newly selected layer.
+    if (sourcePropertiesId) setSourcePropertiesId(entry.source.id)
   }
   const sourceEntryForId = (sourceId: string): { source: typeof sourceEntries[number]['source']; tileset: typeof sourceEntries[number]['tileset'] } | null => sourceEntries.find(({ source }) => source.id === sourceId) ?? null
   const openSourceProperties = (sourceId: string): void => {
@@ -638,7 +640,7 @@ function FreeTileSourcesPanel({ session, docked = false, onDockDragStart, onPane
     <span className="context-menu-divider" />
     <button className="context-menu-item danger" type="button" role="menuitem" disabled={sourceEntries.length <= 1} onClick={() => { deleteSource(sourceContextMenu.sourceId); setSourceContextMenu(null) }}><PixelUtilityIcon kind="delete" /><span>{t('tileset.deleteTile')}</span></button>
   </div>, document.body)}
-  {sourcePropertiesEntry && <FreeTileSourcePropertiesDialog source={sourcePropertiesEntry.source} onClose={() => setSourcePropertiesId(null)} />}
+  {sourcePropertiesEntry && <FreeTileSourcePropertiesDialog key={sourcePropertiesEntry.source.id} source={sourcePropertiesEntry.source} onClose={() => setSourcePropertiesId(null)} />}
   </>
 }
 

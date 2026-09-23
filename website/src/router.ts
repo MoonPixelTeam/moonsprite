@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 
-export type Route = { page: 'competitions' | 'login' | 'register' | 'home' | 'market' | 'docs' | 'faq' | 'blog' | 'account' | 'purchases' | 'studio' | 'studio-publish' | 'ui' | 'license' | 'receipt' | 'orders' | 'settings' | 'support' | 'settlement' | 'admin'; subId?: string; returnTo?: string }
+export type Route = { page: 'competitions' | 'login' | 'register' | 'home' | 'market' | 'docs' | 'faq' | 'blog' | 'account' | 'purchases' | 'studio' | 'studio-publish' | 'studio-sales-order' | 'ui' | 'license' | 'privacy' | 'receipt' | 'orders' | 'settings' | 'support' | 'settlement' | 'admin'; subId?: string; returnTo?: string }
 
 export function isWorkspaceRoute(route: Route): boolean {
-  return ['account', 'purchases', 'studio', 'studio-publish', 'receipt', 'orders', 'settings', 'support', 'settlement', 'admin'].includes(route.page)
+  return ['account', 'purchases', 'studio', 'studio-publish', 'studio-sales-order', 'receipt', 'orders', 'settings', 'support', 'settlement', 'admin'].includes(route.page)
 }
 
 export function parseHash(raw: string): Route {
@@ -19,12 +19,14 @@ export function parseHash(raw: string): Route {
   if (hash === '/faq') return { page: 'faq' }
   if (hash === '/blog') return { page: 'blog' }
   if (hash === '/market') return { page: 'market' }
+  if (hash === '/privacy') return { page: 'privacy' }
   if (hash === '/license') return { page: 'license' }
   if (hash === '/receipt') return { page: 'receipt' }
   if (hash.startsWith('/orders/')) return { page: 'orders', subId: hash.slice('/orders/'.length) }
   if (hash === '/settings') return { page: 'settings' }
   if (hash === '/support') return { page: 'support' }
   if (hash === '/studio/settlement') return { page: 'settlement' }
+  if (hash.startsWith('/studio/sales/')) return { page: 'studio-sales-order', subId: hash.slice('/studio/sales/'.length) }
   /* Staff console. Like the studio, it is not in the navigation. */
   if (['/admin/listings', '/admin/tickets', '/admin/reports', '/admin/payouts', '/admin/settings'].includes(hash)) return { page: 'admin', subId: hash.slice('/admin/'.length) }
   if (hash === '/admin') return { page: 'admin' }
@@ -38,7 +40,7 @@ export function parseHash(raw: string): Route {
   if (hash === '/studio/products') return { page: 'studio', subId: 'products' }
   if (hash === '/studio/sales') return { page: 'studio', subId: 'sales' }
   if (hash === '/studio') return { page: 'studio' }
-  /* The component library, rendered. Not in the navigation: it is a build-time reference. */
+  /* Live component gallery, linked from the footer documentation group. */
   if (hash === '/ui') return { page: 'ui' }
   return { page: 'home' }
 }
@@ -72,6 +74,6 @@ export function authHash(mode: 'login' | 'register', returnTo?: string): string 
   return `#/${mode}?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`
 }
 export function routeHash(route: Route): string {
-  const base = route.page === 'studio-publish' ? 'studio/publish' : route.page === 'settlement' ? 'studio/settlement' : route.page
+  const base = route.page === 'studio-publish' ? 'studio/publish' : route.page === 'studio-sales-order' ? 'studio/sales' : route.page === 'settlement' ? 'studio/settlement' : route.page
   return `#/${base}${route.subId ? `/${route.subId}` : ''}`
 }

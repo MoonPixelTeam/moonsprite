@@ -1,3 +1,5 @@
+@import './components/touch-controls.css';
+
 /* These live resize values belong to the layout owner only. Inheriting them
    invalidates every layer row, icon and canvas descendant on each pointer frame. */
 @property --left-dock-width { syntax: '<length>'; inherits: false; initial-value: 260px; }

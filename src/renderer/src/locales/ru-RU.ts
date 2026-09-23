@@ -1,6 +1,14 @@
 import type { TranslationCatalog } from './contracts'
 
+import { tabletEn } from './tablet'
+
 export const ruRUMessages = {
+  "reference.lockHint": "Заблокировать образец: предотвратить случайное перемещение или изменение.",
+  "reference.unlockHint": "Разблокировать образец: разрешить перемещение и изменение свойств.",
+  "reference.fixedSizeHint": "Независимое размещение: образец не перемещается при сдвиге, масштабировании или повороте холста. Отключите, чтобы снова следовать за холстом.",
+  "reference.resetHint": "Сбросить: восстановить исходные размер, угол и отражение.",
+  "reference.bringToFrontHint": "На передний план: показать этот образец поверх остальных.",
+  ...tabletEn,
   'release.beta6.summary': 'Responsive panel stages, preview fitting, and interaction fixes.',
   'release.beta6.panels': 'Panels simplify titles and actions as space shrinks. More actions keeps all commands available with improved compact spacing.',
   'release.beta6.preview': 'Automatic preview fitting follows the current panel size to avoid cropping. Explicit zoom levels remain unchanged.',

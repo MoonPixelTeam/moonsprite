@@ -1,17 +1,14 @@
 import { isLocalAdmin } from '../api/permissions'
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { PixelArrowLeft as ArrowLeft } from '../ui/icons'
 import type { Language } from '../content'
 import type { Route } from '../router'
 import { useAccount } from '../account/store'
-import { PageHeader } from '../ui'
+import { NavigationGroup } from '../ui'
+export { WorkspacePage } from '../ui'
 
 export function WorkspaceLayout({ route, language, children }: { route: Route; language: Language; children: ReactNode }) {
   const { account } = useAccount()
-  const contentRef = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    if (contentRef.current) contentRef.current.scrollTop = 0
-  }, [route.page, route.subId])
   const zh = language === 'zh'
   const groups = [
     { title: zh ? '个人账户' : 'Your account', links: [
@@ -36,15 +33,12 @@ export function WorkspaceLayout({ route, language, children }: { route: Route; l
   ] })
   return <div className="workspace-shell">
     <aside className="workspace-sidebar">
+      <div className="workspace-sidebar-profile">
       <a className="workspace-market-link" href="#/market"><ArrowLeft aria-hidden="true" />{zh ? '返回市场' : 'Back to marketplace'}</a>
       <div className="workspace-identity"><strong>{account?.name ?? (zh ? '个人工作台' : 'Your workspace')}</strong><span>{account?.email ?? (zh ? '购买、创作与支持' : 'Purchases, creation and support')}</span></div>
-      {(route.page === 'admin' ? groups.slice(-1) : groups).map((group) => <nav key={group.title} aria-label={group.title} className="workspace-nav"><h2>{group.title}</h2>{group.links.map(({ href, label, active }) => <a href={href} key={href} aria-current={active ? 'page' : undefined}>{label}</a>)}</nav>)}
-      {route.page === 'admin' && <a className="workspace-market-link" href="#/account">{zh ? '个人工作台' : 'Personal workspace'}</a>}
+      </div>
+      {groups.map((group) => <NavigationGroup key={group.title} {...group} hideTitle />)}
     </aside>
-    <div className="workspace-content" ref={contentRef}>{children}</div>
+    <div className="workspace-content">{children}</div>
   </div>
-}
-
-export function WorkspacePage({ title, subtitle, eyebrow, actions, back, backLabel, children }: { title: string; subtitle?: string; eyebrow?: string; actions?: ReactNode; back?: string; backLabel?: string; children: ReactNode }) {
-  return <main id="main" className="workspace-page"><PageHeader title={title} subtitle={subtitle} eyebrow={eyebrow} actions={actions} back={back} backLabel={backLabel} /><div className="workspace-body">{children}</div></main>
 }

@@ -1,4 +1,4 @@
-import { CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
+import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { REFERENCE_PASTE_EVENT } from '@/components/panels/reference-image-state'
 import type { AppShortcutContext } from './app-shortcut-context'
 import { handleSelectionShortcuts } from './app-selection-shortcuts'
@@ -8,7 +8,7 @@ import { handleViewShortcuts } from './app-view-shortcuts'
 import { createToolShortcutHandler } from './app-tools-shortcuts'
 import { handleCompletionShortcuts } from './app-completion-shortcuts'
 import { useEffect, useRef } from 'react'
-import { animationFrameStepDirection, type EditorCommandScope } from '@/core/command-context'
+import { shouldTriggerDeleteCommand, animationFrameStepDirection, type EditorCommandScope } from '@/core/command-context'
 import { adjacentFormInput } from '@/core/form-focus'
 import { QUICK_TOOL_SHORTCUT_IDS, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, findShortcutBindingOwners, keyboardEventKey, loadShortcutBindings, mouseDoubleClickShortcutText, mouseShortcutText, shortcutBindingBlocked, shortcutBindingsFor, shortcutKeyPart, shortcutMatchesEvent, shortcutReleasedByBindings, shortcutText, wheelShortcutText, type ShortcutId } from '@/core/shortcuts'
 import { beginPaletteSamplingShortcut, endPaletteSamplingShortcut } from '@/core/palette-sampling-shortcut'
@@ -123,6 +123,17 @@ export function useAppShortcutRouter(options: Options) {
         }
         // A focused reference viewer must not run drawing, deletion or history commands.
         return
+      }
+
+      if (shouldTriggerDeleteCommand(matches('deleteLayer'), event.key) && !isTextEntry
+        && !target?.closest('input, textarea, select, [contenteditable="true"]')
+        && !homeOpen && !openMenu && !document.querySelector('.modal-backdrop') && commandScope() === 'canvas') {
+        const deletion = new CustomEvent(CANVAS_REFERENCE_DELETE_EVENT, { cancelable: true, detail: event.repeat })
+        if (!window.dispatchEvent(deletion)) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+          return
+        }
       }
 
       if (matches('paste') && !isTextEntry && !homeOpen && !openMenu && commandScope() === 'canvas') {
