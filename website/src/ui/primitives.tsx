@@ -1,5 +1,5 @@
 import { PixelCheck, PixelArrowLeft } from './icons'
-import type { ReactNode } from 'react'
+import type { ReactNode, AriaAttributes, ButtonHTMLAttributes } from 'react'
 
 /*
  * The site's component library. Pages import from here and never assemble these shapes
@@ -9,9 +9,9 @@ import type { ReactNode } from 'react'
 /**
  * The one button. `primary` is the single emphasised action in a view; `secondary` is
  * everything else. Passing `href` renders an anchor, so a link that looks like a button
- * is still a link. `compact` is the 32px variant used inside rows and the header.
+ * is still a link. `compact` is the 36px variant used inside rows and the header.
  */
-export function Button({ children, variant = 'secondary', size = 'regular', icon, trailingIcon, href, onClick, type = 'button', disabled, block, className, download, ariaLabel }: {
+export function Button({ children, variant = 'secondary', size = 'compact', icon, trailingIcon, href, onClick, type = 'button', disabled, block, className, download, ariaLabel, target }: {
   children?: ReactNode
   variant?: 'primary' | 'secondary'
   size?: 'regular' | 'compact'
@@ -25,6 +25,7 @@ export function Button({ children, variant = 'secondary', size = 'regular', icon
   className?: string
   download?: boolean
   ariaLabel?: string
+  target?: '_blank'
 }) {
   const classes = [
     'button',
@@ -41,7 +42,7 @@ export function Button({ children, variant = 'secondary', size = 'regular', icon
   </>
 
   if (href && !disabled) {
-    return <a className={classes} href={href} aria-label={ariaLabel} {...(download ? { download: true } : {})}>
+    return <a className={classes} href={href} onClick={onClick} target={target} rel={target === '_blank' ? 'noopener noreferrer' : undefined} aria-label={ariaLabel} {...(download ? { download: true } : {})}>
       {body}
     </a>
   }
@@ -57,35 +58,43 @@ export function Button({ children, variant = 'secondary', size = 'regular', icon
   </button>
 }
 
-/** A 32px square icon control. `label` is required: it becomes the accessible name. */
-export function IconButton({ label, icon, onClick, href, active, className }: {
+/** Image previews, carousel selectors and menu options share a native accessible action. */
+export function ActionButton({ type = 'button', ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type={type} {...props} />
+}
+
+/** A 36px square icon control. `label` is required: it becomes the accessible name. */
+export function IconButton({ label, icon, onClick, href, active, className, disabled, ...aria }: {
   label: string
   icon: ReactNode
   onClick?: () => void
   href?: string
   active?: boolean
   className?: string
-}) {
+  disabled?: boolean
+} & AriaAttributes) {
   const classes = ['icon-button', active ? 'active' : '', className ?? ''].filter(Boolean).join(' ')
-  if (href) return <a className={classes} href={href} aria-label={label} aria-current={active ? 'page' : undefined}>{icon}</a>
-  return <button type="button" className={classes} onClick={onClick} aria-label={label} aria-pressed={active}>{icon}</button>
+  if (href && !disabled) return <a className={classes} href={href} onClick={onClick} title={label} aria-label={label} aria-current={active ? 'page' : undefined} {...aria}>{icon}</a>
+  return <button type="button" className={classes} onClick={onClick} title={label} disabled={disabled} aria-label={label} aria-pressed={active} {...aria}>{icon}</button>
 }
 
 /**
  * The one chip. Filters, preset options and selected tags all use it: they had grown
  * three different paddings and two different active treatments before this.
  */
-export function Chip({ children, active, onClick, title, ariaPressed }: {
+export function Chip({ children, active, onClick, title, ariaPressed, disabled }: {
   children: ReactNode
   active?: boolean
   onClick?: () => void
   title?: string
   ariaPressed?: boolean
+  disabled?: boolean
 }) {
   return <button
     type="button"
     className={active ? 'chip active' : 'chip'}
     onClick={onClick}
+    disabled={disabled}
     title={title}
     aria-pressed={ariaPressed ?? active}>
     {children}
@@ -100,7 +109,7 @@ export function Alert({ tone, title, icon, children, role = 'status' }: {
   children?: ReactNode
   role?: 'status' | 'alert'
 }) {
-  return <div className={`alert ${tone}`} role={role}>
+  return <div className={`alert alert-${tone}`} role={role}>
     {icon}
     {title && <strong>{title}</strong>}
     {children && <span className="alert-body">{children}</span>}
@@ -108,15 +117,16 @@ export function Alert({ tone, title, icon, children, role = 'status' }: {
 }
 
 /** A page-level block. Nested border-boxes inside a panel are a smell: use rules. */
-export function Panel({ title, icon, actions, children, className, tone }: {
+export function Panel({ title, icon, actions, children, className, tone, id }: {
   title?: string
   icon?: ReactNode
   actions?: ReactNode
   children: ReactNode
   className?: string
   tone?: 'warning'
+  id?: string
 }) {
-  return <section className={['panel', tone ? `panel-${tone}` : '', className ?? ''].filter(Boolean).join(' ')}>
+  return <section id={id} className={['panel', tone ? `panel-${tone}` : '', className ?? ''].filter(Boolean).join(' ')}>
     {(title || actions) && <header className="panel-head">
       <h2>{icon}{title}</h2>
       {actions && <div className="panel-actions">{actions}</div>}
@@ -130,7 +140,7 @@ export function Panel({ title, icon, actions, children, className, tone }: {
  * eyebrow carries a hairline rule out to the column edge, which is how an editor marks
  * a labelled region.
  */
-export function PageHeader({ eyebrow, title, subtitle, icon, back, backLabel, actions }: {
+export function PageHeader({ eyebrow, title, subtitle, icon, back, backLabel, actions, level = 1 }: {
   eyebrow?: string
   title: string
   subtitle?: string
@@ -138,14 +148,16 @@ export function PageHeader({ eyebrow, title, subtitle, icon, back, backLabel, ac
   back?: string
   backLabel?: string
   actions?: ReactNode
+  level?: 1 | 2
 }) {
+  const Heading = level === 1 ? 'h1' : 'h2'
   return <header className="page-head-block">
     {(back || eyebrow) && <nav className="page-crumbs" aria-label={title}>
       {back && <a className="page-back" href={back}><PixelArrowLeft />{backLabel}</a>}
       {eyebrow && <span>{eyebrow}</span>}
     </nav>}
     <div className="page-head-copy">
-      <h1>{icon}{title}</h1>
+      <Heading>{icon}{title}</Heading>
       {subtitle && <p>{subtitle}</p>}
       {actions && <div className="page-head-actions">{actions}</div>}
     </div>
@@ -180,8 +192,9 @@ export { Field, FormField, FileField } from './Field'
 
 
 /** Shared marketing section hierarchy; content stays with the page. */
-export function SectionHeading({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) {
-  return <div className="section-title">{eyebrow && <span>{eyebrow}</span>}{actions ? <div className="section-title-row"><h2>{title}</h2><div className="section-title-actions">{actions}</div></div> : <h2>{title}</h2>}{description && <p>{description}</p>}</div>
+export function SectionHeading({ eyebrow, title, description, actions, icon }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; icon?: ReactNode }) {
+  const heading = <h2>{icon && <span className="section-title-icon" aria-hidden="true">{icon}</span>}{title}</h2>
+  return <div className={actions ? 'section-title has-actions' : 'section-title'}>{eyebrow && <span>{eyebrow}</span>}{actions ? <div className="section-title-row">{heading}<div className="section-title-actions">{actions}</div></div> : heading}{description && <p>{description}</p>}</div>
 }
 
 export function LoadingState({ label }: { label: string }) {
@@ -190,6 +203,11 @@ export function LoadingState({ label }: { label: string }) {
 
 export function PageIntro({ children }: { children: ReactNode }) {
   return <section className="page-intro"><div className="content-wrap">{children}</div></section>
+}
+
+/** Inline controls share a compact height, including inputs and selectors. */
+export function ControlRow({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`control-row ${className}`}>{children}</div>
 }
 
 export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {

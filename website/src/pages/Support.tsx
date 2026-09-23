@@ -1,11 +1,12 @@
-import { WorkspacePage } from '../workspace/WorkspaceLayout'
+import { Input, Textarea } from '../ui'
+import { WorkspacePage } from '../ui'
 import { useState } from 'react'
-import { PixelCheck as Check } from '../ui/icons'
+import { PixelPlus, PixelMinus } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { useAccount } from '../account/store'
 import { useData } from '../data/store'
 import { SITE_CONFIG } from '../config'
-import { Alert, Button, Field, Panel, Select } from '../ui'
+import { FormField, Alert, Button, EmptyState, Field, Panel, Select, StatusBadge } from '../ui'
 
 /**
  * Support. The two kinds of problem have different answers: a software question belongs
@@ -17,7 +18,7 @@ export function SupportPage({ t, language }: { t: Copy; language: Language }) {
   const { account, orders } = useAccount()
   const { tickets, openTicket } = useData()
 
-  const [tab, setTab] = useState<'new' | 'history'>('new')
+  const [tab, setTab] = useState<'new' | 'history'>('history')
   const [busy, setBusy] = useState(false)
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -52,38 +53,34 @@ export function SupportPage({ t, language }: { t: Copy; language: Language }) {
           subtitle={strings.subtitle}
           
           back="#/account"
-          backLabel={strings.back} >
-        <div className="workspace-tabs" role="group" aria-label={strings.title}>
-          <Button size="compact" variant={tab === 'new' ? 'primary' : 'secondary'} onClick={() => { setTab('new'); setSent(false) }}>{strings.ticket}</Button>
-          <Button size="compact" variant={tab === 'history' ? 'primary' : 'secondary'} onClick={() => setTab('history')}>{strings.tickets} ({tickets.length})</Button>
-        </div>
+          backLabel={strings.back}
+          actions={<Button variant={tab === 'history' ? 'primary' : 'secondary'} onClick={() => { setTab(tab === 'history' ? 'new' : 'history'); setSent(false) }}>{tab === 'history' ? strings.ticket : strings.tickets}</Button>} >
         {sent && <Alert tone="success">{strings.ticketSent}</Alert>}
-        {tab === 'new' && <>
-        <Alert tone="info">{strings.responseNote}</Alert>
-        <Panel title={strings.ticket}>
+        {tab === 'new' && <div className="account-support-layout">
+        <div className="account-support-note"><Alert tone="info">{strings.responseNote}</Alert></div>
+        <Panel title={strings.ticket} className="workspace-setting-section">
           <p className="panel-copy">{strings.ticketBody}</p>
           <form className="settings-form" onSubmit={submit}>
             <Field label={strings.ticketSubject}>
-              <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={80} />
+              <Input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={80} />
             </Field>
             <Field label={strings.ticketMessage}>
-              <textarea rows={4} value={message} onChange={(event) => setMessage(event.target.value)} maxLength={1000} />
+              <Textarea rows={4} value={message} onChange={(event) => setMessage(event.target.value)} maxLength={1000} />
             </Field>
-            {orders.length > 0 && <Field label={strings.ticketOrder}>
+            {orders.length > 0 && <FormField label={strings.ticketOrder}>
               <Select
                 value={orderId}
                 label={strings.ticketOrder}
                 onChange={setOrderId}
                 options={[
-                  { value: '', label: '—' },
+                  { value: '', label: language === 'zh' ? '不关联订单' : 'No related order' },
                   ...orders.map((order) => ({
                     value: order.id,
                     label: `${order.id} · ${new Date(order.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}`,
                   })),
                 ]} />
-            </Field>}
+            </FormField>}
             {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
-            {sent && <Alert tone="success" icon={<Check aria-hidden="true" />}>{strings.ticketSent}</Alert>}
             <Button type="submit" variant="primary" disabled={!account || busy}>{strings.ticketSubmit}</Button>
           </form>
         </Panel>
@@ -92,24 +89,26 @@ export function SupportPage({ t, language }: { t: Copy; language: Language }) {
           <p className="panel-copy">{strings.softwareBody}</p>
           <div className="receipt-actions"><Button href={SITE_CONFIG.footerLinks.discussions}>{strings.softwareAction}</Button><Button href="#/faq">{t.nav.faq}</Button></div>
         </Panel>
-        </>}
-        {tab === 'history' && <Panel title={strings.tickets}>
+        </div>}
+        {tab === 'history' && <Panel title={strings.tickets} actions={<span className="workspace-count">{tickets.length}</span>}>
           {tickets.length === 0
-            ? <p className="panel-copy">{strings.noTickets}</p>
+            ? <EmptyState title={strings.noTickets} action={<Button onClick={() => setTab('new')}>{strings.ticket}</Button>} />
             : <ul className="ticket-list">
               {tickets.map((ticket) => <li key={ticket.id}>
-                <div className="ticket-head">
-                  <strong>{ticket.subject}</strong>
-                  <span className={`ticket-state ${ticket.status}`}>
+                <details className="account-ticket-detail">
+                <summary className="ticket-head">
+                  <strong>{ticket.subject}</strong><span className="ticket-expand"><PixelPlus aria-hidden="true" /><PixelMinus aria-hidden="true" /></span>
+                  <StatusBadge tone={ticket.status === 'open' ? 'warning' : 'success'}>
                     {ticket.status === 'open' ? strings.statusOpen : strings.statusAnswered}
-                  </span>
-                </div>
+                  </StatusBadge>
+                </summary>
                 <p>{ticket.message}</p>
                 {ticket.reply && <p><strong>{language === 'zh' ? '客服回复：' : 'Support reply: '}</strong>{ticket.reply}</p>}
                 <small>
-                  {new Date(ticket.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}
-                  {ticket.orderId && ` · ${ticket.orderId}`}
+                  {language === 'zh' ? '提交时间：' : 'Submitted: '}{new Date(ticket.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}
+                  {ticket.orderId && <a href={`#/orders/${ticket.orderId}`}>{language === 'zh' ? '关联订单：' : 'Order: '}{ticket.orderId}</a>}
                 </small>
+                </details>
               </li>)}
             </ul>}
         </Panel>}

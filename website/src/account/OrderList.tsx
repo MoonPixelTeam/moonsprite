@@ -6,6 +6,7 @@ import { useCatalogue } from '../market/catalogue'
 import { downloadProduct, listFileIds } from '../api/files'
 import { marketPackHash } from '../router'
 import type { Order } from './store'
+import { Button } from '../ui'
 import { PackImage } from '../market/PackCard'
 
 /**
@@ -36,18 +37,17 @@ export function OrderList({ orders, t, language, showOrderId = true }: {
     }
   }, [])
 
-  return <ul className="order-list">
+  return <ul className="order-list purchase-orders">
     {orders.map((order) => <li key={order.id} className="order">
-      {/* On the order page the id and date are already in the page header, so the row shows
-          only what is not repeated above it. */}
-      <header className={showOrderId ? 'order-head' : 'order-head bare'}>
+      {showOrderId && <header className="order-head">
         <div className="order-head-main">
-          <span className="order-label">{language === 'zh' ? '购买订单' : 'Purchase'}</span>
-          {showOrderId && <a href={`#/orders/${order.id}`}><strong>{order.id}</strong></a>}
-          <time>{new Date(order.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</time>
+          <span className="order-label">{language === 'zh' ? '订单编号' : 'Order number'}</span>
+          <a href={`#/orders/${order.id}`}><strong>{order.id}</strong></a>
+          <time dateTime={new Date(order.createdAt).toISOString()}>{new Date(order.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</time>
         </div>
-        <em>{formatPrice(order.total)}</em>
-      </header>
+        <span className="purchase-status">{t.marketPage.orders.statusPaid}</span>
+        <div className="order-head-total"><span>{t.marketPage.checkout.total}</span><em>{formatPrice(order.total, language)}</em></div>
+      </header>}
       <ul className="order-lines">
         {order.lines.map((line) => {
           const product = products.find((item) => item.id === line.id)
@@ -63,20 +63,20 @@ export function OrderList({ orders, t, language, showOrderId = true }: {
             <span className="order-line-thumb"><PackImage product={product ?? { id: line.id, category: 'assets', name: { zh: line.name, en: line.name }, tagline: { zh: '', en: '' }, body: { zh: '', en: '' }, price: line.price, size: { zh: '', en: '' }, formats: [], includes: [] }} t={t} alt="" /></span>
             <span className="order-line-name">
               <a href={marketPackHash(line.id)}>{name}</a>
-              <small>{line.quantity > 1 ? `×${line.quantity}` : ''}</small>
+              <small>{language === 'zh' ? `数量 ${line.quantity}` : `Qty ${line.quantity}`}{product?.formats.length ? ` · ${product.formats.join(' / ')}` : ''}</small>
             </span>
             {downloadable
-              ? <button
-                type="button"
+              ? <Button
+                size="compact"
                 className="order-download"
-                aria-label={`${strings.download} ${name}`}
+                ariaLabel={`${strings.download} ${name}`}
                 onClick={() => { void downloadProduct(line.id, file, `${name}${file ? file.slice(file.lastIndexOf('.')) : ''}`) }}>
                 <Download aria-hidden="true" />{strings.download}
-              </button>
+              </Button>
               : <span className="order-download pending" aria-disabled="true" title={strings.downloadPending}>
                 <Download aria-hidden="true" />{strings.downloadPendingShort}
               </span>}
-            <span className="order-line-price">{formatPrice(line.price * line.quantity)}</span>
+            <span className="order-line-price"><small>{language === 'zh' ? '商品金额' : 'Item total'}</small>{formatPrice(line.price * line.quantity, language)}</span>
           </li>
         })}
       </ul>

@@ -162,6 +162,11 @@ export interface TabletPreferences {
   touchMode: TabletTouchMode
   twoFingerZoomEnabled: boolean
   twoFingerRotateEnabled: boolean
+  touchUi: 'auto' | 'on' | 'off'
+  touchBarSide: 'left' | 'right'
+  gestureUndoEnabled: boolean
+  rotationSnapEnabled: boolean
+  longPressEyedropper: boolean
 }
 export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   api: 'auto',
@@ -173,7 +178,9 @@ export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   rightClickAction: 'background',
   touchMode: 'navigate',
   twoFingerZoomEnabled: true,
-  twoFingerRotateEnabled: false
+  twoFingerRotateEnabled: false,
+  touchUi: 'auto', touchBarSide: 'left', gestureUndoEnabled: true,
+  rotationSnapEnabled: true, longPressEyedropper: false
 }
 export type BrushPreviewMode = 'none' | 'edge' | 'full' | 'full-edge'
 export type { PixelFormat } from '@shared/types-raster'
@@ -1286,7 +1293,12 @@ export function parseTabletPreferences(value: string | null): TabletPreferences 
       rightClickAction: parseRightClickAction(parsed.rightClickAction),
       touchMode,
       twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
-      twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true
+      twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true,
+      touchUi: parsed.touchUi === 'on' || parsed.touchUi === 'off' ? parsed.touchUi : 'auto',
+      touchBarSide: parsed.touchBarSide === 'right' ? 'right' : 'left',
+      gestureUndoEnabled: parsed.gestureUndoEnabled !== false,
+      rotationSnapEnabled: parsed.rotationSnapEnabled !== false,
+      longPressEyedropper: parsed.longPressEyedropper === true
     }
   } catch {
     return { ...DEFAULT_TABLET_PREFERENCES }

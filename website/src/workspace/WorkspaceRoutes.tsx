@@ -9,7 +9,7 @@ import { WorkspaceLayout } from './WorkspaceLayout'
 import { StudioAccess } from './StudioAccess'
 import { AccountPage } from '../pages/Account'
 import { PurchasesPage } from '../pages/Purchases'
-import { StudioPage } from '../pages/Studio'
+import { StudioPage, StudioSalesOrderPage } from '../pages/Studio'
 import { StudioPublishPage } from '../pages/StudioPublish'
 import { OrderPage, ReceiptPage } from '../pages/Orders'
 import { SettingsPage } from '../pages/Settings'
@@ -22,13 +22,14 @@ export function WorkspaceRoutes({ route, t, language }: { route: Route; t: Copy;
   useEffect(() => { if (isWorkspace && ready && !account) navigate(authHash('login', routeHash(route))) }, [isWorkspace, ready, account, route.page, route.subId])
   if (!isWorkspace) return null
   if (!ready || !account) return <main id="main"><LoadingState label={language === 'zh' ? '正在恢复登录状态…' : 'Restoring session…'} /></main>
-  const creator = ['studio', 'studio-publish', 'settlement'].includes(route.page)
+  const creator = ['studio', 'studio-publish', 'studio-sales-order', 'settlement'].includes(route.page)
   let content
   switch (route.page) {
     case 'admin': content = <AdminPage key={route.subId ?? 'overview'} t={t} language={language} section={route.subId} />; break
     case 'account': content = <AccountPage t={t} language={language} />; break
     case 'purchases': content = <PurchasesPage t={t} language={language} />; break
     case 'studio': content = <StudioPage t={t} language={language} section={route.subId} />; break
+    case 'studio-sales-order': content = <StudioSalesOrderPage t={t} language={language} orderId={route.subId} />; break
     case 'studio-publish': content = <StudioPublishPage key={route.subId ?? 'new'} t={t} language={language} productId={route.subId} />; break
     case 'settings': content = <SettingsPage t={t} language={language} />; break
     case 'support': content = <SupportPage t={t} language={language} />; break

@@ -9,6 +9,7 @@ import { Home } from '../pages/Home'
 import { MarketPage, PackDetailPage } from '../pages/Market'
 import { UiPage } from '../pages/Ui'
 import { LicensePage } from '../pages/License'
+import { PrivacyPage } from '../pages/Privacy'
 
 const DocsPage = lazy(() => import('../pages/Docs').then((module) => ({ default: module.DocsPage })))
 const FaqPage = lazy(() => import('../pages/Faq').then((module) => ({ default: module.FaqPage })))
@@ -27,6 +28,7 @@ export function RouteOutlet({ route, t, language }: { route: Route; t: Copy; lan
       {route.page === 'blog' && <main id="main"><BlogPage t={t} language={language} subId={route.subId} /></main>}
     </Suspense>
     {route.page === 'ui' && <UiPage t={t} language={language} />}
+    {route.page === 'privacy' && <PrivacyPage t={t} language={language} />}
     {route.page === 'license' && <LicensePage t={t} language={language} />}
   </>
 }

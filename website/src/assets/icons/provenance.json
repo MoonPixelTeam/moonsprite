@@ -92,6 +92,10 @@
     "sourceHash": "00ace8fc6b84b51ffe5aa992196ff4adbed9f5ce5e9bff54e47114b03b55aff0",
     "svgHash": "dd19e242ddcfd9c198b3f48270a34ecc510f2d7a48234e628548fed2a9f9c593"
   },
+  "hot": {
+    "source": "website/src/assets/icons/hot.svg",
+    "kind": "file"
+  },
   "userSignedOut": {
       "source": "website/src/assets/icons/header-user-reference.png",
     "kind": "reference",

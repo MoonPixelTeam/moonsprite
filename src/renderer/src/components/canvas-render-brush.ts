@@ -1,4 +1,4 @@
-import { brushPreviewHasUpperLayers } from './canvas-brush-layer-preview'
+import { brushPreviewNeedsComposite } from './canvas-brush-layer-preview'
 import { CanvasAdaptiveOutline, alignCanvasStrokePath } from './canvas-adaptive-outline'
 import type { RgbaColor } from '@shared/types-color'
 import { readLayerColorAt, resolveLayerCanvasColor } from '@/core/document-model'
@@ -214,7 +214,7 @@ export function renderCanvasBrush({
         ? solidBrushPreviewRowSpans(previewBrushSize, currentSession.brushShape, previewBrushAngle, optimizedRotationEnabled)
         : null
     const compositeFilledPreview = !drawing && (brushPreviewMode === 'full' || brushPreviewMode === 'full-edge')
-      && brushPreviewHasUpperLayers(document, currentActiveLayer.id)
+      && brushPreviewNeedsComposite(document, currentActiveLayer.id)
     const directFullPreview = Boolean(
       !drawing && !compositeFilledPreview &&
         solidPreviewSpans &&

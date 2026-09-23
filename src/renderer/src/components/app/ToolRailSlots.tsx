@@ -44,6 +44,7 @@ function RailSlot({ entry, active, memory, onActivate, available = () => true, s
   const { locale, t } = useI18n()
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const held = useRef(false)
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null)
   const flyout = useRef<HTMLDivElement>(null)
   const slot = useRef<HTMLDivElement>(null)
   const cancel = () => { clearTimeout(timer.current); timer.current = undefined }
@@ -81,8 +82,9 @@ function RailSlot({ entry, active, memory, onActivate, available = () => true, s
         onPointerDown={event => {
           if (event.button !== 0) return
           held.current = false
+          pressOrigin.current = { x: event.clientX, y: event.clientY }
           if (entry.kind === 'group') timer.current = setTimeout(() => { held.current = true; toggle() }, 400)
-        }} onPointerUp={cancel} onPointerCancel={cancel} onPointerLeave={cancel}
+        }} onPointerMove={event => { const origin = pressOrigin.current; if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 8) cancel() }} onPointerUp={cancel} onPointerCancel={cancel} onPointerLeave={cancel}
         onClick={() => { if (held.current) { held.current = false; return } if (expandOnClick && entry.kind === 'group') { onActivate(tool.id); toggle(); return } choose(tool.id) }}>
         <PixelAssetIcon src={tool.icon} className="rail-tool-icon" /><small>{shortcut(tool.shortcutId)}</small>
       </button>

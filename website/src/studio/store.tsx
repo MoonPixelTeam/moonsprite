@@ -3,6 +3,7 @@ import { api, readStudioUnlocked, writeStudioUnlocked } from '../api'
 import { useAccount } from '../account/store'
 import type { Ledger, StudioProduct, Withdrawal } from '../api'
 import { MARKET_PRODUCTS, type MarketProduct } from '../market/catalog'
+import { studioToProduct } from '../market/catalogue'
 
 /*
  * The seller side: published packs, the money they earned, and withdrawal requests —
@@ -44,18 +45,7 @@ const StudioContext = createContext<StudioStore | null>(null)
 
 /** Studio packs first, then the built-in catalogue: both are buyable. */
 export function allProducts(studioProducts: StudioProduct[]): MarketProduct[] {
-  const asProducts = studioProducts.map((item) => ({
-    id: item.id,
-    category: item.category,
-    image: item.image,
-    name: item.name,
-    tagline: item.tagline,
-    body: item.body,
-    price: item.price,
-    size: { zh: item.size, en: item.size },
-    formats: item.formats,
-    includes: [],
-  } as MarketProduct))
+  const asProducts = studioProducts.map((item) => studioToProduct(item, studioProducts))
   return [...asProducts, ...MARKET_PRODUCTS]
 }
 

@@ -1,10 +1,12 @@
-import { WorkspacePage } from '../workspace/WorkspaceLayout'
+import { TaskLinks } from '../ui'
+import { Input, Textarea } from '../ui'
+import { WorkspacePage } from '../ui'
 import { useState } from 'react'
 import { PixelCheck as Check, PixelKeyRound as KeyRound, PixelX as X } from '../ui/icons'
 import type { Copy, Language } from '../content'
 import { useStudio } from '../studio/store'
 import { useData, type ListingStatus, type Report } from '../data/store'
-import { Alert, Button, Field, Panel } from '../ui'
+import { Alert, Button, Field, Panel, EmptyState, FilterBar, Metric, RecordSection, StatusBadge } from '../ui'
 import { formatPrice } from '../market/catalog'
 
 import { isLocalAdmin, unlockLocalAdmin, clearLocalAdmin } from '../api/permissions'
@@ -53,7 +55,7 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
               setGateError(true)
             }}>
               <Field label={strings.gateLabel}>
-                <input type="password" value={pass} onChange={(event) => setPass(event.target.value)} />
+                <Input type="password" value={pass} onChange={(event) => setPass(event.target.value)} />
               </Field>
               {gateError && <Alert tone="danger" role="alert">{t.studioPage.gateError}</Alert>}
               <Button type="submit" variant="primary" size="compact">{strings.gateEnter}</Button>
@@ -72,42 +74,29 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
 
   const title = section === 'listings' ? strings.listings : section === 'tickets' ? t.supportPage.tickets : section === 'reports' ? strings.reports : section === 'payouts' ? strings.withdrawals : section === 'settings' ? (language === 'zh' ? '平台设置' : 'Platform settings') : strings.title
   const visibleProducts = studio.products.filter((product) => filter === 'all' || statusOf(product.id) === filter)
-  return <WorkspacePage eyebrow="ADMIN" title={title} subtitle={strings.subtitle} back="#/market" backLabel={strings.back} >
-        <div>{problem && <Alert tone="danger" role="alert">{problem}</Alert>}</div>
+  return <WorkspacePage eyebrow="ADMIN" title={title} subtitle={section === 'listings' ? strings.listingsHint : section === 'reports' ? strings.reportsHint : section === 'payouts' ? strings.withdrawalsHint : section === 'tickets' ? (language === 'zh' ? '查看用户问题、关联订单与回复记录。' : 'Review customer questions, related orders and replies.') : section === 'settings' ? (language === 'zh' ? '设置作品销售的平台服务费比例。' : 'Set the service fee applied to product sales.') : strings.subtitle} >
+        {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
         <fieldset className="workspace-form-group" disabled={busy}>
         {!section && <>
-        <div className="studio-metrics">
-          <div className="studio-metric accent">
-            <span>{strings.revenue}</span>
-            <strong>{formatPrice(studio.platformFee)}</strong>
-            <small>{strings.revenueHint}</small>
-          </div>
-          <div className="studio-metric">
-            <span>{strings.fee}</span>
-            <strong>{studio.platformFeePercent}%</strong>
-            <small>{strings.feeHint(studio.platformFeePercent)}</small>
-          </div>
-          <div className="studio-metric">
-            <span>{strings.pending}</span>
-            <strong>{studio.products.filter((item) => statusOf(item.id) === 'pending').length}</strong>
-            <small>{strings.listingsHint}</small>
-          </div>
-        </div>
-
-        <Panel title={language === 'zh' ? '待处理事项' : 'Work queues'}><div className="workspace-task-list">
-          <a href="#/admin/listings"><strong>{strings.listings}</strong><span>{strings.listingsHint}</span><b>{studio.products.filter((p) => statusOf(p.id) === 'pending').length}</b></a>
-          <a href="#/admin/tickets"><strong>{t.supportPage.tickets}</strong><span>{language === 'zh' ? '查看问题并回复用户' : 'Review questions and reply to customers'}</span><b>{tickets.filter((ticket) => ticket.status === 'open').length}</b></a>
-          <a href="#/admin/reports"><strong>{strings.reports}</strong><span>{strings.reportsHint}</span><b>{openReports.length}</b></a>
-          <a href="#/admin/payouts"><strong>{strings.withdrawals}</strong><span>{strings.withdrawalsHint}</span><b>{studio.withdrawals.filter((item) => item.status === 'requested').length}</b></a>
-          <a href="#/admin/settings"><strong>{language === 'zh' ? '平台设置' : 'Platform settings'}</strong><span>{strings.feeHint(studio.platformFeePercent)}</span></a>
+        <Panel title={language === 'zh' ? '平台概况' : 'Platform overview'}><div className="studio-metrics">
+          <Metric label={strings.revenue} value={formatPrice(studio.platformFee, language)} hint={strings.revenueHint} />
+          <Metric label={strings.fee} value={`${studio.platformFeePercent}%`} hint={strings.feeHint(studio.platformFeePercent)} />
+          <Metric label={strings.pending} value={studio.products.filter((item) => statusOf(item.id) === 'pending').length} hint={strings.listingsHint} />
         </div></Panel>
+
+        <Panel title={language === 'zh' ? '待处理事项' : 'Work queues'}><TaskLinks label={language === 'zh' ? '任务入口' : 'Tasks'} compact items={[
+{ href: '#/admin/listings', title: strings.listings, description: strings.listingsHint, count: studio.products.filter((p) => statusOf(p.id) === 'pending').length },
+{ href: '#/admin/tickets', title: t.supportPage.tickets, description: language === 'zh' ? '查看问题并回复用户' : 'Review questions and reply to customers', count: tickets.filter((ticket) => ticket.status === 'open').length },
+{ href: '#/admin/reports', title: strings.reports, description: strings.reportsHint, count: openReports.length },
+{ href: '#/admin/payouts', title: strings.withdrawals, description: strings.withdrawalsHint, count: studio.withdrawals.filter((item) => item.status === 'requested').length },
+{ href: '#/admin/settings', title: language === 'zh' ? '平台设置' : 'Platform settings', description: strings.feeHint(studio.platformFeePercent) }
+]} /></Panel>
         </>}
-        {section === 'listings' && <Panel title={strings.listings} icon={<Check aria-hidden="true" />}>
-          <p className="panel-copy">{strings.listingsHint}</p>
-          <div className="workspace-tabs" role="group" aria-label={strings.listings}>{['pending', 'approved', 'rejected', 'all'].map((value) => <Button key={value} size="compact" variant={filter === value ? 'primary' : 'secondary'} onClick={() => setFilter(value)}>{value === 'all' ? (language === 'zh' ? '全部' : 'All') : statusLabel[value as ListingStatus]}</Button>)}</div>
+        {section === 'listings' && <Panel title={language === 'zh' ? '审核队列' : 'Review queue'}>
+          <FilterBar label={strings.listings} value={filter} onChange={setFilter} options={['pending', 'approved', 'rejected', 'all'].map((value) => ({ value, label: `${value === 'all' ? (language === 'zh' ? '全部' : 'All') : statusLabel[value as ListingStatus]} (${studio.products.filter((product) => value === 'all' || statusOf(product.id) === value).length})` }))} />
           {visibleProducts.length === 0
-            ? <p className="panel-copy">{strings.noListings}</p>
+            ? <EmptyState title={strings.noListings} description={language === 'zh' ? '当前筛选下没有作品，可切换状态查看其他作品。' : 'No listings in this view. Select another status to review other listings.'} />
             : <ul className="admin-list">
               {visibleProducts.map((product) => {
                 const state = statusOf(product.id)
@@ -115,9 +104,9 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
                 return <li key={product.id}>
                   <span className="admin-pack">
                     <strong>{product.name[language]}</strong>
-                    <small>{product.formats.join(' · ')} · {formatPrice(product.price)}</small>
+                    <small>{product.formats.join(' · ')} · {formatPrice(product.price, language)}</small>
                   </span>
-                  <span className={`admin-state ${state}`}>{statusLabel[state]}</span>
+                  <StatusBadge tone={state === 'approved' ? 'success' : state === 'rejected' ? 'danger' : 'warning'}>{statusLabel[state]}</StatusBadge>
                   {state === 'rejected' && why && <span className="admin-reason">{why}</span>}
                   <span className="admin-actions">
                     {state !== 'approved' && <Button size="compact" icon={<Check aria-hidden="true" />} onClick={() => { void perform(() => setStatus(product.id, 'approved')) }}>
@@ -132,34 +121,32 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
                     void perform(() => setStatus(product.id, 'rejected', reason)).then((ok) => { if (ok) { setRejecting(null); setReason('') } })
                   }}>
                     <Field label={strings.rejectReason}>
-                      <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={80} required />
+                      <Input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={80} required />
                     </Field>
-                    <Button type="submit" size="compact">{strings.reject}</Button>
+                    <Button type="submit" size="compact">{strings.reject}</Button><Button onClick={() => { setRejecting(null); setReason('') }}>{language === 'zh' ? '取消' : 'Cancel'}</Button>
                   </form>}
                 </li>
               })}
             </ul>}
         </Panel>}
         {section === 'tickets' && <Panel title={language === 'zh' ? '订单售后工单' : 'Order support tickets'}>
-          {tickets.length === 0 && <p>{t.supportPage.noTickets}</p>}
-          {tickets.map((ticket) => <form className="settings-form" key={ticket.id} onSubmit={(event) => {
+          {tickets.length === 0 && <EmptyState title={t.supportPage.noTickets} />}
+          {tickets.map((ticket) => <RecordSection key={ticket.id} title={ticket.subject} meta={<>{ticket.accountId} · {ticket.orderId ?? ticket.id}</>} status={<StatusBadge tone={ticket.status === 'open' ? 'warning' : 'success'}>{ticket.status === 'open' ? t.supportPage.statusOpen : t.supportPage.statusAnswered}</StatusBadge>}><form className="settings-form" onSubmit={(event) => {
             event.preventDefault()
             const reply = new FormData(event.currentTarget).get('reply')
             void perform(() => answerTicket(ticket, String(reply ?? '')))
           }}>
-            <strong>{ticket.subject}</strong>
-            <small>{ticket.accountId} · {ticket.orderId ?? ticket.id}</small>
             <p>{ticket.message}</p>
-            {ticket.reply && <p>{ticket.reply}</p>}
-            <Field label={language === 'zh' ? '回复' : 'Reply'}><textarea name="reply" required maxLength={1000} /></Field>
+            {ticket.reply && <Alert tone="info" title={language === 'zh' ? '上次回复' : 'Previous reply'}>{ticket.reply}</Alert>}
+            <Field label={language === 'zh' ? '回复' : 'Reply'}><Textarea name="reply" required maxLength={1000} /></Field>
             <Button type="submit">{language === 'zh' ? '回复工单' : 'Reply to ticket'}</Button>
-          </form>)}
+          </form></RecordSection>)}
         </Panel>}
 
         {section === 'reports' && <Panel title={strings.reports}>
-          <p className="panel-copy">{strings.reportsHint}</p>
+          
           {openReports.length === 0
-            ? <p className="panel-copy">{strings.noReports}</p>
+            ? <EmptyState title={strings.noReports} />
             : <ul className="report-list">
               {openReports.map((report) => <li key={report.id}>
                 <span className="report-pack">{report.productName}</span>
@@ -174,13 +161,13 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
         </Panel>}
 
         {section === 'payouts' && <Panel title={strings.withdrawals} icon={<Check aria-hidden="true" />}>
-          <p className="panel-copy">{strings.withdrawalsHint}</p>
+          
           {studio.withdrawals.length === 0
-            ? <p className="panel-copy">{strings.noWithdrawals}</p>
+            ? <EmptyState title={strings.noWithdrawals} />
             : <ul className="report-list">
               {studio.withdrawals.map((item) => <li key={item.id}>
-                <span className="report-pack">{formatPrice(item.amount)} · {item.destination}</span>
-                <span className="report-reason">{t.marketPage.payoutStatus[item.status]}</span>
+                <span className="report-pack">{formatPrice(item.amount, language)} · {item.destination}</span>
+                <StatusBadge tone={item.status === 'paid' ? 'success' : item.status === 'rejected' ? 'danger' : 'warning'}>{t.marketPage.payoutStatus[item.status]}</StatusBadge>
                 <small>{new Date(item.requestedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}</small>
                 <span className="admin-actions">
                   {item.status === 'requested' && <>
@@ -195,7 +182,7 @@ export function AdminPage({ t, language, section }: { t: Copy; language: Languag
         {section === 'settings' && <Panel title={strings.fee}>
           <p className="panel-copy">{strings.feeHint(studio.platformFeePercent)}</p>
           <form className="settings-form" onSubmit={(event) => { event.preventDefault(); void perform(() => studio.setPlatformFeePercent(Number(fee))) }}>
-            <Field label={language === 'zh' ? '平台费率（%）' : 'Platform fee (%)'}><input type="number" min="0" max="100" step="1" required value={fee} placeholder={String(studio.platformFeePercent)} onChange={(event) => setFee(event.target.value)} /></Field>
+            <Field label={language === 'zh' ? '平台费率（%）' : 'Platform fee (%)'}><Input type="number" min="0" max="100" step="1" required value={fee} placeholder={String(studio.platformFeePercent)} onChange={(event) => setFee(event.target.value)} /></Field>
             <Button type="submit" variant="primary">{language === 'zh' ? '保存费率' : 'Save fee'}</Button>
           </form>
         </Panel>}

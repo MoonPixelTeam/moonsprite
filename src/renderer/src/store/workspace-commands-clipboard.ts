@@ -964,6 +964,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
     },
 
     async pasteAsNewLayer() {
+      if (isCanvasToolGestureLocked()) return false
       const systemSelection = await clipboardService.readSystemSelection(() => window.moonSprite.readClipboardImage())
       if (clipboardService.getLayers() && await clipboardService.preferInternalLayers(systemSelection)) return get().pasteLayersFromClipboard()
       const clipboard = await clipboardService.readSelection(() => window.moonSprite.readClipboardImage())
@@ -974,8 +975,12 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         set({ message: tr('workspace.clipboard.noContent') })
         return false
       }
+      if (isCanvasToolGestureLocked()) return false
+      get().commitFloatingPaste()
       get().mutateActive((session) => {
         const document = session.document
+        const previousPixelSelection = cloneSelectionMask(session.selection)
+        const previousPivot = session.selectionPivot ? { ...session.selectionPivot } : null
         const placement = resolveClipboardPlacement({
           width: clipboard.width,
           height: clipboard.height,
@@ -1009,6 +1014,15 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
         session.selectedGroupIds = []
         session.selectedLayerIds = [layer.id]
         session.layerSelectionAnchorId = layer.id
+        const pastedSelection = { x: placement.x, y: placement.y, width: clipboard.width, height: clipboard.height }
+        session.activeLayerMaskId = null
+        session.selection = cloneSelectionMask(pastedSelection)
+        session.selectionPivot = null
+        session.tool = 'selection'
+        session.selectionKind = 'rectangle'
+        session.selectionMode = 'replace'
+        session.freeTransformActive = false
+        session.freeTransformQuad = null
         setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layer.id })
         session.history.push({
           label: tr('workspace.history.pasteAsLayer'),
@@ -1019,6 +1033,8 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
             session.selectedLayerIds = previousSelection
             session.selectedGroupId = previousGroupId
             session.selectedGroupIds = previousGroupIds
+            session.selection = cloneSelectionMask(previousPixelSelection)
+            session.selectionPivot = previousPivot ? { ...previousPivot } : null
           },
           redo: () => {
             if (!document.layers.some((candidate) => candidate.id === layer.id)) document.layers.splice(Math.min(insertionIndex, document.layers.length), 0, layer)
@@ -1026,6 +1042,8 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
             session.selectedGroupId = null
             session.selectedGroupIds = []
             session.selectedLayerIds = [layer.id]
+            session.selection = cloneSelectionMask(pastedSelection)
+            session.selectionPivot = null
           }
         })
       })

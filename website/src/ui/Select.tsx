@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { PixelCheck as Check, PixelChevronDown as ChevronDown } from './icons'
+import { Tooltip } from './Workbench'
 
 export type SelectOption<T extends string> = { value: T; label: string }
 
@@ -11,7 +12,7 @@ export type SelectOption<T extends string> = { value: T; label: string }
  * to close, Up/Down/Home/End to move, Enter or Space to choose, and the list carries the
  * listbox/option roles so a screen reader announces it as one.
  */
-export function Select<T extends string>({ value, options, onChange, label, className, align = 'start' }: {
+export function Select<T extends string>({ value, options, onChange, label, className, align = 'start', disabled }: {
   value: T
   options: SelectOption<T>[]
   onChange: (value: T) => void
@@ -19,6 +20,7 @@ export function Select<T extends string>({ value, options, onChange, label, clas
   label: string
   className?: string
   align?: 'start' | 'end'
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)))
@@ -74,7 +76,7 @@ export function Select<T extends string>({ value, options, onChange, label, clas
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      if (open) choose(options[active].value)
+      if (open && options[active]) choose(options[active].value)
       else setOpen(true)
     }
   }
@@ -83,13 +85,16 @@ export function Select<T extends string>({ value, options, onChange, label, clas
     <button
       type="button"
       className="ui-select-button"
+      disabled={disabled || options.length === 0}
       aria-haspopup="listbox"
       aria-expanded={open}
       aria-controls={open ? `${id}-list` : undefined}
+      aria-activedescendant={open ? `${id}-option-${active}` : undefined}
       aria-label={label}
       onClick={() => setOpen((value) => !value)}
-      onKeyDown={onButtonKeyDown}>
-      <span>{current?.label}</span>
+      onKeyDown={(event) => { if (event.key === 'Tab') setOpen(false); else onButtonKeyDown(event) }}>
+      <span className="ui-select-label">{current?.label}</span>
+      {current && <Tooltip content={current.label} />}
       <ChevronDown aria-hidden="true" />
     </button>
     {open && <ul
@@ -109,7 +114,8 @@ export function Select<T extends string>({ value, options, onChange, label, clas
           className={option.value === value ? 'selected' : undefined}
           onMouseEnter={() => setActive(index)}
           onClick={() => choose(option.value)}>
-          <span>{option.label}</span>
+          <span className="ui-select-option-label">{option.label}</span>
+          <Tooltip content={option.label} />
           {option.value === value && <Check aria-hidden="true" />}
         </button>
       </li>)}

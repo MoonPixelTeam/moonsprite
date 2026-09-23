@@ -294,6 +294,9 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
       return
     }
     selectInstanceRow(instance)
+    // The dialog stays open while browsing the layer list; retarget it to the
+    // layer that was just selected instead of leaving stale values visible.
+    if (properties) setProperties({ primaryId: instance.id, instanceIds: [instance.id] })
   }
   const stopRowPointer = (event: ReactPointerEvent<HTMLElement>): void => {
     event.preventDefault()
@@ -350,6 +353,6 @@ export function FreeTileInstanceLayers({ session, layer, listRef }: FreeTileInst
       <span className="context-menu-divider" />
       <button className="context-menu-item danger" type="button" role="menuitem" disabled={contextDeleteDisabled} onClick={() => deleteInstances(contextEntry.instance)}><PixelUtilityIcon kind="delete" /><span>{t(contextInstanceIds.length > 1 ? 'freeTiles.deleteSelectedInstances' : 'freeTiles.deleteInstance')}</span></button>
     </div>, document.body)}
-    {propertiesEntry && propertyInstanceIds.length > 0 && <FreeTileInstancePropertiesDialog instanceIds={propertyInstanceIds} name={propertiesEntry.sourceName} x={propertiesEntry.bounds.x} y={propertiesEntry.bounds.y} opacity={propertiesEntry.opacity} blendMode={propertiesEntry.blendMode} rotation={propertiesEntry.instance.rotation ?? 0} flipHorizontal={propertiesEntry.instance.flipHorizontal === true} flipVertical={propertiesEntry.instance.flipVertical === true} locked={propertyInstanceIds.length === 1 && propertiesEntry.instance.locked === true} onClose={() => setProperties(null)} />}
+    {propertiesEntry && propertyInstanceIds.length > 0 && <FreeTileInstancePropertiesDialog key={`${properties?.primaryId ?? ''}:${propertyInstanceIds.join(',')}`} instanceIds={propertyInstanceIds} name={propertiesEntry.sourceName} x={propertiesEntry.bounds.x} y={propertiesEntry.bounds.y} opacity={propertiesEntry.opacity} blendMode={propertiesEntry.blendMode} rotation={propertiesEntry.instance.rotation ?? 0} flipHorizontal={propertiesEntry.instance.flipHorizontal === true} flipVertical={propertiesEntry.instance.flipVertical === true} locked={propertyInstanceIds.length === 1 && propertiesEntry.instance.locked === true} onClose={() => setProperties(null)} />}
   </>
 }

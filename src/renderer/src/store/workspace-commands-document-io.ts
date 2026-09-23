@@ -3,6 +3,7 @@ import { openImageSequencePaths } from './image-sequence-import'
 import { resolveDocumentClose } from './workspace-close-coordinator'
 import { workspaceCommandRuntime } from './workspace-command-runtime'
 import type { SpriteDocument } from '@shared/types-document'
+import { checkCanvasResizeResources } from '@/core/canvas-resize-resources'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { captureDocumentImageResizeSnapshot, convertDocumentColorMode, createId, documentImageResizeSnapshotBytes, resizeDocumentAt, resizeDocumentImage, restoreDocumentImageResizeSnapshot } from '@/core/document-model'
 import { documentAnimationVisibleContentBounds, documentVisibleContentBounds } from '@/core/document-composite'
@@ -166,11 +167,11 @@ export function createWorkspaceDocumentIoCommands({ get, set, recording, service
       if (!current || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) { set({ message: tr('workspace.canvasSizePositive') }); return }
       try {
         const resource = await window.moonSprite.getResourceInfo()
-        const check = checkResourceLimit(width, height, current.document.layers.length, current.document.colorMode, resource)
+        const horizontal = offsetX ?? (anchor === 'nw' || anchor === 'w' || anchor === 'sw' ? 0 : anchor === 'ne' || anchor === 'e' || anchor === 'se' ? width - current.document.width : Math.floor((width - current.document.width) / 2))
+        const vertical = offsetY ?? (anchor === 'nw' || anchor === 'n' || anchor === 'ne' ? 0 : anchor === 'sw' || anchor === 's' || anchor === 'se' ? height - current.document.height : Math.floor((height - current.document.height) / 2))
+        const check = checkCanvasResizeResources(current.document, width, height, horizontal, vertical, trimOutside, resource)
         if (!check.allowed) throw new Error(check.reason)
         get().mutateActive((session) => {
-          const horizontal = offsetX ?? (anchor === 'nw' || anchor === 'w' || anchor === 'sw' ? 0 : anchor === 'ne' || anchor === 'e' || anchor === 'se' ? width - session.document.width : Math.floor((width - session.document.width) / 2))
-          const vertical = offsetY ?? (anchor === 'nw' || anchor === 'n' || anchor === 'ne' ? 0 : anchor === 'sw' || anchor === 's' || anchor === 'se' ? height - session.document.height : Math.floor((height - session.document.height) / 2))
           commitCanvasResize(session, width, height, horizontal, vertical, trimOutside, tr('canvasResize.title'))
         })
       } catch (error) {

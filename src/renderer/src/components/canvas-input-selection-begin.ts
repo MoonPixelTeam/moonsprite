@@ -876,6 +876,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           path: [lassoStart],
           ...(lassoTileStart ? { tileRepeatStart: lassoTileStart } : {})
         }
+        scheduleDraw()
         event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         return true
       }

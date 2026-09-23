@@ -293,25 +293,23 @@ export function createCanvasBrushPath({
     fillPreviewPixelRects(previewFillRects, erase)
   }
   const drawShapeContourPreview = (points: Iterable<Point>, color: RgbaColor, selection: SelectionMask | null): void => {
-    const drawn = new Set<number>()
-    if (!hasSymmetry(session.symmetryAxes)) {
-      for (const point of points) {
-        if (selection && !selectionContains(selection, point.x, point.y)) continue
-        const key = point.y * document.width + point.x
-        if (drawn.has(key)) continue
-        drawn.add(key)
+    const drawn = new Set<string>()
+    const drawPoint = (point: Point): void => {
+      const key = `${point.x}:${point.y}`
+      if (drawn.has(key)) return
+      drawn.add(key)
+      if (point.x < 0 || point.y < 0 || point.x >= document.width || point.y >= document.height) {
+        return
+      } else if (!selection || selectionContains(selection, point.x, point.y)) {
         drawPreviewPixel(point.x, point.y, previewColorAt(point.x, point.y, false, 255, color))
       }
+    }
+    if (!hasSymmetry(session.symmetryAxes)) {
+      for (const point of points) drawPoint(point)
       return
     }
     for (const sourcePoint of points) {
-      for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter)) {
-        if (selection && !selectionContains(selection, point.x, point.y)) continue
-        const key = point.y * document.width + point.x
-        if (drawn.has(key)) continue
-        drawn.add(key)
-        drawPreviewPixel(point.x, point.y, previewColorAt(point.x, point.y, false, 255, color))
-      }
+      for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, false)) drawPoint(point)
     }
   }
   const drawStrokePreview = (from: Point, to: Point, erase = false, baseline?: ReadonlyMap<number, number>, selection: SelectionMask | null = null): void => {

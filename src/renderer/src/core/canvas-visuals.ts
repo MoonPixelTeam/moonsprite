@@ -130,16 +130,19 @@ export const selectionPathPreviewPixelVisible = (
 export const selectionCursorCornerRects = (pixel: VisualRect, devicePixelRatio = 1): VisualRect[] => {
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
   const align = (value: number): number => Math.round(value * dpr) / dpr
-  // The pointed cell belongs to the canvas preview. The cursor is only four
-  // corners immediately outside that cell, so the preview remains the center
-  // square shown between the marks instead of becoming part of the cursor.
-  const cellSize = Math.max(1, Math.min(pixel.width, pixel.height))
-  const arm = Math.max(2, Math.min(6, Math.round(cellSize / 4)))
+  // Match Aseprite's strokeSelectionCrossPixels proportions: each corner
+  // extends three UI units, with a one-unit stroke and minimum pixel gap.
+  // These units stay fixed while the projected document pixel changes size.
+  const stroke = 2
+  const arm = 3 * stroke
+  const width = Math.max(stroke, pixel.width), height = Math.max(stroke, pixel.height)
+  pixel = {
+    x: align(pixel.x + (pixel.width - width) / 2),
+    y: align(pixel.y + (pixel.height - height) / 2),
+    width: align(width), height: align(height)
+  }
   const left = align(pixel.x - arm)
   const top = align(pixel.y - arm)
-  const right = align(pixel.x + pixel.width + arm)
-  const bottom = align(pixel.y + pixel.height + arm)
-  const stroke = 2
   return [
     // Each L has its bend facing the pointed cell.
     { x: left, y: pixel.y - stroke, width: arm, height: stroke },

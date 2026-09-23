@@ -1,4 +1,6 @@
 .tool-rail { min-height: 0; }
 .tool-rail-slots { display: flex; flex-direction: inherit; align-items: center; gap: var(--ui-space-2); min-height: 0; min-width: 0; max-width: 100%; max-height: 100%; overflow: auto; scrollbar-width: none; }
 .tool-rail-slots::-webkit-scrollbar { display: none; }
+.tool-rail-slots { flex: 0 1 auto; padding: 0; }
+.tool-rail-slots > .tool-slot { flex-shrink: 0; }
 .tool-rail .tool-slot > .tool-flyout.custom-tool-flyout { position: fixed; inset: auto; margin: 0; grid-auto-flow: column; grid-auto-columns: var(--tool-rail-button-size); max-width: calc(100vw - 16px); max-height: 60vh; overflow-x: auto; overflow-y: hidden; color: var(--theme-text-primary); }

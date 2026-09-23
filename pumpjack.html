@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pumpjack · Motion study</title>
+  <style>
+    :root{color-scheme:dark;--sky:#182c45;--ink:#101e30;--steel:#57758c;--light:#d6e6e9;--orange:#e8a064;--blue:#2979ff}
+    *{box-sizing:border-box}body{margin:0;min-height:100svh;background:var(--sky);color:var(--light);font-family:Calibri,"Segoe UI",sans-serif;display:grid;place-items:center;padding:32px}
+    main{width:min(1120px,100%)}header{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:12px}h1{font-family:Bahnschrift,"Arial Narrow",sans-serif;font-stretch:condensed;font-size:clamp(32px,5vw,58px);font-weight:600;letter-spacing:-2px;margin:0}header p{margin:8px 0;color:#a1b8c9;font-size:14px}.eyebrow{font:11px Consolas,monospace;text-transform:uppercase;letter-spacing:3px;color:var(--orange);margin-bottom:12px}
+    .scene{border:1px solid #486077;background:#233b55;overflow:hidden}svg{display:block;width:100%;height:auto}footer{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 0;font-size:13px}.controls{display:flex;align-items:center;gap:22px}button{font:inherit;background:var(--blue);color:white;border:0;padding:11px 20px;cursor:pointer;min-width:90px}button:hover{filter:brightness(1.12)}button:focus-visible,input:focus-visible{outline:2px solid var(--orange);outline-offset:5px}label{display:flex;align-items:center;gap:12px}input{width:100px;accent-color:var(--blue)}output{font:12px Consolas,monospace;width:34px}.note{color:#a1b8c9} @media(max-width:600px){body{padding:20px 14px}header{align-items:start;flex-direction:column;gap:0}header p{margin-bottom:15px}footer{align-items:start;flex-direction:column;gap:16px}.controls{gap:14px}label{gap:8px}input{width:80px}}
+  </style>
+</head>
+<body>
+<main>
+  <header><div><div class="eyebrow">Oilfield / Motion study</div><h1>The walking beam.</h1></div><p>A continuous rotation. A steady rise and fall.</p></header>
+  <div class="scene">
+    <svg viewBox="0 0 1000 600" role="img" aria-labelledby="scene-title scene-description">
+      <title id="scene-title">Animated oil pumpjack at dusk</title>
+      <desc id="scene-description">A motor turns a counterbalanced crank. Its connecting rod rocks a walking beam on a steel tower, raising and lowering the polished rod at the wellhead.</desc>
+      <defs>
+        <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#233b55"/><stop offset="1" stop-color="#8d8b8e"/></linearGradient>
+        <linearGradient id="ground" x2="0" y2="1"><stop stop-color="#344354"/><stop offset="1" stop-color="#182c45"/></linearGradient>
+        <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0V10" stroke="#718397" stroke-width="2"/></pattern>
+      </defs>
+      <path fill="url(#sky)" d="M0 0H1000V600H0z"/>
+      <circle cx="802" cy="138" r="45" fill="#edc3a0" opacity=".88"/>
+      <path d="M0 385 80 362 156 376 249 349 359 373 430 351 550 376 663 338 772 364 893 339 1000 361V490H0Z" fill="#566171"/>
+      <path d="M0 418 115 404 225 425 335 394 468 416 585 397 740 415 854 386 1000 413V500H0Z" fill="#3e4f62"/>
+      <!-- A quiet utility line places the machine in an oilfield. -->
+      <g fill="none" stroke="#344657" stroke-width="3" opacity=".7"><path d="M875 361V455M952 375V454M858 375H892M939 387H965"/><path d="M858 378Q907 406 939 390M892 378Q928 400 965 390" stroke-width="1"/></g>
+      <path d="M0 461Q450 438 1000 464V600H0Z" fill="url(#ground)"/>
+      <ellipse cx="498" cy="529" rx="317" ry="19" fill="#101e30" opacity=".4"/>
+      <g stroke="#6f7e8b" opacity=".4"><path d="M65 503h45m728 44h80M119 553h50m-2-73h28m630 22h37M347 572h100"/></g>
+      <!-- Concrete plinth and structural steel. -->
+      <path d="M350 501H774V524H350Z" fill="#8c979c"/><path d="M350 514H774V524H350Z" fill="#5c6c7a"/>
+      <path d="M425 496 500 250 575 496M442 449H559M462 381H538M478 326H522M445 449 537 382M463 382 521 326" fill="none" stroke="#101e30" stroke-width="17" stroke-linejoin="round"/>
+      <path d="M425 493 500 250 575 493M445 449H557M463 381H537" fill="none" stroke="#57758c" stroke-width="6"/>
+      <path d="M407 493H447V501H407ZM555 493H594V501H555Z" fill="#101e30"/>
+      <!-- Drive motor and gearbox. -->
+      <path d="M604 446H695V498H604Z" fill="#101e30" stroke="#7790a1" stroke-width="2"/>
+      <rect x="700" y="460" width="51" height="36" rx="5" fill="#57758c" stroke="#101e30" stroke-width="4"/>
+      <path d="M711 468V488m8-20v20m8-20v20m8-20v20" stroke="#243b51" stroke-width="3"/>
+      <path d="M690 478H702" stroke="#a1b8c9" stroke-width="6"/>
+      <g id="crank">
+        <path d="M650 440 609 409A52 52 0 0 0 609 471Z" fill="#e8a064" stroke="#101e30" stroke-width="5"/>
+        <path d="M650 440H695" stroke="#101e30" stroke-width="18"/>
+        <path d="M650 440H695" stroke="#7790a1" stroke-width="9"/>
+      </g>
+      <circle cx="650" cy="440" r="13" fill="#101e30" stroke="#a1b8c9" stroke-width="3"/>
+      <path id="pitman-shadow" stroke="#101e30" stroke-width="15" fill="none"/>
+      <path id="pitman" stroke="#91a5b3" stroke-width="7" fill="none"/>
+      <!-- Walking beam rotates about its fixed saddle bearing. -->
+      <g id="beam">
+        <path d="M264 233H678V259H264Z" fill="#57758c" stroke="#101e30" stroke-width="5"/>
+        <path d="M280 238H670" stroke="#a1b8c9" stroke-width="3"/>
+        <path d="M290 258 470 274H529L659 258" fill="none" stroke="#101e30" stroke-width="7"/>
+        <path d="M260 150A260 260 0 0 0 260 350L289 318 278 185Z" fill="#e8a064" stroke="#101e30" stroke-width="6"/>
+        <path d="M268 172 280 196 289 304 266 329" fill="none" stroke="#f5c99b" stroke-width="3"/>
+        <path d="M270 212 282 215m-13 39 16 1m-13 39 16-2" stroke="#855936" stroke-width="4"/>
+        <circle cx="670" cy="250" r="10" fill="#101e30"/>
+      </g>
+      <circle cx="500" cy="250" r="18" fill="#101e30" stroke="#91a5b3" stroke-width="4"/><circle cx="500" cy="250" r="6" fill="#e8a064"/>
+      <circle id="rear-pin" r="8" fill="#d6e6e9" stroke="#101e30" stroke-width="4"/>
+      <circle id="crank-pin" r="8" fill="#d6e6e9" stroke="#101e30" stroke-width="4"/>
+      <path id="cable" fill="none" stroke="#17293d" stroke-width="3"/>
+      <g id="rod"><path id="polished-rod" d="M240 389V505" stroke="#d6e6e9" stroke-width="5"/><path d="M228 390H252" stroke="#101e30" stroke-width="7"/></g>
+      <!-- Fixed wellhead and delivery pipe. -->
+      <path d="M240 508V534H315V520" fill="none" stroke="#101e30" stroke-width="13"/><path d="M240 508V534H315V520" fill="none" stroke="#57758c" stroke-width="6"/>
+      <path d="M229 465H251V512H229Z" fill="#57758c" stroke="#101e30" stroke-width="4"/><path d="M220 480H260M220 503H260" stroke="#a1b8c9" stroke-width="6"/>
+      <path d="M250 491H280M273 480V503" stroke="#101e30" stroke-width="6"/><ellipse cx="273" cy="479" rx="13" ry="4" fill="none" stroke="#e8a064" stroke-width="3"/>
+      <path d="M207 516H275V526H207Z" fill="#8c979c"/>
+      <path d="M378 518H746" stroke="url(#hatch)" stroke-width="5"/>
+      <g fill="#a1b8c9" font-family="Consolas,monospace" font-size="10" letter-spacing="2"><text x="35" y="565">ROTARY → RECIPROCATING</text><text x="965" y="565" text-anchor="end">PUMPJACK</text></g>
+    </svg>
+  </div>
+  <footer><div class="controls"><button id="toggle" type="button" aria-pressed="false">Pause</button><label for="speed">Speed <input id="speed" type="range" min="0.25" max="2" step="0.25" value="1"><output id="rate" for="speed">1×</output></label></div><span class="note">Crank, connecting rod &amp; walking beam</span></footer>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  let playing = !motionPreference.matches, phase = 0, lastTime = null, frame;
+  const toggle = byId('toggle'), speed = byId('speed');
+  function draw(t) {
+    const cx = 650 + 45 * Math.cos(t), cy = 440 + 45 * Math.sin(t);
+    // Solve the four-bar linkage: rear beam pin lies on both circles.
+    const dx = cx - 500, dy = cy - 250, distance = Math.hypot(dx, dy);
+    const along = (170 * 170 - 200 * 200 + distance * distance) / (2 * distance);
+    const height = Math.sqrt(Math.max(0, 170 * 170 - along * along));
+    const qx = 500 + along * dx / distance + height * dy / distance;
+    const qy = 250 + along * dy / distance - height * dx / distance;
+    const angle = Math.atan2(qy - 250, qx - 500);
+    byId('beam').setAttribute('transform', `rotate(${angle * 180 / Math.PI} 500 250)`);
+    byId('crank').setAttribute('transform', `rotate(${t * 180 / Math.PI} 650 440)`);
+    for (const id of ['pitman', 'pitman-shadow']) byId(id).setAttribute('d', `M${cx} ${cy}L${qx} ${qy}`);
+    for (const [id, x, y] of [['rear-pin', qx, qy], ['crank-pin', cx, cy]]) {
+      byId(id).setAttribute('cx', x); byId(id).setAttribute('cy', y);
+    }
+    // The circular horsehead keeps the bridle vertical above the well.
+    const travel = -260 * angle;
+    byId('cable').setAttribute('d', `M240 250V${390 + travel}`);
+    byId('rod').setAttribute('transform', `translate(0 ${travel})`);
+    byId('polished-rod').setAttribute('d', `M240 389V${505 - travel}`);
+  }
+  function tick(time) {
+    if (lastTime !== null) phase = (phase + Math.min(time - lastTime, 80) / 1000 * Math.PI / 3 * Number(speed.value)) % (Math.PI * 2);
+    lastTime = time; draw(phase);
+    frame = requestAnimationFrame(tick);
+  }
+  function sync() {
+    cancelAnimationFrame(frame); lastTime = null;
+    toggle.textContent = playing ? 'Pause' : 'Play';
+    toggle.setAttribute('aria-pressed', String(!playing));
+    if (playing && !document.hidden) frame = requestAnimationFrame(tick);
+  }
+  toggle.addEventListener('click', () => { playing = !playing; sync(); });
+  speed.addEventListener('input', () => { byId('rate').textContent = `${speed.value}×`; });
+  motionPreference.addEventListener('change', event => { playing = !event.matches; sync(); });
+  document.addEventListener('visibilitychange', sync);
+  draw(phase); sync();
+</script>
+</body>
+</html>

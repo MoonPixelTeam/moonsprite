@@ -19,9 +19,8 @@
  * which are dark brown in the light theme — 1.1:1 against that image, effectively invisible.
  */
 .dev-badge { display: inline-flex; align-items: center; gap: var(--space-5); padding: var(--space-3) var(--space-5); background: rgb(9 10 13 / 55%); border: 1px solid rgb(255 255 255 / 24%); color: #fff; font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
-.hero h1 { margin-top: var(--space-5); color: #fff; font-family: var(--font-pixel); font-size: clamp(30px, 4vw, var(--font-display-lg)); font-weight: 700; line-height: .98; letter-spacing: -.035em; text-shadow: 0 2px 18px rgb(0 0 0 / 26%); }
+.hero h1 { margin-top: var(--space-5); color: #fff; font-family: var(--font-pixel); font-size: clamp(var(--font-h2), 4vw, var(--font-display-lg)); font-weight: 700; line-height: .98; letter-spacing: -.035em; text-shadow: 0 2px 18px rgb(0 0 0 / 26%); }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-8); }
-.hero .button.compact { min-height: 34px; }
 .hero-github { display: inline-flex; align-items: center; gap: var(--space-4); color: rgb(255 255 255 / 80%); font-size: var(--font-small); font-weight: 600; }
 .hero-github:hover { color: #fff; }
 .hero-github svg { width: 14px; height: 14px; }
@@ -44,6 +43,7 @@
 /* ---------- sections shared ---------- */
 
 .section-title { max-width: 700px; }
+.section-title.has-actions { max-width: none; }
 /* Section eyebrows read as an editor tool label: a hairline rule runs out from the text
    to the edge of the column, so each band opens the way a labelled region does on a
    canvas. The amber square marks the label the way the app marks the active tool. */
@@ -64,12 +64,30 @@
   /* Chinese headings are short, so this mainly keeps a long English heading from
      running the full 1160px column; balance handles the line breaks. */
   max-width: 26ch;
-  font-size: clamp(30px, 3.4vw, var(--font-h2-lg));
+  font-size: clamp(var(--font-h2), 3.4vw, var(--font-h2-lg));
   line-height: 1.1;
   font-weight: 700;
   letter-spacing: -.022em;
   text-wrap: balance;
 }
+.home-main .section-title h2 {
+  font-family: "Fusion Pixel", var(--font-pixel);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.25;
+  max-width: none;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .home-main .section-title h2 {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: var(--space-2);
+  }
+}
+.section-title h2 { display: inline-flex; align-items: center; gap: var(--space-4); }
+.section-title-icon { display: inline-flex; flex: 0 0 22px; align-items: center; justify-content: center; width: 22px; height: 22px; color: var(--accent); opacity: 1; }
+.section-title-icon svg { display: block; width: 22px !important; height: 22px !important; min-width: 22px; min-height: 22px; image-rendering: pixelated; }
 .section-title p { max-width: 58ch; margin-top: var(--space-7); color: var(--text-3); font-size: var(--font-body); line-height: 1.7; }
 
 /* The rule sits on the eyebrow's own line, extending to the column edge. */
@@ -128,7 +146,7 @@
 /* The homepage shows the market's own cards, so the only thing it contributes is the
    grid they wrap in: a tighter column floor than the browse grid, since this is a
    feature strip rather than a catalogue. */
-.pack-grid.featured { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-7); }
+.pack-grid.featured { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-7); }
 .teaser-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); margin-top: var(--space-13); }
 .teaser-actions > span { color: var(--text-4); font-size: var(--font-small); }
 

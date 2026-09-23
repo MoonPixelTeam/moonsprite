@@ -14,20 +14,21 @@ import { hasSymmetry, symmetryPoints, symmetricSpanPainter, type SymmetryAxes, t
 import { brushDitherContains, gradientColorForAmount, interpolateRgbaColor } from './gradient-color'
 import { tileRepeatRectSegments, wrapDocumentPointForTileRepeat } from './tilemap'
 import { applyInkColor, resolveInkStampColor } from './ink'
-import { compositeSelectionPixelOver, brushPaintBaselineByEdit, SolidPointRecorder, solidPointRecorderByEdit, brushCoverageByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK, ensureLayerCoversEditRect, insideSelection, paintLayerValue, BrushGradientSample, brushStampDimensions, lastBrushStampByEdit, BrushMaskPoint, defaultImageBrushSettings, wrappedIndex, imageBrushCoverageAt, imageBrushCoverage, brushTextureContains, interpolateBrushAngle } from './tools-pixel-edit'
+import { brushPaintBaselineByEdit, brushOriginalValue, brushEditParent, isSplitBrushEdit, lastBrushStampForEdit, lastBrushStampByEdit, type SolidPointRecorder, solidPointRecorderByEdit, brushCoverageByEdit, BRUSH_COVERAGE_CHUNK_BITS, BRUSH_COVERAGE_CHUNK_SIZE, BRUSH_COVERAGE_CHUNK_MASK } from './tools-pixel-edit-state'
+import { compositeSelectionPixelOver, ensureLayerCoversEditRect, insideSelection, paintLayerValue, BrushGradientSample, brushStampDimensions, BrushMaskPoint, defaultImageBrushSettings, wrappedIndex, imageBrushCoverageAt, imageBrushCoverage, brushTextureContains, interpolateBrushAngle } from './tools-pixel-edit'
 
 const compositeSelectionPixel = (document: SpriteDocument, layer: RasterLayer, index: number, value: number): number => (
   compositeSelectionPixelOver(document, layer, readLayerPacked(document, layer, index), value)
 )
 
 const layerColorBeforeEdit = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, index: number): RgbaColor => {
-  const original = brushPaintBaselineByEdit.get(edit)?.get(index) ?? edit.before.get(index)
+  const original = brushOriginalValue(edit, index)
   if (original === undefined) return readLayerColor(document, layer, index)
   return layer.format === 'rgba' ? unpackColor(original) : getPaletteEntry(document, original).color
 }
 
 const solidPointRecorderFor = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, packedValue: number, size: number): SolidPointRecorder | null => {
-  if (size < 64 || layer.offsetX !== 0 || layer.offsetY !== 0 || layer.width !== document.width || layer.height !== document.height) return null
+  if (isSplitBrushEdit(edit) || size < 64 || layer.offsetX !== 0 || layer.offsetY !== 0 || layer.width !== document.width || layer.height !== document.height) return null
   const existing = solidPointRecorderByEdit.get(edit)
   if (existing && existing.packedValue === packedValue) return existing
   if (existing) return null
@@ -112,7 +113,9 @@ const claimBrushCoverage = (edit: PixelEdit, key: string, index: number, coverag
   let chunk = coverageRecord.chunks.get(chunkIndex)
   if (!chunk) { chunk = new Uint16Array(BRUSH_COVERAGE_CHUNK_SIZE); coverageRecord.chunks.set(chunkIndex, chunk) }
   const offset = index & BRUSH_COVERAGE_CHUNK_MASK
-  const previousCoverage = chunk[offset] - 1
+  const parent = brushEditParent(edit)
+  const inheritedCoverage = parent ? brushCoverageByEdit.get(parent)?.get(key)?.chunks.get(chunkIndex)?.[offset] ?? 0 : 0
+  const previousCoverage = Math.max(chunk[offset], inheritedCoverage) - 1
   if (previousCoverage > coverageValue || (!replaceEqual && previousCoverage === coverageValue)) return false
   chunk[offset] = coverageValue + 1
   return true
@@ -215,10 +218,10 @@ export function paintBrush(
   const offsets = brushMaskOffsets(size, shape, texture, textureScale, stampX, stampY, imageBrush, imageBrushSettings, proceduralAntialiasStrength, brushPaintMode, patternOrigin?.x ?? stampX, patternOrigin?.y ?? stampY, brushDither, angle, optimizedRotation)
   const symmetricSpans = hasSymmetry(symmetryAxes)
   const pivotX = symmetryCenter?.x ?? document.width / 2, pivotY = symmetryCenter?.y ?? document.height / 2
-  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && normalizedOpacityScale === 1 && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255)
-    ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
+  const solidStampKey = inkMode === 'simple' && tileRepeatMode === 'off' && Math.abs(geometryAngle % 360) < 0.0001 && !selection && !imageBrush && texture === 'solid' && !brushDither?.enabled && !colorReplacement && !gradient && !coverageKey && (color.a === 0 || color.a === 255)
+    ? `${shape}:${stamp.width}x${stamp.height}:${color.a === 0 ? 'erase' : packColor(color)}:${normalizedOpacityScale}:${symmetricSpans ? `${symmetryAxes?.horizontal}:${symmetryAxes?.vertical}:${symmetryAxes?.diagonalDown}:${symmetryAxes?.diagonalUp}:${symmetryAxes?.rotational}:${pivotX}:${pivotY}` : ''}`
     : null
-  const solidPackedValue = solidStampKey
+  const solidPackedValue = solidStampKey && Math.round(255 * normalizedOpacityScale) === 255
     ? color.a === 0
       ? 0
       : layer.format === 'rgba'
@@ -227,7 +230,7 @@ export function paintBrush(
     : null
   const solidPointRecorder = solidPackedValue !== null ? solidPointRecorderFor(document, layer, edit, solidPackedValue, size) : null
   let occupancy: Uint8Array | null = null
-  const previousStamp = solidStampKey ? lastBrushStampByEdit.get(edit) : undefined
+  const previousStamp = solidStampKey ? lastBrushStampForEdit(edit) : undefined
   if (solidStampKey) {
     const occupancyKey = `${shape}:${stamp.width}x${stamp.height}`
     occupancy = solidBrushOccupancyCache.get(occupancyKey) ?? null
@@ -238,9 +241,13 @@ export function paintBrush(
       solidBrushOccupancyCache.set(occupancyKey, occupancy)
     }
   }
-  if (solidPackedValue !== null) {
+  if (solidStampKey) {
     preparePixelEdit(document, edit)
-    const packedValue = normalizeLayerPackedValue(document, layer, solidPackedValue)
+    const solidValue = solidPackedValue === null ? null : normalizeLayerPackedValue(document, layer, solidPackedValue)
+    const trackCoverage = isSplitBrushEdit(edit) || solidValue === null
+    const uniformCoverage = Math.round(255 * normalizedOpacityScale)
+    const uniformCoverageKey = color.a === 0 ? 'simple:erase' : `simple:paint:${color.r},${color.g},${color.b},${color.a}`
+    const stampedColor = resolveInkStampColor('simple', color, 255, normalizedOpacityScale)
     const rowSpans = solidBrushPreviewRowSpans(size, shape, geometryAngle, optimizedRotation)
     const rowSpanAt = (localY: number): SolidBrushPreviewRowSpan | undefined => {
       if (shape === 'line') {
@@ -269,6 +276,16 @@ export function paintBrush(
       for (let px = clippedFromX; px <= clippedToX; px += 1) {
         const index = layerIndexAt(layer, px, py)
         if (index === null) continue
+        if (trackCoverage && !claimBrushCoverage(edit, uniformCoverageKey, index, uniformCoverage)) continue
+        let packedValue = solidValue
+        if (packedValue === null) {
+          if (color.a === 0) {
+            const base = layerColorBeforeEdit(document, layer, edit, index)
+            const erased = { ...base, a: Math.round(base.a * (1 - uniformCoverage / 255)) }
+            packedValue = layer.format === 'rgba' ? packColor(erased) : erased.a === 0 ? 0 : paletteColorIdForCanvas(document, erased)
+          } else packedValue = paintLayerValue(document, layer, edit, index, stampedColor)
+          packedValue = normalizeLayerPackedValue(document, layer, packedValue)
+        }
         const current = layer.format === 'indexed' ? layer.pixels[index] : packedPixels ? packedPixels[index] : readLayerPacked(document, layer, index)
         if (current === packedValue) continue
         if (solidPointRecorder) {
@@ -285,7 +302,7 @@ export function paintBrush(
           rowDirtyRight = Math.max(rowDirtyRight, px + 1)
           continue
         }
-        if (edit.before.has(index)) continue
+        if (!trackCoverage && edit.before.has(index)) continue
         // A loaded layer may still use sparse runtime storage. Materialize it
         // before the first direct write so the write is not lost in the
         // placeholder pixel buffer when the runtime storage is detached.
@@ -293,7 +310,7 @@ export function paintBrush(
           markLayerContentChanged(layer)
           storageChanged = true
         }
-        edit.before.set(index, current)
+        if (!edit.before.has(index)) edit.before.set(index, current)
         edit.after.set(index, packedValue)
         if (layer.format === 'indexed') layer.pixels[index] = packedValue
         else if (packedPixels) packedPixels[index] = packedValue

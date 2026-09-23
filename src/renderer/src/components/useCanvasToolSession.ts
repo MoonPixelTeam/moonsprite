@@ -1,4 +1,6 @@
 import { withDeviceTemporaryTool } from './canvas-device-tools'
+import { tabletModifier, tabletTemporaryTool, TABLET_INTERACTION_EVENT } from '@/core/tablet-interaction'
+import { useSyncExternalStore } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { modifierShortcutHeldByBindings, shortcutBindingsFor, shortcutHeldByKeyParts } from '@/core/shortcuts'
 import {
@@ -11,6 +13,10 @@ import { applyQuickToolTarget, quickToolNeedsContextualCanvasHandling } from '@/
 import { currentHeldShortcutKeyParts, currentQuickToolMatch, quickToolConflictsFor, useQuickToolShortcut } from '@/components/useQuickToolShortcut'
 import { useCanvasShortcutBindings } from './useCanvasShortcutBindings'
 import { shareCanvasToolSettings } from './canvas-stage-helpers'
+const subscribeTabletTool = (listener: () => void) => {
+  window.addEventListener(TABLET_INTERACTION_EVENT, listener)
+  return () => window.removeEventListener(TABLET_INTERACTION_EVENT, listener)
+}
 interface Ports {
   readonly storedSession: DocumentSession
   readonly inputRef: import('react').RefObject<CanvasInputState>
@@ -46,8 +52,9 @@ export function useCanvasToolSession(ports: Ports) {
   })
 
   const activeSession = useWorkspace.getState().sessions.find(item => item.document.id === useWorkspace.getState().activeId)
-  const session = applyQuickToolTarget(activeSession && activeSession !== ports.storedSession
-    ? shareCanvasToolSettings(ports.storedSession, activeSession) : ports.storedSession, directQuickToolTarget)
+  const tabletTool = useSyncExternalStore(subscribeTabletTool, () => tabletTemporaryTool(ports.storedSession.document.id))
+  const session = withDeviceTemporaryTool(applyQuickToolTarget(activeSession && activeSession !== ports.storedSession
+    ? shareCanvasToolSettings(ports.storedSession, activeSession) : ports.storedSession, directQuickToolTarget), tabletTool)
 
   const currentQuickTool = () => brushSizingHeld(ports.storedSession) ? null : currentQuickToolMatch(shortcuts, shortcutConflictState)
 
@@ -70,12 +77,12 @@ export function useCanvasToolSession(ports: Ports) {
     const current = useWorkspace.getState().sessions.find((item) => item.document.id === ports.storedSession.document.id)
     if (!current) return session
     const resolved = sessionWithActiveQuickTool(sharedCanvasSession(current))
-    const temporaryTool = ports.inputRef.current.temporaryTool
+    const temporaryTool = tabletTemporaryTool(current.document.id) ?? ports.inputRef.current.temporaryTool
     return withDeviceTemporaryTool(resolved, temporaryTool, ports.inputRef.current.temporaryRightClickAction)
   }
 
   const modifierActive = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: keyof typeof shortcuts): boolean =>
-    modifierShortcutHeldByBindings(event, shortcuts[id] ?? [], currentHeldShortcutKeyParts())
+    (tabletModifier(session.document.id, 'constrain') && (id === 'constrainAxis' || id === 'proportionalSelectionTransform' || id === 'snapSelectionRotation')) || modifierShortcutHeldByBindings(event, shortcuts[id] ?? [], currentHeldShortcutKeyParts())
 
   const brushLineConnectionHasPriority = (
     event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
@@ -94,7 +101,7 @@ export function useCanvasToolSession(ports: Ports) {
   const selectionTransformModifierState = (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>) =>
     selectionTransformModifiers({
       ctrlKey: modifierActive(event, 'integerSelectionScale'),
-      altKey: event.altKey,
+      altKey: event.altKey || tabletModifier(session.document.id, 'center'),
       shiftKey: modifierActive(event, 'proportionalSelectionTransform'),
       proportionalLocked: session.selectionAspectRatio != null
     })
@@ -119,9 +126,9 @@ export function useCanvasToolSession(ports: Ports) {
           )
         : event.shiftKey
     return {
-      fromCenter: Boolean(event.ctrlKey || event.metaKey),
-      proportional,
-      rotate: event.altKey
+      fromCenter: tabletModifier(session.document.id, 'center') || Boolean(event.ctrlKey || event.metaKey),
+      proportional: tabletModifier(session.document.id, 'constrain') || proportional,
+      rotate: tabletModifier(session.document.id, 'rotate') || event.altKey
     }
   }
 

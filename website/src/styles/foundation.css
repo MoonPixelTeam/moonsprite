@@ -8,6 +8,14 @@
 }
 
 @font-face {
+  font-family: "Fusion Pixel";
+  src: url("/assets/fonts/fusion-pixel-10px-prop-zh-hans.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Silkscreen";
   src: url("/assets/fonts/silkscreen-700.woff2") format("woff2");
   font-weight: 700;
@@ -36,8 +44,12 @@
   --on-accent: #fff;
   --warn: #eac38c;
   --warn-soft: #383125;
+  --price: #ff9f43;
   --danger: #ff8583;
   --success: #89c79c;
+  --danger-soft: #38272b;
+  --pet-color: var(--text-3);
+  --pack-void: var(--control);
   --surface-active: #263449;
   --shadow: rgb(0 0 0 / 20%);
   --page-dot: transparent;
@@ -65,8 +77,10 @@
   --on-accent: #fff;
   --warn: #805723;
   --warn-soft: #f4eadb;
+  --price: #c96b00;
   --danger: #b33939;
   --success: #34754a;
+  --danger-soft: #fceaea;
   --surface-active: #e9f0ff;
   --shadow: rgb(25 45 75 / 8%);
   color-scheme: light;
@@ -76,6 +90,15 @@
   --font-pixel: "Silkscreen", "Cascadia Mono", "Microsoft YaHei", monospace;
   --font-sans: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --max: 1200px;
+  --page-gutter: 24px;
+  --page-gap: 24px;
+  --page-padding: 24px;
+  --page-bottom: 48px;
+  --page-sidebar: 200px;
+  --page-outline: 176px;
+  --reading-width: 760px;
+  --panel-padding: 16px;
+  --section-gap: 24px;
   font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
@@ -99,7 +122,9 @@
    * field; a compact button sits at 34px for use inside rows.
    */
   --control-height: 40px;
-  --control-height-compact: 32px;
+  --control-height-compact: 36px;
+  --control-height-touch: 44px;
+  --icon-size: 22px;
   --font-pixel-tag: 12px;   /* tag, badge, caption in the pixel face */
   --font-pixel-label: 14px; /* outline group heading in the pixel face */
   --font-small: 14px;       /* secondary copy, metadata, dense UI labels */
@@ -173,3 +198,8 @@ ul { margin: 0; padding: 0; }
 .skip-link:focus { top: 10px; }
 :focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
 
+
+/* Only the document displays a scrollbar. Bounded controls and overlays retain
+   scrolling for wheel, touch and keyboard access without a second visible rail. */
+body * { scrollbar-width: none; }
+body *::-webkit-scrollbar { display: none; }

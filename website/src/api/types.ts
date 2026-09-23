@@ -1,4 +1,5 @@
 import { SITE_CONFIG } from '../config'
+import type { PackAnimations } from '../market/catalog'
 
 /*
  * The API surface the app talks to. Nothing in the pages or stores should touch
@@ -27,6 +28,10 @@ export type StudioProduct = {
   /** Market filter tags, chosen from presets in the studio. */
   tags: string[]
   image?: string
+  previews?: string[]
+  includes?: { zh: string; en: string }[]
+  packs?: string[]
+  animations?: PackAnimations
   publishedAt: number
 }
 

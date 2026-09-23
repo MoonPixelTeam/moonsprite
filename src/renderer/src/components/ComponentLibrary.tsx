@@ -3,7 +3,9 @@ import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
 import { ANCHOR_PRESETS, PixelAnchorPresetIcon } from './PixelAnchorPresetIcon'
 import { pixelSource } from '@/components/pixel-source'
 import { useMemo, useState, type ReactElement } from 'react'
-import { FileText, Layers2, Palette, Search } from 'lucide-react'
+import { TabletPressButton } from './tablet/TabletPressButton'
+import { PixelAssetIcon } from './app/editor-tools'
+import toolZoomNormalIcon from '@/assets/tool-icons/tool-zoom-normal.svg'
 import type { GradientDither, ImageBrush, InkMode } from '@shared/types-brush'
 import type { OutlineDirections, OutlineKernel, OutlinePosition } from '@shared/types-selection'
 import type { RgbaColor } from '@shared/types-color'
@@ -201,6 +203,7 @@ const localizeEntry = (entry: ComponentLibraryEntry, locale: AppLocale): Compone
 })
 
 export const COMPONENT_LIBRARY_ENTRIES: ComponentLibraryEntry[] = [
+  { id: 'touch-controls', name: '触控控件', category: 'controls', description: '共享组件的触控密度与按住交互。', source: 'Button / TabletPressButton / NumberInput / RangeField / SegmentedControl / .touch-controls', tags: ['操作', '状态', '模式'] },
   { id: 'buttons', name: '按钮组', category: 'controls', description: '主要操作、次要操作和危险操作使用同一组尺寸与状态。', source: 'Button / FileButton', tags: ['操作', '状态'] },
   { id: 'icon-button', name: '图标按钮', category: 'controls', description: '工具栏和面板标题中的方形图标操作。', source: '.icon-button', tags: ['图标', '工具栏'] },
   { id: 'pixel-utility-icon', name: '像素状态图标', category: 'controls', description: '统一收录界面状态、动画自动链接、压感操作和墨水模式使用的像素图标，以整数比例显示并保留原稿半透明边缘。', source: 'PixelUtilityIcon / PixelAutoLinkIcon / PixelPressureIcon / PixelInkIcon / assets/pixel-icons/*.svg', tags: ['图标', '状态', '操作'] },
@@ -258,6 +261,16 @@ const colorPickerVariants: Array<{ id: string; labelKey: TranslationKey; config:
   { id: 'hs-square', labelKey: 'componentLibrary.preview.variant.hsSquare', config: { scheme: 'hs-square', hueSteps: 0, colorSteps: 0 } },
   { id: 'wheel', labelKey: 'componentLibrary.preview.variant.wheel', config: { scheme: 'wheel', hueSteps: 0, colorSteps: 0 } }
 ]
+
+function TouchControlsPreview({ locale }: { locale: AppLocale }) {
+  const [value, setValue] = useState(16), [held, setHeld] = useState(false), [mode, setMode] = useState<'hold' | 'latch'>('hold')
+  return <div className="component-preview-form touch-controls">
+    <SegmentedControl label={componentText(locale, 'tablet.modifiers')} value={mode} onChange={setMode} options={(['hold', 'latch'] as const).map(value => ({ value, label: componentText(locale, `tablet.${value}`) }))} />
+    <TabletPressButton label={componentText(locale, 'tablet.sample')} active={held} locked={mode === 'latch'} onActive={setHeld} />
+    <FormField label={componentText(locale, 'tablet.size')}><NumberInput density="touch" value={value} min={1} max={128} onValueChange={setValue} /><RangeField ariaLabel={componentText(locale, 'tablet.size')} value={value} min={1} max={128} onChange={setValue} /></FormField>
+    <Button disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button>
+  </div>
+}
 
 function ButtonsPreview({ locale }: { locale: AppLocale }) {
   return <div className="component-preview-row"><Button variant="primary" type="button"><PixelUtilityIcon kind="plus" />{componentText(locale, 'componentLibrary.preview.new')}</Button><Button variant="quiet" type="button">{componentText(locale, 'componentLibrary.preview.cancel')}</Button><Button variant="danger" type="button"><PixelUtilityIcon kind="delete" />{componentText(locale, 'componentLibrary.preview.delete')}</Button><Button variant="quiet" type="button" disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button><FileButton label={componentText(locale, 'common.chooseFile')} accept="image/*" onFiles={() => {}}>{componentText(locale, 'common.chooseFile')}</FileButton></div>
@@ -381,7 +394,7 @@ function ScrollbarPreview({ locale }: { locale: AppLocale }) {
 }
 
 function PanelHeaderPreview({ locale }: { locale: AppLocale }) {
-  return <div className="panel component-panel-preview"><header><strong>{componentText(locale, 'componentLibrary.preview.panel')}</strong><div className="panel-actions"><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.show')}><PixelUtilityIcon kind="eye" /></button><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.settings')}><PixelUtilityIcon kind="properties" /></button></div></header><div className="component-panel-content"><Layers2 size={18} /><span>{componentText(locale, 'componentLibrary.preview.draggablePanel')}</span></div></div>
+  return <div className="panel component-panel-preview"><header><strong>{componentText(locale, 'componentLibrary.preview.panel')}</strong><div className="panel-actions"><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.show')}><PixelUtilityIcon kind="eye" /></button><button className="icon-button" type="button" aria-label={componentText(locale, 'componentLibrary.preview.settings')}><PixelUtilityIcon kind="properties" /></button></div></header><div className="component-panel-content"><PixelUtilityIcon kind="linkedLayer" /><span>{componentText(locale, 'componentLibrary.preview.draggablePanel')}</span></div></div>
 }
 
 function PixelUtilityIconPreview({ locale }: { locale: AppLocale }) {
@@ -607,6 +620,7 @@ function DockPreview({ locale }: { locale: AppLocale }) {
 
 const previewRenderers: Record<string, (props: { locale: AppLocale }) => ReactElement> = {
   buttons: ButtonsPreview,
+  'touch-controls': TouchControlsPreview,
   'icon-button': IconButtonPreview,
   'pixel-utility-icon': PixelUtilityIconPreview,
   'anchor-preset-icons': AnchorPresetIconsPreview,
@@ -667,7 +681,7 @@ export function ComponentLibrary({ onClose }: { onClose: () => void }) {
       <DialogHeader className="component-library-header" eyebrow="MOONSPRITE UI" title={componentText(locale, 'componentLibrary.title')} titleId="component-library-title" description={componentText(locale, 'componentLibrary.subtitle')} closeLabel={componentText(locale, 'componentLibrary.close')} onClose={onClose} />
       <div className="component-library-layout">
         <aside className="component-library-sidebar">
-          <label className="component-library-search"><Search size={14} /><TextInput density="compact" value={query} placeholder={componentText(locale, 'componentLibrary.search')} aria-label={componentText(locale, 'componentLibrary.search')} onChange={(event) => setQuery(event.target.value)} /></label>
+          <label className="component-library-search"><PixelAssetIcon src={toolZoomNormalIcon} /><TextInput density="compact" value={query} placeholder={componentText(locale, 'componentLibrary.search')} aria-label={componentText(locale, 'componentLibrary.search')} onChange={(event) => setQuery(event.target.value)} /></label>
           <nav aria-label={componentText(locale, 'componentLibrary.categories')}>{(Object.keys(categoryLabels) as ComponentCategory[]).map((item) => <button key={item} type="button" className={category === item ? 'selected' : ''} onClick={() => setCategory(item)}><span>{componentText(locale, categoryLabels[item])}</span><small>{item === 'all' ? COMPONENT_LIBRARY_ENTRIES.length : COMPONENT_LIBRARY_ENTRIES.filter((entry) => entry.category === item).length}</small></button>)}</nav>
           <div className="component-library-entry-list component-scrollbar">{filteredEntries.map((entry) => { const localized = localizedEntries.find((item) => item.id === entry.id) ?? entry; return <button key={entry.id} type="button" className={entry.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(entry.id)}><span><strong>{localized.name}</strong><small>{componentText(locale, categoryLabels[entry.category])}</small></span><ChevronRight size={14} /></button> })}{filteredEntries.length === 0 && <p className="component-library-empty">{componentText(locale, 'componentLibrary.noMatch')}</p>}</div>
         </aside>
@@ -678,7 +692,7 @@ export function ComponentLibrary({ onClose }: { onClose: () => void }) {
           <div className="component-library-checklist"><strong><PixelUtilityIcon kind="check" />{componentText(locale, 'componentLibrary.checkStatus')}</strong><span><i />{componentText(locale, 'componentLibrary.interactive')}</span><span><i />{componentText(locale, 'componentLibrary.squareLayout')}</span><span><i />{componentText(locale, 'componentLibrary.blue')}</span></div>
         </main>
       </div>
-      <footer className="component-library-footer"><span><FileText size={14} />{componentText(locale, 'componentLibrary.registered', { count: COMPONENT_LIBRARY_ENTRIES.length })}</span><span className="component-library-footer-note"><Palette size={14} />{componentText(locale, 'componentLibrary.footerHint')}</span><button className="primary-button" type="button" onClick={onClose}>{componentText(locale, 'componentLibrary.done')}</button></footer>
+      <footer className="component-library-footer"><span><PixelUtilityIcon kind="properties" />{componentText(locale, 'componentLibrary.registered', { count: COMPONENT_LIBRARY_ENTRIES.length })}</span><span className="component-library-footer-note"><PixelUtilityIcon kind="paletteCenter" />{componentText(locale, 'componentLibrary.footerHint')}</span><button className="primary-button" type="button" onClick={onClose}>{componentText(locale, 'componentLibrary.done')}</button></footer>
     </ModalShell>
   </div>
 }

@@ -37,7 +37,8 @@ export function createAnimationTweenCommands({ get, set }: WorkspaceCommandConte
         while (existingNames.has(tr('timeline.tween.loopName', { index: loopNumber }))) loopNumber++
         timeline.loopSections = [...(timeline.loopSections ?? []), {
           id: createId('loop-section'), name: tr('timeline.tween.loopName', { index: loopNumber }),
-          startFrameId: generated.frames[0].id, endFrameId: generated.frames.at(-1)!.id,
+          startFrameId: options.scope === 'between' ? frameId : generated.frames[0].id,
+          endFrameId: options.scope === 'between' ? timeline.frames[index + generated.frames.length + 1].id : generated.frames.at(-1)!.id,
           direction: 'forward', repeatCount: null
         }]
         timeline.cels.push(...generated.cels)

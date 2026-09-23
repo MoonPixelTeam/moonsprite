@@ -10,6 +10,7 @@ import { PolygonPathPreviewRenderCache, SELECTION_PATH_PREVIEW_BATCH_THRESHOLD }
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
 export function createCanvasSelectionPaths({
   useLocalCursors = false,
+  cursorCanvas,
   selectionPreviewColorMode,
   selectionPreviewColor,
   repeatCopies,
@@ -28,6 +29,7 @@ export function createCanvasSelectionPaths({
   polygonPathPreviewRenderCacheRef,
   previewPixelRect
 }: {
+  cursorCanvas?: HTMLCanvasElement
   useLocalCursors?: boolean
   selectionPreviewColorMode: import('@/core/file-preferences').SelectionPreviewColorMode
   selectionPreviewColor: RgbaColor
@@ -106,7 +108,7 @@ export function createCanvasSelectionPaths({
     for (const copy of copies) {
       if (!copy) continue
       context.save()
-      if (!repeatedCoordinates) {
+      if (!repeatedCoordinates && (view.tileRepeatMode ?? 'off') !== 'off') {
         clipCanvasCopy(context, copy)
       }
       if (!canBatch) {
@@ -117,8 +119,8 @@ export function createCanvasSelectionPaths({
             : null
           const samplePoint = mapped?.local ?? { x, y }
           const insideDocument = repeatedCoordinates ? Boolean(mapped) : x >= 0 && y >= 0 && x < document.width && y < document.height
-          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
-          const sampled = sampleCompositeForPreview(samplePoint.x, samplePoint.y)
+          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument || (view.tileRepeatMode ?? 'off') === 'off')) continue
+          const sampled = insideDocument ? sampleCompositeForPreview(samplePoint.x, samplePoint.y) : { r: 74, g: 74, b: 81, a: 255 }
           const background = sampled.a > 0 ? sampled : transparencyColorAt(samplePoint.x, samplePoint.y, checkerboard)
           context.fillStyle = previewColor ?? selectionPreviewColorForBackground(background)
           context.fillRect(pixelRect.x, pixelRect.y, pixelRect.width, pixelRect.height)
@@ -132,8 +134,8 @@ export function createCanvasSelectionPaths({
             : null
           const samplePoint = mapped?.local ?? { x, y }
           const insideDocument = repeatedCoordinates ? Boolean(mapped) : x >= 0 && y >= 0 && x < document.width && y < document.height
-          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
-          const sampled = sampleCompositeForPreview(samplePoint.x, samplePoint.y)
+          if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument || (view.tileRepeatMode ?? 'off') === 'off')) continue
+          const sampled = insideDocument ? sampleCompositeForPreview(samplePoint.x, samplePoint.y) : { r: 74, g: 74, b: 81, a: 255 }
           const background = sampled.a > 0 ? sampled : transparencyColorAt(samplePoint.x, samplePoint.y, checkerboard)
           const color = previewColor ?? selectionPreviewColorForBackground(background)
           let path = paths.get(color)
@@ -179,7 +181,7 @@ export function createCanvasSelectionPaths({
     ].join('|')
   const drawCachedPolygonPath = (cache: PolygonPathPreviewRenderCache, copy: (typeof repeatCopies)[number]): void => {
     context.save()
-    clipCanvasCopy(context, copy)
+    if ((view.tileRepeatMode ?? 'off') !== 'off') clipCanvasCopy(context, copy)
     for (const [color, path] of cache.paths) {
       context.fillStyle = color
       context.fill(path)
@@ -200,11 +202,11 @@ export function createCanvasSelectionPaths({
         const point = rasterCache.committedPoints[index]
         const pixelRect = deviceAlignedPixelRect(copy.originX, copy.originY, view.zoom, point.x, point.y, deviceScale)
         const insideDocument = point.x >= 0 && point.y >= 0 && point.x < document.width && point.y < document.height
-        if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument)) continue
+        if (!selectionPathPreviewPixelVisible(pixelRect, rect.width, rect.height, insideDocument || (view.tileRepeatMode ?? 'off') === 'off')) continue
         const color =
           previewColor ??
           (() => {
-            const sampled = sampleCompositeForPreview(point.x, point.y)
+            const sampled = insideDocument ? sampleCompositeForPreview(point.x, point.y) : { r: 74, g: 74, b: 81, a: 255 }
             const background = sampled.a > 0 ? sampled : transparencyColorAt(point.x, point.y, checkerboard)
             return selectionPreviewColorForBackground(background)
           })()
@@ -253,7 +255,9 @@ export function createCanvasSelectionPaths({
     return next
   }
   const drawSelectionCursorCorners = (pixelX: number, pixelY: number, color: string): void => {
-    if (useLocalCursors) return
+    // The cursor resolver owns pointer priority. Check its latest result at
+    // draw time so queued previews cannot overlap a newly selected cursor.
+    if (useLocalCursors || (cursorCanvas && cursorCanvas.style.cursor !== 'none')) return
     const pixelRect = previewPixelRect(pixelX, pixelY)
     const marks = selectionCursorCornerRects(pixelRect, deviceScale.x)
     const left = Math.min(...marks.map(mark => mark.x)), top = Math.min(...marks.map(mark => mark.y))

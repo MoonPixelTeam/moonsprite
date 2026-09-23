@@ -32,7 +32,7 @@ const defaults: Omit<Props, 'openMenu' | 'setOpenMenu'> = {
   toolRailSide: 'left', advancedModeActive: false, luaScriptRunning: false, luaScripts: [], luaScriptsLoading: false,
   luaScriptsLoadFailed: false, extensions: [extension], extensionPanelVisibility: {}, recentFiles: [], projectRollbackEnabled: false,
   onHome: noop, onNew: noop, onOpen: noop, onOpenRecent: noop, onSave: noop, onSaveAs: noop, onExport: noop,
-  onExportAllFrames: noop, onExportSpriteSheet: noop, onOpenTimelapse: noop, onOpenProjectInfo: noop, onOpenProjectRollback: noop,
+  onExportAllFrames: noop, onImportSpriteSheet: noop, onExportSpriteSheet: noop, onOpenTimelapse: noop, onOpenProjectInfo: noop, onOpenProjectRollback: noop,
   onRunLuaScript: noop, onOpenLuaScriptFolder: noop, onToggleExtensionPanel: noop, onOpenProjectFolder: noop, onOpenOutline: noop,
   onOpenAntiAlias: noop, onOpenColorReplacement: noop, onOpenAdjustment: noop, onOpenLcdScreenFilter: noop,
   onOpenShortcuts: noop, onOpenPreferences: noop, onOpenExtensionSettings: noop, onOpenCanvasResize: noop, onOpenImageResize: noop,
@@ -80,4 +80,12 @@ it('opens the installed pet menu before dynamic options arrive, then renders and
     expect(view.queryByRole('menuitemcheckbox', { name: '奶龙' })).toBeNull()
     expect(view.getByRole('menuitemcheckbox', { name: '宠物设置' })).toBeTruthy()
   } finally { unregister() }
+})
+
+it('offers sprite-sheet import from File even without an open document', () => {
+  const onImport = vi.fn(), setOpenMenu = vi.fn()
+  const view = render(<AppMenuBar {...defaults} openMenu="file" setOpenMenu={setOpenMenu} onImportSpriteSheet={onImport} />)
+  fireEvent.click(view.getByRole('button', { name: 'spriteSheetImport.title' }))
+  expect(onImport).toHaveBeenCalledOnce()
+  expect(setOpenMenu).toHaveBeenCalledWith(null)
 })

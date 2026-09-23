@@ -10,7 +10,7 @@ import { continuousLinePointsWithFixForLineBrush, selectionContains } from './se
 import { brushStampAnchor, solidBrushPreviewRowSpans } from './tools-brush'
 
 export const SMOOTH_BRUSH_OVERLAY = 'rgba(230, 0, 255, 0.35)'
-export interface SmoothBrushStroke { visited: Set<number> }
+export interface SmoothBrushStroke { visited: Set<number>; outsidePreview?: Map<string, Point> }
 type Point = { x: number; y: number }
 const neighbors = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]] as const
 
@@ -263,10 +263,15 @@ export function collectSmoothBrushArea(
   for (const { x: cx, y: cy } of centers) {
     for (const span of spans) {
       const sourceY = cy - anchor.y + span.y
-      if (!tileRepeatIncludesY(repeatMode) && (sourceY < 0 || sourceY >= document.height)) continue
+        const unboundedPreview = repeatMode === 'off' && stroke.outsidePreview !== undefined
+        if (!unboundedPreview && !tileRepeatIncludesY(repeatMode) && (sourceY < 0 || sourceY >= document.height)) continue
       const left = cx - anchor.x + span.left
       const right = cx - anchor.x + span.right
-      for (let sourceX = tileRepeatIncludesX(repeatMode) ? left : Math.max(0, left); sourceX <= (tileRepeatIncludesX(repeatMode) ? right : Math.min(document.width - 1, right)); sourceX++) {
+        for (let sourceX = unboundedPreview || tileRepeatIncludesX(repeatMode) ? left : Math.max(0, left); sourceX <= (unboundedPreview || tileRepeatIncludesX(repeatMode) ? right : Math.min(document.width - 1, right)); sourceX++) {
+          if (unboundedPreview && (sourceX < 0 || sourceY < 0 || sourceX >= document.width || sourceY >= document.height)) {
+            stroke.outsidePreview!.set(`${sourceX}:${sourceY}`, { x: sourceX, y: sourceY })
+            continue
+          }
         const { x, y } = wrapDocumentPointForTileRepeat({ x: sourceX, y: sourceY }, document.width, document.height, repeatMode)
         const key = y * document.width + x
         if (stroke.visited.has(key) || (selection && !selectionContains(selection, x, y))) continue

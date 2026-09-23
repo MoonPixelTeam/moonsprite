@@ -1,0 +1,29 @@
+:root { --ui-touch-target-size: 44px; }
+/* Explicit semantic density shared by production controls and their library preview. */
+.touch-controls {
+  --ui-field-height: var(--ui-touch-target-size);
+  --ui-command-button-height: var(--ui-touch-target-size);
+  --ui-icon-button-size: var(--ui-touch-target-size);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-4);
+  min-width: 0;
+}
+.touch-controls :is(.primary-button, .quiet-button, .danger-button) { display: flex; align-items: center; justify-content: center; gap: var(--ui-space-2); min-width: var(--ui-touch-target-size); min-height: var(--ui-touch-target-size); white-space: normal; overflow-wrap: anywhere; touch-action: manipulation; }
+.touch-controls .quiet-button[aria-pressed="true"] { color: var(--theme-on-accent); background: var(--theme-accent); border-color: var(--theme-accent); }
+.touch-controls :is(.primary-button, .quiet-button, .danger-button):disabled { color: var(--theme-text-disabled); background: var(--theme-surface-disabled); border-color: var(--theme-border-subtle); }
+.touch-controls :is(button, input):focus-visible { outline: 1px solid var(--theme-accent); outline-offset: -1px; }
+.touch-controls [data-tablet-modifier] { touch-action: none; }
+.touch-controls .checkbox-field { min-height: var(--ui-touch-target-size); }
+.touch-controls .range-slider > input { touch-action: none; }
+.touch-controls :is(.pixel-asset-icon, .pixel-utility-icon, .pixel-utility-asset-icon, .pixel-playback-icon, .pixel-auto-link-icon, .pixel-pressure-icon) { flex-shrink: 0; }
+.touch-controls .segmented-control { height: auto; min-width: 0; }
+.touch-controls .segmented-control button { min-width: var(--ui-touch-target-size); min-height: var(--ui-touch-target-size); height: auto; padding: var(--ui-space-2) var(--ui-space-4); white-space: normal; touch-action: manipulation; }
+.touch-controls .segmented-control-label { white-space: normal; overflow-wrap: anywhere; }
+.touch-controls .segmented-control-tooltip { height: auto; }
+.segmented-control.segmented-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: auto; }
+.segmented-control.segmented-control-vertical { display: grid; grid-template-columns: minmax(0, 1fr); height: auto; }
+.number-input.number-input-touch { --number-input-height: var(--ui-touch-target-size); grid-template-columns: minmax(0, 1fr); }
+.number-input-touch .number-input-editor { border-right: 0; }
+/* Direct entry and the adjacent RangeField replace small split steppers. */
+.number-input-touch .number-input-stepper { display: none; }

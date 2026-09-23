@@ -18,9 +18,12 @@ export interface LatestReleaseDefinition {
 
 const currentRelease = {
   version: LATEST_PACKAGED_RELEASE_LABEL,
-  publishedAt: '2026-09-22',
+  publishedAt: '2026-09-23',
   homeSummary: 'release.beta6.summary',
-  sections: [{ title: 'latestRelease.section.interaction', items: ['release.beta6.panels', 'release.beta6.preview', 'release.beta6.fixes'] }]
+  sections: [
+    { title: 'latestRelease.section.interaction', items: ['release.beta6.animation', 'release.beta6.paths', 'release.beta6.imports', 'release.beta6.reference', 'release.beta6.tablet', 'release.beta6.workflow'] },
+    { title: 'latestRelease.section.canvas', items: ['release.beta6.panels', 'release.beta6.preview', 'release.beta6.fixes', 'release.beta6.files'] }
+  ]
 } as const satisfies LatestReleaseDefinition
 
 const beta5Release = {

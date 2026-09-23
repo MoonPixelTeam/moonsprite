@@ -1,3 +1,4 @@
+import { licenseCopy } from './pages/LicenseCopy'
 export type Language = 'zh' | 'en'
 
 interface DocBlockP { kind: 'p'; text: string }
@@ -155,14 +156,11 @@ export interface Copy {
     withdraw: string
     withdrawn: string
     withdrawAmount: string
-    withdrawTo: string
-    withdrawToPlaceholder: string
     withdrawSubmit: string
     withdrawRequested: string
     statusRequested: string
     errorAmount: string
     errorInsufficient: string
-    errorDestination: string
     upload: string
     uploadSubtitle: string
     backToStudio: string
@@ -265,11 +263,7 @@ export interface Copy {
   }
   studioSettlement: {
     title: string; subtitle: string
-    cycle: string; cycleValue: string; nextPayout: string; method: string; noMethod: string
-    addMethod: string; methodKind: string; methodAccount: string; methodHolder: string
-    methodDefault: string; removeMethod: string; setDefault: string
     payoutHistory: string; noPayouts: string; feeNote: (percent: number) => string
-    errorAccount: string; errorHolder: string; errorKind: string
   }
   adminPage: {
     title: string; subtitle: string; back: string; gateTitle: string; gateBody: string
@@ -325,7 +319,7 @@ const marketPage: Record<Language, MarketContent> = {
       formats: '文件格式',
       size: '规格',
       license: '授权',
-      licenseBody: '个人与商业项目均可使用，不限作品数量；不得转售或再分发原始资源。',
+      licenseBody: '素材可用于个人与商业成品；程序类内容仅限授权安装与运行。团队协作、再分发及第三方权利详见完整条款。',
       buy: '把想买的包放进购物车，正式发布后一键结算。',
       related: '其他包',
       frames: (count) => `${count} 帧`,
@@ -350,34 +344,21 @@ const marketPage: Record<Language, MarketContent> = {
     },
     trust: {
       title: '购买说明',
-      license: '一次购买，个人与商业项目都能用；原始资源不得转售。',
-      updates: '已购资产包的后续更新免费，会出现在软件的更新通道里。',
-      refunds: '虚拟商品一经购买不支持退款；下载失败或文件损坏可联系客服处理。',
+      license: '素材可嵌入个人与商业成品；程序与第三方内容按相应许可使用，不得独立转售原始资源。',
+      updates: '交付、兼容版本与更新范围以购买时明确说明为准；已承诺的免费更新继续有效。',
+      refunds: '数字内容取消与退款依适用法律及购买时的有效约定处理；未交付、质量及权利瑕疵不适用笼统的不退款限制。',
     },
     license: {
-      title: '许可协议',
-      subtitle: '购买前请阅读。付款即表示接受以下条款；购买后你也可以在订单详情里随时查阅。',
+      title: licenseCopy.zh.title,
+      subtitle: licenseCopy.zh.notice,
       back: '返回市场',
-      grantsTitle: '你可以',
-      grants: [
-        '在个人与商业项目中使用这些素材，作品数量不限',
-        '修改、裁剪、重新上色，并与自己的作品合并',
-        '在游戏中、视频里、直播中以及成品里使用这些素材',
-        '已购资产包的后续更新免费获得，更新会出现在软件的更新通道里',
-      ],
-      limitsTitle: '你不可以',
-      limits: [
-        '转售、再分发或免费分享原始资源文件',
-        '把素材本身作为主要卖点做成素材包再次出售',
-        '声称这些素材由你原创',
-      ],
-      refundsTitle: '退款',
-      refunds: [
-        '虚拟商品一经购买不支持退款，请在下单前确认素材符合需要。',
-        '下载失败、文件损坏或内容与描述明显不符时，联系客服处理。',
-        '详情页与结算前都会重复展示本协议。',
-      ],
-      agree: '我已阅读并同意许可协议',
+      grantsTitle: licenseCopy.zh.sections[2].title,
+      grants: [...licenseCopy.zh.sections[2].paragraphs],
+      limitsTitle: licenseCopy.zh.sections[4].title,
+      limits: [...licenseCopy.zh.sections[4].paragraphs],
+      refundsTitle: licenseCopy.zh.sections[6].title,
+      refunds: [...licenseCopy.zh.sections[6].paragraphs],
+      agree: '我已阅读数字内容许可与交易条款（草案）',
     },
     checkout: {
       title: '确认订单',
@@ -386,9 +367,9 @@ const marketPage: Record<Language, MarketContent> = {
       subtotal: '小计',
       total: '应付',
       agreementTitle: '许可协议',
-      agreement: '虚拟商品一经购买不支持退款。付款即表示你接受《许可协议》的全部条款。',
+      agreement: '请阅读《数字内容许可与交易条款》。取消、退款及数字交付的确认要求依适用法律处理，法定救济不因数字商品属性而被排除。当前条款为待发布草案，本地结算仅用于演示。',
       agreementLink: '查看完整许可协议',
-      agreeLabel: '我已阅读并同意许可协议，并知悉虚拟商品不支持退款',
+      agreeLabel: '我已阅读条款草案及售后说明，知悉当前为演示结算',
       mustAgree: '请先勾选同意许可协议。',
       pay: '确认支付',
       paying: '处理中…',
@@ -415,8 +396,8 @@ const marketPage: Record<Language, MarketContent> = {
       items: '商品明细',
       license: '许可',
       licenseDownload: '许可协议',
-      noRefund: '虚拟商品不支持退款',
-      noRefundBody: '本订单包含虚拟商品，一经购买不支持退款。下载失败或文件损坏可联系客服。',
+      noRefund: '取消、退款与售后',
+      noRefundBody: '下载失败、文件损坏、内容与描述实质不符或授权存在问题时，可申请售后救济。取消与退款按适用法律及购买时有效条款处理。',
       support: '联系客服',
       notFound: '找不到这个订单',
       notFoundBody: '它可能属于其他账号，或者链接不完整。',
@@ -474,7 +455,7 @@ const marketPage: Record<Language, MarketContent> = {
       formats: 'Formats',
       size: 'Spec',
       license: 'License',
-      licenseBody: 'Personal and commercial projects, no title limit. Reselling or redistributing the source assets is not allowed.',
+      licenseBody: 'Assets may be embedded in personal and commercial works. Programs are licensed for authorised installation and execution. See the full terms for collaboration, redistribution and third-party rights.',
       buy: 'Stage the packs you want in the cart; one-click checkout opens with the official release.',
       related: 'Other packs',
       frames: (count) => `${count} frames`,
@@ -499,34 +480,21 @@ const marketPage: Record<Language, MarketContent> = {
     },
     trust: {
       title: 'Before you buy',
-      license: 'Buy once, use it in personal and commercial projects. Reselling the source assets is not allowed.',
-      updates: 'Updates to the packs you own are free and arrive through the app’s update channel.',
-      refunds: 'Virtual goods are non-refundable once purchased. Contact support if a download fails or the file is damaged.',
+      license: 'Assets may be embedded in personal and commercial works. Programs and third-party content follow their respective licences; standalone resale of original resources is prohibited.',
+      updates: 'Delivery, compatibility and updates follow the terms stated at purchase; existing promises of free updates remain binding.',
+      refunds: 'Cancellation and refunds follow applicable law and valid purchase terms. Non-delivery, defects and licensing issues are not subject to a blanket no-refund rule.',
     },
     license: {
-      title: 'Licence',
-      subtitle: 'Read this before buying. Paying means accepting these terms, and you can reopen them any time from the order.',
+      title: licenseCopy.en.title,
+      subtitle: licenseCopy.en.notice,
       back: 'Back to the market',
-      grantsTitle: 'You may',
-      grants: [
-        'Use these assets in personal and commercial projects, with no limit on the number of titles',
-        'Modify, crop, recolour, and combine them with your own work',
-        'Ship them inside games, videos, streams, and finished products',
-        'Receive later updates to a purchased pack for free, through the app\u2019s update channel',
-      ],
-      limitsTitle: 'You may not',
-      limits: [
-        'Resell, redistribute, or give away the original asset files',
-        'Repackage the assets themselves as a competing asset pack',
-        'Claim the assets as your own original work',
-      ],
-      refundsTitle: 'Refunds',
-      refunds: [
-        'Virtual goods are non-refundable once purchased, so please confirm the pack suits your needs first.',
-        'Contact support if a download fails, a file is damaged, or the contents clearly differ from the description.',
-        'This licence is shown again on the pack page and before checkout.',
-      ],
-      agree: 'I have read and accept the licence',
+      grantsTitle: licenseCopy.en.sections[2].title,
+      grants: [...licenseCopy.en.sections[2].paragraphs],
+      limitsTitle: licenseCopy.en.sections[4].title,
+      limits: [...licenseCopy.en.sections[4].paragraphs],
+      refundsTitle: licenseCopy.en.sections[6].title,
+      refunds: [...licenseCopy.en.sections[6].paragraphs],
+      agree: 'I have read the draft Digital Content Licence and Transaction Terms',
     },
     checkout: {
       title: 'Confirm order',
@@ -535,9 +503,9 @@ const marketPage: Record<Language, MarketContent> = {
       subtotal: 'Subtotal',
       total: 'Total',
       agreementTitle: 'Licence',
-      agreement: 'Virtual goods are non-refundable once purchased. Paying means you accept every term of the licence.',
+      agreement: 'Read the Digital Content Licence and Transaction Terms. Applicable cancellation, refund and digital-delivery consent requirements remain protected. These terms are a pre-publication draft; local checkout is a demonstration.',
       agreementLink: 'Read the full licence',
-      agreeLabel: 'I accept the licence and understand virtual goods cannot be refunded',
+      agreeLabel: 'I have read the draft terms and remedy information and understand this checkout is a demonstration',
       mustAgree: 'Tick the licence box first.',
       pay: 'Pay now',
       paying: 'Working\u2026',
@@ -564,8 +532,8 @@ const marketPage: Record<Language, MarketContent> = {
       items: 'Items',
       license: 'Licence',
       licenseDownload: 'Licence terms',
-      noRefund: 'Virtual goods are non-refundable',
-      noRefundBody: 'This order contains virtual goods, which cannot be refunded once purchased. Contact support if a download fails or a file is damaged.',
+      noRefund: 'Cancellation, refunds and support',
+      noRefundBody: 'Request support for failed delivery, damaged files, material misdescription or licensing issues. Cancellation and refunds follow applicable law and the valid terms at purchase.',
       support: 'Contact support',
       notFound: 'Order not found',
       notFoundBody: 'It may belong to another account, or the link may be incomplete.',
@@ -609,10 +577,10 @@ export const copy: Record<Language, Copy> = {
       prevSlide: '上一张背景',
       nextSlide: '下一张背景',
     },
-    work: { eyebrow: 'GALLERY', title: '从微小图标，到完整世界。', description: '来自比赛作品展的精选画作，探索不同尺度、色彩与构图下的像素世界。', itemAlt: ['月面基地：蓝色地球下的月球观测站', '绿崖彗星：划过绿色山崖的彗星', '山丘城堡：绿色山丘上的白色城堡', '月光林道：月光下的森林小径', '云中红塔：云海之间的红色高塔', '草原雷暴：草原上空的闪电风暴'] },
+    work: { eyebrow: 'GALLERY', title: '作品展示', description: '来自比赛作品展的精选画作，探索不同尺度、色彩与构图下的像素世界。', itemAlt: ['月面基地：蓝色地球下的月球观测站', '绿崖彗星：划过绿色山崖的彗星', '山丘城堡：绿色山丘上的白色城堡', '月光林道：月光下的森林小径', '云中红塔：云海之间的红色高塔', '草原雷暴：草原上空的闪电风暴'] },
     features: {
       eyebrow: 'FEATURES',
-      title: '特色功能',
+      title: '功能概览',
       description: '绘制、变换、配色与逐帧动画，在一个工作台里完成。点击预览查看细节，更多操作方式见文档。',
       items: [
         { icon: 'pencil', title: '铅笔与完美像素', body: '逐像素落笔，Shift 连接上一落点；完美像素清理折角处的多余像素，适合单像素线稿。' },
@@ -631,7 +599,7 @@ export const copy: Record<Language, Copy> = {
     },
     marketTeaser: {
       eyebrow: 'MARKET',
-      title: '市场：买下就能用的资产与宠物。',
+      title: '资源市场',
       description: '从场景瓦片、角色与界面图标，到桌面宠物。浏览资源内容、文件格式与授权信息，为你的创作找到起点。',
       cta: '浏览市场',
       note: '宠物包为可安装的 .mspet 文件，扩展为 .msext 包。',
@@ -697,14 +665,11 @@ export const copy: Record<Language, Copy> = {
       withdraw: '提现',
       withdrawn: '已申请提现',
       withdrawAmount: '提现金额（美元）',
-      withdrawTo: '收款方式',
-      withdrawToPlaceholder: '支付宝 / 银行卡 / 其他',
       withdrawSubmit: '提交提现申请',
       withdrawRequested: '申请已记录。原型阶段不会真的打款。',
       statusRequested: '待处理',
       errorAmount: '请输入大于 0 的金额。',
       errorInsufficient: '超出可提现金额。',
-      errorDestination: '请填写收款方式。',
       upload: '上架新资产包',
       uploadSubtitle: '填完下面的信息就能上架。右侧是市场卡片的实时预览，所见即所得。',
       backToStudio: '返回后台',
@@ -815,6 +780,7 @@ export const copy: Record<Language, Copy> = {
           title: '文档',
           items: [
             { key: 'docs', label: '使用文档' },
+            { key: 'ui', label: '组件库' },
             { key: 'faq', label: '常见问题' },
             { key: 'support', label: '支持' },
             { key: 'blog', label: '博客' },
@@ -887,29 +853,14 @@ export const copy: Record<Language, Copy> = {
       statusAnswered: '已回复',
       errorSubject: '请填写标题。',
       errorMessage: '请把问题写清楚一些。',
-      responseNote: '虚拟商品不支持退款；文件类问题我们会直接补发或修复。',
+      responseNote: '请提供订单编号和问题说明；下载、质量及授权问题可申请补交、修复或依法享有的退款等救济。也可邮件联系 2310502033@qq.com。',
     },
     studioSettlement: {
-      title: '结算与收款',
-      subtitle: '平台抽成、到账周期与收款方式。',
-      cycle: '结算周期',
-      cycleValue: '每月 1 日结算上月收入',
-      nextPayout: '下次结算',
-      method: '默认收款方式',
-      noMethod: '还没有添加收款方式，提现前请先添加。',
-      addMethod: '添加收款方式',
-      methodKind: '类型',
-      methodAccount: '账号',
-      methodHolder: '户名',
-      methodDefault: '设为默认',
-      removeMethod: '删除',
-      setDefault: '设为默认',
-      payoutHistory: '打款记录',
-      noPayouts: '还没有打款记录。',
+      title: '收益与提现',
+      subtitle: '查看收入、申请支付宝提现与跟踪处理进度。',
+      payoutHistory: '提现记录',
+      noPayouts: '还没有提现申请。',
       feeNote: (percent) => `平台按 ${percent}% 抽成，其余为你的净收入。`,
-      errorAccount: '请填写收款账号。',
-      errorHolder: '请填写户名。',
-      errorKind: '请选择收款方式类型。',
     },
     adminPage: {
       title: '平台管理',
@@ -1047,14 +998,11 @@ export const copy: Record<Language, Copy> = {
       withdraw: 'Withdraw',
       withdrawn: 'Requested',
       withdrawAmount: 'Amount (USD)',
-      withdrawTo: 'Payout method',
-      withdrawToPlaceholder: 'Bank transfer / PayPal / other',
       withdrawSubmit: 'Request withdrawal',
       withdrawRequested: 'Request recorded. The prototype moves no money.',
       statusRequested: 'Pending',
       errorAmount: 'Enter an amount greater than 0.',
       errorInsufficient: 'That is more than the available balance.',
-      errorDestination: 'Say where the money should go.',
       upload: 'Publish a new pack',
       uploadSubtitle: 'Fill this in to put a pack on sale. The market card on the right previews exactly what buyers will see.',
       backToStudio: 'Back to studio',
@@ -1165,6 +1113,7 @@ export const copy: Record<Language, Copy> = {
           title: 'Docs',
           items: [
             { key: 'docs', label: 'Documentation' },
+            { key: 'ui', label: 'Component library' },
             { key: 'faq', label: 'FAQs' },
             { key: 'support', label: 'Support' },
             { key: 'blog', label: 'Blog' },
@@ -1237,29 +1186,14 @@ export const copy: Record<Language, Copy> = {
       statusAnswered: 'Answered',
       errorSubject: 'Give the ticket a subject.',
       errorMessage: 'Describe the problem in a little more detail.',
-      responseNote: 'Virtual goods cannot be refunded; for file problems we reissue or fix them directly.',
+      responseNote: 'Provide the order number and issue details. Delivery, quality and licensing issues may qualify for redelivery, repair, refund or other legal remedies. You may also email 2310502033@qq.com.',
     },
     studioSettlement: {
       title: 'Settlement and payouts',
-      subtitle: 'The platform fee, the payout cycle, and where the money goes.',
-      cycle: 'Cycle',
-      cycleValue: 'Settled on the 1st of each month for the previous month',
-      nextPayout: 'Next settlement',
-      method: 'Default payout method',
-      noMethod: 'No payout method yet. Add one before requesting a withdrawal.',
-      addMethod: 'Add payout method',
-      methodKind: 'Type',
-      methodAccount: 'Account',
-      methodHolder: 'Account holder',
-      methodDefault: 'Make default',
-      removeMethod: 'Remove',
-      setDefault: 'Make default',
+      subtitle: 'Review earnings, request an Alipay withdrawal and track its status.',
       payoutHistory: 'Payouts',
       noPayouts: 'No payouts yet.',
       feeNote: (percent) => `The platform keeps ${percent}%; the rest is your net earnings.`,
-      errorAccount: 'Enter the payout account.',
-      errorHolder: 'Enter the account holder.',
-      errorKind: 'Choose a payout method type.',
     },
     adminPage: {
       title: 'Platform admin',

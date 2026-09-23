@@ -1,0 +1,10 @@
+.modal-backdrop.sprite-sheet-import-backdrop { background: rgb(0 0 0 / 55%); pointer-events: auto; }
+.sprite-sheet-import-body { display: flex; flex: 1; min-height: 0; gap: var(--ui-space-3); padding: var(--ui-space-3); }
+.sprite-sheet-import-settings { display: flex; flex-direction: column; gap: var(--ui-space-3); width: 280px; flex: 0 0 280px; overflow: auto; padding-right: var(--ui-space-2); }
+.sprite-sheet-import-settings .modal-note { margin: 0; overflow-wrap: anywhere; }
+.sprite-sheet-import-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-3); }
+.sprite-sheet-import-preview { position: relative; flex: 1; min-width: 0; overflow: hidden; border: 1px solid var(--theme-border); }
+.sprite-sheet-import-preview canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.sprite-sheet-import-zoom { position: absolute; right: var(--ui-space-3); top: var(--ui-space-3); display: flex; align-items: center; gap: var(--ui-space-2); padding: var(--ui-space-1); background: var(--theme-surface); }
+.sprite-sheet-import-empty { flex: 1; display: grid; place-items: center; color: var(--theme-text-muted); }
+.sprite-sheet-import-error { position: absolute; bottom: 0; background: var(--theme-surface); padding: var(--ui-space-3); }

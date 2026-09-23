@@ -14,6 +14,7 @@ import { AntiAliasDialog } from '@/components/AntiAliasDialog'
 import { AdjustmentDialog } from '@/components/dialogs/AdjustmentDialog'
 import { LcdScreenDialog } from '@/components/dialogs/LcdScreenDialog'
 import { SaveAsDialog } from '@/components/dialogs/SaveAsDialog'
+import { SpriteSheetImportDialog } from '@/components/dialogs/SpriteSheetImportDialog'
 import { SpriteSheetExportDialog } from '@/components/dialogs/SpriteSheetExportDialog'
 import { GridSettingsDialog } from '@/components/GridSettingsDialog'
 import { IsoViewSettingsDialog } from '@/components/IsoViewSettingsDialog'
@@ -74,6 +75,10 @@ export function useAppDocumentDialogs({
   const [projectInfoOpen, setProjectInfoOpen] = useState(false)
   const [projectRollbackOpen, setProjectRollbackOpen] = useState(false)
   const [timelapseOpen, setTimelapseOpen] = useState(false)
+  const [spriteSheetImportOpen, setSpriteSheetImportOpen] = useState(false)
+  const [spriteSheetImportSourceId, setSpriteSheetImportSourceId] = useState<string | null>(null)
+  const openSpriteSheetImport = () => { setSpriteSheetImportSourceId(session?.document.id ?? null); setSpriteSheetImportOpen(true) }
+  const spriteSheetImportSession = workspace.sessions.find(item => item.document.id === spriteSheetImportSourceId) ?? null
   const [spriteSheetExportSourceId, setSpriteSheetExportSourceId] = useState<string | null>(null)
   const exportDialogRef = useRef<ExportDialogHandle>(null)
   const openExport = (target?: NonNullable<ExportOptions['target']>): void => exportDialogRef.current?.open(target)
@@ -110,6 +115,10 @@ export function useAppDocumentDialogs({
           onSave={(options) => runSaveActive(true, options)}
         />
       )}
+      {spriteSheetImportOpen && <SpriteSheetImportDialog key={spriteSheetImportSourceId ?? 'empty'} session={spriteSheetImportSession} onClose={() => setSpriteSheetImportOpen(false)} onChoose={async () => {
+        const id = await workspace.chooseSpriteSheetImportSource()
+        if (id) setSpriteSheetImportSourceId(id)
+      }} />}
       {spriteSheetExportOpen && spriteSheetExportSession && (
         <SpriteSheetExportDialog
           key={spriteSheetExportSession.document.id}
@@ -240,6 +249,8 @@ export function useAppDocumentDialogs({
     setProjectRollbackOpen,
     timelapseOpen,
     setTimelapseOpen,
+    openSpriteSheetImport,
+    spriteSheetImportOpen,
     setSpriteSheetExportSourceId,
     exportDialogRef,
     openExport,

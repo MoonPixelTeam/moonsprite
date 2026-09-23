@@ -12,16 +12,6 @@ import { currentLocalAccountId, isLocalAdmin, requireLocalAdmin } from '../api/p
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
-/** A payout destination stored by the seller. */
-export type PayoutMethod = {
-  id: string
-  kind: string
-  account: string
-  holder: string
-  isDefault: boolean
-  addedAt: number
-}
-
 export type WithdrawalStatus = 'requested' | 'approved' | 'paid' | 'rejected'
 
 /** A support ticket. Software questions go to Discussions; these are order problems. */
@@ -77,11 +67,9 @@ export type ModerationStore = {
 
 const supportKey = () => `moonsprite-support:${currentLocalAccountId() ?? 'guest'}`
 const MODERATION_KEY = 'moonsprite-moderation'
-const payoutKey = () => `moonsprite-payout-methods:${currentLocalAccountId() ?? 'guest'}`
 
 type SupportDatabase = { tickets: Ticket[] }
 type ModerationDatabase = { statuses: Record<string, { status: ListingStatus; reason?: string; at: number }>; reports: Report[] }
-type PayoutDatabase = { methods: PayoutMethod[] }
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -217,61 +205,10 @@ export async function resolveReport(reportId: string): Promise<void> {
 }
 
 //
-// Payout methods
-//
-
-export function readPayoutMethods(): PayoutMethod[] {
-  const methods = read<PayoutDatabase>(payoutKey(), { methods: [] }).methods
-  return Array.isArray(methods) ? methods : []
-}
-
-export async function addPayoutMethod(input: { kind: string; account: string; holder: string }): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!currentLocalAccountId()) return { ok: false, error: 'unauthenticated' }
-  if (!input.kind.trim()) return { ok: false, error: 'kind' }
-  if (input.account.trim().length < 4) return { ok: false, error: 'account' }
-  if (input.holder.trim().length < 2) return { ok: false, error: 'holder' }
-  const database = read<PayoutDatabase>(payoutKey(), { methods: [] })
-  const method: PayoutMethod = {
-    id: id('pm'),
-    kind: input.kind.trim(),
-    account: input.account.trim(),
-    holder: input.holder.trim(),
-    // The first method added becomes the default, so a seller can withdraw immediately.
-    isDefault: database.methods.length === 0,
-    addedAt: Date.now(),
-  }
-  if (!write(payoutKey(), { methods: [method, ...database.methods] })) return { ok: false, error: 'storage' }
-  return { ok: true }
-}
-
-export async function removePayoutMethod(methodId: string): Promise<void> {
-  const database = read<PayoutDatabase>(payoutKey(), { methods: [] })
-  const left = database.methods.filter((item) => item.id !== methodId)
-  // Removing the default promotes another, so there is never none while others remain.
-  if (left.length > 0 && !left.some((item) => item.isDefault)) left[0] = { ...left[0], isDefault: true }
-  write(payoutKey(), { methods: left })
-}
-
-export async function setDefaultPayoutMethod(methodId: string): Promise<void> {
-  const database = read<PayoutDatabase>(payoutKey(), { methods: [] })
-  write(payoutKey(), { methods: database.methods.map((item) => ({ ...item, isDefault: item.id === methodId })) })
-}
-
-/** Masks all but the last four characters, which is all a UI should ever show. */
-export function maskAccount(account: string): string {
-  const tail = account.slice(-4)
-  return `${'•'.repeat(Math.max(4, account.length - 4))}${tail}`
-}
-
-//
 // React providers
 //
 
 type DataStore = SupportStore & ModerationStore & {
-  payoutMethods: PayoutMethod[]
-  addPayoutMethod: typeof addPayoutMethod
-  removePayoutMethod: typeof removePayoutMethod
-  setDefaultPayoutMethod: typeof setDefaultPayoutMethod
   version: number
 }
 
@@ -282,12 +219,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0)
   const [tickets, setTickets] = useState<Ticket[]>(readTickets)
   const [reports, setReports] = useState<Report[]>([])
-  const [payoutMethods, setPayoutMethods] = useState<PayoutMethod[]>(readPayoutMethods)
 
   const refresh = useCallback(() => {
     setTickets(readTickets())
     setReports(readModeration().reports.filter((item) => isLocalAdmin() || item.reporterId === currentLocalAccountId()))
-    setPayoutMethods(readPayoutMethods())
     setVersion((value) => value + 1)
   }, [])
 
@@ -325,22 +260,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refresh()
     },
     rejectionReason: listingRejectionReason,
-    payoutMethods,
-    addPayoutMethod: async (input) => {
-      const result = await addPayoutMethod(input)
-      refresh()
-      return result
-    },
-    removePayoutMethod: async (methodId) => {
-      await removePayoutMethod(methodId)
-      refresh()
-    },
-    setDefaultPayoutMethod: async (methodId) => {
-      await setDefaultPayoutMethod(methodId)
-      refresh()
-    },
     version,
-  }), [tickets, reports, payoutMethods, refresh, version])
+  }), [tickets, reports, refresh, version])
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

@@ -1,4 +1,4 @@
-import { brushPreviewHasUpperLayers } from './canvas-brush-layer-preview'
+import { brushPreviewNeedsComposite } from './canvas-brush-layer-preview'
 import { isWorkspaceResizing } from './workspace-resize'
 import { useEffect, useRef } from 'react'
 import type { RgbaColor } from '@shared/types-color'
@@ -130,7 +130,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       || (currentSession.tool !== 'eraser' && currentSession.inkMode !== 'simple')) return false
     if (currentSession.tool === 'line' && ports.brushPreviewMode === 'full') return false
     if ((ports.brushPreviewMode === 'full' || ports.brushPreviewMode === 'full-edge') && currentSession.tool !== 'eraser'
-      && brushPreviewHasUpperLayers(currentSession.document, activePaintLayer(currentSession).id)) return false
+      && brushPreviewNeedsComposite(currentSession.document, activePaintLayer(currentSession).id)) return false
     const drag = ports.inputRef.current.drag
     if ((drag && (drag.kind !== 'draw' || !ports.drawingBrushPreviewEnabled)) || !ports.inputRef.current.pointer.visible || ports.inputRef.current.sampling || ports.inputRef.current.spaceHeld)
       return false
@@ -176,12 +176,13 @@ export function useCanvasBrushOverlay(ports: Ports) {
       ports.applyViewRotation(context, rect.width, rect.height, view)
       context.fillStyle = selectionBrush ? 'rgba(41, 121, 255, 0.35)' : SMOOTH_BRUSH_OVERLAY
       const covered = new Set(selectionBrush ? ports.inputRef.current.drag?.selectionBrushStroke?.visited : ports.inputRef.current.drag?.smoothStroke?.visited)
-      collectSmoothBrushArea(currentSession.document, { visited: covered }, point, point,
+      const outsidePreview = selectionBrush ? new Map(ports.inputRef.current.drag?.selectionBrushStroke?.outsidePreview) : undefined
+      collectSmoothBrushArea(currentSession.document, { visited: covered, outsidePreview }, point, point,
         currentSession.brushSize, selectionBrush ? null : currentSession.selection,
         currentSession.brushShape, brushAngleWithDynamics(currentSession), ports.optimizedRotationEnabled,
         selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off')
       drawBrushCoverageOverlay(context, covered, currentSession.document.width, currentSession.document.height,
-        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off', renderPlan.originX, renderPlan.originY, view.zoom, deviceScale)
+        selectionBrush ? (view.tileRepeatMode ?? 'off') : 'off', renderPlan.originX, renderPlan.originY, view.zoom, deviceScale, outsidePreview?.values())
       context.restore()
       return
     }

@@ -65,6 +65,10 @@ it.each(['pencil', 'eraser'] as const)('keeps solid %s hover and drawing on the 
     upper.visible = false
     expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
     session.document.layers.pop()
+    session.document.layers[0].blendMode = 'multiply'
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(false)
+    session.document.layers[0].blendMode = 'normal'
+    expect(result.current.brushPreviewOverlaySupported(session)).toBe(true)
   }
 
   act(() => result.current.brushPreviewDrawRef.current())

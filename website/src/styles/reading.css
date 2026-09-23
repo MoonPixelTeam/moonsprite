@@ -7,7 +7,7 @@
 }
 .reading-layout.no-right { grid-template-columns: 216px minmax(0, 800px); }
 .reading-layout .page-body { width: 100%; max-width: none; }
-.reading-layout .outline-side { top: 108px; max-height: calc(100dvh - 132px); scrollbar-width: thin; }
+.reading-layout .outline-side { position: static; max-height: none; }
 .reading-layout .outline-side .page-outline { max-height: none; overflow: visible; }
 .reading-nav-title { margin: 0 0 var(--space-7); padding-inline: var(--space-5); color: var(--text-2); font-size: var(--font-small); font-weight: 650; }
 .reading-layout .page-outline ul { gap: var(--space-2); }
@@ -23,7 +23,7 @@
 .reading-layout .outline-side.right { border-left: 1px solid var(--divider); padding-left: var(--space-7); }
 .reading-layout .page-head-block { max-width: none; gap: var(--space-5); padding-bottom: var(--space-13); margin-bottom: var(--space-13); border-bottom: 1px solid var(--divider); }
 .reading-layout .page-crumbs > span { font-family: var(--font-sans); font-size: var(--font-small); }
-.reading-layout .page-head-copy h1 { font-size: clamp(28px, 3vw, 36px); line-height: 1.35; }
+.reading-layout .page-head-copy h1 { font-size: var(--font-h3-lg); line-height: 1.35; }
 .reading-layout .doc-section p, .reading-layout .doc-section li { line-height: 1.95; overflow-wrap: anywhere; }
 .reading-layout .doc-section h3 { margin-top: var(--space-16); padding-top: var(--space-4); line-height: 1.5; }
 .reading-layout .doc-section li::before { width: 4px; height: 4px; top: 16px; background: var(--text-4); }

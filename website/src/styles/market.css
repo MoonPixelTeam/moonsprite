@@ -25,17 +25,6 @@
  * single authored body reads as idle, walk, run, sit, sleep, celebrate, and hurt.
  */
 
-:root {
-  --pet-color: #45d67a;
-  /* Empty space inside an asset pack preview, so the pack's own bounds stay
-     readable against the card's backdrop. */
-  --pack-void: #12161d;
-}
-
-:root[data-theme='light'] {
-  --pet-color: #1f9b52;
-  --pack-void: #2f3844;
-}
 
 .pet { display: inline-flex; align-items: center; justify-content: center; --cycle: 0ms; }
 .pet-idle { --cycle: 1600ms; }
@@ -181,9 +170,7 @@
 .market-shelf {
   position: relative;
   padding: var(--space-24) 0 var(--space-13);
-  background-image:
-    radial-gradient(72% 130% at 22% 0%, var(--glow) 0%, transparent 68%),
-    linear-gradient(180deg, var(--wash-strong) 0%, transparent 55%);
+  background-color: var(--panel);
   border-bottom: 1px solid var(--divider);
 }
 
@@ -194,7 +181,8 @@
  * `--font-display` (44px) while every page built on PageHeader rendered 38px, so five
  * routes had a visibly larger title than the other nine for no reason anyone chose.
  */
-.shelf-head h1 { margin: var(--space-7) 0 var(--space-6); font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.1; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.shelf-head h1 { display: flex; align-items: center; gap: var(--space-5); margin: var(--space-7) 0 var(--space-6); font-size: clamp(var(--font-h2), 3.4vw, var(--font-h2-lg)); line-height: 1.1; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.site-shell .shelf-head h1 > svg.site-pixel-icon { display: block; flex: 0 0 44px !important; width: 44px !important; height: 44px !important; min-width: 44px !important; min-height: 44px !important; color: #ff9f1c; image-rendering: pixelated; }
 .shelf-head p { max-width: 640px; color: var(--text-3); font-size: var(--font-body); line-height: 1.75; }
 
 /* Featured packs reflow with the page: as many columns as fit at a readable tile
@@ -218,12 +206,12 @@
 }
 .shelf-item:hover { border-color: var(--accent); }
 .shelf-item:hover figcaption { color: var(--accent); }
-/* The cover centres its content the same way the card frame does: a fixed 16:10 tile
-   that the pet sits inside rather than fills. */
+/* Product covers follow the square main-image proportion used by Taobao listings.
+   Keeping this ratio fixed makes mixed asset packs line up as one catalogue. */
 .shelf-cover {
   display: grid;
   place-items: center;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 1 / 1;
   padding: var(--space-5);
   overflow: hidden;
   background: var(--control);
@@ -232,9 +220,8 @@
 .shelf-cover .pack-placeholder { gap: var(--space-4); }
 .shelf-cover img { width: 100%; height: 100%; object-fit: cover; }
 /* A pet sprite is pixel art: it keeps its authored pixels and is never stretched to
-   fill the frame. The tile's ratio is wider than the sprite's, so the height is the
-   tight side here: capping the width by the height the tile has left — expressed through
-   the frame's own ratio — scales the pet down whole instead of cropping it. The zero
+   fill the frame. Capping the sprite by the frame's available width keeps it whole
+   instead of cropping it. The zero
    minimums let the strip shrink below one full frame. */
 .shelf-cover .sprite-strip {
   min-width: 0;
@@ -258,7 +245,9 @@
   font-size: var(--font-small);
   transition: color 140ms ease;
 }
-.shelf-item figcaption span { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); white-space: nowrap; }
+.shelf-item figcaption span { color: var(--price); font-family: var(--font-pixel); font-size: var(--font-pixel-label); white-space: nowrap; }
+.shelf-item figcaption strong { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-item figcaption span { flex-shrink: 0; }
 
 .market-browse { padding: var(--space-20) 0 var(--space-26); }
 .market-head { margin-bottom: var(--space-11); }
@@ -298,6 +287,20 @@
 .market-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 
 .market-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+.market-tools .market-filter-dropdown { order: 2; }
+.market-tools .cart-slot { order: 3; }
+.market-filter-trigger { min-width: 7rem; }
+.market-filter-trigger .filter-count { margin-left: var(--space-3); color: var(--on-accent); background: var(--accent); padding: 0 var(--space-2); }
+.market-filter-dropdown { position: relative; }
+.market-filter-dialog { position: absolute; top: calc(100% + var(--space-3)); right: 0; z-index: 60; width: min(680px, calc(100vw - 2 * var(--page-gutter))); max-height: min(80dvh, 720px); overflow: visible; padding: var(--space-9); color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); box-shadow: 0 16px 50px rgb(0 0 0 / 35%); }
+.market-filter-dialog > header, .market-filter-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); }
+.market-filter-dialog > header { padding-bottom: var(--space-7); border-bottom: 1px solid var(--divider); }
+.market-filter-dialog h3 { margin: var(--space-2) 0 0; font-size: var(--font-lead); }
+.filter-dialog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-8); padding-block: var(--space-9); }
+.filter-dialog-grid .ui-select, .filter-dialog-grid .ui-select-button { width: 100%; }
+.filter-free-option { grid-column: 1 / -1; }
+.market-filter-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding-top: var(--space-7); border-top: 1px solid var(--divider); color: var(--text-3); font-size: var(--font-small); }
+@media (max-width: 560px) { .filter-dialog-grid { grid-template-columns: minmax(0, 1fr); } .market-filter-dialog { padding: var(--space-7); } }
 .search-field input {
   width: 220px;
   height: 36px;
@@ -313,11 +316,10 @@
 
 /* ---------- select ---------- */
 
-/* The option list is the language menu in the header restated as a control: same
-   surface, same border, square corners, amber hairline. The native popup is drawn by
-   the OS and cannot be styled, which is why this exists. */
+/* Compact square menu: neutral text, a blue check, and one highlighted row. */
 .ui-select { position: relative; display: inline-flex; }
 .ui-select-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -334,30 +336,35 @@
   cursor: pointer;
 }
 .ui-select-button:hover { color: var(--text); border-color: var(--border-strong); }
+.ui-select-button[aria-expanded="true"] { border-color: var(--border-strong); }
 .ui-select-button svg { width: 14px; height: 14px; color: var(--text-4); flex: 0 0 auto; }
 .ui-select-list {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + var(--space-2));
   left: 0;
   z-index: 40;
-  min-width: 100%;
+  width: max-content;
+  min-width: max(100%, 14rem);
+  max-width: min(24rem, calc(100vw - 2 * var(--page-gutter)));
   margin: 0;
-  padding: var(--space-2) 0;
-  background: var(--panel);
+  padding: var(--space-2);
+  background: var(--control);
   border: 1px solid var(--border-strong);
-  border-top-color: var(--accent);
-  box-shadow: 0 12px 28px var(--shadow);
+  box-shadow: none;
   list-style: none;
   white-space: nowrap;
 }
 .ui-select-list.end { left: auto; right: 0; }
 .ui-select-list button {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--icon-size);
   align-items: center;
   justify-content: space-between;
   gap: var(--space-7);
   width: 100%;
-  padding: var(--space-4) var(--space-6);
+  min-height: var(--control-height-compact);
+  padding: var(--space-2) var(--space-4);
   color: var(--text-2);
   background: transparent;
   border: 0;
@@ -366,9 +373,23 @@
   text-align: left;
   cursor: pointer;
 }
+.ui-select-button > .ui-select-label, .ui-select-list button > .ui-select-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-select-button:hover .ui-tooltip,
+.ui-select-button:focus-visible .ui-tooltip,
+.ui-select-list button:hover .ui-tooltip,
+.ui-select-list button:focus-visible .ui-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
 .ui-select-list button svg { width: 13px; height: 13px; color: var(--accent); }
-.ui-select-list button[data-active="true"] { color: var(--text); background: var(--raised); }
-.ui-select-list button.selected { color: var(--accent); }
+.ui-select-list button[data-active="true"], .ui-select-list button:hover { color: var(--text); background: var(--panel); }
+.ui-select-list button.selected { color: var(--text); }
+.ui-select-list button:focus-visible { outline: none; background: var(--panel); box-shadow: inset 0 0 0 1px var(--accent); }
 /* Visually hidden but still focusable and announced: used for the file inputs the styled
    labels drive. `position: fixed` matters — an absolutely positioned 1px box still takes
    part in the document's scrollable width and was pushing the page 164px wide. */
@@ -393,13 +414,48 @@
 .cart-slot .cart-badge { top: -6px; right: -6px; }
 .add-button { display: inline-flex; }
 .add-button .button { width: 100%; }
-.cart-badge { position: absolute; top: -7px; right: -7px; min-width: 18px; padding: 0 var(--space-2); color: var(--on-accent); background: var(--warn); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); line-height: 18px; text-align: center; }
+.cart-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; padding: 0 var(--space-2); color: var(--on-accent); background: var(--accent); box-shadow: 0 0 0 1px var(--bg); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); line-height: 18px; text-align: center; }
+/* Cart actions use a high-contrast outline. Once an item is in the cart, blue replaces
+   the neutral outline so the next click's destination is distinct from the add action. */
+.market-cart-button, .cart-action { color: var(--text); background: var(--surface); border-color: var(--border-strong); }
+.market-cart-button:hover, .cart-action:hover { color: var(--accent); background: var(--raised); border-color: var(--accent); }
+.cart-action.has-items, .market-cart-button.has-items { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.cart-action.has-items:hover, .market-cart-button.has-items:hover { background: var(--accent-soft); border-color: var(--accent-hover); }
+.cart-icon-button { width: var(--control-height-compact); min-width: var(--control-height-compact); padding-inline: 0; }
+.cart-icon-button svg { width: 16px; height: 16px; }
+.add-button .button.cart-icon-button,
+.add-button .icon-button.owned-flag {
+  flex: 0 0 var(--control-height-compact);
+  width: var(--control-height-compact);
+  min-width: var(--control-height-compact);
+  max-width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  padding: 0;
+}
+.asset-purchase-actions .cart-action.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.asset-purchase-actions .cart-action.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 .market-count { margin: var(--space-7) 0 var(--space-10); color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
 
 /* 350px is the width at which a full three-tag row still fits in either language;
    narrower and the row would have to trim a tag, so the grid reflows instead. */
 .pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-9); align-items: stretch; }
+
+/* Compact market grid; scoped to keep homepage and studio previews independent. */
+.market .pack-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+.market .pack-card .pack-art-frame { aspect-ratio: 1 / 1; padding: var(--space-5); --sprite-max-w: 100%; }
+.market .pack-body { padding: var(--space-5); gap: var(--space-4); }
+.market .pack-head h2 { font-size: var(--font-body); }
+.market .pack-foot { padding: var(--space-5); gap: var(--space-4); }
+@media (max-width: 1100px) {
+  .market .pack-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .market .pack-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .market .pack-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Cards are cloned from one mold: art, then a fixed number of text lines, so
    every card in the grid is exactly the same height. */
@@ -408,15 +464,15 @@
 .pack-card-link { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; }
 .pack-card-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* One preview frame for every pack: a fixed 16:10 crop, so no card can sit
+/* One preview frame for every pack: a fixed square crop, so no card can sit
    taller or shorter than its neighbours. The inset ring keeps the frame readable
    even when a screenshot's own background is nearly black. Every pack gets the same
    internal padding, so a pet pack's card matches a product shot's card height. */
 .pack-art-frame {
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 1 / 1;
   box-sizing: border-box;
-  padding: clamp(12px, 4vw, 26px);
+  padding: clamp(var(--space-5), 4vw, var(--space-13));
   overflow: hidden;
   background: var(--control);
   border-bottom: 1px solid var(--border);
@@ -425,14 +481,14 @@
 /* Product shots, not pixel art: they are downscaled, so leave smoothing on. */
 .pack-image { width: 100%; height: 100%; object-fit: cover; }
 /* An animated pet is placed in the frame rather than stretched into it: without
-   centring it lands in the corner of the 16:10 frame, touching the edges. Its cap
+   centring it lands in the corner of the square frame, touching the edges. Its cap
    subtracts the padding that is actually applied, instead of a fixed guess. */
 .pack-art-frame.artwork {
   display: grid;
   place-items: center;
   /* The padding is inherited from .pack-art-frame; the cap subtracts it so the pet
      keeps clear of the frame at every width. */
-  --sprite-max-w: calc(100% - 2 * clamp(12px, 4vw, 26px));
+  --sprite-max-w: calc(100% - 2 * clamp(var(--space-5), 4vw, var(--space-13)));
 }
 .pack-art-frame.artwork .pack-image { object-fit: contain; image-rendering: pixelated; }
 /* Packs whose artwork is not drawn yet keep an empty frame: no stand-in screenshot,
@@ -490,35 +546,24 @@
 .pet-strip .pet-cell { width: 84px; height: 96px; }
 
 .pack-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-5); padding: var(--space-9) var(--space-9) var(--space-8); }
-.pack-head h2 { color: var(--text); font-size: var(--font-lead); font-weight: 700; }
-/* Two lines minimum for the tagline and three clamped lines of body copy keep
-   the text block the same height whether the copy is short or long. */
+.pack-head { min-width: 0; }
+.pack-head h2 { overflow: hidden; color: var(--text); font-size: var(--font-lead); font-weight: 700; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+/* One title and a two-line summary keep cards compact and aligned. */
 .pack-tagline {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  /* Exactly two lines of room, in the tagline's own line-height units. A 2.4em floor
-     mixes units with the 1.3 line-height, so a one-line tagline still shrank the card
-     and rows ended up different heights. */
-  min-height: calc(2 * 1.3em);
+  height: 3em;
+  overflow-wrap: anywhere;
   margin-top: var(--space-3);
-  color: var(--text-4);
+  color: var(--text-3);
   font-size: var(--font-small);
-  line-height: 1.3;
+  line-height: 1.5;
 }
-.pack-copy {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  /* Exactly three lines of room, whatever the copy's own length: this is what keeps
-     every card the same height when one pack's text is a line shorter. */
-  min-height: calc(3 * 1.75em);
-  color: var(--text-2);
-  font-size: var(--font-small);
-  line-height: 1.75;
-}
+.pack-card .pack-chips li { padding: 0; border: 0; background: transparent; }
+.pack-card .pack-chips li + li { border-left: 1px solid var(--divider); padding-left: var(--space-4); }
+.pack-card .pack-price strong { color: var(--text); }
 /* One chip row, never two. Every chip may shrink and ellipsise, including the first:
    a long size string like "16x16 + 24x24 + 32x32" would otherwise hold its full width,
    push the card past its column, and spill out of a narrow container such as the studio
@@ -576,7 +621,11 @@
   .pack-price s { display: none; }
 }
 .pack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-left: auto; }
-.add-button.block { width: 100%; min-height: 40px; }
+.add-button.block { width: 100%; min-height: var(--control-height-compact); }
+
+/* Featured packs are the homepage's compact market shelf. The artwork stays prominent,
+   while the price carries the warm orange emphasis requested for this entry point. */
+.featured-pack-card .pack-price strong { color: var(--price); }
 
 .market-empty { display: grid; justify-items: start; gap: var(--space-5); padding: var(--space-23) var(--space-10); background: var(--surface); border: 1px dashed var(--border-strong); }
 .market-empty h3 { font-size: var(--font-h3); font-weight: 700; }
@@ -620,7 +669,7 @@
  * page title. It read 44px while the rest of the site read 38px, which made the detail page
  * look like a different product.
  */
-.pack-hero-copy h1 { font-size: clamp(30px, 3.4vw, var(--font-h2-lg)); line-height: 1.14; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
+.pack-hero-copy h1 { font-size: clamp(var(--font-h2), 3.4vw, var(--font-h2-lg)); line-height: 1.14; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .pack-hero-tagline { margin-top: var(--space-5); color: var(--text-4); font-size: var(--font-body); line-height: 1.6; }
 .pack-hero-body { margin-top: var(--space-8); color: var(--text-2); font-size: var(--font-body); line-height: 1.8; }
 .pack-hero-copy .pack-chips { margin-top: var(--space-9); }
@@ -806,6 +855,14 @@
 .cart-review-total .grand dt { color: var(--text); font-size: var(--font-body); }
 .cart-review-total .grand dd { color: var(--warn); font-size: var(--font-price-lg); }
 
+/* Prices use the warm warning tone so they remain distinct from white content text. */
+.pack-price strong,
+.pack-card .pack-price strong,
+.bundle-item-price,
+.cart-line-price,
+.cart-subtotal strong,
+.cart-review-total dd { color: var(--price); }
+
 /* The licence: a titled block with its own surface so it reads as terms, not as body. */
 .cart-agreement {
   display: grid;
@@ -940,3 +997,8 @@
 .asset-preview.empty { background: var(--surface); }
 
 .asset-purchase .panel-body { gap: 0; }
+
+/* Catalogue cards keep the browsing decision light; full copy lives on the detail page. */
+.market-browse:not(.related) .pack-card .pack-body { padding-block: var(--space-7); }
+.market-browse:not(.related) .pack-card .pack-tagline,
+.market-browse:not(.related) .pack-card .pack-copy { display: none; }

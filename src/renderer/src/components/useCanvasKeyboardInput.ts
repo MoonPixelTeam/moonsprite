@@ -629,11 +629,8 @@ export function useCanvasKeyboardInput(ports: Ports) {
         ports.inputRef.current.spaceHeld = false
         const drag = ports.inputRef.current.drag
         if (drag) drag.transformMoveStart = undefined
-        if (ports.canvasRef.current)
-          ports.canvasRef.current.style.cursor =
-            drag?.kind === 'marquee'
-              ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
-              : canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
+        const pointer = ports.inputRef.current.pointer
+        ports.updateCursorAt(pointer.clientX, pointer.clientY, event.ctrlKey, event.altKey, event.shiftKey)
         // Restore the smooth preview as soon as temporary hand navigation is
         // released (the overlay draw will re-check the live input state).
         ports.scheduleBrushPreviewOverlay()

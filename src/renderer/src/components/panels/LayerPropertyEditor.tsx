@@ -17,6 +17,7 @@ import { isGroupEffectivelyLocked, isLayerEffectivelyLocked } from '@/core/docum
 import { useWorkspace, type LayerPropertyField, type LayerPropertyTarget, type LayerPropertyValues } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { CheckboxField } from '@/components/CheckboxField'
+import { selectedRowsForProperties } from './layer-panel-selection'
 
 type LayerFormTarget = LayerPropertyTarget
 type BatchProperty = LayerPropertyField
@@ -53,7 +54,7 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     if (propertyTransactionRef.current) store.cancelLayerPropertiesTransaction(propertyTransactionRef.current)
     propertyTransactionRef.current = null
   }
-  useImperativeHandle(ref, () => ({ close: () => closeProperties(), open(targets: readonly LayerPropertyTarget[]) {
+  const openTargets = (targets: readonly LayerPropertyTarget[]): void => {
     cancelPending()
     const current = useWorkspace.getState().sessions.find(item => item.document.id === documentId)
     // Property commands address the active document. Reject a stale portal request.
@@ -65,7 +66,19 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     if (!id) { setForm(null); return }
     propertyTransactionRef.current = id
     setForm({ id: first.id, kind: first.kind, targets: [...targets], batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' })
-  } }))
+  }
+  useImperativeHandle(ref, () => ({ close: () => closeProperties(), open: openTargets }))
+
+  // The properties surface is intentionally non-modal to the layer panel. When
+  // selection moves underneath it, retarget the existing editor instead of
+  // leaving values from the layer that was originally opened.
+  const selectedTargets = session ? selectedRowsForProperties(session) : []
+  const selectedTargetKey = selectedTargets.map(target => `${target.kind}:${target.id}`).join('|')
+  const formTargetKey = form?.targets.map(target => `${target.kind}:${target.id}`).join('|') ?? ''
+  useEffect(() => {
+    if (!form || !selectedTargetKey || selectedTargetKey === formTargetKey) return
+    openTargets(selectedTargets)
+  }, [formTargetKey, selectedTargetKey, documentId])
 
   const propertyValues = (next: LayerFormState): LayerPropertyValues => ({
     name: next.name,

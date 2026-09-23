@@ -53,6 +53,7 @@ it.each([['shape', 32, 24], ['shape', 31, 25], ['marquee', 32, 24], ['marquee', 
   update(drag, { x: 23, y: 18 }, modifiers)
   assertCenter()
   if (kind === 'marquee') {
+    result.current.updateMarqueePreview(drag, drag.last, modifiers, true)
     const committed = marqueeSelectionCommit(drag, null, true, 'replace')
     expect(committed.after).toEqual(drag.previewSelection)
     expect(committed.after).not.toBeNull()

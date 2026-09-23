@@ -50,7 +50,7 @@ describe('selection creation cursor', () => {
 
   it('keeps a detached cursor around a one-cell preview', () => {
     const marks = selectionCursorCornerRects({ x: 100, y: 80, width: 1, height: 1 })
-    expect(marks[0]).toEqual({ x: 98, y: 78, width: 2, height: 2 })
-    expect(marks[1]).toEqual({ x: 98, y: 78, width: 2, height: 2 })
+    expect(marks[0]).toEqual({ x: 94, y: 78, width: 6, height: 2 })
+    expect(marks[1]).toEqual({ x: 98, y: 74, width: 2, height: 6 })
   })
 })

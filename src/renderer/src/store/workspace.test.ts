@@ -1747,13 +1747,44 @@ describe('selection clipboard', () => {
     expect(useWorkspace.getState().sessions[0].timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: pasted.id })
     expect(pasted.groupId).toBe(group.id)
     expect(readLayerColorAt(document, pasted, 0, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
+    expect(useWorkspace.getState().sessions[0].tool).toBe('selection')
+    expect(useWorkspace.getState().sessions[0].selection).toEqual({ x: 0, y: 0, width: 1, height: 1 })
 
     useWorkspace.getState().undo()
     expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, top.id])
     expect(document.activeLayerId).toBe(active.id)
+    expect(useWorkspace.getState().sessions[0].selection).toBeNull()
     useWorkspace.getState().redo()
     expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
     expect(getActiveLayer(document).id).toBe(pasted.id)
+    expect(useWorkspace.getState().sessions[0].selection).toEqual({ x: 0, y: 0, width: 1, height: 1 })
+  })
+
+  it('transforms a newly pasted layer immediately and restores its placement through undo', async () => {
+    const document = createDocument('transform new paste', 8, 8, 'rgba')
+    useWorkspace.getState().addSession(document)
+    const previousSelection = { x: 0, y: 0, width: 2, height: 2 }
+    useWorkspace.getState().setSelection(previousSelection)
+    const api = window.moonSprite as any
+    api.readClipboardImage = vi.fn(async () => ({ width: 1, height: 1, data: new Uint8Array([255, 0, 0, 255]) }))
+
+    expect(await useWorkspace.getState().pasteAsNewLayer()).toBe(true)
+    const pasted = getActiveLayer(document)
+    const original = { ...useWorkspace.getState().sessions[0].selection! }
+    useWorkspace.getState().updateSelectionProperties({ x: 1, y: 1, width: 2, height: 2 })
+    useWorkspace.getState().commitFloatingPaste()
+    expect(readLayerColorAt(document, pasted, 1, 1)).toEqual(red)
+    expect(readLayerColorAt(document, pasted, 2, 2)).toEqual(red)
+    expect(readLayerColorAt(document, pasted, original.x, original.y)).toEqual(transparent)
+
+    useWorkspace.getState().undo()
+    expect(readLayerColorAt(document, pasted, original.x, original.y)).toEqual(red)
+    useWorkspace.getState().undo()
+    expect(document.layers).toHaveLength(1)
+    expect(useWorkspace.getState().sessions[0].selection).toEqual(previousSelection)
+    useWorkspace.getState().redo()
+    useWorkspace.getState().redo()
+    expect(readLayerColorAt(document, getActiveLayer(document), 2, 2)).toEqual(red)
   })
 
   it('prefers a newer external image after an internal layer copy', async () => {

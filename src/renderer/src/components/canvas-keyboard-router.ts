@@ -1,3 +1,4 @@
+import { EXCLUSIVE_SHORTCUT_SCOPE_CHANGED, hasExclusiveShortcutScope } from './exclusive-shortcut-scope'
 export interface CanvasKeyboardSubscription {
   isActive: () => boolean
   keyDown?: (event: KeyboardEvent) => void
@@ -12,6 +13,7 @@ export function createCanvasKeyboardRouter(target: Window) {
   const participants = new Set<CanvasKeyboardSubscription>()
   const heldKeys = new Set<string>()
   const keyDown = (event: KeyboardEvent): void => {
+    if (hasExclusiveShortcutScope()) { heldKeys.clear(); participants.clear(); return }
     heldKeys.add(event.code || event.key)
     let stopped = false
     const descriptor = Object.getOwnPropertyDescriptor(event, 'stopImmediatePropagation')
@@ -35,6 +37,7 @@ export function createCanvasKeyboardRouter(target: Window) {
     }
   }
   const keyUp = (event: KeyboardEvent): void => {
+    if (hasExclusiveShortcutScope()) { heldKeys.clear(); participants.clear(); return }
     heldKeys.delete(event.code || event.key)
     for (const subscription of [...subscriptions]) {
       if (!subscriptions.has(subscription)) continue
@@ -51,6 +54,7 @@ export function createCanvasKeyboardRouter(target: Window) {
         target.addEventListener('keydown', keyDown, true)
         target.addEventListener('keyup', keyUp, true)
         target.addEventListener('blur', blur)
+        target.addEventListener(EXCLUSIVE_SHORTCUT_SCOPE_CHANGED, blur)
       }
       subscriptions.add(subscription)
       return () => {
@@ -60,6 +64,7 @@ export function createCanvasKeyboardRouter(target: Window) {
         target.removeEventListener('keydown', keyDown, true)
         target.removeEventListener('keyup', keyUp, true)
         target.removeEventListener('blur', blur)
+        target.removeEventListener(EXCLUSIVE_SHORTCUT_SCOPE_CHANGED, blur)
         blur()
       }
     }

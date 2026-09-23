@@ -1,7 +1,7 @@
 import type { Copy, Language } from '../content'
 import { useStudio } from '../studio/store'
 import { Button, EmptyState } from '../ui'
-import { WorkspacePage } from '../workspace/WorkspaceLayout'
+import { WorkspacePage } from '../ui'
 import { navigate } from '../router'
 import { StudioPublish } from './StudioPublishForm'
 

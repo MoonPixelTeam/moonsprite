@@ -19,7 +19,7 @@ export function beginSelectionBrush(session: DocumentSession, point: CanvasPoint
   const drag: CanvasDragState = {
     kind: 'selection-brush', start: point, last: point,
     selectionStart: cloneSelection(selection), selectionMode: mode,
-    selectionBrushStroke: { visited: new Set<number>() }
+    selectionBrushStroke: { visited: new Set<number>(), outsidePreview: new Map() }
   }
   moveSelectionBrush(drag, session, point, optimizedRotation, repeatMode)
   return drag

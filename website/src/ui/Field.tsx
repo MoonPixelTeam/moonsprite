@@ -1,4 +1,5 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
+import { Button, IconButton } from './primitives'
 import { PixelFileArchive as FileArchive, PixelImagePlus as ImagePlus, PixelX as X } from './icons'
 
 /*
@@ -50,12 +51,13 @@ export function FormField({ label, badge, hint, invalid, children }: {
  * targets, because its own button is drawn by the OS. The hidden input must stay
  * `position: fixed` (see .visually-hidden) or it widens the document.
  */
-export function FileField({ label, badge, hint, file, onPick, onClear, emptyTitle, emptyHint, replaceLabel, clearLabel, invalid, accept, icon }: {
+export function FileField({ label, badge, hint, file, onPick, onPickMany, onClear, emptyTitle, emptyHint, replaceLabel, clearLabel, invalid, accept, icon, disabled, multiple }: {
   label: string
   badge?: string
   hint?: ReactNode
   file: { name: string; size: number } | null
-  onPick: (file: File) => void
+  onPick?: (file: File) => void
+  onPickMany?: (files: File[]) => void
   onClear?: () => void
   emptyTitle: string
   emptyHint: string
@@ -64,9 +66,17 @@ export function FileField({ label, badge, hint, file, onPick, onClear, emptyTitl
   invalid?: boolean
   accept?: string
   icon?: ReactNode
+  disabled?: boolean
+  multiple?: boolean
 }) {
   const [dragging, setDragging] = useState(false)
   const id = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const pick = (files: File[]) => {
+    if (disabled || inputRef.current?.matches(':disabled')) return
+    if (onPickMany) onPickMany(files)
+    else if (files[0]) onPick?.(files[0])
+  }
 
   const formatSize = (bytes: number) => bytes < 1048576
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -77,11 +87,16 @@ export function FileField({ label, badge, hint, file, onPick, onClear, emptyTitl
     <input
       className="visually-hidden"
       id={id}
+      ref={inputRef}
       type="file"
+      multiple={multiple}
+      disabled={disabled}
+      aria-label={label}
+      aria-invalid={invalid || undefined}
+      aria-describedby={hint ? `${id}-hint` : undefined}
       accept={accept}
       onChange={(event) => {
-        const picked = event.target.files?.[0]
-        if (picked) onPick(picked)
+        pick(Array.from(event.target.files ?? []))
         // Allows re-picking the same file after a clear.
         event.target.value = ''
       }} />
@@ -92,8 +107,7 @@ export function FileField({ label, badge, hint, file, onPick, onClear, emptyTitl
       onDrop={(event) => {
         event.preventDefault()
         setDragging(false)
-        const dropped = event.dataTransfer.files?.[0]
-        if (dropped) onPick(dropped)
+        pick(Array.from(event.dataTransfer.files))
       }}>
       {file
         ? <>
@@ -103,20 +117,16 @@ export function FileField({ label, badge, hint, file, onPick, onClear, emptyTitl
               <strong>{file.name}</strong>
               <small>{formatSize(file.size)}</small>
             </span>
-            {onClear && <button type="button" className="icon-button" onClick={onClear} aria-label={clearLabel}>
-              <X aria-hidden="true" />
-            </button>}
+            {onClear && <IconButton label={clearLabel} disabled={disabled} onClick={onClear} icon={<X aria-hidden="true" />} />}
           </div>
-          {onClear && <div className="drop-actions">
-            <label className="button secondary compact" htmlFor={id}>{replaceLabel}</label>
-          </div>}
+          <div className="drop-actions"><Button size="compact" disabled={disabled} onClick={() => inputRef.current?.click()}>{replaceLabel}</Button></div>
         </>
-        : <label className="drop-empty" htmlFor={id}>
+        : <Button className="drop-empty" disabled={disabled} onClick={() => inputRef.current?.click()}>
           {icon ?? <ImagePlus aria-hidden="true" />}
           <strong>{emptyTitle}</strong>
           <small>{emptyHint}</small>
-        </label>}
+        </Button>}
     </div>
-    {hint && <small className="field-hint">{hint}</small>}
+    {hint && <small id={`${id}-hint`} className="field-hint">{hint}</small>}
   </div>
 }

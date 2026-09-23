@@ -2,15 +2,15 @@ import { create } from 'zustand'
 import { useWorkspace } from './workspace'
 import { tr } from './workspace-translation'
 
-type Placement = { x: number; y: number; width: number; height: number; angle: number; flipX: boolean; flipY: boolean }
+type Placement = { x: number; y: number; width: number; height: number; angle: number; flipX: boolean; flipY: boolean; opacity?: number }
 export interface CanvasReference extends Placement {
   id: string; src: string; name: string; locked: boolean
   floating?: boolean
   documentId?: string
   initial?: Placement
 }
-const placement = ({ x, y, width, height, angle, flipX, flipY }: Placement): Placement => ({ x, y, width, height, angle, flipX, flipY })
-const same = (a: CanvasReference, b: CanvasReference) => a.src === b.src && a.name === b.name && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.angle === b.angle && a.flipX === b.flipX && a.flipY === b.flipY && a.locked === b.locked && a.floating === b.floating
+const placement = ({ x, y, width, height, angle, flipX, flipY, opacity }: Placement): Placement => ({ x, y, width, height, angle, flipX, flipY, opacity: opacity ?? 1 })
+const same = (a: CanvasReference, b: CanvasReference) => a.src === b.src && a.name === b.name && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.angle === b.angle && a.flipX === b.flipX && a.flipY === b.flipY && (a.opacity ?? 1) === (b.opacity ?? 1) && a.locked === b.locked && a.floating === b.floating
 
 export const useCanvasReferences = create<{
   images: CanvasReference[]
@@ -54,6 +54,7 @@ export const useCanvasReferences = create<{
       for (const key of ['x', 'y', 'width', 'height', 'angle'] as const) {
         if (patch[key] !== undefined && (!Number.isFinite(patch[key]) || ((key === 'width' || key === 'height') && patch[key]! <= 0))) return
       }
+      if (patch.opacity !== undefined && (!Number.isFinite(patch.opacity) || patch.opacity < 0 || patch.opacity > 1)) return
       const ratio = (before.initial?.width ?? before.width) / (before.initial?.height ?? before.height)
       if (patch.width !== undefined) patch = { ...patch, height: patch.width / ratio }
       else if (patch.height !== undefined) patch = { ...patch, width: patch.height * ratio }

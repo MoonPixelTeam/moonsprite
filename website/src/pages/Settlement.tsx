@@ -1,146 +1,78 @@
-import { WorkspacePage } from '../workspace/WorkspaceLayout'
-import { useState } from 'react'
-import { PixelCheck as Check, PixelTrash2 as Trash2 } from '../ui/icons'
+import { EarningsOverview } from '../studio/EarningsOverview'
+import { formatPrice, priceIn, USD_TO_CNY } from '../market/catalog'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { Copy, Language } from '../content'
 import { useStudio } from '../studio/store'
-import { useData, maskAccount, type PayoutMethod } from '../data/store'
-import { Alert, Button, Field, Panel, Select } from '../ui'
-import { formatPrice } from '../market/catalog'
+import { prepareWithdrawal } from '../studio/withdrawal'
+import { Alert, Button, EmptyState, Field, Input, Panel, StatusBadge, WorkspacePage } from '../ui'
+import { SITE_CONFIG } from '../config'
 
-/**
- * Settlement and payouts. The withdrawal panel used to ask for an account number on every
- * request and the status never moved off "requested"; a seller could not tell whether
- * money was coming. This page holds the payout methods and shows where each request is.
- */
 export function SettlementPage({ t, language }: { t: Copy; language: Language }) {
-  const strings = t.studioSettlement
-  const status = t.marketPage.payoutStatus
   const studio = useStudio()
-  const { payoutMethods, addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } = useData()
-
+  const strings = t.studioSettlement
+  const zh = language === 'zh'
+  const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState('')
-  const [methodId, setMethodId] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [kind, setKind] = useState('alipay')
   const [account, setAccount] = useState('')
   const [holder, setHolder] = useState('')
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-
-  const defaultMethod = payoutMethods.find((item) => item.isDefault)
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setProblem(null)
-    setNotice(null)
-    try {
-    const result = await addPayoutMethod({ kind, account, holder })
-    if (!result.ok) {
-      setProblem(result.error === 'account' ? strings.errorAccount : result.error === 'holder' ? strings.errorHolder : strings.errorKind)
-      return
-    }
-    setNotice(language === 'zh' ? '收款账户已保存。' : 'Payout method saved.')
-    setAccount('')
-    setHolder('')
-    } catch { setProblem(language === 'zh' ? '保存收款账户失败，请重试。' : 'Could not save payout method. Please retry.') }
-    finally { setBusy(false) }
+  const money = (value: number) => formatPrice(value, language)
+  const step = zh ? USD_TO_CNY : 1
+  useEffect(() => { setAmount(''); setProblem(null) }, [language])
+  const errors: Record<string, string> = {
+    amount: zh ? `请输入大于零且为 ¥${USD_TO_CNY} 整数倍的金额。` : 'Enter a positive whole USD amount.',
+    insufficient: t.studioPage.errorInsufficient,
+    account: zh ? '请填写有效的支付宝账号（邮箱或手机号）。' : 'Enter an Alipay email or phone number.',
+    holder: zh ? '请填写支付宝实名认证姓名（最多 40 字）。' : 'Enter the Alipay verified name (up to 40 characters).',
   }
-
-
-  return <WorkspacePage
-          eyebrow={t.studioPage.eyebrow}
-          title={strings.title}
-          subtitle={strings.subtitle}
-          back="#/studio"
-          backLabel={t.studioPage.backToStudio} >
-        {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
-        {notice && <Alert tone="success" icon={<Check aria-hidden="true" />}>{notice}</Alert>}
-
-        <Panel title={strings.title} className="settlement-overview">
-          <dl className="account-facts settlement-ledger">
-            <div><dt>{strings.cycle}</dt><dd>{strings.cycleValue}</dd></div>
-            <div><dt>{strings.nextPayout}</dt><dd>{formatPrice(studio.available)}</dd></div>
-            <div><dt>{strings.method}</dt><dd>{defaultMethod ? `${defaultMethod.kind} ${maskAccount(defaultMethod.account)}` : strings.noMethod}</dd></div>
-            <div><dt>{t.studioPage.platformFee}</dt><dd>{studio.platformFeePercent}%</dd></div>
-          </dl>
-          <Alert tone="info">{strings.feeNote(studio.platformFeePercent)}</Alert>
-        </Panel>
-
-        <div className="settlement-split">
-        <Panel title={t.studioPage.withdraw} className="settlement-withdraw">
-          {payoutMethods.length === 0 ? <p className="panel-copy">{strings.noMethod}</p> : <form className="settings-form" onSubmit={async (event) => {
-            event.preventDefault()
-            if (busy) return
-            const method = payoutMethods.find((item) => item.id === methodId) ?? defaultMethod ?? payoutMethods[0]
-            if (!method) return
-            setBusy(true); setNotice(null); setProblem(null)
-            try {
-              const result = await studio.requestWithdrawal(Number(amount), `${method.kind} ${method.account} (${method.holder})`)
-              if (!result.ok) setProblem(result.error === 'insufficient' ? t.studioPage.errorInsufficient : t.studioPage.errorAmount)
-              else { setNotice(t.studioPage.withdrawRequested); setAmount('') }
-            } catch { setProblem(language === 'zh' ? '提现申请失败，请重试。' : 'Withdrawal failed. Please retry.') }
-            finally { setBusy(false) }
-          }}>
-            <Field label={language === 'zh' ? '提现金额（USD）' : 'Withdrawal amount (USD)'} hint={`${t.studioPage.available}: USD ${studio.available.toFixed(2)}`}><input type="number" min="0.01" step="0.01" max={studio.available} value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field>
-            <Field label={strings.method}><Select label={strings.method} value={payoutMethods.find((item) => item.id === methodId)?.id ?? defaultMethod?.id ?? payoutMethods[0]?.id ?? ''} onChange={setMethodId} options={payoutMethods.map((item) => ({ value: item.id, label: `${item.kind} · ${maskAccount(item.account)}` }))} /></Field>
-            <Button type="submit" variant="primary" disabled={busy || studio.available <= 0}>{t.studioPage.withdrawSubmit}</Button>
-          </form>}
-        </Panel>
-
-        <Panel title={strings.payoutHistory} className="settlement-history">
-          {studio.withdrawals.length === 0
-            ? <p className="panel-copy">{strings.noPayouts}</p>
-            : <ul className="payout-list">
-              {studio.withdrawals.map((item) => <li key={item.id}>
-                <span className="payout-amount">{formatPrice(item.amount)}</span>
-                {/* The status is the thing a seller actually wants to know. */}
-                <span className={`payout-state ${item.status}`}>{status[item.status]}</span>
-                <span className="payout-dest">{item.destination}</span>
-                <time>{new Date(item.requestedAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}</time>
-              </li>)}
-            </ul>}
-        </Panel>
+  const clear = () => { setAmount(''); setAccount(''); setHolder(''); setProblem(null) }
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (pending.current) return
+    setProblem(null); setNotice(null)
+    const request = prepareWithdrawal(amount, account, holder, studio.available, language)
+    if (!request.ok) { setProblem(errors[request.error]); return }
+    pending.current = true; setBusy(true)
+    try {
+      const result = await studio.requestWithdrawal(request.amount, request.destination)
+      if (!result.ok) { setProblem(errors[result.error] ?? (zh ? '提现申请失败，请重试。' : 'Unable to request withdrawal. Please retry.')); return }
+      clear(); setOpen(false); setNotice(t.studioPage.withdrawRequested)
+    } catch { setProblem(zh ? '提现申请失败，请重试。' : 'Unable to request withdrawal. Please retry.') }
+    finally { pending.current = false; setBusy(false) }
+  }
+  return <WorkspacePage title={strings.title} subtitle={strings.subtitle} back="#/studio" backLabel={t.studioPage.backToStudio}>
+    {notice && <Alert tone="success">{notice}</Alert>}
+    {!SITE_CONFIG.apiBaseUrl && <Alert tone="info">{t.studioPage.prototypeBody}</Alert>}
+    <EarningsOverview t={t} language={language} className="settlement-overview" actions={<Button variant="primary" disabled={open || studio.loading || studio.available <= 0} onClick={() => { clear(); setNotice(null); setOpen(true) }}>{t.studioPage.withdraw}</Button>} />
+    {open && <Panel title={t.studioPage.withdraw} className="settlement-withdraw">
+      <p className="panel-copy">{zh ? '通过支付宝收款，请核对账号与实名认证姓名。' : 'Receive funds via Alipay. Check the account and verified name before submitting.'}</p>
+      {problem && <Alert tone="danger" role="alert">{problem}</Alert>}
+      <form className="settings-form withdrawal-form" onSubmit={submit}>
+        <div className="withdrawal-amount">
+        <Field label={zh ? '提现金额（人民币）' : 'Withdrawal amount (USD)'}><Input autoFocus name="amount" type="number" min={step} step={step} max={priceIn(studio.available, language)} value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={busy} /></Field>
+          <div className="withdrawal-balance"><span>{t.studioPage.available} <strong>{money(studio.available)}</strong></span><Button size="compact" disabled={busy} onClick={() => setAmount(String(priceIn(studio.available, language)))}>{zh ? '全部提现' : 'Withdraw all'}</Button></div>
+          <p className="field-hint">{zh ? `演示换算：1 USD = ¥${USD_TO_CNY}，金额需为 ¥${USD_TO_CNY} 的整数倍。` : 'Demo withdrawals use whole USD increments.'}</p>
         </div>
-
-        <Panel title={strings.addMethod} className="settlement-methods">
-          <form className="settings-form" onSubmit={submit}>
-            <Field label={strings.methodKind}>
-              <Select
-                value={kind}
-                label={strings.methodKind}
-                onChange={setKind}
-                options={[
-                  { value: 'alipay', label: '支付宝' },
-                  { value: 'wechat', label: '微信' },
-                  { value: 'bank', label: '银行卡' },
-                  { value: 'paypal', label: 'PayPal' },
-                ]} />
-            </Field>
-            <Field label={strings.methodAccount}>
-              <input value={account} onChange={(event) => setAccount(event.target.value)} maxLength={64} />
-            </Field>
-            <Field label={strings.methodHolder}>
-              <input value={holder} onChange={(event) => setHolder(event.target.value)} maxLength={40} />
-            </Field>
-            <Button type="submit" variant="primary" size="compact" disabled={busy}>{strings.addMethod}</Button>
-          </form>
-
-          {payoutMethods.length > 0 && <ul className="method-list">
-            {payoutMethods.map((method: PayoutMethod) => <li key={method.id}>
-              <span className="method-kind">{method.kind}</span>
-              {/* Only ever the masked form: a settings page should not print a full account. */}
-              <span className="method-account">{maskAccount(method.account)}</span>
-              <span className="method-holder">{method.holder}</span>
-              {method.isDefault
-                ? <span className="method-default"><Check aria-hidden="true" />{strings.methodDefault}</span>
-                : <Button size="compact" onClick={() => { void setDefaultPayoutMethod(method.id).catch(() => setProblem(language === 'zh' ? '设置默认账户失败。' : 'Could not change default method.')) }}>{strings.setDefault}</Button>}
-              <Button size="compact" icon={<Trash2 aria-hidden="true" />} onClick={() => { void removePayoutMethod(method.id).catch(() => setProblem(language === 'zh' ? '移除收款账户失败。' : 'Could not remove payout method.')) }}>
-                {strings.removeMethod}
-              </Button>
-            </li>)}
-          </ul>}
-        </Panel>
+        <div className="withdrawal-recipient">
+        <Field label={zh ? '支付宝账号' : 'Alipay account'} hint={zh ? '填写支付宝绑定的邮箱或手机号。' : 'Email or phone linked to Alipay.'}><Input name="alipayAccount" value={account} onChange={(event) => setAccount(event.target.value)} maxLength={64} autoComplete="off" required disabled={busy} /></Field>
+        <Field label={zh ? '实名认证姓名' : 'Verified name'} hint={zh ? '须与支付宝实名认证姓名一致。' : 'Must match the verified Alipay account name.'}><Input name="holder" value={holder} onChange={(event) => setHolder(event.target.value)} maxLength={40} autoComplete="off" required disabled={busy} /></Field>
+        </div>
+        <div className="settlement-submit-actions"><Button type="submit" variant="primary" disabled={busy || studio.available <= 0}>{busy ? (zh ? '提交中…' : 'Submitting…') : t.studioPage.withdrawSubmit}</Button><Button disabled={busy} onClick={() => { clear(); setOpen(false) }}>{zh ? '取消' : 'Cancel'}</Button></div>
+      </form>
+    </Panel>}
+    <Panel title={strings.payoutHistory} className="settlement-history">
+      {studio.withdrawals.length === 0 ? <EmptyState title={strings.noPayouts} /> : <ul className="payout-list">
+        {[...studio.withdrawals].sort((a, b) => b.requestedAt - a.requestedAt).map((item) => <li key={item.id}>
+          <span className="payout-amount">{money(item.amount)}</span>
+          <StatusBadge tone={item.status === 'paid' ? 'success' : item.status === 'rejected' ? 'danger' : 'warning'}>{t.marketPage.payoutStatus[item.status]}</StatusBadge>
+          <span className="payout-dest">{item.destination}</span>
+          <time dateTime={new Date(item.requestedAt).toISOString()}>{new Date(item.requestedAt).toLocaleDateString(zh ? 'zh-CN' : 'en-US')}</time>
+          {item.note && <p className="panel-copy">{item.note}</p>}
+        </li>)}
+      </ul>}
+    </Panel>
   </WorkspacePage>
 }

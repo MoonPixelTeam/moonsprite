@@ -101,7 +101,7 @@ export interface CanvasDragState extends LayerMoveState {
   perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }
   /** Coverage collected while creating a selection with the selection brush. */
-  selectionBrushStroke?: { visited: Set<number> }
+  selectionBrushStroke?: { visited: Set<number>; outsidePreview?: Map<string, CanvasPoint> }
   liquifyCompound?: boolean
   liquifyMode?: LiquifyMode
   liquifySamplePoint?: CanvasPoint

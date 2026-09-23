@@ -1,4 +1,5 @@
 import { canvasAdaptiveContrast } from './canvas-adaptive-contrast'
+import { unboundedShapePreview } from '@/core/shape-preview'
 import { drawMagicWandPreview } from './canvas-magic-preview'
 import type { RgbaColor } from '@shared/types-color'
 import { rasterLinePoints, selectionContains } from '@/core/selection'
@@ -154,7 +155,10 @@ export function renderCanvasSelectionPreview({
   const selectionDrag = canvasGestureForPreview(inputRef.current.drag)
   if (selectionDrag?.kind === 'marquee' && (selectionDrag.moved || selectionDrag.quickSelectCell)) {
     const displaySelection = selectionDrag.marqueeDisplaySelection ?? selectionDrag.marqueePreviewSelection
-    if (displaySelection)
+    if (!selectionDrag.quickSelectCell && (view.tileRepeatMode ?? 'off') === 'off' && selectionDrag.previewTarget) {
+      const points = unboundedShapePreview(selectionDrag.previewTarget, session.selectionKind === 'ellipse' ? 'ellipse' : 'rectangle', selectionDrag.previewAngle ?? 0, session.selectionRounded ? session.selectionCornerRadius : 0)
+      drawSelectionPathPreviewPoints(points.flatMap(point => symmetryPoints(point, document.width, document.height, session.symmetryAxes, symmetryCenter, false)), repeatCopies, false, customSelectionPreviewColor)
+    } else if (displaySelection)
       drawSelectionPathPreview(
         selectionPreviewPixels(displaySelection),
         repeatCopies,
@@ -179,13 +183,13 @@ export function renderCanvasSelectionPreview({
       const previewPixels = new Map<string, Point>()
       const addLine = (from: Point, to: Point): void => {
         for (const sourcePoint of rasterLinePoints(from, to))
-          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, !repeatedLasso))
+          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, false))
             previewPixels.set(`${point.x}:${point.y}`, point)
       }
       if (selectionDrag.kind === 'polygon-lasso') {
         const polygonCache = (selectionDrag.polygonPathRasterCache ??= createPolygonPathRasterCache())
         for (const sourcePoint of polygonLassoPreviewPoints(path, selectionDrag.last, lassoPreviewClosed, balancedShiftLineEnabled, polygonCache))
-          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter))
+          for (const point of symmetryPoints(sourcePoint, document.width, document.height, session.symmetryAxes, symmetryCenter, false))
             previewPixels.set(`${point.x}:${point.y}`, point)
       } else {
         for (let index = 1; index < path.length; index += 1) addLine(path[index - 1], path[index])

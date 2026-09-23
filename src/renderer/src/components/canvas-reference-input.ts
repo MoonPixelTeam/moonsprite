@@ -1,3 +1,4 @@
+export const CANVAS_REFERENCE_DELETE_EVENT = 'moonsprite:delete-canvas-reference'
 export const CANVAS_REFERENCE_PASTE_EVENT = 'moonsprite:replace-canvas-reference'
 import { isCanvasViewNavigationTool } from '@/core/canvas-input'
 

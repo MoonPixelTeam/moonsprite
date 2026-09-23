@@ -1,10 +1,10 @@
 /* ---------- app chrome: titlebar + menubar ---------- */
 
-.app-chrome { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: var(--space-10); min-height: 76px; padding-inline: max(24px, calc((100% - var(--max)) / 2)); background: var(--bg); border-bottom: 1px solid var(--divider); }
+.app-chrome { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: var(--space-10); min-height: 76px; padding-inline: max(var(--space-12), calc((100% - var(--max)) / 2)); background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent); box-shadow: 0 8px 24px rgb(0 0 0 / 12%); backdrop-filter: blur(16px) saturate(125%); -webkit-backdrop-filter: blur(16px) saturate(125%); }
 .titlebar { display: flex; flex-shrink: 0; align-items: center; }
 .titlebar-app { display: inline-flex; align-items: center; gap: var(--space-5); }
 .titlebar-app img { width: 28px; height: 28px; image-rendering: pixelated; }
-.titlebar-app span { color: var(--text); font-family: var(--font-pixel); font-size: 17px; white-space: nowrap; }
+.titlebar-app-title { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-body); font-weight: 700; line-height: 1; white-space: nowrap; }
 .titlebar-app small { overflow: hidden; color: var(--text-4); font-size: var(--font-small); text-overflow: ellipsis; white-space: nowrap; }
 .titlebar-controls { display: flex; }
 .titlebar-controls i { display: grid; place-items: center; width: 36px; height: 32px; color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); font-style: normal; line-height: 1; }
@@ -12,11 +12,11 @@
 .titlebar-controls i.close:hover { background: var(--danger); color: #fff; }
 .menubar { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-10); }
 .menubar-tabs { display: flex; align-items: center; gap: var(--space-1); min-width: 0; overflow-x: auto; }
-.menubar-tabs > a { padding: var(--space-5) var(--space-4); color: var(--text-3); font-size: var(--font-small); font-weight: 500; white-space: nowrap; }
+.menubar-tabs > a { padding: var(--space-5) var(--space-4); color: var(--text-3); font-family: "Fusion Pixel", var(--font-pixel); font-size: var(--font-body); font-weight: 400; white-space: nowrap; }
 .menubar-tabs > a:hover { color: var(--text); }
 .menubar-tabs > a[aria-current="page"] { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
 .menubar-utils { display: flex; align-items: center; gap: var(--space-4); flex: 0 0 auto; }
-.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; }
+.icon-button { display: inline-flex; flex: 0 0 var(--control-height-compact); align-items: center; justify-content: center; width: var(--control-height-compact); height: var(--control-height-compact); aspect-ratio: 1 / 1; padding: 0; color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; }
 .icon-button svg { width: 16px; height: 16px; }
 .icon-button:hover { color: var(--text); }
 /* Header cart and account. The cart carries the same count badge the drawer does.
@@ -24,7 +24,6 @@
    between signed out and signed in, so the header never grows a second highlighted
    control next to the cart. */
 .cart-button-icon { position: relative; }
-.cart-button-icon .cart-badge { top: -4px; right: -4px; min-width: 16px; line-height: 16px; }
 .account-button { text-decoration: none; }
 .language-button, .menu-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); height: 32px; padding: 0 var(--space-4); color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; font-size: var(--font-small); }
 .language-button svg { width: 15px; }
@@ -40,17 +39,23 @@
 
 /* ---------- buttons ---------- */
 
+.back-to-top { position: fixed; display: grid; gap: var(--space-3); right: max(var(--page-gutter), env(safe-area-inset-right)); bottom: max(var(--space-7), env(safe-area-inset-bottom)); z-index: 35; }
+.back-to-top .button { background: var(--panel); border-color: var(--border-strong); }
+.back-to-top .button:hover { background: var(--raised); border-color: var(--accent); }
+.site-shell .back-to-top .floating-tool { display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); width: var(--space-19); min-height: var(--space-20); padding: var(--space-2); color: var(--text-2); font-size: var(--font-small); font-weight: 400; }
+.back-to-top-arrow { transform: rotate(90deg); }
+
 /* Controls share the same two heights: 40px for regular fields/actions and 32px for
    compact row/header actions. Keeping this in tokens prevents baseline drift between
    Button, Select and FormField. */
-.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); min-height: var(--control-height); padding: 0 var(--space-10); border: 1px solid transparent; font-size: var(--font-body); font-weight: 700; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); min-height: var(--control-height-compact); padding: 0 var(--space-5); border: 1px solid transparent; font-size: var(--font-small); font-weight: 500; line-height: 1.4; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease; }
 .button svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .button.primary { color: var(--on-accent); background: var(--accent); }
 .button.primary:not(.disabled):hover { background: var(--accent-hover); }
 .button.secondary { color: var(--text); background: transparent; border-color: var(--border-strong); }
 .button.secondary:hover { border-color: var(--accent); background: var(--raised); }
 .button.disabled { color: var(--text-3); background: var(--raised); border-color: var(--border); cursor: not-allowed; }
-.button.compact { min-height: var(--control-height-compact); padding: 0 var(--space-6); font-size: var(--font-small); }
+.button.compact { min-height: var(--control-height-compact); padding: 0 var(--space-5); font-size: var(--font-small); }
 .button.compact svg { width: 13px; }
 
 /* ---------- shared panel parts ---------- */
@@ -66,4 +71,3 @@
 .pixel-icon { display: inline-flex; width: 16px; height: 16px; flex: 0 0 auto; color: var(--text-2); }
 .pixel-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
 .pixel-icon.large { width: 16px; height: 16px; color: var(--text-4); }
-

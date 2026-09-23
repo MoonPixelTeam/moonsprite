@@ -585,6 +585,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     cachedPolygonPathFor,
     drawSelectionCursorCorners
   } = createCanvasSelectionPaths({
+    cursorCanvas: canvas,
     useLocalCursors: frame.settings.useLocalCursors,
     selectionPreviewColorMode,
     selectionPreviewColor,
