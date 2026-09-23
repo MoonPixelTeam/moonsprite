@@ -17,19 +17,16 @@ import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { activeLayerMask, activePaintLayer } from '@/store/workspace-session'
 import { CanvasInputState, type CanvasDragState as DragState, type CanvasPoint as Point } from '@/core/canvas-input'
 import {
-  notifyAnimationCelThumbnailPreview,
   notifyCanvasPreview,
-  notifyLayerMaskThumbnailPreview,
   type CanvasPreviewSnapshot
 } from '@/core/canvas-preview-lifecycle'
-import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from '@/components/canvas-composite-cache'
+import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from '@/components/canvas-composite-registry'
 import { OnionSkinCompositeCache } from '@/components/onion-skin-composite-cache'
 import { animationFrameIdsForCellKeys } from '@/components/canvas-move-selection'
 import { type SelectionBoundaryCache } from '@/components/canvas-selection-renderer'
-import { resolveAnimationCel } from '@/core/animation'
 import { clearTilesetTilePreview } from '@/components/tileset-preview-events'
 import { releaseInitialDocumentComposite } from '@/core/initial-document-composite'
-import { GradientPreviewSurface, GradientCompositePreviewCache, GradientPreviewCoverageCache, nonContentPreviewDragKinds } from './canvas-stage-helpers'
+import { GradientPreviewSurface, GradientCompositePreviewCache, GradientPreviewCoverageCache } from './canvas-stage-helpers'
 interface Ports {
   readonly storedSession: DocumentSession
   readonly session: DocumentSession
@@ -229,24 +226,8 @@ export function useCanvasRenderEngine(ports: Ports) {
       // the expensive draw and its auxiliary thumbnail notifications.
       if (!canvasStageIsVisible(ports.canvasRef.current, useWorkspace.getState().activeId)) return
       frameWaitRef.current?.record(queuedAt, () => ({ documentId: ports.session.document.id }))
-      // Auxiliary thumbnails follow the canvas RAF. Emitting this from every
-      // pointer event makes a long stroke enqueue redundant thumbnail renders.
-      const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === ports.session.document.id) ?? ports.session
-      const currentMask = activeLayerMask(currentSession)
-      const activeDrag = ports.inputRef.current.drag
-      if (activeDrag && !nonContentPreviewDragKinds.has(activeDrag.kind)) {
-        if (currentMask) notifyLayerMaskThumbnailPreview(ports.session.document.id, currentMask.id)
-        else {
-          const timeline = currentSession.document.animation
-          const activeCel = timeline
-            ? resolveAnimationCel(
-                timeline,
-                timeline.cels.find((item) => item.layerId === currentSession.document.activeLayerId && item.frameId === timeline.activeFrameId) ?? null
-              )
-            : null
-          if (activeCel) notifyAnimationCelThumbnailPreview(ports.session.document.id, activeCel.id, currentSession.document.activeLayerId)
-        }
-      }
+      // Layer/cel thumbnails subscribe to committed content revisions separately.
+      // Live canvas frames only drive the full-document preview panel.
       ports.drawRef.current()
     })
   }
@@ -379,7 +360,7 @@ export function useCanvasRenderEngine(ports: Ports) {
     ports.session.selectionPivot?.x,
     ports.session.selectionPivot?.y,
     ports.session.outlinePreview,
-    ports.session.brushSize,
+    // useCanvasBrushOverlay owns size-only redraws, including modifier sizing.
     ports.session.brushShape,
     ports.session.brushAngle,
     ports.activeBrushDither?.enabled,

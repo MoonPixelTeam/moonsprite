@@ -250,15 +250,44 @@ const selectionMaskFromPoints = (points: SymmetryPoint[]): SelectionMask | null 
   return { x: left, y: top, width, height, mask }
 }
 
-/** Returns the side of a rotationally symmetric selection that contains the pressed pixel. */
+// Axis-swapping transforms around mixed integer/half-pixel pivots do not map
+// pixel centers onto pixel centers. Rounded orbits are not equivalence classes:
+// selecting a representative independently per pixel can tear a contiguous lasso.
+const usesPressedSymmetryRegion = (axes: SymmetryAxes | null | undefined, width: number, height: number, center?: SymmetryCenter | null): boolean => {
+  if (isRotationalOnly(axes)) return true
+  if (!hasSymmetry(axes)) return false
+  const pivot = resolvedCenter(width, height, center)
+  return !Number.isInteger(pivot.x - pivot.y) && enabledSymmetryMatrices(axes!).some((matrix) => matrix.xy !== 0)
+}
+
+const mirrorSector = (point: SymmetryPoint, width: number, height: number, axes: SymmetryAxes, center?: SymmetryCenter | null): number => {
+  const pivot = resolvedCenter(width, height, center)
+  const delta = { x: point.x + 0.5 - pivot.x, y: point.y + 0.5 - pivot.y }
+  let best = delta
+  let sector = 0
+  enabledSymmetryMatrices(axes).forEach((matrix, index) => {
+    const candidate = transformSymmetryDelta(matrix, delta)
+    if (candidate.y < best.y || (candidate.y === best.y && candidate.x < best.x)) {
+      best = candidate
+      sector = index
+    }
+  })
+  return sector
+}
+
+/** Returns the unrounded symmetry sector containing the pressed pixel. */
+
 export function symmetrySelectionDragRegion(selection: SelectionMask, startPoint: SymmetryPoint, width: number, height: number, axes: SymmetryAxes | null | undefined, center?: SymmetryCenter | null): SelectionMask | null {
-  if (!isRotationalOnly(axes) || !selectionContains(selection, startPoint.x, startPoint.y)) return null
-  const startSector = rotationalSector(startPoint, width, height, center)
+  if (!usesPressedSymmetryRegion(axes, width, height, center) || !selectionContains(selection, startPoint.x, startPoint.y)) return null
+  const sectorAt = (point: SymmetryPoint): number => isRotationalOnly(axes)
+    ? rotationalSector(point, width, height, center)
+    : mirrorSector(point, width, height, axes!, center)
+  const startSector = sectorAt(startPoint)
   const points: SymmetryPoint[] = []
   for (let y = selection.y; y < selection.y + selection.height; y += 1) {
     for (let x = selection.x; x < selection.x + selection.width; x += 1) {
       if (!selectionContains(selection, x, y)) continue
-      const sector = rotationalSector({ x, y }, width, height, center)
+      const sector = sectorAt({ x, y })
       if (sector === startSector || (startSector === -1 && sector === -1)) points.push({ x, y })
     }
   }
@@ -267,7 +296,7 @@ export function symmetrySelectionDragRegion(selection: SelectionMask, startPoint
 
 /** Translates one pressed rotational region and generates its complete symmetry closure. */
 export function translateSymmetrySelection(selection: SelectionMask, target: SelectionRect, width: number, height: number, axes: SymmetryAxes | null | undefined, center: SymmetryCenter | null | undefined, startPoint: SymmetryPoint, clipToCanvas = true): SelectionMask | null {
-  if (!isRotationalOnly(axes)
+  if (!usesPressedSymmetryRegion(axes, width, height, center)
     || target.width !== selection.width
     || target.height !== selection.height
     || target.flipHorizontal
@@ -299,7 +328,7 @@ export function translateSymmetrySelection(selection: SelectionMask, target: Sel
 /** Maps a drag from the pressed mirror region into the canonical region transformed by transformSymmetrySelection. */
 export function symmetrySelectionDragDelta(selection: SelectionMask, startPoint: SymmetryPoint, delta: SymmetryPoint, width: number, height: number, axes: SymmetryAxes | null | undefined, center?: SymmetryCenter | null, followPressedRegion = false): SymmetryPoint {
   if (!hasSymmetry(axes)) return { ...delta }
-  if (followPressedRegion && isRotationalOnly(axes) && selectionContains(selection, startPoint.x, startPoint.y)) return { ...delta }
+  if (followPressedRegion && usesPressedSymmetryRegion(axes, width, height, center) && selectionContains(selection, startPoint.x, startPoint.y)) return { ...delta }
   const orbit = symmetryOrbit(startPoint, width, height, axes, center, false)
   const selectedCandidates = orbit.filter((candidate) => selectionContains(selection, candidate.point.x, candidate.point.y))
   const candidates = selectedCandidates.length > 0 ? selectedCandidates : orbit

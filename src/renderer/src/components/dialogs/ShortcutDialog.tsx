@@ -175,17 +175,15 @@ export function ShortcutDialog({ shortcuts, onSave, onClose }: ShortcutDialogPro
   const importInputRef = useRef<HTMLInputElement>(null)
   const conflictState = useMemo(() => deriveShortcutConflicts(draftShortcuts), [draftShortcuts])
   const normalizedQuery = query.trim().toLocaleLowerCase(locale)
-  const shortcutGroupMatches = useMemo(() => new Map((Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[]).map((groupId) => [groupId, !normalizedQuery || SHORTCUT_GROUPS[groupId].some((id) => {
-    const shortcut = formatShortcutBindingsForLocale(draftShortcuts[id] ?? [], locale)
-    return [labels[id], shortcut, groupLabels[groupId], id].some((value) => value.toLocaleLowerCase(locale).includes(normalizedQuery))
-  })])), [draftShortcuts, groupLabels, labels, locale, normalizedQuery])
-  const visibleCommands = useMemo(() => {
-    const groupId = section
-    return SHORTCUT_GROUPS[groupId].map((id) => ({ id, matches: !normalizedQuery || (() => {
-      const shortcut = formatShortcutBindingsForLocale(draftShortcuts[id] ?? [], locale)
-      return [labels[id], shortcut, id].some((value) => value.toLocaleLowerCase(locale).includes(normalizedQuery))
-    })() }))
-  }, [draftShortcuts, groupLabels, labels, locale, normalizedQuery, section])
+  const commandMatches = (groupId: ShortcutGroupId, id: keyof ShortcutBindings): boolean => {
+    const bindings = draftShortcuts[id] ?? []
+    const shortcut = formatShortcutBindingsForLocale(bindings, locale)
+    return !normalizedQuery || [labels[id], shortcut, ...bindings, groupLabels[groupId], id, ...(bindings.length ? [] : [t('shortcuts.unset')])]
+      .some(value => value.toLocaleLowerCase(locale).includes(normalizedQuery))
+  }
+  const shortcutGroupMatches = new Map((Object.keys(SHORTCUT_GROUPS) as ShortcutGroupId[])
+    .map(groupId => [groupId, SHORTCUT_GROUPS[groupId].some(id => commandMatches(groupId, id))]))
+  const visibleCommands = SHORTCUT_GROUPS[section].map(id => ({ id, matches: commandMatches(section, id) }))
 
   const importShortcuts = async (file: File | undefined): Promise<void> => {
     if (!file) return

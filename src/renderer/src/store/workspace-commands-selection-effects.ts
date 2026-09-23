@@ -74,7 +74,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       get().commitPixelEdit(edit, tr('workspace.history.deleteSelection'))
       operationProbe?.recordOperationStage?.('selection-delete.commit-total', performance.now() - commitStartedAt)
     },
-    fillForeground() {
+    fillForeground(fillColorSource = 'foreground') {
       const current = activeSession(get())
       if (!current) return
       if (current.pendingPaste) get().commitFloatingPaste()
@@ -96,7 +96,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
           width: sourceEdit.transformedSourceBounds.width,
           height: sourceEdit.transformedSourceBounds.height
         }
-        const edit = fillSelectionOrCanvas(sourceEdit.document, sourceEdit.layer, session.primaryColor, selection)
+        const edit = fillSelectionOrCanvas(sourceEdit.document, sourceEdit.layer, (fillColorSource === 'background' ? session.secondaryColor : session.primaryColor), selection)
         if (!edit) {
           set({ message: tr('workspace.fill.empty') })
           return
@@ -107,7 +107,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
           source.id,
           sourceEdit.before,
           freeTileSourceSnapshotFromEditRaster(sourceEdit),
-          session.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground')
+          session.selection ? (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillSelectionForeground')) : (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillCanvasForeground'))
         )
         return
       }
@@ -124,9 +124,9 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
             result = 'locked'
             return
           }
-          const label = active.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground')
+          const label = active.selection ? (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillSelectionForeground')) : (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillCanvasForeground'))
           const entry = commitSelectedEffectInSession(recordDocumentOperation, active, label, (target) =>
-            fillSelectionOrCanvas(active.document, target.layer, active.primaryColor, active.selection))
+            fillSelectionOrCanvas(active.document, target.layer, (fillColorSource === 'background' ? active.secondaryColor : active.primaryColor), active.selection))
           if (entry) { result = 'done'; publishEditorEvent('fill.completed', active.document.id) }
         }, false)
         if (result === 'empty') set({ message: tr('workspace.fill.empty') })
@@ -144,7 +144,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
       }
       const operationProbe = window.__moonSpriteCanvasProbe
       const editStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-      const edit = fillSelectionOrCanvas(session.document, layer, session.primaryColor, session.selection)
+      const edit = fillSelectionOrCanvas(session.document, layer, (fillColorSource === 'background' ? session.secondaryColor : session.primaryColor), session.selection)
       operationProbe?.recordOperationStage?.('selection-fill.build-edit', performance.now() - editStartedAt, {
         points: edit?.before.size ?? 0,
         runs: edit?.runs?.length ?? 0,
@@ -156,7 +156,7 @@ export function createSelectionEffectsCommands({ get, set, recording }: Workspac
         return
       }
       const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-      if (get().commitPixelEdit(edit, session.selection ? tr('workspace.history.fillSelectionForeground') : tr('workspace.history.fillCanvasForeground'))) publishEditorEvent('fill.completed', session.document.id)
+      if (get().commitPixelEdit(edit, session.selection ? (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillSelectionForeground')) : (fillColorSource === 'background' ? tr('quickCommands.fillForeground') : tr('workspace.history.fillCanvasForeground')))) publishEditorEvent('fill.completed', session.document.id)
       operationProbe?.recordOperationStage?.('selection-fill.commit-total', performance.now() - commitStartedAt)
     },
     outlineActiveSelection(settings) {

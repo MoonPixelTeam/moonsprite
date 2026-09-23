@@ -77,6 +77,7 @@ interface Ports {
   inputRef: import('react').RefObject<CanvasInputState>
   quickSelectionHandledAtRef: import('react').RefObject<number | null>
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
   selectionInteractionEditable: boolean
   scheduleDraw: () => void
   displayedResizeCursorForHandle: (hit: SelectionHandle, contentRotation?: number) => string
@@ -130,6 +131,7 @@ interface Ports {
   t: (key: import('@/locales/contracts').TranslationKey, params?: import('@/locales/contracts').TranslationParams) => string
   drawSelectionOverlay: () => void
   magicWandWorkerRef: import('react').RefObject<MagicWandWorkerClient | null>
+  magicPreviewFlash: import('./canvas-magic-preview-flash').CanvasMagicPreviewFlash
   optimizedRotationEnabled: boolean
 }
 
@@ -255,7 +257,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             moved: false
           }
           quickSelectionHandledAtRef.current = event.timeStamp
-          event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+          event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
           scheduleDraw()
           return true
         }
@@ -656,6 +658,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         return true
       }
       if (session.selectionKind === 'magic') {
+        ports.magicPreviewFlash.clear(false)
         if (
           freeTileSelectionBounds &&
           !selectionContains(
@@ -708,13 +711,16 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           previewSelection: null
         }
         inputRef.current.drag = drag
+        let expectedSelection = initialSelection
+        let committing = false
+        let acceptedResult: MagicWandWorkerResult | null = null
         const valid = () => {
           const state = useWorkspace.getState()
           const current = state.sessions.find((item) => item.document.id === session.document.id)
           return (
             state.activeId === session.document.id &&
-            current &&
-            current.selection === initialSelection &&
+            current !== undefined &&
+            current.selection === expectedSelection &&
             current.contentRevision === contentRevision &&
             current.tool === initialTool &&
             current.selectionKind === 'magic' &&
@@ -723,22 +729,19 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           )
         }
         let unsubscribe = () => {}
-        const clearPreview = () => {
-          drag.magicPreviewBitmap?.close()
-          drag.magicPreviewBitmap = null
-          drag.magicPreviewRectangles = null
-        }
         const cleanup = () => {
           unsubscribe()
           if (magicGestureRef.current?.drag === drag) magicGestureRef.current = null
-          clearPreview()
         }
         const accept = (result: MagicWandWorkerResult) => {
-          clearPreview()
+          // Release can commit the same result already previewed on pointer down.
+          if (acceptedResult === result) return
+          acceptedResult = result
           drag.previewSelection = result.selection
           drag.magicPreviewRectangles = result.previewRectangles
           drag.magicPreviewBitmap = result.previewBitmap
           if (result.selection && result.boundarySegments) prepareSelectionBoundary(result.selection, result.boundarySegments)
+          ports.magicPreviewFlash.retain(drag, () => committing || valid())
         }
         const gesture = new MagicWandGesture<MagicWandWorkerResult>(
           (result) => {
@@ -749,7 +752,11 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             accept(result)
             cleanup()
             const startedAt = performance.now()
+            committing = true
             useWorkspace.getState().commitSelectionChange(before, result.selection, t('canvas.history.magicSelection'))
+            expectedSelection = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)?.selection ?? null
+            committing = false
+            ports.magicPreviewFlash.validate()
             window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.commit-selection', performance.now() - startedAt)
             drawSelectionOverlay()
             scheduleDraw()
@@ -763,6 +770,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             return
           }
           if (inputRef.current.drag === drag) inputRef.current.finish()
+          ports.magicPreviewFlash.clear(redraw)
           cleanup()
           magicWandWorkerRef.current?.dispose()
           if (redraw) scheduleDraw()
@@ -845,7 +853,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
             })
         }
         drag.magicRequest(point)
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         drawSelectionOverlay()
         scheduleDraw()
         return true
@@ -868,7 +876,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           path: [lassoStart],
           ...(lassoTileStart ? { tileRepeatStart: lassoTileStart } : {})
         }
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         return true
       }
       if (session.selectionKind === 'polygon-lasso') {
@@ -881,7 +889,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
           previewSelection: cloneSelection(currentSelection),
           path: [point]
         }
-        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true)
+        event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, selectionInteractionEditable, true, ports.useLocalCursors)
         return true
       }
     }

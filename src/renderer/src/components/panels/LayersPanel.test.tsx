@@ -396,6 +396,7 @@ describe('LayersPanel animation', () => {
   })
 
   it('resizes loop section boundaries by dragging either bracket edge', () => {
+    vi.useFakeTimers()
     const document = createDocument('timeline loop section resize', 2, 2, 'rgba')
     useWorkspace.getState().addSession(document)
     for (let index = 0; index < 3; index += 1) useWorkspace.getState().duplicateAnimationFrame()
@@ -416,6 +417,7 @@ describe('LayersPanel animation', () => {
     fireEvent.pointerDown(startEdge, { button: 0, clientX: 0, clientY: 10, pointerId: 71 })
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
     fireEvent.pointerMove(window, { clientX: 68, clientY: 10, pointerId: 71 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(loopBar.style.gridColumn).toBe('3 / span 1')
     fireEvent.pointerUp(window, { clientX: 68, clientY: 10, pointerId: 71 })
     expect(ensureAnimationDocument(document).loopSections?.[0]).toMatchObject({ startFrameId: timeline.frames[2].id, endFrameId: timeline.frames[2].id })
@@ -424,6 +426,7 @@ describe('LayersPanel animation', () => {
     const endEdge = loopBar.querySelector<HTMLElement>('.animation-loop-section-edge-end')!
     fireEvent.pointerDown(endEdge, { button: 0, clientX: 102, clientY: 10, pointerId: 72 })
     fireEvent.pointerMove(window, { clientX: 136, clientY: 10, pointerId: 72 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(loopBar.style.gridColumn).toBe('3 / span 2')
     fireEvent.pointerUp(window, { clientX: 136, clientY: 10, pointerId: 72 })
     expect(ensureAnimationDocument(document).loopSections?.[0]).toMatchObject({ startFrameId: timeline.frames[2].id, endFrameId: timeline.frames[3].id })
@@ -927,6 +930,7 @@ describe('LayersPanel animation', () => {
   })
 
   it('moves a pointer-dragged frame header and fades the source while dragging', () => {
+    vi.useFakeTimers()
     const document = createDocument('animation frame drag', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -945,6 +949,7 @@ describe('LayersPanel animation', () => {
     vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 34, top: 0, bottom: 114, width: 34, height: 114, x: 0, y: 0, toJSON: () => ({}) })
     fireEvent.pointerDown(first, { button: 0, clientX: 1, clientY: 10 })
     fireEvent.pointerMove(third, { clientX: 133, clientY: 10 })
+    act(() => { vi.advanceTimersByTime(17) })
     expect(first).toHaveClass('dragging')
     expect(container.querySelector('.animation-frame-drop-line')).toBeInTheDocument()
     fireEvent.pointerUp(third, { clientX: 133, clientY: 10 })
@@ -988,6 +993,31 @@ describe('LayersPanel animation', () => {
     act(() => vi.advanceTimersByTime(50))
     expect(list.scrollLeft).toBeLessThan(100)
     fireEvent.pointerUp(first, { pointerId: 8, clientX: 101, clientY: 10 })
+  })
+
+  it('continues scrolling the timeline while extending a frame range at its horizontal edge', () => {
+    vi.useFakeTimers()
+    const document = createDocument('animation frame range edge auto scroll', 1, 1, 'rgba')
+    useWorkspace.getState().addSession(document)
+    useWorkspace.getState().duplicateAnimationFrame()
+    const timeline = ensureAnimationDocument(document)
+    const session = useWorkspace.getState().sessions[0]
+    const { container } = render(<LayersPanel session={session} docked />)
+    const list = container.querySelector<HTMLElement>('.layer-animation-list')!
+    const first = container.querySelector<HTMLElement>(`[data-animation-frame-id="${timeline.frames[0].id}"]`)!
+    vi.spyOn(list, 'scrollWidth', 'get').mockReturnValue(1_000)
+    vi.spyOn(list, 'clientWidth', 'get').mockReturnValue(200)
+    vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200, top: 0, bottom: 120, width: 200, height: 120, x: 0, y: 0, toJSON: () => ({}) })
+
+    fireEvent.pointerDown(first, { button: 0, pointerId: 9, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(first, { pointerId: 9, clientX: 199, clientY: 10 })
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBeGreaterThan(18)
+
+    fireEvent.pointerUp(first, { pointerId: 9, clientX: 199, clientY: 10 })
+    const stoppedAt = list.scrollLeft
+    act(() => vi.advanceTimersByTime(50))
+    expect(list.scrollLeft).toBe(stoppedAt)
   })
 
 
@@ -1206,11 +1236,12 @@ describe('LayersPanel animation', () => {
     expect(modal!.querySelector('.layer-settings-pair')).toBeNull()
     const skipDisabledFrames = screen.getByRole('checkbox', { name: '左右切换时跳过停用帧' })
     expect(skipDisabledFrames).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: '播放动画时显示洋葱皮' })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     const onionPlayback = screen.getByRole('checkbox', { name: '播放动画时显示洋葱皮' })
     expect(onionPlayback).toBeChecked()
     fireEvent.click(onionPlayback)
     fireEvent.click(skipDisabledFrames)
-    fireEvent.click(screen.getByRole('checkbox', { name: '启用洋葱皮' }))
     expect(modal!.querySelector('.layer-settings-pair')).not.toBeNull()
     fireEvent.submit(modal!)
 
@@ -1227,12 +1258,13 @@ describe('LayersPanel animation', () => {
     const { container } = render(<LayersPanel session={session} docked />)
 
     fireEvent.click(container.querySelector<HTMLButtonElement>('.panel-actions button:last-child')!)
-    fireEvent.click(screen.getByRole('checkbox', { name: '隐藏时间轴' }))
+    fireEvent.click(screen.getByRole('button', { name: '普通模式' }))
 
     expect(container.querySelector('.layers-panel')).toHaveClass('timeline-hidden')
-    expect(container.querySelector('.layer-animation-toolbar')).toBeInTheDocument()
+    expect(container.querySelector('.layer-animation-toolbar')).toBeNull()
+    expect(container.querySelector('.layer-header-properties')).toBeInTheDocument()
     expect(document.querySelector('.layer-settings-modal')).toHaveClass('timeline-disabled')
-    expect(document.querySelector('.layer-settings-onion')).toBeDisabled()
+    expect(document.querySelector('.layer-settings-onion')).toBeNull()
     expect(localStorage.getItem(TIMELINE_HIDDEN_PREFERENCE_KEY)).toBe('true')
     expect(useWorkspace.getState().sessions[0].animationPlaying).toBe(false)
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])

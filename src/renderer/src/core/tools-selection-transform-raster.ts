@@ -19,7 +19,8 @@ import { clampSelection } from './tools-pixel-edit'
 import { type SelectionTransformSource, type TransformCell, type SelectionTransformPreviewRasterPacked } from './tools-selection-transform-types'
 import { rotSpriteSelectionCells } from './tools-selection-transform-rotsprite'
 import { forEachSelectedSourceOffset } from './tools-selection-transform-source'
-
+import { rasterizeSelectionTransformPacked, rasterizeSimpleSelectionTransformPacked } from './tools-selection-transform-packed'
+import { cachedSelectionTransformRaster } from './selection-transform-raster-cache'
 export function selectionTransformCells(document: SpriteDocument, sourceData: SelectionTransformSource, target: SelectionRect, angle: number, shear?: SelectionShearTransform, targetLayer?: RasterLayer, quad?: SelectionQuad, pixelCenteredSampling = false, optimizedRotation = false): TransformCell[] {
   const source = sourceData.selection
   const transformedBounds = quad ? selectionQuadBounds(quad) : transformedSelectionBounds(target, angle, shear)
@@ -186,17 +187,18 @@ export function selectionTransformPreviewPacked(
   if (width <= 0 || height <= 0) return output
   const layer = targetLayer ?? getActiveLayer(document)
   const simpleInverseTransform = angle % 360 === 0 && !shear && !quad
+  // Hole filling depends on all neighbors in the clipped destination. A
+  // cropped preview must retain the full-raster legacy path.
+  const bounds = transformedSelectionBounds(target, angle, shear)
+  const left = Math.max(0, Math.floor(bounds.x)), top = Math.max(0, Math.floor(bounds.y))
+  const right = Math.min(document.width, Math.ceil(bounds.x + bounds.width))
+  const bottom = Math.min(document.height, Math.ceil(bounds.y + bounds.height))
+  if (layer.format === 'rgba' && !quad && !optimizedRotation && startX === left && startY === top && width === right - left && height === bottom - top) {
+    rasterizeSelectionTransformPacked(source, target, { x: left, y: top, width, height }, output, angle, shear)
+    return output
+  }
   if (simpleInverseTransform) {
-    const right = Math.min(document.width, startX + width, Math.ceil(target.x + target.width))
-    const bottom = Math.min(document.height, startY + height, Math.ceil(target.y + target.height))
-    const left = Math.max(0, startX, Math.floor(target.x))
-    const top = Math.max(0, startY, Math.floor(target.y))
-    for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-      const sourcePoint = transformedSelectionSourcePoint(source.selection, target, x, y)
-      if (!sourcePoint) continue
-      const sourceOffset = (sourcePoint.y - source.selection.y) * source.selection.width + sourcePoint.x - source.selection.x
-      output[(y - startY) * width + x - startX] = source.values[sourceOffset]
-    }
+    rasterizeSimpleSelectionTransformPacked(document, source, target, startX, startY, width, height, output)
     return output
   }
   for (const cell of selectionTransformCells(document, source, target, angle, shear, layer, quad, false, optimizedRotation)) {
@@ -225,6 +227,11 @@ export function selectionTransformPreviewRasterPacked(
   const width = Math.max(0, right - left)
   const height = Math.max(0, bottom - top)
   if (width === 0 || height === 0) return { width, height, pixels: new Uint32Array(0) }
+  if (targetLayer?.format === 'rgba' && left >= 0 && top >= 0 && right <= document.width && bottom <= document.height) {
+    const pixels = cachedSelectionTransformRaster(source, target, { x: left, y: top, width, height }, angle, shear, quad, optimizedRotation,
+      () => selectionTransformPreviewPacked(document, source, target, left, top, width, height, angle, shear, targetLayer, undefined, quad, optimizedRotation))
+    return { width, height, pixels }
+  }
 
   const shiftX = -left
   const shiftY = -top

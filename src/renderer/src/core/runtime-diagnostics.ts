@@ -84,7 +84,7 @@ export const setRuntimeDiagnosticCollection = (enabled: boolean): void => {
   spanReports.clear()
   lastAction = null
 }
-let lastAction: { name: string; detail: RuntimeDiagnosticDetail } | null = null
+let lastAction: { name: string; at: number; detail: RuntimeDiagnosticDetail } | null = null
 const recentSpans: Array<{ id: number; name: string; start: number; end: number; documentId: RuntimeDiagnosticValue; layerId: RuntimeDiagnosticValue }> = []
 const spanReports = new Map<string, { at: number; suppressed: number; maxMs: number }>()
 let spanSequence = 0
@@ -92,8 +92,8 @@ let activeSpanId: number | null = null
 
 const monotonicNow = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now()
 
-const normalizeValue = (value: unknown): RuntimeDiagnosticValue => {
-  if (typeof value === 'string') return value.length > MAX_DETAIL_STRING_LENGTH ? `${value.slice(0, MAX_DETAIL_STRING_LENGTH)}...` : value
+const normalizeValue = (value: unknown, limit = MAX_DETAIL_STRING_LENGTH): RuntimeDiagnosticValue => {
+  if (typeof value === 'string') return value.length > limit ? `${value.slice(0, limit)}...` : value
   if (value === null || typeof value === 'number' || typeof value === 'boolean') return value
   if (ArrayBuffer.isView(value)) return `[Pixel/binary data: ${value.byteLength} bytes]`
   if (value instanceof ArrayBuffer) return `[ArrayBuffer: ${value.byteLength} bytes]`
@@ -116,7 +116,7 @@ const normalizeDetail = (detail: RuntimeDiagnosticDetail | undefined): RuntimeDi
     if (!property) continue
     count += 1
     Object.defineProperty(normalized, key.slice(0, 128), {
-      value: 'value' in property ? normalizeValue(property.value) : '[accessor]',
+      value: 'value' in property ? normalizeValue(property.value, key === 'stack' ? 4000 : MAX_DETAIL_STRING_LENGTH) : '[accessor]',
       enumerable: true, configurable: true, writable: true
     })
   }
@@ -143,7 +143,7 @@ const activeOperationDetail = (now: number): RuntimeDiagnosticDetail => {
   return {
     activeOperationCount: activeOperations.size,
     ...(operations ? { activeOperations: operations } : {}),
-    ...(lastAction ? { lastAction: lastAction.name, ...lastAction.detail } : {})
+    ...(lastAction ? { lastAction: lastAction.name, lastActionAgeMs: Math.max(0, Math.round(now - lastAction.at)), ...lastAction.detail } : {})
   }
 }
 
@@ -212,7 +212,8 @@ export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detai
   const spanId = ++spanSequence
   activeSpanId = spanId
   let failed = false
-  try { return action() } catch (error) { failed = true; throw error } finally {
+  let failure: unknown
+  try { return action() } catch (error) { failed = true; failure = error; throw error } finally {
     activeSpanId = parentSpanId
     const end = monotonicNow()
     const durationMs = end - start
@@ -220,7 +221,8 @@ export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detai
     if (collectionEnabled && generation === collectionGeneration && (durationMs >= 16 || failed)) {
       try {
         name = name.slice(0, 128)
-        const spanDetail = normalizeDetail(detail?.())
+        let spanDetail: RuntimeDiagnosticDetail
+        try { spanDetail = normalizeDetail(detail?.()) } catch { spanDetail = { contextUnavailable: true } }
         recentSpans.push({ id: spanId, name, start, end, documentId: spanDetail.documentId ?? null, layerId: spanDetail.layerId ?? null })
         if (recentSpans.length > 128) recentSpans.shift()
         const previous = spanReports.get(name)
@@ -231,11 +233,12 @@ export const measureRuntimeDiagnostic = <T>(name: string, action: () => T, detai
           if (spanReports.size >= 64 && !previous) spanReports.delete(spanReports.keys().next().value!)
           spanReports.set(name, { at: end, suppressed: 0, maxMs: 0 })
           recordRuntimeDiagnostic(failed ? 'error' : 'operation-stage', name, {
+            ...spanDetail,
+            ...(failed ? errorDetail(failure) : {}),
             spanId, parentSpanId, startTimeMs: Math.round(start * 10) / 10,
             durationMs: Math.round(durationMs * 10) / 10, timing: 'sync-inclusive',
             suppressedSamples: previous?.suppressed ?? 0,
-            suppressedMaxMs: Math.round(previous?.maxMs ?? 0),
-            ...spanDetail
+            suppressedMaxMs: Math.round(previous?.maxMs ?? 0)
           }, true)
         }
       } catch { /* Instrumentation must not change an operation's result or error. */ }
@@ -325,7 +328,7 @@ const errorDetail = (error: unknown): RuntimeDiagnosticDetail => {
     return {
       message: error.message,
       name: error.name,
-      stack: error.stack?.split('\n').slice(0, 5).join('\n') ?? ''
+      stack: error.stack?.split('\n').slice(0, 12).join('\n') ?? ''
     }
   }
   return { message: String(error) }
@@ -371,15 +374,16 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   }, heartbeatIntervalMs)
 
   const onPointerDown = (event: PointerEvent): void => {
-    lastAction = { name: 'pointer-down', detail: { control: controlIdentity(event.target), button: event.button } }
+    lastAction = { name: 'pointer-down', at: monotonicNow(), detail: { control: controlIdentity(event.target), button: event.button, buttons: event.buttons, pointerType: event.pointerType } }
   }
   const onWheel = (event: WheelEvent): void => {
-    lastAction = { name: 'wheel', detail: { control: controlIdentity(event.target), ctrl: event.ctrlKey } }
+    lastAction = { name: 'wheel', at: monotonicNow(), detail: { control: controlIdentity(event.target), ctrl: event.ctrlKey } }
   }
   const onKeyDown = (event: KeyboardEvent): void => {
     const editable = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)
     lastAction = {
       name: 'key-down',
+      at: monotonicNow(),
       detail: {
         key: editable && !event.ctrlKey && !event.altKey && !event.metaKey ? 'text-input' : event.key,
         ctrl: event.ctrlKey,
@@ -390,8 +394,13 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
       }
     }
   }
-  const onError = (event: ErrorEvent): void => recordRuntimeDiagnostic('error', 'window.error', errorDetail(event.error ?? event.message), true)
-  const onUnhandledRejection = (event: PromiseRejectionEvent): void => recordRuntimeDiagnostic('error', 'window.unhandled-rejection', errorDetail(event.reason), true)
+  const onError = (event: ErrorEvent): void => recordRuntimeDiagnostic('error', 'window.error', {
+    ...activeOperationDetail(monotonicNow()), ...errorDetail(event.error ?? event.message),
+    filename: event.filename, line: event.lineno, column: event.colno
+  }, true)
+  const onUnhandledRejection = (event: PromiseRejectionEvent): void => recordRuntimeDiagnostic('error', 'window.unhandled-rejection', {
+    ...activeOperationDetail(monotonicNow()), ...errorDetail(event.reason)
+  }, true)
   const onVisibilityChange = (): void => { lastHeartbeat = monotonicNow() }
 
   window.addEventListener('pointerdown', onPointerDown, true)
@@ -418,7 +427,7 @@ export const installRuntimeDiagnosticWatchdog = (options: RuntimeDiagnosticWatch
   }
 
   recordRuntimeDiagnostic('session', 'renderer.started', {
-    diagnosticRevision: 3,
+    diagnosticRevision: 4,
     hardwareConcurrency: navigator.hardwareConcurrency || 0,
     language: navigator.language,
     userAgent: navigator.userAgent

@@ -1,4 +1,6 @@
 import { useAppInformationDialogs } from '@/components/app/useAppInformationDialogs'
+import { ImageSequenceFields } from './components/dialogs/ImageSequenceFields'
+import { Button } from './components/Button'
 import { useAppDocumentDialogs } from '@/components/app/useAppDocumentDialogs'
 import { useAppSettingsDialogs } from '@/components/app/useAppSettingsDialogs'
 import { useAppDocumentPanes } from '@/components/app/useAppDocumentPanes'
@@ -298,6 +300,7 @@ export default function App() {
       else if (lcdScreenOpen) setLcdScreenOpen(false)
       else if (colorReplacementOpen) setColorReplacementOpen(false)
       else if (extensionSettingsOpen) closeExtensionSettings()
+      else if (preferencesOpen && document.querySelector('.tool-rail-layout-modal')) window.dispatchEvent(new CustomEvent('moonsprite:close-dialog', { detail: { target: 'tool-rail-layout' } }))
       else if (preferencesOpen) setPreferencesOpen(false)
       else if (shortcutOpen) setShortcutOpen(false)
       else if (aboutOpen) setAboutOpen(false)
@@ -664,6 +667,7 @@ export default function App() {
           onPanelVisibilityChange={updatePanelVisibility}
           relativeLuminanceInPreview={relativeLuminanceScope === 'app'}
           onOpenColorReplacement={openColorReplacement}
+          onOpenOutline={() => setOutlineOpen(true)}
           onOpenAntiAlias={() => setAntiAliasOpen(true)}
           onOpenPreferences={openQuickCommandPreferences}
           onOpenCommandSettings={openQuickCommandSettings}
@@ -696,6 +700,7 @@ export default function App() {
             onPinnedChange={setFloatingDocumentPinned}
             onReturnToTabs={returnFloatingDocumentToTabs}
             onCloseDocument={closeFloatingDocument}
+            onOpenOutline={() => setOutlineOpen(true)}
             shortcutFor={shortcutFor}
             onToggleMirror={toggleMirrorView}
             onOpenAntiAlias={() => setAntiAliasOpen(true)}
@@ -800,22 +805,24 @@ export default function App() {
           document.body
         )}
       {workspace.dialog && (
-        <div className="modal-backdrop dialog-backdrop" role="presentation">
+        <div className={`modal-backdrop dialog-backdrop${workspace.dialog.imageSequence ? ' modal-overlay-backdrop' : ''}`} role="presentation">
           <ModalShell
-            storageKey="confirm-content-v2"
-            fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}:${dialogDetailLength}`}
+            storageKey={workspace.dialog.imageSequence ? 'image-sequence-v1' : 'confirm-content-v2'}
+            fitContentKey={`${workspace.dialog.title}:${workspace.dialog.choices.length}:${dialogDetailLength}:${Boolean(workspace.dialog.imageSequence)}`}
             defaultWidth={420}
             defaultHeight={220}
             minHeight={0}
             resizable={false}
-            className={`confirm-modal${workspace.dialog.choices.some((choice) => choice.id === 'overwrite-all' || choice.id === 'rename-all') ? ' confirm-modal-bulk-actions' : ''}`}
+            className={`confirm-modal${workspace.dialog.imageSequence ? ' image-sequence-modal' : ''}${workspace.dialog.choices.some((choice) => choice.id === 'overwrite-all' || choice.id === 'rename-all') ? ' confirm-modal-bulk-actions' : ''}`}
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="app-dialog-title"
           >
-            <DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title" />
+            <DialogHeader eyebrow="MOONSPRITE" title={workspace.dialog.title} titleId="app-dialog-title"
+              onClose={workspace.dialog.imageSequence ? () => workspace.resolveDialog('cancel') : undefined} closeLabel={t('common.close')} />
             <div className="confirm-content">
               <strong>{workspace.dialog.message}</strong>
+              {workspace.dialog.imageSequence && <ImageSequenceFields key={workspace.dialog.imageSequence.files.join('\n')} sequence={workspace.dialog.imageSequence} />}
               {workspace.dialog.detailSections?.length ? (
                 <div className="confirm-detail-sections">
                   {workspace.dialog.detailSections.map((section, sectionIndex) => (
@@ -828,13 +835,13 @@ export default function App() {
             </div>
             <footer>
               {workspace.dialog.choices.map((choice) => (
-                <button
+                <Button
                   key={choice.id}
-                  className={choice.tone === 'primary' ? 'primary-button' : choice.tone === 'danger' ? 'danger-button' : 'quiet-button'}
+                  variant={choice.tone ?? 'quiet'}
                   onClick={() => workspace.resolveDialog(choice.id)}
                 >
                   {choice.label}
-                </button>
+                </Button>
               ))}
             </footer>
           </ModalShell>

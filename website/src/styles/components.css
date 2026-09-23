@@ -1,0 +1,69 @@
+/* ---------- app chrome: titlebar + menubar ---------- */
+
+.app-chrome { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: var(--space-10); min-height: 76px; padding-inline: max(24px, calc((100% - var(--max)) / 2)); background: var(--bg); border-bottom: 1px solid var(--divider); }
+.titlebar { display: flex; flex-shrink: 0; align-items: center; }
+.titlebar-app { display: inline-flex; align-items: center; gap: var(--space-5); }
+.titlebar-app img { width: 28px; height: 28px; image-rendering: pixelated; }
+.titlebar-app span { color: var(--text); font-family: var(--font-pixel); font-size: 17px; white-space: nowrap; }
+.titlebar-app small { overflow: hidden; color: var(--text-4); font-size: var(--font-small); text-overflow: ellipsis; white-space: nowrap; }
+.titlebar-controls { display: flex; }
+.titlebar-controls i { display: grid; place-items: center; width: 36px; height: 32px; color: var(--text-3); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); font-style: normal; line-height: 1; }
+.titlebar-controls i:hover { background: var(--raised); color: var(--text); }
+.titlebar-controls i.close:hover { background: var(--danger); color: #fff; }
+.menubar { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-10); }
+.menubar-tabs { display: flex; align-items: center; gap: var(--space-1); min-width: 0; overflow-x: auto; }
+.menubar-tabs > a { padding: var(--space-5) var(--space-4); color: var(--text-3); font-size: var(--font-small); font-weight: 500; white-space: nowrap; }
+.menubar-tabs > a:hover { color: var(--text); }
+.menubar-tabs > a[aria-current="page"] { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.menubar-utils { display: flex; align-items: center; gap: var(--space-4); flex: 0 0 auto; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; }
+.icon-button svg { width: 16px; height: 16px; }
+.icon-button:hover { color: var(--text); }
+/* Header cart and account. The cart carries the same count badge the drawer does.
+   The account icon keeps one neutral treatment in both states — only the glyph changes
+   between signed out and signed in, so the header never grows a second highlighted
+   control next to the cart. */
+.cart-button-icon { position: relative; }
+.cart-button-icon .cart-badge { top: -4px; right: -4px; min-width: 16px; line-height: 16px; }
+.account-button { text-decoration: none; }
+.language-button, .menu-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); height: 32px; padding: 0 var(--space-4); color: var(--text-3); background: transparent; border: 1px solid transparent; cursor: pointer; font-size: var(--font-small); }
+.language-button svg { width: 15px; }
+.language-button:hover { color: var(--text); }
+.lang-menu { position: relative; }
+.lang-options { position: absolute; top: calc(100% + var(--space-3)); right: 0; z-index: 70; min-width: 128px; padding: var(--space-2); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 24px var(--shadow); list-style: none; }
+.lang-options button { display: flex; width: 100%; padding: var(--space-4) var(--space-5); color: var(--text-3); background: none; border: 0; cursor: pointer; text-align: left; font-size: var(--font-small); }
+.lang-options button:hover { color: var(--text); }
+.lang-options button[aria-selected="true"] { color: var(--accent); }
+.menu-button:hover { color: var(--text); background: var(--surface-active); border-color: transparent; }
+.menu-button { display: none; width: 32px; padding: 0; }
+.menu-button svg { width: 18px; }
+
+/* ---------- buttons ---------- */
+
+/* Controls share the same two heights: 40px for regular fields/actions and 32px for
+   compact row/header actions. Keeping this in tokens prevents baseline drift between
+   Button, Select and FormField. */
+.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); min-height: var(--control-height); padding: 0 var(--space-10); border: 1px solid transparent; font-size: var(--font-body); font-weight: 700; white-space: nowrap; transition: background 120ms ease, border-color 120ms ease; }
+.button svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.button.primary { color: var(--on-accent); background: var(--accent); }
+.button.primary:not(.disabled):hover { background: var(--accent-hover); }
+.button.secondary { color: var(--text); background: transparent; border-color: var(--border-strong); }
+.button.secondary:hover { border-color: var(--accent); background: var(--raised); }
+.button.disabled { color: var(--text-3); background: var(--raised); border-color: var(--border); cursor: not-allowed; }
+.button.compact { min-height: var(--control-height-compact); padding: 0 var(--space-6); font-size: var(--font-small); }
+.button.compact svg { width: 13px; }
+
+/* ---------- shared panel parts ---------- */
+
+.panel-header { display: flex; align-items: center; gap: var(--space-5); min-height: 43px; padding: 0 var(--space-6); background: var(--raised); border-bottom: 1px solid var(--border); color: var(--text-2); font-size: var(--font-small); font-weight: 600; }
+.panel-header strong { font-weight: 600; }
+.panel-header svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--accent); }
+.panel-header .tile-icon { width: 20px; height: 20px; border: 1px solid var(--border); }
+.panel-header .tile-icon svg { width: 12px; height: 12px; }
+.panel-header-link { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-3); color: var(--accent); font-size: var(--font-small); font-weight: 400; }
+.panel-header-link:hover { color: var(--accent-hover); }
+.panel-header-link svg { width: 11px; height: 11px; color: currentColor; }
+.pixel-icon { display: inline-flex; width: 16px; height: 16px; flex: 0 0 auto; color: var(--text-2); }
+.pixel-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
+.pixel-icon.large { width: 16px; height: 16px; color: var(--text-4); }
+

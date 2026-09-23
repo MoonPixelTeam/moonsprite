@@ -22,6 +22,19 @@ import type {
   TimelineRowRef,
 } from '@/core/animation-timeline-identity'
 
+export interface PaletteColorTarget {
+  slots: Array<number | null>
+  columns: number
+  indices: number[]
+  selection?: { before: PaletteSelectionView; after: PaletteSelectionView }
+}
+
+export interface PaletteSelectionView {
+  columns: number
+  focusedSlot: number | null
+  boxSelection: { startSlot: number; endSlot: number } | null
+}
+
 /** Internal typed timeline selection identities. Legacy persisted arrays remain unchanged. */
 export interface TimelineSelectionIdentity {
   rows: ReadonlySet<string>
@@ -101,6 +114,8 @@ export interface FloatingSelectionBoxHistoryEntry {
 }
 
 export interface FloatingPaste {
+  /** An unchanged clipboard payload restored by undoing deselect; pixels are already committed. */
+  restoredFromDeselect?: boolean
   layerId: string
   layers?: SelectionTransformLayerState[]
   beforeSelection: SelectionMask | null
@@ -140,6 +155,7 @@ export interface TextBoxTransformState {
 export interface BrushProfile {
   inkMode: InkMode
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -193,6 +209,7 @@ export interface DocumentSession {
   primaryColor: RgbaColor
   secondaryColor: RgbaColor
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -254,6 +271,7 @@ export interface DocumentSession {
   selectionRounded: boolean
   selectionCornerRadius: number
   wandTolerance: number
+  magicEraserContiguous: boolean
   wandContiguous: boolean
   wandGapClosing: boolean
   wandGapThreshold: number
@@ -287,6 +305,8 @@ export interface DocumentSession {
   paletteSelectionId: number | null
   paletteSecondarySelectionId: number | null
   selectedPaletteIds: number[]
+  /** A fresh value requests restoration of transient palette UI after an edit. */
+  paletteSelectionRestore?: PaletteSelectionView
   selectedGroupId: string | null
   selectedGroupIds: string[]
   selectedLayerIds: string[]
@@ -314,6 +334,8 @@ export interface DocumentSession {
   selectedAnimationFrameIds: string[]
   animationFrameSelectionAnchorId: string | null
   selectedAnimationCellKeys: string[]
+  /** Blank group slots belonging to the cel marquee, never editable cels. */
+  selectedAnimationGroupCellKeys?: string[]
   animationCellSelectionAnchorKey: string | null
   /** Distinguishes timeline cel selection from cells derived only for selected-layer highlighting. */
   animationCellSelectionExplicit: boolean
@@ -351,6 +373,10 @@ export interface AppDialogDetailSection {
 }
 
 export interface AppDialog {
+  imageSequence?: {
+    files: string[]
+    settings: import('@/core/image-sequence-preferences').ImageSequenceSettings
+  }
   title: string
   message: string
   detail?: string

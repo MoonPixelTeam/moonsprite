@@ -114,7 +114,8 @@ export const renderAnimationCelThumbnailPixels = (
   surface: AnimationCelSurface,
   palette: readonly PaletteEntry[] = [],
   opacity = 1,
-  transparentBackground = false
+  transparentBackground = false,
+  framing: 'content' | 'canvas' = 'content'
 ): Uint8ClampedArray => {
   const size = Math.max(1, Math.trunc(thumbnailSize))
   const output = new Uint8ClampedArray(size * size * 4)
@@ -125,7 +126,7 @@ export const renderAnimationCelThumbnailPixels = (
   const expectedPixels = surface.format === 'rgba' ? width * height * 4 : width * height
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || !Number.isSafeInteger(expectedPixels)) return output
 
-  const contentBounds = animationCelContentBounds(surface, palette)
+  const contentBounds = framing === 'canvas' ? null : animationCelContentBounds(surface, palette)
   const layout = animationCelThumbnailLayout(documentWidth, documentHeight, size, surface, contentBounds)
   const scale = layout.canvas.width / Math.max(1, documentWidth)
   if (!Number.isFinite(scale) || scale <= 0) return output

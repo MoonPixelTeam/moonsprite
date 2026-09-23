@@ -1,3 +1,4 @@
+import { protectExportPixels, type ExportProtection } from './export-protection'
 import { decode, toRGBA8 } from 'upng-js'
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { PaletteEntry } from '@shared/types-color'
@@ -183,27 +184,27 @@ function encodeSvg(rgba: Uint8ClampedArray, width: number, height: number): Uint
   return new TextEncoder().encode(parts.join(''))
 }
 
-export async function exportDocumentImage(document: SpriteDocument, scalePercent: number, format: SaveImageKind): Promise<ImageExport> {
+export async function exportDocumentImage(document: SpriteDocument, scalePercent: number, format: SaveImageKind, protection: ExportProtection = 'off'): Promise<ImageExport> {
   if (format === 'psd') {
     return { bytes: encodePsd(document, scalePercent), extension: 'psd', indexed: false, width: Math.max(1, Math.round(document.width * scalePercent / 100)), height: Math.max(1, Math.round(document.height * scalePercent / 100)) }
   }
   if (format === 'ase' || format === 'aseprite') {
     return { bytes: encodeAseprite(document, scalePercent), extension: format, indexed: false, width: Math.max(1, Math.round(document.width * scalePercent / 100)), height: Math.max(1, Math.round(document.height * scalePercent / 100)) }
   }
-  return encodeScaledPixels(scaleDocumentPixels(document, scalePercent), format)
+  return encodeScaledPixels(protectExportPixels(scaleDocumentPixels(document, scalePercent), scalePercent, protection), format)
 }
 
-export async function exportDocumentSliceImage(document: SpriteDocument, slice: DocumentSlice, scalePercent: number, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd'>): Promise<ImageExport> {
+export async function exportDocumentSliceImage(document: SpriteDocument, slice: DocumentSlice, scalePercent: number, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd'>, protection: ExportProtection = 'off'): Promise<ImageExport> {
   const composite = compositeDocument(document)
   const pixels = new Uint8ClampedArray(slice.width * slice.height * 4)
   for (let y = 0; y < slice.height; y += 1) {
     const sourceOffset = ((slice.y + y) * document.width + slice.x) * 4
     pixels.set(composite.subarray(sourceOffset, sourceOffset + slice.width * 4), y * slice.width * 4)
   }
-  return encodeScaledPixels(scalePixels(pixels, slice.width, slice.height, scalePercent), format)
+  return encodeScaledPixels(protectExportPixels(scalePixels(pixels, slice.width, slice.height, scalePercent), scalePercent, protection), format)
 }
 
-export async function exportDocumentSelectionImage(document: SpriteDocument, selection: SelectionMask, scalePercent: number, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd' | 'gif'>): Promise<ImageExport> {
+export async function exportDocumentSelectionImage(document: SpriteDocument, selection: SelectionMask, scalePercent: number, format: Exclude<SaveImageKind, 'ase' | 'aseprite' | 'psd' | 'gif'>, protection: ExportProtection = 'off'): Promise<ImageExport> {
   const composite = compositeDocument(document)
   const pixels = new Uint8ClampedArray(selection.width * selection.height * 4)
   for (let y = 0; y < selection.height; y += 1) for (let x = 0; x < selection.width; x += 1) {
@@ -212,5 +213,5 @@ export async function exportDocumentSelectionImage(document: SpriteDocument, sel
     const source = ((selection.y + y) * document.width + selection.x + x) * 4
     pixels.set(composite.subarray(source, source + 4), target)
   }
-  return encodeScaledPixels(scalePixels(pixels, selection.width, selection.height, scalePercent), format)
+  return encodeScaledPixels(protectExportPixels(scalePixels(pixels, selection.width, selection.height, scalePercent), scalePercent, protection), format)
 }

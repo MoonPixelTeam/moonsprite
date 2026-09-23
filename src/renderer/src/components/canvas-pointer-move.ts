@@ -35,6 +35,7 @@ import { isPressurePointerType, resolveBrushDynamics } from '@/core/pressure'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { syncHeldShortcutModifiers } from '@/components/useQuickToolShortcut'
 import { SymmetryDragState } from './canvas-stage-helpers'
+import { flushCanvasBrushSize, queueCanvasBrushSize } from './canvas-brush-size-update'
 interface Ports {
   inputRef: import('react').RefObject<CanvasInputState>
   navigationInput: ReturnType<typeof createNavigationCanvasInput>
@@ -54,6 +55,7 @@ interface Ports {
   repeatedDocumentPointsAt: (clientX: number, clientY: number, continuous?: boolean, allowOutsideCopies?: boolean) => { local: Point; repeated: Point } | null
   localContinuousPointAt: (clientX: number, clientY: number) => Point | null
   selectionCrosshair: boolean
+  useLocalCursors?: boolean
   activeLayer: RasterLayer
   modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
   interfaceScale: import('@/core/file-preferences').UiScale
@@ -162,21 +164,6 @@ export function createCanvasPointerMove(ports: Ports) {
       )
       return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
     }
-    const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
-      const adapted = pressureAdapterRef.current.adapt({
-        pointerId: event.pointerId,
-        pointerType: sample.pointerType ?? event.pointerType,
-        pressure: sample.pressure,
-        buttons: event.buttons
-      })
-      return {
-        ...sample,
-        pointerType: adapted.pointerType,
-        pressure: adapted.pressure,
-        pressureAvailable: adapted.pressureAvailable,
-        previousPressure: adapted.previousPressure
-      }
-    })
     const activeDrag = inputRef.current.drag
     if (activeDrag?.kind === 'sample-color' && routeCanvasColorSampling(event.clientX, event.clientY)) {
       updateRotationIndicator(liveViewRef.current.rotation, false)
@@ -235,7 +222,7 @@ export function createCanvasPointerMove(ports: Ports) {
       (freeTransformActive || activeDrag?.freeTransform === true || textBoxInteraction ? localContinuousPointAt(event.clientX, event.clientY) : null)
     if (point) inputRef.current.updatePointer({ point, clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, altKey: event.altKey })
     if (inputRef.current.drag?.kind === 'marquee' || inputRef.current.drag?.kind === 'lasso' || inputRef.current.drag?.kind === 'polygon-lasso') {
-      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true)
+      event.currentTarget.style.cursor = selectionCreationCursor(selectionCrosshair, true, true, ports.useLocalCursors)
     }
     const modifierSizing =
       (activeLayer.kind !== 'tilemap' || session.tilemapMode !== 'paint') &&
@@ -258,9 +245,7 @@ export function createCanvasPointerMove(ports: Ports) {
       else {
         const delta = canvasClientDeltaForInterfaceScale(event.clientX - inputRef.current.modifierBrushSize.x, interfaceScale)
         const nextSize = inputRef.current.modifierBrushSize.size + Math.round(delta / 4)
-        if (session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(nextSize)
-        else if (session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(nextSize)
-        else useWorkspace.getState().setBrushSize(nextSize)
+        queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget, brushPreviewOverlaySupported(session))
       }
       // The first move can initialize the modifier state after the cursor
       // update above. The brush overlay is enough while sizing; a full canvas
@@ -270,7 +255,7 @@ export function createCanvasPointerMove(ports: Ports) {
       else scheduleDraw()
       return
     }
-    if (!modifierSizing) inputRef.current.modifierBrushSize = null
+    if (!modifierSizing) { flushCanvasBrushSize(inputRef.current); inputRef.current.modifierBrushSize = null }
     if (!point) return
     const drag = inputRef.current.drag
     if (moveQuickSampling({ drag, session, event })) return
@@ -288,9 +273,7 @@ export function createCanvasPointerMove(ports: Ports) {
         (drag.startBrushSize ??
           (session.tool === 'airbrush' ? session.airbrushScatterRadius : session.tool === 'liquify' ? session.liquifyRadius : session.brushSize)) +
         Math.round(delta / 4)
-      if (session.tool === 'airbrush') state.setAirbrushScatterRadius(nextSize)
-      else if (session.tool === 'liquify') state.setLiquifyRadius(nextSize)
-      else state.setBrushSize(nextSize)
+      queueCanvasBrushSize(inputRef.current, session, nextSize, event.currentTarget)
       event.currentTarget.style.cursor = canvasCursors.ewResize
       return
     }
@@ -320,6 +303,21 @@ export function createCanvasPointerMove(ports: Ports) {
     )
       return
     if (drag.kind === 'move-layer' && drag.layerId && drag.layerOffset && layerMoveInput.moveLayer({ drag, point, event, state, session })) return
+    const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
+      const adapted = pressureAdapterRef.current.adapt({
+        pointerId: event.pointerId,
+        pointerType: sample.pointerType ?? event.pointerType,
+        pressure: sample.pressure,
+        buttons: event.buttons
+      })
+      return {
+        ...sample,
+        pointerType: adapted.pointerType,
+        pressure: adapted.pressure,
+        pressureAvailable: adapted.pressureAvailable,
+        previousPressure: adapted.previousPressure
+      }
+    })
     if (drag.kind === 'free-tile-draw' && drag.freeTilePlacementEdit && freeTileInput.moveFreeTileDraw({ drag, session, previousPoint, pointerSamples, state }))
       return
     if (

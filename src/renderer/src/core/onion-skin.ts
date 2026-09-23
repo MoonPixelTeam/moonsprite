@@ -2,8 +2,11 @@ import type { AnimationLoopSection, AnimationTimeline } from '@shared/types-anim
 import type { RgbaColor } from '@shared/types-color'
 import type { SpriteDocument } from '@shared/types-document'
 import { resolveAnimationLoopSectionRange } from './animation-loop-sections'
-import { animationLayersAtFrame, ensureAnimationDocument } from './animation'
+import { animationCelAt, layerFromAnimationCel, animationLayersAtFrame, ensureAnimationDocument, resolveAnimationCel } from './animation'
 import { compositeDocument, compositeRegion, createCompositePointSampler, createNormalCompositePointSampler } from './document-composite'
+import { isLayerEffectivelyVisible, layerContentBounds } from './document-model'
+import { layerStyleOutputBounds } from './layer-styles'
+import type { RasterLayer } from '@shared/types-layer'
 import { blendOver, TRANSPARENT } from './raster'
 
 const documentForAnimationLayerComposite = (document: SpriteDocument, layers: SpriteDocument['layers'], frameId: string, layerId?: string): SpriteDocument => {
@@ -31,6 +34,7 @@ export interface OnionSkinStyle {
   nextColor: RgbaColor
   previousOpacity: number
   nextOpacity: number
+  scope?: 'current-layer' | 'all-layers'
 }
 
 export const onionSkinFrameRefs = (timeline: AnimationTimeline, previousFrames: number, nextFrames: number, loopSection?: AnimationLoopSection | null): OnionSkinFrameRef[] => {
@@ -121,4 +125,69 @@ export const tintOnionSkinPixels = (source: Uint8ClampedArray, tint: RgbaColor, 
     output[offset + 3] = Math.round(source[offset + 3] * opacity * tint.a / 255)
   }
   return output
+}
+
+/** A display-only shell: never pass this document to persistence or history. */
+export const createOnionSkinDisplayDocument = (
+  document: SpriteDocument,
+  refs: readonly OnionSkinFrameRef[],
+  style: OnionSkinStyle,
+  layerId: string,
+  displayId: string
+): SpriteDocument => {
+  const timeline = document.animation
+  if (!timeline || refs.length === 0) return document
+  const requested = style.scope === 'all-layers'
+    ? document.layers.filter((layer) => !layer.background && isLayerEffectivelyVisible(document, layer))
+    : document.layers.filter((layer) => layer.id === layerId && isLayerEffectivelyVisible(document, layer))
+  if (requested.length === 0) return document
+  const ghostsByInsertion = new Map<number, RasterLayer[]>()
+  const ghostCels: Array<{ id: string; layerId: string; frameId: string; zIndex: number; surface: { format: 'rgba'; width: number; height: number; offsetX: number; offsetY: number; pixels: Uint8ClampedArray } }> = []
+  for (const active of requested) {
+    const activeIndex = document.layers.findIndex((layer) => layer.id === active.id)
+    if (activeIndex < 0) continue
+    // Keep clipping chains intact: their underlay belongs below the chain's base.
+    let insertionIndex = activeIndex
+    while (insertionIndex > 0 && document.layers[insertionIndex].clippingMask &&
+      (document.layers[insertionIndex - 1].groupId ?? null) === (active.groupId ?? null)) insertionIndex -= 1
+    const anchor = document.layers[insertionIndex]
+    const zIndex = resolveAnimationCel(timeline, animationCelAt(timeline, anchor.id, timeline.activeFrameId))?.zIndex ?? 0
+    for (const ref of refs) {
+      const source = layerFromAnimationCel(active, resolveAnimationCel(timeline, animationCelAt(timeline, active.id, ref.frameId)))
+      if (!source) continue
+      const isolated: SpriteDocument = {
+        ...document,
+        layers: [{ ...source, groupId: null, clippingMask: false, blendMode: 'normal' }],
+        groups: [],
+        animation: { ...timeline, activeFrameId: ref.frameId }
+      }
+      const bounds = layerStyleOutputBounds(layerContentBounds(isolated, source), source.layerStyles)
+      if (!bounds) continue
+      const x = Math.max(0, bounds.x), y = Math.max(0, bounds.y)
+      const width = Math.min(document.width, bounds.x + bounds.width) - x
+      const height = Math.min(document.height, bounds.y + bounds.height) - y
+      const tint = ref.side === 'previous' ? style.previousColor : style.nextColor
+      const opacity = ref.side === 'previous' ? style.previousOpacity : style.nextOpacity
+      if (width <= 0 || height <= 0 || opacity <= 0 || tint.a === 0) continue
+      const ghost: RasterLayer = {
+        id: `${displayId}:${active.id}:${ref.side}:${ref.frameId}`, name: 'Onion skin',
+        visible: true, locked: true, opacity: 1, blendMode: 'normal', groupId: active.groupId,
+        width, height, offsetX: x, offsetY: y, format: 'rgba',
+        pixels: tintOnionSkinPixels(compositeRegion(isolated, x, y, width, height), tint, opacity, ref.distance)
+      }
+      const ghosts = ghostsByInsertion.get(insertionIndex) ?? []
+      ghosts.push(ghost)
+      ghostsByInsertion.set(insertionIndex, ghosts)
+      ghostCels.push({ id: `${ghost.id}:cel`, layerId: ghost.id, frameId: timeline.activeFrameId, zIndex, surface: { format: 'rgba', width, height, offsetX: x, offsetY: y, pixels: ghost.pixels as Uint8ClampedArray } })
+    }
+  }
+  if (ghostCels.length === 0) return document
+  const layers: RasterLayer[] = []
+  for (let index = 0; index < document.layers.length; index += 1) {
+    layers.push(...(ghostsByInsertion.get(index) ?? []), document.layers[index])
+  }
+  return {
+    ...document, id: displayId, layers,
+    animation: { ...timeline, cels: [...timeline.cels, ...ghostCels] }
+  }
 }

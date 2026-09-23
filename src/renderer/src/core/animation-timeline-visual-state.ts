@@ -1,3 +1,5 @@
+import { createAnimationTimelineVisualTopology, type AnimationTimelineVisualTopology } from './animation-timeline-visual-topology'
+import type { TimelineVisualCellCache } from './animation-timeline-cell-cache'
 /**
  * Pure, presentation-agnostic visual state for the animation timeline.
  *
@@ -71,6 +73,8 @@ export interface TimelineVisualStateInput {
   rows: readonly TimelineVisualRow[]
   frames: readonly TimelineVisualFrame[]
   cells: readonly TimelineVisualCell[]
+  topology?: AnimationTimelineVisualTopology
+  cellStateCache?: TimelineVisualCellCache
   canonicalIndex?: CanonicalTimelineIndex
   selection: TimelineSelectionSnapshot
   active?: {
@@ -438,18 +442,9 @@ export const deriveAnimationTimelineVisualState = (
   // visible during playback so frame/cel/layer multi-selection remains stable.
   const selectionGuidesVisible = !presentationHidden
 
-  const frameIds = new Set(frames.map((frame) => frame.id))
-  const layerIds = new Set(rows.filter((row) => row.ownerKind === 'layer').map((row) => row.ownerId))
-  const groupIds = new Set(rows.filter((row) => row.ownerKind === 'group').map((row) => row.ownerId))
   const index = input.canonicalIndex ?? createAnimationTimelineVisualIndex(frames, cells)
-  const cellBySlot = new Map<string, TimelineVisualCell>()
-  const rowByCellSlot = new Map<string, TimelineVisualRow>()
-  for (const row of rows) rowByCellSlot.set(`${row.ownerKind}:${row.ownerId}:${row.kind === 'mask' ? 'mask' : 'cel'}`, row)
-  for (const cell of [...index.celByOwnerFrame.values(), ...index.maskByOwnerFrame.values()]) {
-    const row = rowByCellSlot.get(`${cell.ownerKind}:${cell.ownerId}:${cell.kind}`)
-    if (!row) continue
-    cellBySlot.set(cellMapKey(cell.kind, cell.ownerKind, cell.ownerId, cell.frameId), cell)
-  }
+  const topology = input.topology ?? createAnimationTimelineVisualTopology(rows, frames, index)
+  const { frameIds, layerIds, groupIds, validNormalSlots, validMaskSlots } = topology
 
   const normalizeIds = (values: readonly string[] | undefined, valid: ReadonlySet<string>): { values: string[]; stale: string[] } => {
     const valuesOut: string[] = []
@@ -468,15 +463,6 @@ export const deriveAnimationTimelineVisualState = (
   // cell from ever being classified as current.
   const normalizedActiveLayerId = selection.activeLayerId && layerIds.has(selection.activeLayerId) ? selection.activeLayerId : null
   const normalizedActiveFrameId = selection.activeFrameId && frameIds.has(selection.activeFrameId) ? selection.activeFrameId : null
-
-  const validNormalSlots = new Set<string>()
-  const validMaskSlots = new Set<string>()
-  for (const row of rows) for (const frame of frames) {
-    const key = `${row.ownerId}:${frame.id}`
-    if (row.kind === 'mask') {
-      if (cellBySlot.has(cellMapKey('mask', row.ownerKind, row.ownerId, frame.id))) validMaskSlots.add(key)
-    } else if (row.ownerKind === 'layer') validNormalSlots.add(key)
-  }
 
   const normalizeCellKeys = (
     values: readonly string[] | undefined,
@@ -518,22 +504,6 @@ export const deriveAnimationTimelineVisualState = (
   const selectedMaskSet = new Set(normalizedMasks.values)
   const directCellSelectionEnabled = normalizedSelection.animationCellSelectionExplicit
   const selectedKeysForKind = (kind: TimelineCellKind): ReadonlySet<string> => kind === 'mask' ? selectedMaskSet : selectedCellSet
-
-  const linkInfo = new Map<string, { root: TimelineVisualCell | null; stale: boolean }>()
-  for (const cell of [...index.celById.values(), ...index.maskById.values()]) {
-    const rootId = cell.kind === 'cel' ? index.celRootById.get(cell.id) : index.maskRootById.get(cell.id)
-    const status = index.resolutionStatus.get(cellIdKey(cell.kind, cell.id))
-    const root = rootId ? (cell.kind === 'cel' ? index.celById : index.maskById).get(rootId) ?? null : null
-    linkInfo.set(cellIdKey(cell.kind, cell.id), { root: status === 'stale' ? null : root && root.id !== cell.id ? root : null, stale: status === 'stale' })
-  }
-  const groupMembers = new Map<string, TimelineVisualCell[]>()
-  for (const [groupKey, members] of index.membersByRoot) {
-    groupMembers.set(groupKey, [...members])
-  }
-  for (const [groupKey, members] of groupMembers) {
-    const root = members[0]
-    if (root) linkInfo.set(cellIdKey(root.kind, root.id), { root, stale: false })
-  }
 
   const directSelectedGroups = new Set<string>()
   const selectedByFrameGroups = new Set<string>()
@@ -623,11 +593,9 @@ export const deriveAnimationTimelineVisualState = (
   }))
 
   const cellStates: TimelineVisualCellState[] = []
-  for (const row of rows) for (const frame of frames) {
-    const key = `${row.ownerId}:${frame.id}`
-    const kind: TimelineCellKind = row.kind === 'mask' ? 'mask' : 'cel'
-    const cell = cellBySlot.get(cellMapKey(kind, row.ownerKind, row.ownerId, frame.id)) ?? null
-    const valid = kind === 'mask' ? cell !== null : row.ownerKind === 'layer'
+  const cellCache = input.cellStateCache?.topology === topology ? input.cellStateCache : undefined
+  for (let slotIndex = 0; slotIndex < topology.slots.length; slotIndex++) {
+    const {row, frame, key, kind, cell, valid, groupId, groupKey, linked, role} = topology.slots[slotIndex]
     const activeLayer = row.ownerKind === 'layer' && row.ownerId === normalizedActiveLayerId
     const activeFrame = frame.id === normalizedActiveFrameId
     // A mask cell is current only when the mask row itself is the active row;
@@ -643,19 +611,19 @@ export const deriveAnimationTimelineVisualState = (
     const cellSelectedByFrame = selectedFrameSet.has(frame.id)
     const selectedByLayer = row.ownerKind === 'layer' ? selectedLayerSet.has(row.ownerId) : selectedGroupSet.has(row.ownerId)
     const cellSelectedByFrameAndLayer = cellSelectedByFrame && selectedByLayer
-    const info = cell ? linkInfo.get(cellIdKey(cell.kind, cell.id)) : undefined
-    const groupId = info?.root?.id ?? null
-    const groupKey = groupId ? cellIdKey(kind, groupId) : null
     const directSelected = groupKey ? directSelectedGroups.has(groupKey) : false
     const linkedSelectedByFrame = groupKey ? selectedByFrameGroups.has(groupKey) : false
     const linkedSelectedByFrameAndLayer = groupKey ? selectedByFrameAndLayerGroups.has(groupKey) : false
-    const linked = Boolean(cell?.linkSourceId || (groupKey ? (groupMembers.get(groupKey)?.length ?? 0) > 1 : false))
-    const role: TimelineLinkRole = info?.stale ? 'stale' : !linked ? 'none' : info?.root?.id === cell?.id ? 'source' : 'member'
     const selectedVisible = explicitSelected && selectionGuidesVisible
+    const signature = Number(activeLayer) | Number(activeFrame) << 1 | Number(current) << 2 | Number(explicitSelected) << 3
+      | Number(cellSelectedByFrame) << 4 | Number(selectedByLayer) << 5 | Number(directSelected) << 6
+      | Number(linkedSelectedByFrame) << 7 | Number(linkedSelectedByFrameAndLayer) << 8 | Number(selectionGuidesVisible) << 9
+    const cached = cellCache?.states[slotIndex]
+    if (cached && cellCache!.signatures[slotIndex] === signature) { cellStates.push(cached); continue }
     const link: TimelineVisualLinkState = {
       linked,
       role,
-      groupId: info?.stale ? null : info?.root?.id ?? null,
+      groupId,
       directSelected,
       directSelectedVisible: directSelected && selectionGuidesVisible,
       selectedByFrame: linkedSelectedByFrame,
@@ -674,7 +642,7 @@ export const deriveAnimationTimelineVisualState = (
     else if (current) priority = 'current-cel'
     else if (activeLayer || activeFrame) priority = 'active-row-column'
     else if (linked && selectionGuidesVisible) priority = 'linked-structure'
-    cellStates.push({
+    const state: TimelineVisualCellState = {
       cell,
       key,
       kind,
@@ -695,38 +663,32 @@ export const deriveAnimationTimelineVisualState = (
       presentationHidden: !selectionGuidesVisible,
       link,
       priority,
-    })
+    }
+    cellStates.push(state)
+    if (cellCache) { cellCache.signatures[slotIndex] = signature; cellCache.states[slotIndex] = state }
   }
 
   const connectors: TimelineVisualConnectorState[] = []
-  const frameIndex = index.frameIndexById
-  for (const [groupKey, members] of groupMembers) {
-    const root = members[0]
-    const groupId = root?.id ?? groupKey
-    const ordered = [...members].sort((a, b) => (frameIndex.get(a.frameId) ?? -1) - (frameIndex.get(b.frameId) ?? -1))
-    for (let index = 1; index < ordered.length; index += 1) {
-      const from = ordered[index - 1]
-      const to = ordered[index]
-      const directSelected = directSelectedGroups.has(groupKey)
-      const selectedByFrame = selectedByFrameGroups.has(groupKey)
-      connectors.push({
-        fromKey: from.key,
-        toKey: to.key,
-        kind: from.kind,
-        groupId,
-        bridged: (frameIndex.get(to.frameId) ?? 0) - (frameIndex.get(from.frameId) ?? 0) > 1,
-        directSelected,
-        directSelectedVisible: directSelected && selectionGuidesVisible,
-        selectedByFrame,
-        selectedByFrameVisible: selectedByFrame && selectionGuidesVisible,
-        structural: true,
-        structuralVisible: true,
-        // Adjacent and bridged connectors are both emitted. The bridged flag
-        // lets the future renderer choose a distinct gap style without losing
-        // contiguous relationship geometry.
-        visible: true,
-      })
-    }
+  for (const {groupKey, groupId, from, to, bridged} of topology.connectors) {
+    const directSelected = directSelectedGroups.has(groupKey)
+    const selectedByFrame = selectedByFrameGroups.has(groupKey)
+    connectors.push({
+      fromKey: from.key,
+      toKey: to.key,
+      kind: from.kind,
+      groupId,
+      bridged,
+      directSelected,
+      directSelectedVisible: directSelected && selectionGuidesVisible,
+      selectedByFrame,
+      selectedByFrameVisible: selectedByFrame && selectionGuidesVisible,
+      structural: true,
+      structuralVisible: true,
+      // Adjacent and bridged connectors are both emitted. The bridged flag
+      // lets the future renderer choose a distinct gap style without losing
+      // contiguous relationship geometry.
+      visible: true,
+    })
   }
 
   return { rows: rowStates, frames: frameStates, columns, cells: cellStates, connectors, normalizedSelection, selectionGuidesVisible }

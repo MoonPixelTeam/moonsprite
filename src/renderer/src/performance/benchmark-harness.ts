@@ -83,8 +83,12 @@ async function createComplexDocument(size: number) {
   return { uniquePixelBytes: document.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 0), layerCount: document.layers.length, frameCount: frames.length }
 }
 
-async function createLargeDocument(size: number) {
+async function createLargeDocument(size: number, options: { layers?: number; frames?: number } = {}) {
   const profile = largeProjectPlan(size)
+  if (options.layers !== undefined) {
+    profile.localLayers = options.layers - 2
+    profile.uniquePixelBytes = (2 * size * size + profile.localLayers * profile.localSize * profile.localSize) * 4
+  }
   const { uniquePixelBytes } = profile
   if (uniquePixelBytes > MAX_LARGE_PROJECT_PIXEL_BYTES) {
     throw new Error(`Large performance project requires ${uniquePixelBytes} pixel bytes, exceeding the ${MAX_LARGE_PROJECT_PIXEL_BYTES} byte limit.`)
@@ -170,9 +174,23 @@ async function createLargeDocument(size: number) {
 
   document.layers = [background, ...localLayers, editLayer]
   document.activeLayerId = editLayer.id
+  const frameCount = options.frames ?? 1
+  if (frameCount > 1) {
+    const frames = Array.from({ length: frameCount }, (_, i) => ({ id: `large-frame-${i}`, duration: 80 }))
+    document.animation = {
+      frames, activeFrameId: frames[0].id, loop: true,
+      cels: frames.flatMap((frame, i) => document.layers.map(layer => {
+        if (layer.format !== 'rgba') throw new Error('Large benchmark requires RGBA layers.')
+        return {
+        id: `${frame.id}-${layer.id}`, layerId: layer.id, frameId: frame.id, opacity: layer.opacity,
+        surface: { format: 'rgba' as const, width: layer.width, height: layer.height, offsetX: layer.offsetX + i % 3, offsetY: layer.offsetY + i % 2, pixels: layer.pixels }
+        }
+      }))
+    }
+  }
   addDocument(document)
   cacheRasterContentBounds(editLayer, document.palette, { x: left, y: top, width: regionSize, height: regionSize })
-  return { uniquePixelBytes, layerCount: document.layers.length, frameCount: 1 }
+  return { uniquePixelBytes, layerCount: document.layers.length, frameCount, sharedFramePixels: frameCount > 1 }
 }
 
 const activeView = (): ViewState | null => {
@@ -356,6 +374,11 @@ export function installPerformanceHarness() {
       return selection ? { x: selection.x, y: selection.y, width: selection.width, height: selection.height } : null
     },
     prepareCenteredSelection,
+    interactionState: () => {
+      const session = activeSession()
+      const selection = session?.selection
+      return { contentRevision: session?.contentRevision, selection: selection ? { x: selection.x, y: selection.y, width: selection.width, height: selection.height } : null, angle: session?.pendingPaste?.transformAngle ?? session?.selectionAngle, view: session?.view, pendingPaste: Boolean(session?.pendingPaste) }
+    },
     prepareActiveLayerStyle,
     previewActiveLayerStyleSize,
     toggleActiveLayerVisibility,

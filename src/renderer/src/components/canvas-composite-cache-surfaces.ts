@@ -81,6 +81,8 @@ export type SelectionTransformCompositePreview = CanvasPreviewSelection
 export const selectionOptimizedRotationEnabled = (selection: SelectionTransformCompositePreview): boolean => selection.optimizedRotation === true
 
 export interface SelectionPreviewSurface {
+  backdrop: import('./canvas-selection-backdrop-cache').CanvasSelectionBackdropCache
+  lowerBackdrop: import('./canvas-selection-backdrop-cache').CanvasSelectionBackdropCache
   key: string
   x: number
   y: number

@@ -1,4 +1,5 @@
 import { registerCanvasKeyboard } from './canvas-keyboard-router'
+import { flushCanvasBrushSize } from './canvas-brush-size-update'
 import { useEffect, useRef, useState } from 'react'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -58,6 +59,7 @@ interface Ports {
   readonly updateRotationIndicator: (rotation: number, visible: boolean) => void
   readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
   readonly selectionCrosshair: boolean
+  readonly useLocalCursors?: boolean
   readonly selectionInteractionEditable: boolean
   readonly scheduleBrushPreviewOverlay: () => void
   readonly lineConnectionConfigured: boolean
@@ -153,6 +155,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
 
   useEffect(() => {
     const releaseModifierSizing = (event?: KeyboardEvent): void => {
+      flushCanvasBrushSize(ports.inputRef.current)
       ports.inputRef.current.modifierBrushSize = null
       if (!event || !ports.modifierActive(event, 'brushSizeWheelAdjust')) {
         ports.wheelBrushSizePreviewRef.current = false
@@ -166,6 +169,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
     })
     window.addEventListener('blur', blur)
     return () => {
+      flushCanvasBrushSize(ports.inputRef.current)
       unregisterKeyboard()
       window.removeEventListener('blur', blur)
       if (ports.canvasResizeFrameRef.current !== null) window.cancelAnimationFrame(ports.canvasResizeFrameRef.current)
@@ -241,6 +245,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
       if (!quickEyedropperShortcutMatches(event)) cancelQuickEyedropperForChord()
     }
     const keyDown = (event: KeyboardEvent): void => {
+      flushCanvasBrushSize(ports.inputRef.current)
       const eventTarget = event.target instanceof Element ? event.target : null
       const keyDisplayBlocked = Boolean(eventTarget?.closest('input, textarea, select, [contenteditable="true"], .modal-backdrop'))
       if (keyDisplayBlocked || document.querySelector('.modal-backdrop')) return
@@ -368,7 +373,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           if (ports.canvasRef.current && ports.inputRef.current.pointer.visible) {
             ports.canvasRef.current.style.cursor =
               drag?.kind === 'marquee'
-                ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+                ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
                 : drag?.kind === 'shape'
                   ? canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
                   : drag?.kind === 'pan'
@@ -483,6 +488,9 @@ export function useCanvasKeyboardInput(ports: Ports) {
           ports.inputRef.current.altHeld,
           ports.inputRef.current.shiftHeld
         )
+        // The brush preview has its own overlay canvas, so the main redraw
+        // above cannot clear it when Ctrl temporarily activates Move.
+        ports.scheduleBrushPreviewOverlay()
         ports.scheduleDraw()
       } else if (event.key === 'Shift' && ports.inputRef.current.pointer.visible) {
         ports.updateCursorAt(
@@ -606,6 +614,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
           else ports.updateSelectionTransformPreview(drag, ports.inputRef.current.pointer.point, ports.currentSelectionTransformModifierState())
         }
         ports.scheduleDraw()
+        if (event.key === 'Control') ports.scheduleBrushPreviewOverlay()
       }
       if (shortcutReleasedByBindings(event, SHORTCUT_GROUPS.modifiers.flatMap((id) => shortcutBindingsFor(ports.shortcuts, id)))) {
         if (!ports.modifierActive(event, 'brushSizeAdjust')) ports.inputRef.current.modifierBrushSize = null
@@ -623,7 +632,7 @@ export function useCanvasKeyboardInput(ports: Ports) {
         if (ports.canvasRef.current)
           ports.canvasRef.current.style.cursor =
             drag?.kind === 'marquee'
-              ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+              ? selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
               : canvasToolCursor(ports.session.tool === 'selection' && ports.session.selectionKind === 'brush' ? 'pencil' : ports.session.tool, ports.session.primaryColor)
         // Restore the smooth preview as soon as temporary hand navigation is
         // released (the overlay draw will re-check the live input state).

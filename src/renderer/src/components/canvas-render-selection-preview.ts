@@ -12,6 +12,7 @@ import type { DocumentSession } from '@/store/workspace-types'
 import { PolygonPathPreviewRenderCache } from './canvas-stage-helpers'
 export function renderCanvasSelectionPreview({
   inputRef,
+  magicPreviewFlash,
   drawSelectionPathPreview,
   repeatCopies,
   view,
@@ -39,6 +40,7 @@ export function renderCanvasSelectionPreview({
   drawSelectionCursorCorners
 }: {
   inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
+  magicPreviewFlash?: import('./canvas-magic-preview-flash').CanvasMagicPreviewFlash
   drawSelectionPathPreview: (
     previewPixels: Iterable<string>,
     copies?: {
@@ -204,7 +206,7 @@ export function renderCanvasSelectionPreview({
       context.restore()
     }
   }
-  const magicPreview = inputRef.current.drag
+  const magicPreview = magicPreviewFlash?.current
   if (magicPreview?.kind === 'magic-preview' && magicPreview.previewSelection) {
     const startedAt = performance.now()
     const previewPoint = magicPreview.last
@@ -225,6 +227,7 @@ export function renderCanvasSelectionPreview({
       selectionPreviewColorMode !== 'custom'
     )
     context.restore()
+    if (magicPreview === magicPreviewFlash?.current) magicPreviewFlash.presented()
     window.__moonSpriteCanvasProbe?.recordOperationStage?.('magic-wand.preview-render', performance.now() - startedAt)
   }
   const activeSelectionCreation = selectionDrag?.kind === 'marquee' || selectionDrag?.kind === 'lasso' || selectionDrag?.kind === 'polygon-lasso'

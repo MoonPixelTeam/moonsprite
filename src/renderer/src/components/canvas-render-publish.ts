@@ -67,7 +67,7 @@ export function publishCanvasFramePreview({
       invalidation: previewInvalidation ?? undefined,
       movingLayerIds: movingLayerIds ? [...movingLayerIds] : undefined,
       selectionPreview,
-      deferAuxiliaryDraw: activeDrag?.kind === 'draw' || activeDrag?.kind === 'airbrush'
+      liveRasterEdit: activeDrag?.kind === 'draw' || activeDrag?.kind === 'airbrush' || activeDrag?.kind === 'smooth' || activeDrag?.kind === 'liquify'
     }
     publishedCanvasPreviewRef.current = snapshot
     notifyCanvasPreview(session.document.id, snapshot)

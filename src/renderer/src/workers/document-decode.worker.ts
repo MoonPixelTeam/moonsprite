@@ -5,6 +5,7 @@ import { setRuntimeAppLocale, type AppLocale } from '@/core/localization'
 import { decodeProject, type ProjectDecodeReport } from '@/core/project-format'
 import { compositeDocument } from '@/core/document-composite'
 import { canPrepareInitialDocumentComposite } from '@/core/initial-document-composite'
+import { prepareDecodedRasterBounds, type DecodedRasterBounds } from '@/core/document-decode-metadata'
 import { prepareRuntimeRasterDocumentForTransfer, prepareRuntimeRasterMetadata, rehydrateRuntimeRasterDocument } from '@/core/runtime-raster'
 
 export interface DecodeWorkerRequest {
@@ -21,6 +22,7 @@ export interface DecodeWorkerResponse {
   document?: SpriteDocument
   initialComposite?: Uint8ClampedArray
   initialCompositePending?: boolean
+  rasterBounds?: DecodedRasterBounds[]
   completed?: boolean
   error?: string
   progress?: number
@@ -108,6 +110,7 @@ export const processDocumentDecodeRequest = (
 
     const shouldPrepareInitialComposite = prepareInitialComposite && canPrepareInitialDocumentComposite(document.width, document.height)
     prepareRuntimeRasterMetadata(document)
+    const rasterBounds = prepareDecodedRasterBounds(document)
     prepareRuntimeRasterDocumentForTransfer(document)
 
     let compositeSnapshot: SpriteDocument | null = null
@@ -120,8 +123,8 @@ export const processDocumentDecodeRequest = (
       }
     }
 
-    if (reportProgress) postMessage({ id, progress: 1 }, [])
-    const response = { id, document, ...(droppedTimelapseFrames.length > 0 ? { droppedTimelapseFrames } : {}), ...(compositeSnapshot ? { initialCompositePending: true } : {}) }
+    if (reportProgress) postMessage({ id, progress: compositeSnapshot ? 0.9 : 1 }, [])
+    const response = { id, document, rasterBounds, ...(droppedTimelapseFrames.length > 0 ? { droppedTimelapseFrames } : {}), ...(compositeSnapshot ? { initialCompositePending: true } : {}) }
     postMessage(response, collectTransferables(response))
     if (!compositeSnapshot) return
     const snapshot = compositeSnapshot

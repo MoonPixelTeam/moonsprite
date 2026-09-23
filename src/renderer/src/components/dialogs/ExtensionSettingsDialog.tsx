@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { localizeExtension } from '@/core/extension-localization'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExtensionRuntimeRequest, ExtensionRuntimeResponse } from '@shared/types-extension-runtime'
 import type { StoredExtension, StoredExtensionSettingsControl, StoredExtensionSettingsUi } from '@shared/types-extensions'
 import { FormField } from '@/components/FormField'
@@ -59,7 +60,7 @@ function HostExtensionSettings({ extension, settings, onClose }: { extension: St
   const [error, setError] = useState<string | null>(null)
   const commit = (next: SettingsValues): void => {
     try {
-      storage.set(settings.storageKey, next)
+      storage.set(settings.storageKey, { ...(storage.get(settings.storageKey) as Record<string, SettingsValue> || {}), ...next })
       setValues(next)
       setError(null)
       dispatchExtensionRuntimeEvent(extension.id, { type: 'settings-changed', key: settings.storageKey, value: next })
@@ -67,7 +68,7 @@ function HostExtensionSettings({ extension, settings, onClose }: { extension: St
       setError(reason instanceof Error ? reason.message : String(reason))
     }
   }
-  const update = (id: string, value: SettingsValue): void => commit({ ...values, [id]: value })
+  const update = (id: string, value: SettingsValue): void => commit({ ...(storage.get(settings.storageKey) as Record<string, SettingsValue> || {}), ...values, [id]: value })
   const runButton = (control: Extract<StoredExtensionSettingsControl, { type: 'button' }>): void => {
     const command = extension.commands.find((candidate) => candidate.id === control.commandId)
     const dispatched = Boolean(command?.runtimeEvent && dispatchExtensionRuntimeCommand(extension.id, command.id, command.runtimeEvent))
@@ -95,8 +96,9 @@ function HostExtensionSettings({ extension, settings, onClose }: { extension: St
   </>
 }
 
-export function ExtensionSettingsDialog({ extension, onClose }: { extension: StoredExtension; onClose: () => void }) {
-  const { t } = useI18n()
+export function ExtensionSettingsDialog({ extension: rawExtension, onClose }: { extension: StoredExtension; onClose: () => void }) {
+  const { locale, t } = useI18n()
+  const extension = useMemo(() => localizeExtension(rawExtension, locale), [rawExtension, locale])
   const frame = useRef<HTMLIFrameElement>(null)
   const [document, setDocument] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

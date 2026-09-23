@@ -25,7 +25,7 @@ import {
 
 type CompositePointReplacementSampler = (x: number, y: number, replacement: RgbaColor | undefined) => RgbaColor
 
-export const compileCompositePointSampler = (document: SpriteDocument, layerId?: string, styleCache?: DocumentCompositeCache, revision = 0, sourceDirtyRect?: SelectionRect): CompositePointReplacementSampler => {
+export const compileCompositePointSampler = (document: SpriteDocument, layerId?: string, styleCache?: DocumentCompositeCache, revision = 0, sourceDirtyRect?: SelectionRect, geometryBoundsOnly = false): CompositePointReplacementSampler => {
   const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
   type CompiledItem = { styleReader?: (x: number, y: number) => RgbaColor } & (
     | { kind: 'layer'; layer: RasterLayer; read: CompositePointReplacementSampler; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; outputBounds: SelectionRect | null }
@@ -47,7 +47,9 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     const styles = hasEnabledLayerStyles(layer.layerStyles)
       ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor)
       : undefined
-    const outputBounds = layerStyleOutputBounds(styleCache ? styleCache.compositeSourceBounds(document, layer, sourceDirtyRect) : layerContentBounds(document, layer), styles)
+    const outputBounds = geometryBoundsOnly
+      ? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }
+      : layerStyleOutputBounds(styleCache ? styleCache.compositeSourceBounds(document, layer, sourceDirtyRect) : layerContentBounds(document, layer), styles)
     if (layer.id !== layerId) return { kind: 'layer', layer, read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds }
     return {
       kind: 'layer',
@@ -77,8 +79,8 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
 
   const root = compileContainer(buildCompositeStack(document))
   // A neutral mask can become non-neutral at the point being previewed.
-  const activeMasks = activeCelMasksByLayer(document, layerId)
-  const activeGroupMasks = activeGroupMasksByGroup(document, layerId)
+  const activeMasks = activeCelMasksByLayer(document, layerId, geometryBoundsOnly)
+  const activeGroupMasks = activeGroupMasksByGroup(document, layerId, geometryBoundsOnly)
   const itemMask = (item: CompiledItem): LayerMask | undefined => item.kind === 'layer' ? activeMasks.get(item.layer.id) : activeGroupMasks.get(item.group.id)
   const readMaskCoverage = (mask: LayerMask, x: number, y: number, replacement: RgbaColor | undefined): number => {
     if (mask.id === layerId && replacement !== undefined) return maskCoverageFromColor(replacement)

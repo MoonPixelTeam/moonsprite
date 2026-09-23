@@ -14,6 +14,8 @@ const enGroups: Record<ShortcutGroupId, string> = {
 }
 
 const zhBaseLabels: Record<BaseShortcutId, string> = {
+  'tool.magicEraser': '魔术橡皮擦',
+  copyMerged: '复制合并', rotateContent180: '旋转 180°', rotateContentCounterClockwise: '90° 逆时针', rotateContentClockwise: '90° 顺时针', centerContentBoth: '水平垂直居中', centerContentHorizontal: '水平居中', centerContentVertical: '垂直居中', invertColors: '反色',
   'tool.slice': '切片工具',
   'tool.text': '文本工具',
   toggleClippingMask: '剪贴蒙版',
@@ -22,7 +24,7 @@ const zhBaseLabels: Record<BaseShortcutId, string> = {
   'tool.airbrush': '喷枪', 'tool.pencil': '画笔', 'tool.eraser': '橡皮擦', 'tool.selection': '矩形选区', 'tool.selection.ellipse': '椭圆选区', 'tool.move': '移动工具', 'tool.shape': '形状工具', 'tool.line': '直线工具', 'tool.curve': '曲线工具', 'tool.fill': '油漆桶', 'tool.fill.gradient': '渐变工具', 'tool.eyedropper': '吸管', 'tool.hand': '抓手', 'tool.zoom': '缩放工具', 'tool.rotate': '旋转视图', 'tool.liquify': '液化工具',
   'tool.smooth': '平滑笔刷',
   'tool.shape.rectangleOutline': '矩形轮廓', 'tool.shape.rectangle': '填充矩形', 'tool.shape.ellipseOutline': '椭圆轮廓', 'tool.shape.ellipse': '填充椭圆',
-  lasso: '套索选区', polygonLasso: '多边形套索', magic: '魔棒选区', canvasResize: '调整画布大小', imageResize: '调整图像大小', transform: '变换', outline: '描边', quickOutline: '快速描边', outlineSelectionInside: '选区内部描边', adjustmentColorBalance: '色彩平衡', adjustmentBrightnessContrast: '亮度/对比度', adjustmentHueSaturation: '色相/饱和度', adjustmentCurves: '曲线', openShortcutSettings: '快捷键设置', openPreferences: '首选项', flipVertical: '垂直翻转', flipHorizontal: '水平翻转', selectAll: '全选', invertSelection: '反选选区', deselect: '取消选择', createBrushFromSelection: '从选区创建笔刷',
+  lasso: '套索选区', polygonLasso: '多边形套索', magic: '魔棒选区', canvasResize: '调整画布大小', imageResize: '调整图像大小', transform: '变形', outline: '描边', quickOutline: '快捷描边', outlineSelectionInside: '选区内部描边', adjustmentColorBalance: '色彩平衡', adjustmentBrightnessContrast: '亮度/对比度', adjustmentHueSaturation: '色相/饱和度', adjustmentCurves: '曲线', openShortcutSettings: '快捷键设置', openPreferences: '首选项', flipVertical: '垂直翻转', flipHorizontal: '水平翻转', selectAll: '全选', invertSelection: '反选选区', deselect: '取消选择', createBrushFromSelection: '从选区创建笔刷',
   copy: '复制', cut: '剪切', paste: '粘贴', pasteAsNewLayer: '粘贴为新图层', pasteAsNewDocument: '粘贴为新项目', save: '保存', saveAs: '另存为', undo: '撤销', redo: '重做', relativeLuminance: '查看相对明暗', advancedMode: '高级模式', fillForeground: '填充前景色', addForegroundToPalette: '按住并点击添加颜色', swapForegroundBackground: '交换前景色与背景色', replaceColor: '替换颜色', convertColorMode: '转换颜色模式', newLayer: '新建图层', createLayerGroup: '新建图层组', toggleSelectedLayerVisibility: '显示或隐藏所选图层', toggleSelectedLayerLock: '锁定或解锁所选图层', toggleSelectedGroupCollapsed: '展开或收起所选图层组', duplicateLayer: '复制图层', mergeLayerDown: '向下合并', mergeSelectedLayers: '合并所选图层', mergeLayerGroup: '合并图层组', mergeVisibleLayers: '合并可见图层', ungroupLayers: '解组', deleteLayer: '删除图层或选区', toggleSelectionOutline: '显示或隐藏蚂蚁线', mirrorView: '水平镜像视图', mirrorViewVertical: '垂直镜像视图', toggleGrid: '显示像素网格', toggleCustomGrid: '显示自定义网格', toggleIsoView: '切换默认/ISO绘制视角', openGridSettings: '网格设置', openIsoViewSettings: 'ISO绘制视角设置', rotateViewClockwise90: '顺时针旋转视图 90°', rotateViewCounterClockwise90: '逆时针旋转视图 90°', resetView: '复位视图', toggleFullscreen: '切换全屏模式', toggleColorPanel: '显示或隐藏颜色栏目', togglePalettePanel: '显示或隐藏调色板栏目', toggleLayersPanel: '显示或隐藏图层栏目', togglePreviewPanel: '显示或隐藏预览栏目', toggleTilesetPanel: '显示或隐藏瓦片集栏目', toggleBrushLibraryPanel: '显示或隐藏图案笔刷栏目', popupColorPanel: '弹窗式颜色栏目', popupPalettePanel: '弹窗式调色板栏目', popupLayersPanel: '弹窗式图层栏目', popupPreviewPanel: '弹窗式预览栏目', popupTilesetPanel: '弹窗式瓦片集栏目', popupBrushLibraryPanel: '弹窗式图案笔刷栏目', toggleTimeline: '显示或隐藏时间轴', toolRailLeft: '工具栏放到左侧', toolRailRight: '工具栏放到右侧', toolRailTop: '工具栏放到顶部', toolRailBottom: '工具栏放到底部', saveWorkspaceLayout: '保存为新工作区', openWorkspaceManager: '管理工作区', openComponentLibrary: '组件库', openLatestRelease: '更新日志', openAbout: '关于 MoonSprite',
   brushSizeDecrease: '减小笔刷尺寸', brushSizeIncrease: '增大笔刷尺寸', copySelectionContent: '复制选区内容', copyLayerOnDrag: '拖动复制图层', constrainAxis: '水平或垂直约束', addToSelection: '加选', proportionalSelectionTransform: '选区固定比例缩放', integerSelectionScale: '选区整数倍缩放', snapSelectionRotation: '选区八方向旋转', snapViewRotation: '视图十六方向旋转', resetViewRotation: '旋转视图临时复位', brushSizeAdjust: '拖动调整笔刷尺寸', brushSizeWheelAdjust: '滚轮调整笔刷尺寸', lineConnectionMode: '直线连接模式', constrainLineDirections: '约束直线方向',
   openScriptFolder: '打开脚本文件夹',
@@ -40,6 +42,8 @@ const zhBaseLabels: Record<BaseShortcutId, string> = {
 }
 
 const enBaseLabels: Record<BaseShortcutId, string> = {
+  'tool.magicEraser': 'Magic Eraser',
+  copyMerged: 'Copy Merged', rotateContent180: 'Rotate 180°', rotateContentCounterClockwise: '90° Counterclockwise', rotateContentClockwise: '90° Clockwise', centerContentBoth: 'Center Horizontally and Vertically', centerContentHorizontal: 'Center Horizontally', centerContentVertical: 'Center Vertically', invertColors: 'Invert Colors',
   'tool.slice': 'Slice Tool',
   'tool.text': 'Text Tool',
   toggleClippingMask: 'Clipping Mask',

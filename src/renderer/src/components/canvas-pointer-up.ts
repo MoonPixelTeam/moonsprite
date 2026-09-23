@@ -1,4 +1,6 @@
 import { createNavigationCanvasInput } from './canvas-input-navigation'
+import { shortcutLabels } from '@/locales/shortcut-labels'
+import { currentAppLocale } from '@/core/localization'
 import { createSelectionCanvasInput } from './canvas-input-selection'
 import { createTextCanvasInput } from './canvas-input-text'
 import { createShapeCanvasInput } from './canvas-input-shape'
@@ -16,6 +18,7 @@ import { CanvasInputState, selectionGestureMoved, type CanvasDragState as DragSt
 import { prepareAdjustmentPreviewEdit } from '@/core/adjustment-preview-lifecycle'
 import { syncHeldShortcutModifiers } from '@/components/useQuickToolShortcut'
 import { SymmetryDragState } from './canvas-stage-helpers'
+import { publishEditorEvent } from '@/core/extension-editor-events'
 interface Ports {
   liveInputSession: () => DocumentSession
   stopAirbrushTimer: () => void
@@ -107,7 +110,11 @@ export function createCanvasPointerUp(ports: Ports) {
       }
     }
     if (symmetryDragRef.current) {
+      const drag = symmetryDragRef.current
+      const finalCenter = drag.center
+      if (drag.previewFrame !== null) cancelAnimationFrame(drag.previewFrame)
       symmetryDragRef.current = null
+      if (finalCenter) useWorkspace.getState().setSymmetryCenter(finalCenter)
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       updateCursor(event)
       draw()
@@ -134,12 +141,22 @@ export function createCanvasPointerUp(ports: Ports) {
     if (adjustmentPreviewEditRef.current && !selectionPreviewWasPending) prepareAdjustmentPreviewEdit(session.document.id)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     const state = useWorkspace.getState()
+    if (drag.kind === 'magic-eraser') {
+      if (drag.previewEdit) state.commitPixelEdit(drag.previewEdit, shortcutLabels(currentAppLocale())['tool.magicEraser'])
+      updateCursor(event)
+      draw()
+      return
+    }
     if (drag.kind === 'pan' && navigationInput.endPan({ drag, currentInteractionSession, event })) return
     if (drag.kind === 'zoom-drag' && navigationInput.endZoom({ drag, event, session })) return
     if (drag.kind === 'rotate-view' && navigationInput.endRotation({ drag })) return
     if (drag.kind === 'move-selection-pivot' && selectionInput.endPivot({ drag, state, event })) return
     if (drag.kind === 'sample-color' && samplingInput.endSample({ drag, event, state, session })) return
     if (drag.kind === 'gradient' && fillInput.endGradient({ drag, session, state })) return
+    if (drag.kind === 'fill' && drag.edit) {
+      scheduleDraw()
+      return
+    }
     updateCursor(event)
     if (drag.kind === 'move-content' && drag.selectionStart && drag.tilemapSelectionMoveSource && tileInput.endTileSelection({ drag, state })) return
     if (

@@ -256,19 +256,9 @@ export function processRasterStrokeMove(input: StrokeMove, geometry: StrokeGeome
     scheduleDraw()
     return
   }
-  // A large solid brush covers the intermediate coalesced samples almost
-  // completely. Painting every sample repeats the same wide stamp work;
-  // connecting the previous point to the newest sample preserves the path
-  // while keeping the pointer handler within one frame.
-  const collapseCoalescedStrokeSamples = (session.tool === 'eraser' || session.brushSize >= 64)
-  && activeBrushTexture === 'solid'
-  && !activeBrushImage
-  && !activeBrushDither?.enabled
-  && pointerSamples.length > 1
-  const strokeSamples = collapseCoalescedStrokeSamples
-  ? [pointerSamples[pointerSamples.length - 1]]
-  : pointerSamples
-  for (const sample of strokeSamples) {
+  // Preserve every coalesced turn and pressure sample. Batch invalidation and
+  // presentation below instead of replacing a curved stroke with a chord.
+  for (const sample of pointerSamples) {
     const repeatedPoints = repeatedDocumentPointsAt(sample.clientX, sample.clientY, false, true)
     if (!repeatedPoints) continue
     const rawPoint = repeatedPoints.local

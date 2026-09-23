@@ -1,6 +1,7 @@
 import type { DocumentSlice, SpriteDocument } from '@shared/types-document'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { cloneDocumentForAnimationFrame } from '@/core/animation'
+import { exportFrameIds } from '@/core/export-frame-range'
 import { exportAnimationGif } from '@/core/gif'
 import { decodePng, exportDocumentImage, exportDocumentSelectionImage, exportDocumentSliceImage } from '@/core/png'
 import { documentForLayerExport } from '@/core/layer-export'
@@ -14,7 +15,7 @@ const scope = globalThis as unknown as {
 }
 
 const gifOptions = (request: DocumentExportWorkerRequest) => ({
-  scalePercent: request.scalePercent,
+  scalePercent: request.scalePercent, protection: request.protection,
   frameStart: request.gifFrameRange === 'range' ? request.gifFrameStart : undefined,
   frameEnd: request.gifFrameRange === 'range' ? request.gifFrameEnd : undefined,
   loopSectionId: request.gifFrameRange === 'loop-section' ? request.gifLoopSectionId : undefined,
@@ -76,10 +77,10 @@ const encode = async (document: SpriteDocument, request: DocumentExportWorkerReq
   const encoded = request.format === 'gif'
     ? { ...exportAnimationGif(document, { ...gifOptions(request), ...(effectiveCrop ? { crop: effectiveCrop } : {}), ...(layerId ? { layerId } : {}) }), extension: 'gif' as const, indexed: false }
       : selection
-      ? await exportDocumentSelectionImage(document, selection, request.scalePercent, request.format as Exclude<typeof request.format, 'gif' | 'psd' | 'ase' | 'aseprite'>)
+      ? await exportDocumentSelectionImage(document, selection, request.scalePercent, request.format as Exclude<typeof request.format, 'gif' | 'psd' | 'ase' | 'aseprite'>, request.protection)
       : trimActive || slice || layerId
-      ? await exportDocumentSliceImage(sourceDocument, effectiveCrop, request.scalePercent, request.format as Exclude<typeof request.format, 'ase' | 'aseprite' | 'psd' | 'gif'>)
-      : await exportDocumentImage(sourceDocument, request.scalePercent, request.format)
+      ? await exportDocumentSliceImage(sourceDocument, effectiveCrop, request.scalePercent, request.format as Exclude<typeof request.format, 'ase' | 'aseprite' | 'psd' | 'gif'>, request.protection)
+      : await exportDocumentImage(sourceDocument, request.scalePercent, request.format, request.protection)
   return { index, bytes: encoded.bytes, extension: encoded.extension as DocumentExportWorkerResult['extension'], indexed: encoded.indexed }
 }
 
@@ -97,9 +98,7 @@ scope.onmessage = async (event): Promise<void> => {
     const jobs: Array<{ slice?: DocumentSlice; layerId?: string; document?: SpriteDocument }> = request.job === 'slices'
       ? (request.slices ?? []).map((slice) => ({ slice }))
       : request.job === 'frames'
-          ? (sourceDocument.animation?.frames?.length
-          ? sourceDocument.animation.frames.map((frame) => ({ document: cloneDocumentForAnimationFrame(sourceDocument, frame.id) }))
-          : [{ document: sourceDocument }])
+          ? exportFrameIds(sourceDocument, request).map(frameId => ({ document: frameId ? cloneDocumentForAnimationFrame(sourceDocument, frameId) : sourceDocument }))
         : request.job === 'layers'
           ? (request.layerIds ?? []).map((layerId) => ({ layerId }))
           : request.job === 'timelapse'

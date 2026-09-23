@@ -143,7 +143,7 @@ describe('document file rules', () => {
           return
         }
         const document = documents.shift()!
-        this.onmessage?.({ data: { id: message.id, progress: 1 } } as MessageEvent)
+        this.onmessage?.({ data: { id: message.id, progress: 0.9 } } as MessageEvent)
         this.onmessage?.({ data: { id: message.id, document, initialCompositePending: true } } as MessageEvent)
         finishComposite.push(document.name === 'first'
           ? () => this.onmessage?.({ data: { id: message.id, initialComposite: new Uint8ClampedArray(16), completed: true } } as MessageEvent)
@@ -153,24 +153,29 @@ describe('document file rules', () => {
     }
     vi.stubGlobal('Worker', FakeWorker)
 
-    const first = await decodeDocumentFileAsync(new Uint8Array([1]), 'first.moonsprite')
-    expect(first).toMatchObject({ name: 'first' })
-    expect(initialDocumentComposite(first)).toBeNull()
-    expect(initialDocumentCompositePending(first)).toBe(true)
+    const progress = vi.fn()
+    const opened = vi.fn()
+    const firstOpening = decodeDocumentFileAsync(new Uint8Array([1]), 'first.moonsprite', progress).then((document) => { opened(); return document })
+    await Promise.resolve()
+    expect(opened).not.toHaveBeenCalled()
+    expect(progress).toHaveBeenLastCalledWith(0.9)
     expect(messages).toMatchObject([{ filePath: 'first.moonsprite', prepareInitialComposite: true }])
 
     finishComposite.shift()?.()
-    await Promise.resolve()
-    await Promise.resolve()
+    const first = await firstOpening
+    expect(first).toMatchObject({ name: 'first' })
+    expect(progress).toHaveBeenLastCalledWith(1)
     expect(messages).toHaveLength(1)
     expect(initialDocumentCompositePending(first)).toBe(false)
     expect(initialDocumentComposite(first)?.pixels).toHaveLength(16)
+    expect(initialDocumentComposite(first)?.completeFrame).toBe(true)
 
-    const second = await decodeDocumentFileAsync(new Uint8Array([2]), 'second.moonsprite')
-    expect(initialDocumentCompositePending(second)).toBe(true)
+    const secondOpening = decodeDocumentFileAsync(new Uint8Array([2]), 'second.moonsprite', progress)
+    await Promise.resolve()
+    expect(progress).toHaveBeenLastCalledWith(0.9)
     finishComposite.shift()?.()
-    await Promise.resolve()
-    await Promise.resolve()
+    const second = await secondOpening
+    expect(progress).toHaveBeenLastCalledWith(1)
     expect(initialDocumentCompositePending(second)).toBe(false)
     expect(initialDocumentComposite(second)).toBeNull()
 

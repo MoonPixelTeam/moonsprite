@@ -8,6 +8,7 @@ import { clearDocumentPaneDockPreview, documentPaneDockPreviewBar, subscribeDocu
 import { paneDockTargetAtPoint, type DocumentPaneDockTarget } from './document-pane-hit-test'
 import { beginDocumentPaneResize } from './document-pane-resize'
 import { canvasColorSamplingIntentActive } from '@/core/canvas-color-sampling'
+import { isCanvasMiddlePanPointer } from '@/components/canvas-reference-input'
 import { QuickCommandBar } from './QuickCommandBar'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -28,6 +29,7 @@ interface EditorCanvasHostProps {
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical') => void
   onOpenAntiAlias: () => void
+  onOpenOutline?: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
 }
@@ -75,7 +77,7 @@ const positionPaneDragGhost = (pointerX: number, pointerY: number, pointerOffset
   ghost.style.top = `${pointerY - pointerOffsetY}px`
 }
 
-export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds, onDocumentPaneLayoutChange, onDocumentPaneMove, onDocumentPaneReturnToTabs, onDocumentPaneFloat, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings }: EditorCanvasHostProps) {
+export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLayout, workspaceDocumentId, paneOnlyDocumentIds, onDocumentPaneLayoutChange, onDocumentPaneMove, onDocumentPaneReturnToTabs, onDocumentPaneFloat, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenOutline, onOpenPreferences, onOpenCommandSettings }: EditorCanvasHostProps) {
   const { t } = useI18n()
   useWorkspace(useShallow((state) => state.sessions.flatMap(({ document }) => [document.id, document.name, document.dirty])))
   const sessions = useWorkspace.getState().sessions
@@ -299,9 +301,9 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
       const paneSession = sessions.find((item) => item.document.id === node.documentId)
       if (!paneSession) return null
       const showPaneHeader = paneOnlyDocumentIds.includes(paneSession.document.id)
-      return <section key={node.id} data-document-pane-id={node.documentId} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={(event) => { if (canvasColorSamplingIntentActive() && (event.target as Element).closest('canvas.stage-canvas')) return; const workspace = useWorkspace.getState(); workspace.syncCanvasToolSettings(paneSession.document.id); workspace.setActive(paneSession.document.id) }} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
+      return <section key={node.id} data-document-pane-id={node.documentId} className={`document-pane ${activeId === paneSession.document.id ? 'active' : ''} ${showPaneHeader ? '' : 'main-tab-pane'}`} onPointerDownCapture={(event) => { if (isCanvasMiddlePanPointer(event)) return; if (canvasColorSamplingIntentActive() && (event.target as Element).closest('canvas.stage-canvas')) return; const workspace = useWorkspace.getState(); workspace.syncCanvasToolSettings(paneSession.document.id); workspace.setActive(paneSession.document.id) }} onWheelCapture={() => useWorkspace.getState().setActive(paneSession.document.id)}>
         {showPaneHeader && <header onPointerDown={(event) => beginPaneDrag(event, paneSession.document.id)} onContextMenu={(event) => { if (!onDocumentPaneFloat) return; event.preventDefault(); event.stopPropagation(); useWorkspace.getState().setActive(paneSession.document.id); setPaneContextMenu({ documentId: paneSession.document.id, x: event.clientX, y: event.clientY }) }}><PixelUtilityIcon kind="image" /><span>{paneSession.document.name}</span>{paneSession.document.dirty && <i />}<button title={t('common.close')} aria-label={t('tabs.closeAria', { name: paneSession.document.name })} onClick={() => { void useWorkspace.getState().closeDocument(paneSession.document.id) }}><PixelUtilityIcon kind="close" /></button></header>}
-        <div key={paneSession.document.id} className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><DocumentCanvas documentId={paneSession.document.id} /></div></div>
+        <div key={paneSession.document.id} className="document-pane-canvas"><QuickCommandBar documentId={paneSession.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenOutline={onOpenOutline} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} /><div className="document-pane-canvas-content"><DocumentCanvas documentId={paneSession.document.id} /></div></div>
       </section>
     }
     const splitStyle: CSSProperties = node.orientation === 'horizontal'
@@ -319,7 +321,7 @@ export const EditorCanvasHost = memo(function EditorCanvasHost({ documentPaneLay
     : session ? <div ref={stageRootRef} className="document-pane-target" data-document-pane-id={session.document.id}>{sessions.map((item) => {
       const isActive = item.document.id === session.document.id
       return <div key={item.document.id} data-document-id={item.document.id} className={`document-tab-stage ${isActive ? 'is-active' : ''}`} aria-hidden={!isActive}>
-        <QuickCommandBar documentId={item.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
+        <QuickCommandBar documentId={item.document.id} shortcutFor={shortcutFor} onToggleMirror={onToggleMirror} onOpenAntiAlias={onOpenAntiAlias} onOpenOutline={onOpenOutline} onOpenPreferences={onOpenPreferences} onOpenCommandSettings={onOpenCommandSettings} />
         <div className="document-pane-canvas-content"><DocumentCanvas documentId={item.document.id} /></div>
       </div>
     })}</div> : null

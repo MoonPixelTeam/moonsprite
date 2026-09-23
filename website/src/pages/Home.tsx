@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, ChevronLeft, ChevronRight, GitFork } from 'lucide-react'
-import type { Copy } from '../content'
-import { SteamButton } from '../ui'
+import { competitionWorks } from '../competitions/data'
+import { MediaPreview, type PreviewMedia } from '../ui/MediaPreview'
+import { useState } from 'react'
+import { PixelArrowRight as ArrowRight, PixelChevronLeft as ChevronLeft, PixelChevronRight as ChevronRight } from '../ui/icons'
+import type { Copy, Language } from '../content'
+import { Button, IconButton, SteamButton, SectionHeading } from '../ui'
 import { SITE_CONFIG } from '../config'
-import { toolIconSvgs } from '../toolIcons'
+import { useCatalogue } from '../market/catalogue'
+import { PackGrid } from '../market/PackCard'
 
 const HERO_SLIDES = [
   '/assets/hero/home-banner-fire.png',
@@ -11,19 +14,16 @@ const HERO_SLIDES = [
   '/assets/hero/home-banner-coast.png',
   '/assets/hero/home-banner-hall.png',
 ]
-const SHOWCASE_IMAGES = ['/assets/hero/hero-1.png', '/assets/hero/hero-2.png', '/assets/hero/hero-3.png', '/assets/hero/hero-4.png', '/assets/hero/hero-5.png', '/assets/hero/hero-6.png']
 
-export function Home({ t }: { t: Copy }) {
+
+export function Home({ t, language }: { t: Copy; language: Language }) {
   const [slide, setSlide] = useState(0)
+  const [preview, setPreview] = useState<PreviewMedia | null>(null)
+  const { products } = useCatalogue()
 
-  useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const timer = setInterval(() => setSlide((value) => (value + 1) % HERO_SLIDES.length), 7000)
-    return () => clearInterval(timer)
-  }, [])
   const goTo = (index: number) => setSlide((index + HERO_SLIDES.length) % HERO_SLIDES.length)
-
-  return <main id="main">
+  const teaser = products.slice(0, 8)
+  return <main id="main" className="home-main">
     <section className="hero" id="top">
       <div className="hero-stage">
         <div className="hero-bg" aria-hidden="true">
@@ -31,14 +31,14 @@ export function Home({ t }: { t: Copy }) {
         </div>
         <div className="hero-shade" aria-hidden="true" />
         <div className="hero-nav" aria-hidden="false">
-          <button type="button" onClick={() => goTo(slide - 1)} aria-label={t.hero.prevSlide}><ChevronLeft aria-hidden="true" /></button>
-          <button type="button" onClick={() => goTo(slide + 1)} aria-label={t.hero.nextSlide}><ChevronRight aria-hidden="true" /></button>
+          <IconButton className="hero-arrow" label={t.hero.prevSlide} onClick={() => goTo(slide - 1)} icon={<ChevronLeft aria-hidden="true" />} />
+          <IconButton className="hero-arrow" label={t.hero.nextSlide} onClick={() => goTo(slide + 1)} icon={<ChevronRight aria-hidden="true" />} />
         </div>
         <div className="content-wrap hero-inner">
           <div className="hero-copy">
             <p className="dev-badge">{t.common.dev}</p>
             <h1>{t.hero.title}</h1>
-            <div className="hero-actions"><SteamButton compact label={t.common.steam} soon={t.common.steamSoon} /><a className="hero-github" href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer"><GitFork aria-hidden="true" />{t.common.github}<ArrowRight aria-hidden="true" /></a></div>
+            <div className="hero-actions"><SteamButton compact label={t.common.steam} soon={t.common.steamSoon} /><a className="hero-github" href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">{t.common.github}<ArrowRight aria-hidden="true" /></a></div>
           </div>
         </div>
         <div className="hero-pagination" aria-label="Gallery slides">
@@ -52,27 +52,38 @@ export function Home({ t }: { t: Copy }) {
 
     <section className="features" id="features">
       <div className="content-wrap">
-        <div className="section-title"><span>{t.features.eyebrow}</span><h2>{t.features.title}</h2><p>{t.features.description}</p></div>
+        <SectionHeading eyebrow={t.features.eyebrow} title={t.features.title} description={t.features.description} actions={<Button href="#/docs">{language === 'zh' ? '查看更多功能' : 'Explore all features'}<ArrowRight aria-hidden="true" /></Button>} />
         <div className="masonry">
-          {t.features.items.map((item) => {
-            const svg = toolIconSvgs[item.icon]
-            return <article className="masonry-card" key={item.title}>
-              <div className="panel-header"><span className="pixel-icon" dangerouslySetInnerHTML={{ __html: svg }} /><strong>{item.title}</strong></div>
-              <div className="gif-placeholder" aria-hidden="true"><span className="pixel-icon large" dangerouslySetInnerHTML={{ __html: svg }} /><span className="gif-tag">GIF</span></div>
-              <p className="masonry-copy">{item.body}</p>
-            </article>
-          })}
+          {t.features.items.map((item) => <article className="masonry-card" key={item.icon}>
+            <div className="panel-header"><strong>{item.title}</strong></div>
+            <button type="button" className="gif-placeholder" aria-label={`${language === 'zh' ? '放大预览：' : 'Enlarge preview: '}${item.title}`} onClick={() => setPreview({ src: item.gif, title: item.title, description: item.gif ? item.body : (language === 'zh' ? '功能演示 GIF 待补充。' : 'The feature GIF will be added later.') })}>
+              {item.gif && <img src={item.gif} alt={item.title} loading="lazy" decoding="async" />}
+              <span className="gif-tag">GIF</span>
+            </button>
+            <p className="masonry-copy">{item.body}</p>
+          </article>)}
         </div>
       </div>
     </section>
 
     <section className="showcase" id="work">
       <div className="content-wrap">
-        <div className="section-title"><span>{t.work.eyebrow}</span><h2>{t.work.title}</h2><p>{t.work.description}</p></div>
+        <SectionHeading eyebrow={t.work.eyebrow} title={t.work.title} description={t.work.description} />
         <div className="showcase-grid">
-          {SHOWCASE_IMAGES.map((src, index) => <figure key={src} className="showcase-item">
-            <img src={src} loading="lazy" decoding="async" alt={t.work.itemAlt[index]} />
+          {competitionWorks.filter((work) => work.featured).slice(0, 6).map((work) => <figure key={work.id} className="showcase-item">
+            <a href="#/competitions" aria-label={`${work.title[language]} · ${language === 'zh' ? '查看比赛作品' : 'View competition'}`}><img src={work.image} loading="lazy" decoding="async" alt={work.title[language]} /></a>
           </figure>)}
+        </div>
+        <div className="teaser-actions"><Button href="#/competitions">{language === 'zh' ? '查看比赛作品' : 'View competition'}<ArrowRight aria-hidden="true" /></Button></div>
+      </div>
+    </section>
+
+    <section className="market-teaser">
+      <div className="content-wrap">
+        <SectionHeading eyebrow={t.marketTeaser.eyebrow} title={t.marketTeaser.title} />
+        <PackGrid products={teaser} t={t} language={language} className="featured" compact />
+        <div className="teaser-actions">
+          <Button variant="primary" href="#/market">{t.marketTeaser.cta}<ArrowRight aria-hidden="true" /></Button>
         </div>
       </div>
     </section>
@@ -83,5 +94,6 @@ export function Home({ t }: { t: Copy }) {
         <div className="final-actions"><SteamButton label={t.common.steam} soon={t.common.steamSoon} /><a href={SITE_CONFIG.githubUrl} target="_blank" rel="noopener noreferrer">{t.common.github}<ArrowRight aria-hidden="true" /></a></div>
       </div>
     </section>
+    <MediaPreview media={preview} closeLabel={language === 'zh' ? '关闭' : 'Close'} onClose={() => setPreview(null)} />
   </main>
 }

@@ -15,7 +15,7 @@ import {
 } from './document-model'
 
 
-export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: string): Map<string, LayerMask> => {
+export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
   return new Map(timeline.cels
@@ -24,17 +24,17 @@ export const activeCelMasksByLayer = (document: SpriteDocument, previewMaskId?: 
     .filter((entry): entry is readonly [string, LayerMask] => {
       const mask = entry[1]
       if (!mask) return false
-      return mask.visible !== false && (mask.id === previewMaskId || layerMaskAffectsComposite(mask))
+      return mask.visible !== false && (includeNeutral || mask.id === previewMaskId || layerMaskAffectsComposite(mask))
     }))
 }
 
-export const activeGroupMasksByGroup = (document: SpriteDocument, previewMaskId?: string): Map<string, LayerMask> => {
+export const activeGroupMasksByGroup = (document: SpriteDocument, previewMaskId?: string, includeNeutral = false): Map<string, LayerMask> => {
   const timeline = document.animation
   if (!timeline) return new Map()
   return new Map((timeline.groupMasks ?? [])
     .filter((entry) => entry.frameId === timeline.activeFrameId)
     .map((entry) => [entry.groupId, resolveAnimationMask(timeline, entry.mask)] as const)
-    .filter((entry): entry is readonly [string, LayerMask] => Boolean(entry[1] && entry[1].visible !== false && (entry[1].id === previewMaskId || layerMaskAffectsComposite(entry[1])))))
+    .filter((entry): entry is readonly [string, LayerMask] => Boolean(entry[1] && entry[1].visible !== false && (includeNeutral || entry[1].id === previewMaskId || layerMaskAffectsComposite(entry[1])))))
 }
 
 const layerMaskCompositeEffects = new WeakMap<LayerMask, { storage: object; contentRevision: number; affects: boolean }>()

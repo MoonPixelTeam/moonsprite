@@ -8,6 +8,8 @@ export interface WorkspaceLayout {
   panelDocks: Record<WorkspacePanelId, WorkspacePanelDock>
   /** Optional for backward compatibility with workspaces saved before panel visibility was persisted. */
   panelVisibility?: Partial<Record<WorkspacePanelId, boolean>>
+  /** Layer panel mode, optional for older workspace files. */
+  timelineHidden?: boolean
   inspectorWidth: number
   leftDockWidth: number
   bottomDockHeight: number

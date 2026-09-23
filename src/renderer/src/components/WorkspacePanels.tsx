@@ -1,7 +1,7 @@
-import { ReferenceImagePanel } from './panels/ReferenceImagePanel'
+import { ReferenceImagePanel, ReferenceImageWindows } from './panels/ReferenceImagePanel'
 import { useReferenceImages } from './panels/reference-image-state'
 import { beginWorkspaceResize, endWorkspaceResize, createResizeFrame } from './workspace-resize'
-import { Fragment, memo, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { ColorPanel } from '@/components/panels/ColorPanel'
@@ -107,6 +107,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
   })
   void panelStateKey
   const initialLayout = useMemo(loadInspectorLayout, [])
+  const [initialSquareSizing, setInitialSquareSizing] = useState(initialLayout.squarePanels.length > 0)
   const [order, setOrder] = useState<WorkspacePanelId[]>(initialLayout.order)
   const [verticalWeights, setVerticalWeights] = useState<Record<WorkspacePanelId, number>>(initialLayout.verticalWeights)
   const [bottomWeights, setBottomWeights] = useState<Record<WorkspacePanelId, number>>(initialLayout.bottomWeights)
@@ -236,10 +237,43 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
 
   const persistLayout = (nextOrder = order, nextVerticalWeights = verticalWeightsRef.current, nextBottomWeights = bottomWeightsRef.current): void => {
     try {
-      writeStoredString(INSPECTOR_LAYOUT_STORAGE_KEY, JSON.stringify({ order: nextOrder, verticalWeights: nextVerticalWeights, bottomWeights: nextBottomWeights }))
+      writeStoredString(INSPECTOR_LAYOUT_STORAGE_KEY, JSON.stringify({ order: nextOrder, verticalWeights: nextVerticalWeights, bottomWeights: nextBottomWeights, squarePanels: initialSquareSizing ? initialLayout.squarePanels : [] }))
       notifyWorkspaceLayoutChanged()
     } catch { /* Ignore unavailable renderer storage. */ }
   }
+  useLayoutEffect(() => {
+    if (!initialSquareSizing) return
+    const slots = [...document.querySelectorAll<HTMLElement>('.inspector-panel-group[data-inspector-panel-id]')]
+    const squares = slots.filter(slot => initialLayout.squarePanels.includes(slot.dataset.inspectorPanelId as WorkspacePanelId))
+    if (squares.length !== initialLayout.squarePanels.length || squares.some(slot => slot.getBoundingClientRect().height <= 0)) return
+    const colorSlot = squares.find(slot => slot.dataset.inspectorPanelId === 'color')
+    const colorField = colorSlot?.querySelector<HTMLElement>('.color-field-slot')
+    if (colorSlot && colorField) {
+      const slotBounds = colorSlot.getBoundingClientRect()
+      const fieldBounds = colorField.getBoundingClientRect()
+      // Only the picking field is square; retain the header, strips, color
+      // values, padding and separator at their measured heights.
+      const height = slotBounds.height - fieldBounds.height + fieldBounds.width
+      colorSlot.style.setProperty('flex', `0 0 ${height}px`, 'important')
+      colorSlot.style.aspectRatio = 'auto'
+    }
+    // The preset supplies starting geometry only. Convert it once to the same
+    // proportional weights used by freely resizable panels, then discard locks.
+    const measured = { ...verticalWeightsRef.current }
+    for (const slot of slots) {
+      const id = slot.dataset.inspectorPanelId as WorkspacePanelId
+      measured[id] = slot.getBoundingClientRect().height
+    }
+    colorSlot?.style.removeProperty('flex')
+    colorSlot?.style.removeProperty('aspect-ratio')
+    verticalWeightsRef.current = measured
+    setVerticalWeights(measured)
+    setInitialSquareSizing(false)
+    writeStoredString(INSPECTOR_LAYOUT_STORAGE_KEY, JSON.stringify({
+      order: orderRef.current, verticalWeights: measured, bottomWeights: bottomWeightsRef.current, squarePanels: []
+    }))
+    notifyWorkspaceLayoutChanged()
+  }, [initialSquareSizing, initialLayout, leftDockHost, bottomDockHost, panelDocks, panelVisibility])
   useEffect(() => {
     if (freeTileInstancePanelLayout !== 'separate' || activeFreeTileInstanceCount === 0 || !panelVisibility.freeTileInstances) return
     const layersDock = dockFor('layers')
@@ -400,6 +434,10 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
       if (!dockDragRef.current) return
       if (event.key === 'Alt' && dockDragRef.current.moved && lastPoint) applyMove(new PointerEvent('pointermove', { clientX: lastPoint.x, clientY: lastPoint.y, altKey: true }))
       if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); up(new PointerEvent('pointercancel')) }
+      // A shortcut may synchronously replace the docked panel with a popup.
+      // Finish the pending workspace drag first so the old panel cannot leave
+      // a stale drag ref that hides every later panel toggle.
+      if (event.key !== 'Alt' && event.key !== 'Escape') up(new PointerEvent('pointercancel'))
     }
     const blur = (): void => { if (dockDragRef.current || resizeRef.current || bottomResizeRef.current) up(new PointerEvent('pointercancel')) }
     const keyup = (event: KeyboardEvent): void => {
@@ -540,7 +578,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
     return <div className={horizontal ? 'bottom-panel-stack' : 'inspector-stack'} data-panel-dock-content={dock}>{dockOrder.map((id, index) => {
       const nextId = dockOrder[index + 1]
       const squareLocked = id === 'color' && colorSquareDock === dock
-      return <Fragment key={id}><div className={`${horizontal ? 'bottom-panel-group' : 'inspector-panel-group'} ${draggingPanel === id ? 'dock-dragging' : ''} ${squareLocked && (horizontal || dockOrder.length > 1) ? 'square-locked' : ''}`} data-inspector-panel-id={id} style={horizontal ? { flex: squareLocked ? `0 0 ${bottomWeights[id]}px` : bottomPanelFlex(bottomWeights[id], id === bottomFillId), minWidth: MINIMUM_BOTTOM_WIDTHS[id], '--locked-size': `${bottomWeights[id]}px` } as React.CSSProperties : { flex: squareLocked ? `0 0 ${verticalWeights[id]}px` : proportionalPanelFlex(verticalWeights[id]), minHeight: MINIMUM_INSPECTOR_SIZES[id] + (index < dockOrder.length - 1 ? 7 : 0), '--locked-size': `${verticalWeights[id]}px` } as React.CSSProperties}>
+      return <Fragment key={id}><div className={`${horizontal ? 'bottom-panel-group' : 'inspector-panel-group'} ${!horizontal && initialSquareSizing && initialLayout.squarePanels.includes(id) ? 'workspace-square-panel' : ''} ${draggingPanel === id ? 'dock-dragging' : ''} ${squareLocked && (horizontal || dockOrder.length > 1) ? 'square-locked' : ''}`} data-inspector-panel-id={id} style={horizontal ? { flex: squareLocked ? `0 0 ${bottomWeights[id]}px` : bottomPanelFlex(bottomWeights[id], id === bottomFillId), minWidth: MINIMUM_BOTTOM_WIDTHS[id], '--locked-size': `${bottomWeights[id]}px` } as React.CSSProperties : { flex: squareLocked ? `0 0 ${verticalWeights[id]}px` : proportionalPanelFlex(verticalWeights[id]), minHeight: MINIMUM_INSPECTOR_SIZES[id] + (index < dockOrder.length - 1 ? 7 : 0), '--locked-size': `${verticalWeights[id]}px` } as React.CSSProperties}>
         <div className="inspector-panel-slot">{panelFor(id, true, dock)}</div>
         {!horizontal && index < dockOrder.length - 1 && <div className="panel-resizer" role="separator" aria-orientation="horizontal" aria-label={t('panel.resizeHeight', { panel: panelLabels[id] })} onPointerDown={(event) => {
           const measured = { ...verticalWeightsRef.current }
@@ -569,6 +607,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
   }
 
   return <PerformanceProfiler id="InspectorPanels"><>
+    {createPortal(<ReferenceImageWindows />, document.body)}
     {renderDock('right')}
     {leftDockHost && createPortal(renderDock('left'), leftDockHost)}
     {bottomDockHost && createPortal(renderDock('bottom'), bottomDockHost)}

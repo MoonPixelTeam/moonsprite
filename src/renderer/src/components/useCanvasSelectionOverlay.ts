@@ -163,7 +163,7 @@ export function useCanvasSelectionOverlay(ports: Ports) {
     )
     selectionOverlayVisibleRef.current = shouldDrawSelection
     if (!shouldDrawSelection) return
-    const renderPlan = createCanvasRenderPlan(rect.width, rect.height, ports.session.document, ports.liveViewRef.current, ports.rotationIndicatorPosition)
+    const renderPlan = createCanvasRenderPlan(rect.width, rect.height, ports.session.document, ports.liveViewRef.current, ports.rotationIndicatorPosition, deviceScale)
     const { rotated, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight } = renderPlan
     let context: RasterContext2D = displayContext
     if (rotated) {

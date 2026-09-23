@@ -3,6 +3,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { timelineCellSlotKey } from '@/core/animation-timeline-identity'
 import type { LayerDisplayRow } from './layer-panel-contracts'
 interface Options {
+  readonly groups?: ReturnType<typeof createTimelineLinkGroups>
   readonly displayRows: LayerDisplayRow[]
   readonly timeline: import('@shared/types-animation').AnimationTimeline
   readonly canonicalTimelineIndex: import('@/core/animation-timeline-visual-state').CanonicalTimelineIndex
@@ -13,7 +14,45 @@ interface Options {
   readonly renderedFrameIdSet: Set<string>
   readonly selectionVisible: boolean
 }
+
+type LinkGroups = ReturnType<typeof createTimelineLinkGroups>
+// A group list belongs to one panel topology. Selection and playhead changes
+// do not change its membership, adjacency or bridge geometry.
+const geometryCache = new WeakMap<LinkGroups, ReturnType<typeof createLinkGeometry>>()
+
+function createLinkGeometry(groups: LinkGroups, timeline: Options['timeline']) {
+  const linkedMaskSlotVisuals = new Map<string, { withPrevious: boolean; withNext: boolean }>()
+  const linkedCelMemberKeys = new Set<string>()
+  const entries = groups.map(group => {
+    const groupKey = `${group.kind}:${group.ownerKind}:${group.layerId}:${group.sourceId}`
+    const cellKeys = group.frameIndexes.map(index => animationCelKey(group.layerId, timeline.frames[index].id))
+    const memberKeys = cellKeys.map(key => `${group.kind}|${key}`)
+    for (const key of memberKeys) linkedCelMemberKeys.add(key)
+    const bridgeEndKeys: string[] = []
+    const connectors: Array<{ key: string; groupKey: string; row: number; start: number; end: number }> = []
+    const blocks: Array<{ key: string; groupKey: string; row: number; start: number; span: number }> = []
+    let start = group.frameIndexes[0]
+    for (let index = 0; index < group.frameIndexes.length; index++) {
+      const frameIndex = group.frameIndexes[index]
+      const next = group.frameIndexes[index + 1]
+      if (group.kind === 'mask') linkedMaskSlotVisuals.set(
+        timelineCellSlotKey({kind: 'mask', ownerKind: group.ownerKind, ownerId: group.layerId, frameId: timeline.frames[frameIndex].id}),
+        {withPrevious: index > 0 && group.frameIndexes[index - 1] === frameIndex - 1, withNext: next === frameIndex + 1})
+      if (next === frameIndex + 1) continue
+      blocks.push({key: `${group.layerId}:${group.sourceId}:${start}`, groupKey, row: group.row, start, span: frameIndex - start + 1})
+      if (next > frameIndex + 1) {
+        connectors.push({key: `${group.layerId}:${group.sourceId}:${frameIndex}-${next}`, groupKey, row: group.row, start: frameIndex, end: next})
+        for (let frame = frameIndex; frame < next; frame++) bridgeEndKeys.push(`${group.kind}|${animationCelKey(group.layerId, timeline.frames[frame].id)}`)
+      }
+      start = next
+    }
+    const frameIds = group.frameIndexes.map(index => timeline.frames[index].id)
+    return {group, cellKeys, memberKeys, bridgeEndKeys, frameIds, blocks, connectors}
+  })
+  return {entries, linkedMaskSlotVisuals, linkedCelMemberKeys}
+}
 export function deriveTimelineLinks({
+  groups,
   displayRows,
   timeline,
   canonicalTimelineIndex,
@@ -24,7 +63,37 @@ export function deriveTimelineLinks({
   renderedFrameIdSet,
   selectionVisible
 }: Options) {
-  const linkedCelGroups = displayRows.flatMap((displayRow, row) => {
+  const selectedLayers = new Set(session.selectedLayerIds)
+  const linkGroups = groups ?? createTimelineLinkGroups({displayRows, timeline, canonicalTimelineIndex})
+  let geometry = geometryCache.get(linkGroups)
+  if (!geometry) {
+    geometry = createLinkGeometry(linkGroups, timeline)
+    geometryCache.set(linkGroups, geometry)
+  }
+  const {linkedMaskSlotVisuals, linkedCelMemberKeys} = geometry
+  const linkedCelBridgeEndKeys = new Set<string>()
+  const selectedLinkedCelMemberKeys = new Set<string>()
+  const linkedCelBlocks: Array<typeof geometry.entries[number]['blocks'][number] & {selected: boolean; layerSelected: boolean}> = []
+  const linkedCelConnectors: Array<typeof geometry.entries[number]['connectors'][number] & {selected: boolean; layerSelected: boolean}> = []
+  for (const entry of geometry.entries) {
+    const {group} = entry
+    const layerSelected = group.kind !== 'mask' && showLayerSelectionAcrossTimeline && selectedLayers.has(group.layerId) && !session.selectedGroupId
+    const selectedCells = group.kind === 'mask' ? renderedMaskCellKeySet : renderedCellKeySet
+    const selected = selectionVisible && (
+      Boolean(session.layerSelectionExplicit && layerSelected)
+      || entry.frameIds.some((frameId, index) => renderedFrameIdSet.has(frameId) || selectedCells.has(entry.cellKeys[index]))
+    )
+    for (const block of entry.blocks) linkedCelBlocks.push({...block, selected, layerSelected})
+    if (!selected) continue
+    for (const key of entry.memberKeys) selectedLinkedCelMemberKeys.add(key)
+    for (const key of entry.bridgeEndKeys) linkedCelBridgeEndKeys.add(key)
+    for (const connector of entry.connectors) linkedCelConnectors.push({...connector, selected, layerSelected})
+  }
+  return { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys }
+}
+
+export function createTimelineLinkGroups({displayRows, timeline, canonicalTimelineIndex}: Pick<Options, 'displayRows' | 'timeline' | 'canonicalTimelineIndex'>) {
+  return displayRows.flatMap((displayRow, row) => {
     const owner = displayRow.kind === 'node' && displayRow.node.kind === 'layer' ? displayRow.node.layer : displayRow.kind === 'mask' ? displayRow.owner : null
     if (!owner) return []
     const bySource = new Map<string, number[]>()
@@ -52,131 +121,8 @@ export function deriveTimelineLinks({
         row,
         sourceId,
         frameIndexes,
-        frameIndexSet: new Set(frameIndexes),
-        layerSelected:
-          displayRow.kind === 'mask' ? false : showLayerSelectionAcrossTimeline && session.selectedLayerIds.includes(owner.id) && !session.selectedGroupId
+        frameIndexSet: new Set(frameIndexes)
       }))
   })
 
-  const linkedGroupKey = (group: { kind: 'cel' | 'mask'; ownerKind: 'layer' | 'group'; layerId: string; sourceId: string }): string =>
-    `${group.kind}:${group.ownerKind}:${group.layerId}:${group.sourceId}`
-
-  const groupCellKey = (group: { kind: 'cel' | 'mask'; layerId: string }, frameId: string): string => animationCelKey(group.layerId, frameId)
-
-  const selectedLinkedCelGroups = new Set<string>()
-
-  for (const group of linkedCelGroups) {
-    if (!selectionVisible) break
-    const selectedCells = group.kind === 'mask' ? renderedMaskCellKeySet : renderedCellKeySet
-    let selected = false
-    for (const frameIndex of group.frameIndexes) {
-      const frameId = timeline.frames[frameIndex].id
-      if (renderedFrameIdSet.has(frameId) || selectedCells.has(groupCellKey(group, frameId))) {
-        selected = true
-        break
-      }
-    }
-    if (selected) selectedLinkedCelGroups.add(linkedGroupKey(group))
-  }
-
-  const highlightedLinkedCelGroups = new Set([
-    ...selectedLinkedCelGroups,
-    ...linkedCelGroups
-      // Active editing context must not keep a link selected after deselection.
-      .filter((group) => selectionVisible && session.layerSelectionExplicit && group.layerSelected)
-      .map(linkedGroupKey)
-  ])
-
-  const linkedMaskSlotVisuals = new Map<string, { withPrevious: boolean; withNext: boolean }>()
-
-  for (const group of linkedCelGroups) {
-    if (group.kind !== 'mask') continue
-    for (let index = 0; index < group.frameIndexes.length; index += 1) {
-      const frameIndex = group.frameIndexes[index]
-      linkedMaskSlotVisuals.set(
-        timelineCellSlotKey({ kind: 'mask', ownerKind: group.ownerKind, ownerId: group.layerId, frameId: timeline.frames[frameIndex].id }),
-        {
-          withPrevious: index > 0 && group.frameIndexes[index - 1] === frameIndex - 1,
-          withNext: index + 1 < group.frameIndexes.length && group.frameIndexes[index + 1] === frameIndex + 1
-        }
-      )
-    }
-  }
-
-  const linkedCelBridgeEndKeys = new Set(
-    linkedCelGroups.flatMap((group) => {
-      if (!highlightedLinkedCelGroups.has(linkedGroupKey(group))) return []
-      return group.frameIndexes.flatMap((frameIndex, index) => {
-        const nextFrameIndex = group.frameIndexes[index + 1]
-        // Suppress every interior divider crossed by a visible bridge,
-        // including unrelated or empty cells between its linked endpoints.
-        return nextFrameIndex > frameIndex + 1
-          ? timeline.frames.slice(frameIndex, nextFrameIndex).map((frame) => `${group.kind}|${animationCelKey(group.layerId, frame.id)}`)
-          : []
-      })
-    })
-  )
-
-  const linkedCelBlocks = linkedCelGroups.flatMap((group) => {
-    const blocks: Array<{ key: string; groupKey: string; row: number; start: number; span: number; selected: boolean; layerSelected: boolean }> = []
-    const groupKey = linkedGroupKey(group)
-    let start = group.frameIndexes[0]
-    let previous = start
-    for (let index = 1; index <= group.frameIndexes.length; index += 1) {
-      const current = group.frameIndexes[index]
-      if (current === previous + 1) {
-        previous = current
-        continue
-      }
-      const span = previous - start + 1
-      blocks.push({
-        key: `${group.layerId}:${group.sourceId}:${start}`,
-        groupKey,
-        row: group.row,
-        start,
-        span,
-        selected: highlightedLinkedCelGroups.has(groupKey),
-        layerSelected: group.layerSelected
-      })
-      start = current
-      previous = current
-    }
-    return blocks
-  })
-
-  const linkedCelConnectors = linkedCelGroups.flatMap((group) => {
-    const groupKey = linkedGroupKey(group)
-    if (!highlightedLinkedCelGroups.has(groupKey)) return []
-    return group.frameIndexes.flatMap((frameIndex, index) => {
-      const nextFrameIndex = group.frameIndexes[index + 1]
-      return nextFrameIndex > frameIndex + 1
-        ? [
-            {
-              key: `${group.layerId}:${group.sourceId}:${frameIndex}-${nextFrameIndex}`,
-              groupKey,
-              row: group.row,
-              start: frameIndex,
-              end: nextFrameIndex,
-              selected: highlightedLinkedCelGroups.has(groupKey),
-              layerSelected: group.layerSelected
-            }
-          ]
-        : []
-    })
-  })
-
-  // Membership and adjacency are separate visual states: an isolated cel in a
-  // linked group still needs to sit above the bridge layer so its thumbnail is
-  // visible at enlarged densities.
-  const linkedCelMemberKeys = new Set(
-    linkedCelGroups.flatMap((group) =>
-      group.frameIndexes.map((frameIndex) => `${group.kind}|${animationCelKey(group.layerId, timeline.frames[frameIndex].id)}`)
-    )
-  )
-  const selectedLinkedCelMemberKeys = new Set(
-    linkedCelGroups.filter(group => highlightedLinkedCelGroups.has(linkedGroupKey(group))).flatMap(group =>
-      group.frameIndexes.map(frameIndex => `${group.kind}|${animationCelKey(group.layerId, timeline.frames[frameIndex].id)}`)
-    )
-  )
-  return { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys }
-}
+ }

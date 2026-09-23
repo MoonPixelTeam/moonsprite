@@ -6,7 +6,7 @@ type Point = { clientX: number; clientY: number }
 /** Retain the existing canvas surfaces. The pane clips them while its boundary
  * moves; neither backing buffers nor document views change during the gesture. */
 export function freezeDocumentPaneCanvases(container: HTMLElement) {
-  const surfaces = [...container.querySelectorAll<HTMLElement>('.document-pane-canvas-content > .stage-surface')].flatMap(surface => {
+  const surfaces = [...container.querySelectorAll<HTMLElement>('.stage-surface')].flatMap(surface => {
     const parent = surface.parentElement!
     const rect = parent.getBoundingClientRect()
     const style = getComputedStyle(surface)

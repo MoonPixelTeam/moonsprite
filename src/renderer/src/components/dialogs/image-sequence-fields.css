@@ -1,0 +1,13 @@
+.image-sequence-fields { display: grid; gap: var(--ui-space-4); min-width: 0; }
+.image-sequence-files { max-height: 180px; min-height: 80px; overflow: auto; margin: 0; padding: var(--ui-space-2) var(--ui-space-3); list-style: none; border: 1px solid var(--theme-border); background: var(--theme-raised-surface); scrollbar-gutter: stable; }
+.image-sequence-files li { font-variant-numeric: tabular-nums; }
+.image-sequence-files .checkbox-field { width: 100%; min-width: max-content; margin: 0; padding: var(--ui-space-2); white-space: nowrap; cursor: pointer; }
+.image-sequence-files li[data-selected="true"] { background: color-mix(in srgb, #2979FF 14%, transparent); }
+.image-sequence-files li:hover, .image-sequence-files li:focus-within { outline: 1px solid var(--theme-border); outline-offset: -1px; }
+.image-sequence-duration.ui-field-inline { grid-template-columns: minmax(0, 1fr) minmax(100px, 140px); gap: var(--ui-space-4); }
+.image-sequence-options { display: grid; gap: var(--ui-space-2); border-top: 1px solid var(--theme-border); padding-top: var(--ui-space-3); }
+.image-sequence-options .checkbox-field { min-width: 0; margin: 0; }
+.modal.image-sequence-modal { padding-bottom: 0; overflow: hidden; }
+.modal.image-sequence-modal > .confirm-content { display: grid; gap: var(--ui-space-3); overflow-y: auto; flex: 1 1 auto; }
+.modal.image-sequence-modal > footer { flex: 0 0 auto; flex-wrap: wrap; gap: var(--ui-space-2); padding: var(--ui-space-3) var(--ui-space-5); border-top: 1px solid var(--theme-border); background: var(--theme-raised-surface); }
+.modal-backdrop.dialog-backdrop.modal-overlay-backdrop { z-index: 400; }

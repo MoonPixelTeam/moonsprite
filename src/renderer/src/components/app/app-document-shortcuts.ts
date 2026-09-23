@@ -1,6 +1,8 @@
+import { cutWorkspaceItems } from '@/store/workspace-cut'
+import { invertWorkspaceColors, rotateWorkspaceContent } from '@/store/workspace-edit-actions'
 import type { AppShortcutContext } from './app-shortcut-context'
 import type { ColorMode } from '@shared/types-raster'
-import type { AdjustmentKind } from '@/core/adjustments'
+import { handleAdjustmentPaletteShortcuts } from './app-adjustment-palette-shortcuts'
 import { resolveCopyCommand } from '@/core/command-context'
 import { type ShortcutId } from '@/core/shortcuts'
 
@@ -8,6 +10,14 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
   const { openAdjustment, event, workspace, session, t, matches, runCommand, commandScope, selectionOverride, uiCommands, publishShortcutCommand } = context
   if (runCommand('openHome', () => uiCommands['openHome']?.()))
     return true
+  if (runCommand('copyMerged', () => workspace.copySelection(true))) return true
+  if (runCommand('rotateContent180', () => rotateWorkspaceContent(180))) return true
+  if (runCommand('rotateContentCounterClockwise', () => rotateWorkspaceContent(-90))) return true
+  if (runCommand('rotateContentClockwise', () => rotateWorkspaceContent(90))) return true
+  if (runCommand('centerContentBoth', () => workspace.centerActiveContent('both'))) return true
+  if (runCommand('centerContentHorizontal', () => workspace.centerActiveContent('horizontal'))) return true
+  if (runCommand('centerContentVertical', () => workspace.centerActiveContent('vertical'))) return true
+  if (runCommand('invertColors', invertWorkspaceColors)) return true
   if (runCommand('newDocument', () => uiCommands['newDocument']?.()))
     return true
   if (runCommand('openDocument', () => uiCommands['openDocument']?.()))
@@ -39,6 +49,10 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
   if (session?.selectedAnimationFrameIds.length && runCommand('copy', () => workspace.copySelectedAnimationFrames()))
     return true
   if (runCommand('copy', () => {
+    if (commandScope() === 'palette') {
+      publishShortcutCommand('copy', 'palette')
+      return
+    }
     const target = selectionOverride() && session?.selection
     ? 'selection'
     : resolveCopyCommand(commandScope(), Boolean(session?.selection))
@@ -49,15 +63,28 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
     else workspace.setMessage(t('app.copy.required'))
   }))
     return true
-  if (runCommand('cut', () => workspace.cutSelection()))
+  if (runCommand('cut', () => {
+    if (commandScope() === 'layers' && session?.freeTileInstanceLayerId && session.selectedFreeTileInstanceId) cutWorkspaceItems('free-tiles')
+    else if (session?.selectedAnimationMaskCellKeys.length && !selectionOverride()) cutWorkspaceItems('masks')
+    else if (session?.selectedAnimationCellKeys.length && !selectionOverride()) cutWorkspaceItems('cels')
+    else if (session?.selectedAnimationFrameIds.length) cutWorkspaceItems('frames')
+    else {
+      const target = selectionOverride() && session?.selection ? 'selection' : resolveCopyCommand(commandScope(), Boolean(session?.selection))
+      if (target) cutWorkspaceItems(target)
+      else if (commandScope() !== 'palette' && (session?.selectedLayerIds.length || session?.selectedGroupIds.length)) cutWorkspaceItems('layers')
+    }
+  }))
     return true
   if (runCommand('paste', () => {
+    if (commandScope() === 'palette') {
+      publishShortcutCommand('paste', 'palette')
+      return
+    }
     const hasAnimationTarget = Boolean(session && (session.selectedAnimationMaskCellKeys.length || session.selectedAnimationCellKeys.length || session.selectedAnimationFrameIds.length))
     if (!session || (!hasAnimationTarget && !session.activeLayerMaskId && session.selectedLayerIds.length === 0 && session.selectedGroupIds.length === 0 && !session.selectedGroupId)) {
       workspace.setMessage(t('workspace.clipboard.selectTarget'))
       return
     }
-    if (commandScope() === 'palette') { workspace.setMessage(t('app.palette.pasteUnsupported')); return }
     // Centralize clipboard precedence (OS image first, then animation or
     // internal layer payload) so every paste entry point sees the latest
     // copy source regardless of the active panel.
@@ -72,33 +99,7 @@ export function handleDocumentShortcuts(context: Pick<AppShortcutContext, 'openA
     return true
   if (runCommand('replaceColor', () => uiCommands['replaceColor']?.()))
     return true
-  const adjustmentShortcuts: Array<[ShortcutId, AdjustmentKind]> = [
-    ['adjustmentColorBalance', 'color-balance'],
-    ['adjustmentBrightnessContrast', 'brightness-contrast'],
-    ['adjustmentHueSaturation', 'hue-saturation'],
-    ['adjustmentCurves', 'curves']
-  ]
-  const adjustment = adjustmentShortcuts.find(([action]) => matches(action))
-  if (adjustment) {
-    event.preventDefault()
-    event.stopPropagation()
-    if (session && !event.repeat) { openAdjustment(adjustment[1]) }
-    return true
-  }
-  const paletteShortcut = ([
-    'togglePaletteEditLock', 'extractPaletteColors', 'togglePaletteColorSync', 'reversePaletteColors',
-    'createPaletteGradient', 'createPaletteHueGradient', 'sortPaletteHue', 'sortPaletteSaturation',
-    'sortPaletteBrightness', 'sortPaletteLuminance', 'sortPaletteRed', 'sortPaletteGreen',
-    'sortPaletteBlue', 'sortPaletteAlpha', 'paletteSortAscending', 'paletteSortDescending',
-    'paletteSwatchTiny', 'paletteSwatchSmall', 'paletteSwatchMedium', 'paletteSwatchLarge',
-    'paletteSwatchHuge', 'savePalette', 'openPaletteFolder', 'refreshPalettes'
-  ] as const).find((id) => matches(id))
-  if (paletteShortcut) {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!event.repeat) publishShortcutCommand(paletteShortcut, 'palette')
-    return true
-  }
+  if (handleAdjustmentPaletteShortcuts(context)) return true
   if (runCommand('openShortcutSettings', () => uiCommands['openShortcutSettings']?.()))
     return true
   if (runCommand('openPreferences', () => uiCommands['openPreferences']?.()))

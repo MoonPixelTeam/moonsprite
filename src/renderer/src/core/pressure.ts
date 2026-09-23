@@ -437,6 +437,12 @@ export function resolveBrushDynamics(
   }
 }
 
+export function brushOpacityScale(opacityScale: number, brushOpacity: number): number {
+  const dynamicsOpacity = Number.isFinite(opacityScale) ? clamp(opacityScale, 0, 1) : 1
+  const opacityPercent = Number.isFinite(brushOpacity) ? clamp(brushOpacity, 0, 100) : 100
+  return dynamicsOpacity * opacityPercent / 100
+}
+
 export function normalizePointerPressure(
   pointerType: string | undefined,
   pressure: number | undefined,

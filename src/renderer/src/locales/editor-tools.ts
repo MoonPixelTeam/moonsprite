@@ -5,6 +5,7 @@ import type { AppLocale } from './contracts'
 interface ToolCopy { label: string; description: string }
 
 const zhTools: Record<ToolId, ToolCopy> = {
+  'magic-eraser': { label: '魔术橡皮擦', description: '单击清除当前图层中所有同色像素；可设置容差、连续区域与取样范围。' },
   smooth: { label: '平滑笔刷', description: '涂抹修整像素毛刺和细小断点；紫色表示作用范围。' },
   pencil: { label: '铅笔工具', description: '按住拖动绘制像素；按住 Shift 可从上次落点连接直线。' },
   airbrush: { label: '喷枪工具', description: '按住持续喷涂粒子；可调整粒子大小、散布范围、密度和产生频率。' },
@@ -23,6 +24,7 @@ const zhTools: Record<ToolId, ToolCopy> = {
 }
 
 const enTools: Record<ToolId, ToolCopy> = {
+  'magic-eraser': { label: 'Magic Eraser', description: 'Click to erase matching colors on the current layer. Configure tolerance, contiguous regions and sampling.' },
   smooth: { label: 'Smooth Brush', description: 'Brush over pixel edges to clean small irregularities and gaps. Purple marks the affected area.' },
   pencil: { label: 'Pencil Tool', description: 'Drag to draw pixels. Hold Shift to connect a line from the previous point.' },
   airbrush: { label: 'Airbrush Tool', description: 'Hold to spray particles continuously. Adjust particle size, spread, density, and frequency.' },

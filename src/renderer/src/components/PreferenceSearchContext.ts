@@ -12,8 +12,8 @@ export function searchText(value: ReactNode): string {
   if (typeof value === 'string' || typeof value === 'number') return String(value)
   if (Array.isArray(value)) return value.map(searchText).join(' ')
   if (typeof value === 'object' && 'props' in value) {
-    const props = value.props as { children?: ReactNode; label?: ReactNode; title?: ReactNode }
-    return [props.label, props.title, props.children].map(searchText).join(' ')
+    const props = value.props as { children?: ReactNode; label?: ReactNode; title?: ReactNode; groups?: Array<{ label?: ReactNode; options?: Array<{ label?: ReactNode }> }> }
+    return [props.label, props.title, props.children, ...(props.groups ?? []).flatMap(group => [group.label, ...(group.options ?? []).map(option => option.label)])].map(searchText).join(' ')
   }
   return ''
 }

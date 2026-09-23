@@ -5,9 +5,9 @@ import { colorEquals } from '@/core/raster'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { translate, type TranslationKey, type TranslationParams } from '@/core/localization'
 import { comparePaletteColors, paletteGradient, type PaletteSortDirection, type PaletteSortMode } from '@/core/palette'
-import { normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots } from '@/core/palette-layout'
+import { addPaletteIdToSlots, normalizePaletteColumns, normalizePaletteSlots, paletteOrderFromSlots, repositionPaletteSlots } from '@/core/palette-layout'
 import { remapSelectionBrushColors } from './workspace-session'
-import type { DocumentSession } from './workspace-types'
+import type { DocumentSession, PaletteColorTarget } from './workspace-types'
 
 const tr = (key: TranslationKey, params?: TranslationParams): string => translate(loadEditorPreferences().language, key, params)
 
@@ -51,11 +51,102 @@ export function selectPaletteColor(session: DocumentSession, id: number, additiv
   selectPaletteColors(session, selected, id)
 }
 
-export function addPaletteColor(session: DocumentSession, color: RgbaColor = session.primaryColor, selectAdded = true): number {
-  const id = findOrAddPaletteColor(session.document, color, true)
+const capturePaletteEdit = (session: DocumentSession) => ({
+  entries: session.document.palette.map(entry => ({ entry, color: { ...entry.color } })),
+  layout: currentPaletteLayout(session),
+  nextColorId: session.document.nextColorId,
+  selected: [...session.selectedPaletteIds],
+  primaryId: session.paletteSelectionId,
+  primaryColor: { ...session.primaryColor }
+})
+
+const recordPaletteEdit = (session: DocumentSession, before: ReturnType<typeof capturePaletteEdit>, selection?: PaletteColorTarget['selection']): void => {
+  const after = capturePaletteEdit(session)
+  if (before.entries.length === after.entries.length && before.entries.every((item, index) => item.entry.id === after.entries[index].entry.id && colorEquals(item.color, after.entries[index].color))
+    && before.layout.columns === after.layout.columns && before.layout.slots.length === after.layout.slots.length
+    && before.layout.slots.every((id, index) => id === after.layout.slots[index])) return
+  const apply = (snapshot: typeof before, view?: NonNullable<typeof selection>['before']): void => {
+    // Preserve entry objects used by earlier color-edit history commands.
+    session.document.palette = snapshot.entries.map(({ entry, color }) => { entry.color = { ...color }; return entry })
+    session.document.nextColorId = snapshot.nextColorId
+    applyPaletteSlots(session, snapshot.layout.slots, snapshot.layout.columns)
+    session.selectedPaletteIds = [...snapshot.selected]
+    session.paletteSelectionId = snapshot.primaryId
+    session.primaryColor = { ...snapshot.primaryColor }
+    if (view) session.paletteSelectionRestore = { ...view, boxSelection: view.boxSelection ? { ...view.boxSelection } : null }
+  }
+  session.history.push({
+    label: tr('palette.history.updated'),
+    bytes: (before.entries.length + after.entries.length) * 40 + (before.layout.slots.length + after.layout.slots.length) * 4 + 64,
+    undo: () => apply(before, selection?.before), redo: () => apply(after, selection?.after)
+  })
+}
+
+const createPaletteColor = (session: DocumentSession, color: RgbaColor, visible: boolean): number => {
+  if (color.a !== 0) return findOrAddPaletteColor(session.document, color, visible, true)
+  // Transparent swatches are independent slots too; never reuse reserved ID 0.
+  const id = session.document.nextColorId++
+  session.document.palette.push({ id, name: tr('core.document.colorName', { id }), color: { ...color } })
+  if (visible) {
+    const layout = currentPaletteLayout(session)
+    applyPaletteSlots(session, addPaletteIdToSlots(layout.slots, id, layout.columns), layout.columns)
+  }
+  return id
+}
+
+export function addPaletteColor(session: DocumentSession, color: RgbaColor = session.primaryColor, selectAdded = true, target?: PaletteColorTarget): number {
+  const before = capturePaletteEdit(session)
+  // Palette entries are slots, not a set of unique colors.  Creating a new
+  // swatch must therefore keep a distinct id even when the RGBA value already
+  // exists elsewhere in the palette.
+  const id = createPaletteColor(session, color, true)
+  if (target && target.indices.length > 0) {
+    const slots = addPaletteIdToSlots(target.slots, id, target.columns)
+    applyPaletteSlots(session, repositionPaletteSlots(slots, [id], target.indices[0], id, target.columns), target.columns)
+  }
   session.paletteSelectionId = selectAdded ? id : null
   session.selectedPaletteIds = selectAdded ? [id] : []
+  recordPaletteEdit(session, before)
   return id
+}
+
+export function pastePaletteColors(session: DocumentSession, colors: readonly RgbaColor[], target?: PaletteColorTarget): number[] {
+  if (colors.length === 0) return []
+  const before = capturePaletteEdit(session)
+  const selectedIds = session.document.paletteOrder.filter((id) => session.selectedPaletteIds.includes(id))
+  const layout = target ?? { ...before.layout, indices: selectedIds.map(id => before.layout.slots.indexOf(id)) }
+  const indices = [...new Set(layout.indices.filter(index => Number.isSafeInteger(index) && index >= 0))]
+  const ids: number[] = []
+  if (indices.length > 0) {
+    const slots = normalizePaletteSlots(session.document.palette.map(entry => entry.id), session.document.paletteOrder, layout.slots, layout.columns)
+    for (let index = 0; index < Math.min(colors.length, indices.length); index++) {
+      const slot = indices[index]
+      while (slots.length <= slot) slots.push(null)
+      const existing = session.document.palette.find(entry => entry.id === slots[slot])
+      // Indexed zero remains the reserved transparent color.
+      if (existing?.id === 0 && session.document.colorMode === 'indexed') continue
+      if (existing) {
+        existing.color = { ...colors[index] }
+        ids.push(existing.id)
+      } else {
+        const id = createPaletteColor(session, colors[index], false)
+        slots[slot] = id
+        ids.push(id)
+      }
+    }
+    applyPaletteSlots(session, normalizePaletteSlots(session.document.palette.map(entry => entry.id), paletteOrderFromSlots(slots), slots, layout.columns), layout.columns)
+  } else {
+    ids.push(...colors.map(color => createPaletteColor(session, color, true)))
+  }
+  const selected = [...new Set(ids.filter((id) => session.document.paletteOrder.includes(id)))]
+  const primaryId = selected.at(-1) ?? null
+  session.selectedPaletteIds = selected
+  session.paletteSelectionId = primaryId
+  const active = primaryId === null ? null : session.document.palette.find((entry) => entry.id === primaryId)
+  if (active) session.primaryColor = { ...active.color }
+  if (target?.selection) session.paletteSelectionRestore = { ...target.selection.after }
+  recordPaletteEdit(session, before, target?.selection)
+  return selected
 }
 
 export function updatePaletteColor(session: DocumentSession, id: number, color: RgbaColor): void {
@@ -90,7 +181,21 @@ export function applyPalette(session: DocumentSession, colors: RgbaColor[], layo
   const beforeColumns = beforeLayout.columns
   const beforeSelected = [...session.selectedPaletteIds]
   const beforePrimary = session.paletteSelectionId
-  const colorIds = colors.map((color) => findOrAddPaletteColor(document, color, false))
+  const usedPaletteIds = new Set<number>()
+  const colorIds = colors.map((color) => {
+    // Reuse duplicate entries in order, but create a new entry when the
+    // imported palette contains more occurrences than the document currently
+    // has. This preserves repeated colors without accumulating hidden copies
+    // every time the same palette is opened.
+    const reusable = document.palette.find((entry) => !usedPaletteIds.has(entry.id) && colorEquals(entry.color, color))
+    if (reusable) {
+      usedPaletteIds.add(reusable.id)
+      return reusable.id
+    }
+    const id = findOrAddPaletteColor(document, color, false, true)
+    usedPaletteIds.add(id)
+    return id
+  })
   const requestedOrder = [...new Set(document.colorMode === 'indexed' ? [0, ...colorIds] : colorIds)]
   const afterColumns = layout ? normalizePaletteColumns(layout.columns) : beforeColumns
   const requestedSlots = layout?.slots.map((colorIndex) => colorIndex === null ? null : colorIds[colorIndex] ?? null)

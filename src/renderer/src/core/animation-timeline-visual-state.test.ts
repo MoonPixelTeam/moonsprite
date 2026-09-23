@@ -1,3 +1,5 @@
+import { createAnimationTimelineVisualTopology } from './animation-timeline-visual-topology'
+import { createTimelineVisualCellCache } from './animation-timeline-cell-cache'
 import { describe, expect, it } from 'vitest'
 import { animationMaskAt } from './document'
 import { createAnimationTimelineVisualIndex, deriveAnimationTimelineVisualState, resolveTimelineMaskVisualFlags, shouldRenderTimelineCelSelectionMarker, type TimelineVisualCell, type TimelineVisualRow } from './animation-timeline-visual-state'
@@ -29,6 +31,28 @@ const cell = (state: ReturnType<typeof deriveAnimationTimelineVisualState>, key:
 }
 
 describe('deriveAnimationTimelineVisualState', () => {
+  it('reuses unchanged cells across rapid selection/focus changes without changing mask or link semantics', () => {
+    const canonicalIndex = createAnimationTimelineVisualIndex(frames, cells)
+    const topology = createAnimationTimelineVisualTopology(rows, frames, canonicalIndex)
+    const cellStateCache = createTimelineVisualCellCache(topology)
+    for (let i = 0; i < 128; i++) {
+      const input = { rows, frames, cells, topology, canonicalIndex,
+        selection: {activeLayerId: 'layer-a', activeFrameId: frames[i % 3].id,
+          selectedLayerIds: i & 1 ? ['layer-a'] : [], selectedFrameIds: i & 2 ? ['f1', 'f2'] : [],
+          selectedCellKeys: i & 4 ? ['layer-a:f2', 'layer-b:f1'] : [],
+          selectedMaskCellKeys: i & 8 ? ['group-a:f2'] : [], animationCellSelectionExplicit: Boolean(i & 16)},
+        active: {row: {kind: 'mask' as const, ownerKind: 'group' as const, ownerId: 'group-a'}, frameId: frames[i % 3].id, maskEditTargetId: 'mask1'},
+        presentation: {presentationHidden: Boolean(i & 32), playing: Boolean(i & 64)} }
+      const cached = deriveAnimationTimelineVisualState({...input, cellStateCache})
+      expect(cached).toEqual(deriveAnimationTimelineVisualState(input))
+      const repeated = deriveAnimationTimelineVisualState({...input, cellStateCache})
+      expect(repeated.cells.every((cell, index) => cell === cached.cells[index])).toBe(true)
+      // A reordered/rebuilt topology must never reuse positional cache entries.
+      const reversed = [...frames].reverse()
+      const changed = {...input, frames: reversed, topology: createAnimationTimelineVisualTopology(rows, reversed, canonicalIndex)}
+      expect(deriveAnimationTimelineVisualState({...changed, cellStateCache})).toEqual(deriveAnimationTimelineVisualState(changed))
+    }
+  })
   it('indexes linked mask slots with mask identity for panel lookups', () => {
     const index = createAnimationTimelineVisualIndex(frames, cells)
     const sourceKey = timelineCellSlotKey({ kind: 'mask', ownerKind: 'group', ownerId: 'group-a', frameId: 'f1' })
@@ -647,4 +671,27 @@ describe('deriveAnimationTimelineVisualState', () => {
     expect(state.selectionGuidesVisible).toBe(false)
     expect(state.cells.find((cell) => cell.key === 'layer-0:f1' && cell.kind === 'cel')?.explicitSelected).toBe(true)
   })
+})
+
+
+it('reuses prepared slot/link topology across range selections without mutating it', () => {
+  const canonicalIndex = createAnimationTimelineVisualIndex(frames, cells)
+  const topology = createAnimationTimelineVisualTopology(rows, frames, canonicalIndex)
+  const slots = topology.slots.map(slot => ({...slot}))
+  for (const presentationHidden of [false, true]) for (const activeFrame of frames) {
+    const input = {rows, frames, cells, canonicalIndex,
+      selection: {activeLayerId: 'layer-a', activeFrameId: activeFrame.id,
+        selectedFrameIds: ['f1', activeFrame.id], selectedLayerIds: ['layer-a'],
+        selectedCellKeys: ['layer-a:f2', 'layer-b:f3', 'missing:f1'],
+        selectedMaskCellKeys: ['group-a:f2', 'group-a:f3', 'group-a:missing']},
+      presentation: {presentationHidden}
+    }
+    const prepared = deriveAnimationTimelineVisualState({...input, topology})
+    expect(prepared).toEqual(deriveAnimationTimelineVisualState(input))
+    expect(prepared.normalizedSelection.staleCellKeys).toEqual(['missing:f1'])
+    expect(prepared.normalizedSelection.staleMaskCellKeys).toEqual(['group-a:f3', 'group-a:missing'])
+    expect(prepared.cells.find(cell => cell.key === 'layer-b:f3')?.explicitSelected).toBe(true)
+    expect(prepared.cells.find(cell => cell.key === 'group-a:f2')?.kind).toBe('mask')
+  }
+  expect(topology.slots).toEqual(slots)
 })

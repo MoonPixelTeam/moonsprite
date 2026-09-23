@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FloatingDockPreview, PanelResizeHandles, useFloatingPanel } from '@/components/floating-panel'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useI18n } from '@/components/I18nProvider'
@@ -10,14 +10,23 @@ import { pixelSamplingMode } from '@/core/pixel-display'
 import { useWorkspace } from '@/store/workspace'
 import { addClipboardReference, REFERENCE_PASTE_EVENT, useReferenceImages } from './reference-image-state'
 import { referenceImageDisplayCanvas } from './reference-image-display'
+import { samplePanelColor, usePanelColorSampling, type PanelColorSource } from './usePanelColorSampling'
 import './reference-image-panel.css'
 
-export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock }: { onClose: () => void } & DockDragProps) {
+export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, onPanelContextMenu, onFloatingDock, windowId, windowOffset = 0 }: { onClose: () => void; windowId?: string; windowOffset?: number } & DockDragProps) {
   const { t } = useI18n()
-  const floating = useFloatingPanel(docked ? null : { x: Math.max(12, window.innerWidth - 576), y: 80, width: 280, height: 280 }, false, true, 'moonsprite.reference-panel.v1', true, onFloatingDock, docked)
-  const { images, activeId, remove, step, setView, relativeLuminance } = useReferenceImages()
-  const current = images.find((image) => image.id === activeId)
+  const floating = useFloatingPanel(docked ? null : { x: Math.max(12, window.innerWidth - 576) + windowOffset, y: 80 + windowOffset, width: 280, height: 280 }, false, !windowId, windowId ? undefined : 'moonsprite.reference-panel.v1', true, onFloatingDock, docked)
+  const { images, activeId: mainActiveId, windows, remove, step, setView: updateView, openWindow, relativeLuminance } = useReferenceImages()
+  const panel = windows.find((item) => item.id === windowId)
+  const activeId = windowId ? panel?.activeId : mainActiveId
+  const current = useMemo(() => {
+    const image = images.find((item) => item.id === activeId)
+    return image && panel ? { ...image, zoom: panel.zoom, pan: panel.pan } : image
+  }, [images, activeId, panel])
+  const setView = (zoom: number | null, pan: { x: number; y: number }): void => updateView(zoom, pan, windowId)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const colorSource = useRef<PanelColorSource | null>(null)
+  const sampling = usePanelColorSampling((x, y) => canvasRef.current && colorSource.current ? samplePanelColor(canvasRef.current, colorSource.current, x, y) : null)
   const fitRef = useRef<number | null>(null)
   const drag = useRef<{ id: number; x: number; y: number; pan: { x: number; y: number } } | null>(null)
   const [panning, setPanning] = useState(false)
@@ -31,7 +40,7 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
     setPasting(true)
     try {
       const image = await window.moonSprite.readClipboardImage()
-      if (image) addClipboardReference(image)
+      if (image) addClipboardReference(image, windowId)
       else useWorkspace.getState().setMessage(t('workspace.clipboard.emptyPixels'))
     } catch (error) {
       useWorkspace.getState().setMessage(`${t('reference.pasteFailed')}: ${error instanceof Error ? error.message : String(error)}`)
@@ -63,6 +72,7 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
   useEffect(() => {
     const canvas = canvasRef.current
     const frame = canvas?.parentElement
+    colorSource.current = null
     if (!canvas || !frame || !current) return
     const draw = (): void => {
       const width = frame.clientWidth, height = frame.clientHeight
@@ -78,6 +88,13 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
       context.scale(dpr, dpr)
       const x = Math.round(((width - source.width * scale) / 2 + current.pan.x) * dpr) / dpr
       const y = Math.round(((height - source.height * scale) / 2 + current.pan.y) * dpr) / dpr
+      colorSource.current = {
+        width: current.canvas.width, height: current.canvas.height, viewportWidth: width, viewportHeight: height, originX: x, originY: y, scale,
+        read: (px, py) => {
+          const data = current.canvas.getContext('2d')?.getImageData(px, py, 1, 1).data
+          return data ? { r: data[0], g: data[1], b: data[2], a: data[3] } : null
+        }
+      }
       context.translate(x, y)
       context.beginPath()
       context.rect(0, 0, source.width * scale, source.height * scale)
@@ -116,49 +133,63 @@ export function ReferenceImagePanel({ onClose, docked = false, onDockDragStart, 
     setView(nextZoom, anchoredPreviewPan({ documentSize: current.canvas, viewportSize: bounds, pointer: pointer ?? { x: bounds.width / 2, y: bounds.height / 2 }, pan: current.pan, zoom, nextZoom }))
   }
   const finishPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    sampling.finish(event)
     if (drag.current?.id !== event.pointerId) return
     drag.current = null
     setPanning(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   return <section ref={floating.ref} className={`panel preview-panel reference-image-panel ${floating.style ? 'floating-panel' : ''}`} style={floating.style} tabIndex={-1} onPointerDown={(event) => { floating.bringToFront(); if (!(event.target as HTMLElement).closest('button')) event.currentTarget.focus({ preventScroll: true }) }} onContextMenu={onPanelContextMenu} onPaste={(event) => { event.preventDefault(); event.stopPropagation(); void paste() }}>
-    <header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
-      <span className="reference-image-title">{t('panel.reference')}</span><span className="panel-actions">
+<header onPointerDown={(event) => floating.style ? floating.startDrag(event) : onDockDragStart?.(event, floating.startDetachedDrag)}>
+      <span className="reference-image-title">{t('panel.reference')}</span><PanelActions>
         <button title={t('common.paste')} aria-label={t('common.paste')} disabled={pasting} onClick={() => { void paste() }}><PixelUtilityIcon kind="paste" /></button>
         <button title={t('preview.zoomOut')} aria-label={t('preview.zoomOut')} disabled={!current} onClick={() => adjustZoom(false)}><PixelUtilityIcon kind="minus" /></button>
         <button title={t('preview.zoomIn')} aria-label={t('preview.zoomIn')} disabled={!current} onClick={() => adjustZoom(true)}><PixelUtilityIcon kind="plus" /></button>
         <button title={t('reference.fit')} aria-label={t('reference.fit')} disabled={!current} onClick={() => { fitRef.current = null; setView(null, { x: 0, y: 0 }) }}><PixelUtilityIcon kind="paletteCenter" /></button>
-        <button title={t('common.delete')} aria-label={t('common.delete')} disabled={!current} onClick={remove}><PixelUtilityIcon kind="delete" /></button>
+        <button title={t('common.delete')} aria-label={t('common.delete')} disabled={!current} onClick={() => remove(windowId)}><PixelUtilityIcon kind="delete" /></button>
         <button title={t('reference.close')} aria-label={t('reference.close')} onClick={onClose}><PixelUtilityIcon kind="close" /></button>
-      </span>
+      </PanelActions>
     </header>
-    <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} onWheel={(event) => {
+    <div className={`preview-canvas-wrap ${panning ? 'space-panning' : ''}`} style={{ cursor: sampling.cursor }} onContextMenu={event => { if (event.altKey || sampling.cursor) { event.preventDefault(); event.stopPropagation() } }} onWheel={(event) => {
       const bounds = canvasRef.current?.getBoundingClientRect()
       const delta = normalizeCanvasWheelDelta(event.nativeEvent)
       if (!bounds || !current || !delta) return
       event.preventDefault(); event.stopPropagation()
       adjustZoom(delta < 0, { x: event.clientX - bounds.left, y: event.clientY - bounds.top })
     }} onPointerDown={(event) => {
+      if (current && sampling.start(event)) return
       if (!current || (event.button !== 0 && event.button !== 1)) return
       drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: current.pan }
       setPanning(true)
       event.currentTarget.setPointerCapture(event.pointerId)
       event.preventDefault()
     }} onPointerMove={(event) => {
+      if (sampling.move(event)) return
       if (!current || !drag.current || drag.current.id !== event.pointerId) return
       const delta = viewDragClientDelta({ x: event.clientX, y: event.clientY }, drag.current, preferences.viewDragSensitivity)
       setView(current.zoom ?? fitRef.current, { x: drag.current.pan.x + delta.x, y: drag.current.pan.y + delta.y })
-    }} onPointerUp={finishPan} onPointerCancel={finishPan} onLostPointerCapture={() => { drag.current = null; setPanning(false) }}>
+    }} onPointerUp={finishPan} onPointerCancel={finishPan} onLostPointerCapture={() => { sampling.cancel(); drag.current = null; setPanning(false) }}>
       <div className="preview-canvas-frame">
         {current ? <canvas ref={canvasRef} aria-label={t('panel.reference')} /> : <button className="reference-image-empty" disabled={pasting} onClick={() => { void paste() }}>{t('reference.empty')}</button>}
-        {images.length > 1 && <div className="panel-actions reference-image-navigation" onPointerDown={(event) => { floating.bringToFront(); event.stopPropagation() }}>
-          <button title={t('reference.previous')} aria-label={t('reference.previous')} onClick={() => step(-1)}><PixelUtilityIcon kind="left" /></button>
-          <span className="reference-image-count" aria-live="polite">{images.findIndex((image) => image.id === activeId) + 1} / {images.length}</span>
-          <button title={t('reference.next')} aria-label={t('reference.next')} onClick={() => step(1)}><PixelUtilityIcon kind="right" /></button>
-        </div>}
+        <div className="panel-actions reference-image-navigation" onPointerDown={(event) => { floating.bringToFront(); event.stopPropagation() }}>
+          {images.length > 0 && <>
+            <button title={t('reference.previous')} aria-label={t('reference.previous')} onClick={() => step(-1, windowId)}><PixelUtilityIcon kind="left" /></button>
+            <span className="reference-image-count" aria-live="polite">{images.findIndex((image) => image.id === activeId) + 1} / {images.length}</span>
+            <button title={t('reference.next')} aria-label={t('reference.next')} onClick={() => step(1, windowId)}><PixelUtilityIcon kind="right" /></button>
+          </>}
+          {current && <button title={t('reference.openWindow')} aria-label={t('reference.openWindow')} onClick={() => openWindow(current.id)}><PixelUtilityIcon kind="export" /></button>}
+          <button title={t('reference.newWindow')} aria-label={t('reference.newWindow')} onClick={() => openWindow()}><PixelUtilityIcon kind="plus" /></button>
+        </div>
       </div>
     </div>
     {floating.style && <PanelResizeHandles onResize={floating.startResize} />}
     <FloatingDockPreview style={floating.dockPreview} />
   </section>
 }
+
+export function ReferenceImageWindows() {
+  const windows = useReferenceImages((state) => state.windows)
+  const closeWindow = useReferenceImages((state) => state.closeWindow)
+  return <>{windows.map((panel, index) => <ReferenceImagePanel key={panel.id} windowId={panel.id} windowOffset={24 * (1 + index % 8)} onClose={() => closeWindow(panel.id)} />)}</>
+}
+import { PanelActions } from './PanelActions'

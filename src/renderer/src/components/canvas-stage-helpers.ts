@@ -27,8 +27,7 @@ export const nonContentPreviewDragKinds = new Set([
   'create-slice',
   'move-slice',
   'resize-slice',
-  'create-text-box',
-  'transform-text-box'
+  'create-text-box'
 ])
 
 export const SELECTION_PIVOT_ICON_SIZE = 18
@@ -118,7 +117,13 @@ export interface BrushPreviewStackCache {
   upper: Uint8ClampedArray
 }
 
-export interface SymmetryDragState { axis: SymmetryAxis | 'center'; pointerId: number }
+export interface SymmetryDragState {
+  axis: SymmetryAxis | 'center'
+  pointerId: number
+  /** Latest transient center, kept outside React props while dragging. */
+  center: { x: number; y: number }
+  previewFrame: number | null
+}
 
 export type MoveLayerContentPreview = CanvasMoveLayerContentPreview
 
@@ -232,6 +237,11 @@ export const shareCanvasToolSettings = (target: DocumentSession, source: Documen
   airbrushScatterRadius: source.airbrushScatterRadius,
   airbrushDensity: source.airbrushDensity,
   airbrushIntervalMs: source.airbrushIntervalMs,
+  liquifyRadius: source.liquifyRadius,
+  liquifyMode: source.liquifyMode,
+  liquifyStrength: source.liquifyStrength,
+  liquifySmoothing: source.liquifySmoothing,
+  liquifySmoothingStrength: source.liquifySmoothingStrength,
 })
 
 export const timelineSelectionPrecedesCanvasMarquee = (session: DocumentSession, selection = session.selection): boolean => timelineSelectionPrecedesMarquee({

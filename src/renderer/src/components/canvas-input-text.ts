@@ -9,6 +9,7 @@ import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, resizeCursors } from '@/core/canvas-visuals'
 import { ensureAnimationDocument, resolveAnimationCel } from '@/core/animation'
 import { openTextToolDialog } from '@/components/text-tool-events'
+import { sameBoxPreview } from './canvas-box-preview'
 
 interface Ports {
   inputRef: import('react').RefObject<CanvasInputState>
@@ -153,7 +154,9 @@ export function createTextCanvasInput(ports: Ports) {
     if (drag.kind === 'create-text-box') {
       drag.moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       drag.last = point
-      drag.previewTarget = shapeBounds(drag.start, point)
+      const target = shapeBounds(drag.start, point)
+      if (sameBoxPreview(drag.previewTarget, target)) return true
+      drag.previewTarget = target
       scheduleDraw()
       return true
     }
@@ -186,9 +189,16 @@ export function createTextCanvasInput(ports: Ports) {
       drag.last = point
       drag.moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       if (!drag.handle && !drag.moved) return true
+      if (sameBoxPreview(drag.previewTarget, target)) return true
+      const layerId = session.textBoxTransform?.layerId ?? session.selectedLayerIds[0]
+      const layer = session.document.layers.find(item => item.id === layerId)
+      const before = layer ? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height } : drag.previewTarget
       drag.previewTarget = target
       state.previewTextBoxTransform(drag.previewTarget)
-      compositeCacheRef.current.invalidateAll()
+      // Text reflow affects only its old/new raster extents. Translation reuses
+      // the same pixels; neither operation should drop the whole document cache.
+      if (before) compositeCacheRef.current.invalidateDocumentRect(before, session.document)
+      if (layer) compositeCacheRef.current.invalidateDocumentRect({ x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }, session.document)
       scheduleDraw()
       return true
     }
@@ -237,7 +247,8 @@ export function createTextCanvasInput(ports: Ports) {
             y: source?.surface?.offsetY ?? source?.text?.originY ?? layer.offsetY
           })
       } else state.commitTextBoxTransform(drag.previewTarget)
-      compositeCacheRef.current.invalidateAll()
+      if (drag.transformStartTarget) compositeCacheRef.current.invalidateDocumentRect(drag.transformStartTarget, session.document)
+      compositeCacheRef.current.invalidateDocumentRect(drag.previewTarget, session.document)
       scheduleDraw()
     }
     return false

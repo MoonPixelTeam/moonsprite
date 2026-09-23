@@ -13,7 +13,6 @@ import {
   normalizeAnimationCelZIndex,
   parseAnimationCelKey,
   refreshActiveAnimationFrame,
-  resolveAnimationCel,
   restoreAnimationCels
 } from '@/core/animation'
 import { cloneTextCelData } from '@/core/text-raster'
@@ -33,7 +32,8 @@ import {
 } from './workspace-animation-mask-slots'
 import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 import { layerContentKind, animationCelContentKind } from './workspace-animation-commands-helpers'
-import { animationCelClipboardSnapshot, animationCelForTarget, clipAnimationCelToSelection } from './workspace-animation-cel-conversion'
+import { snapshotLinkedAnimationCels, detachAnimationPasteTargets } from './workspace-animation-cel-links'
+import { animationCelClipboardSnapshot, animationCelForTarget } from './workspace-animation-cel-conversion'
 
 function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: AnimationCelClipboardSnapshot): void {
   const timeline = ensureAnimationDocument(session.document)
@@ -43,6 +43,7 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
   const targetLayerIndex = session.document.layers.findIndex((layer) => layer.id === target.layerId)
   const targetFrameIndex = timeline.frames.findIndex((frame) => frame.id === target.frameId)
   if (targetLayerIndex < 0 || targetFrameIndex < 0) return
+  const beforeSelection = captureAnimationSelectionHistory(session)
   const previousActiveFrameId = timeline.activeFrameId
   const previousSelection = [...session.selectedAnimationCellKeys]
   const previousSelectedFrameIds = [...session.selectedAnimationFrameIds]
@@ -67,7 +68,7 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
     if (appendedFrames.length > 0) timeline.frames.splice(-appendedFrames.length, appendedFrames.length)
     return
   }
-  const before = resolvedDestinations.map(({ cel }) => cloneAnimationCel(cel))
+  const { before, targets: writeTargets } = detachAnimationPasteTargets(timeline, resolvedDestinations.map(({ cel }) => cel))
   const beforeMasks = resolvedDestinations.map(({ cel }) => animationMaskSlotSnapshot(session.document, cel.layerId, cel.frameId)).filter((entry): entry is AnimationMaskSlotSnapshot => Boolean(entry))
   const destinationBySourceId = new Map(resolvedDestinations.map(({ item, cel }) => [item.cel.id, cel]))
   const destinationMaskIdBySourceId = new Map(resolvedDestinations.flatMap(({ item }) => (item.mask ? [[item.mask.mask.id, createId('mask')] as const] : [])))
@@ -93,10 +94,11 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
   session.activeLayerMaskId = null
   session.selectedAnimationFrameIds = []
   session.animationFrameSelectionAnchorId = null
+  session.selectedAnimationGroupCellKeys = []
   session.selectedAnimationCellKeys = resolvedDestinations.map(({ cel }) => animationCelKey(cel.layerId, cel.frameId))
   session.animationCellSelectionAnchorKey = session.selectedAnimationCellKeys.at(-1) ?? null
   session.animationCellSelectionExplicit = true
-  const after = resolvedDestinations.map(({ cel }) => cloneAnimationCel(cel))
+  const after = writeTargets.map(cloneAnimationCel)
   const afterMasks = resolvedDestinations.map(({ cel }) => animationMaskSlotSnapshot(session.document, cel.layerId, cel.frameId)).filter((entry): entry is AnimationMaskSlotSnapshot => Boolean(entry))
   const appendedIds = new Set(appendedFrames.map((frame) => frame.id))
   const restore = (snapshotCels: readonly AnimationCel[], masks: readonly AnimationMaskSlotSnapshot[], selection: readonly string[], frameSelection: readonly string[], explicit: boolean): void => {
@@ -113,7 +115,7 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
     refreshActiveAnimationFrame(session.document)
   }
   const selectionAfter = [...session.selectedAnimationCellKeys]
-  session.history.push({
+  session.history.push(historyEntryWithAnimationSelection(session, {
     label: tr('workspace.history.pasteAnimationCel'),
     bytes: [...before, ...after].reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0) + appendedFrames.length * 32,
     undo: () => restore(before, beforeMasks, previousSelection, previousSelectedFrameIds, previousSelectionExplicit),
@@ -132,7 +134,7 @@ function pasteCrossDocumentAnimationCels(session: DocumentSession, snapshot: Ani
       session.animationCellSelectionExplicit = true
       refreshActiveAnimationFrame(session.document)
     }
-  })
+  }, beforeSelection, captureAnimationSelectionHistory(session)))
 }
 
 export function createAnimationCelClipboardCommands({ get, set }: WorkspaceCommandContext<'mutateActive'>): Pick<WorkspaceAnimationCommands, 'copySelectedAnimationCels' | 'pasteAnimationCels' | 'moveSelectedAnimationCels'> {
@@ -146,12 +148,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
         const selectedCels = timeline.cels
           .filter((cel) => keys.has(animationCelKey(cel.layerId, cel.frameId)))
           .sort((left, right) => (layerIndexes.get(left.layerId) ?? 0) - (layerIndexes.get(right.layerId) ?? 0) || (frameIndexes.get(left.frameId) ?? 0) - (frameIndexes.get(right.frameId) ?? 0))
-          .map((cel) => {
-            if (!session.selection) return cloneAnimationCel(cel)
-            const source = resolveAnimationCel(timeline, cel) ?? cel
-            return clipAnimationCelToSelection({ ...cloneAnimationCel(source), id: cel.id, layerId: cel.layerId, frameId: cel.frameId, opacity: cel.opacity, zIndex: cel.zIndex }, session.selection)
-          })
-        const cels = selectedCels.map((cel) => ({ ...cel, linkedCelId: null }))
+        const cels = snapshotLinkedAnimationCels(timeline, selectedCels, session.selection)
         session.animationCellClipboard = cels
         session.animationCellClipboardAnchorKey = cels[0] ? animationCelKey(cels[0].layerId, cels[0].frameId) : null
         if (cels.length > 0) {
@@ -164,7 +161,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
             sourceDocumentId: session.document.id,
             anchorLayerIndex,
             anchorFrameIndex,
-            items: selectedCels.flatMap((cel) => {
+            items: cels.flatMap((cel) => {
               const layerIndex = layerIndexById.get(cel.layerId)
               const frameIndex = frameIndexById.get(cel.frameId)
               const mask = timeline.layerMasks?.find((entry) => entry.layerId === cel.layerId && entry.frameId === cel.frameId)
@@ -216,6 +213,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
             },
             () => ({ id: createId('frame'), duration: 100 })
           )
+          const beforeSelection = captureAnimationSelectionHistory(session)
           const previousSelection = [...session.selectedAnimationCellKeys]
           const previousSelectionExplicit = session.animationCellSelectionExplicit
           if (appendedFrames.length > 0) timeline.frames.push(...appendedFrames)
@@ -253,48 +251,12 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
             if (inheritedLayerIds.length > 0) inheritAnimationFrameCelLinks(session.document, sourceFrameId, frameId, inheritedLayerIds)
           }
           const appendedBaseCels = timeline.cels.filter((cel) => appendedFrameIds.has(cel.frameId)).map(cloneAnimationCel)
-          const destinationIds = new Set(placements.map(({ target: destination }) => destination.id))
-          const affectedTargets = new Map<string, AnimationCel>()
-          const linkGroups = new Map<string, { source: AnimationCel; members: AnimationCel[] }>()
-          for (const { target: destination } of placements) {
-            const source = resolveAnimationCel(timeline, destination) ?? destination
-            if (!linkGroups.has(source.id)) {
-              linkGroups.set(source.id, {
-                source,
-                members: timeline.cels.filter((cel) => (resolveAnimationCel(timeline, cel) ?? cel).id === source.id)
-              })
-            }
-          }
-          for (const { source, members } of linkGroups.values()) {
-            for (const member of members) affectedTargets.set(member.id, member)
-            const remaining = members.filter((member) => !destinationIds.has(member.id))
-            const replacement = remaining[0]
-            if (replacement && destinationIds.has(source.id)) {
-              replacement.linkedCelId = null
-              replacement.zIndex = source.zIndex
-              replacement.surface = source.surface
-              replacement.opacity = source.opacity
-              replacement.text = source.text
-              replacement.tilemap = source.tilemap
-              replacement.freeTiles = source.freeTiles
-              for (const member of remaining.slice(1)) {
-                member.linkedCelId = replacement.id
-                member.zIndex = replacement.zIndex
-                member.surface = replacement.surface
-                member.opacity = replacement.opacity
-                member.text = replacement.text
-                member.tilemap = replacement.tilemap
-                member.freeTiles = replacement.freeTiles
-              }
-            }
-          }
-          for (const { target: destination } of placements) {
-            destination.linkedCelId = null
-            affectedTargets.set(destination.id, destination)
-          }
-          const writeTargets = [...affectedTargets.values()]
-          const before = writeTargets.filter((cel) => !appendedFrameIds.has(cel.frameId)).map(cloneAnimationCel)
+          const detached = detachAnimationPasteTargets(timeline, placements.map(({ target }) => target))
+          const writeTargets = detached.targets
+          const before = detached.before.filter(cel => !appendedFrameIds.has(cel.frameId))
+          const destinationBySourceId = new Map(placements.map(({ source, target }) => [source.id, target.id]))
           for (const { source, target: destination } of placements) {
+            destination.linkedCelId = source.linkedCelId ? destinationBySourceId.get(source.linkedCelId) ?? null : null
             destination.zIndex = normalizeAnimationCelZIndex(source.zIndex)
             destination.surface = source.surface ? cloneAnimationCelSurface(source.surface) : undefined
             destination.opacity = source.opacity
@@ -304,12 +266,13 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           }
           refreshActiveAnimationFrame(session.document)
           session.activeLayerMaskId = null
+          session.selectedAnimationGroupCellKeys = []
           session.selectedAnimationCellKeys = placements.map(({ target: destination }) => animationCelKey(destination.layerId, destination.frameId))
           session.animationCellSelectionExplicit = true
           const after = writeTargets.map(cloneAnimationCel)
           const afterSelection = [...session.selectedAnimationCellKeys]
           if (after.length)
-            session.history.push({
+            session.history.push(historyEntryWithAnimationSelection(session, {
               label: tr('workspace.history.pasteAnimationCel'),
               bytes: [...before, ...after, ...appendedBaseCels].reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0) + appendedFrames.length * 32,
               undo: () => {
@@ -325,18 +288,18 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
                 const current = ensureAnimationDocument(session.document)
                 for (const frame of appendedFrames) if (!current.frames.some((candidate) => candidate.id === frame.id)) current.frames.push({ ...frame })
                 ensureAnimationDocument(session.document)
-                restoreAnimationCels(session.document, [...appendedBaseCels, ...after])
+                restoreAnimationCels(session.document, [...appendedBaseCels.filter(cel => !after.some(target => target.id === cel.id)), ...after])
                 session.selectedAnimationCellKeys = afterSelection
                 session.animationCellSelectionExplicit = true
                 refreshActiveAnimationFrame(session.document)
               }
-            })
+            }, beforeSelection, captureAnimationSelectionHistory(session)))
         },
         true,
         true
       )
     },
-    moveSelectedAnimationCels(layerId, frameId, sourceAnchorKey) {
+    moveSelectedAnimationCels(layerId, frameId, sourceAnchorKey, copy = false, groupCellKeys = []) {
       get().mutateActive(
         (session) => {
           const beforeSelection = captureAnimationSelectionHistory(session)
@@ -364,6 +327,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           for (const { target: destination } of placements) affected.set(animationCelKey(destination.layerId, destination.frameId), cloneAnimationCel(destination))
           for (const source of sources) {
             const original = timeline.cels.find((cel) => cel.layerId === source.layerId && cel.frameId === source.frameId)
+            if (copy) continue
             if (original?.surface)
               original.surface =
                 original.surface.format === 'rgba'
@@ -392,6 +356,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           session.document.activeLayerId = layerId
           session.activeLayerMaskId = null
           session.selectedAnimationCellKeys = placements.map(({ target: destination }) => animationCelKey(destination.layerId, destination.frameId))
+          session.selectedAnimationGroupCellKeys = [...groupCellKeys]
           const sourceAnchor = parseAnimationCelKey(sourceAnchorKey)
           const mappedAnchor = sourceAnchor ? placements.find(({ source }) => source.layerId === sourceAnchor.layerId && source.frameId === sourceAnchor.frameId)?.target : undefined
           session.animationCellSelectionAnchorKey = mappedAnchor ? animationCelKey(mappedAnchor.layerId, mappedAnchor.frameId) : (session.selectedAnimationCellKeys.at(-1) ?? null)
@@ -405,7 +370,7 @@ export function createAnimationCelClipboardCommands({ get, set }: WorkspaceComma
           if (after.length) {
             const afterSelection = captureAnimationSelectionHistory(session)
             const entry: HistoryEntry = {
-              label: tr('workspace.history.moveAnimationCel'),
+              label: tr(copy ? 'workspace.history.pasteAnimationCel' : 'workspace.history.moveAnimationCel'),
               bytes: [...before, ...after].reduce((sum, cel) => sum + (cel.surface?.pixels.byteLength ?? 0), 0),
               undo: () => restoreAnimationCels(session.document, before),
               redo: () => restoreAnimationCels(session.document, after),

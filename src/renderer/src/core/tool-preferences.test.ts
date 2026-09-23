@@ -18,6 +18,7 @@ describe('tool preferences boundary', () => {
     const storage = memoryStorage()
     expect(loadToolSettings(storage)).toMatchObject({
       brushSize: 1,
+      brushOpacity: 100,
       brushPaintMode: 'paint',
       drawFromCanvasCenter: false,
       shapeRounded: false,
@@ -34,6 +35,7 @@ describe('tool preferences boundary', () => {
     saveToolSettings({
       ...defaultToolSettings,
       shapeKind: 'polygon',
+      brushOpacity: 42,
       lineKind: 'curve',
       curveAnchorCount: 6,
       drawingAnchor: { x: 0.25, y: 0.75 },
@@ -49,6 +51,7 @@ describe('tool preferences boundary', () => {
 
     expect(loadToolSettings(storage)).toMatchObject({
       shapeKind: 'polygon',
+      brushOpacity: 42,
       lineKind: 'curve',
       curveAnchorCount: 6,
       drawingAnchor: { x: 0.25, y: 0.75 },

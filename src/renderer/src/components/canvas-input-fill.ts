@@ -1,4 +1,5 @@
 import { publishEditorEvent } from '@/core/extension-editor-events'
+import { eraseWorkspaceMatchingColor } from '@/store/workspace-magic-eraser'
 import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -18,6 +19,7 @@ import { type FreeTileSourceEditRaster } from '@/core/free-tile-edit'
 import { GradientPreviewCoverageCache } from './canvas-stage-helpers'
 
 interface Ports {
+  invalidateCompositeRect: (selection: SelectionMask | null | undefined, layerIds?: readonly string[]) => void
   gridSnapActive: boolean
   gradientPreviewCoverageCacheRef: import('react').RefObject<GradientPreviewCoverageCache | null>
   inputRef: import('react').RefObject<CanvasInputState>
@@ -49,6 +51,15 @@ interface Ports {
 }
 
 export function createFillCanvasInput(ports: Ports) {
+  function beginMagicEraser(point: Point): void {
+    const previewEdit = eraseWorkspaceMatchingColor(point, true)
+    if (!previewEdit) return
+    ports.inputRef.current.drag = { kind: 'magic-eraser', start: point, last: point, previewEdit }
+    // The history revision does not change until release. Invalidate the live
+    // composite explicitly so the press shows erased pixels immediately.
+    ports.invalidateCompositeRect(previewEdit.dirtyRect, [previewEdit.layerId])
+    ports.draw()
+  }
   function beginFill({
     session,
     canEditLayer,
@@ -150,16 +161,16 @@ export function createFillCanvasInput(ports: Ports) {
       )
       if (edit) {
         const commitStartedAt = operationProbe?.recordOperationStage ? performance.now() : 0
-        const committed = state.commitPixelEdit(
-          edit,
-          activeBrushImage || activeBrushTexture !== 'solid'
+        const historyLabel = activeBrushImage || activeBrushTexture !== 'solid'
             ? t('canvas.history.brushFill')
             : session.fillMode === 'contiguous'
               ? t('canvas.history.contiguousFill')
               : t('canvas.history.nonContiguousFill')
-        )
+        const committed = state.commitPixelEdit(edit, historyLabel)
         if (committed) publishEditorEvent('fill.completed', session.document.id)
-        operationProbe?.recordOperationStage?.('bucket.commit-total', performance.now() - commitStartedAt, {
+        inputRef.current.drag = { kind: 'fill', start: fillPoint, last: fillPoint, edit, fillHistoryLabel: historyLabel, fillHistoryCommitted: Boolean(committed), startedAt: Date.now() }
+        draw()
+        operationProbe?.recordOperationStage?.('bucket.prepare-total', performance.now() - commitStartedAt, {
           points: edit.before.size,
           runs: edit.runs?.length ?? 0
         })
@@ -280,5 +291,5 @@ export function createFillCanvasInput(ports: Ports) {
     }
     return false
   }
-  return { beginFill, moveGradient, endGradient }
+  return { beginMagicEraser, beginFill, moveGradient, endGradient }
 }

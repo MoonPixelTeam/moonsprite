@@ -1,0 +1,135 @@
+{
+  "check": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "check",
+    "size": 7
+  },
+  "close": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "close",
+    "size": 5
+  },
+  "delete": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "delete",
+    "size": 11
+  },
+  "down": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "down",
+    "size": 5
+  },
+  "export": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "export",
+    "size": 11
+  },
+  "folder": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "folder",
+    "size": 11
+  },
+  "image": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "image",
+    "size": 11
+  },
+  "import": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "import",
+    "size": 11
+  },
+  "left": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "left",
+    "size": 5
+  },
+  "lock": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "lock",
+    "size": 11
+  },
+  "minus": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "minus",
+    "size": 11
+  },
+  "moreLines": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "moreLines",
+    "size": 11
+  },
+  "play": {
+    "source": "src/renderer/src/components/PlaybackPixelIcon.tsx",
+    "kind": "play",
+    "size": 11
+  },
+  "plus": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "plus",
+    "size": 5
+  },
+  "properties": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "properties",
+    "size": 11
+  },
+  "right": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "right",
+    "size": 5
+  },
+  "tilePaint": {
+    "source": "src/renderer/src/components/PixelUtilityIcon.tsx",
+    "kind": "tilePaint",
+    "size": 11
+  },
+  "cart": {
+      "source": "website/src/assets/icons/header-reference.png",
+    "kind": "reference",
+    "size": 11,
+    "slice": 0,
+    "sourceHash": "00ace8fc6b84b51ffe5aa992196ff4adbed9f5ce5e9bff54e47114b03b55aff0",
+    "svgHash": "dd19e242ddcfd9c198b3f48270a34ecc510f2d7a48234e628548fed2a9f9c593"
+  },
+  "userSignedOut": {
+      "source": "website/src/assets/icons/header-user-reference.png",
+    "kind": "reference",
+    "size": 11,
+      "slice": 0,
+      "sourceHash": "36dc27ae725023cee85ae0ebf3ff6d8b17d411c0ab3d0721f387b9cb9757f8fc",
+        "svgHash": "0009776344d326567d34a02ea6639ca815359e67ad11c82ddb0a9e2f7ae9b5b7"
+  },
+  "userSignedIn": {
+      "source": "website/src/assets/icons/header-user-reference.png",
+    "kind": "reference",
+    "size": 11,
+      "slice": 1,
+      "sourceHash": "36dc27ae725023cee85ae0ebf3ff6d8b17d411c0ab3d0721f387b9cb9757f8fc",
+        "svgHash": "dcbf242a5e6cfe469d02acf1dbb30c8dbd76c4b6069f1b52af88b856311ab07c"
+  },
+  "sun": {
+    "source": "website/src/assets/icons/header-reference.png",
+    "kind": "reference",
+    "size": 11,
+    "slice": 3,
+    "sourceHash": "00ace8fc6b84b51ffe5aa992196ff4adbed9f5ce5e9bff54e47114b03b55aff0",
+    "svgHash": "ef2c80d58fde4f93ee85b154a320a05bb30914610e02d297b76945cdf60c83c3"
+  },
+  "moon": {
+    "source": "website/src/assets/icons/header-reference.png",
+    "kind": "reference",
+    "size": 11,
+    "slice": 4,
+    "sourceHash": "00ace8fc6b84b51ffe5aa992196ff4adbed9f5ce5e9bff54e47114b03b55aff0",
+    "svgHash": "9790439794c602cc11ad3ed091933338404728c3be5658b936f4d7df767c973c"
+  },
+  "language": {
+    "source": "website/src/assets/icons/header-reference.png",
+    "kind": "reference",
+    "size": 11,
+    "slice": 5,
+    "sourceHash": "00ace8fc6b84b51ffe5aa992196ff4adbed9f5ce5e9bff54e47114b03b55aff0",
+    "svgHash": "54415731b8e9a4c33ba25b3560c9fab2c9a03535db4a12e34603bb3044d19e4c"
+  }
+}

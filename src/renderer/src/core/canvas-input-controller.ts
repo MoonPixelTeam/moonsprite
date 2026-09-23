@@ -5,23 +5,8 @@ import { type CanvasPoint, type CanvasDragState } from './canvas-input-contracts
 import { type CanvasPointerDeviceEvent, PEN_COMPATIBLE_MOUSE_SUPPRESSION_MS } from './canvas-input-pointer'
 import { isPendingCanvasPathGesture, undoCanvasPathStep } from './canvas-input-path'
 
-export interface CanvasPointerState {
-  point: CanvasPoint
-  clientX: number
-  clientY: number
-  ctrlKey: boolean
-  altKey: boolean
-  visible: boolean
-}
-
-const EMPTY_POINTER: CanvasPointerState = {
-  point: { x: 0, y: 0 },
-  clientX: 0,
-  clientY: 0,
-  ctrlKey: false,
-  altKey: false,
-  visible: false
-}
+import { EMPTY_POINTER, type CanvasPointerState } from './canvas-pointer-state'
+export type { CanvasPointerState } from './canvas-pointer-state'
 
 export class CanvasInputState {
   drag: CanvasDragState | null = null
@@ -42,10 +27,15 @@ export class CanvasInputState {
   modifierBrushSize: { x: number; y: number; size: number } | null = null
   private penPointerId: number | null = null
   private lastPenPointerTime = Number.NEGATIVE_INFINITY
+  private auxiliaryMousePointerId: number | null = null
   private pressurePointerIds = new Set<number>()
 
   acceptPointerDeviceEvent(event: CanvasPointerDeviceEvent, forceMouseTakeover = false): boolean {
     const pointerType = event.pointerType || 'mouse'
+    // Tablet drivers may emit side buttons as a mouse stream interleaved
+    // with pen hover. A deliberate auxiliary press owns its move/up events.
+    if (pointerType === 'mouse' && forceMouseTakeover && ((event.buttons ?? 0) & 30)) this.auxiliaryMousePointerId = event.pointerId
+    if (pointerType === 'mouse' && event.pointerId === this.auxiliaryMousePointerId) return true
     // Some Windows tablet stacks expose the stylus as a mouse in WebView.
     // Treat a proven pressure-bearing stream like a pen for compatibility
     // mouse suppression, but never promote the browser's ordinary 0.5 mouse
@@ -70,6 +60,7 @@ export class CanvasInputState {
   }
 
   releasePointerDeviceEvent(event: Pick<CanvasPointerDeviceEvent, 'pointerId' | 'pointerType'>): void {
+    if (event.pointerType === 'mouse' && event.pointerId === this.auxiliaryMousePointerId) this.auxiliaryMousePointerId = null
     this.pressurePointerIds.delete(event.pointerId)
     if (event.pointerId === this.penPointerId) {
       this.penPointerId = null
@@ -83,6 +74,7 @@ export class CanvasInputState {
    * those cases, so a later pointerId reuse must start a fresh session.
    */
   resetPointerDeviceState(): void {
+    this.auxiliaryMousePointerId = null
     this.clearTemporaryTool()
     this.clearTemporaryEraser()
     this.pressurePointerIds.clear()
@@ -92,6 +84,10 @@ export class CanvasInputState {
 
   penPointerIsActive(): boolean {
     return this.penPointerId !== null
+  }
+
+  auxiliaryMouseGestureActive(): boolean {
+    return this.auxiliaryMousePointerId !== null
   }
 
   begin(drag: CanvasDragState): CanvasDragState {

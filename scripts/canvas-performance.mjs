@@ -188,20 +188,47 @@ async function createComplexDocument(page, size) {
 async function createLargeDocument(page, size) {
   await page.goto(performanceUrl.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
   await page.waitForSelector('button.start-action.primary-button', { timeout: 30_000 })
-  const project = await page.evaluate(async (canvasSize) => {
+  const project = await page.evaluate(async ({ canvasSize, layers, frames }) => {
     const harness = window.__moonSpritePerformanceHarness
     if (!harness) throw new Error('Performance harness is unavailable.')
-    return harness.createLargeDocument(canvasSize)
-  }, size)
+    return harness.createLargeDocument(canvasSize, { layers, frames })
+  }, { canvasSize: size, layers: options.layers, frames: options.frames })
   await page.waitForSelector('canvas.stage-canvas', { timeout: 30_000 })
   await page.waitForTimeout(600)
   return project
 }
 
 async function runScenario(page, size, label, action) {
+  const profileDirectory = process.env.MOONSPRITE_CPU_PROFILE_DIR
+  const profiler = profileDirectory ? await page.context().newCDPSession(page) : null
+  const traceDirectory = process.env.MOONSPRITE_TRACE_DIR
+  const tracer = traceDirectory ? await page.context().newCDPSession(page) : null
+  const traceEvents = []
+  if (tracer) {
+    tracer.on('Tracing.dataCollected', ({ value }) => traceEvents.push(...value))
+    await tracer.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline,cc,gpu', transferMode: 'ReportEvents' })
+  }
+  if (profiler) { await profiler.send('Profiler.enable'); await profiler.send('Profiler.start') }
+  try {
   await startFrameProbe(page)
   await action()
   return summarize(label, size, await stopFrameProbe(page))
+  } finally {
+    if (tracer) {
+      const completed = new Promise(resolve => tracer.once('Tracing.tracingComplete', resolve))
+      await tracer.send('Tracing.end')
+      await completed
+      await mkdir(traceDirectory, { recursive: true })
+      await writeFile(resolve(traceDirectory, `${size}-${label}.json`), JSON.stringify({ traceEvents }))
+      await tracer.detach()
+    }
+    if (profiler) {
+      const { profile } = await profiler.send('Profiler.stop')
+      await mkdir(profileDirectory, { recursive: true })
+      await writeFile(resolve(profileDirectory, `${size}-${label}.cpuprofile`), JSON.stringify(profile))
+      await profiler.detach()
+    }
+  }
 }
 
 async function resetSimpleScenario(page, initialView) {
@@ -245,10 +272,26 @@ async function benchmarkScenarioPage(page, size, scenario) {
   else if (projectKind === 'complex') project = await createComplexDocument(page, size)
   else if (projectKind === 'large') project = await createLargeDocument(page, size)
   else project = await createDocument(page, size)
+  // A fresh browser profile can show release notes above an already-mounted
+  // canvas. Never report modal mouse events as canvas performance.
+  const releaseNotesDone = page.getByRole('button', { name: '完成', exact: true })
+  if (await releaseNotesDone.isVisible()) await releaseNotesDone.click()
+  if (options.preview) {
+    if (options.preview === 'off') await page.locator('.preview-panel:not(.reference-image-panel) header .panel-actions > button').last().click()
+    else await page.evaluate(() => window.dispatchEvent(new CustomEvent('moonsprite:set-workspace-panel', { detail: { id: 'preview', visible: true } })))
+    await page.waitForFunction(visible => Boolean(document.querySelector('.preview-panel:not(.reference-image-panel)')) === visible, options.preview === 'on')
+    await page.waitForTimeout(250)
+  }
+  project.previewOpen = await page.locator('.preview-panel:not(.reference-image-panel)').count() > 0
   const canvas = page.locator('canvas.stage-canvas')
   const box = await canvas.boundingBox()
   if (!box) throw new Error(`无法读取 ${size} x ${size} 画布区域。`)
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const hit = await page.evaluate(({ x, y }) => {
+    const element = document.elementFromPoint(x, y)
+    return { tag: element?.tagName, className: element?.className, text: element?.textContent?.slice(0, 200) }
+  }, center)
+  if (!String(hit.className).split(' ').includes('stage-canvas')) throw new Error(`Canvas is obstructed: ${JSON.stringify(hit)}`)
   const results = []
   const initialView = await page.evaluate(() => {
     const harness = window.__moonSpritePerformanceHarness
@@ -259,6 +302,7 @@ async function benchmarkScenarioPage(page, size, scenario) {
     const overviewZoom = Math.max(0.05, Math.min((box.width - 80) / size, (box.height - 80) / size))
     Object.assign(initialView, { zoom: detailView ? 1 : overviewZoom, panX: 0, panY: 0 })
   }
+  if (initialView && options.zoom !== undefined) initialView.zoom = options.zoom
 
   if (actionKind === 'pan') {
     if (initialView) await resetSimpleScenario(page, initialView)
@@ -301,8 +345,12 @@ async function benchmarkScenarioPage(page, size, scenario) {
     }))
   }
 
-  if (actionKind === 'draw') {
+  if (actionKind === 'draw' || actionKind === 'erase') {
     if (initialView) await prepareToolScenario(page, initialView, 'pencil')
+    if (actionKind === 'erase') {
+      await seedUndoHistory(page, center)
+      await page.evaluate(() => { window.__moonSpritePerformanceHarness.prepareTool('eraser'); window.__moonSpritePerformanceHarness.setBrushSize(32) })
+    }
     if (timelapseEnabled) await page.evaluate(() => {
       const harness = window.__moonSpritePerformanceHarness
       if (!harness) throw new Error('Performance harness is unavailable.')
@@ -499,6 +547,31 @@ async function benchmarkScenarioPage(page, size, scenario) {
     }))
   }
 
+  if (actionKind === 'rotate' || actionKind.startsWith('selection-') && ['selection-move', 'selection-scale', 'selection-rotate'].includes(actionKind)) {
+    await prepareToolScenario(page, initialView, actionKind === 'rotate' ? 'rotate' : 'selection')
+    const selectionSize = Math.min(1024, size)
+    if (actionKind !== 'rotate') await page.evaluate(value => window.__moonSpritePerformanceHarness.prepareCenteredSelection(value), selectionSize)
+    await page.waitForTimeout(100)
+    const before = await page.evaluate(() => window.__moonSpritePerformanceHarness.interactionState())
+    const half = selectionSize * initialView.zoom / 2
+    const start = actionKind === 'rotate' ? { x: center.x + 120, y: center.y }
+      : actionKind === 'selection-scale' ? { x: center.x + half, y: center.y + half }
+      : actionKind === 'selection-rotate' ? { x: center.x + half + 12, y: center.y + half + 12 }
+      : center
+    results.push(await runScenario(page, size, scenario, async () => {
+      await page.mouse.move(start.x, start.y)
+      await page.mouse.down()
+      for (let i = 1; i <= 48; i++) {
+        await page.mouse.move(start.x + 70 * i / 48, start.y + 50 * i / 48)
+        await page.waitForTimeout(12)
+      }
+      await page.mouse.up()
+    }))
+    const after = await page.evaluate(() => window.__moonSpritePerformanceHarness.interactionState())
+    results.at(-1).actionEvidence = { before, after }
+    if (JSON.stringify(before) === JSON.stringify(after)) throw new Error(`${scenario} did not change interaction state`)
+  }
+
   if (actionKind === 'gradient') {
     if (initialView) await prepareToolScenario(page, initialView, 'fill', 'gradient')
     results.push(await runScenario(page, size, scenario, async () => {
@@ -515,7 +588,8 @@ async function benchmarkScenarioPage(page, size, scenario) {
 
   if (actionKind === 'undo') {
     await seedUndoHistory(page, center)
-    results.push(await runScenario(page, size, 'complex-undo', async () => {
+    if (initialView) await resetSimpleScenario(page, initialView)
+    results.push(await runScenario(page, size, scenario, async () => {
       await page.evaluate(async () => {
         const harness = window.__moonSpritePerformanceHarness
         if (!harness) throw new Error('Performance harness is unavailable.')
@@ -526,7 +600,7 @@ async function benchmarkScenarioPage(page, size, scenario) {
   }
 
   if (actionKind === 'playback') {
-    results.push(await runScenario(page, size, 'complex-playback', async () => {
+    results.push(await runScenario(page, size, scenario, async () => {
       await page.evaluate(async () => {
         const harness = window.__moonSpritePerformanceHarness
         if (!harness) throw new Error('Performance harness is unavailable.')
@@ -560,11 +634,12 @@ async function benchmarkScenarioPage(page, size, scenario) {
     }))
   }
 
+  if (['pan', 'rotate', 'draw', 'erase', 'marquee', 'selection-move', 'selection-scale', 'selection-rotate'].includes(actionKind) && !results.some(result => result.inputCount > 0)) throw new Error(`${scenario} received no canvas input`)
   return results.map((result) => ({ ...result, project: { kind: projectKind, ...project } }))
 }
 
 async function benchmarkDocument(browser, size, scenario) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  const context = await browser.newContext({ viewport: options.viewport ?? { width: 1280, height: 800 }, deviceScaleFactor: options.deviceScale ?? 1 })
   const page = await context.newPage()
   try {
     return await benchmarkScenarioPage(page, size, scenario)
@@ -594,6 +669,12 @@ try {
       for (const scenario of scenarios) {
         const iterationResults = await benchmarkDocument(browser, size, scenario)
         results.push(...iterationResults.map((result) => ({ ...result, iteration })))
+        console.log(`Completed ${size} ${scenario} #${iteration}`)
+        if (options.outputJson) {
+          const path = resolve(options.outputJson)
+          await mkdir(dirname(path), { recursive: true })
+          await writeFile(path, JSON.stringify({ schemaVersion: 1, runtime: options.runtime, options, results, partial: true }, null, 2))
+        }
       }
     }
   }
@@ -618,7 +699,7 @@ try {
     reactP95: result.reactCommitP95.toFixed(2),
     longestReact: result.longestReactCommit.toFixed(2)
   })))
-  const report = { schemaVersion: 1, suite: 'canvas', runtime: options.runtime, createdAt: new Date().toISOString(), results }
+  const report = { schemaVersion: 1, suite: 'canvas', runtime: options.runtime, createdAt: new Date().toISOString(), options, results }
   if (options.outputJson) {
     const outputPath = resolve(options.outputJson)
     await mkdir(dirname(outputPath), { recursive: true })

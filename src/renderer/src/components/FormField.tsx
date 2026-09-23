@@ -28,7 +28,7 @@ interface NumberScrubDrag {
 
 export function FormField({ children, className = '', hint, label, layout = 'stacked', tooltip }: FormFieldProps) {
   const search = useContext(PreferenceSearchContext)
-  const searchUnmatched = Boolean(search?.query && !search.matches(label))
+  const searchUnmatched = Boolean(search?.query && !search.matches([label, hint, tooltip, children]))
   const controllersRef = useRef(new Set<NumberScrubController>())
   const dragRef = useRef<NumberScrubDrag | null>(null)
   const [controller, setController] = useState<NumberScrubController | null>(null)

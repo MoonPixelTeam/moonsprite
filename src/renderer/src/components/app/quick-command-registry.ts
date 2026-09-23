@@ -1,3 +1,4 @@
+import { editCommandIcons } from './edit-command-icons'
 import type { PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import type { QuickCommandId } from '@/core/file-preferences'
 import type { TranslationKey } from '@/core/localization'
@@ -17,6 +18,16 @@ export interface QuickCommandMetadata {
 }
 
 export const QUICK_COMMAND_METADATA: Record<QuickCommandId, QuickCommandMetadata> = {
+  cut: { id: 'cut', iconSource: editCommandIcons.cut, label: 'quickCommands.cut', description: 'quickCommands.cut', icon: 'delete', shortcutId: 'cut' },
+  copy: { id: 'copy', label: 'common.copy', description: 'common.copy', icon: 'copy', shortcutId: 'copy' },
+  copyMerged: { id: 'copyMerged', iconSource: editCommandIcons.copyMerged, label: 'quickCommands.copyMerged', description: 'quickCommands.copyMerged', icon: 'mergeVisible', shortcutId: 'copyMerged' },
+  paste: { id: 'paste', label: 'common.paste', description: 'common.paste', icon: 'paste', shortcutId: 'paste' },
+  pasteToCurrentCell: { id: 'pasteToCurrentCell', iconSource: editCommandIcons.pasteToCurrentCell, label: 'app.menu.edit.pasteToCurrentCell', description: 'app.menu.edit.pasteToCurrentCell', icon: 'paste' },
+  pasteAsNewDocument: { id: 'pasteAsNewDocument', label: 'app.menu.edit.pasteAsDocument', description: 'app.menu.edit.pasteAsDocument', icon: 'plus', shortcutId: 'pasteAsNewDocument' },
+  pasteAsNewLayer: { id: 'pasteAsNewLayer', iconSource: editCommandIcons.pasteAsNewLayer, label: 'app.menu.edit.pasteAsLayer', description: 'app.menu.edit.pasteAsLayer', icon: 'paste', shortcutId: 'pasteAsNewLayer' },
+  deleteContent: { id: 'deleteContent', iconSource: editCommandIcons.deleteContent, label: 'common.delete', description: 'common.delete', icon: 'delete', shortcutId: 'deleteLayer' },
+  quickOutline: { id: 'quickOutline', iconSource: editCommandIcons.quickOutline, label: 'quickCommands.quickOutline', description: 'quickCommands.quickOutline', icon: 'selectionOutline', shortcutId: 'quickOutline' },
+  outline: { id: 'outline', iconSource: editCommandIcons.outline, label: 'app.menu.select.outline', description: 'app.menu.select.outline', icon: 'properties', shortcutId: 'outline' },
   selectionFlipHorizontal: { id: 'selectionFlipHorizontal', label: 'quickCommands.selectionFlipHorizontal', description: 'quickCommands.selectionFlipHorizontalDescription', icon: 'selectionFlipHorizontal', shortcutId: 'flipHorizontal' },
   selectionFlipVertical: { id: 'selectionFlipVertical', label: 'quickCommands.selectionFlipVertical', description: 'quickCommands.selectionFlipVerticalDescription', icon: 'selectionFlipVertical', shortcutId: 'flipVertical' },
   canvasMirrorHorizontal: { id: 'canvasMirrorHorizontal', label: 'quickCommands.canvasMirrorHorizontal', description: 'quickCommands.canvasMirrorHorizontalDescription', icon: 'canvasMirrorHorizontal', shortcutId: 'mirrorView' },

@@ -19,12 +19,12 @@ import { isWorkspaceResizing, recordWorkspaceResizeStage, recordWorkspaceResizeC
 import { measureRuntimeStages } from '@/core/runtime-diagnostic-stages'
 import { isLayerEffectivelyLocked, isLayerEffectivelyVisible } from '@/core/document-model'
 import { activeLayerMask, activePaintLayer, selectedTransformLayersAreEditable } from '@/store/workspace-session'
-import { createCanvasRenderPlan, deviceAlignedCanvasRect, deviceAlignedCoordinate, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
+import { createCanvasRenderPlan, deviceAlignedCanvasRect, repeatedDeviceAlignedCanvasRect } from '@/core/canvas-render-plan'
 import { canvasBackingRatioForInterfaceScale } from '@/core/canvas-interface-scale'
 import { deferredSelectionPreviewOwner, temporaryMoveSuppressesToolPreview } from '@/core/canvas-input'
 import { presentCanvasClickFlash } from './canvas-click-flash'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
-import { canvasBackingCapacity, clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
+import { resizeOffscreenCanvas, clearCanvasBacking, syncCanvasDisplaySize } from '@/components/canvas-display-size'
 import { pixelSamplingMode } from '@/core/pixel-display'
 import { tileRepeatOffsetsForViewport } from '@/core/tilemap'
 import type * as React from 'react'
@@ -47,6 +47,7 @@ export interface CanvasRenderContext {
     canvasRef: React.RefObject<HTMLCanvasElement | null>
     inputRef: React.RefObject<import('@/core/canvas-input').CanvasInputState>
     wheelBrushSizePreviewRef: React.RefObject<boolean>
+    magicPreviewFlash: import('./canvas-magic-preview-flash').CanvasMagicPreviewFlash
     canvasResizePreviewRef: React.RefObject<import('@/store/workspace-types').CanvasResizePreview | null>
     liveViewRef: React.RefObject<import('@shared/types-view').ViewState>
     zoomPreviewStartRef: React.RefObject<import('@shared/types-view').ViewState | null>
@@ -102,6 +103,7 @@ export interface CanvasRenderContext {
     moveLayerClickFlashTimerRef: React.RefObject<number | null>
   }
   settings: {
+    useLocalCursors?: boolean
     session: import('@/store/workspace-types').DocumentSession
     interfaceScale: import('@/core/file-preferences').UiScale
     rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
@@ -181,311 +183,7 @@ export interface CanvasRenderContext {
     ) => { from: import('@/core/canvas-input').CanvasPoint; to: import('@/core/canvas-input').CanvasPoint }
     modifierActive: (
       event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>,
-      id:
-        | 'addAnimationFrame'
-        | 'addBlankAnimationFrame'
-        | 'addForegroundToPalette'
-        | 'addFreeTileSource'
-        | 'addLinkedAnimationFrame'
-        | 'addToSelection'
-        | 'adjustmentBrightnessContrast'
-        | 'adjustmentColorBalance'
-        | 'adjustmentCurves'
-        | 'adjustmentHueSaturation'
-        | 'advancedMode'
-        | 'animationPlaybackAll'
-        | 'animationPlaybackOnce'
-        | 'animationPlaybackSpeed025'
-        | 'animationPlaybackSpeed050'
-        | 'animationPlaybackSpeed100'
-        | 'animationPlaybackSpeed150'
-        | 'animationPlaybackSpeed200'
-        | 'animationPlaybackSpeed300'
-        | 'animationPlaybackTag'
-        | 'brushLibraryParentFolder'
-        | 'brushShapeLine'
-        | 'brushShapeRound'
-        | 'brushShapeSquare'
-        | 'brushSizeAdjust'
-        | 'brushSizeDecrease'
-        | 'brushSizeIncrease'
-        | 'brushSizeWheelAdjust'
-        | 'brushSwatchLarge'
-        | 'brushSwatchMedium'
-        | 'brushSwatchSmall'
-        | 'canvasResize'
-        | 'clearLayerStyles'
-        | 'closeDocument'
-        | 'connectAnimationCels'
-        | 'connectAnimationMasks'
-        | 'constrainAxis'
-        | 'constrainLineDirections'
-        | 'convertColorMode'
-        | 'convertColorModeGrayscale'
-        | 'convertColorModeIndexed'
-        | 'convertColorModeRgba'
-        | 'convertLayerToBackground'
-        | 'convertLayerToRaster'
-        | 'convertLayerToTilemap'
-        | 'copy'
-        | 'copyAnimationCel'
-        | 'copyAnimationFrames'
-        | 'copyAnimationMasks'
-        | 'copyLayerOnDrag'
-        | 'copyLayerStyles'
-        | 'copySelectionContent'
-        | 'createAnimationLoopSection'
-        | 'createBrushFolder'
-        | 'createBrushFromSelection'
-        | 'createLayerGroup'
-        | 'createLinkedLayer'
-        | 'createPaletteGradient'
-        | 'createPaletteHueGradient'
-        | 'cropCanvas'
-        | 'cut'
-        | 'deleteAnimationFrame'
-        | 'deleteAnimationLoopSection'
-        | 'deleteBrushSelection'
-        | 'deleteFreeTileInstances'
-        | 'deleteLayer'
-        | 'deleteSelection'
-        | 'deleteTilesetSelection'
-        | 'deselect'
-        | 'disableAnimationFrames'
-        | 'disconnectAnimationCels'
-        | 'disconnectAnimationMasks'
-        | 'duplicateLayer'
-        | 'enableAnimationFrames'
-        | 'exportAllFrames'
-        | 'exportDocument'
-        | 'exportSpriteSheet'
-        | 'extractPaletteColors'
-        | 'fillForeground'
-        | 'flipHorizontal'
-        | 'flipVertical'
-        | 'freeTileModeEdit'
-        | 'freeTileModePaint'
-        | 'imageResize'
-        | 'importBrushImage'
-        | 'integerSelectionScale'
-        | 'invertSelection'
-        | 'lasso'
-        | 'lasso.quick'
-        | 'lineConnectionMode'
-        | 'magic'
-        | 'magic.quick'
-        | 'mergeLayerDown'
-        | 'mergeLayerGroup'
-        | 'mergeSelectedLayers'
-        | 'mergeVisibleLayers'
-        | 'mirrorFreeTileInstanceHorizontal'
-        | 'mirrorFreeTileInstanceVertical'
-        | 'mirrorView'
-        | 'mirrorViewVertical'
-        | 'newBackgroundLayer'
-        | 'newDocument'
-        | 'newFreeTileLayer'
-        | 'newLayer'
-        | 'newTilemapLayer'
-        | 'nextAnimationFrame'
-        | 'openAbout'
-        | 'openAnimationCelProperties'
-        | 'openAnimationFrameProperties'
-        | 'openAnimationLoopSectionProperties'
-        | 'openAutoSlice'
-        | 'openBrushFolder'
-        | 'openComponentLibrary'
-        | 'openDocument'
-        | 'openFreeTileInstanceProperties'
-        | 'openFreeTileSourceProperties'
-        | 'openGridSettings'
-        | 'openHome'
-        | 'openIsoViewSettings'
-        | 'openLatestRelease'
-        | 'openLayerProperties'
-        | 'openLayerSettings'
-        | 'openLayerStyles'
-        | 'openPaletteFolder'
-        | 'openPreferences'
-        | 'openProjectFolder'
-        | 'openProjectInfo'
-        | 'openScriptFolder'
-        | 'openShortcutSettings'
-        | 'openSliceProperties'
-        | 'openTimelapse'
-        | 'openWorkspaceManager'
-        | 'outline'
-        | 'outlineSelectionInside'
-        | 'paletteSortAscending'
-        | 'paletteSortDescending'
-        | 'paletteSwatchHuge'
-        | 'paletteSwatchLarge'
-        | 'paletteSwatchMedium'
-        | 'paletteSwatchSmall'
-        | 'paletteSwatchTiny'
-        | 'paste'
-        | 'pasteAnimationCels'
-        | 'pasteAnimationFrames'
-        | 'pasteAnimationMasks'
-        | 'pasteAsNewDocument'
-        | 'pasteAsNewLayer'
-        | 'pasteLayerStyles'
-        | 'playAnimationLoopSection'
-        | 'polygonLasso'
-        | 'polygonLasso.quick'
-        | 'popupBrushLibraryPanel'
-        | 'popupColorPanel'
-        | 'popupLayersPanel'
-        | 'popupPalettePanel'
-        | 'popupPreviewPanel'
-        | 'popupTilesetPanel'
-        | 'previousAnimationFrame'
-        | 'proportionalSelectionTransform'
-        | 'quickOutline'
-        | 'redo'
-        | 'refreshBrushLibrary'
-        | 'refreshPalettes'
-        | 'relativeLuminance'
-        | 'replaceColor'
-        | 'resetSymmetryCenter'
-        | 'resetView'
-        | 'resetViewRotation'
-        | 'resetWorkspaceLayout'
-        | 'reversePaletteColors'
-        | 'rotateFreeTileInstance90'
-        | 'rotateViewClockwise90'
-        | 'rotateViewCounterClockwise90'
-        | 'save'
-        | 'saveAs'
-        | 'savePalette'
-        | 'saveWorkspaceLayout'
-        | 'selectAll'
-        | 'selectAllSlices'
-        | 'selectionModeAdd'
-        | 'selectionModeIntersect'
-        | 'selectionModeReplace'
-        | 'selectionModeSubtract'
-        | 'showOnlyFreeTileInstance'
-        | 'snapSelectionRotation'
-        | 'snapViewRotation'
-        | 'sortPaletteAlpha'
-        | 'sortPaletteBlue'
-        | 'sortPaletteBrightness'
-        | 'sortPaletteGreen'
-        | 'sortPaletteHue'
-        | 'sortPaletteLuminance'
-        | 'sortPaletteRed'
-        | 'sortPaletteSaturation'
-        | 'swapForegroundBackground'
-        | 'tileRepeatBoth'
-        | 'tileRepeatOff'
-        | 'tileRepeatX'
-        | 'tileRepeatY'
-        | 'tilemapModeCreate'
-        | 'tilemapModeEdit'
-        | 'tilemapModeHybrid'
-        | 'tilemapModePaint'
-        | 'toggleAnimationFramesDisabled'
-        | 'toggleAnimationMask'
-        | 'toggleAnimationPlayback'
-        | 'toggleAnimationReturnToStart'
-        | 'toggleBrushLibraryPanel'
-        | 'toggleClippingMask'
-        | 'toggleColorPanel'
-        | 'toggleContiguous'
-        | 'toggleCustomGrid'
-        | 'toggleFixedRatio'
-        | 'toggleFullscreen'
-        | 'toggleGrid'
-        | 'toggleGroupMask'
-        | 'toggleIsoView'
-        | 'toggleLayerMask'
-        | 'toggleLayerStyles'
-        | 'toggleLayersPanel'
-        | 'toggleMoveAutoSelect'
-        | 'toggleOnionSkin'
-        | 'togglePaletteColorSync'
-        | 'togglePaletteEditLock'
-        | 'togglePalettePanel'
-        | 'togglePerfectPixels'
-        | 'togglePreviewPanel'
-        | 'toggleRoundedCorners'
-        | 'toggleSelectedGroupCollapsed'
-        | 'toggleSelectedLayerLock'
-        | 'toggleSelectedLayerVisibility'
-        | 'toggleSelectionOutline'
-        | 'toggleSliceOutlines'
-        | 'toggleSmartClosure'
-        | 'toggleSymmetryDiagonalDown'
-        | 'toggleSymmetryDiagonalUp'
-        | 'toggleSymmetryHorizontal'
-        | 'toggleSymmetryRotational'
-        | 'toggleSymmetryVertical'
-        | 'toggleTilesetPanel'
-        | 'toggleTimeline'
-        | 'tool.airbrush'
-        | 'tool.airbrush.quick'
-        | 'tool.curve'
-        | 'tool.curve.quick'
-        | 'tool.eraser'
-        | 'tool.eraser.quick'
-        | 'tool.eyedropper'
-        | 'tool.eyedropper.quick'
-        | 'tool.fill'
-        | 'tool.fill.gradient'
-        | 'tool.fill.gradient.quick'
-        | 'tool.fill.quick'
-        | 'tool.hand'
-        | 'tool.hand.quick'
-        | 'tool.line'
-        | 'tool.line.quick'
-        | 'tool.liquify'
-        | 'tool.liquify.quick'
-        | 'tool.move'
-        | 'tool.move.quick'
-        | 'tool.pencil'
-        | 'tool.pencil.quick'
-        | 'tool.rotate'
-        | 'tool.rotate.quick'
-        | 'tool.selection'
-        | 'tool.selection.ellipse'
-        | 'tool.selection.ellipse.quick'
-        | 'tool.selection.quick'
-        | 'tool.shape'
-        | 'tool.shape.ellipse'
-        | 'tool.shape.ellipse.quick'
-        | 'tool.shape.ellipseOutline'
-        | 'tool.shape.ellipseOutline.quick'
-        | 'tool.shape.freeform'
-        | 'tool.shape.freeform.quick'
-        | 'tool.shape.polygon'
-        | 'tool.shape.polygon.quick'
-        | 'tool.shape.quick'
-        | 'tool.shape.rectangle'
-        | 'tool.shape.rectangle.quick'
-        | 'tool.shape.rectangleOutline'
-        | 'tool.shape.rectangleOutline.quick'
-        | 'tool.slice'
-        | 'tool.slice.quick'
-        | 'tool.smooth'
-        | 'tool.smooth.quick'
-        | 'tool.text'
-        | 'tool.text.quick'
-        | 'tool.zoom'
-        | 'tool.zoom.quick'
-        | 'toolRailBottom'
-        | 'toolRailLeft'
-        | 'toolRailRight'
-        | 'toolRailTop'
-        | 'transform'
-        | 'trimCanvas'
-        | 'undo'
-        | 'ungroupLayers'
-        | 'viewZoom100'
-        | 'viewZoom200'
-        | 'viewZoom3200'
-        | 'viewZoom400'
-        | 'viewZoom800'
+      id: import('@/core/shortcuts').ShortcutId
     ) => boolean
     tilemapEditSelectionAtPoint: (
       point: import('@/core/canvas-input').CanvasPoint,
@@ -544,6 +242,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canvasRef,
     inputRef,
     wheelBrushSizePreviewRef,
+    magicPreviewFlash,
     canvasResizePreviewRef,
     liveViewRef,
     zoomPreviewStartRef,
@@ -722,21 +421,15 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     activeDrag?.kind === 'rotate-view' ||
     zoomPreviewStartRef.current !== null
   const pixelSamplingQuality: ImageSmoothingQuality = viewPreviewActive ? 'low' : 'high'
-  const onionSkinInvalidation =
-    currentSession.selectedAnimationFrameIds.length > 1 && currentSession.contentInvalidation
-      ? { ...currentSession.contentInvalidation, frameId: undefined }
-      : currentSession.contentInvalidation
   const renderPlan = createCanvasRenderPlan(rect.width, rect.height, document, view, rotationIndicatorPosition, deviceScale)
   const { rotated, viewport, sceneLeft, sceneTop, sceneWidth, sceneHeight, originX, originY, canvasWidth, canvasHeight, fromX, fromY, toX, toY } = renderPlan
   let context: RasterContext2D = displayContext
   if (rotated) {
-    let scene = rotationSceneRef.current
-    const sceneBackingWidth = canvasBackingCapacity(Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), scene?.width ?? 0, isWorkspaceResizing())
-    const sceneBackingHeight = canvasBackingCapacity(Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), scene?.height ?? 0, isWorkspaceResizing())
-    if (!scene || scene.width !== sceneBackingWidth || scene.height !== sceneBackingHeight) {
-      scene = new OffscreenCanvas(sceneBackingWidth, sceneBackingHeight)
-      rotationSceneRef.current = scene
-    }
+    // Rotation changes the scene bounds on each pointer sample. Keep its
+    // backing allocation through the gesture instead of replacing a large
+    // GPU surface on every angle; settled draws return to exact dimensions.
+    const scene = resizeOffscreenCanvas(rotationSceneRef.current, Math.max(1, Math.ceil(sceneWidth * deviceScale.x)), Math.max(1, Math.ceil(sceneHeight * deviceScale.y)), viewPreviewActive)
+    rotationSceneRef.current = scene
     const sceneContext = scene.getContext('2d')
     if (!sceneContext) return
     sceneContext.setTransform(deviceScale.x, 0, 0, deviceScale.y, -sceneLeft * deviceScale.x, -sceneTop * deviceScale.y)
@@ -758,7 +451,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   // Rounding each floating-point copy origin independently can make the
   // right edge of one copy differ from the left edge of its neighbour by a
   // physical pixel, which shows up as a transient seam during previews.
-  const baseCanvasBoundary = deviceAlignedCanvasRect(deviceAlignedCoordinate(originX, deviceScale.x), deviceAlignedCoordinate(originY, deviceScale.y), canvasWidth, canvasHeight, deviceScale)
+  const baseCanvasBoundary = renderPlan.canvasBoundary
   const renderCanvasWidth = baseCanvasBoundary.width
   const renderCanvasHeight = baseCanvasBoundary.height
   const repeatOffsets = tileRepeatOffsetsForViewport(viewport, originX, originY, canvasWidth, canvasHeight, view.tileRepeatMode ?? 'off')
@@ -810,22 +503,22 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     isoGuideTileRef
   })
   checkpoint('background')
+  const displayDocument = !isolatedLayerMask && !timelineHidden &&
+    (!currentSession.animationPlaying || onionSkin.showDuringPlayback)
+    ? onionSkinCacheRef.current.displayDocument(document, currentActiveLayer.id, currentSession.contentRevision, onionSkin)
+    : document
   const { paintedMoveLayerFlash } = renderCanvasContent({
     repeatCopies,
     isolatedLayerMask,
-    timelineHidden,
-    onionSkin,
     currentSession,
-    onionSkinCacheRef,
     context,
     renderCanvasWidth,
     renderCanvasHeight,
     view,
-    onionSkinInvalidation,
     smoothPixelSampling,
     deviceScale,
     compositeCacheRef,
-    document,
+    document: displayDocument,
     pixelSamplingQuality,
     viewPreviewActive,
     activeDrag,
@@ -859,7 +552,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   } = createCanvasPreviewPixels({
     currentSession,
     compositePointSamplerRef,
-    document,
+    document: displayDocument,
     compositeReplacementSamplerRef,
     isolatedLayerMask,
     currentActiveLayer,
@@ -869,8 +562,6 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     deviceScale,
     repeatCopies,
     checkerboard,
-    onionSkin,
-    timelineHidden,
     context
   })
   const { pendingTilesetTilePreview, queueTilesetTilePreview, drawTilemapEditPreviewTiles } = createCanvasTilePreview({
@@ -894,6 +585,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     cachedPolygonPathFor,
     drawSelectionCursorCorners
   } = createCanvasSelectionPaths({
+    useLocalCursors: frame.settings.useLocalCursors,
     selectionPreviewColorMode,
     selectionPreviewColor,
     repeatCopies,
@@ -1026,6 +718,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   })
   renderCanvasSelectionPreview({
     inputRef,
+    magicPreviewFlash,
     drawSelectionPathPreview,
     repeatCopies,
     view,

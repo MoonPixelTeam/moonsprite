@@ -1,3 +1,4 @@
+import type { ExportProtection } from './export-protection'
 import type { SpriteDocument } from '@shared/types-document'
 import type { GifDirection } from './gif'
 import { prepareRuntimeRasterDocumentForTransfer } from './runtime-raster'
@@ -8,6 +9,7 @@ export interface LayerExportWorkerRequest {
   id: number
   document: SpriteDocument
   layerIds: string[]
+  protection?: ExportProtection
   scalePercent: number
   trim?: boolean
   trimMode?: 'individual' | 'common'

@@ -18,6 +18,24 @@ beforeEach(() => {
 })
 
 describe('layer reorder invalidation', () => {
+  it('restores the layer and timeline selection context when undoing a reorder', () => {
+    const document = createDocument('selection reorder', 8, 8, 'rgba')
+    const target = createLayer('Target', 4, 4, 'rgba')
+    const moving = createLayer('Moving', 4, 4, 'rgba')
+    document.layers.push(target, moving)
+    document.activeLayerId = target.id
+    useWorkspace.getState().addSession(document)
+    const commands = useWorkspace.getState()
+    commands.selectLayer(target.id)
+    const session = useWorkspace.getState().sessions[0]
+    const before = [...session.selectedLayerIds]
+    commands.reorderLayers([moving.id], target.id, false)
+    expect(session.selectedLayerIds).toEqual([moving.id])
+    commands.undo()
+    expect(session.selectedLayerIds).toEqual(before)
+    expect(session.document.activeLayerId).toBe(target.id)
+  })
+
   it('refreshes only the reordered visible layer bounds through commit, undo, and redo', () => {
     const document = createDocument('bounded reorder', 80, 64, 'rgba')
     const middle = createLayer('Middle', 12, 10, 'rgba')

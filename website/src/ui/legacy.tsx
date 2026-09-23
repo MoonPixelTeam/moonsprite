@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronRight, ExternalLink, Play } from 'lucide-react'
-import { SITE_CONFIG } from './config'
-import type { DocsOutlineEntry } from './content'
+import { Button } from './primitives'
+import { PixelChevronRight as ChevronRight, PixelPlay as Play } from './icons'
+import { SITE_CONFIG } from '../config'
+import type { DocsOutlineEntry } from '../content'
 
 type ProductImageName = 'workspace-v3' | 'timeline-v3' | 'luminance-v3' | 'export'
 
@@ -33,7 +34,6 @@ export function AppWindow({ title, children }: { title: string; children: ReactN
     <figure className="window">
       <figcaption className="window-bar">
         <strong>{title}</strong>
-        <span className="window-controls" aria-hidden="true"><i>—</i><i>▢</i><i>✕</i></span>
       </figcaption>
       <div className="window-body">{children}</div>
     </figure>
@@ -41,8 +41,8 @@ export function AppWindow({ title, children }: { title: string; children: ReactN
 }
 
 export function SteamButton({ label, soon, compact = false }: { label: string; soon: string; compact?: boolean }) {
-  if (!SITE_CONFIG.steamUrl) return <span className={`button primary disabled ${compact ? 'compact' : ''}`} aria-disabled="true"><Play aria-hidden="true" />{soon}</span>
-  return <a className={`button primary ${compact ? 'compact' : ''}`} href={SITE_CONFIG.steamUrl} target="_blank" rel="noopener noreferrer"><Play aria-hidden="true" />{label}<ExternalLink aria-hidden="true" /></a>
+  if (!SITE_CONFIG.steamUrl) return <Button variant="primary" size={compact ? 'compact' : 'regular'} icon={<Play aria-hidden="true" />} disabled>{soon}</Button>
+  return <Button variant="primary" size={compact ? 'compact' : 'regular'} href={SITE_CONFIG.steamUrl} icon={<Play aria-hidden="true" />}>{label}</Button>
 }
 
 export function scrollToId(id: string) {
@@ -90,7 +90,7 @@ export function OutlineNav({ items, activeId, onJump }: { items: OutlineItem[]; 
       {groups.map((group, groupIndex) => <div key={group.name ?? groupIndex}>
         {group.name && <p className="outline-group">{group.name}</p>}
         <ul>{group.items.map((item) => item.href
-          ? <li key={item.id}><a href={item.href} className={activeId === item.id ? 'active' : ''}>{item.label}</a></li>
+          ? <li key={item.id}><a href={item.href} aria-current={activeId === item.id ? 'page' : undefined} className={activeId === item.id ? 'active' : ''}>{item.label}</a></li>
           : <li key={item.id}><button type="button" className={activeId === item.id ? 'active' : ''} onClick={() => jump(item)}>{item.label}</button></li>
         )}</ul>
       </div>)}
@@ -110,7 +110,7 @@ export function DocsOutline({ outline, sections, currentId }: { outline: DocsOut
     <nav className="page-outline docs-outline" aria-label="Docs">
       <ul>
         {outline.map((entry) => entry.kind === 'page'
-          ? <li key={entry.id}><a href={`#/docs/${entry.id}`} className={currentId === entry.id ? 'active' : ''}>{titles.get(entry.id)}</a></li>
+          ? <li key={entry.id}><a href={`#/docs/${entry.id}`} aria-current={currentId === entry.id ? 'page' : undefined} className={currentId === entry.id ? 'active' : ''}>{titles.get(entry.id)}</a></li>
           : <li key={entry.id} className="outline-collapsible">
               <button type="button" aria-expanded={openIds.includes(entry.id)} onClick={() => toggle(entry.id)}>
                 <span>{entry.title}</span>
@@ -118,7 +118,7 @@ export function DocsOutline({ outline, sections, currentId }: { outline: DocsOut
               </button>
               {openIds.includes(entry.id) && <ul className="outline-children">
                 {entry.children.map((childId) => <li key={childId}>
-                  <a href={`#/docs/${childId}`} className={currentId === childId ? 'active' : ''}>{titles.get(childId)}</a>
+                  <a href={`#/docs/${childId}`} aria-current={currentId === childId ? 'page' : undefined} className={currentId === childId ? 'active' : ''}>{titles.get(childId)}</a>
                 </li>)}
               </ul>}
             </li>
@@ -128,8 +128,8 @@ export function DocsOutline({ outline, sections, currentId }: { outline: DocsOut
   )
 }
 
-export function PageShell({ left, right, children }: { left: ReactNode; right?: ReactNode; children: ReactNode }) {
-  return <div className={right ? 'page-shell' : 'page-shell no-right'}>
+export function PageShell({ left, right, children, className = '' }: { left: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
+  return <div className={`${right ? 'page-shell' : 'page-shell no-right'} ${className}`}>
     <aside className="outline-side">{left}</aside>
     <div className="page-body">{children}</div>
     {right && <aside className="outline-side right">{right}</aside>}

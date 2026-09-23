@@ -1,0 +1,90 @@
+/* Competition exhibition and shared media viewer. */
+.competition-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-10); }
+.competition-work { min-width: 0; margin: 0; }
+.competition-work-image { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 1px solid var(--border); background: var(--control); cursor: zoom-in; }
+.competition-work-image img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 180ms ease; }
+.competition-work-image > span { position: absolute; inset: auto var(--space-7) var(--space-7) auto; padding: var(--space-3) var(--space-5); color: var(--text); background: var(--panel); font-size: var(--font-small); opacity: 0; }
+.competition-work-image:hover img { transform: scale(1.025); }
+.competition-work-image:hover > span, .competition-work-image:focus-visible > span { opacity: 1; }
+.competition-work figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); padding-block: var(--space-7); }
+.competition-work figcaption strong { font-size: var(--font-body); font-weight: 500; }
+.competition-work figcaption span { color: var(--text-4); font-size: var(--font-small); }
+.competition-banner { position: relative; isolation: isolate; overflow: hidden; color: #fff; background: #14171c; }
+.competition-banner > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; image-rendering: pixelated; }
+.competition-banner::before { content: ''; position: absolute; inset: 0; background: rgb(9 10 13 / 68%); z-index: -1; }
+.competition-banner-content { padding-block: var(--space-24); display: grid; justify-items: start; gap: var(--space-7); }
+.competition-banner-content > span { border: 1px solid currentColor; padding: var(--space-3) var(--space-5); font-size: var(--font-small); }
+.competition-banner h1 { font-size: clamp(var(--font-h2), 5vw, var(--font-display-lg)); line-height: 1.2; }
+.competition-banner p { line-height: 1.7; }
+.competition-main { padding-block: var(--space-13) var(--space-24); }
+.competition-facts { display: grid; grid-template-columns: 1.3fr .7fr 1.3fr; gap: var(--space-10); margin: 0; padding-block: var(--space-7) var(--space-10); border-bottom: 1px solid var(--divider); }
+.competition-facts dt { color: var(--text-4); font-size: var(--font-small); margin-bottom: var(--space-5); }
+.competition-facts dd { margin: 0; font-size: var(--font-body); }
+.competition-demo { color: var(--text-4); font-size: var(--font-small); line-height: 1.7; margin-block: var(--space-7) var(--space-20); }
+.media-preview-dialog { width: min(90vw, 1200px); max-width: 90vw; max-height: 90dvh; margin: auto; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); overflow: auto; }
+.media-preview-dialog::backdrop { background: rgb(0 0 0 / 78%); }
+.media-preview-content > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); padding: var(--space-7) var(--space-9); border-bottom: 1px solid var(--divider); }
+.media-preview-content h2 { font-size: var(--font-lead); }
+.media-preview-frame { aspect-ratio: 16 / 9; display: grid; place-items: center; background: var(--control); }
+.media-preview-frame img { display: block; width: 100%; height: 100%; min-height: 0; max-height: 70dvh; object-fit: contain; }
+.media-preview-content > p { padding: var(--space-7) var(--space-9); font-size: var(--font-small); color: var(--text-3); line-height: 1.7; }
+.home-section-head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-13); margin-bottom: var(--space-13); }
+@media (max-width: 1000px) {
+  .competition-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-section-head { align-items: start; flex-direction: column; gap: var(--space-9); }
+}
+@media (max-width: 600px) {
+  .competition-gallery { gap: var(--space-7); }
+  .competition-work figcaption { flex-direction: column; gap: var(--space-2); }
+  .competition-facts { grid-template-columns: minmax(0, 1fr); }
+  .competition-banner-content { padding-block: var(--space-16); }
+  .media-preview-content > header .button { width: auto; flex-shrink: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .competition-work-image img { transition: none; }
+}
+/* Only ratio and interaction details change on the existing homepage components. */
+.masonry .masonry-card .gif-placeholder { width: 100%; height: auto; aspect-ratio: 16 / 9; padding: 0; border: 0; border-bottom: 1px solid var(--divider); cursor: zoom-in; }
+.gif-placeholder img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.gif-placeholder:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.showcase-item > a { display: block; width: 100%; height: 100%; }
+.media-preview-placeholder { color: var(--text-4); font-family: var(--font-pixel); font-size: var(--font-h2); }
+
+.competition-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-10); }
+
+/* Align the banner copy to the exact same container edge as the sections below. */
+.home-main .hero-inner { padding-inline: 0; }
+.features .section-title { max-width: none; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-9); }
+.section-title-actions { flex-shrink: 0; }
+.home-main .pack-grid.featured { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-7); }
+.market-teaser .pack-art-frame { aspect-ratio: 16 / 9; padding: var(--space-7); }
+@media (max-width: 1100px) {
+  .home-main .pack-grid.featured { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .section-title-row { flex-wrap: wrap; }
+  .section-title-actions { margin-left: auto; }
+  .home-main .pack-grid.featured { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1300px) {
+  .home-main .hero-nav { top: var(--space-7); right: var(--space-7); left: auto; gap: var(--space-4); transform: none; }
+}
+
+/* Homepage shelf: artwork first, a single quiet caption, details live on the product page. */
+.pack-tile { min-width: 0; }
+.pack-tile > a { position: relative; display: block; overflow: hidden; color: inherit; background: var(--control); }
+.pack-tile .pack-art-frame { aspect-ratio: 4 / 3; padding: 0; border: 1px solid var(--border); box-shadow: none; transition: border-color 140ms ease, transform 180ms ease; }
+.pack-tile .pack-art-frame .pack-image { object-fit: cover; }
+.pack-tile .pack-art-frame.artwork .pack-image { object-fit: contain; padding: var(--space-7); }
+.pack-tile > a:hover .pack-art-frame { border-color: var(--accent); transform: scale(1.015); }
+.pack-tile > a:focus-visible { outline: 2px solid var(--accent); outline-offset: var(--space-2); }
+.pack-tile-caption { position: absolute; right: 1px; bottom: 1px; left: 1px; display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); padding: var(--space-13) var(--space-7) var(--space-6); color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / 78%)); pointer-events: none; }
+.pack-tile-caption h3 { min-width: 0; font-size: var(--font-body); line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; text-shadow: 0 1px 3px rgb(0 0 0 / 50%); }
+.pack-tile-caption > span { color: #fff; font-family: var(--font-pixel); font-size: var(--font-small); white-space: nowrap; text-shadow: 0 1px 3px rgb(0 0 0 / 50%); }
+@media (max-width: 600px) {
+  .pack-tile-caption { flex-wrap: wrap; gap: var(--space-3); }
+  .pack-tile .pack-placeholder-text { font-size: var(--font-small); }
+  .market-teaser .pack-art-frame { padding: 0; }
+}

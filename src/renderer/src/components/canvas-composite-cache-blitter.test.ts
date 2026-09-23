@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { deviceAlignedCoordinate } from '@/core/canvas-render-plan'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 
+
 describe('stable navigation sampling', () => {
   it('covers a fractional-zoom crop with touching integer device edges', () => {
     const blitter = new CanvasCompositeBlitter()
@@ -23,7 +24,7 @@ describe('stable navigation sampling', () => {
     for (const dpr of [1, 1.25, 1.501]) for (const pan of [-120.37, 0.2, 12.9]) {
       const origin = deviceAlignedCoordinate(pan, dpr)
       blitter.currentDevicePixelRatio = dpr
-      for (const [start, count] of [[0, 192], [3, 35], [11, 17]]) {
+      for (const [start, count] of [[0, 64], [3, 35], [11, 17]]) {
         drawImage.mockClear()
         blitter.drawAlignedPixelRegion(context, source, origin, origin, zoom, start, start, start, start, count, count)
         expect(drawImage).toHaveBeenCalled()

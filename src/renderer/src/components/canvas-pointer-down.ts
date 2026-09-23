@@ -44,7 +44,7 @@ import {
 import { canvasCursors, canvasToolCursor, resizeCursors } from '@/core/canvas-visuals'
 import { type SymmetryAxis } from '@/core/symmetry'
 import { shouldUseFreeTileInstanceMove } from '@/components/canvas-move-selection'
-import { resolveBrushDynamics } from '@/core/pressure'
+import { brushOpacityScale, resolveBrushDynamics } from '@/core/pressure'
 import { activeBrushInputsForTool } from '@/core/brushes'
 import { ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
@@ -196,7 +196,8 @@ export function createCanvasPointerDown(ports: Ports) {
         },
         session.brushSize
       )
-      return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize } : resolved
+      const opacityScale = brushOpacityScale(resolved.opacityScale, session.brushOpacity)
+      return activeBrushImage?.intrinsicSize ? { ...resolved, size: session.brushSize, opacityScale } : { ...resolved, opacityScale }
     }
     const brushGradientAt = (buttonColor: RgbaColor, gradientAmount: number | null): BrushGradientSample | undefined => {
       if (session.tool !== 'pencil' || gradientAmount === null) return undefined
@@ -213,6 +214,13 @@ export function createCanvasPointerDown(ports: Ports) {
     event.currentTarget.focus({ preventScroll: true })
     const state = useWorkspace.getState()
     if (zoomPreviewStartRef.current) finishZoomPreview()
+    // View-only navigation belongs to the pointed canvas. Activating another
+    // document here refreshes every editor panel before the first pan frame.
+    if (event.button === 1) {
+      beginCanvasToolGesture(event.pointerId)
+      navigationInput.beginPan({ event, playbackNavigationTool: null })
+      return
+    }
     if (state.activeId !== session.document.id) {
       state.setActive(session.document.id)
       return
@@ -279,7 +287,7 @@ export function createCanvasPointerDown(ports: Ports) {
       return
     const symmetryHit = event.button === 0 && !viewNavigationToolActive && !inputRef.current.temporaryRightClickAction ? symmetryAxisHitAt(event.clientX, event.clientY, event.ctrlKey) : null
     if (symmetryHit) {
-      symmetryDragRef.current = { axis: symmetryHit, pointerId: event.pointerId }
+      symmetryDragRef.current = { axis: symmetryHit, pointerId: event.pointerId, center: { ...session.symmetryCenter }, previewFrame: null }
       event.currentTarget.setPointerCapture(event.pointerId)
       event.currentTarget.style.cursor = canvasCursors.move
       event.preventDefault()
@@ -321,7 +329,7 @@ export function createCanvasPointerDown(ports: Ports) {
       !radialGradientCenterModifierActive(session, event.nativeEvent) &&
       quickMoveToolActive() &&
       !brushLineConnectionHasPriority(event.nativeEvent) &&
-      temporaryMoveForCanvasInteractionAllowed(session.tool, session.moveKind, selectionPriorityHit, addingToSelection)
+      temporaryMoveForCanvasInteractionAllowed(session.tool, session.moveKind, selectionPriorityHit, addingToSelection, session.selectionKind)
     // Tilemap paint mode owns the canvas press regardless of the global pixel
     // tool. Resolve the tileset owner before any paint-mode branch uses the
     // active layer, otherwise a stale pencil/selection tool snapshot can keep
@@ -626,6 +634,10 @@ export function createCanvasPointerDown(ports: Ports) {
     }
     if (shouldStartCanvasPan(session.tool) && navigationInput.beginHandPan({ session, event })) return
     if (session.tool === 'zoom' && navigationInput.beginZoom({ session, point, event })) return
+    if (session.tool === 'magic-eraser') {
+      if (event.button === 0 && canEditLayer && !tilemapPixelEditBlocked) fillInput.beginMagicEraser(point)
+      return
+    }
     if (session.tool === 'smooth' && strokeInput.beginSmooth({ session, event, hasRasterFocus, canEditLayer, tilemapPixelEditBlocked, editableLayer, point }))
       return
     if (

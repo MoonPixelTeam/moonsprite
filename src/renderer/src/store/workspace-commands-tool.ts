@@ -132,7 +132,14 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setMoveKind(kind) { get().mutateActive((session) => { session.moveKind = kind }, false) },
 
-    setBrushSize(size) { get().mutateActive((session) => { if (session.tool !== 'smooth' && session.brushImage?.intrinsicSize) return; session.brushSize = Math.max(1, Math.min(128, Math.round(size))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
+    setBrushSize(size) {
+      if (!Number.isFinite(size)) return
+      const current = activeSession(get()), next = Math.max(1, Math.min(128, Math.round(size)))
+      if (!current || current.brushSize === next || (current.tool !== 'smooth' && current.tool !== 'shape' && current.brushImage?.intrinsicSize)) return
+      get().mutateActive((session) => { session.brushSize = next; rememberBrushProfile(session); persistToolSettings(session) }, false)
+    },
+
+    setBrushOpacity(opacity) { get().mutateActive((session) => { session.brushOpacity = Math.max(0, Math.min(100, Math.round(opacity))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
 
     setBrushAngle(angle) { get().mutateActive((session) => { session.brushAngle = Math.max(-180, Math.min(180, Math.round(angle))); rememberBrushProfile(session); persistToolSettings(session) }, false) },
 
@@ -142,7 +149,12 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setAirbrushParticleShape(shape) { get().mutateActive((session) => { session.airbrushParticleShape = shape; persistToolSettings(session) }, false) },
 
-    setAirbrushScatterRadius(radius) { get().mutateActive((session) => { session.airbrushScatterRadius = Math.max(1, Math.min(64, Math.round(radius))); persistToolSettings(session) }, false) },
+    setAirbrushScatterRadius(radius) {
+      if (!Number.isFinite(radius)) return
+      const next = Math.max(1, Math.min(64, Math.round(radius)))
+      if (activeSession(get())?.airbrushScatterRadius === next) return
+      get().mutateActive((session) => { session.airbrushScatterRadius = next; persistToolSettings(session) }, false)
+    },
 
     setAirbrushDensity(density) { get().mutateActive((session) => { session.airbrushDensity = Math.max(1, Math.min(128, Math.round(density))); persistToolSettings(session) }, false) },
 
@@ -150,7 +162,12 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setLiquifyMode(mode: LiquifyMode) { get().mutateActive((session) => { session.liquifyMode = mode; persistToolSettings(session) }, false) },
 
-    setLiquifyRadius(radius) { get().mutateActive((session) => { session.liquifyRadius = Math.max(1, Math.min(128, Math.round(radius))); persistToolSettings(session) }, false) },
+    setLiquifyRadius(radius) {
+      if (!Number.isFinite(radius)) return
+      const next = Math.max(1, Math.min(128, Math.round(radius)))
+      if (activeSession(get())?.liquifyRadius === next) return
+      get().mutateActive((session) => { session.liquifyRadius = next; persistToolSettings(session) }, false)
+    },
 
     setLiquifyStrength(strength) { get().mutateActive((session) => { session.liquifyStrength = Math.max(1, Math.min(100, Math.round(strength))); persistToolSettings(session) }, false) },
 
@@ -431,6 +448,9 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       }, false)
     },
 
+    // Dragging updates this transient value at pointer-event frequency. Do not
+    // touch project metadata until the gesture is committed on pointerup.
+    previewSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center } }, false) },
     setSymmetryCenter(center) { get().mutateActive((session) => { session.symmetryCenter = { ...center }; persistSymmetryCenter(session) }, 'metadata') },
 
     resetSymmetryCenter() { get().mutateActive((session) => { session.symmetryCenter = defaultSymmetryCenter(session.document.width, session.document.height); persistSymmetryCenter(session) }, 'metadata') },

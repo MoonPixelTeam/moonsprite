@@ -7,6 +7,7 @@ import { initializeUsageStatistics } from '@/platform/usage-statistics'
 import { loadMainWindowState } from '@/core/workspace-layout-preferences'
 import { useWorkspace } from '@/store/workspace'
 import { waitForDocumentCloseTasks } from '@/store/document-close-tasks'
+import { waitForDocumentSaves } from '@/store/document-save-tasks'
 import { flushLocalHistoryPersist } from '@/store/local-history-service'
 import { useI18n } from '@/components/I18nProvider'
 import { persistMainWindowState } from './app-window-state'
@@ -123,6 +124,7 @@ export function useAppWindowLifecycle() {
         ),
       discardRecovery: (id) => useWorkspace.getState().discardRecovery(id),
       waitForDocumentCloses: waitForDocumentCloseTasks,
+      waitForSaves: waitForDocumentSaves,
       flushHistory: (session) => flushLocalHistoryPersist(window.moonSprite, session),
       approve: () => window.moonSprite.approveClose(),
       cancel: () => window.moonSprite.cancelClose(),

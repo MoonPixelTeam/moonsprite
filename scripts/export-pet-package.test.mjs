@@ -2,7 +2,7 @@ import { animationLoopFrameIdsForExport } from '../src/renderer/src/core/animati
 import { readFileSync } from 'node:fs'
 import nodeVm from 'node:vm'
 import { createLocalizationSource, catalogs, languages } from './pet-companion-localization.mjs'
-const localeContext={navigator:{languages:['zh-CN']},t:(key,params={})=>key.replace(/\{([a-zA-Z]+)\}/g,(all,name)=>params[name]??all),setPetLanguage:()=>{},petLocale:'zh-CN',PET_LANGUAGES:[],createLocalizationSource};
+const localeContext={navigator:{languages:['zh-CN']},t:(key,params={})=>key.replace(/\{([a-zA-Z]+)\}/g,(all,name)=>params[name]??all),setPetLanguage:()=>{},petLocale:'zh-CN',PET_LANGUAGES:[],catalogs,createLocalizationSource};
 const vm={...nodeVm,createContext:(value={})=>nodeVm.createContext({...localeContext,...value}),runInNewContext:(source,value={})=>nodeVm.runInNewContext(source,{...localeContext,...value})};
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -16,6 +16,19 @@ const context = vm.createContext({
 vm.runInContext(source.slice(source.indexOf('const localizationSource ='), source.indexOf('const sprite =')), context)
 const activatePets=async(handlers,ids=['builtin'])=>{await handlers.activate();for(const commandId of ids)await handlers.command({event:'toggle-pet',commandId})};
 const generated = vm.runInContext('({runtimePage,petWindowSource,managerSource,storeSource,triggerConditions})', context)
+
+test('pet ordering persists across manager sessions without changing visibility or metadata', async () => {
+ const meta=[{id:'cat',name:'Cat',frameCount:0},{id:'dog',name:'Dog',frameCount:0}];
+ const stored=new Map([['pet-sprites',meta],['shownPets',['dog']]]);
+ const create=async()=>{let listener,view;const sandbox=nodeVm.createContext({moonsprite:{storage:{get:async key=>stored.get(key),set:async(key,value)=>stored.set(key,value)},window:{onMessage:fn=>listener=fn,postMessage:async message=>{if(message.type==='ui-state')view=message}},diagnostics:{log:error=>{throw Error(error)}}}});nodeVm.runInContext(generated.storeSource+generated.managerSource,sandbox);await new Promise(resolve=>setImmediate(resolve));return{sandbox,send:async message=>{listener(message);await nodeVm.runInContext('operations',sandbox)},view:()=>view}};
+ const first=await create();await first.send({type:'ui-edit',petId:'cat'});await first.send({type:'ui-reorder',petId:'cat',direction:-1});
+ assert.deepEqual(Array.from(stored.get('pet-order')),['cat','builtin','dog']);
+ const second=await create();assert.deepEqual(Array.from(await nodeVm.runInContext('listPets()',second.sandbox),pet=>pet.id),['cat','builtin','dog']);
+ await second.send({type:'ui-reorder',petId:'cat',direction:-1});assert.deepEqual(Array.from(stored.get('pet-order')),['cat','builtin','dog']);
+ stored.set('pet-sprites',[meta[1],{id:'new',name:'New',frameCount:0}]);
+ assert.deepEqual(Array.from(await nodeVm.runInContext('listPets()',second.sandbox),pet=>pet.id),['builtin','dog','new']);
+ assert.deepEqual(stored.get('shownPets'),['dog']);assert.equal(meta[1].name,'Dog');
+});
 
 test('restarting restores explicit visibility and leaves persisted pet settings untouched', async () => {
  const stored=new Map([['preferences',{enabled:true,language:'ja-JP',breakMinutes:37}],['shownPets',['builtin']],['position:builtin',{ratioX:0.3,ratioY:0.7}],['pet-sprites',[{id:'builtin',frameCount:1,scale:3,mirrored:true}]]]);
@@ -61,12 +74,12 @@ test('manager switches all nine languages, preserves names and persists reminder
   const send=async message=>{listener(message);await nodeVm.runInContext('operations',sandbox)};
   const flatten=nodes=>nodes.flatMap(node=>[node,...flatten(node.children||[])]);
   for(const [locale] of languages){
-    await send({type:'ui-language',values:{language:locale}});
+    await send({type:'catalog',hostLocale:locale});
     const nodes=flatten(views.at(-1).nodes),byId=id=>nodes.find(node=>node.id===id);
     assert.equal(byId('edit-builtin').label,'上传动画'); // User text must never be translated.
     assert.equal(byId('upload-IDLE').label,catalogs[locale]['上传动画']);
     assert.equal(byId('slot-TRIGGER_X').label,catalogs[locale]['切换工具']+' · '+catalogs[locale]['画笔']);
-    assert.equal(stored.get('preferences').language,locale);
+    assert.equal(stored.get('preferences').language,'zh-CN');
     assert.equal(stored.get('preferences').scale,3);
     await send({type:'ui-add-trigger',petId:'builtin'});
     const dialog=flatten(views.at(-1).nodes).find(node=>node.id==='trigger-event');
@@ -74,29 +87,23 @@ test('manager switches all nine languages, preserves names and persists reminder
     assert.equal(dialog.options[0].description,catalogs[locale]['实际完成一次撤销后播放。']);
     await send({type:'ui-cancel-trigger'});
   }
-  await send({type:'ui-preference',key:'remindersEnabled',value:false});
-  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='clockEnabled'));
-  await send({type:'ui-preference',key:'remindersEnabled',value:true});
-  await send({type:'ui-preference',key:'unsavedEnabled',value:false});
-  assert.ok(!flatten(views.at(-1).nodes).some(node=>node.id==='unsavedMinutes'));
-  assert.ok(flatten(views.at(-1).nodes).some(node=>node.id==='breakMinutes'));
-  await send({type:'ui-preference',key:'breakMinutes',values:{breakMinutes:42}});
-  assert.equal(stored.get('preferences').breakMinutes,42);
+  assert.equal(stored.get('preferences').breakMinutes,33);
+
   assert.equal(stored.get('preferences').unsavedMinutes,17);
-  assert.equal(stored.get('preferences').enabled,false);
-  assert.deepEqual(errors,[]);
-  assert.ok(messages.some(message=>message.type==='catalog'));
+
+ assert.deepEqual(errors,[]);
+  assert.ok(messages.some(message=>message.type==='ui-state'));
 });
 
 test('runtime broadcasts the selected language and translates menus after preference changes', async () => {
   const stored=new Map([['preferences',{language:'ja-JP'}]]),handlers={},menus=[],sent=[];
   const sandbox=nodeVm.createContext({moonsprite:{on:(name,fn)=>handlers[name]=fn,storage:{get:async({key})=>stored.get(key),set:async({key,value})=>stored.set(key,value)},menus:{setItems:async value=>menus.push(value)},windows:{open:async()=>{},close:async()=>{},postMessage:async value=>sent.push(value)},diagnostics:{log:error=>{throw Error(error.message)}}}});
   nodeVm.runInContext(generated.runtimePage.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i)[1],sandbox);
-  await activatePets(handlers,['builtin']);
+  await handlers['locale-changed']({locale:'ja-JP'});await activatePets(handlers,['builtin']);
   await handlers['window-message']({windowId:'pet-builtin',message:{type:'ready'}});
   assert.equal(sent.at(-1).message.preferences.language,'ja-JP');
   assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['ja-JP']['宠物管理…']);
-  stored.set('preferences',{...stored.get('preferences'),language:'de-DE'});
+  await handlers['locale-changed']({locale:'de-DE'});stored.set('preferences',{...stored.get('preferences'),language:'de-DE'});
   await handlers['window-message']({windowId:'manager',message:{type:'catalog'}});
   assert.equal(sent.at(-1).message.preferences.language,'de-DE');
   assert.equal(menus.at(-1).items.find(item=>item.id==='manager').name,catalogs['de-DE']['宠物管理…']);
@@ -120,7 +127,7 @@ test('host locale changes follow by default, localize the built-in name, and nev
   assert.equal(sent.at(-1).message.preferences.hostLocale,'ja-JP');
   stored.set('preferences',{...stored.get('preferences'),language:'zh-CN'});
   await handlers['locale-changed']({locale:'fr-FR'});
-  assert.equal(sent.at(-1).message.pet.name,'奶龙');
+  assert.equal(sent.at(-1).message.pet.name,'Nailong');
   assert.equal(opened.length,1);
 });
 
@@ -327,9 +334,9 @@ test('supplementing SHOW preserves IDLE, drops unsupported slots, and rollback p
 test('manifest keeps a neutral settings launcher and runtime owns localized menus', () => {
  const manifest=vm.runInContext('manifest',context);
  assert.deepEqual(Array.from(manifest.topMenus[0].commands),['settings']);
- assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['manager']);
- assert.equal(manifest.settingsUi.controls[0].fullWidth,true);
- assert.equal(manifest.settingsUi.controls[0].closeOnRun,true);
+ assert.deepEqual(Array.from(manifest.settingsUi.controls,c=>c.id),['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes','manager']);
+ assert.equal(manifest.settingsUi.controls.at(-1).fullWidth,true);
+ assert.equal(manifest.settingsUi.controls.at(-1).closeOnRun,true);
  assert.ok(generated.runtimePage.includes("name:t('宠物管理…')"));
 });
 

@@ -1,8 +1,9 @@
-import type { Copy } from '../content'
-import { DocsOutline, OutlineNav, PageShell, useActiveHeading } from '../ui'
+import { docsCopy } from './DocsCopy'
+import type { Copy, Language } from '../content'
+import { DocsOutline, OutlineNav, PageHeader, PageShell, useActiveHeading } from '../ui'
 
-export function DocsPage({ t, subId }: { t: Copy; subId?: string }) {
-  const docs = t.docsPage
+export function DocsPage({ t, language, subId }: { t: Copy; language: Language; subId?: string }) {
+  const docs = docsCopy(language)
   const sections = docs.sections
   const current = sections.find((section) => section.id === subId) ?? sections[0]
   const rightItems = current.blocks
@@ -10,13 +11,13 @@ export function DocsPage({ t, subId }: { t: Copy; subId?: string }) {
     .map((block) => ({ id: block.id, label: block.text }))
   const activeId = useActiveHeading(rightItems.map((item) => item.id))
 
-  return <PageShell
-    left={<DocsOutline outline={docs.outline} sections={sections} currentId={current.id} />}
+  return <PageShell className="reading-layout"
+    left={<><p className="reading-nav-title">{t.nav.docs}</p><DocsOutline outline={docs.outline} sections={sections} currentId={current.id} /></>}
     right={rightItems.length
-      ? <OutlineNav items={rightItems} activeId={activeId} />
+      ? <><p className="reading-nav-title">{language === 'zh' ? '本页内容' : 'On this page'}</p><OutlineNav items={rightItems} activeId={activeId} /></>
       : null}>
     <article className="doc-section">
-      <h2>{current.title}</h2>
+      <PageHeader eyebrow={t.nav.docs} title={current.title} />
       {current.blocks.map((block, index) => {
         if (block.kind === 'p') return <p key={index}>{block.text}</p>
         if (block.kind === 'h3') return <h3 key={index} id={block.id}>{block.text}</h3>

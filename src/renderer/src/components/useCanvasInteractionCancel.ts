@@ -64,7 +64,10 @@ export function useCanvasInteractionCancel(ports: Ports) {
     if (ports.adjustmentPreviewEditRef.current) prepareAdjustmentPreviewEdit(ports.session.document.id)
     const state = useWorkspace.getState()
     let documentChanged = false
-    if (drag.kind === 'smooth' && drag.edit) {
+    if (drag.kind === 'fill' && drag.fillHistoryCommitted) {
+      state.undo()
+      documentChanged = true
+    } else if (drag.kind === 'smooth' && drag.edit) {
       state.cancelSmoothBrushStroke(drag.edit)
       documentChanged = true
     } else if (drag.kind === 'liquify' && drag.edit) {

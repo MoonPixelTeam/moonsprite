@@ -4,13 +4,27 @@ import type { AnimationLoopSectionResizeEdge } from './animation-gesture-types'
 import { parseAnimationCelKey } from '@/core/animation'
 
 export const timelineSelectionOutlineHit = (listRef: RefObject<HTMLDivElement | null>, event: ReactPointerEvent<HTMLElement>, selector: string): boolean => {
-  const outline = listRef.current?.querySelector<HTMLElement>(selector)
-  if (!outline) return false
-  const bounds = outline.getBoundingClientRect()
-  if (bounds.width <= 0 || bounds.height <= 0) return false
+  const outlines = listRef.current?.querySelectorAll<HTMLElement>(selector)
+  if (!outlines || outlines.length === 0) return false
   const inset = 6
-  const inside = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
-  return inside && (event.clientX - bounds.left <= inset || bounds.right - event.clientX <= inset || event.clientY - bounds.top <= inset || bounds.bottom - event.clientY <= inset)
+  for (const outline of outlines) {
+    const bounds = outline.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) continue
+    const contourData = outline.dataset.animationSelectionContour
+    if (contourData) {
+      const contour = JSON.parse(contourData) as {columns: number; rows: number; edges: number[][]}
+      const x = event.clientX - bounds.left, y = event.clientY - bounds.top
+      for (const [x1, y1, x2, y2] of contour.edges) {
+        const left = x1 * bounds.width / contour.columns, right = x2 * bounds.width / contour.columns
+        const top = y1 * bounds.height / contour.rows, bottom = y2 * bounds.height / contour.rows
+        if (x >= left - inset && x <= right + inset && y >= top - inset && y <= bottom + inset) return true
+      }
+      continue
+    }
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
+    if (inside && (event.clientX - bounds.left <= inset || bounds.right - event.clientX <= inset || event.clientY - bounds.top <= inset || bounds.bottom - event.clientY <= inset)) return true
+  }
+  return false
 }
 
 export const timelineFrameRange = (frames: readonly AnimationFrame[], anchorId: string, targetId: string): string[] => {
@@ -45,7 +59,9 @@ export const animationFrameTargetFromElement = (target: Element | null): { frame
   const parsed = cell?.dataset.animationCelKey ? parseAnimationCelKey(cell.dataset.animationCelKey) : null
   const maskCell = target?.closest<HTMLElement>('[data-animation-mask-cel-key]')
   const maskParsed = maskCell?.dataset.animationMaskCelKey ? parseAnimationCelKey(maskCell.dataset.animationMaskCelKey) : null
-  return maskCell && maskParsed ? { frameId: maskParsed.frameId, element: maskCell } : cell && parsed ? { frameId: parsed.frameId, element: cell } : null
+  const groupCell = target?.closest<HTMLElement>('[data-animation-group-cel-key]')
+  const groupParsed = groupCell?.dataset.animationGroupCelKey ? parseAnimationCelKey(groupCell.dataset.animationGroupCelKey) : null
+  return groupCell && groupParsed ? { frameId: groupParsed.frameId, element: groupCell } : maskCell && maskParsed ? { frameId: maskParsed.frameId, element: maskCell } : cell && parsed ? { frameId: parsed.frameId, element: cell } : null
 }
 
 export const timelineAutoScrollDelta = (listRef: RefObject<HTMLDivElement | null>, clientX: number): number => {

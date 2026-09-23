@@ -4,7 +4,7 @@ import { isWorkspaceResizing, onWorkspaceResizeEnd } from './workspace-resize'
 import { createPaletteGridResize, type PaletteLayoutMode } from './palette-grid-resize'
 
 /** The visible palette depends on column count, not the number of empty rows below it. */
-export function usePaletteGridColumns(gridRef: RefObject<HTMLElement | null>, swatchSize: number, minimumColumns: number, mode: PaletteLayoutMode = 'manual', revision = ''): number {
+export function usePaletteGridColumns(gridRef: RefObject<HTMLElement | null>, swatchSize: number, minimumColumns: number, mode: PaletteLayoutMode = 'manual', revision = '', gap = 1): number {
   const [columns, setColumns] = useState(minimumColumns)
   const committed = useRef(columns)
   committed.current = Math.max(columns, minimumColumns)
@@ -20,7 +20,7 @@ export function usePaletteGridColumns(gridRef: RefObject<HTMLElement | null>, sw
     let previous = -1
     const update = (width: number): void => {
       if (width <= 0) return
-      const next = Math.max(minimumColumns, normalizePaletteColumns(paletteGridCapacity(width, 0, swatchSize, 1).columns))
+      const next = Math.max(minimumColumns, normalizePaletteColumns(paletteGridCapacity(width, 0, swatchSize, gap).columns))
       if (next === previous && (isWorkspaceResizing() || (next === committed.current && !preview.current))) return
       previous = next
       if (isWorkspaceResizing()) {
@@ -50,6 +50,6 @@ export function usePaletteGridColumns(gridRef: RefObject<HTMLElement | null>, sw
       observer?.disconnect(); window.removeEventListener('resize', measure); stopListening()
       preview.current?.finish(); preview.current = null
     }
-  }, [gridRef, swatchSize, minimumColumns, mode, revision])
+  }, [gridRef, swatchSize, minimumColumns, mode, revision, gap])
   return Math.max(columns, minimumColumns)
 }

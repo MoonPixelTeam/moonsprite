@@ -234,6 +234,7 @@ pub fn run() {
             platform_screen_color::sample_window_color_region,
             platform_resources::get_resource_info,
             platform_palette::list_palettes,
+            platform_palette::import_palette,
             platform_palette::save_palette,
             platform_palette::delete_palette,
             platform_palette::open_palette_folder,
@@ -312,12 +313,11 @@ pub fn run() {
                     return;
                 };
                 let _ = window.emit("app:request-close", ());
-                let app = window.app_handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(12));
-                    if pending.expire(generation) {
-                        app.exit(1);
-                    }
+                    // Allow another close request if the renderer is unresponsive,
+                    // but never interrupt an in-flight save by forcing process exit.
+                    pending.expire(generation);
                 });
             }
         })

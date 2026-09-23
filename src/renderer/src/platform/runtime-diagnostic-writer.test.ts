@@ -18,6 +18,7 @@ describe('diagnostic persistence batching', () => {
     await vi.advanceTimersByTimeAsync(250)
     expect(persist).not.toHaveBeenCalled()
     writer.enqueue([event(2, 'error')])
+    await vi.advanceTimersByTimeAsync(0)
     writer.enqueue([event(3)])
     writer.discardPending()
     writer.checkpoint()
@@ -79,7 +80,7 @@ describe('diagnostic persistence batching', () => {
     expect(written[0].detail.diagnosticWriterDroppedEvents).toBe(1)
   })
 
-  it('flushes errors immediately, serializes writes, and checkpoints outstanding events', async () => {
+  it('flushes errors after the handler, serializes writes, and checkpoints outstanding events', async () => {
     vi.useFakeTimers()
     let finishWrite!: () => void
     const persist = vi.fn< (events: readonly RuntimeDiagnosticEvent[]) => Promise<void> >()
@@ -89,6 +90,8 @@ describe('diagnostic persistence batching', () => {
     const writer = createDiagnosticWriter(persist, fallback)
     writer.enqueue([event(1)])
     writer.enqueue([event(2, 'error')])
+    expect(persist).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(0)
     expect(persist).toHaveBeenCalledTimes(1)
     writer.enqueue([event(3, 'error')])
     expect(persist).toHaveBeenCalledTimes(1)
@@ -107,9 +110,33 @@ describe('diagnostic persistence batching', () => {
     const writer = createDiagnosticWriter(persist, fallback)
     writer.enqueue([event(1)])
     await writer.flush()
-    expect(fallback).toHaveBeenCalledExactlyOnceWith([event(1)])
+    expect(fallback).toHaveBeenCalledExactlyOnceWith([{ ...event(1), detail: { diagnosticPersistenceError: 'Error: disk unavailable' } }])
     writer.enqueue([event(2)])
     await writer.flush()
     expect(persist).toHaveBeenCalledTimes(2)
+  })
+
+  it('coalesces a synchronous error storm without writing inside the failing handler', async () => {
+    vi.useFakeTimers()
+    const persist = vi.fn<(events: readonly RuntimeDiagnosticEvent[]) => Promise<void>>(async () => {})
+    const writer = createDiagnosticWriter(persist, vi.fn())
+    for (let i = 0; i < 80; i++) writer.enqueue([event(i, 'error')])
+    expect(persist).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(persist).toHaveBeenCalledOnce()
+    expect(persist.mock.calls[0][0]).toHaveLength(80)
+  })
+
+  it('does not create an unhandled rejection when both persistence paths fail', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const writer = createDiagnosticWriter(async () => { throw new Error('disk') }, () => { throw new Error('storage') })
+      writer.enqueue([event(1)])
+      await expect(writer.flush()).resolves.toBeUndefined()
+      writer.enqueue([event(2)])
+      await expect(writer.flush()).resolves.toBeUndefined()
+      expect(warn).toHaveBeenCalledOnce()
+    } finally { warn.mockRestore() }
   })
 })

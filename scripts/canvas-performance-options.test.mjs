@@ -2,6 +2,24 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseCanvasPerformanceOptions } from './canvas-performance-options.mjs'
 
+test('navigation benchmarks preserve zoom, viewport and display scaling', () => {
+  const options = parseCanvasPerformanceOptions(['--scenario=large-pan', '--zoom=3', '--viewport=1600x1000', '--device-scale=1.25'])
+  assert.equal(options.zoom, 3)
+  assert.equal(options.deviceScale, 1.25)
+  assert.deepEqual(options.viewport, { width: 1600, height: 1000 })
+  for (const argument of ['--zoom=0', '--zoom=NaN', '--device-scale=5', '--viewport=1600x0']) assert.throws(() => parseCanvasPerformanceOptions([argument]), /Invalid/)
+})
+
+test('4K 100-layer animated workloads retain explicit preview and frame settings', () => {
+  const options = parseCanvasPerformanceOptions(['--size=4096', '--scenario=large-erase,large-rotate,large-selection-move,large-selection-scale,large-selection-rotate,large-undo', '--layers=100', '--frames=12', '--preview=off'])
+  assert.equal(options.layers, 100)
+  assert.equal(options.frames, 12)
+  assert.equal(options.preview, 'off')
+  assert.throws(() => parseCanvasPerformanceOptions(['--layers=100']), /require large/)
+  assert.throws(() => parseCanvasPerformanceOptions(['--preview=hidden']), /preview/)
+  assert.throws(() => parseCanvasPerformanceOptions(['--scenario=large-pan', '--frames=0']), /Invalid frames/)
+})
+
 test('画布性能参数默认运行完整场景', () => {
   assert.deepEqual(parseCanvasPerformanceOptions([]), {
     full: false,

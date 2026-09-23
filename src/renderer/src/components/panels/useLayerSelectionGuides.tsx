@@ -1,6 +1,7 @@
+import { isScrollbarPointer } from '../scrollbar-pointer'
 import { useAnimationGestures } from './useAnimationGestures'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { layerPanelRevealScrollTop } from '@/core/layer-panel-layout'
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { observeLayerPanelReveal } from './layer-panel-reveal-scroll'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import {
   CANVAS_SELECTION_PRESERVE_EVENT,
@@ -30,6 +31,7 @@ export function useLayerSelectionGuides({
 }: Options) {
   const store = useWorkspace.getState()
   const revealSequenceRef = useRef(0)
+  const cancelLayerRevealRef = useRef<(() => void) | null>(null)
 
   const [layerRevealRequest, setLayerRevealRequest] = useState<{ layerId: string; sequence: number } | null>(null)
 
@@ -142,34 +144,44 @@ export function useLayerSelectionGuides({
   ])
 
   useEffect(() => {
-    if (previousContentRevisionRef.current === session.contentRevision) return
-    const previousHistoryPosition = previousHistoryPositionRef.current
-    const historyMovedBack = session.history.position < previousHistoryPosition
-    previousHistoryPositionRef.current = session.history.position
-    previousContentRevisionRef.current = session.contentRevision
-    if (session.selectionGuidesPreservedAtContentRevision === session.contentRevision) {
-      setSelectionOutlineVisible(true)
-      setAnimationCellSelectionOutlineVisible(session.selectedAnimationCellKeys.length > 0 || session.selectedAnimationMaskCellKeys.length > 0)
-      return
+    // Pixel commits can leave the memoized panel untouched. Track guide
+    // transitions independently; only a visible presentation change renders rows.
+    const syncContentGuides = (): void => {
+      const current = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
+      if (previousContentRevisionRef.current === current.contentRevision) return
+      const previousHistoryPosition = previousHistoryPositionRef.current
+      const historyMovedBack = current.history.position < previousHistoryPosition
+      previousHistoryPositionRef.current = current.history.position
+      previousContentRevisionRef.current = current.contentRevision
+      if (current.selectionGuidesPreservedAtContentRevision === current.contentRevision) {
+        setSelectionOutlineVisible(true)
+        setAnimationCellSelectionOutlineVisible(current.selectedAnimationCellKeys.length > 0 || current.selectedAnimationMaskCellKeys.length > 0)
+        return
+      }
+      if (historyMovedBack && restoreSelectionGuidesOnUndoRef.current) {
+        // A preserve event belongs to the edit being undone; do not let it leak
+        // into the next content revision and mask the undo transition.
+        preserveSelectionOnNextContentRevisionRef.current = false
+        setSelectionOutlineVisible(true)
+        setAnimationCellSelectionOutlineVisible(current.selectedAnimationCellKeys.length > 0 || current.selectedAnimationMaskCellKeys.length > 0)
+        return
+      }
+      // Capture the guide state before handling the preserve flag. Selection
+      // transforms can explicitly preserve guides, and undo must restore that
+      // same pre-edit state.
+      if (!historyMovedBack) restoreSelectionGuidesOnUndoRef.current = selectionOutlineVisible
+      if (preserveSelectionOnNextContentRevisionRef.current) {
+        preserveSelectionOnNextContentRevisionRef.current = false
+        return
+      }
+      // Clearing panel guides is cosmetic; let the committed canvas paint and
+      // subsequent input take priority over rendering a large layer tree.
+      if (selectionOutlineVisible) startTransition(() => setSelectionOutlineVisible(false))
     }
-    if (historyMovedBack && restoreSelectionGuidesOnUndoRef.current) {
-      // A preserve event belongs to the edit being undone; do not let it leak
-      // into the next content revision and mask the undo transition.
-      preserveSelectionOnNextContentRevisionRef.current = false
-      setSelectionOutlineVisible(true)
-      setAnimationCellSelectionOutlineVisible(session.selectedAnimationCellKeys.length > 0 || session.selectedAnimationMaskCellKeys.length > 0)
-      return
-    }
-    // Capture the guide state before handling the preserve flag. Selection
-    // transforms can explicitly preserve guides, and undo must restore that
-    // same pre-edit state.
-    if (!historyMovedBack) restoreSelectionGuidesOnUndoRef.current = selectionOutlineVisible
-    if (preserveSelectionOnNextContentRevisionRef.current) {
-      preserveSelectionOnNextContentRevisionRef.current = false
-      return
-    }
-    setSelectionOutlineVisible(false)
+    syncContentGuides()
+    return useWorkspace.subscribe(syncContentGuides)
   }, [
+    session.document.id,
     session.contentRevision,
     session.history.position,
     session.selectedAnimationCellKeys.length,
@@ -201,6 +213,16 @@ export function useLayerSelectionGuides({
     return () => window.removeEventListener(CANVAS_SELECTION_STARTED_EVENT, startCanvasSelection)
   }, [session.document.id, store])
 
+  const revealMountedLayer = useCallback((layerId: string): boolean => {
+    cancelLayerRevealRef.current?.()
+    cancelLayerRevealRef.current = null
+    const list = layerListRef.current
+    const row = list && Array.from(list.querySelectorAll<HTMLElement>('[data-layer-id]')).find((candidate) => candidate.dataset.layerId === layerId)
+    if (!list || !row) return false
+    cancelLayerRevealRef.current = observeLayerPanelReveal(list, row)
+    return true
+  }, [layerListRef])
+
   useEffect(() => {
     const revealLayer = (event: Event): void => {
       const detail = (event as CustomEvent<LayerPanelRevealDetail>).detail
@@ -208,39 +230,35 @@ export function useLayerSelectionGuides({
       const liveSession = useWorkspace.getState().sessions.find((item) => item.document.id === detail.documentId)
       const layer = liveSession?.document.layers.find((candidate) => candidate.id === detail.layerId)
       if (!liveSession || !layer) return
-      store.revealLayerInPanel(detail.documentId, detail.layerId)
+      useWorkspace.getState().revealLayerInPanel(detail.documentId, detail.layerId)
       revealSequenceRef.current += 1
+      // Repeated canvas clicks need scrolling feedback, not new panel state.
+      if (revealMountedLayer(detail.layerId)) return
       setLayerRevealRequest({ layerId: detail.layerId, sequence: revealSequenceRef.current })
     }
     window.addEventListener(LAYER_PANEL_REVEAL_EVENT, revealLayer)
-    return () => window.removeEventListener(LAYER_PANEL_REVEAL_EVENT, revealLayer)
-  }, [session.document.id, store])
+    return () => {
+      window.removeEventListener(LAYER_PANEL_REVEAL_EVENT, revealLayer)
+      cancelLayerRevealRef.current?.()
+    }
+  }, [session.document.id, revealMountedLayer])
 
   useLayoutEffect(() => {
-    if (!layerRevealRequest) return
-    const list = layerListRef.current
-    if (!list) return
-    const row = Array.from(list.querySelectorAll<HTMLElement>('[data-layer-id]')).find((candidate) => candidate.dataset.layerId === layerRevealRequest.layerId)
-    if (!row) return
-    const listBounds = list.getBoundingClientRect()
-    const rowBounds = row.getBoundingClientRect()
-    const stickyHeaderHeight = Number.parseFloat(getComputedStyle(list).getPropertyValue('--animation-header-height')) || 34
-    list.scrollTop = layerPanelRevealScrollTop({
-      scrollTop: list.scrollTop,
-      viewportTop: listBounds.top,
-      viewportHeight: list.clientHeight || listBounds.height,
-      stickyHeaderHeight,
-      rowTop: rowBounds.top,
-      rowHeight: rowBounds.height
-    })
-  }, [layerRevealRequest])
+    if (!layerRevealRequest || layerRevealRequest.sequence !== revealSequenceRef.current) return
+    revealMountedLayer(layerRevealRequest.layerId)
+  }, [layerRevealRequest, revealMountedLayer])
 
   useEffect(() => {
     const clearOutsideSelection = (event: PointerEvent): void => {
       const target = event.target instanceof Element ? event.target : null
       const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
       const list = layerListRef.current
-      if (!target) return
+      if (!target || isScrollbarPointer(event)) return
+      // This listener runs before control handlers (including portalled ones).
+      // Parameter editing must retain the batch it is about to operate on.
+      if (target.closest('input[type="range"], [role="slider"], .range-field, .pressure-range-stack, .color-editor-field')) return
+      const rangeLabel = target.closest('label')
+      if (rangeLabel?.control instanceof HTMLInputElement && rangeLabel.control.type === 'range') return
       const insideList = Boolean(list?.contains(target))
       if (
         insideList &&
@@ -254,7 +272,7 @@ export function useLayerSelectionGuides({
       // must not be treated as a click on empty canvas/UI and clear it.
       if (
         target?.closest(
-          '[data-animation-frame-id], [data-animation-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal'
+          '[data-animation-frame-id], [data-animation-cel-key], [data-animation-group-cel-key], [data-animation-mask-cel-key], [data-preserve-animation-selection], .context-menu, .layer-context-menu, .layer-modal, .frame-properties-modal, .cel-properties-modal'
         )
       )
         return

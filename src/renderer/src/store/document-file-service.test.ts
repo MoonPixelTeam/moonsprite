@@ -5,6 +5,7 @@ import { createDocument } from '@/core/document'
 import { setRuntimeAppLocale } from '@/core/localization'
 import { decodePng } from '@/core/png'
 import { encodePng } from '@/core/png-encode'
+import { loadEditorPreferences } from '@/core/file-preferences'
 import { exportDocumentFile, exportSpriteSheetFile, exportTimelapseFile, saveDocumentFile } from './document-file-service'
 
 beforeAll(() => {
@@ -50,6 +51,7 @@ describe('document PSD export service', () => {
 
     expect(saveProject).not.toHaveBeenCalled()
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/selected-folder/chosen-location.moonsprite', expect.any(Uint8Array))
+    expect(loadEditorPreferences()).toMatchObject({ lastSaveDirectory: 'D:/selected-folder', lastExportDirectory: '' })
   })
 
   it('writes a layered PSD file directly to an explicit export directory', async () => {
@@ -63,6 +65,7 @@ describe('document PSD export service', () => {
     expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
     expect(writeBinaryAtomic.mock.calls[0][0]).toBe('D:/exports/layers.psd')
     expect(new TextDecoder().decode(writeBinaryAtomic.mock.calls[0][1].subarray(0, 4))).toBe('8BPS')
+    expect(loadEditorPreferences()).toMatchObject({ lastSaveDirectory: '', lastExportDirectory: 'D:/exports' })
   })
 
   it('keeps the native export dialog fallback when no directory is supplied', async () => {
@@ -343,6 +346,16 @@ describe('timelapse image sequence export service', () => {
 })
 
 describe('sprite sheet file export service', () => {
+  it('uses the chosen native file name for sprite sheets and cancels before writing', async () => {
+    const exportImage = vi.fn().mockResolvedValueOnce({ canceled: false, filePath: 'D:/exports/Chosen.png' }).mockResolvedValueOnce({ canceled: true })
+    const writeBinaryAtomic = vi.fn(async () => {})
+    const api = { exportImage, writeBinaryAtomic } as unknown as MoonSpriteApi
+    const document = createDocument('Combined', 1, 2, 'rgba')
+    await expect(exportSpriteSheetFile(api, document, 'Original')).resolves.toBe('D:/exports/Chosen.png')
+    expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
+    await expect(exportSpriteSheetFile(api, document, 'Original')).resolves.toBeNull()
+    expect(writeBinaryAtomic).toHaveBeenCalledTimes(1)
+  })
   it('writes one combined PNG file to the selected directory with a safe name', async () => {
     const writeBinaryAtomic = vi.fn(async (_filePath: string, _data: Uint8Array) => {})
     const chooseDirectory = vi.fn(async () => ({ canceled: false, directoryPath: 'D:/exports' }))
@@ -368,4 +381,18 @@ describe('sprite sheet file export service', () => {
     })).resolves.toBe('D:/exports/Hero (1).png')
     expect(writeBinaryAtomic).toHaveBeenCalledWith('D:/exports/Hero (1).png', expect.any(Uint8Array))
   })
+})
+
+it('applies export protection instead of bypassing it through native PNG writing', async () => {
+  const { api, writeBinaryAtomic } = exportApi()
+  const writeScaledPngAtomic = vi.fn()
+  api.writeScaledPngAtomic = writeScaledPngAtomic
+  localStorage.setItem('moonsprite.preference.export-protection', 'blur')
+  const document = createDocument('protected', 2, 1, 'rgba')
+  document.layers[0].pixels.set([255, 0, 0, 255, 0, 0, 255, 255])
+  await exportDocumentFile(api, document, { name: 'protected', format: 'png-rgba', target: 'document', scalePercent: 400, directory: 'D:/exports' })
+  expect(writeScaledPngAtomic).not.toHaveBeenCalled()
+  expect(writeBinaryAtomic).toHaveBeenCalledOnce()
+  const exported = decodePng(writeBinaryAtomic.mock.calls[0][1])
+  expect(exported.width).toBe(8)
 })

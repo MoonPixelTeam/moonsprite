@@ -1744,6 +1744,7 @@ describe('selection clipboard', () => {
 
     const pasted = getActiveLayer(document)
     expect(document.layers.map((layer) => layer.id)).toEqual([bottom.id, active.id, pasted.id, top.id])
+    expect(useWorkspace.getState().sessions[0].timelineActiveContext.row).toEqual({ kind: 'layer', ownerKind: 'layer', ownerId: pasted.id })
     expect(pasted.groupId).toBe(group.id)
     expect(readLayerColorAt(document, pasted, 0, 0)).toEqual({ r: 0, g: 255, b: 0, a: 255 })
 
@@ -2045,6 +2046,34 @@ describe('selection clipboard', () => {
 })
 
 describe('selection properties', () => {
+  it('transforms a floating clipboard paste without removing its copy source', () => {
+    const document = createDocument('clipboard paste properties', 8, 4, 'rgba')
+    const layer = getActiveLayer(document)
+    const target = { x: 2, y: 1, width: 1, height: 1 }
+    const source: SelectionTransformSource = {
+      selection: target,
+      values: Uint32Array.from([packColor(red)]),
+      selectedOffsets: new Uint32Array(0),
+      opaqueOffsets: new Uint32Array(0),
+      opaqueIndices: new Uint32Array(0),
+      opaqueValues: new Uint32Array(0),
+      origin: 'clipboard'
+    }
+    writeLayerColor(document, layer, target.y * document.width + target.x, red)
+    useWorkspace.getState().addSession(document)
+    const preview = applySelectionTransform(document, source, target, 0, true, undefined, undefined, undefined, layer)
+    useWorkspace.getState().beginFloatingSelectionTransform(source, preview, target, target, true, 'paste', null, target, 0)
+    useWorkspace.getState().setSelectionPropertiesActive(true)
+
+    useWorkspace.getState().updateSelectionProperties({ x: 4 })
+
+    const session = useWorkspace.getState().sessions[0]
+    expect(session.pendingPaste?.copy).toBe(true)
+    expect(session.selection).toMatchObject({ x: 4, y: 1, width: 1, height: 1 })
+    expect(readLayerColorAt(document, layer, 2, 1)).toEqual(red)
+    expect(readLayerColorAt(document, layer, 4, 1)).toEqual(red)
+  })
+
   it('updates selection geometry, keeps the mask, shrinks to content, and supports undo', () => {
     const document = createDocument('selection properties', 8, 6, 'rgba')
     const layer = getActiveLayer(document)

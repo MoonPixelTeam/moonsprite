@@ -193,3 +193,39 @@ it('keeps multi-frame and multi-cel selections after their respective batch oper
   expect(session.selectedAnimationCellKeys).toEqual([firstKey, secondKey])
   expect(session.selectionGuidesPreservedAtContentRevision).toBe(session.contentRevision)
 })
+
+
+it.each(['frame', 'cel', 'layer'] as const)('restores visible %s selection through move undo and redo', (kind) => {
+  const doc = createDocument('move selection history', 2, 2, 'rgba')
+  const first = doc.layers[0]
+  const second = createLayer('Other', 2, 2, 'rgba')
+  doc.layers.push(second)
+  useWorkspace.getState().addSession(doc)
+  const commands = useWorkspace.getState()
+  commands.duplicateAnimationFrame()
+  commands.duplicateAnimationFrame()
+  const ids = doc.animation!.frames.map(frame => frame.id)
+  const keys = ids.map(id => animationCelKey(first.id, id))
+  if (kind === 'frame') commands.selectAnimationFrame(ids[0])
+  else if (kind === 'cel') commands.selectAnimationCell(keys[0])
+  else commands.selectLayer(first.id)
+  const {container} = render(<ConnectedPanel />)
+  const session = useWorkspace.getState().sessions[0]
+  const selected = () => kind === 'frame' ? session.selectedAnimationFrameIds : kind === 'cel' ? session.selectedAnimationCellKeys : session.selectedLayerIds
+  const before = [...selected()]
+  const move = () => {
+    if (kind === 'frame') commands.moveSelectedAnimationFrames(ids[2], true)
+    else if (kind === 'cel') commands.moveSelectedAnimationCels(first.id, ids[2], keys[0])
+    else commands.reorderLayers([first.id], second.id, true)
+  }
+  act(move)
+  act(() => commands.undo())
+  expect(selected()).toEqual(before)
+  const selector = kind === 'frame' ? '[data-animation-frame-selection]' : kind === 'cel' ? '[data-animation-cel-selection]' : '[data-animation-selected-row]'
+  expect(container.querySelector(selector)).not.toBeNull()
+  act(() => commands.redo())
+  expect(container.querySelector(selector)).not.toBeNull()
+  act(() => commands.undo())
+  expect(selected()).toEqual(before)
+  expect(container.querySelector(selector)).not.toBeNull()
+})

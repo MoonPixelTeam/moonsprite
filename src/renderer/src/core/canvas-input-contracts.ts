@@ -1,4 +1,5 @@
 import type { LayerMoveState } from './layer-move-state'
+import type { MarqueeModifierMode, MarqueeTemporaryCenterRestore } from './canvas-marquee-contracts'
 import type { GradientStop, LiquifyMode } from '@shared/types-brush'
 import type { RasterLayer } from '@shared/types-layer'
 import type { RgbaColor } from '@shared/types-color'
@@ -52,6 +53,8 @@ export type SelectionShearHandle = 'shear-n' | 'shear-e' | 'shear-s' | 'shear-w'
 export interface CanvasDragState extends LayerMoveState {
   kind:
     | 'draw'
+    | 'magic-eraser'
+    | 'fill'
     | 'tile-draw'
     | 'free-tile-draw'
     | 'free-tile-edit'
@@ -92,6 +95,8 @@ export interface CanvasDragState extends LayerMoveState {
   start: CanvasPoint
   last: CanvasPoint
   edit?: PixelEdit
+  fillHistoryLabel?: string
+  fillHistoryCommitted?: boolean
   perfectPixelCommittedEdit?: PixelEdit
   perfectPixelStablePathLength?: number
   smoothStroke?: { visited: Set<number> }
@@ -289,10 +294,4 @@ export interface CanvasDragState extends LayerMoveState {
   rawLast?: CanvasPoint
 }
 
-export type MarqueeModifierMode = 'rotate' | 'resize'
-
-export interface MarqueeTemporaryCenterRestore {
-  bounds: SelectionRect
-  direction?: { x: -1 | 1; y: -1 | 1 }
-  fromCenter: boolean
-}
+export type { MarqueeModifierMode, MarqueeTemporaryCenterRestore } from './canvas-marquee-contracts'

@@ -169,6 +169,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
         ]
         const preserveMaskContext = session.selectedAnimationMaskRowKeys.length > 0 || selectedMaskCellOwnerKeys.length > 0 || session.activeLayerMaskId !== null
         if (preserveMaskContext && !preservePlaybackFrame) activateAnimationFrame(session.document, frameId, false)
+        session.selectedAnimationGroupCellKeys = []
         session.selectedAnimationCellKeys = []
         session.animationCellSelectionAnchorKey = null
         session.animationCellSelectionExplicit = false
@@ -207,7 +208,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       }, false)
       if (!preservePlaybackFrame || retargetLoopPlayback) get().setActiveAnimationFrame(frameId)
     },
-    selectAnimationCell(key, mode = 'replace') {
+    selectAnimationCell(key, mode = 'replace', replacementKeys) {
       get().mutateActive(
         (session) => {
           const target = parseAnimationCelKey(key)
@@ -236,6 +237,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
             session.selectedGroupId = null
             session.layerSelectionExplicit = false
           }
+          if (mode === 'replace') session.selectedAnimationGroupCellKeys = []
           const current = new Set(session.selectedAnimationCellKeys)
           if (implicitAnchorKey) current.add(implicitAnchorKey)
           if (mode === 'toggle') {
@@ -246,6 +248,16 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
             for (const slot of animationSlotRange(session.document.layers.map((layer) => layer.id), timeline.frames.map((frame) => frame.id), anchor ?? key, key)) current.add(slot)
           } else {
             current.clear()
+            if (replacementKeys) {
+              const layers = new Set(session.document.layers.map(layer => layer.id))
+              const frames = new Set(timeline.frames.map(frame => frame.id))
+              const groups = new Set(session.document.groups.map(group => group.id))
+              for (const candidate of replacementKeys) {
+                const slot = parseAnimationCelKey(candidate)
+                if (slot && layers.has(slot.layerId) && frames.has(slot.frameId)) current.add(candidate)
+                if (slot && groups.has(slot.layerId) && frames.has(slot.frameId)) session.selectedAnimationGroupCellKeys!.push(candidate)
+              }
+            }
             current.add(key)
           }
           session.selectedAnimationCellKeys = [...current]
@@ -288,6 +300,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
           const mask = animationMaskAt(timeline, target.layerId, target.frameId)
           session.selectedAnimationFrameIds = []
           session.animationFrameSelectionAnchorId = null
+          session.selectedAnimationGroupCellKeys = []
           session.selectedAnimationCellKeys = []
           session.animationCellSelectionAnchorKey = null
           session.animationCellSelectionExplicit = false
@@ -366,6 +379,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
           const preserveLayerSelection = selectionMode === 'toggle' && (session.selectedLayerIds.length > 0 || session.selectedGroupIds.length > 0 || session.selectedGroupId !== null)
           session.selectedAnimationFrameIds = []
           session.animationFrameSelectionAnchorId = null
+          session.selectedAnimationGroupCellKeys = []
           session.selectedAnimationCellKeys = []
           session.animationCellSelectionAnchorKey = null
           session.animationCellSelectionExplicit = false
@@ -423,6 +437,7 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
           if (preserveActiveContext) {
             session.selectedAnimationFrameIds = []
             session.animationFrameSelectionAnchorId = null
+            session.selectedAnimationGroupCellKeys = []
             session.selectedAnimationCellKeys = []
             session.animationCellSelectionAnchorKey = null
             session.animationCellSelectionExplicit = false

@@ -2,13 +2,44 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { TimelapseSettings } from '@shared/types-timelapse'
 import { I18nProvider } from '../I18nProvider'
-import { TimelapseDialog } from '../TimelapseDialog'
+import { ProjectTimelapseDialog, TimelapseDialog } from '../TimelapseDialog'
+import { useWorkspace } from '@/store/workspace'
+import { createDocument } from '@/core/document'
 import { TimelapseExportDialog } from './TimelapseExportDialog'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear() })
 const settings: TimelapseSettings = { enabled: true, quality: 'low', fps: 12, speed: 2, snapshots: [
   { id: 'one', capturedAt: 100, elapsedMs: 100, width: 1, height: 1, data: new Uint8Array([1]) }
 ] }
+
+it('updates project recording controls immediately and retains them after reopening the dialog', () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+  const previous = useWorkspace.getState()
+  useWorkspace.setState({ sessions: [], activeId: null })
+  const document = createDocument('recording settings', 2, 2, 'rgba', false)
+  useWorkspace.getState().addSession(document)
+  const renderDialog = () => render(<I18nProvider><ProjectTimelapseDialog documentId={document.id} documentName={document.name} defaultDirectory="" onChange={useWorkspace.getState().setTimelapseSettings} onClear={useWorkspace.getState().clearTimelapse} onExport={vi.fn(async () => true)} onClose={vi.fn()} /></I18nProvider>)
+  try {
+    const view = renderDialog()
+    const recording = view.getByRole('checkbox', { name: '记录绘画过程' })
+    fireEvent.click(recording)
+    expect(recording).toBeChecked()
+    fireEvent.click(recording)
+    expect(recording).not.toBeChecked()
+    fireEvent.click(view.getByRole('checkbox', { name: '记录撤销步骤' }))
+    expect(view.getByRole('checkbox', { name: '记录撤销步骤' })).toBeChecked()
+    fireEvent.click(view.getByRole('button', { name: '录制方式' }))
+    fireEvent.click(view.getByRole('option', { name: '全程录制' }))
+    expect(view.getByRole('button', { name: '录制方式' })).toHaveTextContent('全程录制')
+    expect(document.timelapse).toMatchObject({ enabled: false, recordUndoSteps: true, mode: 'full' })
+    expect(document.dirty).toBe(true)
+    view.unmount()
+    const reopened = renderDialog()
+    expect(reopened.getByRole('checkbox', { name: '记录撤销步骤' })).toBeChecked()
+    expect(reopened.getByRole('button', { name: '录制方式' })).toHaveTextContent('全程录制')
+    reopened.unmount()
+  } finally { useWorkspace.setState(previous) }
+})
 
 it('opens a separate export form and keeps recording controls in the original dialog', async () => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)

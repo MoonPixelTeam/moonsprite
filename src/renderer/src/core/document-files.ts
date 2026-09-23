@@ -6,6 +6,7 @@ import { browserRasterImageExtensions, decodeBrowserRasterImage } from './raster
 import { currentAppLocale } from './localization'
 import { registerInitialDocumentComposite, registerPendingInitialDocumentComposite } from './initial-document-composite'
 import { rehydrateRuntimeRasterDocument } from './runtime-raster'
+import { restoreDecodedRasterBounds, type DecodedRasterBounds } from './document-decode-metadata'
 import { exportAnimationGif } from './gif'
 import { decodeGifAnimation } from './gif-import'
 import { compositeDocument } from './document-composite'
@@ -171,6 +172,7 @@ export function decodeDocumentFile(data: Uint8Array, filePath: string, onDropped
 }
 
 interface DecodeWorkerResponse {
+  rasterBounds?: DecodedRasterBounds[]
   id: number
   document?: SpriteDocument
   initialComposite?: Uint8ClampedArray
@@ -290,9 +292,10 @@ const ensureDecodeWorker = (): Worker => {
     if (event.data.document) {
       if (event.data.droppedTimelapseFrames) for (const report of event.data.droppedTimelapseFrames) request.onDroppedTimelapseFrames?.(report)
       rehydrateRuntimeRasterDocument(event.data.document)
+      if (event.data.rasterBounds) restoreDecodedRasterBounds(event.data.document, event.data.rasterBounds)
       request.document = event.data.document
       request.initialCompositeFrameId = event.data.document.animation?.activeFrameId
-      if (event.data.initialComposite) registerInitialDocumentComposite(event.data.document, event.data.initialComposite, request.initialCompositeFrameId)
+      if (event.data.initialComposite) registerInitialDocumentComposite(event.data.document, event.data.initialComposite, request.initialCompositeFrameId, { completeFrame: true })
       if (!event.data.initialCompositePending) {
         pendingDecodeRequests.delete(event.data.id)
         request.resolveInitialComposite()
@@ -308,7 +311,7 @@ const ensureDecodeWorker = (): Worker => {
     }
     if (event.data.completed && request.document) {
       pendingDecodeRequests.delete(event.data.id)
-      if (event.data.initialComposite) registerInitialDocumentComposite(request.document, event.data.initialComposite, request.initialCompositeFrameId)
+      if (event.data.initialComposite) registerInitialDocumentComposite(request.document, event.data.initialComposite, request.initialCompositeFrameId, { completeFrame: true })
       request.resolveInitialComposite()
       request.diagnostic?.finish(event.data.error ? 'error' : 'ok', {
         initialComposite: Boolean(event.data.initialComposite),
@@ -376,7 +379,13 @@ export async function decodeDocumentFileAsync(data: Uint8Array, filePath: string
     try {
       const result = await decodeDocumentFileInWorker(data, filePath, onProgress, project, onDroppedTimelapseFrames)
       if (project && !backup) registerProjectSaveBaseline(result.document, filePath, source)
-      if (result.initialComposite) registerPendingInitialDocumentComposite(result.document, result.initialComposite, result.document.animation?.activeFrameId)
+      if (result.initialComposite) {
+        registerPendingInitialDocumentComposite(result.document, result.initialComposite, result.document.animation?.activeFrameId)
+        // Keep the editor responsive behind the opening UI until the worker's
+        // first frame is ready, instead of recompositing it on the UI thread.
+        await result.initialComposite
+        onProgress?.(1)
+      }
       return result.document
     } catch (error) {
       if (!(error instanceof DocumentDecodeWorkerTransportError)) throw error

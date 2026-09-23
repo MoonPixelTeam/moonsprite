@@ -84,8 +84,9 @@ export function workspacePanelDockPresence(
 export const DEFAULT_INSPECTOR_WIDTH = 300
 export const DEFAULT_LEFT_DOCK_WIDTH = 280
 export const DEFAULT_BOTTOM_DOCK_HEIGHT = 220
-export const MINIMUM_SIDE_DOCK_WIDTH = 32
-export const MINIMUM_BOTTOM_DOCK_HEIGHT = 48
+// The compact rail still needs one 26px action button plus 8px padding on each side.
+export const MINIMUM_SIDE_DOCK_WIDTH = 42
+export const MINIMUM_BOTTOM_DOCK_HEIGHT = 120
 export const DEFAULT_INSPECTOR_WIDTH_RATIO = DEFAULT_INSPECTOR_WIDTH / 1440
 export const DEFAULT_LEFT_DOCK_WIDTH_RATIO = DEFAULT_LEFT_DOCK_WIDTH / 1440
 export const DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO = DEFAULT_BOTTOM_DOCK_HEIGHT / 800
@@ -132,7 +133,7 @@ export function constrainInspectorWidth(width: unknown, viewportWidth: number): 
 }
 
 export function constrainLeftDockWidth(width: unknown, viewportWidth: number): number {
-  return clamp(width, DEFAULT_LEFT_DOCK_WIDTH, 0, Math.max(0, viewportWidth))
+  return clamp(width, DEFAULT_LEFT_DOCK_WIDTH, MINIMUM_SIDE_DOCK_WIDTH, Math.max(MINIMUM_SIDE_DOCK_WIDTH, viewportWidth))
 }
 
 export function constrainBottomDockHeight(height: unknown, availableHeight: number): number {

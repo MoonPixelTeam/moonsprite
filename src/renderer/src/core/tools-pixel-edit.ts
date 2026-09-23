@@ -49,10 +49,8 @@ export const paintLayerValue = (
 }
 
 export /**
- * Composites a captured selection pixel over the destination pixel for copy /
- * paste-style operations. A normal selection move bypasses this helper and
- * writes the captured packed value directly, so moving a translucent pixel
- * cannot accumulate alpha. Masks keep their scalar/direct-write semantics and
+ * Composites a captured selection pixel over the destination for moves,
+ * copies, and pastes. Masks keep their scalar/direct-write semantics and
  * therefore bypass color compositing.
  */
 const compositeSelectionPixelOver = (document: SpriteDocument, layer: RasterLayer, destination: number, value: number): number => {
@@ -163,16 +161,19 @@ const remapPixelEditAfterLayerExpansion = (layer: RasterLayer, edit: PixelEdit, 
 }
 
 export const ensureLayerCoversEditRect = (document: SpriteDocument, layer: RasterLayer, edit: PixelEdit, rect: SelectionRect, padding = EDIT_EXPANSION_PADDING): boolean => {
-  const left = Math.max(0, Math.floor(rect.x) - padding)
-  const top = Math.max(0, Math.floor(rect.y) - padding)
-  const right = Math.min(document.width, Math.ceil(rect.x + rect.width) + padding)
-  const bottom = Math.min(document.height, Math.ceil(rect.y + rect.height) + padding)
+  const left = Math.max(0, Math.floor(rect.x))
+  const top = Math.max(0, Math.floor(rect.y))
+  const right = Math.min(document.width, Math.ceil(rect.x + rect.width))
+  const bottom = Math.min(document.height, Math.ceil(rect.y + rect.height))
   if (right <= left || bottom <= top) return false
   if (left >= layer.offsetX && top >= layer.offsetY && right <= layer.offsetX + layer.width && bottom <= layer.offsetY + layer.height) return true
   if (edit.runs?.length || edit.denseRegion?.count) return false
   const oldWidth = layer.width
   const oldOrigin = getLayerStorageOrigin(layer)
-  if (!expandLayerToRect(layer, left, top, right, bottom)) return false
+  // Padding is spare capacity, not required coverage. Testing the padded
+  // footprint would copy the entire bitmap and remap stroke history again
+  // at every advancing stamp, even while the brush still fits in storage.
+  if (!expandLayerToRect(layer, Math.max(0, left - padding), Math.max(0, top - padding), Math.min(document.width, right + padding), Math.min(document.height, bottom + padding))) return false
   if (edit.before.size > 0 || edit.after.size > 0 || brushCoverageByEdit.has(edit)) remapPixelEditAfterLayerExpansion(layer, edit, oldWidth, oldOrigin)
   return true
 }

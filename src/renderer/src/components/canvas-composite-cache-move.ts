@@ -9,20 +9,23 @@ import { applyRelativeLuminance } from '@/core/raster'
 import type { RasterContext2D } from './canvas-selection-renderer'
 import { type MovePreviewSurface, imageData, repeatedLayers } from './canvas-composite-cache-surfaces'
 import { CanvasGpuMovePreview } from './canvas-composite-cache-gpu'
+import type { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
 
 /** Owns both exact and GPU movement previews for one canvas cache. */
 export class CanvasMovePreviewRenderer {
   private movePreview: MovePreviewSurface | null = null
   private readonly gpu: CanvasGpuMovePreview
-  constructor(private readonly compositeCache: DocumentCompositeCache, private readonly maxCacheBytes: number) {
+  constructor(private readonly compositeCache: DocumentCompositeCache, private readonly maxCacheBytes: number, private readonly blitter: CanvasCompositeBlitter) {
     this.gpu = new CanvasGpuMovePreview(maxCacheBytes)
   }
   clearRaster(): void { this.movePreview = null }
   clear(): void { this.clearRaster(); this.gpu.clear() }
   private drawSurface(context: RasterContext2D, canvas: OffscreenCanvas, view: ViewState, originX: number, originY: number, x: number, y: number, width: number, height: number): void {
-    // Match the committed cache with one continuous affine blit. Pixel-run
-    // splitting is reserved for overlays; applying it to the full preview
-    // makes high-zoom movement scale with visible pixel count.
+    const axisAligned = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
+    if (axisAligned && this.blitter.requiresAlignedPixelBlit(view.zoom) && !context.imageSmoothingEnabled) {
+      this.blitter.drawAlignedPixelRegion(context, canvas, originX, originY, view.zoom, 0, 0, x, y, width, height)
+      return
+    }
     context.drawImage(canvas, 0, 0, width, height,
       originX + x * view.zoom, originY + y * view.zoom, width * view.zoom, height * view.zoom)
   }

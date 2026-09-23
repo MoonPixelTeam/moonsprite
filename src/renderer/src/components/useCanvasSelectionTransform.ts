@@ -547,7 +547,8 @@ export function useCanvasSelectionTransform(ports: Ports) {
           ports.session.selectedAnimationFrameIds,
           ports.selectedTransformLayers.map((candidate) => candidate.id),
           drag.selectionStart,
-          ports.session.selectedAnimationCellKeys
+          ports.session.selectedAnimationCellKeys,
+          { preserveOutsideCanvas: true }
         )
         if (drag.selectionLayers.length === 0) {
           endSelectionAdjustmentEdit()
@@ -570,7 +571,7 @@ export function useCanvasSelectionTransform(ports: Ports) {
           selectedTarget.instance
         )
         const localSelection = sourceEdit ? freeTileSelectionToEditRaster(sourceEdit, scopedSelection) : null
-        const source = sourceEdit && localSelection ? captureSelectionTransform(sourceEdit.document, localSelection, sourceEdit.layer) : null
+        const source = sourceEdit && localSelection ? captureSelectionTransform(sourceEdit.document, localSelection, sourceEdit.layer, { preserveOutsideCanvas: true }) : null
         if (!sourceEdit || !localSelection || !source) {
           endSelectionAdjustmentEdit()
           return false
@@ -606,14 +607,17 @@ export function useCanvasSelectionTransform(ports: Ports) {
           }
           drag.deferredSelectionPreview = false
           drag.selectionLayers = layers.flatMap((layer) => {
-            const source = captureSelectionTransform(ports.session.document, drag.selectionStart!, layer)
+            const source = captureSelectionTransform(ports.session.document, drag.selectionStart!, layer, { preserveOutsideCanvas: true })
             if (source) ensureSourceQuad(source)
             return source ? [{ layerId: layer.id, source, previewEdit: null, translationPreview: null }] : []
           })
           syncPrimarySelectionLayerState(drag)
         } else {
           drag.selectionSource =
-            captureSelectionTransform(ports.session.document, drag.selectionStart, layer, { cacheOpaqueOffsets: !drag.deferredSelectionPreview }) ?? undefined
+            // Undo of deselect restores the full pasted selection, including
+            // its off-canvas margin. Keep that coordinate frame when capturing
+            // pixels, or the clipped source is stretched into the original box.
+            captureSelectionTransform(ports.session.document, drag.selectionStart, layer, { cacheOpaqueOffsets: !drag.deferredSelectionPreview, preserveOutsideCanvas: true }) ?? undefined
           if (drag.selectionSource) ensureSourceQuad(drag.selectionSource)
         }
       }

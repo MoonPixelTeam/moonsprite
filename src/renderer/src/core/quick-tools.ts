@@ -38,6 +38,7 @@ export interface QuickToolSessionState {
 export const QUICK_TOOL_TARGETS: Record<QuickToolShortcutId, QuickToolTarget> = {
   'tool.pencil.quick': { tool: 'pencil' },
   'tool.airbrush.quick': { tool: 'airbrush' },
+  'tool.magicEraser.quick': { tool: 'magic-eraser' },
   'tool.eraser.quick': { tool: 'eraser' },
   'tool.selection.quick': { tool: 'selection', selectionKind: 'rectangle' },
   'tool.selection.ellipse.quick': { tool: 'selection', selectionKind: 'ellipse' },

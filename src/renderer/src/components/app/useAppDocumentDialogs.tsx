@@ -19,8 +19,8 @@ import { GridSettingsDialog } from '@/components/GridSettingsDialog'
 import { IsoViewSettingsDialog } from '@/components/IsoViewSettingsDialog'
 import { ProjectInfoDialog } from '@/components/ProjectInfoDialog'
 import { ProjectRollbackDialog } from '@/components/ProjectRollbackDialog'
-import { TimelapseDialog } from '@/components/TimelapseDialog'
-import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences } from '@/core/file-preferences'
+import { ProjectTimelapseDialog } from '@/components/TimelapseDialog'
+import { SAVE_FORMAT_PREFERENCE_KEY, loadEditorPreferences, outputDirectoryForOperation, saveDirectoryForNewDocument } from '@/core/file-preferences'
 import { readStoredString } from '@/core/storage'
 import { documentSaveTarget } from '@/core/document-save-policy'
 import { type ExportOptions, type SaveAsOptions, useWorkspace } from '@/store/workspace'
@@ -104,7 +104,7 @@ export function useAppDocumentDialogs({
         <SaveAsDialog
           initialName={session.document.name.replace(/\.(moonsprite|aseprite|ase|png|jpe?g|webp|ico|psd)$/i, '') || 'MoonSprite-project'}
           initialFormat={runtimePreferences.saveOriginalFormat ? documentSaveTarget(session.document)?.format ?? saveAsFormatForPreference(readStoredString(SAVE_FORMAT_PREFERENCE_KEY)) : 'moonsprite'}
-          initialDirectory={runtimePreferences.saveDirectory || defaultFileDirectories.saveDirectory}
+          initialDirectory={saveDirectoryForNewDocument(runtimePreferences) || defaultFileDirectories.saveDirectory}
           exportScalePresets={exportScalePresets}
           onClose={() => setSaveAsOpen(false)}
           onSave={(options) => runSaveActive(true, options)}
@@ -114,7 +114,7 @@ export function useAppDocumentDialogs({
         <SpriteSheetExportDialog
           key={spriteSheetExportSession.document.id}
           session={spriteSheetExportSession}
-          defaultDirectory={runtimePreferences.exportDirectory || defaultFileDirectories.exportDirectory}
+          defaultDirectory={outputDirectoryForOperation(runtimePreferences) || defaultFileDirectories.exportDirectory}
           onClose={() => setSpriteSheetExportSourceId(null)}
           onClosePreview={workspace.closeSpriteSheetPreview}
           onExport={(options) => workspace.exportSpriteSheet(options, spriteSheetExportSession.document.id)}
@@ -148,11 +148,11 @@ export function useAppDocumentDialogs({
         <ProjectRollbackDialog projectPath={session.document.filePath} onClose={() => setProjectRollbackOpen(false)} onRestore={restoreProjectBackup} />
       )}
       {session && timelapseOpen && (
-        <TimelapseDialog
+        <ProjectTimelapseDialog
           key={session.document.id}
           documentName={session.document.name}
-          defaultDirectory={defaultFileDirectories.exportDirectory}
-          settings={session.document.timelapse!}
+          defaultDirectory={outputDirectoryForOperation(runtimePreferences) || defaultFileDirectories.exportDirectory}
+          documentId={session.document.id}
           onChange={(settings) => workspace.setTimelapseSettings(settings)}
           onClear={() => {
             void workspace

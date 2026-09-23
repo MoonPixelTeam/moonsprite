@@ -1,21 +1,19 @@
+import { createCelDragPreview } from './animation-cel-drag-preview'
 import { deriveTimelineLinks } from './deriveTimelineLinks'
 import type { AnimationPointerDrag } from './animation-gesture-types'
-import type { RgbaColor } from '@shared/types-color'
-import type { LayerGroup, RasterLayer } from '@shared/types-layer'
-import { buildLayerPanelTree } from '@/core/layer-panel-layout'
+import { createLayerPanelStructure } from './layer-panel-structure'
 import { animationCelKey, parseAnimationCelKey } from '@/core/animation'
 import { type DocumentSession } from '@/store/workspace'
 import {
-  createAnimationTimelineVisualIndex,
   deriveAnimationTimelineVisualState,
-  type TimelineVisualCell,
-  type TimelineVisualRow
 } from '@/core/animation-timeline-visual-state'
 import { resolveTimelineFocusState } from '@/core/animation-timeline-focus'
 import { timelineCellSlotKey, timelineRowKey, type TimelineCellRef, type TimelineRowRef } from '@/core/animation-timeline-identity'
-import type { LayerDisplayRow, LayerTreeNode } from './layer-panel-contracts'
 
-interface Options {
+export interface LayerPanelVisualOptions {
+  cellStateCache?: import('@/core/animation-timeline-cell-cache').TimelineVisualCellCache
+  structure?: ReturnType<typeof createLayerPanelStructure>
+  inlineMasks?: boolean
   session: DocumentSession
   timeline: import('@shared/types-animation').AnimationTimeline
   animationGestureActiveTarget: import('@/components/panels/animation-gesture-types').AnimationGestureActiveTarget | null
@@ -30,6 +28,9 @@ interface Options {
 }
 
 export function deriveLayerPanelVisuals({
+  cellStateCache,
+  structure,
+  inlineMasks = false,
   session,
   timeline,
   animationGestureActiveTarget,
@@ -41,87 +42,9 @@ export function deriveLayerPanelVisuals({
   animationCelDragAnchorKey,
   animationCelDropTargetKey,
   animationCellSelectionOutlineVisible
-}: Options) {
-  const layerById = new Map(session.document.layers.map((layer) => [layer.id, layer]))
-
-  const groupById = new Map(session.document.groups.map((group) => [group.id, group]))
-
-  const freeTileSetOptions = [
-    ...session.document.layers
-      .reduce((sets, layer) => {
-        if (layer.kind !== 'free-tile' || !layer.freeTileSetId || sets.has(layer.freeTileSetId)) return sets
-        sets.set(layer.freeTileSetId, { id: layer.freeTileSetId, name: layer.name, sourceCount: layer.freeTileSources?.length ?? 0 })
-        return sets
-      }, new Map<string, { id: string; name: string; sourceCount: number }>())
-      .values()
-  ]
-
-  const displayColorStripeSegments = (
-    target: RasterLayer | LayerGroup,
-    kind: 'layer' | 'group',
-    depth: number
-  ): Array<{ color: RgbaColor; left: number; width: number }> => {
-    let groupId = kind === 'group' ? target.id : ((target as RasterLayer).groupId ?? null)
-    const visited = new Set<string>()
-    const ancestry: LayerGroup[] = []
-    while (groupId && !visited.has(groupId)) {
-      visited.add(groupId)
-      const group = groupById.get(groupId)
-      if (!group) break
-      ancestry.push(group)
-      groupId = group.parentGroupId ?? null
-    }
-    const groups = ancestry.slice().reverse()
-    const ownColor = target.displayColor
-    const colorsByLevel: Array<RgbaColor | undefined> = []
-    if (groups.every((group) => !group.displayColor) && !ownColor) return []
-    if (groups.every((group) => !group.displayColor)) {
-      colorsByLevel.push(...Array.from({ length: depth + 1 }, () => ownColor))
-    } else {
-      let currentColor: RgbaColor | undefined
-      for (let level = 0; level <= depth; level += 1) {
-        const groupColor = groups[level]?.displayColor
-        if (groupColor) currentColor = groupColor
-        if (level === depth && ownColor) currentColor = ownColor
-        colorsByLevel.push(currentColor)
-      }
-    }
-    return colorsByLevel.flatMap((color, level) => (color ? [{ color, left: level === 0 ? 0 : 4 + (level - 1) * 14, width: level === 0 ? 4 : 14 }] : []))
-  }
-
-  const nodes = buildLayerPanelTree({
-    layers: session.document.layers,
-    groups: session.document.groups,
-    collapsedGroupIds: session.collapsedGroupIds
-  })
-    .map((node): LayerTreeNode | null => {
-      if (node.kind === 'layer') {
-        const layer = layerById.get(node.id)
-        return layer ? { ...node, layer } : null
-      }
-      const group = groupById.get(node.id)
-      return group ? { ...node, group } : null
-    })
-    .filter((node): node is LayerTreeNode => node !== null)
-
-  const maskOwnerFrameKey = (ownerKind: 'layer' | 'group', ownerId: string, frameId: string): string => `${ownerKind}:${ownerId}:${frameId}`
-
-  const maskSnapshotEntries = [
-    ...(timeline.layerMasks ?? []).map((entry) => ({
-      ownerKind: 'layer' as const,
-      ownerId: entry.layerId,
-      frameId: entry.frameId,
-      mask: entry.mask,
-      linkSourceId: entry.mask.linkedMaskId ?? null
-    })),
-    ...(timeline.groupMasks ?? []).map((entry) => ({
-      ownerKind: 'group' as const,
-      ownerId: entry.groupId,
-      frameId: entry.frameId,
-      mask: entry.mask,
-      linkSourceId: entry.mask.linkedMaskId ?? null
-    }))
-  ]
+}: LayerPanelVisualOptions) {
+  const { linkedGroups, celRowByOwner, maskRowByOwner, visualTopology, layerById, groupById, freeTileSetOptions, displayColorStripeSegments, nodes, maskOwnerFrameKey,
+    maskVisualByOwnerFrame, displayRows, visualRows, visualCells, canonicalTimelineIndex } = structure ?? createLayerPanelStructure(session, timeline, inlineMasks)
 
   // A formal layer/group row selection owns the panel focus. Treat any mask
   // data left from the previous render as stale until that selection settles.
@@ -130,9 +53,9 @@ export function deriveLayerPanelVisuals({
   const toTimelineCellRef = (key: string, kind: 'cel' | 'mask'): TimelineCellRef | null => {
     const parsed = parseAnimationCelKey(key)
     if (!parsed) return null
-    const ownerKind = session.document.layers.some((layer) => layer.id === parsed.layerId)
+    const ownerKind = layerById.has(parsed.layerId)
       ? 'layer'
-      : session.document.groups.some((group) => group.id === parsed.layerId)
+      : groupById.has(parsed.layerId)
         ? 'group'
         : null
     return ownerKind ? { kind, ownerKind, ownerId: parsed.layerId, frameId: parsed.frameId } : null
@@ -200,66 +123,6 @@ export function deriveLayerPanelVisuals({
   const maskContextActive = timelineActiveRow?.kind === 'mask'
 
   const activeMaskOwnerKey = timelineActiveRow?.kind === 'mask' ? `${timelineActiveRow.ownerKind}:${timelineActiveRow.ownerId}` : null
-
-  const maskVisualByOwnerFrame = new Map(maskSnapshotEntries.map((entry) => [maskOwnerFrameKey(entry.ownerKind, entry.ownerId, entry.frameId), entry.mask]))
-
-  const animationMaskLayerIds = new Set(maskSnapshotEntries.filter((entry) => entry.ownerKind === 'layer').map((entry) => entry.ownerId))
-
-  const animationMaskGroupIds = new Set(maskSnapshotEntries.filter((entry) => entry.ownerKind === 'group').map((entry) => entry.ownerId))
-
-  const displayRows: LayerDisplayRow[] = nodes.flatMap((node): LayerDisplayRow[] => {
-    const hasMask = node.kind === 'layer' ? animationMaskLayerIds.has(node.layer.id) : animationMaskGroupIds.has(node.group.id)
-    if (!hasMask) return [{ kind: 'node', node }]
-    const owner = node.kind === 'layer' ? node.layer : node.group
-    return [
-      { kind: 'mask', ownerKind: node.kind, owner, depth: node.depth },
-      { kind: 'node', node }
-    ]
-  })
-
-  // Keep timeline semantics in the pure core derivation. JSX below only maps
-  // the resulting row/frame/cel states to visual classes and data attributes.
-  const visualRows: TimelineVisualRow[] = displayRows.map((displayRow) =>
-    displayRow.kind === 'mask'
-      ? { id: `mask:${displayRow.ownerKind}:${displayRow.owner.id}`, ownerId: displayRow.owner.id, ownerKind: displayRow.ownerKind, kind: 'mask' }
-      : displayRow.node.kind === 'group'
-        ? { id: displayRow.node.id, ownerId: displayRow.node.id, ownerKind: 'group', kind: 'group' }
-        : { id: displayRow.node.id, ownerId: displayRow.node.layer.id, ownerKind: 'layer', kind: 'layer' }
-  )
-
-  const maskRows = new Set(
-    displayRows
-      .filter((displayRow): displayRow is Extract<LayerDisplayRow, { kind: 'mask' }> => displayRow.kind === 'mask')
-      .map((displayRow) => maskOwnerFrameKey(displayRow.ownerKind, displayRow.owner.id, ''))
-  )
-
-  const rawMaskVisualEntries = maskSnapshotEntries.filter((entry) => maskRows.has(maskOwnerFrameKey(entry.ownerKind, entry.ownerId, '')))
-
-  const maskVisualIdByMaskId = new Map<string, string>()
-
-  for (const entry of rawMaskVisualEntries)
-    if (!maskVisualIdByMaskId.has(entry.mask.id)) maskVisualIdByMaskId.set(entry.mask.id, `mask-slot:${entry.ownerKind}:${entry.ownerId}:${entry.frameId}`)
-
-  const visualCells: TimelineVisualCell[] = [
-    ...timeline.cels.map((cel) => ({
-      id: cel.id,
-      key: animationCelKey(cel.layerId, cel.frameId),
-      ownerId: cel.layerId,
-      ownerKind: 'layer' as const,
-      frameId: cel.frameId,
-      kind: 'cel' as const,
-      linkSourceId: cel.linkedCelId ?? null
-    })),
-    ...rawMaskVisualEntries.map((entry) => ({
-      id: `mask-slot:${entry.ownerKind}:${entry.ownerId}:${entry.frameId}`,
-      key: animationCelKey(entry.ownerId, entry.frameId),
-      ownerId: entry.ownerId,
-      ownerKind: entry.ownerKind,
-      frameId: entry.frameId,
-      kind: 'mask' as const,
-      linkSourceId: entry.linkSourceId ? (maskVisualIdByMaskId.get(entry.linkSourceId) ?? null) : null
-    }))
-  ]
 
   const visualSelectedFrameIds = animationGestureSelection
     ? animationGestureSelection.kind === 'frame'
@@ -342,16 +205,13 @@ export function deriveLayerPanelVisuals({
 
   const visualActiveFrameIndex = timeline.frames.findIndex((frame) => frame.id === visualActiveFrameId)
 
-  const canonicalTimelineIndex = createAnimationTimelineVisualIndex(
-    timeline.frames.map((frame) => ({ id: frame.id })),
-    visualCells
-  )
-
   const derivedTimelineVisualState = deriveAnimationTimelineVisualState({
     rows: visualRows,
     frames: timeline.frames.map((frame) => ({ id: frame.id })),
     cells: visualCells,
     canonicalIndex: canonicalTimelineIndex,
+    topology: visualTopology,
+    cellStateCache,
     selection: {
       activeLayerId: visualActiveLayerId,
       activeFrameId: visualActiveFrameId,
@@ -394,8 +254,8 @@ export function deriveLayerPanelVisuals({
   )
 
   const visualCellStateBySlot = new Map(
-    timelineVisualState.cells.map((state) => [
-      timelineCellSlotKey({ kind: state.kind, ownerKind: state.ownerKind, ownerId: state.ownerId, frameId: state.frameId }),
+    timelineVisualState.cells.map((state, index) => [
+      visualTopology.slots[index].slotKey,
       state
     ])
   )
@@ -570,24 +430,19 @@ export function deriveLayerPanelVisuals({
             ? 'cel'
             : null
 
-  const selectedCelPositions = displayRows.flatMap((displayRow, row) => {
-    if (displayRow.kind === 'mask') {
-      if (activeCelPreviewKind === 'cel') return []
-      return timeline.frames.flatMap((frame, column) => {
-        return renderedMaskCellKeySet.has(animationCelKey(displayRow.owner.id, frame.id)) ? [{ row, column }] : []
-      })
+  const selectedCelPositions: Array<{row: number; column: number}> = []
+  const addPositions = (keys: ReadonlySet<string>, rows: ReadonlyMap<string, number>): void => {
+    for (const key of keys) {
+      const parsed = parseAnimationCelKey(key)
+      if (!parsed) continue
+      const row = rows.get(parsed.layerId)
+      const column = canonicalTimelineIndex.frameIndexById.get(parsed.frameId)
+      if (row !== undefined && column !== undefined) selectedCelPositions.push({row, column})
     }
-    if (activeCelPreviewKind === 'mask') return []
-    if (displayRow.kind !== 'node') return []
-    if (displayRow.node.kind === 'group') {
-      // Group cells are interaction targets only; their selection is shown by
-      // the group row/timeline background, not by an independent cel box.
-      return []
-    }
-    const layerNode = displayRow.node as Extract<LayerTreeNode, { kind: 'layer' }>
-    const layerId = layerNode.layer.id
-    return timeline.frames.flatMap((frame, column) => (renderedCellKeySet.has(animationCelKey(layerId, frame.id)) ? [{ row, column }] : []))
-  })
+  }
+  if (activeCelPreviewKind !== 'cel') addPositions(renderedMaskCellKeySet, maskRowByOwner)
+  if (activeCelPreviewKind !== 'mask') addPositions(new Set([...renderedCellKeySet, ...selectedAnimationGroupCellKeys]), celRowByOwner)
+  selectedCelPositions.sort((a, b) => a.row - b.row || a.column - b.column)
 
   const selectedCelRow = selectedCelPositions.length > 0 ? Math.min(...selectedCelPositions.map((position) => position.row)) : -1
 
@@ -598,49 +453,7 @@ export function deriveLayerPanelVisuals({
   const selectedCelColumnSpan =
     selectedCelPositions.length > 0 ? Math.max(...selectedCelPositions.map((position) => position.column)) - selectedCelColumn + 1 : 0
 
-  const animationDisplayRowByLayerId = new Map<string, number>()
-
-  const animationDisplayRowByMaskOwnerId = new Map<string, number>()
-
-  displayRows.forEach((displayRow, row) => {
-    if (displayRow.kind === 'node' && displayRow.node.kind === 'layer') animationDisplayRowByLayerId.set(displayRow.node.layer.id, row)
-    if (displayRow.kind === 'mask') animationDisplayRowByMaskOwnerId.set(displayRow.owner.id, row)
-  })
-
-  const animationFrameIndexById = new Map(timeline.frames.map((frame, index) => [frame.id, index]))
-
-  const animationCelDragPreview = (() => {
-    const drag = gesture
-    const dragKind = drag?.kind
-    const dragKeys = drag && (drag.kind === 'cel' || drag.kind === 'mask') ? drag.cellKeys : []
-    if ((dragKind !== 'cel' && dragKind !== 'mask') || !animationCelDragAnchorKey || !animationCelDropTargetKey || dragKeys.length === 0) return null
-    const anchor = parseAnimationCelKey(animationCelDragAnchorKey)
-    const target = parseAnimationCelKey(animationCelDropTargetKey)
-    if (!anchor || !target) return null
-    const rowForDragKey = (key: { layerId: string }): number | undefined =>
-      dragKind === 'mask' ? animationDisplayRowByMaskOwnerId.get(key.layerId) : animationDisplayRowByLayerId.get(key.layerId)
-    const anchorRow = rowForDragKey(anchor)
-    const targetRow = rowForDragKey(target)
-    const anchorColumn = animationFrameIndexById.get(anchor.frameId)
-    const targetColumn = animationFrameIndexById.get(target.frameId)
-    if (anchorRow === undefined || targetRow === undefined || anchorColumn === undefined || targetColumn === undefined) return null
-    const sourcePositions = dragKeys.flatMap((key) => {
-      const parsed = parseAnimationCelKey(key)
-      if (!parsed) return []
-      const row = rowForDragKey(parsed)
-      const column = animationFrameIndexById.get(parsed.frameId)
-      return row === undefined || column === undefined ? [] : [{ row, column }]
-    })
-    if (sourcePositions.length === 0) return null
-    const sourceRow = Math.min(...sourcePositions.map((position) => position.row))
-    const sourceColumn = Math.min(...sourcePositions.map((position) => position.column))
-    return {
-      row: sourceRow + targetRow - anchorRow,
-      column: sourceColumn + targetColumn - anchorColumn,
-      rowSpan: Math.max(...sourcePositions.map((position) => position.row)) - sourceRow + 1,
-      columnSpan: Math.max(...sourcePositions.map((position) => position.column)) - sourceColumn + 1
-    }
-  })()
+  const animationCelDragPreview = createCelDragPreview(displayRows, timeline.frames, gesture, animationCelDragAnchorKey)(animationCelDropTargetKey)
 
   const animationCelDragActive = animationCelDragPreview !== null
 
@@ -652,6 +465,7 @@ export function deriveLayerPanelVisuals({
       animationGestureSelection?.kind === 'cel' ||
       animationGestureSelection?.kind === 'mask')
   const { linkedMaskSlotVisuals, linkedCelBridgeEndKeys, linkedCelBlocks, linkedCelConnectors, linkedCelMemberKeys, selectedLinkedCelMemberKeys } = deriveTimelineLinks({
+    groups: linkedGroups,
     displayRows,
     timeline,
     canonicalTimelineIndex,
@@ -663,30 +477,12 @@ export function deriveLayerPanelVisuals({
     selectionVisible: selectionOutlineVisible
   })
 
-  // This expansion is presentation-only. Stored selection and drag targets
-  // continue to contain exactly the cells directly selected by the user.
-  const animationCelSelectionBoxes = (() => {
-    if (animationCelDragPreview) return [animationCelDragPreview]
-    const selectedBlocks = linkedCelBlocks.filter(block => block.selected)
-    if (selectedBlocks.length === 0) return [{ row: selectedCelRow, column: selectedCelColumn, rowSpan: selectedCelRowSpan, columnSpan: selectedCelColumnSpan }]
-    const columnsByRow = new Map<number, Set<number>>()
-    const include = (row: number, column: number): void => {
-      const columns = columnsByRow.get(row) ?? new Set<number>()
-      columns.add(column)
-      columnsByRow.set(row, columns)
-    }
-    for (const position of selectedCelPositions) include(position.row, position.column)
-    for (const block of selectedBlocks) for (let column = block.start; column < block.start + block.span; column++) include(block.row, column)
-    return [...columnsByRow].flatMap(([row, columns]) => {
-      const runs: Array<{ row: number; column: number; rowSpan: number; columnSpan: number }> = []
-      for (const column of [...columns].sort((a, b) => a - b)) {
-        const last = runs.at(-1)
-        if (last && last.column + last.columnSpan === column) last.columnSpan++
-        else runs.push({ row, column, rowSpan: 1, columnSpan: 1 })
-      }
-      return runs
-    })
-  })()
+  // Linked highlighting may span other slots; the outline and move hit target
+  // must use the same directly selected bounds as the drag preview.
+  const animationCelSelectionBoxes = [animationCelDragPreview ?? {
+    row: selectedCelRow, column: selectedCelColumn,
+    rowSpan: selectedCelRowSpan, columnSpan: selectedCelColumnSpan
+  }]
 
   const selectedAnimationMaskOwners = new Set(session.selectedAnimationMaskRowKeys)
 

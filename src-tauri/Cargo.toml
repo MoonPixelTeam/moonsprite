@@ -1,6 +1,6 @@
 [package]
 name = "moonsprite"
-version = "1.0.0-beta5"
+version = "1.0.0-beta6"
 description = "An original, source-available pixel art workstation for Windows."
 authors = ["MoonSprite contributors"]
 edition = "2021"
@@ -23,6 +23,7 @@ sysinfo = "0.35"
 arboard = "3.4"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 png = { version = "0.18.1", features = ["zlib-rs"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico"] }
 ttf-parser = "0.25"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 

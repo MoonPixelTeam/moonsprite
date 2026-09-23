@@ -15,6 +15,7 @@ import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-
 import { applyRelativeLuminance } from '@/core/raster'
 import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
+  initialDocumentComposite,
   initialDocumentCompositePending,
   initialDocumentCompositeSurface,
   registerInitialDocumentCompositeSurface
@@ -44,46 +45,28 @@ import {
   sharedAnimationCompositeSurface,
   latestSharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
-  releaseSharedAnimationResources,
   shouldCacheFullCompositeSurface,
   surfaceNamespace
 } from './canvas-composite-cache-surfaces'
 import { imageData, gpuBlendModeFor } from './canvas-composite-cache-pixel-utils'
 import { rememberCompositeSurface } from './canvas-composite-cache-utils'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
+import { CanvasAlignedViewCache } from './canvas-aligned-view-cache'
+import { compositeRegionWindow } from './canvas-composite-region-window'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
 
-// CanvasStage instances are intentionally short lived when switching tabs or
-// changing pane layouts. Keep the derived composite surface with the document
-// so remounting a stage does not rebuild and upload a large canvas on its first
-// frame. WeakMap ownership lets closed documents be collected normally.
-const documentCompositeCaches = new WeakMap<SpriteDocument, CanvasCompositeCache>()
-
-export const canvasCompositeCacheFor = (document: SpriteDocument): CanvasCompositeCache => {
-  let cache = documentCompositeCaches.get(document)
-  if (!cache) {
-    cache = new CanvasCompositeCache()
-    documentCompositeCaches.set(document, cache)
-  }
-  return cache
-}
-
-export const releaseCanvasCompositeCache = (document: SpriteDocument): void => {
-  documentCompositeCaches.get(document)?.dispose()
-  documentCompositeCaches.delete(document)
-  releaseSharedAnimationResources(document)
-}
 
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
 
 /** Coordinates invalidation, surface lifetime and drawing; previews own their resources. */
 export class CanvasCompositeCache {
   private readonly blitter = new CanvasCompositeBlitter()
+  private readonly alignedViewCache = new CanvasAlignedViewCache()
   private readonly moveRenderer: CanvasMovePreviewRenderer
   private readonly selectionRenderer: CanvasSelectionPreviewRenderer
   constructor(private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES) {
-    this.moveRenderer = new CanvasMovePreviewRenderer(this.compositeCache, maxCacheBytes)
+    this.moveRenderer = new CanvasMovePreviewRenderer(this.compositeCache, maxCacheBytes, this.blitter)
     this.selectionRenderer = new CanvasSelectionPreviewRenderer(this.compositeCache, maxCacheBytes, this.blitter,
       (...args) => this.drawSurface(...args), (...args) => this.drawRegion(...args))
   }
@@ -126,6 +109,20 @@ export class CanvasCompositeCache {
 
   private compositeCache = new DocumentCompositeCache()
 
+  /** Read-only bootstrap for a second viewport; never starts composition. */
+  previewSource(document: SpriteDocument, frameId: string, revision: number, relativeLuminance: boolean) {
+    const namespace = surfaceNamespace(document, { relativeLuminance })
+    const surface = this.surfaces.get(`${namespace}:${frameId}`)
+    if (!surface && revision === 0 && !relativeLuminance && !this.fullPreviewInvalidationPending
+      && !this.invalidatedInitialDocuments.has(document) && initialDocumentComposite(document, frameId)?.completeFrame) {
+      const source = initialDocumentCompositeSurface(document, frameId)
+      if (source) return { source, dirtyRects: [] }
+    }
+    if (this.lastDocument !== document || !surface || surface.revision !== revision || surface.transient) return null
+    return { source: surface.bitmap ?? surface.canvas,
+      dirtyRects: [...(surface.pendingDirtyRects ?? []), ...(this.dirtyRects.get(frameId) ?? [])] }
+  }
+
   dispose(): void {
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) {
       surface.canvas.width = 1
@@ -142,6 +139,8 @@ export class CanvasCompositeCache {
   }
 
   invalidateSurface(): void {
+    this.alignedViewCache.clear()
+    this.blitter.dispose()
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
     this.surfaces.clear()
     this.regions.clear()
@@ -336,18 +335,20 @@ export class CanvasCompositeCache {
     const namespace = surfaceNamespace(document, view, isolatedLayerMask)
     if (this.namespace !== namespace) {
       this.namespace = namespace
+      // Selection/floating previews are document-space surfaces, but their
+      // incremental patch bookkeeping is tied to the previous viewport. A
+      // zoom change can otherwise leave the old selection-colored patch in
+      // the backing canvas for one frame after the new view is drawn.
+      this.selectionRenderer.clearSelection()
       // A namespace change invalidates rendered surfaces, but it does not
       // mean the document content changed. Keep the one-time initial
       // composite available for a first draw of a newly loaded document.
       this.invalidateSurface()
     }
     const frameKey = `${namespace}:${effectiveFrameId}`
-    // Animation cels are materialized after the document shell can already
-    // have produced an initial composite. Never reuse that early snapshot for
-    // an animated document: it may be blank even though the active cel has
-    // since been loaded, which otherwise makes the canvas recover only after
-    // an unrelated visibility toggle.
-    if (document.animation && contentRevision === 0) this.invalidatedInitialDocuments.add(document)
+    // Shell snapshots can precede cel materialization. Worker snapshots are
+    // made after decoding the complete active frame and are safe to reuse.
+    if (document.animation && contentRevision === 0 && !initialDocumentComposite(document, effectiveFrameId)?.completeFrame) this.invalidatedInitialDocuments.add(document)
     const liveSourceDirtyHint = this.sourceDirtyHints.get(effectiveFrameId)
     const liveSourceDirtyRect = liveSourceDirtyHint?.rect
     // A single draw pass can render several tile-repeat copies. Keep the hint
@@ -456,6 +457,7 @@ export class CanvasCompositeCache {
   }
 
   private invalidateSurfaceBitmap(surface: CompositeSurface): void {
+    this.alignedViewCache.clear()
     surface.bitmap?.close()
     surface.bitmap = undefined
     surface.bitmapGeneration = (surface.bitmapGeneration ?? 0) + 1
@@ -712,10 +714,15 @@ export class CanvasCompositeCache {
     const visibleWidth = Math.max(0, toX - fromX)
     const visibleHeight = Math.max(0, toY - fromY)
     if (render && visibleWidth > 0 && visibleHeight > 0) {
-      // Cached composites must stay one affine blit. Splitting a large view
-      // into pixel runs turns pan and zoom into thousands of draw calls.
-      context.drawImage(surface.bitmap ?? surface.canvas, fromX, fromY, visibleWidth, visibleHeight,
-        originX + fromX * view.zoom, originY + fromY * view.zoom, visibleWidth * view.zoom, visibleHeight * view.zoom)
+      const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
+      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+        if (!this.alignedViewCache.draw(context, surface.bitmap, this.blitter, originX, originY, view.zoom, fromX, fromY, visibleWidth, visibleHeight)) {
+          this.blitter.drawAlignedPixelRegion(context, surface.bitmap ?? surface.canvas, originX, originY, view.zoom, fromX, fromY, fromX, fromY, visibleWidth, visibleHeight)
+        }
+      } else {
+        context.drawImage(surface.bitmap ?? surface.canvas, fromX, fromY, visibleWidth, visibleHeight,
+          originX + fromX * view.zoom, originY + fromY * view.zoom, visibleWidth * view.zoom, visibleHeight * view.zoom)
+      }
     }
     return surface
   }
@@ -743,14 +750,10 @@ export class CanvasCompositeCache {
   ): CompositeRegionSurface | null {
     const patchMergeLimit = compositePatchMergeLimit(document)
     const animationFastPath = animationPlayback && patchMergeLimit === undefined
-    const x = Math.max(0, Math.floor(fromX))
-    const y = Math.max(0, Math.floor(fromY))
-    const right = Math.min(document.width, Math.ceil(toX))
-    const bottom = Math.min(document.height, Math.ceil(toY))
-    const width = Math.max(0, right - x)
-    const height = Math.max(0, bottom - y)
-    if (width === 0 || height === 0) return null
+    const visible = visibleDocumentRect(document, fromX, fromY, toX, toY)
+    if (!visible) return null
     let region = this.regions.get(key)
+    const { x, y, width, height } = compositeRegionWindow(document, visible, region, this.maxCacheBytes)
     const liveKey = `${document.id}:${frameId}`
     const livePreviewAlreadyPainted = !isolatedLayerMask && this.livePreviewPending.has(liveKey) && this.livePreviewCommitRevisions.get(liveKey) === contentRevision
     const sameGeometry = region && region.x === x && region.y === y && region.width === width && region.height === height
@@ -772,7 +775,7 @@ export class CanvasCompositeCache {
       const canApplyInvalidation =
         region.revision !== contentRevision &&
         invalidation?.revision === contentRevision &&
-        invalidation.fromRevision === region.revision &&
+        invalidation.fromRevision <= region.revision &&
         invalidation.kind === 'region' &&
         Boolean(invalidationRect) &&
         (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId)
@@ -821,8 +824,13 @@ export class CanvasCompositeCache {
     if (!region) return null
     if (!livePreviewAlreadyPainted) this.scheduleSurfaceBitmap(region)
     if (render) {
-      context.drawImage(region.bitmap ?? region.canvas, 0, 0, width, height,
-        originX + x * view.zoom, originY + y * view.zoom, width * view.zoom, height * view.zoom)
+      const axisAlignedView = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
+      if (axisAlignedView && this.blitter.requiresAlignedPixelBlit(view.zoom) && !imageSmoothingEnabled) {
+        this.blitter.drawAlignedPixelRegion(context, region.bitmap ?? region.canvas, originX, originY, view.zoom, visible.x - x, visible.y - y, visible.x, visible.y, visible.width, visible.height)
+      } else {
+        context.drawImage(region.bitmap ?? region.canvas, visible.x - x, visible.y - y, visible.width, visible.height,
+          originX + visible.x * view.zoom, originY + visible.y * view.zoom, visible.width * view.zoom, visible.height * view.zoom)
+      }
     }
     return region
   }

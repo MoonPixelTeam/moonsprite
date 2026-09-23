@@ -85,6 +85,7 @@ export const clearAnimationMaskContext = (session: DocumentSession, preserveRowS
 export const clearAnimationItemSelection = (session: DocumentSession, preserveMaskRowSelection = false): void => {
   session.selectedAnimationFrameIds = []
   session.animationFrameSelectionAnchorId = null
+  session.selectedAnimationGroupCellKeys = []
   session.selectedAnimationCellKeys = []
   session.animationCellSelectionAnchorKey = null
   session.animationCellSelectionExplicit = false
@@ -110,6 +111,7 @@ export const normalizeAnimationSelection = (
   const timeline = session.document.animation
   if (!timeline) {
     session.selectedAnimationFrameIds = []
+    session.selectedAnimationGroupCellKeys = []
     session.selectedAnimationCellKeys = []
     session.selectedAnimationMaskCellKeys = []
     session.selectedAnimationMaskRowKeys = []
@@ -143,6 +145,10 @@ export const normalizeAnimationSelection = (
   session.selectedGroupIds = uniqueValid(session.selectedGroupIds, (id) => groupIds.has(id))
   session.selectedAnimationFrameIds = uniqueValid(session.selectedAnimationFrameIds, (id) => frameIds.has(id))
   session.selectedAnimationCellKeys = uniqueValid(session.selectedAnimationCellKeys, validCelKey)
+  session.selectedAnimationGroupCellKeys = uniqueValid(session.selectedAnimationGroupCellKeys ?? [], key => {
+    const slot = parseAnimationCelKey(key)
+    return Boolean(slot && groupIds.has(slot.layerId) && frameIds.has(slot.frameId))
+  })
   session.selectedAnimationMaskCellKeys = uniqueValid(session.selectedAnimationMaskCellKeys, validMaskKey)
   session.selectedAnimationMaskRowKeys = uniqueValid(session.selectedAnimationMaskRowKeys, (key) => {
     const separator = key.indexOf(':')
@@ -167,6 +173,7 @@ export const normalizeAnimationSelection = (
   }
 
   if (session.selectedAnimationFrameIds.length > 0) {
+    session.selectedAnimationGroupCellKeys = []
     session.selectedAnimationCellKeys = []
     session.selectedAnimationMaskCellKeys = []
     // Frame selection may coexist with the explicitly selected mask row;
@@ -177,6 +184,7 @@ export const normalizeAnimationSelection = (
     session.selectedAnimationMaskRowKeys = []
     session.animationCellSelectionExplicit = session.animationCellSelectionExplicit === true
   } else if (session.selectedAnimationMaskCellKeys.length > 0) {
+    session.selectedAnimationGroupCellKeys = []
     session.selectedAnimationCellKeys = []
     session.selectedAnimationMaskRowKeys = []
     session.animationCellSelectionExplicit = false

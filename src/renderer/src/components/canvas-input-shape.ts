@@ -290,7 +290,8 @@ export function createShapeCanvasInput(ports: Ports) {
           sourceEdit ? undefined : session.symmetryAxes,
           sourceEdit ? undefined : symmetryCenter,
           drag.previewAngle ?? 0,
-          shapeCornerRadius
+          shapeCornerRadius,
+          session.brushSize
         )
         const ellipse = session.shapeKind === 'ellipse' || session.shapeKind === 'ellipse-outline'
         const label = ellipse ? t('canvas.history.drawEllipse') : t('canvas.history.drawRectangle')

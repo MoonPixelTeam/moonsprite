@@ -1,3 +1,4 @@
+import { protectExportPixels, type ExportProtection } from './export-protection'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import { ensureAnimationDocument, syncActiveAnimationFrame } from './animation'
@@ -7,6 +8,7 @@ import { compositeAnimationFrame } from './onion-skin'
 export type GifDirection = 'forward' | 'reverse' | 'forward-ping-pong' | 'reverse-ping-pong'
 
 export interface GifExportOptions {
+  protection?: ExportProtection
   scalePercent: number
   frameStart?: number
   frameEnd?: number
@@ -212,7 +214,7 @@ export const exportAnimationGif = (document: SpriteDocument, options: GifExportO
     return { frame, pixels }
   }).filter((frame): frame is { frame: typeof timeline.frames[number]; pixels: Uint8ClampedArray } => frame !== null)
   const ordered = gifFrameSequence(selected, options.direction)
-  const scaled = ordered.map(({ frame, pixels }) => ({ ...scalePixels(pixels, crop.width, crop.height, options.scalePercent), duration: frame.duration }))
+  const scaled = ordered.map(({ frame, pixels }) => ({ ...protectExportPixels(scalePixels(pixels, crop.width, crop.height, options.scalePercent), options.scalePercent, options.protection), duration: frame.duration }))
   const width = scaled[0]?.width ?? Math.max(1, crop.width)
   const height = scaled[0]?.height ?? Math.max(1, crop.height)
   const frames = scaled.map(({ pixels, duration }) => ({ pixels, duration }))

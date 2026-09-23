@@ -5,7 +5,8 @@ import type { ViewState } from '@shared/types-view'
 import {
   DocumentCompositeCache
 } from '@/core/document-composite-cache'
-import { rasterContentBounds, readLayerPackedAt } from '@/core/document-model'
+import { rasterContentBounds } from '@/core/document-model'
+import { selectionPreviewPixelWriter } from './canvas-selection-preview-pixels'
 import {
   selectionTransformPreviewPacked,
   selectionTransformPreviewRasterPacked
@@ -28,7 +29,6 @@ import {
   type SelectionTransformRasterSurface,
   type DrawCompositeOptions,
   imageData,
-  compositePreviewPixel,
   selectionPreviewTransformKey,
   repeatedSelectionTargets,
   shouldCacheFullCompositeSurface,
@@ -37,6 +37,11 @@ import {
   type DrawCompositeRegion
 } from './canvas-composite-cache-surfaces'
 import { CanvasCompositeBlitter } from './canvas-composite-cache-blitter'
+import { CanvasSelectionBackdropCache } from './canvas-selection-backdrop-cache'
+
+// Main canvas and auxiliary preview consume the same immutable capture. Keep
+// only its latest transform, and let capture lifetime release the raster.
+const sharedTransformRasters = new WeakMap<SelectionTransformRasterSurface['source'], SelectionTransformRasterSurface>()
 
 /** Owns clipboard, transformed selection and packed raster preview resources. */
 export class CanvasSelectionPreviewRenderer {
@@ -54,12 +59,18 @@ export class CanvasSelectionPreviewRenderer {
   clearSelection(): void { this.selectionPreview = null }
   clear(): void { this.clearClipboard(); this.clearSelection(); this.selectionTransformRaster = null }
   private selectionTransformRasterFor(document: SpriteDocument, contentRevision: number, selection: SelectionTransformCompositePreview, activeLayer: RasterLayer): SelectionTransformRasterSurface {
-    const key = `${document.id}:${contentRevision}:${selection.layerId}:${selectionPreviewRasterKey(selection, activeLayer.format)}`
+    const key = `${document.id}:${document.animation?.activeFrameId ?? 'static'}:${contentRevision}:${selection.layerId}:${selectionPreviewRasterKey(selection, activeLayer.format)}`
     const cached = this.selectionTransformRaster
     if (cached && cached.source === selection.source && cached.key === key) return cached
+    const shared = sharedTransformRasters.get(selection.source)
+    if (shared?.key === key) {
+      this.selectionTransformRaster = shared
+      return shared
+    }
     const raster = selectionTransformPreviewRasterPacked(document, selection.source, selection.target, selection.angle, selection.shear, activeLayer, selection.quad, selectionOptimizedRotationEnabled(selection))
     const next = { source: selection.source, key, ...raster }
     this.selectionTransformRaster = next
+    sharedTransformRasters.set(selection.source, next)
     return next
   }
 
@@ -217,6 +228,7 @@ export class CanvasSelectionPreviewRenderer {
       previewContext.imageSmoothingEnabled = false
       previewContext.drawImage(baseCanvas, x - baseDocumentX, y - baseDocumentY, width, height, 0, 0, width, height)
       preview = {
+        backdrop: new CanvasSelectionBackdropCache(this.compositeCache),
         key,
         x,
         y,
@@ -228,6 +240,7 @@ export class CanvasSelectionPreviewRenderer {
         baseDocumentX,
         baseDocumentY,
         canvas,
+        lowerBackdrop: new CanvasSelectionBackdropCache(this.compositeCache, undefined, true),
         previousPatchRects: [],
         source: null,
         transformKey: ''
@@ -265,22 +278,8 @@ export class CanvasSelectionPreviewRenderer {
       const palette = activeLayer.format === 'indexed' ? new Map(document.palette.map((entry) => [entry.id, entry.color])) : null
       const transformedRaster = this.selectionTransformRasterFor(document, contentRevision, selection, activeLayer)
       for (const patchRect of visiblePatchRects) {
-        const patchPixels = new Uint8ClampedArray(this.compositeCache.normalLayerRegion(document, preview.lowerLayers, patchRect.x, patchRect.y, patchRect.width, patchRect.height, contentRevision))
-        for (let localY = 0; localY < patchRect.height; localY += 1)
-          for (let localX = 0; localX < patchRect.width; localX += 1) {
-            const pixelX = patchRect.x + localX
-            const pixelY = patchRect.y + localY
-            const selected =
-              !selection.copy &&
-              pixelX >= sourceSelection.x &&
-              pixelY >= sourceSelection.y &&
-              pixelX < sourceSelection.x + sourceSelection.width &&
-              pixelY < sourceSelection.y + sourceSelection.height &&
-              (!sourceSelection.mask || sourceSelection.mask[(pixelY - sourceSelection.y) * sourceSelection.width + pixelX - sourceSelection.x] === 1)
-            const packed = selected ? 0 : (readLayerPackedAt(document, activeLayer, pixelX, pixelY) ?? 0)
-            const outputOffset = (localY * patchRect.width + localX) * 4
-            compositePreviewPixel(patchPixels, outputOffset, packed, activeLayer.format, activeLayer.opacity, palette)
-          }
+        const patchPixels = preview.backdrop.read(document, activeLayer, preview.lowerLayers, selection.source, selection.copy, patchRect, contentRevision)
+        const writePreviewPixel = selectionPreviewPixelWriter(document, activeLayer, preview.lowerLayers, selection, patchRect, contentRevision, patchPixels, palette, preview.lowerBackdrop)
         for (let targetIndex = 0; targetIndex < selectionTargets.length; targetIndex += 1) {
           const transformedRect = currentBounds[targetIndex]
           const overlap = intersectRect(transformedRect, patchRect)
@@ -303,7 +302,7 @@ export class CanvasSelectionPreviewRenderer {
             )
             for (let offset = 0; offset < transformed.length; offset += 1) {
               const outputOffset = offset * 4
-              compositePreviewPixel(patchPixels, outputOffset, transformed[offset], activeLayer.format, activeLayer.opacity, palette)
+              writePreviewPixel(transformed[offset], outputOffset)
             }
             continue
           }
@@ -312,7 +311,7 @@ export class CanvasSelectionPreviewRenderer {
               const rasterOffset = (pixelY - transformedRect.y) * transformedRaster.width + pixelX - transformedRect.x
               const packed = transformedRaster.pixels[rasterOffset]
               const outputOffset = ((pixelY - patchRect.y) * patchRect.width + pixelX - patchRect.x) * 4
-              compositePreviewPixel(patchPixels, outputOffset, packed, activeLayer.format, activeLayer.opacity, palette)
+              writePreviewPixel(packed, outputOffset)
             }
         }
         if (preview.upperLayers.length > 0) this.compositeCache.compositeNormalLayersInto(document, preview.upperLayers, patchRect.x, patchRect.y, patchRect.width, patchRect.height, contentRevision, patchPixels)

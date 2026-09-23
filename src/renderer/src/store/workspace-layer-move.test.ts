@@ -23,6 +23,38 @@ const baseMove = (documentId: string): LayerMoveState => {
 }
 
 describe('store-owned layer move transactions', () => {
+  it.each([-12, -3, 5, 12])('preserves off-canvas selection and pixels when moving vertically by %s', (dy) => {
+    const document = createDocument('off-canvas selection', 8, 8, 'rgba')
+    document.layers[0].pixels.fill(127)
+    const pixels = document.layers[0].pixels.slice()
+    useWorkspace.getState().addSession(document)
+    const selection = { x: 2, y: 2, width: 4, height: 4, mask: new Uint8Array(16).fill(1) }
+    useWorkspace.getState().setSelection(selection)
+    const move = baseMove(document.id)
+    move.selectionStart = selection
+    move.layerPreviewOffset = { x: 0, y: dy }
+    const moved = { ...selection, y: selection.y + dy }
+    const currentSelection = () => useWorkspace.getState().sessions[0].selection
+
+    useWorkspace.getState().previewLayerMove(document.id, move, 0, dy)
+    expect(currentSelection()).toEqual(moved)
+    useWorkspace.getState().commitLayerMove(document.id, move)
+    expect(currentSelection()).toEqual(moved)
+    expect(document.layers[0].pixels).toEqual(pixels)
+    useWorkspace.getState().undo()
+    expect(currentSelection()).toEqual(selection)
+    useWorkspace.getState().redo()
+    expect(currentSelection()).toEqual(moved)
+
+    const returnMove = baseMove(document.id)
+    returnMove.selectionStart = currentSelection()
+    returnMove.layerPreviewOffset = { x: 0, y: -dy }
+    useWorkspace.getState().previewLayerMove(document.id, returnMove, 0, -dy)
+    useWorkspace.getState().commitLayerMove(document.id, returnMove)
+    expect(currentSelection()).toEqual(selection)
+    expect(document.layers[0].pixels).toEqual(pixels)
+  })
+
   it('commits static layer offsets as one undoable operation', () => {
     const document = createDocument('move layer', 8, 8, 'rgba')
     useWorkspace.getState().addSession(document)

@@ -44,6 +44,17 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         const playbackMode = session.animationPlaybackMode ?? (timeline.loop ? 'all' : 'once')
         if (playing) {
           const preserveMaskContext = (session.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (session.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || session.activeLayerMaskId !== null
+          const pausedLoopSection = session.animationPlaybackLoopSectionId
+            ? (timeline.loopSections ?? []).find((section) => section.id === session.animationPlaybackLoopSectionId)
+            : null
+          // Pausing a loop section must keep both its playhead and traversal
+          // state.  In particular, ping-pong sections cannot infer their
+          // return direction from the current frame alone.  A frame change
+          // outside the paused section still starts a fresh playback instead.
+          if (pausedLoopSection && animationLoopSectionContainsFrame(timeline, pausedLoopSection, timeline.activeFrameId)) {
+            session.animationPlaying = true
+            return
+          }
           clearAnimationLoopPlayback(session)
           const firstPlayableFrameId = firstPlayableAnimationFrameId(timeline)
           if (!firstPlayableFrameId) return
@@ -75,6 +86,10 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
           return
         }
         session.animationPlaying = false
+        // The UI play button and playback shortcut use this path as Pause.
+        // Keep the loop section and its progress so the following Play resumes
+        // at the current frame rather than restarting the section.
+        if (!completed) return
         const loopSectionId = session.animationPlaybackLoopSectionId
         const startFrameId = session.animationPlaybackStartFrameId
         session.animationPlaybackStartFrameId = null
@@ -94,8 +109,6 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
       get().mutateActive((session) => {
         if (!session.animationPlaying) return
         session.animationPlaying = false
-        session.animationPlaybackStartFrameId = null
-        clearAnimationLoopPlayback(session)
         // Pausing is also a playhead operation. Do not turn the paused frame
         // into a new selection or clear an existing multi-selection.
       }, false)
@@ -282,86 +295,7 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
         }, false)
       } else get().setActiveAnimationFrame(nextFrameId)
     },
-    createAnimationLoopSection(options) {
-      const current = activeSession(get())
-      if (!current) return null
-      const timeline = ensureAnimationDocument(current.document)
-      const id = createId('loop-section')
-      const section = normalizeAnimationLoopSections([{ id, ...options }], timeline.frames)[0]
-      if (!section) return null
-      get().mutateActive((session) => {
-        const activeTimeline = ensureAnimationDocument(session.document)
-        const before = cloneAnimationLoopSections(activeTimeline.loopSections)
-        const after = [...before, section]
-        setAnimationLoopSections(session, after)
-        session.history.push({
-          label: tr('workspace.history.createAnimationLoopSection'),
-          bytes: 128,
-          undo: () => setAnimationLoopSections(session, before),
-          redo: () => setAnimationLoopSections(session, after),
-          contentChanged: false,
-          requiresAnimationSync: false
-        })
-      }, 'metadata')
-      return id
-    },
-    updateAnimationLoopSection(id, options) {
-      const current = activeSession(get())
-      const currentTimeline = current ? ensureAnimationDocument(current.document) : null
-      const existing = currentTimeline?.loopSections?.find((section) => section.id === id)
-      const normalized = currentTimeline ? normalizeAnimationLoopSections([{ id, ...options }], currentTimeline.frames)[0] : null
-      if (!current || !currentTimeline || !existing || !normalized) return
-      if (
-        existing.name === normalized.name &&
-        existing.startFrameId === normalized.startFrameId &&
-        existing.endFrameId === normalized.endFrameId &&
-        existing.direction === normalized.direction &&
-        existing.repeatCount === normalized.repeatCount
-      )
-        return
-      get().mutateActive((session) => {
-        const timeline = ensureAnimationDocument(session.document)
-        const before = cloneAnimationLoopSections(timeline.loopSections)
-        const after = before.map((section) => (section.id === id ? normalized : section))
-        if (session.animationPlaybackLoopSectionId === id || session.animationPlaybackTagCycleSectionId === id) {
-          session.animationPlaying = false
-          session.animationPlaybackStartFrameId = null
-          clearAnimationLoopPlayback(session)
-        }
-        setAnimationLoopSections(session, after)
-        session.history.push({
-          label: tr('workspace.history.updateAnimationLoopSection'),
-          bytes: 256,
-          undo: () => setAnimationLoopSections(session, before),
-          redo: () => setAnimationLoopSections(session, after),
-          contentChanged: false,
-          requiresAnimationSync: false
-        })
-      }, 'metadata')
-    },
-    deleteAnimationLoopSection(id) {
-      const current = activeSession(get())
-      if (!current?.document.animation?.loopSections?.some((section) => section.id === id)) return
-      get().mutateActive((session) => {
-        const timeline = ensureAnimationDocument(session.document)
-        const before = cloneAnimationLoopSections(timeline.loopSections)
-        const after = before.filter((section) => section.id !== id)
-        if (session.animationPlaybackLoopSectionId === id || session.animationPlaybackTagCycleSectionId === id) {
-          session.animationPlaying = false
-          session.animationPlaybackStartFrameId = null
-          clearAnimationLoopPlayback(session)
-        }
-        setAnimationLoopSections(session, after)
-        session.history.push({
-          label: tr('workspace.history.deleteAnimationLoopSection'),
-          bytes: 128,
-          undo: () => setAnimationLoopSections(session, before),
-          redo: () => setAnimationLoopSections(session, after),
-          contentChanged: false,
-          requiresAnimationSync: false
-        })
-      }, 'metadata')
-    },
+    ...createAnimationLoopEditingCommands({ get }),
     playAnimationLoopSection(id) {
       get().commitFloatingPaste()
       get().mutateActive((session) => {
@@ -396,3 +330,4 @@ export function createAnimationPlaybackCommands({ get }: WorkspaceCommandContext
     }
   }
 }
+import { createAnimationLoopEditingCommands } from './workspace-animation-loop-editing'

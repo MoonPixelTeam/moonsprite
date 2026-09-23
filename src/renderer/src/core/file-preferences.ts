@@ -1,3 +1,5 @@
+import type { ExportProtection } from './export-protection'
+import { DEFAULT_TOOL_RAIL, TOOL_RAIL_PREFERENCE_KEY, parseToolRail, serializeToolRail, type ToolRailPreference } from './tool-rail-preferences'
 import type { ImageExportKind, SaveImageKind } from './png'
 import { DEFAULT_APP_LOCALE, LANGUAGE_PREFERENCE_KEY as APP_LANGUAGE_PREFERENCE_KEY, parseAppLocale, type AppLocale } from './localization'
 import { readStoredString, writeStoredString } from './storage'
@@ -14,9 +16,16 @@ export const SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.save-o
 export const EXPORT_FORMAT_PREFERENCE_KEY = 'moonsprite.preference.export-format'
 export const SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.save-directory'
 export const EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.export-directory'
+export const SAVE_LOCATION_MODE_PREFERENCE_KEY = 'moonsprite.preference.save-location-mode'
+export const EXPORT_LOCATION_MODE_PREFERENCE_KEY = 'moonsprite.preference.export-location-mode'
+export const PASTE_TARGET_PREFERENCE_KEY = 'moonsprite.preference.paste-target'
+export const LAST_SAVE_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-save-directory'
+export const LAST_EXPORT_DIRECTORY_PREFERENCE_KEY = 'moonsprite.preference.last-export-directory'
 export const NEW_DOCUMENT_SIZE_PRESETS_KEY = 'moonsprite.preference.new-document-size-presets'
 export const EXPORT_SCALE_PRESETS_KEY = 'moonsprite.preference.export-scale-presets'
 export const ROTATION_INDICATOR_POSITION_KEY = 'moonsprite.preference.rotation-indicator-position'
+export const EXPORT_PROTECTION_KEY = 'moonsprite.preference.export-protection'
+export const REFERENCE_SCALING_KEY = 'moonsprite.preference.reference-scaling'
 export const CANVAS_VIEW_SCROLLBARS_ENABLED_KEY = 'moonsprite.preference.canvas-view-scrollbars-enabled'
 export const DRAWING_BRUSH_PREVIEW_ENABLED_KEY = 'moonsprite.preference.drawing-brush-preview-enabled'
 export const RELATIVE_LUMINANCE_SCOPE_KEY = 'moonsprite.preference.relative-luminance-scope'
@@ -37,6 +46,7 @@ export const VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY = 'moonsprite.preference.view-
 export const WHEEL_ZOOM_MODE_PREFERENCE_KEY = 'moonsprite.preference.wheel-zoom-mode'
 export const BRUSH_SHIFT_LINE_ENABLED_KEY = 'moonsprite.preference.brush-shift-line-enabled'
 export const USE_LOCAL_CURSORS_PREFERENCE_KEY = 'moonsprite.preference.use-local-cursors'
+export const PAINTING_CURSOR_TYPE_KEY = 'moonsprite.preference.painting-cursor-type'
 export const CURSOR_SCALE_PREFERENCE_KEY = 'moonsprite.preference.cursor-scale'
 export const CURSOR_COLOR_PREFERENCE_KEY = 'moonsprite.preference.cursor-color'
 export const CURSOR_COLOR_MODE_PREFERENCE_KEY = 'moonsprite.preference.cursor-color-mode'
@@ -116,7 +126,8 @@ export type ZoomToolDragMode = 'smooth' | 'stepped'
 export type WheelZoomMode = 'smooth' | 'stepped'
 export const VIEW_DRAG_SENSITIVITY_VALUES = [0.5, 0.75, 1, 1.5, 2] as const
 export type ViewDragSensitivity = typeof VIEW_DRAG_SENSITIVITY_VALUES[number]
-export type CursorScale = 1 | 1.25 | 1.5 | 2
+export type PaintingCursorType = 'simple' | 'sprite' | 'sprite-unscaled'
+export type CursorScale = 1 | 1.25 | 1.5 | 2 | 3 | 4
 export type CursorColorMode = 'auto' | 'custom'
 export type MoveLayerClickFlashDuration = 80 | 120 | 180
 export const MOVE_LAYER_CLICK_FLASH_DURATIONS: readonly MoveLayerClickFlashDuration[] = [80, 120, 180]
@@ -174,6 +185,7 @@ export type EyedropperMagnifierSize = typeof EYEDROPPER_MAGNIFIER_SIZE_VALUES[nu
 export type CheckerSize = number
 
 export const QUICK_COMMAND_IDS = [
+  'cut', 'copy', 'copyMerged', 'paste', 'pasteToCurrentCell', 'pasteAsNewDocument', 'pasteAsNewLayer', 'deleteContent', 'quickOutline', 'outline',
   'selectionFlipHorizontal',
   'selectionFlipVertical',
   'canvasMirrorHorizontal',
@@ -224,7 +236,7 @@ export interface QuickCommandBarPreference {
 
 const DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[] = [
   ['selectionFlipHorizontal', 'selectionFlipVertical', 'canvasMirrorHorizontal', 'canvasMirrorVertical', 'invertSelection', 'customGrid', 'tileRepeatBoth', 'relativeLuminance', 'detectImageScale', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical', 'quickAntiAlias'],
-  ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'],
+  ['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste', 'pasteToCurrentCell', 'pasteAsNewDocument', 'pasteAsNewLayer', 'deleteContent', 'fillForeground', 'quickOutline', 'outline', 'selectionFlipHorizontal', 'selectionFlipVertical', 'centerSelectionBoth', 'centerSelectionHorizontal', 'centerSelectionVertical', 'quickAntiAlias'],
   ['selectionFlipHorizontal'],
   ['selectionFlipHorizontal']
 ]
@@ -252,7 +264,7 @@ const RECENT_DEFAULT_QUICK_COMMAND_GROUPS: readonly (readonly QuickCommandId[])[
 
 const createQuickCommandPreferences = (enabledIds: readonly QuickCommandId[]): QuickCommandPreference[] => {
   const enabled = new Set(enabledIds)
-  return QUICK_COMMAND_IDS.map((id) => ({ id, enabled: enabled.has(id) }))
+  return [...enabledIds, ...QUICK_COMMAND_IDS.filter(id => !enabled.has(id))].map((id) => ({ id, enabled: enabled.has(id) }))
 }
 
 export const DEFAULT_QUICK_COMMAND_PREFERENCES: QuickCommandPreference[] = createQuickCommandPreferences(DEFAULT_QUICK_COMMAND_GROUPS[0])
@@ -302,8 +314,8 @@ export function parseQuickCommandPreferences(value: string | null): QuickCommand
 
 export const DEFAULT_QUICK_COMMAND_BARS: QuickCommandBarPreference[] = DEFAULT_QUICK_COMMAND_GROUPS.map((group, index) => ({
   id: `quick-command-bar-${index + 1}`,
-  name: `快捷指令栏 ${index + 1}`,
-  edge: index === 0 ? 'top' : 'none',
+  name: ['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'][index],
+  edge: index === 0 ? 'top' : index === 1 ? 'bottom' : 'none',
   position: 0.5,
   expanded: false,
   commands: createQuickCommandPreferences(group)
@@ -323,7 +335,7 @@ const normalizeQuickCommandBar = (candidate: unknown, index: number, fallbackCom
   const position = typeof value.position === 'number' && Number.isFinite(value.position) ? Math.min(1, Math.max(0, value.position)) : 0.5
   return {
     id: typeof value.id === 'string' && value.id.trim() ? value.id : `quick-command-bar-${index + 1}`,
-    name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 32) : `快捷指令栏 ${index + 1}`,
+    name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 32) : DEFAULT_QUICK_COMMAND_BARS[index].name,
     edge,
     position,
     expanded: value.expanded === true,
@@ -346,6 +358,15 @@ export function parseQuickCommandBars(value: string | null, legacyCommands = DEF
       bars.push(bar)
     }
     if (bars.length === 0) return fallback()
+    bars.forEach((bar, index) => {
+      const oldDefaultName = /^快捷指令栏\s*\d+$/.test(bar.name) || /^Quick Command Bar\s*\d+$/i.test(bar.name)
+      if (!oldDefaultName) return
+      bar.name = DEFAULT_QUICK_COMMAND_BARS[index].name
+      if (index === 1 && isQuickCommandGroup(bar, ['undo', 'redo', 'resetView', 'rotateViewClockwise90', 'rotateViewCounterClockwise90'])) {
+        bar.commands = createQuickCommandPreferences(DEFAULT_QUICK_COMMAND_GROUPS[1])
+        if (bar.edge === 'none') bar.edge = 'bottom'
+      }
+    })
     if (bars.length === 1 && isLegacyDefaultQuickCommandBar(bars[0])) {
       bars[0] = { ...bars[0], edge: 'top', commands: DEFAULT_QUICK_COMMAND_BARS[0].commands.map((item) => ({ ...item })) }
     }
@@ -417,9 +438,13 @@ export function parseBrushShiftLineEnabled(value: string | null): boolean {
   return value !== 'false'
 }
 
+export function parsePaintingCursorType(value: string | null): PaintingCursorType {
+  return value === 'simple' || value === 'sprite-unscaled' ? value : 'sprite'
+}
+
 export function parseCursorScale(value: string | null): CursorScale {
   const parsed = Number(value)
-  return parsed === 1.25 || parsed === 1.5 || parsed === 2 ? parsed : 1
+  return parsed === 1.25 || parsed === 1.5 || parsed === 2 || parsed === 3 || parsed === 4 ? parsed : 1
 }
 
 export function parseCursorColorMode(value: string | null): CursorColorMode {
@@ -558,8 +583,11 @@ export const DEFAULT_COLOR_EDITOR_MODES: ColorEditorModePreference[] = [
   { mode: 'cmyk', enabled: false }
 ]
 const LEGACY_DEFAULT_COLOR_EDITOR_MODES: ColorValueMode[] = ['rgb', 'hsv', 'hsl', 'gray', 'lab', 'cmyk']
+export type OnionSkinScope = 'current-layer' | 'all-layers'
+
 export interface OnionSkinPreferences {
   enabled: boolean
+  scope: OnionSkinScope
   showDuringPlayback: boolean
   previousFrames: number
   nextFrames: number
@@ -570,6 +598,7 @@ export interface OnionSkinPreferences {
 }
 export const DEFAULT_ONION_SKIN_PREFERENCES: OnionSkinPreferences = {
   enabled: false,
+  scope: 'current-layer',
   showDuringPlayback: true,
   previousFrames: 1,
   nextFrames: 1,
@@ -634,8 +663,11 @@ export const DEFAULT_ISO_VIEW_PREFERENCES: IsoViewPreferences = {
 
 export type SaveFormatPreference = 'moonsprite' | 'png' | 'jpeg' | 'webp' | 'svg' | 'ico' | 'psd' | 'ase' | 'aseprite'
 export type ExportFormatPreference = 'png' | 'jpeg' | 'webp' | 'svg' | 'gif' | 'bmp' | 'ico' | 'psd'
+export type SaveLocationMode = 'recent' | 'fixed'
+export type PasteTarget = 'current-cell' | 'new-layer' | 'new-project'
 
 export interface EditorPreferences {
+  toolRail: ToolRailPreference[]
   language: AppLocale
   uiScale: UiScale
   bodyFontScale: BodyFontScale
@@ -649,8 +681,16 @@ export interface EditorPreferences {
   saveFormat: SaveFormatPreference
   saveOriginalFormat: boolean
   exportFormat: ExportFormatPreference
+  /** Whether new unsaved projects start from the shared recent output folder or the fixed folder. */
+  saveLocationMode: SaveLocationMode
+  exportLocationMode: SaveLocationMode
+  pasteTarget: PasteTarget
   saveDirectory: string
   exportDirectory: string
+  /** Location remembered by Save and Save As. */
+  lastSaveDirectory: string
+  /** Shared location remembered by every export operation. */
+  lastExportDirectory: string
   recovery: boolean
   recoveryMinutes: number
   recoveryRetentionDays: number
@@ -667,12 +707,15 @@ export interface EditorPreferences {
   documentSizePresets: DocumentSizePreset[]
   exportScalePresets: number[]
   rotationIndicatorPosition: RotationIndicatorPosition
+  exportProtection: ExportProtection
+  referenceScaling: 'smooth' | 'pixelated'
   canvasViewScrollbarsEnabled: boolean
   drawingBrushPreviewEnabled: boolean
   relativeLuminanceScope: RelativeLuminanceScope
   zoomToolDragMode: ZoomToolDragMode
   viewDragSensitivity: ViewDragSensitivity
   brushShiftLineEnabled: boolean
+  paintingCursorType: PaintingCursorType
   useLocalCursors: boolean
   cursorScale: CursorScale
   cursorColorMode: CursorColorMode
@@ -737,6 +780,7 @@ export interface EditorPreferences {
 }
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
+  toolRail: DEFAULT_TOOL_RAIL,
   language: DEFAULT_APP_LOCALE,
   uiScale: 1,
   bodyFontScale: 1,
@@ -750,8 +794,13 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   saveFormat: 'moonsprite',
   saveOriginalFormat: true,
   exportFormat: 'png',
+  saveLocationMode: 'recent',
+  exportLocationMode: 'recent',
+  pasteTarget: 'current-cell',
   saveDirectory: '',
   exportDirectory: '',
+  lastSaveDirectory: '',
+  lastExportDirectory: '',
   recovery: true,
   recoveryMinutes: 5,
   recoveryRetentionDays: 7,
@@ -766,12 +815,15 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
   rotationIndicatorPosition: 'view',
+  exportProtection: 'off',
+  referenceScaling: 'smooth',
   canvasViewScrollbarsEnabled: true,
   drawingBrushPreviewEnabled: true,
   relativeLuminanceScope: 'canvas',
   zoomToolDragMode: 'stepped',
   viewDragSensitivity: 1,
   brushShiftLineEnabled: true,
+  paintingCursorType: 'sprite',
   useLocalCursors: false,
   cursorScale: 1,
   cursorColorMode: 'auto',
@@ -988,6 +1040,7 @@ export function parseOnionSkinPreferences(value: string | null): OnionSkinPrefer
     const opacity = (candidate: unknown, fallback: number): number => typeof candidate === 'number' && Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : fallback
     return {
       enabled: parsed.enabled === true,
+      scope: parsed.scope === 'all-layers' ? 'all-layers' : 'current-layer',
       // Existing preferences predate this option. Preserve the new default
       // rather than treating their missing field as an explicit opt-out.
       showDuringPlayback: parsed.showDuringPlayback !== false,
@@ -1136,6 +1189,28 @@ function parseDirectoryPreference(value: string | null): string {
   return value?.trim() ?? ''
 }
 
+function parseSaveLocationMode(value: string | null): SaveLocationMode {
+  return value === 'recent' ? 'recent' : 'fixed'
+}
+
+export function parsePasteTarget(value: string | null): PasteTarget {
+  return value === 'new-layer' || value === 'new-project' ? value : 'current-cell'
+}
+
+/** Default folder for an unsaved project; saved projects always keep their own file path. */
+export function saveDirectoryForNewDocument(preferences: Pick<EditorPreferences, 'saveLocationMode' | 'saveDirectory' | 'lastSaveDirectory'>): string {
+  return preferences.saveLocationMode === 'recent' && preferences.lastSaveDirectory
+    ? preferences.lastSaveDirectory
+    : preferences.saveDirectory
+}
+
+/** The one shared location used to prefill every export-like operation. */
+export function outputDirectoryForOperation(preferences: Pick<EditorPreferences, 'exportLocationMode' | 'lastExportDirectory' | 'exportDirectory'>): string {
+  return preferences.exportLocationMode === 'recent' && preferences.lastExportDirectory
+    ? preferences.lastExportDirectory
+    : preferences.exportDirectory
+}
+
 export function parseRecoveryMinutes(value: string | null): number {
   if (!value?.trim()) return DEFAULT_EDITOR_PREFERENCES.recoveryMinutes
   const parsed = Number(value)
@@ -1251,8 +1326,13 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     saveFormat: parseSaveFormat(get(SAVE_FORMAT_PREFERENCE_KEY)),
     saveOriginalFormat: get(SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY) !== 'false',
     exportFormat: parseExportFormat(get(EXPORT_FORMAT_PREFERENCE_KEY)),
+    saveLocationMode: parseSaveLocationMode(get(SAVE_LOCATION_MODE_PREFERENCE_KEY)),
+    exportLocationMode: parseSaveLocationMode(get(EXPORT_LOCATION_MODE_PREFERENCE_KEY)),
+    pasteTarget: parsePasteTarget(get(PASTE_TARGET_PREFERENCE_KEY)),
     saveDirectory: parseDirectoryPreference(get(SAVE_DIRECTORY_PREFERENCE_KEY)),
     exportDirectory: parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
+    lastSaveDirectory: parseDirectoryPreference(get(LAST_SAVE_DIRECTORY_PREFERENCE_KEY)),
+    lastExportDirectory: parseDirectoryPreference(get(LAST_EXPORT_DIRECTORY_PREFERENCE_KEY)) || parseDirectoryPreference(get(EXPORT_DIRECTORY_PREFERENCE_KEY)),
     recovery: get(RECOVERY_PREFERENCE_KEY) !== 'false',
     recoveryMinutes: parseRecoveryMinutes(get(RECOVERY_MINUTES_PREFERENCE_KEY)),
     recoveryRetentionDays: parseRecoveryRetentionDays(get(RECOVERY_RETENTION_DAYS_PREFERENCE_KEY)),
@@ -1267,12 +1347,15 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     documentSizePresets: parseDocumentSizePresets(get(NEW_DOCUMENT_SIZE_PRESETS_KEY)),
     exportScalePresets: parseExportScalePresets(get(EXPORT_SCALE_PRESETS_KEY)),
     rotationIndicatorPosition: parseRotationIndicatorPosition(get(ROTATION_INDICATOR_POSITION_KEY)),
+    exportProtection: get(EXPORT_PROTECTION_KEY) === 'blur-noise' ? 'blur-noise' : get(EXPORT_PROTECTION_KEY) === 'blur' ? 'blur' : 'off',
+    referenceScaling: get(REFERENCE_SCALING_KEY) === 'pixelated' ? 'pixelated' : 'smooth',
     canvasViewScrollbarsEnabled: get(CANVAS_VIEW_SCROLLBARS_ENABLED_KEY) !== 'false',
     drawingBrushPreviewEnabled: parseDrawingBrushPreviewEnabled(get(DRAWING_BRUSH_PREVIEW_ENABLED_KEY)),
     relativeLuminanceScope: parseRelativeLuminanceScope(get(RELATIVE_LUMINANCE_SCOPE_KEY)),
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
     viewDragSensitivity: parseViewDragSensitivity(get(VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY)),
     brushShiftLineEnabled: parseBrushShiftLineEnabled(get(BRUSH_SHIFT_LINE_ENABLED_KEY)),
+    paintingCursorType: parsePaintingCursorType(get(PAINTING_CURSOR_TYPE_KEY)),
     useLocalCursors: get(USE_LOCAL_CURSORS_PREFERENCE_KEY) === 'true',
     cursorScale: parseCursorScale(get(CURSOR_SCALE_PREFERENCE_KEY)),
     cursorColorMode: parseCursorColorMode(get(CURSOR_COLOR_MODE_PREFERENCE_KEY)),
@@ -1330,6 +1413,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     quickCommandBarExpanded: get(QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY) === 'true',
     quickCommandBarTranslucent: get(QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY) === 'true',
     quickCommandPreferences: parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY)),
+    toolRail: parseToolRail(get(TOOL_RAIL_PREFERENCE_KEY)),
     quickCommandBars: parseQuickCommandBars(get(QUICK_COMMAND_BARS_PREFERENCE_KEY), parseQuickCommandPreferences(get(QUICK_COMMAND_PREFERENCES_KEY))),
     tablet: parseTabletPreferences(get(TABLET_PREFERENCES_KEY)),
     outlineSettings: parseOutlineSettingsPreference(get(OUTLINE_SETTINGS_PREFERENCE_KEY)),
@@ -1357,8 +1441,13 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [SAVE_ORIGINAL_FORMAT_PREFERENCE_KEY]: String(preferences.saveOriginalFormat),
     [PIXEL_FORMAT_PREFERENCE_KEY]: preferences.pixelFormat,
     [EXPORT_FORMAT_PREFERENCE_KEY]: preferences.exportFormat,
+    [SAVE_LOCATION_MODE_PREFERENCE_KEY]: preferences.saveLocationMode,
+    [EXPORT_LOCATION_MODE_PREFERENCE_KEY]: preferences.exportLocationMode,
+    [PASTE_TARGET_PREFERENCE_KEY]: parsePasteTarget(preferences.pasteTarget),
     [SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.saveDirectory),
     [EXPORT_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.exportDirectory),
+    [LAST_SAVE_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.lastSaveDirectory),
+    [LAST_EXPORT_DIRECTORY_PREFERENCE_KEY]: parseDirectoryPreference(preferences.lastExportDirectory),
     [RECOVERY_PREFERENCE_KEY]: String(preferences.recovery),
     [RECOVERY_MINUTES_PREFERENCE_KEY]: String(parseRecoveryMinutes(String(preferences.recoveryMinutes))),
     [RECOVERY_RETENTION_DAYS_PREFERENCE_KEY]: String(parseRecoveryRetentionDays(String(preferences.recoveryRetentionDays))),
@@ -1373,12 +1462,15 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [NEW_DOCUMENT_SIZE_PRESETS_KEY]: JSON.stringify(parseDocumentSizePresets(JSON.stringify(preferences.documentSizePresets))),
     [EXPORT_SCALE_PRESETS_KEY]: JSON.stringify(parseExportScalePresets(JSON.stringify(preferences.exportScalePresets))),
     [ROTATION_INDICATOR_POSITION_KEY]: preferences.rotationIndicatorPosition,
+    [EXPORT_PROTECTION_KEY]: preferences.exportProtection,
+    [REFERENCE_SCALING_KEY]: preferences.referenceScaling,
     [CANVAS_VIEW_SCROLLBARS_ENABLED_KEY]: String(preferences.canvasViewScrollbarsEnabled),
     [DRAWING_BRUSH_PREVIEW_ENABLED_KEY]: String(preferences.drawingBrushPreviewEnabled),
     [RELATIVE_LUMINANCE_SCOPE_KEY]: preferences.relativeLuminanceScope,
     [ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY]: preferences.zoomToolDragMode,
     [VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY]: String(parseViewDragSensitivity(String(preferences.viewDragSensitivity))),
     [BRUSH_SHIFT_LINE_ENABLED_KEY]: String(preferences.brushShiftLineEnabled),
+    [PAINTING_CURSOR_TYPE_KEY]: preferences.paintingCursorType,
     [USE_LOCAL_CURSORS_PREFERENCE_KEY]: String(preferences.useLocalCursors),
     [CURSOR_SCALE_PREFERENCE_KEY]: String(preferences.cursorScale),
     [CURSOR_COLOR_MODE_PREFERENCE_KEY]: parseCursorColorMode(preferences.cursorColorMode),
@@ -1437,6 +1529,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [QUICK_COMMAND_BAR_EXPANDED_PREFERENCE_KEY]: String(preferences.quickCommandBarExpanded),
     [QUICK_COMMAND_BAR_TRANSLUCENT_PREFERENCE_KEY]: String(preferences.quickCommandBarTranslucent),
     [QUICK_COMMAND_PREFERENCES_KEY]: JSON.stringify(parseQuickCommandPreferences(JSON.stringify(preferences.quickCommandPreferences))),
+    [TOOL_RAIL_PREFERENCE_KEY]: serializeToolRail(preferences.toolRail),
     [QUICK_COMMAND_BARS_PREFERENCE_KEY]: JSON.stringify(parseQuickCommandBars(JSON.stringify(preferences.quickCommandBars), preferences.quickCommandPreferences)),
     [TABLET_PREFERENCES_KEY]: JSON.stringify(parseTabletPreferences(JSON.stringify(preferences.tablet))),
     [OUTLINE_SETTINGS_PREFERENCE_KEY]: preferences.outlineSettings ? JSON.stringify(cloneOutlineSettings(normalizeOutlineSettings(preferences.outlineSettings)!)) : ''

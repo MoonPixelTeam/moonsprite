@@ -1,3 +1,4 @@
+import normalWorkspaceLayout from '@shared/workspace-normal.json'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { BinaryReadProgress, ClipboardImage, ClipboardImageSize, ProjectPreview, StoredPalette } from '@shared/types-files'
@@ -5,7 +6,7 @@ import type { ExtensionListing, ExtensionPackagePreview, StoredExtension } from 
 import type { MoonSpriteApi, ScaledPngWriteOptions, ScaledPngWriteResult } from '@shared/types-platform'
 import type { RgbaColor, SaveDialogFormat } from '@shared/types-color'
 import type { StoredBackgroundPreset, StoredBrush, StoredBrushFolder } from '@shared/types-library'
-import type { StoredWorkspace } from '@shared/types-workspace'
+import type { StoredWorkspace, WorkspaceLayout } from '@shared/types-workspace'
 import { builtInPalettes } from '@/core/built-in-palettes'
 import { brushFolderContains, remapBrushFolderId } from '@/core/brush-folder-tree'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -30,9 +31,15 @@ const browserPalettes = new Map<string, StoredPalette>(builtInPalettes.map((pale
 }]))
 const browserWorkspaces = new Map<string, StoredWorkspace>([['builtin-default', {
   id: 'builtin-default', name: tr('app.workspace.default'), filePath: '', updatedAt: '', builtIn: true,
-  layout: { panelDocks: { color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'bottom', tileset: 'right', brushes: 'right' }, panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: true }, inspectorWidth: 300, leftDockWidth: 280, bottomDockHeight: 220, inspectorWidthRatio: 0.20833333333333334, leftDockWidthRatio: 0.19444444444444445, bottomDockHeightRatio: 0.275, toolRailSide: 'right', previewOpen: true, inspectorLayout: '{"order":["palette","color","layers","freeTileInstances","history","brushes","tileset","preview"],"verticalWeights":{"color":330,"palette":620,"layers":560,"freeTileInstances":180,"history":220,"preview":220,"tileset":280,"brushes":240},"bottomWeights":{"color":280,"palette":280,"layers":720,"freeTileInstances":300,"history":320,"preview":280,"tileset":360,"brushes":320}}', colorSquareDock: 'left', colorSquareAnchor: 'end', floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, tileset: null, brushes: null }, mainWindow: null },
-  initialLayout: { panelDocks: { color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'bottom', tileset: 'right', brushes: 'right' }, panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, tileset: false, brushes: true }, inspectorWidth: 300, leftDockWidth: 280, bottomDockHeight: 220, inspectorWidthRatio: 0.20833333333333334, leftDockWidthRatio: 0.19444444444444445, bottomDockHeightRatio: 0.275, toolRailSide: 'right', previewOpen: true, inspectorLayout: '{"order":["palette","color","layers","freeTileInstances","history","brushes","tileset","preview"],"verticalWeights":{"color":330,"palette":620,"layers":560,"freeTileInstances":180,"history":220,"preview":220,"tileset":280,"brushes":240},"bottomWeights":{"color":280,"palette":280,"layers":720,"freeTileInstances":300,"history":320,"preview":280,"tileset":360,"brushes":320}}', colorSquareDock: 'left', colorSquareAnchor: 'end', floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, tileset: null, brushes: null }, mainWindow: null }
+  layout: { panelDocks: { color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', reference: 'left', preview: 'right', tileset: 'right', brushes: 'right' }, panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, reference: true, preview: true, tileset: false, brushes: false }, inspectorWidth: 300, leftDockWidth: 280, bottomDockHeight: 220, inspectorWidthRatio: 0.20833333333333334, leftDockWidthRatio: 0.19444444444444445, bottomDockHeightRatio: 0.275, toolRailSide: 'right', previewOpen: true, timelineHidden: false, inspectorLayout: '{"order":["palette","reference","color","layers","freeTileInstances","history","preview","tileset","brushes"],"squarePanels":["reference","color","preview"],"verticalWeights":{"color":330,"palette":280,"reference":280,"layers":560,"freeTileInstances":180,"history":220,"preview":300,"tileset":280,"brushes":240},"bottomWeights":{"color":280,"palette":280,"reference":280,"layers":720,"freeTileInstances":300,"history":320,"preview":280,"tileset":360,"brushes":320}}', colorSquareDock: null, colorSquareAnchor: null, floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, reference: null, preview: null, tileset: null, brushes: null }, mainWindow: null },
+  initialLayout: { panelDocks: { color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', reference: 'left', preview: 'right', tileset: 'right', brushes: 'right' }, panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, reference: true, preview: true, tileset: false, brushes: false }, inspectorWidth: 300, leftDockWidth: 280, bottomDockHeight: 220, inspectorWidthRatio: 0.20833333333333334, leftDockWidthRatio: 0.19444444444444445, bottomDockHeightRatio: 0.275, toolRailSide: 'right', previewOpen: true, timelineHidden: false, inspectorLayout: '{"order":["palette","reference","color","layers","freeTileInstances","history","preview","tileset","brushes"],"squarePanels":["reference","color","preview"],"verticalWeights":{"color":330,"palette":280,"reference":280,"layers":560,"freeTileInstances":180,"history":220,"preview":300,"tileset":280,"brushes":240},"bottomWeights":{"color":280,"palette":280,"reference":280,"layers":720,"freeTileInstances":300,"history":320,"preview":280,"tileset":360,"brushes":320}}', colorSquareDock: null, colorSquareAnchor: null, floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, reference: null, preview: null, tileset: null, brushes: null }, mainWindow: null }
 } as StoredWorkspace]])
+
+browserWorkspaces.set('builtin-normal', {
+  id: 'builtin-normal', name: tr('app.workspace.normal'), filePath: '', updatedAt: '', builtIn: true,
+  layout: structuredClone(normalWorkspaceLayout) as WorkspaceLayout,
+  initialLayout: structuredClone(normalWorkspaceLayout) as WorkspaceLayout
+})
 
 const readTauriResourceInfo = createResourceInfoReader(async () => {
   const [totalBytes, freeBytes] = await invoke<[number, number]>('get_resource_info')
@@ -94,6 +101,7 @@ const createBrowserApi = (): MoonSpriteApi => ({
   sampleWindowColor: async () => null,
   sampleWindowColorRegion: async () => null,
   listPalettes: async () => ({ directoryPath: 'palettes', palettes: [...browserPalettes.values()].map(cloneStoredPalette) }),
+  importPalette: async () => null,
   savePalette: async (requestedId, name, colors, columns, slots) => {
     const id = requestedId ?? browserPaletteId(name)
     const palette: StoredPalette = { id, name, filePath: `palettes/${id}.palette.json`, builtIn: false, colors: colors.map((color: RgbaColor) => ({ ...color })), columns, slots: [...slots] }
@@ -447,6 +455,7 @@ export const createTauriApi = (): MoonSpriteApi => ({
   sampleWindowColor: (clientX, clientY) => invoke<RgbaColor>('sample_window_color', { clientX, clientY }),
   sampleWindowColorRegion: (clientX, clientY, radius) => invoke<RgbaColor[]>('sample_window_color_region', { clientX, clientY, radius }),
   listPalettes: () => invoke('list_palettes'),
+  importPalette: () => invoke('import_palette'),
   savePalette: (id, name, colors, columns, slots) => invoke('save_palette', { id, name, colors, columns, slots }),
   deletePalette: (id) => invoke('delete_palette', { id }),
   openPaletteFolder: () => invoke('open_palette_folder'),

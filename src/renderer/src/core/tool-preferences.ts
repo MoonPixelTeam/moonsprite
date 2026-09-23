@@ -27,6 +27,7 @@ export type BrushTool = typeof BRUSH_TOOLS[number]
 export interface PersistedBrushProfile {
   inkMode: InkMode
   brushSize: number
+  brushOpacity: number
   brushShape: BrushShape
   brushAngle: number
   brushDither: BrushDitherSettings
@@ -77,6 +78,7 @@ export interface PersistedToolSettings extends PersistedBrushProfile {
   selectionRounded: boolean
   selectionCornerRadius: number
   wandTolerance: number
+  magicEraserContiguous: boolean
   wandContiguous: boolean
   wandGapClosing: boolean
   wandGapThreshold: number
@@ -103,6 +105,7 @@ const createDefaultProceduralBrushSettings = (): Record<ProceduralBrushId, Proce
 export const defaultToolSettings: PersistedToolSettings = {
   syncInkAcrossTools: false,
   brushSize: 1,
+  brushOpacity: 100,
   brushShape: 'round',
   brushAngle: 0,
   brushDither: { ...DEFAULT_BRUSH_DITHER_SETTINGS },
@@ -152,6 +155,7 @@ export const defaultToolSettings: PersistedToolSettings = {
   selectionRounded: false,
   selectionCornerRadius: 4,
   wandTolerance: 0,
+  magicEraserContiguous: false,
   wandContiguous: true,
   wandGapClosing: false,
   wandGapThreshold: DEFAULT_GAP_CLOSING_THRESHOLD,
@@ -198,6 +202,7 @@ export function normalizePersistedBrushProfile(stored: Partial<PersistedBrushPro
   return {
     inkMode: stored?.inkMode === 'copy-alpha-color' || stored?.inkMode === 'lock-alpha' ? stored.inkMode : fallback.inkMode,
     brushSize: Number.isFinite(stored?.brushSize) ? Math.max(1, Math.min(128, Math.round(stored!.brushSize!))) : fallback.brushSize,
+    brushOpacity: Number.isFinite(stored?.brushOpacity) ? Math.max(0, Math.min(100, Math.round(stored!.brushOpacity!))) : fallback.brushOpacity,
     brushShape: stored?.brushShape === 'square' || stored?.brushShape === 'round' || stored?.brushShape === 'line' ? stored.brushShape : fallback.brushShape,
     brushAngle: Number.isFinite(stored?.brushAngle) ? Math.max(-180, Math.min(180, Math.round(stored!.brushAngle!))) : fallback.brushAngle,
     brushDither: normalizeBrushDitherSettings(stored?.brushDither, fallback.brushDither),
@@ -275,6 +280,7 @@ export function loadToolSettings(storage?: Storage): PersistedToolSettings {
       selectionRounded: typeof stored.selectionRounded === 'boolean' ? stored.selectionRounded : defaultToolSettings.selectionRounded,
       selectionCornerRadius: Number.isFinite(stored.selectionCornerRadius) ? Math.max(0, Math.min(256, Math.round(stored.selectionCornerRadius!))) : defaultToolSettings.selectionCornerRadius,
       wandTolerance: Number.isFinite(stored.wandTolerance) ? Math.max(0, Math.min(255, Math.round(stored.wandTolerance!))) : defaultToolSettings.wandTolerance,
+      magicEraserContiguous: stored.magicEraserContiguous === true,
       wandContiguous: typeof stored.wandContiguous === 'boolean' ? stored.wandContiguous : defaultToolSettings.wandContiguous,
       wandGapClosing: typeof stored.wandGapClosing === 'boolean' ? stored.wandGapClosing : defaultToolSettings.wandGapClosing,
       wandGapThreshold: Number.isFinite(stored.wandGapThreshold) ? normalizeGapClosingThreshold(stored.wandGapThreshold!) : defaultToolSettings.wandGapThreshold,

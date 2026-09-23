@@ -12,8 +12,12 @@ export const selectionBoundarySegments = (selection: SelectionMask): Int32Array 
   const { width, height, mask } = selection
   const prepared = mask && preparedBoundaries.get(mask)
   if (prepared && prepared.width === width && prepared.height === height) return prepared.segments
-  if (!mask) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, height, 0, 0])
-  if (!mask.includes(0)) return Int32Array.from([0, 0, width, 0, width, 0, width, height, width, height, 0, height, 0, 0])
+  if (!mask || !mask.includes(0)) return Int32Array.from([
+    0, 0, width, 0,
+    width, 0, width, height,
+    width, height, 0, height,
+    0, height, 0, 0
+  ])
   const maxCoordinates = Math.max(16, width * height * 8 + (width + height) * 8)
   let segments = new Int32Array(Math.min(maxCoordinates, Math.max(256, (width + height) * 16)))
   let length = 0

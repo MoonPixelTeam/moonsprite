@@ -19,7 +19,8 @@ declare global {
       createSimpleDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
       createSparseMagicWandDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
       createComplexDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
-      createLargeDocument(size: number): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
+      createLargeDocument(size: number, options?: { layers?: number; frames?: number }): Promise<{ uniquePixelBytes: number; layerCount: number; frameCount: number }>
+      interactionState(): unknown
       activeView(): ViewState | null
       resetScenario(view: ViewState): void
       prepareTool(tool: ToolId, fillKind?: FillKind | null, shapeKind?: ShapeKind | null): void

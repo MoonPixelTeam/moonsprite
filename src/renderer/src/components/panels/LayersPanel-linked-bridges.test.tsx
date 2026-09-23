@@ -4,6 +4,8 @@ import { animationCelKey, connectAnimationCels, ensureAnimationDocument } from '
 import { createDocument, getActiveLayer } from '@/core/document'
 import { useWorkspace } from '@/store/workspace'
 import { LayersPanel } from './LayersPanel'
+import { deriveLayerPanelVisuals } from './deriveLayerPanelVisuals'
+import { createAnimationCelDropClampContext, clampAnimationCelDropTarget } from './animation-cel-drop-target'
 
 beforeEach(() => {
   localStorage.clear()
@@ -38,7 +40,7 @@ it.each(['normal', 'detailed', 'expanded', 'large', 'huge'])('identifies linked 
   }
   const boxes = [...container.querySelectorAll<HTMLElement>('[data-animation-cel-selection]')]
   expect(boxes.map(box => [box.style.getPropertyValue('--animation-frame-index'), box.style.getPropertyValue('--animation-frame-span')]))
-    .toEqual([['0', '2'], ['3', '1']])
+    .toEqual([['0', '1']])
   // Both display modes use the same link-selection gate: choosing an
   // unrelated cel hides the blue bridge, choosing a member reveals it again.
   act(() => { useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, timeline.frames[2].id)) })
@@ -80,4 +82,42 @@ it.each(['frame', 'cel'] as const)('keeps a linked bridge and hides only its int
   else useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, timeline.frames[1].id))
   view.rerender(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
   verify()
+})
+
+it('keeps multi-row selection bounds and movement within the directly selected slots despite a longer linked run', async () => {
+  const document = createDocument('connected linked selection', 1, 1, 'rgba')
+  const bottomLayer = getActiveLayer(document)
+  bottomLayer.pixels[3] = 255
+  useWorkspace.getState().addSession(document)
+  await useWorkspace.getState().addLayer()
+  await useWorkspace.getState().addLayer()
+  for (let index = 0; index < 6; index++) useWorkspace.getState().duplicateAnimationFrame()
+  const currentDocument = useWorkspace.getState().sessions[0].document
+  const timeline = ensureAnimationDocument(currentDocument)
+  const bottomCels = timeline.cels.filter(cel => cel.layerId === bottomLayer.id)
+  expect(connectAnimationCels(currentDocument, bottomCels.map(cel => cel.id))).toBe(true)
+  const selectedKeys = currentDocument.layers.flatMap(layer =>
+    timeline.frames.slice(2, 5).map(frame => animationCelKey(layer.id, frame.id)))
+  selectedKeys.forEach((key, index) => useWorkspace.getState().selectAnimationCell(key, index ? 'toggle' : undefined))
+  const {container} = render(<LayersPanel session={useWorkspace.getState().sessions[0]} docked />)
+  const outlines = container.querySelectorAll<HTMLElement>('[data-animation-cel-selection]')
+  expect(outlines).toHaveLength(1)
+  expect(outlines[0].style.getPropertyValue('--animation-frame-index')).toBe('2')
+  expect(outlines[0].style.getPropertyValue('--animation-frame-span')).toBe('3')
+  expect(outlines[0].style.getPropertyValue('--animation-row-span')).toBe('3')
+  expect(outlines[0].querySelector('path')).not.toBeInTheDocument()
+  expect(container.querySelector('[data-linked-cel-block].selected')).toHaveAttribute('data-frame-span', '7')
+  const session = useWorkspace.getState().sessions[0]
+  expect(session.selectedAnimationCellKeys).toEqual(selectedKeys)
+  const anchor = selectedKeys[0]
+  const drag = {kind: 'cel' as const, button: 0 as const, sourceAnchorKey: anchor, cellKeys: selectedKeys,
+    startX: 0, startY: 0, moved: true, canMove: true, preserveSelection: false,
+    pendingSelection: false, longPressed: false, longPressTimer: null, lastSelectionTarget: anchor}
+  const target = animationCelKey(currentDocument.layers[0].id, timeline.frames[3].id)
+  expect(clampAnimationCelDropTarget(createAnimationCelDropClampContext(drag, session, timeline), target)).toBe(target)
+  const visuals = deriveLayerPanelVisuals({session, timeline, animationGestureActiveTarget: null,
+    timelineActiveContext: session.timelineActiveContext, animationGestureSelection: null,
+    selectionOutlineVisible: true, selectedAnimationGroupCellKeys: [], gesture: drag,
+    animationCelDragAnchorKey: anchor, animationCelDropTargetKey: target, animationCellSelectionOutlineVisible: true})
+  expect(visuals.animationCelSelectionBoxes).toEqual([{row: 0, column: 3, rowSpan: 3, columnSpan: 3}])
 })

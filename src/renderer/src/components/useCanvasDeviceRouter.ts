@@ -1,4 +1,5 @@
-import { deviceTemporaryTool, deviceSampleUsesSecondary, rightClickToolEvent } from './canvas-device-tools'
+import { targetsCanvasSurface } from './canvas-reference-input'
+import { deviceTemporaryTool, deviceSampleUsesSecondary, rightClickToolEvent, deviceRightClickAction, penEraserToolEvent } from './canvas-device-tools'
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
 import { measureRuntimeDiagnostic } from '../core/runtime-diagnostics'
 import { createRuntimeLatencyReporter, measureRuntimeStages, runtimeEventStartTime } from '@/core/runtime-diagnostic-stages'
@@ -21,6 +22,7 @@ import {
   PointerPressureAdapter,
   clampCanvasZoom as clampZoom,
   createCanvasPanDrag,
+  isCanvasViewNavigationDrag,
   isCanvasViewNavigationTool,
   normalizeCanvasWheelDelta,
   wheelCanvasZoom,
@@ -37,64 +39,28 @@ export const retainsCanvasCursorOverlayOnLeave = (
   return (drag?.kind === 'draw' || drag?.kind === 'tile-draw' || drag?.kind === 'move-content' || drag?.kind === 'move-selection') && tileRepeatMode !== 'off'
 }
 
-interface Ports {
-  readonly inputRef: import('react').RefObject<CanvasInputState>
-  readonly session: DocumentSession
-  readonly canvasRef: import('react').RefObject<HTMLCanvasElement | null>
-  readonly stageBounds: () => DOMRect
-  readonly keyDisplayEnabled: boolean
-  readonly keyDisplayWheelRef: import('react').RefObject<boolean>
-  readonly activeLayer: RasterLayer
-  readonly canvasResizePreviewRef: import('react').RefObject<import('@/store/workspace').CanvasResizePreview | null>
-  readonly modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, id: import('@/core/shortcuts').ShortcutId) => boolean
-  readonly activeBrushImage: import('@shared/types-brush').ImageBrush | null
-  readonly updateCursorAt: (clientX: number, clientY: number, ctrlKey: boolean, altKey: boolean, shiftKey?: boolean) => void
-  readonly scheduleDraw: () => void
-  readonly brushSizeWheelReversed: boolean
-  readonly wheelZoomEnabled: boolean
-  readonly liveViewRef: import('react').RefObject<import('@shared/types-view').ViewState>
-  readonly wheelZoomMode: import('@/core/file-preferences').WheelZoomMode
-  readonly stageSize: () => {
-    width: number
-    height: number
-  }
-  readonly scheduleZoomPreview: (next: import('@shared/types-view').ViewState) => void
-  readonly constrainCanvasView: (
-    view: DocumentSession['view'],
-    size?: {
-      width: number
-      height: number
-    }
-  ) => DocumentSession['view']
-  readonly stagePoint: (clientX: number, clientY: number) => Point
-  readonly rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
-  readonly liveInputSession: () => DocumentSession
-  readonly tabletPreferences: import('@/core/file-preferences').TabletPreferences
-  readonly beginPanPreview: () => void
-  readonly finishPanPreview: () => import('@shared/types-view').ViewState
-  readonly applyRotationStyle: (_view: import('@shared/types-view').ViewState) => void
-  readonly finishZoomPreview: () => import('@shared/types-view').ViewState
-  readonly handlePointerDown: (event: React.PointerEvent<HTMLCanvasElement>) => void
-  readonly syncPenCursor: (event: React.PointerEvent<HTMLCanvasElement>) => void
-  readonly handlePointerMove: (event: React.PointerEvent<HTMLCanvasElement>) => void
-  readonly handlePointerUp: (event: React.PointerEvent<HTMLCanvasElement>) => void
-  readonly cancelActiveCanvasInteraction: () => void
-  readonly hideEyedropperMagnifier: () => void
-  readonly updateCursor: (event: React.PointerEvent<HTMLCanvasElement>) => void
-  readonly scheduleBrushPreviewOverlay: () => void
-  readonly hidePenCursor: () => void
-  readonly selectionCrosshair: boolean
-  readonly selectionInteractionEditable: boolean
-  readonly draw: () => void
-  readonly quickEyedropperOriginalColorRef: import('react').RefObject<RgbaColor | null>
-  readonly flushEyedropperSampleColor: () => void
-  readonly quickEyedropperSuppressedRef: import('react').RefObject<boolean>
-  readonly brushPreviewOverlaySupported: (currentSession: DocumentSession) => boolean
-  readonly lineConnectionPreviewActive: (event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>) => boolean
+/** A secondary press during a primary drawing gesture cancels that in-flight gesture. */
+export const cancelsActiveCanvasDrawWithRightClick = (
+  event: Pick<PointerEvent, 'button' | 'buttons'>,
+  drag: CanvasInputState['drag']
+): boolean => {
+  return (event.button === 0 || event.button === 2) && cancelsActiveCanvasDrawWhileRightHeld(event, drag)
 }
+
+/** Browsers report a second mouse button during a captured stroke as pointermove, not pointerdown. */
+export const cancelsActiveCanvasDrawWhileRightHeld = (
+  event: Pick<PointerEvent, 'buttons'>,
+  drag: CanvasInputState['drag']
+): boolean => {
+  if ((event.buttons & 3) !== 3 || !drag) return false
+  return !isCanvasViewNavigationDrag(drag)
+}
+
+import type { Ports } from './canvas-device-router-ports'
 
 export function useCanvasDeviceRouter(ports: Ports) {
   const pressureAdapterRef = useRef(new PointerPressureAdapter())
+  const middlePenPointerRef = useRef<number | null>(null)
 
   const touchNavigationPortsRef = useRef<TouchNavigationPorts | null>(null)
 
@@ -114,10 +80,12 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const lastNativeWheelRef = useRef<{ at: number; delta: number; type: string } | null>(null)
 
   useEffect(() => {
+    middlePenPointerRef.current = null
     pressureAdapterRef.current.reset()
     ports.inputRef.current.resetPointerDeviceState()
     touchNavigation.reset()
     const resetPointerDevices = (): void => {
+      middlePenPointerRef.current = null
       ports.inputRef.current.resetPointerDeviceState()
       pressureAdapterRef.current.reset()
       touchNavigation.reset()
@@ -128,6 +96,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     window.addEventListener('blur', resetPointerDevices)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
+      middlePenPointerRef.current = null
       window.removeEventListener('blur', resetPointerDevices)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       ports.inputRef.current.resetPointerDeviceState()
@@ -140,7 +109,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
     const canvas = ports.canvasRef.current
     if (!canvas) return
     const path = event.composedPath()
-    const targetsCanvas = path.includes(canvas)
+    const targetsCanvas = targetsCanvasSurface(path, canvas)
     const pointer = ports.inputRef.current.pointer
     if (!targetsCanvas) {
       if (useWorkspace.getState().activeId !== ports.session.document.id || !pointer.visible) return
@@ -172,36 +141,37 @@ export function useCanvasDeviceRouter(ports: Ports) {
       altKey: event.altKey || ports.inputRef.current.altHeld,
       shiftKey: event.shiftKey || ports.inputRef.current.shiftHeld
     }
+    const liveSession = ports.liveInputSession()
     if ((targetsCanvas || eventPointInside) && dispatchWheelShortcutInput(canvas, wheelModifiers, delta)) {
       event.preventDefault()
       event.stopImmediatePropagation()
       return
     }
     if (
-      (ports.activeLayer.kind !== 'tilemap' || ports.session.tilemapMode !== 'paint') &&
+      (ports.activeLayer.kind !== 'tilemap' || liveSession.tilemapMode !== 'paint') &&
       !ports.canvasResizePreviewRef.current &&
       ports.modifierActive(wheelModifiers, 'brushSizeWheelAdjust') &&
-      (ports.session.tool === 'pencil' ||
-        ports.session.tool === 'line' ||
-        ports.session.tool === 'airbrush' ||
-        ports.session.tool === 'eraser' ||
-        ports.session.tool === 'smooth' ||
-        (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
-        ports.session.tool === 'liquify') &&
-      (ports.session.tool === 'smooth' ||
-        (ports.session.tool === 'selection' && ports.session.selectionKind === 'brush') ||
-        ports.session.tool === 'airbrush' ||
-        ports.session.tool === 'liquify' ||
+      (liveSession.tool === 'pencil' ||
+        liveSession.tool === 'line' ||
+        liveSession.tool === 'airbrush' ||
+        liveSession.tool === 'eraser' ||
+        liveSession.tool === 'smooth' ||
+        (liveSession.tool === 'selection' && liveSession.selectionKind === 'brush') ||
+        liveSession.tool === 'liquify') &&
+      (liveSession.tool === 'smooth' ||
+        (liveSession.tool === 'selection' && liveSession.selectionKind === 'brush') ||
+        liveSession.tool === 'airbrush' ||
+        liveSession.tool === 'liquify' ||
         ports.activeLayer.kind === 'tilemap' ||
-        !ports.activeBrushImage?.intrinsicSize)
+        !liveSession.brushImage?.intrinsicSize)
     ) {
       event.preventDefault()
       event.stopImmediatePropagation()
       wheelBrushSizePreviewRef.current = true
       const sizeStep = (delta < 0 ? 1 : -1) * (ports.brushSizeWheelReversed ? -1 : 1)
-      if (ports.session.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(ports.session.airbrushScatterRadius + sizeStep)
-      else if (ports.session.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(ports.session.liquifyRadius + sizeStep)
-      else useWorkspace.getState().setBrushSize(ports.session.brushSize + sizeStep)
+      if (liveSession.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(liveSession.airbrushScatterRadius + sizeStep)
+      else if (liveSession.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(liveSession.liquifyRadius + sizeStep)
+      else useWorkspace.getState().setBrushSize(liveSession.brushSize + sizeStep)
       ports.updateCursorAt(clientX, clientY, wheelModifiers.ctrlKey, wheelModifiers.altKey, wheelModifiers.shiftKey)
       ports.scheduleDraw()
       return
@@ -296,6 +266,26 @@ export function useCanvasDeviceRouter(ports: Ports) {
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down', pointerType: event.pointerType }))
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
+    // Back/forward side buttons belong to shortcuts, never to a paint stroke.
+    if (event.button === 3 || event.button === 4) return
+    if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
+    if (event.pointerType === 'pen' && event.button === 5 && !ports.tabletPreferences.eraserTipEnabled) return
+    if (event.buttons & 4) {
+      if (event.pointerType === 'pen') middlePenPointerRef.current = event.pointerId
+      if (event.button !== 1) event = Object.assign(Object.create(event), { button: 1 })
+    }
+    if (!(event.pointerType === 'pen' && ports.inputRef.current.temporaryRightClickAction) && cancelsActiveCanvasDrawWithRightClick(event.nativeEvent, ports.inputRef.current.drag)) {
+      // Do this before the normal right-click mapping so the secondary press
+      // cannot start a second tool gesture while the primary stroke is being
+      // rolled back.
+      ports.cancelActiveCanvasInteraction()
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      ports.hideEyedropperMagnifier()
+      event.preventDefault()
+      event.stopPropagation()
+      ports.updateCursor(event)
+      return
+    }
     // Pointer ids are reusable after a lost/canceled event. Drop any stale
     // device ownership before accepting the new interaction.
     ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
@@ -304,10 +294,11 @@ export function useCanvasDeviceRouter(ports: Ports) {
     ports.inputRef.current.clearTemporaryTool()
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
-    if (event.button === 2 && ports.tabletPreferences.rightClickAction !== 'background' && !(event.pointerType === 'pen' && (event.buttons & 32))) {
-      ports.inputRef.current.temporaryRightClickAction = ports.tabletPreferences.rightClickAction
+    const rightAction = deviceRightClickAction(event, ports.tabletPreferences)
+    if (event.button === 2 && rightAction !== 'background' && !(event.pointerType === 'pen' && (event.buttons & 32))) {
+      ports.inputRef.current.temporaryRightClickAction = rightAction
     }
-    event = rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)
+    event = rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)
     const session = ports.liveInputSession()
     const navigationGesture =
       event.button === 1 ||
@@ -328,33 +319,54 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
+    const auxiliaryPress = event.pointerType === 'mouse' && ((event.button === 1 && Boolean(event.buttons & 4)) || (event.button === 2 && Boolean(event.buttons & 2)))
+    if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent, auxiliaryPress)) {
+      // Compatibility mouse packets must not clear the live pen cursor/tool.
+      event.preventDefault()
+      return
+    }
+    // Pointer Events represent chorded button transitions as pointermove:
+    // the pen can remain in contact while its middle/side button changes.
+    if (event.button === 1 || (event.pointerType === 'pen' && ((event.buttons & 4) || middlePenPointerRef.current === event.pointerId))) {
+      if ((event.buttons & 4) && ports.inputRef.current.drag?.kind !== 'pan') {
+        pointerDown(event)
+        return
+      }
+      if (!(event.buttons & 4) && ports.inputRef.current.drag?.kind === 'pan') {
+        pointerUp(event)
+        return
+      }
+    }
+    if (!(event.pointerType === 'pen' && ports.inputRef.current.temporaryRightClickAction) && cancelsActiveCanvasDrawWhileRightHeld(event.nativeEvent, ports.inputRef.current.drag)) {
+      ports.cancelActiveCanvasInteraction()
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      ports.hideEyedropperMagnifier()
+      event.preventDefault()
+      event.stopPropagation()
+      ports.updateCursor(event)
+      return
+    }
     const deviceTool = deviceTemporaryTool(event, ports.tabletPreferences)
     if (!ports.inputRef.current.temporaryRightClickAction) {
       if (deviceTool) ports.inputRef.current.setTemporaryTool(event.pointerId, deviceTool)
       else ports.inputRef.current.clearTemporaryTool(event.pointerId)
     }
-    if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) {
-      // A compatibility mouse event can follow a pen stream and is ignored
-      // for drawing. It must still clear the previous pen/adaptive cursor;
-      // otherwise that overlay remains at the pen's last canvas position.
-      if (event.pointerType === 'mouse') ports.hidePenCursor()
-      event.preventDefault()
-      return
-    }
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
-    measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)))
+    measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
     ports.syncPenCursor(event)
   }
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (touchNavigation.up(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
+    if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-up', pointerType: event.pointerType }))
     try {
-      measurePointerInput('pointer-up', () => ports.handlePointerUp(rightClickToolEvent(event, ports.inputRef.current.temporaryRightClickAction)))
+      measurePointerInput('pointer-up', () => ports.handlePointerUp(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
       ports.syncPenCursor(event)
     } finally {
+      if (middlePenPointerRef.current === event.pointerId) middlePenPointerRef.current = null
       ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
       pressureAdapterRef.current.release(event.pointerId)
       ports.inputRef.current.clearTemporaryTool(event.pointerId)
@@ -363,6 +375,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
+    if (middlePenPointerRef.current === event.pointerId) middlePenPointerRef.current = null
     if (event.pointerType === 'touch') {
       if (touchNavigation.up(event, true)) return
     }
@@ -401,7 +415,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
       // Pointer capture keeps the selection gesture alive outside the canvas.
       // Do not clear the pointer used by the canvas cursor preview here; doing
       // so makes the cursor vanish until the pointer re-enters the canvas.
-      event.currentTarget.style.cursor = selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true)
+      event.currentTarget.style.cursor = selectionCreationCursor(ports.selectionCrosshair, ports.selectionInteractionEditable, true, ports.useLocalCursors)
       ports.draw()
       return
     }
@@ -442,6 +456,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerLeave = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (event.pointerType === 'pen' && ports.inputRef.current.auxiliaryMouseGestureActive()) return
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const retainsOverlay = retainsCanvasCursorOverlayOnLeave(
       ports.inputRef.current.drag,

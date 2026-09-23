@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { CanvasInputState, type CanvasDragState as DragState } from '@/core/canvas-input'
 import { MagicWandWorkerClient } from '@/core/magic-wand-worker'
+import { CanvasMagicPreviewFlash } from './canvas-magic-preview-flash'
 interface Ports {
   readonly session: DocumentSession
   readonly inputRef: import('react').RefObject<CanvasInputState>
@@ -16,12 +17,19 @@ export function useCanvasMagicLifecycle(ports: Ports) {
   const magicGestureRef = useRef<{ cancel: (redraw?: boolean) => void; drag: DragState } | null>(null)
 
   const magicWandWorkerRef = useRef<MagicWandWorkerClient | null>(null)
+  const magicPreviewFlashRef = useRef<CanvasMagicPreviewFlash | null>(null)
+  const magicPreviewFlash = magicPreviewFlashRef.current ??= new CanvasMagicPreviewFlash(() => ports.scheduleDraw())
 
   useEffect(
-    () => () => {
-      magicGestureRef.current?.cancel(false)
-      magicWandWorkerRef.current?.dispose()
-      magicWandWorkerRef.current = null
+    () => {
+      const unsubscribe = useWorkspace.subscribe(() => magicPreviewFlash.validate())
+      return () => {
+        unsubscribe()
+        magicPreviewFlash.clear(false)
+        magicGestureRef.current?.cancel(false)
+        magicWandWorkerRef.current?.dispose()
+        magicWandWorkerRef.current = null
+      }
     },
     []
   )
@@ -36,7 +44,10 @@ export function useCanvasMagicLifecycle(ports: Ports) {
   useEffect(() => {
     const keyDown = (event: KeyboardEvent): void => {
       const magic = magicGestureRef.current
-      if (magic && (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd'))) magic.cancel()
+      if (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd')) {
+        magic?.cancel()
+        magicPreviewFlash.clear()
+      }
       if (magic && event.key === 'Enter') {
         if (ports.inputRef.current.drag === magic.drag) ports.inputRef.current.finish()
         magic.drag.magicRelease?.()
@@ -60,5 +71,5 @@ export function useCanvasMagicLifecycle(ports: Ports) {
     return registerCanvasKeyboard({ isActive: () => useWorkspace.getState().activeId === ports.session.document.id, keyDown })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ports.session.document.id, ports.session.selectionMode])
-  return { magicGestureRef, magicWandWorkerRef }
+  return { magicGestureRef, magicWandWorkerRef, magicPreviewFlash }
 }

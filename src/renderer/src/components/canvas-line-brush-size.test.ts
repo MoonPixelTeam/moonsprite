@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document-model'
 import { CanvasInputState, PointerPressureAdapter } from '@/core/canvas-input'
 import { useWorkspace } from '@/store/workspace'
@@ -10,16 +10,20 @@ import { useCanvasToolSession } from './useCanvasToolSession'
 import { DEFAULT_SHORTCUT_BINDINGS, saveShortcutBindings } from '@/core/shortcuts'
 import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.runOnlyPendingTimers(); vi.useRealTimers(); vi.restoreAllMocks(); document.querySelectorAll('canvas').forEach(canvas => canvas.remove()); useWorkspace.setState({ sessions: [], activeId: null }) })
 
 it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movement without starting a stroke', lineKind => {
   const session = sessionFromDocument(createDocument('size', 32, 32, 'rgba'))
   Object.assign(session, { tool: 'line', lineKind, brushSize: 4 })
+  useWorkspace.setState({ sessions: [session], activeId: session.document.id })
   const input = new CanvasInputState()
   const canvas = document.createElement('canvas')
+  document.body.append(canvas)
   const setSize = vi.spyOn(useWorkspace.getState(), 'setBrushSize').mockImplementation(size => { session.brushSize = size })
   const scheduleOverlay = vi.fn()
   const scheduleDraw = vi.fn()
+  const readCoalescedSamples = vi.fn(() => [])
   const move = createCanvasPointerMove({
     inputRef: { current: input }, liveInputSession: () => session,
     canvasRef: { current: canvas }, liveViewRef: { current: session.view },
@@ -32,18 +36,21 @@ it.each(['line', 'curve'] as const)('adjusts %s brush size with modifier movemen
     scheduleBrushPreviewOverlay: scheduleOverlay, scheduleDraw, moveQuickSampling: () => false
   } as unknown as Parameters<typeof createCanvasPointerMove>[0])
   const moveAt = (clientX: number, sizing = true) => {
-    const event = { clientX, clientY: 16, ctrlKey: sizing, altKey: sizing, metaKey: false, shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
+    const event = { clientX, clientY: 16, ctrlKey: sizing, altKey: sizing, metaKey: false, shiftKey: false, buttons: 0, pointerId: 1, pointerType: 'pen', pressure: 0, getCoalescedEvents: readCoalescedSamples }
     move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as ReactPointerEvent<HTMLCanvasElement>)
   }
   moveAt(16)
   moveAt(32)
-  expect(setSize).toHaveBeenLastCalledWith(8)
+  act(() => vi.advanceTimersToNextFrame())
+  expect(setSize).not.toHaveBeenCalled()
   expect(input.drag).toBeNull()
   expect(scheduleOverlay).toHaveBeenCalledTimes(2)
   expect(scheduleDraw).not.toHaveBeenCalled()
   moveAt(32, false)
+  expect(setSize).toHaveBeenLastCalledWith(8)
   expect(input.modifierBrushSize).toBeNull()
   expect(setSize).toHaveBeenCalledOnce()
+  expect(readCoalescedSamples).not.toHaveBeenCalled()
 })
 
 it.each([['line', false], ['line', true], ['curve', false], ['curve', true]] as const)('adjusts %s brush size with Ctrl+wheel without zooming (reversed=%s)', (lineKind, brushSizeWheelReversed) => {
@@ -56,7 +63,7 @@ it.each([['line', false], ['line', true], ['curve', false], ['curve', true]] as 
   const scheduleZoomPreview = vi.fn()
   const { result, unmount } = renderHook(() => useCanvasDeviceRouter({
     inputRef: { current: new CanvasInputState() }, session, canvasRef: { current: canvas },
-    stageBounds: () => ({ left: 0, top: 0, right: 32, bottom: 32 }),
+    stageBounds: () => ({ left: 0, top: 0, right: 32, bottom: 32 }), liveInputSession: () => session,
     activeLayer: session.document.layers[0], canvasResizePreviewRef: { current: null },
     modifierActive: (event: Pick<KeyboardEvent, 'ctrlKey'>, id: string) => id === 'brushSizeWheelAdjust' && event.ctrlKey,
     activeBrushImage: null, updateCursorAt: vi.fn(), scheduleDraw, scheduleZoomPreview,
@@ -102,6 +109,7 @@ it.each(['K', 'Ctrl+Alt', 'Space', 'Ctrl+K', 'Win', 'MouseBack'])('uses configur
   expect(hook.result.current.quickToolActive('eraser')).toBe(false)
   const canvas = document.createElement('canvas')
   const setSize = vi.spyOn(useWorkspace.getState(), 'setBrushSize').mockImplementation(size => { session.brushSize = size })
+  document.body.append(canvas)
   const move = createCanvasPointerMove({
     inputRef, liveInputSession: () => hook.result.current.liveInputSession(),
     canvasRef: { current: canvas }, liveViewRef: { current: session.view },
@@ -117,9 +125,11 @@ it.each(['K', 'Ctrl+Alt', 'Space', 'Ctrl+K', 'Win', 'MouseBack'])('uses configur
     const event = { ...modifiers, clientX, clientY: 16, buttons: 0, pointerId: 1, pointerType: 'mouse', pressure: 0 }
     move({ ...event, nativeEvent: event, currentTarget: canvas } as unknown as ReactPointerEvent<HTMLCanvasElement>)
   }
-  expect(setSize).toHaveBeenLastCalledWith(8)
+  act(() => vi.advanceTimersToNextFrame())
+  expect(setSize).not.toHaveBeenCalled()
   expect(input.drag).toBeNull()
   act(() => { for (const part of parts) window.dispatchEvent(new KeyboardEvent('keyup', { key: keyName(part), code: part === 'Space' ? 'Space' : part })) })
+  expect(setSize).toHaveBeenLastCalledWith(8)
   expect(hook.result.current.modifierActive({ ctrlKey: false, altKey: false, shiftKey: false, metaKey: false }, 'brushSizeAdjust')).toBe(false)
   hook.unmount()
   localStorage.clear()

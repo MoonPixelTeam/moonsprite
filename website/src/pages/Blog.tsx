@@ -1,8 +1,9 @@
-import type { Copy } from '../content'
+import { blogCopy } from './BlogCopy'
+import type { Copy, Language } from '../content'
 import { OutlineNav, PageShell, useActiveHeading } from '../ui'
 
-export function BlogPage({ t, subId }: { t: Copy; subId?: string }) {
-  const blog = t.blogPage
+export function BlogPage({ t, language, subId }: { t: Copy; language: Language; subId?: string }) {
+  const blog = blogCopy(language)
   const posts = blog.posts
   const activeId = useActiveHeading(posts.map((post) => `post-${post.id}`))
 

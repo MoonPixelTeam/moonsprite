@@ -1,0 +1,361 @@
+/* ---------- account ---------- */
+
+.account-head { padding-bottom: var(--space-17); }
+.account-wrap { padding-top: 0; }
+.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-9); align-items: start; }
+.account-panel {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.account-panel h2 { display: flex; align-items: center; gap: var(--space-4); color: var(--text); font-size: var(--font-lead); font-weight: 700; }
+.account-panel h2 svg { width: 16px; height: 16px; color: var(--warn); }
+.account-panel .button { justify-self: start; }
+.account-facts { display: grid; gap: var(--space-5); margin: 0; }
+.account-facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-7); padding-bottom: var(--space-4); border-bottom: 1px solid var(--divider); }
+.account-facts dt { color: var(--text-4); font-size: var(--font-small); }
+.account-facts dd { margin: 0; color: var(--text); font-size: var(--font-small); }
+.account-empty { color: var(--text-3); font-size: var(--font-small); line-height: 1.7; }
+.account-tabs { display: flex; gap: var(--space-3); border-bottom: 1px solid var(--divider); }
+.account-tabs button { padding: var(--space-4) var(--space-6); color: var(--text-3); background: transparent; border: 0; border-bottom: 2px solid transparent; font-size: var(--font-small); font-weight: 600; cursor: pointer; }
+.account-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.account-form { display: grid; gap: var(--space-7); }
+.account-form label { display: grid; gap: var(--space-3); }
+.account-form label > span { color: var(--text-3); font-size: var(--font-small); }
+.account-form input,
+.account-form input[type="number"] {
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+/* The browser's spinner is OS chrome; the forms here take plain typed numbers. */
+.account-form input[type="number"]::-webkit-outer-spin-button,
+.account-form input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.account-form input[type="number"] { -moz-appearance: textfield; }
+.account-form input:focus-visible { border-color: var(--accent); outline: none; }
+.account-error { margin: 0; padding: var(--space-4) var(--space-5); color: var(--danger); background: var(--warn-soft); border: 1px solid var(--danger); font-size: var(--font-small); }
+.account-notice p { margin: 0; color: var(--text-3); font-size: var(--font-small); line-height: 1.75; }
+.order-list { display: grid; gap: var(--space-8); margin: 0; padding: 0; list-style: none; }
+.order { display: grid; gap: var(--space-5); padding: var(--space-6); background: var(--bg); border: 1px solid var(--divider); }
+.order-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-5); }
+.order-head strong { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+.order-head span { color: var(--text-4); font-size: var(--font-small); }
+.order-head em { margin-left: auto; color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); font-style: normal; }
+/* Without the id and date there is nothing to separate, so the total carries the line. */
+.order-head.bare { justify-content: flex-end; }
+.order-lines { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.order-lines li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-6); padding: var(--space-2) 0; color: var(--text-3); font-size: var(--font-small); }
+.order-lines svg { width: 14px; height: 14px; color: var(--success); }
+.order-line-name { display: grid; gap: 2px; min-width: 0; }
+.order-lines a { color: var(--text-2); }
+.order-line-name small { color: var(--text-4); font-size: var(--font-small); }
+.order-line-price { min-width: 64px; text-align: right; white-space: nowrap; }
+/* Download per pack. A pack whose file does not exist yet keeps the same shape but is
+   inert and says so, so the row never looks like a link that merely failed. */
+.order-download {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: var(--font-small);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.order-download:hover { color: var(--accent-hover); border-color: var(--accent); }
+.order-download svg { width: 13px; height: 13px; color: currentColor; }
+.order-download.pending { color: var(--text-4); background: transparent; border-color: var(--divider); cursor: not-allowed; }
+.order-download.pending svg { color: var(--text-4); }
+.order-count { margin-left: var(--space-3); padding: 0 var(--space-3); color: var(--text-3); background: var(--raised); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.button-count { margin-left: var(--space-3); padding: 0 var(--space-2); color: var(--text-3); background: var(--raised); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); }
+.purchases-wrap { padding-top: 0; }
+.verified, .unverified { font-style: normal; font-size: var(--font-small); }
+.verified { color: var(--success); }
+.unverified { color: var(--warn); }
+
+/* Purchases: a quiet ledger with one clear action per line. */
+.purchases-wrap > .panel { gap: var(--space-9); }
+.purchases-wrap > .panel > .panel-body { gap: var(--space-10); }
+.order-list { gap: var(--space-9); }
+.order { gap: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); }
+.order + .order { margin-top: var(--space-7); }
+.order-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); padding: var(--space-7) var(--space-8); background: var(--raised); border-bottom: 1px solid var(--border); }
+.order-head-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-5); min-width: 0; }
+.order-label { color: var(--text-3); font-size: var(--font-small); }
+.order-head strong { font-size: var(--font-small); }
+.order-head time { color: var(--text-4); font-size: var(--font-small); }
+.order-head em { margin-left: auto; }
+.order-lines { gap: 0; padding: var(--space-3) var(--space-8); }
+.order-lines li { grid-template-columns: 52px minmax(0, 1fr) auto auto; padding: var(--space-6) 0; border-top: 1px solid var(--divider); }
+.order-lines li:first-child { border-top: 0; }
+.order-line-thumb { display: grid; place-items: center; width: 44px; height: 44px; overflow: hidden; background: var(--control); border: 1px solid var(--divider); }
+.order-line-thumb .pack-image { width: 100%; height: 100%; object-fit: cover; }
+.order-line-thumb .pack-placeholder { transform: scale(.55); }
+.order-line-name a { font-weight: 600; }
+.order-download { justify-self: end; }
+@media (max-width: 760px) {
+  .order-head, .order-lines { padding-inline: var(--space-6); }
+  .order-lines li { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .order-download { grid-column: 3; grid-row: 1; }
+  .order-line-price { grid-column: 2 / -1; grid-row: 2; text-align: left; }
+}
+
+/* ---------- creator studio ---------- */
+
+/* Not linked from the site navigation: it is a seller tool, not a page for visitors. */
+.studio-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-bottom: var(--space-9); }
+.studio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); margin-bottom: var(--space-9); }
+.shelf-head-icon { width: 22px; height: 22px; margin-right: var(--space-5); color: var(--warn); vertical-align: middle; }
+.studio-badge { display: inline-flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); color: var(--success); background: var(--raised); border: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-badge svg { width: 14px; height: 14px; }
+.studio-prototype { margin-bottom: var(--space-9); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.studio-prototype p { margin: 0; color: var(--text-2); font-size: var(--font-small); line-height: 1.75; }
+.studio-gate { max-width: 520px; }
+.studio-hint { margin: 0; color: var(--text-4); font-size: var(--font-small); line-height: 1.6; }
+.studio-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-7); margin-bottom: var(--space-9); }
+.studio-metric {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  background-color: var(--panel);
+  background-image: linear-gradient(180deg, var(--wash-soft), transparent 60%);
+  border: 1px solid var(--border);
+}
+.studio-metric > span { color: var(--text-4); font-size: var(--font-small); }
+.studio-metric strong { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price-lg); }
+.studio-metric small { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.studio-metric.accent { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.studio-metric.accent strong { color: var(--accent); }
+.studio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-9); align-items: start; margin-bottom: var(--space-9); }
+/*
+ * One height for every control in a form. The shapes differed before — an input measured
+ * 45px (padding-driven) while the select was a fixed 36px — and a select sitting in an
+ * inline flow added baseline space under its label, so the two columns of a row started
+ * 29px apart. Everything is a border-box block at --control-height now.
+ */
+.account-form label,
+.studio-row label { display: grid; gap: var(--space-3); align-content: start; }
+.studio-row { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(180px, 1.2fr); gap: var(--space-7); align-items: start; }
+.studio-field-hint { color: var(--text-4); font-size: var(--font-small); line-height: 1.5; }
+.account-form label > span,
+.studio-row label > span { color: var(--text-3); font-size: var(--font-small); }
+.account-form input,
+.account-form input[type="number"],
+.account-form select,
+.ui-select,
+.ui-select-button {
+  box-sizing: border-box;
+  height: var(--control-height);
+}
+.account-form input,
+.account-form input[type="number"],
+.account-form select,
+.account-form textarea {
+  width: 100%;
+  padding: 0 var(--space-6);
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: var(--font-small);
+  appearance: none;
+}
+.account-form textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; }
+.account-form select { padding-right: var(--space-8); }
+/* The browser's spinner is OS chrome; the forms here take plain typed numbers. */
+.account-form input[type="number"]::-webkit-outer-spin-button,
+.account-form input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.account-form input[type="number"] { -moz-appearance: textfield; }
+.account-form input:focus-visible { border-color: var(--accent); outline: none; }
+.ui-select { display: block; }
+.ui-select-button { width: 100%; }
+.account-form textarea { resize: vertical; }
+.studio-ok { margin: 0; padding: var(--space-4) var(--space-5); color: var(--success); background: var(--raised); border: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-cover { display: grid; gap: var(--space-4); }
+.studio-cover-label { color: var(--text-3); font-size: var(--font-small); }
+.studio-cover-picked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.studio-cover-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-8);
+  color: var(--text-4);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+  font-size: var(--font-small);
+  cursor: pointer;
+}
+.studio-cover-empty:hover { color: var(--text-2); border-color: var(--accent); }
+.studio-cover-empty svg { width: 16px; height: 16px; }
+.studio-cover-preview { max-width: 220px; max-height: 140px; object-fit: contain; border: 1px solid var(--border); image-rendering: pixelated; }
+
+/* ---------- publish form ---------- */
+
+/* The form and the listing preview sit side by side: a seller should see the card they
+   are about to publish while filling it in, not after. */
+/* The form column flexes; the preview column is a fixed 400px so the card it renders
+   keeps its natural width instead of being squeezed and spilling over. */
+.studio-publish-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: var(--space-13); align-items: start; }
+.studio-fieldset { display: grid; gap: var(--space-7); margin: 0; padding: var(--space-9) 0 0; border: 0; border-top: 1px solid var(--divider); }
+.studio-fieldset:first-of-type { padding-top: 0; border-top: 0; }
+.studio-fieldset legend {
+  padding: 0 0 var(--space-5);
+  color: var(--warn);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-label);
+  letter-spacing: .02em;
+}
+.studio-field { display: grid; gap: var(--space-3); align-content: start; }
+.studio-field-label { display: flex; align-items: center; gap: var(--space-4); color: var(--text-3); font-size: var(--font-small); }
+.studio-field-tally {
+  padding: 0 var(--space-3);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+  font-weight: 400;
+}
+/* Values typed by hand lead the row, so what is actually set reads first. */
+.chip-set.custom { padding-bottom: var(--space-2); border-bottom: 1px dashed var(--divider); }
+.studio-inline-add .button:disabled { opacity: .45; cursor: not-allowed; }
+.studio-editing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: var(--font-small);
+}
+.studio-editing svg { width: 15px; height: 15px; }
+.studio-field-label em, .account-form label > span em {
+  color: var(--text-4);
+  font-size: var(--font-pixel-tag);
+  font-style: normal;
+  font-family: var(--font-pixel);
+}
+/* A field that failed validation says so on its own border, not only in a summary. */
+.account-form label.invalid input,
+.studio-field.invalid .studio-inline-add input { border-color: var(--danger); }
+/* Chips: presets are a row of pressable tags, the same shape the market's cards use. */
+.chip-set { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+
+.studio-inline-add { display: flex; gap: var(--space-5); }
+.studio-inline-add input { flex: 1 1 auto; }
+.studio-inline-add .button { flex: 0 0 auto; }
+/* Cover image: the one drop target that shows a picture instead of a filename, so it keeps
+   its own markup rather than using the library's FileField. */
+.cover-field {
+  display: grid;
+  gap: var(--space-5);
+  justify-items: center;
+  padding: var(--space-8);
+  background: var(--control);
+  border: 1px dashed var(--border-strong);
+}
+.cover-field.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.cover-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  color: var(--text-4);
+  font-size: var(--font-small);
+  text-align: center;
+  cursor: pointer;
+}
+.cover-empty:hover { color: var(--text-2); }
+.cover-empty svg { width: 20px; height: 20px; color: var(--accent); }
+.cover-empty strong { color: var(--text-2); font-weight: 600; }
+.cover-empty small { color: var(--text-4); }
+.cover-actions { display: flex; flex-wrap: wrap; gap: var(--space-5); justify-content: center; }
+.studio-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); padding-top: var(--space-4); }
+.studio-preview { position: sticky; top: 86px; display: grid; gap: var(--space-5); align-content: start; min-width: 0; }
+.studio-preview h2 { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-pixel-label); }
+/* The card is a preview of the listing's shape and content, not a life-size copy, so it
+   is bounded by its column: a long "what's inside" string would otherwise widen the card
+   past the column and spill out of the panel. */
+.studio-preview-card { min-width: 0; overflow: hidden; }
+.studio-preview-card .pack-card { width: 100%; pointer-events: none; }
+@media (max-width: 1100px) {
+  .studio-publish-grid { grid-template-columns: minmax(0, 1fr); }
+  .studio-preview { position: static; max-width: 420px; }
+}
+.studio-withdrawals { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.studio-withdrawals li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: baseline; gap: var(--space-5); padding: var(--space-4) 0; border-top: 1px solid var(--divider); font-size: var(--font-small); }
+.studio-withdrawals strong { color: var(--text); font-family: var(--font-pixel); }
+.studio-withdrawals span { color: var(--text-3); }
+.studio-withdrawals em { color: var(--warn); font-style: normal; }
+.studio-withdrawals time { color: var(--text-4); }
+.studio-packs { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.studio-packs li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--space-6); padding: var(--space-5) 0; border-top: 1px solid var(--divider); }
+.studio-packs .button svg { width: 13px; height: 13px; }
+.filter-count {
+  margin-left: var(--space-4);
+  padding: 0 var(--space-2);
+  color: var(--text-4);
+  font-family: var(--font-pixel);
+  font-size: var(--font-pixel-tag);
+}
+.filter-chip.active .filter-count { color: var(--accent); }
+.studio-pack-art { display: grid; place-items: center; width: 64px; height: 46px; overflow: hidden; background: var(--bg); border: 1px solid var(--divider); }
+.studio-pack-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.studio-pack-empty { width: 20px; height: 20px; background: var(--raised); border: 1px dashed var(--border-strong); }
+.studio-pack-copy { display: grid; gap: 2px; min-width: 0; }
+.studio-pack-copy strong { color: var(--text); font-size: var(--font-small); }
+.studio-pack-copy small { color: var(--text-4); font-size: var(--font-small); }
+.studio-pack-price { color: var(--text); font-family: var(--font-pixel); font-size: var(--font-price); }
+.studio-table { width: 100%; border-collapse: collapse; font-size: var(--font-small); }
+.studio-table th { padding: var(--space-4) var(--space-5); color: var(--text-4); border-bottom: 1px solid var(--border); font-weight: 400; text-align: left; }
+.studio-table td { padding: var(--space-4) var(--space-5); color: var(--text-2); border-bottom: 1px solid var(--divider); }
+.studio-table td:last-child { color: var(--text); font-family: var(--font-pixel); }
+.account-studio-link { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--text-4); font-size: var(--font-small); }
+/* The account panel's secondary links stack with a rule above them, so they read as
+   navigation rather than as stray text under the sign-out button. */
+.account-links { display: grid; gap: var(--space-5); padding-top: var(--space-7); border-top: 1px solid var(--divider); }
+/* The owned marker replaces the add button, so it takes the button's place and height
+   without looking pressable. */
+.owned-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-height);
+  padding: 0 var(--space-6);
+  color: var(--success);
+  background: var(--raised);
+  border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+  font-size: var(--font-small);
+  white-space: nowrap;
+}
+.owned-flag svg { width: 14px; height: 14px; }
+.account-studio-link:hover { color: var(--accent); }
+.account-studio-link svg { width: 14px; height: 14px; }
+@media (max-width: 760px) {
+  .account-grid { grid-template-columns: 1fr; }
+  .account-panel { padding: var(--space-8); }
+  .order-lines li { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: var(--space-3); }
+  .order-line-price { grid-column: 3; }
+  .order-download { grid-column: 2 / -1; justify-self: start; }
+  .studio-table { display: block; overflow-x: auto; }
+}
+.cart-subtotal { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-6); }
+.cart-subtotal span { color: var(--text-3); font-size: var(--font-small); }
+.cart-subtotal strong { font-family: var(--font-pixel); font-size: var(--font-price); }
+.cart-note { color: var(--text-4); font-size: var(--font-small); line-height: 1.65; }
+.cart-foot .button[disabled] { opacity: 1; color: var(--text-4); background: var(--raised); border-color: var(--border); cursor: not-allowed; }
+.cart-status { color: var(--warn); font-size: var(--font-small); text-align: center; }
+.cart-clear { padding: var(--space-2); color: var(--text-4); background: none; border: 0; cursor: pointer; font-size: var(--font-small); text-decoration: underline; text-underline-offset: 3px; }
+.cart-clear:hover { color: var(--danger); }
+

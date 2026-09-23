@@ -1,7 +1,8 @@
+import { chooseExportLocation } from '@/platform/export-location'
 import { useMemo, useRef, useState } from 'react'
 import type { TimelapseExportFormat, TimelapseQuality, TimelapseSettings } from '@shared/types-timelapse'
 import { isTimelapseVideoFormat, timelapseImageOutputDimensions, timelapseOutputDimensions, timelapseOutputScale, timelapseSourceDurationMs, timelapseVideoFramePlan, type TimelapseExportMode, type TimelapseExportOptions } from '@/core/timelapse'
-import { loadEditorPreferences } from '@/core/file-preferences'
+import { loadEditorPreferences, outputDirectoryForOperation } from '@/core/file-preferences'
 import { sanitizeFileStem } from '@/core/document-files'
 import { useWorkspace } from '@/store/workspace'
 import { DialogHeader } from '../DialogHeader'
@@ -26,7 +27,7 @@ export function TimelapseExportDialog({ settings, documentName, defaultDirectory
   const { t } = useI18n()
   const [format, setFormat] = useState<TimelapseExportFormat>('mp4')
   const [name, setName] = useState(() => `${sanitizeFileStem(documentName, 'MoonSprite')}-timelapse.mp4`)
-  const [directory, setDirectory] = useState(() => loadEditorPreferences().exportDirectory || defaultDirectory)
+  const [directory, setDirectory] = useState(() => outputDirectoryForOperation(loadEditorPreferences()) || defaultDirectory)
   const [exportMode, setExportMode] = useState<TimelapseExportMode>('duration')
   const [quality, setQuality] = useState(settings.quality)
   const [speed, setSpeed] = useState(settings.speed)
@@ -51,8 +52,8 @@ export function TimelapseExportDialog({ settings, documentName, defaultDirectory
   })
   const chooseDirectory = async (): Promise<void> => {
     try {
-      const result = await window.moonSprite.chooseDirectory(directory || defaultDirectory)
-      if (!result.canceled && result.directoryPath) setDirectory(result.directoryPath)
+      const result = await chooseExportLocation(window.moonSprite, directory || defaultDirectory, name, format)
+      if (result) { setDirectory(result.directory); setName(result.name) }
     } catch (error) {
       useWorkspace.getState().setMessage(error instanceof Error ? error.message : String(error))
     }

@@ -1,0 +1,56 @@
+/* Reading pages own their layout; market and blog retain their existing templates. */
+.reading-layout {
+  width: min(calc(100% - 48px), 1280px);
+  grid-template-columns: 216px minmax(0, 720px) 180px;
+  gap: var(--space-16);
+  padding-block: var(--space-18) var(--space-26);
+}
+.reading-layout.no-right { grid-template-columns: 216px minmax(0, 800px); }
+.reading-layout .page-body { width: 100%; max-width: none; }
+.reading-layout .outline-side { top: 108px; max-height: calc(100dvh - 132px); scrollbar-width: thin; }
+.reading-layout .outline-side .page-outline { max-height: none; overflow: visible; }
+.reading-nav-title { margin: 0 0 var(--space-7); padding-inline: var(--space-5); color: var(--text-2); font-size: var(--font-small); font-weight: 650; }
+.reading-layout .page-outline ul { gap: var(--space-2); }
+.reading-layout .page-outline li a, .reading-layout .page-outline li button {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--font-small);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.reading-layout .page-outline li a:hover, .reading-layout .page-outline li button:hover { background: var(--raised); }
+.reading-layout .page-outline li .active { color: var(--text); background: var(--accent-soft); border-left-color: var(--accent); font-weight: 600; }
+.reading-layout .outline-children { margin-left: var(--space-5); padding-left: var(--space-4); border-left: 1px solid var(--divider); }
+.reading-layout .outline-side.right { border-left: 1px solid var(--divider); padding-left: var(--space-7); }
+.reading-layout .page-head-block { max-width: none; gap: var(--space-5); padding-bottom: var(--space-13); margin-bottom: var(--space-13); border-bottom: 1px solid var(--divider); }
+.reading-layout .page-crumbs > span { font-family: var(--font-sans); font-size: var(--font-small); }
+.reading-layout .page-head-copy h1 { font-size: clamp(28px, 3vw, 36px); line-height: 1.35; }
+.reading-layout .doc-section p, .reading-layout .doc-section li { line-height: 1.95; overflow-wrap: anywhere; }
+.reading-layout .doc-section h3 { margin-top: var(--space-16); padding-top: var(--space-4); line-height: 1.5; }
+.reading-layout .doc-section li::before { width: 4px; height: 4px; top: 16px; background: var(--text-4); }
+.reading-layout .code-block { padding: var(--space-9); line-height: 1.8; background: var(--panel); }
+.faq-layout .faq-list { display: grid; gap: var(--space-5); border: 0; }
+.faq-layout .faq-list details { border: 1px solid var(--border); background: var(--panel); }
+.faq-layout .faq-list details[open] { border-left: 3px solid var(--accent); }
+.faq-layout .faq-list summary { min-height: 68px; padding: var(--space-7) var(--space-10); gap: var(--space-7); }
+.faq-layout .faq-list strong { font-size: var(--font-body); line-height: 1.65; }
+.faq-layout .faq-list details p { max-width: none; padding: 0 var(--space-10) var(--space-10); line-height: 1.9; overflow-wrap: anywhere; }
+.faq-layout .faq-list details[open] summary { color: var(--text); }
+@media (max-width: 1120px) {
+  .reading-layout { grid-template-columns: 200px minmax(0, 1fr); gap: var(--space-13); }
+  .reading-layout.no-right { grid-template-columns: 200px minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .reading-layout, .reading-layout.no-right { width: calc(100% - 32px); grid-template-columns: minmax(0, 1fr); gap: var(--space-10); padding-block: var(--space-10) var(--space-20); }
+  .reading-layout .outline-side { position: static; max-height: none; overflow: visible; padding-bottom: var(--space-9); border-bottom: 1px solid var(--divider); }
+  .reading-layout .reading-nav-title { padding-inline: 0; margin-bottom: var(--space-5); }
+  .reading-layout .page-outline ul { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+  .reading-layout .page-outline li a, .reading-layout .page-outline li button { border: 1px solid var(--border); padding: var(--space-3) var(--space-5); }
+  .reading-layout .page-outline li .active { border-color: var(--accent); }
+  .reading-layout .docs-outline > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .reading-layout .docs-outline > ul > li { min-width: 0; }
+  .reading-layout .docs-outline .outline-collapsible { grid-column: 1 / -1; }
+  .reading-layout .docs-outline .outline-children { margin: var(--space-4) 0 0; padding: 0; border: 0; }
+  .reading-layout .page-head-block { padding-bottom: var(--space-10); margin-bottom: var(--space-10); }
+  .faq-layout .faq-list summary { padding: var(--space-7); }
+  .faq-layout .faq-list details p { padding: 0 var(--space-7) var(--space-7); }
+}

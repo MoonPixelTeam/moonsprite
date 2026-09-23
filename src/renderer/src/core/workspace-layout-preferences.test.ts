@@ -15,7 +15,10 @@ import {
   TOOL_RAIL_SIDE_STORAGE_KEY,
   WORKSPACE_LAYOUT_STORAGE_KEYS,
   constrainLeftDockWidth,
-  loadLeftDockWidth
+  loadLeftDockWidth,
+  MINIMUM_SIDE_DOCK_WIDTH,
+  MINIMUM_BOTTOM_DOCK_HEIGHT,
+  constrainBottomDockHeight
 } from './workspace-layout-preferences'
 import { DEFAULT_INSPECTOR_ORDER } from './panel-layout'
 
@@ -37,9 +40,13 @@ describe('workspace layout storage boundary', () => {
     storage.setItem(LEFT_DOCK_WIDTH_STORAGE_KEY, '960')
 
     expect(loadLeftDockWidth(storage)).toBe(960)
-    expect(constrainLeftDockWidth(4, 1200)).toBe(4)
+    expect(constrainLeftDockWidth(4, 1200)).toBe(MINIMUM_SIDE_DOCK_WIDTH)
     expect(constrainLeftDockWidth(960, 1200)).toBe(960)
     expect(constrainLeftDockWidth(1400, 1200)).toBe(1200)
+  })
+
+  it('keeps dock heights large enough for a panel header and body controls', () => {
+    expect(constrainBottomDockHeight(48, 900)).toBe(MINIMUM_BOTTOM_DOCK_HEIGHT)
   })
 
   it('preserves every workspace layout value while unrelated preferences are cleared', () => {

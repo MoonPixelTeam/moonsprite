@@ -68,7 +68,7 @@ export const revertCancelledCanvasDragPixelChanges = (document: SpriteDocument, 
     restoreSelectionTranslationPreview(document, drag.translationPreview)
     return changed
   }
-  const edit = drag.kind === 'draw' || drag.kind === 'airbrush' || drag.kind === 'liquify' || drag.kind === 'smooth' ? drag.edit : drag.previewEdit
+  const edit = drag.kind === 'draw' || drag.kind === 'fill' || drag.kind === 'airbrush' || drag.kind === 'liquify' || drag.kind === 'smooth' ? drag.edit : drag.previewEdit
   if (!edit) return false
   const changed = pixelEditHasChanges(edit)
   revertPixelEdit(document, edit)
@@ -142,6 +142,9 @@ export const drawingSizePreviewTargetForDrag = (drag: CanvasDragState | null | u
 export const selectionOverlayMaskForDrag = (currentSelection: SelectionMask | null, drag: CanvasDragState | null | undefined): SelectionMask | null => {
   const previewDrag = canvasGestureForPreview(drag)
   if (!previewDrag) return currentSelection
+  // Layer moves update selection geometry separately from the pixel preview.
+  // Hide the whole outline until commit/cancel clears the gesture.
+  if (previewDrag.kind === 'move-layer' && previewDrag.moved) return null
   if (previewDrag.kind === 'marquee' && previewDrag.quickSelectCell) return null
   if (selectionCreationKinds.has(previewDrag.kind)) return previewDrag.selectionStart ?? null
   if (selectionPreviewKinds.has(previewDrag.kind)) return previewDrag.previewSelection ?? currentSelection

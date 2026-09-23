@@ -10,11 +10,18 @@ import {
   normalizeBrushDynamicsSettings,
   patchBrushDynamicsGradientDither,
   patchBrushDynamicsMapping,
+  brushOpacityScale,
   resolveBrushDynamics,
   smoothBrushSizeEnvelope
 } from './pressure'
 
 describe('brush dynamics', () => {
+  it('multiplies brush opacity after dynamics and clamps malformed values', () => {
+    expect(brushOpacityScale(0.6, 50)).toBe(0.3)
+    expect(brushOpacityScale(2, 150)).toBe(1)
+    expect(brushOpacityScale(0.6, Number.NaN)).toBe(0.6)
+  })
+
   it('uses new sensor defaults and clamps speed ranges to 4000', () => {
     expect(patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'size', { sensor: 'pressure' }).effects.size).toMatchObject({ inputMin: 0, inputMax: 70, curve: 'hard' })
     expect(patchBrushDynamicsMapping(DEFAULT_BRUSH_DYNAMICS_SETTINGS, 'strength', { sensor: 'speed' }).effects.strength).toMatchObject({ inputMin: 50, inputMax: 2400, curve: 'linear' })

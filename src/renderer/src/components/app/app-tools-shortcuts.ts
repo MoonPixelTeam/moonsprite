@@ -1,4 +1,5 @@
 import type { AppShortcutContext } from './app-shortcut-context'
+import { setMagicEraserContiguous } from '@/store/workspace-magic-eraser'
 import { TOOL_DEFINITIONS } from '@/components/app/editor-tools'
 import { CYCLING_TOOL_SHORTCUT_IDS, shortcutText } from '@/core/shortcuts'
 import { useWorkspace } from '@/store/workspace'
@@ -17,28 +18,7 @@ export function createToolShortcutHandler() {
         // Store's current session when resolving the cycling position.
         const currentWorkspace = useWorkspace.getState()
         const currentSession = currentWorkspace.sessions.find((item) => item.document.id === currentWorkspace.activeId) ?? session
-        const activeToolShortcut: (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | null = !currentSession ? null
-        : currentSession.tool === 'selection'
-        ? currentSession.selectionKind === 'ellipse' ? 'tool.selection.ellipse'
-        : currentSession.selectionKind === 'lasso' ? 'lasso'
-        : currentSession.selectionKind === 'polygon-lasso' ? 'polygonLasso'
-        : currentSession.selectionKind === 'magic' ? 'magic'
-        : 'tool.selection'
-        : currentSession.tool === 'fill'
-        ? currentSession.fillKind === 'gradient' ? 'tool.fill.gradient' : 'tool.fill'
-        : currentSession.tool === 'shape'
-        ? currentSession.shapeKind === 'rectangle-outline' ? 'tool.shape.rectangleOutline'
-        : currentSession.shapeKind === 'rectangle' ? 'tool.shape.rectangle'
-        : currentSession.shapeKind === 'ellipse-outline' ? 'tool.shape.ellipseOutline'
-        : currentSession.shapeKind === 'ellipse' ? 'tool.shape.ellipse'
-        : currentSession.shapeKind === 'freeform' ? 'tool.shape.freeform'
-        : currentSession.shapeKind === 'polygon' ? 'tool.shape.polygon'
-        : 'tool.shape'
-        : currentSession.tool === 'line'
-        ? currentSession.lineKind === 'curve' ? 'tool.curve' : 'tool.line'
-        : currentSession.tool === 'move' && currentSession.moveKind === 'slice'
-        ? 'tool.slice'
-        : TOOL_DEFINITIONS.find((tool) => tool.id === currentSession.tool)?.shortcutId as (typeof CYCLING_TOOL_SHORTCUT_IDS)[number] | undefined ?? null
+        const activeToolShortcut = activeToolShortcutFor(currentSession)
         const signature = `${shortcutText(event, heldShortcutParts).toLowerCase()}:${matchingToolShortcuts.join('|')}`
         const previous = cycle
         const activeIndex = activeToolShortcut ? matchingToolShortcuts.indexOf(activeToolShortcut) : -1
@@ -98,6 +78,12 @@ export function createToolShortcutHandler() {
     if (session?.tool === 'selection' && session.selectionKind === 'magic'
     && runCommand('toggleContiguous', () => workspace.setWandContiguous(!session.wandContiguous)))
       return true
+    if (session?.tool === 'magic-eraser'
+    && runCommand('toggleContiguous', () => setMagicEraserContiguous(!session.magicEraserContiguous)))
+      return true
+    if (session?.tool === 'magic-eraser' && session.magicEraserContiguous
+    && runCommand('toggleSmartClosure', () => workspace.setWandGapClosing(!session.wandGapClosing)))
+      return true
     if (session?.tool === 'fill' && session.fillKind === 'bucket'
     && runCommand('toggleContiguous', () => workspace.setFillMode(session.fillMode === 'contiguous' ? 'global' : 'contiguous')))
       return true
@@ -142,3 +128,4 @@ export function createToolShortcutHandler() {
     return false
   }
 }
+import { activeToolShortcutFor } from './app-active-tool-shortcut'

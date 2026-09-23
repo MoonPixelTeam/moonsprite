@@ -6,6 +6,16 @@ export function canvasBackingCapacity(required: number, current: number, reserve
   return reserve ? Math.max(current, Math.ceil(required / 128) * 128) : required
 }
 
+/** Reuse the GPU surface until capacity is exceeded; exact crops remain the caller's responsibility. */
+export function resizeOffscreenCanvas(canvas: OffscreenCanvas | null, width: number, height: number, reserve = false): OffscreenCanvas {
+  const backingWidth = canvasBackingCapacity(width, canvas?.width ?? 0, reserve)
+  const backingHeight = canvasBackingCapacity(height, canvas?.height ?? 0, reserve)
+  if (!canvas) return new OffscreenCanvas(backingWidth, backingHeight)
+  if (canvas.width !== backingWidth) canvas.width = backingWidth
+  if (canvas.height !== backingHeight) canvas.height = backingHeight
+  return canvas
+}
+
 export const canvasDisplayDeviceScale = (canvas: HTMLCanvasElement, fallback: number): CanvasDeviceScale =>
   displayScales.get(canvas) ?? { x: fallback, y: fallback }
 

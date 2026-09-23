@@ -1,3 +1,4 @@
+import { CANVAS_REFERENCE_PASTE_EVENT } from '../canvas-reference-input'
 import { REFERENCE_PASTE_EVENT } from '@/components/panels/reference-image-state'
 import type { AppShortcutContext } from './app-shortcut-context'
 import { handleSelectionShortcuts } from './app-selection-shortcuts'
@@ -15,23 +16,7 @@ import { deferCanvasShortcut, isCanvasToolGestureLocked } from '@/core/canvas-to
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 
-interface Options {
-  pointerPosition: () => { x: number; y: number } | null
-  commandSurface: () => HTMLElement | null
-  rotationIndicatorPosition: import('@/core/file-preferences').RotationIndicatorPosition
-  shortcuts: ReturnType<typeof loadShortcutBindings>
-  homeOpen: boolean
-  outlineOpen: boolean
-  openMenu: boolean
-  shortcutOpen: boolean
-  timelineHidden: boolean
-  commandScope(): EditorCommandScope
-  selectionOverride(): boolean
-  onEscape(event: KeyboardEvent): void
-  commands: AppShortcutContext['uiCommands']
-  openAdjustment: AppShortcutContext['openAdjustment']
-  publishShortcutCommand: AppShortcutContext['publishShortcutCommand']
-}
+import type { Options } from './app-shortcut-router-options'
 
 const heldCanvasShortcutIds = new Set<ShortcutId>(['addForegroundToPalette', ...QUICK_TOOL_SHORTCUT_IDS])
 
@@ -138,6 +123,15 @@ export function useAppShortcutRouter(options: Options) {
         }
         // A focused reference viewer must not run drawing, deletion or history commands.
         return
+      }
+
+      if (matches('paste') && !isTextEntry && !homeOpen && !openMenu && commandScope() === 'canvas') {
+        const replacement = new CustomEvent(CANVAS_REFERENCE_PASTE_EVENT, { cancelable: true, detail: event.repeat })
+        if (!window.dispatchEvent(replacement)) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+          return
+        }
       }
 
       if (matches('advancedMode')) {

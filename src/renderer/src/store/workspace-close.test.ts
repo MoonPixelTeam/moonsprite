@@ -96,6 +96,31 @@ it('keeps the dirty tab when closing is canceled', async () => {
   expect(flush).not.toHaveBeenCalled()
 })
 
+it.each([true, false])('keeps a tab open until its pending save settles (success: %s)', async succeeds => {
+  const document = openSaved(), writing = deferred()
+  document.dirty = true
+  vi.spyOn(history, 'flushLocalHistoryPersist').mockResolvedValue(undefined)
+  const requestChoice = vi.spyOn(useWorkspace.getState(), 'requestDialog').mockResolvedValue('discard')
+  const write = vi.spyOn(files, 'saveDocumentFile').mockImplementation(async () => {
+    await writing.promise
+    if (!succeeds) throw new Error('disk full')
+    return { filePath: document.filePath!, revision: useWorkspace.getState().sessions[0].contentRevision, setDocumentFilePath: true }
+  })
+  const save = useWorkspace.getState().saveActive()
+  // Close immediately, including the recording flush before the file write starts.
+  const close = useWorkspace.getState().closeDocument(document.id)
+  await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+  expect(useWorkspace.getState().sessions).toHaveLength(1)
+  expect(requestChoice).not.toHaveBeenCalled()
+  writing.resolve()
+  expect(await save).toBe(succeeds)
+  await close
+  await waitForDocumentCloseTasks()
+  expect(useWorkspace.getState().sessions).toHaveLength(succeeds ? 0 : 1)
+  expect(requestChoice).not.toHaveBeenCalled()
+  if (!succeeds) expect(useWorkspace.getState().message).toBe('disk full')
+})
+
 it('includes tabs closed while the exit barrier is already waiting', async () => {
   const first = deferred(), second = deferred()
   const failure = vi.fn()

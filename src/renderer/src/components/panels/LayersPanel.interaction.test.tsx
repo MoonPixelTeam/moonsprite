@@ -1025,6 +1025,7 @@ describe('LayersPanel timeline focus interactions', () => {
       fireEvent.pointerMove(third, { clientX: 60, clientY: 40 })
     })
 
+    await waitFor(() => expect(view.container.querySelector('[data-animation-cel-selection]')).toHaveClass('animation-cel-drag-preview'))
     let movedOutline = view.container.querySelector('[data-animation-cel-selection]')
     expect(movedOutline).toHaveClass('animation-cel-drag-preview')
     expect(movedOutline).toHaveStyle({
@@ -1037,11 +1038,13 @@ describe('LayersPanel timeline focus interactions', () => {
     const grid = view.container.querySelector<HTMLElement>('.layer-animation-grid')
     if (!grid) throw new Error('animation grid was not rendered')
     await act(async () => { fireEvent.pointerMove(grid, { clientX: -100, clientY: 40 }) })
+    await waitFor(() => expect(view.container.querySelector('[data-animation-cel-selection]')).toHaveStyle({ '--animation-frame-index': '0' }))
     movedOutline = view.container.querySelector('[data-animation-cel-selection]')
     expect(movedOutline).toHaveClass('animation-cel-drag-preview')
     expect(movedOutline).toHaveStyle({ '--animation-frame-index': '0' })
 
     await act(async () => { fireEvent.pointerMove(grid, { clientX: 200, clientY: 40 }) })
+    await waitFor(() => expect(view.container.querySelector('[data-animation-cel-selection]')).toHaveStyle({ '--animation-frame-index': '1' }))
     movedOutline = view.container.querySelector('[data-animation-cel-selection]')
     expect(movedOutline).toHaveClass('animation-cel-drag-preview')
     expect(movedOutline).toHaveStyle({ '--animation-frame-index': '1' })

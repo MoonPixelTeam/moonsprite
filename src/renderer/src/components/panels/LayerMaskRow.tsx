@@ -11,6 +11,7 @@ import { type DocumentSession } from '@/store/workspace'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { PixelAutoLinkIcon } from '@/components/PixelAutoLinkIcon'
 import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
+import { isLayerCellShortcut } from './layer-cell-shortcuts'
 interface Props {
   readonly timelineVisualState: ReturnType<typeof deriveLayerPanelVisuals>['timelineVisualState']
   readonly activeMaskOwnerKey: ReturnType<typeof deriveLayerPanelVisuals>['activeMaskOwnerKey']
@@ -115,7 +116,7 @@ export function createLayerMaskRowRenderer({
         style={{ '--layer-depth': displayRow.depth } as React.CSSProperties}
         onPointerDown={(event) => {
           if (event.button !== 0) return
-          if (!event.altKey || !activeMask) {
+          if (!isLayerCellShortcut(event, 'mask') || !activeMask) {
             suppressMaskRowClickRef.current = false
             return
           }
@@ -128,7 +129,7 @@ export function createLayerMaskRowRenderer({
           suppressMaskRowClickRef.current = false
         }}
         onClick={(event) => {
-          if (suppressMaskRowClickRef.current || event.altKey) {
+          if (suppressMaskRowClickRef.current || isLayerCellShortcut(event, 'mask')) {
             suppressMaskRowClickRef.current = false
             event.preventDefault()
             event.stopPropagation()

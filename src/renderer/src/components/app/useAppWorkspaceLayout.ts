@@ -1,3 +1,4 @@
+import { loadEditorPreferences, saveEditorPreferences } from '@/core/file-preferences'
 import { persistMainWindowState } from './app-window-state'
 import { beginDocumentPaneDockResize } from './document-pane-dock-resize'
 import type { DocumentPaneNode } from '@/core/document-pane-layout'
@@ -59,13 +60,9 @@ const workspaceDockParentSize = (workArea: HTMLElement | null): { width: number;
   }
 }
 
-const defaultPanelDocks: Record<WorkspacePanelId, PanelDock> = { ...DEFAULT_PANEL_DOCKS }
+const defaultPanelDocks: Record<WorkspacePanelId, PanelDock> = { ...DEFAULT_PANEL_DOCKS, reference: 'left' }
 
-const defaultInspectorLayout = JSON.stringify({
-  order: ['palette', 'color', 'layers', 'freeTileInstances', 'history', 'preview', 'reference', 'tileset', 'brushes'],
-  verticalWeights: { color: 330, palette: 620, layers: 560, freeTileInstances: 180, history: 220, preview: 220, reference: 220, tileset: 280, brushes: 240 },
-  bottomWeights: { color: 280, palette: 280, layers: 720, freeTileInstances: 300, history: 320, preview: 280, reference: 280, tileset: 360, brushes: 320 }
-})
+const defaultInspectorLayout = '{"order":["palette","reference","color","layers","freeTileInstances","history","preview","tileset","brushes"],"squarePanels":["reference","color","preview"],"verticalWeights":{"color":330,"palette":280,"reference":280,"layers":560,"freeTileInstances":180,"history":220,"preview":300,"tileset":280,"brushes":240},"bottomWeights":{"color":280,"palette":280,"reference":280,"layers":720,"freeTileInstances":300,"history":320,"preview":280,"tileset":360,"brushes":320}}'
 
 const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   id: 'builtin-default',
@@ -75,7 +72,7 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
   builtIn: true,
   layout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: true, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -84,15 +81,16 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     bottomDockHeightRatio: DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO,
     toolRailSide: 'right',
     previewOpen: true,
+    timelineHidden: false,
     inspectorLayout: defaultInspectorLayout,
-    colorSquareDock: 'left',
-    colorSquareAnchor: 'end',
+    colorSquareDock: null,
+    colorSquareAnchor: null,
     floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
     mainWindow: null
   },
   initialLayout: {
     panelDocks: { ...defaultPanelDocks },
-    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false },
+    panelVisibility: { color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: true, tileset: false, brushes: false },
     inspectorWidth: 300,
     leftDockWidth: 280,
     bottomDockHeight: 220,
@@ -101,9 +99,10 @@ const createBuiltInDefaultWorkspace = (name: string): StoredWorkspace => ({
     bottomDockHeightRatio: DEFAULT_BOTTOM_DOCK_HEIGHT_RATIO,
     toolRailSide: 'right',
     previewOpen: true,
+    timelineHidden: false,
     inspectorLayout: defaultInspectorLayout,
-    colorSquareDock: 'left',
-    colorSquareAnchor: 'end',
+    colorSquareDock: null,
+    colorSquareAnchor: null,
     floatingPanels: { color: null, palette: null, layers: null, freeTileInstances: null, history: null, preview: null, reference: null, tileset: null, brushes: null },
     mainWindow: null
   }
@@ -323,6 +322,7 @@ export function useAppWorkspaceLayout({ homeOpen, documentId, documentPaneLayout
       bottomDockHeightRatio: bottomLayersHeightRatioRef.current,
       toolRailSide,
       previewOpen,
+      timelineHidden: loadEditorPreferences().timelineHidden,
       inspectorLayout: readLayoutStorage(INSPECTOR_LAYOUT_STORAGE_KEY),
       colorSquareDock: readLayoutStorage(COLOR_SQUARE_DOCK_STORAGE_KEY),
       colorSquareAnchor: readLayoutStorage(COLOR_SQUARE_ANCHOR_STORAGE_KEY),
@@ -338,7 +338,7 @@ export function useAppWorkspaceLayout({ homeOpen, documentId, documentPaneLayout
     try {
       const listing = await window.moonSprite.listWorkspaces()
       setWorkspaceDirectory(listing.directoryPath)
-      const localized = listing.workspaces.map((workspace) => (workspace.builtIn ? { ...workspace, name: t('app.workspace.default') } : workspace))
+      const localized = listing.workspaces.map((workspace) => (workspace.builtIn ? { ...workspace, name: t(workspace.id === 'builtin-normal' ? 'app.workspace.normal' : 'app.workspace.default') } : workspace))
       setSavedWorkspaces(localized)
       return localized
     } catch (error) {
@@ -362,6 +362,8 @@ export function useAppWorkspaceLayout({ homeOpen, documentId, documentPaneLayout
   const applyWorkspaceLayout = async (saved: StoredWorkspace, announce = true): Promise<void> => {
     workspaceApplyInProgress.current = true
     const layout = saved.layout
+    saveEditorPreferences({ ...loadEditorPreferences(), timelineHidden: layout.timelineHidden ?? (saved.id === 'builtin-default' ? false : loadEditorPreferences().timelineHidden) })
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
     const dockParentSize = workspaceDockParentSize(workAreaRef.current)
     const normalized = normalizeWorkspaceLayout(layout, dockParentSize.width, dockParentSize.height)
     const nextPanelDocks: Record<WorkspacePanelId, PanelDock> = normalized.panelDocks

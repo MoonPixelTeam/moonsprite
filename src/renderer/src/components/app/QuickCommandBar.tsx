@@ -4,6 +4,7 @@ import { Tooltip } from '@/components/Tooltip'
 import { useI18n } from '@/components/I18nProvider'
 import { loadEditorPreferences, saveEditorPreferences, type QuickCommandBarEdge, type QuickCommandBarPreference, type QuickCommandId } from '@/core/file-preferences'
 import { useWorkspace } from '@/store/workspace'
+import { cutWorkspaceItems } from '@/store/workspace-cut'
 import type { ShortcutId } from '@/core/shortcuts'
 import { QUICK_COMMAND_METADATA, type QuickCommandMetadata, type QuickCommandSettingsTarget } from './quick-command-registry'
 import { detectDocumentPixelScale } from '@/core/image-scale-detection'
@@ -14,6 +15,7 @@ interface QuickCommandBarProps {
   shortcutFor: (id: ShortcutId) => string
   onToggleMirror: (axis: 'horizontal' | 'vertical', quickCommandBarBottom?: number) => void
   onOpenAntiAlias: () => void
+  onOpenOutline?: () => void
   onOpenPreferences: () => void
   onOpenCommandSettings?: (target: QuickCommandSettingsTarget) => void
 }
@@ -52,7 +54,7 @@ const preserveCanvasFocus = (event: ReactPointerEvent<HTMLButtonElement>): void 
   event.preventDefault()
 }
 
-const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
+const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ documentId, shortcutFor, onToggleMirror, onOpenAntiAlias, onOpenOutline, onOpenPreferences, onOpenCommandSettings, bar, translucent, onBarChange }: QuickCommandBarInstanceProps) {
   const { t } = useI18n()
   const [moving, setMoving] = useState(false)
   const [pressedControl, setPressedControl] = useState<string | null>(null)
@@ -198,6 +200,22 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
   const runtimeFor = (id: QuickCommandId): QuickCommandRuntime => {
     const selectionUnavailable = !session.selection
     switch (id) {
+      case 'cut': return { run: () => runForDocument(() => cutWorkspaceItems(session.selection ? 'selection' : session.selectedAnimationMaskCellKeys.length ? 'masks' : session.selectedAnimationCellKeys.length ? 'cels' : session.selectedAnimationFrameIds.length ? 'frames' : 'layers')) }
+      case 'copy': return { run: () => runForDocument(state => {
+        if (session.selection) state.copySelection()
+        else if (session.selectedAnimationMaskCellKeys.length) state.copySelectedAnimationMasks()
+        else if (session.selectedAnimationCellKeys.length) state.copySelectedAnimationCels()
+        else if (session.selectedAnimationFrameIds.length) state.copySelectedAnimationFrames()
+        else state.copySelectedLayersToClipboard()
+      }) }
+      case 'copyMerged': return { run: () => runForDocument(state => state.copySelection(true)) }
+      case 'paste': return { run: () => runForDocument(state => { void state.pasteClipboard() }) }
+      case 'pasteToCurrentCell': return { run: () => runForDocument(state => { void state.pasteSelection() }) }
+      case 'pasteAsNewDocument': return { run: () => runForDocument(state => { void state.pasteAsNewDocument() }) }
+      case 'pasteAsNewLayer': return { run: () => runForDocument(state => { void state.pasteAsNewLayer() }) }
+      case 'deleteContent': return { run: () => runForDocument(state => { if (session.selection) state.deleteSelection(); else state.deleteActiveLayer() }) }
+      case 'quickOutline': return { run: () => runForDocument(state => { state.quickOutlineActiveSelection() }) }
+      case 'outline': return { disabled: !onOpenOutline, run: () => runForDocument(() => onOpenOutline?.()) }
       case 'selectionFlipHorizontal': return { run: () => runForDocument((state) => state.flipActiveSelection('horizontal')) }
       case 'selectionFlipVertical': return { run: () => runForDocument((state) => state.flipActiveSelection('vertical')) }
       case 'canvasMirrorHorizontal': return { pressed: session.view.mirrored, run: () => runForDocument(() => onToggleMirror('horizontal', edge === 'top' ? barRef.current?.getBoundingClientRect().bottom : undefined)) }
@@ -241,7 +259,7 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       {commands.map((command) => {
         const shortcut = command.shortcutId ? shortcutFor(command.shortcutId) : ''
         return <Tooltip key={command.id} className="quick-command-tooltip" content={<><strong>{t(command.label)}</strong><span>{t(command.description)}</span>{shortcut && <small>{shortcut}</small>}</>}>
-          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''} ${pressedControl === command.id ? 'quick-command-pressed' : ''}`.trim()} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={(event) => pressControl(command.id, event)} onPointerUp={() => releaseControl(command.id)} onPointerCancel={() => releaseControl(command.id)} onPointerLeave={() => releaseControl(command.id)} onClick={command.run} onContextMenu={command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}>{command.iconSource ? <PixelAssetIcon src={command.iconSource} className="quick-command-asset-icon" /> : <PixelUtilityIcon kind={command.icon} />}</button>
+          <button type="button" className={`quick-command-button ${command.pressed ? 'selected' : ''} ${pressedControl === command.id ? 'quick-command-pressed' : ''}`.trim()} aria-label={t(command.label)} aria-pressed={command.pressed} disabled={!visuallyExpanded || command.disabled} tabIndex={visuallyExpanded ? 0 : -1} onPointerDown={(event) => pressControl(command.id, event)} onPointerUp={() => releaseControl(command.id)} onPointerCancel={() => releaseControl(command.id)} onPointerLeave={() => releaseControl(command.id)} onClick={command.run} onContextMenu={command.id === 'fillForeground' ? (event) => { event.preventDefault(); runForDocument(state => state.fillForeground('background')) } : command.settingsTarget && onOpenCommandSettings ? (event) => openCommandSettings(event, command.settingsTarget!) : undefined}>{command.iconSource ? <PixelAssetIcon src={command.iconSource} className="quick-command-asset-icon" /> : <PixelUtilityIcon kind={command.icon} />}</button>
         </Tooltip>
       })}
       <Tooltip className="quick-command-tooltip quick-command-settings-tooltip" content={<><strong>{t('quickCommands.settings')}</strong><span>{t('quickCommands.settingsDescription')}</span></>}>

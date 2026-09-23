@@ -1,4 +1,15 @@
 import { describe, expect, it } from 'vitest'
+it('migrates the old S quick-outline binding to Shift+S and restores selection stroke', () => {
+  localStorage.clear()
+  const old = cloneShortcutBindings(DEFAULT_SHORTCUT_BINDINGS)
+  old.quickOutline = ['S']
+  old.outlineSelectionInside = []
+  localStorage.setItem(SHORTCUTS_V2_KEY, JSON.stringify(createShortcutSettingsFile(old)))
+  const loaded = loadShortcutBindings(localStorage)
+  expect(loaded.quickOutline).toEqual(['Shift+S'])
+  expect(loaded.outlineSelectionInside).toEqual(['S'])
+  localStorage.clear()
+})
 import { ANIMATION_PLAYBACK_SHORTCUT_MIGRATION_KEY, BRUSH_PANEL_SHORTCUT_MIGRATION_KEY, DEFAULT_SHORTCUT_BINDINGS, DEFAULT_SHORTCUTS, GRID_SHORTCUT_MIGRATION_KEY, POLYGON_LASSO_SHORTCUT_MIGRATION_KEY, POPUP_PANEL_SHORTCUT_MIGRATION_KEY, QUICK_TOOL_SHORTCUT_IDS, REPLACE_COLOR_SHORTCUT_MIGRATION_KEY, SHORTCUTS_KEY, SHORTCUTS_V2_KEY, SHORTCUT_GROUPS, assignShortcutBinding, modifierShortcutHeldByBindings, shortcutBindingSupported, cloneShortcutBindings, createShortcutSettingsFile, deriveShortcutConflicts, dispatchMouseDoubleClickShortcutInput, dispatchMouseShortcutInput, dispatchWheelShortcutInput, formatShortcutBindingsForLocale, importShortcutBindings, isFunctionKey, loadShortcutBindings, loadShortcuts, mouseDoubleClickShortcutText, mouseShortcutText, normalizeShortcut, parseShortcutJson, resetShortcutBindings, saveShortcutBindings, saveShortcuts, shortcutBindingBlocked, shortcutHeldByKeyParts, shortcutKeyPart, shortcutMatchesAnyEvent, shortcutMatchesEvent, shortcutReleasedByEvent, shortcutText, wheelShortcutText } from './shortcuts'
 import { SHORTCUT_LABELS } from '@/locales/shortcut-labels'
 
@@ -47,10 +58,11 @@ describe('shortcut persistence boundary', () => {
     expect(DEFAULT_SHORTCUTS.addForegroundToPalette).toBe('Alt+S')
     expect(DEFAULT_SHORTCUTS.quickOutline).toBe('Shift+S')
     expect(DEFAULT_SHORTCUTS.outlineSelectionInside).toBe('S')
-    expect(SHORTCUT_GROUPS.selection).toEqual(expect.arrayContaining(['quickOutline', 'outlineSelectionInside']))
+    expect(DEFAULT_SHORTCUTS.copyMerged).toBe('Ctrl+Shift+C')
+    expect(SHORTCUT_GROUPS.edit).toEqual(expect.arrayContaining(['deleteSelection', 'quickOutline', 'outlineSelectionInside', 'copyMerged', 'rotateContent180', 'invertColors', 'fillForeground']))
     expect(SHORTCUT_GROUPS.color).toContain('addForegroundToPalette')
-    expect(DEFAULT_SHORTCUTS.replaceColor).toBe('Ctrl+Shift+K')
-    expect(SHORTCUT_GROUPS.color).toContain('replaceColor')
+    expect(DEFAULT_SHORTCUTS.replaceColor).toBe('Shift+R')
+    expect(SHORTCUT_GROUPS.edit).toContain('replaceColor')
     expect(SHORTCUT_GROUPS.selection).toContain('toggleSelectionOutline')
     expect(SHORTCUT_GROUPS.file).toContain('exportSpriteSheet')
     expect(SHORTCUT_GROUPS.animation).toContain('toggleAnimationPlayback')
@@ -81,7 +93,7 @@ describe('shortcut persistence boundary', () => {
     expect(SHORTCUT_GROUPS.image).toEqual(expect.arrayContaining(['convertColorModeRgba', 'convertColorModeIndexed', 'convertColorModeGrayscale', 'cropCanvas', 'trimCanvas']))
     expect(SHORTCUT_GROUPS.view).toEqual(expect.arrayContaining(['toggleSliceOutlines', 'tileRepeatOff', 'tileRepeatBoth', 'tileRepeatX', 'tileRepeatY']))
     expect(SHORTCUT_GROUPS.layers).toEqual(expect.arrayContaining(['newTilemapLayer', 'newFreeTileLayer', 'createLinkedLayer', 'openLayerProperties', 'openLayerStyles']))
-    expect(SHORTCUT_GROUPS.selection).toEqual(expect.arrayContaining(['deleteSelection', 'selectionModeReplace', 'selectAllSlices', 'openAutoSlice', 'openSliceProperties']))
+    expect(SHORTCUT_GROUPS.selection).toEqual(expect.arrayContaining(['selectionModeReplace', 'selectAllSlices', 'openAutoSlice', 'openSliceProperties']))
     expect(DEFAULT_SHORTCUTS.toggleTimeline).toBe('')
     expect(DEFAULT_SHORTCUTS.rotateViewClockwise90).toBe('')
     expect(DEFAULT_SHORTCUTS.rotateViewCounterClockwise90).toBe('')

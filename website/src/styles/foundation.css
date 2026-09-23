@@ -1,0 +1,175 @@
+@font-face {
+  font-family: "Silkscreen";
+  src: url("/assets/fonts/silkscreen-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Silkscreen";
+  src: url("/assets/fonts/silkscreen-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Semantic palettes: every route inherits the same selected theme. */
+:root {
+  --bg: #14171c;
+  --panel: #1c2027;
+  --surface: #242931;
+  --raised: #2e3540;
+  --control: #181c22;
+  --border: #373f4b;
+  --border-strong: #626e80;
+  --divider: #2e3642;
+  --text: #edf1f7;
+  --text-2: #d1d9e5;
+  --text-3: #aab6c6;
+  --text-4: #97a5b8;
+  --accent: #2979ff;
+  --accent-hover: #478bff;
+  --accent-soft: #202f48;
+  --on-accent: #fff;
+  --warn: #eac38c;
+  --warn-soft: #383125;
+  --danger: #ff8583;
+  --success: #89c79c;
+  --surface-active: #263449;
+  --shadow: rgb(0 0 0 / 20%);
+  --page-dot: transparent;
+  --wash-strong: transparent;
+  --wash-soft: transparent;
+  --glow: transparent;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --surface: #ffffff;
+  --raised: #eaf0f7;
+  --control: #ffffff;
+  --border: #d9e0ea;
+  --border-strong: #8895a8;
+  --divider: #e1e7ef;
+  --text: #202631;
+  --text-2: #414e60;
+  --text-3: #59697d;
+  --text-4: #5e6d82;
+  --accent: #2979ff;
+  --accent-hover: #1765e3;
+  --accent-soft: #e9f0ff;
+  --on-accent: #fff;
+  --warn: #805723;
+  --warn-soft: #f4eadb;
+  --danger: #b33939;
+  --success: #34754a;
+  --surface-active: #e9f0ff;
+  --shadow: rgb(25 45 75 / 8%);
+  color-scheme: light;
+}
+
+:root {
+  --font-pixel: "Silkscreen", "Cascadia Mono", "Microsoft YaHei", monospace;
+  --font-sans: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --max: 1200px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+}
+
+/*
+ * Type scale, following the MoonSprite UI design system (docs/ui-design-system.md):
+ * copy uses the two interface tiers, and the pixel display face carries the
+ * display tiers on top of them.
+ *
+ * The desktop app is read at arm's length in a 1024x640 window, so its tiers are
+ * 11px/13px. A website is read further away, so the same tiers step up one grade
+ * instead of growing a third body size: --font-small 14px (app 11px) and
+ * --font-body 16px (app 13px). Display tiers top out at 56px.
+ */
+:root {
+  /*
+   * One control height for inputs, selects, and the select-shaped button. Buttons are
+   * their own step above it (see .button), because a button is a target rather than a
+   * field; a compact button sits at 34px for use inside rows.
+   */
+  --control-height: 40px;
+  --control-height-compact: 32px;
+  --font-pixel-tag: 12px;   /* tag, badge, caption in the pixel face */
+  --font-pixel-label: 14px; /* outline group heading in the pixel face */
+  --font-small: 14px;       /* secondary copy, metadata, dense UI labels */
+  --font-body: 16px;        /* body copy, fields, buttons, navigation */
+  --font-lead: 18px;        /* lead paragraph, card and block heading */
+  --font-h3: 20px;          /* in-page section heading */
+  --font-h3-lg: 24px;       /* in-page section heading on wide screens */
+  --font-h2: 30px;          /* page and FAQ section heading */
+  --font-h2-lg: 38px;       /* section heading on wide screens */
+  --font-price: 18px;       /* card price */
+  --font-price-lg: 34px;    /* the price in a page's buying block, the one numeric shout */
+  --font-display: 44px;     /* display heading upper bound */
+  --font-display-lg: 56px;  /* hero heading upper bound */
+}
+
+/*
+ * Spacing scale: the app's 2/4/6/8/12 table is kept for control interiors, then
+ * the same 4px step carries page-level rhythm from 16px up. Every padding, gap
+ * and margin in this file uses one of these; local rules do not get to invent a
+ * neighbouring number.
+ */
+:root {
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 16px;
+  --space-9: 18px;
+  --space-10: 20px;
+  --space-11: 22px;
+  --space-12: 24px;
+  --space-13: 28px;
+  --space-15: 32px;
+  --space-16: 36px;
+  --space-17: 40px;
+  --space-18: 44px;
+  --space-19: 48px;
+  --space-20: 56px;
+  --space-21: 60px;
+  --space-22: 64px;
+  --space-23: 68px;
+  --space-24: 72px;
+  --space-26: 80px;
+  --space-27: 84px;
+  --space-28: 88px;
+  --space-30: 100px;
+  --space-31: 104px;
+  --space-34: 120px;
+  --space-37: 132px;
+  --space-38: 136px;
+  --space-42: 144px;
+  --space-48: 160px;
+}
+
+* { box-sizing: border-box; }
+html { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); scroll-behavior: smooth; scroll-padding-top: 84px; }
+body { margin: 0; min-width: 320px; color: var(--text); background: var(--bg); }body[data-menu-open="true"] { overflow: hidden; }
+button { font: inherit; }
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; }
+h1, h2, h3, p, figure { margin: 0; }
+ul { margin: 0; padding: 0; }
+.content-wrap { width: min(calc(100% - 48px), var(--max)); margin: 0 auto; }
+/* The dot grid lives on the shell, fixed, so every page shares one surface and the
+   panels and cards read as objects placed on it. */
+.site-shell { min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }.site-shell > main { flex: 1 0 auto; }
+.skip-link { position: fixed; top: -60px; left: 16px; z-index: 100; padding: var(--space-5) var(--space-7); color: var(--on-accent); background: var(--accent); }
+.skip-link:focus { top: 10px; }
+:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+

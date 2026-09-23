@@ -7,7 +7,7 @@ import { CanvasStage } from './CanvasStage'
 import { useCanvasSelectionTransform } from './useCanvasSelectionTransform'
 import { renderCanvasFrame } from './canvas-render-frame'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
-import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-cache'
+import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-registry'
 import { CANVAS_VIEW_SCROLLBARS_ENABLED_KEY } from '@/core/file-preferences'
 
 // Keep real controllers, geometry, pointer routing and Store commands. Rendering
@@ -183,7 +183,9 @@ describe('CanvasStage controller composition', () => {
     const { container } = render(<CanvasStage session={current} />)
     expect(container.querySelector('.stage-view-scrollbar-horizontal.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
     expect(container.querySelector('.stage-view-scrollbar-vertical.ui-scrollbar[role="scrollbar"]')).not.toBeNull()
-    expect(container.querySelector('.stage-view-scrollbar-corner')).not.toBeNull()
+    // The horizontal track now fills the corner; no extra composited overlay.
+    expect(container.querySelector('.stage-view-scrollbar-corner')).toBeNull()
+    expect(container.querySelector('.stage-view-scrollbar-horizontal')).toHaveClass('stage-view-scrollbar-with-corner')
     expect(container.querySelector('.stage-view-scrollbar.component-scrollbar')).toBeNull()
   })
 
