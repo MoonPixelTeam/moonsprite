@@ -1208,8 +1208,28 @@ const rasterizeLassoSelection = (
   extraPoint?: { x: number; y: number }
 ): SelectionMask | null => {
   const pathLength = path.length + (extraPoint ? 1 : 0)
-  if (pathLength < 3) return null
+  if (pathLength < 1) return null
   const pointAt = (index: number): { x: number; y: number } => index < path.length ? path[index] : extraPoint!
+
+  if (pathLength === 1) {
+    const point = pointAt(0)
+    if (point.x < 0 || point.y < 0 || point.x >= document.width || point.y >= document.height) return null
+    return { x: point.x, y: point.y, width: 1, height: 1, mask: new Uint8Array([1]) }
+  }
+
+  // A very short freehand lasso can legitimately contain only two sampled
+  // points when the user surrounds a one or two pixel wide area. Treat that
+  // gesture as a pixel line instead of dropping it as an invalid polygon.
+  if (pathLength === 2) {
+    const points = rasterLinePoints(pointAt(0), pointAt(1)).filter(({ x, y }) => x >= 0 && y >= 0 && x < document.width && y < document.height)
+    if (points.length === 0) return null
+    const minX = Math.min(...points.map(point => point.x)), maxX = Math.max(...points.map(point => point.x))
+    const minY = Math.min(...points.map(point => point.y)), maxY = Math.max(...points.map(point => point.y))
+    const width = maxX - minX + 1, height = maxY - minY + 1
+    const mask = new Uint8Array(width * height)
+    for (const point of points) mask[(point.y - minY) * width + point.x - minX] = 1
+    return { x: minX, y: minY, width, height, mask }
+  }
 
   let pathMinX = Number.POSITIVE_INFINITY
   let pathMaxX = Number.NEGATIVE_INFINITY

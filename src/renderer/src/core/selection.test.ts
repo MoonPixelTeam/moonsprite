@@ -35,6 +35,12 @@ const selectionPixels = (selection: { x: number; y: number; width: number; heigh
 }
 
 describe('selection preview geometry', () => {
+  it('selects a single pixel when a lasso has only one sampled point', () => {
+    const selection = lassoSelection(createDocument('single pixel lasso', 4, 4, 'rgba'), [{ x: 2, y: 1 }])
+    expect(selection).toMatchObject({ x: 2, y: 1, width: 1, height: 1 })
+    expect(selection?.mask).toEqual(new Uint8Array([1]))
+  })
+
   it('turns a brush stroke coverage set into a compact mask and combines it by selection mode', () => {
     const incoming = selectionMaskFromVisitedPixels(new Set([1, 2, 6, 10]), 4)
     expect(selectionPixels(incoming)).toEqual(new Set(['1:0', '2:0', '2:1', '2:2']))
