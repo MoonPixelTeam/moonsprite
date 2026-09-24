@@ -7,7 +7,7 @@ export interface ExtensionExportFile { name: string; bytes: number[] }
 export async function saveExtensionFile(file: ExtensionExportFile): Promise<boolean> {
   if (!file || typeof file.name !== 'string' || !file.name || file.name.length > 120
     || /[<>:"/\\|?*\x00-\x1f]/.test(file.name) || !Array.isArray(file.bytes)
-    || file.bytes.length > 1024 * 1024 || !file.bytes.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+    || file.bytes.length > 12 * 1024 * 1024 || !file.bytes.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
     throw new Error(translateCurrent('extension.invalidExportFile'))
   }
   const destination = await invoke<{ canceled: boolean; filePath?: string }>('save_extension_data_file', { fileName: file.name, language: currentAppLocale() })

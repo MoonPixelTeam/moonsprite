@@ -1,3 +1,4 @@
+import { TabletAssistBar } from './tablet/TabletAssistBar'
 import { ReferenceImagePanel, ReferenceImageWindows } from './panels/ReferenceImagePanel'
 import { useReferenceImages } from './panels/reference-image-state'
 import { beginWorkspaceResize, endWorkspaceResize, createResizeFrame } from './workspace-resize'
@@ -92,7 +93,7 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
 }) {
   const { t } = useI18n()
   const brushLibrary = useBrushLibrary(session)
-  const panelLabels: Record<WorkspacePanelId, string> = { color: t('panel.color'), palette: t('panel.palette'), layers: t('panel.layers'), freeTileInstances: t('panel.freeTileInstances'), history: t('panel.history'), preview: t('panel.preview'), reference: t('panel.reference'), tileset: t('panel.tileset'), brushes: t('panel.brushes') }
+  const panelLabels: Record<WorkspacePanelId, string> = { color: t('panel.color'), palette: t('panel.palette'), layers: t('panel.layers'), freeTileInstances: t('panel.freeTileInstances'), history: t('panel.history'), preview: t('panel.preview'), reference: t('panel.reference'), tileset: t('panel.tileset'), brushes: t('panel.brushes'), tabletAssist: t('tablet.assist') }
   const panelDockLabels: Record<PanelDock, string> = { left: t('panel.dock.left'), right: t('panel.dock.right'), bottom: t('panel.dock.bottom'), floating: t('panel.dock.floating') }
   const panelStateKey = useWorkspace((state) => {
     const current = state.sessions.find((item) => item.document.id === session.document.id) ?? session
@@ -557,6 +558,8 @@ export function InspectorPanels({ session, panelVisibility, onClosePreview, pane
             ? <HistoryPanel session={session} {...dockProps} />
           : id === 'reference'
             ? <ReferenceImagePanel onClose={popup ? onPopupPanelClose ?? (() => onPanelVisibilityChange('reference', false)) : () => onPanelVisibilityChange('reference', false)} {...dockProps} />
+          : id === 'tabletAssist'
+            ? <TabletAssistBar onClose={popup ? onPopupPanelClose ?? (() => onPanelVisibilityChange('tabletAssist', false)) : () => onPanelVisibilityChange('tabletAssist', false)} {...dockProps} />
           : id === 'brushes'
             ? <BrushLibraryPanel session={session} controller={brushLibrary} {...dockProps} />
             : id === 'tileset'

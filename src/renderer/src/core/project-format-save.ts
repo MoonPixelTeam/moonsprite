@@ -4,6 +4,7 @@ import { getLayerStorageOrigin, getRasterContentRevision, setLayerStorageOrigin 
 import { ensureAnimationDocument } from './animation'
 import { translateCurrent as tr } from './localization'
 import { rasterStorageIdentity } from './runtime-raster'
+import { projectDocumentForWorkerTransfer } from './project-save-transfer'
 import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
 import {
   type ProjectSaveBaseline,
@@ -91,7 +92,7 @@ const encodeProjectInWorker = (payload: ProjectEncodeWorkerPayload): Promise<Pro
     pendingProjectEncodes.set(id, { resolve, reject, diagnostic })
     try {
       const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      ensureProjectEncodeWorker().postMessage({ id, payload })
+      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document: projectDocumentForWorkerTransfer(payload.document) } })
       diagnostic?.mark('post-message', {
         durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt)
       })

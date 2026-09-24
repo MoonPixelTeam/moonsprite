@@ -1,5 +1,6 @@
 import { useEffect, useRef, type CSSProperties, type FocusEventHandler, type ReactNode } from 'react'
 import { rangeValueWithShiftStep } from '@/core/range-step'
+import { sliderWheelValue, useSliderWheel } from './useSliderWheel'
 
 interface RangeFieldProps {
   ariaLabel?: string
@@ -65,10 +66,21 @@ export function RangeField({ ariaLabel, ariaValueText, autoFocus = false, classN
     '--range-progress': `${progress}%`
   } as CSSProperties
   const accessibleLabel = ariaLabel ?? (typeof label === 'string' ? label : undefined)
+  const wheelRef = useSliderWheel<HTMLSpanElement>(event => {
+    if (disabled) return
+    event.preventDefault()
+    event.stopPropagation()
+    const next = sliderWheelValue(value, event.deltaY, min, max, step, event.shiftKey, suffix === '%')
+    if (next === value) return
+    const discrete = !activeRef.current
+    beginInteraction()
+    onChange(next)
+    if (discrete) finishInteraction()
+  })
 
   return <label className={`range-field range-field-${density} ${hasLabel ? 'range-field-labeled' : 'range-field-standalone'} ${className}`.trim()}>
     {hasLabel && <span className="range-field-label" title={typeof label === 'string' ? label : undefined}>{label}</span>}
-    <span className="range-slider" style={sliderStyle}>
+    <span ref={wheelRef} className="range-slider" style={sliderStyle}>
       <span className="range-slider-fill" aria-hidden="true" />
       <output className="range-slider-value" aria-hidden="true">{displayValue}</output>
       <input aria-label={accessibleLabel} aria-valuetext={accessibleValueText} autoFocus={autoFocus} type="range" disabled={disabled} min={min} max={max} step={step} value={value} onBlur={(event) => { finishInteraction(); onBlur?.(event) }}

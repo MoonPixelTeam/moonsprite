@@ -68,8 +68,13 @@ const layerStylePreviewInvalidationRect = (
   return rect
 }
 
-const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint => {
+const layerVisibilityInvalidation = (document: SpriteDocument, layer: RasterLayer): ContentInvalidationHint | null => {
   const bounds = cachedLayerContentBounds(document, layer)
+  // null is known-empty; undefined means not measured. A transparent clipping
+  // base can still affect other layers, so keep that path fully invalidated.
+  if (bounds === null && !layer.kind && !layer.background && !hasConfiguredLayerStyles(layer.layerStyles)
+    && !document.layers.some(candidate => candidate.clippingMask === true)
+    && !document.groups.some(group => group.clippingMask === true || hasConfiguredLayerStyles(group.layerStyles))) return null
   return bounds
     ? { kind: 'region', rect: expandLayerStyleInvalidationRect(document, bounds, [layer.id]) }
     : { kind: 'full' }
@@ -117,7 +122,7 @@ const commitVisibilityChange = (recordDocumentOperation: WorkspaceRecording['rec
   session: DocumentSession,
   target: { visible: boolean },
   label: string,
-  invalidationForCurrentFrame: () => ContentInvalidationHint,
+  invalidationForCurrentFrame: () => ContentInvalidationHint | null,
   affectedLayerIds?: readonly string[],
   refreshPanelForRegion = false
 ): void => {
@@ -127,21 +132,24 @@ const commitVisibilityChange = (recordDocumentOperation: WorkspaceRecording['rec
   let entry: HistoryEntry
   const apply = (visible: boolean): void => {
     target.visible = visible
-    entry.invalidation = invalidationForCurrentFrame()
-    if (refreshPanelForRegion && entry.invalidation.kind === 'region') session.layersPanelRevision += 1
+    const nextInvalidation = invalidationForCurrentFrame()
+    entry.invalidation = nextInvalidation ?? undefined
+    entry.contentChanged = nextInvalidation !== null
+    if (refreshPanelForRegion && nextInvalidation?.kind === 'region') session.layersPanelRevision += 1
   }
   entry = {
     label,
     bytes: 8,
     undo: () => { apply(before) },
     redo: () => { apply(!before) },
-    invalidation,
+    invalidation: invalidation ?? undefined,
+    contentChanged: invalidation !== null,
     affectedLayerIds: affectedLayerIds ? [...affectedLayerIds] : undefined,
     requiresAnimationSync: false
   }
-  if (refreshPanelForRegion && invalidation.kind === 'region') session.layersPanelRevision += 1
+  if (refreshPanelForRegion && invalidation?.kind === 'region') session.layersPanelRevision += 1
   session.history.push(entry)
-  completeDocumentChange(session, 'content', recordDocumentOperation, invalidation)
+  completeDocumentChange(session, invalidation === null ? 'metadata' : 'content', recordDocumentOperation, invalidation ?? undefined)
 }
 
 const hiddenAncestorGroupsForLayer = (document: SpriteDocument, layer: RasterLayer): LayerGroup[] => {
@@ -629,7 +637,7 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
       get().mutateActive((session) => {
         const result = commitLayerPropertiesTransactionCommand(documentTransactions, session, id, values, changedFields)
         if (result.kind === 'content') {
-          syncActiveAnimationFrame(session.document)
+          for (const layerId of session.history.latestUndoEntry?.affectedLayerIds ?? []) syncActiveAnimationLayer(session.document, layerId)
           // Layer properties are a panel operation, not a canvas edit. Keep
           // the explicit layer/frame/cel selection visible after committing a
           // content-affecting property such as opacity or blend mode.

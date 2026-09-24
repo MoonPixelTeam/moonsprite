@@ -6,7 +6,8 @@ import type { SelectionMask } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
 import type { TextCelData } from '@shared/types-text'
 import { animationMaskAt, createId, getLayerStorageOrigin, paletteColorIdForCanvas, resolveAnimationMask, setLayerStorageOrigin } from './document-model'
-import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal } from './runtime-raster'
+import { shareRasterLayer } from './layer-preview'
+import { assignRasterStorage, installRuntimeRaster, rasterStorageIdentity, runtimeRasterVisibleBounds, readSurfacePackedLocal, shareRasterSurface } from './runtime-raster'
 import { normalizeTextCelData, translateTextCelData } from './text-cel-data'
 import { cloneLayerStyles } from './layer-styles'
 import { backgroundPatternSize, tileBackgroundSurfaceToCanvas } from './background-patterns'
@@ -462,10 +463,8 @@ const blankSurfaceFromLayer = (layer: RasterLayer): AnimationCelSurface => layer
 export const cloneAnimationCelSurface = (surface: AnimationCelSurface): AnimationCelSurface => surfaceFromSurface(surface, true)
 
 const surfaceFromSurface = (source: AnimationCelSurface, copyPixels = false): AnimationCelSurface => {
-  const surface: AnimationCelSurface = source.format === 'rgba'
-    ? { ...source, pixels: new Uint8ClampedArray(4) }
-    : { ...source, pixels: new Uint32Array(1) }
-  assignRasterStorage(surface, source, copyPixels)
+  const surface = shareRasterSurface(source)
+  if (copyPixels) assignRasterStorage(surface, source, true)
   return surface
 }
 
@@ -635,11 +634,9 @@ export const cloneAnimationCel = (cel: AnimationCel): AnimationCel => ({
 /** Create an isolated document snapshot for read-only animation previewing. */
 export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId: string): SpriteDocument => {
   const layers = document.layers.map((layer) => {
-    const clone = layer.format === 'rgba'
-      ? { ...layer, layerStyles: cloneLayerStyles(layer.layerStyles), background: layer.background ? { ...layer.background } : undefined, pixels: new Uint8ClampedArray(4) } as RasterLayer
-      : { ...layer, layerStyles: cloneLayerStyles(layer.layerStyles), background: layer.background ? { ...layer.background } : undefined, pixels: new Uint32Array(1) } as RasterLayer
-    assignRasterStorage(clone, layer)
-    setLayerStorageOrigin(clone, getLayerStorageOrigin(layer))
+    const clone = shareRasterLayer(layer)
+    clone.layerStyles = cloneLayerStyles(layer.layerStyles)
+    clone.background = layer.background ? { ...layer.background } : undefined
     return clone
   })
   const preview: SpriteDocument = {
@@ -1475,14 +1472,14 @@ export const restoreAnimationCels = (document: SpriteDocument, cels: readonly An
 export const layerFromAnimationCel = (layer: RasterLayer | undefined, cel: AnimationCel | null): RasterLayer | null => {
   const surface = cel?.surface
   if (!layer || !surface || layer.format !== surface.format) return null
-  const target: RasterLayer | null = layer.format === 'rgba' && surface.format === 'rgba'
-    ? { ...layer, width: surface.width, height: surface.height, offsetX: surface.offsetX, offsetY: surface.offsetY, pixels: new Uint8ClampedArray(4) }
-    : layer.format === 'indexed' && surface.format === 'indexed'
-      ? { ...layer, width: surface.width, height: surface.height, offsetX: surface.offsetX, offsetY: surface.offsetY, pixels: new Uint32Array(1) }
-      : null
-  if (target) assignRasterStorage(target, surface)
-  if (target) setLayerStorageOrigin(target, { x: surface.storageOriginX ?? 0, y: surface.storageOriginY ?? 0 })
-  if (target && Number.isFinite(cel?.opacity)) target.opacity = cel!.opacity!
+  const target = shareRasterSurface(layer)
+  target.width = surface.width
+  target.height = surface.height
+  target.offsetX = surface.offsetX
+  target.offsetY = surface.offsetY
+  assignRasterStorage(target, surface)
+  setLayerStorageOrigin(target, { x: surface.storageOriginX ?? 0, y: surface.storageOriginY ?? 0 })
+  if (Number.isFinite(cel?.opacity)) target.opacity = cel!.opacity!
   return target
 }
 

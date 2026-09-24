@@ -12,6 +12,12 @@ interface Entry { key: string; revision: number; tiles: Map<string, Uint8Clamped
 export class LayerStyleTileCache {
   private entries = new WeakMap<object, Entry>()
 
+  /** Property edits do not alter a layer's isolated, post-mask source pixels. */
+  retainRevision(owner: object, fromRevision: number, revision: number): void {
+    const entry = this.entries.get(owner)
+    if (entry && entry.revision >= fromRevision && entry.revision <= revision) entry.revision = revision
+  }
+
   prepare(owner: object, key: string, revision: number, dirty: readonly SelectionRect[] | undefined, geometry: LayerStyleGeometry,
     styles: LayerStyles, readSource: LayerStyleSourceReader, resolve: LayerStyleColorResolver): LayerStyleSourceReader {
     let entry = this.entries.get(owner)

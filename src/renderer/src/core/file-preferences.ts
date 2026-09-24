@@ -75,6 +75,7 @@ export const LASSO_PREVIEW_CLOSED_PREFERENCE_KEY = 'moonsprite.preference.lasso-
 export const EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-quick-select'
 export const TOOLTIPS_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.tooltips-enabled'
 export const KEY_DISPLAY_ENABLED_PREFERENCE_KEY = 'moonsprite.preference.key-display-enabled'
+export const KEY_DISPLAY_FUNCTION_PREFERENCE_KEY = 'moonsprite.preference.key-display-function'
 export const KEY_DISPLAY_SIZE_PREFERENCE_KEY = 'moonsprite.preference.key-display-size'
 export const KEY_DISPLAY_DURATION_PREFERENCE_KEY = 'moonsprite.preference.key-display-duration'
 export const EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY = 'moonsprite.preference.eyedropper-switch-to-pencil'
@@ -162,8 +163,7 @@ export interface TabletPreferences {
   touchMode: TabletTouchMode
   twoFingerZoomEnabled: boolean
   twoFingerRotateEnabled: boolean
-  touchUi: 'auto' | 'on' | 'off'
-  touchBarSide: 'left' | 'right'
+  assistPanel: 'auto' | 'on' | 'off'
   gestureUndoEnabled: boolean
   rotationSnapEnabled: boolean
   longPressEyedropper: boolean
@@ -179,7 +179,7 @@ export const DEFAULT_TABLET_PREFERENCES: TabletPreferences = {
   touchMode: 'navigate',
   twoFingerZoomEnabled: true,
   twoFingerRotateEnabled: false,
-  touchUi: 'auto', touchBarSide: 'left', gestureUndoEnabled: true,
+  assistPanel: 'auto', gestureUndoEnabled: true,
   rotationSnapEnabled: true, longPressEyedropper: false
 }
 export type BrushPreviewMode = 'none' | 'edge' | 'full' | 'full-edge'
@@ -322,7 +322,7 @@ export function parseQuickCommandPreferences(value: string | null): QuickCommand
 export const DEFAULT_QUICK_COMMAND_BARS: QuickCommandBarPreference[] = DEFAULT_QUICK_COMMAND_GROUPS.map((group, index) => ({
   id: `quick-command-bar-${index + 1}`,
   name: ['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'][index],
-  edge: index === 0 ? 'top' : index === 1 ? 'bottom' : 'none',
+  edge: index === 0 ? 'top' : 'none',
   position: 0.5,
   expanded: false,
   commands: createQuickCommandPreferences(group)
@@ -417,7 +417,7 @@ export const DEFAULT_CURSOR_COLOR: RgbaColor = { r: 255, g: 255, b: 255, a: 255 
 export const DEFAULT_GRADIENT_LINE_COLOR: RgbaColor = { r: 0, g: 0, b: 255, a: 255 }
 
 export function parseRotationIndicatorPosition(value: string | null): RotationIndicatorPosition {
-  return value === 'canvas' || value === 'pointer-left' ? value : 'view'
+  return value === 'canvas' || value === 'view' ? value : 'pointer-left'
 }
 
 export function parseDrawingBrushPreviewEnabled(value: string | null): boolean {
@@ -446,7 +446,7 @@ export function parseBrushShiftLineEnabled(value: string | null): boolean {
 }
 
 export function parsePaintingCursorType(value: string | null): PaintingCursorType {
-  return value === 'simple' || value === 'sprite-unscaled' ? value : 'sprite'
+  return value === 'sprite' || value === 'sprite-unscaled' ? value : 'simple'
 }
 
 export function parseCursorScale(value: string | null): CursorScale {
@@ -722,6 +722,7 @@ export interface EditorPreferences {
   zoomToolDragMode: ZoomToolDragMode
   viewDragSensitivity: ViewDragSensitivity
   brushShiftLineEnabled: boolean
+  paintingCursorShape: 'cross' | 'dot'
   paintingCursorType: PaintingCursorType
   useLocalCursors: boolean
   cursorScale: CursorScale
@@ -751,6 +752,7 @@ export interface EditorPreferences {
   eyedropperQuickSelect: boolean
   tooltipsEnabled: boolean
   keyDisplayEnabled: boolean
+  keyDisplayFunction: boolean
   keyDisplaySize: number
   keyDisplayDuration: KeyDisplayDuration
   eyedropperSwitchToPencil: boolean
@@ -821,7 +823,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   historyLimitEnabled: false,
   documentSizePresets: DEFAULT_DOCUMENT_SIZE_PRESETS,
   exportScalePresets: DEFAULT_EXPORT_SCALE_PRESETS,
-  rotationIndicatorPosition: 'view',
+  rotationIndicatorPosition: 'pointer-left',
   exportProtection: 'off',
   referenceScaling: 'smooth',
   canvasViewScrollbarsEnabled: true,
@@ -830,7 +832,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   zoomToolDragMode: 'stepped',
   viewDragSensitivity: 1,
   brushShiftLineEnabled: true,
-  paintingCursorType: 'sprite',
+  paintingCursorShape: 'dot',
+  paintingCursorType: 'simple',
   useLocalCursors: false,
   cursorScale: 1,
   cursorColorMode: 'auto',
@@ -859,13 +862,14 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   eyedropperQuickSelect: false,
   tooltipsEnabled: true,
   keyDisplayEnabled: false,
+  keyDisplayFunction: false,
   keyDisplaySize: 1.3,
   keyDisplayDuration: 1400,
   eyedropperSwitchToPencil: false,
   eyedropperMagnifierEnabled: true,
   eyedropperMagnifierStyle: 'pixel',
   eyedropperMagnifierSize: 1,
-  eyedropperMagnifierDistortionEnabled: true,
+  eyedropperMagnifierDistortionEnabled: false,
   moveLayerContentPreviewEnabled: true,
   moveLayerClickFlashEnabled: true,
   moveLayerClickFlashDuration: 120,
@@ -1197,7 +1201,7 @@ function parseDirectoryPreference(value: string | null): string {
 }
 
 function parseSaveLocationMode(value: string | null): SaveLocationMode {
-  return value === 'recent' ? 'recent' : 'fixed'
+  return value === 'fixed' ? 'fixed' : 'recent'
 }
 
 export function parsePasteTarget(value: string | null): PasteTarget {
@@ -1278,7 +1282,7 @@ export function parseAlignmentThreshold(value: string | null): number {
 
 export function parseTabletPreferences(value: string | null): TabletPreferences {
   try {
-    const parsed = JSON.parse(value ?? 'null') as Partial<TabletPreferences> | null
+    const parsed = JSON.parse(value ?? 'null') as (Partial<TabletPreferences> & { touchUi?: unknown }) | null
     if (!parsed || typeof parsed !== 'object') throw new Error('invalid tablet preferences')
     const api: TabletApi = parsed.api === 'windows-ink' || parsed.api === 'disabled' ? parsed.api : 'auto'
     const touchMode: TabletTouchMode = parsed.touchMode === 'draw' || parsed.touchMode === 'disabled' ? parsed.touchMode : 'navigate'
@@ -1294,8 +1298,7 @@ export function parseTabletPreferences(value: string | null): TabletPreferences 
       touchMode,
       twoFingerZoomEnabled: parsed.twoFingerZoomEnabled !== false,
       twoFingerRotateEnabled: parsed.twoFingerRotateEnabled === true,
-      touchUi: parsed.touchUi === 'on' || parsed.touchUi === 'off' ? parsed.touchUi : 'auto',
-      touchBarSide: parsed.touchBarSide === 'right' ? 'right' : 'left',
+      assistPanel: (parsed.assistPanel ?? parsed.touchUi) === 'on' ? 'on' : (parsed.assistPanel ?? parsed.touchUi) === 'off' ? 'off' : 'auto',
       gestureUndoEnabled: parsed.gestureUndoEnabled !== false,
       rotationSnapEnabled: parsed.rotationSnapEnabled !== false,
       longPressEyedropper: parsed.longPressEyedropper === true
@@ -1367,6 +1370,7 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
     viewDragSensitivity: parseViewDragSensitivity(get(VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY)),
     brushShiftLineEnabled: parseBrushShiftLineEnabled(get(BRUSH_SHIFT_LINE_ENABLED_KEY)),
+    paintingCursorShape: get('moonsprite.preference.painting-cursor-shape') === 'cross' ? 'cross' : 'dot',
     paintingCursorType: parsePaintingCursorType(get(PAINTING_CURSOR_TYPE_KEY)),
     useLocalCursors: get(USE_LOCAL_CURSORS_PREFERENCE_KEY) === 'true',
     cursorScale: parseCursorScale(get(CURSOR_SCALE_PREFERENCE_KEY)),
@@ -1396,13 +1400,14 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     eyedropperQuickSelect: get(EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY) === 'true',
     tooltipsEnabled: get(TOOLTIPS_ENABLED_PREFERENCE_KEY) !== 'false',
     keyDisplayEnabled: get(KEY_DISPLAY_ENABLED_PREFERENCE_KEY) === 'true',
+    keyDisplayFunction: get(KEY_DISPLAY_FUNCTION_PREFERENCE_KEY) === 'true',
     keyDisplaySize: parseKeyDisplaySize(get(KEY_DISPLAY_SIZE_PREFERENCE_KEY)),
     keyDisplayDuration: parseKeyDisplayDuration(get(KEY_DISPLAY_DURATION_PREFERENCE_KEY)),
     eyedropperSwitchToPencil: get(EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY) === 'true',
     eyedropperMagnifierEnabled: get(EYEDROPPER_MAGNIFIER_ENABLED_PREFERENCE_KEY) !== 'false',
     eyedropperMagnifierStyle: parseEyedropperMagnifierStyle(get(EYEDROPPER_MAGNIFIER_STYLE_PREFERENCE_KEY)),
     eyedropperMagnifierSize: parseEyedropperMagnifierSize(get(EYEDROPPER_MAGNIFIER_SIZE_PREFERENCE_KEY)),
-    eyedropperMagnifierDistortionEnabled: get(EYEDROPPER_MAGNIFIER_DISTORTION_ENABLED_PREFERENCE_KEY) !== 'false',
+    eyedropperMagnifierDistortionEnabled: get(EYEDROPPER_MAGNIFIER_DISTORTION_ENABLED_PREFERENCE_KEY) === 'true',
     moveLayerContentPreviewEnabled: get(MOVE_LAYER_CONTENT_PREVIEW_ENABLED_PREFERENCE_KEY) !== 'false',
     moveLayerClickFlashEnabled: get(MOVE_LAYER_CLICK_FLASH_ENABLED_PREFERENCE_KEY) !== 'false',
     moveLayerClickFlashDuration: parseMoveLayerClickFlashDuration(get(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)),
@@ -1482,6 +1487,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY]: preferences.zoomToolDragMode,
     [VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY]: String(parseViewDragSensitivity(String(preferences.viewDragSensitivity))),
     [BRUSH_SHIFT_LINE_ENABLED_KEY]: String(preferences.brushShiftLineEnabled),
+    ['moonsprite.preference.painting-cursor-shape']: preferences.paintingCursorShape,
     [PAINTING_CURSOR_TYPE_KEY]: preferences.paintingCursorType,
     [USE_LOCAL_CURSORS_PREFERENCE_KEY]: String(preferences.useLocalCursors),
     [CURSOR_SCALE_PREFERENCE_KEY]: String(preferences.cursorScale),
@@ -1513,6 +1519,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [EYEDROPPER_QUICK_SELECT_PREFERENCE_KEY]: String(preferences.eyedropperQuickSelect),
     [TOOLTIPS_ENABLED_PREFERENCE_KEY]: String(preferences.tooltipsEnabled),
     [KEY_DISPLAY_ENABLED_PREFERENCE_KEY]: String(preferences.keyDisplayEnabled),
+    [KEY_DISPLAY_FUNCTION_PREFERENCE_KEY]: String(preferences.keyDisplayFunction),
     [KEY_DISPLAY_SIZE_PREFERENCE_KEY]: String(parseKeyDisplaySize(String(preferences.keyDisplaySize))),
     [KEY_DISPLAY_DURATION_PREFERENCE_KEY]: String(parseKeyDisplayDuration(String(preferences.keyDisplayDuration))),
     [EYEDROPPER_SWITCH_TO_PENCIL_PREFERENCE_KEY]: String(preferences.eyedropperSwitchToPencil),

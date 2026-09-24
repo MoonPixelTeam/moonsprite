@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
 import { CanvasCompositeCache } from '@/components/canvas-composite-cache'
@@ -50,6 +50,44 @@ const clickSample = (panel: HTMLElement, altKey: boolean) => {
   fireEvent.pointerDown(panel, { button: 0, clientX: 150, clientY: 150, altKey })
   fireEvent.pointerUp(panel)
 }
+
+it('keeps preview artwork at its initial scale when the panel is resized', () => {
+  vi.useFakeTimers()
+  try {
+    const observers: Array<() => void> = []
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { observers.push(callback) }
+      observe() {} disconnect() {}
+    })
+    let size = 200
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => size)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => size)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, 0, size, size))
+    const session = useWorkspace.getState().sessions[0]
+    const view = render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
+    act(() => vi.advanceTimersByTime(32))
+    const context = view.container.querySelector('canvas')!.getContext('2d')!
+    const initial = vi.mocked(context.rect).mock.lastCall!
+    expect(initial[2]).toBeGreaterThan(0)
+    vi.mocked(context.rect).mockClear()
+    size = 400
+    act(() => { observers.forEach(callback => callback()); vi.advanceTimersByTime(32) })
+    const resized = vi.mocked(context.rect).mock.lastCall!
+    expect(resized.slice(2)).toEqual(initial.slice(2))
+    expect(resized[0] - initial[0]).toBe(100)
+    expect(resized[1] - initial[1]).toBe(100)
+  } finally { vi.useRealTimers() }
+})
+
+it('opens preview playback settings above its floating ancestor', () => {
+  const session = useWorkspace.getState().sessions[0]
+  const view = render(<div style={{ position: 'fixed', zIndex: 1500 }}><PreviewPanel session={session} docked onClose={() => {}} /></div>, { wrapper: I18nProvider })
+  const button = view.container.querySelector<HTMLButtonElement>('button[aria-label="播放动画"]')!
+  fireEvent.contextMenu(button, { clientX: 100, clientY: 100 })
+  const menu = document.querySelector<HTMLElement>('.animation-context-menu')!
+  expect(menu.parentElement).toBe(document.body)
+  expect(Number(menu.style.zIndex)).toBeGreaterThan(1500)
+})
 
 it.each(['alt', 'eyedropper'])('samples the reference source with %s without moving the reference', mode => {
   const source = document.createElement('canvas')

@@ -10,6 +10,10 @@ import {
   type CurveHistogram,
   type CurvePoint
 } from '@/core/adjustments'
+import { CurvePlot, curvePlotPoint } from '@/components/CurvePlot'
+import { NumberInput } from '@/components/NumberInput'
+import { FormField } from '@/components/FormField'
+import { Button } from '@/components/Button'
 import { RangeField } from '@/components/RangeField'
 import { DialogHeader } from '@/components/DialogHeader'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
@@ -156,25 +160,30 @@ const yieldHistogramControl = (): Promise<void> => new Promise((resolve) => {
   channel.port2.postMessage(null)
 })
 
-function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: { points: CurvePoint[]; channel?: CurveChannel; histogram?: Uint32Array; onChange: (points: CurvePoint[]) => void; onReset: () => void }) {
+export function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: { points: CurvePoint[]; channel?: CurveChannel; histogram?: Uint32Array; onChange: (points: CurvePoint[]) => void; onReset: () => void }) {
   const { t } = useI18n()
   const activePointRef = useRef<number | null>(null)
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null)
   const pointsRef = useRef(points)
   pointsRef.current = points
+  const validSelectedPoint = selectedPoint !== null && selectedPoint < points.length ? selectedPoint : null
+  useEffect(() => {
+    activePointRef.current = null
+    setSelectedPoint(null)
+  }, [channel])
   useEffect(() => {
     if (selectedPoint !== null && selectedPoint >= points.length) setSelectedPoint(null)
+    if (activePointRef.current !== null && activePointRef.current >= points.length) activePointRef.current = null
   }, [points.length, selectedPoint])
   const eventPoint = (event: React.PointerEvent<SVGSVGElement>): CurvePoint => {
     const bounds = event.currentTarget.getBoundingClientRect()
-    return {
-      x: Math.max(0, Math.min(255, Math.round((event.clientX - bounds.left) / Math.max(1, bounds.width) * 255))),
-      y: Math.max(0, Math.min(255, Math.round((bounds.bottom - event.clientY) / Math.max(1, bounds.height) * 255)))
-    }
+    const point = curvePlotPoint(event.clientX, event.clientY, bounds)
+    return { x: Math.round(point.x * 255), y: Math.round(point.y * 255) }
   }
+
   const nearestPoint = (event: React.PointerEvent<SVGSVGElement>): number => {
     const bounds = event.currentTarget.getBoundingClientRect()
-    return pointsRef.current.findIndex((point) => Math.hypot(point.x / 255 * bounds.width - (event.clientX - bounds.left), (255 - point.y) / 255 * bounds.height - (event.clientY - bounds.top)) <= 12)
+    return pointsRef.current.findIndex((point) => Math.hypot((12 + point.x / 255 * 100) / 124 * bounds.width - (event.clientX - bounds.left), (10 + (255 - point.y) / 255 * 100) / 124 * bounds.height - (event.clientY - bounds.top)) <= 12)
   }
   const begin = (event: React.PointerEvent<SVGSVGElement>): void => {
     if (event.button !== 0) return
@@ -197,6 +206,10 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
     const index = activePointRef.current
     if (index === null) return
     const source = pointsRef.current
+    if (index < 0 || index >= source.length) {
+      activePointRef.current = null
+      return
+    }
     const point = eventPoint(event)
     const next = source.map((item) => ({ ...item }))
     point.x = index === 0 ? 0 : index === next.length - 1 ? 255 : Math.max(next[index - 1].x + 1, Math.min(next[index + 1].x - 1, point.x))
@@ -209,9 +222,10 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const removeAt = (clientX: number, clientY: number, bounds: DOMRect): void => {
-    const index = pointsRef.current.findIndex((point) => Math.hypot(point.x / 255 * bounds.width - (clientX - bounds.left), (255 - point.y) / 255 * bounds.height - (clientY - bounds.top)) <= 12)
+    const index = pointsRef.current.findIndex((point) => Math.hypot((12 + point.x / 255 * 100) / 124 * bounds.width - (clientX - bounds.left), (10 + (255 - point.y) / 255 * 100) / 124 * bounds.height - (clientY - bounds.top)) <= 12)
     if (index <= 0 || index >= pointsRef.current.length - 1) return
     const next = pointsRef.current.filter((_, pointIndex) => pointIndex !== index)
+    activePointRef.current = null
     pointsRef.current = next
     setSelectedPoint(null)
     onChange(next)
@@ -227,6 +241,7 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
   const removeSelected = (): void => {
     if (selectedPoint === null || selectedPoint <= 0 || selectedPoint >= pointsRef.current.length - 1) return
     const next = pointsRef.current.filter((_, index) => index !== selectedPoint)
+    activePointRef.current = null
     pointsRef.current = next
     setSelectedPoint(null)
     onChange(next)
@@ -245,15 +260,28 @@ function CurveEditor({ points, channel = 'rgb', histogram, onChange, onReset }: 
   return <div className={`curve-editor curve-editor-${channel}`}>
     <div className="curve-editor-toolbar">
       <span>{tendency}</span>
-      <div className="curve-editor-actions"><button type="button" className="icon-button" title={t('adjustment.curve.resetChannel')} aria-label={t('adjustment.curve.resetChannel')} onClick={onReset}><PixelUtilityIcon kind="restore" /></button><button type="button" className="icon-button" title={t('adjustment.curve.deletePoint')} aria-label={t('adjustment.curve.deletePoint')} disabled={selectedPoint === null || selectedPoint === 0 || selectedPoint === points.length - 1} onClick={removeSelected}><PixelUtilityIcon kind="delete" /></button></div>
+      <div className="curve-editor-actions"><Button className="icon-button" title={t('adjustment.curve.resetChannel')} aria-label={t('adjustment.curve.resetChannel')} onClick={() => { activePointRef.current = null; setSelectedPoint(null); onReset() }}><PixelUtilityIcon kind="restore" /></Button><Button className="icon-button" title={t('adjustment.curve.deletePoint')} aria-label={t('adjustment.curve.deletePoint')} disabled={validSelectedPoint === null || validSelectedPoint === 0 || validSelectedPoint === points.length - 1} onClick={removeSelected}><PixelUtilityIcon kind="delete" /></Button></div>
     </div>
-    <svg className="curve-editor-plot" viewBox="0 0 255 255" preserveAspectRatio="none" role="application" tabIndex={0} aria-label={t('adjustment.curve.editorAria')} onKeyDown={(event) => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() } }} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={remove} onContextMenu={removeContext}>
-      {histogramBars && <g className={`curve-histogram curve-histogram-${channel}`}>{histogramBars}</g>}
-      <path className="curve-grid" d="M 63.75 0 V 255 M 127.5 0 V 255 M 191.25 0 V 255 M 0 63.75 H 255 M 0 127.5 H 255 M 0 191.25 H 255" />
-      {points.length > 1 && <path className={`curve-line curve-line-${channel}`} d={path} />}
-      {points.map((point, index) => <rect key={index} className={`curve-point curve-point-${channel} ${selectedPoint === index ? 'selected' : ''}`} x={point.x - 4} y={251 - point.y} width="8" height="8" />)}
-    </svg>
-    <div className="curve-editor-axis"><span>{t('adjustment.curve.shadows')}</span><span>{t('adjustment.curve.highlights')}</span></div>
+    <CurvePlot xStartLabel={t('adjustment.curve.shadows')} xEndLabel={t('adjustment.curve.highlights')} label={t('adjustment.curve.editorAria')} role="application" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() } }} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={remove} onContextMenu={removeContext}>
+      <g transform="scale(0.39215686274509803)">
+        {histogramBars && <g className={`curve-histogram curve-histogram-${channel}`}>{histogramBars}</g>}
+        {points.length > 1 && <path className="tween-easing-line" style={{ strokeWidth: 3.06 }} d={path} />}
+        {points.map((point, index) => <rect key={index} className="tween-easing-handle" x={point.x - 6.375} y={255 - point.y - 6.375} width="12.75" height="12.75" style={{ strokeWidth: selectedPoint === index ? 2.5 : 1.8 }} />)}
+      </g>
+    </CurvePlot>
+
+    <div className="curve-point-values">{(['x', 'y'] as const).map(axis => {
+      const index = validSelectedPoint ?? 0
+      const point = points[index] ?? points[0]
+      const endpoint = index === 0 || index === points.length - 1
+      const label = axis.toUpperCase()
+      return <FormField key={axis} label={label}><NumberInput aria-label={label} value={point[axis]} min={axis === 'x' && !endpoint ? points[index - 1].x + 1 : 0} max={axis === 'x' && !endpoint ? points[index + 1].x - 1 : 255} disabled={axis === 'x' && endpoint} step={1} onValueChange={value => {
+        setSelectedPoint(index)
+        const next = points.map((item, i) => i === index ? { ...item, [axis]: Math.round(value) } : item)
+        pointsRef.current = next
+        onChange(next)
+      }} /></FormField>
+    })}</div>
   </div>
 }
 

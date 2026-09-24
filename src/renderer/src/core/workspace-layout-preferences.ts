@@ -27,7 +27,8 @@ export const FLOATING_PANEL_STORAGE_KEYS: Record<WorkspacePanelId, string> = {
   preview: 'moonsprite.preview-panel.v1',
   reference: 'moonsprite.reference-panel.v1',
   tileset: 'moonsprite.tileset-panel.v1',
-  brushes: 'moonsprite.brushes-panel.v1'
+  brushes: 'moonsprite.brushes-panel.v1',
+  tabletAssist: 'moonsprite.tablet-assist-panel.v1'
 }
 export const POPUP_PANEL_STORAGE_KEYS: Record<WorkspacePanelId, string> = {
   color: 'moonsprite.popup-color-panel.v1',
@@ -38,7 +39,8 @@ export const POPUP_PANEL_STORAGE_KEYS: Record<WorkspacePanelId, string> = {
   preview: 'moonsprite.popup-preview-panel.v1',
   reference: 'moonsprite.popup-reference-panel.v1',
   tileset: 'moonsprite.popup-tileset-panel.v1',
-  brushes: 'moonsprite.popup-brushes-panel.v1'
+  brushes: 'moonsprite.popup-brushes-panel.v1',
+  tabletAssist: 'moonsprite.popup-tablet-assist-panel.v1'
 }
 
 export const WORKSPACE_LAYOUT_STORAGE_KEYS = [
@@ -62,10 +64,10 @@ export const WORKSPACE_LAYOUT_STORAGE_KEYS = [
 ] as const
 
 export const DEFAULT_PANEL_DOCKS: Record<WorkspacePanelId, WorkspacePanelDock> = {
-  color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'right', reference: 'right', tileset: 'right', brushes: 'right'
+  color: 'left', palette: 'left', layers: 'bottom', freeTileInstances: 'bottom', history: 'right', preview: 'right', reference: 'right', tileset: 'right', brushes: 'right', tabletAssist: 'floating'
 }
 export const DEFAULT_PANEL_VISIBILITY: Record<WorkspacePanelId, boolean> = {
-  color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false
+  color: true, palette: true, layers: true, freeTileInstances: false, history: true, preview: true, reference: false, tileset: false, brushes: false, tabletAssist: false
 }
 
 export function workspacePanelDockPresence(

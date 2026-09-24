@@ -56,6 +56,7 @@
     "@types/react-dom": "19.2.3",
     "@types/upng-js": "2.1.5",
     "@vitejs/plugin-react": "6.0.4",
+    "fake-indexeddb": "^6.2.5",
     "fflate": "0.8.3",
     "jsdom": "29.1.1",
     "lucide-react": "1.26.0",

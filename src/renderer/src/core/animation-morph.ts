@@ -77,7 +77,7 @@ export function prepareMorphTween(start: AnimationCelSurface | undefined, end: A
   return { from, to, width, height, a, b, byteLength: a.colors.byteLength + a.signed.byteLength + b.colors.byteLength + b.signed.byteLength }
 }
 
-export function morphTweenSurface(plan: ReturnType<typeof prepareMorphTween>, progress: number, maxPixels: number, indexedColor: (color: RgbaColor) => number): AnimationCelSurface {
+export function morphTweenSurface(plan: ReturnType<typeof prepareMorphTween>, progress: number, maxPixels: number, indexedColor: (color: RgbaColor) => number, reserve?: (bytes: number) => void): AnimationCelSurface {
   const t = Math.max(0, Math.min(1, progress)), lerp = (a: number, b: number) => a + (b - a) * t
   const { from, to } = plan
   const width = Math.max(1, Math.round(lerp(from.bounds.width, to.bounds.width)))
@@ -85,6 +85,7 @@ export function morphTweenSurface(plan: ReturnType<typeof prepareMorphTween>, pr
   const offsetX = Math.round(lerp(from.surface.offsetX + from.bounds.x, to.surface.offsetX + to.bounds.x))
   const offsetY = Math.round(lerp(from.surface.offsetY + from.bounds.y, to.surface.offsetY + to.bounds.y))
   if (width * height > maxPixels) throw new Error(tr('timeline.tween.tooLarge'))
+  reserve?.(width * height * 4)
   const pixels = new Uint32Array(width * height), format = from.surface.format
   const paletteCache = new Map<number, number>()
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {

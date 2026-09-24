@@ -1,25 +1,22 @@
 import { appendStyleDirtyRect, invalidateStyledLayerBlocks, refreshStyledLayerBlock } from './layer-style-dirty-regions'
-import { layerStyleCoverageTile } from './layer-style-coverage'
+import { renderStyledLayerBlock } from './document-composite-style-render'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
+import { LayerPropertyCompositeCache, type PropertyCompositeChange } from './layer-property-composite-cache'
 import type { PaletteEntry, RgbaColor } from '@shared/types-color'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { LayerStyles } from '@shared/types-layer-style'
 import type { SelectionRect } from '@shared/types-selection'
 import type { SpriteDocument } from '@shared/types-document'
-import { packColor, TRANSPARENT, unpackColor, writeRgbaPixel } from './raster'
+import { packColor } from './raster'
 import {
   lazyRuntimeRasterForSurface,
   rasterStorageIdentity,
-  readSurfacePackedLocal,
   runtimeRasterForSurface,
   runtimeTileHasVisiblePixels
 } from './runtime-raster'
 import {
-  applyLayerStylesAt,
-  applySimpleLayerStylesPacked,
   hasEnabledLayerStyles,
   layerStyleAffectedRect,
-  layerStyleBinaryStrokeMetric,
   layerStyleOutputBounds,
   layerStylesSignature,
   mapLayerStyleColors,
@@ -55,14 +52,16 @@ import {
   localRectForLayer,
   visibleBoundsWithinLocalRect,
   incrementalContentBounds,
-  intersectRect,
-  localBinaryStyleFields,
-  hasCompleteBinaryStyleCoverage,
-  distanceFieldAt
+  intersectRect
 } from './document-composite-style-geometry'
 import { compositeRgbaRowWithOpaqueSpans, compositeNormalLayers, compositeMovePreviewLayersInto } from './document-composite-raster'
 
 export class DocumentCompositeCache {
+  private propertyComposite = new LayerPropertyCompositeCache()
+  propertyRegion(document: SpriteDocument, rect: SelectionRect, revision: number, change: PropertyCompositeChange | null | undefined): Uint8ClampedArray | null {
+    if (rect.width * rect.height < 128 * 128) return null
+    return this.propertyComposite.render(document, rect, revision, change, this)
+  }
   private rowRanges = new WeakMap<object, Map<string, { contentRevision: number; ranges: Int32Array }>>()
   private visibleTiles = new WeakMap<object, Map<string, Map<number, boolean>>>()
   private normalLayerPlans = new WeakMap<SpriteDocument, { revision: number; frameId: string; layers: RasterLayer[] | null }>()
@@ -136,11 +135,12 @@ export class DocumentCompositeCache {
   isolatedStyleReader(document: SpriteDocument, owner: RasterLayer | LayerGroup, geometry: LayerStyleGeometry, styles: LayerStyles,
     read: (x: number, y: number) => RgbaColor, resolve: (color: RgbaColor) => RgbaColor, revision: number, fallback?: SelectionRect): (x: number, y: number) => RgbaColor {
     const dirty = this.takeStyleSourceDirty(document, owner, fallback)
-    const key = `${document.animation?.activeFrameId ?? 'static'}:${document.colorMode}:${geometry.x},${geometry.y},${geometry.width},${geometry.height}:${layerStylesSignature(styles)}:${document.palette.map(entry => `${entry.id},${entry.color.r},${entry.color.g},${entry.color.b},${entry.color.a}`).join(';')}`
+    const key = `${document.animation?.activeFrameId ?? 'static'}:${document.width}x${document.height}:${document.colorMode}:${geometry.x},${geometry.y},${geometry.width},${geometry.height}:${layerStylesSignature(styles)}:${document.palette.map(entry => `${entry.id},${entry.color.r},${entry.color.g},${entry.color.b},${entry.color.a}`).join(';')}`
     return this.isolatedStyleTiles.prepare(owner, key, revision, dirty, geometry, styles, read, resolve)
   }
 
   invalidateAll(): void {
+    this.propertyComposite.clear()
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
     this.normalLayerPlans = new WeakMap()
@@ -154,8 +154,14 @@ export class DocumentCompositeCache {
     this.styleSourceBounds = new WeakMap()
   }
 
+  retainLayerStyleSources(document: SpriteDocument, fromRevision: number, revision: number): void {
+    // Group effects depend on child opacity/blending and must be recomputed.
+    for (const layer of document.layers) this.isolatedStyleTiles.retainRevision(layer, fromRevision, revision)
+  }
+
   /** Drop source-derived visibility indexes and render plans while a live stroke mutates pixels. */
   invalidateLiveSourceCaches(): void {
+    this.propertyComposite.clear()
     this.rowRanges = new WeakMap()
     this.visibleTiles = new WeakMap()
     // An empty non-normal layer is omitted from normalCompositeLayers(). The
@@ -185,6 +191,7 @@ export class DocumentCompositeCache {
 
   /** Drop placement plans while a live move mutates layer offsets in place. */
   invalidateLayerPlacementCaches(): void {
+    this.propertyComposite.clear()
     // Normal and GPU move plans keep references to the live layer objects, so
     // their offsets are read on every composite. Styled plans, however,
     // contain derived proxy objects whose offsets must be rebuilt.
@@ -361,6 +368,14 @@ export class DocumentCompositeCache {
     }
 
     cached.sourceLayer = sourceLayer
+    const canvasClipKey = cached.localX + sourceLayer.offsetX >= 0 && cached.localY + sourceLayer.offsetY >= 0
+      && cached.localX + sourceLayer.offsetX + cached.width <= document.width
+      && cached.localY + sourceLayer.offsetY + cached.height <= document.height
+      ? 'inside' : `${document.width}:${document.height}:${sourceLayer.offsetX}:${sourceLayer.offsetY}`
+    if (cached.canvasClipKey !== canvasClipKey) {
+      cached.blocks.clear()
+      cached.canvasClipKey = canvasClipKey
+    }
     Object.assign(cached.layer, {
       ...sourceLayer,
       format: 'rgba' as const,
@@ -381,101 +396,7 @@ export class DocumentCompositeCache {
   }
 
   private renderStyledLayerBlock(document: SpriteDocument, cache: StyledLayerBlockCache, block: SelectionRect): Uint8ClampedArray {
-    const pixels = new Uint8ClampedArray(block.width * block.height * 4)
-    const sourceLayer = cache.sourceLayer
-    const styles = cache.resolvedStyles
-    const sourceBounds = { x: 0, y: 0, width: sourceLayer.width, height: sourceLayer.height }
-    const rendersOutsideSource = styles.shadow.enabled
-      || (styles.stroke.enabled && styles.stroke.position !== 'inside')
-    if (!rendersOutsideSource && !intersectRect(block, sourceBounds)) return pixels
-
-    const readSourcePacked = (x: number, y: number): number => {
-      if (x < 0 || y < 0 || x >= sourceLayer.width || y >= sourceLayer.height) return 0
-      const packed = readSurfacePackedLocal(sourceLayer, x, y)
-      return sourceLayer.format === 'rgba' ? packed : (cache.palettePacked!.get(packed) ?? 0)
-    }
-    const readSource = (x: number, y: number): RgbaColor => {
-      if (x < 0 || y < 0 || x >= sourceLayer.width || y >= sourceLayer.height) return TRANSPARENT
-      const packed = readSurfacePackedLocal(sourceLayer, x, y)
-      return sourceLayer.format === 'rgba' ? unpackColor(packed) : (cache.palette!.get(packed) ?? TRANSPARENT)
-    }
-    const binaryStrokeMetric = styles.stroke.enabled ? layerStyleBinaryStrokeMetric(styles.stroke) : null
-    const localFields = localBinaryStyleFields(document, sourceLayer, block, styles, binaryStrokeMetric)
-    const alphaCoverage = localFields ? undefined : layerStyleCoverageTile(block, styles, (x, y) => readSourcePacked(x, y) >>> 24)
-    const completeCoverage = localFields ? hasCompleteBinaryStyleCoverage(styles, localFields)
-      : Boolean(alphaCoverage && (!styles.stroke.enabled || ((styles.stroke.position === 'inside' || alphaCoverage.outsideStroke) && (styles.stroke.position === 'outside' || alphaCoverage.insideStroke))))
-    const canUsePackedStyle = completeCoverage
-      && !styles.stroke.enabled
-      && !styles.stroke.smartHue
-      && !styles.colorOverlay.enabled
-      && !styles.gradientOverlay.enabled
-      && (styles.shadow.enabled || styles.innerGlow.enabled || styles.stroke.enabled)
-
-    const geometry = { x: 0, y: 0, width: sourceLayer.width, height: sourceLayer.height }
-
-    for (let y = 0; y < block.height; y += 1) for (let x = 0; x < block.width; x += 1) {
-      const sourceX = block.x + x
-      const sourceY = block.y + y
-      const sourcePacked = readSourcePacked(sourceX, sourceY)
-      const sourceColor = sourceLayer.format === 'rgba' ? unpackColor(sourcePacked) : (cache.palette!.get(sourcePacked) ?? TRANSPARENT)
-      if (!rendersOutsideSource && sourceColor.a === 0) continue
-      const shadowDistanceAtPixel = localFields?.shadow
-        ? distanceFieldAt(localFields.shadow, sourceX - styles.shadow.offsetX, sourceY - styles.shadow.offsetY)
-        : 0
-      const innerGlowDistanceAtPixel = localFields?.innerGlow
-        ? distanceFieldAt(localFields.innerGlow, sourceX, sourceY)
-        : 0
-      const shadowCoverage = localFields?.shadow
-        ? shadowDistanceAtPixel <= styles.shadow.blur ? 1 - shadowDistanceAtPixel / (styles.shadow.blur + 1) : 0
-        : alphaCoverage?.shadow?.[y * block.width + x]
-      const innerGlowCoverage = localFields?.innerGlow
-        ? innerGlowDistanceAtPixel <= styles.innerGlow.size
-          ? (styles.innerGlow.size - innerGlowDistanceAtPixel + 1) / styles.innerGlow.size
-          : 0
-        : alphaCoverage?.innerGlow?.[y * block.width + x]
-      const outsideStrokeCoverage = localFields?.strokeOutside
-        ? distanceFieldAt(localFields.strokeOutside, sourceX, sourceY) <= styles.stroke.size ? 1 : 0
-        : alphaCoverage?.outsideStroke?.[y * block.width + x]
-      const insideStrokeCoverage = localFields?.strokeInside
-        ? distanceFieldAt(localFields.strokeInside, sourceX, sourceY) <= styles.stroke.size ? 1 : 0
-        : alphaCoverage?.insideStroke?.[y * block.width + x]
-      if (canUsePackedStyle) {
-        const packed = applySimpleLayerStylesPacked(
-          styles,
-          sourceX,
-          sourceY,
-          sourcePacked,
-          readSource,
-          shadowCoverage,
-          innerGlowCoverage,
-          outsideStrokeCoverage,
-          insideStrokeCoverage
-        )
-        if (packed !== null) {
-          writeRgbaPixel(pixels, y * block.width + x, unpackColor(packed))
-          continue
-        }
-      }
-      writeRgbaPixel(pixels, y * block.width + x, applyLayerStylesAt(
-        geometry,
-        styles,
-        sourceX,
-        sourceY,
-        sourceColor,
-        readSource,
-        cache.resolveStyleColor,
-        {
-          shadow: shadowCoverage,
-          innerGlow: innerGlowCoverage,
-          // The directed stroke sampler owns both geometry and the optional
-          // follow-opacity alpha. Coverage tiles cannot represent that
-          // source choice without changing the result at diagonal corners.
-          outsideStroke: styles.stroke.enabled ? undefined : outsideStrokeCoverage,
-          insideStroke: styles.stroke.enabled ? undefined : insideStrokeCoverage
-        }
-      ))
-    }
-    return pixels
+    return renderStyledLayerBlock(document, cache, block)
   }
 
   private styledLayerBlockFor(document: SpriteDocument, cache: StyledLayerBlockCache, blockX: number, blockY: number): StyledLayerBlock {

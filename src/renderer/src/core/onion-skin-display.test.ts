@@ -5,6 +5,7 @@ import { compositeDocument, createCompositePointReplacementSampler, createCompos
 import { createOnionSkinDisplayDocument, onionSkinFrameRefs } from './onion-skin'
 import { OnionSkinCompositeCache } from '../components/onion-skin-composite-cache'
 import { DEFAULT_ONION_SKIN_PREFERENCES } from './file-preferences'
+import { installRuntimeRaster, surfacePixelsMaterialized } from './runtime-raster'
 
 const style = { ...DEFAULT_ONION_SKIN_PREFERENCES, enabled: true,
   previousOpacity: 50, nextOpacity: 50,
@@ -42,6 +43,30 @@ const fixture = () => {
 }
 
 describe('current-layer onion skin display', () => {
+  it('reads a sparse neighboring cel without expanding its full pixel storage', () => {
+    const { document, actor, timeline } = fixture()
+    const previous = animationCelAt(timeline, actor.id, timeline.frames[0].id)!.surface!
+    previous.width = 1024
+    previous.height = 1024
+    const data = new Uint8Array(64 * 64 * 4)
+    data.set([255, 255, 255, 255])
+    const tileOffsets = new Int32Array(16 * 16)
+    tileOffsets[0] = 1
+    installRuntimeRaster(previous, { kind: 'sparse-tiles-v1', format: 'rgba', width: 1024, height: 1024, tileSize: 64, data, tileOffsets })
+    const display = createOnionSkinDisplayDocument(document, onionSkinFrameRefs(timeline, 1, 0), style, actor.id, 'sparse')
+    expect(createCompositePointSampler(display)(0, 0)).toEqual({ r: 128, g: 127, b: 0, a: 255 })
+    expect(surfacePixelsMaterialized(previous)).toBe(false)
+    expect(actor.blendMode).toBe('normal')
+    expect(previous.runtimeRaster?.data).toBe(data)
+  })
+  it('drops a disabled display cache instead of retaining its source and ghost rasters', () => {
+    const { document, actor } = fixture()
+    const cache = new OnionSkinCompositeCache()
+    const first = cache.displayDocument(document, actor.id, 0, style)
+    expect(first).not.toBe(document)
+    expect(cache.displayDocument(document, actor.id, 0, { ...style, enabled: false })).toBe(document)
+    expect(cache.displayDocument(document, actor.id, 0, style)).not.toBe(first)
+  })
   it('shows both ghosts over an opaque background while leaving the current actor and untouched background intact', () => {
     const { display } = fixture()
     expect([...compositeDocument(display())]).toEqual([

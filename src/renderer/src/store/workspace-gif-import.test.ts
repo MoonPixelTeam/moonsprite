@@ -19,7 +19,7 @@ function gifSource() {
   return decodeGifAnimation(exportAnimationGif(source, { scalePercent: 100, direction: 'forward' }).bytes, 'external')
 }
 
-it.each([0, 1, 3])('imports GIF at index %s without leaking into existing frames, and undoes/redoes cleanly', (start) => {
+it.each([0, 1, 2, 3])('imports GIF at index %s into existing slots, appends only missing frames, and undoes/redoes cleanly', (start) => {
   const document = createDocument('multilayer animation', 2, 2, 'rgba')
   document.layers.push(createLayer('second', 2, 2, 'rgba'))
   ensureAnimationDocument(document)
@@ -39,14 +39,19 @@ it.each([0, 1, 3])('imports GIF at index %s without leaking into existing frames
   expect(useWorkspace.getState().importGifAnimationLayer(source, start)).toBe(true)
   const newLayer = document.layers.at(-1)!
   const inserted = timeline.frames.slice(start, start + 2)
-  expect(inserted.map(frame => frame.duration)).toEqual([40, 120])
+  expect(timeline.frames).toHaveLength(Math.max(oldFrames.length, start + 2))
+  expect(timeline.frames.slice(0, oldFrames.length)).toEqual(oldFrames)
+  expect(timeline.frames.slice(oldFrames.length).map(frame => frame.duration)).toEqual(source.animation!.frames.slice(Math.max(0, oldFrames.length - start)).map(frame => frame.duration))
   expect(timeline.frames.filter(frame => oldFrames.some(old => old.id === frame.id))).toEqual(oldFrames)
   const verify = () => {
+    expect(timeline.frames).toHaveLength(Math.max(oldFrames.length, start + 2))
     expect(snapshotCels(timeline.cels.filter(cel => oldLayerIds.includes(cel.layerId) && oldFrames.some(frame => frame.id === cel.frameId)))).toEqual(oldCels)
-    for (const frame of oldFrames) expect(Array.from(animationCelAt(timeline, newLayer.id, frame.id)!.surface!.pixels).every(value => value === 0)).toBe(true)
+    for (const frame of oldFrames.filter(frame => !inserted.some(target => target.id === frame.id))) expect(Array.from(animationCelAt(timeline, newLayer.id, frame.id)!.surface!.pixels).every(value => value === 0)).toBe(true)
     for (let index = 0; index < 2; index++) {
       expect(animationCelAt(timeline, newLayer.id, inserted[index].id)!.surface!.pixels).toEqual(source.animation!.cels[index].surface!.pixels)
-      for (const layerId of oldLayerIds) expect(Array.from(animationCelAt(timeline, layerId, inserted[index].id)!.surface!.pixels).every(value => value === 0)).toBe(true)
+      if (!oldFrames.some(frame => frame.id === inserted[index].id)) {
+        for (const layerId of oldLayerIds) expect(Array.from(animationCelAt(timeline, layerId, inserted[index].id)!.surface!.pixels).every(value => value === 0)).toBe(true)
+      }
     }
   }
   verify()

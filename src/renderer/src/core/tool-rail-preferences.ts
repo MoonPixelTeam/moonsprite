@@ -35,7 +35,7 @@ export const DEFAULT_TOOL_RAIL: ToolRailPreference[] = legacyIds.map(id => {
   const tools = id === 'pencil' ? ['pencil', 'airbrush', 'smooth'] as RailToolId[]
     : id === 'eraser' ? ['eraser', 'magic-eraser'] as RailToolId[]
       : RAIL_TOOL_IDS.filter(tool => tool.startsWith(`${id}.`))
-  return tools.length ? { kind: 'group', id: `group:${id}`, name: '', tools, behavior: 'first', defaultTool: tools[0] }
+  return tools.length ? { kind: 'group', id: `group:${id}`, name: '', tools, behavior: 'remember', defaultTool: tools[0] }
     : { kind: 'tool', id: id as RailToolId }
 })
 export const isRailToolId = (id: unknown): id is RailToolId => typeof id === 'string' && Object.hasOwn(RAIL_TOOL_TARGETS, id)
@@ -61,7 +61,7 @@ export function normalizeToolRail(items: unknown): ToolRailPreference[] {
     if (!tools.length) continue
     if (tools.length === 1) { result.push({ kind: 'tool', id: tools[0] }); continue }
     result.push({ kind: 'group', id: item.id, name: typeof item.name === 'string' ? item.name.slice(0, 80) : '', tools,
-      behavior: item.behavior === 'fixed' || item.behavior === 'remember' ? item.behavior : 'first',
+      behavior: item.behavior === 'fixed' || item.behavior === 'first' ? item.behavior : 'remember',
       defaultTool: isRailToolId(item.defaultTool) && tools.includes(item.defaultTool) ? item.defaultTool : tools[0] ?? 'pencil' })
   }
   return result
@@ -70,10 +70,11 @@ export function normalizeToolRail(items: unknown): ToolRailPreference[] {
 export function parseToolRail(value: string | null): ToolRailPreference[] {
   let parsed: unknown
   try { parsed = value ? JSON.parse(value) : null } catch { return structuredClone(DEFAULT_TOOL_RAIL) }
-  if (record(parsed) && parsed.version === 3) return normalizeToolRail(parsed.items)
-  // v2 defaulted every group to memory. Adopt the new first-tool default, retaining explicit fixed choices.
-  if (record(parsed) && parsed.version === 2) return normalizeToolRail(parsed.items).map(item =>
-    item.kind === 'group' && item.behavior === 'remember' ? { ...item, behavior: 'first' } : item)
+  if (record(parsed) && parsed.version === 4) return normalizeToolRail(parsed.items)
+  // Earlier releases persisted first-tool defaults even without an explicit choice.
+  if (record(parsed) && parsed.version === 3) return normalizeToolRail(parsed.items).map(item =>
+    item.kind === 'group' && item.behavior === 'first' ? { ...item, behavior: 'remember' } : item)
+  if (record(parsed) && parsed.version === 2) return normalizeToolRail(parsed.items)
   if (!Array.isArray(parsed)) return structuredClone(DEFAULT_TOOL_RAIL)
   if (!parsed.length || parsed.some(item => record(item) && 'kind' in item)) return normalizeToolRail(parsed)
   const ordered: ToolRailPreference[] = []
@@ -87,7 +88,7 @@ export function parseToolRail(value: string | null): ToolRailPreference[] {
   return ordered
 }
 
-export const serializeToolRail = (items: ToolRailPreference[]): string => JSON.stringify({ version: 3, items: normalizeToolRail(items) })
+export const serializeToolRail = (items: ToolRailPreference[]): string => JSON.stringify({ version: 4, items: normalizeToolRail(items) })
 export const railEntryTools = (item: ToolRailPreference): RailToolId[] => item.kind === 'group' ? item.tools : [item.id]
 export const activeRailTool = (session: QuickToolSessionState): RailToolId | undefined => RAIL_TOOL_IDS.find(id =>
   Object.entries(RAIL_TOOL_TARGETS[id]).every(([key, value]) => session[key as keyof QuickToolSessionState] === value))
@@ -106,7 +107,7 @@ export function moveRailEntry(layout: ToolRailPreference[], id: string, destinat
   if (target?.kind === 'tool' && isRailToolId(id)) {
     let groupId = `group:${target.id}:${id}`
     while (layout.some(item => item.id === groupId)) groupId += ':new'
-    const grouped = layout.map(item => item === target ? { kind: 'group' as const, id: groupId, name: '', tools: [target.id], behavior: 'first' as const, defaultTool: target.id } : item)
+    const grouped = layout.map(item => item === target ? { kind: 'group' as const, id: groupId, name: '', tools: [target.id], behavior: 'remember' as const, defaultTool: target.id } : item)
     return moveRailEntry(grouped, id, groupId)
   }
   if (source?.kind === 'group' && destination !== null && destination !== 'hidden') return layout

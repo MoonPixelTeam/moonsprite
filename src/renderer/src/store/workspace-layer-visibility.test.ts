@@ -10,6 +10,55 @@ beforeEach(() => {
 })
 
 describe('layer visibility invalidation', () => {
+  it('keeps the composite revision for a known-empty layer through toggles and undo/redo', () => {
+    const document = createDocument('empty visibility', 64, 64, 'rgba')
+    const layer = document.layers[0]
+    useWorkspace.getState().addSession(document)
+    expect(layerContentBounds(document, layer)).toBeNull()
+    const session = useWorkspace.getState().sessions[0]
+    const revision = session.contentRevision
+    useWorkspace.getState().toggleLayerVisibility(layer.id)
+    expect(layer.visible).toBe(false)
+    expect(session.document.dirty).toBe(true)
+    expect(session.contentRevision).toBe(revision)
+    useWorkspace.getState().undo()
+    expect(layer.visible).toBe(true)
+    expect(session.contentRevision).toBe(revision)
+    useWorkspace.getState().redo()
+    expect(layer.visible).toBe(false)
+    expect(session.contentRevision).toBe(revision)
+  })
+
+  it('still invalidates an empty clipping base', () => {
+    const document = createDocument('clipping visibility', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    layer.clippingMask = true
+    useWorkspace.getState().addSession(document)
+    layerContentBounds(document, layer)
+    const session = useWorkspace.getState().sessions[0]
+    const revision = session.contentRevision
+    useWorkspace.getState().toggleLayerVisibility(layer.id)
+    expect(session.contentRevision).toBeGreaterThan(revision)
+  })
+
+  it('re-evaluates a formerly empty layer when undo happens on a populated frame', () => {
+    const document = createDocument('empty frame visibility', 4, 4, 'rgba')
+    const layer = document.layers[0]
+    const first = ensureAnimationDocument(document).activeFrameId
+    const second = addBlankAnimationFrame(document)
+    writeLayerColor(document, layer, 0, { r: 255, g: 0, b: 0, a: 255 })
+    activateAnimationFrame(document, first)
+    useWorkspace.getState().addSession(document)
+    layerContentBounds(document, layer)
+    useWorkspace.getState().toggleLayerVisibility(layer.id)
+    useWorkspace.getState().setActiveAnimationFrame(second)
+    layerContentBounds(document, layer)
+    const session = useWorkspace.getState().sessions[0]
+    const revision = session.contentRevision
+    useWorkspace.getState().undo()
+    expect(layer.visible).toBe(true)
+    expect(session.contentRevision).toBeGreaterThan(revision)
+  })
   it('refreshes only styled content bounds through commit, undo, and redo', () => {
     const document = createDocument('bounded visibility', 100, 80, 'rgba')
     const layer = document.layers[0]

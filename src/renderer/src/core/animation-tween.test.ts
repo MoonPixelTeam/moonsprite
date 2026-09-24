@@ -30,6 +30,45 @@ function loopFixture(mode: 'rgba' | 'indexed' = 'rgba') {
 }
 
 describe('baked animation tween', () => {
+  it.each([[16, 12], [-16, -12]])('auto-fits all generated frames with offset %s,%s and restores canvas and pixels in one undo', (offsetX, offsetY) => {
+    const { document, layer, frameId } = fixture()
+    useWorkspace.setState({ sessions: [], activeId: null })
+    useWorkspace.getState().addSession(document)
+    const content = (bytes: Uint8Array) => {
+      const restored = decodeProject(bytes)
+      return { width: restored.width, height: restored.height, layers: restored.layers, animation: restored.animation, groups: restored.groups, slices: restored.slices }
+    }
+    const original = encodeProject(document)
+    const options = { ...DEFAULT_ANIMATION_TWEEN, frameCount: 3, offsetX, offsetY, autoCropCanvas: true }
+    const expected = prepareAnimationTween(document, frameId, layer.id, options).canvasBounds!
+    expect(useWorkspace.getState().generateAnimationTween(document.id, frameId, layer.id, options)).toBe(true)
+    expect(document.width).toBe(expected.width)
+    expect(document.height).toBe(expected.height)
+    for (const cel of document.animation!.cels) {
+      const surface = cel.surface
+      if (!surface) continue
+      expect(surface.offsetX).toBeGreaterThanOrEqual(0)
+      expect(surface.offsetY).toBeGreaterThanOrEqual(0)
+      expect(surface.offsetX + surface.width).toBeLessThanOrEqual(document.width)
+      expect(surface.offsetY + surface.height).toBeLessThanOrEqual(document.height)
+    }
+    const generated = encodeProject(document)
+    useWorkspace.getState().undo()
+    expect(content(encodeProject(document))).toEqual(content(original))
+    useWorkspace.getState().redo()
+    expect(content(encodeProject(document))).toEqual(content(generated))
+  })
+
+  it('keeps the canvas unchanged when auto-fit is off and rejects oversized auto-fit before insertion', () => {
+    const { document, layer, frameId } = fixture()
+    useWorkspace.setState({ sessions: [], activeId: null })
+    useWorkspace.getState().addSession(document)
+    expect(useWorkspace.getState().generateAnimationTween(document.id, frameId, layer.id, { ...DEFAULT_ANIMATION_TWEEN, frameCount: 2 })).toBe(true)
+    expect([document.width, document.height]).toEqual([8, 8])
+    const before = encodeProject(document)
+    expect(useWorkspace.getState().generateAnimationTween(document.id, frameId, layer.id, { ...DEFAULT_ANIMATION_TWEEN, frameCount: 2, autoCropCanvas: true, offsetX: 16000, offsetY: 16000 })).toBe(false)
+    expect(encodeProject(document)).toEqual(before)
+  })
   it('crossfades different content between existing frames, matches preview and preserves endpoints through undo and save', () => {
     localStorage.clear()
     useWorkspace.setState({ sessions: [], activeId: null, message: null })

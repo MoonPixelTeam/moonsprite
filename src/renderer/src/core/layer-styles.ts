@@ -270,18 +270,48 @@ interface OutsideStrokeSample {
   referenceColor: RgbaColor
 }
 
+interface StrokeKernel {
+  size: number
+  kernel: LayerStyles['stroke']['kernel']
+  directions: number
+  outside: Int16Array
+  inside: Int16Array
+}
+
+const strokeKernels = new WeakMap<LayerStyles['stroke'], StrokeKernel>()
+
+const strokeKernelFor = (style: LayerStyles['stroke']): StrokeKernel => {
+  const d = style.directions
+  const directions = +d.nw | +d.n << 1 | +d.ne << 2 | +d.w << 3
+    | +d.e << 4 | +d.sw << 5 | +d.s << 6 | +d.se << 7
+  const cached = strokeKernels.get(style)
+  if (cached && cached.size === style.size && cached.kernel === style.kernel && cached.directions === directions) return cached
+  const outside: number[] = [], inside: number[] = []
+  // Preserve row-major traversal: smart color/opacity ties and the opaque
+  // early exit depend on it. Check mutable settings before reusing offsets.
+  for (let y = -style.size; y <= style.size; y += 1) for (let x = -style.size; x <= style.size; x += 1) {
+    if (!outlineKernelContainsOffset(x, y, style.size, style.kernel)) continue
+    const outerDirection = outlineDirectionForOffset(-x, -y)
+    const innerDirection = outlineDirectionForOffset(x, y)
+    if (outerDirection && d[outerDirection]) outside.push(x, y, x * x + y * y)
+    if (innerDirection && d[innerDirection]) inside.push(x, y, x * x + y * y)
+  }
+  const compiled = { size: style.size, kernel: style.kernel, directions, outside: new Int16Array(outside), inside: new Int16Array(inside) }
+  strokeKernels.set(style, compiled)
+  return compiled
+}
+
 const outsideStrokeSample = (read: LayerStyleSourceReader, x: number, y: number, style: LayerStyles['stroke']): OutsideStrokeSample => {
   let maximum = 0
   let referenceColor = TRANSPARENT
   let referenceDistance = Number.POSITIVE_INFINITY
-  for (let offsetY = -style.size; offsetY <= style.size; offsetY += 1) for (let offsetX = -style.size; offsetX <= style.size; offsetX += 1) {
-    if (!outlineKernelContainsOffset(offsetX, offsetY, style.size, style.kernel)) continue
-    const direction = outlineDirectionForOffset(-offsetX, -offsetY)
-    if (!direction || !style.directions[direction]) continue
+  const offsets = strokeKernelFor(style).outside
+  for (let i = 0; i < offsets.length; i += 3) {
+    const offsetX = offsets[i], offsetY = offsets[i + 1]
     const sample = read(x + offsetX, y + offsetY)
     maximum = Math.max(maximum, sample.a)
     if ((style.smartHue || style.followOpacity) && sample.a > 0) {
-      const distance = offsetX * offsetX + offsetY * offsetY
+      const distance = offsets[i + 2]
       // When several source pixels are equally close (common on an
       // anti-aliased diagonal), prefer the lower-alpha edge pixel. Picking
       // the opaque interior pixel here made follow-opacity render as a
@@ -298,10 +328,9 @@ const outsideStrokeSample = (read: LayerStyleSourceReader, x: number, y: number,
 
 const innerStrokeCoverage = (read: LayerStyleSourceReader, x: number, y: number, style: LayerStyles['stroke']): number => {
   let coverage = 0
-  for (let offsetY = -style.size; offsetY <= style.size; offsetY += 1) for (let offsetX = -style.size; offsetX <= style.size; offsetX += 1) {
-    if (!outlineKernelContainsOffset(offsetX, offsetY, style.size, style.kernel)) continue
-    const direction = outlineDirectionForOffset(offsetX, offsetY)
-    if (!direction || !style.directions[direction]) continue
+  const offsets = strokeKernelFor(style).inside
+  for (let i = 0; i < offsets.length; i += 3) {
+    const offsetX = offsets[i], offsetY = offsets[i + 1]
     // Treat anti-aliased (partially transparent) pixels as existing
     // content.  Using fractional alpha here makes an anti-aliased edge
     // receive a second, overlapping inner stroke.  Shift+O uses the same

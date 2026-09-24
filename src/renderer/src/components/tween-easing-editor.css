@@ -1,0 +1,20 @@
+.tween-easing-editor { display: grid; gap: var(--ui-space-2); }
+.tween-easing-dialog > .modal-body { grid-template-rows: auto minmax(0, 1fr); padding: var(--ui-space-3); }
+.tween-easing-dialog .tween-easing-editor { min-height: 0; grid-template-rows: auto minmax(120px, 1fr) auto auto; }
+.tween-easing-dialog .tween-easing-editor > .tween-easing-plot { width: 100%; height: 100%; min-height: 0; }
+.tween-easing-backdrop { background: rgb(0 0 0 / 55%); }
+.tween-easing-plot { display: block; width: 220px; max-width: 100%; height: auto; justify-self: center; touch-action: none; background: var(--theme-control-background); border: 1px solid var(--theme-border); }
+.tween-easing-plot text { fill: var(--theme-text-secondary); font: var(--ui-font-small, 12px) sans-serif; }
+.curve-axis-text { transform: scale(var(--curve-text-scale-x, 1), var(--curve-text-scale-y, 1)); pointer-events: none; }
+.tween-easing-grid { fill: none; stroke: var(--theme-border); stroke-width: .4; opacity: .3; }
+.tween-easing-line { fill: none; stroke: var(--theme-accent); stroke-width: 1.2; }
+.tween-easing-sample { fill: var(--theme-text-primary); }
+.tween-easing-handle-line { fill: none; stroke: var(--theme-text-secondary); stroke-width: .6; stroke-dasharray: 2 2; }
+.tween-easing-handle { fill: var(--theme-accent); stroke: var(--theme-text-primary); stroke-width: .7; cursor: move; transform-box: fill-box; transform-origin: center; transform: scale(var(--curve-handle-scale-x, 1), var(--curve-handle-scale-y, 1)); }
+.tween-easing-values { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ui-space-2); }
+
+.adjustment-modal > .adjustment-modal-body:has(.curve-controls) { grid-template-rows: minmax(0, 1fr) auto; padding: var(--ui-space-3); }
+.adjustment-modal .curve-controls { min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.adjustment-modal .curve-editor { min-height: 0; grid-template-rows: auto minmax(100px, 1fr) auto; }
+.curve-editor > .tween-easing-plot { width: 100%; height: 100%; min-height: 0; }
+.curve-editor .curve-point-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-2); }

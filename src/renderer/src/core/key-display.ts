@@ -1,3 +1,18 @@
+import { normalizeShortcut, SHORTCUT_IDS, shortcutBindingBlocked, shortcutBindingsFor, type ShortcutBindings, type ShortcutConflictState, type ShortcutId } from './shortcuts'
+
+/** Match the recorded chord, independent of which key was released last. */
+export function keyDisplayShortcut(keys: readonly string[], shortcuts: ShortcutBindings, conflicts: ShortcutConflictState): ShortcutId | undefined {
+  const aliases: Record<string, string> = { Control: 'Ctrl', Meta: 'Win', ' ': 'Space' }
+  const parts = keys.map((key) => aliases[key] ?? key)
+  // Several ordinary keys in one gesture are not a single shortcut.
+  if (parts.filter((part) => !['Ctrl', 'Win', 'Alt', 'Shift', 'Space'].includes(part)).length > 1) return undefined
+  const chord = normalizeShortcut(parts.join('+')).toLowerCase()
+  if (!chord) return undefined
+  return SHORTCUT_IDS.find((id) => shortcutBindingsFor(shortcuts, id).some((binding) =>
+    !shortcutBindingBlocked(conflicts, id, binding) && normalizeShortcut(binding).toLowerCase() === chord
+  ))
+}
+
 /** Return a compact, user-facing label for a keyboard event. */
 export function keyDisplayLabel(key: string): string {
   const labels: Record<string, string> = {

@@ -1,4 +1,4 @@
-export type WorkspacePanelId = 'color' | 'palette' | 'layers' | 'freeTileInstances' | 'history' | 'preview' | 'reference' | 'tileset' | 'brushes'
+export type WorkspacePanelId = 'color' | 'palette' | 'layers' | 'freeTileInstances' | 'history' | 'preview' | 'reference' | 'tileset' | 'brushes' | 'tabletAssist'
 
 export type WorkspacePanelDock = 'right' | 'left' | 'bottom' | 'floating'
 

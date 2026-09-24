@@ -7,8 +7,55 @@ import { useWorkspace } from '@/store/workspace'
 import { LayersPanel } from './LayersPanel'
 import * as thumbnails from './layer-timeline-thumbnails'
 import * as cellCache from './layer-timeline-cell-cache'
+import { registerAnimationCelThumbnailPreviewListener } from '@/core/canvas-preview-lifecycle'
+import { writeLayerColor } from '@/core/document'
+import { layersPanelRenderKey } from '@/core/panel-render-keys'
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); useWorkspace.setState({sessions: [], activeId: null}) })
+
+it('updates the edited row without rebuilding the layer panel during opacity previews', () => {
+  localStorage.clear()
+  const document = createDocument('isolated property row', 8, 8, 'rgba')
+  document.layers.push(createLayer('other', 8, 8, 'rgba'))
+  useWorkspace.getState().addSession(document)
+  let panelRenders = 0
+  function ConnectedPanel() {
+    useWorkspace(state => layersPanelRenderKey(state.sessions[0]))
+    panelRenders++
+    return <LayersPanel session={useWorkspace.getState().sessions[0]} docked />
+  }
+  const view = render(<ConnectedPanel />), store = useWorkspace.getState(), layer = document.layers[0]
+  const id = store.beginLayerPropertiesTransaction([{ id: layer.id, kind: 'layer' }])!
+  const initialRenders = panelRenders
+  const values = { name: layer.name, opacity: 1, blendMode: layer.blendMode, cumulativeBlend: false, locked: false, displayColor: null, description: '' }
+  for (const opacity of [0.9, 0.7, 0.4]) act(() => store.previewLayerPropertiesTransaction(id, { ...values, opacity }, ['opacity']))
+  expect(panelRenders).toBe(initialRenders)
+  expect(view.getByText(/· 40%/)).toBeInTheDocument()
+  act(() => store.cancelLayerPropertiesTransaction(id))
+  expect(view.queryByText(/· 40%/)).not.toBeInTheDocument()
+  expect(layer.opacity).toBe(1)
+})
+
+it('does not request live raster thumbnails during opacity previews, but still refreshes painted pixels', () => {
+  const document = createDocument('opacity thumbnails', 8, 8, 'rgba')
+  useWorkspace.getState().addSession(document)
+  const layer = document.layers[0]
+  function Sync() { thumbnails.useTimelineThumbnailContentSync(document.id); return null }
+  render(<Sync />)
+  const notify = vi.fn()
+  const unregister = registerAnimationCelThumbnailPreviewListener(document.id, notify)
+  try {
+    const store = useWorkspace.getState()
+    const id = store.beginLayerPropertiesTransaction([{ id: layer.id, kind: 'layer' }])!
+    const values = { name: layer.name, opacity: 1, blendMode: layer.blendMode, cumulativeBlend: false, locked: false, displayColor: null, description: '' }
+    for (const opacity of [0.9, 0.8, 0.7, 0.6]) act(() => store.previewLayerPropertiesTransaction(id, { ...values, opacity }, ['opacity']))
+    expect(notify).not.toHaveBeenCalled()
+    act(() => store.commitLayerPropertiesTransaction(id, { ...values, opacity: 0.6 }, ['opacity']))
+    expect(notify).not.toHaveBeenCalled()
+    act(() => store.mutateActive(session => { writeLayerColor(session.document, layer, 0, { r: 255, g: 0, b: 0, a: 255 }) }))
+    expect(notify).toHaveBeenCalled()
+  } finally { unregister() }
+})
 
 it.each(['frame', 'cel'] as const)('measures complete %s range/move React updates', kind => {
   vi.useFakeTimers()

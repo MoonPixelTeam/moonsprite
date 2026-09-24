@@ -19,6 +19,44 @@ describe('LayersPanel timeline focus interactions', () => {
     useWorkspace.setState({ sessions: [], activeId: null })
   })
 
+  it.each(['cell', 'frame'] as const)('moves playback highlighting away from the previously selected %s', async kind => {
+    const document = createDocument('playback highlight regression', 2, 2, 'rgba')
+    const layer = getActiveLayer(document)
+    layer.pixels[3] = 255
+    const timeline = ensureAnimationDocument(document)
+    const firstFrameId = timeline.frames[0]!.id
+    addBlankAnimationFrame(document)
+    const mask = createLayerMask(layer.id, 2, 2)
+    timeline.layerMasks = [{ layerId: layer.id, frameId: firstFrameId, mask }]
+    useWorkspace.getState().addSession(document)
+    if (kind === 'cell') useWorkspace.getState().selectAnimationCell(animationCelKey(layer.id, firstFrameId))
+    else useWorkspace.getState().selectAnimationFrame(firstFrameId)
+    const selectedFrames = [...useWorkspace.getState().sessions[0]!.selectedAnimationFrameIds]
+    const selectedCells = [...useWorkspace.getState().sessions[0]!.selectedAnimationCellKeys]
+    useWorkspace.getState().setAnimationPlaying(true)
+    const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
+    for (let step = 0; step < 3; step++) {
+      await act(async () => { useWorkspace.getState().advanceAnimationFrame() })
+      const session = useWorkspace.getState().sessions[0]!
+      view.rerender(<I18nProvider><LayersPanel session={session} /></I18nProvider>)
+      const activeFrameId = ensureAnimationDocument(session.document).activeFrameId
+      for (const frame of timeline.frames) {
+        const cell = view.container.querySelector(`[data-animation-cel-key="${animationCelKey(layer.id, frame.id)}"]`)
+        expect(cell).not.toBeNull()
+        expect(cell!.classList.contains('active-frame')).toBe(frame.id === activeFrameId)
+        if (frame.id !== activeFrameId) {
+          expect(cell).not.toHaveClass('current-cel')
+          expect(cell).not.toHaveClass('selected-cel')
+          const maskCell = view.container.querySelector(`[data-animation-mask-cel-key="${animationCelKey(layer.id, frame.id)}"]`)
+          expect(maskCell).not.toBeNull()
+          expect(maskCell).not.toHaveClass('active-frame')
+        }
+      }
+      expect(session.selectedAnimationFrameIds).toEqual(selectedFrames)
+      expect(session.selectedAnimationCellKeys).toEqual(selectedCells)
+    }
+  })
+
   it('links selected layer-mask cells from the context menu', async () => {
     const document = createDocument('mask linking interaction', 2, 2, 'rgba')
     const layer = getActiveLayer(document)

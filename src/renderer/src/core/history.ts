@@ -71,7 +71,8 @@ export interface HistoryStackChange {
 
 export type ContentInvalidationHint =
   | { kind: 'full' }
-  | { kind: 'region'; frameId?: string; rect: SelectionRect }
+  // compositeOnly changes output properties, never source pixels or masks.
+  | { kind: 'region'; frameId?: string; rect: SelectionRect; compositeOnly?: true; propertyOwnerIds?: readonly string[]; propertyPreview?: true }
 
 const combineInvalidations = (entries: readonly HistoryEntry[]): ContentInvalidationHint | undefined => {
   const invalidations = entries.map((entry) => entry.invalidation)
@@ -83,7 +84,9 @@ const combineInvalidations = (entries: readonly HistoryEntry[]): ContentInvalida
   const top = Math.min(...regions.map((region) => region.rect.y))
   const right = Math.max(...regions.map((region) => region.rect.x + region.rect.width))
   const bottom = Math.max(...regions.map((region) => region.rect.y + region.rect.height))
-  return { kind: 'region', frameId, rect: { x: left, y: top, width: right - left, height: bottom - top } }
+  return { kind: 'region', frameId, rect: { x: left, y: top, width: right - left, height: bottom - top },
+    ...(regions.every(region => region.compositeOnly) ? { compositeOnly: true as const,
+      ...(regions.every(region => region.propertyOwnerIds) ? { propertyOwnerIds: [...new Set(regions.flatMap(region => region.propertyOwnerIds!))] } : {}) } : {}) }
 }
 
 const compoundHistoryEntry = (entries: readonly HistoryEntry[], label: string): HistoryEntry => ({
@@ -684,6 +687,7 @@ export function commitPixelEdit(document: SpriteDocument, edit: PixelEdit, label
 }
 
 export function revertPixelEdit(document: SpriteDocument, edit: PixelEdit | null | undefined): void {
+  if (!pixelEditHasChanges(edit)) return
   if (!edit) return
   if (edit.layerOffset) {
     const frameId = edit.frameId ?? document.animation?.activeFrameId

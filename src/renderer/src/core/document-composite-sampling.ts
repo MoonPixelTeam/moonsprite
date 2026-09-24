@@ -14,20 +14,30 @@ import {
 } from './layer-styles'
 import { maskCoverageFromColor, layerContentBounds, resolveLayerCanvasColor, layerIndexAt, resolveDocumentCanvasColor } from './document-model'
 import { type DocumentCompositeCache } from './document-composite-cache'
+import type { PropertyCompositeMemo } from './layer-property-composite-cache'
 import {
   unionSelectionRects,
   type CompositeStackItem,
   buildCompositeStack,
   activeCelMasksByLayer,
-  activeGroupMasksByGroup,
-  normalCompositeLayers
+  activeGroupMasksByGroup
 } from './document-composite-plan'
 
 type CompositePointReplacementSampler = (x: number, y: number, replacement: RgbaColor | undefined) => RgbaColor
 
-export const compileCompositePointSampler = (document: SpriteDocument, layerId?: string, styleCache?: DocumentCompositeCache, revision = 0, sourceDirtyRect?: SelectionRect, geometryBoundsOnly = false): CompositePointReplacementSampler => {
+export const compileCompositePointSampler = (document: SpriteDocument, layerId?: string, styleCache?: DocumentCompositeCache, revision = 0, sourceDirtyRect?: SelectionRect, geometryBoundsOnly = false,
+  cacheStaticSource?: (read: (x: number, y: number) => RgbaColor) => (x: number, y: number) => RgbaColor,
+  propertyMemo?: PropertyCompositeMemo
+): CompositePointReplacementSampler => {
   const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
-  type CompiledItem = { styleReader?: (x: number, y: number) => RgbaColor } & (
+  type CompiledItem = {
+    styleReader?: (x: number, y: number) => RgbaColor
+    sourceReader?: (x: number, y: number) => RgbaColor
+    colorReader?: (x: number, y: number) => RgbaColor
+    replacementDependent?: boolean
+    propertyDependent?: boolean
+    propertySourceDependent?: boolean
+  } & (
     | { kind: 'layer'; layer: RasterLayer; read: CompositePointReplacementSampler; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; outputBounds: SelectionRect | null }
     | { kind: 'group'; group: LayerGroup; children: CompiledItem[]; resolveStyleColor: (color: RgbaColor) => RgbaColor; styles?: ReturnType<typeof resolveLayerStyles>; geometry: LayerStyleGeometry; outputBounds: SelectionRect | null })
   const mergeBounds = (bounds: readonly (SelectionRect | null)[]): SelectionRect | null => {
@@ -82,6 +92,14 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
   const activeMasks = activeCelMasksByLayer(document, layerId, geometryBoundsOnly)
   const activeGroupMasks = activeGroupMasksByGroup(document, layerId, geometryBoundsOnly)
   const itemMask = (item: CompiledItem): LayerMask | undefined => item.kind === 'layer' ? activeMasks.get(item.layer.id) : activeGroupMasks.get(item.group.id)
+  const markReplacementDependencies = (item: CompiledItem): boolean => {
+    // Visit every child even after finding a dependency: each branch needs its
+    // own flag, including layer/group masks being previewed as replacements.
+    const children = item.kind === 'group' ? item.children.map(markReplacementDependencies) : []
+    return item.replacementDependent = itemMask(item)?.id === layerId
+      || (item.kind === 'layer' ? item.layer.id === layerId : children.some(Boolean))
+  }
+  if (cacheStaticSource) root.forEach(markReplacementDependencies)
   const readMaskCoverage = (mask: LayerMask, x: number, y: number, replacement: RgbaColor | undefined): number => {
     if (mask.id === layerId && replacement !== undefined) return maskCoverageFromColor(replacement)
     const index = layerIndexAt(mask, x, y)
@@ -98,26 +116,69 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
   const itemVisible = (item: CompiledItem): boolean => item.kind === 'layer' ? item.layer.visible : item.group.visible
   const itemOpacity = (item: CompiledItem): number => item.kind === 'layer' ? item.layer.opacity : item.group.opacity
   const itemBlendMode = (item: CompiledItem): BlendMode => item.kind === 'layer' ? item.layer.blendMode : item.group.blendMode
+  const prefixes = new Map<CompiledItem[], { end: number; read: (x: number, y: number) => RgbaColor }>()
+  if (propertyMemo) {
+    const prepare = (items: CompiledItem[], owner: object): boolean => {
+      for (const item of items) {
+        item.propertySourceDependent = item.kind === 'group' && prepare(item.children, item.group)
+        item.propertyDependent = item.propertySourceDependent || propertyMemo.targets.has(item.kind === 'layer' ? item.layer.id : item.group.id)
+      }
+      let end = items.findIndex(item => item.propertyDependent)
+      if (end < 0) end = items.length
+      // A clipping chain is one blend operation; never cache its base alone.
+      while (end > 0 && end < items.length && clipsToLowerSibling(items[end])) end--
+      if (end > 0) {
+        const prefix = items.slice(0, end)
+        prefixes.set(items, { end, read: propertyMemo.read(owner, 'backdrop', (x, y) => compositeContainer(prefix, x, y, undefined)) })
+      }
+      return items.some(item => item.propertyDependent)
+    }
+    prepare(root, document)
+  }
   function isolatedItemSource(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    if (cacheStaticSource && (replacement === undefined || !item.replacementDependent)) {
+      item.sourceReader ??= cacheStaticSource((sx, sy) => uncachedItemSource(item, sx, sy, undefined))
+      return item.sourceReader(x, y)
+    }
+    return uncachedItemSource(item, x, y, replacement)
+  }
+  function uncachedItemSource(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
     if (!itemVisible(item)) return TRANSPARENT
     return item.kind === 'group'
       ? applyItemMask(item, compositeContainer(item.children, x, y, replacement), x, y, replacement)
       : applyItemMask(item, item.read(x, y, replacement), x, y, replacement)
   }
   function isolatedItemColor(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    if (propertyMemo && !item.propertySourceDependent && replacement === undefined) {
+      item.colorReader ??= propertyMemo.read(item.kind === 'layer' ? item.layer : item.group, 'source', (sx, sy) => uncachedItemColor(item, sx, sy, undefined))
+      return item.colorReader(x, y)
+    }
+    if (cacheStaticSource && (replacement === undefined || !item.replacementDependent)) {
+      item.colorReader ??= cacheStaticSource((sx, sy) => uncachedItemColor(item, sx, sy, undefined))
+      return item.colorReader(x, y)
+    }
+    return uncachedItemColor(item, x, y, replacement)
+  }
+  function uncachedItemColor(item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    const inCanvas = (sx: number, sy: number): boolean => sx >= 0 && sy >= 0 && sx < document.width && sy < document.height
+    // Preserve editable overflow pixels, but neither generate effects there
+    // nor use them as a source for effects inside the canvas.
+    if (item.styles && !inCanvas(x, y)) return isolatedItemSource(item, x, y, replacement)
+    const readStyleSource = (sx: number, sy: number): RgbaColor => inCanvas(sx, sy)
+      ? isolatedItemSource(item, sx, sy, undefined) : TRANSPARENT
     if (item.styles && styleCache && replacement === undefined) {
       if (!item.styleReader) {
         const owner = item.kind === 'layer' ? item.layer : item.group
         const geometry = item.kind === 'layer' ? { x: item.layer.offsetX, y: item.layer.offsetY, width: item.layer.width, height: item.layer.height } : item.geometry
         item.styleReader = styleCache.isolatedStyleReader(document, owner, geometry, item.styles,
-          (sx, sy) => isolatedItemSource(item, sx, sy, undefined), item.resolveStyleColor, revision, sourceDirtyRect)
+          readStyleSource, item.resolveStyleColor, revision, sourceDirtyRect)
       }
       return item.styleReader(x, y)
     }
     const source = isolatedItemSource(item, x, y, replacement)
     if (!item.styles) return source
     const geometry = item.kind === 'layer' ? item.layer : item.geometry
-    return applyLayerStylesAt(geometry, item.styles, x, y, source, (sourceX, sourceY) => isolatedItemSource(item, sourceX, sourceY, undefined), item.resolveStyleColor)
+    return applyLayerStylesAt(geometry, item.styles, x, y, source, readStyleSource, item.resolveStyleColor)
   }
   function compositeIsolatedSource(backdrop: RgbaColor, item: CompiledItem, source: RgbaColor): RgbaColor {
     const opacity = itemOpacity(item)
@@ -151,8 +212,11 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     return compositeIsolatedSource(backdrop, item, isolatedItemColor(item, x, y, replacement))
   }
   function compositeContainer(items: CompiledItem[], x: number, y: number, replacement: RgbaColor | undefined, backdrop: RgbaColor = TRANSPARENT): RgbaColor {
-    let color = backdrop
-    for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+    // Passthrough/cumulative groups inherit a live backdrop and cannot use an
+    // isolated prefix without changing per-layer rounding and blend semantics.
+    const prefix = replacement === undefined && backdrop === TRANSPARENT ? prefixes.get(items) : undefined
+    let color = prefix ? prefix.read(x, y) : backdrop
+    for (let itemIndex = prefix?.end ?? 0; itemIndex < items.length; itemIndex += 1) {
       const item = items[itemIndex]
       if (items[itemIndex + 1] && clipsToLowerSibling(items[itemIndex + 1])) {
         let lastClippedIndex = itemIndex
@@ -181,126 +245,10 @@ export function createCompositePointSampler(document: SpriteDocument, layerId?: 
   return (x, y) => sample(x, y, replacement)
 }
 
-/** Uses spatial buckets when the document can be composited as ordinary visible layers. */
-export function createNormalCompositePointSampler(document: SpriteDocument): ((x: number, y: number) => RgbaColor) | null {
-  const layers = normalCompositeLayers(document)
-  if (!layers) return null
-  const tileSize = 512
-  const columns = Math.max(1, Math.ceil(document.width / tileSize))
-  const rows = Math.max(1, Math.ceil(document.height / tileSize))
-  const buckets = Array.from({ length: columns * rows }, () => [] as RasterLayer[])
-  for (const layer of layers) {
-    const left = Math.max(0, layer.offsetX)
-    const top = Math.max(0, layer.offsetY)
-    const right = Math.min(document.width, layer.offsetX + layer.width)
-    const bottom = Math.min(document.height, layer.offsetY + layer.height)
-    if (right <= left || bottom <= top) continue
-    const fromColumn = Math.floor(left / tileSize)
-    const toColumn = Math.min(columns - 1, Math.floor((right - 1) / tileSize))
-    const fromRow = Math.floor(top / tileSize)
-    const toRow = Math.min(rows - 1, Math.floor((bottom - 1) / tileSize))
-    for (let row = fromRow; row <= toRow; row += 1) for (let column = fromColumn; column <= toColumn; column += 1) buckets[row * columns + column].push(layer)
-  }
-  const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
-  return (x, y) => {
-    if (x < 0 || y < 0 || x >= document.width || y >= document.height) return TRANSPARENT
-    let outputR = 0
-    let outputG = 0
-    let outputB = 0
-    let outputA = 0
-    const column = Math.min(columns - 1, Math.floor(x / tileSize))
-    const row = Math.min(rows - 1, Math.floor(y / tileSize))
-    for (const layer of buckets[row * columns + column]) {
-      const index = layerIndexAt(layer, x, y)
-      if (index === null) continue
-      const packed = readSurfacePackedLocal(layer, index % layer.width, Math.floor(index / layer.width))
-      const source = layer.format === 'rgba' ? unpackColor(packed) : (paletteById.get(packed) ?? TRANSPARENT)
-      if (source.a === 0 || layer.opacity <= 0) continue
-      if (layer.opacity === 1 && (outputA === 0 || source.a === 255)) {
-        outputR = source.r
-        outputG = source.g
-        outputB = source.b
-        outputA = source.a
-        continue
-      }
-      const topAlpha = source.a / 255 * layer.opacity
-      const bottomAlpha = outputA / 255
-      const nextAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
-      if (nextAlpha <= 0) continue
-      outputR = Math.round((source.r * topAlpha + outputR * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputG = Math.round((source.g * topAlpha + outputG * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputB = Math.round((source.b * topAlpha + outputB * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputA = Math.round(nextAlpha * 255)
-    }
-    return { r: outputR, g: outputG, b: outputB, a: outputA }
-  }
-}
-
 /** Composites document coordinates while accepting a different replacement color for every point. */
 export function createCompositePointReplacementSampler(document: SpriteDocument, layerId: string): (x: number, y: number, replacement: RgbaColor) => RgbaColor {
   const sample = compileCompositePointSampler(document, layerId)
   return (x, y, replacement) => sample(x, y, replacement)
-}
-
-/** Uses spatially bucketed normal layers when replacement preview compositing does not need the full group tree. */
-export function createNormalCompositePointReplacementSampler(document: SpriteDocument, layerId: string): ((x: number, y: number, replacement: RgbaColor) => RgbaColor) | null {
-  const layers = normalCompositeLayers(document)
-  if (!layers?.some((layer) => layer.id === layerId)) return null
-  const tileSize = 512
-  const columns = Math.max(1, Math.ceil(document.width / tileSize))
-  const rows = Math.max(1, Math.ceil(document.height / tileSize))
-  const buckets = Array.from({ length: columns * rows }, () => [] as RasterLayer[])
-  for (const layer of layers) {
-    const left = layer.id === layerId ? 0 : Math.max(0, layer.offsetX)
-    const top = layer.id === layerId ? 0 : Math.max(0, layer.offsetY)
-    const right = layer.id === layerId ? document.width : Math.min(document.width, layer.offsetX + layer.width)
-    const bottom = layer.id === layerId ? document.height : Math.min(document.height, layer.offsetY + layer.height)
-    if (right <= left || bottom <= top) continue
-    const fromColumn = Math.floor(left / tileSize)
-    const toColumn = Math.min(columns - 1, Math.floor((right - 1) / tileSize))
-    const fromRow = Math.floor(top / tileSize)
-    const toRow = Math.min(rows - 1, Math.floor((bottom - 1) / tileSize))
-    for (let row = fromRow; row <= toRow; row += 1) for (let column = fromColumn; column <= toColumn; column += 1) {
-      buckets[row * columns + column].push(layer)
-    }
-  }
-  const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
-  const readSource = (layer: RasterLayer, x: number, y: number, replacement: RgbaColor): RgbaColor => {
-    if (layer.id === layerId) return replacement
-    const index = layerIndexAt(layer, x, y)
-    if (index === null) return TRANSPARENT
-    const packed = readSurfacePackedLocal(layer, index % layer.width, Math.floor(index / layer.width))
-    return layer.format === 'rgba' ? unpackColor(packed) : (paletteById.get(packed) ?? TRANSPARENT)
-  }
-  return (x, y, replacement) => {
-    if (x < 0 || y < 0 || x >= document.width || y >= document.height) return TRANSPARENT
-    let outputR = 0
-    let outputG = 0
-    let outputB = 0
-    let outputA = 0
-    const column = Math.min(columns - 1, Math.floor(x / tileSize))
-    const row = Math.min(rows - 1, Math.floor(y / tileSize))
-    for (const layer of buckets[row * columns + column]) {
-      const source = readSource(layer, x, y, replacement)
-      if (source.a === 0 || layer.opacity <= 0) continue
-      if (layer.opacity === 1 && (outputA === 0 || source.a === 255)) {
-        outputR = source.r
-        outputG = source.g
-        outputB = source.b
-        outputA = source.a
-        continue
-      }
-      const topAlpha = source.a / 255 * layer.opacity
-      const bottomAlpha = outputA / 255
-      const nextAlpha = topAlpha + bottomAlpha * (1 - topAlpha)
-      if (nextAlpha <= 0) continue
-      outputR = Math.round((source.r * topAlpha + outputR * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputG = Math.round((source.g * topAlpha + outputG * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputB = Math.round((source.b * topAlpha + outputB * bottomAlpha * (1 - topAlpha)) / nextAlpha)
-      outputA = Math.round(nextAlpha * 255)
-    }
-    return { r: outputR, g: outputG, b: outputB, a: outputA }
-  }
 }
 
 /** Composites document coordinates through the same compiled layer tree. */
@@ -308,3 +256,5 @@ export function createCompositeSampler(document: SpriteDocument, layerId?: strin
   const samplePoint = createCompositePointSampler(document, layerId, replacement)
   return (index) => samplePoint(index % document.width, Math.floor(index / document.width))
 }
+
+export { createNormalCompositePointSampler, createNormalCompositePointReplacementSampler } from './document-composite-normal-sampling'

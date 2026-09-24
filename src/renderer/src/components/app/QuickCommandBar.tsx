@@ -71,24 +71,6 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
       : ''
   })
   void renderKey
-  if (!session) return null
-  if (bar.edge === 'none') return null
-
-  const expanded = bar.expanded
-  const visuallyExpanded = expanded && activeId === documentId
-  const edge = dragPreview?.edge ?? bar.edge
-  const position = normalizeQuickCommandPosition(dragPreview?.position ?? bar.position)
-
-  const runForDocument = (run: (state: ReturnType<typeof useWorkspace.getState>) => void): void => {
-    const current = useWorkspace.getState()
-    if (current.activeId !== documentId) current.setActive(documentId)
-    run(useWorkspace.getState())
-  }
-  const openCommandSettings = (event: ReactMouseEvent<HTMLButtonElement>, target: QuickCommandSettingsTarget): void => {
-    event.preventDefault()
-    event.stopPropagation()
-    runForDocument(() => onOpenCommandSettings?.(target))
-  }
   const pressControl = (id: string, event: ReactPointerEvent<HTMLButtonElement>): void => {
     preserveCanvasFocus(event)
     if (pressedReleaseTimerRef.current !== null) window.clearTimeout(pressedReleaseTimerRef.current)
@@ -120,6 +102,28 @@ const QuickCommandBarInstance = memo(function QuickCommandBarInstance({ document
     window.addEventListener('blur', clearPressedOnWindowBlur)
     return () => window.removeEventListener('blur', clearPressedOnWindowBlur)
   }, [])
+
+  // Keep the Hooks above mounted when a bar is hidden. Returning before them
+  // would change the Hook order when `edge` switches to `none` and unmount the
+  // canvas through a React render error.
+  if (!session) return null
+  if (bar.edge === 'none') return null
+
+  const expanded = bar.expanded
+  const visuallyExpanded = expanded && activeId === documentId
+  const edge = dragPreview?.edge ?? bar.edge
+  const position = normalizeQuickCommandPosition(dragPreview?.position ?? bar.position)
+
+  const runForDocument = (run: (state: ReturnType<typeof useWorkspace.getState>) => void): void => {
+    const current = useWorkspace.getState()
+    if (current.activeId !== documentId) current.setActive(documentId)
+    run(useWorkspace.getState())
+  }
+  const openCommandSettings = (event: ReactMouseEvent<HTMLButtonElement>, target: QuickCommandSettingsTarget): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    runForDocument(() => onOpenCommandSettings?.(target))
+  }
   const toggleExpanded = (): void => {
     const state = useWorkspace.getState()
     if (activeId !== documentId) state.setActive(documentId)

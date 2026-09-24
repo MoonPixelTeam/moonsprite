@@ -97,7 +97,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   )
   const visualFrame = visualFrameStateById.get(frame.id)
   const active = visualFrame?.active === true
-  const frameVisuallySelected = Boolean(timelineVisualState.selectionGuidesVisible && visualFrame?.selected)
+  const frameVisuallySelected = Boolean(!session.animationPlaying && timelineVisualState.selectionGuidesVisible && visualFrame?.selected)
   if (displayRow.kind === 'mask') {
     const mask = maskVisualByOwnerFrame.get(maskOwnerFrameKey(displayRow.ownerKind, displayRow.owner.id, frame.id)) ?? null
     const resolvedMask = resolveAnimationMask(timeline, mask)
@@ -121,8 +121,9 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     // Mask cells use the same timeline activity rules as ordinary cells.
     // Only their selection source is separate, because mask pixels are a
     // different editable surface from the owner layer's cel.
-    const maskFrameSelected = timelineVisualState.selectionGuidesVisible && visualSelectedFrameIdSet.has(frame.id)
+    const maskFrameSelected = !session.animationPlaying && timelineVisualState.selectionGuidesVisible && visualSelectedFrameIdSet.has(frame.id)
     const maskRowSelected =
+      !session.animationPlaying &&
       !frameSelectionActiveForOutline &&
       timelineVisualState.selectionGuidesVisible &&
       session.selectedAnimationMaskRowKeys.includes(`${displayRow.ownerKind}:${displayRow.owner.id}`)
@@ -133,7 +134,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     // frameFocus only suppresses it when there is no mask context.
     const maskActive = frameVisualEnabled && !animationCelDragActive && !focusState.frameFocus && maskCellClasses.current
     const maskSlotSelected = maskRowSelected || maskFrameSelected || maskActive || maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key)
-    const maskVisuallySelected = maskCellClasses.selected || maskActive || visualSelectedMaskCellKeySet.has(key) || selectedLinkedCelMemberKeys.has(`mask|${key}`)
+    const maskVisuallySelected = maskActive || (!session.animationPlaying && (maskCellClasses.selected || visualSelectedMaskCellKeySet.has(key) || selectedLinkedCelMemberKeys.has(`mask|${key}`)))
     const maskThumbnail =
       resolvedMask && showCelThumbnails ? (
         <ActiveLayerMaskThumbnail
@@ -148,7 +149,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
         />
       ) : null
     const maskName = t(displayRow.ownerKind === 'group' ? 'core.document.layerGroupMask' : 'core.document.layerMask')
-    const maskFrameVisualSelection = frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected
+    const maskFrameVisualSelection = !session.animationPlaying && (frameVisuallySelected || maskCellClasses.frameSelected || maskFrameSelected)
     // Ordinary timeline focus is shared by all attached mask rows. Mask
     // editing remains independent; only ordinary-layer/cel/frame focus
     // should project the current or selected frames onto every mask row.
@@ -175,7 +176,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
     const maskActiveFrameHighlighted =
       maskFrameActivityVisible &&
       frameVisualEnabled &&
-      ((session.animationPlaying && maskCellClasses.frameActive) ||
+      (session.animationPlaying ? maskCellClasses.frameActive : (
         (maskVisualSelectionActive && (maskCellClasses.frameActive || maskCellClasses.selected)) ||
         (maskOwnerIsActiveLayer && maskCellClasses.frameActive) ||
         (focusState.implicitCursor && maskOwnerIsActiveLayer && maskCellClasses.frameActive) ||
@@ -183,7 +184,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
         selectedMaskActivityHighlighted ||
         maskCellClasses.selectedByFrame ||
         maskFrameSelected ||
-        (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id)))
+        (cellSelectionActive && selectedMaskCellFrameIds.has(frame.id))))
     // The active/selected frame column is an ordinary-layer guide. Paint
     // over that guide on an unfocused mask row so it cannot look active
     // merely because its owner layer is active or being played.
@@ -235,7 +236,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       : undefined
   if (node.kind === 'group') {
     const groupCellKey = animationCelKey(node.group.id, frame.id)
-    const groupCellSelected = selectedAnimationGroupCellKeySet.has(groupCellKey)
+    const groupCellSelected = !session.animationPlaying && selectedAnimationGroupCellKeySet.has(groupCellKey)
     const groupRowClasses = timelineVisualClasses(visualRow, visualFrame, timelineVisualState.selectionGuidesVisible)
     return (
       <button
@@ -276,8 +277,10 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   const selectedCellActivityHighlighted =
     selectedCellTargets.length > 0 && selectedCellLayerIds.has(node.layer.id) && selectedCellFrameIds.has(frame.id)
   const currentFrameCellHighlighted =
-    Boolean(cellClasses.frameActive || cellClasses.selectedByFrame || selectedCellActivityHighlighted) &&
-    (node.layer.id === playbackActiveLayerId || selectedCellActivityHighlighted)
+    session.animationPlaying
+      ? cellClasses.frameActive && node.layer.id === playbackActiveLayerId
+      : Boolean(cellClasses.frameActive || cellClasses.selectedByFrame || selectedCellActivityHighlighted) &&
+        (node.layer.id === playbackActiveLayerId || selectedCellActivityHighlighted)
   const cel = celLookup.at(node.layer.id, frame.id)
   const resolvedCel = celLookup.resolve(cel)
   const key = animationCelKey(node.layer.id, frame.id)
@@ -300,7 +303,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   const linkedCelEnd = showLinkedCelVisuals && linkedWithPrevious && !linkedWithNext && !linkedCelBridgeEnd
   // The pure visual index may omit empty cel slots; transient/formal key
   // selection still needs to paint those grid cells as selected.
-  const keySelected = ordinaryCelSelectionVisible && renderedCellKeySet.has(key)
+  const keySelected = !session.animationPlaying && ordinaryCelSelectionVisible && renderedCellKeySet.has(key)
   // Selection styling is structural and may target an empty cel slot;
   // content presence only controls whether an interior marker is painted.
   const cellSelected = keySelected || cellClasses.selected || selectedLinkedCelMemberKeys.has(`cel|${key}`)
@@ -310,7 +313,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   const frameSelectedForCell = frameVisuallySelected
   const frameColumnMarkerSelected = focusState.frameFocus && frameSelectedForCell
   const cellVisuallySelected = Boolean(
-    cellSelected || (!groupVisualSelectionActive && hasContent && (frameColumnMarkerSelected || visualCell?.link.selectedByFrameVisible))
+    !session.animationPlaying && (cellSelected || (!groupVisualSelectionActive && hasContent && (frameColumnMarkerSelected || visualCell?.link.selectedByFrameVisible)))
   )
   // A mask cell is a separate visual/editing surface. Once mask focus is
   // active, the owner row must keep only its ambient frame background and
@@ -320,7 +323,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   // context. Once guides are hidden, frame focus must no longer suppress
   // the current cel marker; otherwise the marker disappears while the
   // active frame background remains visible.
-  const frameFocusVisualSuppressed = focusState.frameFocus && selectionOutlineVisible
+  const frameFocusVisualSuppressed = !session.animationPlaying && focusState.frameFocus && selectionOutlineVisible
   const currentCell = Boolean(
     !groupVisualSelectionActive &&
     !animationCelDragActive &&
@@ -330,7 +333,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
       (defaultActiveCell ||
         (!suppressCellSelectionGuides &&
           currentFrameCellHighlighted &&
-          (!selectionOutlineVisible || renderedCellKeys.length === 0 || cellVisuallySelected)))
+          (session.animationPlaying || !selectionOutlineVisible || renderedCellKeys.length === 0 || cellVisuallySelected)))
   )
   // Explicit layer selection highlights every cel in those layers;
   // frame/cel selection modes remain mutually exclusive.
@@ -338,6 +341,7 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   // The active layer is only the interaction context on project startup;
   // show the full-row selection after the user explicitly selects a layer.
   const layerSelectedAcrossTimeline = Boolean(
+    !session.animationPlaying &&
     (timelineVisualState.selectionGuidesVisible || explicitMultiLayerSelection) &&
       session.layerSelectionExplicit &&
       layerSelectionModeActive &&

@@ -39,7 +39,7 @@ it('reuses procedural textures while size changes but rebuilds them when their s
   expect(generate).toHaveBeenCalledOnce()
   for (const size of [12, 32, 64, 128]) act(() => store.setBrushSize(size))
   expect(generate).toHaveBeenCalledOnce()
-  expect(view.container.querySelector('.brush-size-control input')).toHaveValue('128')
+  expect(view.container.querySelector('.brush-size-control input')).toHaveValue('64')
   act(() => store.setBrushImage(brushes.createProceduralBrush('procedural:noise')))
   expect(generate).toHaveBeenCalledOnce()
   act(() => store.setProceduralBrushSettings({ scale: 12 }))

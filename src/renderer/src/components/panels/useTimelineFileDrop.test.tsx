@@ -14,7 +14,7 @@ afterEach(() => {
   else Reflect.deleteProperty(document, 'elementFromPoint')
 })
 
-it.each([['cell', 1], ['blank', 1], ['leading', 0], ['trailing', 3]] as const)(
+it.each([['cell', 0], ['blank', 0], ['leading', 0], ['trailing', 3]] as const)(
   'uses the same insertion index for the preview and actual %s drop', async (kind, expected) => {
     const project = createDocument('target', 2, 2, 'rgba')
     addBlankAnimationFrame(project)

@@ -4,6 +4,24 @@ import { RangeField } from './RangeField'
 
 afterEach(cleanup)
 
+it('steps with the wheel, consumes scrolling, and commits each discrete edit', () => {
+  const calls: string[] = []
+  const props = { min: 0, max: 100, value: 50, onChange: (value: number) => calls.push(String(value)), interaction: { begin: () => calls.push('begin'), commit: () => calls.push('commit') } }
+  const view = render(<RangeField {...props} suffix="%" />)
+  expect(fireEvent.wheel(view.getByRole('slider'), { deltaY: -100 })).toBe(false)
+  expect(calls).toEqual(['begin', '51', 'commit'])
+  calls.length = 0
+  fireEvent.wheel(view.getByRole('slider'), { deltaY: 100, shiftKey: true })
+  expect(calls).toEqual(['begin', '40', 'commit'])
+  calls.length = 0
+  view.rerender(<RangeField {...props} value={100} />)
+  fireEvent.wheel(view.getByRole('slider'), { deltaY: -100 })
+  expect(calls).toEqual([])
+  view.rerender(<RangeField {...props} disabled />)
+  expect(fireEvent.wheel(view.getByRole('slider'), { deltaY: -100 })).toBe(true)
+  expect(calls).toEqual([])
+})
+
 it('previews pointer changes inside one interaction and commits once on release outside', () => {
   const calls: string[] = []
   const view = render(<RangeField min={0} max={100} value={100} interaction={{ begin: () => calls.push('begin'), commit: () => calls.push('commit') }} onChange={(value) => calls.push(String(value))} />)

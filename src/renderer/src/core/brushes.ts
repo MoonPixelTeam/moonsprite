@@ -8,7 +8,7 @@ import { selectionContains } from './selection'
 import { packColor, unpackColor } from './raster'
 import { translateCurrent as tr, type TranslationKey } from './localization'
 
-export const MAX_BRUSH_DIMENSION = 256
+export const MAX_BRUSH_DIMENSION = 64
 
 export interface ActiveBrushInputs {
   imageBrush: ImageBrush | null

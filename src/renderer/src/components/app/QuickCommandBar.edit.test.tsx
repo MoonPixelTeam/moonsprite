@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document'
 import { loadEditorPreferences, saveEditorPreferences, type QuickCommandId } from '@/core/file-preferences'
@@ -31,4 +31,22 @@ it('routes editing commands to the existing workspace commands and outline dialo
   expect(copyMerged).toHaveBeenCalledWith(true)
   fireEvent.contextMenu(view.getByRole('button', { name: '填充' }))
   expect(fill).toHaveBeenLastCalledWith('background')
+})
+
+it('can hide a visible command bar without changing hook order', () => {
+  localStorage.clear()
+  useWorkspace.setState({ sessions: [], activeId: null })
+  useWorkspace.getState().addSession(createDocument('commands', 4, 4, 'rgba'))
+  const state = useWorkspace.getState()
+  const prefs = loadEditorPreferences()
+  saveEditorPreferences({ ...prefs, quickCommandBarEnabled: true, quickCommandBars: [{ ...prefs.quickCommandBars[0], edge: 'top' }] })
+  const view = render(<QuickCommandBar documentId={state.activeId!} shortcutFor={() => ''} onToggleMirror={() => {}} onOpenAntiAlias={() => {}} onOpenPreferences={() => {}} />)
+  expect(view.getByRole('toolbar')).toBeTruthy()
+
+  act(() => {
+    saveEditorPreferences({ ...loadEditorPreferences(), quickCommandBars: [{ ...loadEditorPreferences().quickCommandBars[0], edge: 'none' }] })
+    window.dispatchEvent(new Event('moonsprite:preferences-changed'))
+  })
+
+  expect(view.queryByRole('toolbar')).toBeNull()
 })

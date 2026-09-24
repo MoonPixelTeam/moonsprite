@@ -34,7 +34,9 @@ it('saves a drawn path, reuses it after reopening at a new anchor, and undoes th
   expect(loadTweenPathPresets()[0].path).toEqual(original)
   first.unmount()
   const next = setup(40)
-  fireEvent.change(next.getByRole('combobox', { name: 'timeline.tween.pathLibrary' }), { target: { value: loadTweenPathPresets()[0].id } })
+  fireEvent.click(next.getByRole('button', { name: 'timeline.tween.pathLibrary' }))
+  expect(next.getByRole('listbox', { name: 'timeline.tween.pathLibrary' })).toHaveClass('themed-select-popover')
+  fireEvent.click(next.getByRole('option', { name: 'Jump' }))
   fireEvent.click(next.button('timeline.tween.pathLoad'))
   expect(next.onApply).not.toHaveBeenCalled()
   fireEvent.click(next.button('common.apply'))
@@ -115,7 +117,7 @@ it('discards the redo branch after drawing a replacement stroke', () => {
   expect(view.button('common.redo').disabled).toBe(true)
 })
 
-it('snaps drawing to canvas pixels and moves the origin without moving the rest of the path', () => {
+it('snaps drawing to canvas pixels and translates the entire path with its anchor', () => {
   const view = setup()
   view.stroke(300)
   fireEvent.click(view.button('common.apply'))
@@ -130,11 +132,17 @@ it('snaps drawing to canvas pixels and moves the origin without moving the rest 
   const [moved, movedAnchor] = view.onApply.mock.calls[1]
   expect(movedAnchor).toEqual({ x: anchor.x + 2, y: anchor.y + 1 })
   expect(moved[0]).toEqual({ x: 0, y: 0 })
-  expect(moved.at(-1).x + movedAnchor.x).toBe(path.at(-1).x + anchor.x)
-  expect(moved.at(-1).y + movedAnchor.y).toBe(path.at(-1).y + anchor.y)
+  expect(moved).toEqual(path)
+  for (let index = 0; index < path.length; index++) {
+    expect(moved[index].x + movedAnchor.x).toBe(path[index].x + anchor.x + 2)
+    expect(moved[index].y + movedAnchor.y).toBe(path[index].y + anchor.y + 1)
+  }
   fireEvent.click(view.button('common.undo'))
   fireEvent.click(view.button('common.apply'))
   expect(view.onApply.mock.calls[2]).toEqual([path, anchor])
+  fireEvent.click(view.button('common.redo'))
+  fireEvent.click(view.button('common.apply'))
+  expect(view.onApply.mock.calls[3]).toEqual([path, movedAnchor])
 })
 it('isolates every key from background listeners and keeps Tab focus in the editor', () => {
   const outside = vi.fn(), outsideUp = vi.fn()

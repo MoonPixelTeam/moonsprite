@@ -2,6 +2,8 @@ import { setMagicEraserContiguous } from '@/store/workspace-magic-eraser'
 import drawWithAnchorIcon from '@/assets/pixel-icons/draw-with-anchor.svg'
 import { Button } from '@/components/Button'
 import { useToolOptionsScroll } from './useToolOptionsScroll'
+import { sliderWheelValue, useSliderWheel } from '../useSliderWheel'
+import { useToolOptionsInteraction } from './useToolOptionsInteraction'
 import { drawingAnchorPoint } from '@/core/canvas-centered-drawing'
 import { pixelSource } from '@/components/pixel-source'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -488,7 +490,15 @@ function BrushDynamicsRangeControl({ minimum, maximum, limit, step, percentage, 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  return <div className="pressure-range-stack">
+  const wheelRef = useSliderWheel<HTMLDivElement>(event => {
+    event.preventDefault()
+    event.stopPropagation()
+    const endpoint = event.target === minimumRef.current ? 'min' : event.target === maximumRef.current ? 'max' : activeEndpoint
+    const value = endpoint === 'min' ? minimum : maximum
+    const next = sliderWheelValue(value, event.deltaY, 0, limit, step, event.shiftKey, percentage)
+    if (next !== value) updateEndpoint(endpoint, next)
+  })
+  return <div ref={wheelRef} className="pressure-range-stack">
     <span className="pressure-range-track" aria-hidden="true">
       <span className={`pressure-range-live ${liveSensorValue === null ? 'is-empty' : liveActive ? 'is-active' : 'is-inactive'}`} style={{ width: `${liveSensorPosition}%` }} />
       <span className="pressure-range-selection" style={{ left: `${rangeStart}%`, right: `${100 - rangeEnd}%` }} />
@@ -691,10 +701,13 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   const storedSession = state.sessions.find((item) => item.document.id === state.activeId) ?? null
   const [shortcuts, setShortcuts] = useState(loadShortcutBindings)
   const quickToolMatch = useQuickToolShortcut(shortcuts)
-  // The rail and the properties bar must present the same effective tool while
-  // a quick-tool shortcut is held (e.g. Ctrl → Move). This is only a display
-  // projection: the stored session stays unchanged and is restored on key-up.
-  const session = storedSession ? applyQuickToolTarget(storedSession, quickToolMatch?.target ?? null) : null
+  const optionsInteraction = useToolOptionsInteraction(
+    { quickToolMatch, temporarySelectionMode, temporaryLiquifyMode },
+    Boolean(quickToolMatch || temporarySelectionMode || temporaryLiquifyMode),
+    `${storedSession?.document.id}:${storedSession?.tool}`
+  )
+  // Retain the display projection while editing, without changing the canvas tool.
+  const session = storedSession ? applyQuickToolTarget(storedSession, optionsInteraction.value.quickToolMatch?.target ?? null) : null
   // Size/opacity changes do not change the four procedural brush textures.
   const proceduralSettings = session?.proceduralBrushSettings
   const proceduralBrushes = useMemo(() => proceduralSettings ? createProceduralBrushes(proceduralSettings) : [], [proceduralSettings, locale])
@@ -1011,15 +1024,15 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
   }, [session?.tool, session?.brushShape, session?.brushImage?.intrinsicSize])
 
   useEffect(() => {
-    const mode = temporaryLiquifyMode ?? session?.liquifyMode
+    const mode = optionsInteraction.value.temporaryLiquifyMode ?? session?.liquifyMode
     if (session?.tool !== 'liquify' || mode !== 'push') {
       setLiquifyFlyoutOpen((open) => open === 'smoothing-strength' ? null : open)
     }
-  }, [session?.tool, session?.liquifyMode, temporaryLiquifyMode])
+  }, [session?.tool, session?.liquifyMode, optionsInteraction.value.temporaryLiquifyMode])
 
   if (!session) return null
   const workspace = useWorkspace.getState()
-  const displayedLiquifyMode = temporaryLiquifyMode ?? session.liquifyMode
+  const displayedLiquifyMode = optionsInteraction.value.temporaryLiquifyMode ?? session.liquifyMode
   const fillKind = session.fillKind ?? 'bucket'
   const gradientDither = session.gradientDither ?? 'none'
   const gradientStops = session.gradientStops ?? [{ position: 0, color: { ...session.primaryColor } }, { position: 1, color: { ...session.secondaryColor } }]
@@ -1109,8 +1122,8 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
     workspace.setBrushTexture('solid')
     workspace.setBrushImage(brush)
   }
-  return <PerformanceProfiler id="EditorToolOptions"><div ref={optionsScrollRef} className="tool-options">
-    {session.tool === 'shape' && (session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse-outline') && <FormField className="shape-stroke-width-control" layout="inline" label={t('outline.width')}><NumberInput aria-label={t('outline.width')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} /></FormField>}
+  return <PerformanceProfiler id="EditorToolOptions"><div ref={optionsScrollRef} className="tool-options" {...optionsInteraction.handlers}>
+    {session.tool === 'shape' && (session.shapeKind === 'rectangle-outline' || session.shapeKind === 'ellipse-outline') && <FormField className="shape-stroke-width-control" layout="inline" label={t('outline.width')}><NumberInput aria-label={t('outline.width')} density="compact" min={1} max={64} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} /></FormField>}
     {session.tool === 'eyedropper' && <>
       <div className="eyedropper-current-colors" aria-label={t('toolOptions.eyedropperColors')}>
         <ColorValueControl color={session.primaryColor} density="compact" onChange={workspace.setPrimaryColor} label={t('toolOptions.eyedropperForeground')} roleLabel={t('toolOptions.eyedropperForeground')} className="eyedropper-color-control" storageKey="eyedropper-foreground" fillWithColor />
@@ -1147,7 +1160,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
           return <button key={value} type="button" className={`icon-button ${displayedLiquifyMode === value ? 'selected' : ''}`} title={label} aria-label={label} aria-pressed={displayedLiquifyMode === value} onPointerDown={(event) => { if (event.pointerType === 'mouse') event.preventDefault() }} onClick={() => workspace.setLiquifyMode(value)}><PixelAssetIcon src={LIQUIFY_MODE_ICONS[value]} /></button>
         })}
       </div>
-      <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.liquifyRadius')}><div className="brush-size-control liquify-value-control" onPointerDown={() => setLiquifyFlyoutOpen('radius')}><BrushSizeNumberInput documentId={session.document.id} tool={session.tool} aria-label={t('toolOptions.liquifyRadius')} density="compact" min={1} max={128} suffix="px" value={session.liquifyRadius} onValueChange={workspace.setLiquifyRadius} onFocus={() => setLiquifyFlyoutOpen('radius')} />{liquifyFlyoutOpen === 'radius' && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.liquifyRadius')}><RangeField ariaLabel={t('toolOptions.liquifyRadius')} density="compact" min={1} max={128} suffix="px" value={session.liquifyRadius} onChange={workspace.setLiquifyRadius} /></div>}</div></FormField>
+      <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.liquifyRadius')}><div className="brush-size-control liquify-value-control" onPointerDown={() => setLiquifyFlyoutOpen('radius')}><BrushSizeNumberInput documentId={session.document.id} tool={session.tool} aria-label={t('toolOptions.liquifyRadius')} density="compact" min={1} max={64} suffix="px" value={session.liquifyRadius} onValueChange={workspace.setLiquifyRadius} onFocus={() => setLiquifyFlyoutOpen('radius')} />{liquifyFlyoutOpen === 'radius' && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.liquifyRadius')}><RangeField ariaLabel={t('toolOptions.liquifyRadius')} density="compact" min={1} max={64} suffix="px" value={session.liquifyRadius} onChange={workspace.setLiquifyRadius} /></div>}</div></FormField>
       <FormField className="airbrush-number-field" layout="inline" label={t('toolOptions.pressureEffectStrength')}><div className="brush-size-control liquify-value-control" onPointerDown={() => setLiquifyFlyoutOpen('strength')}><NumberInput aria-label={t('toolOptions.pressureEffectStrength')} density="compact" min={1} max={100} suffix="%" value={session.liquifyStrength} onValueChange={workspace.setLiquifyStrength} onFocus={() => setLiquifyFlyoutOpen('strength')} />{liquifyFlyoutOpen === 'strength' && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.pressureEffectStrength')}><RangeField ariaLabel={t('toolOptions.pressureEffectStrength')} density="compact" min={1} max={100} suffix="%" value={session.liquifyStrength} onChange={workspace.setLiquifyStrength} /></div>}</div></FormField>
       {displayedLiquifyMode === 'push' && <>
         <CheckboxField className="tool-checkbox" checked={session.liquifySmoothing} label={t('toolOptions.liquifySmoothing')} tooltip={t('toolOptions.liquifySmoothingHint')} onChange={workspace.setLiquifySmoothing} />
@@ -1224,7 +1237,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       </div>}
       {!basicOnlyBrushTool && <button type="button" className={`brush-library-trigger ${activeLibraryBrush ? 'selected' : ''}`} title={t('toolOptions.openBrushLibrary')} aria-label={t('toolOptions.openBrushLibrary')} onClick={toggleBrushLibrary}>{activeLibraryBrush ? <BrushThumbnail source={pixelSource(activeLibraryBrush)} /> : <PixelUtilityIcon kind="image" />}</button>}
       </div>
-      {isStrokeBrushTool && !activeLibraryBrush?.intrinsicSize && <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><BrushSizeNumberInput documentId={session.document.id} tool={session.tool} aria-label={t('toolOptions.brushSizeValue')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushSize')}><RangeField ariaLabel={t('toolOptions.brushSizeSlider')} density="compact" min={1} max={128} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>}
+      {isStrokeBrushTool && !activeLibraryBrush?.intrinsicSize && <div className="brush-size-control" onPointerDown={() => setBrushSizeFlyoutOpen(true)}><BrushSizeNumberInput documentId={session.document.id} tool={session.tool} aria-label={t('toolOptions.brushSizeValue')} density="compact" min={1} max={64} suffix="px" value={session.brushSize} onValueChange={workspace.setBrushSize} onFocus={() => setBrushSizeFlyoutOpen(true)} />{brushSizeFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushSize')}><RangeField ariaLabel={t('toolOptions.brushSizeSlider')} density="compact" min={1} max={64} suffix="px" value={session.brushSize} onChange={workspace.setBrushSize} /></div>}</div>}
       {supportsBrushOpacity && <FormField className="brush-opacity-field" layout="inline" label={t('layers.opacity')}><div className="brush-size-control brush-opacity-control" onPointerDown={() => setBrushOpacityFlyoutOpen(true)}><NumberInput aria-label={t('layers.opacityValue')} density="compact" min={0} max={100} suffix="%" value={session.brushOpacity} onValueChange={workspace.setBrushOpacity} onFocus={() => setBrushOpacityFlyoutOpen(true)} />{brushOpacityFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('layers.opacityValue')}><RangeField ariaLabel={t('layers.opacityValue')} density="compact" min={0} max={100} suffix="%" value={session.brushOpacity} onChange={workspace.setBrushOpacity} /></div>}</div></FormField>}
       {isSmoothBrushTool && <FormField className="smooth-strength-field" layout="inline" label={t('toolOptions.pressureEffectStrength')}><div className="brush-size-control smooth-strength-control" onPointerDown={() => setSmoothStrengthFlyoutOpen(true)}><NumberInput aria-label={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onValueChange={workspace.setSmoothStrength} onFocus={() => setSmoothStrengthFlyoutOpen(true)} />{smoothStrengthFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.pressureEffectStrength')}><RangeField ariaLabel={t('toolOptions.pressureEffectStrength')} density="compact" min={0} max={100} suffix="%" value={session.smoothStrength} onChange={workspace.setSmoothStrength} /></div>}</div></FormField>}
       {showBrushAngle && <div className="brush-size-control brush-angle-control"><NumberInput aria-label={t('toolOptions.brushRotationValue')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onValueChange={workspace.setBrushAngle} onFocus={() => setBrushAngleFlyoutOpen(true)} />{brushAngleFlyoutOpen && <div className="brush-size-popover" role="dialog" aria-label={t('toolOptions.adjustBrushRotation')}><RangeField ariaLabel={t('toolOptions.brushRotationSlider')} density="compact" min={-180} max={180} step={1} suffix="°" value={Math.round(session.brushAngle)} onChange={workspace.setBrushAngle} /></div>}</div>}
@@ -1276,7 +1289,7 @@ export const EditorToolOptions = memo(function EditorToolOptions({ onOpenColorRe
       </div>
     })() : session.tool === 'selection' && <>
       <div className="tool-icon-group">
-      <div className="selection-mode-control" aria-label={t('toolOptions.selectionMode')}>{selectionModeItems.map((mode) => <button key={mode.id} title={mode.label} aria-label={mode.label} className={`icon-button ${(temporarySelectionMode ?? session.selectionMode) === mode.id ? 'selected' : ''}`} onClick={() => workspace.setSelectionMode(mode.id)}><PixelAssetIcon src={mode.icon} /></button>)}</div>
+      <div className="selection-mode-control" aria-label={t('toolOptions.selectionMode')}>{selectionModeItems.map((mode) => <button key={mode.id} title={mode.label} aria-label={mode.label} className={`icon-button ${(optionsInteraction.value.temporarySelectionMode ?? session.selectionMode) === mode.id ? 'selected' : ''}`} onClick={() => workspace.setSelectionMode(mode.id)}><PixelAssetIcon src={mode.icon} /></button>)}</div>
       <SelectionPivotControls
         target={selectionPivotControlTarget(session.pendingPaste?.transformTarget ?? session.selection)}
         angle={session.pendingPaste?.transformAngle ?? 0}

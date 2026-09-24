@@ -2,10 +2,10 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ExtensionOverlay } from './ExtensionOverlay'
 import { overlayBounds, overlayRegion } from './extension-overlay-geometry'
-const bridge = vi.hoisted(() => ({ surface: null as any }))
+const bridge = vi.hoisted(() => ({ surface: null as any, zoom: 1, outside: false }))
 vi.mock('./ExtensionWindow', () => ({ ExtensionWindow: ({ surface }: any) => { bridge.surface = surface; return <iframe title="surface" /> } }))
-vi.mock('@/platform/extension-window', () => ({ extensionPointerPosition: async () => ({ x: 50, y: 70 }), extensionHostBounds: async () => ({ x: 5, y: 10 }) }))
-afterEach(cleanup)
+vi.mock('@/platform/extension-window', () => ({ extensionPointerPosition: async () => bridge.outside ? null : ({ x: 50, y: 70 }), extensionHostBounds: async () => ({ x: 5, y: 10, width: window.innerWidth * bridge.zoom, height: window.innerHeight * bridge.zoom }) }))
+afterEach(() => { cleanup(); bridge.zoom = 1; bridge.outside = false })
 it('updates local bounds and clips input without native windows; preserves bounds when hidden', async () => {
   const definition = { windowId: 'widget', resourceId: 'page', visible: true, bounds: { x: 10, y: 20, width: 200, height: 100 } }
   const props = { extensionId: 'extension', definition, onClose: vi.fn() }
@@ -30,6 +30,19 @@ it('notifies host resize and removes its subscription on unmount', () => {
   view.unmount(); listener.mockClear()
   fireEvent(window, new Event('resize'))
   expect(listener).not.toHaveBeenCalled()
+})
+it.each([0.5, 0.8, 1, 1.25, 1.5, 2])('converts desktop coordinates at webview zoom %s and rereads changed zoom', async (zoom) => {
+  render(<ExtensionOverlay extensionId="a" definition={{windowId:'a',resourceId:'b',visible:true,bounds:{x:0,y:0,width:10,height:10}}} onClose={() => {}} />)
+  for (const currentZoom of [zoom, zoom * 1.25]) {
+    bridge.zoom = currentZoom
+    const host = await bridge.surface.request('window.getHostBounds')
+    expect(host).toEqual({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight, screenScale: currentZoom })
+    const point = await bridge.surface.request('window.getPointerPosition')
+    expect(point.x).toBeCloseTo(45 / currentZoom)
+    expect(point.y).toBeCloseTo(60 / currentZoom)
+  }
+  bridge.outside = true
+  expect(await bridge.surface.request('window.getPointerPosition')).toBeNull()
 })
 it('rejects non-finite geometry, excessive allocation and malformed regions', () => {
   expect(() => overlayBounds({ x: NaN, y: 0, width: 10, height: 10 })).toThrow()

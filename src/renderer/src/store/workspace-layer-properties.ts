@@ -92,14 +92,29 @@ const applySnapshot = (session: DocumentSession, snapshot: LayerPropertySnapshot
   target.description = snapshot.description
 }
 
-const notifyPreviewChange = (session: DocumentSession, panelChanged: boolean, contentChanged: boolean, invalidation: ContentInvalidationHint = { kind: 'full' }): void => {
+const notifyPreviewChange = (session: DocumentSession, panelChanged: boolean, contentChanged: boolean, invalidation: ContentInvalidationHint = { kind: 'full' }, propertyPreview = false): void => {
   if (panelChanged) session.layersPanelRevision += 1
+  // Returning to the original value can leave no history entry. Ending the
+  // editor must still replace its sampled display with a full-precision draw.
+  contentChanged ||= !propertyPreview && session.contentInvalidation?.kind === 'region' && session.contentInvalidation.propertyPreview === true
   if (contentChanged) {
-    const fromRevision = session.contentRevision
+    let fromRevision = session.contentRevision
+    const previous = session.contentInvalidation
+    const ownerIds = invalidation.kind === 'region' ? invalidation.propertyOwnerIds : undefined
+    // A render can skip several pointer events. Keep the complete range of
+    // consecutive edits to the same properties so consumers can reuse sources
+    // without treating those skipped previews as unknown pixel mutations.
+    if (invalidation.kind === 'region' && invalidation.compositeOnly && invalidation.propertyOwnerIds?.length
+      && previous?.kind === 'region' && previous.compositeOnly && previous.revision === fromRevision
+      && previous.frameId === invalidation.frameId && previous.propertyOwnerIds?.length === invalidation.propertyOwnerIds.length
+      && previous.propertyOwnerIds.every(id => ownerIds!.includes(id))) {
+      fromRevision = previous.fromRevision
+      invalidation = { ...invalidation, rect: unionRects(previous.rect, invalidation.rect) }
+    }
     session.revision += 1
     session.contentRevision += 1
     session.contentInvalidation = invalidation.kind === 'region'
-      ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
+      ? { ...invalidation, ...(propertyPreview ? { propertyPreview: true as const } : {}), rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
       : { kind: 'full', fromRevision, revision: session.contentRevision }
   }
 }
@@ -116,16 +131,20 @@ const combineInvalidations = (left?: ContentInvalidationHint, right?: ContentInv
   if (!left) return right ?? { kind: 'full' }
   if (!right) return left
   if (left.kind !== 'region' || right.kind !== 'region' || left.frameId !== right.frameId) return { kind: 'full' }
-  return { kind: 'region', frameId: left.frameId, rect: unionRects(left.rect, right.rect) }
+  return { kind: 'region', frameId: left.frameId, rect: unionRects(left.rect, right.rect),
+    ...(left.compositeOnly && right.compositeOnly ? { compositeOnly: true as const,
+      ...(left.propertyOwnerIds && right.propertyOwnerIds ? { propertyOwnerIds: [...new Set([...left.propertyOwnerIds, ...right.propertyOwnerIds])] } : {}) } : {}) }
 }
 
 const contentInvalidationForTargets = (session: DocumentSession, targets: readonly LayerPropertySnapshot[]): ContentInvalidationHint => {
-  if (targets.length !== 1 || targets[0].kind !== 'layer') return { kind: 'full' }
-  const layer = session.document.layers.find((candidate) => candidate.id === targets[0].id)
+  const layer = targets.length === 1 && targets[0].kind === 'layer'
+    ? session.document.layers.find((candidate) => candidate.id === targets[0].id) : undefined
   const bounds = layer ? cachedLayerContentBounds(session.document, layer) : undefined
-  return layer && bounds
-    ? { kind: 'region', rect: expandLayerStyleInvalidationRect(session.document, bounds, [layer.id]) }
-    : { kind: 'full' }
+  // Unknown bounds and group edits still invalidate all output, but preserve
+  // the unchanged raster sources and let the canvas update only its viewport.
+  return { kind: 'region', compositeOnly: true, propertyOwnerIds: targets.map(target => target.id), rect: layer && bounds
+    ? expandLayerStyleInvalidationRect(session.document, bounds, [layer.id])
+    : { x: 0, y: 0, width: session.document.width, height: session.document.height } }
 }
 
 const restoreTargets = (session: DocumentSession, data: LayerPropertiesTransactionData, notify = true): void => {
@@ -213,17 +232,22 @@ export const previewLayerPropertiesTransaction = (
 ): boolean => {
   const transaction = registry.get<LayerPropertiesTransactionData>(id, session.document.id, TRANSACTION_KIND)
   if (!transaction) return false
-  const restoredPanel = transaction.data.previewPanelChanged
   const restoredContent = transaction.data.previewContentChanged
   const restoredInvalidation = transaction.data.previewInvalidation
+  const previous = transaction.data.targets.map(target => captureTarget(session, target))
   restoreTargets(session, transaction.data, false)
   const fields = new Set(transaction.data.targets.length > 1 ? changedFields : ALL_FIELDS)
   const includeLocked = transaction.data.targets.length === 1
   let panelChanged = false
   let contentChanged = false
+  let visiblePanelChanged = false
+  let visibleContentChanged = false
   const contentTargets: LayerPropertySnapshot[] = []
-  for (const before of transaction.data.targets) {
+  for (const [index, before] of transaction.data.targets.entries()) {
     const after = nextSnapshot(session, before, values, fields, includeLocked, false)
+    const displayed = previous[index] ?? before
+    visibleContentChanged ||= contentDiffers(displayed, after)
+    visiblePanelChanged ||= metadataDiffers(displayed, after)
     panelChanged ||= metadataDiffers(before, after) || contentDiffers(before, after)
     if (contentDiffers(before, after)) {
       contentChanged = true
@@ -236,9 +260,9 @@ export const previewLayerPropertiesTransaction = (
   transaction.data.previewInvalidation = contentChanged ? contentInvalidationForTargets(session, contentTargets) : undefined
   notifyPreviewChange(
     session,
-    restoredPanel || panelChanged,
-    restoredContent || contentChanged,
-    combineInvalidations(restoredContent ? restoredInvalidation : undefined, transaction.data.previewInvalidation)
+    visiblePanelChanged,
+    visibleContentChanged,
+    combineInvalidations(restoredContent ? restoredInvalidation : undefined, transaction.data.previewInvalidation), true
   )
   return panelChanged
 }
@@ -281,7 +305,7 @@ export const commitLayerPropertiesTransaction = (
     for (const entry of entries) session.history.push(entry)
     session.history.endCompound(tr('layers.multipleProperties'))
   }
-  if (!contentChanged && restoredContent) notifyPreviewChange(session, false, true, restoredInvalidation)
+  if (!contentChanged) notifyPreviewChange(session, false, restoredContent, restoredInvalidation)
   return contentChanged
     ? { kind: 'content', invalidation: session.history.latestUndoEntry?.invalidation }
     : { kind: metadataChanged ? 'metadata' : 'none' }

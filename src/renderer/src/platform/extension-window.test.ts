@@ -1,9 +1,17 @@
 import { expect, it, vi } from 'vitest'
 import { extensionPointerPosition, listenForExtensionHostGeometry, listenForExtensionWindowMessage, listenForExtensionRuntimeWindowMessage } from './extension-window'
-const pointerMock=vi.hoisted(()=>({point:{x:400,y:300},main:true}))
+it('treats temporarily unavailable cursor access as no pointer and recovers on the next request', async () => {
+  pointerMock.main = true
+  pointerMock.failCursor = true
+  try { await expect(extensionPointerPosition()).resolves.toBeNull() }
+  finally { pointerMock.failCursor = false }
+  pointerMock.point = { x: 400, y: 300 }
+  await expect(extensionPointerPosition()).resolves.toEqual({ x: 150, y: 100 })
+})
+const pointerMock=vi.hoisted(()=>({point:{x:400,y:300},main:true,failCursor:false}))
 const mock=vi.hoisted(()=>({label:'pet-first',failEvent:'',listeners:[] as {event:string;target:string | {kind:string;label:string};callback:(event:{payload:unknown})=>void;remove:ReturnType<typeof vi.fn>}[]}))
 vi.mock('@tauri-apps/api/event',()=>({listen:async(event:string,callback:(event:{payload:unknown})=>void,options?:{target:string | {kind:string;label:string}})=>{if(mock.failEvent===event)throw Error('Listener failed');const remove=vi.fn();mock.listeners.push({event,target:options?.target??'*',callback,remove});return remove},emitTo:vi.fn()}))
-vi.mock('@tauri-apps/api/window',()=>({getCurrentWindow:()=>({label:mock.label}),cursorPosition:async()=>pointerMock.point,Window:{getByLabel:async()=>pointerMock.main?{outerPosition:async()=>({x:100,y:100}),innerPosition:async()=>({x:110,y:140}),innerSize:async()=>({width:800,height:600}),scaleFactor:async()=>2}:null}}))
+vi.mock('@tauri-apps/api/window',()=>({getCurrentWindow:()=>({label:mock.label}),cursorPosition:async()=>{if(pointerMock.failCursor)throw Error('failed to get cursor position');return pointerMock.point},Window:{getByLabel:async()=>pointerMock.main?{outerPosition:async()=>({x:100,y:100}),innerPosition:async()=>({x:110,y:140}),innerSize:async()=>({width:800,height:600}),scaleFactor:async()=>2}:null}}))
 
 it('returns host-relative logical pointer coordinates and hides outside-client positions',async()=>{
  pointerMock.point={x:400,y:300}

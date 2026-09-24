@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 const utilityIconPaths = {
   lock: 'M4 1h3v1H4zM3 2h1v2H3zM7 2h1v2H7zM3 4h5v1H3zM2 5h7v1H2zM2 6h4v2H2zM7 6h2v2H7zM2 8h7v1H2z',
   unlock: 'M4 1h3v1H4zM3 2h1v2H3zM7 2h1v1H7zM3 4h5v1H3zM2 5h1v3H2zM8 5h1v3H8zM6 6h1v1H6zM2 8h7v1H2z',
@@ -158,12 +160,12 @@ const fivePixelUtilityIconKinds = new Set<PixelUtilityIconKind>(['down', 'up', '
 const sixPixelUtilityIconKinds = new Set<PixelUtilityIconKind>(['undo', 'redo', 'restore'])
 const sevenPixelUtilityIconKinds = new Set<PixelUtilityIconKind>(['follow', 'check'])
 
-export function PixelUtilityIcon({ kind, scale = 2, className = '' }: { kind: PixelUtilityIconKind; scale?: 1 | 2; className?: string }) {
+export const PixelUtilityIcon = memo(function PixelUtilityIcon({ kind, scale = 2, className = '' }: { kind: PixelUtilityIconKind; scale?: 1 | 2; className?: string }) {
   const sourceSize = fivePixelUtilityIconKinds.has(kind) ? 5 : sixPixelUtilityIconKinds.has(kind) ? 6 : sevenPixelUtilityIconKinds.has(kind) ? 7 : 11
   const size = sourceSize * scale
   const translucentPath = utilityIconTranslucentPaths[kind]
   return <svg className={`pixel-utility-icon pixel-utility-icon-${sourceSize}px pixel-utility-icon-${scale}x ${className}`.trim()} data-pixel-icon={kind} width={size} height={size} viewBox={`0 0 ${sourceSize} ${sourceSize}`} shapeRendering="crispEdges" aria-hidden="true"><path fill="currentColor" d={utilityIconPaths[kind]} />{translucentPath && <path fill="currentColor" fillOpacity=".42" d={translucentPath} />}</svg>
-}
+})
 
 type FivePixelIconProps = { size?: number; className?: string }
 

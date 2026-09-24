@@ -180,7 +180,7 @@ export function useAnimationGestures(options: Options) {
       return
     }
     const rightButtonMove = event.button === 2 && selected && session.selectedAnimationFrameIds.length > 1
-    const canMove = selected && ((event.pointerType === 'touch' && tabletPanelMode() === 'move') || rightButtonMove || event.altKey || pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`))
+    const canMove = selected && (rightButtonMove || event.altKey || pointerHitsSelectionOutline(event, `[data-animation-frame-selection~="${frameId}"]`))
     const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
     const drag: AnimationPointerDrag = {
       kind: 'frame',
@@ -242,7 +242,7 @@ export function useAnimationGestures(options: Options) {
     // a blank surface), so they must remain draggable just like populated
     // cels.  Content presence only controls thumbnail rendering.
     const rightButtonMove = event.button === 2 && selected && session.selectedAnimationCellKeys.length > 1
-    const canMove = selected && ((event.pointerType === 'touch' && tabletPanelMode() === 'move') || rightButtonMove || copySelection || pointerHitsSelectionOutline(event, '[data-animation-cel-selection]'))
+    const canMove = selected && (rightButtonMove || copySelection || pointerHitsSelectionOutline(event, '[data-animation-cel-selection]'))
     if (!canMove) {
       groupSelectionOwnerRef.current = null
       setSelectedAnimationGroupCellKeys([])
@@ -684,4 +684,3 @@ export function useAnimationGestures(options: Options) {
     cancel: () => latestRef.current.cancelAnimationPointerDrag()
   }
 }
-import { tabletPanelMode } from '@/core/tablet-interaction'

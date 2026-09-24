@@ -269,27 +269,31 @@ export function useCanvasBrushOverlay(ports: Ports) {
     const color = resolveLayerCanvasColor(currentSession.document, activePaintLayer(currentSession), currentSession.primaryColor)
     const previewColor = { ...color, a: Math.round(color.a * brushOpacityScale(1, currentSession.brushOpacity)) }
     const outline = new CanvasAdaptiveOutline()
-    const rows = spans.flatMap((span) => {
-      const y = brushPoint.y - before.y + span.y
-      const left = Math.max(0, brushPoint.x - before.x + span.left)
-      const right = Math.min(currentSession.document.width - 1, brushPoint.x - before.x + span.right)
-      return y >= 0 && y < currentSession.document.height && right >= left ? [{ y, left, right }] : []
+    const outlineRows = spans.map((span) => ({
+      y: brushPoint.y - before.y + span.y,
+      left: brushPoint.x - before.x + span.left,
+      right: brushPoint.x - before.x + span.right
+    }))
+    const rows = outlineRows.flatMap((row) => {
+      const left = Math.max(0, row.left)
+      const right = Math.min(currentSession.document.width - 1, row.right)
+      return row.y >= 0 && row.y < currentSession.document.height && right >= left ? [{ y: row.y, left, right }] : []
     })
     context.fillStyle = `rgb(${previewColor.r} ${previewColor.g} ${previewColor.b} / ${previewColor.a / 255})`
     context.beginPath()
     for (const row of rows) {
       const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.left, row.y, deviceScale)
       const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.right, row.y, deviceScale)
-      outline.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height })
       damageRef.current.include({ x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height }, deviceScale, (ports.brushEdgeThickness ?? 1) + 2)
       context.rect(first.x, first.y, last.x + last.width - first.x, first.height)
     }
     if (!drawing && !erasing && ports.brushPreviewMode !== 'edge') context.fill()
     if (!showOutline) return
+    const borderRows = ports.brushPreviewMode === 'full-edge' ? outlineRows : rows
     context.lineWidth = ports.brushEdgeThickness ?? 1
     alignCanvasStrokePath(context)
     context.beginPath()
-    const horizontalSegment = (left: number, right: number, row: (typeof rows)[number], bottom: boolean): void => {
+    const horizontalSegment = (left: number, right: number, row: (typeof borderRows)[number], bottom: boolean): void => {
       if (right < left) return
       const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, left, row.y, deviceScale)
       const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, right, row.y, deviceScale)
@@ -297,7 +301,7 @@ export function useCanvasBrushOverlay(ports: Ports) {
       context.moveTo(first.x, edgeY)
       context.lineTo(last.x + last.width, edgeY)
     }
-    const exposedHorizontal = (row: (typeof rows)[number], neighbor: (typeof rows)[number] | null, bottom: boolean): void => {
+    const exposedHorizontal = (row: (typeof borderRows)[number], neighbor: (typeof borderRows)[number] | null, bottom: boolean): void => {
       if (!neighbor || neighbor.y !== row.y + (bottom ? 1 : -1)) {
         horizontalSegment(row.left, row.right, row, bottom)
         return
@@ -305,16 +309,19 @@ export function useCanvasBrushOverlay(ports: Ports) {
       if (neighbor.left > row.left) horizontalSegment(row.left, Math.min(row.right, neighbor.left - 1), row, bottom)
       if (neighbor.right < row.right) horizontalSegment(Math.max(row.left, neighbor.right + 1), row.right, row, bottom)
     }
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index]
+    for (let index = 0; index < borderRows.length; index += 1) {
+      const row = borderRows[index]
       const first = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.left, row.y, deviceScale)
       const last = deviceAlignedPixelRect(renderPlan.originX, renderPlan.originY, view.zoom, row.right, row.y, deviceScale)
+      const bounds = { x: first.x, y: first.y, width: last.x + last.width - first.x, height: first.height }
+      outline.include(bounds)
+      damageRef.current.include(bounds, deviceScale, context.lineWidth + 2)
       context.moveTo(first.x, first.y)
       context.lineTo(first.x, first.y + first.height)
       context.moveTo(last.x + last.width, last.y)
       context.lineTo(last.x + last.width, last.y + last.height)
-      exposedHorizontal(row, index > 0 ? rows[index - 1] : null, false)
-      exposedHorizontal(row, index + 1 < rows.length ? rows[index + 1] : null, true)
+      exposedHorizontal(row, index > 0 ? borderRows[index - 1] : null, false)
+      exposedHorizontal(row, index + 1 < borderRows.length ? borderRows[index + 1] : null, true)
     }
     outline.stroke(context, ports.canvasRef.current ?? undefined, ports.brushEdgeColor)
   }

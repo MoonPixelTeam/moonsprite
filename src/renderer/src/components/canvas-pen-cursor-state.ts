@@ -6,6 +6,7 @@ import { AUTO_CONTRAST_FILTER } from './canvas-adaptive-contrast'
 export interface CanvasPenCursorPorts {
   readonly canvasRef: RefObject<HTMLCanvasElement | null>
   readonly interfaceScale: import('@/core/file-preferences').UiScale
+  readonly zoom?: number
   readonly paintingPoint?: (point: { x: number; y: number }) => { x: number; y: number }
   readonly stageBounds: () => DOMRect
 }
@@ -14,7 +15,7 @@ export interface CanvasPenCursorRefs {
   readonly penCursorRef: RefObject<HTMLImageElement | null>
   readonly adaptiveCursorRef: RefObject<HTMLSpanElement | null>
   readonly penCursorStateRef: RefObject<{ active: boolean; pressure: boolean; x: number; y: number }>
-  readonly cursorPreferencesRef: RefObject<Pick<EditorPreferences, 'useLocalCursors' | 'cursorScale' | 'paintingCursorType' | 'cursorColorMode' | 'cursorColor'> | null>
+  readonly cursorPreferencesRef: RefObject<Pick<EditorPreferences, 'useLocalCursors' | 'cursorScale' | 'paintingCursorShape' | 'paintingCursorType' | 'cursorColorMode' | 'cursorColor'> | null>
 }
 
 export const hidePenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCursorRefs): void => {
@@ -35,14 +36,17 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
   if (!canvas || !image || !pointer.active) return
   const adaptive = /^var\(--cursor-(?:pencil-(?:black|white)|selection-(?:black|white)|crosshair)\)$/.test(canvas.style.cursor)
   const preferences = refs.cursorPreferencesRef.current
-  const type = preferences?.paintingCursorType ?? 'sprite'
+  const type = preferences?.paintingCursorType ?? 'simple'
   const selectionCursor = /^var\(--cursor-(?:selection-(?:black|white)|crosshair)\)$/.test(canvas.style.cursor)
-  const systemCrosshair = adaptive && (type === 'simple' || selectionCursor) && preferences?.useLocalCursors
+  const dot = adaptive && !selectionCursor && preferences?.paintingCursorShape === 'dot'
+  const hiddenDot = dot && (ports.zoom ?? 8) < 8
+  const systemCrosshair = !dot && adaptive && (type === 'simple' || selectionCursor) && preferences?.useLocalCursors
   if (systemCrosshair) canvas.dataset.paintingCursor = 'system'
   else delete canvas.dataset.paintingCursor
   const paintingScale = type === 'simple' ? preferences?.cursorScale ?? 1 : type === 'sprite' ? ports.interfaceScale : 1
-  const descriptor = systemCrosshair ? null : cursorOverlayDescriptor(canvas.style.cursor, preferences?.useLocalCursors ?? false, adaptive ? paintingScale : preferences?.cursorScale ?? 1, ports.interfaceScale)
-  const softwarePen = pointer.pressure && Boolean(descriptor)
+  const dotSize = 3 * paintingScale
+  const descriptor = hiddenDot ? null : dot ? { source: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%223%22 height=%223%22%3E%3Ccircle fill=%22white%22 cx=%221.5%22 cy=%221.5%22 r=%221.5%22/%3E%3C/svg%3E', size: dotSize, hotspotX: dotSize / 2, hotspotY: dotSize / 2 } : systemCrosshair ? null : cursorOverlayDescriptor(canvas.style.cursor, preferences?.useLocalCursors ?? false, adaptive ? paintingScale : preferences?.cursorScale ?? 1, ports.interfaceScale)
+  const softwarePen = pointer.pressure && Boolean(descriptor || hiddenDot)
   if (softwarePen) document.documentElement.dataset.penInput = 'true'
   else delete document.documentElement.dataset.penInput
   void setNativeCursorVisible(!softwarePen).catch(() => undefined)
@@ -61,7 +65,8 @@ export const refreshPenCursor = (ports: CanvasPenCursorPorts, refs: CanvasPenCur
     image.hidden = true
     return
   }
-  delete canvas.dataset.adaptiveCursor
+  if (hiddenDot) canvas.dataset.adaptiveCursor = 'true'
+  else delete canvas.dataset.adaptiveCursor
   if (!pointer.pressure || !descriptor) {
     image.hidden = true
     return

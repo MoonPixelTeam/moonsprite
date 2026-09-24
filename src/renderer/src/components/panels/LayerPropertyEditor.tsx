@@ -32,11 +32,18 @@ interface Props { documentId: string; layerDisplayColorPresets: RgbaColor[] }
 export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(function LayerPropertyEditor({documentId, layerDisplayColorPresets}, ref) {
   const { t } = useI18n()
   const session = useWorkspace(state => state.sessions.find(item => item.document.id === documentId))
+  const selectedTargetKey = useWorkspace(state => {
+    const current = state.sessions.find(item => item.document.id === documentId)
+    return current ? selectedRowsForProperties(current).map(target => `${target.kind}:${target.id}`).join('|') : ''
+  })
   const store = useWorkspace.getState()
   const [form, setForm] = useState<LayerFormState | null>(null)
+  const formRef = useRef<LayerFormState | null>(null)
   const propertyTransactionRef = useRef<string | null>(null)
   const pendingPropertyPreviewRef = useRef<LayerFormState | null>(null)
   const propertyPreviewTimerRef = useRef<number | null>(null)
+  const opacityInteractingRef = useRef(false)
+  const propertyPreviewFrameRef = useRef<number | null>(null)
   const blendOptions = layerBlendOptions(t)
   const blendOptionGroups: Array<ThemedSelectGroup<BlendMode>> = [
     { label: t('blend.group.basic'), options: blendOptions.filter((option) => option.value === 'normal') },
@@ -47,15 +54,20 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     { label: t('blend.group.components'), options: blendOptions.filter((option) => ['hue', 'saturation', 'color', 'luminosity'].includes(option.value)) }
   ]
 
-  const cancelPending = (): void => {
+  const commitPending = (): void => {
+    if (propertyPreviewFrameRef.current !== null) window.cancelAnimationFrame(propertyPreviewFrameRef.current)
+    propertyPreviewFrameRef.current = null
+    opacityInteractingRef.current = false
     if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
     propertyPreviewTimerRef.current = null
+    const finalForm = pendingPropertyPreviewRef.current ?? formRef.current
     pendingPropertyPreviewRef.current = null
-    if (propertyTransactionRef.current) store.cancelLayerPropertiesTransaction(propertyTransactionRef.current)
+    const transactionId = propertyTransactionRef.current
     propertyTransactionRef.current = null
+    if (transactionId && finalForm) store.commitLayerPropertiesTransaction(transactionId, propertyValues(finalForm), propertyFields(finalForm))
   }
   const openTargets = (targets: readonly LayerPropertyTarget[]): void => {
-    cancelPending()
+    commitPending()
     const current = useWorkspace.getState().sessions.find(item => item.document.id === documentId)
     // Property commands address the active document. Reject a stale portal request.
     if (!current || useWorkspace.getState().activeId !== documentId || !targets.length) { setForm(null); return }
@@ -65,7 +77,9 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     const id = store.beginLayerPropertiesTransaction(targets)
     if (!id) { setForm(null); return }
     propertyTransactionRef.current = id
-    setForm({ id: first.id, kind: first.kind, targets: [...targets], batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' })
+    const next: LayerFormState = { id: first.id, kind: first.kind, targets: [...targets], batchChanges: [], name: source.name, opacity: Math.round(source.opacity * 100), blendMode: source.blendMode, cumulativeBlend: first.kind === 'group' && (source as LayerGroup).cumulativeBlend === true, locked: source.locked, displayColor: source.displayColor ? { ...source.displayColor } : null, description: source.description ?? '' }
+    formRef.current = next
+    setForm(next)
   }
   useImperativeHandle(ref, () => ({ close: () => closeProperties(), open: openTargets }))
 
@@ -73,7 +87,6 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
   // selection moves underneath it, retarget the existing editor instead of
   // leaving values from the layer that was originally opened.
   const selectedTargets = session ? selectedRowsForProperties(session) : []
-  const selectedTargetKey = selectedTargets.map(target => `${target.kind}:${target.id}`).join('|')
   const formTargetKey = form?.targets.map(target => `${target.kind}:${target.id}`).join('|') ?? ''
   useEffect(() => {
     if (!form || !selectedTargetKey || selectedTargetKey === formTargetKey) return
@@ -96,6 +109,8 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     store.previewLayerPropertiesTransaction(transactionId, propertyValues(next), propertyFields(next))
   }
   const flushPropertyPreview = (): LayerFormState | null => {
+    if (propertyPreviewFrameRef.current !== null) window.cancelAnimationFrame(propertyPreviewFrameRef.current)
+    propertyPreviewFrameRef.current = null
     if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
     propertyPreviewTimerRef.current = null
     const pending = pendingPropertyPreviewRef.current
@@ -105,7 +120,13 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
   }
   const previewProperties = (next: LayerFormState, batchProperty?: BatchProperty): void => {
     if (next.targets.length > 1 && batchProperty && !next.batchChanges.includes(batchProperty)) next = { ...next, batchChanges: [...next.batchChanges, batchProperty] }
+    formRef.current = next
     setForm(next)
+    if (batchProperty === 'opacity' && opacityInteractingRef.current) {
+      pendingPropertyPreviewRef.current = next
+      if (propertyPreviewFrameRef.current === null) propertyPreviewFrameRef.current = window.requestAnimationFrame(() => { flushPropertyPreview() })
+      return
+    }
     if (next.targets.length === 1 || batchProperty === 'displayColor' || batchProperty === 'blendMode') {
       flushPropertyPreview()
       applyPropertyPreview(next)
@@ -116,19 +137,12 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
     propertyPreviewTimerRef.current = window.setTimeout(() => { flushPropertyPreview() }, 40)
   }
   const closeProperties = (): void => {
-    const closingForm = flushPropertyPreview() ?? form
-    if (!closingForm) return
-    const transactionId = propertyTransactionRef.current
-    if (transactionId) store.commitLayerPropertiesTransaction(transactionId, propertyValues(closingForm), propertyFields(closingForm))
-    propertyTransactionRef.current = null
+    commitPending()
+    formRef.current = null
     setForm(null)
   }
   useEffect(() => () => {
-    if (propertyPreviewTimerRef.current !== null) window.clearTimeout(propertyPreviewTimerRef.current)
-    pendingPropertyPreviewRef.current = null
-    const transactionId = propertyTransactionRef.current
-    if (transactionId) useWorkspace.getState().cancelLayerPropertiesTransaction(transactionId)
-    propertyTransactionRef.current = null
+    commitPending()
   }, [documentId])
   useEffect(() => {
     if (!form) return
@@ -157,7 +171,8 @@ export const LayerPropertyEditor = forwardRef<LayerPropertyEditorHandle, Props>(
         <div className="modal-body layer-properties-body">
           <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.name')}><TextInput autoFocus onFocus={(event) => event.currentTarget.select()} value={form.name} onChange={(event) => previewProperties({ ...form, name: event.target.value }, 'name')} /></FormField>
           <FormField className="layer-properties-inline-field" layout="inline" label={t('layers.blendMode')}><ThemedSelect label={t('layers.blendMode')} value={form.blendMode} groups={blendOptionGroups} disabled={singleFormTargetLocked} preserveAnimationSelection onChange={(blendMode) => previewProperties({ ...form, blendMode }, 'blendMode')} /></FormField>
-          <RangeField className="layer-opacity-control" disabled={singleFormTargetLocked} label={t('layers.opacity')} min={0} max={100} suffix="%" value={form.opacity} onChange={(opacity) => previewProperties({ ...form, opacity }, 'opacity')} />
+          <RangeField className="layer-opacity-control" disabled={singleFormTargetLocked} label={t('layers.opacity')} min={0} max={100} suffix="%" value={form.opacity} onChange={(opacity) => previewProperties({ ...form, opacity }, 'opacity')}
+            interaction={{ begin: () => { opacityInteractingRef.current = true }, commit: () => { opacityInteractingRef.current = false; flushPropertyPreview() } }} />
           {form.targets.every((target) => target.kind === 'group') && <CheckboxField className="tool-checkbox layer-cumulative-blend" checked={form.cumulativeBlend} disabled={singleFormTargetLocked} label={<><strong>{t('layers.cumulativeBlend')}</strong><small>{t('layers.cumulativeBlendDescription')}</small></>} onChange={(cumulativeBlend) => previewProperties({ ...form, cumulativeBlend }, 'cumulativeBlend')} />}
           <FormField className="layer-display-color-field" label={t('layers.displayColor')}><div className="layer-display-color-options"><button type="button" className={`layer-color-preset no-color ${form.displayColor === null ? 'selected' : ''}`} aria-label={t('layers.noDisplayColor')} aria-pressed={form.displayColor === null} onClick={() => previewProperties({ ...form, displayColor: null }, 'displayColor')}><span /></button>{layerDisplayColorPresets.map((color) => <button key={`${color.r}-${color.g}-${color.b}`} type="button" className={`layer-color-preset ${sameColor(form.displayColor, color) ? 'selected' : ''}`} aria-label={t('layers.displayColorRgb', { r: color.r, g: color.g, b: color.b })} aria-pressed={sameColor(form.displayColor, color)} style={{ '--layer-preset-color': `rgb(${color.r} ${color.g} ${color.b})` } as React.CSSProperties} onClick={() => previewProperties({ ...form, displayColor: { ...color } }, 'displayColor')}><span /></button>)}<ColorValueControl color={form.displayColor ?? defaultLayerDisplayColor} density="compact" onChange={(displayColor) => previewProperties({ ...form, displayColor }, 'displayColor')} label={t('layers.colorControl')} roleLabel={t('layers.custom')} className="layer-custom-color-trigger" fillWithColor /></div></FormField>
           <FormField className="layer-description-field" label={t('layers.description')}><TextAreaInput rows={3} value={form.description} placeholder={t('layers.descriptionPlaceholder')} onChange={(event) => previewProperties({ ...form, description: event.target.value }, 'description')} /></FormField>

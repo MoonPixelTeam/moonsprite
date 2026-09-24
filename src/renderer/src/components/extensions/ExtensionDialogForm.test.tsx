@@ -5,7 +5,19 @@ import { ExtensionDialogForm } from './ExtensionDialogForm'
 const mock=vi.hoisted(()=>({receive:(_value:unknown)=>{},save:vi.fn()}))
 vi.mock('./ExtensionWindow',()=>({ExtensionWindow:({onUiState}:{onUiState:(value:unknown)=>void})=>{mock.receive=onUiState;return null}}))
 vi.mock('@/platform/extension-file',()=>({saveExtensionFile:mock.save}))
-afterEach(()=>{cleanup();mock.save.mockReset()})
+afterEach(()=>{cleanup();mock.save.mockReset();vi.useRealTimers()})
+it('shows a retry action when initialization stalls and accepts a recovered form', async () => {
+ vi.useFakeTimers()
+ const view=render(<ExtensionDialogForm extensionId="test" windowId="manager" resourceId="ui" onClose={()=>{}} />)
+ act(()=>vi.advanceTimersByTime(15000))
+ expect(view.getByRole('alert')).toBeTruthy()
+ fireEvent.click(view.getByRole('alert').querySelector('button')!)
+ expect(view.queryByRole('alert')).toBeNull()
+ await act(async()=>mock.receive({nodes:[{id:'loaded',type:'button',label:'Recovered',action:{}}]}))
+ expect(view.getByText('Recovered')).toBeTruthy()
+ act(()=>vi.advanceTimersByTime(15000))
+ expect(view.queryByRole('alert')).toBeNull()
+})
 it('uploads one file to its named slot and returns the slot identity',async()=>{
  const messages:any[]=[]
  const listener=(event:Event)=>messages.push((event as CustomEvent).detail.message)
@@ -123,4 +135,16 @@ it('hides irrelevant dependent fields and preserves zero numeric defaults', asyn
  await act(async()=>mock.receive({nodes:nodes('tool')}))
  expect(view.queryByLabelText('空闲秒数')).toBeNull()
  expect(view.getByText('目标工具')).toBeTruthy()
+})
+
+it('reveals the complete translated label when its visible copy overflows',async()=>{
+ const view=render(<ExtensionDialogForm extensionId="test" windowId="manager" resourceId="ui" onClose={()=>{}} />)
+ const text='Animation während des Gedrückthaltens wiederholen'
+ await act(async()=>mock.receive({nodes:[{id:'long',type:'heading',label:text}]}))
+ const copy=view.getByText(text)
+ Object.defineProperties(copy,{clientWidth:{value:120},clientHeight:{value:20},scrollWidth:{value:420},scrollHeight:{value:20}})
+ fireEvent.pointerEnter(copy.parentElement!)
+ expect(view.getByRole('tooltip').textContent).toBe(text)
+ fireEvent.pointerLeave(copy.parentElement!)
+ expect(view.queryByRole('tooltip')).toBeNull()
 })

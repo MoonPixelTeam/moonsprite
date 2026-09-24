@@ -133,6 +133,11 @@ export interface DrawCompositeOptions {
     revision: number
     frameId?: string
     rect?: SelectionRect
+    /** Only compositing properties changed; raster pixels and masks did not. */
+    compositeOnly?: true
+    propertyOwnerIds?: readonly string[]
+    /** Transient property editor preview; committed renders use full precision. */
+    propertyPreview?: true
   } | null
   frameId?: string
   isolatedLayerMask?: LayerMask
@@ -145,7 +150,7 @@ export interface DrawCompositeOptions {
   liveRasterEdit?: boolean
   /** Prefer browser compositing for animation frames that use a supported stack. */
   animationPlayback?: boolean
-  /** Reuse the editor's latest frame instead of competing to build one. */
+  /** Reuse the editor's completed composite only when it is for the exact frame. */
   animationConsumerOnly?: boolean
   /** Effective device pixels per logical canvas unit used by the caller's context. */
   devicePixelRatio?: CanvasDeviceScaleInput
@@ -213,16 +218,6 @@ export const sharedAnimationCompositeSurface = (document: SpriteDocument, frameI
   state.entries.delete(frameId)
   state.entries.set(frameId, entry)
   return entry.canvas
-}
-
-export const latestSharedAnimationCompositeSurface = (document: SpriteDocument, contentRevision: number): OffscreenCanvas | null => {
-  const entries = sharedAnimationComposites.get(document)?.entries
-  if (!entries) return null
-  const values = [...entries.values()]
-  for (let index = values.length - 1; index >= 0; index -= 1) {
-    if (values[index].contentRevision === contentRevision) return values[index].canvas
-  }
-  return null
 }
 
 export const rememberSharedAnimationComposite = (document: SpriteDocument, frameId: string, contentRevision: number, canvas: OffscreenCanvas): void => {

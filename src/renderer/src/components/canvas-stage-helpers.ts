@@ -78,7 +78,10 @@ export const brushAngleWithDynamics = (session: Pick<DocumentSession, 'brushShap
 
 export interface GradientPreviewSurface { canvas: OffscreenCanvas; context: OffscreenCanvasRenderingContext2D; imageData: ImageData; pixels: Uint8ClampedArray; width: number; height: number }
 
-export interface GradientCompositePreviewCache extends GradientCompositePreview { key: string }
+export interface GradientCompositePreviewCache extends GradientCompositePreview {
+  key: string
+  replacementSampler?: (x: number, y: number, replacement: RgbaColor) => RgbaColor
+}
 
 export interface GradientPreviewCoverageCache {
   selection: SelectionMask | null | undefined

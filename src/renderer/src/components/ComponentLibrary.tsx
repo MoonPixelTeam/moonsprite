@@ -267,7 +267,7 @@ function TouchControlsPreview({ locale }: { locale: AppLocale }) {
   return <div className="component-preview-form touch-controls">
     <SegmentedControl label={componentText(locale, 'tablet.modifiers')} value={mode} onChange={setMode} options={(['hold', 'latch'] as const).map(value => ({ value, label: componentText(locale, `tablet.${value}`) }))} />
     <TabletPressButton label={componentText(locale, 'tablet.sample')} active={held} locked={mode === 'latch'} onActive={setHeld} />
-    <FormField label={componentText(locale, 'tablet.size')}><NumberInput density="touch" value={value} min={1} max={128} onValueChange={setValue} /><RangeField ariaLabel={componentText(locale, 'tablet.size')} value={value} min={1} max={128} onChange={setValue} /></FormField>
+    <FormField label={componentText(locale, 'tablet.size')}><NumberInput density="touch" value={value} min={1} max={64} onValueChange={setValue} /><RangeField ariaLabel={componentText(locale, 'tablet.size')} value={value} min={1} max={64} onChange={setValue} /></FormField>
     <Button disabled>{componentText(locale, 'componentLibrary.preview.disabled')}</Button>
   </div>
 }
@@ -308,12 +308,12 @@ function NumberInputPreview({ locale }: { locale: AppLocale }) {
   const [sliderValue, setSliderValue] = useState(24)
   const [sliderOpen, setSliderOpen] = useState(false)
   return <div className="component-number-input-preview">
-    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><NumberInput value={value} min={1} max={128} suffix="px" onValueChange={setValue} /></FormField>
-    <FormField className="component-number-input-row" layout="inline" label={previewText(locale, 'compact')}><NumberInput density="compact" value={value} min={1} max={128} suffix="px" onValueChange={setValue} /></FormField>
-    <div className="component-number-input-row component-number-input-no-label"><NumberInput aria-label={componentText(locale, 'componentLibrary.preview.untitledNumber')} value={untitledValue} min={1} max={128} suffix="px" onValueChange={setUntitledValue} /></div>
-    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.hintNumber')}><NumberInput className="component-number-input-hint-input" aria-label={componentText(locale, 'componentLibrary.preview.hintNumber')} value="" min={1} max={128} placeholder={componentText(locale, 'componentLibrary.preview.enterNumber')} onValueChange={() => undefined} /></FormField>
-    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><div className="brush-size-control component-number-input-slider" onPointerDown={() => setSliderOpen(true)}><NumberInput aria-label={componentText(locale, 'componentLibrary.preview.sliderNumber')} value={sliderValue} min={1} max={128} suffix="px" onValueChange={setSliderValue} onFocus={() => setSliderOpen(true)} />{sliderOpen && <div className="brush-size-popover" role="dialog" aria-label={componentText(locale, 'componentLibrary.preview.adjustNumber')}><RangeField ariaLabel={componentText(locale, 'componentLibrary.preview.valueSlider')} density="compact" min={1} max={128} suffix="px" value={sliderValue} onChange={setSliderValue} /></div>}</div></FormField>
-    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.disabled')}><NumberInput disabled value={32} min={1} max={128} suffix="px" onValueChange={() => undefined} /></FormField>
+    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><NumberInput value={value} min={1} max={64} suffix="px" onValueChange={setValue} /></FormField>
+    <FormField className="component-number-input-row" layout="inline" label={previewText(locale, 'compact')}><NumberInput density="compact" value={value} min={1} max={64} suffix="px" onValueChange={setValue} /></FormField>
+    <div className="component-number-input-row component-number-input-no-label"><NumberInput aria-label={componentText(locale, 'componentLibrary.preview.untitledNumber')} value={untitledValue} min={1} max={64} suffix="px" onValueChange={setUntitledValue} /></div>
+    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.hintNumber')}><NumberInput className="component-number-input-hint-input" aria-label={componentText(locale, 'componentLibrary.preview.hintNumber')} value="" min={1} max={64} placeholder={componentText(locale, 'componentLibrary.preview.enterNumber')} onValueChange={() => undefined} /></FormField>
+    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><div className="brush-size-control component-number-input-slider" onPointerDown={() => setSliderOpen(true)}><NumberInput aria-label={componentText(locale, 'componentLibrary.preview.sliderNumber')} value={sliderValue} min={1} max={64} suffix="px" onValueChange={setSliderValue} onFocus={() => setSliderOpen(true)} />{sliderOpen && <div className="brush-size-popover" role="dialog" aria-label={componentText(locale, 'componentLibrary.preview.adjustNumber')}><RangeField ariaLabel={componentText(locale, 'componentLibrary.preview.valueSlider')} density="compact" min={1} max={64} suffix="px" value={sliderValue} onChange={setSliderValue} /></div>}</div></FormField>
+    <FormField className="component-number-input-row" layout="inline" label={componentText(locale, 'componentLibrary.preview.disabled')}><NumberInput disabled value={32} min={1} max={64} suffix="px" onValueChange={() => undefined} /></FormField>
   </div>
 }
 
@@ -335,7 +335,7 @@ function SelectPreview({ locale }: { locale: AppLocale }) {
 
 function FormFieldPreview({ locale }: { locale: AppLocale }) {
   const [value, setValue] = useState(16)
-  return <div className="component-preview-form"><FormField label={componentText(locale, 'componentLibrary.preview.size')} hint={componentText(locale, 'componentLibrary.preview.hintNumber')}><NumberInput value={value} min={1} max={128} suffix="px" onValueChange={setValue} /></FormField></div>
+  return <div className="component-preview-form"><FormField label={componentText(locale, 'componentLibrary.preview.size')} hint={componentText(locale, 'componentLibrary.preview.hintNumber')}><NumberInput value={value} min={1} max={64} suffix="px" onValueChange={setValue} /></FormField></div>
 }
 
 function SettingsSectionHeaderPreview({ locale }: { locale: AppLocale }) {
@@ -354,7 +354,7 @@ function SettingsSectionPreview({ locale }: { locale: AppLocale }) {
 
 function RangePreview({ locale }: { locale: AppLocale }) {
   const [value, setValue] = useState(64)
-  return <div className="component-preview-stack"><RangeField label={componentText(locale, 'componentLibrary.preview.brushSize')} min={1} max={128} suffix="px" value={value} onChange={setValue} /><RangeField density="compact" label={componentText(locale, 'componentLibrary.preview.brushSize')} min={1} max={128} suffix="px" value={value} onChange={setValue} /><RangeField disabled label={componentText(locale, 'componentLibrary.preview.disabled')} min={1} max={128} suffix="px" value={value} onChange={setValue} /></div>
+  return <div className="component-preview-stack"><RangeField label={componentText(locale, 'componentLibrary.preview.brushSize')} min={1} max={64} suffix="px" value={value} onChange={setValue} /><RangeField density="compact" label={componentText(locale, 'componentLibrary.preview.brushSize')} min={1} max={64} suffix="px" value={value} onChange={setValue} /><RangeField disabled label={componentText(locale, 'componentLibrary.preview.disabled')} min={1} max={64} suffix="px" value={value} onChange={setValue} /></div>
 }
 
 function OutlineStrokeControlsPreview() {
@@ -516,7 +516,7 @@ function TooltipPreview({ locale }: { locale: AppLocale }) {
 }
 
 function ToolOptionsPreview({ locale }: { locale: AppLocale }) {
-  return <div className="component-tool-options-preview"><strong>{componentText(locale, 'componentLibrary.preview.brush')}</strong><button className="quiet-button" type="button">{componentText(locale, 'componentLibrary.preview.back')}</button><FormField className="component-tool-options-field" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><NumberInput density="compact" value={4} min={1} max={128} onValueChange={() => undefined} /></FormField><span className="component-preview-spacer" /><button className="tool-text-button" type="button">{componentText(locale, 'componentLibrary.preview.undo')}</button><button className="tool-text-button" type="button">{componentText(locale, 'componentLibrary.preview.redo')}</button></div>
+  return <div className="component-tool-options-preview"><strong>{componentText(locale, 'componentLibrary.preview.brush')}</strong><button className="quiet-button" type="button">{componentText(locale, 'componentLibrary.preview.back')}</button><FormField className="component-tool-options-field" layout="inline" label={componentText(locale, 'componentLibrary.preview.size')}><NumberInput density="compact" value={4} min={1} max={64} onValueChange={() => undefined} /></FormField><span className="component-preview-spacer" /><button className="tool-text-button" type="button">{componentText(locale, 'componentLibrary.preview.undo')}</button><button className="tool-text-button" type="button">{componentText(locale, 'componentLibrary.preview.redo')}</button></div>
 }
 
 function PressureOptionsPreview({ locale }: { locale: AppLocale }) {

@@ -148,6 +148,9 @@ export function createShapeCanvasInput(ports: Ports) {
           ...canvasCenteredDragFields(session.drawFromCanvasCenter, session.document, shapePoint, inputRef.current.shiftHeld, session.shapeRatio, drawingAnchorPoint(session)),
           ...tilemapEditDragState
         }
+      if (inputRef.current.drag.kind === 'shape') {
+        ports.updateShapePreview(inputRef.current.drag, shapePoint, ports.currentSelectionMarqueeModifierState())
+      }
       draw()
       return true
     }

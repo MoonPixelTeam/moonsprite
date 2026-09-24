@@ -32,6 +32,7 @@ export interface StyledLayerBlockCache {
   palette: Map<number, RgbaColor> | null
   palettePacked: Map<number, number> | null
   contentRevision: number
+  canvasClipKey?: string
   sourceContentBounds: SelectionRect | null
   sourceWidth: number
   sourceHeight: number

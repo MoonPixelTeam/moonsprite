@@ -4,7 +4,7 @@ use std::{
     io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -20,6 +20,25 @@ static LOG_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub(crate) struct DiagnosticState {
     session_file: Mutex<Option<PathBuf>>,
     write_lock: Mutex<()>,
+    browser_recovery_started: AtomicBool,
+}
+
+// ProcessFailedKind, not ProcessKind: utility=4 and GPU=6 in this enum.
+fn requires_browser_restart(kind: i32) -> bool {
+    kind == 0
+}
+
+fn begin_browser_recovery(started: &AtomicBool, kind: i32) -> bool {
+    requires_browser_restart(kind)
+        && started.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
+}
+
+fn failed_process_name(kind: i32) -> &'static str {
+    match kind {
+        0 => "browser", 1 => "renderer", 2 => "renderer-unresponsive",
+        3 => "frame-renderer", 4 => "utility", 5 => "sandbox-helper",
+        6 => "gpu", 7 => "ppapi-plugin", 8 => "ppapi-broker", _ => "unknown",
+    }
 }
 
 // This runs in the host process: renderer-side error handlers cannot report a
@@ -43,11 +62,16 @@ pub(crate) fn install_webview_failure_diagnostics(
                     args.ProcessFailedKind(&mut kind)?;
                     let mut reason = None;
                     let mut exit_code = None;
+                    let mut process_description = None;
                     if let Ok(details) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
                         let mut value = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
                         if details.Reason(&mut value).is_ok() { reason = Some(value.0); }
                         let mut value = 0;
                         if details.ExitCode(&mut value).is_ok() { exit_code = Some(value); }
+                        let mut description = windows_core::PWSTR::null();
+                        if details.ProcessDescription(&mut description).is_ok() && !description.is_null() {
+                            process_description = Some(webview2_com::take_pwstr(description));
+                        }
                     }
                     let app = app.clone();
                     let target = target.clone();
@@ -57,21 +81,46 @@ pub(crate) fn install_webview_failure_diagnostics(
                         let event = serde_json::json!({
                             "version": 1, "kind": "native-process-failure",
                             "name": "webview.process-failed", "timestampMs": timestamp,
-                            "detail": { "processKind": kind.0, "reason": reason, "exitCode": exit_code }
+                            "detail": { "processKind": kind.0, "processName": failed_process_name(kind.0), "processDescription": process_description, "reason": reason, "exitCode": exit_code }
                         });
                         if let Err(error) = append_events_to_file(&app, &app.state::<DiagnosticState>(), vec![event]) {
                             eprintln!("WebView2 crash diagnostic write failed: {error}");
                         }
+                        // A dead browser invalidates every WebView. Reloading the old
+                        // controller cannot recover it; restart the host after consent.
+                        // Keep the unclean session marker and all recovery files intact.
+                        if requires_browser_restart(kind.0) {
+                            if !begin_browser_recovery(&app.state::<DiagnosticState>().browser_recovery_started, kind.0) {
+                                return;
+                            }
+                            let restart = rfd::MessageDialog::new()
+                                .set_title("MoonSprite · 界面服务已退出")
+                                .set_level(rfd::MessageLevel::Error)
+                                .set_description("界面服务意外退出，当前窗口已无法继续使用。诊断信息已记录。\n是否重新启动 MoonSprite，并从已有恢复记录中找回内容？\n选择“否”将退出软件，恢复记录仍会保留。最近一次恢复记录之后的未保存修改可能丢失。")
+                                .set_buttons(rfd::MessageButtons::YesNo)
+                                .show() == rfd::MessageDialogResult::Yes;
+                            let decision = serde_json::json!({
+                                "version": 1, "kind": "native-recovery", "name": "webview.browser-recovery",
+                                "detail": { "action": if restart { "restart" } else { "exit" }, "preserveRecoveries": true }
+                            });
+                            if let Err(error) = append_events_to_file(&app, &app.state::<DiagnosticState>(), vec![decision]) {
+                                eprintln!("WebView2 recovery diagnostic write failed: {error}");
+                            }
+                            if restart { app.request_restart(); } else { app.exit(1); }
+                            return;
+                        }
                         // Do not reload for hangs or GPU subprocess failures:
                         // a live editor may still contain unsaved work.
-                        if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED {
+                        if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+                            && !app.state::<DiagnosticState>().browser_recovery_started.load(Ordering::Acquire) {
                             let reload = rfd::MessageDialog::new()
                                 .set_title("MoonSprite")
                                 .set_level(rfd::MessageLevel::Error)
                                 .set_description("界面进程已退出，诊断信息已记录。是否重新载入界面？\n未保存的内容只能从已有的恢复记录中找回。")
                                 .set_buttons(rfd::MessageButtons::YesNo)
                                 .show();
-                            if reload == rfd::MessageDialogResult::Yes {
+                            if reload == rfd::MessageDialogResult::Yes
+                                && !app.state::<DiagnosticState>().browser_recovery_started.load(Ordering::Acquire) {
                                 if let Err(error) = target.with_webview(|webview| {
                                     let result = webview.controller().CoreWebView2().and_then(|core| core.Reload());
                                     if let Err(error) = result { eprintln!("WebView2 reload failed: {error}"); }
@@ -261,6 +310,27 @@ pub(crate) fn open_diagnostic_logs(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_failure_requires_restart_but_live_subprocess_failures_do_not() {
+        let started = AtomicBool::new(false);
+        for kind in [1, 2, 3, 4, 5, 6, 7, 8, 9, -1] {
+            assert!(!begin_browser_recovery(&started, kind));
+        }
+        assert!(begin_browser_recovery(&started, 0));
+        assert!(!begin_browser_recovery(&started, 0));
+        assert_eq!(failed_process_name(4), "utility");
+        assert_eq!(failed_process_name(6), "gpu");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failure_kind_mapping_matches_the_webview_sdk() {
+        use webview2_com::Microsoft::Web::WebView2::Win32::*;
+        assert!(requires_browser_restart(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED.0));
+        assert_eq!(failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED.0), "utility");
+        assert_eq!(failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED.0), "gpu");
+    }
 
     #[test]
     fn rotates_within_a_session_and_preserves_each_event() -> Result<(), Box<dyn std::error::Error>>

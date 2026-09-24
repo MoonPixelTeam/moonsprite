@@ -160,6 +160,18 @@ export const assignRasterStorage = (target: RasterSurface, source: RasterSurface
   else target.pixels = copyPixels ? source.pixels.slice() as RasterPixels : source.pixels
 }
 
+/** Shallow metadata copy with shared storage and an independent pixels accessor. */
+export const shareRasterSurface = <T extends RasterSurface>(source: T): T => {
+  const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(source)
+  // Object spread reads the lazy pixels getter even when pixels is overwritten.
+  // Never copy its setter closure or stale sparse metadata into another surface.
+  descriptors.pixels = { configurable: true, enumerable: true, writable: true, value: blankPixels(source.format) }
+  delete descriptors.runtimeRaster
+  const target = Object.defineProperties({}, descriptors) as T
+  assignRasterStorage(target, source)
+  return target
+}
+
 const runtimeByteOffset = (runtime: RuntimeRasterTiles, x: number, y: number): number | null => {
   if (x < 0 || y < 0 || x >= runtime.width || y >= runtime.height) return null
   const columns = Math.ceil(runtime.width / runtime.tileSize)

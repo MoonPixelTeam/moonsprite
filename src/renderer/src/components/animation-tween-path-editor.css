@@ -12,5 +12,8 @@
 .tween-path-presets { flex: 0 0 auto; padding: var(--ui-space-3) var(--ui-space-4); border-bottom: 1px solid var(--theme-border); }
 .tween-path-preset-row { display: grid; grid-template-columns: minmax(100px, 1fr) auto minmax(100px, 1fr) auto; align-items: end; gap: var(--ui-space-2); }
 .tween-path-preset-row .text-input { width: 100%; min-width: 0; }
+.tween-path-preset-row > button { height: var(--ui-field-height); min-height: var(--ui-field-height); box-sizing: border-box; }
+.tween-path-preset-row .themed-select { width: 100%; min-width: 0; }
+.tween-path-preset-row .themed-select-trigger { height: var(--ui-field-height); }
 .tween-path-presets .modal-note { margin: var(--ui-space-2) 0 0; }
 @media (max-width: 680px) { .tween-path-preset-row { grid-template-columns: minmax(100px, 1fr) auto; } }

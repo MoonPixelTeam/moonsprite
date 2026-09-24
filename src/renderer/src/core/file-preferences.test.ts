@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 it('uses named editing defaults and preserves custom quick command bars', () => {
   const bars = parseQuickCommandBars(null)
   expect(bars.map(bar => bar.name)).toEqual(['默认快捷指令栏', '编辑快捷指令栏', '快捷指令栏1', '快捷指令栏2'])
-  expect(bars.map(bar => bar.edge)).toEqual(['top', 'bottom', 'none', 'none'])
+  expect(bars.map(bar => bar.edge)).toEqual(['top', 'none', 'none', 'none'])
   expect(bars[1].commands.filter(item => item.enabled).slice(0, 6).map(item => item.id)).toEqual(['undo', 'redo', 'cut', 'copy', 'copyMerged', 'paste'])
   const custom = structuredClone(DEFAULT_QUICK_COMMAND_BARS)
   custom[1].name = '我的编辑'
@@ -67,6 +67,23 @@ const memoryStorage = (): Storage => {
     get length() { return values.size }
   }
 }
+
+it('defaults new save and export locations to the most recently chosen folders', () => {
+  const preferences = loadEditorPreferences(memoryStorage())
+  expect(preferences.saveLocationMode).toBe('recent')
+  expect(preferences.exportLocationMode).toBe('recent')
+})
+
+it('uses the requested cursor and magnifier defaults while preserving saved choices', () => {
+  const storage = memoryStorage()
+  const defaults = loadEditorPreferences(storage)
+  expect(defaults.paintingCursorShape).toBe('dot')
+  expect(defaults.rotationIndicatorPosition).toBe('pointer-left')
+  expect(defaults.eyedropperMagnifierDistortionEnabled).toBe(false)
+  expect(defaults.quickCommandBars[1].edge).toBe('none')
+  saveEditorPreferences({ ...defaults, paintingCursorShape: 'cross', rotationIndicatorPosition: 'view', eyedropperMagnifierDistortionEnabled: true }, storage)
+  expect(loadEditorPreferences(storage)).toMatchObject({ paintingCursorShape: 'cross', rotationIndicatorPosition: 'view', eyedropperMagnifierDistortionEnabled: true })
+})
 
 describe('editor preferences boundary', () => {
   it('shows canvas view scrollbars by default and persists an opt-out', () => {

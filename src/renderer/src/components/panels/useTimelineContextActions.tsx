@@ -12,7 +12,6 @@ import { Tooltip } from '@/components/Tooltip'
 import { AnimationPlaybackMenu } from '@/components/AnimationPlaybackMenu'
 import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { AnimationLoopSection } from '@shared/types-animation'
 import { type AnimationLoopSectionDraft } from '@/components/AnimationLoopSectionDialog'
 import { animationMaskAt, animationMaskSlotAt, resolveAnimationMask } from '@/core/document-model'
 import { animationCelKey, animationGroupMaskAt, ensureAnimationDocument, parseAnimationCelKey } from '@/core/animation'
@@ -236,13 +235,6 @@ export function useTimelineContextActions({
     if (loopSectionEditor.mode === 'edit' && loopSectionEditor.sectionId) store.updateAnimationLoopSection(loopSectionEditor.sectionId, options)
     else store.createAnimationLoopSection(options)
     setLoopSectionEditor(null)
-  }
-
-  const selectLoopSection = (section: AnimationLoopSection): void => {
-    const range = resolveAnimationLoopSectionRange(ensureAnimationDocument(session.document), section)
-    if (!range) return
-    store.selectAnimationFrame(range.startFrameId)
-    if (range.endFrameId !== range.startFrameId) store.selectAnimationFrame(range.endFrameId, 'range')
   }
 
   const openLoopSectionMenu = (event: React.MouseEvent<HTMLElement>, sectionId: string): void => {
@@ -898,7 +890,6 @@ export function useTimelineContextActions({
     openFramePropertiesFor,
     openLoopSectionCreator,
     openLoopSectionPropertiesFor,
-    selectLoopSection,
     openLoopSectionMenu,
     openCelProperties,
     openCelMenu,

@@ -6,6 +6,7 @@ import {
   DocumentCompositeCache
 } from '@/core/document-composite-cache'
 import { rasterContentBounds } from '@/core/document-model'
+import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { selectionPreviewPixelWriter } from './canvas-selection-preview-pixels'
 import {
   selectionTransformPreviewPacked,
@@ -95,6 +96,7 @@ export class CanvasSelectionPreviewRenderer {
   ): boolean {
     const source = selection.source
     const target = selection.target
+    if (hasEnabledLayerStyles(document.layers.find(layer => layer.id === selection.layerId)?.layerStyles)) return false
     if (source.origin !== 'clipboard' || !selection.copy) return false
 
     const layers = this.compositeCache.renderLayersFor(document, contentRevision)
@@ -164,6 +166,7 @@ export class CanvasSelectionPreviewRenderer {
     contentRevision: number,
     selection: SelectionTransformCompositePreview
   ): boolean {
+    if (hasEnabledLayerStyles(document.layers.find(layer => layer.id === selection.layerId)?.layerStyles)) return false
     const x = Math.max(0, Math.floor(fromX))
     const y = Math.max(0, Math.floor(fromY))
     const right = Math.min(document.width, Math.ceil(toX))
@@ -333,8 +336,15 @@ export class CanvasSelectionPreviewRenderer {
       visibleRect
     )
     if (!drawRect) return true
-    const destination = this.blitter.alignedDestination(originX + drawRect.x * view.zoom, originY + drawRect.y * view.zoom, drawRect.width * view.zoom, drawRect.height * view.zoom)
-    context.drawImage(preview.canvas, drawRect.x - preview.x, drawRect.y - preview.y, drawRect.width, drawRect.height, destination.left, destination.top, destination.width, destination.height)
+    // Match committed pixel edges; snapping only the crop stretches its interior rows/columns.
+    const axisAligned = Math.abs(view.rotation) < 0.000001 && !view.mirrored && !view.mirroredVertical
+    if (axisAligned && this.blitter.requiresAlignedPixelBlit(view.zoom) && !context.imageSmoothingEnabled) {
+      this.blitter.drawAlignedPixelRegion(context, preview.canvas, originX, originY, view.zoom,
+        drawRect.x - preview.x, drawRect.y - preview.y, drawRect.x, drawRect.y, drawRect.width, drawRect.height)
+    } else {
+      context.drawImage(preview.canvas, drawRect.x - preview.x, drawRect.y - preview.y, drawRect.width, drawRect.height,
+        originX + drawRect.x * view.zoom, originY + drawRect.y * view.zoom, drawRect.width * view.zoom, drawRect.height * view.zoom)
+    }
     return true
   }
 }

@@ -50,7 +50,7 @@ import { useCanvasColorSampling } from './useCanvasColorSampling'
 import { useCanvasMagicLifecycle } from './useCanvasMagicLifecycle'
 import { useCanvasDeviceRouter } from './useCanvasDeviceRouter'
 import { useCanvasPreferences } from './useCanvasPreferences'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { CanvasInputState } from '@/core/canvas-input'
@@ -77,7 +77,7 @@ import { CanvasViewScrollbars } from './CanvasViewScrollbars'
 import { CanvasReferences, isOutsideReferenceCanvas } from './CanvasReferences'
 
 export function CanvasStage({ session: storedSession }: { session: DocumentSession }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const stageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -123,6 +123,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const lassoPreviewClosed = canvasPreferences.lassoPreviewClosed
   const eyedropperQuickSelect = canvasPreferences.eyedropperQuickSelect
   const keyDisplayEnabled = canvasPreferences.keyDisplayEnabled
+  const keyDisplayFunction = canvasPreferences.keyDisplayFunction
   const keyDisplaySize = canvasPreferences.keyDisplaySize
   const keyDisplayDuration = canvasPreferences.keyDisplayDuration
   const eyedropperSwitchToPencil = canvasPreferences.eyedropperSwitchToPencil
@@ -178,6 +179,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   // configuration that was active when the listener was registered.
   const drawRef = useRef<() => void>(() => {})
   const requestDrawRef = useRef<() => void>(() => {})
+  const refreshPenCursorRef = useRef<() => void>(() => {})
   const selectionOverlayDrawRef = useRef<() => void>(() => {})
   const publishedSelectionSizePreviewRef = useRef<{ width: number; height: number } | null>(null)
   const lineAnchorHistoryRef = useRef<LineAnchorHistory | null>(null)
@@ -198,7 +200,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
     activeViewDrag,
     canvasRef,
     selectionCanvasRef,
-    requestDrawRef
+    requestDrawRef,
+    onZoomChange: () => refreshPenCursorRef.current()
   })
   const [horizontalScrollbarVisible, setHorizontalScrollbarVisible] = useState(false)
   const canvasStatusBottomInset = canvasPreferences.canvasViewScrollbarsEnabled && horizontalScrollbarVisible
@@ -315,11 +318,14 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
 
   const { penCursorRef, adaptiveCursorRef, cursorPreferencesRef, hidePenCursor, refreshPenCursor, syncPenCursor } = useCanvasPenCursor({
     paintingPoint: point => paintingCursorPixelCenter(point, stageSize(), session.document, liveViewRef.current, rotationIndicatorPosition, interfaceScale),
+    get zoom() { return liveViewRef.current.zoom },
     get canvasRef() { return canvasRef },
     get interfaceScale() { return interfaceScale },
     get pressureAdapterRef() { return pressureAdapterRef },
     get stageBounds() { return stageBounds }
   })
+  refreshPenCursorRef.current = refreshPenCursor
+  useLayoutEffect(() => refreshPenCursor(), [session.view.zoom])
 
   const {
     cancelSelectionPreview,
@@ -642,6 +648,8 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
   const { keyDisplayEntries, keyDisplayWheelRef } = useCanvasKeyboardInput({
     get useLocalCursors() { return canvasPreferences.useLocalCursors },
     get keyDisplayEnabled() { return keyDisplayEnabled },
+    get keyDisplayFunction() { return keyDisplayFunction },
+    get locale() { return locale },
     get inputRef() { return inputRef },
     get modifierActive() { return modifierActive },
     get wheelBrushSizePreviewRef() { return wheelBrushSizePreviewRef },
@@ -1523,7 +1531,7 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           >
             {keyDisplayEntries.map((entry) => (
               <span className="canvas-key-display-item" key={entry.id}>
-                {entry.label}
+                <kbd>{entry.label}</kbd>{keyDisplayFunction && entry.functionLabel && <span className="canvas-key-display-function">{locale === 'zh-CN' ? `（${entry.functionLabel}）` : ` (${entry.functionLabel})`}</span>}
               </span>
             ))}
           </div>

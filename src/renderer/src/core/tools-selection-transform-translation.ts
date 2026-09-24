@@ -221,6 +221,7 @@ export function applySelectionTranslationCommit(
 }
 
 export function restoreSelectionTranslationPreview(document: SpriteDocument, preview: SelectionTranslationPreview): void {
+  if (preview.count === 0) return
   const layer = getLayer(document, preview.layerId)
   if (preview.count > 0) markLayerContentChanged(layer)
   for (let offset = 0; offset < preview.count; offset += 1) writeLayerPacked(document, layer, preview.indices[offset], preview.before[offset])
@@ -434,8 +435,8 @@ export function applySelectionTranslationPreview(
 }
 
 export function selectionTranslationPreviewEdit(document: SpriteDocument, preview: SelectionTranslationPreview): PixelEdit | null {
-  const layer = getLayer(document, preview.layerId)
   if (preview.count === 0) return null
+  const layer = getLayer(document, preview.layerId)
   const edit = beginPixelEdit(layer.id)
   preparePixelEdit(document, edit)
   const compact = preview.count >= SELECTION_TRANSLATION_POINT_HISTORY_THRESHOLD

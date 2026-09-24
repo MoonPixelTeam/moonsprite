@@ -256,7 +256,15 @@ export function createCanvasPointerMove(ports: Ports) {
       return
     }
     if (!modifierSizing) { flushCanvasBrushSize(inputRef.current); inputRef.current.modifierBrushSize = null }
-    if (!point) return
+    if (!point) {
+      // Preview coordinates may leave the image; paint gestures still use only `point`.
+      const previewPoint = localContinuousPointAt(event.clientX, event.clientY)
+      if (!previewPoint) return
+      inputRef.current.updatePointer({ point: previewPoint, clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, altKey: event.altKey })
+      if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
+      else if (session.tool === 'pencil' || session.tool === 'eraser' || session.tool === 'line') scheduleDraw()
+      return
+    }
     const drag = inputRef.current.drag
     if (moveQuickSampling({ drag, session, event })) return
     if (!drag) {
@@ -303,6 +311,8 @@ export function createCanvasPointerMove(ports: Ports) {
     )
       return
     if (drag.kind === 'move-layer' && drag.layerId && drag.layerOffset && layerMoveInput.moveLayer({ drag, point, event, state, session })) return
+    // Marquee geometry only needs the latest position, never pressure history.
+    if (drag.kind === 'marquee' && selectionInput.moveMarquee({ drag, event, repeatedMarquee, point })) return
     const pointerSamples = coalescedPointerClientPoints(event.nativeEvent).map((sample) => {
       const adapted = pressureAdapterRef.current.adapt({
         pointerId: event.pointerId,
@@ -347,7 +357,11 @@ export function createCanvasPointerMove(ports: Ports) {
     )
       return
     if (drag.kind === 'tile-draw' && drag.tilemapEdit && drag.tilemapCellIndex !== undefined && tileInput.moveTile({ drag, session, pointerSamples })) return
-    if (drag.kind === 'draw' && drag.edit && strokeInput.moveRaster({ drag, session, previousPoint, event, pointerSamples })) return
+    if (drag.kind === 'draw' && drag.edit && strokeInput.moveRaster({ drag, session, previousPoint, event, pointerSamples })) {
+      if (brushPreviewOverlaySupported(session)) scheduleBrushPreviewOverlay()
+      else if (point.x < 0 || point.y < 0 || point.x >= session.document.width || point.y >= session.document.height) scheduleDraw()
+      return
+    }
     if (drag.kind === 'airbrush' && strokeInput.moveAirbrush({ drag, point, session })) return
     if (drag.kind === 'liquify' && drag.edit && strokeInput.moveLiquify({ drag, event, session })) return
     if (drag.kind === 'shape' && shapeInput.moveShape({ drag, point, session })) return
@@ -355,7 +369,6 @@ export function createCanvasPointerMove(ports: Ports) {
     if (drag.kind === 'polygon-shape' && shapeInput.movePolygonShape({ drag, point, session })) return
     if (drag.kind === 'line-shape' && shapeInput.moveLine({ drag, point, event })) return
     if (drag.kind === 'curve-shape' && shapeInput.moveCurve({ drag, point, session })) return
-    if (drag.kind === 'marquee' && selectionInput.moveMarquee({ drag, event, repeatedMarquee, point })) return
     if (drag.kind === 'create-text-box' && textInput.moveTextCreation({ drag, event, point })) return
     if (drag.kind === 'create-slice' && sliceInput.moveSliceCreation({ drag, event, point, session })) return
     if (drag.kind === 'move-slice' && drag.sliceStart && sliceInput.moveSlice({ drag, event, point, session })) return

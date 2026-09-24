@@ -30,7 +30,7 @@ import { setTimelineActiveFrame, retargetAnimationLoopPlaybackAtFrame } from './
 
 
 
-export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
+export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitSelectionChange' | 'mutateActive' | 'selectAnimationCell' | 'selectAnimationFrame' | 'selectLayer' | 'setActiveAnimationFrame'>): Pick<WorkspaceAnimationCommands, 'setActiveAnimationFrame' | 'stepAnimationFrame' | 'stepLayerSelection' | 'stepAnimationCell' | 'selectAnimationFrame' | 'selectAnimationCell' | 'selectAnimationMaskCell' | 'selectAnimationMaskRow' | 'selectAnimationCelContent' | 'clearAnimationSelection'> {
   return {
     setActiveAnimationFrame(frameId) {
       get().commitFloatingPaste()
@@ -69,7 +69,12 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       const current = timeline.frames.findIndex((frame) => frame.id === timeline.activeFrameId)
       const direction = Math.sign(delta)
       const skipDisabledFrames = loadEditorPreferences().skipDisabledFrames
-      const activeLoopSection = animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
+      // Manual arrow navigation follows the selected playback mode. A tag
+      // constrains navigation to its loop section; all-frames and once use
+      // the complete timeline so navigation can leave a section normally.
+      const activeLoopSection = session.animationPlaybackMode === 'tag'
+        ? animationLoopSectionAtFrame(timeline, timeline.activeFrameId)
+        : null
       const loopSectionFrameId = activeLoopSection ? stepAnimationLoopSectionFrameId(timeline, activeLoopSection, timeline.activeFrameId, direction > 0 ? 1 : -1, skipDisabledFrames) : null
       const frameId = skipDisabledFrames ? (activeLoopSection ? loopSectionFrameId : stepAnimationFrameId(timeline, current < 0 ? '' : timeline.activeFrameId, direction > 0 ? 1 : -1)) : null
       const frame = skipDisabledFrames
@@ -91,7 +96,11 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       const state = get()
       const currentSession = activeSession(state)
       const preserveMaskContext = Boolean(currentSession && ((currentSession.selectedAnimationMaskRowKeys?.length ?? 0) > 0 || (currentSession.selectedAnimationMaskCellKeys?.length ?? 0) > 0 || currentSession.activeLayerMaskId !== null))
-      if (!currentSession || !activateAnimationFrame(currentSession.document, frame.id)) return
+      // Arrow-key navigation is a focus change, not an editing operation.
+      // Avoid materializing every sparse cel on each repeat event; apply only
+      // already existing surfaces so held keys remain responsive in large
+      // multi-layer timelines.
+      if (!currentSession || !activateAnimationFrame(currentSession.document, frame.id, false)) return
       if (!preserveMaskContext) {
         currentSession.activeLayerMaskId = null
         currentSession.layerMaskIsolatedView = false
@@ -119,26 +128,23 @@ export function createAnimationSelectionCommands({ get, set }: WorkspaceCommandC
       for (let next = index + direction; next >= 0 && next < nodes.length; next += direction) {
         const node = nodes[next]
         if (node.kind !== 'layer') continue
-        const hasExplicitLayerSelection = session.layerSelectionExplicit === true || session.selectedGroupId !== null || session.selectedGroupIds.length > 0
-        if (hasExplicitLayerSelection) get().selectLayer(node.id)
-        else {
-          // Active-only navigation is intentionally kept outside mutateActive:
-          // its normalization boundary would repopulate selectedLayerIds from
-          // the active layer and turn implicit focus into an explicit selection.
-          const state = get()
-          const current = activeSession(state)
-          if (!current) return
-          current.document.activeLayerId = node.id
-          current.selectedLayerIds = []
-          current.selectedGroupIds = []
-          current.selectedGroupId = null
-          current.layerSelectionAnchorId = node.id
-          current.activeLayerMaskId = null
-          current.layerMaskIsolatedView = false
-          set({ sessions: [...state.sessions] })
-        }
+        // Arrow navigation is an explicit layer choice. Keep the active row
+        // visibly selected so the user can see which layer changed, even when
+        // the session previously only had its implicit active-layer focus.
+        get().selectLayer(node.id)
         return
       }
+    },
+    stepAnimationCell(axis, delta) {
+      const direction = Math.sign(delta)
+      const session = activeSession(get())
+      if (!session || direction === 0) return
+      if (axis === 'frame') get().stepAnimationFrame(direction)
+      else get().stepLayerSelection(direction)
+      const current = activeSession(get())
+      const timeline = current?.document.animation
+      if (!current || !timeline) return
+      get().selectAnimationCell(animationCelKey(current.document.activeLayerId, timeline.activeFrameId))
     },
     selectAnimationFrame(frameId, mode = 'replace') {
       const playbackSession = activeSession(get())

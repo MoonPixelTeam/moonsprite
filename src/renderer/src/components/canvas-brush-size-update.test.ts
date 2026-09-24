@@ -19,6 +19,7 @@ afterEach(() => {
 
 function fixture() {
   useWorkspace.getState().addSession(createDocument('size gesture', 16, 16, 'rgba'))
+  useWorkspace.getState().setBrushSize(1)
   const session = useWorkspace.getState().sessions[0]
   const input = new CanvasInputState()
   input.modifierBrushSize = { x: 0, y: 0, size: session.brushSize }
@@ -36,7 +37,7 @@ it('coalesces a burst into one store update with the latest size', () => {
   expect(notified).not.toHaveBeenCalled()
   vi.advanceTimersToNextFrame()
   expect(notified).toHaveBeenCalledOnce()
-  expect(session.brushSize).toBe(120)
+  expect(session.brushSize).toBe(64)
   expect(session.contentRevision).toBe(contentRevision)
   expect(session.document.dirty).toBe(dirty)
   unsubscribe()
@@ -49,14 +50,14 @@ it('keeps 120 sizing frames local and commits once before the next stroke', () =
   for (let size = 2; size <= 121; size++) {
     queueCanvasBrushSize(input, session, size, canvas, true)
     vi.advanceTimersToNextFrame()
-    expect(canvasBrushSizePreviewSession(input, session).brushSize).toBe(size)
-    expect(canvasBrushSizePreview(session.document.id, session.tool)).toBe(size)
+    expect(canvasBrushSizePreviewSession(input, session).brushSize).toBe(Math.min(size, 64))
+    expect(canvasBrushSizePreview(session.document.id, session.tool)).toBe(Math.min(size, 64))
     expect(session.brushSize).toBe(initial)
   }
   expect(notified).not.toHaveBeenCalled()
   expect(session.uiRevision).toBe(revision)
   window.dispatchEvent(new Event('pointerdown'))
-  expect(session.brushSize).toBe(121)
+  expect(session.brushSize).toBe(64)
   expect(notified).toHaveBeenCalledOnce()
   expect(canvasBrushSizePreviewSession(input, session)).toBe(session)
   expect(canvasBrushSizePreview(session.document.id, session.tool)).toBeNull()
@@ -130,7 +131,7 @@ it.each(['closed', 'switched', 'tool-changed'])('does not apply stale updates af
 })
 
 it.each([
-  ['pencil', 'setBrushSize', 'brushSize', 128],
+  ['pencil', 'setBrushSize', 'brushSize', 64],
   ['airbrush', 'setAirbrushScatterRadius', 'airbrushScatterRadius', 64],
   ['liquify', 'setLiquifyRadius', 'liquifyRadius', 128]
 ] as const)('does not publish unchanged/clamped %s sizes', (tool, command, property, maximum) => {

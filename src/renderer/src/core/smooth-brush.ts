@@ -251,7 +251,7 @@ export function collectSmoothBrushArea(
   // travel was perpendicular to the line. Keep that shape continuous.
   const maxStep = shape === 'line' ? 1 : Math.max(1, radius / 4)
   const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / maxStep))
-  const stampSize = Math.max(1, Math.min(128, Math.round(size)))
+  const stampSize = Math.max(1, Math.min(64, Math.round(size)))
   const anchor = brushStampAnchor(stampSize, null, angle, shape)
   const spans = solidBrushPreviewRowSpans(stampSize, shape, angle, optimizedRotation)
   const centers = shape === 'line' && stampSize > 1 && Math.abs(angle % 180) >= 0.0001

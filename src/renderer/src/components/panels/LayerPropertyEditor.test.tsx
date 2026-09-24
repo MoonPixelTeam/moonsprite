@@ -2,7 +2,7 @@ import { createRef } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/components/I18nProvider'
-import { createDocument } from '@/core/document-model'
+import { createDocument, createLayer } from '@/core/document-model'
 import { useWorkspace } from '@/store/workspace'
 import { LayerPropertyEditor, type LayerPropertyEditorHandle } from './LayerPropertyEditor'
 
@@ -22,29 +22,51 @@ const setup = () => {
   return { ref, view, target, session, layer: document.layers.find(layer => layer.id === target.id)! }
 }
 
-it('owns preview rollback on unmount without creating undo history', () => {
+it('commits edited properties on unmount', () => {
   const {ref, view, target, session, layer} = setup()
-  const name = layer.name, history = session.history.revision
+  const history = session.history.revision
   act(() => ref.current!.open([target]))
   fireEvent.change(view.baseElement.querySelector<HTMLInputElement>('.layer-properties-body input[type="text"]')!, { target: {value: 'preview name'} })
   expect(layer.name).toBe('preview name')
   view.unmount()
-  expect(layer.name).toBe(name)
-  expect(session.history.revision).toBe(history)
+  expect(layer.name).toBe('preview name')
+  expect(session.history.revision).toBe(history + 1)
 })
 
-it('cancels an old preview before reopening and commits the final edit once', () => {
+it('commits the old target before reopening', () => {
   const {ref, view, target, session, layer} = setup()
-  const name = layer.name, history = session.history.revision
+  const history = session.history.revision
   act(() => ref.current!.open([target]))
   const input = () => view.baseElement.querySelector<HTMLInputElement>('.layer-properties-body input[type="text"]')!
   fireEvent.change(input(), { target: {value: 'discarded'} })
   act(() => ref.current!.open([target]))
-  expect(layer.name).toBe(name)
+  expect(layer.name).toBe('discarded')
   fireEvent.change(input(), { target: {value: 'committed'} })
   act(() => ref.current!.close())
   expect(layer.name).toBe('committed')
-  expect(session.history.revision).toBe(history + 1)
+  expect(session.history.revision).toBe(history + 2)
   act(() => useWorkspace.getState().undo())
-  expect(layer.name).toBe(name)
+  expect(layer.name).toBe('discarded')
+})
+
+it('preserves edits on both layers when selection changes before closing', () => {
+  const { ref, view, target, session, layer } = setup()
+  const second = createLayer('Second', 4, 4, 'rgba')
+  session.document.layers.push(second)
+  act(() => ref.current!.open([target]))
+  const input = () => view.baseElement.querySelector<HTMLInputElement>('.layer-properties-body input[type="text"]')!
+  fireEvent.change(input(), { target: { value: 'First edited' } })
+  act(() => useWorkspace.getState().selectLayer(second.id))
+  expect(layer.name).toBe('First edited')
+  expect(input()).toHaveValue('Second')
+  fireEvent.change(input(), { target: { value: 'Second edited' } })
+  act(() => useWorkspace.getState().selectLayer(layer.id))
+  act(() => ref.current!.close())
+  expect(layer.name).toBe('First edited')
+  expect(second.name).toBe('Second edited')
+  act(() => useWorkspace.getState().undo())
+  expect(second.name).toBe('Second')
+  expect(layer.name).toBe('First edited')
+  act(() => useWorkspace.getState().undo())
+  expect(layer.name).not.toBe('First edited')
 })

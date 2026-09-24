@@ -3,6 +3,7 @@ import type { TweenPathPoint } from '@/core/animation-tween'
 import { loadTweenPathPresets, saveTweenPathPreset, type TweenPathPreset } from '@/core/animation-tween-path-presets'
 import { Button } from './Button'
 import { TextInput } from './TextInput'
+import { ThemedSelect } from './ThemedSelect'
 import { FormField } from './FormField'
 import { useI18n } from './I18nProvider'
 
@@ -26,10 +27,10 @@ export function AnimationTweenPathPresets({ path, busy, onLoad }: { path: readon
           setLibrary({ presets, error: '' }); setSelectedId(presets.at(-1)!.id); setName(''); setMessage(t('timeline.tween.pathSaved'))
         } catch (cause) { failure(cause) }
       }}>{t('timeline.tween.pathSave')}</Button>
-      <FormField label={t('timeline.tween.pathLibrary')}><select className="text-input text-input-regular" aria-label={t('timeline.tween.pathLibrary')} value={selectedId} disabled={busy || !library.presets.length} onChange={(event) => { setSelectedId(event.target.value); setMessage('') }}>
-        <option value="">{t('timeline.tween.pathChoose')}</option>
-        {library.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-      </select></FormField>
+      <FormField label={t('timeline.tween.pathLibrary')}><ThemedSelect label={t('timeline.tween.pathLibrary')} value={selectedId} disabled={busy || !library.presets.length} density="regular" popoverClassName="tween-path-library-popover" preserveAnimationSelection
+        groups={[{ label: t('timeline.tween.pathLibrary'), options: [{ value: '', label: t('timeline.tween.pathChoose') }, ...library.presets.map(preset => ({ value: preset.id, label: preset.name }))] }]}
+        onChange={(value) => { setSelectedId(value); setMessage('') }}
+      /></FormField>
       <Button disabled={busy || !selectedId} onClick={() => {
         try {
           const presets = loadTweenPathPresets(), preset = presets.find((item) => item.id === selectedId)

@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import { COLOR_REPLACEMENT_PREFERENCE_KEY, loadColorReplacementPreferences, saveColorReplacementPreferences, type ColorReplacementPreferences } from './color-replacement-preferences'
 
 const fallback: ColorReplacementPreferences = {
+  rememberLastSelectedColor: true,
   sourceColor: { r: 255, g: 0, b: 0, a: 255 }, replacementColor: { r: 0, g: 255, b: 0, a: 255 }, target: 'layers', previewEnabled: false
 }
 afterEach(() => localStorage.removeItem(COLOR_REPLACEMENT_PREFERENCE_KEY))

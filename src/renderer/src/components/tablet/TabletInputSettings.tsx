@@ -14,11 +14,8 @@ export function TabletInputSettings({ value, onChange }: { value: TabletPreferen
   const [tested, setTested] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   return <div className="tablet-settings touch-controls">
-    <FormField label={t('tablet.layout')} hint={t('tablet.hint')}>
-      <ThemedSelect value={value.touchUi} label={t('tablet.layout')} groups={[{ label: '', options: (['auto', 'on', 'off'] as const).map(mode => ({ value: mode, label: t(`tablet.${mode}`) })) }]} onChange={touchUi => onChange({ ...value, touchUi })} />
-    </FormField>
-    <FormField label={t('tablet.side')}>
-      <ThemedSelect value={value.touchBarSide} label={t('tablet.side')} groups={[{ label: '', options: [{ value: 'left', label: t('tablet.sideLeft') }, { value: 'right', label: t('tablet.sideRight') }] }]} onChange={touchBarSide => onChange({ ...value, touchBarSide })} />
+    <FormField label={t('tablet.assist')} hint={t('tablet.assistHint')}>
+      <ThemedSelect value={value.assistPanel} label={t('tablet.assist')} groups={[{ label: '', options: (['auto', 'on', 'off'] as const).map(mode => ({ value: mode, label: t(`tablet.${mode}`) })) }]} onChange={assistPanel => onChange({ ...value, assistPanel })} />
     </FormField>
     {([['gestureUndoEnabled', 'tablet.gestureUndo'], ['rotationSnapEnabled', 'tablet.rotationSnap'], ['longPressEyedropper', 'tablet.longPress']] as const).map(([key, label]) =>
       <PreferenceToggle key={key} checked={value[key]} label={t(label)} onChange={checked => onChange({ ...value, [key]: checked })} />)}

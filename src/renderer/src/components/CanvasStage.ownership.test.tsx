@@ -9,6 +9,7 @@ import { renderCanvasFrame } from './canvas-render-frame'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
 import { canvasCompositeCacheFor, releaseCanvasCompositeCache } from './canvas-composite-registry'
 import { CANVAS_VIEW_SCROLLBARS_ENABLED_KEY } from '@/core/file-preferences'
+import { canvasToolCursor } from '@/core/canvas-visuals'
 
 // Keep real controllers, geometry, pointer routing and Store commands. Rendering
 // pixels belongs to the renderer tests and requires a browser canvas backend.
@@ -173,6 +174,38 @@ describe('CanvasStage controller composition', () => {
     expect(committed.view.zoom).toBe(zoom)
     expect(committed.revision).toBe(revision)
     expect(committed.contentRevision).toBe(contentRevision)
+  })
+
+  it('updates the stationary dot cursor as zoom crosses 800%', async () => {
+    localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'dot')
+    const initial = addSession('dot zoom')
+    useWorkspace.getState().setViewForDocument(initial.document.id, { zoom: 8 })
+    const session = useWorkspace.getState().sessions[0]
+    const { container } = render(<CanvasStage session={session} />)
+    const canvas = container.querySelector<HTMLCanvasElement>('.stage-canvas')!
+    const dot = container.querySelector<HTMLElement>('.stage-adaptive-cursor')!
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 160, clientY: 120 })
+    await act(async () => {})
+    expect(dot.hidden).toBe(false)
+
+    fireEvent.wheel(canvas, { deltaY: 100, clientX: 160, clientY: 120 })
+    expect(dot.hidden).toBe(true)
+    fireEvent.wheel(canvas, { deltaY: -100, clientX: 160, clientY: 120 })
+    expect(dot.hidden).toBe(false)
+  })
+
+  it('keeps the paint cursor outside the image without painting there', () => {
+    const session = addSession('outside paint cursor')
+    const revision = session.revision
+    const contentRevision = session.contentRevision
+    const { container } = render(<CanvasStage session={session} />)
+    const canvas = container.querySelector<HTMLCanvasElement>('.stage-canvas')!
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 5, clientY: 5 })
+    expect(canvas.style.cursor).toBe(canvasToolCursor('pencil', session.primaryColor))
+    fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, buttons: 1, clientX: 5, clientY: 5 })
+    fireEvent.pointerUp(canvas, { pointerId: 1, button: 0, buttons: 0, clientX: 5, clientY: 5 })
+    expect(useWorkspace.getState().sessions[0].revision).toBe(revision)
+    expect(useWorkspace.getState().sessions[0].contentRevision).toBe(contentRevision)
   })
 
   it('uses the component-library scrollbars for an overflowing zoomed view', () => {

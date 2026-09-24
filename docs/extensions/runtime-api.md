@@ -255,6 +255,8 @@ await moonsprite.windows.close({ windowId: 'helper' })
 
 页面可使用 `window.getBounds/setBounds/getHostBounds/getPointerPosition/setHitRegion/startDrag/postMessage/close`，以及现有存储、资源、主题和命令状态接口。覆盖层坐标统一为主窗口客户区 CSS 像素，宿主左上角为 `(0,0)`，不要混用原生窗口坐标。`getPointerPosition` 返回同坐标系的位置，指针在软件外时返回 null。跨展示方式保存位置建议保存相对比例。
 
+覆盖层的 `getHostBounds()` 还返回 `screenScale`（桌面逻辑像素 / CSS 像素）。自定义拖动使用 `screenX/screenY` 时，先将屏幕位移除以该比例，再更新覆盖层坐标；每次开始拖动重新读取，宿主几何变化时取消旧手势。
+
 `setBounds({x,y,width,height})` 更新位置和尺寸，尺寸范围为 1–8192，位置绝对值不超过 32768。宿主裁剪超出客户区的部分；扩展负责将实际内容约束在边界内。`startDrag()` 必须在指针按下后调用，也可使用指针捕获和 `setBounds` 实现自定义拖动。宿主尺寸变化触发 `moonsprite:window-host-geometry`，位置更新触发 `moonsprite:window-moved`。
 
 初始命中区域为空。页面调用 `setHitRegion(sourceWidth, sourceHeight, spans)` 声明可见及可交互区域，`spans` 是 `{x,y,width}` 的单像素高扫描行，最多 65536 条，源尺寸最多 8192。区域按当前覆盖层尺寸缩放，同时裁剪绘制和鼠标命中；区域外事件直接到下方软件，不进行合成事件转发。气泡、按钮等也需包含在区域内。覆盖层位于编辑内容之上、宿主菜单和弹窗之下，不能自行提升层级或修改全局指针策略。

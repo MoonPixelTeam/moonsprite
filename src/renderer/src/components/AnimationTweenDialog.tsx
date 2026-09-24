@@ -4,6 +4,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import { DEFAULT_ANIMATION_TWEEN, animationTweenCompositePreview, animationTweenPreviewBounds, animationTweenSource, animationTweenSourceFrameId, animationTweenSourceSurface, cropTweenSource, tweenTranslation, tweenSurface, type AnimationTweenOptions, type TweenEasing } from '@/core/animation-tween'
 import { animationLoopSectionAtFrame } from '@/core/animation-loop-sections'
 import { rasterContentBounds } from '@/core/document-model'
+import { shareRasterLayer } from '@/core/layer-preview'
 import { loadEditorPreferences } from '@/core/file-preferences'
 import { SettingsSectionHeader } from './SettingsSectionHeader'
 import { useWorkspace } from '@/store/workspace'
@@ -16,6 +17,8 @@ import { ThemedSelect } from './ThemedSelect'
 import { PreviewPlaybackControls } from './PreviewPlaybackControls'
 import { AnimationTweenPathEditor } from './AnimationTweenPathEditor'
 import { LivePreviewToggle } from './LivePreviewToggle'
+import { TweenEasingDialog } from './TweenEasingDialog'
+import { PreferenceToggle } from './PreferenceToggle'
 import { drawTweenCheckerboard, drawTweenPixelPath, publishAnimationTweenPreview, tweenPreviewCanvas } from './animation-tween-preview'
 
 export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSectionId, onClose }: {
@@ -56,6 +59,7 @@ export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSe
   const [error, setError] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [pathEditorOpen, setPathEditorOpen] = useState(false)
+  const [curveEditorOpen, setCurveEditorOpen] = useState(false)
   const savedPath = useRef<AnimationTweenOptions['path']>(undefined)
   const drawnPath = options.path !== undefined
   const pathReady = !drawnPath || Boolean(options.path?.some((point) => point.x !== 0 || point.y !== 0))
@@ -70,7 +74,11 @@ export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSe
     if (!between && endpointEnabled && !pathEditorOpen && sourcePlan.value) {
       try {
         if (sourcePlan.value.layerIds.length > 1) {
-          const selected = { ...document, layers: document.layers.map((item) => ({ ...item, visible: item.visible && sourcePlan.value!.layers.has(item.id) })) }
+          const selected = { ...document, layers: document.layers.map((item) => {
+            const shared = shareRasterLayer(item)
+            shared.visible = item.visible && sourcePlan.value!.layers.has(item.id)
+            return shared
+          }) }
           const endpointOptions = { ...options, offsetX: 0, offsetY: 0, path: undefined }
           const bounds = animationTweenPreviewBounds(selected, layerId, sourcePlan.value, endpointOptions)
           const endpoint = animationTweenCompositePreview(selected, sourcePlan.value, endpointOptions, options.frameCount, bounds)
@@ -155,7 +163,7 @@ export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSe
   return <>{createPortal(<div className="modal-backdrop dialog-backdrop" role="presentation">
     <ModalShell as="form" data-preserve-animation-selection storageKey="animation-tween" className="layer-modal animation-tween-modal" defaultWidth={520} defaultHeight={820} minWidth={420} minHeight={360} fitContent={false} onSubmit={(event) => {
       event.preventDefault()
-      if (!pathReady || pathEditorOpen) return
+      if (!pathReady || pathEditorOpen || curveEditorOpen) return
       if (useWorkspace.getState().generateAnimationTween(document.id, frameId, layerId, options)) onClose()
       else setError(useWorkspace.getState().message ?? t('timeline.tween.invalid'))
     }}>
@@ -179,13 +187,16 @@ export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSe
           <SettingsSectionHeader title={t(`timeline.tween.${section}`)} />
           <div className="animation-tween-fields">
           {sectionFields.map(([key, min, max, step, suffix]) => <FormField key={key} label={t(between && key === 'frameCount' ? 'timeline.tween.betweenCount' : `timeline.tween.${key}`)}><NumberInput aria-label={t(between && key === 'frameCount' ? 'timeline.tween.betweenCount' : `timeline.tween.${key}`)} disabled={drawnPath && (key === 'offsetX' || key === 'offsetY')} value={options[key]} min={min} max={max} step={step} suffix={suffix} onValueChange={(value) => { setPlaying(false); setOptions((current) => ({ ...current, [key]: Math.round(value) })) }} /></FormField>)}
-          {(section === 'transform' || between) && <FormField label={t('timeline.tween.easing')}><ThemedSelect<TweenEasing> label={t('timeline.tween.easing')} value={options.easing} preserveAnimationSelection groups={[{ label: t('timeline.tween.easing'), options: (['linear', 'ease-in', 'ease-out', 'ease-in-out'] as const).map((value) => ({ value, label: t(`timeline.tween.${value}`) })) }]} onChange={(easing) => { setPlaying(false); setOptions((current) => ({ ...current, easing })) }} /></FormField>}
+          {(section === 'transform' || between) && <FormField label={t('timeline.tween.easing')}><ThemedSelect<TweenEasing> label={t('timeline.tween.easing')} value={options.easing} preserveAnimationSelection groups={[{ label: t('timeline.tween.easing'), options: (['linear', 'ease-in', 'ease-out', 'ease-in-out', 'custom'] as const).map((value) => ({ value, label: t(`timeline.tween.${value}`) })) }]} onChange={(easing) => { setPlaying(false); setOptions((current) => ({ ...current, easing })) }} /></FormField>}
           </div>
         </section>)}
+        <p className="modal-note">{t('timeline.tween.totalDuration', { count: options.frameCount, duration: options.duration, total: (options.frameCount * options.duration / 1000).toFixed(2) })}</p>
+        <button type="button" className="quiet-button" onClick={() => { setPlaying(false); setCurveEditorOpen(true) }}>{t('timeline.tween.curveEdit')}</button>
         {!between && <FormField label={t('timeline.tween.pathMode')}><ThemedSelect<'linear' | 'drawn'> label={t('timeline.tween.pathMode')} value={drawnPath ? 'drawn' : 'linear'} preserveAnimationSelection groups={[{ label: t('timeline.tween.pathMode'), options: [
           { value: 'linear', label: t('timeline.tween.pathLinear') }, { value: 'drawn', label: t('timeline.tween.pathDrawn') }
         ] }]} onChange={(mode) => { setPlaying(false); setProgress(0); if (options.path) savedPath.current = options.path; setOptions((current) => ({ ...current, path: mode === 'drawn' ? savedPath.current ?? [{ x: 0, y: 0 }] : undefined })); if (mode === 'drawn') setPathEditorOpen(true) }} /></FormField>}
         {drawnPath && <button type="button" className="quiet-button" onClick={() => { setPlaying(false); setPathEditorOpen(true) }}>{t('timeline.tween.pathEdit')}</button>}
+        <PreferenceToggle label={t('timeline.tween.autoCropCanvas')} tooltip={t('timeline.tween.autoCropCanvasHint')} checked={options.autoCropCanvas === true} onChange={(autoCropCanvas) => setOptions(current => ({ ...current, autoCropCanvas }))} />
         <section className="timelapse-preview animation-tween-preview" aria-label={t('timelapse.preview')}>
           <div className="timelapse-preview-frame"><canvas ref={canvasRef} width={480} height={270} aria-label={t('timelapse.preview')} /></div>
           <PreviewPlaybackControls playing={playing} frame={Math.round(progress * previewSteps)} frameCount={previewSteps + 1} onToggle={togglePlayback} onSeek={(frame) => { setPlaying(false); setProgress(frame / previewSteps) }} />
@@ -197,6 +208,9 @@ export function AnimationTweenDialog({ document, frameId, layerId, initialLoopSe
       <footer>{!between && <LivePreviewToggle checked={endpointEnabled} onChange={setEndpointEnabled} label={t('timeline.tween.previewEndpoint')} />}<span className="modal-footer-spacer" /><button type="button" className="quiet-button" onClick={onClose}>{t('common.cancel')}</button><button type="submit" className="primary-button" disabled={!sourcePlan.value || !pathReady}>{t('timeline.tween.generate')}</button></footer>
     </ModalShell>
   </div>, globalThis.document.body)}
+  {curveEditorOpen && <TweenEasingDialog easing={options.easing} curve={options.easingCurve} frameCount={options.frameCount}
+    onCancel={() => setCurveEditorOpen(false)}
+    onApply={(easing, easingCurve) => { setOptions(current => ({ ...current, easing, easingCurve })); setCurveEditorOpen(false) }} />}
   {pathEditorOpen && sourcePlan.value && <AnimationTweenPathEditor
     initialPath={options.path ?? [{ x: 0, y: 0 }]} initialAnchor={options.pathAnchor}
     source={animationTweenSourceSurface(document, layerId, animationTweenSourceFrameId(sourcePlan.value, options, 0))}

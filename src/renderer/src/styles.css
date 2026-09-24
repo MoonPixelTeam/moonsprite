@@ -1277,7 +1277,10 @@ body .pressure-trigger[aria-expanded='true']:not(.selected) { color: var(--theme
 /* Reserve the visible scrollbar tracks, including room for the entry animation at XL size. */
 .stage-view-scrollbar-horizontal ~ .canvas-key-display { bottom: calc(var(--stage-view-scrollbar-thickness) + 16px); }
 .stage-view-scrollbar-vertical ~ .canvas-key-display { right: calc(var(--stage-view-scrollbar-thickness) + 12px); }
-.canvas-key-display-item { display: inline-flex; min-width: 28px; min-height: 22px; align-items: center; justify-content: center; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--theme-text-primary) 35%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--theme-raised-surface) 88%, transparent); color: var(--theme-text-primary); box-shadow: 0 2px 5px color-mix(in srgb, var(--theme-shadow-strong) 45%, transparent); font: 600 12px/1.1 var(--font-ui, sans-serif); opacity: 0; transform: translateY(5px); animation: canvas-key-display-life var(--key-display-duration, 1400ms) ease-out forwards; }
+.canvas-key-display-item { display: inline-flex; min-width: 28px; min-height: 22px; align-items: center; justify-content: center; gap: 7px; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--theme-text-primary) 35%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--theme-raised-surface) 88%, transparent); color: var(--theme-text-primary); box-shadow: 0 2px 5px color-mix(in srgb, var(--theme-shadow-strong) 45%, transparent); font: 600 12px/1.1 var(--font-ui, sans-serif); opacity: 0; transform: translateY(5px); animation: canvas-key-display-life var(--key-display-duration, 1400ms) ease-out forwards; }
+.canvas-key-display-item { align-items: baseline; gap: 0; }
+.canvas-key-display-item kbd { font: inherit; }
+.canvas-key-display-function { color: var(--theme-text-secondary); font-weight: 500; }
 @keyframes canvas-key-display-life { 0% { opacity: 0; transform: translateY(5px); } 10% { opacity: 1; transform: translateY(0); } 78% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-3px); } }
 :root[data-ui-motion='off'] .canvas-key-display-item { opacity: 1; transform: none; }
 .stage-brush-preview-overlay { position: absolute; z-index: 2; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
@@ -1499,9 +1502,21 @@ body .extension-panel-command:hover:not(:disabled) { background: var(--theme-sur
 .floating-resize-handle.resize-nw { top: -6px; left: -6px; cursor: var(--cursor-nwse-resize); }
 .floating-resize-handle.resize-se { right: -6px; bottom: -6px; cursor: var(--cursor-nwse-resize); }
 .floating-resize-handle.resize-sw { bottom: -6px; left: -6px; cursor: var(--cursor-nesw-resize); }
-.floating-resize-portal { position: fixed; overflow: visible; pointer-events: none; isolation: isolate; contain: strict; background: transparent !important; box-shadow: none !important; filter: none !important; mix-blend-mode: normal; }
+/* Only the eight edge hit targets need boxes. A dialog-sized transparent
+   paint-contained overlay creates an unnecessary surface above live previews. */
+.floating-resize-portal { display: contents; }
 .floating-resize-portal::before, .floating-resize-portal::after { content: none !important; display: none !important; }
-.floating-resize-portal .floating-resize-handle { pointer-events: auto; }
+.floating-resize-portal .floating-resize-handle { position: fixed; z-index: var(--resize-z-index); right: auto; bottom: auto; pointer-events: auto; }
+.floating-resize-portal :is(.resize-n, .resize-s) { left: calc(var(--resize-left) + 6px); width: max(0px, calc(var(--resize-width) - 12px)); }
+.floating-resize-portal :is(.resize-e, .resize-w) { top: calc(var(--resize-top) + 6px); height: max(0px, calc(var(--resize-height) - 12px)); }
+.floating-resize-portal .resize-n { top: calc(var(--resize-top) - 4px); }
+.floating-resize-portal .resize-s { top: calc(var(--resize-top) + var(--resize-height) - 4px); }
+.floating-resize-portal .resize-w { left: calc(var(--resize-left) - 4px); }
+.floating-resize-portal .resize-e { left: calc(var(--resize-left) + var(--resize-width) - 4px); }
+.floating-resize-portal :is(.resize-nw, .resize-sw) { left: calc(var(--resize-left) - 6px); }
+.floating-resize-portal :is(.resize-ne, .resize-se) { left: calc(var(--resize-left) + var(--resize-width) - 6px); }
+.floating-resize-portal :is(.resize-nw, .resize-ne) { top: calc(var(--resize-top) - 6px); }
+.floating-resize-portal :is(.resize-sw, .resize-se) { top: calc(var(--resize-top) + var(--resize-height) - 6px); }
 .floating-resize-portal .floating-resize-handle { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 .canvas-resize-modal { width: min(340px, calc(100vw - 32px)); }
 .grid-settings-modal { width: min(360px, calc(100vw - 32px)); }
@@ -2733,8 +2748,10 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .modal { position: fixed; top: 50%; left: 50%; z-index: 210; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; overflow: auto; pointer-events: auto; background: var(--theme-dialog-content); border: 1px solid var(--theme-border-muted); box-shadow: none !important; transform: translate(-50%, -50%); isolation: isolate; contain: paint; }
 .modal.resizable-modal { top: auto; left: auto; display: flex; flex-direction: column; overflow: hidden; transform: none; isolation: isolate; contain: paint; }
 .modal.resizable-modal { box-shadow: none !important; filter: none !important; outline: 0; }
-:root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal:not(.resizable-modal):not(.simulated-progress-modal):not(.component-save-progress-card):not(.settings-modal) { animation: ui-modal-enter var(--ui-motion-panel) ease-out both; }
-:root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal.resizable-modal:not(.settings-modal) { animation: ui-resizable-modal-enter var(--ui-motion-panel) ease-out both; }
+/* Release the opacity animation layer after entrance instead of retaining it
+   while sliders and live previews repaint underneath the dialog border. */
+:root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal:not(.resizable-modal):not(.simulated-progress-modal):not(.component-save-progress-card):not(.settings-modal) { animation: ui-modal-enter var(--ui-motion-panel) ease-out backwards; }
+:root:is([data-ui-motion='normal'], [data-ui-motion='full']) .modal.resizable-modal:not(.settings-modal) { animation: ui-resizable-modal-enter var(--ui-motion-panel) ease-out backwards; }
 @keyframes ui-modal-enter {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -3285,11 +3302,11 @@ body.animation-copy-drag, body.animation-copy-drag * { cursor: var(--cursor-copy
 .curve-line-red { stroke: #f07c86; }
 .curve-line-green { stroke: #79d69a; }
 .curve-line-blue { stroke: #79a8ff; }
-.curve-histogram { stroke: none; opacity: .28; pointer-events: none; shape-rendering: crispEdges; }
-.curve-histogram-rgb { fill: #c9d0da; }
-.curve-histogram-red { fill: #f07c86; }
-.curve-histogram-green { fill: #79d69a; }
-.curve-histogram-blue { fill: #79a8ff; }
+.curve-histogram { fill: currentColor; stroke: currentColor; stroke-width: .4; opacity: .46; pointer-events: none; shape-rendering: crispEdges; }
+.curve-histogram-rgb { color: var(--theme-text-primary); }
+.curve-histogram-red { color: #f07c86; }
+.curve-histogram-green { color: #79d69a; }
+.curve-histogram-blue { color: #79a8ff; }
 .curve-point { fill: var(--theme-text-primary); stroke: var(--theme-workspace-background); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .curve-point.selected { fill: var(--curve-color); stroke: var(--theme-text-primary); stroke-width: 1.5; }
 .curve-editor-axis { display: flex; min-height: 18px; align-items: center; justify-content: space-between; color: var(--theme-text-muted); font-size: var(--ui-font-small); }
@@ -3921,7 +3938,6 @@ body :is(
   .layer-animation-edit,
   .symmetry-axis-buttons,
   .recent-file-tools,
-  .curve-channel-tabs,
   .outline-quick-shapes,
   .outline-direction-grid,
   .new-document-presets,
@@ -4562,3 +4578,24 @@ html body .panel-actions-popup {
 .preference-tool-rail-list .pixel-asset-icon { --pixel-icon-active-source: var(--pixel-icon-normal-source, var(--pixel-icon-source)); width: 22px; height: 22px; image-rendering: pixelated; }
 
 .stage-canvas[data-painting-cursor="system"] { cursor: var(--cursor-crosshair) !important; }
+
+/* Keep pen/touch title-bar drags owned by the app instead of browser panning. */
+.panel > header, .modal > header, .modal-preview-frame > header,
+.component-library-header, .color-mode-drag-handle, .quick-command-drag-handle { touch-action: none; }
+
+/* Extension form translations fit their controls; hints retain the full copy. */
+.extension-dialog-form .extension-form-copy{display:inline-flex;min-width:0;max-width:100%;vertical-align:bottom}
+.extension-form-copy-text{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.extension-dialog-form :is(h3,.ui-field-label){min-width:0;max-width:100%}
+.extension-dialog-form :is(.quiet-button,.primary-button){min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.extension-form-row > h3{flex:1;min-width:0}
+.extension-form-slot{min-width:0;flex-wrap:wrap}
+.extension-form-slot > div{flex:1 1 100%;min-width:0}
+.extension-form-slot > button{flex:0 1 auto;max-width:32%}
+.extension-form-choice-content > .extension-form-copy{flex:1}
+.extension-form-choice small{flex:0 1 45%;min-width:0;overflow:hidden}
+.extension-form-column > .extension-form-row > .preference-toggle{min-width:0}
+.extension-dialog-form .preference-toggle > span:first-child{min-width:0;overflow:hidden}
+.extension-form-select-popover{max-width:min(32rem,calc(100vw - 16px))}
+.extension-form-select-popover .themed-select-option-copy{min-width:0;overflow:hidden}
+.extension-form-select-popover .themed-select-option-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

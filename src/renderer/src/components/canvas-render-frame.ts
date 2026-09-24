@@ -233,6 +233,8 @@ export function renderCanvasFrame(frame: CanvasRenderContext): void {
       zoom: frame.resources.liveViewRef.current.zoom, gesture: frame.resources.inputRef.current.drag?.kind ?? 'none',
       viewPreview: frame.resources.zoomPreviewStartRef.current !== null, timingScope: 'cpu-submit',
       width: session.document.width, height: session.document.height,
+      backingWidth: frame.resources.canvasRef.current?.width ?? 0,
+      backingHeight: frame.resources.canvasRef.current?.height ?? 0,
       active: frame.settings.activeDocumentId === session.document.id }
   })
 }
@@ -503,8 +505,10 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     isoGuideTileRef
   })
   checkpoint('background')
-  const displayDocument = !isolatedLayerMask && !timelineHidden &&
+  const showOnionSkin = !isolatedLayerMask && !timelineHidden &&
     (!currentSession.animationPlaying || onionSkin.showDuringPlayback)
+  if (!showOnionSkin) onionSkinCacheRef.current.invalidateAll()
+  const displayDocument = showOnionSkin
     ? onionSkinCacheRef.current.displayDocument(document, currentActiveLayer.id, currentSession.contentRevision, onionSkin)
     : document
   const { paintedMoveLayerFlash } = renderCanvasContent({
@@ -717,6 +721,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     canvasWidth,
     canvasHeight
   })
+  checkpoint('overlays-before-selection')
   renderCanvasSelectionPreview({
     inputRef,
     magicPreviewFlash,
@@ -746,6 +751,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     selectionHitAt,
     drawSelectionCursorCorners
   })
+  checkpoint('overlays-selection-preview')
   renderCanvasToolCursor({
     inputRef,
     sliceTool,
@@ -931,6 +937,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / deviceScale.x, scene.height / deviceScale.y)
     displayContext.restore()
   }
+  checkpoint('overlays-tools-and-guides')
   renderCanvasStatus({
     rect,
     document,

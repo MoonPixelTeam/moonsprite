@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDocument, writeLayerColor } from '@/core/document'
-import { applySelectionTransform, captureSelectionTransform } from '@/core/tools'
+import { compositeRegion, createDocument, writeLayerColor } from '@/core/document'
+import { applySelectionTransform, applySelectionTranslationPreview, restoreSelectionTranslationPreview, captureSelectionTransform } from '@/core/tools'
+import { createDefaultLayerStyles } from '@/core/layer-styles'
 import { CanvasCompositeCache } from './canvas-composite-cache'
 import { useWorkspace } from '@/store/workspace'
 import { notifyCanvasPreview, registerCanvasPreviewListener, type CanvasPreviewSnapshot } from '@/core/canvas-preview-lifecycle'
@@ -100,6 +101,102 @@ beforeEach(() => {
 })
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+describe.each([128 * 1024 * 1024, 1])('selection preview screen alignment (cache budget %s)', budget => {
+  it.each([
+    { zoom: 1.25, scale: { x: 1, y: 1 } },
+    { zoom: 4.125, scale: { x: 1.25, y: 1.5 } },
+    { zoom: 8, scale: { x: 1.25, y: 1.251 } },
+    { zoom: 2, scale: { x: 1, y: 1 } },
+    { zoom: 0.625, scale: { x: 1, y: 1 } }
+  ])('matches applied pixels throughout a move at $zoom with $scale', ({ zoom, scale }) => {
+    const document = createDocument('selection screen alignment', 13, 13, 'rgba')
+    const layer = document.layers[0]
+    for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
+      writeLayerColor(document, layer, y * 13 + x, { r: x * 19, g: y * 19, b: 90, a: 255 })
+    }
+    const selection = { x: 3, y: 3, width: 2, height: 2 }
+    const source = captureSelectionTransform(document, selection, layer)!
+    const cache = new CanvasCompositeCache(budget)
+    const context = makeContext()
+    const options = {
+      view: { zoom, rotation: 0, mirrored: false, mirroredVertical: false },
+      devicePixelRatio: scale, imageSmoothingEnabled: false,
+      originX: 2 / scale.x, originY: 3 / scale.y,
+      canvasWidth: document.width * zoom, canvasHeight: document.height * zoom,
+      fromX: 1, fromY: 2, toX: 12, toY: 12
+    }
+    // Sample physical pixel centres, as Canvas nearest-neighbour blits do.
+    // Inspect the displayed result rather than just the unscaled cache pixels.
+    const screenPixels = () => {
+      const pixels = new Uint32Array(160 * 160)
+      for (const call of context.drawImage.mock.calls) {
+        const [canvas, sx, sy, sw, sh, dx, dy, dw, dh] = call as unknown as [MockOffscreenCanvas, number, number, number, number, number, number, number, number]
+        const words = new Uint32Array(canvas.pixels.buffer)
+        for (let y = Math.max(0, Math.ceil(dy * scale.y - 0.5)); y < Math.min(160, Math.ceil((dy + dh) * scale.y - 0.5)); y++) {
+          for (let x = Math.max(0, Math.ceil(dx * scale.x - 0.5)); x < Math.min(160, Math.ceil((dx + dw) * scale.x - 0.5)); x++) {
+            const sourceX = Math.floor(sx + ((x + 0.5) / scale.x - dx) * sw / dw + 1e-10)
+            const sourceY = Math.floor(sy + ((y + 0.5) / scale.y - dy) * sh / dh + 1e-10)
+            pixels[y * 160 + x] = words[sourceY * canvas.width + sourceX]
+          }
+        }
+      }
+      return pixels
+    }
+    for (const y of [4, 6, 4]) {
+      const target = { ...selection, y }
+      const selectionPreview = { layerId: layer.id, source, target, angle: 0, copy: false }
+      context.drawImage.mockClear()
+      draw(cache, document, context, { ...options, selectionPreview })
+      const moving = screenPixels()
+      context.drawImage.mockClear()
+      draw(cache, document, context, { ...options, selectionPreview })
+      expect(screenPixels()).toEqual(moving) // Pointer released, preview still pending.
+      const edit = applySelectionTranslationPreview(document, source, target, false, null, layer)
+      context.drawImage.mockClear()
+      draw(new CanvasCompositeCache(budget), document, context, options)
+      const applied = screenPixels()
+      restoreSelectionTranslationPreview(document, edit)
+      expect(moving).toEqual(applied)
+    }
+  })
+})
+
+it.each([false, true])('refreshes the full styled selection trail and adjacent contents before apply (group=%s)', grouped => {
+  const document = createDocument('styled selection trail', 24, 12, 'rgba')
+  const layer = document.layers[0]
+  const styles = createDefaultLayerStyles()
+  styles.stroke.enabled = true
+  styles.stroke.size = 2
+  if (grouped) {
+    layer.groupId = 'styled'
+    document.groups.push({ id: 'styled', name: 'Styled', visible: true, locked: false, opacity: 1, blendMode: 'normal', layerStyles: styles })
+  } else layer.layerStyles = styles
+  for (const x of [3, 4, 10, 11, 18]) writeLayerColor(document, layer, 5 * 24 + x, { r: 200, g: 60, b: 90, a: 255 })
+  const original = layer.pixels.slice()
+  const selection = { x: 3, y: 5, width: 2, height: 1 }
+  const source = captureSelectionTransform(document, selection, layer)!
+  const cache = new CanvasCompositeCache(), context = makeContext()
+  expect(cache.supportsSelectionPreview(document, 1, layer.id)).toBe(false)
+  draw(cache, document, context)
+  let previous = selection
+  let preview: ReturnType<typeof applySelectionTranslationPreview> | null = null
+  for (const x of [7, 9, 13, 17, -1, 22]) {
+    const target = { ...selection, x }
+    // Same invalidation sequence as the materialized drag path; the document
+    // revision intentionally stays unchanged while the pointer is moving.
+    for (const rect of [selection, previous, target]) cache.invalidateDocumentRect(rect, document, undefined, [layer.id])
+    preview = applySelectionTranslationPreview(document, source, target, false, preview, layer)
+    draw(cache, document, context)
+    expect(drawnPixels(context)).toEqual(compositeRegion(document, 0, 0, 24, 12))
+    previous = target
+  }
+  if (preview) restoreSelectionTranslationPreview(document, preview)
+  for (const rect of [selection, previous]) cache.invalidateDocumentRect(rect, document, undefined, [layer.id])
+  draw(cache, document, context)
+  expect(drawnPixels(context)).toEqual(compositeRegion(document, 0, 0, 24, 12))
+  expect(layer.pixels).toEqual(original)
+})
 
 /**
  * The canvas keeps a composite surface keyed by the session content revision.

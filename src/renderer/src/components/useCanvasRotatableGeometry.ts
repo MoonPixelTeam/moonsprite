@@ -1,4 +1,5 @@
 import { centerBoundsOnCanvas } from '@/core/canvas-centered-drawing'
+import { viewAlignedShapeAngle, viewAlignedShapeBounds } from '@/core/canvas-input-view-shape'
 import type { SelectionMask, SelectionRect } from '@shared/types-selection'
 import { DEFAULT_GRID_SETTINGS, snapSelectionBoundsToGrid } from '@/core/grid'
 import { type DocumentSession } from '@/store/workspace'
@@ -6,13 +7,11 @@ import { combineSelection, rectSelection, rotatedEllipseSelection, rotatedRectSe
 import {
   CanvasInputState,
   centerMarqueeBoundsAtCreationPoint,
-  centeredShapeBounds,
   createMarqueeResizeStart,
   quickSelectCellDragBounds,
   resizeRotatedMarqueeBounds,
   resolveMarqueeModifierMode,
   selectionRotationAngle,
-  shapeBounds,
   temporaryTransformOffset,
   translatedSelectionRect,
   type CanvasDragState as DragState,
@@ -56,12 +55,10 @@ export function useCanvasRotatableGeometry(ports: Ports) {
     const offset = drag.transformOffset ?? { x: 0, y: 0 }
     const adjustedPoint = { x: point.x - offset.x, y: point.y - offset.y }
     const fixedRatio = drag.kind === 'shape' ? ports.session.shapeRatio : null
-    let bounds =
-      drag.marqueeBounds ??
-      (fromCenter
-        ? centeredShapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
-        : shapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio))
-    let angle = drag.marqueeAngle ?? 0
+    const viewAngle = drag.marqueeViewAngle ??= viewAlignedShapeAngle(ports.liveViewRef.current)
+    const creation = viewAlignedShapeBounds(drag.start, adjustedPoint, viewAngle, fromCenter, modifiers.proportional, fixedRatio)
+    let bounds = drag.marqueeBounds ?? creation.bounds
+    let angle = drag.marqueeAngle ?? viewAngle
     const modifierMode = resolveMarqueeModifierMode(modifiers, drag.marqueeModifierMode)
     const rotating = modifierMode === 'rotate'
 
@@ -91,12 +88,10 @@ export function useCanvasRotatableGeometry(ports: Ports) {
         fixedRatio
       )
       drag.marqueeBounds = bounds
-    } else if (angle === 0) {
-      bounds = fromCenter
-        ? centeredShapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
-        : shapeBounds(drag.start, adjustedPoint, modifiers.proportional, fixedRatio)
+    } else {
+      bounds = creation.bounds
       drag.marqueeBounds = bounds
-      drag.marqueeDirection = { x: adjustedPoint.x < drag.start.x ? -1 : 1, y: adjustedPoint.y < drag.start.y ? -1 : 1 }
+      drag.marqueeDirection = creation.direction
     }
 
     const snappedBounds =

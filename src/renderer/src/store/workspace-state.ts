@@ -392,6 +392,7 @@ export interface WorkspaceAnimationCommands {
   setActiveAnimationFrame(frameId: string): void
   stepAnimationFrame(delta: number): void
   stepLayerSelection(delta: number): void
+  stepAnimationCell(axis: 'layer' | 'frame', delta: number): void
   selectAnimationFrame(frameId: string, mode?: 'replace' | 'toggle' | 'range'): void
   /** replacementKeys supplies an exact visible-row rectangle; group slots are ignored. */
   selectAnimationCell(key: string, mode?: 'replace' | 'toggle' | 'range', replacementKeys?: readonly string[]): void

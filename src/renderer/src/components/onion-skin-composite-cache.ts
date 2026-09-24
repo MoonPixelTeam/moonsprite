@@ -13,7 +13,10 @@ export class OnionSkinCompositeCache {
 
   displayDocument(document: SpriteDocument, layerId: string, revision: number, style: OnionSkinPreferences): SpriteDocument {
     const timeline = document.animation
-    if (!style.enabled || !timeline || timeline.frames.length < 2) return document
+    if (!style.enabled || !timeline || timeline.frames.length < 2) {
+      this.invalidateAll()
+      return document
+    }
     const refs = onionSkinFrameRefs(timeline, style.previousFrames, style.nextFrames,
       animationLoopSectionAtFrame(timeline, timeline.activeFrameId))
     const key = [layerId, revision, timeline.activeFrameId,
@@ -21,6 +24,8 @@ export class OnionSkinCompositeCache {
       style.scope, style.previousOpacity, style.nextOpacity,
       ...[style.previousColor, style.nextColor].flatMap((color) => [color.r, color.g, color.b, color.a])].join(':')
     if (this.cached?.source === document && this.cached.key === key) return this.cached.document
+    // Drop the old raster shell before building its replacement.
+    this.cached = null
     const display = createOnionSkinDisplayDocument(document, refs, style, layerId,
       `${document.id}:onion:${++this.generation}`)
     this.cached = { source: document, key, document: display }

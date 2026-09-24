@@ -161,7 +161,10 @@ export function AnimationTweenPathEditor({ initialPath, initialAnchor, source, p
       keyUp: event => { if (event.key === ' ') spaceHeld.current = false; refreshPointer.current(event.shiftKey, event.ctrlKey || event.metaKey) }
     })
     const blur = () => { spaceHeld.current = false; cancelGesture() }
-    const focus = (event: FocusEvent) => { if (!overlayRef.current?.contains(event.target as Node)) canvasRef.current?.focus({ preventScroll: true }) }
+    const focus = (event: FocusEvent) => {
+      if (event.target instanceof Element && event.target.closest('.tween-path-library-popover')) return
+      if (!overlayRef.current?.contains(event.target as Node)) canvasRef.current?.focus({ preventScroll: true })
+    }
     window.addEventListener('blur', blur)
     document.addEventListener('focusin', focus)
     return () => {
@@ -191,9 +194,7 @@ export function AnimationTweenPathEditor({ initialPath, initialAnchor, source, p
       const anchor = { x: clamp(pathGesture.initial.anchor.x + dx), y: clamp(pathGesture.initial.anchor.y + dy) }
       const shiftX = pathGesture.initial.anchor.x - anchor.x, shiftY = pathGesture.initial.anchor.y - anchor.y
       if (!shiftX && !shiftY) { pathGesture.points = pathGesture.initial; setDraft(pathGesture.initial); return }
-      const path = pathGesture.initial.path.map((point, index) => index === 0 ? { x: 0, y: 0 } : { x: point.x + shiftX, y: point.y + shiftY })
-      if (path.some(point => Math.abs(point.x) > 16384 || Math.abs(point.y) > 16384)) return
-      pathGesture.points = { anchor, path }
+      pathGesture.points = { anchor, path: pathGesture.initial.path }
     } else {
       const point = { x: clamp(documentPoint.x - pathGesture.points.anchor.x), y: clamp(documentPoint.y - pathGesture.points.anchor.y) }
       if (event.shiftKey && !pathGesture.lineBase) pathGesture.lineBase = pathGesture.points

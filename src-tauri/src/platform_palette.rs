@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
-    io::Cursor,
+    io::{Cursor, Read},
     path::{Path, PathBuf},
 };
 
@@ -288,6 +288,7 @@ fn read_palette(path: &Path) -> Result<StoredPalette, String> {
 const IMPORTED_PALETTE_COLUMNS: u32 = 16;
 const MAX_IMPORTED_PALETTE_COLORS: usize = 65_536;
 const MAX_IMPORTED_IMAGE_PIXELS: u64 = 16_777_216;
+const MAX_IMPORTED_PALETTE_BYTES: u64 = 64 * 1024 * 1024;
 const IMPORTABLE_PALETTE_EXTENSIONS: &[&str] = &[
     "json", "gpl", "pal", "act", "aco", "ase", "txt", "hex", "csv", "png", "jpg", "jpeg", "webp",
     "bmp", "gif", "ico",
@@ -762,9 +763,8 @@ fn ordered_image_colors(
     Ok(colors)
 }
 
-fn image_imported_colors(path: &Path) -> Result<Vec<PaletteColor>, String> {
-    let reader = image::ImageReader::open(path)
-        .map_err(|error| format!("无法读取图片色板 {}：{error}", path.display()))?
+fn image_imported_colors(bytes: &[u8], path: &Path) -> Result<Vec<PaletteColor>, String> {
+    let reader = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| format!("无法识别图片色板 {}：{error}", path.display()))?;
     let (width, height) = reader
@@ -776,7 +776,11 @@ fn image_imported_colors(path: &Path) -> Result<Vec<PaletteColor>, String> {
             "图片色板尺寸过大，最多支持 {MAX_IMPORTED_IMAGE_PIXELS} 个像素。"
         ));
     }
-    let image = image::open(path)
+    // Validate and decode the same bounded snapshot, even if the file changes.
+    let image = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| format!("无法识别图片色板 {}：{error}", path.display()))?
+        .decode()
         .map_err(|error| format!("无法解码图片色板 {}：{error}", path.display()))?
         .to_rgba8();
     ordered_image_colors(image.pixels().map(|pixel| pixel.0))
@@ -814,9 +818,29 @@ fn png_imported_colors(bytes: &[u8]) -> Result<Vec<PaletteColor>, String> {
     )
 }
 
+fn read_imported_palette_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("无法读取色板 {}：{error}", path.display()))?;
+    let oversized = || "色板文件过大，最多支持 64 MiB。".to_string();
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("无法读取色板大小 {}：{error}", path.display()))?;
+    if metadata.len() > MAX_IMPORTED_PALETTE_BYTES {
+        return Err(oversized());
+    }
+    // A file can grow after metadata() returns. Bound the actual read as well.
+    let mut bytes = Vec::new();
+    file.take(MAX_IMPORTED_PALETTE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("无法读取色板 {}：{error}", path.display()))?;
+    if bytes.len() as u64 > MAX_IMPORTED_PALETTE_BYTES {
+        return Err(oversized());
+    }
+    Ok(bytes)
+}
+
 fn imported_palette_from_path(path: &Path) -> Result<ImportedPalette, String> {
-    let bytes =
-        fs::read(path).map_err(|error| format!("无法读取色板 {}：{error}", path.display()))?;
+    let bytes = read_imported_palette_bytes(path)?;
     let name = imported_palette_name(path);
     let extension = path
         .extension()
@@ -829,7 +853,7 @@ fn imported_palette_from_path(path: &Path) -> Result<ImportedPalette, String> {
         "aco" => aco_imported_colors(&bytes)?,
         "act" => act_imported_colors(&bytes)?,
         "png" => png_imported_colors(&bytes)?,
-        "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "ico" => image_imported_colors(path)?,
+        "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "ico" => image_imported_colors(&bytes, path)?,
         "gpl" | "txt" | "hex" | "csv" => text_imported_colors(&bytes),
         "pal" => {
             let text_colors = text_imported_colors(&bytes);
@@ -1040,6 +1064,63 @@ pub(crate) fn open_palette_folder() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounds_imported_file_reads_and_preserves_small_files() -> Result<(), Box<dyn std::error::Error>> {
+        use std::io::Write;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "moonsprite-palette-{}-{nonce}.hex",
+            std::process::id()
+        ));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        file.write_all(b"112233\n445566\n")?;
+        let small = read_imported_palette_bytes(&path);
+        file.set_len(MAX_IMPORTED_PALETTE_BYTES + 1)?;
+        drop(file);
+        let oversized = imported_palette_from_path(&path);
+        fs::remove_file(&path)?;
+        assert_eq!(small?, b"112233\n445566\n");
+        assert!(matches!(oversized, Err(error) if error.contains("64 MiB")));
+        Ok(())
+    }
+
+    fn bmp_fixture() -> Result<Vec<u8>, image::ImageError> {
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([17, 34, 51, 255]));
+        image.put_pixel(1, 0, image::Rgba([68, 85, 102, 255]));
+        let mut encoded = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image).write_to(&mut encoded, image::ImageFormat::Bmp)?;
+        Ok(encoded.into_inner())
+    }
+
+    #[test]
+    fn decodes_the_supplied_image_snapshot_without_reopening_its_path(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = bmp_fixture()?;
+        let colors =
+            image_imported_colors(&bytes, Path::new("missing-palette-directory/snapshot.bmp"))?;
+        assert_eq!(colors.len(), 2);
+        assert_eq!((colors[0].r, colors[0].g, colors[0].b), (17, 34, 51));
+        assert_eq!((colors[1].r, colors[1].g, colors[1].b), (68, 85, 102));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_oversized_image_dimensions_before_decoding_pixels(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut bytes = bmp_fixture()?;
+        bytes[18..22].copy_from_slice(&8192i32.to_le_bytes());
+        bytes[22..26].copy_from_slice(&8192i32.to_le_bytes());
+        let result = image_imported_colors(&bytes, Path::new("oversized.bmp"));
+        assert!(matches!(result, Err(error) if error.contains("尺寸过大")));
+        Ok(())
+    }
 
     fn palette_file(schema_version: u32) -> PaletteDiskFile {
         PaletteDiskFile {

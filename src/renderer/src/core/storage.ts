@@ -40,16 +40,14 @@ export function clearStoredValues(storage?: Storage): boolean {
   }
 }
 
-export function clearStoredValuesExcept(preservedKeys: readonly string[], storage?: Storage): boolean {
+export function clearStoredValuesExcept(preservedKeys: readonly string[], storage?: Storage, preservedPrefixes: readonly string[] = []): boolean {
   try {
     const target = getStorage(storage)
     if (!target) return false
-    const preserved = new Map(preservedKeys.flatMap((key) => {
-      const value = target.getItem(key)
-      return value === null ? [] : [[key, value] as const]
-    }))
-    target.clear()
-    for (const [key, value] of preserved) target.setItem(key, value)
+    const keys = Array.from({ length: target.length }, (_, index) => target.key(index)).filter((key): key is string => key !== null)
+    for (const key of keys) {
+      if (!preservedKeys.includes(key) && !preservedPrefixes.some(prefix => key.startsWith(prefix))) target.removeItem(key)
+    }
     return true
   } catch {
     return false

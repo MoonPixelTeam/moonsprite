@@ -16,11 +16,15 @@ it('uses the first tool by default and follows reordering instead of stale memor
   const moved = moveRailEntry([group], 'line.curve', group.id, 0)[0] as RailGroup
   expect(groupPrimaryTool(parseToolRail(serializeToolRail([moved]))[0] as RailGroup, {})).toBe('line.curve')
   expect(groupPrimaryTool({ ...group, tools: [] }, {})).toBeUndefined()
-  expect(DEFAULT_TOOL_RAIL.filter(item => item.kind === 'group').every(item => item.behavior === 'first')).toBe(true)
+  expect(DEFAULT_TOOL_RAIL.filter(item => item.kind === 'group').every(item => item.behavior === 'remember')).toBe(true)
 })
-it('migrates the previous default to first-tool display while v3 retains explicit memory', () => {
-  expect(parseToolRail(JSON.stringify({ version: 2, items: [mixed] }))[0]).toMatchObject({ behavior: 'first', tools: mixed.tools })
+it('preserves remembered tools in both v2 and v3', () => {
+  expect(parseToolRail(JSON.stringify({ version: 2, items: [mixed] }))[0]).toMatchObject({ behavior: 'remember', tools: mixed.tools })
   expect(parseToolRail(serializeToolRail([mixed]))[0]).toEqual(mixed)
+})
+it('migrates old first-tool defaults while preserving fixed choices', () => {
+  expect(parseToolRail(JSON.stringify({ version: 3, items: [{ ...mixed, behavior: 'first' }] }))[0]).toMatchObject({ behavior: 'remember' })
+  expect(parseToolRail(JSON.stringify({ version: 3, items: [{ ...mixed, behavior: 'fixed' }] }))[0]).toMatchObject({ behavior: 'fixed' })
 })
 it('round trips custom layout, order, hidden tools, fixed default and an intentionally empty rail', () => {
   const layout: ToolRailPreference[] = [{ ...mixed, behavior: 'fixed' }, { kind: 'tool', id: 'eraser' }]

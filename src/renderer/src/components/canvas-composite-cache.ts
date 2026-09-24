@@ -12,6 +12,7 @@ import {
   expandLayerStyleInvalidationRect
 } from '@/core/document-composite-plan'
 import { getLayerContentRevision, renderLayerMaskRegion } from '@/core/document-model'
+import { hasEnabledLayerStyles } from '@/core/layer-styles'
 import { applyRelativeLuminance } from '@/core/raster'
 import { rasterStorageIdentity, readSurfaceRgbaRegion } from '@/core/runtime-raster'
 import {
@@ -43,7 +44,6 @@ import {
   DEFAULT_MAX_CACHE_BYTES,
   sharedAnimationLayerSources,
   sharedAnimationCompositeSurface,
-  latestSharedAnimationCompositeSurface,
   rememberSharedAnimationComposite,
   shouldCacheFullCompositeSurface,
   surfaceNamespace
@@ -55,14 +55,14 @@ import { CanvasAlignedViewCache } from './canvas-aligned-view-cache'
 import { compositeRegionWindow } from './canvas-composite-region-window'
 import { CanvasMovePreviewRenderer } from './canvas-composite-cache-move'
 import { CanvasSelectionPreviewRenderer } from './canvas-composite-cache-selection'
-
-
+import { CanvasLayerPropertyPreview } from './canvas-layer-property-preview'
 export { shouldCacheFullCompositeSurface, type SelectionTransformCompositePreview } from './canvas-composite-cache-surfaces'
 
 /** Coordinates invalidation, surface lifetime and drawing; previews own their resources. */
 export class CanvasCompositeCache {
   private readonly blitter = new CanvasCompositeBlitter()
   private readonly alignedViewCache = new CanvasAlignedViewCache()
+  private readonly propertyPreview = new CanvasLayerPropertyPreview()
   private readonly moveRenderer: CanvasMovePreviewRenderer
   private readonly selectionRenderer: CanvasSelectionPreviewRenderer
   constructor(private readonly maxCacheBytes = DEFAULT_MAX_CACHE_BYTES) {
@@ -104,6 +104,7 @@ export class CanvasCompositeCache {
   private liveSurfaceInvalidationPending = false
 
   private liveRasterEdit = false
+  private livePropertyEdit = false
 
   private lastConsumedFullContentRevision = -1
 
@@ -135,10 +136,14 @@ export class CanvasCompositeCache {
   }
 
   supportsSelectionPreview(document: SpriteDocument, contentRevision: number, layerId: string): boolean {
+    // The packed selection overlay edits raw pixels, not the styled proxy.
+    // Materialized previews refresh the source and all neighboring effects.
+    if (hasEnabledLayerStyles(document.layers.find(layer => layer.id === layerId)?.layerStyles)) return false
     return Boolean(this.compositeCache.renderLayersFor(document, contentRevision)?.some((layer) => layer.id === layerId))
   }
 
   invalidateSurface(): void {
+    this.propertyPreview.clear()
     this.alignedViewCache.clear()
     this.blitter.dispose()
     for (const surface of [...this.surfaces.values(), ...this.regions.values()]) this.invalidateSurfaceBitmap(surface)
@@ -287,40 +292,28 @@ export class CanvasCompositeCache {
       : null
   }
 
-  draw({
-    context,
-    document,
-    view,
-    originX,
-    originY,
-    canvasWidth,
-    canvasHeight,
-    fromX,
-    fromY,
-    toX,
-    toY,
-    revision,
-    contentRevision = revision,
-    contentInvalidation = null,
-    frameId,
-    isolatedLayerMask,
-    imageSmoothingEnabled = false,
-    imageSmoothingQuality = 'high',
-    fastViewPreview = false,
-    liveRasterEdit = false,
-    animationPlayback = false,
-    animationConsumerOnly = false,
-    devicePixelRatio = 1,
-    movingLayerIds,
-    selectionPreview
-  }: DrawCompositeOptions): void {
+  draw(options: DrawCompositeOptions): void {
+    const {
+      context, document, view, originX, originY, canvasWidth, canvasHeight,
+      fromX, fromY, toX, toY, revision,
+      contentRevision = revision, contentInvalidation = null,
+      frameId, isolatedLayerMask,
+      imageSmoothingEnabled = false, imageSmoothingQuality = 'high',
+      fastViewPreview = false, liveRasterEdit = false,
+      animationPlayback = false, animationConsumerOnly = false,
+      devicePixelRatio = 1, movingLayerIds, selectionPreview
+    } = options
     this.liveRasterEdit = liveRasterEdit
+    this.livePropertyEdit = contentInvalidation?.propertyPreview === true && contentInvalidation.revision === contentRevision
     // The previous frame has consumed all live source invalidations. Allow
     // the next pointer batch to invalidate once again.
     this.liveSourceCachesInvalidated = false
     this.liveSurfaceInvalidationPending = false
     this.blitter.currentDevicePixelRatio = devicePixelRatio
     this.lastDocument = document
+    if (contentInvalidation?.compositeOnly && contentInvalidation.revision === contentRevision) {
+      this.compositeCache.retainLayerStyleSources(document, contentInvalidation.fromRevision, contentRevision)
+    }
     // A full content invalidation cannot be repaired by dirty-rect uploads:
     // styled layers may have output outside the edited pixels, and an old
     // surface/bitmap can otherwise remain visible until a later move. Clear
@@ -356,7 +349,7 @@ export class CanvasCompositeCache {
     if (liveSourceDirtyHint) liveSourceDirtyHint.used = true
     // The last committed edit remains attached to the session throughout a
     // drag. Its source change has already been consumed before this placement.
-    const committedSourceDirtyRect = this.placementDirtyHints.has(effectiveFrameId) ? undefined : invalidationRegion(contentInvalidation)
+    const committedSourceDirtyRect = this.placementDirtyHints.has(effectiveFrameId) || contentInvalidation?.compositeOnly ? undefined : invalidationRegion(contentInvalidation)
     const sourceDirtyRect = liveSourceDirtyRect && committedSourceDirtyRect ? unionRect(liveSourceDirtyRect, committedSourceDirtyRect) : (liveSourceDirtyRect ?? committedSourceDirtyRect)
 
     const boundary = deviceAlignedCanvasRect(originX, originY, canvasWidth, canvasHeight, devicePixelRatio)
@@ -386,6 +379,8 @@ export class CanvasCompositeCache {
       return
     }
     this.selectionRenderer.clearSelection()
+    if (sourceDirtyRect) this.propertyPreview.clear()
+    else if (this.propertyPreview.draw({ ...options, contentRevision })) { context.restore(); return }
     const initialCompositeIsPending = contentRevision === 0 && !isolatedLayerMask && !view.relativeLuminance && initialDocumentCompositePending(document, effectiveFrameId)
     if (isolatedLayerMask || (shouldCacheFullCompositeSurface(document.width, document.height, this.maxCacheBytes) && !initialCompositeIsPending))
       this.drawSurface(
@@ -438,7 +433,7 @@ export class CanvasCompositeCache {
 /** Build a GPU-backed snapshot once; panning can then sample it without
    * repeatedly uploading a large CPU-backed OffscreenCanvas texture. */
   private scheduleSurfaceBitmap(surface: CompositeSurface): void {
-    if (surface.transient || this.liveRasterEdit) return
+    if (surface.transient || this.liveRasterEdit || this.livePropertyEdit) return
     if (surface.canvas.width * surface.canvas.height < 256 * 256) return
     if (surface.bitmap || surface.bitmapPending || typeof createImageBitmap !== 'function') return
     const revision = surface.revision
@@ -617,7 +612,7 @@ export class CanvasCompositeCache {
     if (surface && surface.revision !== contentRevision) {
       if (canApplyInvalidation && invalidation?.kind === 'region') {
         if (!livePreviewAlreadyPainted && (isolatedLayerMask || (invalidation.frameId ?? frameId) === frameId) && invalidation.rect) {
-          if (isolatedLayerMask) this.invalidateRect(invalidation.rect, document.width, document.height, frameId)
+          if (isolatedLayerMask || invalidation.compositeOnly) this.invalidateRect(invalidation.rect, document.width, document.height, frameId)
           else this.invalidateDocumentRect(invalidation.rect, document, frameId)
         }
       } else {
@@ -629,8 +624,12 @@ export class CanvasCompositeCache {
     if (!surface || surface.canvas.width !== document.width || surface.canvas.height !== document.height) {
       const initialSurface = !isolatedLayerMask && !view.relativeLuminance && contentRevision === 0 && !this.invalidatedInitialDocuments.has(document) ? initialDocumentCompositeSurface(document, frameId) : null
       const exactSharedAnimationSurface = !initialSurface && animationFastPath && !isolatedLayerMask && !view.relativeLuminance ? sharedAnimationCompositeSurface(document, frameId, contentRevision) : null
-      const sharedAnimationSurface = exactSharedAnimationSurface ?? (animationConsumerOnly ? latestSharedAnimationCompositeSurface(document, contentRevision) : null)
-      const transientFallback = Boolean(!exactSharedAnimationSurface && sharedAnimationSurface)
+      // A preview consumer may only reuse the exact requested frame. Falling
+      // back to the newest completed frame makes a busy editor show a
+      // different frame than the playhead, which is visible as frame skipping
+      // when a project has more frames than the shared cache can retain.
+      const sharedAnimationSurface = exactSharedAnimationSurface
+      const transientFallback = false
       const animationSurface =
         !initialSurface && !sharedAnimationSurface && animationFastPath && !animationConsumerOnly && !isolatedLayerMask && !view.relativeLuminance
           ? this.createAnimationCompositeCanvas(document, contentRevision, 0, 0, document.width, document.height)
@@ -688,7 +687,8 @@ export class CanvasCompositeCache {
           const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
           const pixels = isolatedLayerMask
             ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
-            : compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, rect, sourceDirtyRect)
+            : this.compositeCache.propertyRegion(document, rect, contentRevision, sourceDirtyRect ? null : invalidation)
+              ?? compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, invalidation?.compositeOnly ? undefined : rect, sourceDirtyRect)
           if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
           recordCanvasStage('canvas.recompose', compositeStartedAt, {
             pixels: rect.width * rect.height
@@ -783,7 +783,7 @@ export class CanvasCompositeCache {
         if (canApplyInvalidation && invalidationRect) {
           if (!livePreviewAlreadyPainted) {
             const pending = this.dirtyRects.get(frameId) ?? []
-            pending.push(isolatedLayerMask ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
+            pending.push(isolatedLayerMask || invalidation?.compositeOnly ? invalidationRect : expandLayerStyleInvalidationRect(document, invalidationRect))
             this.dirtyRects.set(frameId, pending.length > 32 ? boundedDirtyRects(pending, 32, patchMergeLimit) : pending)
           }
         } else {
@@ -807,7 +807,8 @@ export class CanvasCompositeCache {
           const compositeStartedAt = window.__moonSpriteCanvasProbe?.recordOperationStage ? performance.now() : 0
           const pixels = isolatedLayerMask
             ? renderLayerMaskRegion(isolatedLayerMask, rect.x, rect.y, rect.width, rect.height)
-            : compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, rect, sourceDirtyRect)
+            : this.compositeCache.propertyRegion(document, rect, contentRevision, sourceDirtyRect ? null : invalidation)
+              ?? compositeRegion(document, rect.x, rect.y, rect.width, rect.height, this.compositeCache, contentRevision, invalidation?.compositeOnly ? undefined : rect, sourceDirtyRect)
           if (!isolatedLayerMask && view.relativeLuminance) applyRelativeLuminance(pixels)
           recordCanvasStage('canvas.recompose', compositeStartedAt, {
             pixels: rect.width * rect.height
