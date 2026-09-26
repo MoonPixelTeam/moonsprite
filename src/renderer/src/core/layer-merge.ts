@@ -5,6 +5,7 @@ import { animationLayersAtFrame, ensureAnimationDocument, refreshActiveAnimation
 import { compositeDocument } from './document-composite'
 import { createId, createLayer, getDescendantGroupIds, isLayerEffectivelyLocked, paletteColorIdForCanvas } from './document-model'
 import { applyRelativeLuminance } from './raster'
+import { replaceLayerPanelGroupWithLayer } from './layer-operations'
 import { translateCurrent as tr } from './localization'
 
 export interface LayerMergeSuccess {
@@ -153,12 +154,8 @@ export function mergeLayerGroup(document: SpriteDocument, groupId: string): Laye
     activeLayerId: layers.at(-1)!.id
   }))
   const merged = mergedFrames.find((frame) => frame.frameId === document.animation!.activeFrameId)!.layer
-  const indexes = layers.map((layer) => document.layers.indexOf(layer))
-  const insertionIndex = Math.min(...indexes)
   const removedLayerIds = layers.map((layer) => layer.id)
-  const removedLayerSet = new Set(removedLayerIds)
-  document.layers = document.layers.filter((layer) => !removedLayerSet.has(layer.id))
-  document.layers.splice(insertionIndex, 0, merged)
+  if (!replaceLayerPanelGroupWithLayer(document, groupId, merged)) return { ok: false, reason: tr('core.layerMerge.groupMissing') }
   document.groups = document.groups.filter((candidate) => !groupIds.has(candidate.id))
   document.activeLayerId = merged.id
   installMergedFrames(document, merged, mergedFrames, removedLayerIds)

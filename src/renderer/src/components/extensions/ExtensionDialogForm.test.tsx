@@ -54,7 +54,7 @@ it('renders extension-defined controls and returns values with a matching reques
  fireEvent.click(view.getByText('保存'))
  expect(messages[0]).toMatchObject({type:'custom-save',values:{name:'Test'}})
  await act(async()=>mock.receive({nodes}))
- expect((view.getByText('保存') as HTMLButtonElement).disabled).toBe(true)
+ expect((view.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(true)
  await act(async()=>mock.receive({nodes,result:{requestId:messages[0].requestId}}))
  fireEvent.click(view.getByLabelText('显示'))
  expect(messages[1]).toMatchObject({type:'custom-toggle',value:true})

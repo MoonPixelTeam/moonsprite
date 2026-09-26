@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportenUS } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const enUSMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Temporary brush: drag to select an area, release to use; Esc to cancel",
+  "preferences.paintingCursor.cross": "Simple cross",
+  "preferences.paintingCursor.pixelCross": "Pixel cross",
+  "preferences.paintingCursorAlignToPixel": "Align pointer to pixels",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -99,7 +106,7 @@ export const enUSMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Simple dot",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -190,6 +197,8 @@ export const enUSMessages = {
   'preferences.diagnostics.memory': "Collect only (memory)",
   'preferences.diagnostics.full': "Full (collect and save)",
   'preferences.diagnostics.hint': "Saved immediately; no restart needed. Collect only retains the latest 200 events in memory without automatic persistence. Full mode writes local log files. Off keeps existing log files.",
+  'preferences.diagnostics.lag': "Lag capture",
+  'preferences.diagnostics.lagHint': "Takes effect immediately. Enable before reproducing. Significant delays automatically preserve surrounding evidence; no manual marker is needed. Native resource logging continues independently of the UI. Afterwards open diagnostic logs from Help and restore your previous mode. Earlier activity and canvas pixels are not collected.",
   'preferences.diagnostics.saveFailed': "Could not save the diagnostic setting. Check local storage and try again.",
   'layers.splitLayerStyles': 'Split Layer Styles',
   'layers.splitStyleShadow': 'Drop Shadow',
@@ -957,7 +966,7 @@ export const enUSMessages = {
   'preferences.brushPreview.full': 'Full Preview',
   'preferences.brushPreview.fullEdge': 'Full Preview with Edge',
   'preferences.drawingBrushPreview': 'Show Brush Edge While Drawing',
-  'preferences.selectionCrosshair': 'Show Crosshair While Selecting',
+  'preferences.selectionCrosshair': 'Show Pointer While Selecting',
   'preferences.selectionPreviewColor': 'Selection Preview Color',
   'preferences.selectionPreviewColorGroup': 'Selection Preview Color',
   'preferences.selectionPreviewColor.auto': 'Default (Automatic Contrast)',
@@ -1785,6 +1794,8 @@ export const enUSMessages = {
   'timeline.copyCel': 'Copy Cel',
   'timeline.connectCel': 'Link Cels',
   'timeline.disconnectCel': 'Unlink Cels',
+  'timeline.reverseCels': 'Reverse Cel Order',
+  'timeline.reverseFrames': 'Reverse Frame Order',
   'timeline.pasteCel': 'Paste Cel',
   'timeline.copyMask': 'Copy Layer Mask Cel',
   'timeline.pasteMask': 'Paste Layer Mask Cel',
@@ -2069,7 +2080,7 @@ export const enUSMessages = {
   'layers.layerStyleIndicatorDescription': 'This item retains non-destructive layer styles. Click to open the Layer Styles panel, or Alt-drag to copy them to another layer.',
   'layers.openLayerStyle': 'Open Layer Styles',
   'layers.properties': 'Properties',
-  'layers.textLayerHint': 'Editable text layer. Double-click to change its content and style.',
+  'layers.textLayerHint': 'Editable text layer. Click the right icon to edit text; double-click the layer to open properties.',
   'layers.rasterizeLayer': 'Rasterize Layer',
   'layers.rasterizeLayerDescription': 'Converts editable text, Tilemap cells, or layer styles into regular pixel content. You can paint the result directly, but the original source settings can no longer be edited separately.',
   'layers.settings': 'Layer Settings',

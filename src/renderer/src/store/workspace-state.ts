@@ -148,6 +148,9 @@ export interface WorkspaceToolCommands {
   setBrushPressure(settings: Partial<BrushPressureSettings>): void
   setBrushImage(brush: ImageBrush | null): void
   setTemporaryBrush(brush: ImageBrush): void
+  beginTemporaryBrushCapture(): void
+  finishTemporaryBrushCapture(selection: SelectionMask): void
+  exitPatternBrush(): void
   deleteProjectBrush(id: string): void
   createBrushFromSelection(): Promise<void>
   createBackgroundPresetFromSelection(): Promise<void>
@@ -332,6 +335,7 @@ export interface WorkspaceFreeTileCommands {
   previewFreeTileInstancePropertiesTransaction(id: string, changes: FreeTileInstancePropertyChanges): boolean
   commitFreeTileInstancePropertiesTransaction(id: string, changes: FreeTileInstancePropertyChanges): boolean
   cancelFreeTileInstancePropertiesTransaction(id: string): boolean
+  reorderFreeTileSource(sourceId: string, targetId: string): boolean
   reorderFreeTileInstance(instanceId: string, targetInstanceId: string, position: 'before' | 'after'): boolean
   setFreeTileSourceProperties(sourceId: string, changes: FreeTileSourcePropertyChanges): boolean
   beginFreeTileSourcePropertiesTransaction(sourceId: string): string | null
@@ -404,6 +408,8 @@ export interface WorkspaceAnimationCommands {
   setAnimationCelProperties(layerId: string, frameId: string, properties: { opacity: number; zIndex: number }, targetKeys?: readonly string[]): void
   connectSelectedAnimationCels(): void
   disconnectSelectedAnimationCels(): void
+  reverseSelectedAnimationCels(): void
+  reverseSelectedAnimationFrames(): void
   copySelectedAnimationCels(): void
   pasteAnimationCels(): void
   moveSelectedAnimationCels(layerId: string, frameId: string, sourceAnchorKey: string, copy?: boolean, groupCellKeys?: readonly string[]): void
@@ -439,7 +445,9 @@ export interface WorkspaceAnimationCommands {
 }
 
 export interface WorkspaceLayerCommands {
-  addLayer(): Promise<void>
+  previewLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
+  setLayerAdjustment(layerId: string, value: import('@shared/types-layer').LayerAdjustment | undefined): void
+  addLayer(gradientMap?: import('@shared/types-gradient-map').GradientMapSettings): Promise<void>
   applyFilterPreset(presetId: FilterPresetId): Promise<void>
   applyLcdScreenFilter(options?: Partial<LcdScreenFilterOptions>): Promise<void>
   createTilemapLayer(options: TilemapLayerOptions): Promise<void>

@@ -1,3 +1,4 @@
+import { compositeGradientMapRegion } from './document-composite-gradient-map'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { RgbaColor } from '@shared/types-color'
 import type { SelectionRect } from '@shared/types-selection'
@@ -19,7 +20,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
     const layer = document.layers[0]
     const activeMasks = activeCelMasksByLayer(document)
     if (!layer.visible || layer.opacity <= 0) return output
-    if (!hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'rgba') {
+    if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'rgba') {
       if (lazyRuntimeRasterForSurface(layer)) {
         return readSurfaceRgbaRegion(layer, startX - layer.offsetX, startY - layer.offsetY, width, height)
       }
@@ -35,7 +36,7 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
       }
       return output
     }
-    if (!hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
+    if (layer.kind !== 'adjustment' && !hasEnabledLayerStyles(layer.layerStyles) && !activeMasks.has(layer.id) && layer.opacity === 1 && layer.format === 'indexed') {
       const palette = new Map(document.palette.map((entry) => [entry.id, entry.color]))
       for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
         const index = layerIndexAt(layer, startX + x, startY + y)
@@ -53,6 +54,8 @@ export function compositeRegion(document: SpriteDocument, startX: number, startY
   if (normalLayers) return compositeNormalLayers(document, normalLayers, startX, startY, width, height, cache, revision, undefined, dirtyRect)
   const opacityGroupStack = cache ? cache.opacityGroupStackFor(document, revision) : opacityGroupCompositeStack(document)
   if (opacityGroupStack) return compositeOpacityGroupStack(document, opacityGroupStack, startX, startY, width, height, cache, revision, undefined, dirtyRect)
+  const gradientMapped = compositeGradientMapRegion(document, startX, startY, width, height, cache, revision, sourceDirtyRect ?? dirtyRect, output)
+  if (gradientMapped) return gradientMapped
   const sample = compileCompositePointSampler(document, undefined, cache, revision, sourceDirtyRect)
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
     writeRgbaPixel(output, y * width + x, sample(startX + x, startY + y, undefined))

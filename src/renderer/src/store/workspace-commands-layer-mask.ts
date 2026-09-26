@@ -154,7 +154,7 @@ export function createLayerMaskCommands({ get, set }: WorkspaceCommandContext<'c
       if (isLayerEffectivelyLocked(current.document, currentLayer)) { set({ message: tr('workspace.layerMask.locked') }); return }
       const existingMask = directAnimationMaskAt(current.document, targetLayerId, targetFrameId)
       if (existingMask) { get().selectAnimationMaskCell(animationCelKey(targetLayerId, targetFrameId)); return }
-      if (!animationCelHasContent(currentSourceCel ?? null, current.document.palette)) { set({ message: tr('workspace.layerMask.emptyCel') }); return }
+      if (currentLayer.kind !== 'adjustment' && !animationCelHasContent(currentSourceCel ?? null, current.document.palette)) { set({ message: tr('workspace.layerMask.emptyCel') }); return }
       get().mutateActive((session) => {
         const timeline = ensureAnimationDocument(session.document)
         const ensured = ensureAnimationCelSlot(session.document, targetLayerId, targetFrameId)
@@ -163,7 +163,7 @@ export function createLayerMaskCommands({ get, set }: WorkspaceCommandContext<'c
         if (!cel || !sourceCel) return
         const currentMask = directAnimationMaskAt(session.document, targetLayerId, targetFrameId)
         if (currentMask) { activateTimelineMask(session, 'layer', targetLayerId, targetFrameId, currentMask.id); return }
-        if (!animationCelHasContent(sourceCel, session.document.palette)) return
+        if (currentLayer.kind !== 'adjustment' && !animationCelHasContent(sourceCel, session.document.palette)) return
         const mask = createAttachedLayerMask(targetLayerId, session.document.width, session.document.height)
         setAnimationMaskSlot(session.document, targetLayerId, targetFrameId, mask)
         activateAnimationFrame(session.document, targetFrameId)
@@ -193,22 +193,23 @@ export function createLayerMaskCommands({ get, set }: WorkspaceCommandContext<'c
       if (!layer) return
       if (isLayerEffectivelyLocked(current.document, layer)) { set({ message: tr('workspace.layerMask.locked') }); return }
       const currentTimeline = ensureAnimationDocument(current.document)
-      const currentTargets = currentTimeline.cels.filter((cel) => cel.layerId === layerId && animationCelHasContent(resolveAnimationCel(currentTimeline, cel) ?? cel, current.document.palette))
+      const currentTargets = layer.kind === 'adjustment' ? currentTimeline.frames.map(frame => ({ layerId, frameId: frame.id })) : currentTimeline.cels.filter((cel) => cel.layerId === layerId && animationCelHasContent(resolveAnimationCel(currentTimeline, cel) ?? cel, current.document.palette))
       if (currentTargets.length === 0) { set({ message: tr('workspace.layerMask.emptyCel') }); return }
       if (!currentTargets.some((cel) => !directAnimationMaskAt(current.document, layerId, cel.frameId))) return
       get().mutateActive((session) => {
         const timeline = ensureAnimationDocument(session.document)
-        const created = timeline.cels.flatMap((cel) => {
+        const created = currentTargets.flatMap((target) => {
+          const cel = timeline.cels.find(candidate => candidate.layerId === target.layerId && candidate.frameId === target.frameId) ?? target
           if (cel.layerId !== layerId || directAnimationMaskAt(session.document, layerId, cel.frameId)) return []
-          const source = resolveAnimationCel(timeline, cel) ?? cel
-          if (!animationCelHasContent(source, session.document.palette)) return []
+          const sourceCel = timeline.cels.find(candidate => candidate.layerId === cel.layerId && candidate.frameId === cel.frameId)
+          if (layer.kind !== 'adjustment' && !animationCelHasContent(sourceCel ? resolveAnimationCel(timeline, sourceCel) ?? sourceCel : null, session.document.palette)) return []
           const mask = createAttachedLayerMask(layerId, session.document.width, session.document.height)
           setAnimationMaskSlot(session.document, layerId, cel.frameId, mask)
           return [{ frameId: cel.frameId, mask }]
         })
         if (created.length === 0) return
         const activeCel = timeline.cels.find((cel) => cel.layerId === layerId && cel.frameId === timeline.activeFrameId)
-        const activeMask = activeCel ? directAnimationMaskAt(session.document, layerId, timeline.activeFrameId) : null
+        const activeMask = (activeCel || layer.kind === 'adjustment') ? directAnimationMaskAt(session.document, layerId, timeline.activeFrameId) : null
         applyLayerRowSelection(session, [layerId], [], { kind: 'layer', id: layerId })
         session.activeLayerMaskId = activeMask?.id ?? null
         if (activeMask) activateTimelineMask(session, 'layer', layerId, timeline.activeFrameId, activeMask.id)

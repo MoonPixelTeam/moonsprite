@@ -1,3 +1,5 @@
+import { rememberPaintedDrag } from './canvas-recent-colors'
+import { drawBrushCaptureSurround } from './canvas-brush-capture-overlay'
 import { createCanvasBackground } from './canvas-render-background'
 import { renderCanvasContent } from './canvas-render-content'
 import { createCanvasPreviewPixels } from './canvas-render-preview-pixels'
@@ -387,6 +389,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     (currentSession.tool === 'selection'
       ? currentSelectionLayersEditable
       : currentHasRasterSelection &&
+        (Boolean(currentLayerMask) || currentActiveLayer.kind !== 'adjustment') &&
         isLayerEffectivelyVisible(currentSession.document, currentActiveLayer) &&
         !isLayerEffectivelyLocked(currentSession.document, currentActiveLayer))
   checkpoint('session-prepare')
@@ -411,6 +414,7 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
   const document = currentSession.document
   const view = liveViewRef.current
   const activeDrag = inputRef.current.drag
+  rememberPaintedDrag(activeDrag, currentSession.tool)
   const selectionPreviewOwner = deferredSelectionPreviewOwner(activeDrag, Boolean(currentSession.pendingPaste?.previewDeferred))
   const smoothPixelSampling = pixelSamplingMode(view.zoom) === 'smooth'
   // View gestures reuse cached pixels and use a low-cost rotation filter.
@@ -936,6 +940,9 @@ function renderFrame(frame: CanvasRenderContext, checkpoint: (stage: string) => 
     // nominal scalar DPR here makes the rotated scene resample unevenly.
     displayContext.drawImage(scene, 0, 0, scene.width, scene.height, sceneLeft, sceneTop, scene.width / deviceScale.x, scene.height / deviceScale.y)
     displayContext.restore()
+  }
+  if (currentSession.temporaryBrushCapture) {
+    drawBrushCaptureSurround(displayContext, rect, baseCanvasBoundary, () => applyViewRotation(displayContext, rect.width, rect.height, view))
   }
   checkpoint('overlays-tools-and-guides')
   renderCanvasStatus({

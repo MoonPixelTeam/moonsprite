@@ -100,6 +100,7 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
   return [
     session.document.id,
     session.tool,
+    session.temporaryBrushCapture ? 1 : 0,
     session.brushSize,
     session.brushOpacity,
     session.brushShape,
@@ -171,6 +172,8 @@ export const toolOptionsRenderKey = (session: DocumentSession | null): string =>
     session.selectionRotationAlgorithm,
     session.selection ? `${session.selection.x}:${session.selection.y}:${session.selection.width}:${session.selection.height}` : '',
     session.selectionPivot ? `${session.selectionPivot.x}:${session.selectionPivot.y}` : '',
+    session.pendingPaste?.transformTarget?.flipHorizontal ? 1 : 0,
+    session.pendingPaste?.transformTarget?.flipVertical ? 1 : 0,
     session.pendingPaste?.transformTarget ? `${session.pendingPaste.transformTarget.x}:${session.pendingPaste.transformTarget.y}:${session.pendingPaste.transformTarget.width}:${session.pendingPaste.transformTarget.height}` : '',
     session.pendingPaste?.transformAngle ?? 0,
     session.pendingPaste?.transformShear ? `${session.pendingPaste.transformShear.axis}:${session.pendingPaste.transformShear.edge}:${session.pendingPaste.transformShear.amount}` : '',

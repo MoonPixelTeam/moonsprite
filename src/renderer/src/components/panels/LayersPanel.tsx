@@ -254,6 +254,7 @@ export function LayersPanel({
     editGroup,
     editSelectedRows,
     editLayerRow,
+    openLayerContent,
     editGroupRow,
     openLayerContextMenu,
     openLayerCreateContextMenu,
@@ -994,6 +995,7 @@ export function LayersPanel({
                 draggingIds={draggingIds}
                 beginLayerDrag={beginLayerDrag}
                 editLayerRow={editLayerRow}
+                openLayerContent={openLayerContent}
                 liveAutoLinkById={liveAutoLinkById}
                 handleLayerAutoLinkPointerDown={handleLayerAutoLinkPointerDown}
                 continueLayerAutoLinkToggle={continueLayerAutoLinkToggle}

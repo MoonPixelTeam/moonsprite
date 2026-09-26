@@ -9,7 +9,7 @@ export function DiagnosticPreferencesField() {
   const [mode, setMode] = useState(loadDiagnosticMode)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
-    const refresh = () => setMode(loadDiagnosticMode())
+    const refresh = () => { setMode(loadDiagnosticMode()) }
     window.addEventListener(DIAGNOSTIC_MODE_CHANGED, refresh)
     window.addEventListener('moonsprite:preferences-changed', refresh)
     return () => {
@@ -23,10 +23,14 @@ export function DiagnosticPreferencesField() {
         label: t('preferences.diagnostics.mode'), options: [
           { value: 'off', label: t('preferences.diagnostics.off') },
           { value: 'memory', label: t('preferences.diagnostics.memory') },
-          { value: 'full', label: t('preferences.diagnostics.full') }
+          { value: 'full', label: t('preferences.diagnostics.full') },
+          { value: 'lag', label: t('preferences.diagnostics.lag') }
         ]
       }]} onChange={value => { const saved = saveDiagnosticMode(value); setFailed(!saved); if (saved) setMode(value) }} />
     </FormField>
+    {mode === 'lag' && <div>
+      <p>{t('preferences.diagnostics.lagHint')}</p>
+    </div>}
     {failed && <p role="alert">{t('preferences.diagnostics.saveFailed')}</p>}
   </>
 }

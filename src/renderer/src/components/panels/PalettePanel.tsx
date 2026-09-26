@@ -442,7 +442,7 @@ export function PalettePanel({ session, docked = false, onDockDragStart, onPanel
     event.preventDefault()
   }
   const beginPaletteOutlineDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (panelColorSampling.activeForEvent(event.nativeEvent) || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || !pointerHitsPaletteSelectionOutline(event.clientX, event.clientY)) return
+    if (panelColorSampling.activeForEvent(event.nativeEvent) || (event.button !== 0 && event.button !== 2) || event.shiftKey || event.ctrlKey || event.metaKey || !(event.button === 2 ? displayedSelectedIds.includes(Number((event.target as Element).closest('[data-palette-id]')?.getAttribute('data-palette-id'))) : pointerHitsPaletteSelectionOutline(event.clientX, event.clientY))) return
     const clickedId = nearestSelectedPaletteId(event.clientX, event.clientY)
     if (clickedId === null) return
     startPaletteMove(event, clickedId)

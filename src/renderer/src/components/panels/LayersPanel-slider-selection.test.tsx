@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Scrollbar } from '../Scrollbar'
 import { RangeField } from '../RangeField'
 import { LayersPanel } from './LayersPanel'
+import { startCanvasSelection } from '../layer-panel-reveal'
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
@@ -41,12 +42,14 @@ function Controls() {
       <input id="external-range" type="range" aria-label="External slider" defaultValue={50} />
       <div role="slider" aria-label="Custom slider" tabIndex={0}><span data-testid="custom-thumb" /></div>
       <button data-testid="blank">Unrelated UI</button>
+      <section data-testid="other-panel"><div data-testid="other-panel-blank" /></section>
+      <div data-testid="other-panel-scrollbar" className="component-scrollbar" />
     </>, document.body)}
   </>
 }
 
-it.each(['layers', 'frames', 'cels', 'masks', 'groups'] as const)(
-  'preserves %s selection through all slider surfaces and still clears it on blank UI', (kind) => {
+it.each(['layers', 'frames', 'cels', 'masks', 'groups', 'group-cels', 'mask-rows'] as const)(
+  'preserves %s selection outside the panel and clears it only on panel blank space', (kind) => {
     const doc = createDocument('slider batch', 2, 2, 'rgba')
     const top = createLayer('Top', 2, 2, 'rgba')
     doc.layers.push(top)
@@ -63,14 +66,17 @@ it.each(['layers', 'frames', 'cels', 'masks', 'groups'] as const)(
     session.selectedAnimationMaskCellKeys = kind === 'masks' ? keys : []
     session.layerSelectionExplicit = kind === 'layers'
     session.animationCellSelectionExplicit = kind === 'cels'
-    if (kind === 'groups') {
+    session.selectedAnimationMaskRowKeys = kind === 'mask-rows' ? layerIds.map(id => `layer:${id}`) : []
+    if (kind === 'groups' || kind === 'group-cels') {
       doc.groups.push(...['g1', 'g2'].map((id) => ({ id, name: id, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const })))
-      session.selectedGroupIds = ['g1', 'g2']
+      session.selectedGroupIds = kind === 'groups' ? ['g1', 'g2'] : []
+      session.selectedAnimationGroupCellKeys = kind === 'group-cels' ? frameIds.map(id => animationCelKey('g1', id)) : []
     }
     const snapshot = () => {
       const current = useWorkspace.getState().sessions[0]
       return [current.selectedLayerIds, current.selectedGroupIds, current.selectedAnimationFrameIds,
-        current.selectedAnimationCellKeys, current.selectedAnimationMaskCellKeys].map((ids) => [...ids])
+        current.selectedAnimationCellKeys, current.selectedAnimationMaskCellKeys,
+        current.selectedAnimationMaskRowKeys, current.selectedAnimationGroupCellKeys ?? []].map((ids) => [...ids])
     }
     const before = snapshot()
     const view = render(<Controls />)
@@ -87,14 +93,24 @@ it.each(['layers', 'frames', 'cels', 'masks', 'groups'] as const)(
     }
     const opacity = screen.getByRole('slider', { name: 'Brush opacity' })
     fireEvent.pointerDown(opacity, { button: 0 })
-    fireEvent.change(opacity, { target: { value: '40' } })
+    // Group slots alone are decorative; changing brush state normalizes their
+    // editing context. This case checks pointer retention without that command.
+    if (kind !== 'group-cels') fireEvent.change(opacity, { target: { value: '40' } })
     fireEvent.pointerUp(opacity)
-    expect(useWorkspace.getState().sessions[0].brushOpacity).toBe(40)
+    if (kind !== 'group-cels') expect(useWorkspace.getState().sessions[0].brushOpacity).toBe(40)
     expect(snapshot()).toEqual(before)
     if (kind === 'layers') {
       for (const id of layerIds) expect(view.container.querySelector(`[data-layer-id="${id}"]`)).toHaveClass('selected')
     }
     act(() => { fireEvent.pointerDown(screen.getByTestId('blank'), { button: 0 }) })
+    expect(snapshot()).toEqual(before)
+    for (const id of ['other-panel', 'other-panel-blank', 'other-panel-scrollbar']) {
+      fireEvent.pointerDown(screen.getByTestId(id), { button: 0 })
+      fireEvent.pointerUp(screen.getByTestId(id), { button: 0 })
+      expect(snapshot()).toEqual(before)
+    }
+    // Nested whitespace must work too, not just the list's own background.
+    fireEvent.pointerDown(view.container.querySelector('.layer-animation-tree')!, { button: 0 })
     expect(snapshot()).not.toEqual(before)
   })
 
@@ -144,4 +160,18 @@ it('keeps multi-frame outlines while dragging canvas scrollbars and native timel
   }
   fireEvent.pointerDown(list, { button: 0, clientX: 80, clientY: 80 })
   expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
+})
+
+it('still hides panel selection guides when a canvas selection starts', () => {
+  const doc = createDocument('canvas selection guides', 2, 2, 'rgba')
+  useWorkspace.getState().addSession(doc)
+  useWorkspace.getState().duplicateAnimationFrame()
+  const session = useWorkspace.getState().sessions[0]
+  const ids = ensureAnimationDocument(doc).frames.map(frame => frame.id)
+  session.selectedAnimationFrameIds = ids
+  const { container } = render(<Controls />)
+  expect(container.querySelector('[data-animation-frame-selection]')).toBeTruthy()
+  act(() => startCanvasSelection(doc.id))
+  expect(container.querySelector('[data-animation-frame-selection]')).toBeNull()
+  expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual(ids)
 })

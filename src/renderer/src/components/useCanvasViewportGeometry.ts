@@ -1,3 +1,4 @@
+import { CANVAS_VIEWPORT_EVENT } from './canvas-viewport-events'
 import { isWorkspaceResizing, onWorkspaceResizeEnd, recordWorkspaceResizeStage } from './workspace-resize'
 import { useEffect, useRef } from 'react'
 import { measureRuntimeDiagnostic, runtimeDiagnosticsActive } from '@/core/runtime-diagnostics'
@@ -189,6 +190,7 @@ export function useCanvasViewportGeometry(ports: Ports) {
         layoutViewPending = true
       }
       placement = next
+      window.dispatchEvent(new CustomEvent(CANVAS_VIEWPORT_EVENT, { detail: { documentId: ports.session.document.id, width: size.width, height: size.height, view: { ...ports.liveViewRef.current } } }))
       // Local geometry remains live. Publish once when the layout gesture ends
       // instead of notifying all document/store subscribers on every resize.
       return true

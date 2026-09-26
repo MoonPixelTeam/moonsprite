@@ -38,7 +38,7 @@ const applyLayerName = (document: SpriteDocument, layer: RasterLayer, name: stri
 
 const layerStyleOwnerForTarget = (document: SpriteDocument, target: LayerPropertyTarget): RasterLayer | LayerGroup | null =>
   target.kind === 'layer'
-    ? document.layers.find((layer) => layer.id === target.id) ?? null
+    ? document.layers.find((layer) => layer.id === target.id && layer.kind !== 'adjustment') ?? null
     : document.groups.find((group) => group.id === target.id) ?? null
 
 const uniqueLayerStyleTargets = (document: SpriteDocument, targets: readonly LayerPropertyTarget[]): LayerPropertyTarget[] => {
@@ -59,7 +59,7 @@ const layerStylePreviewInvalidationRect = (
   for (const target of targets) {
     if (target.kind !== 'layer') return null
     const layer = document.layers.find((candidate) => candidate.id === target.id)
-    if (!layer) return null
+    if (!layer || layer.kind === 'adjustment') return null
     const bounds = layerContentBounds(document, layer)
     if (!bounds) continue
     const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
@@ -666,7 +666,10 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
         if (seen.has(key)) return []
         seen.add(key)
         const owner = layerStyleOwnerForTarget(current.document, entry.target)
-        return owner && !layerStylesEqual(owner.layerStyles, entry.styles) ? [{ target: entry.target, styles: entry.styles }] : []
+        if (!owner) return []
+        const styles = cloneLayerStyles(entry.styles)
+        if (styles?.gradientMap) styles.gradientMap.scope = 'layer'
+        return !layerStylesEqual(owner.layerStyles, styles) ? [{ target: entry.target, styles }] : []
       })
       if (changes.length === 0) return
       const operationProbe = window.__moonSpriteCanvasProbe
@@ -709,7 +712,9 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
         const changes = uniqueTargets.flatMap((target) => {
           const owner = layerStyleOwnerForTarget(session.document, target)
           if (!owner || layerStylesEqual(owner.layerStyles, styles)) return []
-          return [{ owner, before: cloneLayerStyles(owner.layerStyles), after: cloneLayerStyles(styles) }]
+          const after = cloneLayerStyles(styles)
+          if (after?.gradientMap) after.gradientMap.scope = 'layer'
+          return [{ owner, before: cloneLayerStyles(owner.layerStyles), after }]
         })
         if (changes.length === 0) return
         for (const change of changes) assignLayerStyles(change.owner, change.after)
@@ -781,6 +786,7 @@ export function createLayerPropertiesCommands({ get, set, recording, services: {
       return get().setLayerStylesForTargets(targets, undefined, 'clear')
     },
     splitLayerStyles(layerId) {
+      if (activeSession(get())?.document.layers.find(layer => layer.id === layerId)?.kind === 'adjustment') return
       get().commitFloatingPaste()
       get().mutateActive((session) => {
         const beforeSelection = captureAnimationSelectionHistory(session)

@@ -14,6 +14,7 @@ mod platform_brushes;
 mod platform_clipboard;
 mod platform_cursor;
 mod platform_diagnostics;
+mod platform_lag_diagnostics;
 mod platform_dialogs;
 mod platform_extension_windows;
 mod platform_extensions;
@@ -162,6 +163,7 @@ pub fn run() {
         })
         .manage(platform_recovery::RecoveryState::default())
         .manage(platform_diagnostics::DiagnosticState::default())
+        .manage(platform_lag_diagnostics::LagDiagnosticState::default())
         .manage(platform_files::ScaledPngCancellation::default())
         .manage(platform_scripts::LuaScriptRuntime::default())
         .setup(|app| {
@@ -233,6 +235,8 @@ pub fn run() {
             platform_screen_color::sample_window_color,
             platform_screen_color::sample_window_color_region,
             platform_resources::get_resource_info,
+            platform_lag_diagnostics::sample_lag_resources,
+            platform_lag_diagnostics::set_lag_capture,
             platform_palette::list_palettes,
             platform_palette::import_palette,
             platform_palette::save_palette,

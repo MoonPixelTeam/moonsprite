@@ -15,9 +15,12 @@ import { SettingsSection } from '@/components/SettingsSection'
 import { TextInput } from '@/components/TextInput'
 import { ThemedSelect } from '@/components/ThemedSelect'
 import { useI18n } from '@/components/I18nProvider'
+import { FileLocationPicker } from '@/components/FileLocationPicker'
 
 interface SpriteSheetExportDialogProps {
   defaultDirectory: string
+  localGalleryDirectory?: string
+  projectRootDirectory?: string
   onClose: () => void
   onClosePreview: (documentIds: readonly string[], preferredActiveId: string) => void
   onExport: (options: SpriteSheetExportOptions) => Promise<boolean>
@@ -41,11 +44,11 @@ const constraintForLayout = (layout: SpriteSheetLayout, constraint: SpriteSheetC
   return 'none'
 }
 
-export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePreview, onExport, onPreview, session }: SpriteSheetExportDialogProps) {
+export function SpriteSheetExportDialog({ defaultDirectory, localGalleryDirectory = defaultDirectory, projectRootDirectory = '', onClose, onClosePreview, onExport, onPreview, session }: SpriteSheetExportDialogProps) {
   const { t } = useI18n()
   const document = session.document
   const [busy, setBusy] = useState(false)
-  const [pathError, setPathError] = useState('')
+  const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const [page, setPage] = useState<SpriteSheetSettingsPage>('layout')
   const [previewEnabled, setPreviewEnabled] = useState(false)
   const previewEnabledRef = useRef(false)
@@ -139,14 +142,9 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
         { value: 'fixed-columns' as const, label: t('spriteSheet.constraint.fixedColumns') },
         { value: 'fixed-width' as const, label: t('spriteSheet.constraint.fixedWidth') }
       ]
-  const chooseDirectory = async (): Promise<void> => {
-    setPathError('')
-    try {
-      const result = await chooseExportLocation(window.moonSprite, options.directory || defaultDirectory, options.name, 'png')
-      if (result) setOptions(current => ({ ...current, ...result }))
-    } catch (error) {
-      setPathError(error instanceof Error ? error.message : t('spriteSheet.output.directoryError'))
-    }
+  const chooseDirectory = async (directory: string): Promise<void> => {
+    const result = await chooseExportLocation(window.moonSprite, directory || defaultDirectory, options.name, 'png')
+    if (result) setOptions(current => ({ ...current, ...result }))
   }
   const submit = async (): Promise<void> => {
     if (busy || (options.outputFile && (!options.name.trim() || !options.directory.trim()))) return
@@ -251,12 +249,10 @@ export function SpriteSheetExportDialog({ defaultDirectory, onClose, onClosePrev
         {page === 'output' && <SettingsSection title={t('spriteSheet.section.output')} actions={<CheckboxField controlPosition="end" checked={options.outputFile} label={t('spriteSheet.output.file')} onChange={(checked) => update('outputFile', checked)} />}>
           {options.outputFile && <div className="settings-section-body sprite-sheet-output-fields">
             <CheckboxField checked={options.openAfterExport === true} label={t('spriteSheet.output.openAfterExport')} onChange={(checked) => update('openAfterExport', checked)} />
-            <FormField className="export-file-field" label={t('spriteSheet.output.name')} hint={pathError
-              ? <span className="sprite-sheet-output-error">{pathError}</span>
-              : <span className="export-selected-directory" title={options.directory}>{t('spriteSheet.output.selectedDirectory', { path: options.directory })}</span>}>
+            <FormField className="export-file-field" label={t('spriteSheet.output.name')} hint={<span className="export-selected-directory" title={options.directory}>{t('spriteSheet.output.selectedDirectory', { path: options.directory })}</span>}>
               <div className="export-file-control">
                 <TextInput autoFocus aria-label={t('spriteSheet.output.name')} value={options.name} maxLength={160} onChange={(event) => update('name', event.target.value)} />
-                <button type="button" className="icon-button" title={t('spriteSheet.output.chooseDirectory')} aria-label={t('spriteSheet.output.chooseDirectory')} onClick={() => void chooseDirectory()}><PixelUtilityIcon kind="folderOpen" /></button>
+                <FileLocationPicker directory={options.directory || defaultDirectory} defaultDirectory={defaultDirectory} localGalleryDirectory={localGalleryDirectory} projectRootDirectory={projectRootDirectory} open={pathMenuOpen} onOpenChange={setPathMenuOpen} onChooseDirectory={chooseDirectory} onSelectDirectory={(directory) => update('directory', directory)} disabled={busy} />
               </div>
             </FormField>
           </div>}

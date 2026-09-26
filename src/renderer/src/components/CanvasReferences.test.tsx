@@ -1,4 +1,5 @@
 import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
+import { CANVAS_HOVER_DISMISS } from './useCanvasHoverDismiss'
 import { REFERENCE_SCALING_KEY } from '@/core/file-preferences'
 import { targetsCanvasSurface, referenceNavigationActive } from './canvas-reference-input'
 import { createSamplingCanvasInput } from './canvas-input-sampling'
@@ -37,6 +38,18 @@ it('recognizes out-of-bounds coordinates even when the geometry mapper returns a
   expect(isOutsideReferenceCanvas(null, 16, 12)).toBe(true)
 })
 
+it('dismisses the owning canvas hover when double click opens reference options', () => {
+  const view = setup()
+  const dismiss = vi.fn()
+  window.addEventListener(CANVAS_HOVER_DISMISS, dismiss)
+  try {
+    fireEvent.doubleClick(view.canvas, { clientX: 30, clientY: 40 })
+    expect(view.getByText('添加参考图…')).toBeTruthy()
+    expect(dismiss).toHaveBeenCalledOnce()
+    expect((dismiss.mock.calls[0][0] as CustomEvent).detail).toBe('test')
+  } finally { window.removeEventListener(CANVAS_HOVER_DISMISS, dismiss) }
+})
+
 it('imports an image and reports decode errors without adding a broken reference', async () => {
   const decode = vi.fn().mockResolvedValue(undefined)
   const NativeImage = window.Image
@@ -55,19 +68,19 @@ it('imports an image and reports decode errors without adding a broken reference
   expect(useCanvasReferences.getState().images).toHaveLength(1)
 })
 
-it('opens the import menu only outside the document and intercepts right-button drawing', () => {
+it('opens the import menu on double click only outside the document', () => {
   const view = setup()
   const draw = vi.fn()
   view.canvas.addEventListener('pointerdown', draw)
   fireEvent.pointerDown(view.canvas, { button: 2 })
-  expect(draw).not.toHaveBeenCalled()
-  fireEvent.contextMenu(view.canvas, { clientX: 30, clientY: 40 })
+  expect(draw).toHaveBeenCalledOnce()
+  fireEvent.doubleClick(view.canvas, { clientX: 30, clientY: 40 })
   expect(view.getByText('添加参考图…')).toBeTruthy()
   fireEvent.keyDown(window, { key: 'Escape' })
   expect(view.queryByRole('dialog')).toBeNull()
   view.unmount()
   const inside = setup(false)
-  fireEvent.contextMenu(inside.canvas)
+  fireEvent.doubleClick(inside.canvas)
   expect(inside.queryByRole('dialog')).toBeNull()
 })
 
@@ -161,14 +174,14 @@ it('pastes clipboard pixels as a reference and leaves empty clipboard failures o
   vi.stubGlobal('moonSprite', { readClipboardImage: read })
   const message = vi.spyOn(useWorkspace.getState(), 'setMessage')
   const view = setup()
-  fireEvent.contextMenu(view.canvas, { clientX: 30, clientY: 40 })
+  fireEvent.doubleClick(view.canvas, { clientX: 30, clientY: 40 })
   fireEvent.click(view.getByRole('menuitem', { name: '粘贴为参考图' }))
   await waitFor(() => expect(useCanvasReferences.getState().images).toHaveLength(1))
   expect(useCanvasReferences.getState().images[0]).toMatchObject({ width: 10, height: 20, documentId: 'test' })
   act(() => useWorkspace.getState().undo())
   expect(useCanvasReferences.getState().images).toHaveLength(0)
   read.mockResolvedValue(null)
-  fireEvent.contextMenu(view.canvas)
+  fireEvent.doubleClick(view.canvas)
   fireEvent.click(view.getByRole('menuitem', { name: '粘贴为参考图' }))
   await waitFor(() => expect(message).toHaveBeenCalled())
   expect(useCanvasReferences.getState().images).toHaveLength(0)
@@ -449,7 +462,7 @@ it('lets canvas drawing pass through locked references and retains the canvas un
   expect(draw).toHaveBeenCalledTimes(1)
   expect(useCanvasReferences.getState().pending).toBeNull()
   expect(useWorkspace.getState().sessions[0].history.length).toBe(1)
-  fireEvent.contextMenu(view.canvas, { clientX: point.x, clientY: point.y })
+  fireEvent.doubleClick(view.canvas, { clientX: point.x, clientY: point.y })
   fireEvent.click(view.getByRole('button', { name: '解锁参考图' }))
   expect(useCanvasReferences.getState().images[0].locked).toBe(false)
   expect(reference.style.pointerEvents).toBe('')

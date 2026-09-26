@@ -38,6 +38,7 @@ export function renderStyledLayerBlock(document: SpriteDocument, cache: StyledLa
     && !styles.stroke.smartHue
     && !styles.colorOverlay.enabled
     && !styles.gradientOverlay.enabled
+    && !styles.gradientMap?.enabled
     && (styles.shadow.enabled || styles.innerGlow.enabled || styles.stroke.enabled)
 
   const geometry = { x: 0, y: 0, width: sourceLayer.width, height: sourceLayer.height }
@@ -108,7 +109,8 @@ export function renderStyledLayerBlock(document: SpriteDocument, cache: StyledLa
         // source choice without changing the result at diagonal corners.
         outsideStroke: styles.stroke.enabled ? undefined : outsideStrokeCoverage,
         insideStroke: styles.stroke.enabled ? undefined : insideStrokeCoverage
-      }
+      },
+      { x: sourceLayer.offsetX, y: sourceLayer.offsetY }
     ))
   }
   return pixels

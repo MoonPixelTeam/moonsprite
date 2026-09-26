@@ -132,6 +132,33 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('CanvasCompositeCache', () => {
+  it('reuses the composite surface and patches only the selection after flip, undo and redo', () => {
+    const document = createDocument('local selection flip', 256, 256, 'rgba')
+    const layer = document.layers[0]
+    for (let i = 1; i < 81; i++) document.layers.push(createLayer(`background ${i}`, 1, 1, 'rgba'))
+    writeLayerColor(document, layer, 32 * 256 + 32, { r: 255, g: 0, b: 0, a: 255 })
+    useWorkspace.setState({ sessions: [], activeId: null })
+    const commands = useWorkspace.getState()
+    commands.addSession(document)
+    commands.setSelection({ x: 32, y: 32, width: 16, height: 16 })
+    const cache = new CanvasCompositeCache(), context = makeContext()
+    const render = () => {
+      const session = useWorkspace.getState().sessions[0]
+      draw(cache, document, context, { revision: session.revision, contentRevision: session.contentRevision, contentInvalidation: session.contentInvalidation })
+      return context.drawImage.mock.lastCall![0] as MockOffscreenCanvas
+    }
+    const surface = render()
+    for (const operation of [() => commands.flipActiveSelection('horizontal'), () => commands.undo(), () => commands.redo()]) {
+      surface.context.putImageData.mockClear()
+      operation()
+      expect(render()).toBe(surface)
+      const pixels = surface.context.putImageData.mock.calls.reduce((sum, [image]) => sum + image.width * image.height, 0)
+      expect(pixels).toBeGreaterThan(0)
+      expect(pixels).toBeLessThanOrEqual(16 * 16)
+      expect(surface.pixels).toEqual(compositeRegion(document, 0, 0, 256, 256, new DocumentCompositeCache(), useWorkspace.getState().sessions[0].contentRevision))
+    }
+    useWorkspace.setState({ sessions: [], activeId: null })
+  })
   it('uploads only display pixels during a zoomed-out property preview and restores full precision on commit', () => {
     const document = createDocument('projected canvas', 512, 512, 'rgba')
     const top = createLayer('top', 512, 512, 'rgba'); document.layers.push(top)

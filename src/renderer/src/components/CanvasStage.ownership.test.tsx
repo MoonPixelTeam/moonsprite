@@ -176,7 +176,7 @@ describe('CanvasStage controller composition', () => {
     expect(committed.contentRevision).toBe(contentRevision)
   })
 
-  it('updates the stationary dot cursor as zoom crosses 800%', async () => {
+  it('keeps the stationary dot cursor visible as zoom crosses 800%', async () => {
     localStorage.setItem('moonsprite.preference.painting-cursor-shape', 'dot')
     const initial = addSession('dot zoom')
     useWorkspace.getState().setViewForDocument(initial.document.id, { zoom: 8 })
@@ -189,7 +189,7 @@ describe('CanvasStage controller composition', () => {
     expect(dot.hidden).toBe(false)
 
     fireEvent.wheel(canvas, { deltaY: 100, clientX: 160, clientY: 120 })
-    expect(dot.hidden).toBe(true)
+    expect(dot.hidden).toBe(false)
     fireEvent.wheel(canvas, { deltaY: -100, clientX: 160, clientY: 120 })
     expect(dot.hidden).toBe(false)
   })
@@ -288,4 +288,30 @@ describe('CanvasStage controller composition', () => {
     act(() => vi.advanceTimersByTime(100))
     expect(draw).not.toHaveBeenCalled()
   })
+})
+
+it.each(['pencil', 'eraser', 'fill', 'shape', 'line', 'airbrush'] as const)('does not paint adjustment layers with %s', tool => {
+  const session = addSession('adjustment paint protection')
+  session.document.layers[0].kind = 'adjustment'
+  session.tool = tool
+  useWorkspace.getState().setViewportSizeForDocument(session.document.id, { width: 320, height: 240 })
+  const revision = session.contentRevision
+  const view = render(<CanvasStage session={session} />)
+  const canvas = view.container.querySelector<HTMLCanvasElement>('.stage-canvas')!
+  fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, buttons: 1, clientX: 160, clientY: 120 })
+  fireEvent.pointerMove(canvas, { pointerId: 1, buttons: 1, clientX: 162, clientY: 122 })
+  fireEvent.pointerUp(canvas, { pointerId: 1, button: 0, clientX: 162, clientY: 122 })
+  expect(useWorkspace.getState().sessions[0].contentRevision).toBe(revision)
+})
+
+it('still paints ordinary raster layers at the same test coordinates', () => {
+  const session = addSession('normal paint control')
+  session.tool = 'pencil'
+  useWorkspace.getState().setViewportSizeForDocument(session.document.id, { width: 320, height: 240 })
+  const revision = session.contentRevision
+  const view = render(<CanvasStage session={session} />)
+  const canvas = view.container.querySelector<HTMLCanvasElement>('.stage-canvas')!
+  fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, buttons: 1, clientX: 160, clientY: 120 })
+  fireEvent.pointerUp(canvas, { pointerId: 1, button: 0, clientX: 160, clientY: 120 })
+  expect(useWorkspace.getState().sessions[0].contentRevision).toBeGreaterThan(revision)
 })

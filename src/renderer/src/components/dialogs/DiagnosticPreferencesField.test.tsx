@@ -37,3 +37,12 @@ it('shows a save error and keeps the previous mode if storage rejects the settin
   expect(screen.getByRole('alert')).toHaveTextContent('无法保存诊断设置')
   expect(loadDiagnosticMode()).toBe('full')
 })
+
+it('enables automatic lag capture without a manual marker button', () => {
+  render(<DiagnosticPreferencesField />)
+  fireEvent.click(screen.getByRole('button', { name: '诊断日志' }))
+  fireEvent.click(screen.getByRole('option', { name: '卡顿现场采集' }))
+  expect(loadDiagnosticMode()).toBe('lag')
+  expect(screen.queryByRole('button', { name: '标记此刻卡顿' })).not.toBeInTheDocument()
+  expect(screen.getByText(/自动识别明显延迟/)).toBeInTheDocument()
+})

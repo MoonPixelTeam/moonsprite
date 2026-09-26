@@ -1,5 +1,6 @@
 import { CANVAS_REFERENCE_DELETE_EVENT, CANVAS_REFERENCE_PASTE_EVENT } from './canvas-reference-input'
 import { useCanvasPreferences } from './useCanvasPreferences'
+import { CANVAS_HOVER_DISMISS } from './useCanvasHoverDismiss'
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from './I18nProvider'
@@ -212,6 +213,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
   }, [stageRef])
   useEffect(() => {
     if (!menu) return
+    window.dispatchEvent(new CustomEvent(CANVAS_HOVER_DISMISS, { detail: documentId }))
     const dismiss = (event: Event) => {
       if (!menuRef.current?.contains(event.target as Node)) setMenu(null)
     }
@@ -233,7 +235,7 @@ export function CanvasReferences({ stageRef, isOutside, viewport, documentId, sn
       window.removeEventListener('keydown', keyboard, true)
       window.removeEventListener('blur', blur)
     }
-  }, [menu])
+  }, [menu, documentId])
   useEffect(() => {
     const move = (event: PointerEvent) => { const drag = menuDrag.current; if (!drag) return; setMenu((value) => value ? { ...value, x: drag.left + event.clientX - drag.x, y: drag.top + event.clientY - drag.y } : value) }
     const up = () => { menuDrag.current = null }

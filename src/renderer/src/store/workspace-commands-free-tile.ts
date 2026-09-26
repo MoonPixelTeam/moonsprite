@@ -455,6 +455,23 @@ export function createWorkspaceFreeTileCommands({ get, recording , services: { d
       return canceled
     },
 
+    reorderFreeTileSource(sourceId, targetId) {
+      const session = activeSession(get())
+      const layer = session?.document.layers.find(layer => layer.kind === 'free-tile' && layer.freeTileSources?.some(source => source.id === sourceId))
+      const before = layer?.freeTileSources?.map(cloneFreeTileSourceLayer)
+      if (!session || !layer || !before || sourceId === targetId || !before.some(source => source.id === targetId)) return false
+      const source = before.find(source => source.id === sourceId)!
+      const after = before.filter(source => source.id !== sourceId)
+      after.splice(before.findIndex(source => source.id === targetId), 0, source)
+      get().mutateActive(current => {
+        const apply = (sources: FreeTileSourceLayer[]) => replaceFreeTileSetSources(current.document, layer, sources.map(cloneFreeTileSourceLayer))
+        apply(after)
+        current.history.push({ label: tr('freeTiles.sources'), bytes: before.length * 256,
+          undo: () => apply(before), redo: () => apply(after), contentChanged: true,
+          requiresAnimationSync: false, invalidation: { kind: 'full' } })
+      }, 'content')
+      return true
+    },
     reorderFreeTileInstance(instanceId, targetInstanceId, position) {
       let changed = false
       get().mutateActive((session) => {

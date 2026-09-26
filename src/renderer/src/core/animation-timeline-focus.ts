@@ -38,30 +38,10 @@ export interface TimelineFocusState {
   implicitCursor: boolean
 }
 
-export interface TimelineMarqueeTransitionInput {
-  canvasSelectionActive: boolean
-  activeMaskId: string | null
-  selectedFrameCount: number
-  selectedCellCount: number
-  layerSelectionExplicit: boolean
-  selectedLayerCount: number
-  selectedGroupCount: number
-  selectedGroupId: string | null
-}
-
 const last = <T>(items: readonly T[] | undefined): T | null => items && items.length > 0 ? items[items.length - 1] ?? null : null
 
 const rowForLayer = (id: string): TimelineRowRef => ({ kind: 'layer', ownerKind: 'layer', ownerId: id })
 const rowForGroup = (id: string): TimelineRowRef => ({ kind: 'group', ownerKind: 'group', ownerId: id })
-
-export const timelineSelectionPrecedesMarquee = (input: TimelineMarqueeTransitionInput): boolean => !input.canvasSelectionActive
-  && input.activeMaskId === null
-  && (input.selectedFrameCount > 0
-    || input.selectedCellCount > 0
-    || input.layerSelectionExplicit
-    || input.selectedLayerCount > 1
-    || input.selectedGroupCount > 0
-    || input.selectedGroupId !== null)
 
 /**
  * Resolve the renderer's single timeline focus from the session's raw fields.

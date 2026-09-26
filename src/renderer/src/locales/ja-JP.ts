@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportjaJP } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const jaJPMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "一時ブラシ：ドラッグで範囲を選択、離して使用。Esc でキャンセル",
+  "preferences.paintingCursor.cross": "シンプルな十字",
+  "preferences.paintingCursor.pixelCross": "ピクセル十字",
+  "preferences.paintingCursorAlignToPixel": "ポインターをピクセルに合わせる",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -104,7 +111,7 @@ export const jaJPMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "シンプルな点",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -166,6 +173,8 @@ export const jaJPMessages = {
   'preferences.diagnostics.memory': "収集のみ（メモリ）",
   'preferences.diagnostics.full': "完全（収集して保存）",
   'preferences.diagnostics.hint': "即時保存され、再起動は不要です。収集のみでは最新200件をメモリに保持し、自動保存しません。完全モードではローカルログに保存します。オフにしても既存のログは削除されません。",
+  'preferences.diagnostics.lag': "遅延の現場記録",
+  'preferences.diagnostics.lagHint': "再現前に有効にしてください。再起動不要です。大きな遅延と前後の情報を自動記録し、操作は不要です。ネイティブ側の資源記録はUI停止中も独立して続きます。終了後はヘルプから診断ログを開き、元のモードに戻してください。有効化前の状態やピクセルは記録しません。",
   'preferences.diagnostics.saveFailed': "診断設定を保存できませんでした。ローカルストレージを確認して再試行してください。",
   'layers.splitLayerStyles': 'レイヤースタイルを分離',
   'layers.splitStyleShadow': 'ドロップシャドウ',
@@ -1712,6 +1721,8 @@ export const jaJPMessages = {
   'timeline.copyCel': 'コピーセル',
   'timeline.connectCel': 'リンクセル',
   'timeline.disconnectCel': '無線細胞',
+  'timeline.reverseCels': 'セルの順序を反転',
+  'timeline.reverseFrames': 'フレームの順序を反転',
   'timeline.pasteCel': 'パスタセル',
   'timeline.copyMask': 'レイヤーマスクCEL',
   'timeline.pasteMask': 'パスタレイヤーマスクセル',

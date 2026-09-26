@@ -1,3 +1,4 @@
+import { createGradientMapSampler, gradientMapSignature, normalizeGradientMap } from './gradient-map'
 import type { GradientDither } from '@shared/types-brush'
 import type { LayerStyles } from '@shared/types-layer-style'
 import type { RasterLayer } from '@shared/types-layer'
@@ -52,6 +53,8 @@ export const layerStylesSignature = (value: unknown): string => {
   const directions = record(stroke?.directions)
   return [
     source.enabled,
+    source.gradientMap ? gradientMapSignature(normalizeGradientMap(source.gradientMap)) : '',
+    record(source.gradientMap)?.enabled, record(source.gradientMap)?.scope,
     stroke?.enabled, rawColorSignature(stroke?.color), stroke?.size, stroke?.position, stroke?.kernel,
     directions?.nw, directions?.n, directions?.ne, directions?.w, directions?.e, directions?.sw, directions?.s, directions?.se,
     stroke?.smartHue, stroke?.smartHueDarkness, stroke?.followOpacity,
@@ -65,6 +68,7 @@ export const layerStylesSignature = (value: unknown): string => {
 export function createDefaultLayerStyles(): LayerStyles {
   return {
     enabled: true,
+    gradientMap: { ...normalizeGradientMap(undefined), enabled: false, scope: 'layer' },
     stroke: { enabled: false, color: { r: 0, g: 0, b: 0, a: 255 }, size: 1, position: 'outside', kernel: 'round', directions: outlineDirectionsForKernel('round'), smartHue: false, smartHueDarkness: DEFAULT_LAYER_STYLE_SMART_HUE_DARKNESS, followOpacity: false },
     shadow: { enabled: false, color: { r: 0, g: 0, b: 0, a: 160 }, offsetX: 2, offsetY: 2, blur: 0, smartShadow: false, smartShadowDarkness: DEFAULT_LAYER_STYLE_SMART_SHADOW_DARKNESS },
     innerGlow: { enabled: false, color: { r: 255, g: 255, b: 255, a: 192 }, size: 2 },
@@ -85,6 +89,7 @@ export function normalizeLayerStyles(value: unknown): LayerStyles | undefined {
   const strokeKernel = normalizeOutlineKernel(stroke?.kernel, defaults.stroke.kernel)
   return {
     enabled: source.enabled !== false,
+    gradientMap: { ...normalizeGradientMap(source.gradientMap), enabled: enabled(record(source.gradientMap)?.enabled), scope: 'layer' },
     stroke: {
       enabled: enabled(stroke?.enabled),
       color: color(stroke?.color, defaults.stroke.color),
@@ -128,6 +133,7 @@ export const cloneLayerStyles = (styles: LayerStyles | undefined): LayerStyles |
   const normalized = normalizeLayerStyles(styles)
   return normalized ? {
     enabled: normalized.enabled,
+    gradientMap: normalized.gradientMap,
     stroke: { ...normalized.stroke, color: { ...normalized.stroke.color }, directions: { ...normalized.stroke.directions } },
     shadow: { ...normalized.shadow, color: { ...normalized.shadow.color } },
     innerGlow: { ...normalized.innerGlow, color: { ...normalized.innerGlow.color } },
@@ -139,7 +145,8 @@ export const cloneLayerStyles = (styles: LayerStyles | undefined): LayerStyles |
 export const resolveLayerStyles = (styles: LayerStyles | undefined): LayerStyles => cloneLayerStyles(styles) ?? createDefaultLayerStyles()
 
 export const hasConfiguredLayerStyles = (styles: LayerStyles | undefined): boolean => Boolean(styles && (
-  styles.stroke.enabled
+  styles.gradientMap?.enabled
+  || styles.stroke.enabled
   || styles.shadow.enabled
   || styles.innerGlow.enabled
   || styles.colorOverlay.enabled
@@ -154,7 +161,10 @@ export const layerStylesEqual = (left: LayerStyles | undefined, right: LayerStyl
   const a = normalizeLayerStyles(left)
   const b = normalizeLayerStyles(right)
   if (!a || !b) return a === b
-  return a.enabled === b.enabled
+  return a.gradientMap?.enabled === b.gradientMap?.enabled
+    && a.gradientMap?.scope === b.gradientMap?.scope
+    && gradientMapSignature(normalizeGradientMap(a.gradientMap)) === gradientMapSignature(normalizeGradientMap(b.gradientMap))
+    && a.enabled === b.enabled
     && a.stroke.enabled === b.stroke.enabled
     && a.stroke.size === b.stroke.size
     && a.stroke.position === b.stroke.position
@@ -183,8 +193,9 @@ export const layerStylesEqual = (left: LayerStyles | undefined, right: LayerStyl
     && colorEquals(a.gradientOverlay.to, b.gradientOverlay.to)
 }
 
-export const mapLayerStyleColors = (styles: LayerStyles, mapper: (color: RgbaColor) => RgbaColor): LayerStyles => ({
+export const mapLayerStyleColors = (styles: LayerStyles, mapper: (color: RgbaColor) => RgbaColor, gradientMapper = mapper): LayerStyles => ({
   enabled: styles.enabled,
+  gradientMap: styles.gradientMap ? { ...styles.gradientMap, stops: styles.gradientMap.stops.map(stop => ({ ...stop, color: gradientMapper(stop.color) })) } : undefined,
   stroke: { ...styles.stroke, color: mapper(styles.stroke.color), directions: { ...styles.stroke.directions } },
   shadow: { ...styles.shadow, color: mapper(styles.shadow.color) },
   innerGlow: { ...styles.innerGlow, color: mapper(styles.innerGlow.color) },
@@ -192,7 +203,7 @@ export const mapLayerStyleColors = (styles: LayerStyles, mapper: (color: RgbaCol
   gradientOverlay: { ...styles.gradientOverlay, from: mapper(styles.gradientOverlay.from), to: mapper(styles.gradientOverlay.to) }
 })
 
-export const layerStylesHistoryBytes = (styles: LayerStyles | undefined): number => styles ? 128 : 0
+export const layerStylesHistoryBytes = (styles: LayerStyles | undefined): number => styles ? 128 + (styles.gradientMap?.stops.length ?? 0) * 24 : 0
 
 const expandRect = (rect: SelectionRect, amount: number): SelectionRect => ({
   x: rect.x - amount,
@@ -447,7 +458,7 @@ export const applySimpleLayerStylesPacked = (
   innerStrokeCoverageOverride?: number
 ): number | null => {
   if (styles.enabled === false) return sourcePacked >>> 0
-  if (styles.colorOverlay.enabled || styles.gradientOverlay.enabled) return null
+  if (styles.gradientMap?.enabled || styles.colorOverlay.enabled || styles.gradientOverlay.enabled) return null
   if (styles.stroke.enabled && (styles.stroke.smartHue || styles.stroke.followOpacity)) return null
   if (styles.stroke.enabled && outsideStrokeCoverageOverride === undefined && innerStrokeCoverageOverride === undefined) return null
   if (!styles.shadow.enabled && !styles.innerGlow.enabled && !styles.stroke.enabled) return sourcePacked >>> 0
@@ -528,7 +539,7 @@ const gradientColorAt = (geometry: LayerStyleGeometry, style: LayerStyles['gradi
 export type LayerStyleSourceReader = (x: number, y: number) => RgbaColor
 export type LayerStyleColorResolver = (color: RgbaColor) => RgbaColor
 
-export type LayerStylePart = 'shadow' | 'outerStroke' | 'colorOverlay' | 'gradientOverlay' | 'innerGlow' | 'innerStroke'
+export type LayerStylePart = 'shadow' | 'outerStroke' | 'colorOverlay' | 'gradientMap' | 'gradientOverlay' | 'innerGlow' | 'innerStroke'
 
 /** Bottom-to-top effect order. Interior parts use the existing clipping stack:
  * their alpha is the effect coverage, not another copy of the source alpha.
@@ -539,6 +550,7 @@ export function enabledLayerStyleParts(styles: LayerStyles): LayerStylePart[] {
   if (styles.shadow.enabled) parts.push('shadow')
   if (styles.stroke.enabled && styles.stroke.position !== 'inside') parts.push('outerStroke')
   if (styles.colorOverlay.enabled) parts.push('colorOverlay')
+  if (styles.gradientMap?.enabled) parts.push('gradientMap')
   if (styles.gradientOverlay.enabled) parts.push('gradientOverlay')
   if (styles.innerGlow.enabled) parts.push('innerGlow')
   if (styles.stroke.enabled && styles.stroke.position !== 'outside') parts.push('innerStroke')
@@ -572,6 +584,11 @@ export function sampleLayerStyleParts(
     result.colorOverlay = styles.colorOverlay.color
     styled = overlayPreservingAlpha(styled, styles.colorOverlay.color)
   }
+  if (styles.gradientMap?.enabled) {
+    const color = sampleGradientMap(styles, styled, x, y)
+    result.gradientMap = { ...color, a: 255 }
+    styled = { ...color, a: styled.a }
+  }
   if (styles.gradientOverlay.enabled) {
     const color = gradientColorAt(geometry, styles.gradientOverlay, x, y)
     result.gradientOverlay = color
@@ -595,6 +612,15 @@ export interface LayerStyleCoverageOverrides {
   insideStroke?: number
 }
 
+const gradientMapSamplers = new WeakMap<LayerStyles, ReturnType<typeof createGradientMapSampler>>()
+
+function sampleGradientMap(styles: LayerStyles, source: RgbaColor, x: number, y: number): RgbaColor {
+  if (!styles.gradientMap) return source
+  let sample = gradientMapSamplers.get(styles)
+  if (!sample) { sample = createGradientMapSampler(styles.gradientMap); gradientMapSamplers.set(styles, sample) }
+  return sample(source, x, y)
+}
+
 export function applyLayerStylesAt(
   geometry: LayerStyleGeometry | RasterLayer,
   styles: LayerStyles,
@@ -603,11 +629,12 @@ export function applyLayerStylesAt(
   source: RgbaColor,
   readGeometry: LayerStyleSourceReader,
   resolveDynamicColor: LayerStyleColorResolver = (color) => color,
-  coverageOverrides?: LayerStyleCoverageOverrides
+  coverageOverrides?: LayerStyleCoverageOverrides,
+  ditherOrigin = { x: 0, y: 0 }
 ): RgbaColor {
   if (styles.enabled === false) return source
   const hasStroke = styles.stroke.enabled
-  const hasOverlay = styles.colorOverlay.enabled || styles.gradientOverlay.enabled
+  const hasOverlay = styles.gradientMap?.enabled || styles.colorOverlay.enabled || styles.gradientOverlay.enabled
   const hasShadow = styles.shadow.enabled
   const hasInnerGlow = styles.innerGlow.enabled
 
@@ -646,6 +673,9 @@ export function applyLayerStylesAt(
 
   let styledSource = source
   if (styledSource.a > 0 && styles.colorOverlay.enabled) styledSource = overlayPreservingAlpha(styledSource, styles.colorOverlay.color)
+  if (styledSource.a > 0 && styles.gradientMap?.enabled) {
+    styledSource = sampleGradientMap(styles, styledSource, x + ditherOrigin.x, y + ditherOrigin.y)
+  }
   if (styledSource.a > 0 && styles.gradientOverlay.enabled) styledSource = overlayPreservingAlpha(styledSource, gradientColorAt('offsetX' in geometry ? { x: geometry.offsetX, y: geometry.offsetY, width: geometry.width, height: geometry.height } : geometry, styles.gradientOverlay, x, y))
   if (styledSource.a > 0 && styles.innerGlow.enabled) styledSource = overlayPreservingAlpha(
     styledSource,

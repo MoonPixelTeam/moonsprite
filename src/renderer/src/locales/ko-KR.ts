@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportkoKR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const koKRMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "임시 브러시: 드래그하여 영역 선택, 놓아서 사용; Esc로 취소",
+  "preferences.paintingCursor.cross": "단순 십자",
+  "preferences.paintingCursor.pixelCross": "픽셀 십자",
+  "preferences.paintingCursorAlignToPixel": "포인터를 픽셀에 맞추기",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -104,7 +111,7 @@ export const koKRMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "단순 점",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -166,6 +173,8 @@ export const koKRMessages = {
   'preferences.diagnostics.memory': "수집만 (메모리)",
   'preferences.diagnostics.full': "전체 (수집 및 저장)",
   'preferences.diagnostics.hint': "즉시 저장되며 재시작이 필요 없습니다. 수집만 모드는 최근 200개 기록을 메모리에 보관하며 자동 저장하지 않습니다. 전체 모드는 로컬 로그 파일에 저장합니다. 꺼도 기존 로그는 삭제되지 않습니다.",
+  'preferences.diagnostics.lag': "지연 현장 수집",
+  'preferences.diagnostics.lagHint': "재현 전에 켜세요. 재시작 없이 심한 지연과 전후 정보를 자동 기록합니다. 수동 표시는 필요 없으며 UI가 멈춰도 네이티브 자원 기록은 독립적으로 계속됩니다. 완료 후 도움말에서 진단 로그를 열고 이전 모드로 돌아가세요. 이전 상태나 픽셀은 수집하지 않습니다.",
   'preferences.diagnostics.saveFailed': "진단 설정을 저장할 수 없습니다. 로컬 저장소를 확인하고 다시 시도하세요.",
   'layers.splitLayerStyles': '레이어 스타일 분리',
   'layers.splitStyleShadow': '그림자',
@@ -1712,6 +1721,8 @@ export const koKRMessages = {
   'timeline.copyCel': '셀 복사본',
   'timeline.connectCel': '링크 세포',
   'timeline.disconnectCel': '링크 셀',
+  'timeline.reverseCels': '셀 순서 반전',
+  'timeline.reverseFrames': '프레임 순서 반전',
   'timeline.pasteCel': '케이크 세일',
   'timeline.copyMask': '코피 레이어 마스크 세일',
   'timeline.pasteMask': '파스테 레이어 마스크 세일',

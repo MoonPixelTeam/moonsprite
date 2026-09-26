@@ -10,6 +10,16 @@ import { layersPanelRenderKey } from '@/core/panel-render-keys'
 import { startCanvasSelection } from '@/components/layer-panel-reveal'
 
 describe('LayersPanel timeline focus interactions', () => {
+  it('highlights the first painted cel without hovering the layer panel', () => {
+    const document = createDocument('first stroke', 2, 2, 'rgba')
+    const timeline = ensureAnimationDocument(document)
+    useWorkspace.getState().addSession(document)
+    const view = render(<I18nProvider><LayersPanel session={useWorkspace.getState().sessions[0]!} /></I18nProvider>)
+    const cell = () => view.container.querySelector(`[data-animation-cel-key="${animationCelKey(document.activeLayerId, timeline.activeFrameId)}"]`)
+    expect(cell()).not.toHaveClass('current-cel')
+    act(() => { useWorkspace.getState().fillForeground() })
+    expect(cell()).toHaveClass('current-cel')
+  })
   beforeEach(() => {
     localStorage.clear()
     useWorkspace.setState({ sessions: [], activeId: null, message: null, saveProgress: null, dialog: null, recoveryRecords: [] })

@@ -4,12 +4,10 @@ import { getLayerStorageOrigin, getRasterContentRevision, setLayerStorageOrigin 
 import { ensureAnimationDocument } from './animation'
 import { translateCurrent as tr } from './localization'
 import { rasterStorageIdentity } from './runtime-raster'
-import { projectDocumentForWorkerTransfer } from './project-save-transfer'
-import { beginRuntimeDiagnosticOperation, runtimeDiagnosticsActive, type RuntimeDiagnosticOperation } from './runtime-diagnostics'
+import { encodeProjectInWorker } from './project-save-worker-client'
 import {
   type ProjectSaveBaseline,
   type ProjectEncodeWorkerResult,
-  type ProjectEncodeWorkerResponse,
   type ProjectEncodeWorkerPayload,
   type ProjectEncodeOptions,
   type ProjectArchiveReuseEntry,
@@ -26,89 +24,10 @@ import { directActiveCelDataFiles, readManifest } from './project-format-manifes
 
 const projectSaveBaselines = new WeakMap<SpriteDocument, ProjectSaveBaseline>()
 
-let projectEncodeWorker: Worker | null = null
-
-let projectEncodeSequence = 0
-
-const pendingProjectEncodes = new Map<
-  number,
-  {
-    resolve: (result: ProjectEncodeWorkerResult) => void
-    reject: (error: Error) => void
-    diagnostic: RuntimeDiagnosticOperation | null
-  }
->()
-
-const resetProjectEncodeWorker = (error: Error): void => {
-  projectEncodeWorker?.terminate()
-  projectEncodeWorker = null
-  for (const request of pendingProjectEncodes.values()) {
-    request.diagnostic?.finish('error', { message: error.message })
-    request.reject(error)
-  }
-  pendingProjectEncodes.clear()
-}
-
-const ensureProjectEncodeWorker = (): Worker => {
-  if (projectEncodeWorker) return projectEncodeWorker
-  const worker = new Worker(new URL('../workers/project-encode.worker.ts', import.meta.url), { type: 'module' })
-  worker.onmessage = (event: MessageEvent<ProjectEncodeWorkerResponse>) => {
-    const request = pendingProjectEncodes.get(event.data.id)
-    if (!request) return
-    pendingProjectEncodes.delete(event.data.id)
-    if (event.data.result) {
-      request.diagnostic?.finish('ok', {
-        outputBytes: event.data.result.data.byteLength
-      })
-      request.resolve(event.data.result)
-    } else {
-      const error = new Error(event.data.error || 'Project encode failed')
-      request.diagnostic?.finish('error', { message: error.message })
-      request.reject(error)
-    }
-  }
-  worker.onerror = (event) => resetProjectEncodeWorker(new Error(event.message || 'Project encode worker failed'))
-  projectEncodeWorker = worker
-  return worker
-}
-
-const encodeProjectInWorker = (payload: ProjectEncodeWorkerPayload): Promise<ProjectEncodeWorkerResult> => {
-  if (typeof Worker === 'undefined') return Promise.resolve().then(() => encodeProjectWorkerPayload(payload))
-  return new Promise((resolve, reject) => {
-    const id = ++projectEncodeSequence
-    const diagnostic = runtimeDiagnosticsActive()
-      ? beginRuntimeDiagnosticOperation(
-          'project.encode.worker',
-          {
-            width: payload.document.width,
-            height: payload.document.height,
-            layers: payload.document.layers.length,
-            frames: payload.document.animation?.frames.length ?? 1,
-            incremental: payload.incremental
-          },
-          5_000
-        )
-      : null
-    pendingProjectEncodes.set(id, { resolve, reject, diagnostic })
-    try {
-      const postStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      ensureProjectEncodeWorker().postMessage({ id, payload: { ...payload, document: projectDocumentForWorkerTransfer(payload.document) } })
-      diagnostic?.mark('post-message', {
-        durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - postStartedAt)
-      })
-    } catch (error) {
-      pendingProjectEncodes.delete(id)
-      const failure = error instanceof Error ? error : new Error(String(error))
-      diagnostic?.finish('error', { message: failure.message })
-      reject(failure)
-    }
-  })
-}
-
 export function encodeProjectAsync(document: SpriteDocument, options: ProjectEncodeOptions = {}): Promise<Uint8Array> {
   options.onProgress?.(0)
   options.onProgress?.(0.05)
-  return encodeProjectInWorker(createProjectEncodeWorkerPayload(document, options, false)).then((result) => {
+  return encodeProjectInWorker(createProjectEncodeWorkerPayload(document, options, false), encodeProjectWorkerPayload).then((result) => {
     options.onProgress?.(1)
     return result.data
   })
@@ -413,7 +332,7 @@ export function registerProjectSaveBaseline(document: SpriteDocument, sourcePath
 export async function encodeProjectSaveAsync(document: SpriteDocument, options: ProjectEncodeOptions = {}): Promise<EncodedProjectSave> {
   options.onProgress?.(0)
   options.onProgress?.(0.05)
-  const result = await encodeProjectInWorker(createProjectEncodeWorkerPayload(document, options, true))
+  const result = await encodeProjectInWorker(createProjectEncodeWorkerPayload(document, options, true), encodeProjectWorkerPayload)
   options.onProgress?.(1)
   return result
 }

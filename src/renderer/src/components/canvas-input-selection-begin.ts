@@ -43,11 +43,10 @@ import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, resizeCursors, rotationCursors, shearCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { MagicWandWorkerClient } from '@/core/magic-wand-worker'
 import { beginSelectionBrush } from './canvas-selection-brush-gesture'
-import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget, captureTilemapSelectionMove } from '@/core/tilemap-document'
 import { freeTileInstanceBounds } from '@/core/free-tile'
 import { selectionCoversRect } from '@/core/free-tile-edit'
-import { timelineSelectionPrecedesCanvasMarquee, selectionBoundsEqual } from './canvas-stage-helpers'
+import { selectionBoundsEqual } from './canvas-stage-helpers'
 
 interface Ports {
   selectedFreeTileSelectionTarget: (current?: DocumentSession) => {
@@ -233,10 +232,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         const active = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id) ?? session
         const cell = quickSelectionCellAt(active, point)
         if (cell) {
-          if (timelineSelectionPrecedesCanvasMarquee(active)) {
-            const timeline = ensureAnimationDocument(active.document)
-            state.selectAnimationCell(animationCelKey(active.document.activeLayerId, timeline.activeFrameId))
-          }
+          state.clearAnimationSelection(true)
           startCanvasSelection(session.document.id)
           const before = cloneSelection(active.selection)
           const incoming = tilemapPaintSelectionForIncoming(rectSelection(cell.x, cell.y, cell.width, cell.height), active)
@@ -650,6 +646,7 @@ export function createSelectionBeginCanvasInput(ports: Ports) {
         return true
       }
       if (session.pendingPaste) state.commitFloatingPaste()
+      state.clearAnimationSelection(true)
       if (session.selectionKind === 'brush') {
         startCanvasSelection(session.document.id)
         const brushStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)

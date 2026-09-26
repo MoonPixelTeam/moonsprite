@@ -1,10 +1,11 @@
 {
-  "include": ["vite.config.ts", "vitest.config.ts", "src/shared/**/*"],
+  "include": ["vite.config.ts", "vitest.config.ts", "apps/targets.json", "src/shared/**/*"],
   "compilerOptions": {
     "composite": true,
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,

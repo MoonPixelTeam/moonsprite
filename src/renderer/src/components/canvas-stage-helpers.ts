@@ -7,7 +7,6 @@ import { deviceAlignedCanvasRect, type CanvasDeviceScale, type CanvasDeviceScale
 import { selectionContains } from '@/core/selection'
 import { type CanvasPoint as Point } from '@/core/canvas-input'
 import { type SymmetryAxes, type SymmetryAxis } from '@/core/symmetry'
-import { timelineSelectionPrecedesMarquee } from '@/core/animation-timeline-focus'
 import { type CanvasClickFlashTiming } from './canvas-click-flash'
 import { type CanvasMoveLayerContentPreview } from '@/components/canvas-move-selection'
 import { type RasterContext2D } from '@/components/canvas-selection-renderer'
@@ -245,15 +244,4 @@ export const shareCanvasToolSettings = (target: DocumentSession, source: Documen
   liquifyStrength: source.liquifyStrength,
   liquifySmoothing: source.liquifySmoothing,
   liquifySmoothingStrength: source.liquifySmoothingStrength,
-})
-
-export const timelineSelectionPrecedesCanvasMarquee = (session: DocumentSession, selection = session.selection): boolean => timelineSelectionPrecedesMarquee({
-  canvasSelectionActive: Boolean(selection),
-  activeMaskId: session.activeLayerMaskId,
-  selectedFrameCount: session.selectedAnimationFrameIds.length,
-  selectedCellCount: session.selectedAnimationCellKeys.length,
-  layerSelectionExplicit: session.layerSelectionExplicit === true,
-  selectedLayerCount: session.selectedLayerIds.length,
-  selectedGroupCount: session.selectedGroupIds.length,
-  selectedGroupId: session.selectedGroupId
 })

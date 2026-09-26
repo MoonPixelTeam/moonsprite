@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveTimelineFocusState, timelineSelectionPrecedesMarquee } from './animation-timeline-focus'
+import { resolveTimelineFocusState } from './animation-timeline-focus'
 import type { TimelineCellRef } from './animation-timeline-identity'
 
 const cel = (ownerId: string, frameId: string): TimelineCellRef => ({ kind: 'cel', ownerKind: 'layer', ownerId, frameId })
@@ -48,27 +48,5 @@ describe('resolveTimelineFocusState', () => {
     })
     expect(state.maskFocus).toBe(true)
     expect(state.mode).toBe('mask-cell')
-  })
-})
-
-describe('timelineSelectionPrecedesMarquee', () => {
-  const input = {
-    canvasSelectionActive: false,
-    activeMaskId: null,
-    selectedFrameCount: 0,
-    selectedCellCount: 0,
-    layerSelectionExplicit: false,
-    selectedLayerCount: 1,
-    selectedGroupCount: 0,
-    selectedGroupId: null
-  }
-
-  it('collapses an existing timeline selection only when starting the first canvas marquee', () => {
-    expect(timelineSelectionPrecedesMarquee({ ...input, selectedFrameCount: 2 })).toBe(true)
-    expect(timelineSelectionPrecedesMarquee({ ...input, selectedCellCount: 2 })).toBe(true)
-    expect(timelineSelectionPrecedesMarquee({ ...input, selectedLayerCount: 2 })).toBe(true)
-    expect(timelineSelectionPrecedesMarquee({ ...input, selectedFrameCount: 2, canvasSelectionActive: true })).toBe(false)
-    expect(timelineSelectionPrecedesMarquee({ ...input, selectedFrameCount: 2, activeMaskId: 'mask-a' })).toBe(false)
-    expect(timelineSelectionPrecedesMarquee(input)).toBe(false)
   })
 })

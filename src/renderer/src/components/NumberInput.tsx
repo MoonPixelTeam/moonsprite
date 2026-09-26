@@ -36,6 +36,7 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
   const currentValueRef = useRef<number | ''>(value)
   const lastPropValueRef = useRef<number | ''>(value)
   const onValueChangeRef = useRef(onValueChange)
+  const wheelHostRef = useRef<HTMLSpanElement>(null)
   const repeatTimerRef = useRef<number | null>(null)
   const repeatStartedAtRef = useRef(0)
   const repeatDeltaRef = useRef(0)
@@ -154,7 +155,20 @@ export function NumberInput({ value, onValueChange, live = false, min, max, dens
     if (next !== value) onValueChange(next)
   }
 
-  const control = <span className={`number-input number-input-${density} ${suffix ? 'has-suffix' : ''} ${className}`.trim()}>
+  useEffect(() => {
+    const host = wheelHostRef.current
+    if (!host) return
+    const wheel = (event: WheelEvent) => {
+      if (scrubDisabledRef.current || event.ctrlKey || event.metaKey || event.deltaY === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      adjustRef.current((event.deltaY < 0 ? 1 : -1) * scrubStepRef.current)
+      setDraft(String(currentValueRef.current))
+    }
+    host.addEventListener('wheel', wheel, { passive: false })
+    return () => host.removeEventListener('wheel', wheel)
+  }, [])
+  const control = <span ref={wheelHostRef} className={`number-input number-input-${density} ${suffix ? 'has-suffix' : ''} ${className}`.trim()}>
     <span className="number-input-editor" style={suffix ? { '--number-input-value-chars': Math.max(1, draft.length) } as CSSProperties : undefined}>
       <input {...inputProps} type="text" inputMode="decimal" role="spinbutton" aria-valuemin={min} aria-valuemax={max} aria-valuenow={typeof value === 'number' ? value : undefined} value={draft} style={inputProps.style} onFocus={onFocus} onChange={(event) => updateDraft(event.target.value)} onBlur={(event) => { commit(); onBlur?.(event) }} onKeyDown={(event) => { onKeyDown?.(event); if (event.defaultPrevented || event.key !== 'Enter') return; event.preventDefault(); const form = event.currentTarget.form; commit(); if (form) window.queueMicrotask(() => form.requestSubmit()); else event.currentTarget.blur() }} />
       {suffix && <span className="number-input-suffix" aria-hidden="true">{suffix}</span>}

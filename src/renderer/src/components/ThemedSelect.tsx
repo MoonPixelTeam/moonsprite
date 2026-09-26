@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Tooltip } from '@/components/Tooltip'
 import { PixelDownIcon as ChevronDown, PixelUtilityIcon } from '@/components/PixelUtilityIcon'
@@ -15,7 +15,7 @@ export interface ThemedSelectOption<T extends string> {
   description?: string
 }
 
-export function ThemedSelect<T extends string>({ value, groups, label, onChange, disabled = false, density = 'regular', renderSelected, renderOption, showCheck = true, showOptionTooltips = true, popoverClassName = '', popoverWidth, preserveAnimationSelection = false, searchable = false, searchPlaceholder = '' }: {
+export function ThemedSelect<T extends string>({ value, groups, label, onChange, disabled = false, density = 'regular', renderSelected, renderOption, showCheck = true, showOptionTooltips = true, popoverClassName = '', popoverWidth, preserveAnimationSelection = false, searchable = false, searchPlaceholder = '', onOptionContextMenu }: {
   value: T
   groups: Array<ThemedSelectGroup<T>>
   label: string
@@ -24,6 +24,7 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
   density?: 'compact' | 'regular'
   renderSelected?: (option: ThemedSelectOption<T>) => ReactNode
   renderOption?: (option: ThemedSelectOption<T>) => ReactNode
+  onOptionContextMenu?: (event: MouseEvent<HTMLButtonElement>, option: ThemedSelectOption<T>) => void
   showCheck?: boolean
   showOptionTooltips?: boolean
   popoverClassName?: string
@@ -98,6 +99,6 @@ export function ThemedSelect<T extends string>({ value, groups, label, onChange,
       }
       if (event.key === 'Escape') setOpen(false)
     }}><span className="themed-select-selected-copy">{selected ? renderSelected?.(selected) ?? selected.label : value}</span><ChevronDown size={14} /></button>
-    {open && createPortal(<div ref={menuRef} className={`themed-select-popover component-scrollbar ${popoverClassName}`.trim()} data-hide-check={!showCheck ? 'true' : undefined} data-preserve-animation-selection={preserveAnimationSelection ? '' : undefined} role="listbox" aria-label={label} style={{ ...position, width: popoverWidth === undefined ? 'max-content' : Math.max(position.minWidth, popoverWidth) }}>{searchable && <div className="themed-select-search"><TextInput autoFocus value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder || label} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setOpen(false); setQuery('') } }} /></div>}{filteredGroups.map((group) => <section key={group.label} className="themed-select-group">{group.options.map((option) => { const optionCopy = <span className="themed-select-option-copy">{renderOption?.(option) ?? <strong>{option.label}</strong>}</span>; return <button key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => select(option.value)}>{showOptionTooltips ? <Tooltip content={option.description ? `${option.label} — ${option.description}` : option.label}>{optionCopy}</Tooltip> : optionCopy}{showCheck && option.value === value && <PixelUtilityIcon kind="check" />}</button> })}</section>)}</div>, document.body)}
+    {open && createPortal(<div ref={menuRef} className={`themed-select-popover component-scrollbar ${popoverClassName}`.trim()} data-hide-check={!showCheck ? 'true' : undefined} data-preserve-animation-selection={preserveAnimationSelection ? '' : undefined} role="listbox" aria-label={label} style={{ ...position, width: popoverWidth === undefined ? 'max-content' : Math.max(position.minWidth, popoverWidth) }}>{searchable && <div className="themed-select-search"><TextInput autoFocus value={query} placeholder={searchPlaceholder} aria-label={searchPlaceholder || label} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setOpen(false); setQuery('') } }} /></div>}{filteredGroups.map((group) => <section key={group.label} className="themed-select-group">{group.options.map((option) => { const optionCopy = <span className="themed-select-option-copy">{renderOption?.(option) ?? <strong>{option.label}</strong>}</span>; return <button key={option.value} type="button" role="option" aria-selected={option.value === value} onContextMenu={event => onOptionContextMenu?.(event, option)} onClick={() => select(option.value)}>{showOptionTooltips ? <Tooltip content={option.description ? `${option.label} — ${option.description}` : option.label}>{optionCopy}</Tooltip> : optionCopy}{showCheck && option.value === value && <PixelUtilityIcon kind="check" />}</button> })}</section>)}</div>, document.body)}
   </span>
 }

@@ -39,12 +39,13 @@ describe('animation clipboard shortcuts', () => {
     const checkLinks = () => {
       const pasted = pastedFrames.map(frame => animationCelAt(pastedTimeline, target.activeLayerId, frame.id)!)
       expect(pasted).toHaveLength(copied.length)
-      expect(pasted[0].linkedCelId).toBeNull()
+      expect(pasted[0].linkedCelId ?? null).toBeNull()
       for (const cel of pasted) expect(Array.from(cel.surface!.pixels)).toEqual([255, 0, 0, 255])
-      for (const cel of pasted.slice(1)) expect(cel.linkedCelId).toBe(pasted[0].id)
+      for (const cel of pasted.slice(1)) expect(cel.linkedCelId ?? null).toBe(clip ? null : pasted[0].id)
       expect(originals.map(cel => cel.id)).not.toContain(pasted[0].id)
     }
     checkLinks()
+    if (clip) useWorkspace.getState().commitFloatingPaste()
     useWorkspace.getState().undo()
     expect(pastedTimeline.frames).toHaveLength(cross ? 1 : 4)
     useWorkspace.getState().redo()
@@ -73,8 +74,8 @@ describe('animation clipboard shortcuts', () => {
     expect(pasted.frames).toHaveLength(2)
     for (const frame of pasted.frames) {
       const surface = animationCelAt(pasted, target.activeLayerId, frame.id)!.surface!
-      expect(surface).toMatchObject({ width: 2, height: 1, offsetX: 1, offsetY: 0 })
-      expect(Array.from(surface.pixels)).toEqual([0, 255, 0, 128, 0, 0, 255, 255])
+      expect(surface).toMatchObject({ width: 4, height: 1, offsetX: 0, offsetY: 0 })
+      expect(Array.from(surface.pixels)).toEqual([0, 0, 0, 0, 0, 255, 0, 128, 0, 0, 255, 255, 0, 0, 0, 0])
     }
     expect(animationCelAt(timeline, layer.id, first)!.surface!.width).toBe(4)
   })

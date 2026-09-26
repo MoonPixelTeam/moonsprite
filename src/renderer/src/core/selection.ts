@@ -979,14 +979,17 @@ export const transformSelectionMask = (
   clipToCanvas = true
 ): SelectionMask | null => {
   const bounds = transformedSelectionBounds(target, angle, shear)
-  const x = clipToCanvas ? Math.max(0, bounds.x) : bounds.x
-  const y = clipToCanvas ? Math.max(0, bounds.y) : bounds.y
-  const right = clipToCanvas ? Math.min(canvasWidth, bounds.x + bounds.width) : bounds.x + bounds.width
-  const bottom = clipToCanvas ? Math.min(canvasHeight, bounds.y + bounds.height) : bounds.y + bounds.height
+  const x = clipToCanvas ? Math.max(0, Math.floor(bounds.x)) : Math.floor(bounds.x)
+  const y = clipToCanvas ? Math.max(0, Math.floor(bounds.y)) : Math.floor(bounds.y)
+  const right = clipToCanvas ? Math.min(canvasWidth, Math.ceil(bounds.x + bounds.width)) : Math.ceil(bounds.x + bounds.width)
+  const bottom = clipToCanvas ? Math.min(canvasHeight, Math.ceil(bounds.y + bounds.height)) : Math.ceil(bounds.y + bounds.height)
   if (right <= x || bottom <= y) return null
   const width = right - x
   const height = bottom - y
-  if (!source.mask && angle === 0 && !shear) return { x, y, width, height }
+  // Fractional transform edges must select the same destination pixel centers
+  // as rasterization; outward-rounded geometry alone adds empty border rows.
+  if (!source.mask && angle === 0 && !shear && Number.isInteger(target.x) && Number.isInteger(target.y)
+    && Number.isInteger(target.width) && Number.isInteger(target.height)) return { x, y, width, height }
 
   const mask = new Uint8Array(width * height)
   let selected = 0

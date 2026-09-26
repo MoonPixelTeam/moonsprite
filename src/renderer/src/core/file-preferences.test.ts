@@ -77,7 +77,7 @@ it('defaults new save and export locations to the most recently chosen folders',
 it('uses the requested cursor and magnifier defaults while preserving saved choices', () => {
   const storage = memoryStorage()
   const defaults = loadEditorPreferences(storage)
-  expect(defaults.paintingCursorShape).toBe('dot')
+  expect(defaults.paintingCursorShape).toBe('cross')
   expect(defaults.rotationIndicatorPosition).toBe('pointer-left')
   expect(defaults.eyedropperMagnifierDistortionEnabled).toBe(false)
   expect(defaults.quickCommandBars[1].edge).toBe('none')
@@ -86,6 +86,16 @@ it('uses the requested cursor and magnifier defaults while preserving saved choi
 })
 
 describe('editor preferences boundary', () => {
+  it('shows the selection pointer by default and preserves saved choices', () => {
+    const storage = memoryStorage()
+    expect(DEFAULT_EDITOR_PREFERENCES.selectionCrosshair).toBe(true)
+    expect(loadEditorPreferences(storage).selectionCrosshair).toBe(true)
+    for (const selectionCrosshair of [false, true]) {
+      saveEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES, selectionCrosshair }, storage)
+      expect(loadEditorPreferences(storage).selectionCrosshair).toBe(selectionCrosshair)
+    }
+  })
+
   it('shows canvas view scrollbars by default and persists an opt-out', () => {
     const storage = memoryStorage()
     expect(loadEditorPreferences(storage).canvasViewScrollbarsEnabled).toBe(true)
@@ -326,4 +336,14 @@ it('defaults reference scaling to smooth and persists hard edges with invalid-va
   expect(loadEditorPreferences(storage).referenceScaling).toBe('pixelated')
   storage.setItem(REFERENCE_SCALING_KEY, 'invalid')
   expect(loadEditorPreferences(storage).referenceScaling).toBe('smooth')
+})
+
+it('persists the pixel cross and migrates old alignment into the pixel toggle', () => {
+  const storage = memoryStorage()
+  storage.setItem('moonsprite.preference.painting-cursor-type', 'sprite')
+  expect(loadEditorPreferences(storage).paintingCursorAlignToPixel).toBe(true)
+  saveEditorPreferences({ ...loadEditorPreferences(storage), paintingCursorShape: 'pixel-cross', paintingCursorAlignToPixel: false }, storage)
+  expect(loadEditorPreferences(storage)).toMatchObject({ paintingCursorShape: 'pixel-cross', paintingCursorAlignToPixel: false })
+  storage.setItem('moonsprite.preference.painting-cursor-shape', 'dot')
+  expect(loadEditorPreferences(storage).paintingCursorShape).toBe('dot')
 })

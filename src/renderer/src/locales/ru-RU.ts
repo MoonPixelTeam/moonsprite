@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportruRU } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const ruRUMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Временная кисть: выделите область и отпустите для использования; Esc — отмена",
+  "preferences.paintingCursor.cross": "Простой крест",
+  "preferences.paintingCursor.pixelCross": "Пиксельный крест",
+  "preferences.paintingCursorAlignToPixel": "Привязать указатель к пикселям",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -108,7 +115,7 @@ export const ruRUMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Простая точка",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -174,6 +181,8 @@ export const ruRUMessages = {
   'preferences.diagnostics.memory': "Только сбор (в памяти)",
   'preferences.diagnostics.full': "Полный (сбор и сохранение)",
   'preferences.diagnostics.hint': "Сохраняется сразу, без перезапуска. Только сбор хранит последние 200 событий в памяти без автоматического сохранения. Полный режим записывает локальные журналы. Выключение не удаляет существующие журналы.",
+  'preferences.diagnostics.lag': "Сбор данных о задержках",
+  'preferences.diagnostics.lagHint': "Включите до воспроизведения. Значительные задержки и данные до и после них записываются автоматически, без ручных отметок. Нативный сбор ресурсов работает независимо от интерфейса. Затем откройте журналы через Справку и верните прежний режим. Предыдущие состояния и пиксели не собираются.",
   'preferences.diagnostics.saveFailed': "Не удалось сохранить настройку. Проверьте локальное хранилище и повторите попытку.",
   'layers.splitLayerStyles': 'Разделить стили слоя',
   'layers.splitStyleShadow': 'Тень',
@@ -1705,6 +1714,8 @@ export const ruRUMessages = {
   "timeline.copyCel": "Копировать Cel",
   "timeline.connectCel": 'Линк клеток',
   "timeline.disconnectCel": 'Отключение клеток',
+  'timeline.reverseCels': 'Обратить порядок ячеек',
+  'timeline.reverseFrames': 'Обратить порядок кадров',
   "timeline.pasteCel": "Вставить Cel",
   "timeline.copyMask": "Копировать Слой Маска Cel",
   "timeline.pasteMask": "Вставить Слой Маска Cel",

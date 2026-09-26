@@ -722,7 +722,8 @@ export interface EditorPreferences {
   zoomToolDragMode: ZoomToolDragMode
   viewDragSensitivity: ViewDragSensitivity
   brushShiftLineEnabled: boolean
-  paintingCursorShape: 'cross' | 'dot'
+  paintingCursorShape: 'cross' | 'dot' | 'pixel-cross'
+  paintingCursorAlignToPixel: boolean
   paintingCursorType: PaintingCursorType
   useLocalCursors: boolean
   cursorScale: CursorScale
@@ -766,6 +767,7 @@ export interface EditorPreferences {
   selectionCrosshair: boolean
   selectionPreviewColorMode: SelectionPreviewColorMode
   selectionPreviewColor: RgbaColor
+  recentColorsVisible: boolean
   selectionSizeVisible: boolean
   balancedShiftLineEnabled: boolean
   optimizedRotationEnabled: boolean
@@ -832,7 +834,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   zoomToolDragMode: 'stepped',
   viewDragSensitivity: 1,
   brushShiftLineEnabled: true,
-  paintingCursorShape: 'dot',
+  paintingCursorShape: 'cross',
+  paintingCursorAlignToPixel: false,
   paintingCursorType: 'simple',
   useLocalCursors: false,
   cursorScale: 1,
@@ -873,9 +876,10 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   moveLayerContentPreviewEnabled: true,
   moveLayerClickFlashEnabled: true,
   moveLayerClickFlashDuration: 120,
-  selectionCrosshair: false,
+  selectionCrosshair: true,
   selectionPreviewColorMode: 'auto',
   selectionPreviewColor: DEFAULT_SELECTION_PREVIEW_COLOR,
+  recentColorsVisible: true,
   selectionSizeVisible: true,
   balancedShiftLineEnabled: true,
   optimizedRotationEnabled: true,
@@ -1370,7 +1374,8 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     zoomToolDragMode: parseZoomToolDragMode(get(ZOOM_TOOL_DRAG_MODE_PREFERENCE_KEY)),
     viewDragSensitivity: parseViewDragSensitivity(get(VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY)),
     brushShiftLineEnabled: parseBrushShiftLineEnabled(get(BRUSH_SHIFT_LINE_ENABLED_KEY)),
-    paintingCursorShape: get('moonsprite.preference.painting-cursor-shape') === 'cross' ? 'cross' : 'dot',
+    paintingCursorShape: get('moonsprite.preference.painting-cursor-shape') === 'dot' ? 'dot' : get('moonsprite.preference.painting-cursor-shape') === 'pixel-cross' ? 'pixel-cross' : 'cross',
+    paintingCursorAlignToPixel: get('moonsprite.preference.painting-cursor-align-pixel') == null ? parsePaintingCursorType(get(PAINTING_CURSOR_TYPE_KEY)) !== 'simple' : get('moonsprite.preference.painting-cursor-align-pixel') === 'true',
     paintingCursorType: parsePaintingCursorType(get(PAINTING_CURSOR_TYPE_KEY)),
     useLocalCursors: get(USE_LOCAL_CURSORS_PREFERENCE_KEY) === 'true',
     cursorScale: parseCursorScale(get(CURSOR_SCALE_PREFERENCE_KEY)),
@@ -1411,9 +1416,10 @@ export function loadEditorPreferences(storage?: Storage): EditorPreferences {
     moveLayerContentPreviewEnabled: get(MOVE_LAYER_CONTENT_PREVIEW_ENABLED_PREFERENCE_KEY) !== 'false',
     moveLayerClickFlashEnabled: get(MOVE_LAYER_CLICK_FLASH_ENABLED_PREFERENCE_KEY) !== 'false',
     moveLayerClickFlashDuration: parseMoveLayerClickFlashDuration(get(MOVE_LAYER_CLICK_FLASH_DURATION_PREFERENCE_KEY)),
-    selectionCrosshair: get(SELECTION_CROSSHAIR_PREFERENCE_KEY) === 'true',
+    selectionCrosshair: get(SELECTION_CROSSHAIR_PREFERENCE_KEY) !== 'false',
     selectionPreviewColorMode: parseSelectionPreviewColorMode(get(SELECTION_PREVIEW_COLOR_MODE_PREFERENCE_KEY)),
     selectionPreviewColor: parseHexColor(get(SELECTION_PREVIEW_COLOR_PREFERENCE_KEY), DEFAULT_SELECTION_PREVIEW_COLOR),
+    recentColorsVisible: get('moonsprite.preference.recent-colors-visible') !== 'false',
     selectionSizeVisible: get(SELECTION_SIZE_VISIBLE_PREFERENCE_KEY) !== 'false',
     balancedShiftLineEnabled: get(BALANCED_SHIFT_LINE_ENABLED_PREFERENCE_KEY) !== 'false',
     optimizedRotationEnabled: get(OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY) !== 'false',
@@ -1488,6 +1494,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [VIEW_DRAG_SENSITIVITY_PREFERENCE_KEY]: String(parseViewDragSensitivity(String(preferences.viewDragSensitivity))),
     [BRUSH_SHIFT_LINE_ENABLED_KEY]: String(preferences.brushShiftLineEnabled),
     ['moonsprite.preference.painting-cursor-shape']: preferences.paintingCursorShape,
+    ['moonsprite.preference.painting-cursor-align-pixel']: String(preferences.paintingCursorAlignToPixel),
     [PAINTING_CURSOR_TYPE_KEY]: preferences.paintingCursorType,
     [USE_LOCAL_CURSORS_PREFERENCE_KEY]: String(preferences.useLocalCursors),
     [CURSOR_SCALE_PREFERENCE_KEY]: String(preferences.cursorScale),
@@ -1533,6 +1540,7 @@ export function saveEditorPreferences(preferences: EditorPreferences, storage?: 
     [SELECTION_CROSSHAIR_PREFERENCE_KEY]: String(preferences.selectionCrosshair),
     [SELECTION_PREVIEW_COLOR_MODE_PREFERENCE_KEY]: parseSelectionPreviewColorMode(preferences.selectionPreviewColorMode),
     [SELECTION_PREVIEW_COLOR_PREFERENCE_KEY]: colorHex(preferences.selectionPreviewColor),
+    ['moonsprite.preference.recent-colors-visible']: String(preferences.recentColorsVisible),
     [SELECTION_SIZE_VISIBLE_PREFERENCE_KEY]: String(preferences.selectionSizeVisible),
     [BALANCED_SHIFT_LINE_ENABLED_PREFERENCE_KEY]: String(preferences.balancedShiftLineEnabled),
     [OPTIMIZED_ROTATION_ENABLED_PREFERENCE_KEY]: String(preferences.optimizedRotationEnabled),

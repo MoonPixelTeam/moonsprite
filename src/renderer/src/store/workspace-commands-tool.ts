@@ -113,6 +113,10 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       if (current?.textBoxTransform && tool !== 'selection') get().cancelTextBoxTransform()
       get().mutateActive((session) => {
         if (session.tool === tool) return
+        if (session.temporaryBrushCapture) {
+          Object.assign(session, session.temporaryBrushCapture)
+          session.temporaryBrushCapture = undefined
+        }
         if (session.tool === 'liquify' && tool !== 'liquify') {
           session.liquifyGestureActive = false
           session.liquifyResetHistoryPosition = null
@@ -247,6 +251,9 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
 
     setBrushImage(brush) {
       get().mutateActive((session) => {
+        if (brush && !isProceduralBrushId(brush.id) && !session.patternBrushReturnProfile) {
+          session.patternBrushReturnProfile = session.tool === 'pencil' ? brushProfileFromSession(session) : { ...session.brushProfiles.pencil }
+        }
         session.brushImage = brush && isProceduralBrushId(brush.id)
           ? createProceduralBrush(brush.id, session.proceduralBrushSettings[brush.id])
           : clearSelectionBrushPaintColors(brush)
@@ -257,9 +264,61 @@ export function createWorkspaceToolCommands({ get, set }: WorkspaceCommandContex
       }, false)
     },
 
+    beginTemporaryBrushCapture() {
+      if (isCanvasToolGestureLocked()) return
+      get().commitFloatingPaste()
+      get().mutateActive((session) => {
+        if (session.temporaryBrushCapture || !isToolAvailableForSession(session, 'pencil')) return
+        session.patternBrushReturnProfile ??= session.tool === 'pencil' ? brushProfileFromSession(session) : { ...session.brushProfiles.pencil }
+        session.temporaryBrushCapture = { selectionKind: session.selectionKind, selectionMode: session.selectionMode, selectionRounded: session.selectionRounded, selectionAspectRatio: session.selectionAspectRatio ?? null }
+        session.tool = 'selection'
+        session.selectionKind = 'rectangle'
+        session.selectionMode = 'replace'
+        session.selectionRounded = false
+        session.selectionAspectRatio = null
+      }, false)
+    },
+
+    finishTemporaryBrushCapture(selection) {
+      const current = activeSession(get())
+      if (!current?.temporaryBrushCapture) return
+      try {
+        const brush = createSelectionBrush(current.document, selection, `temporary-brush-${createId('brush')}`, tr('brush.defaultName'))
+        if (!brush) { set({ message: tr('workspace.brushEmpty') }); return }
+        get().mutateActive((session) => {
+          Object.assign(session, session.temporaryBrushCapture)
+          session.temporaryBrushCapture = undefined
+          applyBrushProfile(session, session.patternBrushReturnProfile ?? session.brushProfiles.pencil)
+          session.brushImage = brush
+          session.brushImageId = brush.id
+          session.brushImageTemporary = true
+          session.brushPaintMode = 'paint'
+          session.tool = 'pencil'
+          session.brushProfiles.pencil = brushProfileFromSession(session)
+        }, false)
+      } catch (error) {
+        set({ message: error instanceof Error ? error.message : tr('brush.saveError') })
+      }
+    },
+
+    exitPatternBrush() {
+      if (isCanvasToolGestureLocked()) return
+      get().mutateActive((session) => {
+        if (!session.temporaryBrushCapture && !session.brushImage) return
+        if (session.temporaryBrushCapture) Object.assign(session, session.temporaryBrushCapture)
+        session.temporaryBrushCapture = undefined
+        session.tool = 'pencil'
+        applyBrushProfile(session, session.patternBrushReturnProfile ?? { ...session.brushProfiles.pencil, brushImage: null, brushImageId: null, brushImageTemporary: false })
+        session.patternBrushReturnProfile = undefined
+        rememberBrushProfile(session)
+        persistToolSettings(session)
+      }, false)
+    },
+
     setTemporaryBrush(brush) {
       if (isCanvasToolGestureLocked()) return
       get().mutateActive((session) => {
+        session.patternBrushReturnProfile ??= session.tool === 'pencil' ? brushProfileFromSession(session) : { ...session.brushProfiles.pencil }
         session.brushImage = { ...brush, colors: brush.colors?.slice(), paintColors: undefined }
         session.brushImageId = brush.id
         session.brushImageTemporary = true

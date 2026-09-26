@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from '@/core/layer-adjustment'
 import type { AnimationCel, AnimationFrame, AnimationLoopSection } from '@shared/types-animation'
 import type { AnimationGroupMask, AnimationLayerMask, LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { ColorMode } from '@shared/types-raster'
@@ -144,6 +145,7 @@ interface LayerDefinitionSnapshot {
   freeTileSetId?: string
   freeTileSources?: FreeTileSourceLayer[]
   layerStyles?: RasterLayer['layerStyles']
+  adjustment?: RasterLayer['adjustment']
   background?: RasterLayer['background']
 }
 
@@ -179,6 +181,7 @@ export const captureLayerContentSnapshot = (
       freeTileSetId: layer.freeTileSetId,
       freeTileSources: layer.freeTileSources?.map((source) => ({ ...source, displayColor: source.displayColor ? { ...source.displayColor } : undefined })),
       layerStyles: cloneLayerStyles(layer.layerStyles),
+      adjustment: cloneLayerAdjustment(layer.adjustment),
       background: layer.background ? { ...layer.background } : undefined
     },
     cels: timeline.cels.filter((cel) => cel.layerId === layerId).map(cloneAnimationCel),
@@ -215,6 +218,7 @@ export const restoreLayerContentSnapshot = (document: SpriteDocument, snapshot: 
   else delete layer.freeTileSources
   if (snapshot.definition.layerStyles) layer.layerStyles = cloneLayerStyles(snapshot.definition.layerStyles)
   else delete layer.layerStyles
+  layer.adjustment = cloneLayerAdjustment(snapshot.definition.adjustment)
   if (snapshot.definition.background) layer.background = { ...snapshot.definition.background }
   else delete layer.background
   document.tilesets = [...snapshot.tilesets]

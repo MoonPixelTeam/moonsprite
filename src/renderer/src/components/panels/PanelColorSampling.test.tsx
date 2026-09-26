@@ -10,6 +10,8 @@ import { useReferenceImages } from './reference-image-state'
 import { notifyCanvasPreview } from '@/core/canvas-preview-lifecycle'
 import { captureSelectionTransform } from '@/core/tools-selection-transform-source'
 import { canvasCompositeCacheFor } from '@/components/canvas-composite-registry'
+import { PreviewRasterCache } from './preview-raster-cache'
+import { PREVIEW_ZOOM_SHORTCUT_EVENT } from '@/core/preview-zoom-shortcuts'
 
 let previous: ReturnType<typeof useWorkspace.getState>
 const color = { r: 35, g: 70, b: 105, a: 128 }
@@ -23,7 +25,9 @@ beforeEach(() => {
   vi.stubGlobal('devicePixelRatio', 1)
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(200)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(200)
-  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 200))
+  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLCanvasElement) {
+    return new DOMRect(0, 0, parseFloat(this.style.width) || 200, parseFloat(this.style.height) || 200)
+  })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     scale: vi.fn(), translate: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), clip: vi.fn(),
     fillRect: vi.fn(), clearRect: vi.fn(), createPattern: () => null, drawImage: vi.fn(),
@@ -51,31 +55,57 @@ const clickSample = (panel: HTMLElement, altKey: boolean) => {
   fireEvent.pointerUp(panel)
 }
 
-it('keeps preview artwork at its initial scale when the panel is resized', () => {
+it.each([1, 1.25, 1.5, 2])('keeps preview pixels fixed and reuses its backing when resized at DPR %s', dpr => {
   vi.useFakeTimers()
   try {
+    vi.stubGlobal('devicePixelRatio', dpr)
+    const configure = vi.spyOn(PreviewRasterCache.prototype, 'configure')
     const observers: Array<() => void> = []
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: () => void) { observers.push(callback) }
       observe() {} disconnect() {}
     })
-    let size = 200
+    let size = 201
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => size)
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => size)
-    vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, 0, size, size))
     const session = useWorkspace.getState().sessions[0]
     const view = render(<PreviewPanel session={session} docked onClose={() => {}} />, { wrapper: I18nProvider })
     act(() => vi.advanceTimersByTime(32))
-    const context = view.container.querySelector('canvas')!.getContext('2d')!
+    const canvas = view.container.querySelector('canvas')!
+    const context = canvas.getContext('2d')!
     const initial = vi.mocked(context.rect).mock.lastCall!
     expect(initial[2]).toBeGreaterThan(0)
+    const placement = configure.mock.lastCall![3]
+    expect(Number.isInteger(placement.originX)).toBe(true)
+    expect(Number.isInteger(placement.originY)).toBe(true)
+    const backing = [canvas.width, canvas.height]
     vi.mocked(context.rect).mockClear()
-    size = 400
+    size = 202
     act(() => { observers.forEach(callback => callback()); vi.advanceTimersByTime(32) })
+    expect([canvas.width, canvas.height]).toEqual(backing)
+    expect(context.rect).not.toHaveBeenCalled()
+    size = 400
+    act(() => { for (let i = 0; i < 20; i++) observers.forEach(callback => callback()); vi.advanceTimersByTime(32) })
     const resized = vi.mocked(context.rect).mock.lastCall!
-    expect(resized.slice(2)).toEqual(initial.slice(2))
-    expect(resized[0] - initial[0]).toBe(100)
-    expect(resized[1] - initial[1]).toBe(100)
+    expect(resized).toEqual(initial)
+    expect(context.rect).toHaveBeenCalledTimes(1)
+    expect(parseFloat(canvas.style.width)).toBeCloseTo(canvas.width / dpr)
+    expect(parseFloat(canvas.style.height)).toBeCloseTo(canvas.height / dpr)
+    vi.mocked(context.rect).mockClear()
+    size = 180
+    act(() => { observers.forEach(callback => callback()); vi.advanceTimersByTime(32) })
+    expect(context.rect).not.toHaveBeenCalled()
+    const pointer = { x: 80, y: 90 }
+    const beforeZoom = configure.mock.lastCall![3]
+    const documentPoint = { x: (pointer.x * dpr - beforeZoom.originX) / beforeZoom.scale,
+      y: (pointer.y * dpr - beforeZoom.originY) / beforeZoom.scale }
+    act(() => canvas.dispatchEvent(new CustomEvent(PREVIEW_ZOOM_SHORTCUT_EVENT, {
+      bubbles: true, detail: { zoom: beforeZoom.scale / dpr * 2, pointer }
+    })))
+    const afterZoom = configure.mock.lastCall![3]
+    // Snapping to the device grid can move the anchor by at most half a pixel.
+    expect(Math.abs(pointer.x * dpr - afterZoom.originX - documentPoint.x * afterZoom.scale)).toBeLessThanOrEqual(0.500001)
+    expect(Math.abs(pointer.y * dpr - afterZoom.originY - documentPoint.y * afterZoom.scale)).toBeLessThanOrEqual(0.500001)
   } finally { vi.useRealTimers() }
 })
 

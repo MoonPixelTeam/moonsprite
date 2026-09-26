@@ -16,13 +16,13 @@ const normalizeDroppedPath = (value: string): string => {
   }
 }
 
-export const normalizeDroppedDocumentPaths = (paths: string[]): string[] => {
+export const normalizeDroppedDocumentPaths = (paths: string[], acceptsAdditional: (path: string) => boolean = () => false): string[] => {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of paths) {
     const path = normalizeDroppedPath(value)
     const key = path.toLowerCase()
-    if (!path || !supportedDocumentExtension.test(path) || seen.has(key)) continue
+    if (!path || (!supportedDocumentExtension.test(path) && !acceptsAdditional(path)) || seen.has(key)) continue
     seen.add(key)
     result.push(path)
   }

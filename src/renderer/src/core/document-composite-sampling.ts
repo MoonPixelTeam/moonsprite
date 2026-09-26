@@ -1,3 +1,5 @@
+import { normalizeDocumentColor } from './document-model'
+import { createGradientMapSampler } from './gradient-map'
 import type { BlendMode, RgbaColor } from '@shared/types-color'
 import type { LayerGroup, LayerMask, RasterLayer } from '@shared/types-layer'
 import type { SelectionRect } from '@shared/types-selection'
@@ -31,6 +33,8 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
 ): CompositePointReplacementSampler => {
   const paletteById = new Map(document.palette.map((entry) => [entry.id, entry.color]))
   type CompiledItem = {
+    adjustment?: ReturnType<typeof createGradientMapSampler>
+    containsAdjustment?: boolean
     styleReader?: (x: number, y: number) => RgbaColor
     sourceReader?: (x: number, y: number) => RgbaColor
     colorReader?: (x: number, y: number) => RgbaColor
@@ -53,17 +57,19 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     } else {
       readSource = (x, y) => { const local = readIndex(x, y); return local === null ? TRANSPARENT : (paletteById.get(readSurfacePackedLocal(layer, local % layer.width, Math.floor(local / layer.width))) ?? TRANSPARENT) }
     }
+    if (layer.kind === 'adjustment') readSource = () => TRANSPARENT
     const resolveStyleColor = (styleColor: RgbaColor): RgbaColor => resolveLayerCanvasColor(document, layer, styleColor)
     const styles = hasEnabledLayerStyles(layer.layerStyles)
-      ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor)
+      ? mapLayerStyleColors(resolveLayerStyles(layer.layerStyles), resolveStyleColor, color => normalizeDocumentColor(document, color))
       : undefined
-    const outputBounds = geometryBoundsOnly
+    const adjustment = layer.kind === 'adjustment' && layer.adjustment?.enabled ? createGradientMapSampler({ ...layer.adjustment.gradientMap, stops: layer.adjustment.gradientMap.stops.map(stop => ({ ...stop, color: normalizeDocumentColor(document, stop.color) })) }) : undefined
+    const outputBounds = layer.kind === 'adjustment' ? { x: 0, y: 0, width: document.width, height: document.height } : geometryBoundsOnly
       ? { x: layer.offsetX, y: layer.offsetY, width: layer.width, height: layer.height }
       : layerStyleOutputBounds(styleCache ? styleCache.compositeSourceBounds(document, layer, sourceDirtyRect) : layerContentBounds(document, layer), styles)
-    if (layer.id !== layerId) return { kind: 'layer', layer, read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds }
+    if (layer.id !== layerId) return { kind: 'layer', layer, adjustment, containsAdjustment: Boolean(adjustment), read: readSource, resolveStyleColor, ...(styles ? { styles } : {}), outputBounds }
     return {
       kind: 'layer',
-      layer,
+      layer, adjustment, containsAdjustment: Boolean(adjustment),
       resolveStyleColor,
       ...(styles ? { styles } : {}),
       outputBounds,
@@ -79,9 +85,9 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     const geometry = sourceBounds ?? { x: 0, y: 0, width: document.width, height: document.height }
     const resolveStyleColor = (styleColor: RgbaColor): RgbaColor => resolveDocumentCanvasColor(document, styleColor)
     const styles = hasEnabledLayerStyles(item.group.layerStyles)
-      ? mapLayerStyleColors(resolveLayerStyles(item.group.layerStyles), resolveStyleColor)
+      ? mapLayerStyleColors(resolveLayerStyles(item.group.layerStyles), resolveStyleColor, color => normalizeDocumentColor(document, color))
       : undefined
-    return { kind: 'group', group: item.group, children, resolveStyleColor, ...(styles ? { styles } : {}), geometry, outputBounds: layerStyleOutputBounds(sourceBounds, styles) }
+    return { kind: 'group', group: item.group, children, containsAdjustment: children.some(child => child.containsAdjustment), resolveStyleColor, ...(styles ? { styles } : {}), geometry, outputBounds: layerStyleOutputBounds(sourceBounds, styles) }
   })
   const itemVisibleBeforeCompile = (item: CompiledItem): boolean => item.kind === 'layer'
     ? item.layer.visible && item.layer.opacity > 0
@@ -188,22 +194,37 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
       ? source
       : blendWithMode(backdrop, source, opacity, blendMode)
   }
+  function compositeAdjustment(backdrop: RgbaColor, item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
+    if (!item.adjustment || backdrop.a === 0 || x < 0 || y < 0 || x >= document.width || y >= document.height) return backdrop
+    const mask = itemMask(item)
+    const amount = itemOpacity(item) * (mask ? readMaskCoverage(mask, x, y, replacement) / 255 : 1)
+    const mapped = normalizeDocumentColor(document, item.adjustment(backdrop, x, y))
+    if (itemBlendMode(item) === 'normal') return {
+      r: Math.round(backdrop.r * (1 - amount) + mapped.r * amount),
+      g: Math.round(backdrop.g * (1 - amount) + mapped.g * amount),
+      b: Math.round(backdrop.b * (1 - amount) + mapped.b * amount), a: backdrop.a
+    }
+    const blended = blendWithMode({ ...backdrop, a: 255 }, { ...mapped, a: 255 }, amount, itemBlendMode(item))
+    return { ...blended, a: backdrop.a }
+  }
   function compositeRegularItem(backdrop: RgbaColor, item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
     if (!itemVisible(item) || itemOpacity(item) <= 0) return backdrop
+    if (item.adjustment) return compositeAdjustment(backdrop, item, x, y, replacement)
     if (item.kind === 'layer') return compositeIsolatedSource(backdrop, item, isolatedItemColor(item, x, y, replacement))
-    if (item.group.cumulativeBlend === true && !item.styles) {
+    if (item.group.cumulativeBlend === true && !item.styles && !item.containsAdjustment) {
       const isolatedColor = isolatedItemColor(item, x, y, replacement)
       if (isolatedColor.a === 0) return backdrop
       const cumulativeColor = applyItemMask(item, compositeContainer(item.children, x, y, replacement, backdrop), x, y, replacement)
       return blendWithMode(backdrop, cumulativeColor, item.group.opacity, item.group.blendMode)
     }
-    if (item.group.blendMode === 'normal' && item.group.opacity === 1 && !itemMask(item) && !item.styles) return compositeContainer(item.children, x, y, replacement, backdrop)
+    if (item.group.blendMode === 'normal' && item.group.opacity === 1 && !itemMask(item) && !item.styles && !item.containsAdjustment) return compositeContainer(item.children, x, y, replacement, backdrop)
     return compositeIsolatedSource(backdrop, item, isolatedItemColor(item, x, y, replacement))
   }
   function compositeClippedMember(backdrop: RgbaColor, item: CompiledItem, x: number, y: number, replacement: RgbaColor | undefined): RgbaColor {
     if (!itemVisible(item) || itemOpacity(item) <= 0) return backdrop
+    if (item.adjustment) return compositeAdjustment(backdrop, item, x, y, replacement)
     if (item.kind === 'layer') return compositeIsolatedSource(backdrop, item, isolatedItemColor(item, x, y, replacement))
-    if (item.group.cumulativeBlend === true && !item.styles) {
+    if (item.group.cumulativeBlend === true && !item.styles && !item.containsAdjustment) {
       const isolatedColor = isolatedItemColor(item, x, y, replacement)
       if (isolatedColor.a === 0) return backdrop
       const cumulativeColor = applyItemMask(item, compositeContainer(item.children, x, y, replacement, backdrop), x, y, replacement)
@@ -218,7 +239,7 @@ export const compileCompositePointSampler = (document: SpriteDocument, layerId?:
     let color = prefix ? prefix.read(x, y) : backdrop
     for (let itemIndex = prefix?.end ?? 0; itemIndex < items.length; itemIndex += 1) {
       const item = items[itemIndex]
-      if (items[itemIndex + 1] && clipsToLowerSibling(items[itemIndex + 1])) {
+      if (!item.adjustment && items[itemIndex + 1] && clipsToLowerSibling(items[itemIndex + 1])) {
         let lastClippedIndex = itemIndex
         while (items[lastClippedIndex + 1] && clipsToLowerSibling(items[lastClippedIndex + 1])) lastClippedIndex += 1
         const baseSource = isolatedItemColor(item, x, y, replacement)

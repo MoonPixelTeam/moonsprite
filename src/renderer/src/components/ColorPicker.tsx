@@ -189,7 +189,7 @@ export const triangleWeightsFromColor = (color: RgbaColor): TriangleWeights => {
   return { tip: tip / total, white: white / total, black: black / total }
 }
 
-export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange, paletteColors, onAddPaletteColor, addToPaletteShortcut, roleControls, wheelHue = false, compact = false, label, config = { scheme: 'sv-square', hueSteps: 0, colorSteps: 0 } }: { color: RgbaColor; secondaryColor?: RgbaColor; onChange: (color: RgbaColor) => void; onSecondaryChange?: (color: RgbaColor) => void; paletteColors?: readonly RgbaColor[]; onAddPaletteColor?: (color: RgbaColor) => void; addToPaletteShortcut?: string; roleControls?: ReactNode; wheelHue?: boolean; compact?: boolean; label?: string; config?: ColorPickerConfig }) {
+export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange, paletteColors, onAddPaletteColor, addToPaletteShortcut, roleControls, footer, wheelHue = false, compact = false, label, config = { scheme: 'sv-square', hueSteps: 0, colorSteps: 0 } }: { color: RgbaColor; secondaryColor?: RgbaColor; onChange: (color: RgbaColor) => void; onSecondaryChange?: (color: RgbaColor) => void; paletteColors?: readonly RgbaColor[]; onAddPaletteColor?: (color: RgbaColor) => void; addToPaletteShortcut?: string; roleControls?: ReactNode; footer?: ReactNode; wheelHue?: boolean; compact?: boolean; label?: string; config?: ColorPickerConfig }) {
   const { t } = useI18n()
   const effectiveLabel = label ?? t('colorPicker.defaultLabel')
   const [pickerHsv, setPickerHsv] = useState(() => rgbToHsv(color))
@@ -822,6 +822,7 @@ export function ColorPicker({ color, secondaryColor, onChange, onSecondaryChange
          <ColorValueControl color={color} density={compact ? 'compact' : 'regular'} onChange={onChange} label={effectiveLabel} roleLabel={t('colorPicker.foreground')} storageKey="palette-foreground" fillWithColor inPalette={paletteColors?.some((entry) => entry.r === color.r && entry.g === color.g && entry.b === color.b && entry.a === color.a)} onAddToPalette={onAddPaletteColor ? () => onAddPaletteColor(color) : undefined} addToPaletteShortcut={addToPaletteShortcut} />
          {secondaryColor && onSecondaryChange && <ColorValueControl color={secondaryColor} density={compact ? 'compact' : 'regular'} onChange={onSecondaryChange} label={effectiveLabel} roleLabel={t('colorPicker.background')} storageKey="palette-background" className="color-secondary-value-control" fillWithColor inPalette={paletteColors?.some((entry) => entry.r === secondaryColor.r && entry.g === secondaryColor.g && entry.b === secondaryColor.b && entry.a === secondaryColor.a)} onAddToPalette={onAddPaletteColor ? () => onAddPaletteColor(secondaryColor) : undefined} addToPaletteShortcut={addToPaletteShortcut} />}
        </>}
+       {footer}
      </div>
   </div>
 }

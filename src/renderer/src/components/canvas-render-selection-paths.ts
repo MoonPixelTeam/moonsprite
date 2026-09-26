@@ -255,9 +255,10 @@ export function createCanvasSelectionPaths({
     return next
   }
   const drawSelectionCursorCorners = (pixelX: number, pixelY: number, color: string): void => {
-    // The cursor resolver owns pointer priority. Check its latest result at
-    // draw time so queued previews cannot overlap a newly selected cursor.
-    if (useLocalCursors || (cursorCanvas && cursorCanvas.style.cursor !== 'none')) return
+    // Selection creation keeps its corner marks alongside the optional
+    // painting pointer. Move/resize/sampling cursors still own priority.
+    const selectionPointer = cursorCanvas?.style.cursor === 'var(--cursor-crosshair)'
+    if (!selectionPointer && (useLocalCursors || (cursorCanvas && cursorCanvas.style.cursor !== 'none'))) return
     const pixelRect = previewPixelRect(pixelX, pixelY)
     const marks = selectionCursorCornerRects(pixelRect, deviceScale.x)
     const left = Math.min(...marks.map(mark => mark.x)), top = Math.min(...marks.map(mark => mark.y))

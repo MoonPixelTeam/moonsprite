@@ -42,6 +42,7 @@ export interface LayerTreeRowsProps {
   readonly ordinaryCelSelectionVisible: ReturnType<typeof deriveLayerPanelVisuals>['ordinaryCelSelectionVisible']
   readonly draggingIds: ReturnType<typeof useLayerRowDrag>['draggingIds']
   readonly beginLayerDrag: (event: React.PointerEvent<HTMLButtonElement>, layerId: string) => void
+  readonly openLayerContent: ReturnType<typeof useLayerContextActions>['openLayerContent']
   readonly editLayerRow: ReturnType<typeof useLayerContextActions>['editLayerRow']
   readonly liveAutoLinkById: Map<string, boolean>
   readonly handleLayerAutoLinkPointerDown: ReturnType<typeof useLayerControlGestures>['handleLayerAutoLinkPointerDown']

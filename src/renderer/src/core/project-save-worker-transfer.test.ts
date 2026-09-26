@@ -18,6 +18,7 @@ class TransportWorker {
   readonly channel = new MessageChannel()
   onmessage: ((event: MessageEvent<ProjectEncodeWorkerResponse>) => void) | null = null
   onerror: ((event: { message: string }) => void) | null = null
+  onmessageerror: (() => void) | null = null
   received: Request | null = null
   failNextPost = false
 
@@ -76,6 +77,32 @@ const sparseDocument = (format: 'rgba' | 'indexed') => {
 }
 
 describe('project save worker transport', () => {
+  it('rejects a null worker request without an uncaught exception and permits a fresh save', async () => {
+    const responses: ProjectEncodeWorkerResponse[] = []
+    const original = globalThis.postMessage
+    vi.stubGlobal('postMessage', (response: ProjectEncodeWorkerResponse) => responses.push(response))
+    try {
+      expect(() => workerHandler({ data: null } as unknown as MessageEvent<Request>)).not.toThrow()
+      expect(responses[0]?.error).toMatch(/message/i)
+    } finally { vi.stubGlobal('postMessage', original) }
+    const restored = decodeProject(await encodeProjectAsync(sparseDocument('rgba'), { includePreview: false }))
+    expect(readSurfacePackedLocal(restored.layers[0], 0, 0)).toBe(0xff21160b)
+  })
+
+  it.each(['null response', 'messageerror'])('rejects pending saves on %s and replaces the worker', async failure => {
+    const saving = encodeProjectAsync(sparseDocument('rgba'), { includePreview: false })
+    const rejected = expect(saving).rejects.toThrow(/message/i)
+    const failedWorker = instance
+    if (failure === 'null response') failedWorker.onmessage?.({ data: null } as unknown as MessageEvent<ProjectEncodeWorkerResponse>)
+    else failedWorker.onmessageerror?.()
+    await rejected
+    const next = encodeProjectAsync(sparseDocument('rgba'), { includePreview: false })
+    expect(instance).not.toBe(failedWorker)
+    // A delayed error from the terminated instance must not abort this save.
+    failedWorker.onerror?.({ message: 'late worker failure' })
+    expect(readSurfacePackedLocal(decodeProject(await next).layers[0], 0, 0)).toBe(0xff21160b)
+  })
+
   it('captures dense edits when posted, without detaching the live buffers', async () => {
     const document = createDocument('save snapshot', 2, 1, 'rgba')
     const layer = document.layers[0]

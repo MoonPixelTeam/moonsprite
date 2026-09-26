@@ -1,0 +1,10 @@
+{
+  "windows-full": { "platform": "windows", "edition": "full", "status": "ready" },
+  "web-trial": { "platform": "web", "edition": "trial", "status": "ready" },
+  "android-full": { "platform": "android", "edition": "full", "status": "planned" },
+  "android-trial": { "platform": "android", "edition": "trial", "status": "planned" },
+  "ios-full": { "platform": "ios", "edition": "full", "status": "planned" },
+  "ios-trial": { "platform": "ios", "edition": "trial", "status": "planned" },
+  "macos-full": { "platform": "macos", "edition": "full", "status": "planned" },
+  "macos-trial": { "platform": "macos", "edition": "trial", "status": "planned" }
+}

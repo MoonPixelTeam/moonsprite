@@ -5,6 +5,7 @@ import { decodeBrowserRasterImage } from '@/core/raster-image'
 import { decodeDocumentFileAsync } from '@/core/document-files'
 import { publishBrushLibraryImportPaths } from '@/core/brush-library-events'
 import { isExtensionPackagePath } from '@/core/extension-packages'
+import { acceptsExtensionFileDrop, routeExtensionFileDrops } from '@/core/extension-file-drop'
 import { startDocumentDropService } from '@/platform/document-drop-service'
 import { getRecentProjects, type RecentProject } from '@/core/home-history'
 import { loadEditorPreferences } from '@/core/file-preferences'
@@ -184,9 +185,12 @@ export function useAppDocumentIO({
 
   useEffect(() => {
     return startDocumentDropService({
+      acceptsAdditionalPath: acceptsExtensionFileDrop,
       openPath: (path) => useWorkspace.getState().openPath(path),
       pathForFile: (file) => window.moonSprite.pathForFile(file),
       claimPaths: async (paths, position) => {
+        paths = await routeExtensionFileDrops(paths, path => window.moonSprite.readBinary(path), message => useWorkspace.getState().setMessage(message))
+        if (!paths.length) return true
         const extensionPaths = paths.filter(isExtensionPackagePath)
         const otherPaths = paths.filter((path) => !isExtensionPackagePath(path))
         if (extensionPaths.length > 0) {

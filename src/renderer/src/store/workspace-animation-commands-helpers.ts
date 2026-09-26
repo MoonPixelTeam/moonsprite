@@ -12,7 +12,7 @@ import { tr } from './workspace-translation'
 import { AnimationMaskOwnerKind, cloneAnimationMaskForOwner, animationMaskOwnerKind } from './workspace-animation-mask-slots'
 
 
-export type LayerContentKind = 'raster' | 'text' | 'tilemap' | 'free-tile'
+export type LayerContentKind = 'raster' | 'text' | 'tilemap' | 'free-tile' | 'adjustment'
 
 export const layerContentKind = (layer: RasterLayer | undefined): LayerContentKind => layer?.kind ?? 'raster'
 

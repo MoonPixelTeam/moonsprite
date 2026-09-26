@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportfrFR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const frFRMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Pinceau temporaire : sélectionnez une zone, relâchez pour utiliser ; Échap pour annuler",
+  "preferences.paintingCursor.cross": "Croix simple",
+  "preferences.paintingCursor.pixelCross": "Croix en pixels",
+  "preferences.paintingCursorAlignToPixel": "Aligner le pointeur sur les pixels",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -104,7 +111,7 @@ export const frFRMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Point simple",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -166,6 +173,8 @@ export const frFRMessages = {
   'preferences.diagnostics.memory': "Collecte seule (mémoire)",
   'preferences.diagnostics.full': "Complet (collecte et sauvegarde)",
   'preferences.diagnostics.hint': "Enregistré immédiatement, sans redémarrage. La collecte seule conserve les 200 derniers événements en mémoire sans sauvegarde automatique. Le mode complet écrit des fichiers locaux. La désactivation conserve les journaux existants.",
+  'preferences.diagnostics.lag': "Capturer les ralentissements",
+  'preferences.diagnostics.lagHint': "Effet immédiat. Activez avant de reproduire. Les retards importants et leur contexte temporel sont enregistrés automatiquement. Le journal natif continue indépendamment de l’interface. Ouvrez ensuite les journaux dans Aide et rétablissez le mode précédent. Aucun état antérieur ni pixel collecté.",
   'preferences.diagnostics.saveFailed': "Impossible de sauvegarder ce réglage. Vérifiez le stockage local et réessayez.",
   'layers.splitLayerStyles': 'Séparer les styles de calque',
   'layers.splitStyleShadow': 'Ombre portée',
@@ -1712,6 +1721,8 @@ export const frFRMessages = {
   'timeline.copyCel': 'Copie Cel',
   'timeline.connectCel': 'Les cellules liées',
   'timeline.disconnectCel': 'Les cellules non liées',
+  'timeline.reverseCels': 'Inverser les cellules',
+  'timeline.reverseFrames': 'Inverser les images',
   'timeline.pasteCel': 'Coller Cel',
   'timeline.copyMask': 'Copie Calque Masque Cel',
   'timeline.pasteMask': 'Coller Calque Masque Cel',

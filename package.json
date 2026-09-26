@@ -6,6 +6,11 @@
   "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:windows": "pnpm dev",
+    "build:windows": "pnpm build",
+    "dev:web-trial": "vite --config vite.config.ts --mode web-trial",
+    "build:web-trial": "vite build --config vite.config.ts --mode web-trial",
+    "preview:web-trial": "vite preview --config vite.config.ts --mode web-trial --port 4174",
     "dev:web": "vite --config vite.config.ts",
     "build": "tauri build",
     "build:thumbnail": "cargo build --manifest-path src-tauri/thumbnail-provider/Cargo.toml --release",
@@ -39,7 +44,7 @@
     "package:size": "node scripts/check-package-size.mjs",
     "preview": "vite preview --config vite.config.ts",
     "website:dev": "pnpm --dir website dev",
-    "website:build": "pnpm --dir website build",
+    "website:build": "pnpm --dir website build && pnpm build:web-trial && node scripts/assemble-website.mjs",
     "website:capture": "node website/scripts/capture-product.mjs"
   },
   "dependencies": {

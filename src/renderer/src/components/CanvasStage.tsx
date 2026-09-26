@@ -1,3 +1,4 @@
+import { rememberPaintedDrag } from './canvas-recent-colors'
 import { paintingCursorPixelCenter } from '@/core/painting-cursor'
 import { referenceNavigationActive } from './canvas-reference-input'
 import { paletteSamplingShortcutActive } from '@/core/palette-sampling-shortcut'
@@ -1487,9 +1488,9 @@ export function CanvasStage({ session: storedSession }: { session: DocumentSessi
           style={{ ...rotationStyle, ...canvasCursorStyle }}
           className={`stage-canvas ${session.tool === 'zoom' ? 'zoom-tool-canvas' : ''}`}
           aria-label={t('canvas.aria')}
-          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event) }}
-          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event) }}
-          onPointerUp={(event) => { if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
+          onPointerDown={(event) => { if (event.pointerType === 'touch' || event.ctrlKey || event.metaKey || (event.pointerType === 'pen' && tabletPreferences.api === 'disabled') || !tweenPreviewDrag.pointerDown(event)) pointerDown(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
+          onPointerMove={(event) => { if (!tweenPreviewDrag.pointerMove(event)) pointerMove(event); rememberPaintedDrag(inputRef.current.drag, session.tool) }}
+          onPointerUp={(event) => { rememberPaintedDrag(inputRef.current.drag, session.tool); if (!tweenPreviewDrag.pointerUp(event)) pointerUp(event) }}
           onPointerCancel={(event) => { if (!tweenPreviewDrag.pointerCancel(event)) pointerCancel(event) }}
           onLostPointerCapture={(event) => tweenPreviewDrag.pointerCancel(event)}
           onDoubleClick={quickSelectCell}

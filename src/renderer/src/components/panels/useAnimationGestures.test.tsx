@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument } from '@/core/document-model'
 import { useWorkspace } from '@/store/workspace'
@@ -7,6 +7,11 @@ import { useAnimationGestures } from './useAnimationGestures'
 import { timelineSelectionOutlineHit } from './animation-gesture-helpers'
 
 const originalSetActiveAnimationFrame = useWorkspace.getState().setActiveAnimationFrame
+const originalCelCommands = {
+  selectAnimationCelContent: useWorkspace.getState().selectAnimationCelContent,
+  moveSelectedAnimationCels: useWorkspace.getState().moveSelectedAnimationCels
+}
+afterEach(() => { useWorkspace.setState(originalCelCommands) })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); useWorkspace.setState({sessions: [], activeId: null, setActiveAnimationFrame: originalSetActiveAnimationFrame}) })
 
 it('starts an Alt drag from inside an already selected frame without replacing the range', () => {
@@ -58,6 +63,48 @@ function setup(list: HTMLDivElement | null = null) {
   return {...hook, session, begin}
 }
 
+it.each([false, true])('defers Alt cel content selection until release (additive=%s)', shiftKey => {
+  const {result, session} = setup()
+  const select = vi.spyOn(useWorkspace.getState(), 'selectAnimationCelContent').mockImplementation(() => {})
+  const layerId = session.document.activeLayerId, frameId = session.document.animation!.activeFrameId
+  act(() => result.current.beginAnimationCelDrag({button: 0, altKey: true, shiftKey, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, layerId, frameId))
+  expect(select).not.toHaveBeenCalled()
+  act(() => result.current.move({clientX: 12, clientY: 10, altKey: true, target: document.body} as unknown as PointerEvent))
+  act(() => result.current.finish())
+  expect(select).toHaveBeenCalledExactlyOnceWith(`${layerId}:${frameId}`, shiftKey)
+  expect(result.current.clickSuppressed()).toBe(true)
+})
+
+it.each([false, true])('copies Alt-dragged cels without acquiring content selection (multi=%s)', multi => {
+  const {result, session} = setup()
+  act(() => { useWorkspace.getState().duplicateAnimationFrame(); useWorkspace.getState().duplicateAnimationFrame() })
+  const frames = session.document.animation!.frames
+  const layerId = session.document.activeLayerId
+  const source = `${layerId}:${frames[0].id}`
+  session.selectedAnimationCellKeys = multi ? [source, `${layerId}:${frames[1].id}`] : [`${layerId}:${frames[2].id}`]
+  const select = vi.spyOn(useWorkspace.getState(), 'selectAnimationCelContent').mockImplementation(() => {})
+  const copy = vi.spyOn(useWorkspace.getState(), 'moveSelectedAnimationCels').mockImplementation(() => {})
+  act(() => result.current.beginAnimationCelDrag({button: 0, altKey: true, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, layerId, frames[0].id))
+  expect(result.current.readGesture()).toMatchObject({canMove: true, cellKeys: multi ? [source, `${layerId}:${frames[1].id}`] : [source]})
+  const target = document.createElement('button')
+  target.dataset.animationCelKey = `${layerId}:${frames[1].id}`
+  act(() => result.current.move({target, clientX: 40, clientY: 10, altKey: true} as unknown as PointerEvent))
+  // Pointerup must flush the queued move even before the next animation frame.
+  act(() => result.current.finish())
+  expect(copy).toHaveBeenCalledExactlyOnceWith(layerId, frames[1].id, source, true, [])
+  expect(select).not.toHaveBeenCalled()
+  expect(session.selectedAnimationCellKeys).toEqual(multi ? [source, `${layerId}:${frames[1].id}`] : [source])
+})
+
+it('discards deferred Alt content selection when the gesture is cancelled', () => {
+  const {result, session} = setup()
+  const select = vi.spyOn(useWorkspace.getState(), 'selectAnimationCelContent').mockImplementation(() => {})
+  act(() => result.current.beginAnimationCelDrag({button: 0, altKey: true, clientX: 10, clientY: 10, preventDefault: vi.fn()} as unknown as ReactPointerEvent<HTMLButtonElement>, session.document.activeLayerId, session.document.animation!.activeFrameId))
+  act(() => result.current.finish(true))
+  act(() => result.current.finish())
+  expect(select).not.toHaveBeenCalled()
+})
+
 function animationFrames() {
   let id = 0
   const callbacks = new Map<number, FrameRequestCallback>()
@@ -98,7 +145,7 @@ it.each(['range', 'move'] as const)('commits the latest %s feedback before the a
   })
 })
 
-it('updates the range during input and coalesces global frame preview until after the paint opportunity', () => {
+it('coalesces the range before paint and defers global frame preview', () => {
   vi.useFakeTimers()
   const raf = animationFrames()
   const {result, session, begin} = setup()
@@ -111,13 +158,14 @@ it('updates the range during input and coalesces global frame preview until afte
   act(() => {
     for (let i = 0; i < 12; i++) result.current.move(framePointer(frames[1].id))
     result.current.move(framePointer(frames[2].id))
-    expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: frames.map(frame => frame.id)})
+    expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: [frames[0].id]})
   })
   expect(raf.callbacks.size).toBe(1)
   expect(preview).not.toHaveBeenCalled()
   raf.tick()
   expect(result.current.animationGestureSelection).toEqual({kind: 'frame', ids: frames.map(frame => frame.id)})
   expect(preview).not.toHaveBeenCalled()
+  raf.tick()
   act(() => vi.runOnlyPendingTimers())
   expect(preview).toHaveBeenCalledExactlyOnceWith(frames[2].id)
   expect(raf.callbacks.size).toBe(0)
@@ -152,11 +200,10 @@ it('shares the latest pointer with edge scrolling and keeps scrolling while the 
   raf.tick()
   act(() => result.current.move(framePointer(frames[2].id, 190)))
   raf.tick()
-  expect(list.scrollLeft).toBe(36)
+  expect(list.scrollLeft).toBe(18)
   expect(result.current.animationGestureActiveTarget?.frameId).toBe(frames[2].id)
-  expect(raf.callbacks.size).toBe(1)
   raf.tick()
-  expect(list.scrollLeft).toBe(54)
+  expect(list.scrollLeft).toBe(36)
   act(() => result.current.finish(true))
   expect(raf.callbacks.size).toBe(0)
 })
@@ -174,6 +221,7 @@ it.each(['cancel', 'finish', 'unmount'] as const)('discards deferred preview on 
   act(() => result.current.move(framePointer(frames[1].id)))
   expect(raf.callbacks.size).toBe(1)
   raf.tick()
+  raf.tick()
   expect(preview).not.toHaveBeenCalled()
   act(() => { if (end === 'unmount') unmount(); else if (end === 'finish') result.current.finish(true); else result.current.cancel() })
   expect(raf.callbacks.size).toBe(0)
@@ -181,8 +229,8 @@ it.each(['cancel', 'finish', 'unmount'] as const)('discards deferred preview on 
   expect(preview).not.toHaveBeenCalled()
 })
 
-it('updates the cel target before the pointer handler returns', () => {
-  animationFrames()
+it('updates the latest cel target before the display frame paints', () => {
+  const raf = animationFrames()
   const {result, session} = setup()
   act(() => useWorkspace.getState().duplicateAnimationFrame())
   const frames = session.document.animation!.frames, layerId = session.document.activeLayerId
@@ -191,6 +239,8 @@ it('updates the cel target before the pointer handler returns', () => {
   target.dataset.animationCelKey = `${layerId}:${frames[1].id}`
   act(() => {
     result.current.move({target, clientX: 40, clientY: 10, altKey: false} as unknown as PointerEvent)
+  })
+  raf.tick(() => {
     expect(result.current.animationGestureActiveTarget).toEqual({kind: 'cel', layerId, frameId: frames[1].id})
   })
 })
@@ -204,6 +254,7 @@ it('does not apply a deferred preview to a document opened during the gesture', 
   act(() => useWorkspace.getState().setActiveAnimationFrame(frames[0].id))
   begin()
   act(() => result.current.move(framePointer(frames[1].id)))
+  raf.tick()
   raf.tick()
   const nextDocument = createDocument('next', 4, 4, 'rgba')
   act(() => useWorkspace.getState().addSession(nextDocument))
@@ -252,13 +303,16 @@ it('reuses measured edge rows across scrolling and refreshes them after resize',
   for (const measured of measurements) expect(measured).toHaveBeenCalledTimes(2)
 })
 
-it('uses the copy cursor during Alt drag and restores it on Alt release and cancel', () => {
+it('uses the copy cursor during Alt drag and restores it on Alt release and cancel', async () => {
   const { result, session, unmount } = setup()
   const frameId = session.document.animation!.frames[0].id
   session.selectedAnimationFrameIds = [frameId]
   act(() => result.current.beginAnimationFrameDrag({button:0,altKey:true,clientX:10,clientY:10,preventDefault:vi.fn()} as unknown as ReactPointerEvent<HTMLElement>,frameId))
+  expect(document.body.classList.contains('animation-copy-drag')).toBe(false)
+  act(() => result.current.move({altKey:true,clientX:12,clientY:10,target:document.body} as unknown as PointerEvent))
+  expect(document.body.classList.contains('animation-copy-drag')).toBe(false)
   act(() => result.current.move({altKey:true,clientX:30,clientY:10,target:document.body} as unknown as PointerEvent))
-  expect(document.body.classList.contains('animation-copy-drag')).toBe(true)
+  await waitFor(() => expect(document.body.classList.contains('animation-copy-drag')).toBe(true))
   act(() => window.dispatchEvent(new KeyboardEvent('keyup',{key:'Alt',altKey:false})))
   expect(document.body.classList.contains('animation-copy-drag')).toBe(false)
   act(() => window.dispatchEvent(new KeyboardEvent('keydown',{key:'Alt',altKey:true})))
@@ -281,7 +335,7 @@ it('cancels a preview without committing timeline selection or history', () => {
   expect(session.history.revision).toBe(history)
 })
 
-it.each(['frame', 'cel'])('updates the hovered %s border cursor when Alt changes without pointer movement', kind => {
+it.each(['frame', 'cel'])('keeps the hovered %s border in move mode until dragging begins', kind => {
   const list = document.createElement('div'), item = document.createElement('button'), outline = document.createElement('div')
   list.append(item, outline); document.body.append(list)
   const {result,session,unmount} = setup(list)
@@ -293,7 +347,7 @@ it.each(['frame', 'cel'])('updates the hovered %s border cursor when Alt changes
   act(()=>result.current.updateAnimationItemCursor({currentTarget:item,clientX:1,clientY:50,altKey:false} as unknown as ReactPointerEvent<HTMLElement>,frameId,kind==='cel'?key:undefined))
   expect(item.style.cursor).toBe('var(--cursor-move)')
   act(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Alt',altKey:true})))
-  expect(item.style.cursor).toBe('var(--cursor-copy)')
+  expect(item.style.cursor).toBe('var(--cursor-move)')
   act(()=>window.dispatchEvent(new KeyboardEvent('keyup',{key:'Alt',altKey:false})))
   expect(item.style.cursor).toBe('var(--cursor-move)')
   act(()=>item.dispatchEvent(new MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body})))

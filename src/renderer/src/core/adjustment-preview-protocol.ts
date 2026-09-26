@@ -40,6 +40,7 @@ export interface AdjustmentPreviewResultLayer {
 }
 
 export interface AdjustmentPreviewResult {
+  paletteOrder?: number[]
   id: number
   region: SelectionRect
   palette: PaletteEntry[]

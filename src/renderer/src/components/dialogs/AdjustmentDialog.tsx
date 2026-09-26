@@ -1,3 +1,6 @@
+import { useCoalescedGradientPreview } from '../useCoalescedGradientPreview'
+import { GradientMapControls } from '../GradientMapControls'
+import { normalizeGradientMap } from '@/core/gradient-map'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createColorizeAdjustment,
@@ -70,7 +73,7 @@ const adjustmentPreviewBaseline = (documentId: string | null, snapshot: Adjustme
     documentHeight: session.document.height,
     colorMode: session.document.colorMode,
     palette: snapshot.palette,
-    paletteOrder: session.document.paletteOrder,
+    paletteOrder: snapshot.paletteOrder ?? session.document.paletteOrder,
     nextColorId: snapshot.nextColorId,
     selection: session.selection,
     locale: currentAppLocale(),
@@ -306,6 +309,7 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
   const suspendedRef = useRef(false)
   const closedRef = useRef(false)
   const [previewEnabled, setPreviewEnabled] = useState(true)
+  const [gradientMap, setGradientMap] = useState(() => normalizeGradientMap(undefined))
   const [brightness, setBrightness] = useState(0)
   const [contrast, setContrast] = useState(0)
   const [hue, setHue] = useState(0)
@@ -361,13 +365,13 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     midtonesCyanRed: 0, midtonesMagentaGreen: 0, midtonesYellowBlue: 0,
     highlightsCyanRed: 0, highlightsMagentaGreen: 0, highlightsYellowBlue: 0
   })
-  const adjustment = useMemo<ColorAdjustment>(() => kind === 'brightness-contrast'
+  const adjustment = useMemo<ColorAdjustment>(() => kind === 'gradient-map' ? { kind, gradientMap } : kind === 'brightness-contrast'
     ? { kind, brightness, contrast }
     : kind === 'hue-saturation'
       ? { kind, hue, saturation, lightness, colorize }
       : kind === 'curves'
         ? { kind, curvePoints: curvePoints.rgb, curveRedPoints: curvePoints.red, curveGreenPoints: curvePoints.green, curveBluePoints: curvePoints.blue }
-        : { kind, ...balance, preserveLuminosity }, [kind, brightness, contrast, hue, saturation, lightness, colorize, curvePoints, balance, preserveLuminosity])
+        : { kind, ...balance, preserveLuminosity }, [kind, gradientMap, brightness, contrast, hue, saturation, lightness, colorize, curvePoints, balance, preserveLuminosity])
   const adjustmentKey = useMemo(() => JSON.stringify(adjustment), [adjustment])
   const previewFrameRef = useRef<number | null>(null)
   const viewPreviewTimerRef = useRef<number | null>(null)
@@ -580,11 +584,15 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     endAdjustmentPreviewEdit(activeDocumentId)
   }, [activeDocumentId, activeSelection, selectedLayerKey])
 
+  const gradientPreview = useCoalescedGradientPreview()
   useEffect(() => {
     previewCoverageRef.current = null
     pendingPreviewCoverageRef.current = null
-    schedulePreviewRef.current(undefined, 'adjustment')
-  }, [adjustmentKey, previewEnabled])
+    const preview = () => schedulePreviewRef.current(undefined, 'adjustment')
+    if (kind === 'gradient-map' && previewEnabled) gradientPreview.schedule(preview)
+    else preview()
+    return gradientPreview.cancel
+  }, [adjustmentKey, previewEnabled, gradientPreview.schedule, gradientPreview.cancel])
 
   useEffect(() => schedulePreviewRef.current(undefined, 'view'), [previewGeometryKey])
 
@@ -631,7 +639,7 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     cancelScheduledPreview()
     workerClientRef.current?.dispose()
   }, [])
-  const title = kind === 'color-balance' ? t('adjustment.title.colorBalance') : kind === 'brightness-contrast' ? t('adjustment.title.brightnessContrast') : kind === 'hue-saturation' ? t('adjustment.title.hueSaturation') : t('adjustment.title.curves')
+  const title = kind === 'gradient-map' ? t('gradientMap.title') : kind === 'color-balance' ? t('adjustment.title.colorBalance') : kind === 'brightness-contrast' ? t('adjustment.title.brightnessContrast') : kind === 'hue-saturation' ? t('adjustment.title.hueSaturation') : t('adjustment.title.curves')
   const tonePrefix = balanceTone === 'shadows' ? 'shadows' : balanceTone === 'midtones' ? 'midtones' : 'highlights'
   const updateBalance = (channel: 'CyanRed' | 'MagentaGreen' | 'YellowBlue', value: number): void => setBalance((current) => ({ ...current, [`${tonePrefix}${channel}`]: value }))
   const balanceValue = (channel: 'CyanRed' | 'MagentaGreen' | 'YellowBlue'): number => balance[`${tonePrefix}${channel}` as keyof typeof balance]
@@ -640,9 +648,10 @@ export function AdjustmentDialog({ kind, onClose }: { kind: AdjustmentKind; onCl
     label: <span className={`curve-channel-label curve-channel-${channel}`}><i aria-hidden="true" />{channel === 'rgb' ? 'RGB' : channel === 'red' ? t('adjustment.channel.red') : channel === 'green' ? t('adjustment.channel.green') : t('adjustment.channel.blue')}</span>
   }))
 
-  return <div className="modal-backdrop" role="presentation"><ModalShell storageKey={`adjustment-${kind}-v4`} placement="right" defaultWidth={kind === 'curves' ? 450 : 400} defaultHeight={kind === 'curves' ? 500 : 380} minWidth={kind === 'curves' ? 420 : 350} minHeight={kind === 'curves' ? 440 : 300} maxWidth={620} maxHeight={720} className="adjustment-modal" role="dialog" aria-label={title}><DialogHeader eyebrow="ADJUST" title={title} closeLabel={t('common.close')} onClose={cancel} /><div className="modal-body adjustment-modal-body">
+  return <div className="modal-backdrop" role="presentation"><ModalShell storageKey={`adjustment-${kind}-v4`} fitContent={kind !== 'gradient-map'} placement="right" defaultWidth={kind === 'curves' ? 450 : 400} defaultHeight={kind === 'gradient-map' ? 600 : kind === 'curves' ? 500 : 380} minWidth={kind === 'curves' ? 420 : 350} minHeight={kind === 'curves' ? 440 : 300} maxWidth={620} maxHeight={720} className="adjustment-modal" role="dialog" aria-label={title}><DialogHeader eyebrow="ADJUST" title={title} closeLabel={t('common.close')} onClose={cancel} /><div className="modal-body adjustment-modal-body component-scrollbar">
     {kind === 'brightness-contrast' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.brightness')} min={-100} max={100} value={brightness} onChange={setBrightness} /><RangeField className="adjustment-slider-row" label={t('adjustment.contrast')} min={-100} max={100} value={contrast} onChange={setContrast} /></section>}
     {kind === 'hue-saturation' && <section className="adjustment-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.hue')} min={colorize ? 0 : -180} max={colorize ? 360 : 180} value={hue} onChange={setHue} /><RangeField className="adjustment-slider-row" label={t('adjustment.saturation')} min={colorize ? 0 : -100} max={100} value={saturation} onChange={setSaturation} /><RangeField className="adjustment-slider-row" label={t('adjustment.lightness')} min={-100} max={100} value={lightness} onChange={setLightness} /><CheckboxField className="tool-checkbox" checked={colorize} label={t('adjustment.title.colorize')} onChange={toggleColorize} /></section>}
+    {kind === 'gradient-map' && <GradientMapControls value={gradientMap} onChange={setGradientMap} />}
     {kind === 'curves' && <section className="adjustment-controls curve-controls"><SegmentedControl className="curve-channel-tabs" label={t('adjustment.curve.channels')} options={curveChannelOptions} value={curveChannel} onChange={setCurveChannel} /><CurveEditor channel={curveChannel} histogram={histogram?.[curveChannel]} points={curvePoints[curveChannel]} onChange={(next) => setCurvePoints((current) => ({ ...current, [curveChannel]: next }))} onReset={() => setCurvePoints((current) => ({ ...current, [curveChannel]: [{ x: 0, y: 0 }, { x: 255, y: 255 }] }))} /></section>}
     {kind === 'color-balance' && <section className="balance-panel"><SegmentedControl className="balance-tone-tabs" label={t('adjustment.title.colorBalance')} options={[{ value: 'shadows', label: t('adjustment.balance.shadows') }, { value: 'midtones', label: t('adjustment.balance.midtones') }, { value: 'highlights', label: t('adjustment.balance.highlights') }]} value={balanceTone} onChange={setBalanceTone} /><div className="adjustment-controls balance-controls"><RangeField className="adjustment-slider-row" label={t('adjustment.balance.cyanRed')} min={-100} max={100} value={balanceValue('CyanRed')} onChange={(value) => updateBalance('CyanRed', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.magentaGreen')} min={-100} max={100} value={balanceValue('MagentaGreen')} onChange={(value) => updateBalance('MagentaGreen', value)} /><RangeField className="adjustment-slider-row" label={t('adjustment.balance.yellowBlue')} min={-100} max={100} value={balanceValue('YellowBlue')} onChange={(value) => updateBalance('YellowBlue', value)} /></div><CheckboxField className="tool-checkbox preserve-luminosity" checked={preserveLuminosity} label={t('adjustment.balance.preserveLuminosity')} onChange={setPreserveLuminosity} /></section>}
     <LivePreviewToggle className="adjustment-preview-toggle" checked={previewEnabled} onChange={setPreviewEnabled} />

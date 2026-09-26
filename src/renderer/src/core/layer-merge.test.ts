@@ -1,3 +1,4 @@
+import { buildLayerPanelTree } from './layer-panel-layout'
 import { describe, expect, it } from 'vitest'
 import { compositeDocument, createDocument, createLayer, getActiveLayer, writeLayerColor } from './document'
 import { activateAnimationFrame, addBlankAnimationFrame, animationCelAt, cloneDocumentForAnimationFrame, ensureAnimationDocument, linkAnimationFrameCels, syncActiveAnimationFrame } from './animation'
@@ -193,4 +194,27 @@ it.each(['group', 'visible'] as const)('%s preserves nested groups, frame masks 
     activateAnimationFrame(document, frame.id)
     expect(compositeDocument(document)).toEqual(before[index])
   }
+})
+
+it.each(['upper', 'middle', 'lower'])('keeps merged nested %s group at its exact visual row among anchored and empty siblings', target => {
+  const document = createDocument('nested order', 1, 1, 'rgba')
+  const initial = getActiveLayer(document); initial.groupId = 'lower'
+  const middle = createLayer('middle', 1, 1, 'rgba'); middle.groupId = 'deep'
+  const upper = createLayer('upper', 1, 1, 'rgba'); upper.groupId = 'upper'
+  // Intentionally disagree with panel order, as happens after mixed row moves.
+  document.layers = [upper, initial, middle]
+  document.groups = [
+    { id: 'parent', name: 'parent', visible: true, locked: false, opacity: 1, blendMode: 'normal' },
+    ...['upper', 'empty', 'middle', 'lower'].map((id, i) => ({ id, name: id, parentGroupId: 'parent', panelOrder: 4 - i, visible: true, locked: false, opacity: 1, blendMode: 'normal' as const })),
+    { id: 'deep', name: 'deep', parentGroupId: 'middle', visible: true, locked: false, opacity: 1, blendMode: 'normal' }
+  ]
+  writeLayerColor(document, initial, 0, red); writeLayerColor(document, middle, 0, blue); writeLayerColor(document, upper, 0, green)
+  const pixels = compositeDocument(document)
+  const rows = buildLayerPanelTree(document).filter(row => row.depth === 1)
+  const result = mergeLayerGroup(document, target)
+  expect(result.ok).toBe(true)
+  if (!result.ok) return
+  expect(buildLayerPanelTree(document).filter(row => row.depth === 1)).toEqual(rows.map(row => row.id === target ? { ...row, kind: 'layer', id: result.layerId } : row))
+  expect(getActiveLayer(document).groupId).toBe('parent')
+  expect(compositeDocument(document)).toEqual(pixels)
 })

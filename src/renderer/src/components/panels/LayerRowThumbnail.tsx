@@ -1,3 +1,4 @@
+import { GradientMapThumbnail } from './GradientMapThumbnail'
 import { useShallow } from 'zustand/react/shallow'
 import { animationCelAt, resolveAnimationCel } from '@/core/animation'
 import { pixelSource } from '@/components/pixel-source'
@@ -13,6 +14,8 @@ export function LayerRowThumbnail({ documentId, layerId, size }: { documentId: s
   const session = useWorkspace.getState().sessions.find(item => item.document.id === documentId)
   if (!session) return null
   const { document } = session
+  const layer = document.layers.find(layer => layer.id === layerId)
+  const adjustment = layer?.kind === 'adjustment' ? layer.adjustment : undefined
   const timeline = document.animation
   const cel = timeline ? resolveAnimationCel(timeline, animationCelAt(timeline, layerId, timeline.activeFrameId)) : null
   const active = !session.activeLayerMaskId && document.activeLayerId === layerId
@@ -24,13 +27,12 @@ export function LayerRowThumbnail({ documentId, layerId, size }: { documentId: s
   return <span className={`layer-row-thumbnail${active ? ' active' : ''}`} role="button" tabIndex={0}
     aria-label={document.layers.find(layer => layer.id === layerId)?.name} aria-pressed={active} data-preserve-animation-selection style={{ width: size, height: size }}
     onPointerDown={event => event.stopPropagation()}
-    onDoubleClick={event => event.stopPropagation()}
     onClick={event => { event.stopPropagation(); activate(event) }}
     onKeyDown={event => {
       if (event.key !== 'Enter' && event.key !== ' ') return
       event.preventDefault(); event.stopPropagation(); activate(event)
     }}>
-    {cel?.surface && <CelThumbnail key={cel.id} documentId={documentId} layerId={layerId} celSource={pixelSource(cel)}
+    {adjustment ? <GradientMapThumbnail adjustment={adjustment} /> : cel?.surface && <CelThumbnail key={cel.id} documentId={documentId} layerId={layerId} celSource={pixelSource(cel)}
       palette={document.palette} revision={session.contentRevision} documentWidth={document.width} documentHeight={document.height} thumbnailSize={size} framing="canvas" />}
   </span>
 }

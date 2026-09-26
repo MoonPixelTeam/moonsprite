@@ -79,15 +79,19 @@ interface AnchoredPreviewPanOptions {
   /** Absolute document-pixel scale. 1 means one document pixel per CSS pixel. */
   zoom: number
   nextZoom: number
+  /** Match the device-aligned origin used by the panel's last draw. */
+  devicePixelRatio?: number
 }
 
-export const anchoredPreviewPan = ({ documentSize, viewportSize, pointer, pan, zoom, nextZoom }: AnchoredPreviewPanOptions): Point => {
+export const anchoredPreviewPan = ({ documentSize, viewportSize, pointer, pan, zoom, nextZoom, devicePixelRatio }: AnchoredPreviewPanOptions): Point => {
   const currentScale = zoom
   const targetScale = nextZoom
   if (![documentSize.width, documentSize.height, viewportSize.width, viewportSize.height, pointer.x, pointer.y, pan.x, pan.y, currentScale, targetScale].every(Number.isFinite)) return pan
   if (documentSize.width <= 0 || documentSize.height <= 0 || viewportSize.width <= 0 || viewportSize.height <= 0 || currentScale <= 0 || targetScale <= 0) return pan
-  const currentOriginX = (viewportSize.width - documentSize.width * currentScale) / 2 + pan.x
-  const currentOriginY = (viewportSize.height - documentSize.height * currentScale) / 2 + pan.y
+  const align = (value: number): number => devicePixelRatio && Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
+    ? Math.round(value * devicePixelRatio) / devicePixelRatio : value
+  const currentOriginX = align((viewportSize.width - documentSize.width * currentScale) / 2 + pan.x)
+  const currentOriginY = align((viewportSize.height - documentSize.height * currentScale) / 2 + pan.y)
   const documentX = (pointer.x - currentOriginX) / currentScale
   const documentY = (pointer.y - currentOriginY) / currentScale
   return {

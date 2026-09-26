@@ -2,7 +2,7 @@ import type { LayerDisplayRow } from './layer-panel-contracts'
 import { Tooltip } from '@/components/Tooltip'
 import { getGroupLockingAncestor, getLayerLockingGroup } from '@/core/document-model'
 import { getLayerPanelAncestorGroupIds } from '@/core/layer-panel-layout'
-import { PixelUtilityIcon } from '@/components/PixelUtilityIcon'
+import { PixelUtilityIcon, type PixelUtilityIconKind } from '@/components/PixelUtilityIcon'
 import { hasConfiguredLayerStyles } from '@/core/layer-styles'
 import { PixelAutoLinkIcon } from '@/components/PixelAutoLinkIcon'
 import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
@@ -10,6 +10,17 @@ import type { LayerTreeRowsProps } from './layer-tree-row-types'
 import { LayerRowThumbnail } from './LayerRowThumbnail'
 import { LayerRowMaskThumbnail } from './LayerRowMaskThumbnail'
 import { useWorkspace } from '@/store/workspace'
+
+function LayerContentIcon({ icon, label, className, onOpen }: { icon: PixelUtilityIconKind; label: string; className: string; onOpen: () => void }) {
+  return <span className={className} role="button" tabIndex={0} aria-label={label}
+    onPointerDown={event => { event.preventDefault(); event.stopPropagation() }}
+    onDoubleClick={event => event.stopPropagation()}
+    onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }}
+    onKeyDown={event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault(); event.stopPropagation(); onOpen()
+    }}><PixelUtilityIcon kind={icon} /></span>
+}
 
 export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTreeRowsProps; displayRow: LayerDisplayRow; rowIndex: number }) {
   const owner = displayRow.kind === 'mask' ? null : displayRow.node.kind === 'group' ? displayRow.node.group : displayRow.node.layer
@@ -41,6 +52,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
     draggingIds,
     beginLayerDrag,
     editLayerRow,
+    openLayerContent,
     liveAutoLinkById,
     handleLayerAutoLinkPointerDown,
     continueLayerAutoLinkToggle,
@@ -184,7 +196,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
       </span>
     ) : null
   const layerOwnerKey = `layer:${node.layer.id}`
-  const layerHasLayerStyles = hasConfiguredLayerStyles(node.layer.layerStyles)
+  const layerHasLayerStyles = node.layer.kind !== 'adjustment' && hasConfiguredLayerStyles(node.layer.layerStyles)
   const layerRowVisualClasses = {
     ...timelineVisualClasses(visualRow, undefined, timelineVisualState.selectionGuidesVisible),
     active: Boolean((!maskVisualSelectionActive && visualRow?.active && activeMaskOwnerKey !== layerOwnerKey) || (panel.thumbnailSize && activeMaskOwnerKey === layerOwnerKey)),
@@ -194,7 +206,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
     <button
       key={node.layer.id}
       data-layer-id={node.layer.id}
-      className={`layer-row ${node.layer.kind === 'text' ? 'text-layer' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-layer' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-layer' : ''} ${node.layer.background ? 'background-layer' : ''} ${node.layer.linkedContentId ? 'linked-layer' : ''} ${node.layer.clippingMask === true ? 'clipping-mask' : ''} ${layerHasLayerStyles ? 'has-layer-style' : ''} ${node.depth > 0 ? 'group-member' : ''} ${layerRowVisualClasses.selected ? 'selected' : ''} ${layerRowVisualClasses.active ? 'active-layer' : ''} ${!maskVisualSelectionActive && ordinaryCelSelectionVisible && visualRow?.selectedByCell ? 'cel-owner-active' : ''} ${draggingIds.includes(node.layer.id) ? 'dragging' : ''} ${layerStyleDrag?.target?.kind === 'layer' && layerStyleDrag.target.id === node.layer.id ? 'layer-style-drop-target' : ''}`}
+      className={`layer-row ${node.layer.kind === 'adjustment' ? 'adjustment-layer' : ''} ${node.layer.kind === 'text' ? 'text-layer' : ''} ${node.layer.kind === 'tilemap' ? 'tilemap-layer' : ''} ${node.layer.kind === 'free-tile' ? 'free-tile-layer' : ''} ${node.layer.background ? 'background-layer' : ''} ${node.layer.linkedContentId ? 'linked-layer' : ''} ${node.layer.clippingMask === true ? 'clipping-mask' : ''} ${layerHasLayerStyles ? 'has-layer-style' : ''} ${node.depth > 0 ? 'group-member' : ''} ${layerRowVisualClasses.selected ? 'selected' : ''} ${layerRowVisualClasses.active ? 'active-layer' : ''} ${!maskVisualSelectionActive && ordinaryCelSelectionVisible && visualRow?.selectedByCell ? 'cel-owner-active' : ''} ${draggingIds.includes(node.layer.id) ? 'dragging' : ''} ${layerStyleDrag?.target?.kind === 'layer' && layerStyleDrag.target.id === node.layer.id ? 'layer-style-drop-target' : ''}`}
       style={{ '--layer-depth': node.depth } as React.CSSProperties}
       onPointerDown={(event) => beginLayerDrag(event, node.layer.id)}
       onDoubleClick={() => editLayerRow(node.layer)}
@@ -260,25 +272,26 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
       <span className="layer-row-content">
       {panel.thumbnailSize && <LayerRowThumbnail documentId={session.document.id} layerId={node.layer.id} size={panel.thumbnailSize} />}
       {panel.thumbnailSize && <LayerRowMaskThumbnail documentId={session.document.id} ownerId={node.layer.id} ownerKind="layer" size={panel.thumbnailSize} onContextMenu={panel.onMaskContextMenu} />}
-      <Tooltip className="layer-name" content={node.layer.description?.trim()}>
+      <Tooltip className="layer-name" content={node.layer.kind === 'adjustment' ? t('gradientMap.layerHint') : node.layer.description?.trim()}>
         <span>{node.layer.name}</span>
-        {!panel.thumbnailSize && <small>
+        {node.layer.kind === 'adjustment' && panel.thumbnailSize ? <small>{t('gradientMap.title')} · {Math.round(node.layer.opacity * 100)}%</small> : !panel.thumbnailSize && <small>
           {blendOptions.find((option) => option.value === node.layer.blendMode)?.label} · {Math.round(node.layer.opacity * 100)}%
         </small>}
       </Tooltip>
       </span>
+      {node.layer.kind === 'adjustment' && (
+        <Tooltip className="layer-status-icon-tooltip" content={t('gradientMap.adjustmentLayer')}>
+          <LayerContentIcon icon="gradientMap" className="layer-adjustment-indicator" label={t('gradientMap.edit')} onOpen={() => openLayerContent(node.layer)} />
+        </Tooltip>
+      )}
       {node.layer.kind === 'text' && (
         <Tooltip className="layer-status-icon-tooltip" content={t('layers.textLayerHint')}>
-          <span className="layer-text-indicator" aria-hidden="true">
-            <PixelUtilityIcon kind="text" />
-          </span>
+          <LayerContentIcon icon="text" className="layer-text-indicator" label={t('layers.textLayerHint')} onOpen={() => openLayerContent(node.layer)} />
         </Tooltip>
       )}
       {node.layer.kind === 'tilemap' && (
         <Tooltip className="layer-status-icon-tooltip" content={t('layers.tilemapLayerHint')}>
-          <span className="layer-tilemap-indicator" aria-hidden="true">
-            <PixelUtilityIcon kind="tilemap" />
-          </span>
+          <LayerContentIcon icon="tilemap" className="layer-tilemap-indicator" label={t('layers.tilemapLayerHint')} onOpen={() => openLayerContent(node.layer)} />
         </Tooltip>
       )}
       {node.layer.kind === 'free-tile' && (
@@ -319,9 +332,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
       )}
       {node.layer.background && (
         <Tooltip className="layer-status-icon-tooltip" content={t('layers.backgroundDescription')}>
-          <span className="layer-background-indicator" aria-hidden="true">
-            <PixelUtilityIcon kind="image" />
-          </span>
+          <LayerContentIcon icon="image" className="layer-background-indicator" label={t('layers.backgroundDescription')} onOpen={() => openLayerContent(node.layer)} />
         </Tooltip>
       )}
       {node.layer.linkedContentId && (
@@ -334,9 +345,7 @@ export function LayerTreeRow({ panel, displayRow, rowIndex }: { panel: LayerTree
             </>
           }
         >
-          <span className="layer-linked-indicator" aria-hidden="true">
-            <PixelUtilityIcon kind="linkedLayer" />
-          </span>
+          <LayerContentIcon icon="linkedLayer" className="layer-linked-indicator" label={t('layers.linkedLayer')} onOpen={() => openLayerContent(node.layer)} />
         </Tooltip>
       )}
       {node.layer.clippingMask === true && (

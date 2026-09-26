@@ -1,10 +1,11 @@
+import { normalizeGradientMap } from '@/core/gradient-map'
 import type { AnimationCelSurface } from '@shared/types-animation'
 import type { AnimationLayerMask } from '@shared/types-layer'
 import { checkResourceLimit } from '@/core/resource-policy'
 import { type HistoryEntry } from '@/core/history'
 import { createId, createLayer, createSparseLayer, findOrAddPaletteColor, getLayerIdsInGroup, layerContentBounds, paletteColorIdForCanvas } from '@/core/document-model'
 import { compositeRegion } from '@/core/document-composite'
-import { animationCelKey, cloneDocumentForAnimationFrame, connectAnimationCels, detachLinkedLayerContent, ensureAnimationDocument, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, restoreAnimationCels, syncActiveAnimationFrame } from '@/core/animation'
+import { animationCelKey, cloneDocumentForAnimationFrame, connectAnimationCels, detachLinkedLayerContent, ensureAnimationDocument, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, syncActiveAnimationFrame } from '@/core/animation'
 import { applyRelativeLuminance } from '@/core/raster'
 import { moveLayerPanelRows as moveLayerPanelRowsOperation } from '@/core/layer-operations'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles, layerStyleOutputBounds } from '@/core/layer-styles'
@@ -22,7 +23,6 @@ import { setTimelineActiveContext, clearAnimationItemSelection, selectedRowInser
 import { documentUsesTilesetPanel, requestTilesetPanelVisibility } from './workspace-tileset-panel'
 import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
-import { cloneAnimationCelsForLayerIds } from './workspace-animation-clone'
 import { captureAnimationSelectionHistory, historyEntryWithAnimationSelection } from './workspace-animation-selection-history'
 import { removableOwnedTilesets, removeTilesetSnapshots } from './workspace-layer-owned-tilesets'
 
@@ -43,7 +43,7 @@ const activateNewLayerContext = (session: DocumentSession, layerId: string, fram
 
 export function createLayerCreationCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive'>): Pick<WorkspaceLayerCommands, 'addLayer' | 'createTilemapLayer' | 'createFreeTileLayer' | 'convertLayerToTilemap' | 'createBackgroundLayer' | 'rasterizeLayer'> {
   return {
-    async addLayer() {
+    async addLayer(gradientMap) {
       get().commitFloatingPaste()
       const current = activeSession(get())
       if (!current) return
@@ -51,6 +51,11 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
         const document = session.document
         const placement = selectedRowInsertionTarget(session)
         const layer = createSparseLayer(tr('workspace.layer.defaultName', { index: document.layers.length + 1 }), document.colorMode)
+        if (gradientMap) {
+          layer.kind = 'adjustment'
+          layer.name = tr('gradientMap.adjustmentLayer')
+          layer.adjustment = { kind: 'gradient-map', enabled: true, gradientMap: normalizeGradientMap(gradientMap) }
+        }
         const targetGroupId = insertionTargetParent(document, placement)
         if (targetGroupId) layer.groupId = targetGroupId
         const groupMemberIds = targetGroupId ? new Set(getLayerIdsInGroup(document, targetGroupId)) : null
@@ -58,13 +63,29 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
         const index = lastGroupMember >= 0 ? lastGroupMember + 1 : document.layers.length
         document.layers.splice(index, 0, layer)
         const timeline = ensureAnimationDocument(document)
-        const animationCels = cloneAnimationCelsForLayerIds(document, [layer.id])
+        let animationCels = timeline.cels.filter((cel) => cel.layerId === layer.id)
         activateNewLayerContext(session, layer.id, timeline.activeFrameId)
         session.history.beginCompound()
         session.history.push({
           label: tr('workspace.history.newLayer'), bytes: layer.pixels.byteLength,
-          undo: () => { document.layers = document.layers.filter((item) => item.id !== layer.id); removeAnimationCelsForLayers(document, [layer.id]); document.activeLayerId = document.layers[Math.max(0, index - 1)].id },
-          redo: () => { document.layers.splice(index, 0, layer); restoreAnimationCels(document, animationCels); document.activeLayerId = layer.id }
+          undo: () => {
+            // Later pixel edits have already been undone, but their expanded
+            // raster geometry must survive so those edits can be replayed.
+            syncActiveAnimationFrame(document)
+            animationCels = removeAnimationCelsForLayers(document, [layer.id])
+            document.layers = document.layers.filter((item) => item.id !== layer.id)
+            document.activeLayerId = document.layers[Math.max(0, index - 1)].id
+          },
+          redo: () => {
+            document.layers.splice(index, 0, layer)
+            const timeline = ensureAnimationDocument(document)
+            // Transfer detached cels back instead of cloning full blank rasters.
+            // Later edits are undone before this creation entry can be undone.
+            timeline.cels = timeline.cels.filter((cel) => cel.layerId !== layer.id)
+            timeline.cels.push(...animationCels)
+            refreshActiveAnimationFrame(document)
+            document.activeLayerId = layer.id
+          }
         })
         const placementHistory = moveLayerPanelRowsOperation(session, [layer.id], [], placement)
         if (placementHistory) session.history.push(placementHistory)
@@ -427,7 +448,7 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
       get().mutateActive((session) => {
         const document = session.document
         const layer = document.layers.find((candidate) => candidate.id === layerId)
-        if (!layer || (!layer.background && !layer.kind && !hasConfiguredLayerStyles(layer.layerStyles))) return
+        if (!layer || layer.kind === 'adjustment' || (!layer.background && !layer.kind && !hasConfiguredLayerStyles(layer.layerStyles))) return
         const wasFreeTileLayer = layer.kind === 'free-tile'
         syncActiveAnimationFrame(document)
         const rasterizesStyles = hasEnabledLayerStyles(layer.layerStyles)

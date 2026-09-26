@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportdeDE } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const deDEMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Temporärer Pinsel: Bereich aufziehen, loslassen zum Verwenden; Esc zum Abbrechen",
+  "preferences.paintingCursor.cross": "Einfaches Kreuz",
+  "preferences.paintingCursor.pixelCross": "Pixelkreuz",
+  "preferences.paintingCursorAlignToPixel": "Zeiger an Pixeln ausrichten",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -108,7 +115,7 @@ export const deDEMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Einfacher Punkt",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -174,6 +181,8 @@ export const deDEMessages = {
   'preferences.diagnostics.memory': "Nur erfassen (Arbeitsspeicher)",
   'preferences.diagnostics.full': "Vollständig (erfassen und speichern)",
   'preferences.diagnostics.hint': "Wird sofort gespeichert, kein Neustart nötig. Nur erfassen behält die letzten 200 Ereignisse im Arbeitsspeicher ohne automatische Speicherung. Vollständig schreibt lokale Protokolldateien. Aus löscht keine vorhandenen Protokolle.",
+  'preferences.diagnostics.lag': "Verzögerungen aufzeichnen",
+  'preferences.diagnostics.lagHint': "Sofort aktiv. Vor der Reproduktion einschalten. Starke Verzögerungen und zeitlich benachbarte Daten werden automatisch erfasst. Native Ressourcenprotokolle laufen unabhängig von der Oberfläche weiter. Danach Diagnoseprotokolle unter Hilfe öffnen und den vorherigen Modus wiederherstellen. Keine früheren Zustände oder Leinwandpixel.",
   'preferences.diagnostics.saveFailed': "Die Diagnoseeinstellung konnte nicht gespeichert werden. Prüfen Sie den lokalen Speicher und versuchen Sie es erneut.",
   'layers.splitLayerStyles': 'Ebenenstile aufteilen',
   'layers.splitStyleShadow': 'Schlagschatten',
@@ -1705,6 +1714,8 @@ export const deDEMessages = {
   "timeline.copyCel": "Kopieren Cel",
   "timeline.connectCel": 'Link Zellen',
   "timeline.disconnectCel": 'Unlink Zellen',
+  'timeline.reverseCels': 'Cel-Reihenfolge umkehren',
+  'timeline.reverseFrames': 'Frame-Reihenfolge umkehren',
   "timeline.pasteCel": "Einfügen Cel",
   "timeline.copyMask": "Kopieren Ebene Maske Cel",
   "timeline.pasteMask": "Einfügen Ebene Maske Cel",

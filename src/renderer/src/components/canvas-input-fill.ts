@@ -1,3 +1,4 @@
+import { rememberRecentColors } from '@/core/recent-colors'
 import { publishEditorEvent } from '@/core/extension-editor-events'
 import { eraseWorkspaceMatchingColor } from '@/store/workspace-magic-eraser'
 import { recordRuntimeDiagnostic } from '../core/runtime-diagnostics'
@@ -168,7 +169,7 @@ export function createFillCanvasInput(ports: Ports) {
               : t('canvas.history.nonContiguousFill')
         const committed = state.commitPixelEdit(edit, historyLabel)
         if (committed) publishEditorEvent('fill.completed', session.document.id)
-        inputRef.current.drag = { kind: 'fill', start: fillPoint, last: fillPoint, edit, fillHistoryLabel: historyLabel, fillHistoryCommitted: Boolean(committed), startedAt: Date.now() }
+        inputRef.current.drag = { kind: 'fill', color: activeColor(event.button), start: fillPoint, last: fillPoint, edit, fillHistoryLabel: historyLabel, fillHistoryCommitted: Boolean(committed), startedAt: Date.now() }
         draw()
         operationProbe?.recordOperationStage?.('bucket.prepare-total', performance.now() - commitStartedAt, {
           points: edit.before.size,
@@ -267,7 +268,7 @@ export function createFillCanvasInput(ports: Ports) {
           )
           rasterMs = performance.now() - rasterStartedAt
           const historyStartedAt = performance.now()
-          if (edit) state.commitPixelEdit(edit, t('canvas.history.gradient'))
+          if (edit && state.commitPixelEdit(edit, t('canvas.history.gradient'))) rememberRecentColors([drag.gradientEndColor ?? session.secondaryColor, drag.color ?? session.primaryColor])
           historyMs = performance.now() - historyStartedAt
         }
       }

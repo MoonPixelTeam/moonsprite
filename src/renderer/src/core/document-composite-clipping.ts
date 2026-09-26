@@ -16,7 +16,7 @@ export const simpleClippingLayers = (document: SpriteDocument): RasterLayer[] | 
   for (const item of buildCompositeStack(document)) {
     if (item.kind === 'group') return null
     const layer = item.layer
-    if (activeMasks.has(layer.id) || hasEnabledLayerStyles(layer.layerStyles) || layer.blendMode !== 'normal') return null
+    if (activeMasks.has(layer.id) || (layer.kind === 'adjustment' || hasEnabledLayerStyles(layer.layerStyles)) || layer.blendMode !== 'normal') return null
     hasClippingLayer ||= layer.clippingMask === true
     layers.push(layer)
   }

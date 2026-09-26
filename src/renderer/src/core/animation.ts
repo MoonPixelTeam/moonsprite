@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from '@/core/layer-adjustment'
 import type { AnimationCel, AnimationCelSurface, AnimationFrame, AnimationTimeline } from '@shared/types-animation'
 import type { AnimationGroupMask, AnimationLayerMask, LayerMask, RasterLayer } from '@shared/types-layer'
 import type { FreeTileCelData, TilemapCelData } from '@shared/types-tiles'
@@ -636,6 +637,7 @@ export const cloneDocumentForAnimationFrame = (document: SpriteDocument, frameId
   const layers = document.layers.map((layer) => {
     const clone = shareRasterLayer(layer)
     clone.layerStyles = cloneLayerStyles(layer.layerStyles)
+    clone.adjustment = cloneLayerAdjustment(layer.adjustment)
     clone.background = layer.background ? { ...layer.background } : undefined
     return clone
   })

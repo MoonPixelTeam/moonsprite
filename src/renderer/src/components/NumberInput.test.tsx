@@ -55,3 +55,20 @@ describe('NumberInput steppers', () => {
     expect(screen.getByText('Origin')).not.toHaveAttribute('data-number-scrubbable')
   })
 })
+
+
+it('adjusts by wheel without scrolling ancestors and respects steps and bounds', () => {
+  const changed = vi.fn()
+  const view = render(<NumberInput value={2} min={1} max={3} step={0.5} onValueChange={changed} />)
+  const input = view.container.querySelector('input')!
+  fireEvent.wheel(input, { deltaY: -100 })
+  fireEvent.wheel(input, { deltaY: -100 })
+  fireEvent.wheel(input, { deltaY: -100 })
+  expect(changed.mock.calls.map(call => call[0])).toEqual([2.5, 3])
+  fireEvent.wheel(input, { deltaY: 100 })
+  expect(changed).toHaveBeenLastCalledWith(2.5)
+  view.rerender(<NumberInput value={2} disabled onValueChange={changed} />)
+  const count = changed.mock.calls.length
+  fireEvent.wheel(input, { deltaY: -100 })
+  expect(changed).toHaveBeenCalledTimes(count)
+})

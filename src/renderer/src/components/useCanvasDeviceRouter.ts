@@ -1,4 +1,5 @@
 import { targetsCanvasSurface } from './canvas-reference-input'
+import { useCanvasHoverDismiss } from './useCanvasHoverDismiss'
 import { canvasTouchNavigationPorts } from './canvas-touch-navigation-ports'
 import { deviceTemporaryTool, deviceSampleUsesSecondary, rightClickToolEvent, deviceRightClickAction, penEraserToolEvent } from './canvas-device-tools'
 import { createCanvasTouchNavigation, type TouchNavigationPorts } from './canvas-touch-navigation'
@@ -70,6 +71,11 @@ export function useCanvasDeviceRouter(ports: Ports) {
   const touchNavigation = touchNavigationRef.current
 
   const wheelBrushSizePreviewRef = useRef(false)
+  const hover = useCanvasHoverDismiss({
+    canvasRef: ports.canvasRef, inputRef: ports.inputRef,
+    wheelBrushSizePreviewRef, hidePenCursor: () => ports.hidePenCursor(),
+    hideEyedropperMagnifier: () => ports.hideEyedropperMagnifier(), draw: () => ports.draw()
+  })
 
   const nativeWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {})
   const inputWaitRef = useRef<ReturnType<typeof createRuntimeLatencyReporter> | null>(null)
@@ -106,6 +112,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }, [ports.session.document.id])
 
   const onWheel = (event: WheelEvent): void => {
+    // Wheel routing follows its target, not ownership of the hover preview.
+    if (document.visibilityState === 'hidden') return
     const canvas = ports.canvasRef.current
     if (!canvas) return
     const path = event.composedPath()
@@ -167,12 +175,13 @@ export function useCanvasDeviceRouter(ports: Ports) {
     ) {
       event.preventDefault()
       event.stopImmediatePropagation()
-      wheelBrushSizePreviewRef.current = true
+      const showPreview = hover.acceptsHover(event)
+      wheelBrushSizePreviewRef.current = showPreview
       const sizeStep = (delta < 0 ? 1 : -1) * (ports.brushSizeWheelReversed ? -1 : 1)
       if (liveSession.tool === 'airbrush') useWorkspace.getState().setAirbrushScatterRadius(liveSession.airbrushScatterRadius + sizeStep)
       else if (liveSession.tool === 'liquify') useWorkspace.getState().setLiquifyRadius(liveSession.liquifyRadius + sizeStep)
       else useWorkspace.getState().setBrushSize(liveSession.brushSize + sizeStep)
-      ports.updateCursorAt(clientX, clientY, wheelModifiers.ctrlKey, wheelModifiers.altKey, wheelModifiers.shiftKey)
+      if (showPreview) ports.updateCursorAt(clientX, clientY, wheelModifiers.ctrlKey, wheelModifiers.altKey, wheelModifiers.shiftKey)
       ports.scheduleDraw()
       return
     }
@@ -231,6 +240,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   touchNavigationPortsRef.current = canvasTouchNavigationPorts(ports)
 
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => measureRuntimeStages('canvas.pointer-down.total', checkpoint => {
+    if (!hover.acceptsHover(event)) return
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-down', pointerType: event.pointerType }))
     if (event.pointerType === 'pen' && ports.tabletPreferences.api !== 'disabled') touchNavigation.penDown()
     if (event.pointerType === 'touch' && touchNavigation.down(event)) return
@@ -286,6 +296,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }, () => ({ documentId: ports.session.document.id, tool: ports.session.tool }))
 
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!hover.acceptsHover(event) && !ports.inputRef.current.drag) return
     if (touchNavigation.move(event)) return
     if (event.pointerType === 'pen' && ports.tabletPreferences.api === 'disabled') return
     const auxiliaryPress = event.pointerType === 'mouse' && ((event.button === 1 && Boolean(event.buttons & 4)) || (event.button === 2 && Boolean(event.buttons & 2)))
@@ -322,7 +333,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
     }
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-move', pointerType: event.pointerType }))
     measurePointerInput('pointer-move', () => ports.handlePointerMove(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
-    ports.syncPenCursor(event)
+    if (hover.acceptsHover(event)) ports.syncPenCursor(event)
+    else hover.dismiss()
   }
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -334,7 +346,8 @@ export function useCanvasDeviceRouter(ports: Ports) {
     inputWaitRef.current?.record(runtimeEventStartTime(event.timeStamp), () => ({ documentId: ports.session.document.id, input: 'pointer-up', pointerType: event.pointerType }))
     try {
       measurePointerInput('pointer-up', () => ports.handlePointerUp(rightClickToolEvent(penEraserToolEvent(event, ports.tabletPreferences), ports.inputRef.current.temporaryRightClickAction)))
-      ports.syncPenCursor(event)
+      if (hover.acceptsHover(event)) ports.syncPenCursor(event)
+      else hover.dismiss()
     } finally {
       if (middlePenPointerRef.current === event.pointerId) middlePenPointerRef.current = null
       ports.inputRef.current.releasePointerDeviceEvent(event.nativeEvent)
@@ -444,6 +457,7 @@ export function useCanvasDeviceRouter(ports: Ports) {
   }
 
   const pointerEnter = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (!hover.acceptsHover(event)) return
     if (!ports.inputRef.current.acceptPointerDeviceEvent(event.nativeEvent)) return
     const session = ports.liveInputSession()
     const navigationShortcutActive =

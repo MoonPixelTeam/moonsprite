@@ -1,3 +1,4 @@
+import { normalizeGradientMap } from './gradient-map'
 import { unzipSync } from 'fflate'
 import { isPixelFormat } from './pixel-format'
 import { type LayerMask, type RasterLayer } from '@shared/types-layer'
@@ -192,8 +193,8 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
   let manifestFiles: Record<string, Uint8Array>
   try {
     manifestFiles = directory ? (projectZipFiles(input, directory, new Set(['manifest.json'])) ?? unzipSync(input, { filter: (file) => file.name === 'manifest.json' })) : unzipSync(input, { filter: (file) => file.name === 'manifest.json' })
-  } catch {
-    throw new Error(tr('core.project.unzip'))
+  } catch (error) {
+    throw new Error(`${tr('core.project.unzip')} ${error instanceof Error ? error.message : String(error)}`)
   }
   reportProgress(0.12)
   const manifest = readManifest(manifestFiles)
@@ -203,8 +204,8 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
   let files: Record<string, Uint8Array>
   try {
     files = directory ? (projectZipFiles(input, directory, requiredFiles) ?? unzipSync(input, { filter: (file) => requiredFiles.has(file.name) })) : unzipSync(input, { filter: (file) => requiredFiles.has(file.name) })
-  } catch {
-    throw new Error(tr('core.project.unzip'))
+  } catch (error) {
+    throw new Error(`${tr('core.project.unzip')} ${error instanceof Error ? error.message : String(error)}`)
   }
   reportProgress(0.45)
   const source = manifest.document
@@ -335,7 +336,14 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
     const height = Number.isSafeInteger(metadata.height) && metadata.height! > 0 ? metadata.height! : source.height
     const activeCelSource = activeCelFiles.get(metadata.id)
     const decoded = decodePixels(activeCelSource?.dataFile ?? metadata.dataFile, activeCelSource?.dataEncoding ?? metadata.dataEncoding, rasterFormat, width, height)
-    const layerStyles = normalizeLayerStyles(metadata.layerStyles)
+    const legacyStyles = normalizeLayerStyles(metadata.layerStyles)
+    const layerStyles = metadata.kind === 'adjustment' ? undefined : legacyStyles
+    // Migrate the previous beta representation only at the project boundary.
+    const adjustment = metadata.kind === 'adjustment' ? {
+      kind: 'gradient-map' as const,
+      enabled: metadata.adjustment ? metadata.adjustment.enabled !== false : legacyStyles?.enabled !== false && legacyStyles?.gradientMap?.enabled !== false,
+      gradientMap: normalizeGradientMap(metadata.adjustment?.gradientMap ?? legacyStyles?.gradientMap)
+    } : undefined
     const background = normalizeBackgroundLayerSettings(metadata.background)
     if (metadata.linkedContentId !== undefined && (typeof metadata.linkedContentId !== 'string' || !metadata.linkedContentId.trim() || metadata.kind || background)) {
       throw new Error(tr('core.project.layerCorrupt', { name: metadata.name }))
@@ -352,8 +360,9 @@ export function decodeProject(input: Uint8Array, options: ProjectDecodeOptions =
       blendMode: normalizeBlendMode(metadata.blendMode),
       ...(metadata.clippingMask === true ? { clippingMask: true } : {}),
       ...(layerStyles ? { layerStyles } : {}),
+      ...(adjustment ? { adjustment } : {}),
       ...(background ? { background } : {}),
-      ...(metadata.kind === 'text' || metadata.kind === 'tilemap' || metadata.kind === 'free-tile' ? { kind: metadata.kind } : {}),
+      ...(metadata.kind === 'text' || metadata.kind === 'tilemap' || metadata.kind === 'free-tile' || metadata.kind === 'adjustment' ? { kind: metadata.kind } : {}),
       ...(metadata.kind === 'tilemap' && typeof metadata.tilemapTilesetId === 'string' ? { tilemapTilesetId: metadata.tilemapTilesetId } : {}),
       ...(metadata.kind === 'free-tile' && typeof metadata.freeTileTilesetId === 'string' ? { freeTileTilesetId: metadata.freeTileTilesetId } : {}),
       ...(metadata.kind === 'free-tile' && typeof metadata.freeTileSetId === 'string' ? { freeTileSetId: metadata.freeTileSetId } : {}),

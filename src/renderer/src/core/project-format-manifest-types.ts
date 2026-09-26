@@ -1,3 +1,4 @@
+import type { LayerAdjustment } from '@shared/types-layer'
 import { type BlendMode, type PaletteEntry, type RgbaColor } from '@shared/types-color'
 import { type AnimationFrame, type AnimationLoopSection } from '@shared/types-animation'
 import { type BackgroundLayerSettings, type LayerGroup } from '@shared/types-layer'
@@ -16,7 +17,7 @@ export interface ManifestLayer {
   autoLinkAnimationCels?: boolean
   displayColor?: RgbaColor
   description?: string
-  kind?: 'text' | 'tilemap' | 'free-tile'
+  kind?: 'text' | 'tilemap' | 'free-tile' | 'adjustment'
   tilemapTilesetId?: string
   freeTileTilesetId?: string
   freeTileSetId?: string
@@ -27,6 +28,7 @@ export interface ManifestLayer {
   blendMode?: BlendMode
   clippingMask?: boolean
   layerStyles?: LayerStyles
+  adjustment?: LayerAdjustment
   background?: BackgroundLayerSettings
   groupId?: string | null
   width?: number

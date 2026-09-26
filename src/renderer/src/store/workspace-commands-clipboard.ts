@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from '@/core/layer-adjustment'
 import { parseAnimationCelKey } from '@/core/animation'
 import { createCompositePointSampler } from '@/core/document-composite'
 import { captureFreeTileInstances, pasteFreeTileInstances } from './workspace-free-tile-instance-clipboard'
@@ -357,6 +358,7 @@ function layerClipboardFromDocument(document: SpriteDocument, layer: RasterLayer
     blendMode: layer.blendMode,
     clippingMask: layer.clippingMask === true,
     layerStyles: cloneLayerStyles(layer.layerStyles),
+    adjustment: cloneLayerAdjustment(layer.adjustment),
     background: layer.background ? { ...layer.background } : undefined,
     displayColor: layer.displayColor ? { ...layer.displayColor } : undefined,
     description: layer.description ?? '',
@@ -599,6 +601,7 @@ export function createWorkspaceClipboardCommands({ get, set, recording }: Worksp
           layer.opacity = source.opacity
           layer.blendMode = source.blendMode
           if (source.clippingMask === true) layer.clippingMask = true
+          layer.adjustment = cloneLayerAdjustment(source.adjustment)
           assignLayerStyles(layer, source.layerStyles)
           if (source.background) layer.background = { ...source.background }
           layer.description = source.description ?? ''

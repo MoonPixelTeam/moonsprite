@@ -1,3 +1,4 @@
+import { GradientMapThumbnail } from './GradientMapThumbnail'
 import type { useTimelineContextActions } from './useTimelineContextActions'
 import type { deriveLayerPanelVisuals } from './deriveLayerPanelVisuals'
 import { useAnimationGestures } from './useAnimationGestures'
@@ -5,7 +6,7 @@ import { pixelSource } from '@/components/pixel-source'
 import { openTextToolDialog } from '@/components/text-tool-events'
 import { resolveAnimationMask } from '@/core/document-model'
 import { animationCelKey } from '@/core/animation'
-import { type DocumentSession } from '@/store/workspace'
+import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { shouldRenderTimelineCelSelectionMarker } from '@/core/animation-timeline-visual-state'
 import { timelineVisualClasses } from '@/core/animation-timeline-visual-classes'
 import { timelineCellSlotKey, timelineRowKey } from '@/core/animation-timeline-identity'
@@ -26,6 +27,14 @@ interface CellProps {
 }
 
 const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame, index, draggingFrameIdSet, draggingCellKeySet}: CellProps) {
+  // The panel deliberately skips pixel-only renders. The active cell still
+  // needs to update its current marker when a first stroke creates content.
+  useWorkspace(state => {
+    const session = state.sessions.find(item => item.document.id === panel.session.document.id)
+    return displayRow.kind === 'node' && displayRow.node.kind === 'layer'
+      && session?.document.activeLayerId === displayRow.node.layer.id
+      && session.document.animation?.activeFrameId === frame.id ? session.contentRevision : 0
+  })
   const {
   displayRows,
   timeline,
@@ -356,7 +365,9 @@ const CachedTimelineCell = memo(function TimelineCell({panel, displayRow, frame,
   )
   const liveActiveCell = Boolean(!animationCelDragActive && active && node.layer.id === playbackActiveLayerId && resolvedCel)
   const normalCelMarker =
-    resolvedCel && (hasContent || liveActiveCell) ? (
+    node.layer.kind === 'adjustment' ? (
+      showCelThumbnails && node.layer.adjustment ? <span className="cel-thumbnail"><GradientMapThumbnail adjustment={node.layer.adjustment} /></span> : null
+    ) : resolvedCel && (hasContent || liveActiveCell) ? (
       <AnimationCelContent
         active={liveActiveCell}
         documentId={session.document.id}

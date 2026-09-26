@@ -23,7 +23,7 @@ export const simpleLayerMaskLayers = (document: SpriteDocument): SimpleLayerMask
   for (const item of buildCompositeStack(document)) {
     if (item.kind === 'group') return null
     const layer = item.layer
-    if (layer.clippingMask === true || hasEnabledLayerStyles(layer.layerStyles) || layer.blendMode !== 'normal') return null
+    if (layer.clippingMask === true || (layer.kind === 'adjustment' || hasEnabledLayerStyles(layer.layerStyles)) || layer.blendMode !== 'normal') return null
     layers.push(layer)
   }
   return { layers, masks }

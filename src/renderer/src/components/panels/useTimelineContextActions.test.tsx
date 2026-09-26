@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, render, fireEvent } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDocument, readLayerPacked } from '@/core/document'
-import { createAnimationCelLookup, ensureAnimationDocument } from '@/core/animation'
+import { addBlankAnimationFrame, animationCelKey, createAnimationCelLookup, ensureAnimationDocument } from '@/core/animation'
 import { beginPixelEdit, commitPixelEdit, HistoryStack, recordPixel } from '@/core/history'
 import type { DocumentSession } from '@/store/workspace'
 import { useTimelineContextActions } from './useTimelineContextActions'
@@ -11,6 +11,31 @@ vi.mock('@/store/workspace', () => ({ useWorkspace: workspace }))
 vi.mock('@/components/AnimationTweenDialog', () => ({ AnimationTweenDialog: (props: { initialLoopSectionId?: string }) => <div data-testid="tween-dialog">{props.initialLoopSectionId ?? 'frame'}</div> }))
 vi.mock('@/components/I18nProvider', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+it.each(['cel', 'frame'] as const)('offers reversal for multiple selected %s items and dispatches its command', kind => {
+  const options = fixture()
+  const first = options.timeline.activeFrameId
+  const second = addBlankAnimationFrame(options.session.document)
+  const layerId = options.session.document.layers[0].id
+  options.session.animationCellClipboard = []
+  options.session.animationMaskClipboard = []
+  options.session.selectedAnimationCellKeys = kind === 'cel' ? [first, second].map(id => animationCelKey(layerId, id)) : []
+  options.session.selectedAnimationFrameIds = kind === 'frame' ? [first, second] : []
+  options.celLookup = createAnimationCelLookup(options.timeline)
+  installStore(options.session)
+  const reverse = vi.fn()
+  const store = workspace.getState()
+  workspace.getState.mockReturnValue({ ...store, reverseSelectedAnimationCels: reverse, reverseSelectedAnimationFrames: reverse })
+  const hook = renderHook(useTimelineContextActions, { initialProps: options })
+  const event = { preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 10, clientY: 10 } as unknown as React.MouseEvent<HTMLElement>
+  act(() => hook.result.current.openAnimationMenu(event, kind === 'cel'
+    ? { kind, layerId, frameId: first, x: 10, y: 10 } : { kind, frameId: first, x: 10, y: 10 }))
+  const view = render(hook.result.current.timelineContextSurfaces)
+  fireEvent.click(view.getByRole('menuitem', { name: kind === 'cel' ? 'timeline.reverseCels' : 'timeline.reverseFrames' }))
+  expect(reverse).toHaveBeenCalledOnce()
+  view.rerender(hook.result.current.timelineContextSurfaces)
+  expect(view.queryByRole('menu')).toBeNull()
+})
 
 function fixture() {
   const document = createDocument('history lifecycle', 4, 4, 'rgba')

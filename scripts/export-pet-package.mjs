@@ -117,7 +117,7 @@ for (const [name, frames] of [['SHOW', showFrames], ['IDLE', idleFrames], ['TOUC
   animationFrames[name === 'TOUCH' || name === 'UNDO' ? 'TRIGGER_' + name : name] = frames.map((_, index) => animationOffset + index)
   animationOffset += frames.length
 }
-if (allFrames.length > 240) throw new Error('展开循环后超过宠物的 240 帧上限，请减少循环次数。')
+if (allFrames.length > 1024) throw new Error('展开循环后超过宠物的 1024 帧上限，请减少循环次数。')
 const renderedFrames = allFrames.map(render)
 const cropBounds = (rendered) => {
   let left = document.width
@@ -165,7 +165,7 @@ const defaults = { language: 'auto', enabled: false, scale: 2, remindersEnabled:
 
 const triggerConditions = [
  ['pet.click','点击宠物','点击当前宠物时播放，拖动不算点击。'],['pet.drag-start','开始拖动宠物','当前宠物开始拖动时播放。'],['pet.dragging','持续拖动宠物','开始拖动后持续循环，松开或取消拖动时停止。'],['pet.drag-end','结束拖动宠物','松开拖动当前宠物后播放。'],
- ['pet.hover','鼠标悬浮宠物','指针停留在宠物上时播放，移开时停止。'],['pet.holding','按住宠物','按住宠物但尚未开始拖动时播放，松开或开始拖动时停止。'],['pet.drag-paused','拖拽按住不动','拖动后停住 350 毫秒时播放，继续移动或松开时停止。'],['pet.leave','鼠标移出宠物','指针离开宠物时播放。'],['pet.enter','鼠标移入宠物','指针进入当前宠物时播放。'],['idle','空闲一段时间','软件无键盘或指针活动达到指定秒数后播放，每次空闲只触发一次。'],
+ ['pet.hover','鼠标悬浮宠物','指针停留在宠物上时播放，移开时停止。'],['pet.leave','鼠标移出宠物','指针离开宠物时播放。'],['pet.enter','鼠标移入宠物','指针进入当前宠物时播放。'],['idle','空闲一段时间','软件无键盘或指针活动达到指定秒数后播放，每次空闲只触发一次。'],
  ['history.undo','撤销','实际完成一次撤销后播放。'],['history.redo','重做','实际完成一次重做后播放。'],
  ['color.sampled','吸色','完成吸色操作后播放，不因手动改颜色触发。'],['document.saved','保存成功','文件写入成功后播放；取消或失败不触发。'],
  ['project.opened','打开工程','打开一个新工程后播放。'],['project.created','新建工程','新建工程成功后播放。'],['export-complete','导出成功','图片或动画导出成功后播放。'],
@@ -195,7 +195,7 @@ const manifest = {
   ] },
   runtime: {
     entry: 'runtime/index.html',
-    permissions: ['runtime', 'commands', 'menus', 'ui', 'windows', 'workspace.read', 'document.read', 'events', 'storage', 'resources', 'notifications', 'diagnostics'],
+    permissions: ['io', 'runtime', 'commands', 'menus', 'ui', 'windows', 'workspace.read', 'document.read', 'events', 'storage', 'resources', 'notifications', 'diagnostics'],
     resources: { 'pet-window': 'ui/pet.html', 'pet-manager': 'ui/manager.html', sprite: 'assets/companion.png' }
   },
   commands: [
@@ -231,7 +231,7 @@ const META_KEY='pet-sprites',BUILT_IN=${JSON.stringify(builtInPet)},SLOT_COUNT=$
 const spriteRead=async key=>(moonsprite.assets?await moonsprite.assets.get('sprite.'+key):null)??await moonsprite.storage.get('sprite.'+key);
 const spriteWrite=async(key,value)=>{if(moonsprite.assets){await moonsprite.assets.set('sprite.'+key,value);return true}if(new TextEncoder().encode(JSON.stringify(value)).length>250000)throw new Error(t('素材超过单项存储容量，请使用更小或更短的动画。'));await moonsprite.storage.set('sprite.'+key,value);return true};
 const spriteDelete=async key=>{if(moonsprite.assets)await moonsprite.assets.remove('sprite.'+key);await moonsprite.storage.remove('sprite.'+key)};
-const readMeta=async()=>{const stored=await moonsprite.storage.get(META_KEY);return Array.isArray(stored)?stored.filter(entry=>entry&&typeof entry.id==='string'):[]};
+const readMeta=async()=>{const stored=await moonsprite.storage.get(META_KEY);return Array.isArray(stored)?stored.filter(entry=>entry&&typeof entry.id==='string').map(entry=>({...entry,triggerSlots:(entry.triggerSlots||[]).map(slot=>({...slot,event:slot.event==='pet.holding'?'pet.click':slot.event==='pet.drag-paused'?'pet.dragging':slot.event,...(slot.event==='pet.holding'?{repeat:false}:{})}))})):[]};
 const writeMeta=list=>moonsprite.storage.set(META_KEY,list);
 const listPets=async()=>{const meta=await readMeta();return orderPets([resolveBuiltin(meta.find(entry=>entry.id===BUILT_IN.id),BUILT_IN),...meta.filter(entry=>entry.id!==BUILT_IN.id)],await moonsprite.storage.get('pet-order'))};
 const loadSheetUrl=async pet=>{if(pet.source==='builtin'){const bytes=await moonsprite.resources.read('sprite');return{url:URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'image/png'})),revoke:true}}const dataUrl=await spriteRead(pet.spriteKey||pet.id);if(typeof dataUrl!=='string')throw new Error(t('宠物素材已丢失：{name}',{name:pet.name}));return{url:dataUrl,revoke:false}};
@@ -283,17 +283,19 @@ const reconcileNow=async()=>{
  if(managerReady)await send('manager',{type:'catalog',hostLocale});
 };
 const reconcile=()=>enqueue(async()=>{await reload();await reconcileNow()});
-let initialization=Promise.resolve(),managerPetId=null,managerReady=false;
+let initialization=Promise.resolve(),managerPetId=null,managerReady=false;const pendingPetDrops=[];const flushPetDrops=async()=>{if(!managerReady)return;while(pendingPetDrops.length)await send('manager',pendingPetDrops.shift())};
 const openManager=async(petId=null)=>{managerPetId=petId;await moonsprite.windows.open({windowId:'manager',resourceId:'pet-manager',options:{presentation:'dialog',component:'form',title:t('宠物管理')}});if(managerReady)await send('manager',{type:'catalog',petId:managerPetId,hostLocale})};
+moonsprite.on('files-dropped',event=>enqueue(async()=>{for(const file of event.files||[])if(/\\.mspet$/i.test(file.name))pendingPetDrops.push({type:'ui-import-pet-drop',files:[file]});if(!pendingPetDrops.length)return;await openManager();await send('manager',{type:'import-ready-check'})}));
 moonsprite.on('locale-changed',event=>{hostLocale=event.locale;if(!runtimeActivated)return;return enqueue(async()=>{await reload();await reconcileNow()})});
-moonsprite.on('activate',()=>{initialization=enqueue(async()=>{if(moonsprite.runtime?.getLocale){const current=await moonsprite.runtime.getLocale();hostLocale=current.locale}await reload();runtimeActivated=true;await moonsprite.windows.close({windowId:'companion'}).catch(report);await reconcileNow()});return initialization});
+moonsprite.on('activate',()=>{initialization=enqueue(async()=>{if(moonsprite.runtime?.getLocale){const current=await moonsprite.runtime.getLocale();hostLocale=current.locale}await reload();if(moonsprite.runtime?.setFileDropTypes)await moonsprite.runtime.setFileDropTypes({extensions:['.mspet']});runtimeActivated=true;await moonsprite.windows.close({windowId:'companion'}).catch(report);await reconcileNow()});return initialization});
 moonsprite.on('command',async event=>{if(event.event==='toggle-pet')return enqueue(async()=>{await reload();const pet=(await catalog()).find(pet=>pet.id===event.commandId&&pet.frameCount>0);if(!pet)return;const showing=preferences.enabled&&shownIds.includes(pet.id);shownIds=shownIds.filter(id=>id!==pet.id);if(!showing){shownIds.push(pet.id);preferences.enabled=true;await write('preferences',preferences)}await write('shownPets',shownIds);await reconcileNow()});if(event.event==='settings')return moonsprite.ui.openSettings();if(event.event==='manager')await openManager()});
 moonsprite.on('settings-changed',async event=>{if(event.key==='preferences')await reconcile()});
 moonsprite.on('window-message',async event=>{const message=event.message;if(!message)return;
  if(event.windowId==='manager'){
   if(message.type==='catalog')await reconcile()
   if(message.type==='language'){await reload();if(managerReady)await send('manager',{type:'catalog',hostLocale})}
-  if(message.type==='ready'){managerReady=true;await send('manager',{type:'catalog',petId:managerPetId,hostLocale})}
+  if(message.type==='import-ready')await flushPetDrops();
+  if(message.type==='ready'){managerReady=true;await send('manager',{type:'catalog',petId:managerPetId,hostLocale});await flushPetDrops()}
   return
  }
  const pet=live.get(event.windowId);if(!pet)return;
@@ -319,18 +321,17 @@ const petWindowSource = `
 const expandedSize=360;
 let pet=null,image=null,hitAlpha=null,hitRegionDirty=false,project=null,preferences=${JSON.stringify(defaults)},animationToken=0,pointer=null,noticeTimer=0,expanded=false,desiredExpanded=false,boundsQueue=Promise.resolve(),sheetUrl=null,sheetRevoke=false,catalog=[],slotPets=[],activePets=null,activePetId=${JSON.stringify(BUILT_IN_PET_ID)},resizeTimer=0,positionKey='position';
 const petElement=document.querySelector('#pet'),canvas=document.querySelector('canvas'),context=canvas.getContext('2d',{willReadFrequently:true}),info=document.querySelector('#info'),notice=document.querySelector('#notice');
-let draggingAnimation=false;
+let draggingAnimation=false,dragStartPending=false,dragEndPlaying=false;
 // Persistent interactions own playback until exit; cooldown gates entry, never loop frames.
 let interactionState=null,statePlayback=null,stateRetry=0,dragPauseTimer=0;
-const clearInteraction=()=>{clearTimeout(stateRetry);clearTimeout(dragPauseTimer);interactionState=null;hoveringOpaque=false;if(statePlayback){statePlayback=null;triggerBusyUntil=0;if(pet)play(pet.idleFrames,true)}draggingAnimation=false};
+const clearInteraction=()=>{dragEndPlaying=false;if(dragStartPending){dragStartPending=false;triggerBusyUntil=0;if(pet)play(pet.idleFrames,true)}clearTimeout(stateRetry);clearTimeout(dragPauseTimer);interactionState=null;hoveringOpaque=false;if(statePlayback){statePlayback=null;triggerBusyUntil=0;if(pet)play(pet.idleFrames,true)}draggingAnimation=false};
 const setInteractionState=event=>{if(interactionState===event)return;clearTimeout(stateRetry);interactionState=event;if(statePlayback){statePlayback=null;triggerBusyUntil=0;if(pet)play(pet.idleFrames,true)}draggingAnimation=false;if(!event)return;
- const begin=()=>{if(interactionState!==event||!petVisible||document.hidden||!pet)return;const now=Date.now(),slots=(pet.triggerSlots||[]).filter(slot=>slot.event===event&&pet.animations?.[slot.id]?.length);const slot=slots.find(slot=>!triggerLast.has(slot.id)||now-triggerLast.get(slot.id)>=(slot.cooldownMs||0));if(!slot){if(slots.length)stateRetry=setTimeout(begin,Math.max(1,Math.min(...slots.map(slot=>(slot.cooldownMs||0)-(now-triggerLast.get(slot.id))))));return}const repeat=slot.repeat??(event==='pet.dragging');triggerLast.set(slot.id,now);statePlayback=slot.id;draggingAnimation=event==='pet.dragging'||event==='pet.drag-paused';triggerBusyUntil=0;play(pet.animations[slot.id],repeat)};begin()};
-const armDragPause=()=>{clearTimeout(dragPauseTimer);dragPauseTimer=setTimeout(()=>{if(pointer?.dragged&&pet?.triggerSlots?.some(slot=>slot.event==='pet.drag-paused'&&pet.animations?.[slot.id]?.length))setInteractionState('pet.drag-paused')},350)};
+ const begin=()=>{if(interactionState!==event||!petVisible||document.hidden||!pet)return;const now=Date.now(),slots=(pet.triggerSlots||[]).filter(slot=>slot.event===event&&pet.animations?.[slot.id]?.length);const slot=slots.find(slot=>!triggerLast.has(slot.id)||now-triggerLast.get(slot.id)>=(slot.cooldownMs||0));if(!slot){if(slots.length)stateRetry=setTimeout(begin,Math.max(1,Math.min(...slots.map(slot=>(slot.cooldownMs||0)-(now-triggerLast.get(slot.id))))));return}const repeat=slot.repeat??(event==='pet.dragging');triggerLast.set(slot.id,now);statePlayback=slot.id;draggingAnimation=event==='pet.dragging';triggerBusyUntil=0;play(pet.animations[slot.id],repeat)};begin()};
 let petVisible=true,triggerBusyUntil=0,lastActivity=Date.now();const triggerLast=new Map(),idleTriggered=new Set();
 const markActivity=()=>{lastActivity=Date.now();idleTriggered.clear()};
-const triggerAnimation=(event,detail={})=>{if(!petVisible||!pet||draggingAnimation||statePlayback)return false;const now=Date.now();for(const slot of pet.triggerSlots||[]){if(slot.event!==event||(event==='tool.changed'&&slot.tool&&slot.tool!==detail.tool)||(detail.slotId&&detail.slotId!==slot.id))continue;const frames=pet.animations?.[slot.id];if(!frames?.length||(slot.cooldownMs>0&&now<triggerBusyUntil)||(triggerLast.has(slot.id)&&now-triggerLast.get(slot.id)<slot.cooldownMs))continue;triggerLast.set(slot.id,now);triggerBusyUntil=now+frames.reduce((total,frame)=>total+(pet.durations?.[frame]||125),0);play(frames,false);return true}return false};
+const triggerAnimation=(event,detail={})=>{if(dragEndPlaying&&!detail.interaction)return false;if(dragStartPending&&!detail.onComplete&&!detail.interaction)return false;if(!petVisible||!pet||((draggingAnimation||statePlayback)&&!detail.interaction))return false;const now=Date.now();for(const slot of pet.triggerSlots||[]){if(slot.event!==event||(event==='tool.changed'&&slot.tool&&slot.tool!==detail.tool)||(detail.slotId&&detail.slotId!==slot.id))continue;const frames=pet.animations?.[slot.id];if(!frames?.length||(slot.cooldownMs>0&&now<triggerBusyUntil)||(triggerLast.has(slot.id)&&now-triggerLast.get(slot.id)<slot.cooldownMs))continue;if(detail.interaction)setInteractionState(null);triggerLast.set(slot.id,now);triggerBusyUntil=now+frames.reduce((total,frame)=>total+(pet.durations?.[frame]||125),0);play(frames,false,detail.onComplete);return true}return false};
 setInterval(()=>{if(!petVisible||document.hidden||!pet||Date.now()<triggerBusyUntil)return;const now=Date.now(),due=(pet.triggerSlots||[]).filter(slot=>slot.event==='idle'&&!idleTriggered.has(slot.id)&&now-lastActivity>=slot.idleSeconds*1000&&pet.animations?.[slot.id]?.length&&(!triggerLast.has(slot.id)||now-triggerLast.get(slot.id)>=slot.cooldownMs));if(!due.length)return;const chosen=due[Math.floor(Math.random()*due.length)];if(triggerAnimation('idle',{slotId:chosen.id}))for(const slot of due)idleTriggered.add(slot.id)},1000);
-let lastActivityReport=0;const reportActivity=()=>{markActivity();if(Date.now()-lastActivityReport<500)return;lastActivityReport=Date.now();moonsprite.window.postMessage({type:'activity'}).catch(error=>moonsprite.diagnostics.log(String(error),'error'))};addEventListener('pointermove',reportActivity);addEventListener('keydown',reportActivity);let hoveringOpaque=false;const hitCurrentPixel=event=>{if(!pet)return false;const rect=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-rect.left)*canvas.width/rect.width),y=Math.floor((event.clientY-rect.top)*canvas.height/rect.height);return x>=0&&y>=0&&x<canvas.width&&y<canvas.height&&context.getImageData(x,y,1,1).data[3]>0};petElement.addEventListener('pointermove',event=>{if(pointer?.dragged)return;const inside=hitCurrentPixel(event);if(inside===hoveringOpaque)return;hoveringOpaque=inside;if(pointer)return;setInteractionState(null);if(inside){triggerAnimation('pet.enter');setInteractionState('pet.hover')}else triggerAnimation('pet.leave')});petElement.addEventListener('pointerleave',()=>{const wasInside=hoveringOpaque;hoveringOpaque=false;if(pointer)return;setInteractionState(null);if(wasInside)triggerAnimation('pet.leave')});
+let lastActivityReport=0;const reportActivity=()=>{markActivity();if(Date.now()-lastActivityReport<500)return;lastActivityReport=Date.now();moonsprite.window.postMessage({type:'activity'}).catch(error=>moonsprite.diagnostics.log(String(error),'error'))};addEventListener('pointermove',reportActivity);addEventListener('keydown',reportActivity);let hoveringOpaque=false;const hitCurrentPixel=event=>{if(!pet)return false;const rect=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-rect.left)*canvas.width/rect.width),y=Math.floor((event.clientY-rect.top)*canvas.height/rect.height);return x>=0&&y>=0&&x<canvas.width&&y<canvas.height&&context.getImageData(x,y,1,1).data[3]>0};petElement.addEventListener('pointermove',event=>{if(pointer?.dragged)return;const inside=hitCurrentPixel(event);if(inside===hoveringOpaque)return;hoveringOpaque=inside;if(pointer||dragEndPlaying)return;setInteractionState(null);if(inside){triggerAnimation('pet.enter');setInteractionState('pet.hover')}else triggerAnimation('pet.leave')});petElement.addEventListener('pointerleave',()=>{const wasInside=hoveringOpaque;hoveringOpaque=false;if(pointer||dragEndPlaying)return;setInteractionState(null);if(wasInside)triggerAnimation('pet.leave')});
 const scaleOf=()=>Math.max(1,Math.min(4,Math.round(preferences.scale||2)));
 const compactSize=()=>pet?{width:Math.max(360,pet.frameWidth*scaleOf()+600),height:Math.max(360,pet.frameHeight*scaleOf()+400)}:{width:120,height:120};
 let positionRatio=null,positionLoaded=false,hostEpoch=0;
@@ -344,7 +345,7 @@ const setExpanded=(next,force=false)=>{desiredExpanded=next;boundsQueue=boundsQu
 const syncBubbleLayout=()=>setExpanded(!info.hidden||!notice.hidden);
 const updateScale=()=>{const scale=scaleOf();canvas.style.width=pet.frameWidth*scale+'px';canvas.style.height=pet.frameHeight*scale+'px';return setExpanded(desiredExpanded,true).then(constrainPet)};
 const boundsForAnimation=frames=>{let bounds=null;for(const frame of frames){const next=frameBounds[frame];if(!next)continue;if(!bounds){bounds={...next};continue}const x=Math.min(bounds.x,next.x),y=Math.min(bounds.y,next.y);bounds={x,y,width:Math.max(bounds.x+bounds.width,next.x+next.width)-x,height:Math.max(bounds.y+bounds.height,next.y+next.height)-y}}return bounds||spriteBounds};
-const play=(frames,repeat)=>{const token=++animationToken;if(!image||!frames||!frames.length)return;animationBounds=boundsForAnimation(frames);if(!info.hidden||!notice.hidden)scheduleHitRegion();let index=0;const tick=()=>{if(token!==animationToken)return;context.clearRect(0,0,pet.frameWidth,pet.frameHeight);const delay=pet.durations?.[frames[index]]||125;context.save();if(pet.mirrored){context.translate(pet.frameWidth,0);context.scale(-1,1)}context.drawImage(image,0,-frames[index]*pet.frameHeight);context.restore();displayedFrame=frames[index];index++;if(index>=frames.length){if(!repeat){setTimeout(()=>{if(token===animationToken){statePlayback=null;draggingAnimation=false;play(pet.idleFrames,true)}},delay);return}index=0}setTimeout(tick,delay)};tick()};
+const play=(frames,repeat,onComplete)=>{const token=++animationToken;if(!image||!frames||!frames.length)return;animationBounds=boundsForAnimation(frames);if(!info.hidden||!notice.hidden)scheduleHitRegion();let index=0;const tick=()=>{if(token!==animationToken)return;context.clearRect(0,0,pet.frameWidth,pet.frameHeight);const delay=pet.durations?.[frames[index]]||125;context.save();if(pet.mirrored){context.translate(pet.frameWidth,0);context.scale(-1,1)}context.drawImage(image,0,-frames[index]*pet.frameHeight);context.restore();displayedFrame=frames[index];index++;if(index>=frames.length){if(!repeat){setTimeout(()=>{if(token===animationToken){statePlayback=null;draggingAnimation=false;dragEndPlaying=false;if(onComplete){onComplete();return}if(!interactionState&&hoveringOpaque&&!pointer){setInteractionState('pet.hover');if(statePlayback)return}play(pet.idleFrames,true)}},delay);return}index=0}setTimeout(tick,delay)};tick()};
 const revealBubble=async bubble=>{bubble.style.visibility='hidden';bubble.hidden=false;try{await positionBubbles();if(bubble.hidden)return;await updateHitRegion();if(!bubble.hidden)bubble.style.visibility='visible'}catch(error){bubble.hidden=true;throw error}};
 const showInfo=async()=>{if(!project){await showNotice(t('{name}在这里陪你。打开工程后，点击可查看工程信息。',{name:pet?.name||t('宠物')}));return}if(!info.hidden){info.hidden=true;await syncBubbleLayout();return}notice.hidden=true;info.innerHTML='<strong></strong><small>'+project.width+' × '+project.height+' · '+project.colorMode+'</small><small>'+t('图层 {layers} · 帧 {frames}',{layers:project.layerCount,frames:project.frameCount})+'</small><small>'+(project.dirty?t('有未保存修改'):t('已保存'))+'</small>';info.querySelector('strong').textContent=project.name;await setExpanded(true);await revealBubble(info)};
 const showNotice=async text=>{if(!pet)return;info.hidden=true;notice.textContent=text;await setExpanded(true);await revealBubble(notice);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.hidden=true;syncBubbleLayout()},7000);updateHitRegion()};
@@ -370,18 +371,20 @@ const reportCatalog=()=>{};
 let catalogQueue=Promise.resolve();
 const refreshCatalog=playShow=>{const pending=activePets;activePets=null;const task=catalogQueue.then(()=>refreshCatalogNow(playShow,pending));catalogQueue=task.catch(()=>undefined);return task};
 const refreshCatalogNow=async(playShow,pending)=>{catalog=(Array.isArray(pending)?pending:await listPets()).filter(entry=>entry.frameCount>0);slotPets=catalog.slice(0,SLOT_COUNT);if(!catalog.some(candidate=>candidate.id===activePetId))throw new Error(t('指定宠物不存在：{name}',{name:activePetId}));const next=catalog.find(candidate=>candidate.id===activePetId);if(next){const changed=!pet||pet.id!==next.id;if(!pet||pet.id!==next.id||pet.spriteKey!==next.spriteKey||pet.mirrored!==next.mirrored)await loadPet(next);else {clearInteraction();pet={...pet,...next};await updateScale()}if(playShow&&next.showFrames&&next.showFrames.length)play(next.showFrames,false);else if(changed||playShow)play(pet.idleFrames,true);moonsprite.window.postMessage({type:'active',pet:next}).catch(()=>{})}reportCatalog()};
-const startDraggingAnimation=()=>setInteractionState('pet.dragging');
-const stopDraggingAnimation=()=>{clearTimeout(dragPauseTimer);setInteractionState(null)};
-petElement.addEventListener('pointerdown',event=>{if(event.button!==0||!hitCurrentPixel(event))return;pointer={epoch:hostEpoch,x:event.screenX,y:event.screenY,dragged:false,content:contentBounds(),origin:Promise.all([moonsprite.window.getBounds(),moonsprite.window.getHostBounds()])};petElement.setPointerCapture(event.pointerId);setInteractionState('pet.holding')});
-petElement.addEventListener('pointermove',event=>{if(!pointer)return;if(!pointer.dragged&&Math.hypot(event.screenX-pointer.x,event.screenY-pointer.y)<5)return;if(!pointer.dragged){setInteractionState(null);triggerAnimation('pet.drag-start');info.hidden=true;notice.hidden=true;scheduleHitRegion()}startDraggingAnimation();pointer.dragged=true;armDragPause();clearTimeout(noticeTimer);movePet(pointer,event.screenX,event.screenY)});
-petElement.addEventListener('pointerup',event=>{if(!pointer)return;const gesture=pointer;pointer=null;stopDraggingAnimation();hoveringOpaque=false;if(petElement.hasPointerCapture(event.pointerId))petElement.releasePointerCapture(event.pointerId);if(gesture.dragged){stopDraggingAnimation();triggerAnimation('pet.drag-end');movePet(gesture,event.screenX,event.screenY).then(async()=>{if(gesture.epoch!==hostEpoch)return;await savePosition(await moonsprite.window.getBounds(),gesture.epoch);scheduleHitRegion()}).catch(error=>moonsprite.diagnostics.log(String(error),'error'))}else{triggerAnimation('pet.click');scheduleHitRegion();showInfo().catch(error=>moonsprite.diagnostics.log(String(error),'error'))}});
+const startDraggingAnimation=()=>{if(!dragStartPending)setInteractionState('pet.dragging')};
+const stopDraggingAnimation=()=>{if(dragStartPending){dragStartPending=false;triggerBusyUntil=0;if(pet)play(pet.idleFrames,true)}clearTimeout(dragPauseTimer);setInteractionState(null)};
+const finishPetInteraction=(event,trigger)=>{clearTimeout(dragPauseTimer);hoveringOpaque=petVisible&&!document.hidden&&hitCurrentPixel(event);if(interactionState!=='pet.hover')stopDraggingAnimation();if(trigger&&triggerAnimation(trigger,{interaction:true})){dragEndPlaying=trigger==='pet.drag-end';return}setInteractionState(hoveringOpaque?'pet.hover':null)};
+petElement.addEventListener('pointerdown',event=>{if(event.button!==0||!hitCurrentPixel(event))return;dragEndPlaying=false;pointer={lastEvent:event,epoch:hostEpoch,x:event.screenX,y:event.screenY,dragged:false,content:contentBounds(),origin:Promise.all([moonsprite.window.getBounds(),moonsprite.window.getHostBounds()])};petElement.setPointerCapture(event.pointerId)});
+const updatePetDrag=(event,finishing=false)=>{if(!pointer)return;pointer.lastEvent=event;if(finishing&&pointer.dragged)return;if(!pointer.dragged&&![event,...(event.getCoalescedEvents?.()||[])].some(sample=>Math.hypot(sample.screenX-pointer.x,sample.screenY-pointer.y)>=5))return;if(!pointer.dragged){const gesture=pointer;setInteractionState(null);dragStartPending=true;const started=triggerAnimation('pet.drag-start',{onComplete:()=>{if(pointer!==gesture||!gesture.dragged)return;dragStartPending=false;startDraggingAnimation();if(!statePlayback)play(pet.idleFrames,true);}});if(!started)dragStartPending=false;info.hidden=true;notice.hidden=true;scheduleHitRegion()}pointer.dragged=true;clearTimeout(noticeTimer);if(!finishing){startDraggingAnimation();movePet(pointer,event.screenX,event.screenY)}};
+petElement.addEventListener('pointermove',event=>updatePetDrag(event));
+petElement.addEventListener('pointerup',event=>{if(!pointer)return;updatePetDrag(event,true);const gesture=pointer;pointer=null;if(petElement.hasPointerCapture(event.pointerId))petElement.releasePointerCapture(event.pointerId);if(gesture.dragged){finishPetInteraction(event,'pet.drag-end');movePet(gesture,event.screenX,event.screenY).then(async()=>{if(gesture.epoch!==hostEpoch)return;await savePosition(await moonsprite.window.getBounds(),gesture.epoch);scheduleHitRegion()}).catch(error=>moonsprite.diagnostics.log(String(error),'error'))}else{finishPetInteraction(event,'pet.click');scheduleHitRegion();showInfo().catch(error=>moonsprite.diagnostics.log(String(error),'error'))}});
 addEventListener('contextmenu',event=>{event.preventDefault();moonsprite.window.postMessage({type:'manager'}).catch(()=>{})});
-petElement.addEventListener('lostpointercapture',()=>{if(pointer){clearInteraction();pointer=null;petElement.classList.remove('dragging');scheduleHitRegion()}});
+petElement.addEventListener('lostpointercapture',event=>{if(pointer){const dragged=pointer.dragged;pointer=null;finishPetInteraction(event,dragged?'pet.drag-end':undefined);petElement.classList.remove('dragging');scheduleHitRegion()}});
 addEventListener('visibilitychange',()=>{if(document.hidden){clearInteraction();pointer=null}});
-petElement.addEventListener('pointercancel',()=>{clearInteraction();pointer=null;petElement.classList.remove('dragging');scheduleHitRegion()});
+petElement.addEventListener('pointercancel',event=>{if(!pointer)return;const dragged=pointer.dragged;pointer=null;finishPetInteraction(event,dragged?'pet.drag-end':undefined);petElement.classList.remove('dragging');scheduleHitRegion()});
 addEventListener('resize',()=>{scheduleHitRegion();constrainPet()});
 addEventListener('moonsprite:window-host-geometry',hostGeometryChanged);
-addEventListener('blur',()=>{clearInteraction();pointer=null;if(!info.hidden){info.hidden=true;syncBubbleLayout()}});
+addEventListener('blur',()=>{if(pointer?.dragged){const event=pointer.lastEvent;pointer=null;finishPetInteraction(event,'pet.drag-end');hoveringOpaque=false}else if(!dragEndPlaying){clearInteraction();pointer=null}if(!info.hidden){info.hidden=true;syncBubbleLayout()}});
 moonsprite.window.onMessage(message=>{if(!message)return;
 if(message.type==='activity'){markActivity();return}
 if(message.type==='trigger'){triggerAnimation(message.event,message.detail);return}
@@ -401,9 +404,9 @@ moonsprite.window.postMessage({type:'ready'}).catch(()=>{});
 `
 
 const managerSource = `
-const MAX_EDGE=192,MAX_FRAMES=120;
+const MAX_EDGE=192,MAX_FRAMES=512;
 const scaleSurface=(source,sourceWidth,sourceHeight)=>{const factor=Math.min(1,MAX_EDGE/Math.max(sourceWidth||1,sourceHeight||1));const width=Math.max(1,Math.round((sourceWidth||1)*factor)),height=Math.max(1,Math.round((sourceHeight||1)*factor));const surface=document.createElement('canvas');surface.width=width;surface.height=height;const ctx=surface.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.drawImage(source,0,0,width,height);return{surface,ctx,width,height}};
-const decodeGif=async bytes=>{if(typeof ImageDecoder!=='function')throw new Error(t('当前环境不支持 GIF 动画解码，请导入 PNG 或 WebP 静态图片。'));const decoder=new ImageDecoder({data:bytes,type:'image/gif',preferAnimation:true});try{await decoder.tracks.ready;await decoder.completed;const track=decoder.tracks.selectedTrack;const count=Math.min(track?track.frameCount:1,MAX_FRAMES);if(track&&track.frameCount>MAX_FRAMES)throw new Error(t('单个动画最多 120 帧，请缩短素材。'));if(count<=1)return null;const first=await decoder.decode({frameIndex:0,completeFramesOnly:true});const size=scaleSurface(first.image,first.image.displayWidth||first.image.width,first.image.displayHeight||first.image.height);first.image.close();const sheet=document.createElement('canvas');sheet.width=size.width;sheet.height=size.height*count;const ctx=sheet.getContext('2d'),durations=[];for(let index=0;index<count;index++){const decoded=await decoder.decode({frameIndex:index,completeFramesOnly:true});ctx.drawImage(decoded.image,0,index*size.height,size.width,size.height);durations.push(Math.max(40,Math.min(1000,Math.round((decoded.image.duration||100000)/1000))));decoded.image.close();await new Promise(resolve=>setTimeout(resolve,0))}return{sheet,durations}}finally{decoder.close()}};
+const decodeGif=async bytes=>{if(typeof ImageDecoder!=='function')throw new Error(t('当前环境不支持 GIF 动画解码，请导入 PNG 或 WebP 静态图片。'));const decoder=new ImageDecoder({data:bytes,type:'image/gif',preferAnimation:true});try{await decoder.tracks.ready;await decoder.completed;const track=decoder.tracks.selectedTrack;const count=Math.min(track?track.frameCount:1,MAX_FRAMES);if(track&&track.frameCount>MAX_FRAMES)throw new Error(t('单个动画最多 512 帧，请缩短素材。'));if(count<=1)return null;const first=await decoder.decode({frameIndex:0,completeFramesOnly:true});const size=scaleSurface(first.image,first.image.displayWidth||first.image.width,first.image.displayHeight||first.image.height);first.image.close();const sheet=document.createElement('canvas');sheet.width=size.width;sheet.height=size.height*count;const ctx=sheet.getContext('2d'),durations=[];for(let index=0;index<count;index++){const decoded=await decoder.decode({frameIndex:index,completeFramesOnly:true});ctx.drawImage(decoded.image,0,index*size.height,size.width,size.height);durations.push(Math.max(40,Math.min(1000,Math.round((decoded.image.duration||100000)/1000))));decoded.image.close();await new Promise(resolve=>setTimeout(resolve,0))}return{sheet,durations}}finally{decoder.close()}};
 const decodeStill=async bytes=>{const url=URL.createObjectURL(new Blob([bytes]));try{const image=await decodeImage(url);const size=scaleSurface(image,image.naturalWidth,image.naturalHeight);return{sheet:size.surface,durations:[125]}}finally{URL.revokeObjectURL(url)}};
 const sliceSheet=(surface,frameCount)=>({dataUrl:surface.toDataURL('image/png'),frameWidth:surface.width,frameHeight:surface.height/frameCount,frameCount});
 
@@ -445,12 +448,13 @@ const renderList=async()=>{
  if(target.id!==BUILT_IN.id)detail.push({id:'delete-line',type:'separator'},{id:'delete-'+target.id,type:'button',label:t('删除此宠物'),action:{type:'ui-delete',petId:target.id}});
  }
  const nodes=[{id:'manager-layout',type:'split',children:[{id:'pet-list',type:'sidebar',label:t('宠物列表'),children:sidebar},{id:'pet-detail',type:'column',label:t('当前宠物设置'),children:detail}]}];
+ if(typeof dropImportNotice!=='undefined'&&dropImportNotice)nodes.push({id:'drop-import-result',type:'dialog',compact:true,label:t('导入宠物包…'),action:{type:'ui-dismiss-import'},children:[{id:'drop-import-message',type:'message',label:status},{id:'drop-import-close',type:'button',label:t('关闭'),action:{type:'ui-dismiss-import'}}]});
  const editing=target?.triggerSlots?.find(slot=>slot.id===editingTriggerId);
  if(conditionDialog)nodes.push({id:'trigger-dialog',type:'dialog',label:editing?t('编辑条件动画槽'):t('添加条件动画槽'),action:{type:'ui-cancel-trigger'},children:[
  {id:'trigger-event',type:'select',label:t('触发条件'),tooltip:t('条件发生时播放；持续条件可选择重复播放。'),value:editing?.event||'history.undo',options:TRIGGER_CONDITIONS.map(([value,label,description])=>({value,label:t(label),description:t(description)}))},
  {id:'trigger-tool',visibleWhen:{'trigger-event':'tool.changed'},type:'select',label:t('目标工具'),tooltip:t('仅切换工具条件使用；其他条件忽略此项。'),value:editing?.tool||'',options:[{value:'',label:t('所有工具')},...['pencil','eraser','fill','eyedropper','selection','move','shape','line','text','hand','zoom','rotate','airbrush','smooth','liquify'].map((value,index)=>({value,label:[t('画笔'),t('橡皮'),t('填充'),t('吸色'),t('选区'),t('移动'),t('形状'),t('线条'),t('文字'),t('抓手'),t('缩放'),t('旋转'),t('喷枪'),t('平滑'),t('液化')][index]}))]},
  {id:'trigger-idle',visibleWhen:{'trigger-event':'idle'},type:'number',label:t('空闲时长（秒）'),tooltip:t('仅空闲条件使用；在软件内无输入达到此时长后触发。'),value:editing?.idleSeconds??60,min:5,max:86400},
- ...['pet.hover','pet.holding','pet.dragging','pet.drag-paused'].map(event=>({id:'trigger-repeat-'+event,visibleWhen:{'trigger-event':event},type:'select',label:t('重复播放'),tooltip:t('状态持续时连续循环，结束时停止。冷却仅限制再次进入，不影响循环。'),value:(editing?.event===event?(editing.repeat??(event==='pet.dragging')):true)?'repeat':'once',options:[{value:'repeat',label:t('重复播放')},{value:'once',label:t('播放一次')}]})),
+ ...['pet.hover','pet.dragging'].map(event=>({id:'trigger-repeat-'+event,visibleWhen:{'trigger-event':event},type:'select',label:t('重复播放'),tooltip:t('状态持续时连续循环，结束时停止。冷却仅限制再次进入，不影响循环。'),value:(editing?.event===event?(editing.repeat??(event==='pet.dragging')):true)?'repeat':'once',options:[{value:'repeat',label:t('重复播放')},{value:'once',label:t('播放一次')}]})),
  {id:'trigger-cooldown',type:'number',label:t('冷却时间（秒）'),tooltip:t('0 表示每次操作立即从头播放，可打断当前动画；大于 0 时限制间隔，忙时不排队。空闲槽位同时满足时随机选一个。'),value:editing?editing.cooldownMs/1000:3,min:0,max:3600},
  {id:'confirm-trigger',type:'button',label:editing?t('保存设置'):t('新增槽位'),primary:true,action:{type:'ui-confirm-trigger',petId:target.id}}
  ]});
@@ -460,7 +464,7 @@ const renderList=async()=>{
 const combineAnimations=parts=>{
  const width=Math.max(...parts.map(part=>part.sheet.width)),height=Math.max(...parts.map(part=>part.sheet.height/part.durations.length)),frameCount=parts.reduce((sum,part)=>sum+part.durations.length,0);
  if(width*height*frameCount>16000000)throw new Error(t('动画尺寸或帧数无效。'));
- if(frameCount>240)throw new Error(t('一个宠物最多包含 240 帧。'));
+ if(frameCount>1024)throw new Error(t('一个宠物最多包含 1024 帧。'));
  const sheet=document.createElement('canvas');sheet.width=width;sheet.height=height*frameCount;const ctx=sheet.getContext('2d');const animations=Object.create(null),durations=[];let offset=0;
  for(const part of parts){const h=part.sheet.height/part.durations.length;animations[part.name]=[];for(let index=0;index<part.durations.length;index++){ctx.drawImage(part.sheet,0,index*h,part.sheet.width,h,Math.floor((width-part.sheet.width)/2),(offset+index)*height+height-h,part.sheet.width,h);animations[part.name].push(offset+index)}offset+=part.durations.length;durations.push(...part.durations)}
  return{sheet,animations,durations};
@@ -487,11 +491,11 @@ const validatePetPackage=data=>{
  if(!data||data.format!=='moonsprite-pet'||data.version!==1)throw new Error(t('不是受支持的宠物包，或版本不兼容。'));
  const p=data.pet;if(!p||typeof p.name!=='string'||!p.name.trim()||p.name.length>24)throw new Error(t('宠物名称无效。'));
  const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max;
- if(!integer(p.frameWidth,1,512)||!integer(p.frameHeight,1,512)||!integer(p.frameCount,0,240)||p.frameWidth*p.frameHeight*p.frameCount>16000000)throw new Error(t('动画尺寸或帧数无效。'));
+ if(!integer(p.frameWidth,1,512)||!integer(p.frameHeight,1,512)||!integer(p.frameCount,0,1024)||p.frameWidth*p.frameHeight*p.frameCount>16000000)throw new Error(t('动画尺寸或帧数无效。'));
  if(!integer(p.scale,1,4)||typeof p.mirrored!=='boolean')throw new Error(t('宠物显示设置无效。'));
  if(!Array.isArray(p.durations)||p.durations.length!==p.frameCount||p.durations.some(n=>!integer(n,1,60000)))throw new Error(t('动画时长无效。'));
  if(!p.animations||typeof p.animations!=='object'||Array.isArray(p.animations)||Object.keys(p.animations).length>32)throw new Error(t('动画列表无效。'));
- const animations=Object.create(null);for(const [name,frames] of Object.entries(p.animations)){if(!/^[A-Z][A-Z0-9_-]{0,31}$/.test(name)||!Array.isArray(frames)||frames.length>240||frames.some(n=>!integer(n,0,p.frameCount-1)))throw new Error(t('动画帧索引无效。'));animations[name]=[...frames]}
+ const animations=Object.create(null);for(const [name,frames] of Object.entries(p.animations)){if(!/^[A-Z][A-Z0-9_-]{0,31}$/.test(name)||!Array.isArray(frames)||frames.length>1024||frames.some(n=>!integer(n,0,p.frameCount-1)))throw new Error(t('动画帧索引无效。'));animations[name]=[...frames]}
  if(p.frameCount&&!Object.values(animations).some(frames=>frames.length))throw new Error(t('宠物包缺少动画。'));
  if(p.frameCount){
   if(typeof data.sprite!=='string'||data.sprite.length>8*1024*1024||(!data.sprite.startsWith('data:image/png;base64,')||!/^[A-Za-z0-9+/]+={0,2}$/.test(data.sprite.slice(22))))throw new Error(t('宠物素材无效或超过容量。'));
@@ -499,19 +503,26 @@ const validatePetPackage=data=>{
   if(bytes.length<33||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||String.fromCharCode(...bytes.slice(12,16))!=='IHDR')throw new Error(t('宠物素材不是 PNG。'));
   const view=new DataView(bytes.buffer);if(view.getUint32(16)!==p.frameWidth||view.getUint32(20)!==p.frameHeight*p.frameCount)throw new Error(t('素材尺寸与动画设置不一致。'));
  }else if(data.sprite!==null)throw new Error(t('空宠物不应包含素材。'));
- const triggerSlots=p.triggerSlots||[];if(!Array.isArray(triggerSlots)||triggerSlots.length>30)throw new Error(t('条件槽位无效。'));const ids=new Set();
+ const rawTriggerSlots=p.triggerSlots||[];if(!Array.isArray(rawTriggerSlots))throw new Error(t('条件槽位无效。'));const triggerSlots=rawTriggerSlots.map(slot=>slot&&(slot=>({...slot,event:slot.event==='pet.holding'?'pet.click':slot.event==='pet.drag-paused'?'pet.dragging':slot.event,...(slot.event==='pet.holding'?{repeat:false}:{})}))(slot));if(!Array.isArray(triggerSlots)||triggerSlots.length>30)throw new Error(t('条件槽位无效。'));const ids=new Set();
  for(const slot of triggerSlots){if(!slot||!/^TRIGGER_[A-Z0-9_]{1,24}$/.test(slot.id)||ids.has(slot.id)||!TRIGGER_CONDITIONS.some(item=>item[0]===slot.event)||typeof slot.tool!=='string'||slot.tool.length>32||!integer(slot.idleSeconds,5,86400)||!integer(slot.cooldownMs,0,3600000)||(slot.repeat!==undefined&&typeof slot.repeat!=='boolean'))throw new Error(t('条件槽位配置无效。'));ids.add(slot.id)}
  return{pet:{triggerSlots:triggerSlots.map(slot=>({...slot})),name:p.name.trim(),frameWidth:p.frameWidth,frameHeight:p.frameHeight,frameCount:p.frameCount,scale:p.scale,mirrored:p.mirrored,durations:[...p.durations],animations},sprite:data.sprite};
 };
+const PACKAGE_KEY=new Uint8Array(Array.from('MoonSpritePetKey-v1-20260926-123',char=>char.charCodeAt(0)));
+const packageCrypto=async(mode,value,iv)=>{if(!globalThis.crypto?.subtle)throw new Error('当前环境不支持宠物包加密。');const key=await crypto.subtle.importKey('raw',PACKAGE_KEY,{name:'AES-GCM'},false,['encrypt','decrypt']);return mode==='encrypt'?new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,value)):new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv},key,value))};
+const bytesToBase64=bytes=>{let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary)};
+const base64ToBytes=value=>Uint8Array.from(atob(value),char=>char.charCodeAt(0));
 const exportPetPackage=async petId=>{
  const target=(await listPets()).find(p=>p.id===petId);if(!target)throw new Error(t('宠物不存在。'));
  let sprite=null;if(target.frameCount){if(target.source==='builtin'){const bytes=await moonsprite.resources.read('sprite');let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);sprite='data:image/png;base64,'+btoa(binary)}else sprite=await spriteRead(target.spriteKey||target.id)}
- const data={format:'moonsprite-pet',version:1,pet:{name:target.name,frameWidth:target.frameWidth,frameHeight:target.frameHeight,frameCount:target.frameCount,scale:target.scale||2,mirrored:target.mirrored===true,triggerSlots:target.triggerSlots||[],animations:animationMap(target),durations:Array.from({length:target.frameCount},(_,i)=>target.durations?.[i]||125)},sprite};
- validatePetPackage(data);return{name:Array.from(target.name,c=>c.charCodeAt(0)<32||'<>:"/|?*'.includes(c)||c.charCodeAt(0)===92?'_':c).join('')+'.mspet',bytes:Array.from(new TextEncoder().encode(JSON.stringify(data)))};
+ const pet={name:target.name,frameWidth:target.frameWidth,frameHeight:target.frameHeight,frameCount:target.frameCount,scale:target.scale||2,mirrored:target.mirrored===true,triggerSlots:target.triggerSlots||[],animations:animationMap(target),durations:Array.from({length:target.frameCount},(_,i)=>target.durations?.[i]||125)};
+ const data={format:'moonsprite-pet',version:1,pet,sprite:null};
+ validatePetPackage({...data,sprite});
+ if(sprite){const iv=crypto.getRandomValues(new Uint8Array(12)),encrypted=await packageCrypto('encrypt',base64ToBytes(sprite.slice(22)),iv);data.spriteEncrypted={algorithm:'AES-GCM',iv:bytesToBase64(iv),data:bytesToBase64(encrypted)};}
+ return{name:Array.from(target.name,c=>c.charCodeAt(0)<32||'<>:"/|?*'.includes(c)||c.charCodeAt(0)===92?'_':c).join('')+'.mspet',bytes:Array.from(new TextEncoder().encode(JSON.stringify(data)))};
 };
 const importPetPackage=async files=>{
  if(!Array.isArray(files)||files.length!==1||!Array.isArray(files[0].bytes)||files[0].bytes.length>12*1024*1024||files[0].bytes.some(n=>!Number.isInteger(n)||n<0||n>255))throw new Error(t('请选择一个有效的宠物包（最大 12 MiB）。'));
- let data;try{data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(files[0].bytes)))}catch{throw new Error(t('宠物包无法读取，文件可能已损坏。'))}
+ let data;try{data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(files[0].bytes)));if(data.spriteEncrypted&&!data.sprite){const encrypted=data.spriteEncrypted;if(encrypted.algorithm!=='AES-GCM'||typeof encrypted.iv!=='string'||typeof encrypted.data!=='string')throw new Error('宠物素材加密信息无效。');const plain=await packageCrypto('decrypt',base64ToBytes(encrypted.data),base64ToBytes(encrypted.iv));data.sprite='data:image/png;base64,'+bytesToBase64(plain)}}catch(error){throw new Error(t('宠物包无法读取，文件可能已损坏。'))}
  const parsed=validatePetPackage(data),meta=await readMeta();if(meta.filter(p=>p.id!==BUILT_IN.id).length>=SLOT_COUNT-1)throw new Error(t('宠物数量已达上限。'));
  if(parsed.sprite){const image=await decodeImage(parsed.sprite);if(image.naturalWidth!==parsed.pet.frameWidth||image.naturalHeight!==parsed.pet.frameHeight*parsed.pet.frameCount)throw new Error(t('宠物素材解码尺寸不一致。'))}
  const id='custom-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),spriteKey=id+'-sheet',animations=animationMap(parsed.pet);
@@ -520,8 +531,10 @@ const importPetPackage=async files=>{
  try{await writeMeta([...meta,entry])}catch(error){if(parsed.sprite)await spriteDelete(spriteKey);throw error}
  activeId=id;staged=[];await publish();status=t('已导入 {name}，可从顶部宠物菜单开启显示',{name:entry.name});return entry;
 };
+let dropImportNotice=false;
 let operations=Promise.resolve();
 moonsprite.window.onMessage(message=>{
+ if(message.type==='import-ready-check'){moonsprite.window.postMessage({type:'import-ready'}).catch(error=>moonsprite.diagnostics.log(String(error),'error'));return}
  // Invalidate an in-flight preview before queued selection work starts.
  if((message.type==='catalog'&&message.petId)||message.type==='ui-edit')renderRevision++;
  operations=operations.then(async()=>{
@@ -532,7 +545,8 @@ moonsprite.window.onMessage(message=>{
    if(message.type==='catalog'){if(message.hostLocale)hostLocale=message.hostLocale;if(message.petId&&(await listPets()).some(pet=>pet.id===message.petId)){activeId=message.petId;staged=[];conditionDialog=false;editingTriggerId=null;status=''}}
    else if(message.type==='ui-preference'){const key=message.key;if(!['remindersEnabled','clockEnabled','unsavedEnabled','breakEnabled','unsavedMinutes','breakMinutes'].includes(key))return;const value=key.endsWith('Minutes')?Math.max(1,Math.min(1440,Math.round(Number(values[key])||1))):message.value===true;const prefs=await moonsprite.storage.get('preferences')||{};await moonsprite.storage.set('preferences',{...prefs,[key]:value});await publish()}
    else if(message.type==='ui-export-pet'){const file=await exportPetPackage(message.petId);result={requestId:message.requestId,ok:true,file};status=t('宠物包已准备好')}
-   else if(message.type==='ui-import-pet'){await importPetPackage(message.files)}
+   else if(message.type==='ui-import-pet'||message.type==='ui-import-pet-drop'){if(message.type==='ui-import-pet-drop')dropImportNotice=true;await importPetPackage(message.files)}
+   else if(message.type==='ui-dismiss-import'){dropImportNotice=false}
    else if(message.type==='ui-add-trigger'){activeId=message.petId;editingTriggerId=null;conditionDialog=true}
    else if(message.type==='ui-edit-trigger'){activeId=message.petId;editingTriggerId=message.slotId;conditionDialog=true}
    else if(message.type==='ui-cancel-trigger'){conditionDialog=false}
@@ -543,7 +557,7 @@ moonsprite.window.onMessage(message=>{
     const slots=target.triggerSlots||[];if(!editingTriggerId&&slots.length>=30)throw new Error(t('最多 30 个条件动画槽'));
     const tool=event==='tool.changed'?String(values['trigger-tool']??existing?.tool??''):'';
     const idleSeconds=Math.max(5,Math.min(86400,Math.round(Number(values['trigger-idle']??existing?.idleSeconds)||60))),cooldownMs=Math.max(0,Math.min(3600,Math.round(Number(values['trigger-cooldown']??(existing?existing.cooldownMs/1000:3)))))*1000;
-    const repeat=['pet.hover','pet.holding','pet.dragging','pet.drag-paused'].includes(event)?(values['trigger-repeat-'+event]!==undefined?values['trigger-repeat-'+event]==='repeat':(existing?.event===event?(existing.repeat??(event==='pet.dragging')):true)):false;
+    const repeat=['pet.hover','pet.dragging'].includes(event)?(values['trigger-repeat-'+event]!==undefined?values['trigger-repeat-'+event]==='repeat':(existing?.event===event?(existing.repeat??(event==='pet.dragging')):true)):false;
     const slot={repeat,id:editingTriggerId||'TRIGGER_'+Date.now().toString(36).toUpperCase()+'_'+Math.random().toString(36).slice(2,6).toUpperCase(),event,tool,idleSeconds,cooldownMs};
     await writeMeta([...meta.filter(item=>item.id!==target.id),{...target,triggerSlots:editingTriggerId?slots.map(old=>old.id===editingTriggerId?slot:old):[...slots,slot]}]);conditionDialog=false;await publish();status=t('槽位已新增，请上传动画');
    }

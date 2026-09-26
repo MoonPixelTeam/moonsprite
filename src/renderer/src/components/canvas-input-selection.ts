@@ -14,10 +14,8 @@ import { type CanvasDragState as DragState, type CanvasPoint as Point } from '@/
 import { type SelectionHit } from '@/core/canvas-input-state'
 import { canvasCursors, selectionCreationCursor } from '@/core/canvas-visuals'
 import { symmetrySelection, symmetrySelectionDragDelta } from '@/core/symmetry'
-import { animationCelKey, ensureAnimationDocument } from '@/core/animation'
 import { activeTilemapCelTarget } from '@/core/tilemap-document'
 import { repeatedLassoSelection } from '@/core/repeated-selection'
-import { timelineSelectionPrecedesCanvasMarquee } from './canvas-stage-helpers'
 
 interface Ports {
   selectionHit: (event: React.PointerEvent<HTMLCanvasElement>) => SelectionHit
@@ -137,10 +135,7 @@ export function createSelectionCanvasInput(ports: Ports) {
       const mode = selectionMode()
       const repeatMode = liveViewRef.current.tileRepeatMode ?? 'off'
       const repeatedStart = repeatMode === 'off' ? point : (repeatedDocumentPointsAt(event.clientX, event.clientY, false, true)?.repeated ?? point)
-      if (timelineSelectionPrecedesCanvasMarquee(session)) {
-        const timeline = ensureAnimationDocument(session.document)
-        state.selectAnimationCell(animationCelKey(session.document.activeLayerId, timeline.activeFrameId))
-      }
+      state.clearAnimationSelection(true)
       startCanvasSelection(session.document.id)
       inputRef.current.drag = {
         kind: 'marquee',
@@ -289,17 +284,13 @@ export function createSelectionCanvasInput(ports: Ports) {
       const moved = drag.moved || selectionGestureMoved(drag.startClient, { x: event.clientX, y: event.clientY })
       if (moved && !drag.quickSelectCell) ports.updateMarqueePreview(drag, drag.last, ports.currentSelectionMarqueeModifierState(), true)
       const change = marqueeSelectionCommit(drag, session.selection, moved, session.selectionMode)
-      // A timeline selection made before the first marquee is a navigation
-      // context, not a multi-target transform request. Bind the new marquee
-      // to the active layer/frame cel; selecting timeline targets afterwards
-      // will keep the existing canvas selection and enable batch transforms.
-      const timelineSelectionBeforeMarquee = timelineSelectionPrecedesCanvasMarquee(session, drag.selectionStart)
-      state.commitSelectionChange(change.before, change.after, t('canvas.history.createSelection'))
-      if (timelineSelectionBeforeMarquee) {
-        const currentSession = useWorkspace.getState().sessions.find((item) => item.document.id === session.document.id)
-        const frameId = currentSession?.document.animation?.activeFrameId
-        if (currentSession && frameId) state.selectAnimationCell(animationCelKey(currentSession.document.activeLayerId, frameId))
+      if (session.temporaryBrushCapture) {
+        if (change.after) state.finishTemporaryBrushCapture(change.after)
+        updateCursor(event)
+        scheduleDraw()
+        return true
       }
+      state.commitSelectionChange(change.before, change.after, t('canvas.history.createSelection'))
       updateCursor(event)
       scheduleDraw()
     }

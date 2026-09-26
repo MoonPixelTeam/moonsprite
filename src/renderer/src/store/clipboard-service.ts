@@ -1,3 +1,4 @@
+import { cloneLayerAdjustment } from '@/core/layer-adjustment'
 import type { AnimationCel } from '@shared/types-animation'
 import type { AnimationGroupMask, AnimationLayerMask, BackgroundLayerSettings, LayerGroup, RasterLayer } from '@shared/types-layer'
 import type { ClipboardImage, ClipboardImageSize } from '@shared/types-files'
@@ -19,7 +20,7 @@ export interface SelectionClipboard {
 export interface LayerClipboard {
   name: string
   linkedContentId?: string
-  kind?: 'text' | 'tilemap' | 'free-tile'
+  kind?: 'text' | 'tilemap' | 'free-tile' | 'adjustment'
   tilemapTilesetId?: string
   freeTileSetId?: string
   freeTileSources?: FreeTileSourceLayer[]
@@ -33,6 +34,7 @@ export interface LayerClipboard {
   blendMode: RasterLayer['blendMode']
   clippingMask?: boolean
   layerStyles?: RasterLayer['layerStyles']
+  adjustment?: RasterLayer['adjustment']
   background?: BackgroundLayerSettings
   displayColor?: RasterLayer['displayColor']
   description?: string
@@ -98,6 +100,7 @@ export interface LayerCollectionClipboard {
 /** A document-independent animation cel payload. IDs are retained for diagnostics only;
  * placement is expressed by source layer/frame indexes so it can be pasted into another document. */
 export interface AnimationCelClipboardSnapshot {
+  selectionOnly?: boolean
   sourceDocumentId: string
   anchorLayerIndex: number
   anchorFrameIndex: number
@@ -142,6 +145,7 @@ const cloneSelectionClipboard = (clipboard: SelectionClipboard): SelectionClipbo
 const cloneLayerClipboard = (clipboard: LayerClipboard): LayerClipboard => ({
   ...clipboard,
   layerStyles: cloneLayerStyles(clipboard.layerStyles),
+  adjustment: cloneLayerAdjustment(clipboard.adjustment),
   background: clipboard.background ? { ...clipboard.background } : undefined,
   displayColor: clipboard.displayColor ? { ...clipboard.displayColor } : undefined,
   freeTileSources: clipboard.freeTileSources?.map((source) => ({ ...source, displayColor: source.displayColor ? { ...source.displayColor } : undefined })),
@@ -399,6 +403,7 @@ export class ClipboardService {
 export const clipboardService = new ClipboardService()
 
 const cloneAnimationCelClipboardSnapshot = (snapshot: AnimationCelClipboardSnapshot): AnimationCelClipboardSnapshot => ({
+  selectionOnly: snapshot.selectionOnly,
   sourceDocumentId: snapshot.sourceDocumentId,
   anchorLayerIndex: snapshot.anchorLayerIndex,
   anchorFrameIndex: snapshot.anchorFrameIndex,

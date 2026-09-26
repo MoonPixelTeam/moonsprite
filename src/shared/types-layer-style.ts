@@ -1,3 +1,4 @@
+import type { GradientMapSettings } from './types-gradient-map'
 import type { RgbaColor } from './types-color'
 import type { OutlinePosition, OutlineKernel, OutlineDirections } from './types-selection'
 import type { GradientDither } from './types-brush'
@@ -43,6 +44,12 @@ export interface LayerStyleGradientOverlay {
   dither: GradientDither
 }
 
+export interface LayerStyleGradientMap extends GradientMapSettings {
+  enabled: boolean
+  /** Below-stack scope identifies a non-destructive adjustment layer. */
+  scope: 'layer' | 'below'
+}
+
 export interface LayerStyles {
   /** Global visibility switch that preserves every configured effect. */
   enabled: boolean
@@ -50,5 +57,6 @@ export interface LayerStyles {
   shadow: LayerStyleShadow
   innerGlow: LayerStyleInnerGlow
   colorOverlay: LayerStyleColorOverlay
+  gradientMap?: LayerStyleGradientMap
   gradientOverlay: LayerStyleGradientOverlay
 }

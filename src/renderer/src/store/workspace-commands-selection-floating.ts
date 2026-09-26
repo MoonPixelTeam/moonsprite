@@ -286,6 +286,13 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
           const afterAnimationSelection = captureAnimationSelectionHistory(session)
           if (entries.length > 0) {
             const entry = combinedPixelHistoryEntry(session, entries, pending.label, beforeSelection, afterSelection, beforeSelectionPivot, null, beforeFreeTransformQuad, afterFreeTransformQuad)
+            if (pending.structureHistory) {
+              const pixels = { ...entry }
+              const structure = pending.structureHistory
+              entry.bytes += structure.bytes
+              entry.undo = () => { pixels.undo(); structure.undo() }
+              entry.redo = () => { structure.redo(); pixels.redo() }
+            }
             session.history.push(historyEntryWithAnimationSelection(session, entry, beforeAnimationSelection, afterAnimationSelection))
           } else if (selectionChanged) {
             const entry: HistoryEntry = {
@@ -588,6 +595,7 @@ export function createSelectionFloatingCommands({ get, recording }: WorkspaceCom
           return
         }
         restoreFloatingPreview(session)
+        pending.structureHistory?.undo()
         session.selection = cloneSelectionMask(pending.beforeSelection)
         session.selectionPivot = pending.beforeSelectionPivot ? { ...pending.beforeSelectionPivot } : null
         session.pendingPaste = null

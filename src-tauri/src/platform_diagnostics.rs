@@ -231,7 +231,7 @@ pub(crate) async fn append_diagnostic_events(
     .map_err(|error| error.to_string())?
 }
 
-fn append_events_to_file(
+pub(crate) fn append_events_to_file(
     app: &AppHandle,
     state: &DiagnosticState,
     events: Vec<Value>,

@@ -91,6 +91,19 @@ const trimSnapshots = (session: DocumentSession): void => {
   }
 }
 
+const suspendLocalHistory = (session: DocumentSession, error: unknown): void => {
+  session.history.setChangeListener(null)
+  session.localHistory = null
+  const pending = pendingWrites.get(historyId(session.document))
+  if (pending !== undefined) window.clearTimeout(pending)
+  pendingWrites.delete(historyId(session.document))
+  // Disk history is left intact; ordinary undo/redo and document commits keep working.
+  recordRuntimeDiagnostic('error', 'local-history.capture-paused', {
+    message: error instanceof Error ? error.message : String(error), documentId: session.document.id
+  }, true)
+  console.error('MoonSprite local history recording paused after snapshot failure', error)
+}
+
 /** Starts or stops recording a session according to the current preference. */
 export const configureLocalHistory = (session: DocumentSession, api: MoonSpriteApi): void => {
   session.history.setMaxEntries(historyEntryLimit(loadEditorPreferences()))
@@ -101,12 +114,15 @@ export const configureLocalHistory = (session: DocumentSession, api: MoonSpriteA
   }
   if (!session.localHistory) {
     const started = performance.now()
-    session.localHistory = { snapshots: [captureSnapshot(session.document)], labels: [], position: 0 }
+    try { session.localHistory = { snapshots: [captureSnapshot(session.document)], labels: [], position: 0 } }
+    catch (error) { suspendLocalHistory(session, error); return }
     if (runtimeDiagnosticsActive()) recordRuntimeDiagnostic('operation-stage', 'local-history.baseline', { durationMs: Math.round((performance.now() - started) * 10) / 10, width: session.document.width, height: session.document.height, layers: session.document.layers.length })
   }
   session.history.setChangeListener((change) => {
-    recordLocalHistoryChange(session, change)
-    scheduleLocalHistoryPersist(api, session)
+    try {
+      recordLocalHistoryChange(session, change)
+      scheduleLocalHistoryPersist(api, session)
+    } catch (error) { suspendLocalHistory(session, error) }
   })
 }
 
@@ -120,9 +136,9 @@ export const recordLocalHistoryChange = (session: DocumentSession, change: Histo
       const previousShape = snapshotShapes.get(base) ?? (!('archive' in base) && !('base' in base) ? documentShape(base) : undefined)
       const delta = loadEditorPreferences().localHistoryEnabled && change.entry && previousShape === shape
         ? captureCommittedHistoryDelta(session.document, change.entry) : null
+      const snapshot: LocalHistorySnapshot = delta ? { base, delta } : captureSnapshot(session.document)
       state.snapshots.splice(state.position + 1)
       state.labels.splice(state.position)
-      const snapshot: LocalHistorySnapshot = delta ? { base, delta } : captureSnapshot(session.document)
       snapshotShapes.set(snapshot, shape)
       state.snapshots.push(snapshot)
       state.labels.push(change.entry?.label ?? '编辑')

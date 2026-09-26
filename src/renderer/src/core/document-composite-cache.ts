@@ -1,3 +1,4 @@
+import { normalizeDocumentColor } from './document-model'
 import { appendStyleDirtyRect, invalidateStyledLayerBlocks, refreshStyledLayerBlock } from './layer-style-dirty-regions'
 import { renderStyledLayerBlock } from './document-composite-style-render'
 import { LayerStyleTileCache } from './layer-style-tile-cache'
@@ -228,7 +229,7 @@ export class DocumentCompositeCache {
       || group.cumulativeBlend === true
       || group.clippingMask === true
       || hasEnabledLayerStyles(group.layerStyles)))
-    const unsupportedLayer = document.layers.some((layer) => isLayerEffectivelyVisible(document, layer) && layer.opacity > 0 && (layer.clippingMask === true || layer.blendMode !== 'normal'))
+    const unsupportedLayer = document.layers.some((layer) => isLayerEffectivelyVisible(document, layer) && layer.opacity > 0 && (layer.kind === 'adjustment' || layer.clippingMask === true || layer.blendMode !== 'normal'))
     const hasMasks = activeCelMasksByLayer(document).size > 0 || activeGroupMasksByGroup(document).size > 0
     if (unsupportedGroup || unsupportedLayer || hasMasks) {
       this.styledLayerPlans.set(document, { revision, frameId, layers: null })
@@ -288,7 +289,7 @@ export class DocumentCompositeCache {
       || cached.sourceHeight !== sourceLayer.height
       || cached.sourceLayer.format !== sourceLayer.format) {
       const styles = resolveLayerStyles(sourceLayer.layerStyles)
-      const resolvedStyles = mapLayerStyleColors(styles, (color) => resolveLayerCanvasColor(document, sourceLayer, color))
+      const resolvedStyles = mapLayerStyleColors(styles, (color) => resolveLayerCanvasColor(document, sourceLayer, color), color => normalizeDocumentColor(document, color))
       const sourceContentBounds = rasterContentBounds(sourceLayer, document.palette)
       const outputBounds = layerStyleOutputBounds(sourceContentBounds, resolvedStyles)
       const localX = outputBounds?.x ?? 0

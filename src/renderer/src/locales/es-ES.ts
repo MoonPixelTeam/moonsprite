@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportesES } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const esESMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Pincel temporal: arrastra un área y suelta para usar; Esc para cancelar",
+  "preferences.paintingCursor.cross": "Cruz simple",
+  "preferences.paintingCursor.pixelCross": "Cruz de píxeles",
+  "preferences.paintingCursorAlignToPixel": "Alinear puntero a píxeles",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -104,7 +111,7 @@ export const esESMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Punto simple",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -166,6 +173,8 @@ export const esESMessages = {
   'preferences.diagnostics.memory': "Solo recopilar (memoria)",
   'preferences.diagnostics.full': "Completo (recopilar y guardar)",
   'preferences.diagnostics.hint': "Se guarda de inmediato, sin reiniciar. Solo recopilar conserva los últimos 200 eventos en memoria sin guardarlos automáticamente. Completo escribe archivos locales. Desactivar no elimina los registros existentes.",
+  'preferences.diagnostics.lag': "Capturar lentitud",
+  'preferences.diagnostics.lagHint': "Efecto inmediato. Activa antes de reproducir. Las demoras importantes y su contexto temporal se registran automáticamente. El registro nativo continúa independientemente de la interfaz. Después abre los registros en Ayuda y vuelve al modo anterior. No recupera estados previos ni captura píxeles.",
   'preferences.diagnostics.saveFailed': "No se pudo guardar el ajuste. Comprueba el almacenamiento local e inténtalo de nuevo.",
   'layers.splitLayerStyles': 'Separar estilos de capa',
   'layers.splitStyleShadow': 'Sombra paralela',
@@ -1712,6 +1721,8 @@ export const esESMessages = {
   'timeline.copyCel': 'Copia Cel',
   'timeline.connectCel': 'Células de enlace',
   'timeline.disconnectCel': 'Desconectar las células',
+  'timeline.reverseCels': 'Invertir orden de celdas',
+  'timeline.reverseFrames': 'Invertir orden de fotogramas',
   'timeline.pasteCel': 'Pegar Cel',
   'timeline.copyMask': 'Copia Capa Máscara Cel',
   'timeline.pasteMask': 'Pegar Capa Máscara Cel',

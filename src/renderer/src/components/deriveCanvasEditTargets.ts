@@ -78,6 +78,7 @@ export function deriveCanvasEditTargets(ports: Ports) {
       })
 
   const activeLayerEditable =
+    activeLayer.kind !== 'adjustment' &&
     hasSelectedRasterLayer &&
     isLayerEffectivelyVisible(ports.session.document, activeLayer) &&
     !isLayerEffectivelyLocked(ports.session.document, activeLayer) &&

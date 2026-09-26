@@ -1,10 +1,17 @@
+import { gradientMapEn } from './gradient-map'
 import { spriteSheetImportptBR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const ptBRMessages = {
-  "preferences.paintingCursor.cross": "Small cross",
+  ...gradientMapEn,
+  "toolOptions.temporaryBrushCaptureHint": "Pincel temporário: arraste uma área e solte para usar; Esc para cancelar",
+  "preferences.paintingCursor.cross": "Cruz simples",
+  "preferences.paintingCursor.pixelCross": "Cruz de pixels",
+  "preferences.paintingCursorAlignToPixel": "Alinhar ponteiro aos pixels",
+  "color.recentColors": "Recently used colors",
+  "preferences.recentColorsVisible": "Show recently used colors",
   "preferences.paintingCursorShape": "Painting pointer shape",
   "release.beta6.summary": "Animation tweening and paths, sprite sheet import, reference and touch improvements, plus canvas and selection fixes.",
   "release.beta6.animation": "Add morph and crossfade tweens across editable layers and groups, mask transitions, and fully composited previews.",
@@ -108,7 +115,7 @@ export const ptBRMessages = {
   'preferences.uiCursor': 'UI mouse cursor',
   'preferences.paintingCursor': 'Painting cursors',
   "preferences.paintingCursorType": "Pointer alignment and size",
-  "preferences.paintingCursor.dot": "Dot",
+  "preferences.paintingCursor.dot": "Ponto simples",
   "preferences.paintingCursor.simple": "Follow pointer (no pixel snapping)",
   "preferences.paintingCursor.sprite": "Align to pixels (scale with interface)",
   "preferences.paintingCursor.unscaled": "Align to pixels (fixed size)",
@@ -174,6 +181,8 @@ export const ptBRMessages = {
   'preferences.diagnostics.memory': "Apenas coletar (memória)",
   'preferences.diagnostics.full': "Completo (coletar e salvar)",
   'preferences.diagnostics.hint': "Salvo imediatamente, sem reiniciar. Apenas coletar mantém os últimos 200 eventos na memória, sem salvar automaticamente. Completo grava arquivos locais. Desativar não exclui os logs existentes.",
+  'preferences.diagnostics.lag': "Capturar lentidão",
+  'preferences.diagnostics.lagHint': "Efeito imediato. Ative antes de reproduzir. Atrasos importantes e seu contexto temporal são registrados automaticamente. O registro nativo continua independentemente da interface. Depois abra os registros em Ajuda e volte ao modo anterior. Não recupera estados anteriores nem coleta pixels.",
   'preferences.diagnostics.saveFailed': "Não foi possível salvar a configuração. Verifique o armazenamento local e tente novamente.",
   'layers.splitLayerStyles': 'Separar estilos de camada',
   'layers.splitStyleShadow': 'Sombra projetada',
@@ -1705,6 +1714,8 @@ export const ptBRMessages = {
   "timeline.copyCel": "Copiar Cel",
   "timeline.connectCel": 'Link Células',
   "timeline.disconnectCel": 'Células desconectadas',
+  'timeline.reverseCels': 'Inverter ordem das células',
+  'timeline.reverseFrames': 'Inverter ordem dos quadros',
   "timeline.pasteCel": "Colar Cel",
   "timeline.copyMask": "Copiar Camada Máscara Cel",
   "timeline.pasteMask": "Colar Camada Máscara Cel",
