@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>海风骑行 · Pelican Cycling Club</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f0e5;color:#284e47;min-height:100svh;display:grid;place-items:center;padding:24px}main{width:min(1060px,100%)}header,footer{display:flex;justify-content:space-between;align-items:center;font:12px system-ui;letter-spacing:2px;padding:20px 0}header{border-bottom:1px solid #284e4733}h1{font:normal clamp(32px,5vw,64px) Georgia,serif;margin:30px 0 10px}p{font:14px system-ui;color:#6d8278;margin-bottom:25px}svg{display:block;width:100%;background:#d7e9df;border-radius:140px 140px 8px 8px}button{background:transparent;border:1px solid #789184;color:#284e47;border-radius:24px;padding:10px 22px;cursor:pointer}button:focus-visible{outline:3px solid #cc6747}.scarf{transform-origin:540px 248px;animation:wave .7s infinite alternate ease-in-out}.land{animation:travel 5s linear infinite}.cloud{animation:travel 45s linear infinite}.bird{animation:bob 1.5s infinite ease-in-out}.paused *{animation-play-state:paused!important}@keyframes travel{to{transform:translateX(-1000px)}}@keyframes wave{to{transform:rotate(8deg)}}@keyframes bob{50%{transform:translateY(-3px)}}@media(max-width:600px){header span:last-child{display:none}svg{border-radius:60px 60px 6px 6px}footer{font-size:10px;letter-spacing:0}}
+</style>
+<main><header><span>PELICAN CYCLING CLUB</span><span>POSTCARD № 01 / THE COAST ROAD</span></header>
+<h1>乘着海风，慢慢骑。</h1><p>一点阳光，一辆单车，一段不赶时间的旅程。</p>
+<svg id="scene" viewBox="0 0 1000 600" role="img" aria-labelledby="title description" xmlns="http://www.w3.org/2000/svg">
+<title id="title">骑自行车的鹈鹕</title><desc id="description">白色鹈鹕戴着绿帽、系着橙色围巾，踩着红色自行车沿海岸骑行，车轮旋转，草丛向后移动。</desc>
+<defs>
+<g id="spokes" stroke="#87a399" stroke-width="2"><path d="M-75 0H75M0-75V75M-53-53L53 53M-53 53L53-53M-69-29L69 29M-29-69L29 69M-69 29L69-29M-29 69L29-69"/></g>
+<g id="cloudShape" fill="#faf6e9"><path d="M0 30Q4 8 28 18Q37-8 59 7Q85 0 90 24Q115 20 120 34H0Z"/></g>
+<g id="ground" stroke-linecap="round"><path d="M80 550l-7-13m7 13 5-19m-5 19 14-9M780 529l-7-13m7 13 5-19m-5 19 14-9M410 577l-7-13m7 13 5-19" stroke="#80906c" stroke-width="3"/><path d="M210 533h48m380 22h30m250 10h35" stroke="#cfbd94" stroke-width="4"/></g>
+</defs>
+<circle cx="807" cy="111" r="53" fill="#f2c678"/><circle cx="807" cy="111" r="68" fill="none" stroke="#f2c678" opacity=".3"/>
+<g class="cloud" opacity=".8"><use href="#cloudShape" x="100" y="92"/><use href="#cloudShape" x="550" y="40"/><use href="#cloudShape" x="940" y="178"/><use href="#cloudShape" x="1100" y="92"/><use href="#cloudShape" x="1550" y="40"/><use href="#cloudShape" x="1940" y="178"/></g>
+<path d="M0 325Q130 287 270 321T590 317T1000 308V480H0" fill="#abcbbb"/>
+<path d="M0 360Q180 340 380 365T720 354T1000 350V480H0" fill="#7dafaa"/>
+<path d="M65 390h120m40 32h50m470-38h130m-145 53h75m100-26h63" fill="none" stroke="#d2e5d7" stroke-width="3" stroke-linecap="round"/>
+<path d="M0 455Q200 429 470 452T1000 450V600H0" fill="#e8d8b3"/>
+<path d="M0 477Q250 455 540 478T1000 473" fill="none" stroke="#f8eacb" stroke-width="11"/>
+<g class="land"><use href="#ground"/><use href="#ground" x="1000"/></g>
+<ellipse cx="510" cy="514" rx="228" ry="14" fill="#486e5f" opacity=".15"/>
+<g class="bird">
+<g fill="#eee8d2" stroke="#2c4b46" stroke-width="10"><circle cx="340" cy="426" r="82"/><circle cx="675" cy="426" r="82"/></g>
+<g fill="none" stroke="#fff7de" stroke-width="3"><circle cx="340" cy="426" r="75"/><circle cx="675" cy="426" r="75"/></g>
+<g transform="translate(340 426)"><g id="rear"><use href="#spokes"/></g></g><g transform="translate(675 426)"><g id="front"><use href="#spokes"/></g></g>
+<path id="legFar" stroke="#ba813e" stroke-width="11" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+<g id="footFar"><path d="M-11-6L14-3L22 5H-12Z" fill="#c78e40" stroke="#35564c" stroke-width="2"/><path d="M-16 8h39" stroke="#2c4b46" stroke-width="5"/></g>
+<path d="M340 426L432 320L494 426H340L614 320L494 426M432 320H614L675 426" fill="none" stroke="#ba5944" stroke-width="10" stroke-linejoin="round"/>
+<path d="M432 320l-12-30m194 30-13-43q-6-15 11-16h30" fill="none" stroke="#2c4b46" stroke-width="7" stroke-linecap="round"/>
+<path d="M399 290h47" stroke="#2c4b46" stroke-width="12" stroke-linecap="round"/>
+<path d="M340 426L494 408a18 18 0 0 1 0 36Z" fill="#ddd1af" stroke="#647b66" stroke-width="3"/>
+<g fill="#2c4b46"><circle cx="494" cy="426" r="21"/><circle cx="340" cy="426" r="7"/><circle cx="675" cy="426" r="7"/></g>
+<path d="M420 285L373 239L444 261Z" fill="#fffbed" stroke="#35564c" stroke-width="3" stroke-linejoin="round"/>
+<path d="M421 250Q384 278 421 314Q468 341 510 311Q533 295 539 266L558 216Q600 221 609 194Q619 166 593 151Q566 137 549 161Q536 180 542 199L513 244Q462 230 421 250Z" fill="#fffbed" stroke="#35564c" stroke-width="3"/>
+<path d="M420 268Q466 250 500 285Q479 315 438 298Q465 294 475 284Q443 293 420 268Z" fill="#dfe5d4" stroke="#91a591" stroke-width="2"/>
+<path d="M602 185L747 207Q706 257 650 229Q619 216 602 197Z" fill="#e6ad55" stroke="#35564c" stroke-width="3"/>
+<path d="M600 179Q672 181 751 206L603 196Z" fill="#f5c770" stroke="#35564c" stroke-width="3" stroke-linejoin="round"/>
+<path d="M636 203Q677 230 713 216" fill="none" stroke="#cb9444" stroke-width="2"/>
+<circle cx="587" cy="178" r="10" fill="white"/><circle cx="590" cy="178" r="4" fill="#294d44"/>
+<path d="M575 163q9-5 16 0" fill="none" stroke="#35564c" stroke-width="3" stroke-linecap="round"/>
+<path d="M541 158Q537 126 566 126Q592 125 602 149Z" fill="#418170" stroke="#35564c" stroke-width="3"/>
+<path d="M539 158l80-13q12 0 12 6l-28 11Z" fill="#2b6455" stroke="#35564c" stroke-width="3"/>
+<path class="scarf" d="M541 228Q507 243 477 226L484 240L469 246Q508 265 547 240Z" fill="#d36645" stroke="#af543b" stroke-width="2"/>
+<path d="M536 221l28 10-7 15-29-11Z" fill="#e78252"/>
+<path d="M490 253Q526 280 564 265L624 260" stroke="#35564c" stroke-width="19" fill="none" stroke-linecap="round"/>
+<path d="M490 253Q526 280 564 265L624 260" stroke="#fffbed" stroke-width="13" fill="none" stroke-linecap="round"/>
+<path id="legNear" stroke="#dda04c" stroke-width="11" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+<path id="crank" d="M462 426h64" stroke="#2c4b46" stroke-width="6" stroke-linecap="round"/>
+<g id="footNear"><path d="M-11-6L14-3L22 5H-12Z" fill="#e9b259" stroke="#35564c" stroke-width="2"/><path d="M-16 8h39" stroke="#2c4b46" stroke-width="5"/></g>
+</g>
+<text x="52" y="66" font-family="Georgia,serif" font-style="italic" font-size="18" fill="#3e685a">Life at a gentler pace.</text>
+<text x="852" y="567" font-family="Georgia,serif" font-style="italic" font-size="14" fill="#3e685a">Est. just now.</text>
+</svg>
+<footer><span>海岸线 / 轻风 / 自由骑行</span><button id="toggle" type="button" aria-pressed="false">暂停动画</button><span>享受沿途每一刻 ↗</span></footer></main>
+<script>
+const el=id=>document.getElementById(id),motion=matchMedia('(prefers-reduced-motion: reduce)');let paused=motion.matches,time=0,last=null;
+function paint(t){const a=t*Math.PI*2/1500;for(const id of ['rear','front'])el(id).setAttribute('transform',`rotate(${t*.19})`);el('crank').setAttribute('transform',`rotate(${a*180/Math.PI} 494 426)`);for(const [side,phase,hx] of [['Far',0,466],['Near',Math.PI,470]]){const x=494+32*Math.cos(a+phase),y=426+32*Math.sin(a+phase),hy=311,dx=x-hx,dy=y-hy,d=Math.hypot(dx,dy),bend=Math.sqrt(Math.max(0,80*80-d*d/4)),kx=(hx+x)/2-dy/d*bend,ky=(hy+y)/2+dx/d*bend;el('leg'+side).setAttribute('d',`M${hx} ${hy}L${kx} ${ky}L${x} ${y}`);el('foot'+side).setAttribute('transform',`translate(${x} ${y})`);}}
+function state(){el('scene').classList.toggle('paused',paused);el('toggle').textContent=paused?'播放动画':'暂停动画';el('toggle').setAttribute('aria-pressed',String(paused));}el('toggle').addEventListener('click',()=>{paused=!paused;state()});motion.addEventListener('change',e=>{paused=e.matches;state()});function frame(now){if(last!==null&&!paused)time+=Math.min(now-last,60);last=now;paint(time);requestAnimationFrame(frame)}state();paint(0);requestAnimationFrame(frame);
+</script>
+</html>
