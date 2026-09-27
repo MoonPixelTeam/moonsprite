@@ -30,14 +30,23 @@ fn requires_browser_restart(kind: i32) -> bool {
 
 fn begin_browser_recovery(started: &AtomicBool, kind: i32) -> bool {
     requires_browser_restart(kind)
-        && started.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        && started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
 }
 
 fn failed_process_name(kind: i32) -> &'static str {
     match kind {
-        0 => "browser", 1 => "renderer", 2 => "renderer-unresponsive",
-        3 => "frame-renderer", 4 => "utility", 5 => "sandbox-helper",
-        6 => "gpu", 7 => "ppapi-plugin", 8 => "ppapi-broker", _ => "unknown",
+        0 => "browser",
+        1 => "renderer",
+        2 => "renderer-unresponsive",
+        3 => "frame-renderer",
+        4 => "utility",
+        5 => "sandbox-helper",
+        6 => "gpu",
+        7 => "ppapi-plugin",
+        8 => "ppapi-broker",
+        _ => "unknown",
     }
 }
 
@@ -327,9 +336,17 @@ mod tests {
     #[test]
     fn failure_kind_mapping_matches_the_webview_sdk() {
         use webview2_com::Microsoft::Web::WebView2::Win32::*;
-        assert!(requires_browser_restart(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED.0));
-        assert_eq!(failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED.0), "utility");
-        assert_eq!(failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED.0), "gpu");
+        assert!(requires_browser_restart(
+            COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED.0
+        ));
+        assert_eq!(
+            failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED.0),
+            "utility"
+        );
+        assert_eq!(
+            failed_process_name(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED.0),
+            "gpu"
+        );
     }
 
     #[test]

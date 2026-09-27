@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const require = createRequire(new URL('../website/package.json', import.meta.url))
 const { createServer } = await import(pathToFileURL(require.resolve('vite')).href)
+const { default: react } = await import(pathToFileURL(require.resolve('@vitejs/plugin-react')).href)
 const { createElement: h } = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 
@@ -12,7 +13,7 @@ test('published details survive storage, render in the real detail page and retr
   const memory = new Map()
   globalThis.localStorage = { getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, String(value)), removeItem: (key) => memory.delete(key) }
   globalThis.window = new EventTarget()
-  const server = await createServer({ root: fileURLToPath(new URL('../website', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' })
+  const server = await createServer({ root: fileURLToPath(new URL('../website', import.meta.url)), configFile: false, plugins: [react()], server: { middlewareMode: true, hmr: false }, appType: 'custom' })
   try {
     const { localAdapter: api, writeStudioUnlocked } = await server.ssrLoadModule('/src/api/local.ts')
     const { studioToProduct, CatalogueProvider } = await server.ssrLoadModule('/src/market/catalogue.ts')

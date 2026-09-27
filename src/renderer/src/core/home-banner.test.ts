@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveHomeBanners, type HomeBannerDefinition } from './home-banner'
+import { resolveHomeBanners, shuffleHomeBanners, type HomeBannerDefinition } from './home-banner'
 
 const definitions: readonly HomeBannerDefinition[] = [
   { id: 'first', kind: 'project', projectFileName: '滤镜测试.moonsprite', author: '90y', authorUrl: 'https://moonpx.art/user/90y' },
@@ -32,5 +32,15 @@ describe('resolveHomeBanners', () => {
   it('keeps image entries without requiring a gallery project', () => {
     const image = { id: 'image', kind: 'image' as const, imageAssetKey: 'banner', imageName: 'banner.png', author: 'artist', authorUrl: 'https://example.com' }
     expect(resolveHomeBanners([image], [])).toEqual([image])
+  })
+})
+
+describe('shuffleHomeBanners', () => {
+  it('shuffles a copy using the supplied random values', () => {
+    const items = ['first', 'second', 'third', 'fourth']
+    const values = [0, 0, 0]
+    let call = 0
+    expect(shuffleHomeBanners(items, () => values[call++])).toEqual(['second', 'third', 'fourth', 'first'])
+    expect(items).toEqual(['first', 'second', 'third', 'fourth'])
   })
 })

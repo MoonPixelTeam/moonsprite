@@ -67,8 +67,36 @@ export const homeBannerDefinitions: readonly HomeBannerDefinition[] = [
     imageName: '大厅',
     author: '90y',
     authorUrl: 'https://moonpx.art/user/220430763143860224/feed?tab=latest'
+  },
+  {
+    id: 'stone-lion-banner',
+    kind: 'image',
+    imageAssetKey: 'home-banner-stone-lion',
+    imageName: '石狮',
+    author: '线框',
+    authorUrl: 'https://moonpx.art/user/220437406669737984/feed?tab=latest'
+  },
+  {
+    id: 'contempt-banner',
+    kind: 'image',
+    imageAssetKey: 'home-banner-contempt',
+    imageName: '蔑视',
+    author: '月猫',
+    authorUrl: 'https://moonpx.art/user/219346946735869952/feed?tab=latest'
   }
 ]
+
+/** Shuffle a copy so each app session keeps one order without changing the curated list. */
+export const shuffleHomeBanners = <T>(items: readonly T[], random: () => number = Math.random): T[] => {
+  const shuffled = [...items]
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const swapIndex = Math.floor(random() * (index + 1))
+    const current = shuffled[index]
+    shuffled[index] = shuffled[swapIndex]
+    shuffled[swapIndex] = current
+  }
+  return shuffled
+}
 
 const basename = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath
 

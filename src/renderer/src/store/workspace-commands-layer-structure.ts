@@ -5,7 +5,7 @@ import type { SpriteDocument } from '@shared/types-document'
 import type { Tileset } from '@shared/types-tiles'
 import { type ContentInvalidationHint, type HistoryEntry } from '@/core/history'
 import { cachedLayerContentBounds, createId, duplicateLayer, getDescendantGroupIds, getLayerIdsInGroup, getLayer, isGroupEffectivelyLocked, isLayerEffectivelyLocked } from '@/core/document-model'
-import { expandLayerStyleInvalidationRect, normalCompositeLayers } from '@/core/document-composite'
+import { normalCompositeLayers } from '@/core/document-composite'
 import { cloneAnimationCelsForLayer, cloneAnimationGroupMask, cloneAnimationLayerMask, ensureAnimationDocument, removeAnimationCelsForLayers, resolveAnimationCel, restoreAnimationCels, syncActiveAnimationFrame } from '@/core/animation'
 import { mergeLayerDown, mergeLayerGroup, mergeRasterLayers, mergeVisibleLayers as mergeVisibleDocumentLayers, type LayerMergeSuccess } from '@/core/layer-merge'
 import { assignGroupToGroup as assignGroupToGroupOperation, assignGroupToRoot as assignGroupToRootOperation, assignLayersAboveGroup as assignLayersAboveGroupOperation, assignLayersToGroup as assignLayersToGroupOperation, assignLayersToRoot as assignLayersToRootOperation, canMoveGroupInto, createLayerGroup as createLayerGroupOperation, moveGroupToRootEdge as moveGroupToRootEdgeOperation, moveLayerPanelRows as moveLayerPanelRowsOperation, moveLayersToRootEdge as moveLayersToRootEdgeOperation, positionGroupNextToLayer as positionGroupNextToLayerOperation, reorderGroup as reorderGroupOperation, reorderLayers as reorderLayersOperation, ungroupSelected as ungroupSelectedOperation } from '@/core/layer-operations'
@@ -18,9 +18,9 @@ import { beginLayerMoveDuplicatePreview as beginLayerMoveDuplicatePreviewCommand
 import type { DocumentSession } from './workspace-types'
 import type { WorkspaceLayerCommands } from './workspace-state'
 import type { WorkspaceCommandContext } from './workspace-command-context'
-import { unionRects } from './workspace-selection-geometry'
+import { intersectSelectionRects, unionRects } from './workspace-selection-geometry'
 import { cloneFreeTileSourceLayer, createLinkedLayerNameAllocator, tilemapTilesetBytes } from './workspace-layer-resources'
-import { normalizeAnimationSelection, selectedGroupRows, selectedDirectLayerRows, applyLayerRowSelection, selectedRowInsertionTarget } from './workspace-animation-selection'
+import { normalizeAnimationSelection, selectedGroupRows, selectedDirectLayerRows, applyLayerRowSelection, selectedRowInsertionTarget, setTimelineActiveContext } from './workspace-animation-selection'
 import { documentUsesTilesetPanel, requestTilesetPanelVisibility } from './workspace-tileset-panel'
 import { activeSession } from './workspace-access'
 import { tr } from './workspace-translation'
@@ -124,19 +124,32 @@ const layerReorderInvalidation = (
   afterRenderOrder: readonly RasterLayer[] | null
 ): ContentInvalidationHint => {
   if (!beforeRenderOrder || !afterRenderOrder || beforeRenderOrder.length !== afterRenderOrder.length) return { kind: 'full' }
-  const beforePositions = new Map(beforeRenderOrder.map((layer, index) => [layer.id, index]))
-  if (afterRenderOrder.some((layer) => !beforePositions.has(layer.id))) return { kind: 'full' }
-  const changedLayers = afterRenderOrder.filter((layer, index) => beforePositions.get(layer.id) !== index)
-  if (changedLayers.length === 0) return { kind: 'full' }
-  let rect: SelectionRect | null = null
-  for (const layer of changedLayers) {
-    const bounds = cachedLayerContentBounds(document, layer)
-    if (bounds === undefined) return { kind: 'full' }
-    if (!bounds) continue
-    const expanded = expandLayerStyleInvalidationRect(document, bounds, [layer.id])
-    rect = rect ? unionRects(rect, expanded) : expanded
+  const afterPositions = new Map(afterRenderOrder.map((layer, index) => [layer.id, index]))
+  if (afterPositions.size !== beforeRenderOrder.length || beforeRenderOrder.some((layer) => !afterPositions.has(layer.id))) return { kind: 'full' }
+  const bounds = new Map<string, SelectionRect | null | undefined>()
+  const layerBounds = (layer: RasterLayer): SelectionRect | null | undefined => {
+    if (!bounds.has(layer.id)) bounds.set(layer.id, cachedLayerContentBounds(document, layer))
+    return bounds.get(layer.id)
   }
-  return rect ? { kind: 'region', rect } : { kind: 'full' }
+  let rect: SelectionRect | null = null
+  for (let first = 0; first < beforeRenderOrder.length; first++) {
+    const layer = beforeRenderOrder[first]
+    for (let second = first + 1; second < beforeRenderOrder.length; second++) {
+      const other = beforeRenderOrder[second]
+      if (afterPositions.get(layer.id)! < afterPositions.get(other.id)!) continue
+      // Normal source-over composition changes only where two layers whose
+      // relative order flipped both have content. Groups are already flattened
+      // in beforeRenderOrder, so this also covers group-level moves.
+      const firstBounds = layerBounds(layer), secondBounds = layerBounds(other)
+      if (firstBounds === undefined || secondBounds === undefined) return { kind: 'full' }
+      if (!firstBounds || !secondBounds) continue
+      const overlap = intersectSelectionRects(firstBounds, secondBounds)
+      if (overlap) rect = rect ? unionRects(rect, overlap) : overlap
+    }
+  }
+  // Keep the content revision and history in sync even when the visible
+  // composite is identical; a zero-area region schedules no pixel redraw.
+  return { kind: 'region', rect: rect ?? { x: 0, y: 0, width: 0, height: 0 } }
 }
 
 const lockedGroupStructure = (document: SpriteDocument, groupId: string): boolean => {
@@ -707,12 +720,18 @@ export function createLayerStructureCommands({ get, set, recording }: WorkspaceC
       get().mutateActive((session) => {
         const placement = selectedRowInsertionTarget(session)
         const placeRelativeToSelectedGroup = Boolean(session.selectedGroupId && selectedDirectLayerRows(session).length === 0)
+        const groupId = createId('group')
         session.history.beginCompound()
-        const history = createLayerGroupOperation(session, createId('group'), tr('workspace.group.defaultName', { index: session.document.groups.length + 1 }))
+        const history = createLayerGroupOperation(session, groupId, tr('workspace.group.defaultName', { index: session.document.groups.length + 1 }))
         if (history) session.history.push(history)
         if (history && placeRelativeToSelectedGroup && session.selectedGroupId) {
           const placementHistory = moveLayerPanelRowsOperation(session, [], [session.selectedGroupId], placement)
           if (placementHistory) session.history.push(placementHistory)
+        }
+        if (history) {
+          session.layerSelectionExplicit = true
+          session.layerSelectionAnchorId = groupId
+          setTimelineActiveContext(session, { kind: 'group', ownerKind: 'group', ownerId: groupId }, session.document.animation?.activeFrameId ?? null, null)
         }
         session.history.endCompound(history?.label ?? tr('workspace.history.newLayer'))
       }, true, true)

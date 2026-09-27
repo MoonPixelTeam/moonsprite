@@ -485,7 +485,7 @@ describe('workspace animation loop sections', () => {
     })
   })
 
-  it('preserves the pre-playback frame selection when playback stops', () => {
+  it('clears the pre-playback frame selection when playback starts', () => {
     const document = createDocument('pause current frame selection', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -499,15 +499,15 @@ describe('workspace animation loop sections', () => {
     useWorkspace.getState().setAnimationPlaying(true)
     useWorkspace.getState().advanceAnimationFrame()
     expect(timeline.activeFrameId).toBe(secondFrame.id)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([firstFrame.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
 
     useWorkspace.getState().setAnimationPlaying(false)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([firstFrame.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
     expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).not.toContain(thirdFrame.id)
   })
 
-  it('preserves a direct cel selection when playback is paused on another frame', () => {
+  it('clears a direct cel selection when playback starts', () => {
     const document = createDocument('pause current cel selection', 1, 1, 'rgba')
     useWorkspace.getState().addSession(document)
     useWorkspace.getState().duplicateAnimationFrame()
@@ -521,10 +521,10 @@ describe('workspace animation loop sections', () => {
     useWorkspace.getState().setAnimationPlaying(true)
     useWorkspace.getState().advanceAnimationFrame()
     expect(timeline.activeFrameId).toBe(secondFrame.id)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(layerId, firstFrame.id)])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
 
     useWorkspace.getState().setAnimationPlaying(false)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([animationCelKey(layerId, firstFrame.id)])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
     expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
   })
 

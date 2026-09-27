@@ -13,8 +13,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LayerGroup, RasterLayer } from '@shared/types-layer'
 import { Tooltip } from '@/components/Tooltip'
 import { openTextToolDialog } from '@/components/text-tool-events'
-import { animationMaskAt, animationMaskSlotAt } from '@/core/document-model'
-import { animationCelHasContent, animationGroupMaskAt } from '@/core/animation'
+import { animationMaskAt } from '@/core/document-model'
+import { animationGroupMaskAt } from '@/core/animation'
 import { type ShortcutId } from '@/core/shortcuts'
 import { useWorkspace, type DocumentSession } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
@@ -30,6 +30,7 @@ import type {
   LayerTreeNode
 } from './layer-panel-contracts'
 import { LayerContextMenuItem } from './LayerContextMenuItem'
+import { layerContextMaskStatus } from './layer-context-mask-status'
 
 interface Options {
   session: DocumentSession
@@ -420,20 +421,7 @@ export function useLayerContextActions({
 
   const contextMenuLayerMask = contextMenu?.kind === 'layer' ? animationMaskAt(timeline, contextMenu.id, timeline.activeFrameId) : null
 
-  const contextMenuLayerMaskStatus = (() => {
-    if (contextMenu?.kind !== 'layer') return { hasContent: false, canCreate: false }
-    if (session.document.layers.find(layer => layer.id === contextMenu.id)?.kind === 'adjustment') return { hasContent: true, canCreate: timeline.frames.some(frame => !animationMaskSlotAt(timeline, contextMenu.id, frame.id)) }
-    let hasContent = false
-    let canCreate = false
-    for (const cel of timeline.cels) {
-      if (cel.layerId !== contextMenu.id) continue
-      const source = celLookup.resolve(cel) ?? cel
-      if (!animationCelHasContent(source, session.document.palette)) continue
-      hasContent = true
-      if (!animationMaskSlotAt(timeline, cel.layerId, cel.frameId)) canCreate = true
-    }
-    return { hasContent, canCreate }
-  })()
+  const contextMenuLayerMaskStatus = layerContextMaskStatus(session, timeline, celLookup, contextMenu?.kind === 'layer' ? contextMenu.id : null)
 
   const layerStyleOwner =
     layerStyleDialog?.source.kind === 'layer'

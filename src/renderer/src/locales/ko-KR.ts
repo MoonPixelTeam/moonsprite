@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportkoKR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const koKRMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "임시 브러시: 드래그하여 영역 선택, 놓아서 사용; Esc로 취소",
   "preferences.paintingCursor.cross": "단순 십자",
@@ -1321,6 +1323,7 @@ export const koKRMessages = {
   'colorReplacement.colors': '색상',
   'colorReplacement.source': '초기 색상',
   'colorReplacement.replacement': '대신에 대신',
+  'colorReplacement.rememberLastSelectedColor': '마지막으로 선택한 색상 기억',
   'colorReplacement.pickSource': '캔버스에서 초기 색상을 표시합니다.',
   'colorReplacement.pickReplacement': '캔버스에서 교체 색상을 표시합니다.',
   'colorReplacement.range': '범위',

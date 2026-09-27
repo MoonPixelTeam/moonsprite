@@ -37,6 +37,23 @@ export function rasterizeSelectionTransformPacked(
       if (sourceX < selection.x || sourceY < selection.y || sourceX >= selection.x + selection.width || sourceY >= selection.y + selection.height) continue
       output[(y - top) * width + x - left] = source.values[(sourceY - selection.y) * selection.width + sourceX - selection.x]
     }
+    // Inverse sampling can skip an isolated source pixel when a sparse
+    // selection shrinks. Preserve such pixels at their forward-mapped cell.
+    if (angle === 0 && !shear && !target.flipHorizontal && !target.flipVertical
+      && (target.width < selection.width || target.height < selection.height)) {
+      const addMissingPixel = (offset: number): void => {
+        const value = source.values[offset]
+        if ((value >>> 24) === 0) return
+        const point = transformedSelectionDestinationPoint(selection, target,
+          selection.x + offset % selection.width, selection.y + Math.floor(offset / selection.width))
+        const x = Math.floor(point.x), y = Math.floor(point.y)
+        if (x < left || y < top || x >= right || y >= bottom) return
+        const index = (y - top) * width + x - left
+        if ((output[index] >>> 24) === 0) output[index] = value
+      }
+      if (source.opaqueOffsets.length > 0) for (const offset of source.opaqueOffsets) addMissingPixel(offset)
+      else forEachSelectedSourceOffset(source, addMissingPixel)
+    }
     return
   }
 

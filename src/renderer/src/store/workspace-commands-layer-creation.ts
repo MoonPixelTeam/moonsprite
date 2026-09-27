@@ -5,7 +5,7 @@ import { checkResourceLimit } from '@/core/resource-policy'
 import { type HistoryEntry } from '@/core/history'
 import { createId, createLayer, createSparseLayer, findOrAddPaletteColor, getLayerIdsInGroup, layerContentBounds, paletteColorIdForCanvas } from '@/core/document-model'
 import { compositeRegion } from '@/core/document-composite'
-import { animationCelKey, cloneDocumentForAnimationFrame, connectAnimationCels, detachLinkedLayerContent, ensureAnimationDocument, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, syncActiveAnimationFrame } from '@/core/animation'
+import { animationCelKey, cloneDocumentForAnimationFrame, connectAnimationCels, detachLinkedLayerContent, ensureAnimationDocument, parseAnimationCelKey, refreshActiveAnimationFrame, removeAnimationCelsForLayers, resolveAnimationCel, syncActiveAnimationFrame, syncAnimationLayerAtFrame } from '@/core/animation'
 import { applyRelativeLuminance } from '@/core/raster'
 import { moveLayerPanelRows as moveLayerPanelRowsOperation } from '@/core/layer-operations'
 import { hasConfiguredLayerStyles, hasEnabledLayerStyles, layerStyleOutputBounds } from '@/core/layer-styles'
@@ -41,7 +41,7 @@ const activateNewLayerContext = (session: DocumentSession, layerId: string, fram
   setTimelineActiveContext(session, { kind: 'layer', ownerKind: 'layer', ownerId: layerId }, frameId, null)
 }
 
-export function createLayerCreationCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'mutateActive'>): Pick<WorkspaceLayerCommands, 'addLayer' | 'createTilemapLayer' | 'createFreeTileLayer' | 'convertLayerToTilemap' | 'createBackgroundLayer' | 'rasterizeLayer'> {
+export function createLayerCreationCommands({ get, set }: WorkspaceCommandContext<'commitFloatingPaste' | 'commitTextLayerDraft' | 'mutateActive'>): Pick<WorkspaceLayerCommands, 'addLayer' | 'createTilemapLayer' | 'createFreeTileLayer' | 'convertLayerToTilemap' | 'createBackgroundLayer' | 'rasterizeLayer'> {
   return {
     async addLayer(gradientMap) {
       get().commitFloatingPaste()
@@ -403,8 +403,8 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
           const document = session.document
           const before = captureDocumentStructureSnapshot(document)
           const beforeSelection = captureLayerUi(session)
-          // A background is added underneath the artwork, so it is not an editing
-          // target: the active layer and the timeline focus stay exactly as they were.
+          // Background layers stay at the bottom and do not steal the current
+          // editing target or timeline focus.
           const previousActiveLayerId = document.activeLayerId
           const previousActiveContext = { ...session.timelineActiveContext }
           const layer = createLayer(tr('workspace.layer.backgroundName'), document.width, document.height, document.colorMode)
@@ -444,6 +444,9 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
       }
     },
     rasterizeLayer(layerId) {
+      // Retire the editor draft before conversion so later dialog cleanup
+      // cannot restore the document from before the text layer was created.
+      get().commitTextLayerDraft(layerId)
       let shouldHideTilesetPanel = false
       get().mutateActive((session) => {
         const document = session.document
@@ -522,7 +525,14 @@ export function createLayerCreationCommands({ get, set }: WorkspaceCommandContex
         delete layer.layerStyles
         delete layer.background
         removeTilesetSnapshots(document, rasterizedTilesets)
+        // Text is stored in the animation cel as well as the editable layer
+        // surface. Re-apply the converted surface and synchronize the active
+        // cel before mutateActive performs its automatic animation sync;
+        // otherwise the first edit can copy a stale pre-conversion layer
+        // buffer back over the rendered text.
         refreshActiveAnimationFrame(document)
+        const activeFrameId = document.animation?.activeFrameId
+        if (activeFrameId) syncAnimationLayerAtFrame(document, layer, activeFrameId)
         const after = captureLayerContentSnapshot(document, layerId, { includeLayerMasks: rasterizesStyles })
         const afterSelection = captureAnimationSelectionHistory(session)
         const entry: HistoryEntry = { label: tr('workspace.history.convertToRasterLayer'), bytes: layerContentSnapshotBytes(before) + layerContentSnapshotBytes(after), undo: () => restoreLayerContentSnapshot(document, before), redo: () => restoreLayerContentSnapshot(document, after), invalidation: { kind: 'full' }, affectedLayerIds: [layerId], requiresAnimationSync: false }

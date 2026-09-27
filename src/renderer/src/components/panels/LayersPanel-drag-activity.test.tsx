@@ -7,6 +7,8 @@ import { LayersPanel } from './LayersPanel'
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 16))
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
   localStorage.clear()
   vi.stubGlobal('moonSprite', { getResourceInfo: vi.fn().mockResolvedValue({ totalBytes: 8e9, freeBytes: 4e9 }) })
   useWorkspace.setState({ sessions: [], activeId: null, message: null, dialog: null })
@@ -42,7 +44,7 @@ it.each(['frame', 'cel', 'group-cel'] as const)('previews %s range pixels before
   begin()
   for (const index of [1, 2, 1, 0, 1]) {
     move(index)
-    act(() => { vi.advanceTimersByTime(17) })
+    act(() => { vi.advanceTimersByTime(34) })
     const active = useWorkspace.getState().sessions[0]
     expect(active.document.animation!.activeFrameId).toBe(frames[index].id)
     expect(readLayerColor(active.document, active.document.layers[0], 0)).toEqual(colors[index])
@@ -80,6 +82,7 @@ it.each([false, true])('keeps every traversed frame active before releasing a ce
   fireEvent.pointerDown(cell(0), { button: 0, pointerId: 1, clientX: 10, clientY: 50 })
   for (let end = 1; end < 5; end++) {
     fireEvent.pointerMove(cell(end), { buttons: 1, pointerId: 1, clientX: 10 + end * 28, clientY: 50 })
+    act(() => { vi.advanceTimersByTime(34) })
     for (let index = 0; index <= end; index++) {
       expect(view.container.querySelector(`[data-animation-frame-id="${frames[index].id}"]`)).toHaveClass('active')
     }
@@ -99,6 +102,7 @@ it('coalesces canvas frame updates while the selection follows every pointer tar
   const switchFrame = vi.spyOn(useWorkspace.getState(), 'setActiveAnimationFrame')
   fireEvent.pointerDown(header(0), {button: 0, clientX: 10, clientY: 10})
   for (let i = 1; i < frames.length; i++) fireEvent.pointerMove(header(i), {buttons: 1, clientX: 10 + i * 28, clientY: 10})
+  act(() => { vi.advanceTimersByTime(17) })
   expect(header(3)).toHaveClass('active')
   expect(switchFrame).not.toHaveBeenCalled()
   act(() => { vi.advanceTimersByTime(17) })

@@ -581,7 +581,7 @@ export function invalidateSessionContent(session: DocumentSession, invalidation:
   session.contentRevision += 1
   if (invalidation.kind === 'full') session.layersPanelRevision += 1
   session.contentInvalidation = invalidation.kind === 'region'
-    ? { ...invalidation, rect: { ...invalidation.rect }, fromRevision, revision: session.contentRevision }
+    ? { ...invalidation, rect: { ...invalidation.rect }, ...(invalidation.rects ? { rects: invalidation.rects.map((rect) => ({ ...rect })) } : {}), fromRevision, revision: session.contentRevision }
     : { kind: 'full', fromRevision, revision: session.contentRevision }
 }
 

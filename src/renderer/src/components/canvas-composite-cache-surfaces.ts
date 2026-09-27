@@ -133,6 +133,7 @@ export interface DrawCompositeOptions {
     revision: number
     frameId?: string
     rect?: SelectionRect
+    rects?: readonly SelectionRect[]
     /** Only compositing properties changed; raster pixels and masks did not. */
     compositeOnly?: true
     propertyOwnerIds?: readonly string[]
@@ -161,12 +162,18 @@ export interface DrawCompositeOptions {
 }
 
 export const invalidationRegion = (invalidation: DrawCompositeOptions['contentInvalidation']): SelectionRect | undefined => (invalidation?.kind === 'region' ? invalidation.rect : undefined)
+export const invalidationRects = (invalidation: DrawCompositeOptions['contentInvalidation']): readonly SelectionRect[] =>
+  invalidation?.kind === 'region' ? (invalidation.rects ?? (invalidation.rect ? [invalidation.rect] : [])) : []
 
 export const MAX_SURFACE_DIMENSION = 8192
 
-export const MAX_CACHED_FRAMES = 32
+// Keep derived animation surfaces bounded even when a document has many frames.
+// A large surface is expensive in both the renderer heap and the browser's
+// canvas backing store, so retaining dozens of them makes long sessions grow
+// noticeably before the browser gets a chance to reclaim memory.
+export const MAX_CACHED_FRAMES = 12
 
-export const DEFAULT_MAX_CACHE_BYTES = 128 * 1024 * 1024
+export const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024
 
 export const CACHE_VERSION = 10
 

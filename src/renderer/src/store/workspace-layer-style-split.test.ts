@@ -13,11 +13,11 @@ beforeEach(() => {
 })
 
 const render = (document: SpriteDocument): Uint8ClampedArray => compositeRegion(document, -3, -3, 14, 14)
-const expectSameImage = (actual: Uint8ClampedArray, expected: Uint8ClampedArray, tolerance = 1): void => {
+const expectSameImage = (actual: Uint8ClampedArray, expected: Uint8ClampedArray, tolerance = 1, label = 'composite'): void => {
   expect(actual.length).toBe(expected.length)
   let maximum = 0
   for (let i = 0; i < actual.length; i += 1) maximum = Math.max(maximum, Math.abs(actual[i] - expected[i]))
-  expect(maximum).toBeLessThanOrEqual(tolerance)
+  expect(maximum, label).toBeLessThanOrEqual(tolerance)
 }
 const setup = (configure: (styles: LayerStyles) => void, mode: 'rgba' | 'indexed' | 'grayscale' = 'rgba') => {
   const document = createDocument('split styles', 8, 8, mode)
@@ -108,7 +108,7 @@ describe('split layer styles into editable pixels', () => {
     const before = timeline.frames.map((frame) => render(cloneDocumentForAnimationFrame(document, frame.id)))
     useWorkspace.getState().splitLayerStyles(source.id)
     for (const [index, frame] of timeline.frames.entries()) {
-      expectSameImage(render(cloneDocumentForAnimationFrame(document, frame.id)), before[index], 2)
+      expectSameImage(render(cloneDocumentForAnimationFrame(document, frame.id)), before[index], 2, frame.id)
       for (const effect of document.layers.filter((layer) => layer.id !== source.id)) {
         const cel = document.animation!.cels.find((item) => item.layerId === effect.id && item.frameId === frame.id)!
         expect(cel.surface).toBeTruthy()

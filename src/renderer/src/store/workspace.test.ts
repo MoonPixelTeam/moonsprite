@@ -500,6 +500,44 @@ describe('pending canvas gesture history', () => {
 
 describe('editable text layers', () => {
 
+  it('keeps converted draft pixels after stale editor cleanup and undoes the first stroke separately', () => {
+    const document = createDocument('converted draft', 32, 24, 'rgba')
+    const state = useWorkspace.getState()
+    state.addSession(document)
+    const target = state.beginTextLayerDraft(textData('Moon'), 5, 7)!
+    state.rasterizeLayer(target.layerId)
+    const pixels = getActiveLayer(document).pixels.slice()
+    state.cancelTextLayerDraft(target.layerId)
+    expect(document.activeLayerId).toBe(target.layerId)
+    const layer = getActiveLayer(document)
+    expect(layer.pixels).toEqual(pixels)
+    const edit = beginPixelEdit(layer.id)
+    recordPixel(document, layer, edit, 0, packColor(red))
+    state.commitPixelEdit(edit, 'first stroke')
+    state.undo()
+    expect(getActiveLayer(document).kind).toBeUndefined()
+    expect(getActiveLayer(document).pixels).toEqual(pixels)
+    state.undo()
+    expect(getActiveLayer(document).kind).toBe('text')
+    state.undo()
+    expect(document.layers.some(candidate => candidate.id === target.layerId)).toBe(false)
+  })
+
+  it('ignores text preview cleanup after rasterization', () => {
+    const document = createDocument('converted preview', 32, 24, 'rgba')
+    const state = useWorkspace.getState()
+    state.addSession(document)
+    state.createTextLayer(textData('A'), 5, 7)
+    const layerId = document.activeLayerId
+    const frameId = ensureAnimationDocument(document).activeFrameId
+    const preview = state.previewTextCel(layerId, frameId, textData('Moon'), 5, 7)!
+    state.rasterizeLayer(layerId)
+    const pixels = getActiveLayer(document).pixels.slice()
+    state.restoreTextCelPreview(layerId, frameId, preview)
+    expect(getActiveLayer(document).pixels).toEqual(pixels)
+    expect(animationCelAt(ensureAnimationDocument(document), layerId, frameId)?.text).toBeUndefined()
+  })
+
 
   it('creates, edits, converts, and restores editable text through history', () => {
     const document = createDocument('text history', 32, 24, 'rgba')
@@ -1387,7 +1425,7 @@ describe('animation workspace', () => {
     expect(ensureAnimationDocument(document).activeFrameId).toBe(second!.id)
   })
 
-  it('preserves timeline multi-selection while playback advances and stops', () => {
+  it('clears timeline multi-selection when playback starts', () => {
     const document = createDocument('playback selection', 1, 1, 'rgba')
     const layer = getActiveLayer(document)
     useWorkspace.getState().addSession(document)
@@ -1400,17 +1438,18 @@ describe('animation workspace', () => {
     useWorkspace.getState().setAnimationLoop(true)
 
     useWorkspace.getState().setAnimationPlaying(true)
-    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationFrameIds).toEqual([])
+    expect(useWorkspace.getState().sessions[0].selectedAnimationCellKeys).toEqual([])
     useWorkspace.getState().advanceAnimationFrame()
 
     let session = useWorkspace.getState().sessions[0]
-    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(session.selectedAnimationFrameIds).toEqual([])
     expect(ensureAnimationDocument(session.document).activeFrameId).toBe(first.id)
     expect(session.selectedAnimationCellKeys).toEqual([])
 
     useWorkspace.getState().setAnimationPlaying(false)
     session = useWorkspace.getState().sessions[0]
-    expect(session.selectedAnimationFrameIds).toEqual([first.id, second.id])
+    expect(session.selectedAnimationFrameIds).toEqual([])
   })
 
   it('rejects moving inherited linked mask members instead of silently doing nothing', () => {

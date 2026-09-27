@@ -5,6 +5,7 @@ import { createDocument } from '@/core/document-model'
 import { preserveViewOnViewportChange } from '@/core/view-geometry'
 import { useWorkspace } from '@/store/workspace'
 import { beginWorkspaceResize, endWorkspaceResize } from './workspace-resize'
+import { beginDocumentPaneDockResize } from './app/document-pane-dock-resize'
 import { useCanvasViewportGeometry } from './useCanvasViewportGeometry'
 
 let notifyResize: () => void
@@ -148,5 +149,35 @@ it('defers frozen split geometry until release and preserves the final screen pl
   expect(ports.drawNow).toHaveBeenCalledTimes(1)
   expect(ports.liveViewRef.current).toEqual(preserveViewOnViewportChange(initialView,
     { left: 0, top: 0, width: 320, height: 240 }, { left: 60, top: 40, width: 240, height: 180 }, 'canvas'))
+  expect(useWorkspace.getState().sessions[0].contentRevision).toBe(session.contentRevision)
+})
+
+it.each(['left', 'right', 'bottom'] as const)('repaints exposed canvas before releasing the %s dock', edge => {
+  const { ports, session } = mountGeometry()
+  const stage = ports.stageRef.current!
+  stage.className = 'stage-surface'
+  stage.style.cssText = 'width:320px;height:240px'
+  const viewport = document.createElement('div')
+  viewport.append(stage)
+  vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => bounds)
+  const initialView = { ...ports.liveViewRef.current }
+  const historyPosition = session.history.position
+  let gesture: ReturnType<typeof beginDocumentPaneDockResize>
+  act(() => {
+    beginWorkspaceResize()
+    gesture = beginDocumentPaneDockResize(viewport, null, edge)
+    bounds = edge === 'left' ? new DOMRect(-80, 0, 400, 240)
+      : edge === 'right' ? new DOMRect(0, 0, 400, 240) : new DOMRect(0, 0, 320, 320)
+    gesture!.update()
+    notifyResize()
+  })
+  expect(ports.drawNow).toHaveBeenCalledTimes(1)
+  expect(ports.liveViewRef.current).toEqual(preserveViewOnViewportChange(initialView,
+    { left: 0, top: 0, width: 320, height: 240 },
+    { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }, 'canvas'))
+  expect(useWorkspace.getState().sessions[0].viewportSize).toEqual({ width: 320, height: 240 })
+  act(() => { gesture!.finish(); endWorkspaceResize() })
+  expect(useWorkspace.getState().sessions[0].viewportSize).toEqual({ width: bounds.width, height: bounds.height })
+  expect(session.history.position).toBe(historyPosition)
   expect(useWorkspace.getState().sessions[0].contentRevision).toBe(session.contentRevision)
 })

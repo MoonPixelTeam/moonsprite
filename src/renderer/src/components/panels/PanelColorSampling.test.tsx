@@ -112,7 +112,10 @@ it.each([1, 1.25, 1.5, 2])('keeps preview pixels fixed and reuses its backing wh
 it('opens preview playback settings above its floating ancestor', () => {
   const session = useWorkspace.getState().sessions[0]
   const view = render(<div style={{ position: 'fixed', zIndex: 1500 }}><PreviewPanel session={session} docked onClose={() => {}} /></div>, { wrapper: I18nProvider })
-  const button = view.container.querySelector<HTMLButtonElement>('button[aria-label="播放动画"]')!
+  const more = view.container.querySelector<HTMLButtonElement>('.preview-panel .panel-actions button[aria-haspopup="dialog"]')
+  if (more) fireEvent.click(more)
+  const button = document.querySelector<SVGElement>('.preview-panel .pixel-playback-icon, .panel-actions-popup .pixel-playback-icon')?.closest('button')
+  if (!button) throw new Error('preview playback button was not rendered')
   fireEvent.contextMenu(button, { clientX: 100, clientY: 100 })
   const menu = document.querySelector<HTMLElement>('.animation-context-menu')!
   expect(menu.parentElement).toBe(document.body)

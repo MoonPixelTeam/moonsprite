@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportruRU } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const ruRUMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Временная кисть: выделите область и отпустите для использования; Esc — отмена",
   "preferences.paintingCursor.cross": "Простой крест",
@@ -1315,6 +1317,7 @@ export const ruRUMessages = {
   "colorReplacement.colors": "Цвета",
   "colorReplacement.source": "Initial Цвет",
   "colorReplacement.replacement": "Заменить с",
+  "colorReplacement.rememberLastSelectedColor": "Запоминать последний выбранный цвет",
   "colorReplacement.pickSource": 'Показать первоначальный цвет с канона',
   "colorReplacement.pickReplacement": "Sample Этот Заменитьment Цвет из Этот Холст",
   "colorReplacement.range": "Диапазон",

@@ -13,7 +13,7 @@ import { homeAnnouncementsForDisplay, latestReleases, type LatestReleaseDefiniti
 import { clearRecentProjects, getGalleryPins, getRecentProjects, recordRecentProject, removeGalleryPin, removeRecentProject, reorderRecentProjects, toggleGalleryPin, toggleRecentProjectPinned, type RecentProject } from '@/core/home-history'
 import { getHomeFileDisplayFormats, matchesHomeFileDisplayFormats, saveHomeFileDisplayFormats, type HomeFileDisplayFormat } from '@/core/home-file-display'
 import { createFolderHomeSection, findFolderHomeSection, getHomeSections, saveHomeSections, type HomeSectionDefinition } from '@/core/home-sections'
-import { homeBannerDefinitions, resolveHomeBanners, type HomeBannerDefinition } from '@/core/home-banner'
+import { homeBannerDefinitions, resolveHomeBanners, shuffleHomeBanners, type HomeBannerDefinition } from '@/core/home-banner'
 import { useWorkspace } from '@/store/workspace'
 import { useI18n } from '@/components/I18nProvider'
 import { AVAILABLE_APP_LOCALES, localeDisplayName, translate, type AppLocale } from '@/core/localization'
@@ -22,11 +22,15 @@ import homeBannerFire from '@/assets/home-banner-fire.png'
 import homeBannerCrystal from '@/assets/home-banner-crystal.png'
 import homeBannerCoast from '@/assets/home-banner-coast.png'
 import homeBannerHall from '@/assets/home-banner-hall.png'
+import homeBannerStoneLion from '@/assets/home-banner-stone-lion.png'
+import homeBannerContempt from '@/assets/home-banner-contempt.png'
 import { PixelCloseIcon as X, PixelUtilityIcon } from '@/components/PixelUtilityIcon'
 import { DialogHeader } from '@/components/DialogHeader'
 import { ModalShell } from '@/components/ModalShell'
 import { HomeSectionManagerDialog } from '@/components/HomeSectionManagerDialog'
 import { Tooltip } from '@/components/Tooltip'
+
+const sessionBannerDefinitions = shuffleHomeBanners(homeBannerDefinitions)
 
 interface ProjectCard extends RecentProject {
   previewUrl?: string
@@ -109,14 +113,25 @@ interface CachedProjectPreview {
   colorMode: ColorMode
 }
 const projectPreviewCache = new Map<string, CachedProjectPreview>()
-const maxCachedProjectPreviews = 48
+const maxCachedProjectPreviews = 24
+const maxCachedProjectPreviewBytes = 32 * 1024 * 1024
+let cachedProjectPreviewBytes = 0
 let projectPreviewFallbackQueue = Promise.resolve()
 const previewCacheKey = (record: RecentProject): string => `${record.filePath}\u0000${record.lastOpened}`
 const recoveryPreviewCacheKey = (record: RecoveryRecord): string => `recovery\u0000${record.id}\u0000${record.updatedAt}`
 const cacheProjectPreview = (key: string, preview: CachedProjectPreview): void => {
+  const previous = projectPreviewCache.get(key)
+  if (previous) cachedProjectPreviewBytes -= previous.bytes.byteLength
   projectPreviewCache.delete(key)
   projectPreviewCache.set(key, preview)
-  while (projectPreviewCache.size > maxCachedProjectPreviews) projectPreviewCache.delete(projectPreviewCache.keys().next().value!)
+  cachedProjectPreviewBytes += preview.bytes.byteLength
+  while (projectPreviewCache.size > maxCachedProjectPreviews || cachedProjectPreviewBytes > maxCachedProjectPreviewBytes) {
+    const oldestKey = projectPreviewCache.keys().next().value
+    if (oldestKey === undefined) break
+    const oldest = projectPreviewCache.get(oldestKey)
+    if (oldest) cachedProjectPreviewBytes -= oldest.bytes.byteLength
+    projectPreviewCache.delete(oldestKey)
+  }
 }
 const createPreviewUrl = (bytes: Uint8Array): string => {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
@@ -563,9 +578,9 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         } catch {
           // Bundled image banners remain available if the optional gallery is unavailable.
         }
-        const matches = resolveHomeBanners(homeBannerDefinitions, galleryProjects)
+        const matches = resolveHomeBanners(sessionBannerDefinitions, galleryProjects)
         const cards = await Promise.all(matches.map(async (match): Promise<BannerProjectCard> => {
-          if (match.kind === 'image') return { id: match.id, author: match.author, authorUrl: match.authorUrl, name: match.imageName ?? match.id, imageUrl: match.imageAssetKey === 'home-banner-fire' ? homeBannerFire : match.imageAssetKey === 'home-banner-crystal' ? homeBannerCrystal : match.imageAssetKey === 'home-banner-coast' ? homeBannerCoast : match.imageAssetKey === 'home-banner-hall' ? homeBannerHall : undefined }
+          if (match.kind === 'image') return { id: match.id, author: match.author, authorUrl: match.authorUrl, name: match.imageName ?? match.id, imageUrl: match.imageAssetKey === 'home-banner-fire' ? homeBannerFire : match.imageAssetKey === 'home-banner-crystal' ? homeBannerCrystal : match.imageAssetKey === 'home-banner-coast' ? homeBannerCoast : match.imageAssetKey === 'home-banner-hall' ? homeBannerHall : match.imageAssetKey === 'home-banner-stone-lion' ? homeBannerStoneLion : match.imageAssetKey === 'home-banner-contempt' ? homeBannerContempt : undefined }
           const card = await readCard({
             filePath: match.filePath!,
             fileName: match.fileName ?? match.projectFileName ?? match.id,
@@ -581,8 +596,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
         }
         releaseBannerObjectUrls()
         for (const card of cards) if (card.previewUrl) bannerObjectUrls.current.push(card.previewUrl)
-        // Pick a fresh starting banner for each home-screen entry.
-        setBannerIndex(cards.length > 0 ? Math.floor(Math.random() * cards.length) : 0)
+        setBannerIndex(0)
         setBannerProjects(cards)
       } catch {
         if (!disposed) setBannerProjects([])
@@ -1022,7 +1036,7 @@ export function HomeWorkspace({ onNew, onOpen, onOpenProject, onOpenImage, onRes
                 <span className="home-feature-banner-title">{project.name}</span>
                 <button type="button" className="home-feature-banner-author" tabIndex={isActive ? undefined : -1} onClick={() => openExternalLink(project.authorUrl)} aria-label={t('home.openAuthor', { name: project.author })}>{t('home.author', { name: project.author })}</button>
                 {bannerProjects.length > 1 && <div className="home-feature-banner-dots" role="tablist" aria-label={t('home.featureBannerPages')}>
-                  {bannerProjects.map((_, dotIndex) => <button key={dotIndex} type="button" tabIndex={isActive ? undefined : -1} role="tab" aria-selected={isActive && dotIndex === bannerIndex} aria-label={t('home.bannerImage', { index: dotIndex + 1 })} className={`home-feature-banner-dot ${isActive && dotIndex === bannerIndex ? 'active' : ''}`} onClick={() => setBannerIndex(dotIndex)} />)}
+                  {bannerProjects.map((_, dotIndex) => <button key={dotIndex} type="button" tabIndex={isActive ? undefined : -1} role="tab" aria-selected={isActive && dotIndex === bannerIndex} aria-label={t('home.bannerImage', { index: dotIndex + 1 })} className={`home-feature-banner-dot ${isActive && dotIndex === bannerIndex ? 'active' : ''}`} onPointerEnter={() => setBannerIndex(dotIndex)} onClick={() => setBannerIndex(dotIndex)} />)}
                 </div>}
               </div>
             </article>

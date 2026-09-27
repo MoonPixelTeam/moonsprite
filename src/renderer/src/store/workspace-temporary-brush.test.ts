@@ -48,7 +48,23 @@ it('restores the original pencil after switching between saved pattern brushes',
   const doc = state.sessions[0].document
   const brush = createSelectionBrush(doc, { x: 0, y: 0, width: 2, height: 2 }, 'saved-pattern', 'Pattern')!
   state.setBrushImage(brush)
+  state.setBrushPaintMode('pattern-target')
   state.setBrushImage({ ...brush, id: 'other-pattern' })
   state.exitPatternBrush()
-  expect(useWorkspace.getState().sessions[0]).toMatchObject({ brushImage: null, brushSize: 7, tool: 'pencil' })
+  expect(useWorkspace.getState().sessions[0]).toMatchObject({ brushImage: null, brushSize: 7, tool: 'pencil', brushPaintMode: 'pattern-target' })
+})
+
+it('clears a restored pattern from both the live pencil and its remembered profile', () => {
+  const state = useWorkspace.getState()
+  const doc = state.sessions[0].document
+  const brush = createSelectionBrush(doc, { x: 0, y: 0, width: 2, height: 2 }, 'restored-pattern', 'Pattern')!
+  state.setBrushImage(brush)
+  // A persisted pencil can already contain a pattern when the library hydrates it.
+  state.mutateActive(session => { session.patternBrushReturnProfile = undefined }, false)
+  state.setBrushImage(brush)
+  state.exitPatternBrush()
+  expect(useWorkspace.getState().sessions[0]).toMatchObject({ brushImage: null, brushImageId: null })
+  state.setTool('eraser')
+  state.setTool('pencil')
+  expect(useWorkspace.getState().sessions[0]).toMatchObject({ brushImage: null, brushImageId: null, brushImageTemporary: false })
 })

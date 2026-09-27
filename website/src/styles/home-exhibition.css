@@ -21,12 +21,17 @@
 .competition-facts dt { color: var(--text-4); font-size: var(--font-small); margin-bottom: var(--space-5); }
 .competition-facts dd { margin: 0; font-size: var(--font-body); }
 .competition-demo { color: var(--text-4); font-size: var(--font-small); line-height: 1.7; margin-block: var(--space-7) var(--space-20); }
-.media-preview-dialog { width: min(90vw, 1200px); max-width: 90vw; max-height: 90dvh; margin: auto; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); overflow: auto; }
+.media-preview-dialog { width: min(96vw, 1800px); max-width: calc(100vw - 2 * var(--space-7)); max-height: calc(100dvh - 2 * var(--space-7)); margin: auto; padding: 0; color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); overflow: auto; }
 .media-preview-dialog::backdrop { background: rgb(0 0 0 / 78%); }
 .media-preview-content > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); padding: var(--space-7) var(--space-9); border-bottom: 1px solid var(--divider); }
 .media-preview-content h2 { font-size: var(--font-lead); }
-.media-preview-frame { aspect-ratio: 16 / 9; display: grid; place-items: center; background: var(--control); }
-.media-preview-frame img { display: block; width: 100%; height: 100%; min-height: 0; max-height: 70dvh; object-fit: contain; }
+.media-preview-frame { display: grid; place-items: center; min-height: 0; max-height: calc(100dvh - 150px); overflow: hidden; background: var(--control); }
+.media-preview-frame img { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100dvh - 150px); object-fit: contain; image-rendering: auto; }
+.media-preview-frame { position: relative; }
+.media-preview-controls { display: flex; align-items: center; gap: var(--space-3); flex: 0 0 auto; }
+.media-preview-controls > span { min-width: 42px; padding: var(--space-3) var(--space-4); color: #fff; background: rgb(9 10 13 / 72%); font-family: var(--font-pixel); font-size: var(--font-pixel-tag); text-align: center; }
+.media-preview-controls .hero-arrow { width: 36px; height: 36px; }
+.media-preview-controls .hero-arrow svg { width: 20px; height: 20px; }
 .media-preview-content > p { padding: var(--space-7) var(--space-9); font-size: var(--font-small); color: var(--text-3); line-height: 1.7; }
 .home-section-head { display: flex; align-items: end; justify-content: space-between; gap: var(--space-13); margin-bottom: var(--space-13); }
 @media (max-width: 1000px) {
@@ -39,6 +44,11 @@
   .competition-facts { grid-template-columns: minmax(0, 1fr); }
   .competition-banner-content { padding-block: var(--space-16); }
   .media-preview-content > header .button { width: auto; flex-shrink: 0; }
+  .media-preview-dialog { max-width: calc(100vw - 2 * var(--space-4)); max-height: calc(100dvh - 2 * var(--space-4)); }
+  .media-preview-content > header { padding: var(--space-5) var(--space-7); }
+  .media-preview-frame, .media-preview-frame img { max-height: calc(100dvh - 112px); }
+  .media-preview-controls { gap: var(--space-2); }
+  .media-preview-content > p { padding: var(--space-5) var(--space-7); }
 }
 @media (prefers-reduced-motion: reduce) {
   .competition-work-image img { transition: none; }

@@ -1,10 +1,12 @@
 import { gradientMapEn } from './gradient-map'
+import { beta7En } from './release-beta7'
 import { spriteSheetImportfrFR } from './sprite-sheet-import'
 import type { TranslationCatalog } from './contracts'
 
 import { tabletEn } from './tablet'
 
 export const frFRMessages = {
+  ...beta7En,
   ...gradientMapEn,
   "toolOptions.temporaryBrushCaptureHint": "Pinceau temporaire : sélectionnez une zone, relâchez pour utiliser ; Échap pour annuler",
   "preferences.paintingCursor.cross": "Croix simple",
@@ -1321,6 +1323,7 @@ export const frFRMessages = {
   'colorReplacement.colors': 'Couleurs',
   'colorReplacement.source': 'Initial Couleur',
   'colorReplacement.replacement': 'Replace avec',
+  'colorReplacement.rememberLastSelectedColor': 'Mémoriser la dernière couleur sélectionnée',
   'colorReplacement.pickSource': 'Afficher la couleur initiale du canvas',
   'colorReplacement.pickReplacement': 'Demandez la couleur de remplacement des canvas',
   'colorReplacement.range': 'Plage',
